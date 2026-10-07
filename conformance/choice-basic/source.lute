@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 character: hero
 season: 1
 episode: 1
@@ -13,10 +13,10 @@ uses: ./schema.yaml
 @narrator: The road splits.
 
 <branch id="path">
-  <choice id="left" label="Go left" into="run.dir" value="left">
+  <choice id="left" text="Go left" into="run.dir" value="left">
     @hero: Left it is.
   </choice>
-  <choice id="right" label="Go right" into="run.dir" value="right">
+  <choice id="right" text="Go right" into="run.dir" value="right">
     @hero: Right it is.
   </choice>
 </branch>

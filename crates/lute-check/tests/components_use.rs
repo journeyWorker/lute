@@ -50,9 +50,9 @@ fn codes(dir: &Path, scene: &str) -> Vec<String> {
 }
 
 const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n\
-## Scene 1.\n::auto{character=@who}\n@narrator: Hello there.\n";
+## Scene 1.\n::actor{character=@who}\n@narrator: Hello there.\n";
 
-/// The `anchor` slot, declared inline. `GREET`'s `::auto` writes no `anchor`, so
+/// The `anchor` slot, declared inline. `GREET`'s `::actor` writes no `anchor`, so
 /// `auto-anchor-on-show` reads this `default:` — an undeclared `anchor` there is
 /// `E-DOMAIN-UNKNOWN` (dsl 0.9.0 D-D), which would drown out every
 /// component-resolution code these fixtures are actually about.
@@ -164,10 +164,10 @@ fn component_instance_duplicate_in_exclusive_branches_still_conflicts() {
     let source = scene(
         "greet.lute",
         "<branch id=\"route\">\n\
-         <choice id=\"left\" label=\"Left\" when=\"true\">\n\
+         <choice id=\"left\" text=\"Left\" when=\"true\">\n\
          ::use{component=\"greet\" instance=\"shared\"}\n\
          </choice>\n\
-         <choice id=\"right\" label=\"Right\">\n\
+         <choice id=\"right\" text=\"Right\">\n\
          ::use{component=\"greet\" instance=\"shared\"}\n\
          </choice>\n\
          </branch>",
@@ -278,7 +278,7 @@ fn state_read_in_body_is_v1_error() {
     write_lute(
         &dir,
         "logic.lute",
-        "---\ncomponent: logic\n---\n## L.\n<match on=\"scene.x\">\n\
+        "---\ncomponent: logic\n---\n## L.\n<match subject=\"scene.x\">\n\
 <when test=\"$ == true\">@narrator: a\n</when>\n\
 <otherwise>@narrator: b\n</otherwise>\n</match>\n",
     );
@@ -314,7 +314,7 @@ fn undeclared_ref_in_body_is_flagged() {
         &dir,
         "greet.lute",
         "---\ncomponent: greet\nparams:\n  who: string\n---\n\
-## G.\n::auto{character=@stranger}\n",
+## G.\n::actor{character=@stranger}\n",
     );
     let s = scene("greet.lute", "::use{component=\"greet\" who=\"b\"}");
     let cs = codes(&dir, &s);

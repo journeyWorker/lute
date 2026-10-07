@@ -5,5 +5,5 @@ enums:
   anchor: { members: [left, center, right], default: center }
   mood: [dread, hush, pulse]
   volume: [low, normal]
-  musicAction: [start, stop]
+  musicPlayback: [start, stop]
   vfxType: [flicker, redout, whiteout]

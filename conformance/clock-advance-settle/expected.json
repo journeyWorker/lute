@@ -1,21 +1,21 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "eligible": true,
       "id": "clockAdvance.advance",
-      "kind": "beat"
+      "kind": "beat",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "kind": "line",
+      "position": "001-0200",
       "speaker": "narrator",
       "text": "A day passes."
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.36",
+  "irVersion": "0.37",
   "kind": "lore",
   "quests": {},
   "state": {

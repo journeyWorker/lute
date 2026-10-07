@@ -62,10 +62,10 @@ facts:
 @marina{code=\"0010\"}: Hello there.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>
@@ -157,9 +157,9 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.36.6");
+    assert_eq!(index["irVersion"], "0.37.0");
     assert!(
-        index["capabilityVersion"]
+        index["capabilitySnapshot"]
             .as_str()
             .is_some_and(|s| !s.is_empty()),
         "the index carries the project's one resolved snapshot stamp"

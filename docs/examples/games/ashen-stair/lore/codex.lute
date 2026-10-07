@@ -18,7 +18,7 @@ series: stairCodex
 </entry>
 
 <entry id="codexWarden" target="foe.warden" category="codex" title="The Warden" when="holds('everSlew', ['warden'])">
-  <match on="user.knowsSableName">
+  <match subject="user.knowsSableName">
     <when is="true">
       @narrator{code="0010"}: The top of the Stair. A coat of ash that took Sable forty years ago and has been wearing her patience ever since.
     </when>

@@ -19,20 +19,20 @@ flagged E-TRACK-KEY.
 ## The Split Performance
 
 ::bg{location="rooftop" time="evening" assetId="BG.space.rooftop.exterior.evening"}
-::auto{character="marina" action="idle"}
+::actor{character="marina" action="idle"}
 
 @narrator: She stepped into frame as the camera swung to meet her.
 
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slideInLeft"}
+    ::actor{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="marina" framing="close" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
 </timeline>
 

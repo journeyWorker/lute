@@ -81,7 +81,7 @@ impl DirectiveEffects {
 }
 
 /// Hand-written so a block without `asserts`/`retracts` prints exactly as it
-/// did before they existed: `capabilityVersion` hashes this `Debug`.
+/// did before they existed: `capabilitySnapshot` hashes this `Debug`.
 impl std::fmt::Debug for DirectiveEffects {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("DirectiveEffects");
@@ -250,7 +250,7 @@ pub enum OpBy {
     },
 }
 
-/// `capabilityVersion` hashes a directive's `Debug`: a numeric `by` renders
+/// `capabilitySnapshot` hashes a directive's `Debug`: a numeric `by` renders
 /// as the bare number it was before `OpBy` existed, so an unchanged manifest
 /// keeps its version.
 impl std::fmt::Debug for OpBy {
@@ -397,7 +397,7 @@ pub struct BridgeRef {
 /// Deserialized through [`RawLowering`] so a malformed `lower:` names what
 /// is wrong (unknown key, unknown `kind`, unregistered hook) instead of
 /// serde's "did not match any variant". `Record`/`Builtin` keep their
-/// derived `Debug`, which `capabilityVersion` hashes.
+/// derived `Debug`, which `capabilitySnapshot` hashes.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(untagged, try_from = "RawLowering")]
 pub enum Lowering {
@@ -424,12 +424,13 @@ impl Lowering {
 /// MUST resolve to a registered hook"), exactly the hooks the `lute.core`
 /// staging manifest names. Adding one is a core code change.
 pub const BUILTIN_LOWERING_HOOKS: &[&str] = &[
-    "autoStage",
+    "actorStage",
     "cameraTransform",
     "clearStage",
     "end",
-    "mark",
-    "next",
+    "jump",
+    "label",
+    "sequence",
 ];
 
 /// The wire shape of `lower:`, validated into a [`Lowering`].

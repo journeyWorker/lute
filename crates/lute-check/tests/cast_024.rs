@@ -224,8 +224,8 @@ fn an_occasion_gate_and_not_terminal_imply_presence() {
 fn a_def_guard_expanding_to_presence_implies_it() {
     let src = scene(
         "@isolde{when=\"@isoldeHere\"}: Here.\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"Ask her\" when=\"@isoldeHere && run.x > 0\">\n\
-         @isolde: Ask away.\n</choice>\n<choice id=\"d\" label=\"Leave\">\n@isolde: Fine.\n</choice>\n</branch>",
+         <branch id=\"b\">\n<choice id=\"c\" text=\"Ask her\" when=\"@isoldeHere && run.x > 0\">\n\
+         @isolde: Ask away.\n</choice>\n<choice id=\"d\" text=\"Leave\">\n@isolde: Fine.\n</choice>\n</branch>",
     );
     let ds = diags(&src);
     assert_clean_vocab(&ds);
@@ -237,7 +237,7 @@ fn a_def_guard_expanding_to_presence_implies_it() {
 #[test]
 fn a_match_arm_on_the_presence_state_implies_it() {
     let src = scene(
-        "<match on=\"run.withUs\">\n<when is=\"true\">\n@corvin: With you.\n</when>\n\
+        "<match subject=\"run.withUs\">\n<when is=\"true\">\n@corvin: With you.\n</when>\n\
          <otherwise>\n@corvin: Alone.\n</otherwise>\n</match>",
     );
     let ds = diags(&src);
@@ -260,7 +260,7 @@ fn a_match_arm_on_the_presence_state_implies_it() {
 #[test]
 fn an_otherwise_arm_assumes_every_earlier_arm_failed() {
     let src = scene(
-        "<match on=\"run.withUs\">\n<when is=\"false\">\n@narrator: Alone.\n</when>\n\
+        "<match subject=\"run.withUs\">\n<when is=\"false\">\n@narrator: Alone.\n</when>\n\
          <otherwise>\n@corvin: With you.\n</otherwise>\n</match>",
     );
     let ds = diags(&src);
@@ -271,7 +271,7 @@ fn an_otherwise_arm_assumes_every_earlier_arm_failed() {
 #[test]
 fn a_write_between_the_guard_and_the_line_voids_the_guard() {
     let set = scene(
-        "<match on=\"run.withUs\">\n<when is=\"true\">\n::set{run.withUs = false}\n\
+        "<match subject=\"run.withUs\">\n<when is=\"true\">\n::set{run.withUs = false}\n\
          @corvin: Goodbye.\n</when>\n<otherwise>\n@narrator: Quiet.\n</otherwise>\n</match>",
     );
     assert_eq!(
@@ -280,9 +280,9 @@ fn a_write_between_the_guard_and_the_line_voids_the_guard() {
         "a `::set` of the guarded path"
     );
     let retract = scene(
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"Part\" when=\"holds('inParty', ['isolde'])\">\n\
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"Part\" when=\"holds('inParty', ['isolde'])\">\n\
          ::retract{inParty(isolde)}\n@isolde: Farewell.\n</choice>\n\
-         <choice id=\"d\" label=\"Stay\">\n@narrator: Nothing.\n</choice>\n</branch>",
+         <choice id=\"d\" text=\"Stay\">\n@narrator: Nothing.\n</choice>\n</branch>",
     );
     let ds = diags(&retract);
     assert_clean_vocab(&ds);
@@ -408,8 +408,8 @@ fn a_fact_asserted_on_every_route_discharges_presence_in_check_project() {
 #[test]
 fn a_fact_asserted_on_only_some_routes_still_warns_in_check_project() {
     let src = scene(
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"Recruit\">\n::assert{inParty(isolde)}\n</choice>\n\
-         <choice id=\"d\" label=\"Refuse\">\n@narrator: Alone.\n</choice>\n</branch>\n\
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"Recruit\">\n::assert{inParty(isolde)}\n</choice>\n\
+         <choice id=\"d\" text=\"Refuse\">\n@narrator: Alone.\n</choice>\n</branch>\n\
          @isolde: Maybe I'm here.",
     );
     let out = project(&[("a.lute", &src)]);
@@ -482,8 +482,8 @@ fn absent_lines<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {
 fn a_write_in_one_choice_does_not_reach_a_sibling_choice() {
     let src = rel_scene(
         "on: hubVisit\nwhen: \"!holds('recruited', ['wren'])\"\n",
-        "<branch id=\"ask\">\n<choice id=\"yes\" label=\"Join us\">\n@wren: Gladly.\n::assert{recruited(wren)}\n</choice>\n\
-         <choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n</branch>\n@wren: After the branch.",
+        "<branch id=\"ask\">\n<choice id=\"yes\" text=\"Join us\">\n@wren: Gladly.\n::assert{recruited(wren)}\n</choice>\n\
+         <choice id=\"no\" text=\"Stay\">\n@wren: I'll stay.\n</choice>\n</branch>\n@wren: After the branch.",
     );
     let ds = rel_diags(&src);
     assert_clean_vocab(&ds);
@@ -628,8 +628,8 @@ fn a_disjunct_proven_by_a_fact_only_the_unit_itself_asserts_counts() {
     // even though another scene can make her depart and `fell` is reserved.
     let meet = rel_scene(
         "on: hubVisit\n",
-        "@wren: Before anyone asks.\n<branch id=\"ask\">\n<choice id=\"yes\" label=\"Join us\">\n\
-         ::assert{recruited(wren)}\n</choice>\n<choice id=\"no\" label=\"Stay\">\n@wren: I'll stay.\n</choice>\n\
+        "@wren: Before anyone asks.\n<branch id=\"ask\">\n<choice id=\"yes\" text=\"Join us\">\n\
+         ::assert{recruited(wren)}\n</choice>\n<choice id=\"no\" text=\"Stay\">\n@wren: I'll stay.\n</choice>\n\
          </branch>\n@wren: After the branch.",
     );
     let leaves = rel_scene(

@@ -72,8 +72,8 @@ pub(crate) fn match_relation_subject_message(subject: &str, via: Option<&str>, q
         subject.to_string()
     };
     format!(
-        "{lead}, and a fact query is only ever a guard, never a `<match on>` subject \
-         (dsl 0.3.0 §8) — drop `on` and test the query in each arm: `<match>` with arms \
+        "{lead}, and a fact query is only ever a guard, never a `<match subject>` \
+         (dsl 0.3.0 §8) — drop `subject` and test the query in each arm: `<match>` with arms \
          like `<when test=\"{test}\">` and an `<otherwise>`; a single line, choice or \
          `::set` takes the same test as its `when=\"…\"`"
     )

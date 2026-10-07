@@ -349,8 +349,8 @@ fn a_beat_template_body_needs_no_heading_and_an_ordinary_component_does() {
         .replace(" && @who != ''", "");
     let (doc, diags) = lute_syntax::parse(&headless);
     assert!(diags.is_empty(), "{diags:#?}");
-    assert_eq!(doc.shots.len(), 1, "the body is the template's one shot");
-    assert_eq!(doc.shots[0].body.len(), 1);
+    assert_eq!(doc.sections.len(), 1, "the body is the template's one section");
+    assert_eq!(doc.sections[0].body.len(), 1);
 
     let lore = format!("{LORE_HEAD}<beat use=\"gift\" id=\"maud\" who=\"maud\" need=\"4\"/>\n");
     let (input, diags) = run(&headless, &lore);
@@ -367,7 +367,7 @@ fn a_beat_template_body_needs_no_heading_and_an_ordinary_component_does() {
     let plain = "---\ncomponent: nod\n---\n\n@narrator: A nod.\n";
     let (_, diags) = lute_syntax::parse(plain);
     assert!(
-        diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SHOT"),
+        diags.iter().any(|d| d.code == "E-CONTENT-OUTSIDE-SECTION"),
         "{diags:#?}"
     );
 }

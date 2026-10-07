@@ -16,7 +16,7 @@ fn parses_marina_example_without_parse_errors() {
         parse_errs.is_empty(),
         "unexpected parse errors: {parse_errs:?}"
     );
-    assert_eq!(doc.shots.len(), 5); // Shot 1..5
+    assert_eq!(doc.sections.len(), 5); // Section 1..5
 }
 
 /// The example exercises every §7 construct — assert the recursive assembly, not
@@ -26,17 +26,14 @@ fn marina_block_assembly_is_correct() {
     let text = std::fs::read_to_string(MARINA).unwrap();
     let (doc, _diags) = lute_syntax::parse(&text);
 
-    // Document title (H1) survives the multi-byte em-dash.
-    assert_eq!(
-        doc.title.as_ref().map(|(t, _)| t.as_str()),
-        Some("S01EP02 — Behold the Performance of All-Purpose Marina"),
-    );
-    // Five shots assembled in document order (0.6.0 §3.2: a shot's number is
-    // its 1-based position; the `Shot.number` field is gone).
-    assert_eq!(doc.shots.len(), 5);
+    // dsl 0.37.0 §3.1: the title is frontmatter `title:`; no `# ` heading.
+    assert!(doc.meta.raw_yaml.contains("title: Behold the Performance of All-Purpose Marina"));
+    // Five sections assembled in document order (0.6.0 §3.2: a section's number is
+    // its 1-based position; the `Section.number` field is gone).
+    assert_eq!(doc.sections.len(), 5);
 
     // Shot 3: <timeline duration="1.4"> with 4 tracks; the beam clip lands at 0.5.
-    let timeline = doc.shots[2]
+    let timeline = doc.sections[2]
         .body
         .iter()
         .find_map(|n| {
@@ -75,7 +72,7 @@ fn marina_block_assembly_is_correct() {
     }
 
     // Shot 4: <branch id="number"> with two choices (the second sets affect).
-    let branch = doc.shots[3]
+    let branch = doc.sections[3]
         .body
         .iter()
         .find_map(|n| {
@@ -89,11 +86,11 @@ fn marina_block_assembly_is_correct() {
     assert_eq!(branch.id, "number");
     assert_eq!(branch.choices.len(), 2);
     assert_eq!(branch.choices[1].id, "soft");
-    assert_eq!(branch.choices[1].label, "Ask gently");
+    assert_eq!(branch.choices[1].text, "Ask gently");
     assert_eq!(branch.choices[1].body.len(), 2); // :speaker line + ::set
 
-    // Shot 5: <match on="…"> with two <when>s + <otherwise>.
-    let m = doc.shots[4]
+    // Shot 5: <match subject="…"> with two <when>s + <otherwise>.
+    let m = doc.sections[4]
         .body
         .iter()
         .find_map(|n| {

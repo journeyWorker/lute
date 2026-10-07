@@ -1,0 +1,50 @@
+{
+  "files": [
+    {
+      "diagnostics": [],
+      "ok": true,
+      "path": "./other.lute",
+      "resolved": {
+        "commands_preview": [
+          ":hero",
+          ":hero"
+        ],
+        "injections": [],
+        "timeline_tables": []
+      }
+    },
+    {
+      "diagnostics": [],
+      "ok": true,
+      "path": "./source.lute",
+      "resolved": {
+        "commands_preview": [
+          ":hero",
+          ":hero"
+        ],
+        "injections": [],
+        "timeline_tables": []
+      }
+    }
+  ],
+  "ok": false,
+  "project_diagnostics": [
+    {
+      "code": "E-DUP-VOICEKEY",
+      "layer": "logic",
+      "message": "voiceKey `hero-0020` is shared by 2 lines with different text, so one recording would voice all of them: `other.lute` hero.s01ep02.hero_0020 \"Farewell.\"; `source.lute` hero.s01ep01.hero_0020 \"Goodbye.\"; a voiceKey template without `{prefix}` (such as the 0.21 default `{speaker}-{code}`) repeats across documents — use the default `{prefix}.{speaker}-{code}` in lute.project.yaml's `identity.voiceKey` (renames every voice asset) or give the lines distinct `code=`s",
+      "path": "./lute.project.yaml",
+      "severity": "error",
+      "span": {
+        "byte_end": 0,
+        "byte_start": 0,
+        "column": 0,
+        "line": 0,
+        "utf16_range": [
+          0,
+          0
+        ]
+      }
+    }
+  ]
+}

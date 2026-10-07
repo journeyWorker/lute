@@ -11,15 +11,15 @@ after: 'visited("common.festival")'
 ## The far jetty
 
 ::bg{location="lakeshore" time="night"}
-::music{action="start" mood="sad" volume="down"}
-::auto{character="hotaru" anchor="center" action="fadeInUp"}
+::music{playback="start" mood="sad" volume="down"}
+::actor{character="hotaru" anchor="center" action="fadeInUp"}
 @hotaru{code="0010" emotion="smiling"}: A date. With the lantern keeper. The headmistress would faint.
 @hotaru{code="0020" emotion="sad"}: I was a student here, in 1931. I floated my lantern on my own. It came back. I stayed to keep it company. Then I kept all of them.
 @hotaru{code="0030" emotion="fond"}: You've floated one with Ren, and Mika, and Soren, and Kai. I watched every one come home to me. You're the only one who keeps coming back too.
 
 ::date{with="hotaru" spot="lakeshore" resultKey="keeper"}
 
-<match on="scene.date.keeper.mood">
+<match subject="scene.date.keeper.mood">
   <when is="awkward">
     @hotaru{code="0040" emotion="neutral"}: It's all right. I haven't been on a date in ninety-five years. I'm also bad at it.
   </when>

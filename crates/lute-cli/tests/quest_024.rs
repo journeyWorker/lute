@@ -146,9 +146,9 @@ fn project(tag: &str) -> PathBuf {
         "hub.offer",
         "on: hubVisit\nonce: false\n",
         "@maud: Two ways across.\n\n<branch id=\"offer\">\n\
-         <choice id=\"words\" label=\"Talk\">\n@maud: Talk, then.\n::accept{quest=\"parley\"}\n</choice>\n\
-         <choice id=\"silver\" label=\"Pay\">\n@maud: Pay, then.\n::accept{quest=\"toll\"}\n</choice>\n\
-         <choice id=\"boat\" label=\"Ferry\">\n@maud: Row, then.\n::accept{quest=\"ferry\"}\n</choice>\n\
+         <choice id=\"words\" text=\"Talk\">\n@maud: Talk, then.\n::accept{quest=\"parley\"}\n</choice>\n\
+         <choice id=\"silver\" text=\"Pay\">\n@maud: Pay, then.\n::accept{quest=\"toll\"}\n</choice>\n\
+         <choice id=\"boat\" text=\"Ferry\">\n@maud: Row, then.\n::accept{quest=\"ferry\"}\n</choice>\n\
          </branch>\n",
     );
     scene(

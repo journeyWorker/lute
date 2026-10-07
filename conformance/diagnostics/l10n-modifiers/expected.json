@@ -1,0 +1,18 @@
+[
+  {
+    "code": "E-L10N-MODIFIERS",
+    "severity": "error",
+    "message": "`ja-JP` text for `hero.s01ep01.hero_0010` is not merged: its inline modifiers [emphasis[]] differ from the source's [emphasis[], pause{s=0.5}]",
+    "span": {
+      "byte_start": 0,
+      "byte_end": 0,
+      "line": 1,
+      "column": 1,
+      "utf16_range": [
+        0,
+        0
+      ]
+    },
+    "layer": "content"
+  }
+]

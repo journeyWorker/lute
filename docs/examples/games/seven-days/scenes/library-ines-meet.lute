@@ -11,9 +11,9 @@ priority: 20
 ## Marrow Bay Free Library
 
 ::bg{location="library_reading_room" time="afternoon"}
-::music{action="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="down"}
 @narrator{code="0010"}: The library used to be a customs house. The counters where men weighed contraband now hold returned paperbacks, swollen with sea air.
-::auto{character="ines" anchor="center" action="fadeInUp"}
+::actor{character="ines" anchor="center" action="fadeInUp"}
 ::set{run.seen.ines = run.day}
 @ines{code="0010" emotion="neutral"}: We close at five. And you're dripping on the atlas.
 @sol{code="0010"}: Sorry. Pell sent me. She said you know about paper?
@@ -21,16 +21,16 @@ priority: 20
 @ines{code="0030" emotion="shy"}: I mean. Yes. I know about paper. I know too much about paper, according to everyone.
 
 <branch id="inesFirst" prompt="Ines is holding a book to her chest like a shield.">
-  <choice id="ask" label="“Then tell me everything.”">
+  <choice id="ask" text="“Then tell me everything.”">
     ::set{run.aff.ines += 1}
     @ines{code="0040" emotion="happy"}: Mulberry. Kozo, if you can get it. It's long-fibred, so it holds when it's wet — the water gets in between the fibres instead of breaking them.
     @ines{code="0050" emotion="shy"}: …That was a lot. Sorry.
   </choice>
-  <choice id="brief" label="“Just the short version.”">
+  <choice id="brief" text="“Just the short version.”">
     @ines{code="0060" emotion="neutral"}: Don't use printer paper. It dies in the sea.
   </choice>
 </branch>
 
 @ines{code="0070"}: The good sheets come with the Wednesday delivery. Come back Wednesday afternoon and I'll put some aside.
-::auto{character="ines" action="fadeOut"}
+::actor{character="ines" action="fadeOut"}
 @sol{code="0020" mono}: Wednesday afternoon. I should write that down.

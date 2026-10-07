@@ -1,0 +1,187 @@
+{
+  "kind": "scene",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Inline modifiers"
+  },
+  "state": [
+    {
+      "path": "run.guest",
+      "type": "string",
+      "default": "Mira"
+    }
+  ],
+  "enums": [
+    {
+      "name": "textStyle",
+      "members": [
+        "emphasis",
+        "whisper"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Hello big world {{run.guest}}!",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.guest"
+        }
+      ],
+      "segments": [
+        {
+          "text": "Hello ",
+          "rate": 1.25
+        },
+        {
+          "text": "big ",
+          "styles": [
+            "emphasis"
+          ],
+          "rate": 1.25
+        },
+        {
+          "text": "world",
+          "styles": [
+            "emphasis",
+            "whisper"
+          ],
+          "rate": 1.25
+        },
+        {
+          "text": " {{run.guest}}",
+          "rate": 1.25
+        },
+        {
+          "pause": 0.5
+        },
+        {
+          "text": "!"
+        }
+      ],
+      "texts": {
+        "ja-JP": "やあ 大きな 世界 {{run.guest}}!"
+      },
+      "localeSegments": {
+        "ja-JP": [
+          {
+            "text": "やあ ",
+            "rate": 1.25
+          },
+          {
+            "text": "大きな ",
+            "styles": [
+              "emphasis"
+            ],
+            "rate": 1.25
+          },
+          {
+            "text": "世界",
+            "styles": [
+              "emphasis",
+              "whisper"
+            ],
+            "rate": 1.25
+          },
+          {
+            "text": " {{run.guest}}",
+            "rate": 1.25
+          },
+          {
+            "pause": 0.5
+          },
+          {
+            "text": "!"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Plain : line with [brackets].",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020",
+      "texts": {
+        "ja-JP": "ふつうの : 行と [括弧]。"
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "ab c d",
+      "lineId": "hero.s01ep01.hero_0030",
+      "voiceKey": "hero.s01ep01.hero-0030",
+      "segments": [
+        {
+          "text": "ab",
+          "styles": [
+            "emphasis"
+          ]
+        },
+        {
+          "text": " c "
+        },
+        {
+          "text": "d",
+          "rate": 2.0
+        }
+      ],
+      "texts": {
+        "ja-JP": "d c ba"
+      },
+      "localeSegments": {
+        "ja-JP": [
+          {
+            "text": "d",
+            "rate": 2.0
+          },
+          {
+            "text": " c "
+          },
+          {
+            "text": "ba",
+            "styles": [
+              "emphasis"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Modifiers"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

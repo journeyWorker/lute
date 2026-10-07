@@ -125,11 +125,11 @@ fn final_branch_snapshot_runs_through_the_existing_runner() {
         &scene_prefix("state:\n  run.result: { type: string, default: pending }\n"),
     );
     let body = b"<branch id=\"pick\">\n\
-<choice id=\"left\" label=\"Left\">\n\
+<choice id=\"left\" text=\"Left\">\n\
 @narrator: chose left\n\
 ::set{ run.result = \"left\" }\n\
 </choice>\n\
-<choice id=\"right\" label=\"Right\">\n\
+<choice id=\"right\" text=\"Right\">\n\
 @narrator: chose right\n\
 ::set{ run.result = \"right\" }\n\
 </choice>\n\

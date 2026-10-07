@@ -219,12 +219,12 @@ pub(crate) const W_CODE_AFTER_END: &str = "W-CODE-AFTER-END";
 
 /// A `W-CODE-AFTER-END` for each dead stretch of `nodes` (a single
 /// straight-line body): what follows a `::end` up to the next node a
-/// `::next` can jump into, anchored at the stretch's FIRST node — the place
+/// `::jump` can jump into, anchored at the stretch's FIRST node — the place
 /// an author would cut from. One per stretch: everything past its first
 /// node is unreachable for the SAME reason, and N warnings for one mistake
 /// is noise.
 ///
-/// dsl 0.27.0 (round-5 T3-7): a `::mark` / `id=` line some `::next{to}` in
+/// dsl 0.27.0 (round-5 T3-7): a `::label` / `id=` line some `::jump{to}` in
 /// the document names (`targets`, [`crate::next_labels::next_targets`]) —
 /// or a node holding one at any depth — is an entry point: the walk
 /// resumes there, so it and what follows are live until the next `::end`.
@@ -275,24 +275,24 @@ fn dead_stretches<'n>(
     out
 }
 
-/// `W-CODE-AFTER-NEXT` (dsl 0.12.0): a record following an UNGUARDED
-/// `::next` in the SAME straight-line body — mirrors [`W_CODE_AFTER_END`]
+/// `W-CODE-AFTER-JUMP` (dsl 0.12.0): a record following an UNGUARDED
+/// `::jump` in the SAME straight-line body — mirrors [`W_CODE_AFTER_END`]
 /// exactly: an unconditional forward jump leaves this body the same way
 /// `::end` does, so nothing after it in that body can ever run. A GUARDED
-/// `::next{when=}` does NOT qualify (fall-through exists; see the
+/// `::jump{when=}` does NOT qualify (fall-through exists; see the
 /// `Node::Directive` arm in [`walk_reach`]).
-pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-NEXT";
+pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-JUMP";
 
-/// `W-CODE-AFTER-NEXT` for `nodes`, mirroring [`check_code_after_end`]
-/// verbatim except the terminator predicate (unguarded `::next` — dispatch
+/// `W-CODE-AFTER-JUMP` for `nodes`, mirroring [`check_code_after_end`]
+/// verbatim except the terminator predicate (unguarded `::jump` — dispatch
 /// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
 pub(crate) fn check_code_after_next(nodes: &[Node], targets: &BTreeSet<String>, diags: &mut Vec<Diagnostic>) {
-    let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_none());
+    let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE && d.when.is_none());
     for dead in dead_stretches(nodes, is_unguarded_next, targets) {
         diags.push(diag(
             W_CODE_AFTER_NEXT,
             Severity::Warning,
-            "unreachable content after `::next` (the walk jumps away here)".to_string(),
+            "unreachable content after `::jump` (the walk jumps away here)".to_string(),
             crate::admission::node_span(dead),
         ));
     }
@@ -302,7 +302,7 @@ fn unset_literal_message(subject: &str, not_equals: bool) -> String {
     format!(
         "comparing `{subject}` {cmp} the string `'unset'`, which is never equal to the DSL's \
          unset sentinel (the CEL `null` literal, dsl 0.1 §11.2). Test for unset with \
-         `!isSet({subject})`, or in a `<match on=\"{subject}\">` use `<when is=\"unset\">` \
+         `!isSet({subject})`, or in a `<match subject=\"{subject}\">` use `<when is=\"unset\">` \
          (dsl 0.2 §5.2)"
     )
 }

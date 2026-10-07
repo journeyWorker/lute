@@ -128,7 +128,7 @@ enum Unit {
         source: Option<(String, u32)>,
         line_id: Option<String>,
         key: String,
-        label: String,
+        text: String,
     },
 }
 
@@ -228,7 +228,7 @@ fn walk_choice<'a>(
         source: region.map(|(f, _)| (f.to_string(), choice.span.line)),
         line_id: cx.prefix.map(|p| format!("{p}.{key}")),
         key,
-        label: choice.label.clone(),
+        text: choice.text.clone(),
     });
     walk_nodes(cx, &choice.body, region, cx.prefix, out);
 }
@@ -409,7 +409,7 @@ fn document_units(
         templates,
         components,
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk_nodes(&cx, &shot.body, None, cx.prefix, out);
     }
     for quest in &doc.quests {
@@ -621,7 +621,7 @@ fn render_json(units: &[Unit]) -> String {
                 line,
                 line_id,
                 key,
-                label,
+                text,
                 ..
             } => serde_json::json!({
                 "kind": "choice",
@@ -629,7 +629,7 @@ fn render_json(units: &[Unit]) -> String {
                 "line": line,
                 "lineId": line_id,
                 "key": key,
-                "label": label,
+                "text": text,
                 "source": source_of(u),
             }),
         })
@@ -706,7 +706,7 @@ fn render_csv(units: &[Unit]) -> String {
                 line,
                 line_id,
                 key,
-                label,
+                text,
                 ..
             } => [
                 "choice".to_string(),
@@ -716,7 +716,7 @@ fn render_csv(units: &[Unit]) -> String {
                 String::new(),
                 String::new(),
                 key.clone(),
-                label.clone(),
+                text.clone(),
                 source_file,
                 source_line,
             ],
@@ -1104,11 +1104,10 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
         let obj = entry
             .as_object()
             .ok_or_else(|| format!("entry {row} is not an object"))?;
-        // A `choice` row's translatable string is its `label`; a `line` row's
-        // is its `text` — exactly the split `render_json` writes.
+        // Every row's translatable string is its `text` (dsl 0.37.0 D7) —
+        // exactly what `render_json` writes for both kinds.
         let field = match obj.get("kind").and_then(serde_json::Value::as_str) {
-            Some("line") => "text",
-            Some("choice") => "label",
+            Some("line" | "choice") => "text",
             Some(other) => {
                 return Err(format!(
                     "entry {row} has unknown `kind` `{other}` (expected `line` or `choice`)"
@@ -1286,10 +1285,10 @@ mod tests {
     }
 
     #[test]
-    fn json_reader_takes_label_for_a_choice_and_text_for_a_line() {
+    fn json_reader_takes_text_for_a_choice_and_a_line() {
         let src = r#"[
           {"kind":"line","file":"a.lute","line":1,"lineId":"x.n_0010","code":"0010","speaker":"n","text":"hi"},
-          {"kind":"choice","file":"a.lute","line":2,"lineId":"x.b.go","key":"b.go","label":"Go"},
+          {"kind":"choice","file":"a.lute","line":2,"lineId":"x.b.go","key":"b.go","text":"Go"},
           {"kind":"line","file":"a.lute","line":3,"lineId":null,"code":null,"speaker":"n","text":"untagged"}
         ]"#;
         let rows = parse_json_rows(src).expect("export shape parses");
@@ -1297,7 +1296,7 @@ mod tests {
         assert_eq!(rows[0].text, "hi");
         assert_eq!(
             rows[1].text, "Go",
-            "a choice row's translation is its `label`"
+            "a choice row's translation is its `text`"
         );
         assert_eq!(rows[2].line_id, None, "an untagged row carries no join key");
     }

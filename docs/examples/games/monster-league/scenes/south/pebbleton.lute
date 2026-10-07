@@ -14,15 +14,15 @@ after: 'visited("spine.lab")'
 ## The grey town
 
 ::bg{location="pebbleton" time="day"}
-::music{action="start" mood="calm" volume="normal"}
+::music{playback="start" mood="calm" volume="normal"}
 @narrator{code="0010"}: Pebbleton is built of the mountain it sits under: grey houses, grey walls, grey roofs, and one bright red door on the museum as if somebody had lost an argument.
 @narrator{code="0020"}: The Stone Gym stands at the top of the town. The door bangs open as you arrive.
-::auto{character="rival" anchor="right" action="enter"}
+::actor{character="rival" anchor="right" action="enter"}
 @rival{code="0010" emotion="smug"}: Oh, hey. Look who finally made it through the Hushwood. I just came out of the gym.
 @rival{code="0020"}: Did I win? Let's just say Petra and I had a very educational afternoon. For one of us.
 @rival{code="0030" emotion="laughing"}: The east road's shut until you beat her. See you on the other side. Maybe. If you ever get there.
-::auto{character="rival" action="exit"}
-::auto{character="pebbletonJuniper" anchor="left" action="enter"}
+::actor{character="rival" action="exit"}
+::actor{character="pebbletonJuniper" anchor="left" action="enter"}
 @pebbletonJuniper{code="0010" emotion="happy"}: He lost, you know. Twice. Petra doesn't gloat, so I do it for her. I'm Juniper. I'm her biggest fan.
 @pebbletonJuniper{code="0020"}: If you want to beat Petra, don't bring anything that burns or flies. Bring water. Or grass. Or a lot of courage.
-::auto{character="pebbletonJuniper" action="exit"}
+::actor{character="pebbletonJuniper" action="exit"}

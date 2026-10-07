@@ -17,7 +17,7 @@ when: "holds('hasItem', ['wakingFlute'])"
 ## The wall of fur
 
 ::bg{location="route-12" time="day"}
-::music{action="fadeOut"}
+::music{playback="fadeOut"}
 @narrator{code="0010"}: The road along Lake Hush ends in a wall of fur. It rises. It falls. It snores, and the reeds bend with every breath.
 @narrator{code="0020"}: The flute from Ash Tower is warm in your bag, as if it knows.
 
@@ -25,9 +25,9 @@ when: "holds('hasItem', ['wakingFlute'])"
 
 ::sfx{sound="waking-flute"}
 @narrator{code="0030"}: You play the flute. One clear note goes out over the water, and Lake Hush holds it for a long time.
-::camera{shake="0.6" duration="1.2"}
+::camera{move="shake" duration="1.2"}
 @narrator{code="0040"}: The wall of fur stops snoring. An eye opens, as big as a cartwheel, and looks straight at you.
 ::accept{quest="midSleepingGiant"}
-::music{action="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="up"}
 @narrator{code="0050"}: Slumbear gets up. It is not happy about it.
 ::encounter{species="slumbear" level="40"}

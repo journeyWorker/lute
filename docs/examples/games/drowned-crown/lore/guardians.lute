@@ -16,7 +16,7 @@ title: The palace guardians
 /* A guardian that falls again gets one bark a dive, whichever it is; each
 first kill above (and the Regent's own scene) outranks it. */
 <entry id="guardianAgain" on="bossDefeated" target="kind:foe" category="bark" once="run">
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="eel">
       @narrator{code="0010"}: The eel again. It never learns, and neither does he.
     </when>

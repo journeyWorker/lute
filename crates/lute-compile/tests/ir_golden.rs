@@ -14,7 +14,7 @@ fn j(cmd: &Command) -> String {
 #[test]
 fn line_serializes_per_spec() {
     let cmd = Command::Line(LineCmd {
-        addr: "002-0500".into(),
+        position: "002-0500".into(),
         role: Role::Dialogue,
         speaker: "marina".into(),
         text: "Oh!".into(),
@@ -24,23 +24,26 @@ fn line_serializes_per_spec() {
         dialog_motion: None,
         as_label: None,
         line_id: "marina.s01ep02.marina_0010".into(),
-        voice_key: Some("marina-0010".into()),
+        voice_key: "marina-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: Some("0010".into()),
         stamp: Stamp::default(),
     });
     // `code` is #[serde(skip)] — the 3-id model (§4.2) admits no code field.
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"line","addr":"002-0500","role":"dialogue","speaker":"marina","text":"Oh!","emotion":"surprised","variant":0,"lineId":"marina.s01ep02.marina_0010","voiceKey":"marina-0010"}"#
+        r#"{"kind":"line","family":"content","position":"002-0500","role":"dialogue","speaker":"marina","text":"Oh!","emotion":"surprised","variant":0,"lineId":"marina.s01ep02.marina_0010","voiceKey":"marina-0010"}"#
     );
 }
 
 #[test]
-fn unvoiced_line_has_no_voice_key() {
+fn narration_line_carries_voice_key() {
     let cmd = Command::Line(LineCmd {
-        addr: "002-0400".into(),
+        position: "002-0400".into(),
         role: Role::Narration,
         speaker: "narrator".into(),
         text: "A hostess walked over.".into(),
@@ -50,27 +53,25 @@ fn unvoiced_line_has_no_voice_key() {
         dialog_motion: None,
         as_label: None,
         line_id: "marina.s01ep02.narrator_0010".into(),
-        voice_key: None,
+        voice_key: "marina.s01ep02.narrator-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
-    assert!(!j(&cmd).contains("voiceKey"));
-    assert!(!Role::Narration.voiced());
-    assert!(!Role::Monologue.voiced());
-    assert!(Role::Dialogue.voiced());
-    assert!(Role::Voiceover.voiced());
-    assert!(Role::Offscreen.voiced());
+    // dsl 0.37.0 D6: every line carries its voice join, narration included.
+    assert!(j(&cmd).contains(r#""voiceKey":"marina.s01ep02.narrator-0010""#));
 }
 
 #[test]
 fn offscreen_line_serializes_as_voiced() {
-    // dsl 0.2.2 §D7: `{os}` lowers to `Role::Offscreen`, still voiced (heard
-    // off-screen audio) — carries a `voiceKey` like dialogue/voiceover.
+    // dsl 0.37.0 D6: `{os}` lowers to `Role::Os`, serialized as `os`.
     let cmd = Command::Line(LineCmd {
-        addr: "002-0600".into(),
-        role: Role::Offscreen,
+        position: "002-0600".into(),
+        role: Role::Os,
         speaker: "fixer".into(),
         text: "Behind the door.".into(),
         emotion: None,
@@ -79,33 +80,35 @@ fn offscreen_line_serializes_as_voiced() {
         dialog_motion: None,
         as_label: None,
         line_id: "marina.s01ep02.fixer_0010".into(),
-        voice_key: Some("fixer-0010".into()),
+        voice_key: "fixer-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"line","addr":"002-0600","role":"offscreen","speaker":"fixer","text":"Behind the door.","lineId":"marina.s01ep02.fixer_0010","voiceKey":"fixer-0010"}"#
+        r#"{"kind":"line","family":"content","position":"002-0600","role":"os","speaker":"fixer","text":"Behind the door.","lineId":"marina.s01ep02.fixer_0010","voiceKey":"fixer-0010"}"#
     );
 }
 
 #[test]
-fn injected_sprite_carries_provenance() {
-    let cmd = Command::Sprite(SpriteCmd {
-        addr: "002-0200".into(),
+fn injected_actor_carries_provenance() {
+    let cmd = Command::Actor(ActorCmd {
+        position: "002-0200".into(),
         character: "marina".into(),
         anchor: None,
         action: None,
         exit: None,
-        pos_reset: None,
-        preload: Some(true),
         emotion: Some("surprised".into()),
         costume: None,
+        pos_reset: None,
+        preload: Some(true),
         stamp: Stamp {
             provenance: Some(lute_check::Provenance {
-                injected: true,
                 by: "entry-emotion-lookahead".into(),
                 explanation: "pre-loading marina's first emotion".into(),
             }),
@@ -114,33 +117,33 @@ fn injected_sprite_carries_provenance() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"sprite","addr":"002-0200","character":"marina","preload":true,"emotion":"surprised","provenance":{"injected":true,"by":"entry-emotion-lookahead","explanation":"pre-loading marina's first emotion"}}"#
+        r#"{"kind":"actor","family":"staging","position":"002-0200","character":"marina","emotion":"surprised","preload":true,"provenance":{"by":"entry-emotion-lookahead","explanation":"pre-loading marina's first emotion"}}"#
     );
 }
 
 #[test]
 fn choice_matches_spec_worked_example() {
     let cmd = Command::Choice(ChoiceCmd {
-        addr: "004-0500".into(),
+        position: "004-0500".into(),
         branch_id: "number".into(),
-        record_key: "scene.choices.number".into(),
+        selection_key: "scene.choices.number".into(),
         options: vec![ChoiceOption {
             id: "blunt".into(),
-            label: "Just ask, flatly".into(),
+            text: "Just ask, flatly".into(),
             line_id: "marina.s01ep02.number.blunt".into(),
             when: None,
             target: "004-0600".into(),
             placeholders: Vec::new(),
-            labels: Default::default(),
+            texts: Default::default(),
         }],
         converge: "004-1100".into(),
         prompt: None,
-        timeout_sec: None,
+        timeout: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"choice","addr":"004-0500","branchId":"number","recordKey":"scene.choices.number","options":[{"id":"blunt","label":"Just ask, flatly","lineId":"marina.s01ep02.number.blunt","target":"004-0600"}],"converge":"004-1100"}"#
+        r#"{"kind":"choice","family":"control","position":"004-0500","branchId":"number","selectionKey":"scene.choices.number","options":[{"id":"blunt","text":"Just ask, flatly","lineId":"marina.s01ep02.number.blunt","target":"004-0600"}],"converge":"004-1100"}"#
     );
 }
 
@@ -151,19 +154,19 @@ fn choice_matches_spec_worked_example() {
 fn hub_prompt_serializes_only_when_authored() {
     let hub = |prompt: Option<&str>, back: Option<&str>| {
         Command::Hub(HubCmd {
-            addr: "003-0200".into(),
+            position: "003-0200".into(),
             id: "look".into(),
-            record_key: "scene.choices.look".into(),
+            selection_key: "scene.choices.look".into(),
             options: vec![HubOption {
                 id: "leave".into(),
-                label: "Leave".into(),
+                text: "Leave".into(),
                 line_id: "s.look.leave".into(),
                 once: false,
                 exit: true,
                 when: None,
                 target: "003-0300".into(),
                 placeholders: Vec::new(),
-                labels: Default::default(),
+                texts: Default::default(),
             }],
             converge: "003-0400".into(),
             prompt: prompt.map(str::to_string),
@@ -173,7 +176,7 @@ fn hub_prompt_serializes_only_when_authored() {
     };
     assert_eq!(
         j(&hub(Some("Where do you look?"), None)),
-        r#"{"kind":"hub","addr":"003-0200","id":"look","recordKey":"scene.choices.look","options":[{"id":"leave","label":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
+        r#"{"kind":"hub","family":"control","position":"003-0200","id":"look","selectionKey":"scene.choices.look","options":[{"id":"leave","text":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
     );
     assert!(!j(&hub(None, None)).contains("prompt"));
     assert!(
@@ -184,7 +187,7 @@ fn hub_prompt_serializes_only_when_authored() {
 #[test]
 fn match_jump_barrier_serialize() {
     let m = Command::Match(MatchCmd {
-        addr: "005-0700".into(),
+        position: "005-0700".into(),
         subject: Some(CelPair::from_raw("scene.choices.number")),
         arms: vec![MatchArm {
             is: None,
@@ -197,50 +200,50 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&m),
-        r#"{"kind":"match","addr":"005-0700","subject":{"cel":"scene.choices.number","expr":{"path":"scene.choices.number"}},"arms":[{"test":{"cel":"(scene.affect.marina >= 1)","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"int":1}}},"target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
+        r#"{"kind":"match","family":"control","position":"005-0700","subject":{"cel":"scene.choices.number","expr":{"path":"scene.choices.number"}},"arms":[{"test":{"cel":"(scene.affect.marina >= 1)","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"int":1}}},"target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
     );
     let jm = Command::Jump(JumpCmd {
-        addr: "004-0700".into(),
+        position: "004-0700".into(),
         target: "004-1100".into(),
     });
     assert_eq!(
         j(&jm),
-        r#"{"kind":"jump","addr":"004-0700","target":"004-1100"}"#
+        r#"{"kind":"jump","family":"control","position":"004-0700","target":"004-1100"}"#
     );
     let b = Command::Barrier(BarrierCmd {
-        addr: "003-0800".into(),
+        position: "003-0800".into(),
         timeline: 1,
         at: 1.4,
     });
     assert_eq!(
         j(&b),
-        r#"{"kind":"barrier","addr":"003-0800","timeline":1,"at":1.4}"#
+        r#"{"kind":"barrier","family":"control","position":"003-0800","timeline":1,"at":1.4}"#
     );
 }
 
 #[test]
 fn stamped_camera_and_set_and_plugin_passthrough() {
     let cam = Command::Camera(CameraCmd {
-        addr: "002-0300".into(),
+        position: "002-0300".into(),
         focus: Some("marina".into()),
-        zoom: Some(1.1),
-        move_x: None,
-        move_y: None,
-        shake: None,
-        reset: None,
-        easing: None,
+        framing: Some("closeUp".into()),
+        camera_move: None,
+        transition: None,
         stamp: Stamp {
-            wait: Some(false),
-            duration: Some(0.5),
+            timing: Timing {
+                wait: Some(false),
+                duration: Some(0.5),
+                ..Timing::default()
+            },
             ..Stamp::default()
         },
     });
     assert_eq!(
         j(&cam),
-        r#"{"kind":"camera","addr":"002-0300","focus":"marina","zoom":1.1,"wait":false,"duration":0.5}"#
+        r#"{"kind":"camera","family":"staging","position":"002-0300","focus":"marina","framing":"closeUp","timing":{"wait":false,"duration":0.5}}"#
     );
     let set = Command::Set(SetCmd {
-        addr: "004-0900".into(),
+        position: "004-0900".into(),
         path: "scene.affect.marina".into(),
         op: "+=".into(),
         value: CelPair::from_raw("1"),
@@ -248,15 +251,15 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     });
     assert_eq!(
         j(&set),
-        r#"{"kind":"set","addr":"004-0900","path":"scene.affect.marina","op":"+=","value":{"cel":"1","expr":{"int":1}}}"#
+        r#"{"kind":"set","family":"state","position":"004-0900","path":"scene.affect.marina","op":"+=","value":{"cel":"1","expr":{"int":1}}}"#
     );
     let mut fields = BTreeMap::new();
     fields.insert(
         "kind".to_string(),
         serde_json::Value::String("rhythm".into()),
     );
-    let other = Command::Other(OtherCmd {
-        addr: "001-0100".into(),
+    let other = Command::Plugin(PluginCmd {
+        position: "001-0100".into(),
         tag: "minigame".into(),
         plugin: None,
         fields,
@@ -267,20 +270,23 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     });
     assert_eq!(
         j(&other),
-        r#"{"kind":"plugin","addr":"001-0100","tag":"minigame","fields":{"kind":"rhythm"}}"#
+        r#"{"kind":"plugin","family":"plugin","position":"001-0100","tag":"minigame","fields":{"kind":"rhythm"}}"#
     );
 }
 
 #[test]
 fn timeline_stamp_and_source_flatten() {
     let cmd = Command::Vfx(VfxCmd {
-        addr: "003-0500".into(),
-        vfx_type: "whiteOut".into(),
+        position: "003-0500".into(),
+        r#type: "whiteOut".into(),
         label: None,
         transition: Some("flash".into()),
         stamp: Stamp {
-            at: Some(0.5),
-            timeline: Some(1),
+            timing: Timing {
+                at: Some(0.5),
+                timeline: Some(1),
+                ..Timing::default()
+            },
             source: Some(Source {
                 component: "stinger".into(),
                 scope: "stinger#1".into(),
@@ -291,122 +297,120 @@ fn timeline_stamp_and_source_flatten() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"vfx","addr":"003-0500","vfxType":"whiteOut","transition":"flash","at":0.5,"timeline":1,"source":{"component":"stinger"}}"#
+        r#"{"kind":"vfx","family":"staging","position":"003-0500","type":"whiteOut","transition":"flash","timing":{"at":0.5,"timeline":1},"source":{"component":"stinger"}}"#
     );
 }
 
 #[test]
-fn background_serializes_per_spec() {
-    // location + assetId set, time omitted (None), `wait` via the flattened
-    // stamp — pins camelCase `assetId`, None-omission, and `addr`.
-    let cmd = Command::Background(BackgroundCmd {
-        addr: "006-0100".into(),
+fn bg_serializes_per_spec() {
+    // location + assetId set, time omitted (None), `wait` in `timing` —
+    // pins camelCase `assetId`, None-omission, and `position`.
+    let cmd = Command::Bg(BgCmd {
+        position: "006-0100".into(),
         location: Some("cafe".into()),
         time: None,
         asset_id: Some("bg_cafe_evening".into()),
         stamp: Stamp {
-            wait: Some(true),
+            timing: Timing { wait: Some(true), ..Timing::default() },
             ..Stamp::default()
         },
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"background","addr":"006-0100","location":"cafe","assetId":"bg_cafe_evening","wait":true}"#
+        r#"{"kind":"bg","family":"staging","position":"006-0100","location":"cafe","assetId":"bg_cafe_evening","timing":{"wait":true}}"#
     );
 }
 
 #[test]
 fn music_serializes_per_spec() {
-    // required `action`; mood + assetId set, volume + track omitted (None).
+    // playback + mood + assetId set, volume omitted (None).
     let cmd = Command::Music(MusicCmd {
-        addr: "006-0200".into(),
-        action: "play".into(),
+        position: "006-0200".into(),
+        playback: Some("play".into()),
         mood: Some("tense".into()),
         volume: None,
         asset_id: Some("mus_theme_a".into()),
-        track: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"music","addr":"006-0200","action":"play","mood":"tense","assetId":"mus_theme_a"}"#
+        r#"{"kind":"music","family":"staging","position":"006-0200","playback":"play","mood":"tense","assetId":"mus_theme_a"}"#
     );
 }
 
 #[test]
 fn sfx_serializes_per_spec() {
-    // sound + name set, assetId omitted (None).
+    // sound set, assetId omitted (None).
     let cmd = Command::Sfx(SfxCmd {
-        addr: "006-0300".into(),
+        position: "006-0300".into(),
         sound: Some("door_slam".into()),
         asset_id: None,
-        name: Some("slam".into()),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"sfx","addr":"006-0300","sound":"door_slam","name":"slam"}"#
+        r#"{"kind":"sfx","family":"staging","position":"006-0300","sound":"door_slam"}"#
     );
 }
 
 #[test]
-fn cut_serializes_per_spec() {
-    // required `assetId`; action + full set, `wait` via the flattened stamp.
-    let cmd = Command::Cut(CutCmd {
-        addr: "006-0400".into(),
-        asset_id: "cut_intro".into(),
-        action: Some("show".into()),
-        full: Some(true),
+fn cg_serializes_per_spec() {
+    // required `assetId` + resolved `display`; layout set, `wait` in `timing`.
+    let cmd = Command::Cg(CgCmd {
+        position: "006-0400".into(),
+        asset_id: "cg_intro".into(),
+        display: "show".into(),
+        layout: Some("full".into()),
         stamp: Stamp {
-            wait: Some(false),
+            timing: Timing { wait: Some(false), ..Timing::default() },
             ..Stamp::default()
         },
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"cut","addr":"006-0400","assetId":"cut_intro","action":"show","full":true,"wait":false}"#
+        r#"{"kind":"cg","family":"staging","position":"006-0400","assetId":"cg_intro","display":"show","layout":"full","timing":{"wait":false}}"#
     );
 }
 
 #[test]
 fn video_serializes_per_spec() {
-    // required `assetId`; action omitted (None), `wait` via the flattened stamp.
+    // required `assetId` + resolved `display`, `wait` in `timing`.
     let cmd = Command::Video(VideoCmd {
-        addr: "006-0500".into(),
+        position: "006-0500".into(),
         asset_id: "vid_ending".into(),
-        action: None,
+        display: "show".into(),
         stamp: Stamp {
-            wait: Some(true),
+            timing: Timing { wait: Some(true), ..Timing::default() },
             ..Stamp::default()
         },
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"video","addr":"006-0500","assetId":"vid_ending","wait":true}"#
+        r#"{"kind":"video","family":"staging","position":"006-0500","assetId":"vid_ending","display":"show","timing":{"wait":true}}"#
     );
 }
 
 #[test]
-fn retarget_and_addr_helpers_visit_every_flow_field() {
+fn retarget_and_position_helpers_visit_every_flow_field() {
     let mut cmd = Command::Choice(ChoiceCmd {
-        addr: String::new(),
+        position: String::new(),
         branch_id: "b".into(),
-        record_key: "scene.choices.b".into(),
+        selection_key: "scene.choices.b".into(),
         options: vec![ChoiceOption {
             id: "x".into(),
-            label: "X".into(),
+            text: "X".into(),
             line_id: String::new(),
             when: None,
             target: "@1".into(),
             placeholders: Vec::new(),
-            labels: Default::default(),
+            texts: Default::default(),
         }],
         converge: "@2".into(),
         prompt: None,
-        timeout_sec: None,
+        timeout: None,
         stamp: Stamp::default(),
     });
-    *cmd.addr_mut() = "001-0100".into();
+    *cmd.position_mut() = "001-0100".into();
     let mut seen = Vec::new();
     cmd.for_each_target(&mut |t: &mut String| {
         seen.push(t.clone());
@@ -416,7 +420,7 @@ fn retarget_and_addr_helpers_visit_every_flow_field() {
     assert!(!j(&cmd).contains('@'));
     assert!(cmd.stamp_mut().is_some());
     let mut jm = Command::Jump(JumpCmd {
-        addr: String::new(),
+        position: String::new(),
         target: "@3".into(),
     });
     assert!(jm.stamp_mut().is_none());
@@ -431,7 +435,7 @@ fn envelope_serializes_with_state_entries() {
         kind: DocKind::Scene,
         lute: "0.3.0".into(),
         ir_version: "0.3.0".into(),
-        capability_version: "cap-sha".into(),
+        capability_snapshot: "cap-sha".into(),
         identity_renames: vec![],
         required_semantics: vec![],
         meta: ArtifactMeta::Scene(SceneMeta {
@@ -463,7 +467,7 @@ fn envelope_serializes_with_state_entries() {
         rules: Vec::new(),
         commands: Vec::new(),
         prereq_edges: Vec::new(),
-        shots: Vec::new(),
+        sections: Vec::new(),
         clock: None,
         gates: Vec::new(),
         terminal: None,
@@ -474,14 +478,14 @@ fn envelope_serializes_with_state_entries() {
     };
     assert_eq!(
         serde_json::to_string(&a).unwrap(),
-        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilityVersion":"cap-sha","requiredSemantics":[],"meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[],"outsideRun":[],"celEnv":{"variables":[],"functions":[]}}"#
+        r#"{"kind":"scene","lute":"0.3.0","irVersion":"0.3.0","capabilitySnapshot":"cap-sha","requiredSemantics":[],"meta":{"id":"marina.s01ep02","character":"marina","season":1,"episode":2,"episodeId":"s01ep02","title":"T"},"state":[{"path":"scene.choices.number","type":"enum","domain":["blunt","soft","unset"],"provenance":"branch:number"}],"commands":[],"outsideRun":[],"celEnv":{"variables":[],"functions":[]}}"#
     );
 }
 
 #[test]
 fn quest_record_serializes_per_spec() {
     let cmd = Command::Quest(QuestCmd {
-        addr: "001-0100".into(),
+        position: "001-0100".into(),
         id: "rescueHalsin".into(),
         title: Some("Rescue".into()),
         title_line_id: Some("rescueHalsin.title".into()),
@@ -512,7 +516,7 @@ fn quest_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"quest","addr":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"cel":"run.act == 1","expr":{"op":"==","l":{"path":"run.act"},"r":{"int":1}}},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"cel":"run.region == \"grove\"","expr":{"op":"==","l":{"path":"run.region"},"r":{"string":"grove"}}},"optional":false,"body":null}]}"#
+        r#"{"kind":"quest","family":"declaration","position":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"cel":"run.act == 1","expr":{"op":"==","l":{"path":"run.act"},"r":{"int":1}}},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"cel":"run.region == \"grove\"","expr":{"op":"==","l":{"path":"run.region"},"r":{"string":"grove"}}},"optional":false,"body":null}]}"#
     );
 }
 
@@ -579,13 +583,14 @@ fn synthesized_int_cel_preserves_integer_literals() {
 
 /// dsl 0.16.0 §2/§3 (Global Constraints): the load-bearing `RewardEntry`
 /// wire shape. Field DECLARATION ORDER (byte-stability contract) is
-/// `kind`, `target?`, `amount?`, `amountMin?`, `amountMax?`, `when?`, `on?`.
+/// `id?` (dsl 0.37.0 D10), `kind`, `target?`, `amount?`, `amountMin?`, `amountMax?`, `when?`, `on?`.
 /// Every Option is `skip_serializing_if`, and exactly one of `amount` XOR
 /// (`amountMin`+`amountMax`) is present after amount defaulting; `on` is
 /// only ever `"failed"`, and only on a quest-level entry.
 #[test]
 fn reward_entry_scalar_serializes_per_spec() {
     let r = RewardEntry {
+        id: Some("xp".into()),
         kind: "XP".into(),
         target: None,
         amount: Some(100),
@@ -597,13 +602,14 @@ fn reward_entry_scalar_serializes_per_spec() {
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
-        r#"{"kind":"XP","amount":100}"#
+        r#"{"id":"xp","kind":"XP","amount":100}"#
     );
 }
 
 #[test]
 fn reward_entry_range_serializes_amount_min_and_max() {
     let r = RewardEntry {
+        id: None,
         kind: "GOLD".into(),
         target: Some("party".into()),
         amount: None,
@@ -625,6 +631,7 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
     // 0.16.0 §2). This golden pins the exact key + position — appearing
     // last, as the field declaration order dictates.
     let r = RewardEntry {
+        id: None,
         kind: "TROPHY".into(),
         target: Some("halsin".into()),
         amount: Some(1),
@@ -656,6 +663,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         utf16_range: (0, 0),
     };
     let base = Reward {
+        id: None,
         kind: "SHARD".into(),
         kind_span: ZERO,
         target: None,
@@ -712,7 +720,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
 #[test]
 fn on_record_serializes_per_spec() {
     let cmd = Command::On(OnCmd {
-        addr: "001-0400".into(),
+        position: "001-0400".into(),
         event: "questComplete".into(),
         when: None,
         body: "001-0500".into(),
@@ -721,7 +729,7 @@ fn on_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"on","addr":"001-0400","event":"questComplete","body":"001-0500"}"#
+        r#"{"kind":"on","family":"declaration","position":"001-0400","event":"questComplete","body":"001-0500"}"#
     );
 }
 
@@ -731,7 +739,7 @@ fn on_record_serializes_per_spec() {
 #[test]
 fn quest_structure_fields_serialize_when_authored() {
     let quest = Command::Quest(QuestCmd {
-        addr: "001-0100".into(),
+        position: "001-0100".into(),
         id: "toll".into(),
         title: None,
         title_line_id: None,
@@ -748,10 +756,10 @@ fn quest_structure_fields_serialize_when_authored() {
     });
     assert_eq!(
         j(&quest),
-        r#"{"kind":"quest","addr":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any","accept":"external"}"#
+        r#"{"kind":"quest","family":"declaration","position":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any","accept":"external"}"#
     );
     let on = Command::On(OnCmd {
-        addr: "001-0400".into(),
+        position: "001-0400".into(),
         event: "bossDefeated".into(),
         when: None,
         body: "001-0500".into(),
@@ -760,16 +768,116 @@ fn quest_structure_fields_serialize_when_authored() {
     });
     assert_eq!(
         j(&on),
-        r#"{"kind":"on","addr":"001-0400","event":"bossDefeated","body":"001-0500","target":"foe.regent"}"#
+        r#"{"kind":"on","family":"declaration","position":"001-0400","event":"bossDefeated","body":"001-0500","target":"foe.regent"}"#
     );
     let accept = Command::Accept(lute_compile::ir::AcceptCmd {
-        addr: "001-0100".into(),
+        position: "001-0100".into(),
         quest: "eelBounty".into(),
         applies: Some(lute_compile::ir::AcceptAt::NextRun),
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&accept),
-        r#"{"kind":"accept","addr":"001-0100","quest":"eelBounty","applies":"nextRun"}"#
+        r#"{"kind":"accept","family":"declaration","position":"001-0100","quest":"eelBounty","applies":"nextRun"}"#
     );
+}
+
+/// dsl 0.37.0 D3: `::sequence{name}` lowers to a `sequence` staging record
+/// carrying only its name and the resolved `timing`.
+#[test]
+fn sequence_serializes_per_spec() {
+    let cmd = Command::Sequence(SequenceCmd {
+        position: "002-0700".into(),
+        name: "harborArrival".into(),
+        stamp: Stamp {
+            timing: Timing { wait: Some(true), ..Timing::default() },
+            ..Stamp::default()
+        },
+    });
+    assert_eq!(
+        j(&cmd),
+        r#"{"kind":"sequence","family":"staging","position":"002-0700","name":"harborArrival","timing":{"wait":true}}"#
+    );
+}
+
+/// dsl 0.37.0 §5.1: the normative kind → family table (the `entry`/`beat`
+/// declaration heads share `Command::family`'s exhaustive match), and
+/// `kind`, `family`, `position` serialized first, in that order.
+#[test]
+fn every_kind_has_its_spec_family() {
+    let stamp = Stamp::default;
+    let p = String::new;
+    let cel = || CelPair::from_raw("true");
+    let cases: Vec<(Command, &str, &str)> = vec![
+        (
+            Command::Line(LineCmd {
+                position: p(), role: Role::Mono, speaker: "wren".into(), text: "Hm.".into(),
+                emotion: None, variant: None, action: None, dialog_motion: None, as_label: None,
+                line_id: p(), voice_key: p(), placeholders: vec![], segments: vec![], texts: BTreeMap::new(),
+                locale_segments: BTreeMap::new(), modifiers: BTreeMap::new(),
+                code: None, stamp: stamp(),
+            }),
+            "line", "content",
+        ),
+        (Command::Bg(BgCmd { position: p(), location: None, time: None, asset_id: None, stamp: stamp() }), "bg", "staging"),
+        (Command::Music(MusicCmd { position: p(), playback: None, mood: None, volume: None, asset_id: None, stamp: stamp() }), "music", "staging"),
+        (Command::Sfx(SfxCmd { position: p(), sound: None, asset_id: None, stamp: stamp() }), "sfx", "staging"),
+        (Command::Vfx(VfxCmd { position: p(), r#type: "flash".into(), label: None, transition: None, stamp: stamp() }), "vfx", "staging"),
+        (
+            Command::Actor(ActorCmd {
+                position: p(), character: "wren".into(), anchor: None, action: None, exit: None,
+                emotion: None, costume: None, pos_reset: None, preload: None, stamp: stamp(),
+            }),
+            "actor", "staging",
+        ),
+        (Command::Camera(CameraCmd { position: p(), focus: None, framing: None, camera_move: Some("shake".into()), transition: None, stamp: stamp() }), "camera", "staging"),
+        (Command::Cg(CgCmd { position: p(), asset_id: "a".into(), display: "show".into(), layout: None, stamp: stamp() }), "cg", "staging"),
+        (Command::Video(VideoCmd { position: p(), asset_id: "v".into(), display: "show".into(), stamp: stamp() }), "video", "staging"),
+        (Command::Sequence(SequenceCmd { position: p(), name: "s".into(), stamp: stamp() }), "sequence", "staging"),
+        (Command::Set(SetCmd { position: p(), path: "scene.x".into(), op: "=".into(), value: cel(), stamp: stamp() }), "set", "state"),
+        (Command::Assert(AssertCmd { position: p(), relation: "r".into(), args: vec![], stamp: stamp() }), "assert", "state"),
+        (Command::Retract(RetractCmd { position: p(), relation: "r".into(), args: vec![], stamp: stamp() }), "retract", "state"),
+        (
+            Command::Choice(ChoiceCmd {
+                position: p(), branch_id: "b".into(), selection_key: "scene.choices.b".into(),
+                options: vec![], converge: p(), prompt: None, timeout: Some(5), stamp: stamp(),
+            }),
+            "choice", "control",
+        ),
+        (Command::Match(MatchCmd { position: p(), subject: None, arms: vec![], otherwise: None, converge: p(), stamp: stamp() }), "match", "control"),
+        (
+            Command::Hub(HubCmd {
+                position: p(), id: "h".into(), selection_key: "scene.choices.h".into(), options: vec![],
+                converge: p(), prompt: None, on_return: None, stamp: stamp(),
+            }),
+            "hub", "control",
+        ),
+        (Command::Jump(JumpCmd { position: p(), target: p() }), "jump", "control"),
+        (Command::End(EndCmd { position: p(), reason: None, stamp: stamp() }), "end", "control"),
+        (Command::Barrier(BarrierCmd { position: p(), timeline: 0, at: 1.0 }), "barrier", "control"),
+        (
+            Command::Quest(QuestCmd {
+                position: p(), id: "q".into(), title: None, title_line_id: None, start: None, fail: None,
+                objectives: vec![], rewards: vec![], tier: None, activate: None, complete: None,
+                accept: None, rearm: None, stamp: stamp(),
+            }),
+            "quest", "declaration",
+        ),
+        (Command::On(OnCmd { position: p(), event: "e".into(), when: None, body: p(), target: None, stamp: stamp() }), "on", "declaration"),
+        (Command::Accept(lute_compile::ir::AcceptCmd { position: p(), quest: "q".into(), applies: None, stamp: stamp() }), "accept", "declaration"),
+        (
+            Command::Plugin(PluginCmd {
+                position: p(), tag: "minigame".into(), plugin: None, fields: BTreeMap::new(),
+                effects: vec![], retracts: vec![], asserts: vec![], stamp: stamp(),
+            }),
+            "plugin", "plugin",
+        ),
+    ];
+    for (cmd, kind, family) in cases {
+        assert_eq!(cmd.kind(), kind);
+        assert_eq!(cmd.family().as_str(), family);
+        let json = j(&cmd);
+        let head = format!(r#"{{"kind":"{kind}","family":"{family}","position":"#);
+        assert!(json.starts_with(&head), "{kind}: {json}");
+    }
 }

@@ -17,7 +17,8 @@ panel shows the codex, when an NPC barks.
 ```ts
 type EntryCmd = {
   kind: "entry";
-  addr: Addr;
+  family: "declaration";
+  position: Position;
   id: string;            // unique across the project
   target?: string;       // engine-owned id: "item.rusty_key", "npc.vesna"
   category?: string;     // "note" | "item" | "place" | "codex" | "bark" | … (engine vocabulary)
@@ -26,7 +27,7 @@ type EntryCmd = {
   series?: string;       // multi-part text, e.g. "scientistLog"
   order?: number;        // position within series
   when?: CelPair;        // eligibility
-  body: Addr;            // first record of the body segment
+  body: Position;        // first record of the body segment
   on?: string;           // dsl 0.21.0: the occasion this entry answers (a beat)
   priority?: number;     // dsl 0.21.0: beat priority; absent → 0
   once?: "run" | "user"; // dsl 0.22.0: beat repetition policy; absent → repeatable
@@ -67,7 +68,7 @@ below. An entry beat's `once` (dsl 0.22.0 §7) adds to its eligibility there:
 
 ## Presentation
 
-Presenting an entry runs its body segment from `body` in address order against
+Presenting an entry runs its body segment from `body` in position order against
 live state, like any other command stream: `line` records present, `match`
 selects an arm, `jump` continues.
 
@@ -99,7 +100,7 @@ it in a scene or quest.
 
 Two reserved, engine-written `bool`s per entry, both default `false`, both
 readable from any CEL slot in any document kind (`<match
-on="entry.scientistLog1.read">`, a quest `done=`, another entry's `when`).
+subject="entry.scientistLog1.read">`, a quest `done=`, another entry's `when`).
 Content never writes either (`E-QUEST-RESERVED-WRITE`).
 
 | Flag | Tier | Set | Reset |

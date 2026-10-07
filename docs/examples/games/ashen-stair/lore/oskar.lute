@@ -27,11 +27,11 @@ title: Oskar, at the anvil
   ::bg{location="forge" time="night"}
   @oskar{code="0010"}: It's on the rack. It's always on the rack for you. Take it or don't.
   <branch id="rack" prompt="The reforged hammer hangs by the forge.">
-    <choice id="take" label="Take the hammer">
+    <choice id="take" text="Take the hammer">
       ::arm{weapon="hammer"}
       @oskar{code="0020" emotion="fond"}: Mind the door on four. It remembers this hammer.
     </choice>
-    <choice id="leave" label="Keep the old blade">
+    <choice id="leave" text="Keep the old blade">
       @oskar{code="0030" emotion="wry"}: Suit yourself. It'll keep.
     </choice>
   </branch>
@@ -43,7 +43,7 @@ title: Oskar, at the anvil
   @oskar{code="0010" emotion="stricken"}: That's — aye. That's my mark on the cheek. I'd know it blind.
   @oskar{code="0020"}: I can make it a hammer again. It'll take embers. It'll take a lot of embers.
   <branch id="reforge" prompt="The cold forge waits.">
-    <choice id="pay" label="Feed the forge (30 embers)" when="user.embers >= 30">
+    <choice id="pay" text="Feed the forge (30 embers)" when="user.embers >= 30">
       ::set{user.embers -= 30}
       ::set{user.hammerReforged = true}
       ::set{user.bond.oskar += 2}
@@ -51,7 +51,7 @@ title: Oskar, at the anvil
       @narrator{code="0020"}: The forge catches for the first time in living memory. Oskar laughs, and it sounds like it hurts.
       @oskar{code="0030" emotion="fond"}: Take it up with you. Let the door feel what it's like.
     </choice>
-    <choice id="later" label="I don't have the embers yet.">
+    <choice id="later" text="I don't have the embers yet.">
       @oskar{code="0040" emotion="wry"}: It's waited this long. It'll wait on the anvil where I can look at it.
     </choice>
   </branch>
@@ -61,12 +61,12 @@ title: Oskar, at the anvil
   @oskar{code="0010"}: You've been up there now. You'll have seen the Gatekeeper — the brute with the maul.
   @oskar{code="0020" emotion="grim"}: That maul's head was mine. Forged it for a man who thought he could hold the door. The Stair kept him, and the door kept the hammer.
   <branch id="ask" prompt="Oskar stops hitting the anvil.">
-    <choice id="accept" label="I'll bring it back.">
+    <choice id="accept" text="I'll bring it back.">
       ::accept{quest="coldForge"}
       ::set{user.bond.oskar += 1}
       @oskar{code="0030" emotion="fond"}: Hah. Everyone says that. Say it again after it's split your skull.
     </choice>
-    <choice id="notYet" label="Not yet.">
+    <choice id="notYet" text="Not yet.">
       @oskar{code="0040"}: Aye. Nobody's ready the first time. Ask me again when you're tired of being unready.
     </choice>
   </branch>

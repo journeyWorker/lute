@@ -19,7 +19,7 @@ fn parse_body(src: &str) -> Document {
 }
 
 fn first_line(doc: &Document) -> &Line {
-    doc.shots[0]
+    doc.sections[0]
         .body
         .iter()
         .find_map(|n| match n {

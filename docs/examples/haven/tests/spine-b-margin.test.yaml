@@ -1,5 +1,5 @@
 # The convergence scene, third arm: neither the manifest nor the engineer, so both
-# `<match on="true">` blocks fall to `<otherwise>` and module five goes "with
+# `<match subject="true">` blocks fall to `<otherwise>` and module five goes "with
 # margin". Two awake bodies and one unit of pressure also put BOTH of this scene's
 # content-line guards on their negative side, which no other test in the suite
 # does.

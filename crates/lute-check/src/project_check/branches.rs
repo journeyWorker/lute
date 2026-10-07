@@ -77,8 +77,7 @@ pub fn check_project_branch_ids(
         let path = item.path;
         let doc = item.doc;
         let mut found = Vec::new();
-        let bodies = doc
-            .shots
+        let bodies = doc.sections
             .iter()
             .map(|s| &s.body)
             .chain(doc.quests.iter().map(|q| &q.body))

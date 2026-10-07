@@ -122,12 +122,12 @@ still say so.
 PINNED CAPABILITY HASH
 ----------------------
 
-`capabilityVersion` is a 64-hex digest of the resolved authoring surface, and
+`capabilitySnapshot` is a 64-hex digest of the resolved authoring surface, and
 the docs quote it as a literal. It was correct for this build and guaranteed to
 rot silently the next time the capability surface moves — the same shape of bug
 as the version strings, and it had already rotted once (`78a2f619…`, a release
 behind). Every 64-hex literal in the documentation surface must therefore equal
-the `capabilityVersion` of one of the reference projects, computed here by
+the `capabilitySnapshot` of one of the reference projects, computed here by
 running `lute context --json`. Nothing is hardcoded.
 
 That pin cannot live in scripts/check-docs-consistency.py: that script is
@@ -384,7 +384,7 @@ HASH_SCAN_EXTRA = (
     ROOT / "packages/website/public/llms-full.txt",
 )
 
-# Reference projects whose capabilityVersion a doc may legitimately quote: the
+# Reference projects whose capabilitySnapshot a doc may legitimately quote: the
 # core-only surface (no project at all) plus every project root under
 # docs/examples. The plugin-carrying ones (showcase/, arcia-project/,
 # plugindef-project/) resolve a different surface and therefore a different
@@ -825,8 +825,8 @@ def path_marker(marks: dict[str, str | None], where: str) -> tuple[str | None, b
     return rel, key == "check-project"
 
 
-def capability_versions(lute: str) -> dict[str, str]:
-    """capabilityVersion per reference project, straight from the binary."""
+def capability_snapshots(lute: str) -> dict[str, str]:
+    """capabilitySnapshot per reference project, straight from the binary."""
     out: dict[str, str] = {}
 
     def context(doc: pathlib.Path, project: pathlib.Path | None) -> str | None:
@@ -837,7 +837,7 @@ def capability_versions(lute: str) -> dict[str, str]:
         if rc != 0:
             return None
         try:
-            return json.loads(text).get("capabilityVersion")
+            return json.loads(text).get("capabilitySnapshot")
         except json.JSONDecodeError:
             return None
 
@@ -881,7 +881,7 @@ def check_pinned_hashes(known: dict[str, str], pages: list[pathlib.Path]) -> int
                     ERRORS.append(
                         f"{p.relative_to(ROOT)}:{n}: pinned capability hash "
                         f"{m.group(0)[:16]}… matches no reference project's "
-                        f"capabilityVersion. Current values, from "
+                        f"capabilitySnapshot. Current values, from "
                         f"`lute context --json`:\n"
                         + "\n".join(f"      {v[:16]}…  {k}" for k, v in known.items())
                     )
@@ -1686,7 +1686,7 @@ def main() -> int:
                 None,
             )
 
-    caps = capability_versions(lute)
+    caps = capability_snapshots(lute)
     hashes = check_pinned_hashes(caps, all_pages)
 
     if len(verified) < MIN_VERIFIED_BLOCKS:

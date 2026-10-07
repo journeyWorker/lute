@@ -11,7 +11,7 @@ after: 'visited("rock.arrival")'
 ## The Quay
 
 ::bg{location="skerry_village" time="day"}
-::music{action="change" mood="sad" volume="down"}
+::music{playback="change" mood="sad" volume="down"}
 @narrator{code="0010"}: Twelve houses, a chapel, the post office and Hollis's bar, all turned away from the sea like people refusing to look at something.
 @narrator{code="0020"}: At the end of the quay, a rusted mooring ring. A short end of rope still hangs from it, chafed to a brush.
 @inspector{code="0010" mono,when="holds('suspect', ['tobias'])"}: Everyone here has already decided Tobias Crane did something. I have not.

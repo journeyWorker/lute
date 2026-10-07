@@ -165,7 +165,7 @@ fn catalog_refresh_then_load_round_trips() {
     );
 
     // The rewritten file must still parse as a snapshot, with stale cleared and
-    // the manifest re-stamped to the current capabilityVersion.
+    // the manifest re-stamped to the current capabilitySnapshot.
     let refreshed = std::fs::read_to_string(dir.join("core.yaml")).unwrap();
     let snap: serde_yaml::Value = serde_yaml::from_str(&refreshed).unwrap();
     assert_eq!(snap["stale"], serde_yaml::Value::Bool(false));
@@ -269,7 +269,7 @@ fn hub_demo_example_compiles() {
         .find(|c| c["kind"] == "hub")
         .expect("a `hub` record in the compiled artifact");
     assert_eq!(hub["id"], "chatWithMarina");
-    assert_eq!(hub["recordKey"], "scene.choices.chatWithMarina");
+    assert_eq!(hub["selectionKey"], "scene.choices.chatWithMarina");
 }
 
 /// dsl 0.23.0 §4: `<hub prompt>` checks clean, and `lute run` carries the
@@ -403,7 +403,7 @@ fn context_surface_has_plugin_and_core_directives() {
     // With `--project`, the resolved snapshot activates the showcase plugin, so
     // the surface carries the plugin `serve` directive (with its attrs +
     // semantics) alongside the core directives, a non-empty enum map, folded
-    // `scene.*` state paths, and the resolved capabilityVersion.
+    // `scene.*` state paths, and the resolved capabilitySnapshot.
     let out = Command::new(BIN)
         .args([
             "context",
@@ -421,12 +421,12 @@ fn context_surface_has_plugin_and_core_directives() {
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
-    let ver = v["capabilityVersion"]
+    let ver = v["capabilitySnapshot"]
         .as_str()
-        .expect("capabilityVersion is a string");
+        .expect("capabilitySnapshot is a string");
     assert!(
         !ver.is_empty(),
-        "resolved capabilityVersion is non-empty: {v}"
+        "resolved capabilitySnapshot is non-empty: {v}"
     );
 
     let dirs = v["directives"].as_array().expect("directives array");
@@ -487,7 +487,7 @@ fn context_surface_has_plugin_and_core_directives() {
 #[test]
 fn context_core_only_has_eight_core_directives() {
     // No `--project` → the core-only `lute.core` snapshot: exactly the 8 baseline
-    // directives, no plugin `serve`, and the core capabilityVersion.
+    // directives, no plugin `serve`, and the core capabilitySnapshot.
     let out = Command::new(BIN)
         .args([
             "context",
@@ -509,7 +509,7 @@ fn context_core_only_has_eight_core_directives() {
         .filter_map(|d| d["name"].as_str())
         .collect();
     for core in [
-        "bg", "music", "sfx", "auto", "vfx", "cut", "video", "camera",
+        "bg", "music", "sfx", "actor", "vfx", "cg", "video", "camera",
     ] {
         assert!(
             names.contains(&core),
@@ -521,11 +521,11 @@ fn context_core_only_has_eight_core_directives() {
         "core-only surface excludes the plugin `serve` directive: {names:?}"
     );
     assert!(
-        !v["capabilityVersion"]
+        !v["capabilitySnapshot"]
             .as_str()
-            .expect("capabilityVersion string")
+            .expect("capabilitySnapshot string")
             .is_empty(),
-        "core capabilityVersion is non-empty: {v}"
+        "core capabilitySnapshot is non-empty: {v}"
     );
 }
 
@@ -813,7 +813,7 @@ fn context_json_lists_referenced_reserved_quest_paths() {
          episode: 1\n\
          ---\n\
          ## Shot 1.\n\
-         <match on=\"quest.foo.state\">\n\
+         <match subject=\"quest.foo.state\">\n\
          <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n\
          @x: a\n\
          </when>\n\
@@ -916,7 +916,7 @@ fn context_human_shows_referenced_reserved_quest_paths() {
          episode: 1\n\
          ---\n\
          ## Shot 1.\n\
-         <match on=\"quest.foo.state\">\n\
+         <match subject=\"quest.foo.state\">\n\
          <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n\
          @x: a\n\
          </when>\n\
@@ -1000,7 +1000,7 @@ fn context_human_lists_delivery_flags() {
 fn fix_migrates_line_and_choice_as_in_place_idempotent() {
     let dir = temp_dir("fix");
     let f = dir.join("scene.lute");
-    let before = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
+    let before = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
     std::fs::write(&f, before).unwrap();
 
     let out = Command::new(BIN)
@@ -1013,7 +1013,7 @@ fn fix_migrates_line_and_choice_as_in_place_idempotent() {
         String::from_utf8_lossy(&out.stderr)
     );
     let after = std::fs::read_to_string(&f).unwrap();
-    let expected = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@marina{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n@fixer: yo\n</choice>\n</branch>\n";
+    let expected = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@marina{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" into=\"run.flag\">\n@fixer: yo\n</choice>\n</branch>\n";
     assert_eq!(after, expected, "both phases must migrate in place");
 
     // Idempotent: a second run rewrites nothing (file byte-identical).
@@ -1151,7 +1151,7 @@ fn doctor_reports_which_vocabulary_slots_resolve() {
         "anchor",
         "mood",
         "volume",
-        "musicAction",
+        "musicPlayback",
         "vfxType",
     ];
     let dir = temp_dir("doctor-vocab");
@@ -1223,8 +1223,8 @@ fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
 /// for the same target, or `doctor` reports a vocabulary the checker rejects.
 ///
 /// The fixture is the asymmetry itself: `proj/lute.project.yaml` activates a
-/// plugin whose `enums` export declares `musicAction`, `proj/scenes/` carries NO
-/// manifest, and `proj/scenes/a.lute` writes `::music{action="start"}`.
+/// plugin whose `enums` export declares `musicPlayback`, `proj/scenes/` carries NO
+/// manifest, and `proj/scenes/a.lute` writes `::music{playback="start"}`.
 /// `check-project proj/scenes` cannot ascend above the requested dir, loads no
 /// project, and reports `E-DOMAIN-UNKNOWN`. A `doctor` that walks up to `proj`
 /// would call the same slot declared.
@@ -1250,12 +1250,12 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
     write_at(
         &proj,
         "plugins/demo.vocab/enums/vocab.yaml",
-        "enums:\n  musicAction: [start, stop]\n",
+        "enums:\n  musicPlayback: [start, stop]\n",
     );
     write_at(
         &proj,
         "scenes/a.lute",
-        "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::music{action=\"start\"}\n@narrator: hello\n",
+        "---\nkind: scene\ncharacter: narrator\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n::music{playback=\"start\"}\n@narrator: hello\n",
     );
     let scenes = proj.join("scenes");
 
@@ -1269,9 +1269,9 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
         String::from_utf8_lossy(&check.stderr)
     );
     assert!(
-        check_text.contains("E-DOMAIN-UNKNOWN") && check_text.contains("musicAction"),
+        check_text.contains("E-DOMAIN-UNKNOWN") && check_text.contains("musicPlayback"),
         "fixture premise: the checker cannot ascend above the requested dir, so \
-         `musicAction` is undeclared for it:\n{check_text}"
+         `musicPlayback` is undeclared for it:\n{check_text}"
     );
 
     let out = Command::new(BIN)
@@ -1286,8 +1286,8 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
         .unwrap_or_else(|| panic!("doctor must report declared slots:\n{text}"))
         .to_string();
     assert!(
-        !declared.contains("musicAction"),
-        "doctor called `musicAction` declared while `check-project` on the SAME \
+        !declared.contains("musicPlayback"),
+        "doctor called `musicPlayback` declared while `check-project` on the SAME \
          dir reports E-DOMAIN-UNKNOWN — doctor ascended above the requested \
          directory:\n{declared}"
     );
@@ -1297,7 +1297,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
         .unwrap_or_else(|| panic!("doctor must report undeclared slots:\n{text}"))
         .to_string();
     assert!(
-        missing.contains("musicAction"),
+        missing.contains("musicPlayback"),
         "doctor must agree with the checker's verdict for this dir:\n{missing}"
     );
 }
@@ -1381,8 +1381,8 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
-         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
-         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" text=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" text=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
     );
     write_at(
         &dir,
@@ -1430,8 +1430,8 @@ fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
-         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
-         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" text=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" text=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
     );
     write_at(
         &dir,
@@ -1539,8 +1539,8 @@ fn autopicked_branch_is_reported_not_silent() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
-         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" label=\"A\">\n@narrator: a.\n\
-         </choice>\n<choice id=\"b\" label=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
+         \n## One\n\n<branch id=\"pick\">\n<choice id=\"a\" text=\"A\">\n@narrator: a.\n\
+         </choice>\n<choice id=\"b\" text=\"B\">\n@narrator: b.\n</choice>\n</branch>\n",
     );
     write_at(
         &dir,
@@ -1710,7 +1710,7 @@ fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
 }
 
 /// #24 / T9.13: the coverage key was the guard's TEXT, not the construct's
-/// identity, so two `<match on="true">` blocks in one document collapsed into
+/// identity, so two `<match subject="true">` blocks in one document collapsed into
 /// one row reading `3/3` — the tool's only false statement, and its most
 /// reassuring one.
 #[test]
@@ -1721,9 +1721,9 @@ fn coverage_keys_on_the_construct_not_on_the_guard_text() {
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
          \n## One\n\n\
-         <match on=\"true\">\n<when is=\"true\">\n@narrator: first.\n</when>\n\
+         <match subject=\"true\">\n<when is=\"true\">\n@narrator: first.\n</when>\n\
          <otherwise>\n@narrator: first-else.\n</otherwise>\n</match>\n\
-         <match on=\"true\">\n<when is=\"true\">\n@narrator: second.\n</when>\n\
+         <match subject=\"true\">\n<when is=\"true\">\n@narrator: second.\n</when>\n\
          <otherwise>\n@narrator: second-else.\n</otherwise>\n</match>\n",
     );
     write_at(
@@ -1893,7 +1893,7 @@ fn coverage_names_a_def_match_as_authored() {
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          state:\n  run.n: { type: int, default: 0 }\ndefs:\n  high: \"run.n >= 3\"\n---\n\n## One\n\n\
-         <match on=\"@high\">\n<when is=\"true\">\n@narrator: high\n</when>\n<otherwise>\n@narrator: low\n</otherwise>\n</match>\n",
+         <match subject=\"@high\">\n<when is=\"true\">\n@narrator: high\n</when>\n<otherwise>\n@narrator: low\n</otherwise>\n</match>\n",
     );
     write_at(
         &dir,
@@ -1912,7 +1912,7 @@ fn coverage_names_a_def_match_as_authored() {
 
 /// #32 / T2.5: `lute context`'s human mode dropped the `semantics` flags its
 /// own --json already carries. `mayExitCharacter` is the machine-readable
-/// statement that `::auto` is the construct that ends a presence, and it is
+/// statement that `::actor` is the construct that ends a presence, and it is
 /// on no page of the shipped website.
 #[test]
 fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
@@ -1926,11 +1926,11 @@ fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let auto = text
+    let actor = text
         .lines()
-        .find(|l| l.trim_start().starts_with("auto"))
-        .expect("auto row");
-    assert!(auto.contains("mayExitCharacter"), "{text}");
+        .find(|l| l.trim_start().starts_with("actor"))
+        .expect("actor row");
+    assert!(actor.contains("mayExitCharacter"), "{text}");
 }
 
 /// #21 / T3.9: `lute check world.schema.yaml` — the obvious next command —

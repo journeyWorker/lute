@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -31,7 +31,8 @@ expression: json
   "commands": [
     {
       "kind": "line",
-      "addr": "001-0100",
+      "family": "content",
+      "position": "001-0100",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "The pressure in the shed keeps climbing. Will you help?",
@@ -40,19 +41,20 @@ expression: json
     },
     {
       "kind": "choice",
-      "addr": "001-0200",
+      "family": "control",
+      "position": "001-0200",
       "branchId": "request",
-      "recordKey": "scene.choices.request",
+      "selectionKey": "scene.choices.request",
       "options": [
         {
           "id": "accept",
-          "label": "I'll keep it calm",
+          "text": "I'll keep it calm",
           "lineId": "haven.s01ep04.request.accept",
           "target": "001-0300"
         },
         {
           "id": "decline",
-          "label": "Not now",
+          "text": "Not now",
           "lineId": "haven.s01ep04.request.decline",
           "target": "001-0600"
         }
@@ -61,12 +63,14 @@ expression: json
     },
     {
       "kind": "accept",
-      "addr": "001-0300",
+      "family": "declaration",
+      "position": "001-0300",
       "quest": "calmTheShed"
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "Thank you.",
@@ -75,12 +79,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0500",
+      "family": "control",
+      "position": "001-0500",
       "target": "001-0800"
     },
     {
       "kind": "line",
-      "addr": "001-0600",
+      "family": "content",
+      "position": "001-0600",
       "role": "dialogue",
       "speaker": "vesna",
       "text": "Another time, then.",
@@ -89,13 +95,14 @@ expression: json
     },
     {
       "kind": "jump",
-      "addr": "001-0700",
+      "family": "control",
+      "position": "001-0700",
       "target": "001-0800"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "The shed"
     }
   ],

@@ -251,7 +251,7 @@ state:
 </entry>
 
 <entry id=\"rustyKey\" target=\"item.rusty_key\" category=\"item\">
-  <match on=\"run.labBurned\">
+  <match subject=\"run.labBurned\">
     <when is=\"true\">
       @narrator: A scorched key.
     </when>
@@ -390,7 +390,7 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
         "lore/dock.lute",
         "---\nkind: lore\nid: lore.dock\nuses: ../world.schema.yaml\n---\n\n\
          <beat id=\"talk\" on=\"talk\" target=\"item.rusty_key\" title=\"The key\">\n  @orin: Keep moving.\n  <branch id=\"ask\">\n    \
-         <choice id=\"why\" label=\"Why?\">\n      ::assert{ knows(vesna, reactor) }\n    </choice>\n  \
+         <choice id=\"why\" text=\"Why?\">\n      ::assert{ knows(vesna, reactor) }\n    </choice>\n  \
          </branch>\n</beat>\n",
     );
     let out = run(&["lore", dir.to_str().unwrap(), "--json"]);

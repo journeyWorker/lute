@@ -32,7 +32,7 @@ fn scene_when(cond: &str) -> String {
     // is itself flagged) — orthogonal to this file's fact-query profile
     // checks on the FIRST choice's `when` slot.
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 
@@ -109,7 +109,7 @@ fn validat_over_guarded_derived_is_flagged() {
 #[test]
 fn match_subject_may_not_be_a_relation_query() {
     let doc = format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<match on=\"holds('inParty', ['ana'])\">\n<when test=\"$\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<match subject=\"holds('inParty', ['ana'])\">\n<when test=\"$\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
     );
     let c = codes(&doc);
     assert!(c.contains(&"E-MATCH-RELATION-SUBJECT".to_string()), "{c:?}");
@@ -122,7 +122,7 @@ fn match_subject_may_not_be_a_relation_query() {
 fn match_subject_def_expanding_to_a_relation_query_is_flagged() {
     let doc = |on: &str| {
         format!(
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}defs:\n  withAna: \"holds('inParty', ['ana'])\"\n  viaDef: \"@withAna\"\n  crowd: \"count('inParty', ['_']) > 1\"\n  act: \"run.act\"\n---\n## Shot 1.\n<match on=\"{on}\">\n<when is=\"true\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}defs:\n  withAna: \"holds('inParty', ['ana'])\"\n  viaDef: \"@withAna\"\n  crowd: \"count('inParty', ['_']) > 1\"\n  act: \"run.act\"\n---\n## Shot 1.\n<match subject=\"{on}\">\n<when is=\"true\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n"
         )
     };
     for on in [
@@ -192,7 +192,7 @@ fn an_is_arm_in_a_match_with_no_on_is_refused_and_a_test_arm_is_not() {
     let (at, msg) = only(&src);
     assert_eq!(at, "ren");
     assert!(
-        msg.contains("add `on=\"run.route\"` to the `<match>`"),
+        msg.contains("add `subject=\"run.route\"` to the `<match>`"),
         "{msg}"
     );
     let src = doc("is=\"run.act >= 3\"");
@@ -234,7 +234,7 @@ const DOMAIN_VOCAB: &str = "relations:\n  felt: { args: [emotion], tier: run }\n
 
 fn scene_when_domain(cond: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{DOMAIN_VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{DOMAIN_VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 

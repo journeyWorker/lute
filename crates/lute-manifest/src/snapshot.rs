@@ -14,7 +14,7 @@ pub const BUILTIN_LIFECYCLE_EVENTS: &[&str] = &["questActive", "questComplete", 
 
 #[derive(Clone, Debug, Default)]
 pub struct CapabilitySnapshot {
-    pub version: String,                           // capabilityVersion
+    pub version: String,                           // capabilitySnapshot
     pub plugins: BTreeMap<String, ResolvedPlugin>, // id -> {version, options}
     pub enums: BTreeMap<String, Vec<String>>,
     /// Enum-style named vocabularies folded from each active plugin's `enums`
@@ -113,7 +113,7 @@ pub struct Domain {
 }
 
 /// Hand-written so a domain without `labels` prints exactly as it did before
-/// the field existed: `capabilityVersion` folds this `Debug`, and a
+/// the field existed: `capabilitySnapshot` folds this `Debug`, and a
 /// vocabulary that declares no labels must keep its stamp. Declared labels
 /// DO fold in — they reach the IR (`StateEntry.labels`) and change rendering.
 impl std::fmt::Debug for Domain {
@@ -492,7 +492,7 @@ mod tests {
         b.version = capability_version(&b);
         assert_ne!(
             a.version, b.version,
-            "state_templates must affect capabilityVersion"
+            "state_templates must affect capabilitySnapshot"
         );
     }
 
@@ -518,7 +518,7 @@ mod tests {
         b.version = capability_version(&b);
         assert_ne!(
             a.version, b.version,
-            "asset_kinds must affect capabilityVersion"
+            "asset_kinds must affect capabilitySnapshot"
         );
     }
 
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn domain_labels_fold_into_the_stamp_only_when_declared() {
         // A label-less domain keeps the exact pre-labels `Debug` (so every
-        // existing artifact keeps its `capabilityVersion`); declared labels
+        // existing artifact keeps its `capabilitySnapshot`); declared labels
         // reach the IR and change rendering, so they restamp.
         let d = dom(&["mon", "sun"], None, &[]);
         assert_eq!(
@@ -689,7 +689,7 @@ mod tests {
     fn reward_kinds_absent_keeps_capability_version_stable() {
         // dsl 0.16.0 §4: a snapshot with no `rewardKinds` MUST hash to the
         // pre-`rewardKinds` stamp so merely landing the field does not
-        // perturb the pinned capabilityVersion (Task 2 bootstrap).
+        // perturb the pinned capabilitySnapshot (Task 2 bootstrap).
         assert_eq!(
             capability_version(&CapabilitySnapshot::default()),
             "e4d422238da1596ef546a76c06acac962e8763b0240c0ab0dd0276d25d74db76",

@@ -6,18 +6,33 @@ directive with attrs
 (source_file (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)))))
 
 ==================
-document title
+body `# title` heading is not a node (dsl 0.37.0 §3.1: frontmatter `title:` only)
+:error
 ==================
 # S01EP02 — Behold the Performance
 ---
-(source_file (title (text)))
 
 ==================
-shot heading
+section heading with stable id suffix (dsl 0.37.0 §3.1)
 ==================
-## Shot 1.
+## Section 1. {#opening}
+@narrator: A hostess walked over.
 ---
-(source_file (shot (text)))
+(source_file (section (heading) (section_id) (line (speaker) (text))))
+
+==================
+heading `{` that is not an id suffix stays heading text
+==================
+## Braces {not an id}
+---
+(source_file (section (heading)))
+
+==================
+section heading
+==================
+## Section 1.
+---
+(source_file (section (heading)))
 
 ==================
 line with attrs
@@ -43,9 +58,9 @@ staging directive leaf (no attrs)
 ==================
 directive with bare-bool attr
 ==================
-::camera{shake wait="true"}
+::camera{framing="close" wait}
 ---
-(source_file (directive (ident) (attrs (attr (key)) (attr (key) (string)))))
+(source_file (directive (ident) (attrs (attr (key) (string)) (attr (key)))))
 
 ==================
 directive with ref-valued attr
@@ -72,7 +87,7 @@ set compound assignment
 branch and choice (nesting)
 ==================
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer{code="0050"}: Marina. Your number.
     ::set{scene.affect.marina += 1}
   </choice>
@@ -90,32 +105,32 @@ branch and choice (nesting)
 ==================
 match / when / otherwise (nesting)
 ==================
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
-    @fixer{delivery="thought"}: Asked nicely.
+    @fixer{mono}: Asked nicely.
   </when>
   <when test="$ == 'blunt'">
-    @fixer{delivery="thought"}: Asked flatly.
+    @fixer{mono}: Asked flatly.
   </when>
   <otherwise>
-    @fixer{delivery="thought"}: Somewhere this evening.
+    @fixer{mono}: Somewhere this evening.
   </otherwise>
 </match>
 ---
 (source_file
   (match
     (cel_attr (cel_key) (cel_string (path)))
-    (when (cel_attr (cel_key) (cel_string (ref))) (line (speaker) (attrs (attr (key) (string))) (text)))
-    (when (cel_attr (cel_key) (cel_string)) (line (speaker) (attrs (attr (key) (string))) (text)))
-    (otherwise (line (speaker) (attrs (attr (key) (string))) (text)))))
+    (when (cel_attr (cel_key) (cel_string (ref))) (line (speaker) (attrs (attr (key))) (text)))
+    (when (cel_attr (cel_key) (cel_string)) (line (speaker) (attrs (attr (key))) (text)))
+    (otherwise (line (speaker) (attrs (attr (key))) (text)))))
 
 ==================
 timeline / track (nesting, directive + set clips)
 ==================
 <timeline duration="1.4">
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.35" duration="0.4"}
-    ::camera{shake="0.6" at="0.5"}
+    ::camera{focus="marina" framing="close" duration="0.4"}
+    ::camera{move="shake" at="0.5"}
   </track>
   <track channel="sfx">
     ::sfx{sound="flash" at="0.5"}
@@ -153,28 +168,28 @@ multi-line comment is trivia
   spanning
   several lines
 */
-::music{action="stop"}
+::music{playback="stop"}
 ---
 (source_file
   (comment)
   (directive (ident) (attrs (attr (key) (string)))))
 
 ==================
-frontmatter (opaque YAML body) then title
+frontmatter (opaque YAML body) then section
 ==================
 ---
 mode: inline
 character: marina
-season: 1
-episode: 2
+title: S01EP02 — Behold the Performance
+monoSpeakers: [marina]
 ---
 
-# S01EP02 — Behold the Performance
+## Section 1. {#s01}
 ----------------------------------------
-(source_file (frontmatter) (title (text)))
+(source_file (frontmatter) (section (heading) (section_id)))
 
 ==================
-frontmatter with nested YAML then shot
+frontmatter with nested YAML then section
 ==================
 ---
 profile: date-minigame
@@ -186,11 +201,11 @@ state:
   scene.affect.marina: { type: number, default: 0 }
 ---
 
-## Shot 1.
+## Section 1.
 ::minigame{kind="rhythm" wait="true"}
 ----------------------------------------
 (source_file
   (frontmatter)
-  (shot
-    (text)
+  (section
+    (heading)
     (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))))

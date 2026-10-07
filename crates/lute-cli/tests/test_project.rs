@@ -284,9 +284,9 @@ fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, S
         "scenes/shed.lute",
         "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\n---\n\n\
          ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
-         <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+         <choice id=\"take\" text=\"Take the job\">\n@guard: Deal.\n\
          ::accept{quest=\"sideJob\"}\n</choice>\n\
-         <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
+         <choice id=\"pass\" text=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
     );
     write_at(&dir, "tests/t.test.yaml", test_yaml);
     let out = Command::new(BIN)

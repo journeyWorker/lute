@@ -11,7 +11,7 @@ spentBy: "run.bellRung"
 ## Bell
 
 @narrator{code="0010"}: The rope is stiff and smells of pigeons. Far above, the bell waits.
-<match on="run.hour">
+<match subject="run.hour">
   <when is="h03">
     @narrator{code="0020"}: You pull. The bell speaks once, and all through the building the beds stop creaking.
     @maud{code="0010" vo}: Three o'clock. The round. Everybody down.

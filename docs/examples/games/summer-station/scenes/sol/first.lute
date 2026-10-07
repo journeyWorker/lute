@@ -11,26 +11,26 @@ when: "holds('at', ['sol', 'radio'])"
 ## The radio room
 
 ::bg{location="radio_room" time="morning"}
-::music{action="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="down"}
 @narrator{code="0010"}: The radio room smells of warm valves and cold coffee. A man is asleep upright in the operator's chair, headphones around his neck, one hand still on the log.
 ::use{component="enter" who="sol" side="right" instance="use-001"}
 @sol{code="0010" emotion="surprised"}: I'm awake. I was listening with my eyes shut. It's a technique.
 @sol{code="0020" emotion="happy"}: You're the intern. Sol. I do the nights. Nights are when the sky talks.
 
 <branch id="solHello" prompt="He holds out a mug that is definitely not clean.">
-  <choice id="coffee" label="Take the coffee anyway">
+  <choice id="coffee" text="Take the coffee anyway">
     ::set{run.aff.sol += 1}
     @sol{code="0030" emotion="laughing"}: Brave. Ines said you'd be brave or you'd be sensible. I hoped brave.
   </choice>
-  <choice id="log" label="Ask what the sky said last night">
+  <choice id="log" text="Ask what the sky said last night">
     ::set{run.aff.sol += 1}
     @sol{code="0040" emotion="fond"}: Oh, you actually want to know. Hang on. Nobody asks.
     @sol{code="0050"}: Thunder over the Sella at two. A ship off the coast asking for a pressure reading from a mountain it'll never see.
   </choice>
-  <choice id="work" label="Say you've got readings to log">
+  <choice id="work" text="Say you've got readings to log">
     @sol{code="0060" emotion="neutral"}: Right. Sure. The log. It's a very good log.
   </choice>
 </branch>
 
 @sol{code="0070"}: Come up to the roof some night. That's where I actually live.
-::auto{character="sol" action="fadeOut"}
+::actor{character="sol" action="fadeOut"}

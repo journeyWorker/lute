@@ -1,0 +1,32 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+title: Old surface
+uses: ./schema.yaml
+---
+
+## Old surface
+
+::auto{character="hero"}
+::cut{assetId="CG.old"}
+::music{action="start" track="theme"}
+::sfx{name="bell"}
+::video{assetId="VID.old" action="show"}
+::cg{assetId="CG.old" full="true"}
+::camera{zoom="1.2"}
+::camera{}
+::mark{id="later"}
+::next{to="later"}
+<branch id="pick">
+  <choice id="a" label="Option A">
+    @hero: A.
+  </choice>
+</branch>
+<match on="run.mood">
+  <otherwise>
+    @hero: Fine.
+  </otherwise>
+</match>

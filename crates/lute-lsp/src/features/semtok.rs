@@ -8,17 +8,21 @@
 //! | token type  | what carries it (classified STRUCTURALLY, by node kind)      |
 //! |-------------|--------------------------------------------------------------|
 //! | `content`   | an `@line` speaker + its text (the §7.1 content node)          |
-//! | `staging`   | a `::directive` tag, `<timeline>` / `<track>` open keywords  |
-//! | `logic`     | `::set` / `<branch>` / `<match>` open keywords               |
+//! | `staging`   | a `::directive` tag, `<timeline>` / `<track>` open keywords, |
+//! |             | an inline text modifier's `:name[`/`]{…}` markup (§3.6)       |
+//! | `logic`     | `::set` / `<branch>` / `<match>` open keywords and the core  |
+//! |             | control directives `::jump` / `::label` / `::end`            |
 //! | `cel`       | a CEL literal / bare token inside a slot (and the `$` subject)|
 //! | `ref`       | an `@ref` inside a CEL slot                                   |
 //! | `statePath` | a `::set` target path + a state/choice path inside a slot    |
 //!
-//! The layer of a construct follows its node kind, never a snapshot lookup: a
-//! `::camera` tag is Staging because [`Directive`](lute_syntax::ast::Directive)
-//! is a staging construct, regardless of what `camera` resolves to. CEL slots are
-//! sub-classified: an `@ref` is `ref`, a state/choice path is `statePath`, and
-//! everything else in the slot is `cel`.
+//! The layer of a construct follows its node kind and tag, never a snapshot
+//! lookup: a `::camera` tag is Staging because a
+//! [`Directive`](lute_syntax::ast::Directive) is a staging construct regardless
+//! of what `camera` resolves to; the three core control-flow tags (dsl 0.37.0
+//! §3.5) are Logic like `::set`. CEL slots are sub-classified: an `@ref` is
+//! `ref`, a state/choice path is `statePath`, and everything else in the slot
+//! is `cel`.
 //!
 //! ## Encoding
 //! The result is the LSP DELTA encoding: tokens sorted by `(line, startChar)`,
@@ -37,7 +41,10 @@
 
 use lute_cel::scan_refs;
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, ClipNode, Directive, Document, InterpKind, Line, Node, Quest, Set};
+use lute_manifest::core::{END_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE};
+use lute_syntax::ast::{
+    Arm, ClipNode, Directive, Document, InlineNode, Interp, InterpKind, Line, Node, Quest, Set,
+};
 use tower_lsp_server::ls_types::{SemanticToken, SemanticTokenType, SemanticTokensLegend};
 
 use lute_resolve::cursor::{all_slots, interp_referent_span, is_state_path, path_tokens};
@@ -48,9 +55,11 @@ use lute_resolve::cursor::{all_slots, interp_referent_span, is_state_path, path_
 pub enum TokType {
     /// Content layer: `:line` speaker + text.
     Content,
-    /// Staging layer: `::directive` tags, `<timeline>`/`<track>` keywords.
+    /// Staging layer: `::directive` tags, `<timeline>`/`<track>` keywords,
+    /// inline text-modifier markup.
     Staging,
-    /// Logic layer: `::set` / `<branch>` / `<match>` keywords.
+    /// Logic layer: `::set` / `<branch>` / `<match>` keywords, `::jump` /
+    /// `::label` / `::end` tags.
     Logic,
     /// A plain CEL token (literal / operator-adjacent identifier / `$`).
     Cel,
@@ -125,11 +134,11 @@ struct AbsTok {
 /// Classify `doc` into DELTA-encoded [`SemanticToken`]s (LSP wire order).
 pub fn semantic_tokens(doc: &Document, idx: &TextIndex) -> Vec<SemanticToken> {
     let mut raw = Vec::new();
-    for shot in &doc.shots {
-        walk_nodes(&shot.body, idx.text(), &mut raw);
+    for section in &doc.sections {
+        walk_nodes(&section.body, idx.text(), &mut raw);
     }
     // `<quest>` is a top-level declaration (dsl 0.2.0 §6.3), not a `Node` — it
-    // gets its own header token + body walk mirroring the shot loop above.
+    // gets its own header token + body walk mirroring the section loop above.
     for quest in &doc.quests {
         quest_tokens(quest, &mut raw);
         walk_nodes(&quest.body, idx.text(), &mut raw);
@@ -321,45 +330,70 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
     }
 }
 
-/// Sub-tokenize a content line's text (dsl §7.6): `content` for the runs OUTSIDE
-/// `{{…}}` interpolations, and a referent sub-token for each interp interior —
-/// `Path` → StatePath, `Ref` → Ref, `Reserved` → Content — mirroring how
-/// [`slot_tokens`] sub-classifies a CEL slot. Everything from `text_span.start`
-/// to `text_span.end` is covered (the `{{`/`}}` brackets fold into the adjacent
-/// content run), so the line is never left as one opaque Content token. `src` is
-/// the document text, used to locate each referent within its `{{…}}`.
+/// Sub-tokenize a content line's text (dsl §7.6, dsl 0.37.0 §3.6) from its
+/// inline tree: `content` for plain runs (and modifier span text), a
+/// referent sub-token for each `{{…}}` interior — `Path` → StatePath, `Ref` →
+/// Ref, `Reserved` → Content — mirroring how [`slot_tokens`] sub-classifies a
+/// CEL slot, and `staging` for an inline modifier's markup (`:name[` and the
+/// closing `]{…}`). Everything from `text_span.start` to `text_span.end` is
+/// covered (the `{{`/`}}` brackets fold into content), so the line is never
+/// left as one opaque Content token. `src` is the document text, used to
+/// locate each referent within its `{{…}}`.
 fn line_text_tokens(l: &Line, src: &str, out: &mut Vec<RawTok>) {
-    let end = l.text_span.byte_end;
-    if l.interps.is_empty() {
-        push(out, l.text_span.byte_start, end, TokType::Content);
+    if l.inline.is_empty() {
+        push(out, l.text_span.byte_start, l.text_span.byte_end, TokType::Content);
         return;
     }
-    let mut cursor = l.text_span.byte_start;
-    for i in &l.interps {
-        let inner = interp_referent_span(src, i);
-        // Content up to the referent (preceding dialogue + `{{` + any leading ws).
-        push(out, cursor, inner.byte_start, TokType::Content);
-        let ty = match i.kind {
-            InterpKind::Path => TokType::StatePath,
-            InterpKind::Ref => TokType::Ref,
-            InterpKind::Reserved => TokType::Content,
-        };
-        push(out, inner.byte_start, inner.byte_end, ty);
-        // Trailing ws + `}}` fold into the next content run (or the tail below).
-        cursor = inner.byte_end;
-    }
-    push(out, cursor, end, TokType::Content);
+    inline_tokens(&l.inline, src, out);
 }
 
-/// The `::name` head of a directive → one Staging token (`::` + tag).
+fn inline_tokens(nodes: &[InlineNode], src: &str, out: &mut Vec<RawTok>) {
+    for node in nodes {
+        match node {
+            InlineNode::Text { span, .. } => {
+                push(out, span.byte_start, span.byte_end, TokType::Content)
+            }
+            InlineNode::Interpolation(i) => interp_tokens(i, src, out),
+            InlineNode::Modifier(m) => {
+                // `:name` plus the `[` that opens a span.
+                let name_end = m.span.byte_start + ":".len() + m.name.len();
+                let head_end = m.content_span.map_or(name_end, |c| c.byte_start);
+                push(out, m.span.byte_start, head_end, TokType::Staging);
+                inline_tokens(&m.children, src, out);
+                // The closing `]` and any `{k=v}` attrs.
+                let body_end = m
+                    .content_span
+                    .map_or(head_end, |c| c.byte_end)
+                    .max(head_end);
+                push(out, body_end, m.span.byte_end, TokType::Staging);
+            }
+        }
+    }
+}
+
+/// One `{{…}}` interpolation: its referent sub-token, with the brackets and
+/// any inner whitespace as content.
+fn interp_tokens(i: &Interp, src: &str, out: &mut Vec<RawTok>) {
+    let inner = interp_referent_span(src, i);
+    push(out, i.span.byte_start, inner.byte_start, TokType::Content);
+    let ty = match i.kind {
+        InterpKind::Path => TokType::StatePath,
+        InterpKind::Ref => TokType::Ref,
+        InterpKind::Reserved => TokType::Content,
+    };
+    push(out, inner.byte_start, inner.byte_end, ty);
+    push(out, inner.byte_end, i.span.byte_end, TokType::Content);
+}
+
+/// The `::name` head of a directive → one token (`::` + tag): Logic for the
+/// core control-flow tags (`::jump`, `::label`, `::end`), Staging otherwise.
 fn directive_tag(d: &Directive, out: &mut Vec<RawTok>) {
     let start = d.span.byte_start;
-    push(
-        out,
-        start,
-        start + "::".len() + d.tag.len(),
-        TokType::Staging,
-    );
+    let ty = match d.tag.as_str() {
+        JUMP_DIRECTIVE | LABEL_DIRECTIVE | END_DIRECTIVE => TokType::Logic,
+        _ => TokType::Staging,
+    };
+    push(out, start, start + "::".len() + d.tag.len(), ty);
 }
 
 /// A `::set` → the `::set` keyword (Logic) + its target path (StatePath). The
@@ -527,7 +561,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -559,7 +593,7 @@ mod tests {
     /// the arm openers go untokenized and the logic layer is under-highlighted.
     #[test]
     fn choice_and_arm_openers_are_logic_tokens() {
-        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n@f: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n@f: b.\n</when>\n<otherwise>\n@f: c.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\">\n@f: a.\n</choice>\n</branch>\n<match subject=\"scene.x\">\n<when test=\"$ == 1\">\n@f: b.\n</when>\n<otherwise>\n@f: c.\n</otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
         for (kw, len) in [("<choice", 7u32), ("<when", 5), ("<otherwise", 10)] {
@@ -737,7 +771,7 @@ mod tests {
 
     /// ACCEPTANCE: `<quest`/`<on`/`<objective` open keywords carry the LOGIC
     /// layer, and the CONTENT tokens inside their bodies are still emitted —
-    /// before the fix, `semantic_tokens` walked `doc.shots` only (a quest doc
+    /// before the fix, `semantic_tokens` walked `doc.sections` only (a quest doc
     /// has none) and `<on>`/`<objective>` were Plan-A no-ops, so a quest doc
     /// emitted NO structural tokens at all.
     #[test]
@@ -792,5 +826,63 @@ mod tests {
             2,
             "speaker + text: {decoded:?}"
         );
+    }
+
+    /// The token anchored at byte `at` of `text`, as `(len, type)`.
+    fn token_at(text: &str, at: usize) -> Option<(u32, u32)> {
+        let p = TextIndex::new(text).position(at);
+        decode(&tokens(text))
+            .into_iter()
+            .find(|&(l, c, _, _)| l == p.line - 1 && c == p.utf16_col)
+            .map(|(_, _, len, t)| (len, t))
+    }
+
+    /// dsl 0.37.0 §3.3/§3.5: the staging directives (`::actor`, `::bg`,
+    /// `::cg`, `::sequence`) are staging tokens; the control-flow tags
+    /// (`::jump`, `::label`, `::end`) are logic tokens like `::set`.
+    #[test]
+    fn staging_and_control_directive_tags() {
+        let text = "## Shot 1.\n::bg{location=\"diner\"}\n::actor{character=\"mira\"}\n::cg{assetId=\"cg.one\"}\n::sequence{name=\"intro\"}\n::jump{to=\"next\"}\n::label{name=\"next\"}\n::end\n";
+        for tag in ["::bg", "::actor", "::cg", "::sequence"] {
+            let at = text.find(&format!("{tag}{{")).unwrap();
+            assert_eq!(
+                token_at(text, at),
+                Some((tag.len() as u32, ty("staging"))),
+                "{tag} is staging"
+            );
+        }
+        for tag in ["::jump", "::label", "::end"] {
+            let at = text.find(tag).unwrap();
+            assert_eq!(
+                token_at(text, at),
+                Some((tag.len() as u32, ty("logic"))),
+                "{tag} is logic"
+            );
+        }
+    }
+
+    /// dsl 0.37.0 §3.6: an inline modifier's markup is staging while its span
+    /// text (and the plain text around it) stays content; a leaf modifier is
+    /// staging end to end.
+    #[test]
+    fn inline_modifier_markup_is_staging() {
+        let text = "## Shot 1.\n@mira: Hi :emphasis[there]{} now :pause{s=0.5} ok\n";
+        let staging = ty("staging");
+        let content = ty("content");
+        let open = text.find(":emphasis[").unwrap();
+        assert_eq!(
+            token_at(text, open),
+            Some((":emphasis[".len() as u32, staging))
+        );
+        let inner = text.find("there").unwrap();
+        assert_eq!(token_at(text, inner), Some(("there".len() as u32, content)));
+        let close = text.find("]{}").unwrap();
+        assert_eq!(token_at(text, close), Some(("]{}".len() as u32, staging)));
+        let pause = text.find(":pause").unwrap();
+        assert_eq!(token_at(text, pause), Some((":pause".len() as u32, staging)));
+        let attrs = text.find("{s=0.5}").unwrap();
+        assert_eq!(token_at(text, attrs), Some(("{s=0.5}".len() as u32, staging)));
+        let hi = text.find("Hi ").unwrap();
+        assert_eq!(token_at(text, hi), Some(("Hi ".len() as u32, content)));
     }
 }

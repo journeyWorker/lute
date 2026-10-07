@@ -55,11 +55,11 @@ state:
 <beat id="porter" on="talk" target="npc.porter" when="run.porterTrust >= 0">
   @porter: You again.
   <branch id="porterTalk">
-    <choice id="ask" label="Ask about the night">
+    <choice id="ask" text="Ask about the night">
       @porter: I saw nothing.
       ::set{run.porterTrust += 1}
     </choice>
-    <choice id="leave" label="Leave">
+    <choice id="leave" text="Leave">
       @porter: Good.
     </choice>
   </branch>

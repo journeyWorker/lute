@@ -202,14 +202,14 @@ pub(super) fn walk_reach(
                     }
                 }
             }
-            // dsl 0.12.0: a guarded `::next{when=}` is a one-arm construct
+            // dsl 0.12.0: a guarded `::jump{when=}` is a one-arm construct
             // exactly like a gated line above — a decided-false guard makes
-            // the jump provably dead. An UNGUARDED `::next` needs no guard
+            // the jump provably dead. An UNGUARDED `::jump` needs no guard
             // analysis here (that is `check_code_after_next`'s job, above).
             // dsl 0.26.0 §4: any guarded directive likewise.
             Node::Directive(d) if d.when.is_some() => {
-                let what = if d.tag == lute_manifest::core::NEXT_DIRECTIVE {
-                    "this `::next` never fires: its `when` guard is provably false (dsl 0.12.0)"
+                let what = if d.tag == lute_manifest::core::JUMP_DIRECTIVE {
+                    "this `::jump` never fires: its `when` guard is provably false (dsl 0.12.0)"
                         .to_string()
                 } else {
                     format!(

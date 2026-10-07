@@ -15,6 +15,8 @@ What you need to write a story and play it, on one screen. The rest of the page 
 ---
 kind: scene
 id: cafe.counter
+title: At the counter
+pov: fixer
 on: chapter
 after: 'visited("cafe.arrival")'
 priority: 10
@@ -24,7 +26,7 @@ state:
   run.mood: { type: { enum: [calm, tense] }, default: calm }
 ---
 
-## Counter
+## Counter {#counter}
 
 @narrator: The espresso machine hisses.
 @mira: The usual?
@@ -32,17 +34,17 @@ state:
 @mira{os}: One moment!
 
 <branch id="order" prompt="What will you have?">
-  <choice id="tea" label="Tea, and a tip">
+  <choice id="tea" text="Tea, and a tip">
     ::set{run.tips += 5}
     @mira: Thank you!
   </choice>
-  <choice id="nothing" label="Nothing tonight">
+  <choice id="nothing" text="Nothing tonight">
     ::set{run.mood = 'tense'}
     @mira: Suit yourself.
   </choice>
 </branch>
 
-<match on="run.mood">
+<match subject="run.mood">
   <when is="calm">
     @mira: Stay as long as you like.
   </when>
@@ -52,10 +54,12 @@ state:
 </match>
 ```
 
-- `@speaker: text` is a line, and `@narrator` narrates. `{mono}` is a thought, `{os}` off-screen,
-  `{vo}` voiceover. Content sits under a `## Heading`. → [Lines, cast & staging](#lines-cast--staging)
-- `<branch>` is a menu of `<choice>`s. → [Choices, hubs, jumps & endings](#choices-hubs-jumps--endings)
-- `<match on>` picks the first `<when is>` arm that fits. → [Match & when](#match--when)
+- `title:` in the frontmatter is the document's title; the body has no `# Title` line.
+- `@speaker: text` is a line, and `@narrator` narrates. `{mono}` is a thought of the `pov:`
+  speaker, `{os}` off-screen, `{vo}` voiceover. Content sits under a `## Heading`, optionally
+  `## Heading {#id}`. → [Lines, cast & staging](#lines-cast--staging)
+- `<branch>` is a menu of `<choice text="…">`s. → [Choices, hubs, jumps & endings](#choices-hubs-jumps--endings)
+- `<match subject>` picks the first `<when is>` arm that fits. → [Match & when](#match--when)
 - `::set{…}` writes state declared under `state:`. → [State writes & facts](#state-writes--facts)
 - `on:` makes the scene answer an occasion, here `chapter`: any name works until a plugin declares
   occasions. `after:` orders it after another scene, `priority:` wins a tie, and `when:` gates it on
@@ -99,7 +103,7 @@ $ lute play . --script plays/story.play.yaml        # the transcript of one play
 
 ```
 my-game/
-├── lute.project.yaml            profiles, plugins, identity, defaults, sequence
+├── lute.project.yaml            profiles, plugins, identity, defaults, chapters
 ├── world.schema.yaml            run/user/app state, enums, defs, facts, rules
 ├── plugins/game.occasions/      optional: plugin.yaml + occasions/*.yaml + events/*.yaml
 ├── scenes/*.lute                kind: scene
@@ -145,8 +149,8 @@ eligible beat of one raise plays, in selection order): on such an occasion the c
 `on:` and `priority:`, so the listed scenes play in one raise, in list order. On a targeted
 occasion every listed scene declares its own `target:`. See [Connect scenes](/getting-started/connect-scenes/).
 
-`defaults:` accepts only `kind`, `character`, `season`, `episode`, `pov`, `luteVersion`,
-`contentLang`, `uses`, `extends`, `components`, `extra`, and (0.26.0) `questTier: run | user` (anything
+`defaults:` accepts only `kind`, `character`, `season`, `episode`, `pov`, `monoSpeakers`,
+`luteVersion`, `contentLang`, `uses`, `extends`, `components`, `extra`, and (0.26.0) `questTier: run | user` (anything
 else is `E-DEFAULTS-KEY`). A document that writes a key at all replaces the default for that key
 entirely, with no merging (`uses: []` means "no imports"). A default that is illegal on a document's
 kind is skipped for that document. Since 0.26.0 a `uses` entry may be a glob (`*`, `**`): a glob that
@@ -199,8 +203,8 @@ defs:
   calm: "run.pressure < 2"                    # shorthand: the body alone, type inferred (bool)
   veteran: "user.runs >= 10"
   vesnaKnows: "holds('knows', ['vesna', 'manifest'])"
-  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred double
-  closeUp: "1.3"                              # a constant: the only kind of def an attribute takes
+  pace: "run.pressure > 2 ? 0.4 : 0.8"        # inferred double
+  holdTime: "1.5"                             # a constant: the only kind of def an attribute takes
   atLeast: { type: bool, params: { n: int }, cel: "user.runs >= n" }   # params need type:
 clock:                                   # optional (0.24.0), one per project: see Clock below
   day: run.day                           # owner: engine
@@ -224,14 +228,17 @@ literals give `int`/`double`; a bare path read gives that path's type. A body th
 checker cannot type (for example `"@other"`) needs the long form `{ type: …, cel: … }`. Otherwise it
 is `E-DEF-DECL`.
 
-The seven vocabulary slots are `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, and
-`vfxType`. Using one that nothing declares is `E-DOMAIN-UNKNOWN`. `action` must list `exits:` and
-`anchor` must name a `default:`.
+The vocabulary slots are domains the project declares in `enums:`: `emotion`, `action`, `anchor`,
+`mood`, `volume`, `musicPlayback`, `vfxType`, and for staging `costume` (`::actor`), `framing`,
+`cameraMove` and `transition` (`::camera`), `cgLayout` (`::cg`), `sequence` (`::sequence`), and
+`textStyle` (inline text styles). Using one that nothing declares is `E-DOMAIN-UNKNOWN`, and a
+value outside a declared one is `E-BAD-ENUM`. `action` must list `exits:` (the members that take an
+actor off stage) and `anchor` must name a `default:` (`E-ENUM-MISSING-SEMANTICS`).
 
 `cast:` (0.23.0) names the speakers, in a schema document or in a plugin's `cast` export
 (`cast/*.yaml`, the same `cast:` map). Once any cast is declared, a speaker outside it (other than
 `@narrator`) is `E-CAST-UNKNOWN` with a did-you-mean, in scenes, quests, entries, and bundle beats,
-and since 0.24.0 so is an `::auto{character}` or `::camera{focus}` outside it. With no cast declared,
+and since 0.24.0 so is an `::actor{character}` or `::camera{focus}` outside it. With no cast declared,
 any speaker id is accepted. A scene's frontmatter cannot declare `cast:` (`E-META-UNKNOWN-KEY`).
 `lute context` lists the cast. A cast entry may also carry `present:` (a condition) and `emotions:`
 (0.24.0): a line by that speaker whose guards do not imply `present` is `W-CAST-ABSENT`, and an
@@ -270,16 +277,17 @@ or undeclared season is `E-SEASON-DECL`.
 
 | Kind | Required | Kind-only keys |
 |---|---|---|
-| `kind: scene` | `id:`, or the legacy `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, beat keys `on` / `target` / `when` / `priority` / `once` / `also` / `share` (0.25.0) / `spentBy` / `for` (0.27.0) |
-| `kind: quest` | one or more `<quest>` in the body | `id` (optional bundle name) |
-| `kind: lore` | one or more `<entry>` or `<beat>` in the body | `id` (required when it holds a `<beat>`), `series` |
+| `kind: scene` | `id:`, or the legacy `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `monoSpeakers`, `after`, beat keys `on` / `target` / `when` / `priority` / `once` / `also` / `share` (0.25.0) / `spentBy` / `for` (0.27.0) |
+| `kind: quest` | one or more `<quest>` in the body | `id` (optional bundle name), `pov`, `monoSpeakers` |
+| `kind: lore` | one or more `<entry>` or `<beat>` in the body | `id` (required when it holds a `<beat>`), `series`, `pov`, `monoSpeakers` |
 | component (no `kind:`) | `component: <name>` | `component`, `params`, `effects` (0.24.0), `beat` (0.27.0: a beat template's header, used as `<beat use="<name>" id="…" param="…">`) |
 
 Every root kind also accepts `title`, `luteVersion`, `contentLang`, `profile`, `plugins`, `uses`,
 `extends`, `components`, `state`, `defs`, `enums`, `entities`, `relations`, `facts`, `rules`,
 `codesLocked`, `mode`, and `extra` (free descriptive data). A key outside this set is
-`E-META-UNKNOWN-KEY`. A quest's graph edge is the `follows=` attribute on `<quest>`. It is not a
-frontmatter key.
+`E-META-UNKNOWN-KEY`, and a key written with `_` is `E-AUTHOR-CASE` naming its lowerCamelCase
+spelling. `title:` is the only document title: a `# Title` line in the body is `E-INERT-TITLE`. A
+quest's graph edge is the `follows=` attribute on `<quest>`. It is not a frontmatter key.
 
 → [Frontmatter & profiles](/language/frontmatter-and-profiles/)
 
@@ -290,47 +298,60 @@ frontmatter key.
 kind: scene
 id: diner.night
 pov: fixer
+monoSpeakers: [mira]
 enums:
   emotion: [neutral, happy]
   action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
+  costume: [apron]
   mood: [peaceful]
   volume: [down, normal]
-  musicAction: [start, fadeOut]
+  musicPlayback: [start, fadeOut]
   vfxType: [whiteOut]
+  framing: [closeUp, wide]
+  cameraMove: [pushIn, shake]
+  cgLayout: [full, inset]
+  sequence: [dinerOpening]
+  textStyle: [emphasis]
 state:
   run.affection: { type: int, default: 0 }
 ---
 
-## Counter
+## Counter {#counter}
 
 ::bg{location="diner" time="night"}
-::music{action="start" mood="peaceful" volume="down"}
-::auto{character="mira" anchor="center" action="fadeInUp"}
-::camera{focus="mira" zoom="1.2" duration="0.5" wait="true"}
+::music{playback="start" mood="peaceful" volume="down"}
+::sequence{name="dinerOpening"}
+::actor{character="mira" anchor="center" action="fadeInUp" costume="apron"}
+::camera{focus="mira" framing="closeUp" move="pushIn" duration="0.5" wait="true"}
 @narrator: The diner hums.
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
 @fixer: I am.
 @fixer{mono}: She remembered.
+@mira{mono}: He came back.
 @fixer{mono when="run.affection > 2"}: She remembered my order, too.
+@mira: :emphasis[Wait.]:pause{s=0.5} :speed[Take your time.]{rate=0.8}
 // a `//` line comment: the whole line is ignored
 @mira{os}: Hold on!
 @mira{as="???"}: ...who's there?
 ::sfx{sound="door bell"}
 ::vfx{type="whiteOut"}
+::cg{assetId="cg.diner.window" layout="inset"}
+::cg{assetId="cg.diner.window" display="hide"}
 ::clear
-::music{action="fadeOut"}
+::music{playback="fadeOut"}
 ::end{reason="closing"}
 ```
 
 | Piece | Rule |
 |---|---|
-| `@speaker{attrs}: text` | `@narrator` is narration; any other speaker is dialogue (the `pov:` speaker included — `pov` is descriptive only). Text after `: ` is literal to end of line. With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`); a cast `present:` the line's guards do not imply is `W-CAST-ABSENT`, and `emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM` (0.24.0). |
-| line attrs | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as` (label override), `when` (guard), `id` (a jump target, like `::mark{id}`). A quoted value decodes `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;` (0.24.0); any other `&` stays literal, and `\"` still works. |
-| delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover. At most one per line, and never on `@narrator`. A flag combines with attributes: `{mono when="…"}`. |
+| `@speaker{attrs}: text` | `@narrator` is narration; any other speaker is dialogue. The text runs to the end of the line: `{{…}}` interpolates and `:name[…]{…}` marks it up (inline modifiers, below). With a declared `cast:`, the speaker must be in it (`E-CAST-UNKNOWN`); a cast `present:` the line's guards do not imply is `W-CAST-ABSENT`, and `emotion=` outside the speaker's `emotions:` is `E-BAD-ENUM` (0.24.0). Every line, narration and `{mono}` included, compiles a `lineId` and a `voiceKey`. |
+| line attrs | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as` (label override), `when` (guard). A jump target is a `::label{name}` on the line before. A quoted value decodes `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;` (0.24.0); any other `&` stays literal, and `\"` still works. |
+| delivery flags | `{mono}` thought, `{os}` off-screen, `{vo}` voiceover; the IR roles are `dialogue`, `narration`, `mono`, `os`, `vo`. At most one per line, and never on `@narrator`. A flag combines with attributes: `{mono when="…"}`. A `{mono}` speaker is the point of view (`pov:`, else the project's `defaults.pov`) or listed in `monoSpeakers:`: otherwise `E-MONO-POV`, or `E-MONO-NO-POV` when no point of view resolves. A component's `{mono}` lines are judged at each `::use` with the caller's `pov:`. |
+| inline modifiers | In line text only. `:pause{s=0.5}` pauses (seconds, `s` required); `:speed[text]{rate=1.25}` delivers the span at a rate; `:emphasis[text]` applies a `textStyle` member, which takes no attributes. Spans nest (the innermost `rate` wins). `\:` `\[` `\]` `\{` `\}` `\\` are literal; a malformed or unclosed modifier is `E-TEXT-MODIFIER`, an unknown escape `E-TEXT-ESCAPE`. The IR `text` is the plain text (`Wait. Take your time.`); a modified line adds `segments`. A translation must keep the source's modifiers (`E-L10N-MODIFIERS`). |
 | `{{…}}` | `{{userName}}`, a declared state path, or `{{@def}}` (the artifact carries the def's body, and `lute run` / `lute play` evaluate it). Reading a maybe-unset path is `E-MAYBE-UNSET`. A line whose whole text is `@name` ships that literal text (`W-TEXT-LOOKS-LIKE-REF`); write `{{@name}}`. 0.24.0: `{{run.visits:ordinal}}` renders `1st`, `2nd`, … (an `int` or `double` only), and a path typed against an enum with `labels:` renders the label. 0.25.0: `{{run.day:ordinalWord}}` renders `first` … `twentieth` (the engine localizes it; `lute play` falls back to `21st` digits above twenty). 0.27.0: `{{run.lamps:plural(lamp\|lamps)}}` renders the first form for 1 and the second otherwise (`#` in a form is the number: `plural(# lamp\|# lamps)`), and a value of an entity kind with `labels:` (`{{occasion.target}}`, a `{ domain: <kind> }` path) renders its label; a cast `name:` wins. 0.28.0: `:cardinalWord` spells `one` … `twenty`; in a plural form `#word` / `#Word` is the number as a word (`plural(One wagon\|#Word wagons)` → `Eleven wagons`); plural forms are bare text split on `\|` (quoted or `,` forms are `E-PLURAL-FORM`); `:capitalize`, `:start` and `:indefinite` format text, and a kind label may declare `{ text, start, indefinite }` forms for them (absent: capitalized text, `a`/`an` + text). Any other hint is `E-CEL-PROFILE`. |
-| shots | All content sits under a `## Heading`. A lone `# Title` does not open a shot. |
-| directives | `::bg` `::music` `::sfx` `::auto` (entrance, pose, exit) `::camera` `::cut` `::vfx` `::video` `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay`, `wait="true"` (blocks). With a cast declared, `::auto{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
+| sections | All content sits under a `## Heading` (`E-CONTENT-OUTSIDE-SECTION` before the first). `## Heading {#id}` gives the section a stable id, unique in the document (`E-SECTION-DUP`); it is identity metadata, never a jump target. |
+| directives | `::bg{location time assetId}`, `::music{playback mood volume assetId}`, `::sfx{sound assetId}`, `::vfx{type label transition}`, `::actor{character anchor action emotion costume}` (entrance, pose, exit: an `action` in `exits:` takes the actor off stage), `::camera{focus framing move transition}` (at least one, else `E-CAMERA-EMPTY`), `::cg{assetId display layout}` and `::video{assetId display}` (`display` is `show` or `hide`, default `show`), `::sequence{name}` (names a cinematic the engine owns; `wait` defaults to `true`), `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay` (seconds), `wait="true"` (blocks). With a cast declared, `::actor{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
 | comments | `// …` to the end of the line, on a line of its own or after a directive (`::set{run.n += 1} // why`), and `/* … */`. After a `<tag>` it is `E-TAG-INLINE-BODY`, and inside a content line's text `//` is literal. |
 
 → [Dialogue & cast](/language/dialogue-and-cast/) · [Core directives](/language/directives/)
@@ -352,34 +373,34 @@ defs:
 ## Counter
 
 <branch id="greet" prompt="Mira looks up.">
-  <choice id="wave" label="Wave" into="run.metMira">
+  <choice id="wave" text="Wave" into="run.metMira">
     @mira: Hi!
     ::set{scene.warmth += 2}
   </choice>
-  <choice id="tip" label="Leave a tip" into="run.tip" value="5">
+  <choice id="tip" text="Leave a tip" into="run.tip" value="5">
     @mira: Thanks!
   </choice>
-  <choice id="flirt" label="Flirt" when="@warm">
+  <choice id="flirt" text="Flirt" when="@warm">
     @mira: Oh, stop.
   </choice>
 </branch>
 
 <hub id="chat" prompt="Anything else?">
-  <choice id="coffee" label="Ask about the coffee" once>
+  <choice id="coffee" text="Ask about the coffee" once>
     @mira: House blend.
   </choice>
-  <choice id="cup" label="Ask about the missing cup">
+  <choice id="cup" text="Ask about the missing cup">
     ::accept{quest="lostCup"}
     @mira: Find it and your next one is free.
   </choice>
-  <choice id="leave" label="Leave" exit>
+  <choice id="leave" text="Leave" exit>
     @mira: Bye.
   </choice>
 </hub>
 
-::next{to="outro" when="run.tip > 0"}
+::jump{to="outro" when="run.tip > 0"}
 @mira: No tip, huh.
-::mark{id="outro"}
+::label{name="outro"}
 @narrator: The door closes behind you.
 ::end{reason="leftCafe"}
 ```
@@ -387,9 +408,9 @@ defs:
 | Construct | Rule |
 |---|---|
 | `<branch id>` | A menu. The pick is recorded in `scene.choices.<id>`, which clears when the scene ends. At least one choice must be unguarded (`E-BRANCH-ALL-GUARDED`). Optional `prompt=` and `timeout="N"`. |
-| `<choice id label>` | `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. |
+| `<choice id text>` | `text=` is what the player sees. `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. The IR's `choice` and `hub` records name the path a pick lands in as `selectionKey` (`scene.choices.greet`). |
 | `<hub id>` | Re-presents eligible choices until an `exit`. `once` removes a choice after one take. It needs an unguarded `exit`, or every choice `once` (`E-HUB-NO-EXIT`). Each pick sets `scene.visited.<hub>.<choice>`. Optional `prompt=` (0.23.0) is the question shown with the options; an empty one is `E-BRANCH-PROMPT`. |
-| `::next{to when}` | A forward-only jump to `::mark{id}` or a line's `id=`. A backward jump is `E-NEXT-BACKWARD`. Without `when`, the content after it is dead (`W-CODE-AFTER-NEXT`). Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its mark (the transcript shows `<next -> outro>`), as `lute play` does. |
+| `::jump{to when}` | A forward-only jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). A backward jump is `E-JUMP-BACKWARD`. Without `when`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
 | `::end{reason}` | Ends the scene. In `lute play` it ends only the presentation (or quest handler) it runs in; the playthrough goes on. Content after it in the same body is `W-CODE-AFTER-END`. |
 | `::accept{quest}` | Takes up an accept-driven quest (no `start`, or a child with `activate="accept"`). `at="nextRun"` (0.24.0) queues it until right after the next `newRun` reset; any other `at` is `E-ACCEPT-TARGET`. Takes `when=` (0.26.0). See [Quests](#quests). |
 
@@ -409,7 +430,7 @@ state:
 
 ## Moods
 
-<match on="run.mood">
+<match subject="run.mood">
   <when is="calm">
     @mira: Quiet day.
   </when>
@@ -418,7 +439,7 @@ state:
   </when>
 </match>
 
-<match on="run.tips">
+<match subject="run.tips">
   <when is="10..">
     @mira: My best customer.
   </when>
@@ -430,7 +451,7 @@ state:
   </otherwise>
 </match>
 
-<match on="run.rival">
+<match subject="run.rival">
   <when is="kai">
     @mira: Kai was here earlier.
   </when>
@@ -457,13 +478,13 @@ state:
   `<when is="x">` the subject is set, and after an `is="unset"` arm with no `test`, later arms and
   `<otherwise>` read it as set (no `E-MAYBE-UNSET`).
 - A beat's `when:` narrows the subject for the whole body (0.24.0): under
-  `when: "run.verdict != 'undecided'"`, a `<match on="run.verdict">` needs no `undecided` arm, and
+  `when: "run.verdict != 'undecided'"`, a `<match subject="run.verdict">` needs no `undecided` arm, and
   one written there is `E-ARM-DEAD`. A body that writes the subject keeps the whole domain.
 - `test="$ == 'x'"` is `W-WHEN-TEST-LITERAL`, and `lute fix` rewrites it to `is="x"`.
 - `@who{when="G"}: …` is sugar for a one-arm match. For a fact query (`holds(…)`) this line form is
-  the only form, because `<match on="holds(…)">` is `E-MATCH-RELATION-SUBJECT`.
-- A `<match>` with no `on` has no subject, so every arm is `test=`; an `is=` arm there is
-  `E-MATCH-NO-SUBJECT`. Add `on="…"`, or write the condition as `test=` (`<when is="run.lamps >= 3">`
+  the only form, because `<match subject="holds(…)">` is `E-MATCH-RELATION-SUBJECT`.
+- A `<match>` with no `subject` has no subject, so every arm is `test=`; an `is=` arm there is
+  `E-MATCH-NO-SUBJECT`. Add `subject="…"`, or write the condition as `test=` (`<when is="run.lamps >= 3">`
   is `<when test="run.lamps >= 3">`).
 - Every tag sits alone on one physical line. `<when …>text</when>` on one line is
   `E-TAG-INLINE-BODY`, and a tag wrapped across lines is `E-TAG-NOT-ONE-LINE`.
@@ -567,8 +588,8 @@ rules:
   bridge directives take the same `when=` (`::assert{inParty(corvin) when="run.day > 3"}`; a guarded
   `::use` runs its whole expansion or none of it; play prints `skip ::give{item="potion"} — when:
   false`). The checker never counts a guarded one as a definite write, fact or accept. Directives
-  that lower to a built-in record (every core staging directive such as `::bg`, `::sfx`, `::auto`,
-  `::clear`, and `::end`, `::mark`, a plugin `lower:` record) refuse it (`E-UNKNOWN-ATTR`: put them in
+  that lower to a built-in record (every core staging directive such as `::bg`, `::sfx`, `::actor`,
+  `::clear`, and `::end`, `::label`, a plugin `lower:` record) refuse it (`E-UNKNOWN-ATTR`: put them in
   a `<match>`), as does a `<track>` clip (`E-TIMELINE-CONTENT`). A relation named like a CEL
   call (`has`, `holds`, `count`, `now`, …) is `E-RESERVED-NAME` (every reserved name: [Reserved names](/reference/reserved-names/)).
 
@@ -645,7 +666,7 @@ or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be
 
 0.30.0: every name you write is a **name** — letters, digits, `_` or `-`, not starting with `-` —
 and a dotted id joins names with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
-mark ids, document id segments, `share` keys, seasons, relations, enum and entity kinds and their
+label names, document id segments, `share` keys, seasons, relations, enum and entity kinds and their
 members, the occasions and events a plugin declares, targets and categories. `lamp-out`,
 `zero-coke-001` and `001` are names; a `.`, a space or a quote is an error at the name, under that
 slot's code, listing the allowed characters. A name read bare, like a JavaScript variable — a def, a
@@ -657,12 +678,12 @@ the way JavaScript reaches a key: `quest["zero-coke-001"].state`, `run.visits["l
 `holds('at', ["lab-b2"])`. The two spellings are the same name. `quest.zero-coke-001.state` reads as a
 subtraction, so it is `E-PATH-IDENT`, naming the bracket spelling.
 
-Where CEL goes: `<match on>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
-and `when=`, `when=` on any other directive that takes it (0.26.0), `::next when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
+Where CEL goes: `<match subject>`, `<when test>`, `when=` on a line or choice, `::set` right-hand sides
+and `when=`, `when=` on any other directive that takes it (0.26.0), `::jump when`, beat `when:`, entry `when=`, quest `start` / `fail`, objective `done` /
 `by` / `until` / `visibleWhen`, `<on when>`, `<reward when>`, and a cast entry's `present:`. In a directive
-attribute, a def reference is bare: write `::camera{zoom=@closeUp}`, not `zoom="@closeUp"`. It is
-compiled as the constant the def folds to, so a def that reads state, such as `zoom` above, is
-`E-ATTR-DEF-DYNAMIC`: branch with `<match>` and write a literal in each arm.
+attribute, a def reference is bare: write `::camera{framing="closeUp" duration=@holdTime}`, not
+`duration="@holdTime"`. It is compiled as the constant the def folds to, so a def that reads state,
+such as `pace` above, is `E-ATTR-DEF-DYNAMIC`: branch with `<match>` and write a literal in each arm.
 
 → [CEL expressions](/state/cel/) · [Definitions & params](/language/params/)
 
@@ -724,7 +745,7 @@ state:
 <beat id="miraOrder" on="talk" target="npc.mira" title="Order" priority="10" when="run.tips >= 3">
   @mira: The usual?
   <hub id="order" prompt="What will it be?">
-    <choice id="usual" label="The usual" exit>
+    <choice id="usual" text="The usual" exit>
       @mira: Coming up.
     </choice>
   </hub>
@@ -846,8 +867,8 @@ Plugin manifests (0.24.0):
 - Every export file rejects a key it does not know: `{ selct: all }` is `E-PLUGIN-PARSE` with a
   did-you-mean, not a silent `select: first`. A flow-map value holding a comma needs quotes.
 - A directive's `lower:` is optional: without it the directive compiles to the generic
-  `kind: "plugin"` passthrough. `{ kind: builtin, name }` must name a core hook (`autoStage`,
-  `cameraTransform`, `clearStage`, `end`, `mark`, `next`), else `E-PLUGIN-PARSE`.
+  `kind: "plugin"` passthrough. `{ kind: builtin, name }` must name a core hook (`actorStage`,
+  `cameraTransform`, `clearStage`, `end`, `jump`, `label`), else `E-PLUGIN-PARSE`.
 - `judge: before` judges the occasion's `on=` objectives and settles the quests before its beats
   are chosen, so an epilogue on it reads how the quests ended. Only the judging moves: the `<on>`
   handler bodies the raise answers still run after the beats. The default is `after`.
@@ -1015,11 +1036,11 @@ state:
 | `quest="child"` | A subquest: done when the child completes, and the parent fails when a required child fails. It cannot be combined with `done=` (`E-OBJECTIVE-QUEST-DONE`). A child with no `start` activates with its parent, unless it declares `activate="accept"` (0.24.0): then it waits for an `::accept` while the parent is active. `::accept` of a child that activates with its parent is `E-ACCEPT-TARGET`. |
 | `complete="any"` (0.24.0) | The quest completes when any one required objective is done; its other still-active children fail with `failedBy` `superseded`. One failed alternative leaves it open. Default `complete="all"`. |
 | `quest.<id>.failedBy` (0.24.0) | Why it failed: `unset` until then, then `fail`, `by`, `until`, `subquest` (a required subquest failed), `cascade`, or `superseded`. `quest.<id>.objectives.<o>.failed` is `true` once a `by`/`until` failed that objective. `lute play` prints `quest X -> failed (by)`. |
-| `<reward kind amount target when outcome/>` | Data for the engine, which pays it. Content cannot read a reward, so do not also `::set` the same currency in an `<on>` handler: it would be paid twice. `amount` is an integer or a range `N..M`. `outcome="failed"` grants on failure (before 0.28.0: `on=`). `lute run`, `lute play`, `lute trace`, and `lute test` print the `grant`; when the kind declares `credits:` (below) they also add a scalar amount to that path, and a `::set` of that path in the quest's `<on>` or objective bodies is `W-REWARD-DOUBLE-CREDIT`. |
+| `<reward id kind amount target when outcome/>` | Data for the engine, which pays it. Content cannot read a reward, so do not also `::set` the same currency in an `<on>` handler: it would be paid twice. `amount` is an integer or a range `N..M`. `outcome="failed"` grants on failure (before 0.28.0: `on=`). An optional `id` names the reward for engines and source maps; it is unique among the quest's rewards, its objectives' included (`E-REWARD-DUP`). `lute run`, `lute play`, `lute trace`, and `lute test` print the `grant`; when the kind declares `credits:` (below) they also add a scalar amount to that path, and a `::set` of that path in the quest's `<on>` or objective bodies is `W-REWARD-DOUBLE-CREDIT`. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, or a plugin world event. An optional `when=` guards it. With `target=` (0.24.0) it runs only when the same-named occasion is raised for that target (never for a plain `event:` step). A `questFailed` handler on a quest that can never fail (no `fail`, no required objective with a `by=` deadline, no required subquest objective that can fail, no parent quest) is `W-QUEST-HANDLER-DEAD`. An `::accept` in a handler is applied by `lute trace` / `lute test` as by `lute play` (0.26.0). |
 
 Quest documents have no `#`/`##` headings, `<hub>`, or `<timeline>`. Other documents read a quest
-through `<match on="quest.regular.state">` or `when="quest.regular.state == 'complete'"`. The state
+through `<match subject="quest.regular.state">` or `when="quest.regular.state == 'complete'"`. The state
 is always assigned, so `quest.regular.state == 'unset'` means "not taken up yet".
 
 Quest structure (0.24.0): alternatives, subquests taken up in dialogue, and the two deadlines.
@@ -1103,7 +1124,7 @@ state:
 </entry>
 
 <entry id="log2" target="item.captains_log" category="note" title="Day 2" when="entry.log1.read">
-  <match on="run.fire">
+  <match subject="run.fire">
     <when is="true">
       @narrator: The page is scorched.
     </when>
@@ -1151,7 +1172,7 @@ params:
 
 @narrator: {{@who}} walks in.
 
-<match on="@tier">
+<match subject="@tier">
   <when is="warm">
     @narrator: A warm welcome.
   </when>
@@ -1197,7 +1218,7 @@ write is checked at every `::use` against the host's schema and compiles where t
 param also picks the member of a [`per:`](#state-writes--facts) family, `run.approval[@who]`: each
 `::use` writes the member its argument names, and an argument that is not a member of the family's
 kind is `E-COMPONENT-ARG`. A `speaker` param takes a cast id (`E-CAST-UNKNOWN` outside a declared
-cast): `{{@who}}` renders the cast `name`, while `<match on="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
+cast): `{{@who}}` renders the cast `name`, while `<match subject="@who">` and directive attributes (`::battle{foe=@who}`) see the id.
 Since 0.26.0 a line's `as=@who` label shows the cast name too, as `{{@who}}` does.
 
 ```lute check
@@ -1243,7 +1264,7 @@ params:
 ## Welcome
 
 @@who: {{@greeting}}
-<match on="@mood">
+<match subject="@mood">
   <when is="warm">
     @narrator: {{@who}} smiles.
   </when>
@@ -1269,14 +1290,17 @@ joins peer schemas, where a name declared twice is an error.
 ---
 kind: scene
 id: storm.beat
+enums:
+  framing: [closeUp, wide]
+  cameraMove: [pushIn, shake]
 ---
 
 ## Storm
 
 <timeline duration="1.2">
   <track subject="camera">
-    ::camera{focus="mira" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="mira" framing="closeUp" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
   <track channel="sfx">
     ::sfx{sound="thunder" at="0.5"}
@@ -1289,10 +1313,43 @@ id: storm.beat
 ```
 
 A track holds staging directives and `::set` only. Its key (`subject=`, `channel=`, or `subject=` +
-`property=`) must be unique. `at=` is absolute on the timeline's own clock. An empty timeline is a
-timed pause.
+`property=`) must be unique. `at=` is absolute on the timeline's own clock, in seconds. An empty
+timeline is a timed pause. In the IR each clip carries `timing: { duration, delay, at, timeline }`
+(`timeline` is the timeline's ordinal, `at` its seconds), and a `barrier` record joins the
+timeline at its `duration`.
 
 → [Timeline & property tracks](/language/timeline-and-property-tracks/)
+
+## Compiled artifact
+
+`lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
+`capabilitySnapshot` (the hash of the resolved plugin set), sorted `requiredSemantics`, `meta`,
+`sections` (`{ section, heading, id? }`, one per `##`), and `commands`. Every command has a `kind`, a
+`family`, and a `position`; `timing`, `provenance`, and `source` appear only when they carry
+something. Four records of the [staging snippet](#lines-cast--staging) as compiled:
+
+```json
+{"kind": "bg", "family": "staging", "position": "001-0100", "location": "diner", "time": "night", "timing": {"wait": true}}
+{"kind": "actor", "family": "staging", "position": "001-0500", "character": "mira", "emotion": "happy", "preload": true, "provenance": {"by": "entry-emotion-lookahead", "explanation": "pre-loading `mira`'s first emotion `happy` seen ahead of the entrance"}}
+{"kind": "camera", "family": "staging", "position": "001-0600", "focus": "mira", "framing": "closeUp", "move": "pushIn", "timing": {"wait": true, "duration": 0.5}}
+{"kind": "line", "family": "content", "position": "001-1700", "role": "dialogue", "speaker": "mira", "text": "Wait. Take your time.", "lineId": "diner.night.mira_0030", "voiceKey": "diner.night.mira-0030", "segments": [{"text": "Wait.", "styles": ["emphasis"]}, {"pause": 0.5}, {"text": " "}, {"text": "Take your time.", "rate": 0.8}]}
+```
+
+| Family | Kinds |
+|---|---|
+| `content` | `line` |
+| `staging` | `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` |
+| `state` | `set`, `assert`, `retract` |
+| `control` | `choice`, `match`, `hub`, `jump`, `end`, `barrier` |
+| `declaration` | `quest`, `on`, `entry`, `accept`, `beat` |
+| `plugin` | `plugin` |
+
+`position` is the section's place in document order, then the command's order in it. It is
+regenerated on every compile and is never identity: the stable joins are `lineId` and `voiceKey`
+(every line has both), a section's `id`, and a reward's `id`. `lute play --json` lists each presented
+command by its `kind` and `position`.
+
+→ [Runtime contract](/tooling/runtime-contract/)
 
 ## CLI
 
@@ -1300,10 +1357,10 @@ timed pause.
 |---|---|
 | `lute check <file> [--project <dir>]` | Check one document. Without `--project` it applies the nearest `lute.project.yaml` above the file and says so on stderr. |
 | `lute check-project <dir> [--wip] [--deny-warnings]` | Check every document, plus connectivity, quest ids, `::accept` targets, occasions, and fact guards. It also compiles every clean document, so compile-stage errors (`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`) fail here. Project advisories such as `W-BEAT-PRIORITY-TIE` and `W-QUEST-HANDLER-DEAD` come from here too. `--wip` (0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has no producer yet (no seed, assert, rule, or `reserved`; since 0.26.0 also a relation only a component `::assert` with an unbound `@param` writes); a relation that has producers but never matches stays an error. |
-| `lute fix <file\|dir>` | Mechanical migrations in place: the old `:line` sigil, `as=` → `into=`, and `test="$ == …"` → `is=`. A directory covers every `.lute` file under it, recursively, in sorted order. |
+| `lute fix <path>…` | Mechanical migrations in place, over every path given: `::auto` → `::actor`, `::cut` → `::cg`, `::next` → `::jump`, `::mark{id}` → `::label{name}`, a line's `id="x"` → `::label{name="x"}` on the line before, music `action=` → `playback=`, cg / video `action=` → `display=`, choice `label=` → `text=`, `<match on=>` → `<match subject=>`, plus the older `:line` sigil, `as=` → `into=`, and `test="$ == …"` → `is=`. A directory covers every `.lute` and project/schema YAML file under it, recursively, in sorted order. What has no lossless rewrite (camera numbers, cg `full`, music `track`, sfx `name`, a missing `pov:`) stays an error for you to migrate by hand. |
 | `lute tag <file\|dir>` | Back-fill a stable `code` on every line, of one file or every `.lute` file under a directory. |
 | `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | Build artifacts. `--all` also writes `project.index.json`, including `beats`. Without `--project`, one file compiles against the nearest `lute.project.yaml` above it (0.27.0), as `check` does. |
-| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied; without `--project`, the project is the nearest `lute.project.yaml` above the file (0.27.0), as for `check`. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accept` also takes an `activate="accept"` child. Since 0.26.0 a taken `::next` is followed to its mark. |
+| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied; without `--project`, the project is the nearest `lute.project.yaml` above the file (0.27.0), as for `check`. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accept` also takes an `activate="accept"` child. Since 0.26.0 a taken `::jump` is followed to its label. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | Run a compiled artifact the way an engine would. A lore artifact needs exactly one of `--entry` and `--beat` (a bundle beat's canonical id, or its bare id when unambiguous). The mock's `bridges:` answers plugin calls (0.24.0). |
 | `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | Raise occasions through the whole project, advancing quests. A missed `expect:` exits `1`. Staging prints as authored; `--ir` prints the lowered records instead, injected ones marked. `--explain` (repeatable) prints, after the play, the derivation tree of a ground atom, or the failing premises of every rule that could conclude it; since 0.24.0 each asserted leaf names its source (``asserted by scene `cafe.open`, step 1``). |
 | `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | Run every `*.test.yaml`, and every `*.play.yaml` that carries an `expect:`, or the one test or play file given. Without `--project`, tests resolve against the nearest `lute.project.yaml` (noted on stderr). An incomplete walk fails, and so does a test whose `file:` is missing (`E-TEST-FILE`), without stopping the suite. `--coverage` lists the documents no test traced and no play presented, of `--project` or of the nearest `lute.project.yaml`; since 0.24.0 a document an `advance:` step's raise presented counts, and the header counts both: `coverage over N traced path(s) and M play(s) (…):`. Since 0.26.0 it loads each project once and runs the tests, then the plays, in parallel (`RAYON_NUM_THREADS` is respected), reporting in the usual order. Since 0.27.0 the unit is the beat: each bundle beat and entry is listed on its own (`lore/endings/ren.lute: ember`), a play's picks count in the branch/hub rows, the header reads `(plays count toward what they presented and the choices they picked, not match arms)`, and a last section lists the beats no play presented (`--json`: `untested`, `notPresentedByPlay`, each `{file, id, kind}`). |
@@ -1312,7 +1369,7 @@ timed pause.
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
 | `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (the `@` of `--occasion` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion dusk@clock.day` (or `@run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--facts at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
 | `lute lore <dir>` | Entries and beats by target and series, and which facts they reveal. |
-| `lute context <file> [--project <dir>]` | Everything legal to write here: directives (built-ins included), vocabulary, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
+| `lute context <file> [--project <dir>] [--json]` | Everything legal to write here: directives (built-ins included) with their attributes, vocabulary, delivery flags, text modifiers, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. `--json` carries the `capabilitySnapshot` hash and `textModifiers` (the core `pause` / `speed` forms). Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
 | `lute doctor [<dir>] [--strict]` | Toolchain and project setup: versions, active plugins, occasions with the number of beats answering each, play scripts and tests, whether the `lute-lsp` on `PATH` is this version, whether (0.24.0) it is the build beside the running `lute` (`lute-lsp beside lute`), and whether a running `lute-lsp` is stale (restart the editor). `--strict` (0.26.0) exits `1` when any check fails (`✗`). Since 0.26.0 `lute-lsp` itself notices that its binary was replaced and publishes one `lute-lsp-stale` "restart" diagnostic instead of an older build's results. |
 | `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | Scaffold a document or a project. New documents get an `id:` and omit what `defaults:` supplies. The file is named after the id, which keeps the case you type. `lute new scene <name> --occasion <occasion> [--target <prefix>.<member>]` writes a beat, checking both against the project; a targeted occasion needs `--target`. |
@@ -1530,11 +1587,20 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-META-MISSING` | A scene has no `id:` and no `character` + `season` + `episode`. |
 | `E-META-PARSE` | The frontmatter is not valid YAML, usually an unquoted value containing `: `. |
 | `E-META-UNKNOWN-KEY` | The key is not legal on this kind, for example `after:` on a quest (use `<quest follows=…>`). |
-| `E-CONTENT-OUTSIDE-SHOT` | Content comes before the first `## Heading`. |
-| `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood`, … is used but its slot has no declared members. |
+| `E-CONTENT-OUTSIDE-SECTION` | Content comes before the first `## Heading`. |
+| `E-INERT-TITLE` | The body has a `# Title` line. Put the title in the frontmatter's `title:`. |
+| `E-SECTION-DUP` | Two sections of one document share a `{#id}`. |
+| `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood`, `framing`, `cgLayout`, a `:style[…]` text style, … is used but its slot has no declared members. |
+| `E-CAMERA-EMPTY` | A `::camera` has none of `focus`, `framing`, `move`, `transition`. |
+| `E-MISSING-ATTR` | A required attribute is missing: `::actor` without `character`, `::cg` / `::video` without `assetId`, `::sequence` without `name`. |
+| `E-MONO-POV` / `E-MONO-NO-POV` | A `{mono}` line's speaker is neither the point of view nor in `monoSpeakers:`, or no `pov:` resolves at all (the document's, else the project's `defaults.pov`). |
+| `E-TEXT-MODIFIER` / `E-TEXT-ESCAPE` | An inline modifier is malformed: unclosed, a positional value (`:pause{0.5}` for `:pause{s=0.5}`), attributes on a text style; or an unknown `\` escape. |
+| `E-LABEL-DUP` / `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD` | Two `::label`s share a name; a `::jump` names no label in the document (a section is not one); a `::jump` points backward. |
+| `E-REWARD-DUP` | Two rewards of one quest share an `id`. |
+| `E-AUTHOR-CASE` | An authored key contains `_`. Write it in lowerCamelCase. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | The state path, or the `@def`, is not declared, or its schema is not imported. |
 | `E-MAYBE-UNSET` | A path is read that has no default and no dominating `::set` or `has` guard. Every `prev.run.*` read needs one. |
-| `E-CAST-UNKNOWN` | A cast is declared (a schema's `cast:` or a plugin `cast` export) and this speaker is not in it, or (0.24.0) an `::auto{character}`, a `::camera{focus}`, or a `speaker` component argument names someone outside it. The message suggests the nearest id. |
+| `E-CAST-UNKNOWN` | A cast is declared (a schema's `cast:` or a plugin `cast` export) and this speaker is not in it, or (0.24.0) an `::actor{character}`, a `::camera{focus}`, or a `speaker` component argument names someone outside it. The message suggests the nearest id. |
 | `W-CAST-ABSENT` | 0.24.0. The speaker's cast entry declares `present:` and the guards around the line do not imply it (a `{vo}` line is exempt). Guard the line (`@corvin{when="holds('inParty', ['corvin'])"}`) or move it under one; only a write that can falsify a guard cancels it. A single-file `check` cannot see facts asserted on every route; `check-project` can. |
 | `E-BAD-ENUM` | A value outside its enum; since 0.24.0 also an `emotion=` outside the speaker's cast `emotions:` (`happy` is not one of `isolde`'s emotions), and since 0.26.0 a value outside the kind of an attribute typed `{ entity: K }` (with a did-you-mean, also through a component param). |
 | `E-ENGINE-OWNED-WRITE` | A `::set` writes a path declared `owner: engine`. Content only reads it; `lute play` writes it with an `engine:` step, and trace and test with a mock's `state:`. |
@@ -1573,12 +1639,12 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, `check-project` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
-| `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::mark`, a plugin `lower:` record), and a plugin attribute named `when`. |
+| `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')` or `after` names no scene (or, since 0.24.0, bundle beat) in the project. |
 | `E-CLOCK-DECL` | 0.24.0. The schema's `clock:` is malformed: `day` / `slot` undeclared, mistyped, or not `owner: engine` (`` `day: run.day` must be declared `owner: engine` ``), `slots` not the slot enum's members or given without `slot`, an unknown `raise` occasion (once a plugin declares occasions) or one with a `payload:` (0.28.0), or a second clock. |
 | `E-SEASON-DECL` | 0.27.0. A `seasons:` entry is malformed (not a map, no or empty `live`, unknown key, bad name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season. A write to `prev.season.*` is `E-QUEST-RESERVED-WRITE`, as for `prev.run.*`. |
 | `E-TEMPLATE` | 0.27.0. A beat template is misused: `<beat use>` names no imported component (did-you-mean) or one without a `beat:` header, the header has an unknown key (`id` included) or a `@name` that is no param, a plain-text header key gets an expression argument, or `::body` sits anywhere but the top level of a template. |
-| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`'s `chapters:` is not a list of `{ on, scenes }` chains, lists a scene twice or puts two chains on one occasion, or still uses the retired `sequence:` key; or (`check-project`) a chain answers an occasion no plugin declares, lists an id no scene declares (did-you-mean), a scene whose own `on:` answers another occasion, or — on a targeted occasion — a scene without `target:`. Each scene of an applied chain otherwise gets `on:`, a descending `priority:` and (except on a `select: sequence` occasion) `after: visited("<previous>")` it does not write itself. |
+| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`'s `chapters:` is not a list of `{ on, scenes }` chains, lists a scene twice or puts two chains on one occasion; or (`check-project`) a chain answers an occasion no plugin declares, lists an id no scene declares (did-you-mean), a scene whose own `on:` answers another occasion, or — on a targeted occasion — a scene without `target:`. Each scene of an applied chain otherwise gets `on:`, a descending `priority:` and (except on a `select: sequence` occasion) `after: visited("<previous>")` it does not write itself. A top-level `sequence:` key is `E-REMOVED-PROJECT-KEY`. |
 | `W-CHAPTER-STALL` | 0.28.0. A chained scene's own `when:` reads state that may never make it true, and the next scene's `after:` waits on it, so the chapters may stop there. A `when:` over the clock alone is reported only when its window closes (no later raise of the occasion meets it). |
 | `W-CHAPTER-ORDER` | 0.28.0. On a `select: sequence` occasion, a chained scene's own `priority:` plays it out of the listed order. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. An enum's `labels:` names something that is not one of its members. |
@@ -1588,7 +1654,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-RELATION-UNREAD` / `W-DEF-UNUSED` | 0.24.0, `check-project`, at the declaration. A relation is asserted, seeded, or derived but no condition, rule body, or def reads it; or no content, def, or rule guard references a `@def`. Play scripts and tests are not reads. |
 | `E-PLUGIN-PARSE` / `E-PLUGIN-KEY` | A plugin export does not parse, or (`E-PLUGIN-KEY`) holds a key it does not take (``has no key `selct` — did you mean `select`?``, at its line; 0.28.0 also checks `plugin.yaml`). `E-PLUGIN-PARSE` also covers a `lower: { kind: builtin }` naming no core hook; the follow-up `E-PLUGIN-MISSING-ACTIVE` says the plugin failed to load. |
 | `E-CONN-EPISODE-ID-DUP` / `E-QUEST-ID-DUP` | Two documents share a scene id or a quest id, or a bundle beat's canonical `<doc>.<beat>` id equals a scene id. |
-| `E-DUP-VOICEKEY` | Lines with different text compile to one `voiceKey`, typically under a pinned `{speaker}-{code}` template. Use the default `{prefix}.{speaker}-{code}`, or give the lines distinct `code=`s. |
+| `E-DUP-VOICEKEY` | Lines with different text compile to one `voiceKey`, typically under a pinned `{speaker}-{code}` template. Every line counts, narration and `{mono}` included, and the text compared is the plain text with modifiers stripped. Use the default `{prefix}.{speaker}-{code}`, or give the lines distinct `code=`s. |
 | `E-CAPABILITY-MISMATCH` | The project's documents resolve two capability snapshots (different profiles or scene-local `plugins:`), so it cannot compile as one. |
 | `E-TEST-LORE` | A `*.test.yaml` names a lore document without `entry:`, `entries:`, or `beat:`. Name what it presents. |
 | `E-TEST-FILE` | A `*.test.yaml`'s `file:` names no document. The test fails; the rest of the suite still runs. |
@@ -1598,6 +1664,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-BEAT-SHADOWED` | An earlier beat that is always eligible and never spent wins every time. |
 | `W-ENTRY-REF-UNKNOWN` | `entry.<id>.read` or `entry.<id>.everRead` names an entry that nothing declares. |
 | `E-LEGACY-CONTENT-SIGIL` · `W-WHEN-TEST-LITERAL` | Old syntax. `lute fix` rewrites it. |
+| `E-RENAMED-DIRECTIVE` · `E-RENAMED-ATTR` · `E-RENAMED-TAG-ATTR` | A spelling from before 0.37; the message names the current one, and `lute fix` rewrites it. |
+| `E-REMOVED-ATTR` · `E-CAMERA-REMOVED` · `E-CG-LAYOUT` · `E-REMOVED-TAG` · `E-REMOVED-PROJECT-KEY` | A form removed in 0.37 with no lossless rewrite. The message names the replacement (a declared `framing` / `cameraMove` / `cgLayout` member, an `assetId`); migrate it by hand. |
 | `E-PERSIST-REMOVED` | Delete `persist=` from the choice by hand; `into=` alone records the run fact. |
 
 ## Gotchas
@@ -1654,7 +1722,7 @@ quest status with the script's top-level `quests:`. With a clock (0.24.0), move 
 `advance:` step; an `engine:` step that moves `clock.index` backward is a usage error.
 
 **A `::bg` scene change takes everyone off stage.** A character it auto-hid is recorded as exited,
-so a later line by them is `W-STAGE-ABSENT` until an `::auto` shows them again. `::clear` (0.24.0)
+so a later line by them is `W-STAGE-ABSENT` until an `::actor` shows them again. `::clear` (0.24.0)
 exits everyone the same way but keeps the background, and the warning then names the `::clear`.
 With a `::bg`:
 
@@ -1669,10 +1737,10 @@ enums:
 
 ## Dock
 
-::auto{character="mira" action="fadeInUp"}
+::actor{character="mira" action="fadeInUp"}
 @mira: Over here.
 ::bg{location="street" time="night"}
-::auto{character="mira" action="fadeInUp"}
+::actor{character="mira" action="fadeInUp"}
 @mira: Keep walking.
 ```
 
@@ -1708,15 +1776,15 @@ id: choice.readback
 ## Ask
 
 <branch id="ask" timeout="10">
-  <choice id="yes" label="Yes">
+  <choice id="yes" text="Yes">
     @mira: Great.
   </choice>
-  <choice id="no" label="No">
+  <choice id="no" text="No">
     @mira: Oh.
   </choice>
 </branch>
 
-<match on="scene.choices.ask">
+<match subject="scene.choices.ask">
   <when is="yes">
     @mira: You said yes.
   </when>
@@ -1743,13 +1811,13 @@ in `lute test` that fails the test unless it declares `expect: { end: incomplete
 (a mock, test, or play-script key) or `--no-derive` restores the 0.21 explicit world: no seeds, and
 an unmocked derived atom is unknown.
 
-**Directive attributes take bare refs to constant defs.** Write `::camera{zoom=@closeUp}`. The
-quoted `zoom="@closeUp"` is the literal string `@closeUp` (`E-ATTR-TYPE` on a numeric attribute). A
-def that reads state is `E-ATTR-DEF-DYNAMIC`.
+**Directive attributes take bare refs to constant defs.** Write `::camera{framing="closeUp" duration=@holdTime}`.
+The quoted `duration="@holdTime"` is the literal string `@holdTime` (`E-ATTR-TYPE` on a numeric
+attribute). A def that reads state is `E-ATTR-DEF-DYNAMIC`.
 
-**Attribute values use double quotes.** `label='"Hi."'` is `E-ATTR-QUOTE`. Write
-`label="\"Hi.\""`; the label is `"Hi."`. Curly quotes pasted from a word processor
-(`label=“Hi”`) are `E-ATTR-QUOTE` too: retype them as straight `"`.
+**Attribute values use double quotes.** `text='"Hi."'` is `E-ATTR-QUOTE`. Write
+`text="\"Hi.\""`; the choice text is `"Hi."`. Curly quotes pasted from a word processor
+(`text=“Hi”`) are `E-ATTR-QUOTE` too: retype them as straight `"`.
 
 **Numbers are real numbers in `<match>`.** `is="1..9"` followed by `is="10.."` does not cover
 `9.5`. Add an `<otherwise>`, or use open ranges that meet.
@@ -1777,9 +1845,9 @@ state:
 @mira: You're early.
 ```
 
-**`lute trace` follows a taken `::next` (0.26.0).** Before 0.26 the trace reported the jump and
+**`lute trace` follows a taken `::jump` (0.26.0).** Before 0.26 the trace reported the jump and
 ended there, and a test could pass `end: complete` on a walk that never reached the content after
-the `::mark`. Now trace and test continue at the mark (`<next -> outro>`), as `lute play` and
+the `::label`. Now trace and test continue at the label (`<jump -> outro>`), as `lute play` and
 `lute run` do, and `end: complete` means the walk reached the end of the body.
 
 **A test that walks an ineligible beat fails (0.26.0).** Trace still presents an entry or beat

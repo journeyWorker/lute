@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.36.6`, the grammar and semantics the checker
+- **Language** — currently `0.37.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.36.6`) and gated on by consuming engines.
+  artifact (currently `0.37.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,115 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.37.0] - 2026-10-07
+
+**Surface cleanup** (spec [`0.37.0.md`](docs/proposals/scenario-dsl/0.37.0.md);
+plan [`2026-10-07-lute-0.37.0-surface.md`](docs/superpowers/plans/2026-10-07-lute-0.37.0-surface.md)).
+A clean pre-1.0 breaking cutover of language and IR: every renamed spelling is
+diagnosed and none is accepted as an alias. Run `lute fix` for the lossless
+rewrites, then hand-migrate the items listed under Migration.
+
+### Syntax
+
+- Renamed directives: `::auto` → `::actor`, `::cut` → `::cg`, `::next` →
+  `::jump`, `::mark{id=…}` → `::label{name=…}`.
+- Renamed attributes: music `action` → `playback`; video/cg `action` →
+  `display`; choice `label` → `text`; `<match on>` → `<match subject>`.
+- `##` headings are **sections** (were shots) and take an optional
+  `{#stable-id}` suffix; `<reward>` takes an optional `id`.
+- Inline text modifiers after a content line's second colon: core
+  `:pause{s=…}` and `:speed[text]{rate=…}`, plus span modifiers named by the
+  project `textStyle` domain; `\:` `\[` `\]` `\{` `\}` `\\` escapes.
+- New `::sequence{name=…}` (domain `sequence`, `wait` defaults to `true`);
+  `::actor` gains `emotion` and `costume`; `::camera` takes `focus` /
+  `framing` / `move` / `transition` domain members.
+- Removed: camera `zoom`/`moveX`/`moveY`/`shake`/`reset`/`easing`, cg `full`
+  (use `layout`), music `track` and sfx `name` (use `assetId`/`sound`), line
+  `id` (use a preceding `::label`), project `sequence:`, reserved `<scene>`,
+  body `# title` (use frontmatter `title:`). Author keys are lowerCamelCase.
+
+### Semantics
+
+- Staging vocabulary comes from project-declared closed domains: `anchor`,
+  `action` (its `exits` is the only actor-exit rule), `emotion`, `framing`,
+  `cameraMove`, `transition`, `cgLayout`, `musicPlayback` (renamed from
+  `musicAction` everywhere, no alias), `costume`, `sequence`, `textStyle`.
+- Mono POV rule: a `mono` line's speaker must be the effective POV
+  (`pov`, falling back to project `defaults.pov`) or listed in the new
+  defaultable `monoSpeakers`; component lines are checked at every `::use`
+  site with the caller's context.
+- Every line, narration and mono included, carries a `voiceKey`; the
+  project-wide duplicate check compares modifier-stripped text.
+- Section and reward ids are unique per document / per quest and become the
+  stable identity keys when present; `::sequence` is recorded, not simulated,
+  by the reference runner.
+- Locale merge requires each translation to carry the source's modifier
+  multiset.
+
+### IR
+
+- Kinds/fields renamed: `sprite` → `actor`, `cut` → `cg`, `background` → `bg`,
+  roles `offscreen`/`voiceover`/`monologue` → `os`/`vo`/`mono`, `shots` →
+  `sections` (optional `id`), `addr` → `position`, `capabilityVersion` →
+  `capabilitySnapshot`, `recordKey` → `selectionKey`, option `label` → `text`,
+  `vfxType` → `type`, music `action` → `playback`, cg/video `action` →
+  `display` (always emitted, default `show`).
+- Every command carries `family` (`content`, `staging`, `state`, `control`,
+  `declaration`, `plugin`); flattened timing fields move into one `timing`
+  object (`wait`, `duration`, `delay`, `at` in seconds, `timeline` ordinal).
+- Lines carry `segments` / `localeSegments` when modified; `texts[locale]` is
+  always the plain derivation. New `sequence` record; `actor.emotion` /
+  `costume` are emitted; `RewardEntry.id`.
+- Removed: `provenance.injected`, `track`, sfx `name`, numeric camera fields.
+  Schema renamed to `schemas/lute-ir-0.37.schema.json`; the reference runner
+  rejects removed fields with `E-IR-REMOVED-FIELD`.
+
+### Plugin
+
+- Plugin commands are Rust `Command::Plugin` (was `Command::Other`), still
+  serialized `kind: "plugin"`, `family: "plugin"`. Plugin declarations using
+  domain `musicAction` must rename it to `musicPlayback`.
+
+### CLI
+
+- `lute fix` rewrites the lossless forms: renamed directives and attributes,
+  `<match on>`, choice `label`, line `id="x"` → preceding
+  `::label{name="x"}`, and provably unique lowerCamel key edits; it never
+  invents modifiers. Hand migration (diagnosed, never guessed): camera numeric
+  fields, cg `full`, music `track`, sfx `name`, missing POV / `monoSpeakers`,
+  project `sequence:`, `<scene>`, body `# title`.
+- `lute play --json`, trace, `lute context --json`, the project index and
+  bridge snapshots emit `position`, `capabilitySnapshot` and the new
+  kind/family names with no alias.
+- LSP: sections, `::jump`/`::label`, `::actor` and inline modifiers.
+
+### Diagnostics
+
+- New: `E-RENAMED-DIRECTIVE`, `E-RENAMED-ATTR`, `E-RENAMED-TAG-ATTR`,
+  `E-REMOVED-ATTR`, `E-REMOVED-PROJECT-KEY`, `E-REMOVED-TAG`, `E-INERT-TITLE`,
+  `E-AUTHOR-CASE`, `E-SECTION-DUP`, `E-SECTION-SUFFIX`, `E-REWARD-DUP`,
+  `E-CAMERA-EMPTY`, `E-CAMERA-REMOVED`, `E-CG-LAYOUT`, `E-MONO-POV`,
+  `E-MONO-NO-POV`, `E-TEXT-MODIFIER`, `E-TEXT-ESCAPE`, `E-L10N-MODIFIERS`,
+  `E-IR-REMOVED-FIELD`.
+- Renamed: `E-CONTENT-OUTSIDE-SHOT` → `E-CONTENT-OUTSIDE-SECTION`,
+  `E-NEXT-BACKWARD` → `E-JUMP-BACKWARD`, `E-NEXT-UNDEFINED` →
+  `E-JUMP-UNDEFINED`, `E-MARK-DUP` → `E-LABEL-DUP`, `W-CODE-AFTER-NEXT` →
+  `W-CODE-AFTER-JUMP`; `E-TITLE-PLACEMENT` is replaced by `E-INERT-TITLE`.
+- `E-DUP-VOICEKEY` now covers every line role.
+
+### Identity
+
+- Section `{#id}` and reward `id` are stable identity metadata; sections and
+  rewards without one keep a position / declaration-index fallback reported as
+  non-stable. `position` is regenerated on reorder and is never a durable id.
+
+### Tooling
+
+- tree-sitter grammar: sections and `{#id}`, inline modifiers,
+  `::actor`/`::cg`/`::sequence`/`::jump`/`::label`, `capabilitySnapshot`
+  stamp. Dogfood games, examples, conformance corpus (new 0.37 fixtures),
+  docs, handbook and website EN/KO migrated to the 0.37 surface.
 
 ## [0.36.6] - 2026-10-06
 

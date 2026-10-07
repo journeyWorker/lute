@@ -100,6 +100,12 @@ pub fn check_directive(
     let mut diags = Vec::new();
 
     let Some(decl) = snapshot.directive(&dir.tag) else {
+        // dsl 0.37.0 §4: an old core tag names its new spelling, even where a
+        // nearest-name suggestion would also be available.
+        if let Some(d) = crate::renames::renamed_directive_diag(dir) {
+            diags.push(d);
+            return diags;
+        }
         // plugin §11.2: an installed-but-inactive tag is a diagnostic WITH a
         // fix-it (naming the plugin to activate), never silently accepted; a
         // truly-unknown tag still yields the plain staging-layer error.
@@ -116,8 +122,8 @@ pub fn check_directive(
                 confidence: 50,
             });
         }
-        // Round-6 T3-60: a misspelled or foreign directive (`::goto`/`::jump`/
-        // `::divert`, a sibling of `::next`) names the directive it stands
+        // Round-6 T3-60: a misspelled or foreign directive (`::goto`/
+        // `::divert`, a sibling of `::jump`) names the directive it stands
         // for. An inactive plugin tag is named by its fix-it instead.
         let hint = if fixits.is_empty() {
             let known = snapshot
@@ -126,8 +132,8 @@ pub fn check_directive(
                 .map(String::as_str)
                 .chain(["use", "accept", "set", "assert", "retract"]);
             match lute_manifest::suggest::nearest(&dir.tag, known, 2) {
-                Some(lute_manifest::core::NEXT_DIRECTIVE) => {
-                    " — did you mean `::next{to=\"…\"}`? It jumps forward to a `::mark{id=\"…\"}`"
+                Some(lute_manifest::core::JUMP_DIRECTIVE) => {
+                    " — did you mean `::jump{to=\"…\"}`? It jumps forward to a `::label{name=\"…\"}`"
                         .to_string()
                 }
                 Some(near) => format!(" — did you mean `::{near}`?"),
@@ -228,6 +234,12 @@ pub fn check_directive(
                 );
                 continue;
             }
+            // dsl 0.37.0 §4: a renamed or removed core attribute names its
+            // replacement instead of a spelling neighbour.
+            if let Some(d) = crate::renames::attr_diag(&dir.tag, attr) {
+                diags.push(d);
+                continue;
+            }
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
@@ -293,9 +305,13 @@ pub fn check_directive(
         );
     }
 
-    // Missing required attributes (dsl §7.2).
+    // Missing required attributes (dsl §7.2). A required key written under
+    // its renamed old spelling already drew `E-RENAMED-ATTR`.
     for adecl in decl.attrs.iter().filter(|a| a.required) {
-        if !dir.attrs.iter().any(|a| a.key == adecl.name) {
+        let renamed_present = dir.attrs.iter().any(|a| {
+            crate::renames::renamed_directive_attr(&dir.tag, &a.key) == Some(adecl.name.as_str())
+        });
+        if !renamed_present && !dir.attrs.iter().any(|a| a.key == adecl.name) {
             diags.push(diag(
                 "E-MISSING-ATTR",
                 Severity::Error,
@@ -304,6 +320,8 @@ pub fn check_directive(
             ));
         }
     }
+    // dsl 0.37.0 §3.3: a camera move needs something to do.
+    diags.extend(crate::renames::camera_empty(dir));
     // dsl 0.27.0 §4: the facts the call's declared `effects.asserts` /
     // `retracts` write, judged like an `::assert` / `::retract` of them.
     if decl.effects.as_ref().is_some_and(|e| e.has_facts()) {
@@ -356,8 +374,8 @@ pub struct LanguageDirective {
 /// The built-in directives: the ones the walker recognizes by tag before any
 /// capability lookup (`::set`/`::assert`/`::retract` parse to their own
 /// nodes; `::use`, `::accept`, `::body` are dispatched in the walker), and
-/// the `lute.core` control-flow directives every project has (`::next`,
-/// `::mark`, `::end`, `::clear`, checked against their core declarations).
+/// the `lute.core` control-flow directives every project has (`::jump`,
+/// `::label`, `::end`, `::clear`, checked against their core declarations).
 /// `lute context` lists exactly these.
 pub const LANGUAGE_DIRECTIVES: &[LanguageDirective] = &[
     LanguageDirective {
@@ -395,14 +413,14 @@ pub const LANGUAGE_DIRECTIVES: &[LanguageDirective] = &[
                   `<beat use=…>`'s own body goes",
     },
     LanguageDirective {
-        name: lute_manifest::core::NEXT_DIRECTIVE,
+        name: lute_manifest::core::JUMP_DIRECTIVE,
         syntax: None,
-        meaning: "jump forward to the `::mark` named by `to` (only while `when` holds)",
+        meaning: "jump forward to the `::label` named by `to` (only while `when` holds)",
     },
     LanguageDirective {
-        name: lute_manifest::core::MARK_DIRECTIVE,
+        name: lute_manifest::core::LABEL_DIRECTIVE,
         syntax: None,
-        meaning: "name the position a `::next{to=…}` jumps to",
+        meaning: "name the position a `::jump{to=…}` jumps to",
     },
     LanguageDirective {
         name: lute_manifest::core::END_DIRECTIVE,
@@ -484,7 +502,7 @@ pub(crate) fn check_attr_value(
 }
 
 /// Enum-membership check shared by `Type::Enum` and resolved `EnumFromOption`.
-/// `owner` is the ALREADY-RENDERED owning construct — `"::auto"` for a
+/// `owner` is the ALREADY-RENDERED owning construct — `"::actor"` for a
 /// directive, `"@narrator"` for a content line. The sigil belongs to the
 /// caller, never to this function: hardcoding `::` here is what made every
 /// content-line enum error name a directive that does not exist (#33, T1.4).
@@ -1051,7 +1069,7 @@ mod tests {
 
     #[test]
     fn bad_enum_value_errors() {
-        let d = directive("music", &[("action", "explode")]); // not in musicAction enum
+        let d = directive("music", &[("playback", "explode")]); // not in musicPlayback enum
         let errs = check_directive(
             &d,
             &load_core_snapshot(),
@@ -1064,7 +1082,7 @@ mod tests {
 
     #[test]
     fn known_directive_valid_attrs_pass() {
-        let d = directive("music", &[("action", "start"), ("mood", "peaceful")]);
+        let d = directive("music", &[("playback", "start"), ("mood", "peaceful")]);
         let errs = check_directive(
             &d,
             &load_core_snapshot(),
@@ -1076,67 +1094,82 @@ mod tests {
     }
 
     #[test]
-    fn camera_non_numeric_zoom_errors() {
-        // Numeric camera attrs are declared `number`; a non-numeric literal is a
-        // check-time type error (closes the coercion seam — Plan C review).
-        let d = directive("camera", &[("zoom", "hard")]);
+    fn camera_removed_attrs_error() {
+        // dsl 0.37.0 §3.3: the numeric/legacy camera attrs are gone; each is
+        // `E-CAMERA-REMOVED` (hand migration to project vocabulary).
+        let removed = ["zoom", "moveX", "moveY", "shake", "reset", "easing"];
+        for key in removed {
+            let d = directive("camera", &[(key, "1")]);
+            let errs = check_directive(
+                &d,
+                &load_core_snapshot(),
+                &empty_providers(),
+                &empty_domains(),
+                &ctx(),
+            );
+            assert!(
+                errs.iter().any(|e| e.code == "E-CAMERA-REMOVED"),
+                "expected E-CAMERA-REMOVED for `{key}`, got {errs:?}"
+            );
+        }
+    }
+
+    /// Camera domains for the 0.37 slots, declared the way a project does.
+    fn camera_domains() -> BTreeMap<String, Domain> {
+        let closed = |members: &[&str]| Domain {
+            members: members.iter().map(|m| m.to_string()).collect(),
+            open: false,
+            default: None,
+            exits: Vec::new(),
+            labels: BTreeMap::new(),
+        };
+        BTreeMap::from([
+            ("framing".to_string(), closed(&["wide", "close"])),
+            ("cameraMove".to_string(), closed(&["shake", "pan"])),
+            ("transition".to_string(), closed(&["fade"])),
+        ])
+    }
+
+    #[test]
+    fn camera_member_outside_its_domain_errors() {
+        let d = directive("camera", &[("move", "spin")]);
         let errs = check_directive(
             &d,
             &load_core_snapshot(),
             &empty_providers(),
-            &empty_domains(),
+            &camera_domains(),
             &ctx(),
         );
         assert!(
-            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
-            "expected E-ATTR-TYPE for non-numeric zoom, got {errs:?}"
+            errs.iter().any(|e| e.code == "E-BAD-ENUM"),
+            "expected E-BAD-ENUM for an undeclared `cameraMove` member, got {errs:?}"
         );
     }
 
     #[test]
-    fn camera_non_numeric_shake_errors() {
-        // `::camera{shake="hard"}` must be rejected at check, not silently dropped
-        // by the compiler's get_f64 coercion (Plan C review).
-        let d = directive("camera", &[("shake", "hard")]);
-        let errs = check_directive(
-            &d,
-            &load_core_snapshot(),
-            &empty_providers(),
-            &empty_domains(),
-            &ctx(),
-        );
-        assert!(
-            errs.iter().any(|e| e.code == "E-ATTR-TYPE"),
-            "expected E-ATTR-TYPE for non-numeric shake, got {errs:?}"
-        );
-    }
-
-    #[test]
-    fn camera_numeric_attrs_pass() {
-        // Valid numeric literals for zoom/moveX/moveY/shake still validate.
+    fn camera_domain_attrs_pass() {
         let d = directive(
             "camera",
             &[
-                ("zoom", "1.1"),
-                ("moveX", "0.2"),
-                ("moveY", "0.3"),
-                ("shake", "0.4"),
+                ("framing", "close"),
+                ("move", "shake"),
+                ("transition", "fade"),
             ],
         );
         let errs = check_directive(
             &d,
             &load_core_snapshot(),
             &empty_providers(),
-            &empty_domains(),
+            &camera_domains(),
             &ctx(),
         );
         assert!(errs.is_empty(), "{errs:?}");
     }
 
-    /// The kebab `move-x` / `move-y` spellings are gone: each is
-    /// `E-UNKNOWN-ATTR` at the attribute, naming the camelCase attribute.
+    /// The kebab `move-x` / `move-y` spellings are unknown attributes; the
+    /// nearest camera attribute is `move`.
     #[test]
-    fn camera_kebab_move_attrs_name_the_camel_case_spelling() {
+    fn camera_kebab_move_attrs_name_the_move_attr() {
         let d = directive("camera", &[("move-x", "0.2"), ("move-y", "0.3")]);
         let errs = check_directive(
             &d,
@@ -1153,8 +1186,8 @@ mod tests {
         assert_eq!(
             msgs,
             [
-                "`::camera` has no attribute `move-x` — did you mean `moveX`?",
-                "`::camera` has no attribute `move-y` — did you mean `moveY`?",
+                "`::camera` has no attribute `move-x` — did you mean `move`?",
+                "`::camera` has no attribute `move-y` — did you mean `move`?",
             ],
             "{errs:?}"
         );
@@ -1224,7 +1257,7 @@ mod tests {
     fn undeclared_delay_on_core_directive_without_timing_decl_no_unknown_attr() {
         // `music` (core) declares no timing attrs at all -- the fallback must
         // apply to core directives just as much as plugin ones.
-        let d = directive("music", &[("action", "start"), ("delay", "1.0")]);
+        let d = directive("music", &[("playback", "start"), ("delay", "1.0")]);
         let errs = check_directive(
             &d,
             &load_core_snapshot(),
@@ -1349,7 +1382,7 @@ mod tests {
         // Regression guard: core `camera` DECLARES duration/delay/wait
         // (staging.yaml) -- the declared path must keep taking precedence
         // over the fallback and stay clean.
-        let d = directive("camera", &[("duration", "0.5"), ("wait", "false")]);
+        let d = directive("camera", &[("focus", "hero"), ("duration", "0.5"), ("wait", "false")]);
         let errs = check_directive(
             &d,
             &load_core_snapshot(),

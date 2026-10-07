@@ -12,15 +12,15 @@ title: Verdant City
 
 <beat id="arrive" on="enterTown" target="town.verdantcity" title="Verdant City" priority="10">
   ::bg{location="verdant-city" time="day"}
-  ::music{action="change" mood="calm" volume="normal"}
+  ::music{playback="change" mood="calm" volume="normal"}
   @narrator{code="0010"}: Verdant City is all hedges, fountains and flowerbeds, laid out in rings around a gym with no sign and no windows.
   @narrator{code="0020"}: Two figures in black stand by the gym doors, arms folded. The letters on their jackets catch the light: ECLIPSE.
-  ::auto{character="rival" anchor="right" action="enter"}
+  ::actor{character="rival" anchor="right" action="enter"}
   @rival{code="0010" emotion="smug"}: Took your time, didn't you? I've been here since breakfast.
   @rival{code="0020"}: The Earth Gym's locked. Seven badges or no entry, says the notice. I have seven. The door says I don't. I think the door is lying.
   @rival{code="0030" emotion="determined"}: Those two by the door are Eclipse. Whoever runs this gym, they're working for them. Or the other way round.
   @rival{code="0040"}: I'm going to Victory Road to warm up. Try to be less slow.
-  ::auto{character="rival" action="exit"}
+  ::actor{character="rival" action="exit"}
 </beat>
 
 <entry id="northVerdantMorning" on="enterTown" target="town.verdantcity" category="bark" once="day" when="@isMorning">
@@ -50,20 +50,20 @@ title: Verdant City
 // ── Historian Wren: the twin legends (northTwinLegends) ────────────────────
 
 <beat id="wrenLegends" on="talk" target="npc.verdantHistorian" title="The twin legends" priority="20" once="false" when="quest.northTwinLegends.state != 'complete'">
-  ::auto{character="verdantHistorian" anchor="center" action="enter"}
+  ::actor{character="verdantHistorian" anchor="center" action="enter"}
   @verdantHistorian{code="0010" when="quest.northTwinLegends.state != 'unset'"}: Back again? The stories don't change, but I tell them better every time.
   @verdantHistorian{code="0020" when="quest.northTwinLegends.state == 'unset'"}: Ah, a trainer with a Dex. I am writing a history of the two birds of the north. Would you like to hear the stories?
   ::accept{quest="northTwinLegends" when="quest.northTwinLegends.state == 'unset'"}
   <hub id="northWrenStories" prompt="Which story?">
-    <choice id="ice" label="The ice bird" once>
+    <choice id="ice" text="The ice bird" once>
       @verdantHistorian{code="0030"}: Below the Frostharbor caverns there is a passage that never thaws. The fishers say a bird of ice sleeps there, and that its breath makes the winters.
       ::accept{quest="northFrostwing"}
     </choice>
-    <choice id="fire" label="The fire bird" once>
+    <choice id="fire" text="The fire bird" once>
       @verdantHistorian{code="0040"}: Victory Road has a crater near its summit that is always hot. The miners who dug the road swore a bird of fire nested there, and moved the road around it rather than argue.
       ::accept{quest="northBlazewing"}
     </choice>
-    <choice id="leave" label="That's enough for now" exit>
+    <choice id="leave" text="That's enough for now" exit>
       @verdantHistorian{code="0050" emotion="happy"}: Come back if you see either one. Bring your Dex. I want every detail.
     </choice>
   </hub>

@@ -1,14 +1,14 @@
 ==================
-three layers in one shot (content + staging + logic)
+three layers in one section (content + staging + logic)
 ==================
-## Shot 1.
-::camera{focus="marina" zoom="1.1"}
+## Section 1.
+::camera{focus="marina" framing="medium"}
 @narrator: A hostess walked over.
 ::set{scene.affect.marina += 1}
 ---
 (source_file
-  (shot
-    (text)
+  (section
+    (heading)
     (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))
     (line (speaker) (text))
     (set (path) (assign_op) (cel_expr))))
@@ -25,7 +25,7 @@ bare @ref attribute values (reference tag targets)
 logic branch/choice with nested content + set
 ==================
 <branch id="number">
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     @fixer: Your number?
     ::set{scene.affect.marina += 1}
   </choice>
@@ -45,7 +45,7 @@ timeline/track staging block
 ==================
 <timeline duration="1.4">
   <track subject="camera">
-    ::camera{zoom="1.35"}
+    ::camera{framing="close"}
   </track>
 </timeline>
 ---

@@ -55,6 +55,7 @@ character: marina
 season: 1
 episode: 2
 title: Compile me
+pov: fixer
 state:
   scene.affect.marina: { type: int, default: 0 }
 defs:
@@ -64,19 +65,19 @@ defs:
 ## Shot 1.
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
-::auto{character="marina" action="fadeInUp"}
+::actor{character="marina" action="fadeInUp"}
 @marina{code="0010" emotion="surprised"}: Oh!
 
 <branch id="number">
-  <choice id="blunt" label="Flat">
+  <choice id="blunt" text="Flat">
     @fixer{code="0010"}: Number.
   </choice>
-  <choice id="soft" label="Gentle">
+  <choice id="soft" text="Gentle">
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
 
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
     @fixer{mono}: Nice.
   </when>
@@ -143,13 +144,13 @@ state:
 ## Shot 1.
 
 <hub id="chat">
-  <choice id="ask" label="Ask" once>
+  <choice id="ask" text="Ask" once>
     @narrator: Sure.
   </choice>
-  <choice id="curious" label="Be curious" when="scene.affect.b >= 1">
+  <choice id="curious" text="Be curious" when="scene.affect.b >= 1">
     @narrator: Hmm.
   </choice>
-  <choice id="leave" label="Leave" exit>
+  <choice id="leave" text="Leave" exit>
     @narrator: Bye.
   </choice>
 </hub>
@@ -159,7 +160,7 @@ state:
     assert!(lute_check::check(&input(HUB)).ok, "hub doc must pass check");
     let artifact = compile(&input(HUB)).expect("hub doc compiles to a hub record");
 
-    // The `hub` record: id, recordKey alias, filled converge, three options.
+    // The `hub` record: id, selectionKey alias, filled converge, three options.
     let hub = artifact
         .commands
         .iter()
@@ -169,7 +170,7 @@ state:
         })
         .expect("hub record");
     assert_eq!(hub.id, "chat");
-    assert_eq!(hub.record_key, "scene.choices.chat");
+    assert_eq!(hub.selection_key, "scene.choices.chat");
     assert!(
         !hub.converge.is_empty(),
         "converge addr filled by address pass"
@@ -221,7 +222,7 @@ state:
         "the exit-arm jump targets the hub converge"
     );
 
-    // Serialized shape: kind:"hub", recordKey, options[*].once/exit are bools.
+    // Serialized shape: kind:"hub", selectionKey, options[*].once/exit are bools.
     let json = serde_json::to_value(
         artifact
             .commands
@@ -231,7 +232,7 @@ state:
     )
     .unwrap();
     assert_eq!(json["kind"], "hub");
-    assert_eq!(json["recordKey"], "scene.choices.chat");
+    assert_eq!(json["selectionKey"], "scene.choices.chat");
     assert!(
         json["converge"].as_str().is_some_and(|s| !s.is_empty()),
         "converge present"
@@ -274,12 +275,12 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.36.6");
-    assert_eq!(artifact.ir_version, "0.36.6");
-    assert_eq!(artifact.capability_version, inp.snapshot.version);
+    assert_eq!(artifact.lute, "0.37.0");
+    assert_eq!(artifact.ir_version, "0.37.0");
+    assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
     assert!(
-        !artifact.capability_version.is_empty(),
-        "capabilityVersion must be a non-empty snapshot stamp"
+        !artifact.capability_snapshot.is_empty(),
+        "capabilitySnapshot must be a non-empty snapshot stamp"
     );
     let envelope = serde_json::to_value(&artifact).unwrap();
     assert!(envelope["celEnv"].is_object(), "compiled envelope carries celEnv");
@@ -307,8 +308,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
 
     // First record: the bg, addressed densely.
     let json = serde_json::to_value(&artifact.commands[0]).unwrap();
-    assert_eq!(json["kind"], "background");
-    assert_eq!(json["addr"], "001-0100");
+    assert_eq!(json["kind"], "bg");
+    assert_eq!(json["position"], "001-0100");
 
     // Match arms expanded: @fond parenthesized; $ replaced by the subject.
     let m = artifact
@@ -339,13 +340,13 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     }
 
     // Back-filled thought-line ids (fixer max authored 0010 -> 0020/0030/0040),
-    // monologue => no voiceKey.
+    // monologue => a voiceKey too (dsl 0.37.0 D6).
     let thoughts: Vec<(&str, Option<&str>)> = artifact
         .commands
         .iter()
         .filter_map(|c| match c {
             Command::Line(l) if l.text != "Number." && l.speaker == "fixer" => {
-                Some((l.line_id.as_str(), l.voice_key.as_deref()))
+                Some((l.line_id.as_str(), Some(l.voice_key.as_str())))
             }
             _ => None,
         })
@@ -353,9 +354,9 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     assert_eq!(
         thoughts,
         vec![
-            ("marina.s01ep02.fixer_0020", None),
-            ("marina.s01ep02.fixer_0030", None),
-            ("marina.s01ep02.fixer_0040", None),
+            ("marina.s01ep02.fixer_0020", Some("marina.s01ep02.fixer-0020")),
+            ("marina.s01ep02.fixer_0030", Some("marina.s01ep02.fixer-0030")),
+            ("marina.s01ep02.fixer_0040", Some("marina.s01ep02.fixer-0040")),
         ]
     );
 
@@ -422,11 +423,11 @@ episodeId: ep02final
 
 #[test]
 fn cut_wait_default_is_reachable_through_the_compile_gate() {
-    // C5 review: `::cut`'s manifest declares only assetId/action/full — NO
-    // `wait` — so an authored `wait` on `::cut` is rejected `E-UNKNOWN-ATTR` by
+    // C5 review: `::cg`'s manifest declares only assetId/action/full — NO
+    // `wait` — so an authored `wait` on `::cg` is rejected `E-UNKNOWN-ATTR` by
     // the D6 check gate and never reaches lowering (the author-override path
     // does not exist for `cut`; only `video`/`camera` declare `wait`, dsl §999).
-    // Prove the A8 materialization END-TO-END: a check-clean `::cut` compiles
+    // Prove the A8 materialization END-TO-END: a check-clean `::cg` compiles
     // Ok and its record carries the resolved family default `wait: false` (v1
     // non-blocking) — the same value the e2e goldens pin.
     const DOC: &str = r#"---
@@ -439,7 +440,7 @@ title: Cut gate
 
 ## Shot 1.
 
-::cut{assetId="CUT.scenarios.marina.s01ep02.01" action="show" full="true"}
+::cg{assetId="CUT.scenarios.marina.s01ep02.01" display="show"}
 
 @narrator: The beam lands full-frame.
 "#;
@@ -448,17 +449,17 @@ title: Cut gate
         .commands
         .iter()
         .map(|c| serde_json::to_value(c).unwrap())
-        .find(|v| v["kind"] == "cut")
-        .expect("a kind:\"cut\" record");
+        .find(|v| v["kind"] == "cg")
+        .expect("a kind:\"cg\" record");
     assert_eq!(
-        cut["wait"], false,
-        "cut carries the resolved family default"
+        cut["timing"]["wait"], false,
+        "cg carries the resolved family default"
     );
 }
 
 #[test]
 fn injection_warnings_do_not_gate_and_output_is_byte_stable() {
-    // The ::auto has no anchor => an anchor is INJECTED (a warning-free case);
+    // The ::actor has no anchor => an anchor is INJECTED (a warning-free case);
     // warnings never gate at all (only Errors do, D6).
     let a1 = compile(&input(SCENE)).expect("ok");
     let a2 = compile(&input(SCENE)).expect("ok");
@@ -487,14 +488,14 @@ state:
 ## Shot 1.
 
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.x"}
-::auto{character="marina" action="fadeInUp"}
+::actor{character="marina" action="fadeInUp"}
 @marina{code="0010"}: Hi.
 
 <branch id="couch">
-  <choice id="help" label="Help">
+  <choice id="help" text="Help">
     @fixer{code="0010"}: Sure.
   </choice>
-  <choice id="ignore" label="Ignore">
+  <choice id="ignore" text="Ignore">
     @fixer{code="0020"}: No.
   </choice>
 </branch>
@@ -680,10 +681,10 @@ state:
 ## Shot 1.
 
 <branch id="pick">
-  <choice id="give" label="Give {{run.coins}} coins">
+  <choice id="give" text="Give {{run.coins}} coins">
     @narrator: Done.
   </choice>
-  <choice id="keep" label="Keep them">
+  <choice id="keep" text="Keep them">
     @narrator: Fine.
   </choice>
 </branch>
@@ -708,7 +709,7 @@ state:
         .find(|o| o.id == "keep")
         .expect("keep option");
     // Label verbatim, interps retained.
-    assert_eq!(give.label, "Give {{run.coins}} coins");
+    assert_eq!(give.text, "Give {{run.coins}} coins");
     let give_json = serde_json::to_value(give).unwrap();
     assert_eq!(
         give_json["placeholders"],
@@ -854,7 +855,7 @@ state:
     );
     assert_ne!(
         on_body,
-        set["addr"].as_str().unwrap(),
+        set["position"].as_str().unwrap(),
         "empty <on> body must NOT dangle onto the following `::set` record: {cmds:#?}"
     );
     assert_eq!(
@@ -1127,7 +1128,7 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
     let mut table = std::collections::BTreeMap::new();
     let (comp_body, comp_diags) = lute_syntax::parse(
         "---\ncomponent: greet\n---\n\n## Scene 1.\n\n\
-         ::auto{character=\"marina\" action=\"fadeInUp\"}\n\
+         ::actor{character=\"marina\" action=\"fadeInUp\"}\n\
          @narrator: A familiar face steps into the light.\n",
     );
     assert!(
@@ -1163,10 +1164,10 @@ episode: 1
 ## Shot 1.
 
 <hub id="chat">
-  <choice id="ask" label="Ask" once>
+  <choice id="ask" text="Ask" once>
     ::use{component="greet"}
   </choice>
-  <choice id="leave" label="Leave" exit>
+  <choice id="leave" text="Leave" exit>
     @narrator: Bye.
   </choice>
 </hub>
@@ -1183,12 +1184,12 @@ episode: 1
 
     let artifact = compile(&inp).expect("hub-choice ::use doc compiles");
     let sprite = artifact.commands.iter().find_map(|c| match c {
-        Command::Sprite(s) if s.character == "marina" => Some(s),
+        Command::Actor(s) if s.character == "marina" => Some(s),
         _ => None,
     });
     assert!(
         sprite.is_some(),
-        "the component's ::auto record must survive compilation \
+        "the component's ::actor record must survive compilation \
          (before the fix it is silently dropped): {:#?}",
         artifact.commands
     );
@@ -1223,7 +1224,7 @@ episode: 1
         artifact
             .commands
             .iter()
-            .all(|c| !matches!(c, Command::Other(o) if o.tag == "use")),
+            .all(|c| !matches!(c, Command::Plugin(o) if o.tag == "use")),
         "no residual ::use record"
     );
 }
@@ -1247,10 +1248,10 @@ state:
 ## Shot 1.
 
 <hub id="chat">
-  <choice id="ask" label="Ask" once>
+  <choice id="ask" text="Ask" once>
     @narrator: Hi.
   </choice>
-  <choice id="thank" label="Thank her" exit into="run.metGreeted">
+  <choice id="thank" text="Thank her" exit into="run.metGreeted">
     @narrator: Thanks.
   </choice>
 </hub>
@@ -1284,7 +1285,7 @@ fn offscreen_and_voiceover_lines_are_voiced_and_emit_no_extra_sprite() {
     // dsl 0.2.2 §D7: `os`/`vo` change role (and are voiced — heard, just
     // with no on-screen sprite this line) but do NOT themselves introduce a
     // sprite command — `lower_line` only ever lowers a `:line` to
-    // `Command::Line`; sprite records come exclusively from `::auto` (char-
+    // `Command::Line`; sprite records come exclusively from `::actor` (char-
     // cast §7.1 currently has no per-line sprite-resolution path to skip).
     const DOC: &str = r#"---
 kind: scene
@@ -1295,7 +1296,7 @@ episode: 1
 
 ## Shot 1.
 
-::auto{character="fixer" anchor="center" action="fadeInUp"}
+::actor{character="fixer" anchor="center" action="fadeInUp"}
 @fixer{vo}: A voiceover aside.
 @fixer{os}: Behind the door.
 @fixer: Back on stage.
@@ -1304,11 +1305,11 @@ episode: 1
     let sprite_count = artifact
         .commands
         .iter()
-        .filter(|c| matches!(c, Command::Sprite(_)))
+        .filter(|c| matches!(c, Command::Actor(_)))
         .count();
     assert_eq!(
         sprite_count, 1,
-        "only ::auto's own sprite record — os/vo lines add none: {:#?}",
+        "only ::actor's own sprite record — os/vo lines add none: {:#?}",
         artifact.commands
     );
 
@@ -1323,16 +1324,16 @@ episode: 1
             .unwrap_or_else(|| panic!("missing line {t:?}"))
     };
     let vo = by_text("A voiceover aside.");
-    assert_eq!(vo.role, Role::Voiceover);
-    assert!(vo.voice_key.is_some(), "voiceover is voiced (heard)");
+    assert_eq!(vo.role, Role::Vo);
+    assert!(!vo.voice_key.is_empty(), "voiceover carries a voiceKey");
 
     let os = by_text("Behind the door.");
-    assert_eq!(os.role, Role::Offscreen);
-    assert!(os.voice_key.is_some(), "offscreen is voiced (heard)");
+    assert_eq!(os.role, Role::Os);
+    assert!(!os.voice_key.is_empty(), "offscreen carries a voiceKey");
 
     let dlg = by_text("Back on stage.");
     assert_eq!(dlg.role, Role::Dialogue);
-    assert!(dlg.voice_key.is_some());
+    assert!(!dlg.voice_key.is_empty());
 }
 
 /// dsl 0.3.0 §5 delta lowering (0.3.0 T14): an `<on>` arm interleaving
@@ -1383,15 +1384,15 @@ state:
     let assert_rec = &cmds[assert_i];
     assert_eq!(assert_rec["relation"], "inParty");
     assert_eq!(assert_rec["args"], serde_json::json!(["ana"]));
-    assert!(assert_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(assert_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
 
     let retract_rec = &cmds[retract_i];
     assert_eq!(retract_rec["relation"], "atLoc");
     assert_eq!(retract_rec["args"], serde_json::json!(["ana", "_"]));
-    assert!(retract_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(retract_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
 }
 
-// -- dsl 0.12.0: forward jump (`::mark`/line `id=`/`::next`) ----------------
+// -- dsl 0.12.0 / 0.37.0: forward jump (`::label`/`::jump`) -------------------
 
 const FORWARD_JUMP_SCENE: &str = r#"---
 kind: scene
@@ -1405,25 +1406,25 @@ state:
 ## Shot 1.
 
 <branch id="pick">
-  <choice id="a" label="A">
-    ::next{to="join"}
+  <choice id="a" text="A">
+    ::jump{to="join"}
   </choice>
-  <choice id="b" label="B">
+  <choice id="b" text="B">
     @narrator: taking the b path
   </choice>
 </branch>
 
 ## Shot 2.
 
-::mark{id="join"}
-@narrator{id="afterJoin"}: we joined here
-::next{to="tail" when="run.blessed"}
+::label{name="join"}
+@narrator: we joined here
+::jump{to="tail" when="run.blessed"}
 @narrator: fallthrough content
 ::end{reason="completed"}
 
 ## Shot 3.
 
-::mark{id="tail"}
+::label{name="tail"}
 @narrator: tail reached
 ::end{reason="tailed"}
 "#;
@@ -1431,18 +1432,17 @@ state:
 /// One command's `kind`/`addr`/`target` (Jump) as a plain triple, easing
 /// index/assert readability below.
 fn kind_addr(v: &serde_json::Value) -> (&str, &str) {
-    (v["kind"].as_str().unwrap(), v["addr"].as_str().unwrap())
+    (v["kind"].as_str().unwrap(), v["position"].as_str().unwrap())
 }
 
-/// dsl 0.12.0 §1: mark/line-id/next normal-path check+compile — an
-/// UNCONDITIONAL `::next{to}` (in a `<branch>` choice) resolves to the addr
-/// of the NEXT record after a `::mark{id}` in a LATER shot; a `::mark`'s own
-/// label resolves identically to a content line's `id=` at the SAME record
-/// (both name the shot-2 opener). `check()` must accept this document
-/// clean, and `compile()` must produce a `jump` record whose `target`
-/// equals the label site's real `addr` — never a `"@n"`/`"#id"` symbol.
+/// dsl 0.12.0 §1: label/jump normal-path check+compile — an UNCONDITIONAL
+/// `::jump{to}` (in a `<branch>` choice) resolves to the addr of the NEXT
+/// record after a `::label{name}` in a LATER section. `check()` must accept
+/// this document clean, and `compile()` must produce a `jump` record whose
+/// `target` equals the label site's real `addr` — never a `"@n"`/`"#id"`
+/// symbol.
 #[test]
-fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
+fn unconditional_jump_resolves_across_sections_to_the_label() {
     let ci = input(FORWARD_JUMP_SCENE);
     let check = lute_check::check(&ci);
     assert!(check.ok, "{:#?}", check.diagnostics);
@@ -1451,22 +1451,21 @@ fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
     let j = serde_json::to_value(&art).unwrap();
     let cmds = j["commands"].as_array().unwrap();
 
-    // The unconditional `::next{to="join"}` inside choice `a` lowers to a
+    // The unconditional `::jump{to="join"}` inside choice `a` lowers to a
     // plain `jump` record (no new Command kind — reuses the SAME `JumpCmd`
     // shape a branch/match converge already emits).
     let unguarded_jump = cmds
         .iter()
         .find(|c| c["kind"] == "jump" && c["target"] != serde_json::Value::Null)
-        .expect("an unconditional ::next lowers to a jump record");
+        .expect("an unconditional ::jump lowers to a jump record");
     let target = unguarded_jump["target"].as_str().unwrap();
     assert!(
         target.chars().next().is_some_and(|c| c.is_ascii_digit()),
         "target must be a resolved real addr, never a `@n`/`#id` symbol: {target}"
     );
 
-    // `::mark{id="join"}` emits NO record of its own; the label resolves to
-    // whatever record comes right after it — the line carrying `id="afterJoin"`
-    // — so BOTH names must resolve to the exact same addr, and the jump's
+    // `::label{name="join"}` emits NO record of its own; the label resolves to
+    // whatever record comes right after it — the joined line — and the jump's
     // target must be that addr.
     let joined_line = cmds
         .iter()
@@ -1475,7 +1474,7 @@ fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
     let (_, joined_addr) = kind_addr(joined_line);
     assert_eq!(
         target, joined_addr,
-        "::next{{to=\"join\"}} must land exactly on the mark's bound record"
+        "::jump{{to=\"join\"}} must land exactly on the label's bound record"
     );
 
     // Shot ordering: the target addr's shot segment must be STRICTLY greater
@@ -1487,15 +1486,15 @@ fn unconditional_next_resolves_across_shots_to_mark_and_line_id() {
     );
 }
 
-/// dsl 0.12.0 §3/§4: a GUARDED `::next{to when}` desugars
+/// dsl 0.12.0 §3/§4: a GUARDED `::jump{to when}` desugars
 /// (`normalize::synth_when_next_match`) into the SAME canonical one-arm
 /// `<match>` a gated line uses — this pins BOTH arms' compiled output: the
-/// `when`-true arm ends in a `jump` targeting the far shot's `::mark{id="tail"}`;
+/// `when`-true arm ends in a `jump` targeting the far shot's `::label{name="tail"}`;
 /// the fall-through (`otherwise`) arm's body (`fallthrough content` + the
 /// FIRST `::end{reason="completed"}`) is untouched, never merged with the
 /// jump arm. Confirms "가드 next의 양갈래 하강" end to end.
 #[test]
-fn guarded_next_lowers_to_two_arm_match_both_branches() {
+fn guarded_jump_lowers_to_two_arm_match_both_branches() {
     let ci = input(FORWARD_JUMP_SCENE);
     let art = compile(&ci).expect("compiles");
     let j = serde_json::to_value(&art).unwrap();
@@ -1509,7 +1508,7 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
     assert_eq!(
         matches.len(),
         1,
-        "exactly one guarded ::next desugars to one match: {cmds:#?}"
+        "exactly one guarded ::jump desugars to one match: {cmds:#?}"
     );
     let m = matches[0];
     let arms = m["arms"].as_array().unwrap();
@@ -1524,7 +1523,7 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
     );
 
     // Arm 1 (`When test="$"`) is TRUE iff the hoisted subject (`run.blessed`)
-    // decides true — its body is the now-unconditional `::next{to="tail"}`,
+    // decides true — its body is the now-unconditional `::jump{to="tail"}`,
     // lowered through the ORDINARY unconditional-jump path (no new lowering
     // code): find the `jump` record whose target lands on shot 3's tail mark.
     let tail_line = cmds
@@ -1535,7 +1534,7 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
     let guarded_jump = cmds
         .iter()
         .find(|c| c["kind"] == "jump" && c["target"] == tail_addr)
-        .expect("the guarded ::next's true arm reaches the tail mark via an ordinary jump record");
+        .expect("the guarded ::jump's true arm reaches the tail mark via an ordinary jump record");
     let (_, guarded_jump_addr) = kind_addr(guarded_jump);
     assert!(
         guarded_jump_addr.split('-').next().unwrap() < tail_addr.split('-').next().unwrap(),
@@ -1566,13 +1565,13 @@ fn guarded_next_lowers_to_two_arm_match_both_branches() {
         .find(|c| c["kind"] == "end" && c["reason"] == "tailed")
         .expect("the tail shot's own ::end{reason=tailed} is a SEPARATE record (multi-end)");
     assert_ne!(
-        first_end["addr"], tail_end["addr"],
+        first_end["position"], tail_end["position"],
         "two independent ::end records — the multi-end combination"
     );
 }
 
-/// dsl 0.12.0: a check-clean document with a forward `::next` never fires
-/// `E-NEXT-UNDEFINED`/`E-NEXT-BACKWARD`/`E-MARK-DUP`, and produces NO
+/// dsl 0.12.0: a check-clean document with a forward `::jump` never fires
+/// `E-JUMP-UNDEFINED`/`E-JUMP-BACKWARD`/`E-LABEL-DUP`, and produces NO
 /// `E-COMPILE-INTERNAL` (the compiler-bug fallback for an unresolved label,
 /// `address::assign_addresses`) — every named-label placeholder must be
 /// resolved.
@@ -1591,6 +1590,58 @@ fn forward_jump_scene_check_and_compile_are_both_clean() {
             );
         }
     }
+}
+
+/// dsl 0.37.0 §3.5: a `::label` before a line whose pose the reducer resets
+/// binds to the authored line, not to the injected `posReset` emitted ahead
+/// of it — a `::jump` lands on the line exactly as the old line `id=` did.
+#[test]
+fn a_label_before_an_injected_pose_reset_binds_to_the_authored_line() {
+    const DOC: &str = r#"---
+kind: scene
+character: marina
+season: 1
+episode: 2
+---
+
+## Shot 1.
+
+::actor{character="marina" anchor="center" action="fadeInUp"}
+@marina{emotion="delighted" action="poseLean"}: A!
+<branch id="pick">
+  <choice id="a" text="A">
+    ::jump{to="x"}
+  </choice>
+  <choice id="b" text="B">
+    @narrator: the long way
+  </choice>
+</branch>
+::label{name="x"}
+@marina: B.
+"#;
+    let ci = input(DOC);
+    let check = lute_check::check(&ci);
+    assert!(check.ok, "{:#?}", check.diagnostics);
+    let art = compile(&ci).expect("compiles");
+    let j = serde_json::to_value(&art).unwrap();
+    let cmds = j["commands"].as_array().unwrap();
+    let line_at = cmds
+        .iter()
+        .position(|c| c["kind"] == "line" && c["text"] == "B.")
+        .expect("the labelled line");
+    assert_eq!(
+        cmds[line_at - 1]["posReset"],
+        true,
+        "the reducer injects a posReset right before the labelled line: {cmds:#?}"
+    );
+    let jump = cmds
+        .iter()
+        .find(|c| c["kind"] == "jump" && c["target"].is_string())
+        .expect("the ::jump record");
+    assert_eq!(
+        jump["target"], cmds[line_at]["position"],
+        "the jump lands on the authored line, not the injected posReset: {cmds:#?}"
+    );
 }
 
 /// A `<when is>` arm in a `<match>` with no `on` has no subject to compare
@@ -1790,7 +1841,7 @@ title: Legacy
 @narrator: Hi.
 "#;
     let art = compile(&input(DOC)).expect("legacy doc compiles");
-    let capability_version = art.capability_version.clone();
+    let capability_version = art.capability_snapshot.clone();
     let actual = serde_json::to_value(&art).unwrap();
     assert!(actual["celEnv"].is_object(), "compiled envelope carries celEnv");
 
@@ -1813,7 +1864,7 @@ title: Legacy
         "kind": "scene",
         "lute": "0.14.0",
         "irVersion": "0.14.0",
-        "capabilityVersion": capability_version,
+        "capabilitySnapshot": capability_version,
         "meta": {
             "character": "marina",
             "season": 1,
@@ -1823,7 +1874,7 @@ title: Legacy
         },
         "state": actual["state"].clone(),
         "commands": actual["commands"].clone(),
-        "shots": actual["shots"].clone(),
+        "sections": actual["sections"].clone(),
         "outsideRun": actual["outsideRun"].clone(),
     });
     assert_eq!(
@@ -1834,7 +1885,7 @@ title: Legacy
     // The core §7 claim: exactly three keys differ (`meta.id` added, two
     // version strings bumped) — nothing else moved.
     assert_eq!(actual["kind"], pinned_014["kind"]);
-    assert_eq!(actual["capabilityVersion"], pinned_014["capabilityVersion"]);
+    assert_eq!(actual["capabilitySnapshot"], pinned_014["capabilitySnapshot"]);
     assert_eq!(actual["commands"], pinned_014["commands"]);
     assert_eq!(actual["meta"]["character"], pinned_014["meta"]["character"]);
     assert_eq!(actual["meta"]["season"], pinned_014["meta"]["season"]);
@@ -1842,8 +1893,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.36.6"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.36.6"));
+    assert_eq!(actual["lute"], serde_json::json!("0.37.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.37.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`
@@ -1984,17 +2035,17 @@ defs:
 ---
 ## Shot 1.
 <branch id="b">
-  <choice id="expanded" label="Expanded" when="@threshold">
+  <choice id="expanded" text="Expanded" when="@threshold">
     @narrator: Expanded.
   </choice>
-  <choice id="plain" label="Plain" when="run.n > 0">
+  <choice id="plain" text="Plain" when="run.n > 0">
     @narrator: Plain.
   </choice>
-  <choice id="open" label="Open">
+  <choice id="open" text="Open">
     @narrator: Open.
   </choice>
 </branch>
-<match on="run.n">
+<match subject="run.n">
   <when is="1">
     @narrator: One.
   </when>

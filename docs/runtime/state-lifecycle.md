@@ -84,7 +84,7 @@ Since dsl 0.26.0 §4 a directive takes the same guard: `::use`, `::accept`,
 `::use`, around its whole expansion, which runs entirely or not at all. A
 guarded `::assert` is never a guaranteed fact and a guarded `::accept` never a
 definite accept. A builtin-lowered directive (core staging, `::end`,
-`::mark`, a plugin `lower:` record) has no guard: it runs where it stands.
+`::label`, a plugin `lower:` record) has no guard: it runs where it stands.
 
 ## Bridge answers
 
@@ -362,11 +362,12 @@ D-C) and is not credited by the reference runner. Content that also
 
 ## Interpolation reads
 
-`line.text` / choice `label` keep their verbatim `{{…}}` markers; the parallel
-`placeholders` list (IR A3, `ir.rs::Placeholder`) names each referent — a
-state `path`, an `@`-`ref`, or a `reserved` token (only `userName` today). The
-engine substitutes these against live state at present time; the raw text is
-kept so an uninterpolated fallback is always available.
+`line.text` / choice option `text` keep their verbatim `{{…}}` markers (and so
+do the text runs of a line's `segments`); the parallel `placeholders` list
+(IR A3, `ir.rs::Placeholder`) names each referent — a state `path`, an
+`@`-`ref`, or a `reserved` token (only `userName` today). The engine
+substitutes these against live state at present time; the raw text is kept so
+an uninterpolated fallback is always available.
 
 The artifact carries no defs table, so a `ref` placeholder carries its def
 body inlined as `expr` (a `{cel, expr, authored?}` slot like every other CEL

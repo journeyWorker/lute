@@ -34,7 +34,7 @@ pub(crate) fn resolve_kinds(
 ) -> (crate::meta::DocKind, crate::meta::MetaKind, Vec<Diagnostic>) {
     use crate::meta::{DocKind, MetaKind};
     let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind_with_defaults(&doc.meta, defaults);
-    let has_body = !doc.shots.is_empty()
+    let has_body = !doc.sections.is_empty()
         || !doc.quests.is_empty()
         || !doc.entries.is_empty()
         || !doc.beats.is_empty();
@@ -977,7 +977,7 @@ fn fold_branches(
     seen: &mut std::collections::BTreeSet<String>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         fold_branches_nodes(&shot.body, schema, seen, diags);
     }
     for quest in &doc.quests {
@@ -1069,8 +1069,7 @@ pub(super) fn fold_directive_slots(
         schema,
         stack: Vec::new(),
     };
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1170,7 +1169,7 @@ impl SlotFold<'_> {
         }
         let args = crate::component_effects::use_args_for(d, def);
         self.stack.push(name.clone());
-        for shot in &def.body.shots {
+        for shot in &def.body.sections {
             self.nodes(&shot.body, Some((&args, &def.params)));
         }
         self.stack.pop();

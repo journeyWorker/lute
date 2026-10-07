@@ -12,7 +12,7 @@ page: [Lore entries](/language/lore-entries/).
 
 ## Scenes and `after:`
 
-A scene is one episode — a frontmatter `id:` that names it project-wide, plus its shots. (Older
+A scene is one episode — a frontmatter `id:` that names it project-wide, plus its sections. (Older
 scenes name themselves with `character`/`season`/`episode` instead, and the name is built as
 `{character}.{episodeId}`; that still works, but new scenes use `id:`.) Scenes are *sequenced* with the frontmatter key **`after:`**, which declares the routes the
 checker and `lute scenario` assume reach this scene. It is advisory ordering metadata, not a jump:
@@ -242,6 +242,39 @@ self-closing (`<objective …/>`); a body — a log line, a per-objective `::set
 objective is `done` (or any one of them, under [`complete="any"`](#alternatives-completeany)).
 Objective completion is monotonic — once `done`, it stays recorded.
 
+### `<reward>` ids
+
+A `<reward>` (a direct child of `<quest>` or `<objective>`) may carry an optional `id`: a bounded
+ASCII token matching `[A-Za-z][A-Za-z0-9_-]{0,63}`. The id is unique among its quest's rewards,
+its objectives' rewards included; a second `<reward id="clearPay">` in the same quest is
+**`E-REWARD-DUP`**. It lowers to `RewardEntry.id` and is the reward's stable key in source maps and
+engine models, so reordering or inserting rewards does not move it. An untagged reward has no `id`
+in the IR and is keyed by its declaration index instead.
+
+```lute check
+---
+kind: quest
+title: The climb
+state:
+  run.floor: { type: int, default: 0 }
+---
+
+<quest id="climb" title="Reach the tenth floor" start="true" tier="run">
+  <objective id="top" title="Reach floor ten" done="run.floor >= 10">
+    <reward id="topBonus" kind="EMBERS" amount="20"/>
+  </objective>
+  <reward id="clearPay" kind="EMBERS" amount="50"/>
+  <reward kind="BADGE" amount="1"/>
+</quest>
+```
+
+```json
+"rewards": [
+  { "id": "clearPay", "kind": "EMBERS", "amount": 50 },
+  { "kind": "BADGE", "amount": 1 }
+]
+```
+
 ### Quests meet scenes and occasions
 
 Three small additions (dsl 0.21.0 §7a) let a scene drive a quest directly, instead of relaying a
@@ -336,11 +369,11 @@ choice where the player agrees:
 
 ```lute
 <branch id="request">
-  <choice id="accept" label="I'll keep it calm">
+  <choice id="accept" text="I'll keep it calm">
     ::accept{quest="calmTheShed"}
     @vesna: Thank you.
   </choice>
-  <choice id="decline" label="Not now">
+  <choice id="decline" text="Not now">
     @vesna: Another time, then.
   </choice>
 </branch>
@@ -379,11 +412,11 @@ title: The bounty board
 @maud: The bounties reset at dawn. Sign now and the hunt is yours next run.
 
 <branch id="bounty">
-  <choice id="sign" label="Sign for the next run">
+  <choice id="sign" text="Sign for the next run">
     ::accept{quest="wolfBounty" at="nextRun"}
     @maud: Your name's on the board.
   </choice>
-  <choice id="later" label="Not this time">
+  <choice id="later" text="Not this time">
     @maud: Suit yourself.
   </choice>
 </branch>
@@ -779,7 +812,7 @@ So a read needs no `has` guard (`has(quest.<id>.state)` is always true, `W-QUEST
 `quest.rescueHalsin.state == 'unset'` or a `<when is="unset">` arm:
 
 ```lute
-<match on="quest.rescueHalsin.state">
+<match subject="quest.rescueHalsin.state">
   <when is="complete">
     @shadowheart: You did well back there.
   </when>
@@ -820,7 +853,7 @@ title: Across the river
 
 ## Epilogue
 
-<match on="quest.toll.failedBy">
+<match subject="quest.toll.failedBy">
   <when is="superseded">
     @narrator: The ferryman is still waiting for a coin that never came.
   </when>

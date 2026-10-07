@@ -7,11 +7,11 @@
 - **Project/document declarations.** Frontmatter (`kind`, `id`, project/schema declarations) resolves before document checking. `meta.id` is the canonical document key; declarations lower into execution-IR envelopes and command arrays. Diagnostics include unknown kinds, duplicate ids, unresolved references and admission errors.
 - **State tiers and ownership.** `scene`, `run`, `user`, `app`, `season:<name>` and reserved engine paths have declared types, defaults and reset scopes. Content may write only content-owned paths; engine-owned paths are readable and engine-settled. Invalid types, defaults, or ownership writes are diagnostics (`E-STATE-DECL`, `E-RUN-OWNED-WRITE`).
 - **CEL conditions.** Every condition/value slot is standard CEL in the closed 0.32 profile; `@def` and match `$` expand at compile time. `has()` tests presence. Errors make guards false; erroneous sets abort without a partial write. See [DSL §1–4](../proposals/scenario-dsl/0.32.0.md#1-conditions-are-standard-cel).
-- **Execution IR and capabilities.** The compiler emits `cel` plus typed `expr`, `celEnv`, and sorted `requiredSemantics`; engines check capabilities before playback. Unknown required ids refuse loading, while plugin records remain `kind: "plugin"` and use `capabilityVersion`.
-- **Identity and addressing.** `addr` is positional; author ids, `lineId`, and `voiceKey` are stable joins. Source maps survive lowering. Duplicate or colliding ids are checker errors.
-## Identity table (0.36.6)
+- **Execution IR and capabilities.** The compiler emits `cel` plus typed `expr`, `celEnv`, and sorted `requiredSemantics`; engines check capabilities before playback. The envelope, project index and `lute context --json` carry the resolved `capabilitySnapshot`. Unknown required ids refuse loading, while plugin records are `kind: "plugin"` with `family: "plugin"`.
+- **Identity and positions.** Command `position` is positional (one-based section number, then command order); author ids, section `{#id}`, `lineId`, and `voiceKey` are stable joins. Source maps survive lowering. Duplicate or colliding ids are checker errors.
+## Identity table (0.37.0)
 
-`addr` is a build-local position and never a save, localization, patch, or
+Command `position` is build-local and never a save, localization, patch, or
 identity key. Stability columns are **sibling insert / file move / parent
 rename / format**. `Y` means stable when the authored source remains; `N`
 means it changes; `conditional` names the prerequisite. “Persisted” includes
@@ -27,7 +27,7 @@ engine saves and durable localization/voice joins.
 | reward | authored reward id, else warning-bearing owner ordinal | Y with id, else N / conditional / N with owner / Y | owner reward history |
 | lore entry | authored entry `id` | Y / Y / Y if id remains / Y | `entry.<id>.read` |
 | beat/occasion beat | authored beat id, document-qualified | Y / Y / N with document / Y | visited/once/share |
-| shot | authored id, else warning-bearing heading fallback | Y with id / conditional / N with fallback / Y | no direct save key |
+| section | authored `{#id}`, else warning-bearing position fallback | Y with id / conditional / N with fallback / Y | no direct save key |
 | directive | authored tag/id or warning-bearing owner ordinal | Y with id, else N / conditional / N / Y | plugin effects may persist |
 | set (`::set`) | authored target path + operation | Y / Y / Y unless derived / Y | target state path |
 | match (`<match>`) | authored match id or warning-bearing owner identity | Y with id, else N / conditional / N / Y | no direct save key |
@@ -41,7 +41,7 @@ engine saves and durable localization/voice joins.
 | branch | authored branch `id` | Y / conditional / N with parent / Y | choice state |
 | choice/option | authored choice `id`, parent-qualified | Y / conditional / N with parent / Y | once/visited |
 | hub | authored hub `id` | Y / conditional / N with parent / Y | option visited/once |
-| mark | authored mark label | N before target / conditional / conditional / Y | no |
+| label (`::label`) | authored label `name` | N before target / conditional / conditional / Y | no |
 | line | speaker `code`, tagged by `lute tag` | Y / Y if scope remains / N with scope / Y | lineId/voiceKey joins |
 | component definition | authored component name | Y / conditional / N on rename / Y | expanded joins |
 | component instance (`::use`) | `instance` token; fallback warns | Y / Y if host remains / N with host / Y | expanded joins |
@@ -92,7 +92,7 @@ rejects stale sources, missing destinations, duplicate endpoints, chains, and
 cycles. It is carried as `identityRenames` in the execution IR and project
 index. Semantic diff reports a `renamed` change when the ledger matches; an
 unmatched identity is reported as `unmappedIdentity`, never inferred from
-position or `addr`.
+source order or command `position`.
 
 ```lute check
 ---

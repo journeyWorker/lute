@@ -9,10 +9,10 @@ target: place.gate
 ## The gate
 
 <branch id="approach" prompt="The gatekeeper checks your papers.">
-  <choice id="enter" label="Enter as a scout" when="run.job == 'scout'">
+  <choice id="enter" text="Enter as a scout" when="run.job == 'scout'">
     @narrator: Your scout badge opens the gate.
   </choice>
-  <choice id="ask" label="Ask for another route">
+  <choice id="ask" text="Ask for another route">
     @narrator: The gatekeeper points to the long road.
   </choice>
 </branch>

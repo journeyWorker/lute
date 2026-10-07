@@ -1,0 +1,71 @@
+{
+  "kind": "scene",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Section ids"
+  },
+  "state": [],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The ferry docks.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Nobody waits on the quay.",
+      "lineId": "hero.s01ep01.narrator_0020",
+      "voiceKey": "hero.s01ep01.narrator-0020"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The ferry leaves again.",
+      "lineId": "hero.s01ep01.narrator_0030",
+      "voiceKey": "hero.s01ep01.narrator-0030"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Arrival",
+      "id": "arrival"
+    },
+    {
+      "section": 2,
+      "heading": "The quay"
+    },
+    {
+      "section": 3,
+      "heading": "Departure",
+      "id": "departure"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

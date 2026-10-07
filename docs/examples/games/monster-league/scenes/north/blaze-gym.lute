@@ -14,7 +14,7 @@ when: "!holds('defeated', ['ignatius'])"
 ## The stage
 
 ::bg{location="blaze-gym" time="day"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: The last quiz machine buzzes, and the floor opens onto a stage ringed with gas jets. They light one after another, all the way round.
 @narrator{code="0020" when="holds('defeated', ['blazeGymSuperNerdQuill']) && holds('defeated', ['blazeGymSuperNerdOona'])"}: Somewhere behind the stage, two very clever people are sulking about their quiz scores.
 

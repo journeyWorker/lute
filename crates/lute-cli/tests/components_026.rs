@@ -183,7 +183,7 @@ fn a_bridge_call_a_component_expands_is_typed_by_its_slot_in_the_host() {
         "scenes/via.lute",
         &scene(
             "via",
-            "::use{component=\"fight\" key=\"k\"}\n<match on=\"scene.battle.k.won\">\n\
+            "::use{component=\"fight\" key=\"k\"}\n<match subject=\"scene.battle.k.won\">\n\
              <when is=\"true\">\n@narrator: arm true\n</when>\n\
              <otherwise>\n@narrator: arm otherwise\n</otherwise>\n</match>",
         ),
@@ -279,7 +279,7 @@ fn a_string_argument_keeps_its_placeholders_and_as_at_who_shows_the_cast_name() 
 // ── §3.3: param defaults and own results ────────────────────────────────
 
 const DUEL: &str = "---\ncomponent: duel\neffects: true\nparams:\n  prize: { type: int, default: \"3\" }\n  cheer: { type: string, default: \"Well fought.\" }\n---\n\n\
-    ## Duel\n\n::battle{foe=\"joey\" resultKey=\"fight\"}\n<match on=\"scene.battle.fight.won\">\n\
+    ## Duel\n\n::battle{foe=\"joey\" resultKey=\"fight\"}\n<match subject=\"scene.battle.fight.won\">\n\
     <when is=\"true\">\n@narrator: {{@cheer}}\n::set{run.coins += @prize}\n</when>\n\
     <otherwise>\n@narrator: Lost.\n</otherwise>\n</match>\n";
 
@@ -314,8 +314,8 @@ fn an_omitted_argument_takes_its_default_and_a_component_reads_its_own_result() 
 #[test]
 fn a_component_reading_a_slot_it_does_not_own_is_still_component_state() {
     let other = DUEL.replace(
-        "<match on=\"scene.battle.fight.won\">",
-        "<match on=\"scene.battle.other.won\">",
+        "<match subject=\"scene.battle.fight.won\">",
+        "<match subject=\"scene.battle.other.won\">",
     );
     let dir = project("notown", CAST, SCHEMA, &[("duel", &other)]);
     write(
@@ -405,7 +405,7 @@ fn at_at_who_after_the_member_left_the_stage_is_stage_absent_at_the_use() {
         "scenes/a.lute",
         &scene(
             "a",
-            "::auto{character=\"joey\" action=\"show\"}\n::auto{character=\"joey\" action=\"hide\"}\n\
+            "::actor{character=\"joey\" action=\"show\"}\n::actor{character=\"joey\" action=\"hide\"}\n\
              ::use{component=\"talk\" who=\"joey\" line=\"Hi.\"}",
         ),
     );
@@ -458,7 +458,7 @@ fn a_guarded_directive_compiles_to_a_one_arm_match() {
     assert_eq!(first["subject"], serde_json::json!({"cel": "run.gate", "expr": {"path": "run.gate"}}));
     assert_eq!(first["arms"].as_array().unwrap().len(), 1);
     let target = first["arms"][0]["target"].as_str().unwrap();
-    let leaf = cmds.iter().find(|c| c["addr"] == target).unwrap();
+    let leaf = cmds.iter().find(|c| c["position"] == target).unwrap();
     assert_eq!(leaf["kind"], "plugin");
     assert_eq!(leaf["tag"], "give");
 }
@@ -512,13 +512,13 @@ fn when_on_a_builtin_lowered_directive_or_a_timeline_clip_is_refused() {
         "scenes/a.lute",
         &scene(
             "a",
-            "::auto{character=\"joey\" action=\"show\" when=\"run.gate\"}\n\
+            "::actor{character=\"joey\" action=\"show\" when=\"run.gate\"}\n\
              <timeline id=\"t\">\n<track id=\"a\">\n::give{item=\"x\" when=\"run.gate\"}\n</track>\n</timeline>",
         ),
     );
     let t = text(&run(&dir, &["check", "scenes/a.lute", "--project", "."]));
     assert!(
-        t.contains("[E-UNKNOWN-ATTR]") && t.contains("`::auto` cannot take `when=`"),
+        t.contains("[E-UNKNOWN-ATTR]") && t.contains("`::actor` cannot take `when=`"),
         "{t}"
     );
     assert!(

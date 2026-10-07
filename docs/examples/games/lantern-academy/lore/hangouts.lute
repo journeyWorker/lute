@@ -13,7 +13,7 @@ title: After school, days 1 to 5
 <beat use="afterSchool" id="council" who="ren" place="council" title="The council room" instance="use-001">
   @ren{code="0010" emotion="stern"}: If you're going to loiter, loiter usefully. Staple these.
   @ren{code="0020" emotion="flustered"}: ...You staple very straight. That isn't a compliment. It's an observation. It's a compliment.
-  <match on="run.day">
+  <match subject="run.day">
     <when is="..2">
       @ren{code="0030"}: The festival budget is due Friday. It is always due Friday. Nobody has ever filed it on a Thursday.
     </when>
@@ -32,7 +32,7 @@ title: After school, days 1 to 5
 
 <beat use="afterSchool" id="track" who="mika" place="track" title="The track" instance="use-002">
   @mika{code="0010" emotion="laughing"}: You came to watch? Nobody comes to watch practice. Okay, now I have to look cool. Watch this. Don't watch this.
-  <match on="run.day">
+  <match subject="run.day">
     <when is="..2">
       @mika{code="0020"}: Coach says I run like I'm late for something. I say I'm early for everything.
     </when>
@@ -51,7 +51,7 @@ title: After school, days 1 to 5
 
 <beat use="afterSchool" id="library" who="soren" place="library" title="The library" instance="use-003">
   @soren{code="0010" emotion="shy"}: You're in my chair. No — keep it. I'll sit on the ladder. I like the ladder.
-  <match on="run.day">
+  <match subject="run.day">
     <when is="..2">
       @soren{code="0020"}: This one is a book of lanterns. Every festival since 1890, drawn by whoever was bored enough. I'm the most recent bored one.
     </when>
@@ -74,7 +74,7 @@ title: After school, days 1 to 5
 <beat use="afterSchool" id="musicRoom" who="kai" place="musicRoom" title="The old music room" instance="use-004">
   @kai{code="0010" emotion="smirk"}: Door was open. That's on you. Sit on the one chair that isn't a hazard.
   @kai{code="0020"}: Four bars. Then nothing. You hear it too, right? The gap?
-  <match on="run.day">
+  <match subject="run.day">
     <when is="..2">
       @kai{code="0030"}: Don't clap. If you clap, someone hears, and then Aoki comes up with a clipboard.
     </when>

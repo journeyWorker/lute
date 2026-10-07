@@ -29,7 +29,7 @@ title: Southshore catch reactions
 </beat>
 
 <beat id="seahorsling" on="caught" target="mon.seahorsling" title="A Seahorsling" also when="quest.southDerby.state == 'active'">
-  <match on="clock.weekday">
+  <match subject="clock.weekday">
     <when is="6">
       @narrator{code="0010"}: A Seahorsling! On derby day! The whole pier turns round to look.
     </when>

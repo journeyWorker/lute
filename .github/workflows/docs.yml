@@ -75,8 +75,13 @@ jobs:
         run: cargo build -q -p lute-cli
       # Formatting is a source-preservation contract for both the dogfood corpus and
       # runtime conformance fixtures; check mode must not rewrite the checkout.
+      # conformance/diagnostics/ holds deliberately invalid sources (some do not
+      # parse), pinned by `cargo test -p lute-cli --test conformance` instead.
       - name: Check formatted corpus
-        run: ./target/debug/lute fmt --check docs/examples conformance
+        run: |
+          dirs=()
+          for d in conformance/*/; do [[ "$d" == conformance/diagnostics/ ]] || dirs+=("$d"); done
+          ./target/debug/lute fmt --check docs/examples "${dirs[@]}"
 
       # docs/examples checks cleanly end-to-end (warnings only, exit 0). The
       # bundled example roots are authored to pass `check-project`; a

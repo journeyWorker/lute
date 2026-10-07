@@ -150,7 +150,7 @@ fn interp_ref_renderable_ok() {
 fn interp_dollar_in_match_arm_rejected() {
     let t = format!(
         "{HDR}state:\n  scene.n: {{ type: int, default: 0 }}\n---\n## Shot 1.\n\
-         <match on=\"scene.n\">\n\
+         <match subject=\"scene.n\">\n\
          <when test=\"scene.n > 0\">\n@marina: value {{{{$}}}}\n</when>\n\
          <otherwise>\n@marina: none\n</otherwise>\n\
          </match>\n"
@@ -200,14 +200,14 @@ fn interp_legal_forms_no_grammar_error() {
 
 // --- Fix 3: §7.6 choice-label interpolations are validated (branch AND hub) ---
 
-// A branch `<choice label="{{run.ghost}}">` — `run.ghost` is undeclared ⇒
+// A branch `<choice text="{{run.ghost}}">` — `run.ghost` is undeclared ⇒
 // E-UNDECLARED (labels bypassed this before).
 #[test]
 fn choice_label_interp_branch_undeclared_path() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{run.ghost}}}}\">\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"{{{{run.ghost}}}}\">\n@marina: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);
@@ -217,14 +217,14 @@ fn choice_label_interp_branch_undeclared_path() {
     );
 }
 
-// A hub `<choice label="{{@nope}}">` — `@nope` is not a declared def ⇒
+// A hub `<choice text="{{@nope}}">` — `@nope` is not a declared def ⇒
 // E-UNDECLARED-REF.
 #[test]
 fn choice_label_interp_hub_undeclared_ref() {
     let t = format!(
         "{HDR}---\n## Shot 1.\n\
          <hub id=\"h\">\n\
-         <choice id=\"c\" label=\"{{{{@nope}}}}\" exit>\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"{{{{@nope}}}}\" exit>\n@marina: hi\n</choice>\n\
          </hub>\n"
     );
     let c = codes(&t);
@@ -241,7 +241,7 @@ fn choice_label_interp_branch_maybe_unset() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{run.x}}}}\">\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"{{{{run.x}}}}\">\n@marina: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);
@@ -258,7 +258,7 @@ fn choice_label_interp_username_clean() {
     let t = format!(
         "{HDR}---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"{{{{userName}}}}\">\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"{{{{userName}}}}\">\n@marina: hi\n</choice>\n\
          </branch>\n"
     );
     let c = codes(&t);
@@ -316,7 +316,7 @@ fn ordinal_on_a_number_is_clean() {
     assert!(c.is_empty(), "got {c:?}");
     let c = codes(&format!(
         "{HDR}{ORDINAL_STATE}---\n## Shot 1.\n<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Try a {{{{@next:ordinal}}}} time\">\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"Try a {{{{@next:ordinal}}}} time\">\n@marina: hi\n</choice>\n\
          </branch>\n"
     ));
     assert!(c.is_empty(), "got {c:?}");
@@ -423,7 +423,7 @@ fn ordinal_word_is_a_second_number_hint() {
     assert!(c.is_empty(), "got {c:?}");
     let c = codes(&format!(
         "{HDR}{ORDINAL_STATE}---\n## Shot 1.\n<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Try a {{{{@next:ordinalWord}}}} time\">\n@marina: hi\n</choice>\n\
+         <choice id=\"c\" text=\"Try a {{{{@next:ordinalWord}}}} time\">\n@marina: hi\n</choice>\n\
          </branch>\n"
     ));
     assert!(c.is_empty(), "got {c:?}");

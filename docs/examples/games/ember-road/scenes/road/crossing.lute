@@ -9,10 +9,10 @@ after: 'visited("bridge.arrival")'
 ## The Far Bank
 
 ::bg{location="far_bank" time="dawn"}
-::music{action="change" mood="peaceful" volume="normal"}
+::music{playback="change" mood="peaceful" volume="normal"}
 /* chapterEnd is `judge: before`: the quests are settled when this plays, so the
 epilogue reads how they ended instead of re-deriving it from state. */
-<match on="quest.emberRoad.failedBy">
+<match subject="quest.emberRoad.failedBy">
   <when is="by">
     @narrator{code="0010"}: The fourth night came and the chain did not. Brannoc turns the wagons for Ostwick. The Company does not pay for maybes.
   </when>
@@ -20,7 +20,7 @@ epilogue reads how they ended instead of re-deriving it from state. */
     @narrator{code="0020"}: What is left of the caravan limps back toward Harrow's Ford. The far bank stays far.
   </when>
   <otherwise>
-    <match on="run.bridge">
+    <match subject="run.bridge">
       <when is="parleyed">
         @narrator{code="0030"}: The chain came down at dawn without a shot fired. Maelis stood aside on the near arch with the proof inside her coat, and counted the wagons as they passed. {{run.wagons:plural(One|#Word)}}.
         @maelis{code="0010"}: Tell Ostwick the Duskbound can read, Warden.

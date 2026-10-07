@@ -7,7 +7,7 @@ compiles a plugin directive that *references* a bridge into a `plugin` command
 carrying the fully-resolved call and its result bindings. The engine makes the
 call and applies the effects.
 
-Grounding: `ir.rs::{OtherCmd, Effect, EffectSource}` (the compiled form),
+Grounding: `ir.rs::{PluginCmd, Effect, EffectSource}` (the compiled form),
 `crates/lute-compile/src/lower.rs::resolve_effect` (the resolution), and
 `crates/lute-manifest/src/schema.rs::{DirectiveDecl, BridgeRef,
 BridgeCapability, DirectiveEffects, WriteDecl, WriteValue}` (the plugin
@@ -15,42 +15,47 @@ declaration).
 
 ## The compiled form
 
-A plugin directive with a bridge lowers to a `Command::Other`, serialized as
-`kind: "plugin"`:
+A plugin directive with a bridge lowers to a `Command::Plugin`, serialized as
+`kind: "plugin"`, `family: "plugin"`. The `::minigame` call in
+`docs/examples/arcia-project/date-minigame.lute` compiles to:
 
 ```json
 {
   "kind": "plugin",
-  "addr": "001-0700",
+  "family": "plugin",
+  "position": "001-0700",
   "tag": "minigame",
   "plugin": "arcia.minigame",
   "fields": { "id": "marina_service_01", "kind": "rhythm",
               "resultKey": "service01", "sync": true },
   "effects": [
-    { "path": "scene.minigame.service01.score",   "from": { "bridgeResult": "score" } },
-    { "path": "scene.minigame.service01.rank",    "from": { "bridgeResult": "rank" } },
-    { "path": "scene.minigame.service01.cleared", "from": { "bridgeResult": "cleared" } }
+    { "path": "scene.minigame.service01.score",    "from": { "bridgeResult": "score" } },
+    { "path": "scene.minigame.service01.rank",     "from": { "bridgeResult": "rank" } },
+    { "path": "scene.minigame.service01.cleared",  "from": { "bridgeResult": "cleared" } },
+    { "path": "scene.minigame.service01.attempts", "from": { "op": "increment", "by": 1 } }
   ]
 }
 ```
 
-- `tag` — the authored plugin directive tag (`OtherCmd.tag`).
-- `plugin` — the resolved owning plugin id (`OtherCmd.plugin`), allowing host
-  dispatch by `(plugin, tag)`. Optional for older artifacts and omitted when
-  ownership is core or unresolved; never taken from an authored attribute.
+- `tag` — the authored plugin directive tag (`PluginCmd.tag`).
+- `plugin` — the resolved owning plugin id (`PluginCmd.plugin`), allowing host
+  dispatch by `(plugin, tag)`. Omitted when ownership is core or unresolved;
+  never taken from an authored attribute.
 - `fields` — the resolved directive attrs, typed via the manifest `AttrDecl`s
-  (`OtherCmd.fields`, a string→JSON map). Plugin-owned call options such as
-  `sync` live here. The reserved core `wait` attribute belongs to the flattened
-  command stamp, not to this map.
-- `effects` — the resolved state-write bindings (`OtherCmd.effects`); **absent**
+  (`PluginCmd.fields`, a string→JSON map). Plugin-owned call options such as
+  `sync` live here. The reserved core `wait` attribute belongs to the record's
+  `timing` object, not to this map.
+- `effects` — the resolved state-write bindings (`PluginCmd.effects`); **absent**
   when the directive declares none.
+- `retracts` / `asserts` — the facts the call retracts and then asserts,
+  applied after `effects`; each absent when empty.
 
 The **which** service/operation this `tag` invokes is a property of the plugin
 manifest the artifact was compiled against, not of the record itself: a
 directive declares `bridge: { service, operation }` (`BridgeRef`), and the
 engine's plugin implementation is keyed on `(service, operation)`
-(`BridgeCapability`). The `capabilityVersion` envelope stamp pins the snapshot
-so the engine can refuse a mismatched plugin set.
+(`BridgeCapability`). The `capabilitySnapshot` envelope stamp pins the
+snapshot so the engine can refuse a mismatched plugin set.
 
 ## Typed calls and returns
 
@@ -68,14 +73,15 @@ keys match the declared `result` fields.
 
 ### Blocking — `wait`
 
-The core `wait` stamp records authored wait intent; a plugin MUST NOT redeclare
-that reserved attribute in its manifest. A plugin may declare a distinct
-host-owned option such as `sync`, as the bundled minigame example does. The
-host implementation must define and honor its blocking contract: suspend the
-parent walk until the operation completes, apply its declared effects, then
-continue with the next ordinary command. Fire-and-continue scheduling is host
-policy, not a second language control-flow implementation inside the compiler.
-Do not assume that every plugin blocks merely because it has a bridge binding.
+The core `wait` member of `timing` records authored wait intent; a plugin MUST
+NOT redeclare that reserved attribute in its manifest. A plugin may declare a
+distinct host-owned option such as `sync`, as the bundled minigame example
+does. The host implementation must define and honor its blocking contract:
+suspend the parent walk until the operation completes, apply its declared
+effects, then continue with the next ordinary command. Fire-and-continue
+scheduling is host policy, not a second language control-flow implementation
+inside the compiler. Do not assume that every plugin blocks merely because it
+has a bridge binding.
 
 ## State effects
 
@@ -101,10 +107,10 @@ lands in one of the state tiers described in
 ## Contract summary
 
 1. Match the record's `tag` (via its manifest `bridge` ref) to your
-   `(service, operation)` implementation; refuse if `capabilityVersion` does
+   `(service, operation)` implementation; refuse if `capabilitySnapshot` does
    not match your plugin snapshot.
-2. Invoke the operation with the typed `fields` as arguments; if `wait` is
-   true, suspend the walk until it returns.
+2. Invoke the operation with the typed `fields` as arguments; if
+   `timing.wait` is true, suspend the walk until it returns.
 3. On return, apply each `Effect`: `bridgeResult` reads a key off the result,
    `op`/`by` mutates, a literal writes a constant — each to its resolved
    `path`.

@@ -8,6 +8,7 @@ enums:
 state:
   scene.knowsMira: { type: bool, default: false }
   run.metMira: { type: bool }
+monoSpeakers: [mira]
 ---
 /*
 `getting-started/first-scene` Part 5, file one of two. This is the scene the
@@ -23,7 +24,7 @@ project envelope. `lute check-project` proves it; single-file `lute check`
 on booth.lute alone cannot, which is exactly the point Part 5 makes.
 */
 
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 
@@ -32,10 +33,10 @@ on booth.lute alone cannot, which is exactly the point Part 5 makes.
 @mira{mono}: I should not be this pleased about a coffee order.
 
 <branch id="orderChoice">
-  <choice id="black" label="Order it black">
+  <choice id="black" text="Order it black">
     @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
   </choice>
-  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+  <choice id="familiar" text="Say hi like an old friend" when="scene.knowsMira">
     @mira{emotion="surprised" variant="0"}: You remembered. That's new.
   </choice>
 </branch>

@@ -17,20 +17,18 @@ exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
 (or shot) reacts by reading the named fact, never the raw choice key.
 */
 
-# Choice persist — cross-episode carry
-
 ## Recording the Choice
 
 @narrator: Elena had slipped on the wet step. You could help — or walk on.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" into="run.metHelpfully">
+  <choice id="help" text="Help her up" into="run.metHelpfully">
     @elena: Thank you. I won't forget this.
   </choice>
-  <choice id="warmly" label="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
+  <choice id="warmly" text="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
     @elena: You're very kind — really.
   </choice>
-  <choice id="tip" label="Leave a little something" into="run.tip" value="5">
+  <choice id="tip" text="Leave a little something" into="run.tip" value="5">
     @elena: Oh — you didn't have to.
   </choice>
 </branch>
@@ -40,7 +38,7 @@ exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
 A later reaction reads the NAMED run fact (§11.1.1), not `scene.choices.*`
 (which clears at episode end). First-match-wins; `<otherwise>` is mandatory.
 */
-<match on="run.metHelpfully">
+<match subject="run.metHelpfully">
   <when is="true">
     @elena: You helped me back then. I've been meaning to thank you again.
   </when>

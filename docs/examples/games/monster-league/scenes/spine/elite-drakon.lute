@@ -11,11 +11,11 @@ when: "@badgeCount >= 8 && holds('defeated', ['morwen']) && !holds('defeated', [
 ## The chamber
 
 ::bg{location="dragonChamber" time="day"}
-::auto{character="drakon" anchor="center" action="enter"}
+::actor{character="drakon" anchor="center" action="enter"}
 @drakon{code="0010"}: I am Drakon, last of the Four. Dragons are the oldest monsters of all. Here, they are mine.
-::music{action="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="up"}
 ::battle{foe="drakon" kind="elite" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @drakon{code="0020"}: Beaten. By a trainer who is not yet grown. The Champion's hall is open to you.
     ::assert{defeated(drakon)}

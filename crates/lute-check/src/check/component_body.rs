@@ -69,10 +69,10 @@ pub(super) fn validate_components(
         let mut arena = CelArena::default();
         let cel_errors = fill_document(&mut arena, &mut body);
         let mut body_diags: Vec<Diagnostic> = cel_parse_diagnostics(&body, cel_errors);
-        for shot in &body.shots {
+        for shot in &body.sections {
             super::use_site::check_instance_scope(&shot.body, &mut body_diags);
         }
-        for shot in &body.shots {
+        for shot in &body.sections {
             walk_component_body(
                 &shot.body,
                 snapshot,
@@ -290,8 +290,7 @@ pub(super) fn component_use_sites(
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {
     let mut sites = std::collections::BTreeMap::new();
-    let roots = doc
-        .shots
+    let roots = doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -310,7 +309,7 @@ pub(super) fn component_use_sites(
                 sites.insert(n.clone(), span);
                 if let Some(def) = components.table.get(&n) {
                     let mut inner = Vec::new();
-                    for shot in &def.body.shots {
+                    for shot in &def.body.sections {
                         collect_use_names(&shot.body, &mut inner);
                     }
                     stack.extend(inner.into_iter().map(|(n, _)| n));
@@ -337,7 +336,7 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
-fn project_relative_display(src: &std::path::Path) -> String {
+pub(super) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())
@@ -661,7 +660,7 @@ fn component_guard(
 /// purely-presentational staging directives (incl. nested `::use`) are
 /// validated as before; `<branch>`/`<hub>`/`<timeline>`/`<on>`/`<objective>`/
 /// `::set`/`::assert`/`::retract` stay `E-COMPONENT-BODY` (§6.1's ban).
-/// `<match>` is no longer a blanket rejection (§6.2): a `<match on="@param">`
+/// `<match>` is no longer a blanket rejection (§6.2): a `<match subject="@param">`
 /// is ADMITTED and its arms walk recursively through this same function; any
 /// other subject either reads ambient state (`E-COMPONENT-STATE`) or has no
 /// domain to dispatch on (`E-COMPONENT-BODY`). A directive whose resolved
@@ -1022,7 +1021,7 @@ pub(super) fn walk_component_body(
                         if diags.len() == before {
                             diags.push(use_diag(
                                 E_COMPONENT_BODY,
-                                "a component body must be presentational (dsl 0.4 §6.2): a `<match>` subject must be a bare declared param, e.g. on=\"@tier\" — dispatch needs a domain".to_string(),
+                                "a component body must be presentational (dsl 0.4 §6.2): a `<match>` subject must be a bare declared param, e.g. subject=\"@tier\" — dispatch needs a domain".to_string(),
                                 m.span,
                             ));
                         }
@@ -1171,7 +1170,7 @@ fn detect_use_cycles(components: &ComponentSet, at: Span, diags: &mut Vec<Diagno
         std::collections::BTreeMap::new();
     for (name, def) in &components.table {
         let mut targets = Vec::new();
-        for shot in &def.body.shots {
+        for shot in &def.body.sections {
             collect_use_targets(&shot.body, &mut targets);
         }
         targets.sort();
@@ -1284,7 +1283,7 @@ pub(super) fn component_def_reads(
         }
     }
     let mut found = Vec::new();
-    for shot in &body.shots {
+    for shot in &body.sections {
         interps(&shot.body, &mut found);
     }
     for interp in found.into_iter().filter(|i| i.kind == InterpKind::Ref) {

@@ -10,13 +10,13 @@ title: Silvercrest (the Mind Gym, the Game Corner, Helix Tower, the department s
 
 <beat id="arrive" on="enterTown" target="town.silvercrest" title="Silvercrest" priority="10" once="run">
   ::bg{location="silvercrest" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: Silvercrest. Glass towers, tram bells, a square the size of Pebbleton, and in the middle of it all Helix Tower, eleven floors of silver and one of cloud.
   @narrator{code="0020"}: On one side of the square, the Game Corner's lights blink even at noon. On the other, the Mind Gym sits with its doors shut and a sign on them in black Eclipse lettering.
-  ::auto{character="rival" anchor="right" action="enter"}
+  ::actor{character="rival" anchor="right" action="enter"}
   @rival{code="0010" emotion="smug"}: Oh, it's you. I already checked out the Game Corner. Slot machines are rigged, the poster at the back is crooked, and there's a grunt guarding it for no reason. Figure it out yourself.
   @rival{code="0020"}: The gym's shut, too. Some Eclipse nonsense. I'm going to Wardenmere. Try to keep up.
-  ::auto{character="rival" action="exit"}
+  ::actor{character="rival" action="exit"}
 </beat>
 
 <entry id="midSilvercrestMorning" on="enterTown" target="town.silvercrest" category="bark" once="day" when="@isMorning">
@@ -57,7 +57,7 @@ title: Silvercrest (the Mind Gym, the Game Corner, Helix Tower, the department s
 
 <beat id="deptStoreSale" on="enterPlace" target="place.silvercrestDeptStore" title="Silvercrest Department Store (weekend sale)" once="false" when="@weekend">
   ::bg{location="silvercrest-dept-store" time="day"}
-  ::music{action="change" mood="festive" volume="up"}
+  ::music{playback="change" mood="festive" volume="up"}
   @narrator{code="0010"}: The store is heaving. Ottilie at the door is handing out coupons as fast as she can, and the queue for the lift goes up the stairs.
   @silvercrestGreeter{code="0010"}: Welcome, welcome! Big Weekend Sale! Evolution stones on five, Potions on two, and please, please don't all take the lift at once!
 </beat>

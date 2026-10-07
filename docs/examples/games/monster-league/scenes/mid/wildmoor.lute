@@ -13,7 +13,7 @@ target: place.wildmoorPreserve
 ## The gates
 
 ::bg{location="wildmoor-preserve" time="day"}
-::music{action="change" mood="calm" volume="normal"}
+::music{playback="change" mood="calm" volume="normal"}
 @narrator{code="0010"}: The Wildmoor Preserve: tall grass to the horizon, ponds like dropped coins, and old oaks full of bugs. A ranger at the gate waves you through with a net.
 @wildmoorRanger{code="0010"}: First time? Stay on the paths, don't feed the Hornbeetles, and if you see the Warden's gold tooth, it's at the rest house. He's been looking for it for a month.
 @narrator{code="0020" when="@midContestOpen"}: Outside the rest house the bug-catching contest is starting. You can hear the nets from here.

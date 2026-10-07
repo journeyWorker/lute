@@ -12,19 +12,19 @@ components: [../../components/reaction.component.lute, ../../components/joins.co
 ## The Ford
 
 ::bg{location="harrows_ford" time="evening"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: Harrow's Ford is a mill, a river with no bridge, and thirty houses with their shutters nailed shut. Someone has painted a black sun on the mill door.
-::auto{character="oda" anchor="center" action="fadeInUp"}
+::actor{character="oda" anchor="center" action="fadeInUp"}
 @oda{code="0010" emotion="angry"}: Company wagons. Of course. Nobody comes for us, but the Company's cargo gets an escort.
 @isolde{code="0010"}: Mistress, we are only passing through.
 @oda{code="0020"}: So were the Duskbound. They passed through my house and took my twins with them. Pell and Hanne. Nine years old.
-::auto{character="wren" anchor="right" action="fadeInUp"}
+::actor{character="wren" anchor="right" action="fadeInUp"}
 @wren{code="0010"}: They're alive. The river told me. They're somewhere under the ford, where the water can't hear them.
 @corvin{code="0010"}: The river told her.
 @wren{code="0020"}: The river tells everyone, smuggler. Most people don't listen.
 
 <branch id="plea" prompt="Oda is looking at you, not at the wagons.">
-  <choice id="help" label="\"We'll find them.\"">
+  <choice id="help" text="\"We'll find them.\"">
     ::accept{quest="hostages"}
     @oda{code="0030" emotion="sad"}: Don't say it if you don't mean it. I've had enough of men who say things.
     ::use{component="reaction" who="isolde" feel="adores" instance="use-001"}
@@ -33,7 +33,7 @@ components: [../../components/reaction.component.lute, ../../components/joins.co
     @wren{code="0030"}: Then I'm coming with you. I know the mill. I know the river. And you'll need someone who can hear it.
     ::use{component="joins" who="wren" instance="use-001"}
   </choice>
-  <choice id="price" label="The Company pays me to guard wagons. What will you pay?">
+  <choice id="price" text="The Company pays me to guard wagons. What will you pay?">
     ::accept{quest="hostages"}
     @oda{code="0040" emotion="angry"}: Thirty silver. All of it. Everything the mill made this year.
     ::use{component="reaction" who="corvin" feel="approves" instance="use-002"}
@@ -41,15 +41,15 @@ components: [../../components/reaction.component.lute, ../../components/joins.co
     @wren{code="0040"}: I'll come. Not for you. For Pell and Hanne.
     ::use{component="joins" who="wren" instance="use-002"}
   </choice>
-  <choice id="refuse" label="The wagons can't wait. I'm sorry.">
+  <choice id="refuse" text="The wagons can't wait. I'm sorry.">
     @oda{code="0050"}: Sorry. Yes. Everyone is sorry.
     ::use{component="reaction" who="isolde" feel="despises" instance="use-004"}
     ::set{run.rep.marrow -= 1}
     @wren{code="0050" emotion="angry"}: Go on, then. The river will remember your wagons.
-    ::auto{character="wren" action="fadeOut"}
+    ::actor{character="wren" action="fadeOut"}
   </choice>
 </branch>
 
-::auto{character="oda" action="fadeOut"}
+::actor{character="oda" action="fadeOut"}
 @corvin{code="0020" mono}: Nine years old. Of course they are.
 @narrator{code="0020"}: The caravan circles its wagons on the mill green. Beyond the ford the road climbs toward the Tollbridge, and the black sun is painted on every milestone.

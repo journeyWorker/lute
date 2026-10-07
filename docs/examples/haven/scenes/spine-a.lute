@@ -10,7 +10,7 @@ after: 'visited("haven.s01ep02")'
 ## Spine, A-Section
 
 ::bg{location="spine-a" time="ship-night"}
-::auto{character="vesna" anchor="port" action="drift"}
+::actor{character="vesna" anchor="port" action="drift"}
 
 @vesna{code="0010" emotion="level"}: Hand on the rail. Not the conduit — the rail.
 @vesna{code="0020" emotion="clipped"}: It won't warn you twice.
@@ -21,17 +21,17 @@ after: 'visited("haven.s01ep02")'
     ::sfx{sound="klaxon-two-tone" duration="0.6"}
   </track>
   <track channel="music">
-    ::music{action="swell" mood="failing" volume="alarm" at="0.5"}
+    ::music{playback="swell" mood="failing" volume="alarm" at="0.5"}
   </track>
   <track subject="camera">
-    ::camera{focus="vesna" zoom="1.1" duration="0.3"}
-    ::camera{shake="0.6" duration="0.5" at="0.35"}
+    ::camera{focus="vesna" framing="close" duration="0.3"}
+    ::camera{move="shake" duration="0.5" at="0.35"}
   </track>
   <track subject="vesna" property="pos">
-    ::auto{character="vesna" anchor="port" action="brace" at="0.4"}
+    ::actor{character="vesna" anchor="port" action="brace" at="0.4"}
   </track>
   <track subject="vesna" property="grip">
-    ::auto{character="vesna" action="seal" at="0.9"}
+    ::actor{character="vesna" action="seal" at="0.9"}
   </track>
   <track channel="vfx">
     ::vfx{type="shed" label="module four" at="0.8" duration="0.4"}

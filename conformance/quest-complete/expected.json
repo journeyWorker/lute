@@ -38,21 +38,21 @@
       }
     },
     {
-      "addr": "001-0300",
       "kind": "set",
       "path": "run.done",
+      "position": "001-0300",
       "value": 1
     },
     {
-      "addr": "001-0400",
       "kind": "line",
+      "position": "001-0400",
       "speaker": "narrator",
       "text": "The goal is reached."
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.36",
+  "irVersion": "0.37",
   "kind": "quest",
   "quests": {
     "reachGoal": "complete"

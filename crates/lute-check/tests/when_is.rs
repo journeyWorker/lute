@@ -31,7 +31,7 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
 fn is_arms_cover_enum_no_otherwise_is_exhaustive() {
     // `is` arms cover the full enum with NO <otherwise> => no E-NONEXHAUSTIVE.
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
          <when is=\"silver\">\n@narrator: b\n</when>\n\
          <when is=\"gold\">\n@narrator: c\n</when>\n\
@@ -47,7 +47,7 @@ fn is_arms_cover_enum_no_otherwise_is_exhaustive() {
 fn is_arms_missing_member_is_nonexhaustive() {
     // omit `gold` => E-NONEXHAUSTIVE (is-derived coverage is normative, §11.2).
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
          <when is=\"silver\">\n@narrator: b\n</when>\n\
          </match>\n"
@@ -62,7 +62,7 @@ fn is_arms_missing_member_is_nonexhaustive() {
 fn when_with_neither_is_nor_test_is_e_when_pattern() {
     // a `<when>` with neither `is` nor `test` => E-WHEN-PATTERN (§7.3.1, D-D).
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when>\n@narrator: a\n</when>\n\
          <otherwise>\n@narrator: b\n</otherwise>\n\
          </match>\n"
@@ -78,7 +78,7 @@ fn is_and_test_arm_parses_and_is_drives_coverage() {
     // `is="gold" test="$ != 'x'"` composes P.when; `is` still drives coverage, so
     // the enum is exhaustive with no <otherwise> and no E-WHEN-PATTERN.
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"fail | bronze\">\n@narrator: a\n</when>\n\
          <when is=\"silver\">\n@narrator: b\n</when>\n\
          <when is=\"gold\" test=\"$ != 'x'\">\n@narrator: c\n</when>\n\
@@ -105,7 +105,7 @@ fn undecidable_guard_on_is_arm_does_not_shadow_a_later_same_pattern_arm() {
         run.who: { type: { enum: [a, b] }, default: a }\n  \
         run.proof: { type: bool, default: false }\n---\n## Shot 1.\n";
     let out = codes(&format!(
-        "{hdr}<match on=\"run.who\">\n\
+        "{hdr}<match subject=\"run.who\">\n\
          <when is=\"a\" test=\"run.proof\">\n@narrator: proof.\n</when>\n\
          <when is=\"a\">\n@narrator: fallback.\n</when>\n\
          <otherwise>\n@narrator: other.\n</otherwise>\n\
@@ -127,7 +127,7 @@ fn undecidable_guard_on_is_arm_leaves_the_member_uncovered() {
         run.who: { type: { enum: [a, b, nobody] }, default: a }\n  \
         run.proof: { type: bool, default: false }\n---\n## Shot 1.\n";
     let out = codes(&format!(
-        "{hdr}<match on=\"run.who\">\n\
+        "{hdr}<match subject=\"run.who\">\n\
          <when is=\"a\" test=\"run.proof\">\n@narrator: proof.\n</when>\n\
          <when is=\"b | nobody\">\n@narrator: other.\n</when>\n\
          </match>\n"

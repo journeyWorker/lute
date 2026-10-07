@@ -214,7 +214,7 @@ fn offered_options(
                 .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(opt)))
         };
         let offered = cmds
-            .get(str_of(rec, "addr"))
+            .get(str_of(rec, "position"))
             .and_then(|c| c.get("options"))
             .and_then(Json::as_array)
             .into_iter()
@@ -259,7 +259,7 @@ pub(super) fn played_choices(
                 .is_some_and(|a| a.iter().any(|v| v.as_str() == Some(opt)))
         };
         let options: Vec<&str> = cmds
-            .get(str_of(rec, "addr"))
+            .get(str_of(rec, "position"))
             .and_then(|c| c.get("options"))
             .and_then(Json::as_array)
             .into_iter()

@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.36.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.37.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -93,7 +93,7 @@ enum Step {
 /// The `line` record fields that carry a line's identity and delivery —
 /// what a play transcript shows and `lute run --json` (the conformance
 /// contract) leaves out.
-pub const LINE_DELIVERY_KEYS: [&str; 5] = ["role", "lineId", "voiceKey", "as", "emotion"];
+pub const LINE_DELIVERY_KEYS: [&str; 6] = ["role", "lineId", "voiceKey", "as", "emotion", "segments"];
 
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and
@@ -234,7 +234,7 @@ impl Code {
         let mut addr_index = BTreeMap::new();
         let mut addr_order = Vec::new();
         for (i, c) in commands.iter().enumerate() {
-            if let Some(a) = c.get("addr").and_then(Json::as_str) {
+            if let Some(a) = c.get("position").and_then(Json::as_str) {
                 addr_index.insert(a.to_string(), i);
                 addr_order.push((a.to_string(), i));
             }
@@ -630,7 +630,7 @@ impl<D: Driver> Machine<D> {
                 self.rec_line(cmd);
                 Step::Next(pc + 1)
             }
-            "background" | "music" | "sfx" | "vfx" | "sprite" | "camera" | "cut" | "video" => {
+            "bg" | "music" | "sfx" | "vfx" | "actor" | "camera" | "cg" | "video" | "sequence" => {
                 self.rec_stage(cmd, kind);
                 Step::Next(pc + 1)
             }
@@ -656,9 +656,9 @@ impl<D: Driver> Machine<D> {
             }
             "jump" => {
                 // Not a transcript record: `lute trace` reports an authored
-                // `::next` and the source-only steps that ride on the jump.
+                // `::jump` and the source-only steps that ride on the jump.
                 self.driver
-                    .observe(json!({ "kind": "jump", "addr": cmd.get("addr") }));
+                    .observe(json!({ "kind": "jump", "position": cmd.get("position") }));
                 let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");
                 Step::Next(self.resolve(t))
             }
@@ -779,7 +779,7 @@ fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
 }
 
 fn addr(cmd: &Json) -> &str {
-    cmd.get("addr").and_then(Json::as_str).unwrap_or("")
+    cmd.get("position").and_then(Json::as_str).unwrap_or("")
 }
 
 /// The canonical CEL text of a slot in an execution-IR `{cel, expr}` pair.

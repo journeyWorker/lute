@@ -15,7 +15,7 @@ fn errors(body: &str) -> Vec<lute_core_span::Diagnostic> {
 fn else_in_a_match_is_one_error_naming_otherwise() {
     for tag in ["else", "default"] {
         let body = format!(
-            "<match on=\"run.mood\">\n  <when is=\"calm\">\n    @narrator: Calm.\n  </when>\n  \
+            "<match subject=\"run.mood\">\n  <when is=\"calm\">\n    @narrator: Calm.\n  </when>\n  \
              <{tag}>\n    @narrator: Other.\n  </{tag}>\n</match>\n@narrator: After.\n"
         );
         let errs = errors(&body);
@@ -28,7 +28,7 @@ fn else_in_a_match_is_one_error_naming_otherwise() {
     }
     // A one-line form skips only its own line.
     let errs = errors(
-        "<match on=\"run.mood\">\n  <else>@narrator: Other.</else>\n  <otherwise>\n    \
+        "<match subject=\"run.mood\">\n  <else>@narrator: Other.</else>\n  <otherwise>\n    \
          @narrator: Fine.\n  </otherwise>\n</match>\n",
     );
     assert_eq!(errs.len(), 1, "{errs:?}");

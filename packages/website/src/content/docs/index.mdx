@@ -115,12 +115,13 @@ state:
   scene.affect.marina: { type: int, default: 0 }
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
+  framing: [close, tight]
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---
 
 ## The Hostess with a Name
-::camera{focus="marina" zoom="1.1" duration="0.5"}
+::camera{focus="marina" framing="close" duration="0.5"}
 
 @marina{emotion="surprised"}: Oh!
 @marina{emotion="delighted"}: Mr. Fixer!
@@ -128,17 +129,17 @@ defs:
 
 /* a choice of TONE — both paths get the number; the gentle ask warms her */
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     @fixer: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
 
 /* state-driven callback — first-match-wins; <otherwise> is mandatory */
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
@@ -160,20 +161,22 @@ episode: 1
 enums:
   anchor: { members: [left, center, right], default: center }
   action: { members: [slideInLeft, fadeInUp, fadeOut], exits: [fadeOut] }
+  framing: [close, tight]
+  cameraMove: [shake]
 ---
 
 ## Beat
 
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slideInLeft"}
+    ::actor{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="marina" framing="tight" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
 </timeline>
 ```
@@ -194,6 +197,7 @@ kind: scene
 character: detective
 season: 1
 episode: 1
+pov: detective
 entities:
   clue:    { members: [cufflink, ledger] }
   suspect: { members: [mireille] }
@@ -209,21 +213,21 @@ state:
 @narrator: The lamp still burned. The ledger had already given you one name.
 
 <hub id="investigate">
-  <choice id="desk" label="Search the writing desk" once>
+  <choice id="desk" text="Search the writing desk" once>
     @detective: A cufflink, wedged behind the drawer.
     ::assert{ found(cufflink) }
   </choice>
-  <choice id="confront" label="Confront Mireille with the ledger" when="holds('found', ['ledger'])">
+  <choice id="confront" text="Confront Mireille with the ledger" when="holds('found', ['ledger'])">
     @mireille: ...You've read it, then. Fine.
     ::assert{ accused(mireille) }
     ::set{run.caseProgress += 1}
   </choice>
-  <choice id="leave" label="Step back into the hall" exit>
+  <choice id="leave" text="Step back into the hall" exit>
     @detective: Enough for now.
   </choice>
 </hub>
 
-<match on="run.caseProgress">
+<match subject="run.caseProgress">
   <when is="1..">
     @detective{mono}: A name, a motive. The case has a spine now.
   </when>

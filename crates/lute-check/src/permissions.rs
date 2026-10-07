@@ -70,7 +70,7 @@ pub(crate) fn check_document_permissions(
     checker.check_state_defaults(doc, typed, input);
     checker.check_seed_facts(doc, typed, input);
 
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         checker.walk_nodes(&shot.body);
     }
     for quest in &doc.quests {
@@ -474,7 +474,7 @@ impl PermissionChecker<'_> {
         let outer = self.in_effects;
         self.in_effects |= def.effects;
         let start = self.diagnostics.len();
-        for shot in &def.body.shots {
+        for shot in &def.body.sections {
             self.walk_nodes(&shot.body);
         }
         let nested = self.diagnostics.split_off(start);

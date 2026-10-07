@@ -30,7 +30,6 @@ pub const SEMANTICS_VOCAB: &[&str] = &[
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LowerFieldKind {
     Str,
-    Num,
     Bool,
 }
 
@@ -39,7 +38,6 @@ impl LowerFieldKind {
     pub fn label(self) -> &'static str {
         match self {
             LowerFieldKind::Str => "string",
-            LowerFieldKind::Num => "number",
             LowerFieldKind::Bool => "bool",
         }
     }
@@ -66,7 +64,7 @@ impl LowerFieldKind {
 /// `E-LOWER-RECORD-UNKNOWN` message, so message and table can never drift.
 const LOWER_RECORDS: &[(&str, &[(&str, LowerFieldKind)])] = &[
     (
-        "background",
+        "bg",
         &[
             ("location", LowerFieldKind::Str),
             ("time", LowerFieldKind::Str),
@@ -76,69 +74,59 @@ const LOWER_RECORDS: &[(&str, &[(&str, LowerFieldKind)])] = &[
     (
         "music",
         &[
-            ("action", LowerFieldKind::Str),
+            ("playback", LowerFieldKind::Str),
             ("mood", LowerFieldKind::Str),
             ("volume", LowerFieldKind::Str),
             ("assetId", LowerFieldKind::Str),
-            ("track", LowerFieldKind::Str),
         ],
     ),
     (
         "sfx",
-        &[
-            ("sound", LowerFieldKind::Str),
-            ("assetId", LowerFieldKind::Str),
-            ("name", LowerFieldKind::Str),
-        ],
+        &[("sound", LowerFieldKind::Str), ("assetId", LowerFieldKind::Str)],
     ),
     (
         "vfx",
         &[
-            ("vfxType", LowerFieldKind::Str),
+            ("type", LowerFieldKind::Str),
             ("label", LowerFieldKind::Str),
             ("transition", LowerFieldKind::Str),
         ],
     ),
     (
-        "sprite",
+        "actor",
         &[
             ("character", LowerFieldKind::Str),
             ("anchor", LowerFieldKind::Str),
             ("action", LowerFieldKind::Str),
             ("exit", LowerFieldKind::Bool),
-            ("posReset", LowerFieldKind::Bool),
-            ("preload", LowerFieldKind::Bool),
             ("emotion", LowerFieldKind::Str),
             ("costume", LowerFieldKind::Str),
+            ("posReset", LowerFieldKind::Bool),
+            ("preload", LowerFieldKind::Bool),
         ],
     ),
     (
         "camera",
         &[
             ("focus", LowerFieldKind::Str),
-            ("zoom", LowerFieldKind::Num),
-            ("moveX", LowerFieldKind::Num),
-            ("moveY", LowerFieldKind::Num),
-            ("shake", LowerFieldKind::Num),
-            ("reset", LowerFieldKind::Bool),
-            ("easing", LowerFieldKind::Str),
+            ("framing", LowerFieldKind::Str),
+            ("move", LowerFieldKind::Str),
+            ("transition", LowerFieldKind::Str),
         ],
     ),
     (
-        "cut",
+        "cg",
         &[
             ("assetId", LowerFieldKind::Str),
-            ("action", LowerFieldKind::Str),
-            ("full", LowerFieldKind::Bool),
+            ("display", LowerFieldKind::Str),
+            ("layout", LowerFieldKind::Str),
         ],
     ),
     (
         "video",
-        &[
-            ("assetId", LowerFieldKind::Str),
-            ("action", LowerFieldKind::Str),
-        ],
+        &[("assetId", LowerFieldKind::Str), ("display", LowerFieldKind::Str)],
     ),
+    ("sequence", &[("name", LowerFieldKind::Str)]),
 ];
 
 /// The bindable target fields of a declarative-lowering `record`, or `None`
@@ -480,7 +468,6 @@ fn validate_record_lowering(
                 let ok = matches!(
                     (kind, v),
                     (LowerFieldKind::Str, serde_yaml::Value::String(_))
-                        | (LowerFieldKind::Num, serde_yaml::Value::Number(_))
                         | (LowerFieldKind::Bool, serde_yaml::Value::Bool(_))
                 );
                 if !ok {
@@ -838,7 +825,7 @@ mod tests {
     #[test]
     fn valid_record_lowering_passes() {
         let errs = validate_directive(&record_dir(
-            "background",
+            "bg",
             "{ assetId: { fromAttr: img }, time: dusk }",
         ));
         assert!(errs.is_empty(), "{errs:?}");
@@ -853,47 +840,47 @@ mod tests {
         assert_eq!(
             errs[0].message(),
             "directive `::backdrop` lowers to unknown record `line`; declarative lowering \
-             targets the staging kinds (background, music, sfx, vfx, sprite, camera, cut, video)"
+             targets the staging kinds (bg, music, sfx, vfx, actor, camera, cg, video, sequence)"
         );
     }
 
     #[test]
     fn unknown_target_field_is_rejected() {
         let errs = validate_directive(&record_dir(
-            "background",
+            "bg",
             "{ backdropId: { fromAttr: img } }",
         ));
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
         assert_eq!(
             errs[0].message(),
-            "directive `::backdrop` lowers to record `background`: unknown target field \
-             `backdropId` (record `background` binds: location, time, assetId)"
+            "directive `::backdrop` lowers to record `bg`: unknown target field \
+             `backdropId` (record `bg` binds: location, time, assetId)"
         );
     }
 
     #[test]
     fn from_attr_naming_an_undeclared_attr_is_rejected() {
-        let errs = validate_directive(&record_dir("background", "{ assetId: { fromAttr: nope } }"));
+        let errs = validate_directive(&record_dir("bg", "{ assetId: { fromAttr: nope } }"));
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
         assert_eq!(
             errs[0].message(),
-            "directive `::backdrop` lowers to record `background`: field `assetId` reads \
+            "directive `::backdrop` lowers to record `bg`: field `assetId` reads \
              `fromAttr: nope`, but directive `::backdrop` declares no such attr (declared: img)"
         );
     }
 
     #[test]
     fn literal_of_the_wrong_kind_is_rejected() {
-        // `camera.zoom` is a number; a bare string cannot fill it.
-        let errs = validate_directive(&record_dir("camera", "{ zoom: wide }"));
+        // `actor.exit` is a bool; a bare string cannot fill it.
+        let errs = validate_directive(&record_dir("actor", "{ exit: wide }"));
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
         assert!(
             errs[0]
                 .message()
-                .ends_with("field `zoom` expects number or { fromAttr: <attr> }, got string"),
+                .ends_with("field `exit` expects bool or { fromAttr: <attr> }, got string"),
             "{}",
             errs[0].message()
         );

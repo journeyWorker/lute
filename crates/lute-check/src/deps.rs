@@ -94,7 +94,7 @@ pub fn slot_dependencies(raw: &str, span: Span) -> DependencyFeed {
 /// adapter intentionally has no expansion environment.
 pub fn collect_document_dependencies(doc: &Document) -> DependencyFeed {
     let mut out = DependencyFeed::default();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk_nodes(&shot.body, &mut out);
     }
     for quest in &doc.quests {

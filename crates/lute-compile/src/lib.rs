@@ -395,7 +395,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.36.6";
+pub const LUTE_IR_VERSION: &str = "0.37.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -550,7 +550,7 @@ fn compile_inner(
             let meta = artifact_meta(&doc, &folded, &input.snapshot, beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
-            for (i, shot) in doc.shots.iter().enumerate() {
+            for (i, shot) in doc.sections.iter().enumerate() {
                 let mut em = cfg::Emitter::new(map.is_some());
                 // Top-level per-shot walk: no CFG continuation past the shot end.
                 state = stage::walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut diags);
@@ -568,7 +568,7 @@ fn compile_inner(
             // note 8): whatever this walk re-derives on `StageState::diags` is
             // dropped rather than reported a second time. Since dsl 0.9.0 D-D
             // that channel is no longer warning-only — `auto-anchor-on-show`
-            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies
+            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::actor` that relies
             // on an undeclared `anchor` domain's `default:`. So the drop needs
             // an argument that covers an Error, not the old one about warnings
             // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`;
@@ -588,7 +588,7 @@ fn compile_inner(
             //     fact (nothing declares an `anchor` domain).
             //     `normalize_document` and `expand_document` rewrite attr
             //     VALUES and inline component bodies; neither invents an
-            //     `::auto` nor adds or removes an attr key, so the trigger is
+            //     `::actor` nor adds or removes an attr key, so the trigger is
             //     invariant under everything separating this tree from the one
             //     `check()` folds.
             //   * The component-body divergence Task 7g closed is structural,
@@ -729,7 +729,7 @@ fn compile_inner(
         kind: folded.doc_kind.into(),
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
-        capability_version: input.snapshot.version.clone(),
+        capability_snapshot: input.snapshot.version.clone(),
         identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
@@ -742,7 +742,7 @@ fn compile_inner(
         rules,
         commands,
         prereq_edges: prereq_edge_entries(&doc, &folded),
-        shots: shot_entries(&doc),
+        sections: section_entries(&doc),
         clock: folded.env.clock.clone(),
         gates: seam_gates(&folded, &table),
         terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
@@ -838,9 +838,9 @@ fn source_side_tables(
         match cmd {
             Command::Quest(q) => quest = Some(&q.id),
             Command::On(on) => {
-                let span = map.by_addr.get(&on.addr).map(|i| i.span);
+                let span = map.by_addr.get(&on.position).map(|i| i.span);
                 if let (Some(q), Some(span)) = (quest.and_then(|q| map.quests.get_mut(q)), span) {
-                    q.handlers.insert(on.addr.clone(), span);
+                    q.handlers.insert(on.position.clone(), span);
                 }
             }
             _ => {}
@@ -858,7 +858,7 @@ fn source_side_tables(
     for quest in &doc.quests {
         for (index, reward) in quest.rewards.iter().enumerate() {
             let owner = format!("quest:{}", quest.id);
-            map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+            map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
                 owner, declaration_index: index, span: reward.span,
             });
         }
@@ -868,7 +868,7 @@ fn source_side_tables(
         }) {
             for (index, reward) in objective.rewards.iter().enumerate() {
                 let owner = format!("{}.{}", quest.id, objective.id);
-                map.rewards.insert(format!("{owner}#{index}"), RewardSource {
+                map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
                     owner, declaration_index: index, span: reward.span,
                 });
             }
@@ -876,21 +876,23 @@ fn source_side_tables(
     }
 }
 
-/// Collect the authored `## ` shot headings (dsl 0.8.0 §6) into the artifact's
-/// descriptive `shots` table. Shot number is the 1-based DOCUMENT position
-/// (0.6.0 §3.2), matching the `addr` shot segment. Blank headings are skipped,
-/// so a document that titles no shot emits no table at all — byte-identical to
-/// 0.7.0. Quest documents have no shots (their addressing unit is the
-/// `<quest>`), so this returns empty for them.
-fn shot_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::ShotEntry> {
-    doc.shots
+/// Collect the authored `## ` sections (dsl 0.37.0 §5.3) into the artifact's
+/// descriptive `sections` table. The section number is the 1-based DOCUMENT
+/// position, matching a `position`'s first segment. A section with neither a
+/// heading nor an `{#id}` is skipped, so a document that titles none emits no
+/// table at all. Quest documents have no sections (their addressing unit is
+/// the `<quest>`), so this returns empty for them.
+fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
+    doc.sections
         .iter()
         .enumerate()
         .filter_map(|(i, s)| {
             let heading = s.heading.trim();
-            (!heading.is_empty()).then(|| ir::ShotEntry {
-                shot: i as i64 + 1,
+            let id = s.id.as_ref().map(|(id, _)| id.clone());
+            (!heading.is_empty() || id.is_some()).then(|| ir::SectionEntry {
+                section: i as i64 + 1,
                 heading: heading.to_string(),
+                id,
             })
         })
         .collect()
@@ -1530,7 +1532,7 @@ fn state_entries(
 /// the RAW parsed document and get the same paths the folded schema was built on.
 pub fn collect_branch_paths(doc: &Document) -> BTreeSet<String> {
     let mut paths = BTreeSet::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_branch_paths_nodes(&shot.body, &mut paths);
     }
     for quest in &doc.quests {
@@ -1689,9 +1691,9 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.36.6 axis alignment (docs/versioning.md): toolchain-only quality
-        // work still re-aligns the language and IR presentation stamps.
-        assert_eq!(super::LUTE_IR_VERSION, "0.36.6");
+        // 0.37.0 axis alignment (docs/versioning.md): a breaking minor that
+        // moves language and IR together with the toolchain.
+        assert_eq!(super::LUTE_IR_VERSION, "0.37.0");
     }
 
     #[test]
@@ -1700,8 +1702,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.36.6");
-        assert_eq!(v["irVersion"], "0.36.6");
+        assert_eq!(v["lute"], "0.37.0");
+        assert_eq!(v["irVersion"], "0.37.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

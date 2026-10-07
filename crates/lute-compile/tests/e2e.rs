@@ -67,7 +67,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         .collect();
     let mut addrs: Vec<&str> = Vec::new();
     for c in commands {
-        addrs.push(c["addr"].as_str().expect("every record has addr"));
+        addrs.push(c["position"].as_str().expect("every record has addr"));
     }
     let unique: BTreeSet<&str> = addrs.iter().copied().collect();
     assert_eq!(unique.len(), addrs.len(), "addrs unique");
@@ -131,14 +131,9 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         match c["kind"].as_str() {
             Some("line") => {
                 assert!(c["lineId"].as_str().is_some_and(|s| !s.is_empty()));
-                let voiced = matches!(
-                    c["role"].as_str(),
-                    Some("dialogue" | "voiceover" | "offscreen")
-                );
-                assert_eq!(
-                    c["voiceKey"].is_string(),
-                    voiced,
-                    "voiceKey iff voiced: {c}"
+                assert!(
+                    c["voiceKey"].as_str().is_some_and(|s| !s.is_empty()),
+                    "every line carries a voiceKey (dsl 0.37.0 D6): {c}"
                 );
                 assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
             }
@@ -452,7 +447,7 @@ fn components_scene() {
 
 /// 0.21.1 T1-3/T1-4: the two `::use` sites ship DISTINCT texts (the param is
 /// substituted as a literal, twice per line), `{{@twice}}`'s placeholder
-/// carries the inlined def body as `expr`, and `zoom=@closeUp` folds to the
+/// carries the inlined def body as `expr`, and `duration=@closeUp` folds to the
 /// number `1.3` instead of vanishing.
 #[test]
 fn def_inline() {
@@ -464,7 +459,7 @@ fn def_inline() {
 /// the selected `@marina` line, zero match records) plus one def-bound
 /// `::use{tier=@currentTier}` site (§6.4 case 2: an ordinary residual
 /// `MatchCmd` on the substituted subject). B2: the caller's OWN
-/// `<match on="scene.affect.marina">` is a scene-level match — untouched by
+/// `<match subject="scene.affect.marina">` is a scene-level match — untouched by
 /// this fold either way.
 #[test]
 fn affinity_reaction() {
@@ -508,10 +503,10 @@ fn dangling_target_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
             {
-                "kind": "line", "addr": "001-0100", "role": "dialogue",
+                "kind": "line", "position": "001-0100", "role": "dialogue",
                 "speaker": "x", "text": "hi", "lineId": "x", "voiceKey": "v"
             },
-            { "kind": "jump", "addr": "001-0200", "target": "999-9999" }
+            { "kind": "jump", "position": "001-0200", "target": "999-9999" }
         ]
     });
     let caught = std::panic::catch_unwind(|| assert_artifact_invariants(&artifact));
@@ -528,7 +523,7 @@ fn unexpanded_cel_token_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
             {
-                "kind": "set", "addr": "001-0100",
+                "kind": "set", "position": "001-0100",
                 "path": "scene.x", "op": "=", "value": "$ + 1"
             }
         ]
@@ -548,7 +543,7 @@ fn unexpanded_cel_token_fails_the_checker() {
 fn assert_relation_missing_from_schema_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
-            { "kind": "assert", "addr": "001-0100", "relation": "ghost", "args": ["ana"] }
+            { "kind": "assert", "position": "001-0100", "relation": "ghost", "args": ["ana"] }
         ],
         "relations": [
             { "name": "inParty", "args": ["c"], "derive": false, "reserved": false }
@@ -574,7 +569,7 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
             field_is_registered(field),
             "E-SEMANTICS-FIELD: serialized field `{field}` at {path} has no registry field-table row"
         );
-        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "labels" | "labelForms") {
+        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "localeSegments" | "labels" | "labelForms") {
             continue;
         }
         semantic_field_coverage_walk(child, &format!("{path}.{field}"));

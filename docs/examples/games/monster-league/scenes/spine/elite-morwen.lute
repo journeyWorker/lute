@@ -11,11 +11,11 @@ when: "@badgeCount >= 8 && holds('defeated', ['tarrok']) && !holds('defeated', [
 ## The chamber
 
 ::bg{location="shadeChamber" time="day"}
-::auto{character="morwen" anchor="center" action="enter"}
+::actor{character="morwen" anchor="center" action="enter"}
 @morwen{code="0010"}: I am Morwen. I was battling when the professor was a boy. Do you know what my monsters see in you?
-::music{action="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="up"}
 ::battle{foe="morwen" kind="elite" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @morwen{code="0020"}: Well. The old woman loses one. Go on, child. The Dragon is waiting.
     ::assert{defeated(morwen)}

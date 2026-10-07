@@ -26,7 +26,7 @@ const VOCAB_SLOTS: &[&str] = &[
     "anchor",
     "mood",
     "volume",
-    "musicAction",
+    "musicPlayback",
     "vfxType",
 ];
 

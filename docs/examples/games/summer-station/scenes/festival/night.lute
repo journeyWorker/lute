@@ -10,10 +10,10 @@ when: "@festivalNight"
 ## The square
 
 ::bg{location="village_square" time="night"}
-::music{action="start" mood="festive" volume="normal"}
+::music{playback="start" mood="festive" volume="normal"}
 @narrator{code="0010"}: The whole mountain has come down to the square. The flat bell rings. Somebody's uncle is selling burnt almonds out of a wheelbarrow.
 
-<match on="quest.forecast.state">
+<match subject="quest.forecast.state">
   <when is="complete">
     @narrator{code="0020"}: Your forecast is still pinned to the notice board, four drawing pins, one per corner. Every string across the square is hung with lanterns.
     ::use{component="enter" who="elder" side="left" instance="use-001"}
@@ -30,7 +30,7 @@ when: "@festivalNight"
   </otherwise>
 </match>
 
-<match on="run.weather">
+<match subject="run.weather">
   <when is="storm">
     ::vfx{type="rain"}
     @narrator{code="0050"}: And then it rains — a hard, sideways mountain rain — and the whole square runs for the hall laughing.
@@ -42,7 +42,7 @@ when: "@festivalNight"
 
 ## The lanterns
 
-<match on="quest.lantern.state">
+<match subject="quest.lantern.state">
   <when is="complete">
     ::clear
     ::use{component="enter" who="wren" side="right" instance="use-003"}
@@ -59,7 +59,7 @@ when: "@festivalNight"
 
 ## After
 
-<match on="run.route">
+<match subject="run.route">
   <when is="sol">
     ::clear
     ::use{component="enter" who="sol" instance="use-004"}
@@ -80,5 +80,5 @@ when: "@festivalNight"
 
 ::set{user.summers += 1}
 ::set{run.summerOver = true}
-::music{action="fadeOut"}
+::music{playback="fadeOut"}
 ::end{reason="festivalOver"}

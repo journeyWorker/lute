@@ -16,11 +16,11 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
 
 <beat id="register" on="talk" target="npc.wildmoorContestOfficer" title="Contest desk" priority="20" once="false" when="@midContestOpen && !@midContestToday">
   ::bg{location="wildmoor-contest-desk" time="day"}
-  ::auto{character="wildmoorContestOfficer" anchor="center" action="enter"}
+  ::actor{character="wildmoorContestOfficer" anchor="center" action="enter"}
   @wildmoorContestOfficer{code="0010" emotion="happy"}: Welcome to the Wildmoor bug-catching contest! It's {{clock.weekdayLabel}}, the nets are out, and the bugs don't know what's coming.
   @wildmoorContestOfficer{code="0020"}: The rules: twenty Park Balls, bugs only, and only your best catch counts. You have until the bell. The judges like rare bugs. They like big bugs even more.
   <branch id="midContestEnter" prompt="Enter today's contest? The fee is 500 coins.">
-    <choice id="enter" label="Enter (500 coins)" when="run.money >= 500">
+    <choice id="enter" text="Enter (500 coins)" when="run.money >= 500">
       ::set{run.money -= 500}
       ::set{run.midContest = "entered"}
       ::set{run.midContestScore = 0}
@@ -29,14 +29,14 @@ title: The Wildmoor bug-catching contest (Tuesday, Thursday, Saturday)
       @narrator{code="0010"}: {{userName}} received twenty Park Balls.
       @wildmoorContestOfficer{code="0030"}: Off you go! Listen for the bell. And don't catch the rangers, they bruise.
     </choice>
-    <choice id="decline" label="Not today">
+    <choice id="decline" text="Not today">
       @wildmoorContestOfficer{code="0040"}: Suit yourself. The desk's open until nightfall, if you change your mind.
     </choice>
   </branch>
 </beat>
 
 <entry id="midContestDeskActive" on="talk" target="npc.wildmoorContestOfficer" category="bark" priority="15" when="run.midContest == 'entered'">
-  <match on="run.midContestScore">
+  <match subject="run.midContestScore">
     <when is="3..">
       @wildmoorContestOfficer{code="0010" emotion="surprised"}: Is that what I think it is in your ball? Don't show me, show the judges! Keep going, or don't. You might not beat that.
     </when>

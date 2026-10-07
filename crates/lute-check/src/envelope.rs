@@ -719,7 +719,7 @@ mod tests {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
-        doc.shots
+        doc.sections
             .into_iter()
             .next()
             .map(|s| s.body)
@@ -748,8 +748,7 @@ mod tests {
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
         );
-        let nodes = doc
-            .shots
+        let nodes = doc.sections
             .into_iter()
             .next()
             .map(|s| s.body)
@@ -783,7 +782,7 @@ mod tests {
         // `run.a` (branch choice), `user.b` (nested match `<when>`) collected;
         // `scene.skip` (match `<otherwise>`), `quest.q1.d` (top-level `::set`)
         // excluded by the run/user tier filter.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.a = 1}\n<match on=\"run.a\">\n<when test=\"run.a > 0\">\n::set{user.b = 2}\n</when>\n<otherwise>\n::set{scene.skip = 1}\n</otherwise>\n</match>\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n<hub id=\"h\">\n<choice id=\"hc\" label=\"HL\">\n::set{run.c = 3}\n</choice>\n</hub>\n::set{quest.q1.d = 4}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\">\n::set{run.a = 1}\n<match subject=\"run.a\">\n<when test=\"run.a > 0\">\n::set{user.b = 2}\n</when>\n<otherwise>\n::set{scene.skip = 1}\n</otherwise>\n</match>\n</choice>\n<choice id=\"c2\" text=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n<hub id=\"h\">\n<choice id=\"hc\" text=\"HL\">\n::set{run.c = 3}\n</choice>\n</hub>\n::set{quest.q1.d = 4}\n";
         let nodes = shot_nodes(src);
         let p = possible_writes(&nodes);
         assert_eq!(
@@ -800,7 +799,7 @@ mod tests {
     fn possible_writes_excludes_assert_and_includes_record_sugar() {
         // `<choice into="run.p">` is sugar for a `::set` — counts.
         // `::assert{…}` targets a relational fact, not a state path — excluded.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.p\">\n::assert{ seen(x) }\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" into=\"run.p\">\n::assert{ seen(x) }\n</choice>\n</branch>\n";
         let nodes = shot_nodes(src);
         let p = possible_writes(&nodes);
         assert_eq!(p, BTreeSet::from(["run.p".to_string()]));
@@ -839,7 +838,7 @@ mod tests {
         // must be ABSENT from `guaranteed(G)`. `possible_writes` walks every
         // arm regardless of dominance, so `run.a` MUST still be present —
         // proving `P` captures may-only writes `G` deliberately discards.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.a: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" when=\"run.flag\">\n::set{run.a = 1}\n</choice>\n<choice id=\"c2\" text=\"L2\">\n@narrator: skip\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -871,7 +870,7 @@ mod tests {
         // guard-proofs into `G`, while `possible_writes` (writes only) never
         // saw them -> `G ⊄ P`. `run.x` must now be ABSENT from `G` (two of
         // three arms never wrote it), and `P` must remain a superset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match subject=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -898,7 +897,7 @@ mod tests {
         // per-arm record of `run.x` must join `G`, exactly like an exhaustive
         // `::set`, and `P` (which already counted record sugar) must stay a
         // superset. `into=` alone drives the record now.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" text=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &crate::defassign::Scope::bare(&schema), None);
@@ -924,7 +923,7 @@ mod tests {
         // NOT survive that same intersect. The unconditional `questComplete`
         // `<on>` body's `run.flag` write is a SEPARATE body — union, not
         // intersect, brings it into the result alongside `run.done`.
-        let src = "---\nkind: quest\nstate:\n  run.done: { type: int }\n  run.b: { type: int }\n  run.flag: { type: int }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" label=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" label=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.done: { type: int }\n  run.b: { type: int }\n  run.flag: { type: int }\n---\n<quest id=\"q\">\n<objective id=\"o1\" done=\"run.done\">\n<branch id=\"br\">\n<choice id=\"c1\" text=\"L1\">\n::set{run.done = 1}\n::set{run.b = 1}\n</choice>\n<choice id=\"c2\" text=\"L2\">\n::set{run.done = 1}\n</choice>\n</branch>\n</objective>\n<on event=\"questComplete\">\n::set{run.flag = 1}\n</on>\n</quest>\n";
         let (q, schema) = quest_fixture(src);
         let w = writes_on_complete(&q, &schema);
         assert!(

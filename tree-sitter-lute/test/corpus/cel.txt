@@ -1,7 +1,7 @@
 ==================
 match/when CEL-valued attrs are a distinct CEL node (state path + @ref)
 ==================
-<match on="scene.choices.number">
+<match subject="scene.choices.number">
   <when test="@fond">
     @narrator: hi
   </when>
@@ -17,7 +17,7 @@ match/when CEL-valued attrs are a distinct CEL node (state path + @ref)
 ==================
 when test with $ subject and single-quoted CEL literal ('blunt')
 ==================
-<match on="scene.x">
+<match subject="scene.x">
   <when test="$ == 'blunt'">
     @narrator: hi
   </when>
@@ -31,10 +31,10 @@ when test with $ subject and single-quoted CEL literal ('blunt')
       (line (speaker) (text)))))
 
 ==================
-choice `when` guard is a CEL node beside plain id/label attrs
+choice `when` guard is a CEL node beside plain id/text attrs
 ==================
 <branch id="x">
-  <choice id="a" label="A" when="@fond">
+  <choice id="a" text="A" when="@fond">
     @narrator: hi
   </choice>
 </branch>

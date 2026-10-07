@@ -10,11 +10,11 @@ once: false
 ## The workbench
 
 ::bg{location="lantern_shop" time="night"}
-::music{action="start" mood="peaceful" volume="down"}
-::auto{character="pell" anchor="left" action="fadeInUp"}
+::music{playback="start" mood="peaceful" volume="down"}
+::actor{character="pell" anchor="left" action="fadeInUp"}
 ::set{run.seen.pell = run.day}
 
-<match on="run.lantern.frame">
+<match subject="run.lantern.frame">
   <when is="true">
     @narrator{code="0010"}: The reed frame sits on the workbench, curved like a ribcage.
   </when>
@@ -24,7 +24,7 @@ once: false
   </otherwise>
 </match>
 
-<match on="run.lantern.paper">
+<match subject="run.lantern.paper">
   <when is="true">
     @narrator{code="0030"}: Beside it, the kozo sheets, weighted flat under a dictionary.
   </when>
@@ -33,23 +33,23 @@ once: false
   </otherwise>
 </match>
 
-<match on="run.lantern.wish">
+<match subject="run.lantern.wish">
   <when is="unset" test="@lanternDone">
     @narrator{code="0040"}: The paper is on. It is, unmistakably, a lantern — lopsided at the seam, but a lantern.
     @pell{code="0030" emotion="happy"}: Every lantern gets a wish on the inside of the paper. Where the candle can read it.
     @pell{code="0040"}: Go on. I won't look. I'll look a bit.
     <branch id="wish" prompt="Pell holds out the brush.">
-      <choice id="sea" label="Something for the sea." into="run.lantern.wish" value="sea">
+      <choice id="sea" text="Something for the sea." into="run.lantern.wish" value="sea">
         @sol{code="0010" mono}: Keep them safe. Whoever's out there tonight.
       </choice>
-      <choice id="home" label="Something for home." into="run.lantern.wish" value="home">
+      <choice id="home" text="Something for home." into="run.lantern.wish" value="home">
         @sol{code="0020" mono}: Let the shop stay open one more year.
       </choice>
-      <choice id="someone" label="Something for someone." into="run.lantern.wish" value="someone">
+      <choice id="someone" text="Something for someone." into="run.lantern.wish" value="someone">
         @sol{code="0030" mono}: I'm not writing their name. The lantern will know.
         @pell{code="0050" emotion="teasing"}: I didn't see a thing.
       </choice>
-      <choice id="later" label="Not tonight.">
+      <choice id="later" text="Not tonight.">
         @pell{code="0060"}: It'll keep. Wishes do.
       </choice>
     </branch>
@@ -61,5 +61,5 @@ once: false
 
 @pell{code="0080"}: Bed, then. Tomorrow's another day of this.
 
-::auto{character="pell" action="fadeOut"}
-::music{action="fadeOut"}
+::actor{character="pell" action="fadeOut"}
+::music{playback="fadeOut"}

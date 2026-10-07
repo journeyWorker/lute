@@ -10,7 +10,7 @@ title: Route 15 — the Cliff Road
 
 <beat id="enter" on="enterRoute" target="route.r15" title="Route 15" priority="10">
   ::bg{location="route-15" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: The road climbs out of Frostharbor in switchbacks, with the sea on one side and nothing at all on the other. Bikers lean into the turns.
   @narrator{code="0020"}: A sign at the first bend: ROUTE 15 — CLIFF ROAD. VERDANT CITY UPHILL. CYCLISTS HAVE PRIORITY. CYCLISTS HAVE ALWAYS HAD PRIORITY.
 </beat>

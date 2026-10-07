@@ -35,7 +35,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
     let mut em = Emitter::default();
     let state = walk_seq(
         &mut em,
-        &doc.shots[0].body,
+        &doc.sections[0].body,
         StageState::default(),
         &mut cx,
         &[],
@@ -46,7 +46,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
 }
 
 fn sprite_desc(cmd: &Command) -> Option<String> {
-    let Command::Sprite(s) = cmd else { return None };
+    let Command::Actor(s) = cmd else { return None };
     let by = s
         .stamp
         .provenance
@@ -73,7 +73,7 @@ fn anchor_and_preload_inject_after_authored_auto() {
     // entry-emotion-lookahead, each a separate record AFTER the authored
     // sprite (§4.5 worked example).
     let (recs, _) = walk(
-        "::auto{character=\"marina\" action=\"fadeInUp\"}\n@marina{emotion=\"surprised\"}: Oh!",
+        "::actor{character=\"marina\" action=\"fadeInUp\"}\n@marina{emotion=\"surprised\"}: Oh!",
     );
     let sprites: Vec<String> = recs.iter().filter_map(|r| sprite_desc(&r.cmd)).collect();
     assert_eq!(
@@ -85,34 +85,31 @@ fn anchor_and_preload_inject_after_authored_auto() {
         ]
     );
     // The injected anchor record carries the default anchor.
-    let Command::Sprite(anchor) = &recs[1].cmd else {
+    let Command::Actor(anchor) = &recs[1].cmd else {
         panic!()
     };
     assert_eq!(anchor.anchor.as_deref(), Some("center"));
-    assert_eq!(
-        anchor.stamp.provenance.as_ref().map(|p| p.injected),
-        Some(true)
-    );
+    assert!(anchor.stamp.provenance.is_some(), "an injected record carries provenance");
 }
 
 #[test]
 fn pos_reset_injects_before_the_plain_line() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
 @marina{emotion=\"delighted\" action=\"poseLean\"}: A!\n\
 @marina: B.";
     let (recs, _) = walk(body);
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(s) if s.pos_reset == Some(true) => "posReset",
-            Command::Sprite(_) => "sprite",
+            Command::Actor(s) if s.pos_reset == Some(true) => "posReset",
+            Command::Actor(_) => "actor",
             Command::Line(_) => "line",
             _ => "other",
         })
         .collect();
     // preload for the stateful first line, then: line A, posReset BEFORE line B.
-    assert_eq!(kinds, vec!["sprite", "sprite", "line", "posReset", "line"]);
-    let Command::Sprite(pr) = &recs[3].cmd else {
+    assert_eq!(kinds, vec!["actor", "actor", "line", "posReset", "line"]);
+    let Command::Actor(pr) = &recs[3].cmd else {
         panic!()
     };
     assert_eq!(
@@ -123,20 +120,20 @@ fn pos_reset_injects_before_the_plain_line() {
 
 #[test]
 fn scene_change_hides_lingering_sprites_before_the_bg() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
 ::bg{location=\"street\" time=\"evening\"}";
     let (recs, state) = walk(body);
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(s) if s.exit == Some(true) => "hide",
-            Command::Sprite(_) => "sprite",
-            Command::Background(_) => "background",
+            Command::Actor(s) if s.exit == Some(true) => "hide",
+            Command::Actor(_) => "actor",
+            Command::Bg(_) => "bg",
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, vec!["sprite", "hide", "background"]);
-    let Command::Sprite(h) = &recs[1].cmd else {
+    assert_eq!(kinds, vec!["actor", "hide", "bg"]);
+    let Command::Actor(h) = &recs[1].cmd else {
         panic!()
     };
     assert_eq!(
@@ -153,19 +150,19 @@ fn scene_change_hides_lingering_sprites_before_the_bg() {
 fn branch_arms_fork_from_entry_state_and_join_conservatively() {
     // D9 fork/join golden (spec §8): BOTH arms show marina fresh (each gets
     // its own anchor injection — nothing leaks from arm 1 into arm 2), and
-    // the post-join ::auto is a fresh show again (differing arm emotions =>
+    // the post-join ::actor is a fresh show again (differing arm emotions =>
     // the join drops marina).
     let body = r#"<branch id="fork">
-  <choice id="a" label="A">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="a" text="A">
+    ::actor{character="marina" action="fadeInUp"}
     @marina{emotion="surprised"}: Oh!
   </choice>
-  <choice id="b" label="B">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="b" text="B">
+    ::actor{character="marina" action="fadeInUp"}
     @marina{emotion="delighted"}: Ha!
   </choice>
 </branch>
-::auto{character="marina" action="fadeInUp"}"#;
+::actor{character="marina" action="fadeInUp"}"#;
     let (recs, _) = walk(body);
     let anchors: Vec<usize> = recs
         .iter()
@@ -181,18 +178,18 @@ fn branch_arms_fork_from_entry_state_and_join_conservatively() {
 
 #[test]
 fn arm_end_entrance_preloads_post_convergence_emotion() {
-    // D9 continuation threading: each arm ENDS with a fresh `::auto` entrance
+    // D9 continuation threading: each arm ENDS with a fresh `::actor` entrance
     // for `marina`, and her first emotion line sits AFTER `</branch>` — a
     // post-convergence, CFG-reachable successor, not inside any arm.
     // entry-emotion-lookahead must find `surprised` through the threaded
     // continuation, so BOTH arm entrances preload it, while sibling arms are
     // never consulted.
     let body = r#"<branch id="fork">
-  <choice id="a" label="A">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="a" text="A">
+    ::actor{character="marina" action="fadeInUp"}
   </choice>
-  <choice id="b" label="B">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="b" text="B">
+    ::actor{character="marina" action="fadeInUp"}
   </choice>
 </branch>
 @marina{emotion="surprised"}: Oh!"#;
@@ -200,7 +197,7 @@ fn arm_end_entrance_preloads_post_convergence_emotion() {
     let preloads: Vec<String> = recs
         .iter()
         .filter_map(|r| match &r.cmd {
-            Command::Sprite(s) if s.preload == Some(true) => {
+            Command::Actor(s) if s.preload == Some(true) => {
                 assert_eq!(
                     s.stamp.provenance.as_ref().map(|p| p.by.as_str()),
                     Some("entry-emotion-lookahead"),
@@ -259,12 +256,12 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     // the join must carry marina AND union her dirty flag — so the next plain
     // line still fires `auto-pose-reset`. Under the old intersection merge the
     // flag was dropped and the reset silently lost.
-    let body = r#"::auto{character="marina" anchor="left" action="fadeInUp"}
+    let body = r#"::actor{character="marina" anchor="left" action="fadeInUp"}
 <branch id="fork">
-  <choice id="a" label="A">
+  <choice id="a" text="A">
     @marina{variant="closeup"}: Hm.
   </choice>
-  <choice id="b" label="B">
+  <choice id="b" text="B">
     @marina: Yo.
   </choice>
 </branch>
@@ -273,7 +270,7 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     let pos_resets: Vec<&str> = recs
         .iter()
         .filter_map(|r| match &r.cmd {
-            Command::Sprite(s) if s.pos_reset == Some(true) => Some(
+            Command::Actor(s) if s.pos_reset == Some(true) => Some(
                 s.stamp
                     .provenance
                     .as_ref()
@@ -294,8 +291,8 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
 /// prints); the IR itself is the exits alone.
 #[test]
 fn clear_lowers_to_one_exit_per_character_on_stage() {
-    let body = "::auto{character=\"marina\" anchor=\"left\" action=\"fadeInUp\"}\n\
-::auto{character=\"kenshi\" anchor=\"right\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"left\" action=\"fadeInUp\"}\n\
+::actor{character=\"kenshi\" anchor=\"right\" action=\"fadeInUp\"}\n\
 @marina: Both of us.\n\
 ::clear\n\
 @narrator: Empty.";
@@ -314,14 +311,14 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(_) => "sprite",
+            Command::Actor(_) => "actor",
             Command::Line(_) => "line",
             _ => "other",
         })
         .collect();
     assert_eq!(
         kinds,
-        ["sprite", "sprite", "line", "sprite", "sprite", "line"]
+        ["actor", "actor", "line", "actor", "actor", "line"]
     );
     let authored: Vec<Option<&str>> = recs[3..5]
         .iter()
@@ -332,7 +329,7 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
     // Nobody on stage: `::clear` emits nothing at all.
     let (recs, _) = walk("::clear\n@narrator: Nothing.");
     assert!(
-        recs.iter().all(|r| !matches!(r.cmd, Command::Sprite(_))),
+        recs.iter().all(|r| !matches!(r.cmd, Command::Actor(_))),
         "{recs:#?}"
     );
 }
@@ -369,7 +366,6 @@ fn join_unions_dirty_but_only_over_carried_characters() {
 #[test]
 fn provenance_serializes_explanation_not_reason() {
     let p = lute_check::Provenance {
-        injected: true,
         by: "auto-pose-reset".into(),
         explanation: "resetting to neutral".into(),
     };

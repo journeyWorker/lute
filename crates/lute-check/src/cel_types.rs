@@ -447,7 +447,7 @@ fn ordering_hint(
         Type::Bool => match path.as_deref() {
             Some(p) if p.starts_with("scene.visited.") => format!(
                 " — `scene.visited.<hub>.<choice>` is whether that choice was ever taken, not \
-                 how often; count picks in a `number` path you `::set` (for example \
+                 how often; count picks in an `int` path you `::set` (for example \
                  `::set{{run.picks += 1}}`)"
             ),
             Some(p) => {
@@ -548,7 +548,7 @@ fn visited_arg(e: &Expr) -> Option<String> {
 fn visited_note(scene: &str) -> String {
     format!(
         "`visited('{scene}')` is a bool, whether the scene was ever presented, not how often; \
-         count visits in a `number` path you `::set` (for example `::set{{run.visits += 1}}`)"
+         count visits in an `int` path you `::set` (for example `::set{{run.visits += 1}}`)"
     )
 }
 

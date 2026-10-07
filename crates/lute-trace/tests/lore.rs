@@ -57,7 +57,7 @@ state:
 </entry>
 
 <entry id="rustyKey" target="item.rusty_key" category="item" when="entry.scientistLog1.read">
-  <match on="run.labBurned">
+  <match subject="run.labBurned">
     <when is="true">
       @narrator: A scorched key.
     </when>

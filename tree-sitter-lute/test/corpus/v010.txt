@@ -75,10 +75,10 @@ interpolation escape `\{{` renders a literal, stays in text
 hub with once + exit choices (revisit conversation)
 ==================
 <hub id="chatWithMarina">
-  <choice id="askCoffee" label="Ask about the coffee" once>
+  <choice id="askCoffee" text="Ask about the coffee" once>
     @marina: House blend. Bold, like the clientele.
   </choice>
-  <choice id="leave" label="Head out" exit>
+  <choice id="leave" text="Head out" exit>
     @fixer: I'd better get moving.
   </choice>
 </hub>
@@ -101,10 +101,10 @@ hub with once + exit choices (revisit conversation)
 hub choice with when guard beside once flag
 ==================
 <hub id="chat">
-  <choice id="askVenny" label="Ask about Venny" when="scene.metVenny" once>
+  <choice id="askVenny" text="Ask about Venny" when="scene.metVenny" once>
     @marina: He's around here somewhere.
   </choice>
-  <choice id="leave" label="Head out" exit>
+  <choice id="leave" text="Head out" exit>
     @fixer: Later.
   </choice>
 </hub>
@@ -131,7 +131,7 @@ hub return block (dsl 0.28.0)
   <return>
     @narrator: The lamp room again.
   </return>
-  <choice id="leave" label="Leave" exit>
+  <choice id="leave" text="Leave" exit>
     @narrator: Out.
   </choice>
 </hub>
@@ -150,7 +150,7 @@ hub return block (dsl 0.28.0)
 ==================
 when is literal-pattern alternation (structured when_pattern)
 ==================
-<match on="scene.emotion">
+<match subject="scene.emotion">
   <when is="blunt | curt">
     @narrator: hi
   </when>
@@ -170,7 +170,7 @@ when is literal-pattern alternation (structured when_pattern)
 ==================
 when is single literal plus test guard (pattern AND guard)
 ==================
-<match on="scene.emotion">
+<match subject="scene.emotion">
   <when is="delighted" test="$ != 'staged'">
     @narrator: hi
   </when>
@@ -187,7 +187,7 @@ when is single literal plus test guard (pattern AND guard)
 ==================
 otherwise takes no attributes (tightened)
 ==================
-<match on="scene.x">
+<match subject="scene.x">
   <when test="@fond">
     @narrator: yes
   </when>
@@ -205,7 +205,7 @@ otherwise takes no attributes (tightened)
 ==================
 when is signed-number literal (leading minus, structured when_pattern)
 ==================
-<match on="scene.hp">
+<match subject="scene.hp">
   <when is="-1">
     @narrator: down
   </when>
@@ -221,7 +221,7 @@ when is signed-number literal (leading minus, structured when_pattern)
 ==================
 when is numeric range literals (each shape is one when_literal, dsl 0.18.0)
 ==================
-<match on="scene.hp">
+<match subject="scene.hp">
   <when is="2..">
     @narrator: a
   </when>
@@ -261,7 +261,7 @@ when is numeric range literals (each shape is one when_literal, dsl 0.18.0)
 ==================
 when is range and enum literals mixed in one alternation (dsl 0.18.0)
 ==================
-<match on="scene.hp">
+<match subject="scene.hp">
   <when is="..0 | gold | 5..">
     @narrator: mixed
   </when>
@@ -278,7 +278,7 @@ when is range and enum literals mixed in one alternation (dsl 0.18.0)
 choice persist sugar: into= run-path target (0.1.0, renamed from 0.0.1 as=)
 ==================
 <branch id="rest">
-  <choice id="couch" label="Offer the couch" persist="run" into="run.metHelpfully" value="warm">
+  <choice id="couch" text="Offer the couch" persist="run" into="run.metHelpfully" value="warm">
     @fixer: Take the couch — you look exhausted.
   </choice>
 </branch>

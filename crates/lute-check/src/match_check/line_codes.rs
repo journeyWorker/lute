@@ -38,7 +38,7 @@ pub(crate) fn check_line_codes_with_policy(
     let mut diags = Vec::new();
 
     let mut scene_lines: Vec<&Line> = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_lines(&shot.body, &mut scene_lines);
     }
     check_dup_line_codes(&scene_lines, require_stable, &mut diags);

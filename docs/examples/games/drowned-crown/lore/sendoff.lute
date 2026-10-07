@@ -7,7 +7,7 @@ title: At the rail
 earned says a word as he goes over, one after another, once a dive. */
 
 <beat id="word" on="runStart" for="kind:bonded" once="run" priority="5" when="user.bond[occasion.target] >= 3 && (occasion.target != 'quill' || entry.quillFirst.everRead)">
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="brann">
       @brann{code="0010" os}: Come back up, boy. That's an order.
     </when>

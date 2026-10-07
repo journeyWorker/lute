@@ -59,11 +59,11 @@ fn standalone_component_param_ref_resolves_no_type_error() {
     // namespace for its OWN presentational body — already true when the
     // component is expanded transitively via `::use`; this must ALSO hold
     // for a STANDALONE `lute check` of the component file itself. `@who` is
-    // legal here because `::auto`'s `character` attr is `string`-typed (dsl
+    // legal here because `::actor`'s `character` attr is `string`-typed (dsl
     // Appendix A), matching `who: string`.
     let cs = codes(
         "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n\
-         ::auto{character=@who action=\"fadeInUp\"}\n@narrator: hi\n",
+         ::actor{character=@who action=\"fadeInUp\"}\n@narrator: hi\n",
     );
     assert!(!cs.iter().any(|c| c == "E-UNDECLARED-REF"), "{cs:?}");
     assert!(!cs.iter().any(|c| c == "E-REF-TYPE"), "{cs:?}");
@@ -74,12 +74,12 @@ fn standalone_component_param_ref_resolves_no_type_error() {
 
 #[test]
 fn standalone_component_param_type_mismatch_flags_ref_type() {
-    // An `int`-typed param used where `::auto`'s `character` attr expects a
+    // An `int`-typed param used where `::actor`'s `character` attr expects a
     // `string` is a produced-type mismatch (dsl §8) — proves `def_types`
     // (not merely `defs`) is seeded from `params:` for the standalone walk.
     let cs = codes(
         "---\ncomponent: greet\nparams:\n  n: int\n---\n## Scene 1.\n\
-         ::auto{character=@n action=\"fadeInUp\"}\n@narrator: hi\n",
+         ::actor{character=@n action=\"fadeInUp\"}\n@narrator: hi\n",
     );
     assert!(cs.contains(&"E-REF-TYPE".to_string()), "{cs:?}");
 }
@@ -104,7 +104,7 @@ fn standalone_component_param_call_form_flags_ref_arity() {
     // standalone/transitive arity parity (post-review fix).
     let cs = codes(
         "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n\
-         ::auto{character=@who(\"x\") action=\"fadeInUp\"}\n@narrator: hi\n",
+         ::actor{character=@who(\"x\") action=\"fadeInUp\"}\n@narrator: hi\n",
     );
     assert!(cs.contains(&"E-REF-ARITY".to_string()), "{cs:?}");
 }

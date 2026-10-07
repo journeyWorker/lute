@@ -80,7 +80,7 @@ fn lines(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
 /// fields included) stay equal.
 fn strip_addressing(v: &mut serde_json::Value) {
     if let serde_json::Value::Object(map) = v {
-        for key in ["addr", "converge", "target", "otherwise"] {
+        for key in ["position", "converge", "target", "otherwise"] {
             map.remove(key);
         }
     }
@@ -98,12 +98,12 @@ fn scene(body: &str) -> String {
 }
 
 const SUGARED_LINE: &str = "@elena{when=\"run.metHelpfully\"}: You helped me back then.\n";
-const EXPLICIT_TWIN: &str = "<match on=\"run.metHelpfully\">\n  <when test=\"$\">\n    @elena: You helped me back then.\n  </when>\n  <otherwise>\n  </otherwise>\n</match>\n";
+const EXPLICIT_TWIN: &str = "<match subject=\"run.metHelpfully\">\n  <when test=\"$\">\n    @elena: You helped me back then.\n  </when>\n  <otherwise>\n  </otherwise>\n</match>\n";
 
 #[test]
 fn sugared_line_lowers_to_canonical_match_record() {
     // Compile TWIN documents: (a) the sugared line, (b) the hand-written
-    // `<match on="…"><when test="$">…</when><otherwise></otherwise></match>`
+    // `<match subject="…"><when test="$">…</when><otherwise></otherwise></match>`
     // (D8/§7.4's canonical desugar shape).
     let sugared = compile_text(&scene(SUGARED_LINE));
     let explicit = compile_text(&scene(EXPLICIT_TWIN));
@@ -336,7 +336,7 @@ fn sets(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
 fn guarded_set_lowers_to_canonical_match_record() {
     let sugared = compile_text(&set_scene("::set{run.n += 1 when=\"run.k < 3\"}"));
     let explicit = compile_text(&set_scene(
-        "<match on=\"run.k < 3\">\n  <when test=\"$\">\n    ::set{run.n += 1}\n  </when>\n  \
+        "<match subject=\"run.k < 3\">\n  <when test=\"$\">\n    ::set{run.n += 1}\n  </when>\n  \
          <otherwise>\n  </otherwise>\n</match>",
     ));
     let mut sugared_cmds = sugared["commands"].clone();
@@ -360,7 +360,7 @@ fn guarded_set_lowers_to_canonical_match_record() {
 #[test]
 fn guarded_set_rhs_dollar_is_the_enclosing_subject() {
     let a = compile_text(&set_scene(
-        "<match on=\"run.k\">\n  <when test=\"$ > 1\">\n    ::set{run.n = $ when=\"run.b\"}\n  \
+        "<match subject=\"run.k\">\n  <when test=\"$ > 1\">\n    ::set{run.n = $ when=\"run.b\"}\n  \
          </when>\n  <otherwise>\n  </otherwise>\n</match>",
     ));
     let s = sets(&a);

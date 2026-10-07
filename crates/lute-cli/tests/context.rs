@@ -146,17 +146,17 @@ fn context_json_lists_defs_ownership_tiers_builtins_and_ids() {
         .collect();
     assert_eq!(
         builtins,
-        ["set", "assert", "retract", "accept", "use", "body", "next", "mark", "end", "clear"]
+        ["set", "assert", "retract", "accept", "use", "body", "jump", "label", "end", "clear"]
     );
-    let next = v["builtinDirectives"]
+    let jump = v["builtinDirectives"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|b| b["name"] == "next")
+        .find(|b| b["name"] == "jump")
         .unwrap();
     assert_eq!(
-        next["syntax"],
-        "::next{to=\"<string>\" [when=\"<condition>\"]}"
+        jump["syntax"],
+        "::jump{to=\"<string>\" [when=\"<condition>\"]}"
     );
 
     // The quest's reserved paths are listed whether or not this document
@@ -629,7 +629,7 @@ fn nested_duplicate_choice_key_is_ambiguous() {
     write_at(
         &proj,
         "scenes/mara.lute",
-        "---\nkind: scene\nid: mara.first\n---\n\n## Mara\n<branch id=\"outer\">\n<choice id=\"one\">\n<branch id=\"nested\">\n<choice id=\"coffee\" label=\"Coffee\">@mara: One.</choice>\n</branch>\n</choice>\n<choice id=\"two\">\n<branch id=\"nested\">\n<choice id=\"coffee\" label=\"Coffee\">@mara: Two.</choice>\n</branch>\n</choice>\n</branch>\n",
+        "---\nkind: scene\nid: mara.first\n---\n\n## Mara\n<branch id=\"outer\">\n<choice id=\"one\">\n<branch id=\"nested\">\n<choice id=\"coffee\" text=\"Coffee\">@mara: One.</choice>\n</branch>\n</choice>\n<choice id=\"two\">\n<branch id=\"nested\">\n<choice id=\"coffee\" text=\"Coffee\">@mara: Two.</choice>\n</branch>\n</choice>\n</branch>\n",
     );
     let file = proj.join("scenes/mara.lute");
     let output = Command::new(BIN)
@@ -681,9 +681,9 @@ fn drowned_crown_target_context_golden() {
                 "line": 12,
                 "column": 3,
                 "byteStart": 174,
-                "byteEnd": 456
+                "byteEnd": 455
             },
-            "excerpt": "<choice id=\"wear\" label=\"Put it on\">\n    @ilo{code=\"0010\" mono}: It's cold. It's so cold. It fits.\n    @narrator{code=\"0010\"}: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.\n    ::set{user.crowned = true}\n    ::end{reason=\"crowned\"}\n  </choice>"
+            "excerpt": "<choice id=\"wear\" text=\"Put it on\">\n    @ilo{code=\"0010\" mono}: It's cold. It's so cold. It fits.\n    @narrator{code=\"0010\"}: Far above, the sea around the Gull's Mercy goes flat and bright, and stays that way.\n    ::set{user.crowned = true}\n    ::end{reason=\"crowned\"}\n  </choice>"
         })
     );
     assert_eq!(value["declared"]["writes"][0]["node"], "state:user.crowned");

@@ -43,7 +43,7 @@ fn when_arm(test: &str) -> Arm {
     }
 }
 
-/// A `<match on="run.rank">` over an enum subject: one `<when test="$ ==
+/// A `<match subject="run.rank">` over an enum subject: one `<when test="$ ==
 /// '<v>'">` per covered value, plus an optional `<otherwise>`.
 fn match_on_enum(_domain: &[&str], covered_arms: &[&str], has_otherwise: bool) -> Match {
     let mut arms: Vec<Arm> = covered_arms
@@ -167,8 +167,8 @@ fn branch(id: &str, choice_ids: &[&str]) -> Branch {
         .map(|c| Choice {
             id: (*c).to_string(),
             id_span: span(),
-            label: String::new(),
-            label_span: span(),
+            text: String::new(),
+            text_span: span(),
             when: None,
             attrs: Vec::new(),
             body: Vec::new(),
@@ -584,8 +584,8 @@ fn duplicate_choice_ids_flag_e_choice_dup() {
     let choice = |id: &str| Choice {
         id: id.into(),
         id_span: sp,
-        label: id.into(),
-        label_span: sp,
+        text: id.into(),
+        text_span: sp,
         when: None,
         attrs: Vec::new(),
         body: Vec::new(),
@@ -664,8 +664,8 @@ fn guarded_branch(id: &str, choices: &[(&str, Option<&str>)]) -> Branch {
         .map(|(cid, guard)| Choice {
             id: (*cid).to_string(),
             id_span: span(),
-            label: String::new(),
-            label_span: span(),
+            text: String::new(),
+            text_span: span(),
             when: guard.map(|g| CelSlot::raw(CelKind::Condition, g.into(), span())),
             attrs: Vec::new(),
             body: Vec::new(),
@@ -827,20 +827,21 @@ fn code_line(speaker: &str, code: Option<&str>, byte: usize) -> Node {
         text: "…".into(),
         text_span: sp,
         interps: Vec::new(),
+        inline: Vec::new(),
         span: sp,
     })
 }
 
 fn doc_with(body: Vec<Node>) -> Document {
-    use lute_syntax::ast::{Meta, Shot};
+    use lute_syntax::ast::{Meta, Section};
     Document {
         meta: Meta {
             raw_yaml: String::new(),
             span: span(),
         },
-        title: None,
-        shots: vec![Shot {
+        sections: vec![Section {
             heading: "Shot 1".into(),
+            id: None,
             body,
             span: span(),
         }],
@@ -904,8 +905,8 @@ fn line_code_collision_is_trimmed_and_descends_into_arms() {
         choices: vec![Choice {
             id: "a".into(),
             id_span: span(),
-            label: String::new(),
-            label_span: span(),
+            text: String::new(),
+            text_span: span(),
             when: None,
             attrs: Vec::new(),
             body: vec![code_line("marina", Some("0050"), 60)],
@@ -935,7 +936,7 @@ fn bundle_beat_line_codes_are_scoped_per_beat() {
                <entry id=\"e\">\n@n{code=\"0010\"}: a\n</entry>\n\
                <beat id=\"b1\" on=\"talk\">\n@n{code=\"0010\"}: b\n</beat>\n\
                <beat id=\"b2\" on=\"talk\">\n@n{code=\"0010\"}: c\n\
-               <branch id=\"k\">\n<choice id=\"x\" label=\"X\">\n@n{code=\"0010\"}: d\n</choice>\n</branch>\n\
+               <branch id=\"k\">\n<choice id=\"x\" text=\"X\">\n@n{code=\"0010\"}: d\n</choice>\n</branch>\n\
                </beat>\n";
     let (doc, _) = lute_syntax::parse(src);
     let diags = check_line_codes(&doc);

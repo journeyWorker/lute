@@ -75,11 +75,11 @@ fn valid_lore_document_checks_clean() {
          ::set{run.labBurned = true when=\"!entry.scientistLog2.read\"}\n\
          </entry>\n\n\
          <entry id=\"rustyKey\" target=\"item.rusty_key\" category=\"item\">\n\
-         <match on=\"run.labBurned\">\n\
+         <match subject=\"run.labBurned\">\n\
          <when is=\"true\">\n@narrator: A scorched key.\n</when>\n\
          <otherwise>\n@narrator: A rusty key, stamped \"Research wing B2\".\n</otherwise>\n\
          </match>\n\
-         <match on=\"entry.rustyKey.read\">\n\
+         <match subject=\"entry.rustyKey.read\">\n\
          <when is=\"true\">\n@narrator: You have seen this before.\n</when>\n\
          <when is=\"false\">\n@narrator: A key.\n</when>\n\
          </match>\n\
@@ -286,8 +286,8 @@ fn not_admitted(text: &str) -> Vec<Diagnostic> {
 #[test]
 fn entry_body_rejects_played_constructs() {
     for body in [
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"Go\">\n@n: x\n</choice>\n</branch>",
-        "<hub id=\"h\">\n<choice id=\"c\" label=\"Go\" exit>\n@n: x\n</choice>\n</hub>",
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"Go\">\n@n: x\n</choice>\n</branch>",
+        "<hub id=\"h\">\n<choice id=\"c\" text=\"Go\" exit>\n@n: x\n</choice>\n</hub>",
         "::bg{asset=\"room\"}",
         "::use{component=\"greet\"}",
         "<on event=\"questComplete\">\n@n: x\n</on>",
@@ -353,7 +353,7 @@ fn entry_asserts_are_live_producer_sites() {
 #[test]
 fn nested_match_keeps_entry_admission() {
     let ds = not_admitted(&entry(
-        "<match on=\"run.labBurned\">\n<when is=\"true\">\n::bg{asset=\"room\"}\n</when>\n\
+        "<match subject=\"run.labBurned\">\n<when is=\"true\">\n::bg{asset=\"room\"}\n</when>\n\
          <otherwise>\n@n: x\n</otherwise>\n</match>",
     ));
     assert_eq!(ds.len(), 1, "{ds:#?}");
@@ -364,22 +364,14 @@ fn entry_body_admits_lines_match_and_effects() {
     let ds = not_admitted(&entry(
         "@n: hi\n::set{run.labBurned = true}\n::assert{knows(vesna, project_lumen)}\n\
          ::retract{knows(vesna, project_lumen)}\n\
-         <match on=\"run.labBurned\">\n<when is=\"true\">\n@n: a\n</when>\n\
+         <match subject=\"run.labBurned\">\n<when is=\"true\">\n@n: a\n</when>\n\
          <otherwise>\n::set{run.labBurned = false}\n</otherwise>\n</match>",
     ));
     assert!(ds.is_empty(), "{ds:#?}");
 }
 
 #[test]
-fn lore_top_level_rejects_title_shot_and_quest() {
-    let title = not_admitted(&lore("# Records\n<entry id=\"e\">\n@n: hi\n</entry>\n"));
-    assert_eq!(title.len(), 1, "{title:#?}");
-    assert!(
-        title[0].message.contains("lore document"),
-        "{}",
-        title[0].message
-    );
-
+fn lore_top_level_rejects_shot_and_quest() {
     let shot = not_admitted(&lore(
         "<entry id=\"e\">\n@n: hi\n</entry>\n## Shot 1.\n@n: x\n",
     ));
@@ -466,7 +458,7 @@ fn entry_read_matches_exhaustively_in_a_scene() {
     // A foreign entry's flag: declared by shape, a finite bool domain, never
     // maybe-unset — `true`/`false` cover it without `<otherwise>`.
     let cs = codes(&format!(
-        "{SCENE_HDR}<match on=\"entry.scientistLog1.read\">\n\
+        "{SCENE_HDR}<match subject=\"entry.scientistLog1.read\">\n\
          <when is=\"true\">\n@x: I know.\n</when>\n\
          <when is=\"false\">\n@x: I wonder.\n</when>\n</match>\n\
          @x{{when=\"entry.rustyKey.read && !entry.scientistLog1.read\"}}: Hm.\n"
@@ -477,7 +469,7 @@ fn entry_read_matches_exhaustively_in_a_scene() {
 #[test]
 fn entry_read_domain_is_bool() {
     let cs = codes(&format!(
-        "{SCENE_HDR}<match on=\"entry.note.read\">\n\
+        "{SCENE_HDR}<match subject=\"entry.note.read\">\n\
          <when is=\"yes\">\n@x: a\n</when>\n<otherwise>\n@x: b\n</otherwise>\n</match>\n"
     ));
     assert!(cs.contains(&"E-WHEN-LITERAL-DOMAIN".to_string()), "{cs:?}");
@@ -517,7 +509,7 @@ fn entry_read_cannot_be_author_declared() {
 #[test]
 fn when_test_literal_and_fix_reach_entry_arms() {
     let src = entry(
-        "<match on=\"run.labBurned\">\n<when test=\"$ == true\">\n@n: a\n</when>\n\
+        "<match subject=\"run.labBurned\">\n<when test=\"$ == true\">\n@n: a\n</when>\n\
          <otherwise>\n@n: b\n</otherwise>\n</match>",
     );
     let ds = diags(&src);
@@ -581,7 +573,7 @@ fn project_series_order_dup_across_files() {
 fn project_entry_ref_unknown() {
     let notes = lore("<entry id=\"scientistLog1\">\n@n: a\n</entry>\n");
     let scene = format!(
-        "{SCENE_HDR}<match on=\"entry.scientistLog1.read\">\n\
+        "{SCENE_HDR}<match subject=\"entry.scientistLog1.read\">\n\
          <when is=\"true\">\n@x: a\n</when>\n<when is=\"false\">\n@x: b\n</when>\n</match>\n\
          @x{{when=\"entry.scientistLog9.read\"}}: typo\n"
     );
@@ -753,7 +745,7 @@ fn document_series_collides_with_attribute_positions_project_wide() {
 #[test]
 fn a_repeatable_entry_beat_that_writes_warns_at_its_first_write() {
     let src = lore(
-        "<entry id=\"pay\" on=\"visit\">\n@n: Here.\n<match on=\"run.labBurned\">\n\
+        "<entry id=\"pay\" on=\"visit\">\n@n: Here.\n<match subject=\"run.labBurned\">\n\
          <when is=\"true\">\n::retract{knows(vesna, project_lumen)}\n</when>\n\
          <otherwise>\n@n: ok\n</otherwise>\n</match>\n::set{run.labBurned = true}\n</entry>\n",
     );
@@ -829,7 +821,7 @@ fn every_rereadable_entry_that_writes_warns_with_a_working_remedy() {
     );
     for clean in [
         "<entry id=\"tape\" on=\"visit\">\n::set{run.labBurned = true when=\"!entry.tape.read\"}\n</entry>\n",
-        "<entry id=\"tape\" on=\"visit\">\n<match on=\"entry.tape.read\">\n<when is=\"false\">\n\
+        "<entry id=\"tape\" on=\"visit\">\n<match subject=\"entry.tape.read\">\n<when is=\"false\">\n\
          ::set{run.labBurned = true}\n</when>\n<otherwise>\n@n: again\n</otherwise>\n</match>\n</entry>\n",
     ] {
         let ds = diags(&lore(clean));

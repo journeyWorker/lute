@@ -5,5 +5,6 @@ profiles:
 identity:
   requireStable: true
 defaults:
+  pov: pippa
   uses: [world.schema.yaml]
 chapters: [{ on: chapter, scenes: [arrival, parlour, kitchen, garden] }]

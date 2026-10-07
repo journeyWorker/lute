@@ -85,8 +85,8 @@ fn project(tag: &str) -> PathBuf {
         &scene(
             "landing",
             "talk",
-            "@narrator: Voices.\n\n<branch id=\"pick\">\n<choice id=\"lie\" label=\"Lie\">\n\
-             ::assert{lied(maren)}\n</choice>\n<choice id=\"stay\" label=\"Stay\">\n\
+            "@narrator: Voices.\n\n<branch id=\"pick\">\n<choice id=\"lie\" text=\"Lie\">\n\
+             ::assert{lied(maren)}\n</choice>\n<choice id=\"stay\" text=\"Stay\">\n\
              @narrator: Quiet.\n</choice>\n</branch>\n\n::assert{vouched(maren)}\n@narrator: Vouched.\n",
         ),
     );
@@ -109,9 +109,9 @@ fn check_project_reads_exclusive_relations() {
             "visit",
             "@narrator{when=\"holds('seenAfter', ['elias']) && holds('fell', ['elias'])\"}: Both at once.\n\
              @narrator{when=\"holds('seenAfter', ['maren']) && !holds('fell', ['maren'])\"}: Maren walks on.\n\n\
-             <branch id=\"look\">\n<choice id=\"saw\" label=\"Saw\" when=\"holds('seenAfter', ['elias'])\">\n\
+             <branch id=\"look\">\n<choice id=\"saw\" text=\"Saw\" when=\"holds('seenAfter', ['elias'])\">\n\
              @narrator{when=\"!holds('fell', ['elias'])\"}: He did not fall.\n</choice>\n\
-             <choice id=\"go\" label=\"Go\">\n@narrator: On.\n</choice>\n</branch>\n\n\
+             <choice id=\"go\" text=\"Go\">\n@narrator: On.\n</choice>\n</branch>\n\n\
              ::assert{panicked(ada)}\n::assert{calm(ada)}\n",
         ),
     );
@@ -399,9 +399,9 @@ fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
         "---\nkind: scene\nid: a\nentities:\n  foe: { members: [regent] }\n\
          relations:\n  dead: { args: [foe], tier: run, reserved: true }\n  \
          alive: { args: [foe], tier: run, excludes: [dead] }\n---\n\n## A\n\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"C\" when=\"holds('dead', ['regent'])\">\n\
+         <branch id=\"b\">\n<choice id=\"c\" text=\"C\" when=\"holds('dead', ['regent'])\">\n\
          @n{when=\"!holds('alive', ['regent'])\"}: Gone.\n::assert{alive(regent)}\n</choice>\n\
-         <choice id=\"d\" label=\"D\">\n@n: On.\n</choice>\n</branch>\n",
+         <choice id=\"d\" text=\"D\">\n@n: On.\n</choice>\n</branch>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let t = text(&out);

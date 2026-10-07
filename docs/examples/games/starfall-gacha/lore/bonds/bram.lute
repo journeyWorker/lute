@@ -32,10 +32,10 @@ title: Bram, the Anvil (SR)
   @bram{code="0010"}: I made you something. Don't laugh.
   @narrator{code="0010"}: It is a small iron star, a little lopsided, still warm.
   <branch id="bramR2Gift" prompt="Bram waits, very red.">
-    <choice id="wear" label="Wear it at once.">
+    <choice id="wear" text="Wear it at once.">
       @bram{code="0020" emotion="happy"}: HA! It suits you! Doris, it suits them!
     </choice>
-    <choice id="lopsided" label="It's lopsided.">
+    <choice id="lopsided" text="It's lopsided.">
       @bram{code="0030" emotion="angry"}: It's CHARACTER. Stars aren't round, they're... honest.
     </choice>
   </branch>

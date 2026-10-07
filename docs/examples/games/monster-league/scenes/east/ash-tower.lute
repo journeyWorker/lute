@@ -17,7 +17,7 @@ when: "run.lair.towerSiege != 'cleared'"
 ## The top floor
 
 ::bg{location="ash-tower-top" time="night"}
-::music{action="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="down"}
 ::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
 @narrator{code="0010"}: At the top of the tower, under the old bells, two Eclipse grunts stand guard over an old man tied to a chair.
 @elderRook{code="0010" os}: I have told you. The old monsters sleep where they sleep. Your Director may whistle for them.
@@ -27,10 +27,10 @@ when: "run.lair.towerSiege != 'cleared'"
 
 ## Elder Rook
 
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @narrator{code="0020"}: The grunts clatter down the stairs, arguing about whose idea the tower was.
-    ::auto{character="elderRook" anchor="center" action="enter"}
+    ::actor{character="elderRook" anchor="center" action="enter"}
     @elderRook{code="0020" emotion="happy"}: Thank you, child. They wanted to know where the old monsters sleep. I would not tell them. I am too old to be frightened of people in matching jackets.
     @elderRook{code="0030"}: Take this flute. Its note wakes anything, even the great sleeper on the Silvercrest road. I was keeping it from them. Now I am keeping it from nobody.
     ::use{component="obtain" item="wakingFlute" instance="use-001"}

@@ -6,10 +6,8 @@ episode: 1
 title: Camera transform
 ---
 
-# Golden — camera
-
 ## Shot 1.
 
-::camera{focus="marina" zoom="1.1" duration="0.5" easing="ease-out" wait="false"}
+::camera{focus="marina" framing="close" duration="0.5" wait="false"}
 
 @narrator: The frame drifts in and settles on her as she turns.

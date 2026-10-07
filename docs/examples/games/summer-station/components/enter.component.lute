@@ -7,4 +7,4 @@ params:
 
 ## Enter
 
-::auto{character=@who anchor=@side action="fadeInUp"}
+::actor{character=@who anchor=@side action="fadeInUp"}

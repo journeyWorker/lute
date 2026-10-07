@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.36.schema.json",
-  "title": "Lute compiled execution IR (irVersion 0.35.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (spec §4.1, A9; relaxed in 0.13.0): an engine gates on `irVersion` by MAJOR only — it MUST accept any artifact whose `irVersion` MAJOR it implements and MUST refuse one from a different MAJOR. Minor and patch are compatible-by-default (fields are append-only within a major line; unknown fields are ignored), and an unknown command `kind` is the hard error that catches a stale runtime (IR A9). Spec §4.1 table summarizes what each minor/patch line added.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.37.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.37.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.37.x accepts only 0.37.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.37.0 (dsl 0.37.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
   "type": "object",
   "additionalProperties": true,
   "required": [
     "kind",
     "lute",
     "irVersion",
-    "capabilityVersion",
+    "capabilitySnapshot",
     "requiredSemantics",
     "meta",
     "state",
@@ -31,15 +31,39 @@
     },
     "irVersion": {
       "type": "string",
-      "description": "IR schema version the engine gates on (MAJOR only since 0.13.0), e.g. \"0.14.0\"."
+      "description": "IR schema version the engine gates on: the exact MAJOR.MINOR line before 1.0, MAJOR only from 1.0, e.g. \"0.37.0\"."
     },
-    "capabilityVersion": {
+    "capabilitySnapshot": {
       "type": "string",
-      "description": "plugin-system §13 capability snapshot stamp (a content hash); a consumer may refuse a mismatched snapshot."
+      "description": "plugin-system §13 capability snapshot stamp (`snapshot.version`, a content hash); a consumer may refuse a mismatched snapshot. dsl 0.37.0 §5.3: no `capabilityVersion` alias is emitted."
+    },
+    "identityRenames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "the retired canonical NodeKey (e.g. \"quest:oldQuest\")."
+          },
+          "to": {
+            "type": "string",
+            "description": "the canonical NodeKey that replaces it."
+          }
+        }
+      },
+      "description": "OPTIONAL authored save-identity migrations from `lute.project.yaml` relevant to this artifact, sorted by `from`; omitted when empty. Engines apply them when loading save-shaped identity and MUST NOT infer renames from position, text, or spans. `project.index.json` exposes the same list."
     },
     "requiredSemantics": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "uniqueItems": true,
       "description": "compiler-derived, sorted semantic capability ids required by this artifact."
     },
@@ -93,7 +117,7 @@
       "items": {
         "$ref": "#/$defs/command"
       },
-      "description": "the flat command-record stream (§4.4)."
+      "description": "the flat command-record stream (§4.4; record shapes dsl 0.37.0 §5.3), in execution order."
     },
     "prereqEdges": {
       "type": "array",
@@ -102,27 +126,34 @@
       },
       "description": "advisory raw `after` / `follows` graph edges (connectivity T13); omitted when empty."
     },
-    "shots": {
+    "sections": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/shotEntry"
+        "$ref": "#/$defs/sectionEntry"
       },
-      "description": "dsl 0.8.0 §6: authored `## ` shot headings, in document order. Omitted when no shot carries a heading. Quest documents have no shots."
+      "description": "dsl 0.37.0 §5.3: authored `## ` document sections, in document order — each with its one-based `section` number, verbatim heading text, and optional stable `{#id}`. Emitted only for sections with a non-empty heading or an id; omitted entirely when none qualifies. Purely descriptive: control flow never references it; the first segment of a record `position` is the section number."
     },
     "clock": {
       "$ref": "#/$defs/clockDecl",
-      "description": "dsl 0.24.0 §1: the declared clock the document was compiled against. Omitted when the project declares none. Serialized last, after `shots`."
+      "description": "dsl 0.24.0 §1: the declared clock the document was compiled against. Omitted when the project declares none. Serialized after `sections`."
     },
     "gates": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "occasion": { "type": "string" },
-          "raisedWhen": { "$ref": "#/$defs/celSlot" }
+          "occasion": {
+            "type": "string"
+          },
+          "raisedWhen": {
+            "$ref": "#/$defs/celSlot"
+          }
         },
         "additionalProperties": false,
-        "required": ["occasion", "raisedWhen"]
+        "required": [
+          "occasion",
+          "raisedWhen"
+        ]
       },
       "description": "dsl 0.27.0 §4 (T2-3): every occasion's declared `raisedWhen` gate, occasion-sorted, `@def`-expanded. The engine raises the occasion only while its gate holds; `occasion.target` in it reads the member the occasion is raised for (`room.office` → `office`). A clock raise (`raise.slot` / `dayStart` / `dayEnd`) whose gate is false is not made. Omitted when no occasion declares one; serialized after `clock`."
     },
@@ -139,17 +170,27 @@
       "items": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$" },
-          "live": { "$ref": "#/$defs/celSlot" }
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$"
+          },
+          "live": {
+            "$ref": "#/$defs/celSlot"
+          }
         },
         "additionalProperties": false,
-        "required": ["name", "live"]
+        "required": [
+          "name",
+          "live"
+        ]
       },
       "description": "dsl 0.27.0 §5: the declared seasons, name-sorted, each with its `@def`-expanded `live` condition. When `live` goes false→true the engine opens the season: `season.<name>.*` back to the declared defaults (the old values to `prev.season.<name>.*`), its `once: season:<name>` beats and `tier: season:<name>` quests reset. Omitted when none; serialized after `clock`, `gates` and `terminal`."
     },
     "outsideRun": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true`, name-sorted. The engine raises these even after `terminal` holds (a title screen, a gallery between runs); every other occasion stays closed once the game is over. Omitted when none; serialized after `seasons`."
     },
     "celEnv": {
@@ -211,10 +252,6 @@
     "provenance": {
       "type": "object",
       "properties": {
-        "injected": {
-          "type": "boolean",
-          "description": "always `true`. Retained for IR compatibility; the compiler constructs no `false`, and a consumer MUST NOT read a `true` as distinguishing anything."
-        },
         "by": {
           "type": "string",
           "description": "the named injection rule responsible, e.g. \"auto-anchor-on-show\"."
@@ -226,11 +263,10 @@
       },
       "additionalProperties": true,
       "required": [
-        "injected",
         "by",
         "explanation"
       ],
-      "description": "§4.3 injection provenance (lute_check::inject::Provenance): why an implicit command exists."
+      "description": "§4.3 injection provenance (lute_check::inject::Provenance): why a compiler-injected record exists. Present only on injected records; its presence is the injection marker (IR 0.37.0 drops the constant `injected` flag)."
     },
     "source": {
       "type": "object",
@@ -244,6 +280,107 @@
         "component"
       ],
       "description": "§4.3 component source stamp on component-expanded records (D8)."
+    },
+    "position": {
+      "type": "string",
+      "minLength": 1,
+      "description": "a resolved record position (dsl 0.37.0 §5.3), unique within the artifact; its first segment is the one-based section number. Build-local execution ordering only — never an identity. Fields that carry a position: every command `position`; `choice.converge`/`options[].target`; `hub.converge`/`return`/`options[].target`; `match.converge`/`otherwise`/`arms[].target`; `jump.target`; `quest.objectives[].body`; `on.body`; `entry.body`; `beat.body`."
+    },
+    "family": {
+      "enum": [
+        "content",
+        "staging",
+        "state",
+        "control",
+        "declaration",
+        "plugin"
+      ],
+      "description": "dsl 0.37.0 §5.1: the normative grouping of a record's `kind`, read by runtime dispatch before `kind`. content: line; staging: bg, music, sfx, vfx, actor, camera, cg, video, sequence; state: set, assert, retract; control: choice, match, hub, jump, end, barrier; declaration: quest, on, entry, accept, beat; plugin: plugin."
+    },
+    "timing": {
+      "type": "object",
+      "properties": {
+        "wait": {
+          "type": "boolean",
+          "description": "resolved blocking flag: when true the engine finishes presenting the record before advancing."
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "seconds (finite, >= 0)."
+        },
+        "delay": {
+          "type": "number",
+          "minimum": 0,
+          "description": "seconds (finite, >= 0) before the record starts."
+        },
+        "at": {
+          "type": "number",
+          "minimum": 0,
+          "description": "scheduled placement in seconds (finite, >= 0) within the record's timeline."
+        },
+        "timeline": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "zero-based ordinal of the `<timeline>` the record was emitted from — an ordinal, not seconds. Present only for records emitted from a timeline."
+        }
+      },
+      "additionalProperties": true,
+      "minProperties": 1,
+      "description": "dsl 0.37.0 §5.2: a record's resolved timing, replacing the flattened 0.36 stamp fields. Omitted when every member is absent; each member is omitted when absent. A runtime reads timing only from here."
+    },
+    "segment": {
+      "description": "dsl 0.37.0 §3.6: one presentation segment of a modified line — a coalesced text run or a pause leaf.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "description": "plain derived text of the run (escapes decoded, `{{…}}` markers verbatim); empty runs are omitted."
+            },
+            "styles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "active project `textStyle` members, outermost first. Omitted when none."
+            },
+            "rate": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "active `speed` rate (the innermost one when nested). Omitted when none."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pause": {
+              "type": "number",
+              "minimum": 0,
+              "description": "pause length in seconds (finite, >= 0)."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "pause"
+          ]
+        }
+      ]
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/segment"
+      },
+      "minItems": 1
     },
     "exprNode": {
       "description": "Portable CEL expression AST (dsl 0.32.0 §7, expr.rs). Serialized as an UNTAGGED serde enum — each variant is a bare object distinguished by its keys. A plain JSON walker evaluates it; the parallel `cel` string field carries the standard CEL expression.",
@@ -549,7 +686,7 @@
       "description": "dsl 0.32.0 §1.4 / §7: the CEL environment (variables and host function signatures) expressions were checked against."
     },
     "placeholder": {
-      "description": "One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing text/label keeps the verbatim {{…}} marker.",
+      "description": "One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing `text` keeps the verbatim {{…}} marker.",
       "oneOf": [
         {
           "type": "object",
@@ -686,11 +823,11 @@
       "enum": [
         "dialogue",
         "narration",
-        "monologue",
-        "voiceover",
-        "offscreen"
+        "mono",
+        "os",
+        "vo"
       ],
-      "description": ":line role (§4.4). Voiced roles (dialogue/voiceover/offscreen) carry a voiceKey; monologue/narration do not."
+      "description": "dsl 0.37.0 D6: the line's authored delivery role. Every role carries a `voiceKey` — a key is a join, not a recording obligation."
     },
     "entityKindEntry": {
       "type": "object",
@@ -953,7 +1090,14 @@
               }
             },
             "op": {
-              "enum": ["==", "!=", "<", "<=", ">", ">="]
+              "enum": [
+                "==",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">="
+              ]
             },
             "n": {
               "type": "integer",
@@ -1016,8 +1160,16 @@
         "node"
       ],
       "oneOf": [
-        { "required": ["after"] },
-        { "required": ["follows"] }
+        {
+          "required": [
+            "after"
+          ]
+        },
+        {
+          "required": [
+            "follows"
+          ]
+        }
       ],
       "description": "One advisory graph edge (connectivity spec §2.6, T13): a single node's raw declared `after` (scene, bundle beat) or `follows` (quest), verbatim."
     },
@@ -1052,18 +1204,34 @@
           "description": "dsl 0.15.0 §3: free descriptive open mapping the checker admitted past E-META-VALUE. Values are scalars (string / integer / number / boolean) or FLAT sequences of scalars. Never consulted by any checker/compiler/runtime rule and never routed through CEL — the sanctioned home for team search metadata (`arc`, `location`, `tags`, whatever). Key-sorted by the compiler; absent when the document authors no `extra:` block.",
           "additionalProperties": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "integer" },
-              { "type": "number" },
-              { "type": "boolean" },
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
               {
                 "type": "array",
                 "items": {
                   "oneOf": [
-                    { "type": "string" },
-                    { "type": "integer" },
-                    { "type": "number" },
-                    { "type": "boolean" }
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
                   ]
                 }
               }
@@ -1103,7 +1271,11 @@
         }
       },
       "additionalProperties": false,
-      "required": ["kind", "prefix", "members"]
+      "required": [
+        "kind",
+        "prefix",
+        "members"
+      ]
     },
     "forKind": {
       "type": "object",
@@ -1120,7 +1292,10 @@
         }
       },
       "additionalProperties": false,
-      "required": ["kind", "members"]
+      "required": [
+        "kind",
+        "members"
+      ]
     },
     "sceneBeat": {
       "type": "object",
@@ -1138,7 +1313,7 @@
         },
         "target": {
           "type": "string",
-          "description": "the scene is a candidate only when the occasion is raised for this target (dotted id, the entryCmd.target shape). Absent when the beat answers the occasion for any target."
+          "description": "the scene is a candidate only when the occasion is raised for this target (dotted id, the cmdEntry.target shape). Absent when the beat answers the occasion for any target."
         },
         "when": {
           "$ref": "#/$defs/celSlot",
@@ -1150,8 +1325,20 @@
         },
         "once": {
           "anyOf": [
-            { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
+            {
+              "enum": [
+                "run",
+                "user",
+                "none",
+                "day",
+                "slot",
+                "week"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
+            }
           ],
           "description": "repetition policy: `run` (default — presented at most once per run), `user` (at most once ever), `none` (repeatable; source `once: false`), `day` / `slot` (dsl 0.24.0 §1: spent until the declared clock's day / slot changes — the artifact's `clock` names the paths), `week` (dsl 0.27.0 §5: spent until `clock.weekday` returns to `week.first`), `season:<name>` (dsl 0.27.0 §5: spent until the season opens again). A beat with `spentBy` is `none`."
         },
@@ -1170,8 +1357,16 @@
         },
         "advances": {
           "anyOf": [
-            { "enum": ["slot", "day"] },
-            { "type": "integer", "minimum": 1 }
+            {
+              "enum": [
+                "slot",
+                "day"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
           ],
           "description": "dsl 0.31.0 §1: clock movement performed when the beat is presented."
         }
@@ -1203,18 +1398,34 @@
           "description": "dsl 0.15.0 §3: same descriptive block as sceneMeta.extra, sanctioned on quest roots too. Same scalar / flat-scalar-array shape; key-sorted; absent when the document authors no `extra:` block.",
           "additionalProperties": {
             "oneOf": [
-              { "type": "string" },
-              { "type": "integer" },
-              { "type": "number" },
-              { "type": "boolean" },
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
               {
                 "type": "array",
                 "items": {
                   "oneOf": [
-                    { "type": "string" },
-                    { "type": "integer" },
-                    { "type": "number" },
-                    { "type": "boolean" }
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
                   ]
                 }
               }
@@ -1250,7 +1461,9 @@
           "description": "initial value (any JSON scalar/array/object), integral-collapsed. Absent when the slot has no default (maybe-unset)."
         },
         "owner": {
-          "enum": ["engine"],
+          "enum": [
+            "engine"
+          ],
           "description": "dsl 0.22.0 §1.2: the engine writes this state path; omitted for content-owned paths."
         },
         "provenance": {
@@ -1342,8 +1555,9 @@
         "id": {
           "type": "string"
         },
-        "label": {
-          "type": "string"
+        "text": {
+          "type": "string",
+          "description": "displayed option text (source language; `{{…}}` markers verbatim)."
         },
         "lineId": {
           "type": "string"
@@ -1353,7 +1567,8 @@
           "description": "guard CEL slot; present only when the option is guarded."
         },
         "target": {
-          "type": "string"
+          "$ref": "#/$defs/position",
+          "description": "position of the option's segment."
         },
         "placeholders": {
           "type": "array",
@@ -1361,18 +1576,18 @@
             "$ref": "#/$defs/placeholder"
           }
         },
-        "labels": {
+        "texts": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
+          "description": "dsl 0.8.0 §7: merged locale texts, locale tag → translated option text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`."
         }
       },
       "additionalProperties": false,
       "required": [
         "id",
-        "label",
+        "text",
         "lineId",
         "target"
       ],
@@ -1384,8 +1599,9 @@
         "id": {
           "type": "string"
         },
-        "label": {
-          "type": "string"
+        "text": {
+          "type": "string",
+          "description": "displayed option text (source language; `{{…}}` markers verbatim)."
         },
         "lineId": {
           "type": "string"
@@ -1403,7 +1619,8 @@
           "description": "guard CEL slot; present only when the option is guarded."
         },
         "target": {
-          "type": "string"
+          "$ref": "#/$defs/position",
+          "description": "position of the option's segment."
         },
         "placeholders": {
           "type": "array",
@@ -1411,18 +1628,18 @@
             "$ref": "#/$defs/placeholder"
           }
         },
-        "labels": {
+        "texts": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           },
-          "description": "dsl 0.8.0 §7: merged locale labels, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
+          "description": "dsl 0.8.0 §7: merged locale texts, locale tag → translated option text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`."
         }
       },
       "additionalProperties": false,
       "required": [
         "id",
-        "label",
+        "text",
         "lineId",
         "once",
         "exit",
@@ -1442,7 +1659,8 @@
           "description": "arm guard CEL slot."
         },
         "target": {
-          "type": "string"
+          "$ref": "#/$defs/position",
+          "description": "position of the arm's segment."
         }
       },
       "additionalProperties": false,
@@ -1455,6 +1673,11 @@
     "rewardEntry": {
       "type": "object",
       "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "description": "dsl 0.37.0 D10: the authored `<reward id>`, unique within its owning quest; the stable model key when present. Omitted when unauthored (the owner-local declaration index is the fallback key)."
+        },
         "kind": {
           "type": "string",
           "description": "The reward kind id (dsl 0.16.0 §2). When a plugin publishes a `rewardKinds:` vocabulary (§4), the checker's `E-REWARD-KIND` closure gates this against the merged vocabulary; without a vocabulary, any non-empty string is accepted (shape-only mode)."
@@ -1481,7 +1704,9 @@
         },
         "outcome": {
           "type": "string",
-          "enum": ["failed"],
+          "enum": [
+            "failed"
+          ],
           "description": "Optional lifecycle-transition filter (dsl 0.16.0 §2). Only ever `\"failed\"` on the wire, and only on a quest-level entry — a quest reward with `outcome=\"failed\"` grants ONLY on a fresh `failed` transition (authored `fail` OR §2.3 cascade); absent `outcome=` means the reward grants ONLY on a fresh `complete`. Objective-level entries never carry `outcome=` (checker `E-REWARD-ATTR`)."
         },
         "credits": {
@@ -1490,8 +1715,10 @@
         }
       },
       "additionalProperties": true,
-      "required": ["kind"],
-      "description": "One `<reward kind= target= amount= when= outcome=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
+      "required": [
+        "kind"
+      ],
+      "description": "One `<reward id= kind= target= amount= when= outcome=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
     },
     "objectiveEntry": {
       "type": "object",
@@ -1516,11 +1743,15 @@
           "type": "boolean"
         },
         "body": {
-          "type": [
-            "string",
-            "null"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/position"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "description": "addr of the objective's completion-body segment; ALWAYS present, `null` when the body is empty."
+          "description": "position of the objective's completion-body segment; ALWAYS present, `null` when the body is empty."
         },
         "quest": {
           "type": "string",
@@ -1566,9 +1797,11 @@
         "kind": {
           "const": "line"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "content"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "role": {
           "$ref": "#/$defs/role"
@@ -1577,7 +1810,8 @@
           "type": "string"
         },
         "text": {
-          "type": "string"
+          "type": "string",
+          "description": "source-language plain text: inline modifier delimiters and attrs removed, escapes decoded, `{{…}}` markers verbatim (dsl 0.37.0 §3.6)."
         },
         "emotion": {
           "type": "string"
@@ -1599,7 +1833,7 @@
         },
         "voiceKey": {
           "type": "string",
-          "description": "present only for voiced roles (§4.2)."
+          "description": "the voice asset join (dsl 0.37.0 D6); present on every line, any role."
         },
         "placeholders": {
           "type": "array",
@@ -1607,56 +1841,64 @@
             "$ref": "#/$defs/placeholder"
           }
         },
-        "wait": {
-          "type": "boolean"
+        "texts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.8.0 §7, 0.37.0 §6: merged locale texts, locale tag → plain derived text, keyed on `lineId`; every translated locale appears here, modified or not. Absent when no locale bundle was merged. The source-language string stays in `text`."
         },
-        "duration": {
-          "type": "number"
+        "segments": {
+          "$ref": "#/$defs/segments",
+          "description": "dsl 0.37.0 §3.6: present only when the source line uses an inline modifier — coalesced text runs and pause leaves whose texts concatenate to `text`. Absent on an unmodified line."
         },
-        "delay": {
-          "type": "number"
+        "localeSegments": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/segments"
+          },
+          "description": "dsl 0.37.0 §6: for a modified line, locale tag → that translation's segments; every key also appears in `texts`. Absent on an unmodified line or without a locale bundle."
         },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
         },
         "source": {
           "$ref": "#/$defs/source"
-        },
-        "texts": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "description": "dsl 0.8.0 §7: merged locale texts, locale tag → text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`/`label`."
         }
       },
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "role",
         "speaker",
         "text",
-        "lineId"
+        "lineId",
+        "voiceKey"
       ],
-      "description": "A spoken/narrated content line (§4.4)."
+      "description": "A spoken or narrated content line (dsl 0.37.0 §5.3).",
+      "dependentRequired": {
+        "localeSegments": [
+          "segments",
+          "texts"
+        ]
+      }
     },
-    "cmdBackground": {
+    "cmdBg": {
       "type": "object",
       "properties": {
         "kind": {
-          "const": "background"
+          "const": "bg"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "location": {
           "type": "string"
@@ -1667,21 +1909,8 @@
         "assetId": {
           "type": "string"
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1693,8 +1922,10 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr"
-      ]
+        "family",
+        "position"
+      ],
+      "description": "`::bg` (dsl 0.37.0 §5.3): sets the stage backdrop. Every field optional."
     },
     "cmdMusic": {
       "type": "object",
@@ -1702,12 +1933,15 @@
         "kind": {
           "const": "music"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
         },
-        "action": {
-          "type": "string"
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "playback": {
+          "type": "string",
+          "description": "project `musicPlayback` domain member (e.g. play/stop). Omitted when unauthored."
         },
         "mood": {
           "type": "string"
@@ -1718,24 +1952,8 @@
         "assetId": {
           "type": "string"
         },
-        "track": {
-          "type": "string"
-        },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1747,9 +1965,10 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
-        "action"
-      ]
+        "family",
+        "position"
+      ],
+      "description": "`::music` (dsl 0.37.0 §5.3). `playback` is a project `musicPlayback` member."
     },
     "cmdSfx": {
       "type": "object",
@@ -1757,9 +1976,11 @@
         "kind": {
           "const": "sfx"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "sound": {
           "type": "string"
@@ -1767,24 +1988,8 @@
         "assetId": {
           "type": "string"
         },
-        "name": {
-          "type": "string"
-        },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1796,8 +2001,10 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr"
-      ]
+        "family",
+        "position"
+      ],
+      "description": "`::sfx` (dsl 0.37.0 §5.3)."
     },
     "cmdVfx": {
       "type": "object",
@@ -1805,12 +2012,15 @@
         "kind": {
           "const": "vfx"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
         },
-        "vfxType": {
-          "type": "string"
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "type": {
+          "type": "string",
+          "description": "the visual-effect type."
         },
         "label": {
           "type": "string"
@@ -1818,21 +2028,8 @@
         "transition": {
           "type": "string"
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1844,22 +2041,28 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
-        "vfxType"
-      ]
+        "family",
+        "position",
+        "type"
+      ],
+      "description": "`::vfx` (dsl 0.37.0 §5.3)."
     },
-    "cmdSprite": {
+    "cmdActor": {
       "type": "object",
       "properties": {
         "kind": {
-          "const": "sprite"
+          "const": "actor"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "character": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1,
+          "description": "the cast character id (required, dsl 0.37.0 §3.7)."
         },
         "anchor": {
           "type": "string"
@@ -1868,36 +2071,27 @@
           "type": "string"
         },
         "exit": {
-          "type": "boolean"
-        },
-        "posReset": {
-          "type": "boolean"
-        },
-        "preload": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "true when the action is declared in the `action` domain's `exits` (the character leaves the stage); omitted when false or unknown."
         },
         "emotion": {
-          "type": "string"
+          "type": "string",
+          "description": "stage emotion update, as a line `emotion`."
         },
         "costume": {
           "type": "string",
-          "description": "A1 schema-only: resolved costume id; never emitted until the cast plugin ships."
+          "description": "authored costume id; emitted when supplied."
         },
-        "wait": {
-          "type": "boolean"
+        "posReset": {
+          "type": "boolean",
+          "description": "injected records only."
         },
-        "duration": {
-          "type": "number"
+        "preload": {
+          "type": "boolean",
+          "description": "injected records only."
         },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1909,10 +2103,11 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "character"
       ],
-      "description": "An authored ::auto or an injected sprite command (§7.4); injected records carry `provenance` in the stamp."
+      "description": "`::actor` (dsl 0.37.0 §5.1/§5.3): an authored actor record or a compiler-injected one (anchor, preload, position reset, hide — §7.4). Injected records carry `provenance`; `posReset` and `preload` appear only on injected records."
     },
     "cmdCamera": {
       "type": "object",
@@ -1920,46 +2115,29 @@
         "kind": {
           "const": "camera"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "focus": {
           "type": "string"
         },
-        "zoom": {
-          "type": "number"
+        "framing": {
+          "type": "string",
+          "description": "project `framing` member."
         },
-        "moveX": {
-          "type": "number"
+        "move": {
+          "type": "string",
+          "description": "project `cameraMove` member."
         },
-        "moveY": {
-          "type": "number"
+        "transition": {
+          "type": "string",
+          "description": "project `transition` member."
         },
-        "shake": {
-          "type": "number"
-        },
-        "reset": {
-          "type": "boolean"
-        },
-        "easing": {
-          "type": "string"
-        },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -1971,43 +2149,58 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr"
+        "family",
+        "position"
+      ],
+      "description": "`::camera` (dsl 0.37.0 D1, §5.3): opaque project-domain members; at least one is present after checking. No numeric transform is synthesized.",
+      "anyOf": [
+        {
+          "required": [
+            "focus"
+          ]
+        },
+        {
+          "required": [
+            "framing"
+          ]
+        },
+        {
+          "required": [
+            "move"
+          ]
+        },
+        {
+          "required": [
+            "transition"
+          ]
+        }
       ]
     },
-    "cmdCut": {
+    "cmdCg": {
       "type": "object",
       "properties": {
         "kind": {
-          "const": "cut"
+          "const": "cg"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "assetId": {
           "type": "string"
         },
-        "action": {
-          "type": "string"
+        "display": {
+          "type": "string",
+          "description": "resolved display member (`show` when unauthored); always present."
         },
-        "full": {
-          "type": "boolean"
+        "layout": {
+          "type": "string",
+          "description": "project `cgLayout` member. Omitted when unauthored."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2019,9 +2212,12 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
-        "assetId"
-      ]
+        "family",
+        "position",
+        "assetId",
+        "display"
+      ],
+      "description": "`::cg` (dsl 0.37.0 D2, §5.3): a CG image."
     },
     "cmdVideo": {
       "type": "object",
@@ -2029,31 +2225,21 @@
         "kind": {
           "const": "video"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "assetId": {
           "type": "string"
         },
-        "action": {
-          "type": "string"
+        "display": {
+          "type": "string",
+          "description": "resolved display member (`show` when unauthored); always present."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2065,9 +2251,48 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
-        "assetId"
-      ]
+        "family",
+        "position",
+        "assetId",
+        "display"
+      ],
+      "description": "`::video` (dsl 0.37.0 D2, §5.3)."
+    },
+    "cmdSequence": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "sequence"
+        },
+        "family": {
+          "const": "staging"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "the declared sequence name."
+        },
+        "timing": {
+          "$ref": "#/$defs/timing"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "family",
+        "position",
+        "name"
+      ],
+      "description": "`::sequence{name}` (dsl 0.37.0 D3, §5.3): a reference to a project-declared external cinematic. Carries only its name and resolved `timing` (`wait` defaults to true); no bound characters. The reference runner records it without simulating the sequence."
     },
     "cmdSet": {
       "type": "object",
@@ -2075,9 +2300,11 @@
         "kind": {
           "const": "set"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "state"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "path": {
           "type": "string"
@@ -2090,21 +2317,8 @@
           "$ref": "#/$defs/celSlot",
           "description": "RHS CEL slot with standard text and portable expression."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2116,7 +2330,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "path",
         "op",
         "value"
@@ -2129,9 +2344,11 @@
         "kind": {
           "const": "assert"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "state"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "relation": {
           "type": "string"
@@ -2143,21 +2360,8 @@
           },
           "description": "ground literals; bools as \"true\"/\"false\". Never \"_\"."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2169,7 +2373,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "relation",
         "args"
       ],
@@ -2181,9 +2386,11 @@
         "kind": {
           "const": "retract"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "state"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "relation": {
           "type": "string"
@@ -2195,21 +2402,8 @@
           },
           "description": "ground literals or \"_\" wildcards (§5 RetractPattern)."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2221,7 +2415,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "relation",
         "args"
       ],
@@ -2233,15 +2428,18 @@
         "kind": {
           "const": "choice"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "branchId": {
           "type": "string"
         },
-        "recordKey": {
-          "type": "string"
+        "selectionKey": {
+          "type": "string",
+          "description": "the stable selection-history key a runtime records the chosen option under."
         },
         "options": {
           "type": "array",
@@ -2250,32 +2448,20 @@
           }
         },
         "converge": {
-          "type": "string"
+          "$ref": "#/$defs/position",
+          "description": "position every option segment continues at."
         },
         "prompt": {
           "type": "string",
           "description": "dsl 0.11.0: the choice-situation sentence shown by the UI. Present only when authored."
         },
-        "timeoutSec": {
+        "timeout": {
           "type": "integer",
           "minimum": 1,
-          "description": "dsl 0.11.0: the countdown, in whole seconds, before the branch times out. Present only when authored."
+          "description": "dsl 0.11.0, 0.37.0 §5.3: the countdown in whole seconds before the branch times out. Present only when authored."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2287,12 +2473,14 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "branchId",
-        "recordKey",
+        "selectionKey",
         "options",
         "converge"
-      ]
+      ],
+      "description": "`<choice>` (dsl 0.37.0 §5.3): a player selection; each option's segment is followed by `converge`."
     },
     "cmdMatch": {
       "type": "object",
@@ -2300,12 +2488,15 @@
         "kind": {
           "const": "match"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "subject": {
-          "$ref": "#/$defs/celSlot"
+          "$ref": "#/$defs/celSlot",
+          "description": "the authored `subject` CEL slot; absent when unauthored."
         },
         "arms": {
           "type": "array",
@@ -2314,26 +2505,14 @@
           }
         },
         "otherwise": {
-          "type": "string"
+          "$ref": "#/$defs/position",
+          "description": "position of the fallback segment; absent when unauthored."
         },
         "converge": {
-          "type": "string"
+          "$ref": "#/$defs/position"
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2345,10 +2524,12 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "arms",
         "converge"
-      ]
+      ],
+      "description": "`<match>` (dsl 0.37.0 §5.3): the first arm whose test holds runs; otherwise `otherwise`, then `converge`."
     },
     "cmdHub": {
       "type": "object",
@@ -2356,15 +2537,18 @@
         "kind": {
           "const": "hub"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "id": {
           "type": "string"
         },
-        "recordKey": {
-          "type": "string"
+        "selectionKey": {
+          "type": "string",
+          "description": "the stable selection-history key a runtime records chosen options under."
         },
         "options": {
           "type": "array",
@@ -2373,31 +2557,18 @@
           }
         },
         "converge": {
-          "type": "string"
+          "$ref": "#/$defs/position"
         },
         "prompt": {
           "type": "string",
           "description": "dsl 0.23.0 §4: the prompt line shown with the hub's options. Present only when authored."
         },
         "return": {
-          "type": "string",
-          "description": "dsl 0.28.0 §5: address of the hub's `<return>` segment. It runs each time a non-exit option's segment ends, before the hub is judged and presented again; like an option target it bounds the segment before it. Present only when authored."
+          "$ref": "#/$defs/position",
+          "description": "dsl 0.28.0 §5: position of the hub's `<return>` segment. It runs each time a non-exit option's segment ends, before the hub is judged and presented again; like an option target it bounds the segment before it. Present only when authored."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2409,9 +2580,10 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "id",
-        "recordKey",
+        "selectionKey",
         "options",
         "converge"
       ],
@@ -2423,21 +2595,24 @@
         "kind": {
           "const": "jump"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "target": {
-          "type": "string"
+          "$ref": "#/$defs/position"
         }
       },
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "target"
       ],
-      "description": "Unconditional control-flow jump. Carries no stamp."
+      "description": "Unconditional control-flow jump. Carries no `timing`, `provenance`, or `source`."
     },
     "cmdEnd": {
       "type": "object",
@@ -2445,29 +2620,18 @@
         "kind": {
           "const": "end"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "reason": {
           "type": "string",
           "description": "free-form author string the host MAY surface (e.g. \"completed\"); Lute assigns it no meaning."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2479,9 +2643,10 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr"
+        "family",
+        "position"
       ],
-      "description": "dsl 0.8.0 §3: terminate the walk at this record. Equivalent to falling off the end of `commands`, except `reason` is carried. NEW in IR 0.8.0 — an engine implementing only 0.7 MUST refuse the artifact (unknown `kind` is a hard error)."
+      "description": "dsl 0.8.0 §3: terminate the walk at this record. Equivalent to falling off the end of `commands`, except `reason` is carried."
     },
     "cmdBarrier": {
       "type": "object",
@@ -2489,28 +2654,32 @@
         "kind": {
           "const": "barrier"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "control"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "timeline": {
           "type": "integer",
           "minimum": 0,
-          "description": "0-based timeline ordinal this barrier joins."
+          "description": "zero-based ordinal of the timeline this barrier joins (an ordinal, not seconds)."
         },
         "at": {
           "type": "number",
-          "description": "the barrier time (authored duration, else max resolved clip end)."
+          "minimum": 0,
+          "description": "the join time in seconds (authored duration, else the maximum resolved clip end)."
         }
       },
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "timeline",
         "at"
       ],
-      "description": "A timeline join point (§11.4). Carries no stamp."
+      "description": "A timeline join point (dsl 0.37.0 §5.2). Carries no `timing`: its join fields are direct, so they cannot collide with a record's timing. The reference runner records it as a join and simulates no elapsed time."
     },
     "cmdQuest": {
       "type": "object",
@@ -2518,9 +2687,11 @@
         "kind": {
           "const": "quest"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "declaration"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "id": {
           "type": "string"
@@ -2555,36 +2726,39 @@
           "description": "dsl 0.27.0 §5: when this `@def`-expanded condition goes from false to true the quest returns to `unset` (objectives undone, `failedBy` cleared) and can be activated again. Omitted when not authored."
         },
         "tier": {
-          "anyOf": [{ "enum": ["run"] }, { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }],
+          "anyOf": [
+            {
+              "enum": [
+                "run"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
+            }
+          ],
           "description": "dsl 0.27.0 §5: `season:<name>` resets the quest to `unset` when that season opens. dsl 0.22.0 §7: `run` for a `<quest tier=\"run\">` — its status and objectives reset to `unset` when a run starts (`newRun`). Omitted for the default `user` tier (status persists across runs)."
         },
         "activate": {
-          "enum": ["accept"],
+          "enum": [
+            "accept"
+          ],
           "description": "dsl 0.24.0 §2: `accept` for a `<quest activate=\"accept\">` subquest child — it does not activate with its parent; an accept activates it while the parent is `active`. Omitted by default (the child activates with its parent)."
         },
         "complete": {
-          "enum": ["any"],
+          "enum": [
+            "any"
+          ],
           "description": "dsl 0.24.0 §2: `any` for a `<quest complete=\"any\">` — the quest completes when ANY required objective is done, and every other still-active child fails with `failedBy: superseded`. Omitted for the default `all`."
         },
         "accept": {
-          "enum": ["external"],
+          "enum": [
+            "external"
+          ],
           "description": "dsl 0.25.0 §5: `external` for a `<quest accept=\"external\">` — the quest is accepted outside the script (a quest board, a menu, a UI): the engine offers it and activates it whenever the player takes it (for an `activate=\"accept\"` child, while the parent is `active`). Omitted by default (only `::accept` accepts it)."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2596,11 +2770,12 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "id",
         "objectives"
       ],
-      "description": "<quest> declaration head (dsl 0.2.0 §6.3). A declaration head: objective completion bodies and <on> arms follow as their own addressed records."
+      "description": "<quest> declaration head (dsl 0.2.0 §6.3). Objective completion bodies and <on> arms follow as their own positioned records."
     },
     "cmdOn": {
       "type": "object",
@@ -2608,9 +2783,11 @@
         "kind": {
           "const": "on"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "declaration"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "event": {
           "type": "string"
@@ -2619,28 +2796,15 @@
           "$ref": "#/$defs/celSlot"
         },
         "body": {
-          "type": "string",
-          "description": "addr of the action body segment."
+          "$ref": "#/$defs/position",
+          "description": "position of the action body segment."
         },
         "target": {
           "type": "string",
           "description": "dsl 0.24.0 §2: the handler fires only when the same-named occasion is raised for this target. Omitted when unauthored (the handler answers every raise)."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2652,27 +2816,24 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "event",
         "body"
       ],
       "description": "<on> event-condition-action record (dsl 0.2.0 §4, §6.6): an independent event rule."
     },
-    "entryCmd": {
+    "cmdEntry": {
       "type": "object",
       "properties": {
-        "targetKind": {
-          "$ref": "#/$defs/targetKind"
-        },
-        "forKind": {
-          "$ref": "#/$defs/forKind"
-        },
         "kind": {
           "const": "entry"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "declaration"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "id": {
           "type": "string",
@@ -2684,7 +2845,7 @@
         },
         "category": {
           "type": "string",
-          "description": "engine-vocabulary text kind (`note`, `item`, `place`, `codex`, `bark`, …); shape-only."
+          "description": "the lore entry's engine-vocabulary text kind (`note`, `item`, `place`, `codex`, `bark`, …); shape-only. Unrelated to the record `family`."
         },
         "title": {
           "type": "string"
@@ -2706,6 +2867,10 @@
           "$ref": "#/$defs/celSlot",
           "description": "eligibility: the entry may be presented only while this holds."
         },
+        "body": {
+          "$ref": "#/$defs/position",
+          "description": "position of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` or `beat` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
+        },
         "on": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
@@ -2717,46 +2882,54 @@
         },
         "once": {
           "anyOf": [
-            { "enum": ["run", "user", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
+            {
+              "enum": [
+                "run",
+                "user",
+                "day",
+                "slot",
+                "week"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
+            }
           ],
           "description": "dsl 0.22.0 §7, 0.24.0 §1: the entry beat's repetition policy — `run`: not eligible while `entry.<id>.read` is true; `user`: not eligible once `entry.<id>.everRead` is true; `day` / `slot`: not eligible again until the declared clock's day / slot changes after it was read. Absent when not authored: repeatable, as in 0.21."
-        },
-        "spentBy": {
-          "$ref": "#/$defs/celSlot",
-          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
         },
         "share": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share — reading this entry spends every beat of the key, and any of them being presented spends this entry, for the common `once` period. Absent when not authored."
         },
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
+        },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
+        },
+        "spentBy": {
+          "$ref": "#/$defs/celSlot",
+          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
+        },
         "advances": {
           "anyOf": [
-            { "enum": ["slot", "day"] },
-            { "type": "integer", "minimum": 1 }
+            {
+              "enum": [
+                "slot",
+                "day"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
           ],
           "description": "dsl 0.31.0 §1: clock movement performed when the beat is presented."
         },
-        "body": {
-          "type": "string",
-          "description": "addr of the entry's body segment (the `cmdOn.body` convention): it follows this record and runs to the next `entry` or `beat` record or the end of the stream. `set`/`assert`/`retract` records in it apply only on the first read (`entry.<id>.read == false`)."
-        },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2768,7 +2941,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "id",
         "body"
       ],
@@ -2780,33 +2954,24 @@
         "kind": {
           "const": "accept"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "declaration"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "quest": {
           "type": "string",
           "description": "id of an accept-driven quest (one with no `start`) in the project; checked by `check-project` (`E-ACCEPT-TARGET`)."
         },
         "applies": {
-          "enum": ["nextRun"],
+          "enum": [
+            "nextRun"
+          ],
           "description": "dsl 0.24.0 §2: `nextRun` for `::accept{… at=\"nextRun\"}` — the acceptance is queued and applies after the next run-start reset. Omitted for an immediate accept."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2818,7 +2983,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "quest"
       ],
       "description": "`::accept{quest}` (dsl 0.21.0 §7a.3): the player accepts an accept-driven quest at this point — the scene-side form of the engine's accept action. The engine activates the quest if its state is `unset` (stamping `activatedAt` as for any activation) and ignores the record otherwise (docs/runtime/quest-lifecycle.md)."
@@ -2826,18 +2992,14 @@
     "cmdBeat": {
       "type": "object",
       "properties": {
-        "targetKind": {
-          "$ref": "#/$defs/targetKind"
-        },
-        "forKind": {
-          "$ref": "#/$defs/forKind"
-        },
         "kind": {
           "const": "beat"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "declaration"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "id": {
           "type": "string",
@@ -2858,7 +3020,7 @@
         },
         "titleLineId": {
           "type": "string",
-          "description": "`{id}.title`, present only when `title` is authored (the entryCmd convention)."
+          "description": "`{id}.title`, present only when `title` is authored (the cmdEntry convention)."
         },
         "when": {
           "$ref": "#/$defs/celSlot",
@@ -2870,8 +3032,20 @@
         },
         "once": {
           "anyOf": [
-            { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
+            {
+              "enum": [
+                "run",
+                "user",
+                "none",
+                "day",
+                "slot",
+                "week"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
+            }
           ],
           "description": "repetition policy, as sceneBeat.once: `run` (default), `user`, `none` (source `once=false`), `day` / `slot` (dsl 0.24.0 §1). Spent when the beat is presented."
         },
@@ -2879,45 +3053,46 @@
           "const": true,
           "description": "as sceneBeat.also (dsl 0.23.0 §3). Absent when not authored."
         },
-        "spentBy": {
-          "$ref": "#/$defs/celSlot",
-          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
-        },
         "share": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
           "description": "dsl 0.25.0 §2: the shared-spend key, as sceneBeat.share. Absent when not authored."
         },
-        "advances": {
-          "anyOf": [
-            { "enum": ["slot", "day"] },
-            { "type": "integer", "minimum": 1 }
-          ],
-          "description": "dsl 0.31.0 §1: clock movement performed when the beat is presented."
-        },
         "after": {
           "type": "string",
           "description": "dsl 0.25.0 §3: the RAW authored `after=` prerequisite — the restricted `visited` / `completed` / `active` grammar of a scene's `after:` — an eligibility conjunct (the beat is eligible only while it and `when` hold). The artifact's `prereqEdges` carries the same text under the beat's `id` as its scenario edge. Absent when not authored."
         },
+        "targetKind": {
+          "$ref": "#/$defs/targetKind"
+        },
+        "forKind": {
+          "$ref": "#/$defs/forKind"
+        },
+        "spentBy": {
+          "$ref": "#/$defs/celSlot",
+          "description": "dsl 0.27.0 §5: the beat (`once: none`) stays eligible until this `@def`-expanded condition holds. Absent when not authored."
+        },
+        "advances": {
+          "anyOf": [
+            {
+              "enum": [
+                "slot",
+                "day"
+              ]
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ],
+          "description": "dsl 0.31.0 §1: clock movement performed when the beat is presented."
+        },
         "body": {
-          "type": "string",
-          "description": "addr of the beat's body segment: it follows this record and runs to the next `entry` or `beat` record or the end of the stream. The body is lowered like a scene shot (lines, choices, hubs, match, directives)."
+          "$ref": "#/$defs/position",
+          "description": "position of the beat's body segment: it follows this record and runs to the next `entry` or `beat` record or the end of the stream. The body is lowered like a scene section (lines, choices, hubs, match, directives)."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -2929,7 +3104,8 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "id",
         "on",
         "priority",
@@ -2944,9 +3120,11 @@
         "kind": {
           "const": "plugin"
         },
-        "addr": {
-          "type": "string",
-          "description": "the record's resolved address (§4.2), unique within the artifact; jump/converge/target/body fields point at these."
+        "family": {
+          "const": "plugin"
+        },
+        "position": {
+          "$ref": "#/$defs/position"
         },
         "tag": {
           "type": "string",
@@ -2972,10 +3150,20 @@
           "items": {
             "type": "object",
             "properties": {
-              "relation": { "type": "string" },
-              "args": { "type": "array", "items": { "type": "string" } }
+              "relation": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
-            "required": ["relation", "args"],
+            "required": [
+              "relation",
+              "args"
+            ],
             "additionalProperties": false
           },
           "description": "dsl 0.27.0 §4: the facts the call retracts (its directive's declared effects.retracts, @attr substituted; \"_\" a wildcard), applied after `effects`; absent when none."
@@ -2985,29 +3173,26 @@
           "items": {
             "type": "object",
             "properties": {
-              "relation": { "type": "string" },
-              "args": { "type": "array", "items": { "type": "string" } }
+              "relation": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             },
-            "required": ["relation", "args"],
+            "required": [
+              "relation",
+              "args"
+            ],
             "additionalProperties": false
           },
           "description": "dsl 0.27.0 §4: the ground facts the call asserts (its directive's declared effects.asserts, @attr substituted), applied after `retracts`; absent when none."
         },
-        "wait": {
-          "type": "boolean"
-        },
-        "duration": {
-          "type": "number"
-        },
-        "delay": {
-          "type": "number"
-        },
-        "at": {
-          "type": "number"
-        },
-        "timeline": {
-          "type": "integer",
-          "minimum": 0
+        "timing": {
+          "$ref": "#/$defs/timing"
         },
         "provenance": {
           "$ref": "#/$defs/provenance"
@@ -3019,20 +3204,21 @@
       "additionalProperties": true,
       "required": [
         "kind",
-        "addr",
+        "family",
+        "position",
         "tag",
         "fields"
       ],
-      "description": "Plugin-directive passthrough (Command::Other), serialized as kind \"plugin\"."
+      "description": "Plugin-directive passthrough (Rust `Command::Plugin`), serialized as kind `plugin`. Declared fields and effects are opaque to core. Plugin `stampAttrs` cross-cutting attrs appear as further top-level keys beside `timing`."
     },
     "command": {
-      "description": "One command record (§4.4), internally tagged on `kind`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.",
+      "description": "One command record (dsl 0.37.0 §5.3), tagged on `kind` with its `family`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.",
       "oneOf": [
         {
           "$ref": "#/$defs/cmdLine"
         },
         {
-          "$ref": "#/$defs/cmdBackground"
+          "$ref": "#/$defs/cmdBg"
         },
         {
           "$ref": "#/$defs/cmdMusic"
@@ -3044,16 +3230,19 @@
           "$ref": "#/$defs/cmdVfx"
         },
         {
-          "$ref": "#/$defs/cmdSprite"
+          "$ref": "#/$defs/cmdActor"
         },
         {
           "$ref": "#/$defs/cmdCamera"
         },
         {
-          "$ref": "#/$defs/cmdCut"
+          "$ref": "#/$defs/cmdCg"
         },
         {
           "$ref": "#/$defs/cmdVideo"
+        },
+        {
+          "$ref": "#/$defs/cmdSequence"
         },
         {
           "$ref": "#/$defs/cmdSet"
@@ -3089,16 +3278,16 @@
           "$ref": "#/$defs/cmdOn"
         },
         {
-          "$ref": "#/$defs/cmdPlugin"
-        },
-        {
-          "$ref": "#/$defs/entryCmd"
+          "$ref": "#/$defs/cmdEntry"
         },
         {
           "$ref": "#/$defs/cmdAccept"
         },
         {
           "$ref": "#/$defs/cmdBeat"
+        },
+        {
+          "$ref": "#/$defs/cmdPlugin"
         }
       ]
     },
@@ -3163,12 +3352,12 @@
         },
         "series": {
           "type": "string",
-          "description": "The RESOLVED series, as entryCmd.series (dsl 0.19.0 §2.1)."
+          "description": "The RESOLVED series, as cmdEntry.series (dsl 0.19.0 §2.1)."
         },
         "order": {
           "type": "integer",
           "minimum": 0,
-          "description": "The RESOLVED order, as entryCmd.order (dsl 0.19.0 §2.1)."
+          "description": "The RESOLVED order, as cmdEntry.order (dsl 0.19.0 §2.1)."
         }
       },
       "additionalProperties": false,
@@ -3215,8 +3404,20 @@
         },
         "once": {
           "anyOf": [
-            { "enum": ["run", "user", "none", "day", "slot", "week"] },
-            { "type": "string", "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$" }
+            {
+              "enum": [
+                "run",
+                "user",
+                "none",
+                "day",
+                "slot",
+                "week"
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
+            }
           ],
           "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7; `day`/`slot`, dsl 0.24.0 §1), absent = repeatable."
         },
@@ -3248,25 +3449,30 @@
       ],
       "description": "One row of `project.index.json` `beats` (dsl 0.21.0 §8; `lute compile --all`): every scene, entry and bundle beat in the project, documents in path order, declaration order within each. Row order is the selection tiebreak after priority (docs/runtime/beats-and-occasions.md). `beats` is omitted from the index when the project has no beats."
     },
-    "shotEntry": {
+    "sectionEntry": {
       "type": "object",
       "properties": {
-        "shot": {
+        "section": {
           "type": "integer",
           "minimum": 1,
-          "description": "1-based document position of the shot (dsl 0.6.0 §3.2); matches the `addr` shot segment."
+          "description": "one-based document position of the section; matches the first segment of a record `position`."
         },
         "heading": {
           "type": "string",
-          "description": "the verbatim `## ` heading text."
+          "description": "the verbatim `## ` heading text, the `{#id}` suffix excluded (empty when the section has only an id)."
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+          "description": "dsl 0.37.0 §3.1: the authored stable section id (`## Heading {#id}`), unique within the document. Omitted when unauthored."
         }
       },
       "additionalProperties": true,
       "required": [
-        "shot",
+        "section",
         "heading"
       ],
-      "description": "dsl 0.8.0 §6: one authored shot heading. Purely descriptive — control flow never references it."
+      "description": "dsl 0.37.0 §5.3: one authored document section. Purely descriptive — control flow never references it."
     },
     "clockDecl": {
       "type": "object",

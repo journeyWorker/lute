@@ -4,7 +4,7 @@
 //! `validAt(…)`) — in every guard slot (scene and bundle beat `when`, entry
 //! `when`, quest `start`/`fail`, objective `done`/`visibleWhen`/`by`/`until`, reward
 //! `when`, `<on when>`, line `when=`, `<choice when>`, `<when>` arm tests,
-//! `::next{when}`, `::set{when}`),
+//! `::jump{when}`, `::set{when}`),
 //! grouped by document: the relations it reads, and for each relation who
 //! makes it true — the documents that `::assert` it, the seed facts, the
 //! engine (a `reserved` relation), or the rules that derive it, traced
@@ -444,7 +444,7 @@ fn guarded(root: &Path, group: &DocGroup, docs: &[lute_check::ProjectDoc<'_>]) -
             let scene: Vec<String> = lute_check::connectivity::scene_key(&folded.typed)
                 .into_iter()
                 .collect();
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 w.body(&shot.body, &scene);
             }
             // Entries and bundle beats interleave in source order.
@@ -567,7 +567,7 @@ pub(crate) fn component_asserts(
             else {
                 return;
             };
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 let mut sites = Vec::new();
                 lute_check::connectivity::collect_asserted(&shot.body, effects, &mut sites);
                 for p in sites.into_iter().filter(|p| !p.relation.is_empty()) {
@@ -638,7 +638,7 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
         let scene = lute_check::connectivity::scene_key(&folded.typed)
             .map(|k| format!("scene `{k}`"))
             .unwrap_or_else(|| "scene".to_string());
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             record(&shot.body, format!("{scene} ({document})"));
         }
         for q in &doc.quests {

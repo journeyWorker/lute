@@ -1,0 +1,68 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-TEXT-MODIFIER",
+      "layer": "content",
+      "message": "inline modifier span is missing a closing `]`",
+      "severity": "error",
+      "span": {
+        "byte_end": 170,
+        "byte_start": 170,
+        "column": 30,
+        "line": 13,
+        "utf16_range": [
+          170,
+          170
+        ]
+      }
+    },
+    {
+      "code": "E-TEXT-MODIFIER",
+      "layer": "content",
+      "message": "`:speed{rate=…}` must be a positive number, got `0`",
+      "severity": "error",
+      "span": {
+        "byte_end": 201,
+        "byte_start": 200,
+        "column": 30,
+        "line": 14,
+        "utf16_range": [
+          200,
+          201
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.6"
+      ]
+    },
+    {
+      "code": "E-TEXT-MODIFIER",
+      "layer": "content",
+      "message": "text style `:emphasis` takes no attributes, got `loud` — only the core `pause`/`speed` carry attributes",
+      "severity": "error",
+      "span": {
+        "byte_end": 255,
+        "byte_start": 246,
+        "column": 26,
+        "line": 15,
+        "utf16_range": [
+          246,
+          255
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.6"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      ":hero",
+      ":hero",
+      ":hero"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

@@ -9,7 +9,7 @@ params:
 
 ::bg{location="lantern_shop_window" time="morning"}
 ::vfx{type="dawn"}
-<match on="@day">
+<match subject="@day">
   <when is="Wednesday">
     @narrator{code="0010"}: {{@day}}. Low tide after dark.
   </when>

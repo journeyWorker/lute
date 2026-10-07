@@ -52,19 +52,19 @@ pub(crate) fn check_match_has_subject(m: &Match, schema: &StateSchema) -> Vec<Di
         return Vec::new();
     }
     let subject = subject_for(&patterns, schema)
-        .map_or_else(|| "on=\"…\"".to_string(), |p| format!("on=\"{p}\""));
+        .map_or_else(|| "subject=\"…\"".to_string(), |p| format!("subject=\"{p}\""));
     patterns
         .iter()
         .map(|p| {
             let raw = p.raw.trim();
             let message = if reads_as_condition(raw) {
                 format!(
-                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                    "`is=\"{raw}\"` compares against the `<match subject>`; this `<match>` \
                      has none, and `{raw}` is a condition — write `<when test=\"{raw}\">`"
                 )
             } else {
                 format!(
-                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                    "`is=\"{raw}\"` compares against the `<match subject>`; this `<match>` \
                      has none — add `{subject}` to the `<match>`, or write `test=` for a \
                      condition"
                 )
@@ -240,7 +240,7 @@ pub(crate) fn check_match_with_domain(
         }
     }
 
-    // Age-gate special case (§11.2): an age-gated `<match on="app.rating">` MUST
+    // Age-gate special case (§11.2): an age-gated `<match subject="app.rating">` MUST
     // carry a `teen` arm or an `<otherwise>` — a release-build hard gate.
     if subject == Some("app.rating")
         && !has_otherwise
@@ -249,7 +249,7 @@ pub(crate) fn check_match_with_domain(
         diags.push(diag(
             "E-AGE-GATE",
             Severity::Error,
-            "age-gated `<match on=\"app.rating\">` must cover a `teen` arm or carry an \
+            "age-gated `<match subject=\"app.rating\">` must cover a `teen` arm or carry an \
              `<otherwise>` (dsl §11.2)"
                 .to_string(),
             m.span,

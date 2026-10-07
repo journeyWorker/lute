@@ -119,16 +119,16 @@ back to an unrestricted policy. `compile` and `compile-stream` emit no denied
 artifact/update; `compile --all` emits none of the project artifacts if any one
 is denied.
 
-## `capabilityVersion` is not authorization
+## `capabilitySnapshot` is not authorization
 
-Restrictive effective permissions participate in `capabilityVersion`; an
+Restrictive effective permissions participate in `capabilitySnapshot`; an
 unrestricted policy is normalized away so policy-free snapshots retain their
 exact historical hashes. This lets caches and consumers distinguish different
 effective authoring surfaces.
 
 The hash is still metadata, not a signature or an authorization token. A host
 must not trust an externally supplied artifact merely because its
-`capabilityVersion` string matches an expected value. The host must control
+`capabilitySnapshot` string matches an expected value. The host must control
 project/plugin inputs, resolve and check them, and decide which artifact bytes
 to load. At runtime it must still validate the IR version and unknown command
 kinds as described in [`execution-model.md`](execution-model.md).

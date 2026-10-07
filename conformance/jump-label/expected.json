@@ -1,0 +1,54 @@
+{
+  "commands": [
+    {
+      "kind": "line",
+      "position": "001-0100",
+      "speaker": "narrator",
+      "text": "The gate is shut."
+    },
+    {
+      "kind": "match",
+      "position": "001-0200",
+      "result": "arm 1"
+    },
+    {
+      "kind": "line",
+      "position": "001-0700",
+      "speaker": "narrator",
+      "text": "The gate swings open."
+    },
+    {
+      "branch": "door",
+      "chose": "knock",
+      "kind": "choice",
+      "position": "001-0800"
+    },
+    {
+      "kind": "line",
+      "position": "001-0900",
+      "speaker": "hero",
+      "text": "Hello?"
+    },
+    {
+      "kind": "match",
+      "position": "001-1300",
+      "result": "arm 1"
+    },
+    {
+      "kind": "line",
+      "position": "001-1400",
+      "speaker": "narrator",
+      "text": "Welcome back."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.37",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.hasKey": true,
+    "run.visits": 2,
+    "scene.choices.door": "knock"
+  }
+}

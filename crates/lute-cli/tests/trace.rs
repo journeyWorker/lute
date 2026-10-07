@@ -414,9 +414,9 @@ fn trace_accepts_an_agreeing_or_absent_file_key() {
 /// #32 / T2.5: the entrance and the exit are the same construct with the same
 /// attribute names, and the entire difference is which of `brace` and
 /// `goUnder` appears in a list in another file. `trace` printed both as
-/// `<auto>`. wake.lute's LAST line is the corpus's single declared exit.
+/// `<actor>`. wake.lute's LAST line is the corpus's single declared exit.
 #[test]
-fn trace_marks_an_exiting_auto_as_an_exit() {
+fn trace_marks_an_exiting_actor_as_an_exit() {
     let out = trace(&[
         "../../docs/examples/haven/scenes/wake.lute",
         "--project",
@@ -424,13 +424,13 @@ fn trace_marks_an_exiting_auto_as_an_exit() {
     ]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(
-        text.contains("<auto exit>"),
+        text.contains("<actor exit>"),
         "the exit must be marked: {text}"
     );
     // The entrance prints as authored, unmarked.
     assert!(
         text.lines()
-            .any(|l| l.trim() == r#"::auto{character="vesna" anchor="port" action="brace"}"#),
+            .any(|l| l.trim() == r#"::actor{character="vesna" anchor="port" action="brace"}"#),
         "the entrance must NOT be marked: {text}"
     );
 }
@@ -502,8 +502,8 @@ fn trace_refuses_a_mock_that_mis_keys_a_surface() {
         dir.join("scenes/one.lute"),
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n\
          <branch id=\"pick\">\n\
-         <choice id=\"left\" label=\"L\">\n@a: left\n</choice>\n\
-         <choice id=\"right\" label=\"R\">\n@a: right\n</choice>\n\
+         <choice id=\"left\" text=\"L\">\n@a: left\n</choice>\n\
+         <choice id=\"right\" text=\"R\">\n@a: right\n</choice>\n\
          </branch>\n",
     )
     .unwrap();
@@ -575,9 +575,9 @@ fn quest_occasion_project(tag: &str) -> PathBuf {
             "scenes/shed.lute",
             "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\non: hubVisit\n---\n\n\
              ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
-             <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+             <choice id=\"take\" text=\"Take the job\">\n@guard: Deal.\n\
              ::accept{quest=\"sideJob\"}\n</choice>\n\
-             <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
+             <choice id=\"pass\" text=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
         ),
         (
             "quests/hold.lute",
@@ -813,7 +813,7 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
         format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
              state:\n  run.day: {{ type: int, default: 1 }}\n---\n\n## S\n\n\
-             <match on=\"run.day\">\n<when test=\"{test}\">\n@narrator: Sunday.\n</when>\n\
+             <match subject=\"run.day\">\n<when test=\"{test}\">\n@narrator: Sunday.\n</when>\n\
              <otherwise>\n@narrator: Weekday.\n</otherwise>\n</match>\n"
         )
     };
@@ -886,9 +886,9 @@ fn trace_prints_authored_def_refs_and_expands_on_request() {
     std::fs::write(
         &scene,
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../world.schema.yaml]\n---\n\n## M\n\n\
-         <match on=\"@weekday\">\n<when is=\"'mon'\">\n@a: Monday.\n</when>\n\
+         <match subject=\"@weekday\">\n<when is=\"'mon'\">\n@a: Monday.\n</when>\n\
          <otherwise>\n@a: Other.\n</otherwise>\n</match>\n\
-         <match on=\"true\">\n<when test=\"@atLeast(3)\">\n@a: Late.\n</when>\n\
+         <match subject=\"true\">\n<when test=\"@atLeast(3)\">\n@a: Late.\n</when>\n\
          <otherwise>\n@a: Early.\n</otherwise>\n</match>\n",
     )
     .unwrap();
@@ -947,7 +947,7 @@ fn trace_shows_a_line_delivery_as_authored() {
     let scene = dir.join("s.lute");
     std::fs::write(
         &scene,
-        "---\nkind: scene\nid: s\nenums:\n  emotion: [sad]\n---\n\n## S\n\n\
+        "---\nkind: scene\nid: s\npov: wren\nenums:\n  emotion: [sad]\n---\n\n## S\n\n\
          @wren{mono}: I think.\n@wren{vo emotion=\"sad\"}: Over.\n@wren: I speak.\n",
     )
     .unwrap();
@@ -990,7 +990,7 @@ fn trace_names_a_component_site_relative_to_the_current_directory() {
     std::fs::write(
         dir.join("components/card.component.lute"),
         "---\ncomponent: card\nparams:\n  day: { enum: [Mon, Tue] }\n---\n\n## Card\n\n\
-         <match on=\"@day\">\n  <when is=\"Mon\">\n    @n: Monday.\n  </when>\n  \
+         <match subject=\"@day\">\n  <when is=\"Mon\">\n    @n: Monday.\n  </when>\n  \
          <otherwise>\n    @n: Later.\n  </otherwise>\n</match>\n",
     )
     .unwrap();

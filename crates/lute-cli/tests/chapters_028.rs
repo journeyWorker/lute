@@ -100,7 +100,7 @@ fn two_chains_each_order_their_own_occasion() {
 /// applied; the scenes it listed are not told to list themselves in it, and
 /// each is told once, however many beat keys it writes.
 #[test]
-fn the_old_sequence_key_names_chapters_and_is_not_applied() {
+fn the_removed_sequence_key_is_refused_and_never_read() {
     let dir = temp_dir("oldkey");
     project(
         &dir,
@@ -117,24 +117,13 @@ fn the_old_sequence_key_names_chapters_and_is_not_applied() {
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
-        out.contains("lute.project.yaml:8:1: error [E-CHAPTERS] `sequence:` is now `chapters:`"),
+        out.contains("lute.project.yaml:8:1: error [E-REMOVED-PROJECT-KEY] `sequence:` was removed"),
         "{out}"
     );
-    assert!(!out.contains("list the scene"), "{out}");
-    // The rewrite is the author's own chain, not a template.
-    assert!(
-        out.contains("write `chapters: [{ on: chapter, scenes: [c1, c2] }]`"),
-        "{out}"
-    );
-    assert!(
-        out.contains("lists this scene under `sequence:`, which is now `chapters:`"),
-        "{out}"
-    );
-    assert_eq!(out.matches("[E-BEAT-ATTR]").count(), 1, "{out}");
-    assert!(
-        out.contains("scenes/c2.lute:5:1: error [E-BEAT-ATTR] `once:` and `when:` without `on:`"),
-        "{out}"
-    );
+    assert!(out.contains("`chapters: [{ on: <occasion>"), "{out}");
+    assert!(!out.contains("[E-CHAPTERS]"), "{out}");
+    // Never read: no scene is told it is listed by it.
+    assert!(!out.contains("sequence:` key"), "{out}");
 }
 
 /// A tie with a priority `chapters:` derived says where that priority

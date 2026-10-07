@@ -1,0 +1,270 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-RENAMED-DIRECTIVE",
+      "layer": "staging",
+      "message": "`::auto` is now `::actor` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 159,
+        "byte_start": 135,
+        "column": 1,
+        "line": 13,
+        "utf16_range": [
+          135,
+          159
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-RENAMED-DIRECTIVE",
+      "layer": "staging",
+      "message": "`::cut` is now `::cg` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 183,
+        "byte_start": 160,
+        "column": 1,
+        "line": 14,
+        "utf16_range": [
+          160,
+          183
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-RENAMED-ATTR",
+      "layer": "staging",
+      "message": "`::music{action=…}` is now `playback=` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 206,
+        "byte_start": 192,
+        "column": 9,
+        "line": 15,
+        "utf16_range": [
+          192,
+          206
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-REMOVED-ATTR",
+      "layer": "staging",
+      "message": "`::music` no longer takes `track`: use `assetId` for the concrete asset; hand migration is required",
+      "severity": "error",
+      "span": {
+        "byte_end": 220,
+        "byte_start": 207,
+        "column": 24,
+        "line": 15,
+        "utf16_range": [
+          207,
+          220
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.3"
+      ]
+    },
+    {
+      "code": "E-REMOVED-ATTR",
+      "layer": "staging",
+      "message": "`::sfx` no longer takes `name`: use `sound` for the semantic sound and/or `assetId` for the concrete asset; hand migration is required",
+      "severity": "error",
+      "span": {
+        "byte_end": 239,
+        "byte_start": 228,
+        "column": 7,
+        "line": 16,
+        "utf16_range": [
+          228,
+          239
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.3"
+      ]
+    },
+    {
+      "code": "E-RENAMED-ATTR",
+      "layer": "staging",
+      "message": "`::video{action=…}` is now `display=` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 280,
+        "byte_start": 267,
+        "column": 27,
+        "line": 17,
+        "utf16_range": [
+          267,
+          280
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-CG-LAYOUT",
+      "layer": "staging",
+      "message": "`::cg` no longer takes `full`: declare a `cgLayout` member and write `layout=…`; hand migration is required",
+      "severity": "error",
+      "span": {
+        "byte_end": 315,
+        "byte_start": 304,
+        "column": 23,
+        "line": 18,
+        "utf16_range": [
+          304,
+          315
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.3"
+      ]
+    },
+    {
+      "code": "E-CAMERA-REMOVED",
+      "layer": "staging",
+      "message": "`::camera` no longer takes `zoom`: declare a `framing` member and write `framing=…`; hand migration is required",
+      "severity": "error",
+      "span": {
+        "byte_end": 336,
+        "byte_start": 326,
+        "column": 10,
+        "line": 19,
+        "utf16_range": [
+          326,
+          336
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.3"
+      ]
+    },
+    {
+      "code": "E-CAMERA-EMPTY",
+      "layer": "staging",
+      "message": "`::camera` needs at least one of `focus`, `framing`, `move` or `transition`",
+      "severity": "error",
+      "span": {
+        "byte_end": 348,
+        "byte_start": 338,
+        "column": 1,
+        "line": 20,
+        "utf16_range": [
+          338,
+          348
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.3"
+      ]
+    },
+    {
+      "code": "E-RENAMED-DIRECTIVE",
+      "layer": "staging",
+      "message": "`::mark` is now `::label` (its `id=` is now `name=`) — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 367,
+        "byte_start": 349,
+        "column": 1,
+        "line": 21,
+        "utf16_range": [
+          349,
+          367
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-RENAMED-DIRECTIVE",
+      "layer": "staging",
+      "message": "`::next` is now `::jump` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 386,
+        "byte_start": 368,
+        "column": 1,
+        "line": 22,
+        "utf16_range": [
+          368,
+          386
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-RENAMED-TAG-ATTR",
+      "layer": "logic",
+      "message": "`<choice label=>` is now `text=` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 439,
+        "byte_start": 423,
+        "column": 18,
+        "line": 24,
+        "utf16_range": [
+          423,
+          439
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.5"
+      ]
+    },
+    {
+      "code": "E-RENAMED-TAG-ATTR",
+      "layer": "logic",
+      "message": "`<match on=>` is now `subject=` — `lute fix` rewrites it",
+      "severity": "error",
+      "span": {
+        "byte_end": 497,
+        "byte_start": 484,
+        "column": 8,
+        "line": 28,
+        "utf16_range": [
+          484,
+          497
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.5"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      "::auto",
+      "::cut",
+      "::music",
+      "::sfx",
+      "::video",
+      "::cg",
+      "::camera",
+      "::camera",
+      "::mark",
+      "::next",
+      "<branch id=\"pick\"> (1 choices)",
+      "<match subject=\"\"> (1 arms)"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

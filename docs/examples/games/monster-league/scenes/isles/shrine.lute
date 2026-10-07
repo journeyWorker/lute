@@ -14,7 +14,7 @@ when: "holds('canPass', ['islesShrineDoor'])"
 ## The door
 
 ::bg{location="sunfall-shrine" time="night"}
-::music{action="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="down"}
 @narrator{code="0010"}: Three shafts of light fall through three slots in the ceiling and meet on the shrine door. It opens without a sound.
 @narrator{code="0020" when="entry.islesTablet3.read"}: The third tablet was right: "When the three fires meet, the door remembers."
 @duskAdminNyx{code="0010" emotion="smug"}: So the Champion does errands now. Thank you for lighting my way in.

@@ -333,7 +333,7 @@ fn for_each_accept<'a>(
         let path = item.path;
         let doc = item.doc;
         let mut visit = |d: &'a Directive| f(path, d);
-        for shot in &doc.shots {
+        for shot in &doc.sections {
             walk(&shot.body, &mut visit);
         }
         for q in &doc.quests {

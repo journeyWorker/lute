@@ -65,7 +65,7 @@ fn compile_body(body: &str) -> serde_json::Value {
 
 const REACTION: &str =
     "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n  delta: int\n---\n\
-## Scene 1.\n@narrator: {{@who}} approves.\n<match on=\"@who\">\n\
+## Scene 1.\n@narrator: {{@who}} approves.\n<match subject=\"@who\">\n\
 <when is=\"isolde\">\n::set{run.approval.isolde += @delta}\n</when>\n\
 <when is=\"corvin\">\n::set{run.approval.corvin += @delta}\n</when>\n\
 <otherwise>\n@narrator: Nobody keeps count.\n</otherwise>\n</match>\n";

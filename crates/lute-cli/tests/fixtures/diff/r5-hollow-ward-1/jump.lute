@@ -7,9 +7,9 @@ state:
 
 ## Tub
 
-::next{to="flooded" when="run.bad"}
+::jump{to="flooded" when="run.bad"}
 @narrator: You get out.
 ::end{reason="safe"}
-::mark{id="flooded"}
+::label{name="flooded"}
 @narrator: You do not get out.
 ::end{reason="drowned"}

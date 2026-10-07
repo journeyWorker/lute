@@ -9,7 +9,7 @@ title: Route 9, the Orchard Road (Bloomfield to Silvercrest)
 
 <beat id="arrive" on="enterRoute" target="route.r9" title="The Orchard Road" priority="10" once="run">
   ::bg{location="route-9" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: The road out of Bloomfield turns to gravel, then to grass, then to rows and rows of apple trees. At the top of the hill, the towers of Silvercrest catch the light.
   @narrator{code="0020"}: Somebody has carved a heart into every third tree. Somebody else has carved a Coinpaw next to every heart.
 </beat>

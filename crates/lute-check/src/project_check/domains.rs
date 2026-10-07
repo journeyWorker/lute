@@ -33,6 +33,8 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
     for name in crate::content_line::CONTENT_LINE_DOMAIN_SLOTS {
         out.insert((*name).to_string());
     }
+    // dsl 0.37.0 §3.6: inline text-style spans are `textStyle` members.
+    out.insert(crate::content_line::TEXT_STYLE_DOMAIN.to_string());
     // dsl 0.22.0 §8: an occasion target domain `{ prefix, entity }` checks
     // every beat target against `entity`'s members — a read.
     for occasion in snapshot.occasions.values() {

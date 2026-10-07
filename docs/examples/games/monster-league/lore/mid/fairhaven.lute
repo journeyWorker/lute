@@ -10,7 +10,7 @@ title: Fairhaven (the day care, the lighthouse, the Dex rater)
 
 <beat id="arrive" on="enterTown" target="town.fairhaven" title="Fairhaven" priority="10" once="run">
   ::bg{location="fairhaven" time="day"}
-  ::music{action="change" mood="calm" volume="normal"}
+  ::music{playback="change" mood="calm" volume="normal"}
   @narrator{code="0010"}: Fairhaven: white cottages, a harbour full of small boats, and on the point a lighthouse that has not been lit for thirty years.
   @narrator{code="0020"}: The day care has a fenced garden full of monsters that are not anybody's, for now. Two old people are counting them. Then counting them again.
 </beat>
@@ -45,15 +45,15 @@ title: Fairhaven (the day care, the lighthouse, the Dex rater)
 </beat>
 
 <beat id="tobbeAsks" on="talk" target="npc.fairhavenDayCareMan" title="Grandpa Tobbe" priority="10" once="run">
-  ::auto{character="fairhavenDayCareMan" anchor="center" action="enter"}
+  ::actor{character="fairhavenDayCareMan" anchor="center" action="enter"}
   @fairhavenDayCareMan{code="0010" emotion="worried"}: Twenty-two in the garden, and there should be twenty-three. Our Mothfuzz has flown off again. It always heads for the Preserve. The lights, you see.
   @fairhavenDayCareMan{code="0020"}: Ilse won't sleep till it's back. If you catch a Mothfuzz out there, would you show her? She won't know the difference. I won't tell her.
   <branch id="midDayCareAsk" prompt="Help Grandpa Tobbe?">
-    <choice id="help" label="I'll look for it">
+    <choice id="help" text="I'll look for it">
       ::accept{quest="midDayCareRunaway"}
       @fairhavenDayCareMan{code="0030" emotion="happy"}: Bless you. Look in the Wildmoor Preserve, near the lamps. And mind the contest people, they'll net anything.
     </choice>
-    <choice id="busy" label="Not now">
+    <choice id="busy" text="Not now">
       @fairhavenDayCareMan{code="0040"}: No, no, of course. You've your own monsters. It'll come home. It usually does.
     </choice>
   </branch>

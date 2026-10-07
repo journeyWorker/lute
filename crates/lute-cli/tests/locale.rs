@@ -54,10 +54,10 @@ episode: 1
 @kai{code=\"0010\"}: Hi.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>
@@ -91,13 +91,8 @@ fn translate(project: &Path, out: &Path, decorate: &str, drop: &[&str]) -> PathB
         .into_iter()
         .filter(|r| !drop.contains(&r["lineId"].as_str().unwrap_or_default()))
         .map(|mut r| {
-            // A `line` row carries its text in `text`, a `choice` row in
-            // `label` — exactly the split `loc export` writes.
-            let field = if r["kind"] == "choice" {
-                "label"
-            } else {
-                "text"
-            };
+            // Every row carries its translatable string in `text`.
+            let field = "text";
             let old = r[field].as_str().unwrap_or_default().to_string();
             r[field] = serde_json::Value::String(format!("{decorate}{old}"));
             r
@@ -126,7 +121,7 @@ fn locale_maps(artifact: &serde_json::Value) -> Vec<(String, serde_json::Value)>
                 for o in c["options"].as_array().unwrap() {
                     out.push((
                         o["lineId"].as_str().unwrap().to_string(),
-                        o.get("labels").cloned().unwrap_or(serde_json::Value::Null),
+                        o.get("texts").cloned().unwrap_or(serde_json::Value::Null),
                     ));
                 }
             }
@@ -213,7 +208,7 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
          @scientist{code=\"0010\"}: Day three.\n\
          </entry>\n\n\
          <entry id=\"key\" target=\"item.key\">\n\
-         <match on=\"run.burned\">\n\
+         <match subject=\"run.burned\">\n\
          <when is=\"true\">\n@narrator{code=\"0010\"}: A scorched key.\n</when>\n\
          <otherwise>\n@narrator{code=\"0020\"}: A rusty key.\n</otherwise>\n\
          </match>\n\
@@ -302,7 +297,7 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
          <beat id=\"dock\" on=\"talk\">\n\
          @dockhand{code=\"0010\"}: She came in last night.\n\
          <branch id=\"ask\">\n\
-         <choice id=\"more\" label=\"Tell me more\">\n@dockhand{code=\"0020\"}: Nobody got off.\n</choice>\n\
+         <choice id=\"more\" text=\"Tell me more\">\n@dockhand{code=\"0020\"}: Nobody got off.\n</choice>\n\
          </branch>\n\
          </beat>\n",
     );
@@ -499,10 +494,10 @@ fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() 
         }
         if c["kind"] == "choice" {
             for o in c["options"].as_array().unwrap() {
-                let label = o["label"].as_str().unwrap();
+                let text = o["text"].as_str().unwrap();
                 assert!(
-                    !label.starts_with("[ja] "),
-                    "`label` stays source language: {label}"
+                    !text.starts_with("[ja] "),
+                    "`text` stays source language: {text}"
                 );
             }
         }
@@ -511,7 +506,7 @@ fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() 
         .iter()
         .find(|(id, _)| id == "marina.s01ep01.pick.go")
         .unwrap();
-    assert_eq!(go.1["ja-JP"], "[ja] Go on", "a choice option gets `labels`");
+    assert_eq!(go.1["ja-JP"], "[ja] Go on", "a choice option gets `texts`");
 }
 
 #[test]
@@ -837,7 +832,7 @@ id: authored.myid
 @narrator{code=\"0020\"}: There.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go\">
+  <choice id=\"go\" text=\"Go\">
     @narrator{code=\"0030\"}: Onward.
   </choice>
 </branch>
@@ -891,10 +886,10 @@ episode: 1
 @kai{code=\"0010\"}: Hi.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>
@@ -936,10 +931,10 @@ episode: 1
     "file": "a.lute",
     "key": "pick.go",
     "kind": "choice",
-    "label": "Go on",
     "line": 14,
     "lineId": "marina.s01ep01.pick.go",
-    "source": null
+    "source": null,
+    "text": "Go on"
   },
   {
     "code": "0020",
@@ -955,10 +950,10 @@ episode: 1
     "file": "a.lute",
     "key": "pick.stay",
     "kind": "choice",
-    "label": "Stay here",
     "line": 17,
     "lineId": "marina.s01ep01.pick.stay",
-    "source": null
+    "source": null,
+    "text": "Stay here"
   },
   {
     "code": "0030",

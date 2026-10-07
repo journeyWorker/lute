@@ -350,7 +350,7 @@ impl<D: Driver> Machine<D> {
             .unwrap_or("")
             .to_string();
         let record_key = cmd
-            .get("recordKey")
+            .get("selectionKey")
             .and_then(Json::as_str)
             .map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
@@ -389,7 +389,7 @@ impl<D: Driver> Machine<D> {
         };
         let incomplete_rec = |note: &str| {
             let mut rec = serde_json::Map::new();
-            rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+            rec.insert("position".into(), Json::String(addr(cmd).to_string()));
             rec.insert("kind".into(), Json::String("choice".into()));
             rec.insert("branch".into(), Json::String(branch.clone()));
             rec.insert("chose".into(), Json::Null);
@@ -460,7 +460,7 @@ impl<D: Driver> Machine<D> {
             self.write(&key, Value::Str(forced.clone()));
         }
         let mut rec = serde_json::Map::new();
-        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("choice".into()));
         rec.insert("branch".into(), Json::String(branch.clone()));
         rec.insert("chose".into(), Json::String(forced));
@@ -485,7 +485,7 @@ impl<D: Driver> Machine<D> {
             .unwrap_or("")
             .to_string();
         let record_key = cmd
-            .get("recordKey")
+            .get("selectionKey")
             .and_then(Json::as_str)
             .map(str::to_string);
         // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
@@ -525,7 +525,7 @@ impl<D: Driver> Machine<D> {
         loop {
             // Eligible = not a `once` option already taken (its
             // `scene.visited.<hub>.<option>` is true, D8: the memory is the
-            // reserved visit record, so a hub `::next` re-enters still knows
+            // reserved visit record, so a hub `::jump` re-enters still knows
             // it), and its guard does not DECIDE false right now (an unknown
             // guard stays eligible — the same three-valued discipline
             // `do_choice`'s guard refusal uses). The spent and guard-closed
@@ -574,7 +574,7 @@ impl<D: Driver> Machine<D> {
             };
             let head = |chose: Json| {
                 let mut rec = serde_json::Map::new();
-                rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+                rec.insert("position".into(), Json::String(addr(cmd).to_string()));
                 rec.insert("kind".into(), Json::String("hub".into()));
                 rec.insert("hub".into(), Json::String(id.clone()));
                 if let Some(p) = &prompt {
@@ -719,7 +719,7 @@ impl<D: Driver> Machine<D> {
             // — marked, so its lines do not read as the option's.
             if let Some(back) = return_idx {
                 self.driver.emit(json!({
-                    "addr": addr(cmd),
+                    "position": addr(cmd),
                     "kind": "hubReturn",
                     "hub": id,
                 }));
@@ -795,7 +795,7 @@ impl<D: Driver> Machine<D> {
                         _ => Json::Null,
                     };
                     self.driver.observe(json!({
-                        "kind": "armExpr", "addr": addr(cmd), "arm": i, "expr": expr,
+                        "kind": "armExpr", "position": addr(cmd), "arm": i, "expr": expr,
                         "held": held, "reads": reads,
                     }));
                 }
@@ -832,7 +832,7 @@ impl<D: Driver> Machine<D> {
             if matched {
                 let target = arm.get("target").and_then(Json::as_str).unwrap_or(converge);
                 self.driver.emit(json!({
-                    "addr": addr(cmd),
+                    "position": addr(cmd),
                     "kind": "match",
                     "result": format!("arm {}", i + 1),
                 }));
@@ -845,7 +845,7 @@ impl<D: Driver> Machine<D> {
             None => ("converge".to_string(), converge),
         };
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "match",
             "result": result,
         }));

@@ -1,0 +1,37 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+title: Staging sequence camera
+uses: ./schema.yaml
+---
+
+## Harbor {#harbor}
+
+::bg{location="harbor" time="dusk" assetId="BG.harbor"}
+::music{playback="start" mood="calm" volume="normal" assetId="BGM.harbor"}
+::sfx{sound="gull" assetId="SFX.gull"}
+::vfx{type="whiteOut" transition="flash"}
+::sequence{name="harborArrival"}
+::actor{character="hero" action="fadeIn" emotion="calm" costume="coat"}
+::actor{character="hero" emotion="shy"}
+::camera{focus="hero" framing="close" move="pan" transition="fade" duration="0.5" delay="0.25"}
+::cg{assetId="CG.harbor"}
+::cg{assetId="CG.harbor.inset" layout="inset" display="hide"}
+::video{assetId="VID.harbor"}
+@hero: The ferry is late.
+
+<timeline duration="2">
+  <track subject="camera">
+    ::camera{framing="wide" move="shake" duration="1"}
+  </track>
+  <track subject="sfx">
+    ::sfx{sound="horn" at="1"}
+  </track>
+</timeline>
+
+::sequence{name="ferryLeaves" wait="false"}
+::actor{character="hero" action="fadeOut"}
+::music{playback="stop"}

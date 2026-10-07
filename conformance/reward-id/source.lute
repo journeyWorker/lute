@@ -1,0 +1,14 @@
+---
+kind: quest
+luteVersion: "0.37.0"
+uses: ./schema.yaml
+title: Reward id
+---
+
+<quest id="rescue" title="Rescue" start="true" tier="run">
+  <reward id="xp" kind="XP" amount="100"/>
+  <reward kind="GOLD" amount="5"/>
+  <objective id="arrive" title="Arrive" done="run.atGoal == true">
+    <reward id="arriveBonus" kind="GOLD" amount="1"/>
+  </objective>
+</quest>

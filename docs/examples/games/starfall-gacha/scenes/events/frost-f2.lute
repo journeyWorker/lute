@@ -13,15 +13,15 @@ after: visited('frost.f1')
 
 @nyx{code="0010"}: Everyone gets one candle. You light it for a wish. Yours, or somebody else's.
 <branch id="f2Wish" prompt="Whose wish do you light the candle for?">
-  <choice id="cyra" label="Cyra's: a long, uninterrupted nap." when="holds('owned', ['cyra'])">
+  <choice id="cyra" text="Cyra's: a long, uninterrupted nap." when="holds('owned', ['cyra'])">
     ::assert{vigilWish(cyra)}
     @nyx{code="0020" emotion="happy"}: A good wish. The ice likes it.
   </choice>
-  <choice id="vesper" label="Vesper's: a king worth following." when="holds('owned', ['vesper'])">
+  <choice id="vesper" text="Vesper's: a king worth following." when="holds('owned', ['vesper'])">
     ::assert{vigilWish(vesper)}
     @nyx{code="0030"}: A heavy one. I'll hold the other end.
   </choice>
-  <choice id="hollow" label="The Hollow King's.">
+  <choice id="hollow" text="The Hollow King's.">
     @nyx{code="0040" emotion="sad"}: Nobody's ever picked his. ...Thank you.
   </choice>
 </branch>

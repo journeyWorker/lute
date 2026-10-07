@@ -18,7 +18,7 @@
 //!    any `E-TRACE-*` → `Refused`.
 //! 4. `normalize_document` + `expand_document`, as compile runs them: the
 //!    static notes and the AST-only report texts (a line's authored
-//!    delivery, a `::next` label) read this tree.
+//!    delivery, a `::jump` label) read this tree.
 //! 5. `compile_mapped` → artifact + source map; the Machine walks it.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};

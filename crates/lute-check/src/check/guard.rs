@@ -64,16 +64,16 @@ pub(super) fn check_guard(
 }
 
 /// dsl 0.26.0 §4: why directive `d` cannot carry a `when=` guard — `None`
-/// for `::next`, `::use`, `::accept` and a plugin passthrough directive
+/// for `::jump`, `::use`, `::accept` and a plugin passthrough directive
 /// (and an unknown one, `E-UNKNOWN-DIRECTIVE`'s). A builtin-lowered
-/// directive (core staging, `::end`, `::mark`, a plugin `lower:` record or
+/// directive (core staging, `::end`, `::label`, a plugin `lower:` record or
 /// builtin hook) runs unconditionally where it stands; a directive that
 /// declares its own `when` attribute reads the guard as that attribute.
 pub(crate) fn directive_when_refused(
     d: &Directive,
     snapshot: &CapabilitySnapshot,
 ) -> Option<String> {
-    if matches!(d.tag.as_str(), "next" | "use") || d.is_accept() {
+    if d.tag == lute_manifest::core::JUMP_DIRECTIVE || d.tag == "use" || d.is_accept() {
         return None;
     }
     let decl = snapshot.directive(&d.tag)?;

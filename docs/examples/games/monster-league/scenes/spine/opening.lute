@@ -7,13 +7,13 @@ title: Welcome to the world of monsters
 ## The professor
 
 ::bg{location="void" time="day"}
-::music{action="start" mood="calm" volume="normal"}
-::auto{character="profAlder" anchor="center" action="enter"}
+::music{playback="start" mood="calm" volume="normal"}
+::actor{character="profAlder" anchor="center" action="enter"}
 @profAlder{code="0010" emotion="happy"}: Hello there! Welcome to the world of monsters!
 @profAlder{code="0020"}: My name is Alder. People around here call me the Monster Professor.
 @profAlder{code="0030"}: This world is home to creatures called monsters. Some people keep them as friends. Others raise them for battle.
 @profAlder{code="0040"}: As for me, I study them. There are a hundred and fifty-one kinds in Verdane alone, and I have met barely half.
 @profAlder{code="0050" emotion="laughing"}: And you are {{userName}}, from Hollowtown. My grandson Kai has been your rival since you could both walk.
 @profAlder{code="0060"}: Your very own legend is about to unfold. A world of dreams and adventures awaits. Let's go!
-::auto{character="profAlder" action="exit"}
-::music{action="fadeOut"}
+::actor{character="profAlder" action="exit"}
+::music{playback="fadeOut"}

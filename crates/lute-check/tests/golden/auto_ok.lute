@@ -6,10 +6,8 @@ episode: 1
 title: Auto stage
 ---
 
-# Golden — auto
-
 ## Shot 1.
 
-::auto{character="marina" anchor="left" action="fadeInUp"}
+::actor{character="marina" anchor="left" action="fadeInUp"}
 
 @marina{code="0010" emotion="surprised" variant="0"}: Oh! Mr. Fixer!

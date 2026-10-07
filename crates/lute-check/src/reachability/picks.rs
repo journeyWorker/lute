@@ -75,7 +75,7 @@ enum PickWhy {
 
 impl Pick {
     /// What option `choice` of `menu` (`hub`: a `<hub>`) records in its own
-    /// arm, added to the `outer` picks — just `outer` when a `::next` in
+    /// arm, added to the `outer` picks — just `outer` when a `::jump` in
     /// `targets` can jump into the arm, which reaches it without the pick.
     pub(crate) fn with(
         outer: &[Pick],
@@ -111,9 +111,9 @@ impl Pick {
     /// `outer` (ledger LG28-17). `<return>` runs only after a non-`exit`
     /// option, so with one such option its pick and visit records hold it.
     /// `once`: this hub is entered at most once per scene play and no
-    /// `::next` can come back into it — then no `exit` option has been
+    /// `::jump` can come back into it — then no `exit` option has been
     /// visited yet, as taking one leaves the hub for good. Nothing when a
-    /// `::next` can jump into a non-`exit` arm or the block itself.
+    /// `::jump` can jump into a non-`exit` arm or the block itself.
     pub(crate) fn on_return(
         outer: &[Pick],
         id: &str,

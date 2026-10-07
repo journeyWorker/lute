@@ -8,20 +8,18 @@ state:
   scene.flags.saw_beam: { type: bool, default: false }
 ---
 
-# Golden — timeline
-
 ## Shot 1.
 
 @narrator: Her index finger came up.
 
 <timeline duration="1.4">
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.35" duration="0.4"}
-    ::camera{shake="0.6" duration="0.3" at="0.5"}
+    ::camera{focus="marina" framing="tight" duration="0.4"}
+    ::camera{move="shake" duration="0.3" at="0.5"}
   </track>
   <track channel="fg">
-    ::cut{assetId="CUT.scenarios.marina.s01ep02.01" at="0.5"}
-    ::cut{assetId="CUT.scenarios.marina.s01ep02.01" action="hide" at="1.1"}
+    ::cg{assetId="CUT.scenarios.marina.s01ep02.01" at="0.5"}
+    ::cg{assetId="CUT.scenarios.marina.s01ep02.01" display="hide" at="1.1"}
   </track>
   <track channel="vfx">
     ::vfx{type="whiteOut" transition="flash" at="0.5"}

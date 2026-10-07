@@ -53,9 +53,7 @@ rules:
   - "loyal(P) :- inParty(P), trusts(P, player)"
 ---
 
-# The roster
-
-## Shot 1.
+## The roster
 
 ::assert{ inParty(isolde) }
 ::assert{ trusts(isolde, player) }
@@ -196,9 +194,7 @@ facts:
   - "sawAt(bram, cole, dock)"
 ---
 
-# The inquest
-
-## Shot 1.
+## The inquest
 
 @narrator{when="count('sawAt', ['_', '_', '_']) >= 3"}: Three sightings are on record.
 @narrator{when="countDistinct('sawAt', ['_', '_', '_'], 0) >= 2"}: At least two witnesses came forward.
@@ -267,9 +263,7 @@ rules:
   - "lit(lamp) :- cel(\"@firstDay\")"
 ---
 
-# The lamp room
-
-## Shot 1.
+## The lamp room
 
 @narrator{when="holds('lit', ['lamp'])"}: The lamp is already burning.
 ```
@@ -296,9 +290,7 @@ rules:
   - "devoted(P) :- inParty(P), cel(\"run.approval[P] >= 5\")"
 ---
 
-# Camp
-
-## Shot 1.
+## Camp
 
 ::assert{ inParty(isolde) }
 ::set{run.approval.isolde += 5}
@@ -393,7 +385,7 @@ explain canMend(lamp): does not hold
 
 ## How `check-project` analyzes relational guards
 
-A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::next` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
+A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::jump` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
 
 - **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
 - **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
@@ -407,7 +399,7 @@ The verdicts come from two sets:
 Three rules keep Must sound:
 
 - **Only monotone facts cross time the author does not control.** A fact survives a document boundary only if no `::retract` anywhere in the project matches it, no other assert shares its `key:` tuple with a different value, and its relation is neither `reserved:` nor has an `open: engine` argument. Facts of `tier: scene` and `tier: quest` relations never cross a document boundary — the engine clears them with their episode or quest.
-- **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::next`, an `<on when>`, an objective `done`, an entry `when`, or — for the whole scene — a beat scene's frontmatter `when:`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
+- **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::jump`, an `<on when>`, an objective `done`, an entry `when`, or — for the whole scene — a beat scene's frontmatter `when:`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
 - **Counts are intervals.** `count(P)` lies between the number of Must facts matching `P` and the number of May facts matching it; a comparison against `n` is decided when the whole interval falls on one side.
 
 A guard may also assume that a lore entry was read (dsl 0.24.0 §6). Under `entry.X.read` (or `entry.X.read == true`), Must gains the facts that X's body asserts on every route through it and that nothing in the project retracts. The player has read the entry, so its asserts have run. Take an entry that records a suspicion:
@@ -423,10 +415,10 @@ and a scene that offers a choice only to a player who has read it:
 
 ```lute
 <branch id="ask">
-  <choice id="press" label="Ask about the log" when="entry.keeperLog.read">
+  <choice id="press" text="Ask about the log" when="entry.keeperLog.read">
     @narrator{when="holds('suspects', ['isolde'])"}: The log named her.
   </choice>
-  <choice id="leave" label="Leave">
+  <choice id="leave" text="Leave">
     @narrator: You leave the office.
   </choice>
 </branch>
@@ -445,7 +437,7 @@ The verdict feeds the same decision procedure that already reports dead scalar g
 
 | Slot | Can never hold | Always holds |
 | --- | --- | --- |
-| `<when test>`, `<choice when>`, content line `when=`, `::next` guard | `E-ARM-DEAD` | `W-FACT-GUARANTEED` (not `::next`) |
+| `<when test>`, `<choice when>`, content line `when=`, `::jump` guard | `E-ARM-DEAD` | `W-FACT-GUARANTEED` (not `::jump`) |
 | lore entry `when` | `E-ENTRY-UNREACHABLE` | `W-FACT-GUARANTEED` |
 | objective `done` | `E-OBJECTIVE-UNSATISFIABLE` | — (a predicate, not a guard) |
 | required objective `visibleWhen` | `W-OBJECTIVE-HIDDEN` | — |
@@ -461,11 +453,11 @@ A small example. The archive asserts one fact unconditionally and another only d
 @narrator: The log is still open on the console.
 ::assert{ knows(player, lumen) }
 <branch id="dig">
-  <choice id="readOn" label="Keep reading">
+  <choice id="readOn" text="Keep reading">
     ::assert{ knows(player, heading) }
     @narrator: The heading was changed eleven years ago.
   </choice>
-  <choice id="close" label="Close the log">
+  <choice id="close" text="Close the log">
     @narrator: You close it.
   </choice>
 </branch>

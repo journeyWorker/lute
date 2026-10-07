@@ -20,7 +20,7 @@ title: The station and the village, when nobody is there
 </entry>
 
 <entry id="roofEmpty" on="visit" target="place.roof" category="bark" priority="-1">
-  <match on="run.weather">
+  <match subject="run.weather">
     <when is="storm">
       @narrator{code="0010"}: You get the hatch open three inches and the wind takes the rest of the decision for you. Not tonight.
     </when>

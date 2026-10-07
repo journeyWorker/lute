@@ -8,15 +8,15 @@ components: [../components/witness.component.lute]
 <beat use="witness" id="hollis" who="hollis" title="Hollis, the boatman" instance="use-001">
   @hollis{code="0010"}: Ask quick. The tide will not wait on the Board of Trade.
   <hub id="hollisQ" prompt="What do you ask Hollis?">
-    <choice id="night" label="Where were you the night of the storm?" once>
+    <choice id="night" text="Where were you the night of the storm?" once>
       @hollis{code="0020"}: Behind my own bar till I shut at one. Full house, nobody fishing in that.
       @hollis{code="0030"}: Tobias Crane was on the end stool the whole evening, drinking his boat money. Still there when I rang time.
       ::assert{sawAt(hollis, tobias, village, midnight)}
     </choice>
-    <choice id="elias" label="What kind of keeper was Voss?" once>
+    <choice id="elias" text="What kind of keeper was Voss?" once>
       @hollis{code="0040"}: Careful. Too careful. Wound that clockwork every four hours like it was a sick child.
     </choice>
-    <choice id="done" label="That will do" exit>
+    <choice id="done" text="That will do" exit>
       @hollis{code="0050"}: Mind the weed on the steps.
     </choice>
   </hub>
@@ -28,10 +28,10 @@ components: [../components/witness.component.lute]
   ::assert{sawAt(maren, ada, village, midnight)}
   ::assert{sawAt(maren, ada, village, dawn)}
   <branch id="marenPress" prompt="Maren folds her hands.">
-    <choice id="thank" label="Thank her">
+    <choice id="thank" text="Thank her">
       @maren{code="0030"}: Then we are done.
     </choice>
-    <choice id="tin" label="Ask who sent the keeper's supper" when="holds('implicates', ['supper_tin', 'ada'])">
+    <choice id="tin" text="Ask who sent the keeper's supper" when="holds('implicates', ['supper_tin', 'ada'])">
       @maren{code="0040" emotion="angry"}: Nobody sent anything. Ada could not stand, let alone row.
     </choice>
   </branch>
@@ -49,11 +49,11 @@ components: [../components/witness.component.lute]
   @tobias{code="0030"}: And I saw him. Voss. On the landing, in his oilskin, waving me off the Teeth. Alive, I swear it.
   ::assert{sawAt(tobias, elias, landing, dawn)}
   <branch id="tobiasAsk" prompt="Tobias twists his cap.">
-    <choice id="help" label="Promise to look into the Guillemot">
+    <choice id="help" text="Promise to look into the Guillemot">
       ::accept{quest="clearName"}
       @tobias{code="0040"}: That's all I ask. Look at her rope. Look at it.
     </choice>
-    <choice id="doubt" label="Say nothing">
+    <choice id="doubt" text="Say nothing">
       @tobias{code="0050"}: Aye. Everyone says nothing.
     </choice>
   </branch>
@@ -62,10 +62,10 @@ components: [../components/witness.component.lute]
 <beat use="witness" id="ada" who="ada" title="Ada Pell, assistant keeper" instance="use-005">
   @ada{code="0010"}: Aunt Maren says you have been asking about me.
   <branch id="adaPress" prompt="Ada will not meet your eye.">
-    <choice id="gentle" label="Ask how she is feeling">
+    <choice id="gentle" text="Ask how she is feeling">
       @ada{code="0020"}: Better. I was ill. I was ashore.
     </choice>
-    <choice id="page" label="Show her the page in her hand" when="holds('onRock', ['ada', 'midnight'])">
+    <choice id="page" text="Show her the page in her hand" when="holds('onRock', ['ada', 'midnight'])">
       @ada{code="0030" emotion="sad"}: I went out at dusk with his supper. The lamp was turning when I tied up. At two it was dark.
       @ada{code="0040"}: I went up. The rail was gone. I lit the lamp because that is what you do. Then I waited on the landing for the light to come.
       @ada{code="0050"}: Someone in a skiff came close under the Teeth at dawn. I waved him off. I had Elias's... no. I had my own coat on.
@@ -73,7 +73,7 @@ components: [../components/witness.component.lute]
       ::pocket{item="torn_page" when="entry.keeperLogStub.read"}
       ::accept{quest="tornPage" when="entry.keeperLogStub.read"}
     </choice>
-    <choice id="coat" label="Hand her the oilskin" when="holds('carrying', ['oilskin'])">
+    <choice id="coat" text="Hand her the oilskin" when="holds('carrying', ['oilskin'])">
       @ada{code="0070" emotion="sad"}: That is mine. He made me wear it on the gallery. He never wore his own.
     </choice>
   </branch>

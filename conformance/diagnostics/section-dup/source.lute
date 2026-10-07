@@ -1,0 +1,16 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+title: Duplicate section id
+---
+
+## Arrival {#dock}
+
+@narrator: The ferry docks.
+
+## Departure {#dock}
+
+@narrator: The ferry leaves.

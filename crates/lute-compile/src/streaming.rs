@@ -59,7 +59,7 @@ impl ContinuationCompiler {
         let checked = check(&input);
         let mut initial_diagnostics = checked.diagnostics.clone();
         let artifact = compile_with_check(&input, checked, &identity)?;
-        if !matches!(artifact.kind, DocKind::Scene) || document.shots.is_empty() {
+        if !matches!(artifact.kind, DocKind::Scene) || document.sections.is_empty() {
             initial_diagnostics.push(service_diagnostic(
                 E_STREAM_TEMPLATE,
                 "continuation template must be a scene with at least one shot",
@@ -319,7 +319,7 @@ fn preserves_emitted_prefix(old: &ExecutionIr, new: &ExecutionIr) -> bool {
 
 fn canonical_command(command: &Command) -> Option<serde_json::Value> {
     let mut command = command.clone();
-    canonicalize_address(command.addr_mut());
+    canonicalize_address(command.position_mut());
     command.for_each_target(&mut canonicalize_address);
     serde_json::to_value(command).ok()
 }

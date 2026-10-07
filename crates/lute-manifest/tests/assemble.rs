@@ -688,7 +688,7 @@ fn assemble_rejects_core_names_as_plugin_directive_names() {
             "end",
             "it is a core directive, which content always reads as the core `::end`",
         ),
-        ("mark", "the core `::mark`"),
+        ("label", "the core `::label`"),
         ("bg", "a core directive"),
     ] {
         let reg = InstalledPlugins {
@@ -719,7 +719,7 @@ fn assemble_rejects_core_names_as_plugin_directive_names() {
             msg.contains("cannot name a plugin directive"),
             "{reserved}: {msg}"
         );
-        let core_owned = ["end", "mark", "bg"].contains(&reserved);
+        let core_owned = ["end", "label", "bg"].contains(&reserved);
         assert_eq!(
             snap.directive(reserved).is_some(),
             core_owned,
@@ -852,6 +852,7 @@ fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
         "delay",
         "wait",
         "timeline",
+        "timing",
         "provenance",
         "source",
     ] {
@@ -890,7 +891,7 @@ fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
             hit.to_string(),
             format!(
                 "plugin `arcia.minigame` declares reserved stamp attribute `{reserved}`; \
-                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` \
                  are owned by the core stamp (plugin §14)"
             )
         );
@@ -912,6 +913,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
         "delay",
         "wait",
         "timeline",
+        "timing",
         "provenance",
         "source",
     ] {
@@ -962,7 +964,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
 }
 
 /// A clean `stampAttrs` export merges into the snapshot AND moves
-/// `capabilityVersion` — a changed cross-cutting vocabulary is a changed
+/// `capabilitySnapshot` — a changed cross-cutting vocabulary is a changed
 /// capability surface (plugin §14.1). A plugin with NO `stampAttrs` must
 /// hash identically to the pre-`stampAttrs` baseline (guarded fold).
 #[test]
@@ -1013,12 +1015,12 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
     ));
     assert_ne!(
         plain.version, stamped.version,
-        "a populated `stampAttrs` vocabulary must move `capabilityVersion`"
+        "a populated `stampAttrs` vocabulary must move `capabilitySnapshot`"
     );
 }
 
 /// Byte-stability guard for the guarded hash fold: an EMPTY `stamp_attrs`
-/// must leave `capabilityVersion` byte-identical to a snapshot assembled
+/// must leave `capabilitySnapshot` byte-identical to a snapshot assembled
 /// before the field existed — i.e. the core-only baseline is untouched.
 #[test]
 fn empty_stamp_attrs_leaves_capability_version_untouched() {
@@ -1028,7 +1030,7 @@ fn empty_stamp_attrs_leaves_capability_version_untouched() {
     assert_eq!(
         core.version,
         lute_manifest::snapshot::capability_version(&probe),
-        "an empty `stamp_attrs` must not perturb the core capabilityVersion"
+        "an empty `stamp_attrs` must not perturb the core capabilitySnapshot"
     );
 }
 
@@ -1282,7 +1284,7 @@ fn assemble_reward_kind_resolves_peer_declared_provider() {
     assert!(snap.reward_kinds.contains_key("ITEM"));
 }
 
-/// A clean `rewardKinds` export merges AND moves `capabilityVersion` — a
+/// A clean `rewardKinds` export merges AND moves `capabilitySnapshot` — a
 /// changed vocabulary IS a changed capability surface (spec D-E). Mirrors
 /// the `stampAttrs` sibling below.
 #[test]
@@ -1317,12 +1319,12 @@ fn reward_kinds_merge_and_participate_in_capability_version() {
     assert!(stamped.reward_kinds.contains_key("SHARD"));
     assert_ne!(
         plain.version, stamped.version,
-        "a populated `rewardKinds` vocabulary must move `capabilityVersion`"
+        "a populated `rewardKinds` vocabulary must move `capabilitySnapshot`"
     );
 }
 
 /// Byte-stability guard for the guarded hash fold: an EMPTY `reward_kinds`
-/// must leave `capabilityVersion` byte-identical to a snapshot assembled
+/// must leave `capabilitySnapshot` byte-identical to a snapshot assembled
 /// before the field existed — i.e. the core-only baseline is untouched.
 #[test]
 fn empty_reward_kinds_leaves_capability_version_untouched() {
@@ -1332,7 +1334,7 @@ fn empty_reward_kinds_leaves_capability_version_untouched() {
     assert_eq!(
         core.version,
         lute_manifest::snapshot::capability_version(&probe),
-        "an empty `reward_kinds` must not perturb the core capabilityVersion"
+        "an empty `reward_kinds` must not perturb the core capabilitySnapshot"
     );
 }
 
@@ -1400,7 +1402,7 @@ fn occasions_merge_and_move_capability_version() {
     assert_eq!(
         core.version,
         lute_manifest::snapshot::capability_version(&probe),
-        "an empty `occasions` section must not perturb the core capabilityVersion"
+        "an empty `occasions` section must not perturb the core capabilitySnapshot"
     );
 
     let (stamped, errs) = assemble_core_plus(vec![with_oc]);
@@ -1413,7 +1415,7 @@ fn occasions_merge_and_move_capability_version() {
     assert_eq!(stamped.occasions["inbox"].select, OccasionSelect::All);
     assert_ne!(
         plain.version, stamped.version,
-        "a populated `occasions` vocabulary must move `capabilityVersion`"
+        "a populated `occasions` vocabulary must move `capabilitySnapshot`"
     );
 }
 

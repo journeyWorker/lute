@@ -8,19 +8,17 @@ state:
   scene.affect.marina: { type: int, default: 0 }
 ---
 
-# Golden — branch
-
 ## Shot 1.
 
-::auto{character="marina" anchor="left" action="fadeInUp"}
+::actor{character="marina" anchor="left" action="fadeInUp"}
 
 @narrator: I reached for my phone.
 
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer{code="0050"}: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     @fixer{code="0052"}: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>

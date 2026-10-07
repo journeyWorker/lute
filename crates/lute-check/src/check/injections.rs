@@ -66,7 +66,7 @@ pub(super) fn fold_injections(
 /// attrs), Task 7c's (duplicate line codes) and Task 7e's (reachability):
 /// [`fold_injections`] had exactly ONE callsite — `check()` step 7, over the
 /// ROOT document's shots — and a `::use` folded as an ordinary unknown
-/// directive, so its body was never entered. An `::auto` whose implicit
+/// directive, so its body was never entered. An `::actor` whose implicit
 /// `anchor`-domain read has nothing to read therefore checked CLEAN through a
 /// `::use` while the identical directive reported `E-DOMAIN-UNKNOWN` at scene
 /// level AND when that same component file was checked STANDALONE.
@@ -126,12 +126,11 @@ fn fold_use(
     // `p` to (a nested `::use`'s arguments pass the binding through).
     let bound: Vec<Vec<Node>>;
     let bodies: Vec<&[Node]> = if def.speakers.is_empty() {
-        def.body.shots.iter().map(|s| s.body.as_slice()).collect()
+        def.body.sections.iter().map(|s| s.body.as_slice()).collect()
     } else {
         let args = crate::component_effects::use_args_for(d, def);
         bound = def
-            .body
-            .shots
+            .body.sections
             .iter()
             .map(|s| {
                 let mut body = s.body.clone();

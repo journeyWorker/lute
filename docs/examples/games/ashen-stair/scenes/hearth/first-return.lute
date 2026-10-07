@@ -16,7 +16,7 @@ when: 'user.runs == 1 && @cameBackFromFall'
 ::use{component="hearthFire" flare="low" instance="use-001"}
 @maud{code="0010" emotion="warm"}: Told you. Right where you started, and the kettle's hardly cooled.
 @wren{code="0010" mono}: I felt it. I felt all of it.
-<match on="prev.run.fellTo">
+<match subject="prev.run.fellTo">
   <when is="cinderhound">
     @maud{code="0020" emotion="guarded"}: The hounds, was it? They go for the ankles. Everyone forgets the ankles.
   </when>
@@ -33,10 +33,10 @@ when: 'user.runs == 1 && @cameBackFromFall'
 @maud{code="0050"}: Floor {{prev.run.floor}}. Not bad for someone who didn't know which way was up.
 
 <branch id="howAreYou" prompt="Maud waits.">
-  <choice id="angry" label="Why does it keep me?">
+  <choice id="angry" text="Why does it keep me?">
     @maud{code="0060" emotion="wry"}: If I knew that, love, I'd have left years ago.
   </choice>
-  <choice id="thanks" label="Thank you for waiting.">
+  <choice id="thanks" text="Thank you for waiting.">
     ::set{user.bond.maud += 1}
     @maud{code="0070" emotion="fond"}: Waiting's the one thing I'm good at. Go and be good at something else.
   </choice>

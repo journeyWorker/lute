@@ -1,8 +1,9 @@
 enums:
   mood: [calm]
   volume: [normal]
-  musicAction: [start, stop]
+  musicPlayback: [start, stop]
   vfxType: [whiteOut]
+  framing: [close, tight, wide]
   anchor:
     members: [left, center, right]
     default: center

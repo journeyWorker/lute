@@ -201,7 +201,7 @@ impl std::error::Error for DiffError {}
 fn strip_positional(value: &mut Value) {
     match value {
         Value::Object(map) => {
-            map.remove("addr");
+            map.remove("position");
             map.remove("span");
             // These are addressing/provenance fields, not authored meaning.
             map.remove("body");
@@ -321,7 +321,7 @@ fn command_index(model: &ProjectModel) -> CommandIndex {
                 let lute_compile::Command::Choice(choice) = command else {
                     continue;
                 };
-                let Some(info) = source_map.by_addr.get(&choice.addr) else {
+                let Some(info) = source_map.by_addr.get(&choice.position) else {
                     continue;
                 };
                 let Ok(value) = serde_json::to_value(choice) else {
@@ -371,7 +371,7 @@ fn command_index(model: &ProjectModel) -> CommandIndex {
 
 fn strip_positional_value(value: &mut SemanticValue) {
     if let SemanticValue::Object(map) = value {
-        for key in ["addr", "span", "body", "cel", "authored"] {
+        for key in ["position", "span", "body", "cel", "authored"] {
             map.remove(key);
         }
         for child in map.values_mut() {

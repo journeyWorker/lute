@@ -11,7 +11,7 @@ title: Frostharbor
 
 <beat id="arrive" on="enterTown" target="town.frostharbor" title="Frostharbor" priority="10">
   ::bg{location="frostharbor" time="day"}
-  ::music{action="change" mood="calm" volume="normal"}
+  ::music{playback="change" mood="calm" volume="normal"}
   @narrator{code="0010"}: Frostharbor sits in a bowl of grey cliffs, every roof weighted down with stones against the wind. Fishing boats knock together in the harbor.
   @narrator{code="0020"}: A lighthouse stands on the point, dark in the daytime and, according to a hand-painted sign, dark at night too: LIGHT OUT. SORRY. — MAUD.
   @narrator{code="0030"}: East of town, a sea cave breathes cold air across the road.

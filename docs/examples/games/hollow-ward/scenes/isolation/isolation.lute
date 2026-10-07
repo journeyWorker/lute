@@ -10,7 +10,7 @@ priority: 10
 ## Isolation
 
 ::bg{location="isolation" time="night"}
-::music{action="start" mood="hush" volume="low"}
+::music{playback="start" mood="hush" volume="low"}
 @narrator{code="0010"}: Three cells with their doors off. In one, a hospital bed. In one, a chair turned to a painted-over window. In the last, a cot.
 @narrator{code="0020"}: Every one of them is occupied, and every one of them is waiting.
 @nell{code="0010" mono when="run.hush == 0"}: They think I'm the round.

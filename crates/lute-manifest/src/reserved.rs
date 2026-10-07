@@ -142,13 +142,11 @@ pub const CEL_CALLS: &[&str] = &[
 
 /// The core statements (`::set{…}`, `::use{component=…}`): a plugin cannot
 /// declare a directive of the same name.
-pub const CORE_STATEMENT_NAMES: &[&str] =
-    &["set", "assert", "retract", "accept", "use", "body", "cut"];
+pub const CORE_STATEMENT_NAMES: &[&str] = &["set", "assert", "retract", "accept", "use", "body"];
 
 /// The core block tags (`<match>`, `<quest>`): a plugin cannot declare a
 /// directive of the same name.
 pub const CORE_TAG_NAMES: &[&str] = &[
-    "scene",
     "on",
     "quest",
     "objective",

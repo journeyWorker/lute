@@ -12,7 +12,7 @@ when: "holds('slew', ['regent'])"
 ## Deck
 
 ::bg{location="deck" time="dawn"}
-::music{action="start" mood="upbeat" volume="normal"}
+::music{playback="start" mood="upbeat" volume="normal"}
 @narrator{code="0010"}: The sea around the Gull's Mercy has gone flat and bright as a coin.
 @sefa{code="0010" emotion="surprised"}: The current's stopped. Brann, the current has stopped.
 @brann{code="0010"}: Then the thing on the throne is dead. Or it's waiting.

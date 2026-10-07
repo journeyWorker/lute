@@ -39,9 +39,9 @@ pub struct LineRow {
     pub position: u32,
 }
 
-/// One `## shot` row (spec §4, target `shot`).
+/// One `## shot` row (spec §4, target `section`).
 #[derive(Clone, Debug)]
-pub struct ShotRow {
+pub struct SectionRow {
     pub index: u32,
     pub title: String,
     pub dialogueLines: u32,
@@ -68,7 +68,7 @@ pub struct SceneRow {
     pub directives: u32,
     pub sets: u32,
     pub choices: u32,
-    pub shots: u32,
+    pub sections: u32,
     pub maxLineWords: u32,
     pub avgLineWords: f64,
     pub dialogueRatio: f64,
@@ -111,7 +111,7 @@ pub fn doc_kind(raw_yaml: &str) -> String {
 
 /// Whether a directive tag stages something. The language's control
 /// directives — `::accept` (quest acceptance), `::use` (component
-/// invocation), `::end`, `::mark`, `::next` (walk control) — present nothing,
+/// invocation), `::end`, `::label`, `::jump` (walk control) — present nothing,
 /// so they never count as a shot's opening staging (dsl 0.22.0 §13).
 pub fn is_staging_tag(tag: &str) -> bool {
     !matches!(
@@ -119,8 +119,8 @@ pub fn is_staging_tag(tag: &str) -> bool {
         lute_syntax::ast::ACCEPT_DIRECTIVE
             | "use"
             | lute_manifest::core::END_DIRECTIVE
-            | lute_manifest::core::MARK_DIRECTIVE
-            | lute_manifest::core::NEXT_DIRECTIVE
+            | lute_manifest::core::LABEL_DIRECTIVE
+            | lute_manifest::core::JUMP_DIRECTIVE
     )
 }
 
@@ -192,10 +192,10 @@ pub struct ProjectRow {
 pub struct DocTables {
     pub scene: Option<SceneRow>,
     pub lines: Vec<LineRow>,
-    pub shots: Vec<ShotRow>,
+    pub sections: Vec<SectionRow>,
     pub speakers: BTreeMap<String, SpeakerRow>,
     /// [`Self::speakers`] per linear unit — the lines a player hears in one
-    /// sitting: the shots and quest bodies together, then each lore bundle
+    /// sitting: the sections and quest bodies together, then each lore bundle
     /// beat alone. Lore entries belong to no unit: each is an independent
     /// bark. Sequence metrics (emotion runs and streaks) read these, so a
     /// bundle's beats are never scored as one scene (ashen N6).
@@ -216,8 +216,8 @@ pub fn compute_doc_tables(
         kind: doc_kind(&doc.meta.raw_yaml),
         ..Walker::default()
     };
-    for shot in &doc.shots {
-        walker.visit_shot(shot);
+    for section in &doc.sections {
+        walker.visit_section(section);
     }
     for quest in &doc.quests {
         walker.visit_nodes(&quest.body);
@@ -247,7 +247,7 @@ pub fn compute_doc_tables(
         .map(|u| speakers_of(&walker.lines[u]))
         .collect();
     let groups = walker.build_groups(group_bys);
-    let shots = std::mem::take(&mut walker.shots);
+    let sections = std::mem::take(&mut walker.sections);
     let lines = std::mem::take(&mut walker.lines);
     let directives = std::mem::take(&mut walker.directive_rows);
 
@@ -255,7 +255,7 @@ pub fn compute_doc_tables(
         DocTables {
             scene,
             lines,
-            shots,
+            sections,
             speakers,
             unit_speakers,
             groups,
@@ -341,10 +341,10 @@ struct Walker {
     /// The document's [`doc_kind`], stamped on every shot row and the scene row.
     kind: String,
     lines: Vec<LineRow>,
-    shots: Vec<ShotRow>,
+    sections: Vec<SectionRow>,
     /// Per-shot accumulator (index, title, dialogueLines, words,
     /// firstStagingTag, span, saw_first_directive).
-    current_shot: Option<ShotAccum>,
+    current_section: Option<SectionAccum>,
     /// Scene-scope counters.
     dialogue_lines: u32,
     total_words: u32,
@@ -353,7 +353,7 @@ struct Walker {
     directives: u32,
     sets: u32,
     choices: u32,
-    shot_count: u32,
+    section_count: u32,
     max_line_words: u32,
     words_by_line: Vec<u32>,
     /// Every directive body node, in document order — feeds `asset-exists`
@@ -362,7 +362,7 @@ struct Walker {
     line_position: u32,
 }
 
-struct ShotAccum {
+struct SectionAccum {
     index: u32,
     title: String,
     dialogueLines: u32,
@@ -372,19 +372,19 @@ struct ShotAccum {
 }
 
 impl Walker {
-    fn visit_shot(&mut self, shot: &lute_syntax::ast::Shot) {
-        self.shot_count += 1;
-        self.current_shot = Some(ShotAccum {
-            index: self.shot_count,
-            title: shot.heading.clone(),
+    fn visit_section(&mut self, section: &lute_syntax::ast::Section) {
+        self.section_count += 1;
+        self.current_section = Some(SectionAccum {
+            index: self.section_count,
+            title: section.heading.clone(),
             dialogueLines: 0,
             words: 0,
             firstStagingTag: String::new(),
-            span: shot.span,
+            span: section.span,
         });
-        self.visit_nodes(&shot.body);
-        if let Some(acc) = self.current_shot.take() {
-            self.shots.push(ShotRow {
+        self.visit_nodes(&section.body);
+        if let Some(acc) = self.current_section.take() {
+            self.sections.push(SectionRow {
                 index: acc.index,
                 title: acc.title,
                 dialogueLines: acc.dialogueLines,
@@ -404,7 +404,7 @@ impl Walker {
                 Node::Directive(d) => {
                     if is_staging_tag(&d.tag) {
                         self.directives += 1;
-                        if let Some(shot) = self.current_shot.as_mut() {
+                        if let Some(shot) = self.current_section.as_mut() {
                             if shot.firstStagingTag.is_empty() {
                                 shot.firstStagingTag = d.tag.clone();
                             }
@@ -474,7 +474,7 @@ impl Walker {
         let is_dialogue = !l.speaker.is_empty();
         if is_dialogue {
             self.dialogue_lines += 1;
-            if let Some(shot) = self.current_shot.as_mut() {
+            if let Some(shot) = self.current_section.as_mut() {
                 shot.dialogueLines += 1;
                 shot.words += words;
             }
@@ -512,7 +512,7 @@ impl Walker {
             directives: self.directives,
             sets: self.sets,
             choices: self.choices,
-            shots: self.shot_count,
+            sections: self.section_count,
             maxLineWords: self.max_line_words,
             avgLineWords: avg,
             dialogueRatio: ratio,

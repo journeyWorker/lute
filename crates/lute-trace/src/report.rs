@@ -75,7 +75,7 @@ pub enum Step {
     Shot {
         number: i64,
         /// The authored `## <title>` heading. Already in the IR
-        /// (`"shots":[{"shot":1,"heading":"Hydroponics"}]`); the transcript
+        /// (`"sections":[{"section":1,"heading":"Hydroponics"}]`); the transcript
         /// printed an ordinal over it (#10 row h, T7.10).
         heading: String,
     },
@@ -122,7 +122,7 @@ pub enum Step {
         /// item="kettleLid"}`), rendered in place of the bare tag.
         #[serde(skip_serializing_if = "Option::is_none")]
         call: Option<String>,
-        /// `true` when this `::auto` ends a character's presence — its
+        /// `true` when this `::actor` ends a character's presence — its
         /// `action=` value is in the resolved `action` domain's `exits:`.
         /// The entrance and the exit are the same construct with the same
         /// attribute names, and the entire difference lives in a list in
@@ -230,7 +230,7 @@ pub enum Step {
     Exclusive {
         text: String,
     },
-    /// dsl 0.26.0 §7 (T1-4): a taken `::next{to}` — the walk continues at
+    /// dsl 0.26.0 §7 (T1-4): a taken `::jump{to}` — the walk continues at
     /// the mark `to`, as play's does.
     Jump {
         to: String,
@@ -374,7 +374,7 @@ impl UnresolvedEntry {
 /// Visited/total counts for one construct (§4.6: `"choices visited 1/3
 /// (sofaHelp), arms 1/2 (match run.metHelpfully)"`), plus the construct's
 /// authored LABEL. The label is not the identity — that is the whole point of
-/// #24/T9.13: six `<match on="true">` blocks share a label and are six
+/// #24/T9.13: six `<match subject="true">` blocks share a label and are six
 /// constructs.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct CoverageCount {
@@ -388,7 +388,7 @@ pub struct CoverageCount {
     #[serde(rename = "authoredLabel", skip_serializing_if = "Option::is_none")]
     pub authored_label: Option<String>,
     /// The site is a `when=` guard (a guarded line, write, directive,
-    /// `::next` or `::use`), not an authored `<match>`: its two outcomes are
+    /// `::jump` or `::use`), not an authored `<match>`: its two outcomes are
     /// taken and skipped.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub guard: bool,
@@ -983,7 +983,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             out.push_str(&format!("    quest {quest} accepted{queued}\n"))
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
-        Step::Jump { to } => out.push_str(&format!("    <next -> {to}>\n")),
+        Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),
         Step::HubReturn { hub } => out.push_str(&format!("    -- return (hub {hub}) --\n")),
         Step::Grant {
             quest,

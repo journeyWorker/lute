@@ -19,11 +19,11 @@ timeline_tables:
         duration: 0.3
       - at: 0.5
         subject: "#fg"
-        summary: "<cut>"
+        summary: "<cg>"
         duration: 0
       - at: 1.1
         subject: "#fg"
-        summary: "<cut>"
+        summary: "<cg>"
         duration: 0
       - at: 0.5
         subject: "#vfx"

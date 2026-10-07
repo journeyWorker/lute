@@ -321,7 +321,7 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
     // project's `check-project` run. This is exactly the class of test
     // that caught a REAL bug fixed in this same commit --
     // `showcase/episode01.lute`'s `run.sofaOutcome` read (consumed by a
-    // domain-exhaustive `<match on="run.sofaOutcome"><otherwise>`, written
+    // domain-exhaustive `<match subject="run.sofaOutcome"><otherwise>`, written
     // only conditionally by one `<choice persist="run" into="run.sofaOutcome">`
     // arm) is standalone-clean but was newly errored by `check-project`
     // before the `defassign::exhaustive_match_subject_spans` fix (main.rs's

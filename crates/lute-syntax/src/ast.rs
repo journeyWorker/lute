@@ -3,8 +3,7 @@ use lute_core_span::{Span, StableId};
 #[derive(Clone, Debug)]
 pub struct Document {
     pub meta: Meta,
-    pub title: Option<(String, Span)>,
-    pub shots: Vec<Shot>,
+    pub sections: Vec<Section>,
     pub quests: Vec<Quest>,
     /// Top-level `<entry>` declarations (dsl 0.19.0 §2), in document order.
     pub entries: Vec<Entry>,
@@ -21,8 +20,9 @@ pub struct Meta {
 } // parsed into typed form in check
 
 #[derive(Clone, Debug)]
-pub struct Shot {
+pub struct Section {
     pub heading: String,
+    pub id: Option<(String, Span)>,
     pub body: Vec<Node>,
     pub span: Span,
 }
@@ -46,23 +46,115 @@ pub enum Node {
 pub struct Line {
     pub speaker: String,
     pub attrs: Vec<Attr>,
-    /// The gated-line guard (dsl 0.4.0 §7.2): `@s{when="G"}: T` emits the
-    /// line iff `G` holds — a `CelKind::Condition` slot, extracted from the
-    /// `when` attr the same way `Choice.when` is (`take_cel`, parser.rs). `$`
-    /// is NOT in scope (matches `<on when>`). `None` when no `when=` attr was
-    /// authored (the common case — B1: parse-identical to pre-0.4.0 docs).
+    /// The gated-line guard (dsl 0.4.0 §7.2): `@s{when="G"}: T`.
     pub when: Option<CelSlot>,
     pub text: String,
     pub text_span: Span,
     pub interps: Vec<Interp>,
+    /// Ordered inline text syntax, including nested modifiers and text.
+    pub inline: Vec<InlineNode>,
     pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum InlineNode {
+    Text { text: String, span: Span },
+    Interpolation(Interp),
+    Modifier(InlineModifier),
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineModifier {
+    pub name: String,
+    pub attrs: Vec<InlineAttr>,
+    pub children: Vec<InlineNode>,
+    pub span: Span,
+    pub content_span: Option<Span>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineAttr {
+    pub key: String,
+    pub value: String,
+    pub span: Span,
+    pub value_span: Span,
+}
+
+impl Line {
+    /// Derive source text with inline delimiters, attributes, and escapes removed.
+    pub fn plain_text(&self) -> String {
+        inline_plain_text(&self.inline)
+    }
+
+    /// The line's inline modifier multiset (dsl 0.37.0 §3.6): every
+    /// modifier, nested ones included, as [`inline_modifier_multiset`]
+    /// counts them.
+    pub fn modifier_multiset(&self) -> std::collections::BTreeMap<String, usize> {
+        inline_modifier_multiset(&self.inline)
+    }
+}
+
+/// The modifier multiset of `nodes` (dsl 0.37.0 §3.6, §6, D11): each
+/// modifier, nested ones included, keyed by its name, its form (`[]` for a
+/// span) and its attributes in key order (`speed[]{rate=1.25}`,
+/// `pause{s=0.5}`, `emphasis[]`), with its count. Two
+/// texts carry the same modifiers exactly when their multisets are equal —
+/// the localization check (`E-L10N-MODIFIERS`) compares a translation's with
+/// its source line's.
+pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTreeMap<String, usize> {
+    fn walk(nodes: &[InlineNode], out: &mut std::collections::BTreeMap<String, usize>) {
+        for node in nodes {
+            if let InlineNode::Modifier(m) = node {
+                // Normalized: a numeric value compares as its number
+                // (`rate=1.50` and `rate=1.5` are one modifier).
+                let mut attrs: Vec<String> = m
+                    .attrs
+                    .iter()
+                    .map(|a| match a.value.parse::<f64>() {
+                        Ok(n) if n.is_finite() => format!("{}={n}", a.key),
+                        _ => format!("{}={}", a.key, a.value),
+                    })
+                    .collect();
+                attrs.sort();
+                let span = if m.content_span.is_some() || !m.children.is_empty() { "[]" } else { "" };
+                let key = if attrs.is_empty() {
+                    format!("{}{span}", m.name)
+                } else {
+                    format!("{}{span}{{{}}}", m.name, attrs.join(" "))
+                };
+                *out.entry(key).or_default() += 1;
+                walk(&m.children, out);
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(nodes, &mut out);
+    out
+}
+
+/// The plain-text derivation of inline `nodes` (dsl 0.37.0 §3.6): modifier
+/// delimiters and attributes removed, escapes decoded, `{{…}}` verbatim.
+pub fn inline_plain_text(nodes: &[InlineNode]) -> String {
+    let mut out = String::new();
+    for node in nodes {
+        match node {
+            InlineNode::Text { text, .. } => out.push_str(text),
+            InlineNode::Interpolation(i) => {
+                out.push_str("{{");
+                out.push_str(&i.source);
+                out.push_str("}}");
+            }
+            InlineNode::Modifier(m) => out.push_str(&inline_plain_text(&m.children)),
+        }
+    }
+    out
 }
 
 #[derive(Clone, Debug)]
 pub struct Directive {
     pub tag: String,
     pub attrs: Vec<Attr>,
-    /// A directive's `when="COND"` guard — `::next` (dsl 0.12.0) and, since
+    /// A directive's `when="COND"` guard — `::jump` (dsl 0.12.0) and, since
     /// dsl 0.26.0 §4, `::use`, `::accept` and plugin passthrough directives
     /// (skipped when false, like `::set{… when=}`). Extracted into a typed
     /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`,
@@ -175,18 +267,19 @@ pub struct Choice {
     pub id: String,
     /// Span of the `id=` value (the open tag's start when none is written).
     pub id_span: Span,
-    pub label: String,
-    /// Span of the `label=` value (the `<choice` open tag's start when no
-    /// label is written), where a finding about the label text anchors.
-    pub label_span: Span,
+    /// The displayed choice text (`text=`, dsl 0.37.0 §3.5).
+    pub text: String,
+    /// Span of the `text=` value (the `<choice` open tag's start when no
+    /// text is written), where a finding about the choice text anchors.
+    pub text_span: Span,
     pub when: Option<CelSlot>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     pub span: Span,
 }
 
-/// `<match on> When+ Otherwise? "</match>"` (dsl §7.3, §11.2). `attrs` is the
-/// residual (post-`on`-extraction) list, mirroring [`Branch`]/[`Hub`]. It is
+/// `<match subject> When+ Otherwise? "</match>"` (dsl §7.3, §11.2; 0.37.0
+/// §3.5). `attrs` is the residual (post-`subject`-extraction) list, mirroring [`Branch`]/[`Hub`]. It is
 /// retained rather than dropped so the checker's per-tag attribute closure
 /// (dsl 0.10.0 §4, D-J) has something to close over: a rule about attributes
 /// the checker never receives is not a rule. Normally empty.
@@ -494,6 +587,10 @@ pub struct Objective {
 /// literal is lifted into [`RewardAmount`] and removed from `attrs`.
 #[derive(Clone, Debug)]
 pub struct Reward {
+    /// The optional `id=` (dsl 0.37.0 §3.5, D10) and its value span: the
+    /// reward's stable identity within its owning quest. Token shape and
+    /// uniqueness are the checker's (`E-REWARD-ATTR`, `E-REWARD-DUP`).
+    pub id: Option<(String, Span)>,
     /// Value of `kind=`; the empty string when the attribute was absent
     /// (checker: `E-REWARD-ATTR`).
     pub kind: String,
@@ -529,6 +626,18 @@ pub struct Reward {
     pub self_closing: bool,
 }
 
+impl Reward {
+    /// The reward's identity segment under its owner (dsl 0.37.0 §3.7): its
+    /// `id=` when authored, else its 0-based declaration `index` among the
+    /// owner's rewards. An id starts with a letter, so the two never collide.
+    pub fn key_segment(&self, index: usize) -> String {
+        match &self.id {
+            Some((id, _)) => id.clone(),
+            None => index.to_string(),
+        }
+    }
+}
+
 /// `amount=` payload (dsl 0.16.0 §2): a scalar integer or an inclusive
 /// `N..M` range (`N <= M`, both bounds may be negative). The parser rejects
 /// `N > M`; a range is preserved verbatim through lowering and never
@@ -562,6 +671,8 @@ pub struct Interp {
     /// The referent, trimmed (e.g. `run.coins`, `@fond`, `userName`) — the
     /// interior text without any `:hint` suffix ([`Interp::format`]).
     pub raw: String,
+    /// Exact interior source bytes between `{{` and `}}`, including whitespace.
+    pub source: String,
     /// Span of the whole `{{…}}` in the original source.
     pub span: Span,
     /// dsl 0.24.0 §4: the format hint after the referent, trimmed —
@@ -799,6 +910,7 @@ pub fn interp_from_inner(inner: &str, span: Span) -> Interp {
     Interp {
         kind: classify_interp(referent),
         raw: referent.to_string(),
+        source: inner.to_string(),
         span,
         format,
         forms,

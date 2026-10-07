@@ -26,16 +26,16 @@ presentation); barks are repeatable entries. */
 <beat id="questions" on="talk" target="npc.maud" title="Questions over the kettle" priority="30" once="user" when="user.bond.maud >= 3 && user.runs >= 3">
   @maud{code="0010"}: Sit. You've got that face. Everybody gets that face around the third climb.
   <hub id="kettle" prompt="Maud pours a second cup and waits.">
-    <choice id="oskar" label="What happened to Oskar?" once>
+    <choice id="oskar" text="What happened to Oskar?" once>
       @maud{code="0020" emotion="guarded"}: He made a hammer for a man he loved and the Stair kept them both. He's been hitting that anvil ever since.
     </choice>
-    <choice id="sable" label="Who is Sable?" once when="user.knowsSableName">
+    <choice id="sable" text="Who is Sable?" once when="user.knowsSableName">
       @maud{code="0030" emotion="warm"}: The best climber I ever saw. She got to the top before you were born. She just never got past the Warden.
     </choice>
-    <choice id="top" label="What's at the top?" once>
+    <choice id="top" text="What's at the top?" once>
       @maud{code="0040" emotion="wry"}: A door. Everyone who's been through it says it's a door. Nobody who's been through it stays to say more.
     </choice>
-    <choice id="enough" label="Thanks, Maud." exit>
+    <choice id="enough" text="Thanks, Maud." exit>
       ::set{user.bond.maud += 1}
       @maud{code="0050" emotion="fond"}: Mind the ankles.
     </choice>

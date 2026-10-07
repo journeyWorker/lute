@@ -1,0 +1,3 @@
+# Linear scene: modified lines carry plain `text` plus `segments`; the
+# `ja-JP` translation (locales.json) adds `texts` and `localeSegments`.
+{}

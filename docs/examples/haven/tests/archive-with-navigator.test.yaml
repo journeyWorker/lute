@@ -1,5 +1,5 @@
 # Same scene, the navigator awake, the other `<branch>` arm. Ilsabet's block is a
-# `<match on="true">` whose only real test is `holds(awake(ilsabet))` — the dummy
+# `<match subject="true">` whose only real test is `holds(awake(ilsabet))` — the dummy
 # subject T7.6 records — so this test is what proves that workaround routes on the
 # fact rather than on the subject.
 #

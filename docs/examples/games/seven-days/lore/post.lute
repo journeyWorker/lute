@@ -9,20 +9,20 @@ is fixed (`spentBy`, 0.27). Then one postcard a day (`once: day` + one
 `share` key across the three template uses). */
 
 <beat id="machine" on="placeVisit" target="place.post" title="The franking machine" priority="20" after="visited('post.mira.meet')" when="holds('present', ['mira', 'post'])" spentBy="run.machineFixed">
-  ::auto{character="mira" anchor="left" action="fadeInUp"}
+  ::actor{character="mira" anchor="left" action="fadeInUp"}
   ::set{run.seen.mira = run.day}
   @mira{code="0010" emotion="tired"}: It's eaten another one. I can hear it chewing.
   <branch id="machineFix" prompt="The franking machine hums at you.">
-    <choice id="thump" label="Thump it.">
+    <choice id="thump" text="Thump it.">
       @narrator{code="0010"}: It swallows the stamp you were holding. Mira sighs the sigh of a woman who has tried this.
     </choice>
-    <choice id="reed" label="Poke a length of green reed into the roller." when="run.lantern.frame">
+    <choice id="reed" text="Poke a length of green reed into the roller." when="run.lantern.frame">
       ::set{run.machineFixed = true}
       @narrator{code="0020"}: Something clicks. The machine spits out eleven stamps, a paperclip, and a very old toffee.
       @mira{code="0020" emotion="surprised"}: Since EASTER.
     </choice>
   </branch>
-  ::auto{character="mira" action="fadeOut"}
+  ::actor{character="mira" action="fadeOut"}
 </beat>
 
 <beat use="postcard" id="mum" to="mum" rank="12" instance="use-001">

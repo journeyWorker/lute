@@ -6,10 +6,8 @@ episode: 1
 title: Video playback
 ---
 
-# Golden — video
-
 ## Shot 1.
 
-::video{assetId="MOVIE.scenarios.marina.s01ep02.intro" action="show" wait="true"}
+::video{assetId="MOVIE.scenarios.marina.s01ep02.intro" display="show" wait="true"}
 
 @narrator: The cutscene rolls, and the room holds its breath until it finishes.

@@ -16,44 +16,45 @@ schema. Each entry has a `type`, an optional `params` block, and a `cel` body:
 ```yaml
 defs:
   warm:    { type: bool,   cel: "scene.affect.elena >= 2" }
-  closeUp: { type: int, cel: "1.35" }
+  tight:   { type: string, cel: "'closeUp'" }
   fond:    { type: bool,   cel: "scene.affect.marina >= 1" }
 ```
 
 A def is referenced with `@name`. Because `@` is a **compile-time macro**, the reference is expanded
 to its inline CEL before evaluation — a def is not a runtime function call, just a named piece of
-CEL. A bool def reads as a guard; an `int`/`double` def reads as a staging value:
+CEL. A bool def reads as a guard; a def that folds to a constant reads as a staging value:
 
 ```lute
 <when test="@fond">
   @fixer{mono}: I asked nicely.
 </when>
-::camera{zoom=@closeUp}
+::camera{framing=@tight}
 ```
 
 A `@ref` must appear in a position whose required type matches the def's declared `type`, and its
 name must be declared in `defs`. Def names and param names are identifiers (a letter or `_`, then letters, digits or `_`): a condition reads them bare, like a JavaScript variable, so `lamp-lit` is `E-PATH-IDENT` naming `lampLit`.
 
-In a directive attribute the ref is **bare** — `zoom=@closeUp`. A quoted `zoom="@closeUp"` is the
-literal string `@closeUp`, which a numeric attribute rejects as `E-ATTR-TYPE`. An attribute value is
-a constant, not an expression, so the compiler writes the literal the def folds to (`zoom: 1.35`) and
-checks it like an authored one (`E-BAD-ENUM`, `E-ATTR-TYPE`). A def that reads state does not fold,
-and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a literal in each arm:
+In a directive attribute the ref is **bare** — `framing=@tight`. A quoted `framing="@tight"` is the
+literal string `@tight`, which the `framing` domain rejects as `E-BAD-ENUM`. An attribute value is
+a constant, not an expression, so the compiler writes the literal the def folds to
+(`"framing": "closeUp"`) and checks it like an authored one (`E-BAD-ENUM`, `E-ATTR-TYPE`). A def
+that reads state does not fold, and using it there is `E-ATTR-DEF-DYNAMIC`. Branch instead, with a
+literal in each arm:
 
 ```lute
-<match on="scene.affect.elena">
+<match subject="scene.affect.elena">
   <when is="5..">
-    ::camera{zoom="1.35"}
+    ::camera{framing="closeUp"}
   </when>
   <otherwise>
-    ::camera{zoom="1.15"}
+    ::camera{framing="wide"}
   </otherwise>
 </match>
 ```
 
 That advice is for a directive attribute. A component enum param takes the def directly, even one
 that reads state: `::use{component="greet" tier=@mood}` hands the def to the component, whose
-`<match on="@tier">` dispatches on it at run time, so there is nothing to branch around (see
+`<match subject="@tier">` dispatches on it at run time, so there is nothing to branch around (see
 [Reusable content components](/language/components-and-extends/#reusable-content-components)). Only
 a component that puts the param into a directive attribute of its own meets `E-ATTR-DEF-DYNAMIC`
 again, reported at the `::use`.
@@ -77,7 +78,7 @@ defs:
 *(From [`docs/examples/showcase/schema/base.schema.yaml`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/schema/base.schema.yaml).)*
 
 ```lute
-<match on="scene.affect.marina">
+<match subject="scene.affect.marina">
   <when test="@atLeast(3)">
     @fixer{mono}: A veteran's welcome.
   </when>
@@ -98,25 +99,25 @@ literal, a plain string literal, or an already parenthesized group — goes in b
 
 ### Defs in traces and beat tables
 
-`lute trace` and `lute beats` print a def reference as you wrote it: a `<match on="@today">` header
-reads `<match @today>`, an arm or choice guard `(@atLeast(3))`, the coverage summary names the
-def, and a beat's `when` column reads `@runsAtLeast(2) && @firstDay`. Pass `--expand` to see the
-inlined CEL instead. For a scene with the gated lines
-`@narrator{when="@atLeast(3)"}: …` and `@narrator{when="@atLeast(user.level + 1)"}: …`:
+`lute trace` and `lute beats` print a def reference as you wrote it: a `<match subject="@today">`
+header reads `<match @today>`, an arm or choice guard `(@atLeast(3))`, a line guard
+`` guard `@atLeast(3)` ``, the coverage summary names the def, and a beat's `when` column reads
+`@runsAtLeast(2) && @firstDay`. Pass `--expand` to see the inlined CEL instead. For a scene with
+the gated lines `@narrator{when="@atLeast(3)"}: …` and `@narrator{when="@atLeast(user.level + 1)"}: …`:
 
 ```console
 $ lute trace board.lute
 trace: board.lute  (seeds: 0 paths, 0 facts; 0 selections)
   ## Board
-  <match @atLeast(3)>   -> otherwise
-  <match @atLeast(user.level + 1)>   -> otherwise
-trace complete: 2 decisions; arms 1/2 (@atLeast(3) @13:1), arms 1/2 (@atLeast(user.level + 1) @14:1)
+  guard `@atLeast(3)`: skipped
+  guard `@atLeast(user.level + 1)`: skipped
+trace complete: 2 decisions; guard `@atLeast(3)` @13:1: skipped, guard `@atLeast(user.level + 1)` @14:1: skipped
 $ lute trace board.lute --expand
 trace: board.lute  (seeds: 0 paths, 0 facts; 0 selections)
   ## Board
-  <match (user.level >= 3)>   -> otherwise
-  <match (user.level >= (user.level + 1))>   -> otherwise
-trace complete: 2 decisions; arms 1/2 ((user.level >= 3) @13:1), arms 1/2 ((user.level >= (user.level + 1)) @14:1)
+  guard `(user.level >= 3)`: skipped
+  guard `(user.level >= (user.level + 1))`: skipped
+trace complete: 2 decisions; guard `(user.level >= 3)` @13:1: skipped, guard `(user.level >= (user.level + 1))` @14:1: skipped
 ```
 
 `--json` keeps the expansion in its `id`/`guard`/`label`/`when` fields and adds the authored text
@@ -175,7 +176,7 @@ The static checker owns five `@ref` checks, each conservative (only provably-wro
   `E-MAYBE-UNSET`, naming the path and the def.
 
 The last check runs at every use: `{{@lastF}}`, a `when="@lastF > 30"`, a `::use` argument
-`fathoms=@lastF`, a `::set` right-hand side, and a `<match on="@lastF">` subject all read what the
+`fathoms=@lastF`, a `::set` right-hand side, and a `<match subject="@lastF">` subject all read what the
 def's body reads. A def over a path with no default is therefore guarded where it is used, or
 guards itself:
 

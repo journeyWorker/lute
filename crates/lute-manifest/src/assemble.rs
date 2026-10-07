@@ -1,7 +1,7 @@
 //! Multi-plugin capability-snapshot assembly (plugin §13). Merges every active
 //! plugin's loaded package onto the embedded `lute.core` base into one
 //! deterministic snapshot, rejecting cross-plugin duplicate ids and reserved
-//! names, and stamping `capabilityVersion`.
+//! names, and stamping `capabilitySnapshot`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -120,7 +120,7 @@ impl std::fmt::Display for AssembleError {
             AssembleError::ReservedStampAttr { plugin, name } => write!(
                 f,
                 "plugin `{plugin}` declares reserved stamp attribute `{name}`; \
-                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` \
                  are owned by the core stamp (plugin §14)"
             ),
             // `InvalidDirective.msg` is already prose (the per-directive
@@ -225,8 +225,9 @@ fn reserved_why(
 /// timing keys `at`/`duration`/`delay`/`wait` — "cross-cutting reserved
 /// across all directives and profiles" (§7.5), a plugin manifest "MUST NOT
 /// declare any of these as one of its attribute names — doing so is an
-/// assembly-time error" — PLUS the three remaining stamp keys `timeline`,
-/// `provenance`, `source`, which plugin §14 / Appendix C4 folds into the same
+/// assembly-time error" — PLUS the remaining stamp keys `timeline`,
+/// `provenance`, `source`, and (dsl 0.37.0 §5.2) the nested `timing` object
+/// key, which plugin §14 / Appendix C4 folds into the same
 /// reservation now that `stampAttrs` lets a plugin write into the stamp
 /// directly. Enforced on BOTH plugin surfaces — per-directive `attrs` and the
 /// `stampAttrs` export — as `E-PLUGIN-RESERVED-STAMP-ATTR`.
@@ -242,6 +243,7 @@ const RESERVED_STAMP_ATTR_NAMES: &[&str] = &[
     "delay",
     "wait",
     "timeline",
+    "timing",
     "provenance",
     "source",
 ];
@@ -251,7 +253,7 @@ const RESERVED_STAMP_ATTR_NAMES: &[&str] = &[
 /// the assembled snapshot plus any cross-plugin duplicate / reserved-name /
 /// missing-plugin errors; an offending item is dropped, never merged. The
 /// `inactive` index is populated from installed-minus-active, and the resolved
-/// snapshot is finally stamped with its `capabilityVersion`.
+/// snapshot is finally stamped with its `capabilitySnapshot`.
 pub fn assemble_snapshot(
     active: &[ActivePlugin],
     installed: &InstalledPlugins,

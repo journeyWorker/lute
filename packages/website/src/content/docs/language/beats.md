@@ -29,9 +29,7 @@ state:
   run.giftRefused: { type: bool, default: false }
 ---
 
-# Achilles
-
-## Shot 1.
+## Opening {#opening}
 
 @achilles: You have been at this a while, lad. Take this.
 ```
@@ -77,9 +75,7 @@ id: courtyard.rumor
 priority: 5
 ---
 
-# Courtyard
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: A rumor drifts across the courtyard.
 ```
@@ -207,11 +203,11 @@ state:
 <beat id="porter" on="talk" target="npc.porter" title="The porter" priority="5">
   @porter: You again.
   <branch id="night">
-    <choice id="ask" label="Ask about the night">
+    <choice id="ask" text="Ask about the night">
       @porter: I saw nothing. Nothing I'll say twice.
       ::set{run.porterTrust += 1}
     </choice>
-    <choice id="leave" label="Leave him be">
+    <choice id="leave" text="Leave him be">
       @porter: Good.
     </choice>
   </branch>
@@ -518,9 +514,7 @@ state:
   run.day: { type: int, default: 1 }
 ---
 
-# The fountain
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: The stray cat is back on the fountain's rim, watching you.
 ```
@@ -696,7 +690,7 @@ and writes one beat per tier, in a lore document `contest`:
 - **`occasion.target`.** In the beat's `when`, its guards, and its text, `occasion.target` is the
   member the occasion was raised for (`inchlet` for `mon.inchlet`), typed by the kind. It is a
   value you compare (`occasion.target == 'inchlet'`) or match on: a
-  `<match on="occasion.target">` checks its arms against the kind's members, and needs no `unset`
+  `<match subject="occasion.target">` checks its arms against the kind's members, and needs no `unset`
   arm, because the engine always assigns it. Since dsl 0.27.0 it also stands in for a member name
   in a fact query and a `per:` family: see [Asking about the member](#asking-about-the-member).
   The value lasts for that presentation only. Reading `occasion.target` in a beat or entry that
@@ -931,9 +925,7 @@ defs:
   festivalNight: { type: bool, cel: "run.day == 5" }
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: Lanterns everywhere.
 ```

@@ -3,7 +3,7 @@
 # (its name) + optional `params:` (typed exactly like a scene `defs` param,
 # §8.1). The body is a PRESENTATIONAL template: lines + staging directives +
 # `@param` refs — no state read/write, and no logic block EXCEPT a param-scoped
-# `<match on="@param">`, which dsl 0.4.0 §6.2 admits (dispatching on an
+# `<match subject="@param">`, which dsl 0.4.0 §6.2 admits (dispatching on an
 # invocation argument reads no ambient state and records nothing; see
 # `reaction.component.lute`). `<branch>`/`<hub>` stay forbidden on principle —
 # presenting a menu records the selection into `scene.choices.*`, a state write.
@@ -22,5 +22,5 @@ uses: ../base.schema.yaml
 ## A Familiar Face
 /* `@who` is the param, bound to the `::use` arg at expansion time; it is legal
 here only because `character` is a `string`-typed attr (dsl Appendix A). */
-::auto{character=@who action="fadeInUp"}
+::actor{character=@who action="fadeInUp"}
 @narrator: A familiar face steps into the light.

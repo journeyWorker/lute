@@ -28,7 +28,7 @@ describes the account before this pull. */
 /* Limited heroes without a duplicate line of their own */
 <beat id="limitedGlow" on="summon" target="kind:limited" once="false">
   @narrator{code="0010"}: The well flares silver. Only a festival star burns like that: {{occasion.target}}.
-  <match on="occasion.payload.banner">
+  <match subject="occasion.payload.banner">
     <when is="standard">
       @lumi{code="0010" emotion="surprised"}: Off the Wishing Well? A festival star, off-season? Buy a lottery ticket.
     </when>

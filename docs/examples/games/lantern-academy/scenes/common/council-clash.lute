@@ -11,9 +11,9 @@ after: 'visited("common.arrival")'
 ## Council room
 
 ::bg{location="council" time="morning"}
-::music{action="start" mood="tense" volume="down"}
-::auto{character="ren" anchor="left" action="fadeInUp"}
-::auto{character="kai" anchor="right" action="fadeInUp"}
+::music{playback="start" mood="tense" volume="down"}
+::actor{character="ren" anchor="left" action="fadeInUp"}
+::actor{character="kai" anchor="right" action="fadeInUp"}
 @ren{code="0010" emotion="stern"}: Item four. The old music room is condemned. Someone has been in it after curfew, every night, for a month.
 @kai{code="0010" emotion="smirk"}: Someone. Wonder who.
 @ren{code="0020" emotion="stern"}: The floor is rotten, Hollow. I am not writing to your mother because a piano fell through it with you on the stool.
@@ -22,24 +22,24 @@ after: 'visited("common.arrival")'
 @you{code="0010" mono}: Every head in the room turns to me.
 
 <branch id="clash" prompt="Ren and Kai are both waiting.">
-  <choice id="sideRen" label="Tell the truth: the floor creaked under both of us">
+  <choice id="sideRen" text="Tell the truth: the floor creaked under both of us">
     @ren{code="0040" emotion="flustered"}: ...Thank you. That is exactly what a report is supposed to sound like.
     @kai{code="0030" emotion="sad"}: Right. Good. Nice to know whose side the new kid is on.
     ::set{run.aff.ren += 2}
     ::assert{locked(kai)}
   </choice>
-  <choice id="sideKai" label="Lie for Kai: you were alone, and the room was fine">
+  <choice id="sideKai" text="Lie for Kai: you were alone, and the room was fine">
     @kai{code="0040" emotion="happy"}: Huh. Didn't see that coming.
     @ren{code="0050" emotion="sad"}: I see. Then the council has nothing to act on. Meeting adjourned.
     ::set{run.aff.kai += 2}
     ::assert{locked(ren)}
   </choice>
-  <choice id="stayOut" label="Say you don't remember">
+  <choice id="stayOut" text="Say you don't remember">
     @ren{code="0060"}: Noted. Unhelpfully.
     @kai{code="0050"}: Coward. Smart coward, though.
   </choice>
 </branch>
 
-::auto{character="ren" action="fadeOut"}
-::auto{character="kai" action="fadeOut"}
+::actor{character="ren" action="fadeOut"}
+::actor{character="kai" action="fadeOut"}
 @narrator{code="0010"}: The bell rings over all of it.

@@ -25,7 +25,7 @@ use crate::ir::{CelPair, Command, Placeholder};
 /// `@`/`$`-free by construction.
 pub fn expand_document(doc: &mut Document, defs: &DefTable<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         expand_nodes(&mut shot.body, defs, None, &mut diags);
     }
     for quest in &mut doc.quests {
@@ -117,7 +117,7 @@ fn expand_nodes(
             Node::Directive(d) => {
                 expand_attrs(&mut d.attrs, defs, subject, diags);
                 // dsl 0.26.0 §4: a guarded directive, like a guarded `::set`
-                // below. (A guarded `::next` was desugared by `normalize`.)
+                // below. (A guarded `::jump` was desugared by `normalize`.)
                 if let Some(guard) = d.when.take() {
                     let span = d.span;
                     let leaf = std::mem::replace(node, Node::Directive(placeholder(span)));
@@ -339,14 +339,14 @@ fn expand_slot(
 
 /// 0.21.1 T1-4: every `@ref`-valued attribute left after [`expand_document`]
 /// becomes the literal it provably folds to, so the lowerer reads a plain
-/// value (`zoom=@closeUp` → `zoom: 1.3`) instead of dropping the unparsable
+/// value (`duration=@closeUp` → `duration: 1.3`) instead of dropping the unparsable
 /// `"(1.3)"` or shipping it as a string. A slot that does not fold is
 /// `E-ATTR-DEF-DYNAMIC` — checker-gated (`lute_check::def_inline`), kept here
 /// as the backstop so a value is never lost. Compile-only: `lute-trace` walks
 /// the expanded tree without it.
 pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         fold_nodes(&mut shot.body, schema, &mut diags);
     }
     for quest in &mut doc.quests {
@@ -579,7 +579,7 @@ mod tests {
 
     #[test]
     fn expand_document_rewrites_slots_with_match_subject_scope() {
-        let src = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n\n## Shot 1.\n\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer{mono}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    @fixer{mono}: b\n  </when>\n  <otherwise>\n    @fixer{mono}: c\n  </otherwise>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n\n## Shot 1.\n\n<match subject=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer{mono}: a\n  </when>\n  <when test=\"$ == 'blunt'\">\n    @fixer{mono}: b\n  </when>\n  <otherwise>\n    @fixer{mono}: c\n  </otherwise>\n</match>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(diags
             .iter()
@@ -591,7 +591,7 @@ mod tests {
         };
         let ediags = expand_document(&mut doc, &defs);
         assert!(ediags.is_empty(), "{ediags:#?}");
-        let lute_syntax::ast::Node::Match(m) = &doc.shots[0].body[0] else {
+        let lute_syntax::ast::Node::Match(m) = &doc.sections[0].body[0] else {
             panic!("first node is the match");
         };
         let tests: Vec<&str> = m
@@ -619,7 +619,7 @@ mod tests {
     // the artifact instead of `@`/`$`-free CEL.
     #[test]
     fn expand_document_traverses_quest_bodies_and_expands_on_objective_slots() {
-        let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match on=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n@narrator: done\n</on>\n</quest>\n";
+        let src = "---\nkind: quest\nstate:\n  run.region: { type: string, default: \"\" }\n  run.act: { type: number, default: 0 }\n---\n\n<quest id=\"q1\" title=\"Q1\">\n<objective id=\"o1\" title=\"O1\" done=\"@inGrove\"/>\n\n<match subject=\"run.region\">\n  <when test=\"$ == 'grove'\">\n  ::set{run.act = 1}\n  </when>\n  <otherwise>\n  ::set{run.act = 0}\n  </otherwise>\n</match>\n\n<on event=\"questComplete\" when=\"@inGrove\">\n@narrator: done\n</on>\n</quest>\n";
         let (mut doc, diags) = lute_syntax::parse(src);
         assert!(
             diags

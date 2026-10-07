@@ -5,11 +5,15 @@
 //! - an `@ref` -> its `defs:` decl site (or `None` for a snapshot-only def, which
 //!   has no in-document site);
 //! - a state path -> its `state:` decl;
-//! - `scene.choices.<id>` -> the declaring `<branch id=…>` node.
+//! - `scene.choices.<id>` -> the declaring `<branch id=…>` node;
+//! - a `::jump{to=…}` value (or a `::label{name=…}` value) -> the `name=` value
+//!   of the `::label` it names (dsl 0.37.0 §3.5).
 //!
 //! [`references_at`] returns every use site:
 //! - an `@ref` -> all `@name` uses across the document's CEL slots;
-//! - a state / choice path -> every `::set` target + CEL occurrence.
+//! - a state / choice path -> every `::set` target + CEL occurrence;
+//! - a label name (on a jump target or a label declaration) -> every
+//!   `::jump{to=…}` value naming it.
 //!
 //! ## Returned spans are byte-only
 //! Both return [`Span`]s whose byte offsets are authoritative; `line`/`column`/
@@ -43,6 +47,9 @@ pub fn definition_at(
     _imports: &SchemaImports,
     off: usize,
 ) -> Option<Span> {
+    if let Some(name) = super::label_name_at(doc, off) {
+        return label_definition(doc, name);
+    }
     let cursor = resolve(doc, off)?;
     match cursor {
         Cursor::SetPath { path, .. } => path_definition(doc, path),
@@ -88,6 +95,15 @@ fn path_definition(doc: &Document, path: &str) -> Option<Span> {
     None
 }
 
+/// The first `::label{name=…}` value declaring `name` (labels share one
+/// document-wide namespace; a duplicate is the checker's diagnostic).
+fn label_definition(doc: &Document, name: &str) -> Option<Span> {
+    super::label_decls(doc)
+        .into_iter()
+        .find(|(label, _)| *label == name)
+        .map(|(_, span)| span)
+}
+
 /// Every use site of the symbol at byte offset `off`. Empty when the cursor is not
 /// on a referable symbol.
 ///
@@ -106,10 +122,31 @@ pub fn references_at(
     off: usize,
     include_declaration: bool,
 ) -> Vec<Span> {
-    let Some(cursor) = resolve(doc, off) else {
-        return Vec::new();
+    let mut uses = if let Some(name) = super::label_name_at(doc, off) {
+        super::jump_targets(doc)
+            .into_iter()
+            .filter(|(target, _)| *target == name)
+            .map(|(_, span)| span)
+            .collect()
+    } else {
+        let Some(cursor) = resolve(doc, off) else {
+            return Vec::new();
+        };
+        cursor_uses(doc, cursor, off)
     };
-    let mut uses = match cursor {
+    if include_declaration {
+        if let Some(decl) = definition_at(doc, snapshot, imports, off) {
+            if !uses.contains(&decl) {
+                uses.push(decl);
+            }
+        }
+    }
+    uses
+}
+
+/// The in-document use set of the symbol under a resolved cursor.
+fn cursor_uses(doc: &Document, cursor: Cursor<'_>, off: usize) -> Vec<Span> {
+    match cursor {
         Cursor::SetPath { path, .. } => path_uses(doc, path),
         Cursor::Cel { slot, .. } => {
             if let Some(r) = ref_at(slot, off) {
@@ -132,15 +169,7 @@ pub fn references_at(
             InterpKind::Reserved => Vec::new(),
         },
         _ => Vec::new(),
-    };
-    if include_declaration {
-        if let Some(decl) = definition_at(doc, snapshot, imports, off) {
-            if !uses.contains(&decl) {
-                uses.push(decl);
-            }
-        }
     }
-    uses
 }
 
 #[cfg(test)]
@@ -159,9 +188,9 @@ mod tests {
         TextIndex::new(text).position(byte).line
     }
 
-    /// A Marina-shaped fixture: a `<branch id="number">` plus a `<match on=…>` on
+    /// A Marina-shaped fixture: a `<branch id="number">` plus a `<match subject=…>` on
     /// its folded choice path, and a `@fond` def used in one arm.
-    const MARINA: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<branch id=\"number\">\n  <choice id=\"blunt\" label=\"Flat\">\n    @fixer: number.\n  </choice>\n  <choice id=\"soft\" label=\"Gentle\">\n    ::set{scene.affect.marina += 1}\n  </choice>\n</branch>\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const MARINA: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<branch id=\"number\">\n  <choice id=\"blunt\" text=\"Flat\">\n    @fixer: number.\n  </choice>\n  <choice id=\"soft\" text=\"Gentle\">\n    ::set{scene.affect.marina += 1}\n  </choice>\n</branch>\n<match subject=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn definition_on_choices_path_jumps_to_branch() {
@@ -198,7 +227,7 @@ mod tests {
 
     #[test]
     fn references_on_ref_used_twice_returns_two() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <when test=\"@fond && true\">\n    @f: b.\n  </when>\n  <otherwise>\n    @f: c.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <when test=\"@fond && true\">\n    @f: b.\n  </when>\n  <otherwise>\n    @f: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@fond").unwrap() + 1; // on the first use
         let refs = references_at(
@@ -217,7 +246,7 @@ mod tests {
 
     #[test]
     fn references_on_state_path_counts_set_and_reads() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n<match on=\"scene.affect.marina\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n<match subject=\"scene.affect.marina\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.marina").unwrap() + set_at + 2;
@@ -228,13 +257,13 @@ mod tests {
             off,
             false,
         );
-        // One `::set` target path + one `<match on=…>` CEL occurrence.
+        // One `::set` target path + one `<match subject=…>` CEL occurrence.
         assert_eq!(refs.len(), 2, "set + read: {refs:?}");
     }
 
     #[test]
     fn references_include_declaration_unions_decl_span() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n<match on=\"scene.affect.marina\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina += 1}\n<match subject=\"scene.affect.marina\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("scene.affect.marina").unwrap() + set_at + 2;
@@ -267,9 +296,9 @@ mod tests {
     }
 
     /// A `<hub>` whose choice body nests a `<branch id="inner">` and a
-    /// `::set{scene.x = 1}`, plus an outer `::set` and a `<match on=…>` on the
+    /// `::set{scene.x = 1}`, plus an outer `::set` and a `<match subject=…>` on the
     /// hub-nested choice path — the D2 recursion fixture.
-    const HUB_NEST: &str = "---\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.x: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.x = 0}\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n::set{scene.x = 1}\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@fixer: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.inner\">\n<otherwise>\n@fixer: x.\n</otherwise>\n</match>\n";
+    const HUB_NEST: &str = "---\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.x: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.x = 0}\n<hub id=\"chat\">\n<choice id=\"ask\" text=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" text=\"A\">\n::set{scene.x = 1}\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@fixer: bye.\n</choice>\n</hub>\n<match subject=\"scene.choices.inner\">\n<otherwise>\n@fixer: x.\n</otherwise>\n</match>\n";
 
     /// D2: go-to-definition on `scene.choices.inner` must resolve to the
     /// `<branch id="inner">` span even though the branch is nested inside a
@@ -417,7 +446,7 @@ mod tests {
     fn references_on_imported_ref_returns_uses() {
         // `@helped` is only imported via `uses:` — its in-document uses are still
         // collected (nav scans the body; the declaration lives in another file).
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    @f: a.\n  </when>\n  <when test=\"@helped && true\">\n    @f: b.\n  </when>\n  <otherwise>\n    @f: c.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n  <when test=\"@helped\">\n    @f: a.\n  </when>\n  <when test=\"@helped && true\">\n    @f: b.\n  </when>\n  <otherwise>\n    @f: c.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@helped").unwrap() + 1;
         let refs = references_at(&doc, &load_core_snapshot(), &schema_imports(), off, false);
@@ -431,7 +460,7 @@ mod tests {
     fn references_on_imported_state_path_returns_uses() {
         // `run.gold` is only imported via `uses:` — its `::set` target + CEL read
         // are still collected.
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n<match on=\"run.gold\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold += 1}\n<match subject=\"run.gold\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let set_at = text.find("::set{").unwrap();
         let off = text[set_at..].find("run.gold").unwrap() + set_at + 2;
@@ -445,7 +474,7 @@ mod tests {
         // imported schema file, for which `SchemaImports` records no span), so
         // go-to-definition degrades gracefully to `None` — never a panic or a
         // phantom span (best-effort, local-only; dsl §9.2).
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@helped\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n  <when test=\"@helped\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@helped").unwrap() + 1;
         assert!(definition_at(&doc, &load_core_snapshot(), &schema_imports(), off).is_none());
@@ -521,5 +550,59 @@ mod tests {
                 .any(|r| &WITH_INTERPS[r.byte_start..r.byte_end] == "{{@fond}}"),
             "the @fond interp is among its own references: {refs:?}"
         );
+    }
+
+    /// Two jumps to `detail`, one to `other`, and the `::label` declarations
+    /// they target — one nested in a branch choice body.
+    const LABELS: &str = "## Shot 1.\n::jump{to=\"detail\"}\n<branch id=\"pick\">\n<choice id=\"a\" text=\"A\">\n::jump{to=\"detail\"}\n</choice>\n<choice id=\"b\" text=\"B\">\n::jump{to=\"other\"}\n</choice>\n</branch>\n## Detail {#detail}\n::label{name=\"detail\"}\n@fixer: here.\n::label{name=\"other\"}\n@fixer: there.\n";
+
+    fn unquoted(text: &str, span: Span) -> &str {
+        text[span.byte_start..span.byte_end].trim_matches('"')
+    }
+
+    #[test]
+    fn definition_on_jump_target_jumps_to_label() {
+        let doc = parsed(LABELS);
+        let off = LABELS.find("to=\"detail\"").unwrap() + "to=\"".len() + 2;
+        let loc =
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
+        let label_line = line_of(LABELS, LABELS.find("::label{name=\"detail\"}").unwrap());
+        assert_eq!(line_of(LABELS, loc.byte_start), label_line);
+        assert_eq!(unquoted(LABELS, loc), "detail");
+    }
+
+    #[test]
+    fn definition_on_unknown_jump_target_is_none() {
+        let text = "## Shot 1.\n::jump{to=\"nowhere\"}\n@fixer: x.\n";
+        let doc = parsed(text);
+        let off = text.find("nowhere").unwrap() + 1;
+        assert!(
+            definition_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).is_none()
+        );
+    }
+
+    #[test]
+    fn references_on_label_name_return_every_jump() {
+        let doc = parsed(LABELS);
+        let snap = load_core_snapshot();
+        let off = LABELS.find("name=\"detail\"").unwrap() + "name=\"".len() + 1;
+        let refs = references_at(&doc, &snap, &SchemaImports::default(), off, false);
+        assert_eq!(refs.len(), 2, "both jumps to `detail`, nested one included: {refs:?}");
+        for r in &refs {
+            assert_eq!(unquoted(LABELS, *r), "detail");
+            assert!(LABELS[..r.byte_start].ends_with("to=") || LABELS[..r.byte_start].ends_with("to=\""));
+        }
+        let with_decl = references_at(&doc, &snap, &SchemaImports::default(), off, true);
+        assert_eq!(with_decl.len(), 3, "jumps + the label declaration: {with_decl:?}");
+    }
+
+    #[test]
+    fn references_on_jump_target_match_label_references() {
+        let doc = parsed(LABELS);
+        let snap = load_core_snapshot();
+        let off = LABELS.find("to=\"other\"").unwrap() + "to=\"".len() + 1;
+        let refs = references_at(&doc, &snap, &SchemaImports::default(), off, true);
+        let names: Vec<&str> = refs.iter().map(|r| unquoted(LABELS, *r)).collect();
+        assert_eq!(names, ["other", "other"], "one jump + the declaration: {refs:?}");
     }
 }

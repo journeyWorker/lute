@@ -95,8 +95,7 @@ pub fn check_project_usage(
             def_bodies.entry(name.as_str()).or_insert(body.as_str());
         }
         let bodies = d
-            .doc
-            .shots
+            .doc.sections
             .iter()
             .map(|s| &s.body)
             .chain(d.doc.quests.iter().map(|q| &q.body))

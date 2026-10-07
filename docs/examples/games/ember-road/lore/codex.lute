@@ -21,7 +21,7 @@ series: codex
 
 <entry id="codexMarrow" target="codex.marrow" category="codex" title="The Marrow folk" when="visited('road.ford')">
   @narrator{code="0010"}: The river people of Harrow's Ford: millers, ferrymen, hedge-witches. They hide deserters from both sides, and have done since before there were sides.
-  <match on="run.rep.marrow">
+  <match subject="run.rep.marrow">
     <when is="2..">
       @narrator{code="0020"}: They call the Warden a friend of the ford, and mean it.
     </when>

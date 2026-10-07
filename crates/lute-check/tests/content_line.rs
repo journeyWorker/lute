@@ -161,14 +161,14 @@ fn bad_enum_names_the_owning_construct_with_its_real_sigil() {
     assert!(!d.message.contains("::narrator"), "{}", d.message);
 
     let dir = diagnostics(&format!(
-        "{HDR}::auto{{character=\"vesna\" action=\"zzz\"}}\n"
+        "{HDR}::actor{{character=\"vesna\" action=\"zzz\"}}\n"
     ));
     let d = dir
         .iter()
         .find(|d| d.code == "E-BAD-ENUM")
-        .expect("a non-member action on ::auto is E-BAD-ENUM");
+        .expect("a non-member action on ::actor is E-BAD-ENUM");
     assert!(
-        d.message.contains("of `::auto`"),
+        d.message.contains("of `::actor`"),
         "a directive's owner keeps the `::` sigil: {}",
         d.message
     );

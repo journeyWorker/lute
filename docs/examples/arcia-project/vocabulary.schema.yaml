@@ -11,7 +11,7 @@ enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [bright, peaceful, tense, romantic, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fadeOut]
+  musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   # Long form (dsl 0.9.0 D-D): the two slots whose members carry semantics the
   # compiler reads — `anchor`'s absent-attr member and `action`'s exiting

@@ -52,9 +52,11 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
         ]),
     );
     d.insert(
-        "musicAction".to_string(),
+        "musicPlayback".to_string(),
         closed(&["start", "change", "stop", "resume", "fadeOut"]),
     );
+    d.insert("framing".to_string(), closed(&["close", "tight"]));
+    d.insert("cameraMove".to_string(), closed(&["shake"]));
     d.insert(
         "anchor".to_string(),
         Domain {
@@ -105,7 +107,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
 /// `load_core_snapshot()` stamps `snap.version` before returning, so folding
 /// the vocabulary in leaves that stamp describing a snapshot we no longer have
 /// (`snap.enums` gains `action`, and `enums` is hashed). Re-stamp so every
-/// fixture using this helper emits the `capabilityVersion` of the snapshot it
+/// fixture using this helper emits the `capabilitySnapshot` of the snapshot it
 /// actually compiled against.
 pub fn vocab_snapshot() -> CapabilitySnapshot {
     let mut snap = load_core_snapshot();
@@ -126,7 +128,7 @@ mod tests {
     /// the test vocabulary MUST NOT present the bare core's `version`.
     /// `load_core_snapshot()` stamps before we fold the domains in, so the
     /// stamp has to be recomputed after the fold or every compile path that
-    /// switched to this helper would emit a stale `capabilityVersion`.
+    /// switched to this helper would emit a stale `capabilitySnapshot`.
     #[test]
     fn vocab_snapshot_restamps_its_content_version() {
         let core = load_core_snapshot();

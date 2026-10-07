@@ -240,7 +240,7 @@ pub fn handlers_skipped(
                     .filter(|s| matches!(s.as_str(), "complete" | "failed"))
                 {
                     out.push(json!({
-                        "addr": str_of(cmd, "addr"),
+                        "position": str_of(cmd, "position"),
                         "kind": "handlerSkipped",
                         "quest": q,
                         "event": name,

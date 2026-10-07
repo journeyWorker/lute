@@ -12,7 +12,7 @@ priority: 15
 ## The reed beds behind the pier
 
 ::bg{location="reed_beds" time="morning"}
-::auto{character="theo" anchor="center" action="fadeInUp"}
+::actor{character="theo" anchor="center" action="fadeInUp"}
 ::set{run.seen.theo = run.day}
 @theo{code="0010" emotion="happy"}: Qualified hands came back.
 @narrator{code="0010"}: He has a bundle of green reed already cut and tied with fishing line, as if he knew.
@@ -20,16 +20,16 @@ priority: 15
 ::set{run.lantern.frame = true}
 ::set{run.aff.theo += 1}
 
-<match on="run.day">
+<match subject="run.day">
   <when is="..2">
     @theo{code="0030" emotion="shy"}: Hey. Wednesday night, low tide, the water off the lighthouse does a thing. Glows. It only happens a few nights a summer.
     @theo{code="0040" emotion="shy"}: I go every year. By myself, usually.
     <branch id="lighthouseAsk" prompt="Theo is suddenly very interested in his knife.">
-      <choice id="yes" label="“Wednesday night. I'll be there.”">
+      <choice id="yes" text="“Wednesday night. I'll be there.”">
         ::accept{quest="theoLighthouse"}
         @theo{code="0050" emotion="happy"}: Bring a jumper. It's cold at the top.
       </choice>
-      <choice id="no" label="“I'll probably be gluing things.”">
+      <choice id="no" text="“I'll probably be gluing things.”">
         @theo{code="0060" emotion="sad"}: Right. Yeah. Lanterns.
       </choice>
     </branch>
@@ -39,4 +39,4 @@ priority: 15
   </otherwise>
 </match>
 
-::auto{character="theo" action="fadeOut"}
+::actor{character="theo" action="fadeOut"}

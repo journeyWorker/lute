@@ -62,18 +62,18 @@ fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
     }
 }
 
-/// `::auto` whose explicit `anchor` equals the `anchor` domain's declared
+/// `::actor` whose explicit `anchor` equals the `anchor` domain's declared
 /// `default:` — until 0.10.0 §12.3 the one shape `auto-anchor-on-show` warned
 /// about, and now silent on every leg.
-const CONFLICT_BODY: &str = "::auto{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
+const CONFLICT_BODY: &str = "::actor{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
 
 const SCENE_INLINE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
-## Shot 1.\n::auto{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
+## Shot 1.\n::actor{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
 
 const SCENE_USE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 components: [c.lute]\n---\n## Shot 1.\n::use{component=\"c\"}\n";
 
-/// The `sprite` records — `::auto` lowers to ONE of them carrying the resolved
+/// The `sprite` records — `::actor` lowers to ONE of them carrying the resolved
 /// `anchor`, whether the author wrote it or `auto-anchor-on-show` injected it.
 /// A double injection would show up here as a second record or a lost anchor.
 fn sprite_records(artifact: &lute_compile::ExecutionIr) -> Vec<serde_json::Value> {
@@ -81,7 +81,7 @@ fn sprite_records(artifact: &lute_compile::ExecutionIr) -> Vec<serde_json::Value
         .commands
         .iter()
         .map(|c| serde_json::to_value(c).unwrap())
-        .filter(|v| v["kind"] == "sprite")
+        .filter(|v| v["kind"] == "actor")
         .collect()
 }
 

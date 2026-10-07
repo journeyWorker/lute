@@ -73,7 +73,7 @@ impl<'a> DocCmds<'a> {
         let at = list
             .iter()
             .enumerate()
-            .filter_map(|(i, c)| c.get("addr").and_then(Json::as_str).map(|a| (a, i)))
+            .filter_map(|(i, c)| c.get("position").and_then(Json::as_str).map(|a| (a, i)))
             .collect();
         DocCmds {
             list,
@@ -98,13 +98,10 @@ impl<'a> DocCmds<'a> {
     }
 }
 
-/// A command the compiler injected (`provenance.injected`: a preload
+/// A command the compiler injected (it carries `provenance`: a preload
 /// lookahead, a pose reset, a `::bg` auto-hide) rather than one authored.
 fn is_injected(cmd: &Json) -> bool {
-    cmd.get("provenance")
-        .and_then(|p| p.get("injected"))
-        .and_then(Json::as_bool)
-        == Some(true)
+    cmd.get("provenance").is_some()
 }
 
 /// What a `when=` guard wraps: the one-arm match whose `$` test is the guard
@@ -144,7 +141,7 @@ fn guarded<'a>(m: &Json, cmds: &DocCmds<'a>) -> Option<Guarded<'a>> {
     if !jumps_to_converge(cmds.authored_from(str_of(m, "otherwise")).next()) {
         return None;
     }
-    if let Some(text) = cmds.authored.and_then(|a| a.get(str_of(m, "addr"))) {
+    if let Some(text) = cmds.authored.and_then(|a| a.get(str_of(m, "position"))) {
         return Some(Guarded::Use(text));
     }
     let mut body = cmds.authored_from(str_of(arm, "target"));
@@ -189,7 +186,7 @@ fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
         "accept" => format!("::accept{{quest=\"{}\"}}", str_of(leaf, "quest")),
         kind => cmds
             .authored
-            .and_then(|a| a.get(str_of(leaf, "addr")))
+            .and_then(|a| a.get(str_of(leaf, "position")))
             .cloned()
             .unwrap_or_else(|| lowered(kind, Some(leaf))),
     }
@@ -199,7 +196,7 @@ fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
 /// names what injected it).
 fn lowered(kind: &str, orig: Option<&Json>) -> String {
     let attrs = orig
-        .map(|c| render_attrs(c, &["addr", "kind"]))
+        .map(|c| render_attrs(c, &["position", "kind", "family"]))
         .unwrap_or_default();
     let injected = orig
         .filter(|c| is_injected(c))
@@ -217,7 +214,7 @@ fn lowered(kind: &str, orig: Option<&Json>) -> String {
 /// with the original command's authored attrs (looked up by `addr`).
 /// Staging prints as authored (`::bg{…}`, not the lowered `::background`,
 /// 0.23.1) unless `--ir`. `None` for a record that is not authored source:
-/// a staging record the compiler injected (`provenance.injected`) — save the
+/// a staging record the compiler injected (it carries `provenance`) — save the
 /// first exit of a `::clear`, which carries `::clear` as authored (dsl
 /// 0.24.0 §4) —, a
 /// bundle `beat` record (the `→` line names the beat), or the synthetic
@@ -225,16 +222,16 @@ fn lowered(kind: &str, orig: Option<&Json>) -> String {
 /// verbatim.
 fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
     let kind = str_of(rec, "kind");
-    let orig = cmds.get(str_of(rec, "addr"));
+    let orig = cmds.get(str_of(rec, "position"));
     let authored = || {
         cmds.authored
             .filter(|_| !cmds.ir)
-            .and_then(|a| a.get(str_of(rec, "addr")))
+            .and_then(|a| a.get(str_of(rec, "position")))
             .cloned()
     };
     Some(match kind {
         "line" => lute_trace::exec::said_line(rec, orig),
-        "background" | "music" | "sfx" | "vfx" | "sprite" | "camera" | "cut" | "video" => {
+        "bg" | "music" | "sfx" | "vfx" | "actor" | "camera" | "cg" | "video" | "sequence" => {
             if !cmds.ir && orig.is_some_and(is_injected) {
                 return authored();
             }
@@ -276,7 +273,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 label.push_str(&format!(" \"{prompt}\""));
             }
             if let Some(t) = orig
-                .and_then(|c| c.get("timeoutSec"))
+                .and_then(|c| c.get("timeout"))
                 .and_then(Json::as_u64)
             {
                 label.push_str(&format!(" ({t}s)"));
@@ -949,7 +946,7 @@ pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) 
         for rec in records.iter().filter(|r| str_of(r, "kind") == "line") {
             acc.0.push_str(&lute_trace::exec::said_line(
                 rec,
-                cmds.get(str_of(rec, "addr")),
+                cmds.get(str_of(rec, "position")),
             ));
             acc.0.push('\n');
             acc.1 += 1;
@@ -993,7 +990,7 @@ fn said_raised(p: &ExecProject, acc: &mut (String, usize), beat: &Presented) {
         {
             acc.0.push_str(&lute_trace::exec::said_line(
                 rec,
-                cmds.get(str_of(rec, "addr")),
+                cmds.get(str_of(rec, "position")),
             ));
             acc.0.push('\n');
             acc.1 += 1;

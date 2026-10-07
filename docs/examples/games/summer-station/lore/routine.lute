@@ -10,7 +10,7 @@ title: The station's routine
 <beat id="afternoon" on="slotStart" title="One o'clock readings" priority="10" once="false" when="run.slot == 'afternoon'">
   ::bg{location="deck" time="afternoon"}
   ::use{component="reading" hour="One o'clock" instance="use-001"}
-  <match on="run.weather">
+  <match subject="run.weather">
     <when is="storm">
       @narrator{code="0010"}: Nobody goes anywhere this afternoon. Ines has the kettle on and the charts out.
     </when>
@@ -22,7 +22,7 @@ title: The station's routine
 
 <beat id="night" on="slotStart" title="Seven o'clock, and supper" priority="10" once="false" when="run.slot == 'night' && !(run.day == 7)">
   ::bg{location="kitchen" time="night"}
-  ::music{action="start" mood="peaceful" volume="down"}
+  ::music{playback="start" mood="peaceful" volume="down"}
   @narrator{code="0010"}: The seven o'clock readings, then supper: lentils, black bread, whatever Pell brought up last.
   @ines{code="0010" emotion="tired" when="run.weather == 'storm'"}: Eat. The wind will still be there after.
   @ines{code="0020" emotion="neutral" when="run.weather != 'storm'"}: Clear tonight. Sol will be insufferable about it.
@@ -31,8 +31,8 @@ title: The station's routine
 // The day closes. The engine raises dayEnd BEFORE it advances run.day.
 <beat id="dayClose" on="dayEnd" title="Lamps out" once="false">
   ::bg{location="bunk" time="night"}
-  ::music{action="fadeOut"}
-  <match on="clock.weekday">
+  ::music{playback="fadeOut"}
+  <match subject="clock.weekday">
     <when is="5">
       @narrator{code="0010"}: You lie awake listening to the village band practising, very far below, very badly.
     </when>

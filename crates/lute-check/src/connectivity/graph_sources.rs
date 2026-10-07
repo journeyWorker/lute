@@ -131,7 +131,7 @@ pub(super) fn accept_sources<'a>(
             .map(NodeId::Scene)
             .filter(|s| nodes.contains_key(s))
         {
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 crate::accept::walk(&shot.body, &mut |d| record(d, &source, None));
             }
         }

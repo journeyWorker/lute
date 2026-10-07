@@ -95,16 +95,17 @@ pub struct ProjectConfig {
     /// document (D-Z).
     pub defaults_diags: Vec<ResolveDiag>,
     /// dsl 0.28.0 §4: `E-CHAPTERS` diagnostics of a malformed `chapters:`
-    /// (its shape, or the retired `sequence:` key; the ids are checked
-    /// project-wide against the scenes). Reported once per manifest,
+    /// (its shape; the ids are checked project-wide against the scenes).
+    /// Reported once per manifest,
     /// located: by `check-project` beside the documents (never fatal to
     /// their check), by the commands that build a project (`compile --all`,
     /// `play`) as a gate.
     pub chapter_diags: Vec<ChapterDiag>,
     /// dsl 0.28.0 §1 (T1-1): `E-MANIFEST-KEY` — every key of the manifest
     /// outside the ones it defines (top level, a profile, `identity:`),
-    /// located. The key is dropped, so the rest of the manifest still loads;
-    /// the manifest is invalid.
+    /// located — and `E-REMOVED-PROJECT-KEY` for the removed `sequence:`
+    /// (dsl 0.37.0 §2.2). The key is dropped, so the rest of the manifest
+    /// still loads; the manifest is invalid.
     pub key_diags: Vec<ResolveDiag>,
     /// Typed project-level constraints and declaration diagnostics.
     pub constraints: Vec<ConstraintDecl>,
@@ -166,9 +167,9 @@ pub const E_MANIFEST_KEY: &str = "E-MANIFEST-KEY";
 /// shape. The load fails.
 pub const E_MANIFEST: &str = "E-MANIFEST";
 
-/// The top-level keys of `lute.project.yaml`. `sequence` is retired
-/// (`chapters:`) and refused by [`resolve_chapters`], not here.
-pub const MANIFEST_KEYS: [&str; 10] = [
+/// The top-level keys of `lute.project.yaml`. The removed `sequence:` is
+/// [`E_REMOVED_PROJECT_KEY`], refused before the unknown-key pass.
+pub const MANIFEST_KEYS: [&str; 9] = [
     "defaultProfile",
     "profiles",
     "pluginsDir",
@@ -177,9 +178,12 @@ pub const MANIFEST_KEYS: [&str; 10] = [
     "defaults",
     "chapters",
     "permissions",
-    "sequence",
     "constraints",
 ];
+
+/// dsl 0.37.0 §2.2/§4: the removed project key `sequence:`. It is never
+/// read; the message names `chapters:`, where every chain is declared.
+pub const E_REMOVED_PROJECT_KEY: &str = "E-REMOVED-PROJECT-KEY";
 
 /// The keys of one `profiles:` entry.
 const PROFILE_KEYS: [&str; 3] = ["extends", "plugins", "permissions"];
@@ -223,10 +227,6 @@ struct RawProject {
     defaults: Option<serde_yaml::Mapping>,
     #[serde(default)]
     chapters: Option<serde_yaml::Value>,
-    /// Retired in dsl 0.28.0 for `chapters:`; read only to refuse it with
-    /// the new spelling.
-    #[serde(default)]
-    sequence: Option<serde_yaml::Value>,
     #[serde(default)]
     constraints: Option<serde_yaml::Value>,
     #[serde(default)]
@@ -286,7 +286,7 @@ pub const IDENTITY_TOKENS: [&str; 3] = ["prefix", "speaker", "code"];
 /// `facts`/`rules`/`defs` already have a composition mechanism — hoist them
 /// into a schema and default `uses:`. `profile`/`plugins` are already
 /// project-level. `component`/`params` are per-file identity.
-pub const DEFAULTABLE_KEYS: [&str; 12] = [
+pub const DEFAULTABLE_KEYS: [&str; 13] = [
     "character",
     "components",
     "contentLang",
@@ -295,6 +295,7 @@ pub const DEFAULTABLE_KEYS: [&str; 12] = [
     "extra",
     "kind",
     "luteVersion",
+    "monoSpeakers",
     "pov",
     "questTier",
     "season",
@@ -392,9 +393,6 @@ pub struct Chain {
     /// reorder scenes — but its ids are kept, so a listed scene is never told
     /// to list itself, and they are still checked against the scenes.
     pub applied: bool,
-    /// Read from the retired `sequence:` key: never applied, and its ids are
-    /// not checked (the rename error is the one report).
-    pub retired: bool,
 }
 
 impl Chain {
@@ -433,7 +431,7 @@ impl Chain {
 /// text). Chain indexes count the `chapters:` list from 0.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChapterAnchor {
-    /// A top-level key: `chapters:` itself, or the retired `sequence:`.
+    /// A top-level key: `chapters:` itself.
     Top(String),
     /// The `n`th chain's list item.
     Chain(usize),
@@ -451,7 +449,7 @@ pub struct ChapterDiag {
     pub anchor: ChapterAnchor,
 }
 
-/// A malformed `chapters:` (dsl 0.28.0 §4) or the retired `sequence:`: not a
+/// A malformed `chapters:` (dsl 0.28.0 §4): not a
 /// list of `{ on, scenes }` chains, an occasion or entry that is no id, a
 /// scene listed twice, two chains on one occasion, or (project-wide, `lute
 /// check-project`) a listed id no scene declares, a listed scene whose own
@@ -486,60 +484,15 @@ fn entry_hint(text: &str) -> Option<&str> {
     is_scene_word(inner).then_some(inner)
 }
 
-/// Resolve the `chapters:` value (and refuse the retired `sequence:`). Each
+/// Resolve the `chapters:` value. Each
 /// chain resolves on its own: a malformed one is reported and kept
 /// unapplied, the others still apply; a repeated id alone is reported and
 /// its later occurrence dropped. Each diagnostic carries its
 /// [`ChapterAnchor`]; `lute check-project` reports them located, beside its
 /// checks of the documents.
-fn resolve_chapters(
-    raw: Option<serde_yaml::Value>,
-    retired: Option<serde_yaml::Value>,
-) -> (Vec<Chain>, Vec<ChapterDiag>) {
+fn resolve_chapters(raw: Option<serde_yaml::Value>) -> (Vec<Chain>, Vec<ChapterDiag>) {
     let mut diags = Vec::new();
     let mut chains: Vec<Chain> = Vec::new();
-    if let Some(old) = retired {
-        let on = ["on", "occasion"]
-            .iter()
-            .find_map(|k| old.get(k)?.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let scenes: Vec<String> = ["scenes", "scene"]
-            .iter()
-            .find_map(|k| old.get(k)?.as_sequence())
-            .into_iter()
-            .flatten()
-            .filter_map(|s| s.as_str().filter(|s| is_scene_word(s)).map(str::to_string))
-            .collect();
-        // TH28-8: the rewrite built from the author's own occasion and
-        // scenes, with a placeholder only for what the old block lacks.
-        let line = format!(
-            "chapters: [{{ on: {}, scenes: [{}] }}]",
-            if on.is_empty() { "<occasion>" } else { &on },
-            if scenes.is_empty() {
-                "<scene id>, …".to_string()
-            } else {
-                scenes.join(", ")
-            }
-        );
-        diags.push(ChapterDiag {
-            message: format!(
-                "`sequence:` is now `chapters:`, a list of chains, and its `occasion:` is `on:` \
-                 — write `{line}`"
-            ),
-            anchor: ChapterAnchor::Top("sequence".to_string()),
-        });
-        // Keep the old block's ids (unapplied, unchecked) so the scenes it
-        // lists hear about the rename, not that they are listed nowhere.
-        if raw.is_none() {
-            chains.push(Chain {
-                on,
-                scenes,
-                applied: false,
-                retired: true,
-            });
-        }
-    }
     let Some(raw) = raw else {
         return (chains, diags);
     };
@@ -665,7 +618,7 @@ fn resolve_chain(
     let label = chain_label(index, &chain.on);
     if let Some(j) = earlier
         .iter()
-        .position(|c| !c.retired && !chain.on.is_empty() && c.on == chain.on)
+        .position(|c| !chain.on.is_empty() && c.on == chain.on)
     {
         ok = false;
         err(
@@ -686,7 +639,7 @@ fn resolve_chain(
                         let elsewhere = earlier
                             .iter()
                             .enumerate()
-                            .find(|(_, c)| !c.retired && c.scenes.iter().any(|s| s == id));
+                            .find(|(_, c)| c.scenes.iter().any(|s| s == id));
                         if chain.scenes.iter().any(|s| s == id) {
                             err(
                                 format!(
@@ -998,6 +951,11 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         "character" | "pov" | "luteVersion" | "contentLang" => {
             v.as_str().map(|_| ()).ok_or("a string")
         }
+        // dsl 0.37.0 §3.4: the speakers beside the POV who may speak `mono`.
+        "monoSpeakers" => match v.as_sequence() {
+            Some(items) if items.iter().all(serde_yaml::Value::is_string) => Ok(()),
+            _ => Err("a list of speaker ids"),
+        },
         // dsl 0.26.0 §2.4: the `tier=` a `<quest>` without one takes;
         // dsl 0.28.0 §5: any tier a `<quest tier=>` takes, `season:<name>`
         // included (the season itself is checked at each quest).
@@ -1309,7 +1267,7 @@ fn manifest_key_message(key: &str) -> String {
              `defaults:`"
         );
     }
-    if crate::suggest::nearest(key, ["sequence", "sequences"], 2).is_some() {
+    if crate::suggest::nearest(key, ["sequences"], 2).is_some() {
         return format!(
             "`{key}:` is not a manifest key — every chain goes in the one `chapters:` list"
         );
@@ -1317,8 +1275,7 @@ fn manifest_key_message(key: &str) -> String {
     if matches!(key, "plugins" | "extends") {
         return format!("`{key}:` belongs to a profile — `profiles: {{ <name>: {{ {key}: … }} }}`");
     }
-    // `sequence` (retired, the last key) is never suggested.
-    let current = &MANIFEST_KEYS[..MANIFEST_KEYS.len() - 1];
+    let current = &MANIFEST_KEYS[..];
     let hint = crate::suggest::did_you_mean(key, current.iter().copied());
     format!(
         "unknown key `{key}` in lute.project.yaml{hint} (it takes {})",
@@ -1512,6 +1469,16 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     };
     let locate = |at: &[&str]| crate::yaml_text::key_span(&text, at);
     let mut key_diags = Vec::new();
+    if map.remove("sequence").is_some() {
+        key_diags.push(ResolveDiag {
+            span: locate(&["sequence"]),
+            code: E_REMOVED_PROJECT_KEY.to_string(),
+            message: "`sequence:` was removed from lute.project.yaml (dsl 0.37.0 §2.2) and is \
+                      never read; 0.37 has no replacement key — declare each chain in \
+                      `chapters: [{ on: <occasion>, scenes: [<scene id>, …] }]`"
+                .to_string(),
+        });
+    }
     drop_unknown_keys(
         &mut map,
         &MANIFEST_KEYS,
@@ -1608,7 +1575,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     let (identity_renames, identity_rename_diags) =
         resolve_identity_renames(identity_raw.and_then(|i| i.renames), &text, &locate);
     let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path);
-    let (chapters, chapter_diags) = resolve_chapters(raw.chapters, raw.sequence);
+    let (chapters, chapter_diags) = resolve_chapters(raw.chapters);
     let (constraints, constraint_diags) = parse_constraints(raw.constraints.as_ref(), &text);
     let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
     let mut defaults = defaults.with_chapters(chapters);

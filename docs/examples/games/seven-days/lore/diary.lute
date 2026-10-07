@@ -12,7 +12,7 @@ midnight). A heading, then one line for each person Sol saw today
 </beat>
 
 <beat id="person" on="dayEnd" for="kind:person" once="false" title="Diary: who I saw" when="run.seen[occasion.target] == run.day">
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="ines">
       @sol{code="0010" mono}: Ines. {{run.aff.ines:plural(# kind word|# kind words)}}, if I'm counting, which I'm not.
     </when>

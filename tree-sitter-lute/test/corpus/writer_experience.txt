@@ -12,7 +12,7 @@ when= content-line attr is an ordinary cel_attr (0.4.0 T16, spec §3 B1: zero ne
     (text)))
 
 ==================
-component-file <match on="@tier"> with three <when is> arms is an ordinary match (0.4.0 T16, spec §3 B1)
+component-file <match subject="@tier"> with three <when is> arms is an ordinary match (0.4.0 T16, spec §3 B1)
 ==================
 ---
 component: reaction
@@ -22,7 +22,7 @@ params:
 
 ## Scene 1.
 
-<match on="@tier">
+<match subject="@tier">
   <when is="fond">
     @marina{emotion="delighted"}: You remembered! You actually remembered.
   </when>
@@ -36,8 +36,8 @@ params:
 ----------------------------------------
 (source_file
   (frontmatter)
-  (shot
-    (text)
+  (section
+    (heading)
     (match
       (cel_attr (cel_key) (cel_string (ref)))
       (when

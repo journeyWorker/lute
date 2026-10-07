@@ -10,7 +10,7 @@ title: Route 12, the Lakeshore (Fairhaven to the sea gate)
 
 <beat id="arrive" on="enterRoute" target="route.r12" title="The Lakeshore" priority="10" once="run">
   ::bg{location="route-12" time="day"}
-  ::music{action="change" mood="calm" volume="down"}
+  ::music{playback="change" mood="calm" volume="down"}
   @narrator{code="0010"}: Lake Hush lies flat as a mirror. The road hugs its shore all the way to the sea gate, where the north begins.
   @narrator{code="0020" when="!holds('hasItem', ['wakingFlute'])"}: Halfway along, the road simply stops, against a wall of fur that rises and falls. Something enormous is asleep across it, snoring gently.
 </beat>

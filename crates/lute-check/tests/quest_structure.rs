@@ -432,7 +432,7 @@ fn failed_by_and_objective_failed_read_as_always_assigned_typed_paths() {
     }
     let src = scene_doc(
         "camp.epilogue",
-        "<match on=\"quest.road.failedBy\">\n<when is=\"unset\">\n@narrator: Still open.\n</when>\n\
+        "<match subject=\"quest.road.failedBy\">\n<when is=\"unset\">\n@narrator: Still open.\n</when>\n\
          <when is=\"superseded|cascade\">\n@narrator: Overtaken.\n</when>\n\
          <otherwise>\n@narrator: Lost.\n</otherwise>\n</match>\n",
     );
@@ -453,7 +453,7 @@ fn a_failed_by_literal_outside_its_members_is_a_literal_domain_error() {
     assert!(with_code(&ds, "E-ARM-DEAD").is_empty(), "{ds:?}");
     let src = scene_doc(
         "camp.epilogue",
-        "<match on=\"quest.road.failedBy\">\n<when is=\"supersed\">\n@narrator: x\n</when>\n\
+        "<match subject=\"quest.road.failedBy\">\n<when is=\"supersed\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: y\n</otherwise>\n</match>\n",
     );
     let ds = diags(&src);

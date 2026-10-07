@@ -4,10 +4,11 @@
 //! [`lute_core_span::TextIndex`], which owns the byte -> line math) that emits one
 //! [`FoldingRange`] per FOLDABLE multi-line region:
 //!
-//! - every shot (`## …` heading through its last body node);
+//! - every section (`## …` heading, `{#id}` suffix included, through its last
+//!   body node);
 //! - every `<...>` logic/staging block: `<branch>`, `<match>`, `<timeline>`;
 //! - every `<track>` inside a `<timeline>`;
-//! - every `<quest>` (dsl 0.2.0 §6.3, a top-level declaration like a shot) and
+//! - every `<quest>` (dsl 0.2.0 §6.3, a top-level declaration like a section) and
 //!   its nested `<on>`/`<objective>` bodies (dsl 0.2.0 §4, §6.4);
 //! - every lore `<entry>` (dsl 0.19.0 §3, a top-level declaration like a
 //!   quest) and every lore `<beat>` bundle (dsl 0.23.0 §4), with the blocks
@@ -17,7 +18,7 @@
 //! is nothing to collapse), so single-line blocks are dropped. `<choice>` /
 //! `<when>` / `<otherwise>` bodies are traversed for the nested `<branch>`/
 //! `<match>`/`<timeline>` they may contain, but the arm/choice wrappers
-//! themselves are not folded — the brief scopes folds to shots, `<...>` blocks,
+//! themselves are not folded — the brief scopes folds to sections, `<...>` blocks,
 //! and per-`<track>`, matching the architecture's structural units.
 //!
 //! ## Why a `TextIndex`
@@ -33,16 +34,16 @@ use tower_lsp_server::ls_types::{FoldingRange, FoldingRangeKind};
 
 /// Every foldable multi-line region of `doc`, as 0-based line ranges.
 ///
-/// Order follows a depth-first document walk: each shot's own range is emitted
-/// before the ranges of the blocks nested inside it.
+/// Order follows a depth-first document walk: each section's own range is
+/// emitted before the ranges of the blocks nested inside it.
 pub fn folding_ranges(doc: &Document, idx: &TextIndex) -> Vec<FoldingRange> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
-        push_fold(&mut out, &shot.span, idx);
-        fold_nodes(&shot.body, idx, &mut out);
+    for section in &doc.sections {
+        push_fold(&mut out, &section.span, idx);
+        fold_nodes(&section.body, idx, &mut out);
     }
     // `<quest>` is a top-level declaration (dsl 0.2.0 §6.3), not a `Node` — it
-    // gets its own fold entry point mirroring the shot loop above.
+    // gets its own fold entry point mirroring the section loop above.
     for quest in &doc.quests {
         push_fold(&mut out, &quest.span, idx);
         fold_nodes(&quest.body, idx, &mut out);
@@ -144,13 +145,13 @@ mod tests {
         let (doc, _) = parse(text);
         let idx = TextIndex::new(text);
         let ml = |s: &Span| idx.position(s.byte_end).line > idx.position(s.byte_start).line;
-        let (mut shots, mut timelines, mut tracks, mut branches, mut matches) = (0, 0, 0, 0, 0);
-        for shot in &doc.shots {
-            if ml(&shot.span) {
-                shots += 1;
+        let (mut sections, mut timelines, mut tracks, mut branches, mut matches) = (0, 0, 0, 0, 0);
+        for section in &doc.sections {
+            if ml(&section.span) {
+                sections += 1;
             }
             count_nodes(
-                &shot.body,
+                &section.body,
                 &idx,
                 &mut timelines,
                 &mut tracks,
@@ -158,7 +159,7 @@ mod tests {
                 &mut matches,
             );
         }
-        (shots, timelines, tracks, branches, matches)
+        (sections, timelines, tracks, branches, matches)
     }
 
     fn count_nodes(
@@ -208,21 +209,21 @@ mod tests {
     }
 
     /// ACCEPTANCE: fold count on the marina example. The document contributes
-    /// 5 shots + 1 `<timeline>` + 4 `<track>`s + 1 `<branch>` + 1 `<match>` = 12
-    /// foldable multi-line regions. We assert the exact per-category breakdown
-    /// (so a regression that drops or double-counts a category is caught) and the
-    /// total.
+    /// 5 sections + 1 `<timeline>` + 4 `<track>`s + 1 `<branch>` + 1 `<match>` =
+    /// 12 foldable multi-line regions. We assert the exact per-category
+    /// breakdown (so a regression that drops or double-counts a category is
+    /// caught) and the total.
     #[test]
-    fn marina_fold_count_is_shots_plus_blocks() {
-        let (shots, timelines, tracks, branches, matches) = expected_multiline(MARINA);
+    fn marina_fold_count_is_sections_plus_blocks() {
+        let (sections, timelines, tracks, branches, matches) = expected_multiline(MARINA);
         assert_eq!(
-            (shots, timelines, tracks, branches, matches),
+            (sections, timelines, tracks, branches, matches),
             (5, 1, 4, 1, 1)
         );
-        let expected = shots + timelines + tracks + branches + matches;
+        let expected = sections + timelines + tracks + branches + matches;
         assert_eq!(
             expected, 12,
-            "5 shots + 1 timeline + 4 tracks + 1 branch + 1 match"
+            "5 sections + 1 timeline + 4 tracks + 1 branch + 1 match"
         );
         assert_eq!(folds(MARINA).len(), expected);
     }
@@ -251,10 +252,10 @@ mod tests {
         assert_eq!(tl.kind, Some(FoldingRangeKind::Region));
     }
 
-    /// Each of the five shots yields exactly one shot-level fold, starting on its
-    /// `## ` heading line.
+    /// Each of the five sections yields exactly one section-level fold, starting
+    /// on its `## ` heading line.
     #[test]
-    fn every_shot_folds_from_its_heading() {
+    fn every_section_folds_from_its_heading() {
         let idx = TextIndex::new(MARINA);
         let all = folds(MARINA);
         for marker in [
@@ -273,14 +274,26 @@ mod tests {
         }
     }
 
-    /// Leaf nodes never contribute a fold: a shot whose body is a single `:line`
-    /// is two source lines (heading + line), so the SHOT folds — but the lone
-    /// `:line` node inside it does not add a second fold.
+    /// Leaf nodes never contribute a fold: a section whose body is a single
+    /// `:line` is two source lines (heading + line), so the SECTION folds — but
+    /// the lone `:line` node inside it does not add a second fold.
     #[test]
     fn leaf_nodes_do_not_fold() {
         let text = "## Shot 1.\n@narrator: only prose.\n";
         let all = folds(text);
-        assert_eq!(all.len(), 1, "only the shot folds; the lone :line does not");
+        assert_eq!(all.len(), 1, "only the section folds; the lone :line does not");
+    }
+
+    /// dsl 0.37.0 §3.1: a section carrying a `{#id}` suffix folds from its
+    /// heading like any other; every section folds.
+    #[test]
+    fn sections_with_ids_fold_from_their_heading() {
+        let text = "## Intro {#intro}\n@narrator: a.\n@narrator: b.\n## Detail {#detail}\n::label{name=\"x\"}\n@narrator: c.\n## Plain\n@narrator: d.\n";
+        let all = folds(text);
+        let starts: Vec<u32> = all.iter().map(|f| f.start_line).collect();
+        assert_eq!(starts, [0, 3, 6], "one fold per section: {all:?}");
+        assert_eq!(all[0].end_line, 2);
+        assert_eq!(all[1].end_line, 5);
     }
 
     // ---- dsl 0.2.0 §6.3/§4: quest / on / objective folding ----
@@ -293,7 +306,7 @@ mod tests {
 
     /// ACCEPTANCE: a `<quest>` folds its own multi-line span, and its nested
     /// `<on>`/`<objective>` bodies fold too — before the fix, `folding_ranges`
-    /// walked `doc.shots` only (a quest doc has none) and `<on>`/`<objective>`
+    /// walked `doc.sections` only (a quest doc has none) and `<on>`/`<objective>`
     /// were Plan-A no-ops, so a quest doc folded NOTHING.
     #[test]
     fn quest_and_on_and_objective_all_fold() {
@@ -325,7 +338,7 @@ mod tests {
     #[test]
     fn entry_and_its_match_fold() {
         let text = "---\nkind: lore\n---\n\
-            <entry id=\"e\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <entry id=\"e\">\n<match subject=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
             <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
         let idx = TextIndex::new(text);
         let all = folds(text);

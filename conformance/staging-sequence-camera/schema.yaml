@@ -1,0 +1,18 @@
+enums:
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeIn, fadeOut]
+    exits: [fadeOut]
+  emotion: [calm, shy]
+  costume: [coat]
+  framing: [close, wide]
+  cameraMove: [pan, shake]
+  transition: [cut, fade]
+  cgLayout: [full, inset]
+  musicPlayback: [start, stop]
+  mood: [calm]
+  volume: [normal]
+  vfxType: [whiteOut]
+  sequence: [harborArrival, ferryLeaves]

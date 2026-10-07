@@ -12,12 +12,13 @@ use lute_syntax::ast::{Arm, ClipNode, Directive, Document, Node};
 /// The core directive a builtin lowering hook belongs to.
 fn core_tag(hook: &str) -> Option<&'static str> {
     Some(match hook {
-        "autoStage" => "auto",
+        "actorStage" => lute_manifest::core::ACTOR_DIRECTIVE,
         "cameraTransform" => "camera",
         "clearStage" => lute_manifest::core::CLEAR_DIRECTIVE,
         "end" => lute_manifest::core::END_DIRECTIVE,
-        "mark" => lute_manifest::core::MARK_DIRECTIVE,
-        "next" => lute_manifest::core::NEXT_DIRECTIVE,
+        "label" => lute_manifest::core::LABEL_DIRECTIVE,
+        "jump" => lute_manifest::core::JUMP_DIRECTIVE,
+        "sequence" => lute_manifest::core::SEQUENCE_DIRECTIVE,
         _ => return None,
     })
 }
@@ -60,7 +61,7 @@ pub fn canonicalize_builtin_directives(doc: &mut Document, snapshot: &Capability
             }
         }
     }
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         walk(&mut shot.body, &retag);
     }
     for q in &mut doc.quests {

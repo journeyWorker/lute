@@ -10,7 +10,7 @@
 //!
 //! ## Canonical pre-order (per shot body, per node in source order)
 //! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
-//!   `attrs` order. [`Node::Directive`] → `when` (if any — `::next`, dsl
+//!   `attrs` order. [`Node::Directive`] → `when` (if any — `::jump`, dsl
 //!   0.12.0; any directive, dsl 0.26.0 §4), then each `AttrValue::Ref` slot
 //!   in `attrs` order.
 //! - [`Node::Set`] → `expr`; then `when` (if any, dsl 0.24.0 §1).
@@ -47,7 +47,7 @@ use crate::ast::{
 /// The slot references share `doc`'s lifetime, so a caller may collect them into a
 /// `Vec<&CelSlot>`.
 pub fn for_each_cel_slot<'a>(doc: &'a Document, f: &mut impl FnMut(&'a CelSlot)) {
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         body(&shot.body, f);
     }
     for q in &doc.quests {
@@ -254,7 +254,7 @@ fn timeline<'a>(t: &'a Timeline, f: &mut impl FnMut(&'a CelSlot)) {
 /// rewrite each in place — this is how `lute-cel::fill` stamps `StableId`s and
 /// records parse results.
 pub fn for_each_cel_slot_mut(doc: &mut Document, f: &mut impl FnMut(&mut CelSlot)) {
-    for shot in &mut doc.shots {
+    for shot in &mut doc.sections {
         body_mut(&mut shot.body, f);
     }
     for q in &mut doc.quests {
@@ -455,7 +455,7 @@ mod tests {
     use super::{for_each_cel_slot, for_each_cel_slot_mut};
     use crate::ast::{
         Arm, Attr, AttrValue, Branch, CelKind, CelSlot, Choice, Clip, ClipNode, Directive,
-        Document, Line, Match, Meta, Node, Set, Shot, Timeline, Track, TrackKey,
+        Document, Line, Match, Meta, Node, Section, Set, Timeline, Track, TrackKey,
     };
     use lute_core_span::{Span, StableId};
 
@@ -521,6 +521,7 @@ mod tests {
                 text: "hi".to_string(),
                 text_span: span(),
                 interps: Vec::new(),
+                inline: Vec::new(),
                 span: span(),
             }),
             // Directive: one @ref attr -> s2, plus a non-slot attr.
@@ -542,8 +543,8 @@ mod tests {
                     Choice {
                         id: "cA".to_string(),
                         id_span: span(),
-                        label: "A".to_string(),
-                        label_span: span(),
+                        text: "A".to_string(),
+                        text_span: span(),
                         when: Some(slot("s5")),
                         attrs: vec![ref_attr("pick", "s6")],
                         body: vec![set_node("scene.b", "s7")],
@@ -552,8 +553,8 @@ mod tests {
                     Choice {
                         id: "cB".to_string(),
                         id_span: span(),
-                        label: "B".to_string(),
-                        label_span: span(),
+                        text: "B".to_string(),
+                        text_span: span(),
                         when: None,
                         attrs: vec![ref_attr("pick", "s8")],
                         body: vec![Node::Line(Line {
@@ -563,6 +564,7 @@ mod tests {
                             text: String::new(),
                             text_span: span(),
                             interps: Vec::new(),
+                            inline: Vec::new(),
                             span: span(),
                         })],
                         span: span(),
@@ -603,7 +605,7 @@ mod tests {
                     clips: vec![
                         Clip {
                             node: ClipNode::Directive(Directive {
-                                tag: "cut".to_string(),
+                                tag: "cg".to_string(),
                                 attrs: vec![ref_attr("a", "s15"), ref_attr("b", "s16")],
                                 when: None,
                                 span: span(),
@@ -634,9 +636,9 @@ mod tests {
                 raw_yaml: String::new(),
                 span: span(),
             },
-            title: None,
-            shots: vec![Shot {
-                heading: "Shot 1.".to_string(),
+            sections: vec![Section {
+                heading: "Section 1.".to_string(),
+                id: None,
                 body,
                 span: span(),
             }],
@@ -709,7 +711,7 @@ mod tests {
         // precedes a quest in the source.
         let (doc, _) = crate::parse(
             "<entry id=\"e1\" when=\"run.e1\">\n\
-             <match on=\"run.m\">\n<when is=\"true\">\n@x: a\n</when>\n</match>\n\
+             <match subject=\"run.m\">\n<when is=\"true\">\n@x: a\n</when>\n</match>\n\
              </entry>\n\
              <quest id=\"q\" start=\"run.s\">\n</quest>\n\
              <entry id=\"e2\">\n::set{run.k = run.v}\n</entry>\n",

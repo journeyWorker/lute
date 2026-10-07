@@ -80,12 +80,12 @@ quest rearm + beat spentBy — CEL-valued attrs (dsl 0.27.0 §5)
       (cel_attr (cel_key) (cel_string (path)))))
   (beat
     (attr (key) (string))
-    (cel_attr (cel_key) (cel_string))
+    (attr (key) (string))
     (cel_attr (cel_key) (cel_string (path)))
     (line (speaker) (text))))
 
 ==================
-multiple top-level quests (source_file admits repeated quest, mirrors shot)
+multiple top-level quests (source_file admits repeated quest, mirrors section)
 ==================
 <quest id="a">
   <objective id="o1" done="run.a"/>

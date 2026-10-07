@@ -10,23 +10,23 @@ after: 'visited("spine.home")'
 ## The lab
 
 ::bg{location="prof-lab" time="day"}
-::auto{character="profAlder" anchor="center" action="enter"}
-::auto{character="rival" anchor="right" action="enter"}
+::actor{character="profAlder" anchor="center" action="enter"}
+::actor{character="rival" anchor="right" action="enter"}
 @rival{code="0010" emotion="smug"}: Gramps! I've been waiting all morning. Oh. It's you.
 @profAlder{code="0010"}: Kai, patience. {{userName}}, on the table: three monsters. You choose first.
 @rival{code="0020" emotion="angry"}: What? Why do they get to pick first?
 @profAlder{code="0020"}: Because you were rude, Kai.
 
 <branch id="starter" prompt="Three capsules sit on the table.">
-  <choice id="sproutle" label="Sproutle, the seed monster">
+  <choice id="sproutle" text="Sproutle, the seed monster">
     ::assert{chose(sproutle)}
     @profAlder{code="0030"}: Sproutle! Steady, patient and very hard to uproot.
   </choice>
-  <choice id="cindle" label="Cindle, the ember monster">
+  <choice id="cindle" text="Cindle, the ember monster">
     ::assert{chose(cindle)}
     @profAlder{code="0040"}: Cindle! It runs hot. Keep it out of the rain.
   </choice>
-  <choice id="dewpup" label="Dewpup, the puddle monster">
+  <choice id="dewpup" text="Dewpup, the puddle monster">
     ::assert{chose(dewpup)}
     @profAlder{code="0050"}: Dewpup! It will follow you to the ends of the earth, and splash you there.
   </choice>
@@ -43,5 +43,5 @@ after: 'visited("spine.home")'
 
 ::use{component="rivalBattle" meet="lab" intro="Wait! Let's check out our monsters. Come on, I'll take you on!" win="What? Unbelievable! I picked the wrong monster!" lose="Yeah! Am I great or what?" instance="use-001"}
 @rival{code="0060"}: Gramps, I'm going to catch every monster in Verdane before {{userName}} catches ten. Smell you later!
-::auto{character="rival" action="exit"}
+::actor{character="rival" action="exit"}
 @profAlder{code="0070" emotion="worried"}: That boy. {{userName}}, the road north goes through Pebbleton. Take care out there.

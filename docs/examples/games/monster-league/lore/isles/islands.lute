@@ -54,11 +54,11 @@ title: The three islands
   ::bg{location="mistral-windmill" time="day"}
   @narrator{code="0010"}: Three wooden vanes, each on its own crank. The wind is coming off the sea, from the west. {{run.islesVanes:plural(One vane faces|# vanes face)}} it.
   <branch id="islesVane" prompt="Which way do you crank the next vane?">
-    <choice id="west" label="Into the west wind">
+    <choice id="west" text="Into the west wind">
       ::set{run.islesVanes += 1}
       @narrator{code="0020"}: The vane swings round and locks with a clunk.
     </choice>
-    <choice id="east" label="Away from the wind">
+    <choice id="east" text="Away from the wind">
       @narrator{code="0030"}: The vane spins, shudders, and swings back where it was.
     </choice>
   </branch>

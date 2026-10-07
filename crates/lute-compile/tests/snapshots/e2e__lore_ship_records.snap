@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "lore",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.knowledge.facts/1",
@@ -83,7 +83,8 @@ expression: json
   "commands": [
     {
       "kind": "entry",
-      "addr": "001-0100",
+      "family": "declaration",
+      "position": "001-0100",
       "id": "scientistLog1",
       "target": "item.torn_note_1",
       "category": "note",
@@ -95,7 +96,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "dialogue",
       "speaker": "scientist",
       "text": "Day three. Subject E does not respond to light.",
@@ -104,7 +106,8 @@ expression: json
     },
     {
       "kind": "assert",
-      "addr": "001-0300",
+      "family": "state",
+      "position": "001-0300",
       "relation": "knows",
       "args": [
         "vesna",
@@ -113,7 +116,8 @@ expression: json
     },
     {
       "kind": "set",
-      "addr": "001-0400",
+      "family": "state",
+      "position": "001-0400",
       "path": "run.logsRead",
       "op": "+=",
       "value": {
@@ -125,7 +129,8 @@ expression: json
     },
     {
       "kind": "entry",
-      "addr": "002-0100",
+      "family": "declaration",
+      "position": "002-0100",
       "id": "scientistLog2",
       "target": "item.torn_note_2",
       "category": "note",
@@ -141,7 +146,8 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "002-0200",
+      "family": "content",
+      "position": "002-0200",
       "role": "dialogue",
       "speaker": "scientist",
       "text": "Day four. The light was never the point.",
@@ -150,7 +156,8 @@ expression: json
     },
     {
       "kind": "entry",
-      "addr": "003-0100",
+      "family": "declaration",
+      "position": "003-0100",
       "id": "rustyKey",
       "target": "item.rusty_key",
       "category": "item",
@@ -158,7 +165,8 @@ expression: json
     },
     {
       "kind": "match",
-      "addr": "003-0200",
+      "family": "control",
+      "position": "003-0200",
       "subject": {
         "cel": "run.labBurned",
         "expr": {
@@ -189,33 +197,40 @@ expression: json
     },
     {
       "kind": "line",
-      "addr": "003-0300",
+      "family": "content",
+      "position": "003-0300",
       "role": "narration",
       "speaker": "narrator",
       "text": "A scorched key. Someone's name has melted into the grip.",
-      "lineId": "rustyKey.narrator_0010"
+      "lineId": "rustyKey.narrator_0010",
+      "voiceKey": "rustyKey.narrator-0010"
     },
     {
       "kind": "jump",
-      "addr": "003-0400",
+      "family": "control",
+      "position": "003-0400",
       "target": "003-0700"
     },
     {
       "kind": "line",
-      "addr": "003-0500",
+      "family": "content",
+      "position": "003-0500",
       "role": "narration",
       "speaker": "narrator",
       "text": "A rusty key, stamped \"Research wing B2\".",
-      "lineId": "rustyKey.narrator_0020"
+      "lineId": "rustyKey.narrator_0020",
+      "voiceKey": "rustyKey.narrator-0020"
     },
     {
       "kind": "jump",
-      "addr": "003-0600",
+      "family": "control",
+      "position": "003-0600",
       "target": "003-0700"
     },
     {
       "kind": "entry",
-      "addr": "004-0100",
+      "family": "declaration",
+      "position": "004-0100",
       "id": "emptyShelf",
       "target": "place.lab_b2",
       "category": "place",

@@ -16,18 +16,18 @@ after: 'visited("lamplight.discovery")'
 @narrator{code="0020" when="!visited('car.dining')"}: Lise Varo sits at the piano with the lid down. Mirela Dace has a table to herself under a lamp that was never relit. Dr. Solt reads yesterday's paper with great attention.
 
 <hub id="look" prompt="Where do you look?">
-  <choice id="piano" label="The piano" once>
+  <choice id="piano" text="The piano" once>
     @narrator{code="0030"}: Sheet music for "The Lamplighter's Daughter", the corners soft with use. Pencilled over the second verse, in a hurried hand: again.
   </choice>
-  <choice id="table" label="Miss Dace's table" once>
+  <choice id="table" text="Miss Dace's table" once>
     @narrator{code="0040"}: A cold cup, a crumpled napkin, a lamp with a black-sooted chimney. From here the piano is six feet away. Nobody at this table could have left it in the dark without walking into the singer.
   </choice>
-  <choice id="steward" label="Ask the steward about the doctor" when="holds('empty', ['cab5', 'tunnel'])" once>
+  <choice id="steward" text="Ask the steward about the doctor" when="holds('empty', ['cab5', 'tunnel'])" once>
     @inspector{code="0010"}: Mr. Crane thought the doctor came through for a brandy during the tunnel.
     @steward{code="0010"}: Not through here, ma'am. I had the only lit match in the car, for the singer's music. I'd have seen a doctor.
     @inspector{code="0020" mono}: So the berth was empty and the dining car was empty of him too. Which leaves the corridor.
   </choice>
-  <choice id="leave" label="Leave the car" exit>
+  <choice id="leave" text="Leave the car" exit>
     @narrator{code="0050"}: The door to the corridor sighs shut behind you.
   </choice>
 </hub>

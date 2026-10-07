@@ -1,30 +1,30 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "kind": "line",
+      "position": "001-0100",
       "speaker": "narrator",
       "text": "One clue on the table."
     },
     {
-      "addr": "001-0200",
       "fact": "sawClue(map)",
-      "kind": "assert"
+      "kind": "assert",
+      "position": "001-0200"
     },
     {
-      "addr": "001-0300",
       "kind": "match",
+      "position": "001-0300",
       "result": "arm 1"
     },
     {
-      "addr": "001-0400",
       "kind": "line",
+      "position": "001-0400",
       "speaker": "detective",
       "text": "The map points at Mira."
     },
     {
-      "addr": "001-0700",
       "kind": "match",
+      "position": "001-0700",
       "result": "otherwise"
     }
   ],
@@ -34,7 +34,7 @@
     "sawClue(map)",
     "suspected(mira)"
   ],
-  "irVersion": "0.36",
+  "irVersion": "0.37",
   "kind": "scene",
   "quests": {},
   "state": {}

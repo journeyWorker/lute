@@ -13,10 +13,10 @@ priority: 20
 ## The flower town
 
 ::bg{location="bloomfield" time="day"}
-::music{action="change" mood="calm" volume="normal"}
+::music{playback="change" mood="calm" volume="normal"}
 @narrator{code="0010"}: Bloomfield smells like a perfume shop that exploded. Every garden is in flower, every window has a box, and the bees are loud enough to hear from the bridge.
-::auto{character="bloomfieldGymGuide" anchor="left" action="enter"}
+::actor{character="bloomfieldGymGuide" anchor="left" action="enter"}
 @bloomfieldGymGuide{code="0010"}: Yo, challenger! Fern's gym is the greenhouse on the hill. Fire burns grass, birds peck it, bugs chew it. Choose accordingly!
 @bloomfieldGymGuide{code="0020"}: A kid with spiky hair came through this morning and beat her. Then he fell asleep on the bench outside. He's gone now. He snores, if you were wondering.
-::auto{character="bloomfieldGymGuide" action="exit"}
+::actor{character="bloomfieldGymGuide" action="exit"}
 @narrator{code="0020" when="holds('defeated', ['volta'])"}: Your Spark Badge catches the sun. Somebody's grandmother waves at it.

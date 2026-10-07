@@ -26,11 +26,11 @@ state:
 <beat id="porter" on="talk" target="npc.porter" when="run.porterTrust >= 0">
   @porter: You again.
   <branch id="porterTalk">
-    <choice id="ask" label="Ask about the night">
+    <choice id="ask" text="Ask about the night">
       @porter: I saw nothing.
       ::set{run.porterTrust += 1}
     </choice>
-    <choice id="leave" label="Leave">
+    <choice id="leave" text="Leave">
       @porter: Good.
     </choice>
   </branch>
@@ -42,8 +42,8 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
   "requiredSemantics": ["lute.core/1", "lute.lore/1", "lute.occasions.selection/1", "lute.time.cadence/1"],
   "meta": { "id": "interviews" },
   "state": [
@@ -52,24 +52,24 @@ const ARTIFACT: &str = r#"{
     { "path": "run.porterTrust", "type": "int", "default": 0 }
   ],
   "commands": [
-    { "kind": "entry", "addr": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
-    { "kind": "line", "addr": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
-    { "kind": "beat", "addr": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
+    { "kind": "entry", "family": "declaration", "position": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
+    { "kind": "line", "family": "content", "position": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
+    { "kind": "beat", "family": "declaration", "position": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
       "when": { "cel": "run.porterTrust >= 0" }, "priority": 0, "once": "run", "body": "002-0200" },
-    { "kind": "line", "addr": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
-    { "kind": "choice", "addr": "002-0300", "branchId": "porterTalk", "recordKey": "scene.choices.porterTalk",
+    { "kind": "line", "family": "content", "position": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
+    { "kind": "choice", "family": "control", "position": "002-0300", "branchId": "porterTalk", "selectionKey": "scene.choices.porterTalk",
       "options": [
-        { "id": "ask", "label": "Ask about the night", "target": "002-0400" },
-        { "id": "leave", "label": "Leave", "target": "002-0700" }
+        { "id": "ask", "text": "Ask about the night", "target": "002-0400" },
+        { "id": "leave", "text": "Leave", "target": "002-0700" }
       ],
       "converge": "002-0900" },
-    { "kind": "line", "addr": "002-0400", "role": "dialogue", "speaker": "porter", "text": "I saw nothing." },
-    { "kind": "set", "addr": "002-0500", "path": "run.porterTrust", "op": "+=", "value": { "cel": "1", "expr": { "int": 1 } } },
-    { "kind": "jump", "addr": "002-0600", "target": "002-0900" },
-    { "kind": "line", "addr": "002-0700", "role": "dialogue", "speaker": "porter", "text": "Good." },
-    { "kind": "jump", "addr": "002-0800", "target": "002-0900" },
-    { "kind": "entry", "addr": "003-0100", "id": "lastNote", "body": "003-0200" },
-    { "kind": "line", "addr": "003-0200", "role": "narration", "speaker": "narrator", "text": "The last note." }
+    { "kind": "line", "family": "content", "position": "002-0400", "role": "dialogue", "speaker": "porter", "text": "I saw nothing." },
+    { "kind": "set", "family": "state", "position": "002-0500", "path": "run.porterTrust", "op": "+=", "value": { "cel": "1", "expr": { "int": 1 } } },
+    { "kind": "jump", "family": "control", "position": "002-0600", "target": "002-0900" },
+    { "kind": "line", "family": "content", "position": "002-0700", "role": "dialogue", "speaker": "porter", "text": "Good." },
+    { "kind": "jump", "family": "control", "position": "002-0800", "target": "002-0900" },
+    { "kind": "entry", "family": "declaration", "position": "003-0100", "id": "lastNote", "body": "003-0200" },
+    { "kind": "line", "family": "content", "position": "003-0200", "role": "narration", "speaker": "narrator", "text": "The last note." }
   ]
 }"#;
 
@@ -189,7 +189,7 @@ fn run_bundle_beat_runs_its_segment_like_a_scene() {
     assert_eq!(
         v["commands"][0],
         serde_json::json!({
-            "addr": "002-0100",
+            "position": "002-0100",
             "kind": "beat",
             "id": "interviews.porter",
             "eligible": true

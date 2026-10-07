@@ -10,7 +10,7 @@ params:
 /* The BG/DA approval toast AND the approval change it reports, in one place
 (dsl 0.24 §4): the size of the change follows the feeling. `who` must be a
 companion — it picks the member of `run.approval[@who]`. */
-<match on="@feel">
+<match subject="@feel">
   <when is="approves">
     ::set{run.approval[@who] += 1}
     @narrator{code="0010"}: {{@who}} approves.

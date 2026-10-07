@@ -3,15 +3,19 @@
 //! A pure function over a parsed [`Document`] (plus the backend's
 //! [`lute_core_span::TextIndex`]) that projects the document outline:
 //!
-//! - one [`DocumentSymbol`] per shot — [`SymbolKind::MODULE`], named by the shot
-//!   heading (the `## …` text);
+//! - one [`DocumentSymbol`] per section — [`SymbolKind::MODULE`], named by the
+//!   section heading (the `## …` text, without a `{#id}` suffix); a section
+//!   with a stable id (dsl 0.37.0 §3.1) carries the id as its `detail`;
 //! - one [`DocumentSymbol`] per top-level `<quest>` (dsl 0.2.0 §6.3) —
 //!   [`SymbolKind::NAMESPACE`], named by its `id`;
-//! - each `<branch>` / `<match>` inside a shot (or quest) as a nested child —
+//! - each `<branch>` / `<match>` inside a section (or quest) as a nested child —
 //!   [`SymbolKind::ENUM`] for a branch (a closed set of choices) and
 //!   [`SymbolKind::OBJECT`] for a match (a subject dispatched over arms) — found
 //!   depth-first so a branch nested in a match arm (or a choice body) still nests
-//!   under its shot/quest;
+//!   under its section/quest;
+//! - each `::label{name}` (dsl 0.37.0 §3.5) as a nested
+//!   [`SymbolKind::KEY`] child named by the label, so the outline lists every
+//!   `::jump` target;
 //! - each `<on>` / `<objective>` inside a quest as a nested child (dsl 0.2.0
 //!   §4, §6.4) — [`SymbolKind::EVENT`] named by the trigger's `event`, and
 //!   [`SymbolKind::PROPERTY`] named by the objective's `id`;
@@ -22,22 +26,24 @@
 //!
 //! ## Ranges
 //! `range` is the construct's full span; `selection_range` is the "interesting"
-//! sub-span the editor reveals — a shot's `## …` heading line, a block's open
+//! sub-span the editor reveals — a section's `## …` heading line, a block's open
 //! keyword (`<branch` / `<match`). Both are mapped from byte spans through the
 //! shared [`lute_core_span::TextIndex`] by [`crate::backend::span_to_range`], so
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{Arm, BundleBeat, Document, Entry, Match, Node, Quest, Shot};
+use lute_syntax::ast::{
+    Arm, AttrValue, BundleBeat, Document, Entry, Match, Node, Quest, Section,
+};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
 use lute_resolve::cursor::byte_span;
 
-/// The document outline: one shot symbol per shot, with its `<branch>`/`<match>`
-/// blocks nested as children.
+/// The document outline: one symbol per section, with its `<branch>`/`<match>`
+/// blocks and `::label`s nested as children.
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
-    let mut out: Vec<DocumentSymbol> = doc.shots.iter().map(|s| shot_symbol(s, idx)).collect();
+    let mut out: Vec<DocumentSymbol> = doc.sections.iter().map(|s| section_symbol(s, idx)).collect();
     out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
     let mut lore: Vec<(usize, DocumentSymbol)> = doc
         .entries
@@ -54,28 +60,34 @@ pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> 
     out
 }
 
-/// A shot → a MODULE symbol named by its heading, children = nested blocks.
-fn shot_symbol(shot: &Shot, idx: &TextIndex) -> DocumentSymbol {
-    let range = span_to_range(&shot.span, idx);
-    // Selection = the `## <heading>` line: from the shot start across `## ` + text.
-    let head_start = shot.span.byte_start;
-    let head_end = head_start + "## ".len() + shot.heading.len();
+/// A section → a MODULE symbol named by its heading, children = nested blocks.
+fn section_symbol(section: &Section, idx: &TextIndex) -> DocumentSymbol {
+    let range = span_to_range(&section.span, idx);
+    // Selection = the `## <heading>` line, through the closing `}` of a
+    // `{#id}` suffix when one is written.
+    let head_start = section.span.byte_start;
+    let head_end = match &section.id {
+        Some((_, id_span)) => id_span.byte_end + "}".len(),
+        None => head_start + "## ".len() + section.heading.len(),
+    };
     let selection_range = span_to_range(&byte_span(head_start, head_end), idx);
     let mut children = Vec::new();
-    collect_children(&shot.body, idx, &mut children);
-    symbol(
-        shot.heading.clone(),
+    collect_children(&section.body, idx, &mut children);
+    let mut sym = symbol(
+        section.heading.clone(),
         SymbolKind::MODULE,
         range,
         selection_range,
         children,
-    )
+    );
+    sym.detail = section.id.as_ref().map(|(id, _)| format!("#{id}"));
+    sym
 }
 
 /// A `<quest>` -> a top-level symbol named by its id, children = its nested
 /// `<on>`/`<objective>` arms (dsl 0.2.0 §6.3). `Quest` is not a [`Node`] (a
-/// top-level declaration alongside [`Shot`]), so it gets its own entry point
-/// mirroring `shot_symbol`.
+/// top-level declaration alongside [`Section`]), so it gets its own entry point
+/// mirroring `section_symbol`.
 fn quest_symbol(quest: &Quest, idx: &TextIndex) -> DocumentSymbol {
     let range = span_to_range(&quest.span, idx);
     let sel = keyword_range(quest.span.byte_start, "<quest", idx);
@@ -204,7 +216,26 @@ fn collect_children(nodes: &[Node], idx: &TextIndex, out: &mut Vec<DocumentSymbo
                     kids,
                 ));
             }
-            // Leaves and staging blocks are not outline symbols.
+            // A `::label{name}` is a named jump target; its selection is the
+            // name value.
+            Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
+                let name = d.attrs.iter().find_map(|a| match &a.value {
+                    AttrValue::Str(s) if a.key == lute_manifest::core::LABEL_NAME_ATTR => {
+                        Some((s.clone(), a.value_span))
+                    }
+                    _ => None,
+                });
+                if let Some((name, value_span)) = name {
+                    out.push(symbol(
+                        name,
+                        SymbolKind::KEY,
+                        span_to_range(&d.span, idx),
+                        span_to_range(&value_span, idx),
+                        Vec::new(),
+                    ));
+                }
+            }
+            // Other leaves and staging blocks are not outline symbols.
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
         }
@@ -266,12 +297,12 @@ mod tests {
         document_symbols(&doc, &TextIndex::new(text))
     }
 
-    /// ACCEPTANCE: the marina example has 5 shots → exactly 5 top-level symbols,
-    /// each a MODULE named by its heading.
+    /// ACCEPTANCE: the marina example has 5 sections → exactly 5 top-level
+    /// symbols, each a MODULE named by its heading.
     #[test]
-    fn marina_has_five_shot_symbols() {
+    fn marina_has_five_section_symbols() {
         let syms = symbols(MARINA);
-        assert_eq!(syms.len(), 5, "5 shots → 5 top-level symbols");
+        assert_eq!(syms.len(), 5, "5 sections → 5 top-level symbols");
         assert!(syms.iter().all(|s| s.kind == SymbolKind::MODULE));
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(
@@ -286,14 +317,14 @@ mod tests {
         );
     }
 
-    /// ACCEPTANCE (added): the `<branch id="number">` in shot 4 is a nested child
-    /// symbol (ENUM) under its shot, named by the branch id.
+    /// ACCEPTANCE (added): the `<branch id="number">` in section 4 is a nested
+    /// child symbol (ENUM) under its section, named by the branch id.
     #[test]
     fn branch_is_a_nested_child_symbol() {
         let syms = symbols(MARINA);
-        let shot4 = &syms[3]; // "Trading Numbers" holds the `<branch id="number">`.
-        assert_eq!(shot4.name, "Trading Numbers");
-        let kids = shot4.children.as_ref().expect("shot 4 has children");
+        let section4 = &syms[3]; // "Trading Numbers" holds the `<branch id="number">`.
+        assert_eq!(section4.name, "Trading Numbers");
+        let kids = section4.children.as_ref().expect("section 4 has children");
         let branch = kids
             .iter()
             .find(|c| c.kind == SymbolKind::ENUM)
@@ -304,14 +335,14 @@ mod tests {
         assert!(branch.selection_range.end.line <= branch.range.end.line);
     }
 
-    /// The `<match on="scene.choices.number">` in shot 5 nests as an OBJECT child
-    /// named by its subject.
+    /// The `<match subject="scene.choices.number">` in section 5 nests as an
+    /// OBJECT child named by its subject.
     #[test]
     fn match_is_a_nested_child_symbol() {
         let syms = symbols(MARINA);
-        let shot5 = &syms[4];
-        assert_eq!(shot5.name, "Filed as a Mishap");
-        let kids = shot5.children.as_ref().expect("shot 5 has children");
+        let section5 = &syms[4];
+        assert_eq!(section5.name, "Filed as a Mishap");
+        let kids = section5.children.as_ref().expect("section 5 has children");
         let m = kids
             .iter()
             .find(|c| c.kind == SymbolKind::OBJECT)
@@ -319,20 +350,20 @@ mod tests {
         assert_eq!(m.name, "scene.choices.number", "named by the match subject");
     }
 
-    /// A shot with no logic block has no children (the `children` field is `None`,
-    /// not an empty vector).
+    /// A section with no logic block has no children (the `children` field is
+    /// `None`, not an empty vector).
     #[test]
-    fn shot_without_blocks_has_no_children() {
+    fn section_without_blocks_has_no_children() {
         let text = "## Shot 1.\n@narrator: just prose.\n::bg{location=\"x\"}\n";
         let syms = symbols(text);
         assert_eq!(syms.len(), 1);
         assert!(syms[0].children.is_none(), "no branch/match → no children");
     }
 
-    /// The shot's `selection_range` is the heading line and is contained by the
-    /// full `range`.
+    /// The section's `selection_range` is the heading line and is contained by
+    /// the full `range`.
     #[test]
-    fn shot_selection_range_is_the_heading() {
+    fn section_selection_range_is_the_heading() {
         let text = "## Shot 1.\n@narrator: prose.\n@narrator: more.\n";
         let s = &symbols(text)[0];
         assert_eq!(s.selection_range.start.line, 0, "heading is line 0");
@@ -355,7 +386,7 @@ mod tests {
 
     /// ACCEPTANCE: a `<quest>` is a top-level symbol named by its id, with an
     /// EVENT child for `<on>` and a PROPERTY child for `<objective>` — before
-    /// the fix, `document_symbols` walked `doc.shots` only (a quest doc has
+    /// the fix, `document_symbols` walked `doc.sections` only (a quest doc has
     /// none) and `<on>`/`<objective>` were Plan-A no-ops, so a quest doc
     /// yielded NO symbols at all.
     #[test]
@@ -384,7 +415,7 @@ mod tests {
     fn entries_are_top_level_symbols() {
         let text = "---\nkind: lore\n---\n\
             <entry id=\"a\" target=\"item.key\">\n@narrator: one\n</entry>\n\
-            <entry id=\"b\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <entry id=\"b\">\n<match subject=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
             <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
         let syms = symbols(text);
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
@@ -418,5 +449,41 @@ mod tests {
         assert_eq!(kids.len(), 1);
         assert_eq!(kids[0].kind, SymbolKind::ENUM, "the <branch> child");
         assert_eq!(kids[0].name, "ask");
+    }
+
+    /// dsl 0.37.0 §3.1: a `{#id}` suffix is not part of the symbol name; the id
+    /// rides as `detail` and the selection covers the whole heading line.
+    #[test]
+    fn section_id_is_the_symbol_detail() {
+        let text = "## The Detail {#detail}\n@narrator: prose.\n## Plain\n@narrator: more.\n";
+        let syms = symbols(text);
+        assert_eq!(syms.len(), 2);
+        assert_eq!(syms[0].name, "The Detail");
+        assert_eq!(syms[0].detail.as_deref(), Some("#detail"));
+        assert_eq!(syms[0].selection_range.start.line, 0);
+        assert_eq!(syms[0].selection_range.start.character, 0);
+        assert_eq!(
+            syms[0].selection_range.end.character,
+            "## The Detail {#detail}".len() as u32,
+            "selection spans the heading through the closing brace"
+        );
+        assert_eq!(syms[1].name, "Plain");
+        assert!(syms[1].detail.is_none(), "no id → no detail");
+    }
+
+    /// dsl 0.37.0 §3.5: every `::label{name}` is a KEY child of its section,
+    /// selected on the name value — nested ones included.
+    #[test]
+    fn labels_are_child_symbols() {
+        let text = "## One\n::label{name=\"top\"}\n@narrator: a.\n<branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n::label{name=\"deep\"}\n@narrator: b.\n</choice>\n</branch>\n";
+        let syms = symbols(text);
+        let kids = syms[0].children.as_ref().expect("section has children");
+        let top = kids.iter().find(|k| k.kind == SymbolKind::KEY).expect("top label");
+        assert_eq!(top.name, "top");
+        assert_eq!(top.selection_range.start.line, 1);
+        let branch = kids.iter().find(|k| k.kind == SymbolKind::ENUM).expect("branch");
+        let deep = branch.children.as_ref().expect("branch children");
+        assert_eq!(deep[0].name, "deep");
+        assert_eq!(deep[0].kind, SymbolKind::KEY);
     }
 }

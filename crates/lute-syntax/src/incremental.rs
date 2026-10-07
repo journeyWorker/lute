@@ -438,7 +438,7 @@ mod tests {
     fn never_splits_a_nested_branch() {
         let mut parser = IncrementalContinuationParser::new();
         let first =
-            parser.push("<branch id=\"route\">\n<choice id=\"a\" label=\"A\">\n@n: A\n</choice>\n");
+            parser.push("<branch id=\"route\">\n<choice id=\"a\" text=\"A\">\n@n: A\n</choice>\n");
         assert!(first.units.is_empty());
         assert_eq!(
             first.need_more,
@@ -448,7 +448,7 @@ mod tests {
         );
 
         let second = parser.push(
-            "<choice id=\"b\" label=\"B\">\n<on event=\"resume\">\n@n: nested\n</on>\n@n: B\n</choice>\n</branch>\n",
+            "<choice id=\"b\" text=\"B\">\n<on event=\"resume\">\n@n: nested\n</on>\n@n: B\n</choice>\n</branch>\n",
         );
         assert_eq!(second.units.len(), 1);
         assert!(
@@ -480,7 +480,7 @@ mod tests {
     #[test]
     fn incomplete_match_is_emitted_only_after_completion() {
         let mut parser = IncrementalContinuationParser::new();
-        let first = parser.push("<match on=\"scene.route\">\n<when is=\"a\">\n@n: A\n</when>\n");
+        let first = parser.push("<match subject=\"scene.route\">\n<when is=\"a\">\n@n: A\n</when>\n");
         assert!(first.units.is_empty());
         assert!(matches!(
             first.need_more,

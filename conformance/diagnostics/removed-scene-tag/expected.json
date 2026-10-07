@@ -1,0 +1,50 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-REMOVED-TAG",
+      "layer": "logic",
+      "message": "the `<scene>` tag was removed — a document's sections are `## ` headings, and its scene is the document itself",
+      "severity": "error",
+      "span": {
+        "byte_end": 137,
+        "byte_start": 117,
+        "column": 1,
+        "line": 12,
+        "utf16_range": [
+          117,
+          137
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    },
+    {
+      "code": "E-REMOVED-TAG",
+      "layer": "logic",
+      "message": "the `<scene>` tag was removed — a document's sections are `## ` headings, and its scene is the document itself",
+      "severity": "error",
+      "span": {
+        "byte_end": 177,
+        "byte_start": 169,
+        "column": 1,
+        "line": 14,
+        "utf16_range": [
+          169,
+          177
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §2.2"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      ":narrator"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

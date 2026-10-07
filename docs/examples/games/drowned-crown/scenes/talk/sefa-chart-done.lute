@@ -12,7 +12,7 @@ when: "quest.sefaChart.state == 'complete'"
 ## Chart table
 
 @sefa{code="0010" emotion="content"}: I've started a second copy. For the next heir. There's always a next heir.
-<match on="user.deepest">
+<match subject="user.deepest">
   <when is="6..">
     @sefa{code="0020"}: You've been deeper than the chart goes, you know. Chamber {{user.deepest}}. Tell me about it sometime.
   </when>

@@ -437,8 +437,7 @@ pub fn splice_component_effects(
     {
         return;
     }
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter_mut()
         .map(|s| &mut s.body)
         .chain(doc.quests.iter_mut().map(|q| &mut q.body))
@@ -512,7 +511,7 @@ fn use_writes(
         return Vec::new();
     }
     let mut writes = Vec::new();
-    for shot in &def.body.shots {
+    for shot in &def.body.sections {
         write_skeleton(&shot.body, snapshot, &mut writes);
     }
     let args = use_args_for(d, def);
@@ -663,7 +662,7 @@ fn speaker_nodes(d: &Directive, components: &ComponentSet, stack: &mut Vec<Strin
         return Vec::new();
     }
     let mut nodes = Vec::new();
-    for shot in &def.body.shots {
+    for shot in &def.body.sections {
         speaker_skeleton(&shot.body, &mut nodes);
     }
     if nodes.is_empty() {

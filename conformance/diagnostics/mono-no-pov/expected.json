@@ -1,0 +1,31 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-MONO-NO-POV",
+      "layer": "content",
+      "message": "`@mira{mono}` is an interior monologue, but no point of view resolves for this document — it writes no `pov:` and the project's `defaults:` gives none — and `mira` is not in `monoSpeakers:` (which lists none); declare the POV (`pov: <speaker>`, or `defaults: { pov: <speaker> }` in lute.project.yaml), or list `mira` in `monoSpeakers:`",
+      "severity": "error",
+      "span": {
+        "byte_end": 129,
+        "byte_start": 125,
+        "column": 7,
+        "line": 12,
+        "utf16_range": [
+          125,
+          129
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.4"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      ":mira"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

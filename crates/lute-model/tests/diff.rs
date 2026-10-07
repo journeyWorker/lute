@@ -202,7 +202,7 @@ fn cleanup(before: PathBuf, after: PathBuf) {
 fn choice_effect_change_is_one_choice_effect_change() {
     let before = temp_dir("choice-before");
     let after = temp_dir("choice-after");
-    let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n<branch id=\"pick\">\n<choice id=\"go\" label=\"Go\">\n";
+    let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n<branch id=\"pick\">\n<choice id=\"go\" text=\"Go\">\n";
     let schema = "state:\n  run.flag: { type: bool, default: false }\n";
     std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
     std::fs::write(after.join("world.schema.yaml"), schema).unwrap();
@@ -259,8 +259,8 @@ fn inserting_choice_before_existing_choice_does_not_change_existing_node() {
     let after = temp_dir("choice-insert-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n<branch id=\"pick\">\n";
     let suffix = "</branch>\n";
-    std::fs::write(before.join("scene.lute"), format!("{prefix}<choice id=\"b\" label=\"B\">\n@hero{{code=\"0010\"}}: B\n</choice>\n{suffix}")).unwrap();
-    std::fs::write(after.join("scene.lute"), format!("{prefix}<choice id=\"a\" label=\"A\">\n@hero{{code=\"0005\"}}: A\n</choice>\n<choice id=\"b\" label=\"B\">\n@hero{{code=\"0010\"}}: B\n</choice>\n{suffix}")).unwrap();
+    std::fs::write(before.join("scene.lute"), format!("{prefix}<choice id=\"b\" text=\"B\">\n@hero{{code=\"0010\"}}: B\n</choice>\n{suffix}")).unwrap();
+    std::fs::write(after.join("scene.lute"), format!("{prefix}<choice id=\"a\" text=\"A\">\n@hero{{code=\"0005\"}}: A\n</choice>\n<choice id=\"b\" text=\"B\">\n@hero{{code=\"0010\"}}: B\n</choice>\n{suffix}")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().all(|change| change.node.canonical() != "choice:hall:pick.b"), "{:?}", diff.changes);
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added)));

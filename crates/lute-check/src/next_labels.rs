@@ -1,38 +1,38 @@
-//! dsl 0.12.0 whole-document label pass: `::mark{id}` / a content line's
-//! `id=` register a DOCUMENT-WIDE forward-jump label; `::next{to}` resolves
-//! against that ONE table. Three diagnostics: `E-MARK-DUP` (a label id
-//! reused — mark/mark, mark/line-id, or line-id/line-id, ALL share one
-//! namespace), `E-NEXT-UNDEFINED` (a `to=` naming no label anywhere in the
-//! document), `E-NEXT-BACKWARD` (a `to=` naming a label at or before the
-//! `::next` site's own document position — forward-only, dsl 0.12.0: the
-//! walk's DAG stays acyclic).
+//! dsl 0.12.0 / 0.37.0 §3.5 whole-document label pass: `::label{name}`
+//! registers a DOCUMENT-WIDE forward-jump label; `::jump{to}` resolves
+//! against that ONE table. Three diagnostics: `E-LABEL-DUP` (a label name
+//! reused anywhere in the document), `E-JUMP-UNDEFINED` (a `to=` naming no
+//! label anywhere in the document), `E-JUMP-BACKWARD` (a `to=` naming a label
+//! at or before the `::jump` site's own document position — forward-only,
+//! dsl 0.12.0: the walk's DAG stays acyclic).
 //!
-//! Position is a MONOTONIC counter ticked at every label-bearing site
-//! (`::mark`, a line with `id=`) and every `::next` site, in the SAME
+//! Position is a MONOTONIC counter ticked at every `::label` and every
+//! `::jump` site, in the SAME
 //! depth-first document order `lute-compile::stage::walk_seq` flattens
 //! records in (top-level nodes in order; a `<branch>`/`<hub>` choice body,
 //! or a `<match>` arm body, recursed in order) — so "forward" here means
 //! exactly what `lute-compile::address`'s addr-lexicographic order will
-//! mean once compiled. Only label/next sites are ticked (not every node):
+//! mean once compiled. Only label/jump sites are ticked (not every node):
 //! skipping uninteresting nodes never changes the RELATIVE order of two
 //! ticked sites, so the counter stays a sound (if sparse) position axis.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::core::LABEL_NAME_ATTR;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Document, Node};
 
-/// `E-MARK-DUP` (dsl 0.12.0): a label id (`::mark{id}` or a line's `id=`)
-/// reused anywhere in the document — one namespace, mark and line ids alike.
-pub const E_MARK_DUP: &str = "E-MARK-DUP";
+/// `E-LABEL-DUP` (dsl 0.12.0): a label name (`::label{name}`) reused anywhere
+/// in the document — one namespace.
+pub const E_MARK_DUP: &str = "E-LABEL-DUP";
 
-/// `E-NEXT-UNDEFINED` (dsl 0.12.0): `::next{to}` names no label anywhere in
+/// `E-JUMP-UNDEFINED` (dsl 0.12.0): `::jump{to}` names no label anywhere in
 /// the document.
-pub const E_NEXT_UNDEFINED: &str = "E-NEXT-UNDEFINED";
+pub const E_NEXT_UNDEFINED: &str = "E-JUMP-UNDEFINED";
 
-/// `E-NEXT-BACKWARD` (dsl 0.12.0): `::next{to}` names a label at or before
+/// `E-JUMP-BACKWARD` (dsl 0.12.0): `::jump{to}` names a label at or before
 /// its own document position — jumps are forward-only.
-pub const E_NEXT_BACKWARD: &str = "E-NEXT-BACKWARD";
+pub const E_NEXT_BACKWARD: &str = "E-JUMP-BACKWARD";
 
 fn diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
@@ -64,13 +64,13 @@ fn attr_span(attrs: &[Attr], key: &str) -> Option<Span> {
 }
 
 /// One label's DEFINING position — first occurrence only; a repeat is
-/// `E-MARK-DUP` at the repeat's own span and never overwrites the table.
+/// `E-LABEL-DUP` at the repeat's own span and never overwrites the table.
 struct LabelSite {
     pos: u64,
 }
 
-/// One `::next{to}` site: its own document position, the target id, and the
-/// span to anchor `E-NEXT-UNDEFINED`/`E-NEXT-BACKWARD` at.
+/// One `::jump{to}` site: its own document position, the target id, and the
+/// span to anchor `E-JUMP-UNDEFINED`/`E-JUMP-BACKWARD` at.
 struct NextSite {
     pos: u64,
     to: String,
@@ -90,15 +90,15 @@ impl Collector {
     }
 
     fn record_label(&mut self, id: &str, span: Span, attrs: &[Attr]) {
-        if let Some(message) = lute_manifest::ident::name_fault("mark id", id) {
-            let at = attr_span(attrs, "id").unwrap_or(span);
+        if let Some(message) = lute_manifest::ident::name_fault("label name", id) {
+            let at = attr_span(attrs, LABEL_NAME_ATTR).unwrap_or(span);
             self.dups
                 .push(diag(crate::cel_paths::E_PATH_IDENT, message, at));
         }
         if self.labels.contains_key(id) {
             self.dups.push(diag(
                 E_MARK_DUP,
-                format!("mark `{id}` is already declared elsewhere in this document"),
+                format!("label `{id}` is already declared elsewhere in this document"),
                 span,
             ));
         } else {
@@ -124,26 +124,23 @@ impl Collector {
     /// nodes, then each `<branch>`/`<hub>` choice body / `<match>` arm body
     /// in order) closely enough that RELATIVE label/next ordering here
     /// agrees with the compiled addr-lexicographic order — `<timeline>`
-    /// clips carry no `Node`s (a `::mark`/`::next` inside one is rejected
+    /// clips carry no `Node`s (a `::label`/`::jump` inside one is rejected
     /// outright by `check.rs`'s timeline-clip loop, mirroring `::end`), so
     /// they are ticked once as an opaque leaf and never recursed into.
     fn walk(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
-                Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
-                    match attr_str(&d.attrs, "id") {
+                Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
+                    match attr_str(&d.attrs, LABEL_NAME_ATTR) {
                         Some(id) => self.record_label(id, d.span, &d.attrs),
                         None => self.tick(),
                     }
                 }
-                Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE => {
+                Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
                     self.record_next(d);
                 }
-                Node::Line(l) => match attr_str(&l.attrs, "id") {
-                    Some(id) => self.record_label(id, l.span, &l.attrs),
-                    None => self.tick(),
-                },
-                Node::Directive(_)
+                Node::Line(_)
+                | Node::Directive(_)
                 | Node::Set(_)
                 | Node::Assert(_)
                 | Node::Retract(_)
@@ -183,16 +180,16 @@ impl Collector {
     }
 }
 
-/// dsl 0.12.0 whole-document pass: `E-MARK-DUP` / `E-NEXT-UNDEFINED` /
-/// `E-NEXT-BACKWARD`. Walks `doc.shots`, `doc.quests`, then the lore
+/// dsl 0.12.0 whole-document pass: `E-LABEL-DUP` / `E-JUMP-UNDEFINED` /
+/// `E-JUMP-BACKWARD`. Walks `doc.shots`, `doc.quests`, then the lore
 /// addressing units — `doc.entries` (dsl 0.19.0) and `doc.beats` (dsl 0.23.0
 /// §4) interleaved in source order, as the artifact lays them out — each
 /// recursively
 /// — mirrors `reachability::check_reachability_in`'s own walk shape. The
 /// label NAMESPACE is document-wide: ids are NOT reset between shots/quests
-/// — a mark in shot 1 and a `::next` in shot 4 resolve against the SAME
+/// — a mark in shot 1 and a `::jump` in shot 4 resolve against the SAME
 /// table shot 1 populated (dsl 0.12.0: "a single table" — this is also what
-/// lets a guarded `::next` join a LATER shot, `lute-compile::address`'s
+/// lets a guarded `::jump` join a LATER shot, `lute-compile::address`'s
 /// document-wide named-label resolution pass).
 pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
     let Collector {
@@ -206,7 +203,7 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
         match labels.get(&next.to) {
             None => {
                 // Round-6 T3-60: a target that names a heading, a choice or
-                // a menu says what it is; otherwise the nearest mark.
+                // a menu says what it is; otherwise the nearest label.
                 let hint = match not_a_mark(doc, &next.to) {
                     Some(why) => format!(" — {why}"),
                     None => lute_manifest::suggest::did_you_mean(
@@ -217,7 +214,7 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
                 diags.push(diag(
                     E_NEXT_UNDEFINED,
                     format!(
-                        "`::next` targets `{}`, which no `::mark` or line `id=` in this document declares{hint}",
+                        "`::jump` targets `{}`, which no `::label` in this document declares{hint}",
                         next.to
                     ),
                     next.span,
@@ -226,9 +223,9 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
             Some(label) if label.pos <= next.pos => diags.push(diag(
                 E_NEXT_BACKWARD,
                 format!(
-                    "`::next` targets mark `{}`, which is not forward of this `::next` in document \
-                     order — `::next` only jumps forward; to offer choices again, use a `<hub>` \
-                     (it asks until an `exit` choice is taken)",
+                    "`::jump` targets label `{}`, which is not forward of this `::jump` in \
+                     document order — `::jump` only jumps forward; to offer choices again, use a \
+                     `<hub>` (it asks until an `exit` choice is taken)",
                     next.to
                 ),
                 next.span,
@@ -245,8 +242,7 @@ pub fn check_next_labels(doc: &Document) -> Vec<Diagnostic> {
 /// heading matches ignoring case and spacing (`## Lamp Room` for
 /// `lampRoom`).
 fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
-    const TARGET: &str = "a `::next` target is a `::mark{id=\"…\"}` (or a line's `id=`) later in \
-                          this document";
+    const TARGET: &str = "a `::jump` target is a `::label{name=\"…\"}` later in this document";
     match to {
         "END" => {
             return Some(
@@ -265,9 +261,9 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
             .flat_map(char::to_lowercase)
             .collect()
     };
-    if let Some(shot) = doc.shots.iter().find(|s| fold(&s.heading) == fold(to)) {
+    if let Some(shot) = doc.sections.iter().find(|s| fold(&s.heading) == fold(to)) {
         return Some(format!(
-            "`{to}` is the `## {}` heading, not a mark; {TARGET}, so put `::mark{{id=\"{to}\"}}` \
+            "`{to}` is the `## {}` heading, not a label; {TARGET}, so put `::label{{name=\"{to}\"}}` \
              under that heading",
             shot.heading
         ));
@@ -288,13 +284,13 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
             };
             let menu = id.map_or(format!("`<{tag}>`"), |id| format!("`<{tag} id=\"{id}\">`"));
             if id == Some(to) {
-                return Some(format!("`{to}` is the id of {menu}, not a mark"));
+                return Some(format!("`{to}` is the id of {menu}, not a label"));
             }
             choices
                 .iter()
                 .find_map(|c| {
                     if c.id == to {
-                        Some(format!("`{to}` is a choice id in {menu}, not a mark"))
+                        Some(format!("`{to}` is a choice id in {menu}, not a label"))
                     } else {
                         find(&c.body, to)
                     }
@@ -305,8 +301,7 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
                 })
         })
     }
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter()
         .map(|s| s.body.as_slice())
         .chain(doc.quests.iter().map(|q| q.body.as_slice()))
@@ -320,21 +315,22 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
     None
 }
 
-/// dsl 0.27.0 (round-5 T3-7): every label id some `::next{to}` in `doc`
-/// names — the `::mark`s / `id=` lines a walk can enter by a jump, so
-/// content from one of them on is reachable even after an `::end`.
+/// dsl 0.27.0 (round-5 T3-7): every label name some `::jump{to}` in `doc`
+/// names — the `::label`s a walk can enter by a jump, so content from one of
+/// them on is reachable even after an `::end`.
 pub(crate) fn next_targets(doc: &Document) -> BTreeSet<String> {
     collect(doc).nexts.into_iter().map(|n| n.to).collect()
 }
 
-/// `node` is — or holds, at any depth — a label (`::mark{id}` or a line's
-/// `id=`) named in `targets`: a walk can enter it by a jump.
+/// `node` is — or holds, at any depth — a `::label{name}` named in
+/// `targets`: a walk can enter it by a jump.
 pub(crate) fn holds_label(node: &Node, targets: &BTreeSet<String>) -> bool {
-    let named = |attrs: &[Attr]| attr_str(attrs, "id").is_some_and(|id| targets.contains(id));
+    let named =
+        |attrs: &[Attr]| attr_str(attrs, LABEL_NAME_ATTR).is_some_and(|id| targets.contains(id));
     let any = |nodes: &[Node]| nodes.iter().any(|n| holds_label(n, targets));
     match node {
-        Node::Directive(d) => d.tag == lute_manifest::core::MARK_DIRECTIVE && named(&d.attrs),
-        Node::Line(l) => named(&l.attrs),
+        Node::Directive(d) => d.tag == lute_manifest::core::LABEL_DIRECTIVE && named(&d.attrs),
+        Node::Line(_) => false,
         Node::Branch(b) => b.choices.iter().any(|c| any(&c.body)),
         Node::Hub(h) => h.bodies().any(|b| any(b)),
         Node::Match(m) => m.arms.iter().any(|arm| match arm {
@@ -346,7 +342,7 @@ pub(crate) fn holds_label(node: &Node, targets: &BTreeSet<String>) -> bool {
     }
 }
 
-/// The document's labels and `::next` sites, in [`Collector::walk`] order.
+/// The document's labels and `::jump` sites, in [`Collector::walk`] order.
 fn collect(doc: &Document) -> Collector {
     let mut c = Collector {
         pos: 0,
@@ -354,7 +350,7 @@ fn collect(doc: &Document) -> Collector {
         dups: Vec::new(),
         nexts: Vec::new(),
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         c.walk(&shot.body);
     }
     for quest in &doc.quests {
@@ -395,44 +391,45 @@ mod tests {
 
     #[test]
     fn clean_forward_mark_and_next_is_clean() {
-        let d = doc("@narrator: hi\n::next{to=\"x\"}\n::mark{id=\"x\"}\n@narrator: there\n");
+        let d = doc("@narrator: hi\n::jump{to=\"x\"}\n::label{name=\"x\"}\n@narrator: there\n");
         assert!(check_next_labels(&d).is_empty());
     }
 
+    /// dsl 0.37.0 §3.5: a line `id=` is no label — only `::label{name}` is.
     #[test]
-    fn forward_line_id_target_is_clean() {
-        let d = doc("::next{to=\"x\"}\n@narrator{id=\"x\"}: there\n");
-        assert!(check_next_labels(&d).is_empty());
+    fn line_id_is_not_a_target() {
+        let d = doc("::jump{to=\"x\"}\n@narrator{id=\"x\"}: there\n");
+        assert_eq!(codes(&check_next_labels(&d)), ["E-JUMP-UNDEFINED"]);
     }
 
     #[test]
     fn undefined_target_errors() {
-        let d = doc("::next{to=\"nope\"}\n");
-        assert_eq!(codes(&check_next_labels(&d)), ["E-NEXT-UNDEFINED"]);
+        let d = doc("::jump{to=\"nope\"}\n");
+        assert_eq!(codes(&check_next_labels(&d)), ["E-JUMP-UNDEFINED"]);
     }
 
     // A misspelled target names the document's closest mark; a target
     // nothing resembles gets no guess.
     #[test]
     fn undefined_target_suggests_the_nearest_mark() {
-        let d = doc("::next{to=\"endng\"}\n::mark{id=\"ending\"}\n@narrator: bye\n");
+        let d = doc("::jump{to=\"endng\"}\n::label{name=\"ending\"}\n@narrator: bye\n");
         let diags = check_next_labels(&d);
-        assert_eq!(codes(&diags), ["E-NEXT-UNDEFINED"]);
+        assert_eq!(codes(&diags), ["E-JUMP-UNDEFINED"]);
         assert!(
             diags[0].message.contains("did you mean `ending`?"),
             "{}",
             diags[0].message
         );
-        let d = doc("::next{to=\"nowhere\"}\n::mark{id=\"ending\"}\n@narrator: bye\n");
+        let d = doc("::jump{to=\"nowhere\"}\n::label{name=\"ending\"}\n@narrator: bye\n");
         assert!(!check_next_labels(&d)[0].message.contains("did you mean"));
     }
 
     // Round-6 T3-60: a backward jump says what loops instead.
     #[test]
     fn backward_target_errors() {
-        let d = doc("::mark{id=\"x\"}\n@narrator: hi\n::next{to=\"x\"}\n");
+        let d = doc("::label{name=\"x\"}\n@narrator: hi\n::jump{to=\"x\"}\n");
         let diags = check_next_labels(&d);
-        assert_eq!(codes(&diags), ["E-NEXT-BACKWARD"]);
+        assert_eq!(codes(&diags), ["E-JUMP-BACKWARD"]);
         assert!(diags[0].message.contains("`<hub>`"), "{}", diags[0].message);
     }
 
@@ -441,28 +438,28 @@ mod tests {
     #[test]
     fn undefined_target_names_what_the_id_is() {
         let message = |src: &str| check_next_labels(&doc(src))[0].message.clone();
-        let m = message("::next{to=\"gallery\"}\n\n## Gallery\n\n@narrator: fog\n");
+        let m = message("::jump{to=\"gallery\"}\n\n## Gallery\n\n@narrator: fog\n");
         assert!(m.contains("`## Gallery` heading"), "{m}");
         let m = message(
-            "<branch id=\"door\">\n  <choice id=\"inside\" label=\"In\">\n    @narrator: in\n  \
-             </choice>\n  <choice id=\"stay\" label=\"Stay\">\n    ::next{to=\"inside\"}\n  \
+            "<branch id=\"door\">\n  <choice id=\"inside\" text=\"In\">\n    @narrator: in\n  \
+             </choice>\n  <choice id=\"stay\" text=\"Stay\">\n    ::jump{to=\"inside\"}\n  \
              </choice>\n</branch>\n",
         );
         assert!(m.contains("choice id in `<branch id=\"door\">`"), "{m}");
         // Ink's END ends the story (`terminal:`); DONE ends the scene.
-        assert!(message("::next{to=\"END\"}\n").contains("`terminal:`"));
-        assert!(message("::next{to=\"DONE\"}\n").contains("a scene ends with `::end`"));
+        assert!(message("::jump{to=\"END\"}\n").contains("`terminal:`"));
+        assert!(message("::jump{to=\"DONE\"}\n").contains("a scene ends with `::end`"));
     }
 
     #[test]
     fn duplicate_mark_ids_error() {
-        let d = doc("::mark{id=\"x\"}\n::mark{id=\"x\"}\n");
-        assert_eq!(codes(&check_next_labels(&d)), ["E-MARK-DUP"]);
+        let d = doc("::label{name=\"x\"}\n::label{name=\"x\"}\n");
+        assert_eq!(codes(&check_next_labels(&d)), ["E-LABEL-DUP"]);
     }
 
     #[test]
-    fn mark_and_line_id_collision_errors() {
-        let d = doc("::mark{id=\"x\"}\n@narrator{id=\"x\"}: hi\n");
-        assert_eq!(codes(&check_next_labels(&d)), ["E-MARK-DUP"]);
+    fn duplicate_label_across_sections_errors() {
+        let d = doc("::label{name=\"x\"}\n@narrator: hi\n\n## Two\n\n::label{name=\"x\"}\n");
+        assert_eq!(codes(&check_next_labels(&d)), ["E-LABEL-DUP"]);
     }
 }

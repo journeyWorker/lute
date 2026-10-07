@@ -11,9 +11,9 @@ is a blocking bridge that answers bought / remaining. */
   @pim{code="0020" when="!@harvestLive"}: Festival's over, but the stall stays up a few days for stragglers. {{season.harvest.tokens:plural(# token|# tokens)}} left. Use 'em.
   @pim{code="0030" emotion="smug" when="@harvestRerun && visited('harvest.h3')"}: Ah, a returning customer. You'll want the lantern costume you missed. Or the one you didn't.
   <hub id="harvestStall" prompt="What'll it be?">
-    <choice id="cake" label="Moon cake (50 tokens)">
+    <choice id="cake" text="Moon cake (50 tokens)">
       ::purchase{item="moonCake" resultKey="buy"}
-      <match on="scene.shop.buy.bought">
+      <match subject="scene.shop.buy.bought">
         <when is="true">
           @pim{code="0040" emotion="happy"}: One moon cake! Eat it under the moon or it's just a cake. {{scene.shop.buy.remaining}} tokens left.
         </when>
@@ -22,9 +22,9 @@ is a blocking bridge that answers bought / remaining. */
         </otherwise>
       </match>
     </choice>
-    <choice id="costume" label="Lantern costume (800 tokens)" once>
+    <choice id="costume" text="Lantern costume (800 tokens)" once>
       ::purchase{item="lanternCostume" resultKey="buy"}
-      <match on="scene.shop.buy.bought">
+      <match subject="scene.shop.buy.bought">
         <when is="true">
           @pim{code="0060" emotion="smug"}: The lantern costume! You'll glow. Literally. Mind the curtains.
         </when>
@@ -33,7 +33,7 @@ is a blocking bridge that answers bought / remaining. */
         </otherwise>
       </match>
     </choice>
-    <choice id="leave" label="Just looking." exit>
+    <choice id="leave" text="Just looking." exit>
       @pim{code="0080"}: Come back when your pockets jingle.
     </choice>
   </hub>
@@ -43,12 +43,12 @@ is a blocking bridge that answers bought / remaining. */
   @pim{code="0010" emotion="happy" when="@starfallLive"}: Comets, glass, ribbons! Starfall runs {{@starfallDaysLeft:plural(# more night|# more nights)}} after tonight.
   @pim{code="0020" when="!@starfallLive"}: The comets have landed, but I've still got stock. {{season.starfall.tokens:plural(# token|# tokens)}}, friend.
   <hub id="starStall" prompt="Pick a comet, any comet.">
-    <choice id="glass" label="Star glass (120 tokens)">
+    <choice id="glass" text="Star glass (120 tokens)">
       ::purchase{item="starGlass" resultKey="buy"}
       @pim{code="0030" emotion="happy" when="scene.shop.buy.bought"}: Star glass! Look through it and every star's a little closer.
       @pim{code="0040" when="!scene.shop.buy.bought"}: Not enough tokens. Stars aren't cheap. Well. These ones aren't.
     </choice>
-    <choice id="leave" label="Leave." exit>
+    <choice id="leave" text="Leave." exit>
       @pim{code="0050"}: Wish well!
     </choice>
   </hub>
@@ -72,17 +72,17 @@ is a blocking bridge that answers bought / remaining. */
   @pim{code="0010" emotion="happy" when="@frostLive"}: Candles, globes, mittens! The vigil runs {{@frostDaysLeft:plural(# more night|# more nights)}} after tonight.
   @pim{code="0020" when="!@frostLive"}: Ice is out, but I kept a crate back. {{season.frost.tokens:plural(# candle|# candles)}} to spend.
   <hub id="frostStall" prompt="Warm your hands and pick something.">
-    <choice id="candle" label="Frost candle (30 candles)">
+    <choice id="candle" text="Frost candle (30 candles)">
       ::purchase{item="frostCandle" resultKey="buy"}
       @pim{code="0030" emotion="happy" when="scene.shop.buy.bought"}: A candle for a candle. Very circular. I love it.
       @pim{code="0040" when="!scene.shop.buy.bought"}: Not enough candles to buy a candle. The irony's free.
     </choice>
-    <choice id="globe" label="Snow globe (500 candles)" once>
+    <choice id="globe" text="Snow globe (500 candles)" once>
       ::purchase{item="snowGlobe" resultKey="buy"}
       @pim{code="0050" emotion="smug" when="scene.shop.buy.bought"}: The globe! Tiny sea, tiny ice, tiny Nyx. Don't shake her.
       @pim{code="0060" when="!scene.shop.buy.bought"}: Five hundred for the globe, friend. It's hand-frozen.
     </choice>
-    <choice id="leave" label="Leave." exit>
+    <choice id="leave" text="Leave." exit>
       @pim{code="0070"}: Stay warm!
     </choice>
   </hub>

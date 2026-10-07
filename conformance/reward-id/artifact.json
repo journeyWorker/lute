@@ -1,0 +1,109 @@
+{
+  "kind": "quest",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.quest.lifecycle/1",
+    "lute.quest.rewards/1"
+  ],
+  "meta": {
+    "title": "Reward id"
+  },
+  "state": [
+    {
+      "path": "quest.rescue.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:rescue"
+    },
+    {
+      "path": "quest.rescue.objectives.arrive.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:rescue"
+    },
+    {
+      "path": "quest.rescue.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:rescue"
+    },
+    {
+      "path": "run.atGoal",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "family": "declaration",
+      "position": "001-0100",
+      "id": "rescue",
+      "title": "Rescue",
+      "titleLineId": "rescue.title",
+      "start": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
+      },
+      "objectives": [
+        {
+          "id": "arrive",
+          "title": "Arrive",
+          "titleLineId": "rescue.arrive",
+          "done": {
+            "cel": "run.atGoal == true",
+            "expr": {
+              "op": "==",
+              "l": {
+                "path": "run.atGoal"
+              },
+              "r": {
+                "bool": true
+              }
+            }
+          },
+          "optional": false,
+          "body": null,
+          "rewards": [
+            {
+              "id": "arriveBonus",
+              "kind": "GOLD",
+              "amount": 1
+            }
+          ]
+        }
+      ],
+      "rewards": [
+        {
+          "id": "xp",
+          "kind": "XP",
+          "amount": 100
+        },
+        {
+          "kind": "GOLD",
+          "amount": 5
+        }
+      ],
+      "tier": "run"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

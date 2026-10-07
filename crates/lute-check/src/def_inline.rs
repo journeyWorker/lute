@@ -5,7 +5,7 @@
 //! a def there must be provably representable or the document is rejected —
 //! never silently dropped or shipped as CEL source text:
 //!
-//! * **An attribute value** (`::camera{zoom=@closeUp}`): records carry literal
+//! * **An attribute value** (`::camera{duration=@closeUp}`): records carry literal
 //!   fields only, so the def must fold to a §5.1-decided constant
 //!   ([`fold_attr_ref`]); the compiler writes that literal. A state-dependent
 //!   def is `E-ATTR-DEF-DYNAMIC`. The same holds for a def passed as a `::use`
@@ -141,7 +141,7 @@ pub(crate) fn check_def_inlining(
         domains: &folded.domains,
         diags: Vec::new(),
     };
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         cx.nodes(&shot.body);
     }
     for quest in &doc.quests {
@@ -182,7 +182,7 @@ impl Cx<'_> {
                     self.attrs(&b.attrs, None);
                     for c in &b.choices {
                         self.choice_attrs(&c.attrs);
-                        self.interps(&lute_syntax::scan_label_interps(&c.label, c.span));
+                        self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));
                         self.nodes(&c.body);
                     }
                 }
@@ -190,7 +190,7 @@ impl Cx<'_> {
                     self.attrs(&h.attrs, None);
                     for c in &h.choices {
                         self.choice_attrs(&c.attrs);
-                        self.interps(&lute_syntax::scan_label_interps(&c.label, c.span));
+                        self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));
                         self.nodes(&c.body);
                     }
                     if let Some(r) = &h.on_return {
@@ -344,8 +344,7 @@ fn param_attr_use(
         return None;
     }
     let def = set.table.get(component)?;
-    def.body
-        .shots
+    def.body.sections
         .iter()
         .find_map(|s| body_attr_use(set, &s.body, param, seen))
 }

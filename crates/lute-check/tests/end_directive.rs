@@ -99,7 +99,7 @@ fn end_as_the_last_node_is_clean() {
     assert_eq!(count(&text, W), 0, "{:?}", codes(&text));
 }
 
-// --- dsl 0.27.0 (round-5 T3-7): a `::next` target is an entry point ------------
+// --- dsl 0.27.0 (round-5 T3-7): a `::jump` target is an entry point ------------
 
 /// Spans of every `W-CODE-AFTER-END` in `text`, as the source they cover.
 fn dead_starts(text: &str) -> Vec<String> {
@@ -113,33 +113,34 @@ fn dead_starts(text: &str) -> Vec<String> {
 
 #[test]
 fn a_jump_target_after_end_is_live_and_what_precedes_it_is_not() {
-    // `::next` jumps past the `::end` into `flooded`: from the mark on the
+    // `::jump` jumps past the `::end` into `flooded`: from the mark on the
     // body is live again. The line between `::end` and the mark stays dead,
     // and so does the stretch after the second `::end` — an untargeted mark
     // opens nothing.
     let text = format!(
-        "{HDR}::next{{to=\"flooded\" when=\"true\"}}\n@narrator: out\n::end\n\
-         @narrator: dead one\n::mark{{id=\"flooded\"}}\n@narrator: in\n::end\n\
-         ::mark{{id=\"orphan\"}}\n@narrator: dead two\n"
+        "{HDR}::jump{{to=\"flooded\" when=\"true\"}}\n@narrator: out\n::end\n\
+         @narrator: dead one\n::label{{name=\"flooded\"}}\n@narrator: in\n::end\n\
+         ::label{{name=\"orphan\"}}\n@narrator: dead two\n"
     );
     assert_eq!(
         dead_starts(&text),
-        ["@narrator: dead one", "::mark{id=\"orphan\"}"],
+        ["@narrator: dead one", "::label{name=\"orphan\"}"],
         "{:?}",
         codes(&text)
     );
 }
 
 #[test]
-fn a_targeted_line_id_or_nested_mark_is_an_entry_point() {
-    // A line's `id=` is a label like `::mark` (dsl 0.12.0).
-    let line =
-        format!("{HDR}::next{{to=\"l\" when=\"true\"}}\n::end\n@narrator{{id=\"l\"}}: jumped in\n");
+fn a_targeted_label_or_nested_label_is_an_entry_point() {
+    // A `::label` before a line is a jump target (dsl 0.37.0 §3.5).
+    let line = format!(
+        "{HDR}::jump{{to=\"l\" when=\"true\"}}\n::end\n::label{{name=\"l\"}}\n@narrator: jumped in\n"
+    );
     assert!(dead_starts(&line).is_empty(), "{:?}", codes(&line));
-    // A mark inside a later choice body: the jump lands inside that node.
+    // A label inside a later choice body: the jump lands inside that node.
     let nested = format!(
-        "{HDR}::next{{to=\"m\" when=\"true\"}}\n::end\n<branch id=\"b\">\n\
-         <choice id=\"go\" label=\"Go\">\n::mark{{id=\"m\"}}\n@narrator: jumped in\n</choice>\n\
+        "{HDR}::jump{{to=\"m\" when=\"true\"}}\n::end\n<branch id=\"b\">\n\
+         <choice id=\"go\" text=\"Go\">\n::label{{name=\"m\"}}\n@narrator: jumped in\n</choice>\n\
          </branch>\n"
     );
     assert!(dead_starts(&nested).is_empty(), "{:?}", codes(&nested));
@@ -151,8 +152,8 @@ fn a_targeted_line_id_or_nested_mark_is_an_entry_point() {
 fn a_sibling_choice_body_is_unaffected() {
     let text = format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"stop\" label=\"Stop\">\n::end{{reason=\"quit\"}}\n</choice>\n\
-         <choice id=\"go\" label=\"Go\">\n@narrator: still reachable\n</choice>\n\
+         <choice id=\"stop\" text=\"Stop\">\n::end{{reason=\"quit\"}}\n</choice>\n\
+         <choice id=\"go\" text=\"Go\">\n@narrator: still reachable\n</choice>\n\
          </branch>\n"
     );
     assert_eq!(
@@ -167,7 +168,7 @@ fn a_sibling_choice_body_is_unaffected() {
 fn content_after_the_enclosing_branch_is_unaffected() {
     let text = format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"stop\" label=\"Stop\">\n::end\n</choice>\n\
+         <choice id=\"stop\" text=\"Stop\">\n::end\n</choice>\n\
          </branch>\n\
          @narrator: reachable via the other route\n"
     );
@@ -183,8 +184,8 @@ fn content_after_the_enclosing_branch_is_unaffected() {
 fn content_after_end_inside_one_choice_warns_for_that_choice_only() {
     let text = format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"stop\" label=\"Stop\">\n::end\n@narrator: dead\n</choice>\n\
-         <choice id=\"go\" label=\"Go\">\n@narrator: alive\n</choice>\n\
+         <choice id=\"stop\" text=\"Stop\">\n::end\n@narrator: dead\n</choice>\n\
+         <choice id=\"go\" text=\"Go\">\n@narrator: alive\n</choice>\n\
          </branch>\n"
     );
     assert_eq!(count(&text, W), 1, "{:?}", codes(&text));
@@ -195,7 +196,7 @@ fn content_after_end_in_a_when_arm_warns_for_that_arm_only() {
     let hdr = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
         run.rank: { type: { enum: [bronze, gold] }, default: bronze }\n---\n## Shot 1.\n";
     let text = format!(
-        "{hdr}<match on=\"run.rank\">\n\
+        "{hdr}<match subject=\"run.rank\">\n\
          <when is=\"gold\">\n::end{{reason=\"win\"}}\n@narrator: dead\n</when>\n\
          <when is=\"bronze\">\n@narrator: alive\n</when>\n\
          </match>\n"

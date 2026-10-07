@@ -10,7 +10,7 @@ title: Route 13 — the Strait
 
 <beat id="enter" on="enterRoute" target="route.r13" title="Route 13" priority="10">
   ::bg{location="route-13" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: The shore drops away and the water turns from green to slate. A buoy clangs somewhere to the north.
   @narrator{code="0020"}: A sign bolted to the buoy reads: ROUTE 13 — THE STRAIT. FROSTHARBOR 9 KM. SWIMMERS KEEP LEFT OF THE FERRY LANE.
 </beat>

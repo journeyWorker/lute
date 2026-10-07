@@ -13,7 +13,7 @@ priority: 10
 @narrator{code="0010"}: Filing cabinets to the ceiling. Every drawer has been pulled out and put back in the wrong cabinet, as if someone had been looking for one name for forty years.
 @narrator{code="0020"}: On the table, open under a green-shaded lamp that has no bulb: the admissions ledger. Three pages have been torn out.
 @nell{code="0010" mono}: Admissions, 1961 to 1979. Name, bed, date. Discharged, never.
-<match on="@lateNight">
+<match subject="@lateNight">
   <when is="true">
     @narrator{code="0030"}: The last line on the open page is wet. ARDEN, T. Bed 13. The ink is today's.
     ::fright{amount=2}

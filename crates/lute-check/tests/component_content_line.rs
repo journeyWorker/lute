@@ -40,12 +40,12 @@ fn unique_dir() -> PathBuf {
     dir
 }
 
-const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
+const HDR: &str = "---\nkind: scene\ncharacter: x\npov: marina\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
 /// The importing scene: nothing but a `::use` of the paramless component, so
 /// the ONLY diagnostics it can contribute are the component body's own.
 const USE_SCENE: &str =
-    "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+    "---\nkind: scene\ncharacter: x\npov: marina\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
 ## Shot 1.\n::use{component=\"c\"}\n";
 
 /// One `check()` run over `text`, with `components` already resolved. The three
@@ -232,7 +232,7 @@ fn nested_match_arm_line_is_checked() {
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"warm\">\n@marina{emotion=\"TOTALLY-UNDECLARED\"}: hi\n</when>\n\
 <when is=\"cold\">\n@marina{pose=\"idle\"}: hi\n</when>\n\
 </match>\n",

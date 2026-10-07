@@ -15,6 +15,7 @@ description: "Lute 0.30.0(시계, 퀘스트 구조, 파티, 브리지 응답, �
 ---
 kind: scene
 id: cafe.counter
+pov: fixer
 on: chapter
 after: 'visited("cafe.arrival")'
 priority: 10
@@ -24,7 +25,7 @@ state:
   run.mood: { type: { enum: [calm, tense] }, default: calm }
 ---
 
-## Counter
+## Counter {#counter}
 
 @narrator: The espresso machine hisses.
 @mira: The usual?
@@ -32,17 +33,17 @@ state:
 @mira{os}: One moment!
 
 <branch id="order" prompt="What will you have?">
-  <choice id="tea" label="Tea, and a tip">
+  <choice id="tea" text="Tea, and a tip">
     ::set{run.tips += 5}
     @mira: Thank you!
   </choice>
-  <choice id="nothing" label="Nothing tonight">
+  <choice id="nothing" text="Nothing tonight">
     ::set{run.mood = 'tense'}
     @mira: Suit yourself.
   </choice>
 </branch>
 
-<match on="run.mood">
+<match subject="run.mood">
   <when is="calm">
     @mira: Stay as long as you like.
   </when>
@@ -52,10 +53,11 @@ state:
 </match>
 ```
 
-- `@speaker: text`는 대사 한 줄이고, `@narrator`는 내레이션입니다. `{mono}`는 속마음, `{os}`는 화면 밖,
-  `{vo}`는 보이스오버입니다. 콘텐츠는 `## Heading` 아래에 둡니다. → [대사, 캐스트, 연출](#대사-캐스트-연출)
-- `<branch>`는 `<choice>`로 이루어진 선택 메뉴입니다. → [선택지, 허브, 점프, 엔딩](#선택지-허브-점프-엔딩)
-- `<match on>`은 들어맞는 첫 `<when is>` 갈래를 고릅니다. → [match와 when](#match와-when)
+- `@speaker: text`는 대사 한 줄이고, `@narrator`는 내레이션입니다. `{mono}`는 속마음(시점 인물 `pov:`나
+  `monoSpeakers:`에 적은 화자만), `{os}`는 화면 밖, `{vo}`는 보이스오버입니다. 콘텐츠는 `## Heading` 섹션
+  아래에 둡니다. → [대사, 캐스트, 연출](#대사-캐스트-연출)
+- `<branch>`는 `<choice text>`로 이루어진 선택 메뉴입니다. → [선택지, 허브, 점프, 엔딩](#선택지-허브-점프-엔딩)
+- `<match subject>`는 들어맞는 첫 `<when is>` 갈래를 고릅니다. → [match와 when](#match와-when)
 - `::set{…}`은 `state:`에 선언한 상태를 씁니다. → [상태 쓰기와 팩트](#상태-쓰기와-팩트)
 - `on:`은 씬이 계기에 응답하게 합니다. 여기서는 `chapter`이며, 플러그인이 계기를 선언하기 전까지는 어떤
   이름이든 됩니다. `after:`는 다른 씬 뒤로 순서를 정하고, `priority:`는 같은 자리에서 이기며, `when:`은
@@ -99,7 +101,7 @@ $ lute play . --script plays/story.play.yaml        # the transcript of one play
 
 ```
 my-game/
-├── lute.project.yaml            profiles, plugins, identity, defaults, sequence
+├── lute.project.yaml            profiles, plugins, identity, defaults, chapters
 ├── world.schema.yaml            run/user/app state, enums, defs, facts, rules
 ├── plugins/game.occasions/      optional: plugin.yaml + occasions/*.yaml + events/*.yaml
 ├── scenes/*.lute                kind: scene
@@ -126,6 +128,8 @@ identity:                               # both values below are the defaults
   lineId: "{prefix}.{speaker}_{code}"
   voiceKey: "{prefix}.{speaker}-{code}" # the 0.21 default was {speaker}-{code}: pin it to keep old keys
 defaults:                               # frontmatter every document inherits
+  pov: fixer                            # the effective point of view: who may speak {mono}
+  monoSpeakers: [mira]                  # further speakers allowed {mono}
   luteVersion: "0.30.0"
   uses:                                 # resolved against THIS file's directory
     - world.schema.yaml
@@ -145,7 +149,7 @@ chapters:                               # 0.28.0: chains of scenes by id, in pla
 발생하는 계기라면 나열된 모든 장면이 자기 `target:`을 선언합니다.
 [장면 연결하기](/ko/getting-started/connect-scenes/)를 보세요.
 
-`defaults:`에는 `kind`, `character`, `season`, `episode`, `pov`, `luteVersion`, `contentLang`,
+`defaults:`에는 `kind`, `character`, `season`, `episode`, `pov`, `monoSpeakers`, `luteVersion`, `contentLang`,
 `uses`, `extends`, `components`, `extra`, 그리고 (0.26.0) `questTier: run | user`만 쓸 수 있습니다(그 밖의
 키는 `E-DEFAULTS-KEY`). 문서가 어떤 키를 직접 쓰면 그 키의 기본값은 병합 없이 통째로 대체됩니다(`uses: []`는
 "가져오기 없음"). 문서의 kind에서 허용되지 않는 기본값은 그 문서에는 적용되지 않습니다. 0.26.0부터 `uses`
@@ -157,9 +161,11 @@ chapters:                               # 0.28.0: chains of scenes by id, in pla
 `components: [../components/greet.component.lute]`로, 매니페스트는
 `defaults: { components: [components/greet.component.lute] }`로 씁니다.
 
-0.22.0부터 기본 `voiceKey`에 `{prefix}`가 들어가므로 보이스 키는 프로젝트 전체에서 유일합니다. 0.21 키로
-음성을 녹음해 둔 프로젝트는 `identity: { voiceKey: "{speaker}-{code}" }`로 고정하면 되고, 그러면 텍스트가
-다른 줄들이 한 키에 모이는 곳마다 `E-DUP-VOICEKEY`가 납니다.
+0.22.0부터 기본 `voiceKey`에 `{prefix}`가 들어가므로 보이스 키는 프로젝트 전체에서 유일합니다. 내레이션과
+속마음을 포함한 모든 줄이 `voiceKey`를 가집니다. 이것은 녹음 파일이 있다는 약속이 아니라 조인 키이며, 녹음할
+역할을 고르는 일은 소비하는 쪽이 합니다. 0.21 키로 음성을 녹음해 둔 프로젝트는
+`identity: { voiceKey: "{speaker}-{code}" }`로 고정하면 되고, 그러면 수식어를 뗀 텍스트가 다른 줄들이 한 키에
+모이는 곳마다 `E-DUP-VOICEKEY`가 납니다.
 
 `world.schema.yaml`은 `---` 구분선이 없는 일반 YAML입니다. 씬은 `uses:`로 이 파일을 가져옵니다:
 
@@ -178,6 +184,14 @@ enums:                                   # content vocabulary: you declare every
   emotion: [neutral, happy, worried]
   action:  { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor:  { members: [left, center, right], default: center }
+  costume: [apron, coat]
+  framing: [closeUp, wide]
+  cameraMove: [pushIn, pan]
+  transition: [cut, crossfade]
+  cgLayout: [fullscreen, inset]
+  musicPlayback: [start, fadeOut]
+  sequence: [doorOpen]                   # project-declared sequences ::sequence{name} refers to
+  textStyle: [whisper, shout]            # inline :whisper[…] spans
   weekday: { members: [mon, tue], labels: { mon: Monday, tue: Tuesday } }   # labels: 0.24.0
 entities:
   crew:  { members: [vesna, toma] }
@@ -199,8 +213,8 @@ defs:
   calm: "run.pressure < 2"                    # shorthand: the body alone, type inferred (bool)
   veteran: "user.runs >= 10"
   vesnaKnows: "holds('knows', ['vesna', 'manifest'])"
-  zoom: "run.pressure > 2 ? 1.3 : 1.1"        # inferred double
-  closeUp: "1.3"                              # a constant: the only kind of def an attribute takes
+  pace: "run.pressure > 2 ? 0.4 : 0.8"        # inferred double
+  holdTime: "0.5"                             # a constant: the only kind of def an attribute takes
   atLeast: { type: bool, params: { n: int }, cel: "user.runs >= n" }   # params need type:
 clock:                                   # optional (0.24.0), one per project: see Clock below
   day: run.day                           # owner: engine
@@ -222,14 +236,28 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 `int` 또는 `double`, 정수·소수 리터럴은 `int`/`double`이며, 경로를 그대로 읽으면 그 경로의 타입입니다.
 검사기가 타입을 알 수 없는 본문(예: `"@other"`)은 긴 형태 `{ type: …, cel: … }`로 써야 하며, 그렇지 않으면
 `E-DEF-DECL`입니다.
-어휘 슬롯은 `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`, `vfxType` 일곱 가지입니다.
-아무도 선언하지 않은 슬롯을 쓰면 `E-DOMAIN-UNKNOWN`입니다. `action`에는 `exits:`를, `anchor`에는
-`default:`를 반드시 적어야 합니다.
+연출 어휘는 프로젝트가 선언하는 닫힌 도메인입니다. 코어는 도메인 이름만 정하고 멤버는 하나도 싣지 않으며,
+멤버는 문서나 스키마의 `enums:`, 또는 플러그인이 선언합니다:
+
+| 도메인 | 쓰는 곳 | 비고 |
+|---|---|---|
+| `anchor` | `::actor{anchor}` | `default:`를 반드시 적습니다. `anchor`를 생략하면 그 멤버를 씁니다. |
+| `action` | `::actor{action}`, 줄의 `action=` | `exits:`를 반드시 적습니다. 그 멤버가 퇴장이며, 이름으로 추측하지 않습니다. |
+| `emotion` | 줄과 `::actor`의 `emotion` | 캐스트 항목의 `emotions:`가 화자별로 더 좁힙니다. |
+| `costume` | `::actor{costume}` | |
+| `framing` · `cameraMove` · `transition` | `::camera{framing}` · `{move}` · `{transition}` | |
+| `cgLayout` | `::cg{layout}` | |
+| `musicPlayback` · `mood` · `volume` | `::music{playback}` · `{mood}` · `{volume}` | |
+| `vfxType` | `::vfx{type}` | |
+| `sequence` | `::sequence{name}` | 프로젝트가 가진 시퀀스를 가리키는 이름입니다. |
+| `textStyle` | 인라인 `:<멤버>[…]` | 멤버가 곧 스팬 이름이며 속성은 받지 않습니다. |
+
+선언되지 않은 도메인을 쓰면 `E-DOMAIN-UNKNOWN`, 멤버가 아닌 값은 `E-BAD-ENUM`입니다.
 
 `cast:`(0.23.0)는 화자를 선언합니다. 스키마 문서에 쓰거나, 플러그인의 `cast` 내보내기(`cast/*.yaml`, 같은
 `cast:` 맵)로 선언합니다. 캐스트가 하나라도 선언되면 그 밖의 화자(`@narrator` 제외)는 씬, 퀘스트, 엔트리,
 번들 비트 어디서나 비슷한 이름을 제안하는 `E-CAST-UNKNOWN`이며, 0.24.0부터는 캐스트 밖의
-`::auto{character}`와 `::camera{focus}`도 마찬가지입니다. 캐스트를 선언하지 않으면 어떤 화자 id든
+`::actor{character}`와 `::camera{focus}`도 마찬가지입니다. 캐스트를 선언하지 않으면 어떤 화자 id든
 받아들여집니다. 씬 프론트매터에는 `cast:`를 쓸 수 없습니다(`E-META-UNKNOWN-KEY`). `lute context`가 캐스트를
 보여 줍니다. 캐스트 항목에는 `present:`(조건)와 `emotions:`도 둘 수 있습니다(0.24.0). 그 화자의 줄을 감싼
 가드가 `present`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은
@@ -266,15 +294,17 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 
 | kind | 필수 | 그 kind에서만 쓰는 키 |
 |---|---|---|
-| `kind: scene` | `id:`, 또는 레거시 `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `pov`, `after`, 비트 키 `on` / `target` / `when` / `priority` / `once` / `also` / `share`(0.25.0) / `spentBy` / `for`(0.27.0) |
+| `kind: scene` | `id:`, 또는 레거시 `character` + `season` + `episode` | `id`, `character`, `season`, `episode`, `episodeId`, `after`, 비트 키 `on` / `target` / `when` / `priority` / `once` / `also` / `share`(0.25.0) / `spentBy` / `for`(0.27.0) |
 | `kind: quest` | 본문에 `<quest>` 하나 이상 | `id` (선택, 묶음 이름) |
 | `kind: lore` | 본문에 `<entry>`나 `<beat>` 하나 이상 | `id` (`<beat>`가 있으면 필수), `series` |
 | 컴포넌트 (`kind:` 없음) | `component: <name>` | `component`, `params`, `effects`(0.24.0), `beat`(0.27.0: 비트 템플릿의 머리. `<beat use="<name>" id="…" param="…">`로 씁니다) |
 
-모든 루트 kind는 `title`, `luteVersion`, `contentLang`, `profile`, `plugins`, `uses`, `extends`,
-`components`, `state`, `defs`, `enums`, `entities`, `relations`, `facts`, `rules`, `codesLocked`,
-`mode`, `extra`(자유로운 설명 데이터)도 받습니다. 이 목록 밖의 키는 `E-META-UNKNOWN-KEY`입니다. 퀘스트의
-그래프 간선은 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
+모든 루트 kind는 `title`, `pov`, `monoSpeakers`, `luteVersion`, `contentLang`, `profile`, `plugins`, `uses`,
+`extends`, `components`, `state`, `defs`, `enums`, `entities`, `relations`, `facts`, `rules`, `codesLocked`,
+`mode`, `extra`(자유로운 설명 데이터)도 받습니다. 이 목록 밖의 키는 `E-META-UNKNOWN-KEY`이고, `_`가 들어간
+키는 lowerCamelCase 이름을 알려 주는 `E-AUTHOR-CASE`입니다(속성, 태그 속성, 프로젝트 키도 같습니다). 문서
+제목은 프론트매터 `title:` 하나뿐이며, 본문의 `# 제목`은 `E-INERT-TITLE`입니다. 퀘스트의 그래프 간선은
+`<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
 → [프론트매터와 프로필](/language/frontmatter-and-profiles/)
 
@@ -285,48 +315,78 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 kind: scene
 id: diner.night
 pov: fixer
+monoSpeakers: [mira]
 enums:
   emotion: [neutral, happy]
   action: { members: [fadeInUp, fadeOutDown], exits: [fadeOutDown] }
   anchor: { members: [left, center, right], default: center }
+  costume: [apron]
   mood: [peaceful]
   volume: [down, normal]
-  musicAction: [start, fadeOut]
+  musicPlayback: [start, fadeOut]
   vfxType: [whiteOut]
+  framing: [closeUp, wide]
+  cameraMove: [pushIn]
+  transition: [crossfade]
+  cgLayout: [fullscreen]
+  sequence: [doorOpen]
+  textStyle: [whisper]
 state:
   run.affection: { type: int, default: 0 }
 ---
 
-## Counter
+## Counter {#counter}
 
 ::bg{location="diner" time="night"}
-::music{action="start" mood="peaceful" volume="down"}
-::auto{character="mira" anchor="center" action="fadeInUp"}
-::camera{focus="mira" zoom="1.2" duration="0.5" wait="true"}
+::music{playback="start" mood="peaceful" volume="down" assetId="bgm.diner"}
+::actor{character="mira" anchor="center" action="fadeInUp" emotion="happy" costume="apron"}
+::camera{focus="mira" framing="closeUp" move="pushIn" duration="0.5" wait="true"}
 @narrator: The diner hums.
 @mira{code="0010" emotion="happy"}: You're back, {{userName}}! Warmth: {{run.affection}}.
 @fixer: I am.
 @fixer{mono}: She remembered.
 @fixer{mono when="run.affection > 2"}: She remembered my order, too.
+@mira{mono}: He came back.
 // a `//` line comment: the whole line is ignored
-@mira{os}: Hold on!
-@mira{as="???"}: ...who's there?
-::sfx{sound="door bell"}
+@mira{os}: Hold on!:pause{s=0.5} :whisper[Just a second.]
+@mira{as="???"}: ...:speed[who's there]{rate=0.8}?
+::sfx{sound="doorBell" assetId="sfx.bell"}
 ::vfx{type="whiteOut"}
+::sequence{name="doorOpen"}
+::cg{assetId="cg.diner.door" layout="fullscreen"}
+::cg{assetId="cg.diner.door" display="hide"}
+::video{assetId="mv.rain"}
+::camera{framing="wide" transition="crossfade"}
 ::clear
-::music{action="fadeOut"}
+::music{playback="fadeOut"}
 ::end{reason="closing"}
 ```
 
 | 요소 | 규칙 |
 |---|---|
-| `@speaker{attrs}: text` | `@narrator`는 내레이션이고, 그 밖의 화자는 모두 대사입니다(`pov:` 화자도 마찬가지이며, `pov`는 설명용일 뿐입니다). `: ` 뒤의 텍스트는 줄 끝까지 그대로입니다. `cast:`가 선언되어 있으면 화자는 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 줄의 가드가 캐스트의 `present:`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은 `E-BAD-ENUM`입니다(0.24.0). |
-| 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드), `id`(`::mark{id}`처럼 점프 대상). 따옴표로 감싼 값은 `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;`를 해석합니다(0.24.0). 그 밖의 `&`는 그대로이며 `\"`도 여전히 됩니다. |
-| 전달 플래그 | `{mono}` 속마음, `{os}` 화면 밖, `{vo}` 보이스오버. 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. 플래그는 속성과 함께 쓸 수 있습니다: `{mono when="…"}`. |
+| `@speaker{attrs}: text` | `@narrator`는 내레이션(`narration`)이고, 그 밖의 화자는 모두 대사(`dialogue`)입니다. `pov:` 화자도 마찬가지입니다. `: ` 뒤의 텍스트는 줄 끝까지 그대로입니다. `cast:`가 선언되어 있으면 화자는 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 줄의 가드가 캐스트의 `present:`를 함의하지 않으면 `W-CAST-ABSENT`이고, 화자의 `emotions:` 밖의 `emotion=`은 `E-BAD-ENUM`입니다(0.24.0). |
+| 줄 속성 | `code`, `emotion`, `variant`, `action`, `dialogMotion`, `as`(이름표 덮어쓰기), `when`(가드). 줄을 점프 대상으로 만들려면 바로 앞에 `::label{name="…"}`을 둡니다. 따옴표로 감싼 값은 `&quot;` `&apos;` `&amp;` `&lt;` `&gt;` `&#NN;` `&#xHH;`를 해석합니다(0.24.0). 그 밖의 `&`는 그대로이며 `\"`도 여전히 됩니다. |
+| 전달 플래그 | `{mono}` 속마음(역할 `mono`), `{os}` 화면 밖(`os`), `{vo}` 보이스오버(`vo`). 한 줄에 하나까지이며 `@narrator`에는 쓸 수 없습니다. 플래그는 속성과 함께 쓸 수 있습니다: `{mono when="…"}`. |
+| `{mono}` 자격 | 화자가 유효 시점 인물(문서의 `pov:`, 없으면 프로젝트 `defaults.pov`)이거나 유효 `monoSpeakers:` 목록(프론트매터, 없으면 `defaults.monoSpeakers`)에 있어야 합니다. 아니면 `E-MONO-POV`, 시점 인물이 아예 정해지지 않았으면 `E-MONO-NO-POV`입니다. 컴포넌트 줄은 `::use`마다 호출하는 쪽의 시점과 목록으로 검사하고, 오류는 그 `::use`에 붙습니다. |
 | `{{…}}` | `{{userName}}`, 선언된 상태 경로, 또는 `{{@def}}`(산출물에 def 본문이 실리고 `lute run` / `lute play`가 그 값을 계산합니다). 값이 없을 수 있는 경로를 읽으면 `E-MAYBE-UNSET`입니다. 줄의 텍스트 전체가 `@name`이면 그 글자가 그대로 출하됩니다(`W-TEXT-LOOKS-LIKE-REF`). `{{@name}}`으로 쓰세요. 0.24.0: `{{run.visits:ordinal}}`은 `1st`, `2nd`, …로 렌더링되며(숫자 전용), `labels:`가 있는 enum 타입 경로는 라벨로 렌더링됩니다. 0.25.0: `{{run.day:ordinalWord}}`는 `first` … `twentieth`로 렌더링됩니다(엔진이 현지화하며, `lute play`는 스물을 넘으면 `21st` 같은 숫자로 돌아갑니다). 0.27.0: `{{run.lamps:plural(lamp\|lamps)}}`는 수가 1이면 첫 형태, 아니면 둘째 형태로 렌더링되고(형태 안의 `#`은 그 수: `plural(# lamp\|# lamps)`), `labels:`가 있는 entity kind의 값(`{{occasion.target}}`, `{ domain: <kind> }` 경로)은 라벨로 렌더링됩니다. cast `name:`이 우선합니다. 0.28.0: `:cardinalWord`는 `one` … `twenty`로 씁니다. plural 형태 안의 `#word` / `#Word`는 그 수를 단어로 씁니다(`plural(One wagon\|#Word wagons)` → `Eleven wagons`). plural 형태는 `\|`로 나눈 따옴표 없는 텍스트입니다(따옴표나 `,` 형태는 `E-PLURAL-FORM`). `:capitalize`, `:start`, `:indefinite`는 텍스트를 다듬고, kind 라벨은 이를 위해 `{ text, start, indefinite }` 형태를 선언할 수 있습니다(없으면 첫 글자 대문자, `a`/`an` + 텍스트). 그 밖의 힌트는 `E-CEL-PROFILE`입니다. |
-| 샷 | 모든 콘텐츠는 `## 제목` 아래에 둡니다. `# 제목`만으로는 샷이 열리지 않습니다. |
-| 디렉티브 | `::bg` `::music` `::sfx` `::auto`(등장, 포즈, 퇴장) `::camera` `::cut` `::vfx` `::video` `::end`, 그리고 `::clear`(0.24.0: 무대의 모두가 퇴장, 배경과 음악은 유지). 타이밍 키: `duration`, `delay`, `wait="true"`(대기). 캐스트가 선언되어 있으면 `::auto{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). |
+| 인라인 수식어 | 줄 텍스트 안에서만 씁니다. `:pause{s=0.5}`는 멈춤(초, 0 이상), `:speed[text]{rate=1.25}`는 속도(양수)이며, 그 밖의 `:name[text]`는 `textStyle` 도메인 멤버여야 하고 속성을 받지 않습니다. 스팬은 겹칠 수 있고(속도는 가장 안쪽 값, 스타일은 바깥부터), `pause{0.5}`처럼 이름 없는 값은 오류입니다. `\:` `\[` `\]` `\{` `\}` `\\`는 글자 그대로입니다. 잘못된 형태나 닫히지 않은 스팬은 `E-TEXT-MODIFIER`, 모르는 이스케이프는 `E-TEXT-ESCAPE`입니다. `{{…}}` 보간은 스팬 안에서도 그대로 동작합니다. |
+| 섹션 | 모든 콘텐츠는 `## 제목` 섹션 아래에 둡니다. `## 제목 {#stable-id}`의 꼬리표는 안정적인 섹션 id이며(영문자로 시작하는 ASCII 토큰, 문서 안에서 유일, 중복은 `E-SECTION-DUP`), 점프 대상은 아닙니다. 본문의 `# 제목`은 `E-INERT-TITLE`입니다. |
+| 디렉티브 | 아래 표. 모든 연출 디렉티브는 타이밍 키 `duration`, `delay`(초), `wait="true"`(대기)를 받습니다. 캐스트가 선언되어 있으면 `::actor{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 필수 속성이 빠지면 `E-MISSING-ATTR`입니다. |
 | 주석 | `// …`는 줄 끝까지이며, 그 줄에 홀로 있거나 디렉티브 뒤에 올 수 있습니다(`::set{run.n += 1} // why`). 그리고 `/* … */`. `<tag>` 뒤에 쓰면 `E-TAG-INLINE-BODY`이고, 대사 텍스트 안의 `//`는 글자 그대로입니다. |
+
+| 디렉티브 | 속성 | 산출물 `kind` |
+|---|---|---|
+| `::bg` | `location`, `time`, `assetId`. 장면 전환이며 무대의 모두를 내립니다. | `bg` |
+| `::music` | `playback`(`musicPlayback`), `mood`, `volume`, `assetId` | `music` |
+| `::sfx` | `sound`, `assetId` | `sfx` |
+| `::vfx` | `type`(`vfxType`), `label`, `transition` | `vfx` |
+| `::actor` | `character`(필수), `anchor`, `action`, `emotion`, `costume`. 등장, 포즈, 퇴장을 맡습니다: `action`이 `exits:` 멤버면 퇴장이고, `anchor`를 생략하면 도메인의 `default`입니다. `emotion`은 줄의 `emotion`처럼 무대의 감정을 바꿉니다. | `actor` |
+| `::clear` | 없음. 0.24.0: 무대의 모두가 퇴장하고 배경과 음악은 유지됩니다. | 캐릭터마다 퇴장하는 `actor` |
+| `::camera` | `focus`(캐스트 id), `framing`, `move`(`cameraMove`), `transition` 중 하나 이상. 하나도 없으면 `E-CAMERA-EMPTY`입니다. 값은 모두 프로젝트 도메인 멤버이며, 카메라 상태는 저장되지 않습니다. | `camera` |
+| `::cg` | `assetId`(필수), `display="show\|hide"`(기본값 `show`), `layout`(`cgLayout`) | `cg` |
+| `::video` | `assetId`(필수), `display="show\|hide"`(기본값 `show`). `wait`의 기본값은 `true`입니다. | `video` |
+| `::sequence` | `name`(필수, `sequence` 도메인). 인라인 연출이 아니라 프로젝트가 가진 시퀀스를 가리키는 참조이며, `wait`의 기본값은 `true`입니다. | `sequence` |
+| `::end` | `reason` | `end` |
 
 → [대사와 캐스트](/language/dialogue-and-cast/) · [코어 디렉티브](/language/directives/)
 
@@ -347,44 +407,45 @@ defs:
 ## Counter
 
 <branch id="greet" prompt="Mira looks up.">
-  <choice id="wave" label="Wave" into="run.metMira">
+  <choice id="wave" text="Wave" into="run.metMira">
     @mira: Hi!
     ::set{scene.warmth += 2}
   </choice>
-  <choice id="tip" label="Leave a tip" into="run.tip" value="5">
+  <choice id="tip" text="Leave a tip" into="run.tip" value="5">
     @mira: Thanks!
   </choice>
-  <choice id="flirt" label="Flirt" when="@warm">
+  <choice id="flirt" text="Flirt" when="@warm">
     @mira: Oh, stop.
   </choice>
 </branch>
 
 <hub id="chat" prompt="Anything else?">
-  <choice id="coffee" label="Ask about the coffee" once>
+  <choice id="coffee" text="Ask about the coffee" once>
     @mira: House blend.
   </choice>
-  <choice id="cup" label="Ask about the missing cup">
+  <choice id="cup" text="Ask about the missing cup">
     ::accept{quest="lostCup"}
     @mira: Find it and your next one is free.
   </choice>
-  <choice id="leave" label="Leave" exit>
+  <choice id="leave" text="Leave" exit>
     @mira: Bye.
   </choice>
 </hub>
 
-::next{to="outro" when="run.tip > 0"}
+::jump{to="outro" when="run.tip > 0"}
 @mira: No tip, huh.
-::mark{id="outro"}
+::label{name="outro"}
 @narrator: The door closes behind you.
 ::end{reason="leftCafe"}
 ```
 
 | 구문 | 규칙 |
 |---|---|
-| `<branch id>` | 메뉴입니다. 고른 값은 `scene.choices.<id>`에 기록되고, 씬이 끝나면 지워집니다. 가드 없는 선택지가 하나 이상 있어야 합니다(`E-BRANCH-ALL-GUARDED`). `prompt=`와 `timeout="N"`은 선택입니다. |
-| `<choice id label>` | `when=` 가드. `into="run.x"`는 `true`를 쓰고, number나 enum 경로에는 `value=`를 함께 써서 이후 씬이 읽을 수 있게 합니다. |
+| `<branch id>` | 메뉴입니다. 고른 값은 `scene.choices.<id>`에 기록되고(산출물의 `selectionKey`), 씬이 끝나면 지워집니다. 가드 없는 선택지가 하나 이상 있어야 합니다(`E-BRANCH-ALL-GUARDED`). `prompt=`와 `timeout="N"`은 선택입니다. |
+| `<choice id text>` | `text=`는 보여 줄 선택지 텍스트입니다. `when=` 가드. `into="run.x"`는 `true`를 쓰고, number나 enum 경로에는 `value=`를 함께 써서 이후 씬이 읽을 수 있게 합니다. |
 | `<hub id>` | `exit`를 고를 때까지 자격 있는 선택지를 다시 보여 줍니다. `once`는 한 번 고른 선택지를 없앱니다. 가드 없는 `exit`가 있거나 모든 선택지가 `once`여야 합니다(`E-HUB-NO-EXIT`). 고를 때마다 `scene.visited.<hub>.<choice>`가 설정됩니다. 선택 속성 `prompt=`(0.23.0)는 선택지와 함께 보여 줄 질문이며, 비어 있으면 `E-BRANCH-PROMPT`입니다. |
-| `::next{to when}` | `::mark{id}`나 줄의 `id=`로 가는 앞쪽 전용 점프입니다. 뒤로 가는 점프는 `E-NEXT-BACKWARD`입니다. `when`이 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-NEXT`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 마크로 갑니다(트랜스크립트에 `<next -> outro>`). |
+| `::label{name}` | 점프 대상 이름입니다. 문서 전체가 이름공간 하나를 쓰고, 레코드를 내지 않습니다. 줄을 대상으로 삼으려면 그 줄 바로 앞에 둡니다. 섹션의 `{#id}`는 점프 대상이 아닙니다. |
+| `::jump{to when}` | `::label`로 가는 앞쪽 전용 점프입니다. 뒤로 가는 점프는 `E-JUMP-BACKWARD`입니다. `when`이 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-JUMP`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 label로 갑니다(트랜스크립트에 `<jump -> outro>`). |
 | `::end{reason}` | 씬을 끝냅니다. `lute play`에서는 자신이 실행된 제시(또는 퀘스트 핸들러)만 끝내고, 플레이는 계속됩니다. 같은 본문에서 그 뒤의 콘텐츠는 `W-CODE-AFTER-END`입니다. |
 | `::accept{quest}` | 수락형 퀘스트(`start`가 없는 퀘스트, 또는 `activate="accept"`인 자식)를 받아들입니다. `at="nextRun"`(0.24.0)은 다음 `newRun` 초기화 직후로 수락을 미루며, 그 밖의 `at`은 `E-ACCEPT-TARGET`입니다. [퀘스트](#퀘스트)를 보세요. `when=`을 받습니다(0.26.0). |
 
@@ -404,7 +465,7 @@ state:
 
 ## Moods
 
-<match on="run.mood">
+<match subject="run.mood">
   <when is="calm">
     @mira: Quiet day.
   </when>
@@ -413,7 +474,7 @@ state:
   </when>
 </match>
 
-<match on="run.tips">
+<match subject="run.tips">
   <when is="10..">
     @mira: My best customer.
   </when>
@@ -425,7 +486,7 @@ state:
   </otherwise>
 </match>
 
-<match on="run.rival">
+<match subject="run.rival">
   <when is="kai">
     @mira: Kai was here earlier.
   </when>
@@ -451,13 +512,13 @@ state:
   좁혀 줍니다: `<when is="x">` 안에서는 주제에 값이 있고, `test` 없는 `is="unset"` 갈래 뒤의 갈래와
   `<otherwise>`는 값이 있는 것으로 읽습니다(`E-MAYBE-UNSET` 없음).
 - 비트의 `when:`은 본문 전체에서 주제를 좁힙니다(0.24.0): `when: "run.verdict != 'undecided'"` 아래의
-  `<match on="run.verdict">`에는 `undecided` 갈래가 필요 없고, 써 두면 `E-ARM-DEAD`입니다. 본문이 주제에
+  `<match subject="run.verdict">`에는 `undecided` 갈래가 필요 없고, 써 두면 `E-ARM-DEAD`입니다. 본문이 주제에
   쓰기를 하면 전체 도메인이 유지됩니다.
 - `test="$ == 'x'"`는 `W-WHEN-TEST-LITERAL`이며, `lute fix`가 `is="x"`로 바꿔 줍니다.
 - `@who{when="G"}: …`는 갈래가 하나인 match의 축약입니다. 팩트 질의(`holds(…)`)에는 이 줄 형태만 쓸 수
-  있습니다. `<match on="holds(…)">`는 `E-MATCH-RELATION-SUBJECT`이기 때문입니다.
-- `on`이 없는 `<match>`에는 주제가 없으므로 모든 갈래가 `test=`입니다. 거기서 `is=` 갈래는
-  `E-MATCH-NO-SUBJECT`입니다. `on="…"`을 쓰거나, 조건을 `test=`로 쓰세요(`<when is="run.lamps >= 3">`는
+  있습니다. `<match subject="holds(…)">`는 `E-MATCH-RELATION-SUBJECT`이기 때문입니다.
+- `subject`가 없는 `<match>`에는 주제가 없으므로 모든 갈래가 `test=`입니다. 거기서 `is=` 갈래는
+  `E-MATCH-NO-SUBJECT`입니다. `subject="…"`를 쓰거나, 조건을 `test=`로 쓰세요(`<when is="run.lamps >= 3">`는
   `<when test="run.lamps >= 3">`입니다).
 - 모든 태그는 한 물리적 줄에 혼자 놓입니다. 한 줄짜리 `<when …>text</when>`는 `E-TAG-INLINE-BODY`이고,
   여러 줄로 나눈 태그는 `E-TAG-NOT-ONE-LINE`입니다.
@@ -559,7 +620,7 @@ rules:
   `when=`을 받습니다(`::assert{inParty(corvin) when="run.day > 3"}`. 가드 달린 `::use`는 펼친 내용 전체를
   실행하거나 전혀 실행하지 않으며, play는 `skip ::give{item="potion"} — when: false`로 출력). 검사기는 가드
   달린 디렉티브를 확정된 쓰기, 팩트, 수락으로 세지 않습니다. 내장 레코드로 로워링되는 디렉티브(`::bg`,
-  `::sfx`, `::auto`, `::clear` 같은 모든 코어 연출 디렉티브와 `::end`, `::mark`, 플러그인 `lower:` 레코드)는
+  `::sfx`, `::actor`, `::clear` 같은 모든 코어 연출 디렉티브와 `::end`, `::label`, 플러그인 `lower:` 레코드)는
   `when=`을 거부하며(`E-UNKNOWN-ATTR`, `<match>`에 넣으세요), `<track>` 클립도 마찬가지입니다(`E-TIMELINE-CONTENT`). CEL 호출처럼 이름 붙인 관계(`has`, `holds`, `count`, `now`, …)는 `E-RESERVED-NAME`입니다(예약된 이름 전체: [예약된 이름](/ko/reference/reserved-names/)).
 
 배타 관계(0.25.0): `excludes:`는 같은 인자에서 결코 함께 성립하지 않는 관계를 적습니다.
@@ -629,8 +690,8 @@ rules:
 `in [...]`의 원소)은 그 멤버여야 합니다. `run.rank == 'silvr'`는 `is="silvr"`처럼
 `E-WHEN-LITERAL-DOMAIN`이며, 비슷한 이름을 제안합니다.
 0.30.0: 작가가 쓰는 모든 이름은 **이름**입니다. 글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지
-않으며, 점으로 이은 id는 이름을 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice·mark
-id, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 종류와 그 멤버, 플러그인이
+않으며, 점으로 이은 id는 이름을 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice
+id, `::label` 이름, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 종류와 그 멤버, 플러그인이
 선언하는 계기와 이벤트, 대상과 카테고리가 모두 그렇습니다. `lamp-out`,
 `zero-coke-001`, `001`은 모두 이름입니다. 이름에 `.`, 공백, 따옴표가 있으면 그 자리의 코드로 오류가 나고,
 쓸 수 있는 문자를 알려 줍니다. JavaScript 변수처럼 그대로 읽히는 이름 — def, def의 파라미터, 컴포넌트와
@@ -641,10 +702,10 @@ id, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 �
 있습니다: `quest["zero-coke-001"].state`, `run.visits["lab-b2"]`, `holds('at', ["lab-b2"])`. 두 표기는 같은
 이름입니다. `quest.zero-coke-001.state`는 뺄셈으로 읽히므로 `E-PATH-IDENT`이며, 대괄호 표기를 알려 줍니다.
 
-CEL이 들어가는 곳: `<match on>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
-그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::next when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
+CEL이 들어가는 곳: `<match subject>`, `<when test>`, 줄이나 선택지의 `when=`, `::set`의 우변과 `when=`,
+그것을 받는 다른 디렉티브의 `when=`(0.26.0), `::jump when`, 비트 `when:`, 엔트리 `when=`, 퀘스트 `start` / `fail`, 목표 `done` / `by` / `until` /
 `visibleWhen`, `<on when>`, `<reward when>`, 캐스트 항목의 `present:`. 디렉티브 속성에서 def 참조는 따옴표 없이
-씁니다: `zoom="@closeUp"`이 아니라 `::camera{zoom=@closeUp}`입니다. 속성에는 def가 접히는 상수가 들어가므로, 위의 `zoom`처럼 상태를 읽는
+씁니다: `duration="@holdTime"`이 아니라 `::camera{framing="wide" duration=@holdTime}`입니다. 속성에는 def가 접히는 상수가 들어가므로, 위의 `pace`처럼 상태를 읽는
 def는 `E-ATTR-DEF-DYNAMIC`입니다. `<match>`로 나누고 갈래마다 리터럴을 쓰세요.
 
 → [CEL 표현식](/state/cel/) · [정의와 파라미터](/language/params/)
@@ -707,7 +768,7 @@ state:
 <beat id="miraOrder" on="talk" target="npc.mira" title="Order" priority="10" when="run.tips >= 3">
   @mira: The usual?
   <hub id="order" prompt="What will it be?">
-    <choice id="usual" label="The usual" exit>
+    <choice id="usual" text="The usual" exit>
       @mira: Coming up.
     </choice>
   </hub>
@@ -823,7 +884,7 @@ events:
 - 모든 내보내기 파일은 모르는 키를 거부합니다. `{ selct: all }`은 조용히 `select: first`가 되지 않고,
   비슷한 이름을 제안하는 `E-PLUGIN-PARSE`입니다. 쉼표가 든 flow-map 값은 따옴표로 감싸세요.
 - 디렉티브의 `lower:`는 선택입니다. 없으면 일반 `kind: "plugin"` 패스스루로 컴파일됩니다.
-  `{ kind: builtin, name }`은 코어 훅(`autoStage`, `cameraTransform`, `clearStage`, `end`, `mark`, `next`)을
+  `{ kind: builtin, name }`은 코어 훅(`actorStage`, `cameraTransform`, `clearStage`, `end`, `jump`, `label`, `sequence`)을
   가리켜야 하며, 그렇지 않으면 `E-PLUGIN-PARSE`입니다.
 - `judge: before`는 비트를 고르기 전에 그 계기의 `on=` 목표를 판정하고 퀘스트를 정산하므로, 그 계기의
   에필로그가 퀘스트가 어떻게 끝났는지 읽을 수 있습니다. 옮겨지는 것은 판정뿐이며, 그 발생이 응답하는 `<on>`
@@ -949,7 +1010,7 @@ state:
 ---
 
 <quest id="regular" title="Become a regular" start="true" fail="run.fired" follows="visited('cafe.counter')">
-  <reward kind="BADGE" amount="1"/>
+  <reward id="badge" kind="BADGE" amount="1"/>
   <objective id="tip" title="Tip three times" done="run.tips >= 3">
     @narrator: Mira starts your order when you walk in.
   </objective>
@@ -993,11 +1054,11 @@ state:
 | `quest="child"` | 하위 퀘스트: 자식이 완료되면 완료되고, 필수 자식이 실패하면 부모도 실패합니다. `done=`과 함께 쓸 수 없습니다(`E-OBJECTIVE-QUEST-DONE`). `start`가 없는 자식은 부모와 함께 활성화되지만, `activate="accept"`(0.24.0)를 선언하면 부모가 활성인 동안 `::accept`를 기다립니다. 부모와 함께 활성화되는 자식을 `::accept`하면 `E-ACCEPT-TARGET`입니다. |
 | `complete="any"`(0.24.0) | 필수 목표 중 하나만 완료되어도 퀘스트가 완료되고, 아직 활성인 나머지 자식은 `failedBy` `superseded`로 실패합니다. 대안 하나가 실패해도 퀘스트는 열려 있습니다. 기본값은 `complete="all"`입니다. |
 | `quest.<id>.failedBy`(0.24.0) | 실패한 이유: 실패 전에는 `unset`, 그 뒤로 `fail`, `by`, `until`, `subquest`(필수 하위 퀘스트가 실패함), `cascade`, `superseded`. `quest.<id>.objectives.<o>.failed`는 `by`/`until`이 그 목표를 실패시키면 `true`입니다. `lute play`는 `quest X -> failed (by)`로 출력합니다. |
-| `<reward kind amount target when outcome/>` | 엔진이 지급하는 데이터입니다. 콘텐츠는 보상을 읽을 수 없으므로 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `outcome="failed"`는 실패 시에 지급합니다(0.28.0 전: `on=`). `lute run`, `lute play`, `lute trace`, `lute test`는 `grant`를 출력하고, 보상 종류가 `credits:`(아래)를 선언했다면 스칼라 금액을 그 경로에 더합니다. 그 퀘스트의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 `W-REWARD-DOUBLE-CREDIT`입니다. |
+| `<reward id kind amount target when outcome/>` | 엔진이 지급하는 데이터입니다. 콘텐츠는 보상을 읽을 수 없으므로 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `outcome="failed"`는 실패 시에 지급합니다(0.28.0 전: `on=`). 선택 속성 `id="badge"`는 영문자로 시작하는 ASCII 토큰으로, 퀘스트 안(목표의 보상 포함)에서 유일해야 하며(`E-REWARD-DUP`) 소스 맵과 산출물 `RewardEntry.id`의 안정 키가 됩니다. 없으면 선언 순서로 대신합니다. `lute run`, `lute play`, `lute trace`, `lute test`는 `grant`를 출력하고, 보상 종류가 `credits:`(아래)를 선언했다면 스칼라 금액을 그 경로에 더합니다. 그 퀘스트의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 `W-REWARD-DOUBLE-CREDIT`입니다. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, 또는 플러그인의 월드 이벤트. `when=`으로 가드할 수 있습니다. `target=`(0.24.0)을 쓰면 같은 이름의 계기가 그 대상에 대해 발생할 때만 실행됩니다(일반 `event:` 스텝에서는 실행되지 않음). 결코 실패할 수 없는 퀘스트(`fail`도, `by=` 기한이 있는 필수 목표도, 실패할 수 있는 필수 하위 퀘스트 목표도, 부모 퀘스트도 없음)의 `questFailed` 핸들러는 `W-QUEST-HANDLER-DEAD`입니다. 핸들러 안의 `::accept`는 `lute trace` / `lute test`에서도 `lute play`처럼 적용됩니다(0.26.0). |
 
-퀘스트 문서에는 `#`/`##` 제목, `<hub>`, `<timeline>`이 없습니다. 다른 문서는
-`<match on="quest.regular.state">`나 `when="quest.regular.state == 'complete'"`로 퀘스트를 읽습니다.
+퀘스트 문서에는 `##` 섹션, `<hub>`, `<timeline>`이 없습니다. 다른 문서는
+`<match subject="quest.regular.state">`나 `when="quest.regular.state == 'complete'"`로 퀘스트를 읽습니다.
 상태는 항상 값이 있으므로 `quest.regular.state == 'unset'`은 "아직 받지 않음"을 뜻합니다.
 
 퀘스트 구조(0.24.0): 대안, 대화에서 받는 하위 퀘스트, 두 종류의 기한.
@@ -1080,7 +1141,7 @@ state:
 </entry>
 
 <entry id="log2" target="item.captains_log" category="note" title="Day 2" when="entry.log1.read">
-  <match on="run.fire">
+  <match subject="run.fire">
     <when is="true">
       @narrator: The page is scorched.
     </when>
@@ -1128,7 +1189,7 @@ params:
 
 @narrator: {{@who}} walks in.
 
-<match on="@tier">
+<match subject="@tier">
   <when is="warm">
     @narrator: A warm welcome.
   </when>
@@ -1174,7 +1235,7 @@ components: [greet.component.lute]
 [`per:`](#상태-쓰기와-팩트) 묶음의 멤버를 고를 수도 있습니다(`run.approval[@who]`): `::use`마다 인자가 가리키는
 멤버에 쓰고, 묶음의 종류에 속하지 않는 인자는 `E-COMPONENT-ARG`입니다. `speaker` 파라미터는 캐스트
 id를 받으며(선언된 캐스트 밖이면 `E-CAST-UNKNOWN`), `{{@who}}`는 캐스트의 `name`을 렌더링하고
-`<match on="@who">`와 디렉티브 속성(`::battle{foe=@who}`)은 id를 봅니다. 0.26.0부터 줄의 `as=@who`
+`<match subject="@who">`와 디렉티브 속성(`::battle{foe=@who}`)은 id를 봅니다. 0.26.0부터 줄의 `as=@who`
 라벨도 `{{@who}}`처럼 캐스트 이름을 보여 줍니다.
 
 ```lute check
@@ -1205,7 +1266,8 @@ state:
 멤버로 말하고(초상, 음성, `emotions:`와 `present:` 검사를 `::use`마다 적용. `speaker` 파라미터가 아닌 것에
 `@@x`를 쓰면 `E-COMPONENT-ARG`), 파라미터는 `default:`(리터럴이나 `@def`)를 선언해 생략된 인자에 줄 수 있고,
 문자열 인자 안의 `{{…}}`는 보간되며, `as=@who` 같은 속성은 캐스트 이름을 보여 줍니다. `::use{… when="…"}`는
-펼친 내용 전체를 실행하거나 전혀 실행하지 않습니다.
+펼친 내용 전체를 실행하거나 전혀 실행하지 않습니다. 컴포넌트의 `{mono}` 줄은 `::use`마다 호출하는 쪽의 시점
+인물과 `monoSpeakers`로 검사하며, 실패하면 그 `::use`에 오류가 붙습니다.
 
 ```lute check
 ---
@@ -1219,7 +1281,7 @@ params:
 ## Welcome
 
 @@who: {{@greeting}}
-<match on="@mood">
+<match subject="@mood">
   <when is="warm">
     @narrator: {{@who}} smiles.
   </when>
@@ -1245,14 +1307,17 @@ params:
 ---
 kind: scene
 id: storm.beat
+enums:
+  framing: [closeUp]
+  cameraMove: [jolt]
 ---
 
 ## Storm
 
 <timeline duration="1.2">
   <track subject="camera">
-    ::camera{focus="mira" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="mira" framing="closeUp" duration="0.6"}
+    ::camera{move="jolt" duration="0.3" at="0.7"}
   </track>
   <track channel="sfx">
     ::sfx{sound="thunder" at="0.5"}
@@ -1266,9 +1331,39 @@ id: storm.beat
 
 트랙에는 연출 디렉티브와 `::set`만 들어갑니다. 트랙 키(`subject=`, `channel=`, 또는 `subject=` +
 `property=`)는 유일해야 합니다. `at=`은 타임라인 자체 시계의 절대 시각입니다. 빈 타임라인은 시간을 정한
-멈춤입니다.
+멈춤입니다. 산출물에서 클립은 `timing.at`(초)과 `timing.timeline`(타임라인 순번)을 싣고, 타임라인 끝은
+자기 `timeline`과 `at`을 직접 가진 `barrier` 레코드입니다.
 
 → [타임라인과 속성 트랙](/language/timeline-and-property-tracks/)
+
+## 산출물
+
+`lute compile`은 실행 IR을 씁니다. 봉투에는 `kind`, `lute`, `irVersion`, `capabilitySnapshot`, 정렬된
+`requiredSemantics`, `meta`, `sections`, `commands`가 실립니다. [연출 스니펫](#대사-캐스트-연출)을 컴파일하면
+이런 레코드가 나옵니다(발췌):
+
+```text
+{"kind": "bg", "family": "staging", "position": "001-0100", "location": "diner", "time": "night", "timing": {"wait": true}}
+{"kind": "camera", "family": "staging", "position": "001-0400", "focus": "mira", "framing": "closeUp", "move": "pushIn", "timing": {"wait": true, "duration": 0.5}}
+{"kind": "line", "family": "content", "position": "001-0800", "role": "mono", "speaker": "fixer", "text": "She remembered.", "lineId": "diner.night.fixer_0020", "voiceKey": "diner.night.fixer-0020"}
+{"kind": "line", "family": "content", "position": "001-1500", "role": "os", "speaker": "mira", "text": "Hold on! Just a second.", "lineId": "diner.night.mira_0030", "voiceKey": "diner.night.mira-0030", "segments": [{"text": "Hold on!"}, {"pause": 0.5}, {"text": " "}, {"text": "Just a second.", "styles": ["whisper"]}]}
+{"kind": "sequence", "family": "staging", "position": "001-1900", "name": "doorOpen", "timing": {"wait": true}}
+{"kind": "cg", "family": "staging", "position": "001-2000", "assetId": "cg.diner.door", "display": "show", "layout": "fullscreen", "timing": {"wait": false}}
+```
+
+| 필드 | 뜻 |
+|---|---|
+| `kind`, `family` | 모든 명령이 가집니다. `family`는 `content`(`line`), `staging`(`bg` `music` `sfx` `vfx` `actor` `camera` `cg` `video` `sequence`), `state`(`set` `assert` `retract`), `control`(`choice` `match` `hub` `jump` `end` `barrier`), `declaration`(`quest` `on` `entry` `accept` `beat`), `plugin` 중 하나입니다. |
+| `position` | `001-0100` 꼴의 위치입니다. 첫 부분은 1부터 세는 섹션 위치, 나머지는 섹션 안의 명령 순서이며, 소스 순서가 바뀌면 다시 매겨지므로 영속 id로 쓰지 않습니다. 점프와 갈래의 대상(`target`, `converge`, `otherwise`, `return`)도 같은 꼴입니다. |
+| `timing` | `wait`, `duration`, `delay`, `at`(초), `timeline`(타임라인 순번). 값이 하나도 없으면 빠집니다. `barrier`는 `timing` 대신 자기 `timeline`과 `at`을 직접 가집니다. |
+| `role` | `dialogue`, `narration`, `mono`, `os`, `vo` |
+| `voiceKey` | 모든 줄에 있습니다. |
+| `text`, `segments` | `text`는 수식어 표시를 걷어 내고 이스케이프를 푼 평문입니다(`{{…}}`는 그대로). 수식어가 있는 줄만 `segments`를 가지며, 텍스트 조각은 `styles`(바깥부터)와 `rate`를, 멈춤은 `pause`만 가집니다. 번역된 로캘마다 평문 `texts[locale]`이 있고, 수식어가 있는 줄은 `localeSegments[locale]`도 있습니다. |
+| `selectionKey` | `choice`와 `hub` 레코드가 고른 값을 기록하는 키(`scene.choices.<id>`)입니다. 선택지의 표시 텍스트는 `text`입니다. |
+| `sections` | 산출물의 섹션 표: `{"section": 1, "heading": "Counter", "id": "counter"}`. `id`는 `{#…}`를 쓴 섹션에만 있습니다. |
+| `capabilitySnapshot` | 산출물, 프로젝트 색인, `lute context --json`이 싣는 기능 스냅샷 해시입니다. |
+
+→ [런타임 계약](/tooling/runtime-contract/)
 
 ## CLI
 
@@ -1276,10 +1371,10 @@ id: storm.beat
 |---|---|
 | `lute check <file> [--project <dir>]` | 문서 하나를 검사합니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고, 그 사실을 stderr에 알립니다. |
 | `lute check-project <dir> [--wip] [--deny-warnings]` | 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. 깨끗한 문서는 모두 컴파일까지 해 보므로, 컴파일 단계 오류(`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`)도 여기서 실패합니다. `W-BEAT-PRIORITY-TIE`, `W-QUEST-HANDLER-DEAD` 같은 프로젝트 권고도 여기서 나옵니다. `--wip`(0.23.0)는 아직 아무것도 만들어 내지 않는 관계(시드, assert, 규칙, `reserved` 모두 없음) 때문에만 가드가 죽은 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 낮춥니다. 만드는 쪽이 있는데도 결코 맞지 않는 관계는 여전히 오류입니다. 0.26.0부터 `--wip`는 바인딩되지 않은 `@param`을 쓰는 컴포넌트 `::assert`만이 만드는 관계도 아직 생산자가 없는 것으로 봅니다. |
-| `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. |
+| `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`, 그리고 이름이 바뀐 디렉티브·속성·태그 속성(`E-RENAMED-*`). 카메라 값, `cgLayout` 멤버, 시점(`pov`, `monoSpeakers`)처럼 판단이 필요한 것은 진단만 하고 추측하지 않습니다. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. |
 | `lute tag <file\|dir>` | 파일 하나, 또는 디렉터리 아래 모든 `.lute` 파일의 모든 줄에 안정적인 `code`를 채웁니다. |
 | `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | 산출물을 만듭니다. `--all`은 `beats`를 포함한 `project.index.json`도 씁니다. `--project`가 없으면 파일 하나를 그 위쪽에서 가장 가까운 `lute.project.yaml`로 컴파일합니다(0.27.0). `check`와 같습니다. |
-| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accept`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::next`는 마크까지 따라갑니다. |
+| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accept`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::jump`는 label까지 따라갑니다. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | 컴파일된 산출물을 엔진처럼 실행합니다. 로어 산출물에는 `--entry`와 `--beat`(번들 비트의 정식 id, 모호하지 않으면 로컬 id) 중 정확히 하나가 필요합니다. 목의 `bridges:`가 플러그인 호출에 응답합니다(0.24.0). |
 | `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | 프로젝트 전체에 계기를 발생시키며 퀘스트를 진행합니다. `expect:`가 어긋나면 종료 코드 `1`입니다. 연출은 작성한 그대로 출력되고, `--ir`은 대신 로워링된 레코드를 주입된 것까지 표시해 출력합니다. `--explain`(반복 가능)은 플레이가 끝난 뒤 ground atom의 도출 트리를, 성립하지 않으면 그것을 결론 낼 수 있는 규칙마다 실패한 전제를 출력합니다. 0.24.0부터 assert된 잎은 출처를 밝힙니다(``asserted by scene `cafe.open`, step 1``). |
 | `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | 모든 `*.test.yaml`과, `expect:`가 있는 모든 `*.play.yaml`을 실행합니다. 파일 하나를 주면 그 테스트나 플레이만 실행합니다. `--project`가 없으면 가장 가까운 `lute.project.yaml`을 기준으로 해석합니다(stderr에 알림). 미완료로 끝난 워크는 실패하고, `file:`이 없는 테스트도 스위트를 멈추지 않고 실패 하나(`E-TEST-FILE`)로 남습니다. `--coverage`는 `--project`나 가장 가까운 `lute.project.yaml`의 프로젝트에서 어떤 테스트도 트레이스하지 않고 어떤 플레이도 제시하지 않은 문서를 나열합니다. 0.24.0부터 `advance:` 스텝의 발생이 제시한 문서도 셈에 들고, 머리글은 두 수를 함께 셉니다: `coverage over N traced path(s) and M play(s) (…):`. 0.26.0부터 프로젝트를 한 번만 적재하고 테스트와 플레이를 병렬로 실행하며(`RAYON_NUM_THREADS` 존중), 결과는 원래 순서로 보고합니다. 0.27.0부터 단위는 비트입니다: 번들 비트와 엔트리를 하나씩 나열하고(`lore/endings/ren.lute: ember`), 플레이가 고른 선택지도 branch/hub 행에 세며, 머리글은 `(plays count toward what they presented and the choices they picked, not match arms)`이고, 마지막 절에 어떤 플레이도 제시하지 않은 비트를 나열합니다(`--json`: `untested`, `notPresentedByPlay`, 각각 `{file, id, kind}`). |
@@ -1288,7 +1383,7 @@ id: storm.beat
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. 디렉티브 속성(`give.item`)의 모든 값, 또는 한 보상 종류의 모든 대상을 그것을 쓰는 문서와 줄과 함께 나열합니다. 컴포넌트를 거쳐 전달된 값은 그 `::use`에서(`via component <name>`), 대상 없는 보상은 `(no target)`으로 나옵니다. 병합 전에 누가 무엇을 주는지 봅니다. |
 | `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion`의 `@` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
 | `lute lore <dir>` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
-| `lute context <file> [--project <dir>]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 모든 씬·퀘스트·엔트리 id. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
+| `lute context <file> [--project <dir>] [--json]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 텍스트 수식어, 모든 씬·퀘스트·엔트리 id. `--json`은 기능 스냅샷 해시 `capabilitySnapshot`도 싣습니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
 | `lute doctor [<dir>] [--strict]` | 툴체인과 프로젝트 설정: 버전, 활성 플러그인, 계기별로 응답하는 비트 수, 플레이 스크립트와 테스트, `PATH`의 `lute-lsp`가 이 버전인지, (0.24.0) 실행 중인 `lute` 옆의 빌드와 같은지(`lute-lsp beside lute`), 실행 중인 `lute-lsp`가 낡았는지(에디터 재시작). `--strict`(0.26.0)는 실패한 검사(`✗`)가 하나라도 있으면 `1`로 끝납니다. 0.26.0부터 `lute-lsp`는 자기 바이너리가 교체된 것을 알아채고, 옛 빌드의 결과 대신 재시작하라는 `lute-lsp-stale` 진단 하나를 보냅니다. |
 | `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. 파일 이름은 입력한 대소문자를 그대로 둔 id를 따릅니다. `lute new scene <name> --occasion <occasion> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. 대상 있는 계기에는 `--target`이 필요합니다. |
@@ -1499,11 +1594,11 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-META-MISSING` | 씬에 `id:`도 `character` + `season` + `episode`도 없습니다. |
 | `E-META-PARSE` | 프론트매터가 올바른 YAML이 아닙니다. 대개 `: `가 들어간 값을 따옴표 없이 썼을 때입니다. |
 | `E-META-UNKNOWN-KEY` | 이 kind에서 쓸 수 없는 키입니다. 예: 퀘스트의 `after:`(`<quest follows=…>`를 쓰세요). |
-| `E-CONTENT-OUTSIDE-SHOT` | 첫 `## 제목` 앞에 콘텐츠가 있습니다. |
-| `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `mood` 등을 썼지만 그 슬롯에 선언된 멤버가 없습니다. |
+| `E-CONTENT-OUTSIDE-SECTION` | 첫 `## 제목` 섹션 앞에 콘텐츠가 있습니다. |
+| `E-DOMAIN-UNKNOWN` | `emotion=`, `action=`, `anchor`, `framing`, `cgLayout`, `textStyle` 같은 도메인을 썼지만 아무도 그 도메인을 선언하지 않았습니다. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
 | `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `has` 가드도 없는 경로를 읽었습니다. `prev.run.*`를 읽을 때는 항상 필요합니다. |
-| `E-CAST-UNKNOWN` | 캐스트가 선언되어 있는데(스키마의 `cast:`나 플러그인의 `cast` 내보내기) 이 화자는 그 안에 없거나, (0.24.0) `::auto{character}`, `::camera{focus}`, `speaker` 컴포넌트 인자가 캐스트 밖을 가리킵니다. 메시지가 가장 가까운 id를 제안합니다. |
+| `E-CAST-UNKNOWN` | 캐스트가 선언되어 있는데(스키마의 `cast:`나 플러그인의 `cast` 내보내기) 이 화자는 그 안에 없거나, (0.24.0) `::actor{character}`, `::camera{focus}`, `speaker` 컴포넌트 인자가 캐스트 밖을 가리킵니다. 메시지가 가장 가까운 id를 제안합니다. |
 | `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds('inParty', ['corvin'])"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
 | `E-BAD-ENUM` | enum 밖의 값입니다. 0.24.0부터는 화자의 캐스트 `emotions:` 밖의 `emotion=`도 해당합니다(`happy`는 `isolde`의 감정이 아님). 0.26.0부터는 `{ entity: K }`로 타입을 정한 속성에 그 종류 밖의 값을 줄 때도 해당합니다(비슷한 이름 제안과 함께, 컴포넌트 파라미터를 거친 값도). |
 | `E-ENGINE-OWNED-WRITE` | `::set`이 `owner: engine`으로 선언된 경로에 씁니다. 콘텐츠는 읽기만 합니다. `lute play`에서는 `engine:` 스텝으로, trace와 test에서는 목의 `state:`로 쓰세요. |
@@ -1542,12 +1637,12 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, `check-project`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
-| `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::mark`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
+| `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::label`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')`나 `after`가 프로젝트에 없는 씬(0.24.0부터는 번들 비트도 가능)을 가리킵니다. |
 | `E-CLOCK-DECL` | 0.24.0. 스키마의 `clock:`이 잘못되었습니다: `day` / `slot`이 선언되지 않았거나 타입이 틀렸거나 `owner: engine`이 아니거나(`` `day: run.day` must be declared `owner: engine` ``), `slots`가 슬롯 enum의 멤버가 아니거나 `slot` 없이 쓰였거나, 모르는 `raise` 계기(플러그인이 계기를 선언할 때)나 `payload:`가 있는 `raise` 계기(0.28.0)이거나, 두 번째 시계입니다. |
 | `E-SEASON-DECL` | 0.27.0. `seasons:` 항목이 잘못되었거나(맵이 아님, `live`가 없거나 비어 있음, 알 수 없는 키, 잘못된 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리킵니다. `prev.season.*`에 쓰면 `prev.run.*`처럼 `E-QUEST-RESERVED-WRITE`입니다. |
 | `E-TEMPLATE` | 0.27.0. 비트 템플릿을 잘못 썼습니다: `<beat use>`가 가져오지 않은 컴포넌트(비슷한 이름 제안)나 `beat:` 머리가 없는 컴포넌트를 가리키거나, 머리에 모르는 키(`id` 포함)나 파라미터가 아닌 `@name`이 있거나, 일반 텍스트 머리 키에 식 인자가 들어가거나, `::body`가 템플릿 최상위가 아닌 곳에 있습니다. |
-| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었거나, 폐지된 `sequence:` 키를 아직 씁니다. 또는 (`check-project`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
+| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었습니다. 또는 (`check-project`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
 | `W-CHAPTER-STALL` | 0.28.0. 사슬의 씬이 가진 자기 `when:`이 끝내 참이 되지 않을 수도 있는 상태를 읽는데, 다음 씬의 `after:`가 그 씬을 기다리므로 장이 거기서 멈출 수 있습니다. 시계만 읽는 `when:`은 그 창이 닫힐 때(계기의 이후 어떤 raise도 맞추지 못할 때)만 보고합니다. |
 | `W-CHAPTER-ORDER` | 0.28.0. `select: sequence` 계기에서 사슬의 씬이 가진 자기 `priority:`가 목록 순서를 벗어나게 재생합니다. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. enum의 `labels:`가 그 멤버가 아닌 것을 가리킵니다. |
@@ -1557,7 +1652,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-RELATION-UNREAD` / `W-DEF-UNUSED` | 0.24.0, `check-project`, 선언 위치에서. 관계가 assert, 시드, 도출되지만 어떤 조건, 규칙 본문, def도 읽지 않거나, 어떤 콘텐츠, def, 규칙 가드도 `@def`를 참조하지 않습니다. 플레이 스크립트와 테스트는 읽기로 치지 않습니다. |
 | `E-PLUGIN-PARSE` / `E-PLUGIN-KEY` | 플러그인 내보내기를 파싱할 수 없거나, (`E-PLUGIN-KEY`) 받지 않는 키가 있습니다(``has no key `selct` — did you mean `select`?``, 그 줄에서. 0.28.0부터 `plugin.yaml`도 검사합니다). `E-PLUGIN-PARSE`는 코어 훅이 아닌 `lower: { kind: builtin }`도 포함하며, 이어지는 `E-PLUGIN-MISSING-ACTIVE`는 플러그인을 불러오지 못했다고 알려 줍니다. |
 | `E-CONN-EPISODE-ID-DUP` / `E-QUEST-ID-DUP` | 두 문서가 같은 씬 id나 퀘스트 id를 쓰거나, 번들 비트의 정식 `<doc>.<beat>` id가 씬 id와 같습니다. |
-| `E-DUP-VOICEKEY` | 텍스트가 다른 줄들이 같은 `voiceKey`로 컴파일됩니다. 대개 `{speaker}-{code}` 템플릿으로 고정했을 때입니다. 기본값 `{prefix}.{speaker}-{code}`를 쓰거나 줄마다 다른 `code=`를 주세요. |
+| `E-DUP-VOICEKEY` | 수식어를 뗀 텍스트가 다른 줄들이 같은 `voiceKey`로 컴파일됩니다. 내레이션과 속마음을 포함한 모든 줄을 프로젝트 전체에서 비교합니다. 대개 `{speaker}-{code}` 템플릿으로 고정했을 때입니다. 기본값 `{prefix}.{speaker}-{code}`를 쓰거나 줄마다 다른 `code=`를 주세요. |
 | `E-CAPABILITY-MISMATCH` | 프로젝트의 문서들이 서로 다른 기능 스냅샷으로 해석되어(다른 프로필이나 씬별 `plugins:`) 하나로 컴파일할 수 없습니다. |
 | `E-TEST-LORE` | `*.test.yaml`이 `entry:`, `entries:`, `beat:` 없이 로어 문서를 가리킵니다. 제시할 것을 적으세요. |
 | `E-TEST-FILE` | `*.test.yaml`의 `file:`이 가리키는 문서가 없습니다. 그 테스트만 실패하고 나머지 스위트는 계속 실행됩니다. |
@@ -1568,6 +1663,19 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-ENTRY-REF-UNKNOWN` | `entry.<id>.read`나 `entry.<id>.everRead`가 아무도 선언하지 않은 엔트리를 가리킵니다. |
 | `E-LEGACY-CONTENT-SIGIL` · `W-WHEN-TEST-LITERAL` | 옛 문법입니다. `lute fix`가 고쳐 줍니다. |
 | `E-PERSIST-REMOVED` | 선택지에서 `persist=`를 직접 지우세요. `into=`만으로 run 팩트가 기록됩니다. |
+| `E-INERT-TITLE` | 본문에 `# 제목`이 있습니다. 문서 제목은 프론트매터 `title:`에 씁니다. |
+| `E-SECTION-DUP` | 한 문서의 두 섹션이 같은 `{#id}`를 씁니다. |
+| `E-MONO-POV` / `E-MONO-NO-POV` | `{mono}` 줄의 화자가 유효 시점 인물도 아니고 `monoSpeakers:`에도 없거나, 시점 인물이 아예 정해지지 않았습니다. 메시지가 `pov:`나 `monoSpeakers:`에 적을 이름을 알려 줍니다. `lute fix`는 시점을 추측하지 않습니다. |
+| `E-CAMERA-EMPTY` | `::camera`에 `focus`, `framing`, `move`, `transition`이 하나도 없습니다. |
+| `E-MISSING-ATTR` | 필수 속성이 빠졌습니다: `::actor{character}`, `::cg{assetId}`, `::video{assetId}`, `::sequence{name}` 등. |
+| `E-TEXT-MODIFIER` / `E-TEXT-ESCAPE` | 인라인 수식어 형식이 잘못되었거나(닫히지 않은 스팬, 이름 없는 값, `textStyle` 멤버에 준 속성), 모르는 이스케이프입니다. |
+| `E-L10N-MODIFIERS` | 번역의 수식어 묶음(이름, 잎/스팬 형태, 속성)이 원문과 다릅니다. 위치는 달라도 되지만, 빠지거나 더해지거나 바뀐 수식어가 있으면 그 번역은 병합되지 않습니다. |
+| `E-AUTHOR-CASE` | 작가가 쓰는 키(속성, 태그 속성, 프론트매터, 프로젝트 키)에 `_`가 있습니다. 메시지가 lowerCamelCase 이름을 알려 줍니다. |
+| `E-REWARD-DUP` | 한 퀘스트(목표의 보상 포함)의 두 `<reward>`가 같은 `id=`를 씁니다. |
+| `E-JUMP-BACKWARD` / `W-CODE-AFTER-JUMP` | `::jump`가 앞쪽에 있지 않은 label을 가리키거나, 가드 없는 `::jump` 뒤에 실행될 수 없는 콘텐츠가 있습니다. |
+| `E-RENAMED-DIRECTIVE` / `E-RENAMED-ATTR` / `E-RENAMED-TAG-ATTR` | 이 버전에 없는 디렉티브, 속성, 태그 속성 이름입니다. 메시지가 쓸 이름을 알려 주며, `lute fix`가 기계적으로 고칩니다. |
+| `E-REMOVED-ATTR` / `E-CAMERA-REMOVED` / `E-CG-LAYOUT` | 그대로 옮길 수 없는 속성입니다. 메시지가 대신 쓸 도메인(`framing`, `cameraMove`, `cgLayout` 등)을 알려 주며, 손으로 고칩니다. |
+| `E-REMOVED-PROJECT-KEY` / `E-REMOVED-TAG` | `lute.project.yaml`의 `sequence:` 키(대체 키가 없습니다. 장 사슬은 `chapters:`)나 예약 태그 `<scene>`(문서의 섹션은 `##`)입니다. |
 
 ## 주의할 점
 
@@ -1622,7 +1730,7 @@ state:
 `clock.index`를 뒤로 옮기는 `engine:` 스텝은 사용 오류입니다.
 
 **`::bg` 장면 전환은 모두를 무대에서 내립니다.** 자동으로 숨겨진 캐릭터는 퇴장한 것으로 기록되므로,
-`::auto`로 다시 등장시키기 전의 대사는 `W-STAGE-ABSENT`입니다. `::clear`(0.24.0)도 같은 방식으로 모두를
+`::actor`로 다시 등장시키기 전의 대사는 `W-STAGE-ABSENT`입니다. `::clear`(0.24.0)도 같은 방식으로 모두를
 퇴장시키되 배경은 그대로 두며, 이때 경고는 그 `::clear`를 가리킵니다. `::bg`의 경우:
 
 ```lute check
@@ -1636,11 +1744,26 @@ enums:
 
 ## Dock
 
-::auto{character="mira" action="fadeInUp"}
+::actor{character="mira" action="fadeInUp"}
 @mira: Over here.
 ::bg{location="street" time="night"}
-::auto{character="mira" action="fadeInUp"}
+::actor{character="mira" action="fadeInUp"}
 @mira: Keep walking.
+```
+
+**`{mono}`는 시점 인물의 속마음입니다.** 시점 인물(`pov:`, 없으면 프로젝트 `defaults.pov`)이 아닌 화자의
+`{mono}`는 그 화자를 `monoSpeakers:`에 적어야 합니다. 아니면 대사, `{os}`, `{vo}`로 쓰세요:
+
+```lute expect="E-MONO-POV"
+---
+kind: scene
+id: diner.aside
+pov: fixer
+---
+
+## Aside
+
+@mira{mono}: He came back.
 ```
 
 **def의 타입은 본문에서 나옵니다.** `calm: "run.pressure < 2"`는 bool입니다. 다른 def만 담은 본문
@@ -1674,15 +1797,15 @@ id: choice.readback
 ## Ask
 
 <branch id="ask" timeout="10">
-  <choice id="yes" label="Yes">
+  <choice id="yes" text="Yes">
     @mira: Great.
   </choice>
-  <choice id="no" label="No">
+  <choice id="no" text="No">
     @mira: Oh.
   </choice>
 </branch>
 
-<match on="scene.choices.ask">
+<match subject="scene.choices.ask">
   <when is="yes">
     @mira: You said yes.
   </when>
@@ -1708,12 +1831,12 @@ atom을 목으로 주어도 시드 하나로 받아들여집니다. 목으로 �
 스크립트 키)나 `--no-derive`는 0.21의 명시적 세계로 되돌립니다: 시드가 없고, 목으로 주지 않은 도출 atom은
 unknown입니다.
 
-**디렉티브 속성에는 상수 def를 따옴표 없이 참조합니다.** `::camera{zoom=@closeUp}`처럼 쓰세요. 따옴표 친
-`zoom="@closeUp"`은 문자열 `@closeUp` 그대로입니다(숫자 속성이면 `E-ATTR-TYPE`). 상태를 읽는 def는
-`E-ATTR-DEF-DYNAMIC`입니다.
+**디렉티브 속성에는 상수 def를 따옴표 없이 참조합니다.** `::camera{framing="wide" duration=@holdTime}`처럼
+쓰세요. 따옴표 친 `duration="@holdTime"`은 문자열 `@holdTime` 그대로라서 숫자 속성에서는 `E-ATTR-TYPE`입니다.
+상태를 읽는 def는 `E-ATTR-DEF-DYNAMIC`입니다.
 
-**속성 값은 큰따옴표로 감쌉니다.** `label='"Hi."'`는 `E-ATTR-QUOTE`입니다. `label="\"Hi.\""`로 쓰면
-레이블은 `"Hi."`가 됩니다. 워드 프로세서에서 붙여 넣은 둥근 따옴표(`label=“Hi”`)도 `E-ATTR-QUOTE`이니
+**속성 값은 큰따옴표로 감쌉니다.** `text='"Hi."'`는 `E-ATTR-QUOTE`입니다. `text="\"Hi.\""`로 쓰면
+선택지 텍스트는 `"Hi."`가 됩니다. 워드 프로세서에서 붙여 넣은 둥근 따옴표(`text=“Hi”`)도 `E-ATTR-QUOTE`이니
 곧은 `"`로 다시 치세요.
 
 **`<match>`에서 숫자는 실수입니다.** `is="1..9"` 다음에 `is="10.."`를 써도 `9.5`는 다뤄지지 않습니다.
@@ -1742,10 +1865,10 @@ state:
 @mira: You're early.
 ```
 
-**`lute trace`는 실행된 `::next`를 따라갑니다(0.26.0).** 0.26 전에는 트레이스가 점프를 보고한 뒤 끝났기
-때문에, `::mark` 뒤의 콘텐츠에 닿지 않은 워크로도 테스트가 `end: complete`로 통과할 수 있었습니다. 이제
-trace와 test는 `lute play`, `lute run`처럼 마크에서 이어 가고(`<next -> outro>`), `end: complete`는 워크가
-본문 끝에 닿았다는 뜻입니다.
+**`lute trace`는 실행된 `::jump`를 따라갑니다(0.26.0).** 0.26 전에는 트레이스가 점프를 보고한 뒤 끝났기
+때문에, label 뒤의 콘텐츠에 닿지 않은 워크로도 테스트가 `end: complete`로 통과할 수 있었습니다. 이제
+trace와 test는 `lute play`, `lute run`처럼 label에서 이어 가고(트랜스크립트의 `<jump -> outro>`),
+`end: complete`는 워크가 본문 끝에 닿았다는 뜻입니다.
 
 **자격 없는 비트를 걷는 테스트는 실패합니다(0.26.0).** trace는 여전히 `when`이 거짓인 엔트리나 비트를
 제시하지만, `lute test`는 `eligible:`을 단언하지 않은 그런 테스트를 실패로 판정하고 거짓인 전제(`when`,

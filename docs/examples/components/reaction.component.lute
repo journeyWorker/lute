@@ -16,7 +16,7 @@ uses: ../base.schema.yaml
 
 ## The Tiered Greeting
 
-<match on="@tier">
+<match subject="@tier">
   <when is="fond">
     @marina{emotion="delighted"}: You remembered! You actually remembered.
   </when>

@@ -177,8 +177,8 @@ fn end_inside_a_hub_option_terminates_the_whole_walk() {
         "hub",
         &format!(
             "{HDR}<hub id=\"camp\">\n\
-             <choice id=\"talk\" label=\"Talk\">\n@hero: A word?\n::end{{reason=\"walked off\"}}\n</choice>\n\
-             <choice id=\"go\" label=\"Leave\" exit>\n@hero: Later.\n</choice>\n\
+             <choice id=\"talk\" text=\"Talk\">\n@hero: A word?\n::end{{reason=\"walked off\"}}\n</choice>\n\
+             <choice id=\"go\" text=\"Leave\" exit>\n@hero: Later.\n</choice>\n\
              </hub>\n\
              @narrator: after the hub\n"
         ),
@@ -212,8 +212,8 @@ fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          state:\n  run.open: { type: bool, default: false }\n---\n\
          \n## One\n\n<branch id=\"pick\">\n\
-         <choice id=\"gated\" label=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
-         <choice id=\"free\" label=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
+         <choice id=\"gated\" text=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
+         <choice id=\"free\" text=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
     )
     .unwrap();
     let c = Command::new(BIN)
@@ -297,9 +297,9 @@ fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
          entities:\n  crew: { members: [vesna] }\n\
          relations:\n  awake: { args: [crew], tier: run }\n---\n\
          \n## One\n\n<branch id=\"pick\">\n\
-         <choice id=\"timed\" label=\"Timed\" when=\"validAt('awake', ['vesna'], now())\">\n\
+         <choice id=\"timed\" text=\"Timed\" when=\"validAt('awake', ['vesna'], now())\">\n\
          @narrator: timed.\n</choice>\n\
-         <choice id=\"free\" label=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
+         <choice id=\"free\" text=\"Free\">\n@narrator: free.\n</choice>\n</branch>\n",
     )
     .unwrap();
     let c = Command::new(BIN)
@@ -348,10 +348,10 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          state:\n  run.open: { type: bool, default: false }\n---\n\
          \n## One\n\n<hub id=\"desk\">\n\
-         <choice id=\"unlock\" label=\"Unlock\" once>\n@narrator: unlocked.\n\
+         <choice id=\"unlock\" text=\"Unlock\" once>\n@narrator: unlocked.\n\
          ::set{run.open = true}\n</choice>\n\
-         <choice id=\"gated\" label=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: leave.\n</choice>\n</hub>\n",
+         <choice id=\"gated\" text=\"Gated\" when=\"run.open\">\n@narrator: gated.\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: leave.\n</choice>\n</hub>\n",
     )
     .unwrap();
     let c = Command::new(BIN)
@@ -431,7 +431,7 @@ fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
         &src,
         "---\nkind: scene\nluteVersion: \"0.10.0\"\ncharacter: hero\nseason: 1\nepisode: 1\ntitle: T\n\
          state:\n  run.who: { type: { enum: [a, b] }, default: a }\n---\n\n## Shot 1.\n\n\
-         <match on=\"run.who\">\n<when is=\"a\">\n@narrator: arm-a.\n</when>\n<when is=\"b\">\n@narrator: arm-b.\n</when>\n\
+         <match subject=\"run.who\">\n<when is=\"a\">\n@narrator: arm-a.\n</when>\n<when is=\"b\">\n@narrator: arm-b.\n</when>\n\
          <otherwise>\n@narrator: fell-through.\n</otherwise>\n</match>\n",
     )
     .unwrap();

@@ -11,7 +11,7 @@ params:
 
 ::sfx{sound="brass_crank"}
 @narrator{code="0010"}: {{@keeper}} climbs the hundred and eleven steps, trims the wick, and sets the clockwork turning.
-<match on="@glass">
+<match subject="@glass">
   <when is="steady">
     @narrator{code="0020"}: The beam walks out across the water, steady as a heartbeat. Five seconds dark, one second bright.
   </when>

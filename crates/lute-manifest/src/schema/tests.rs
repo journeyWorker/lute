@@ -39,7 +39,7 @@ directives:
       - { name: wait, type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     bridge: { service: minigame, operation: play }
-    lower: { kind: builtin, name: autoStage }
+    lower: { kind: builtin, name: actorStage }
 "#;
 
     #[test]
@@ -89,7 +89,7 @@ writes:
         assert_eq!(e.asserts[0].relation, "holding");
         assert_eq!(e.asserts[0].args, vec![FactEffectArg::Attr("item".into())]);
         assert_eq!(e.asserts[1].to_string(), "seen(key, true)");
-        // capabilityVersion hashes `Debug`: a block without facts prints as
+        // capabilitySnapshot hashes `Debug`: a block without facts prints as
         // it did before `asserts`/`retracts` existed.
         let w: DirectiveEffects = serde_yaml::from_str(
             "writes: [ { scope: run, path: [sanity], value: { op: increment, by: -1 } } ]",
@@ -158,10 +158,10 @@ writes:
         );
         assert!(err.contains(&BUILTIN_LOWERING_HOOKS.join(", ")), "{err}");
         assert!(err.contains("omit `lower:`"), "{err}");
-        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: autoStag }")
+        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: actorStag }")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("did you mean `autoStage`?"), "{err}");
+        assert!(err.contains("did you mean `actorStage`?"), "{err}");
     }
 
     #[test]
@@ -172,14 +172,14 @@ writes:
                 "the only kind is `builtin`",
             ),
             ("{ kind: builtin }", "needs `name:`"),
-            ("{ record: background }", "needs `fields:`"),
+            ("{ record: bg }", "needs `fields:`"),
             (
-                "{ record: background, fields: {}, kind: builtin, name: end }",
+                "{ record: bg, fields: {}, kind: builtin, name: end }",
                 "not a mix",
             ),
             ("{}", "`lower:` is empty"),
             (
-                "{ record: background, feilds: {} }",
+                "{ record: bg, feilds: {} }",
                 "unknown field `feilds`",
             ),
         ] {

@@ -11,7 +11,7 @@ const ECHO_MAX: usize = 40;
 
 /// How a Lute choice is written — shared by the Ink choice and the Yarn
 /// option pointers.
-const LUTE_CHOICES: &str = "Lute choices are `<choice id=\"…\" label=\"…\">` blocks inside a \
+const LUTE_CHOICES: &str = "Lute choices are `<choice id=\"…\" text=\"…\">` blocks inside a \
      `<branch>` (asked once) or a `<hub>` (asked again until an `exit` choice)";
 
 /// What Lute writes instead of `line` (trimmed), when `line` has the shape of
@@ -145,7 +145,7 @@ pub(super) fn foreign_line(line: &str) -> Option<String> {
     if line.starts_with('{') && !line.starts_with("{{") {
         return Some(format!(
             "`{}` is Ink inline logic; Lute has no inline conditional text: guard a whole line \
-             with `@narrator{{when=\"…\"}}: …` or choose between lines with `<match on=\"…\">`",
+             with `@narrator{{when=\"…\"}}: …` or choose between lines with `<match subject=\"…\">`",
             echo(line)
         ));
     }
@@ -243,8 +243,8 @@ fn no_diverts(target: &str) -> String {
     }
     let name = if is_node_name(target) { target } else { "…" };
     format!(
-        "Lute has no diverts: `::next{{to=\"{name}\"}}` jumps forward to a \
-         `::mark{{id=\"{name}\"}}` later in this document, a `<hub>` repeats its choices until \
+        "Lute has no diverts: `::jump{{to=\"{name}\"}}` jumps forward to a \
+         `::label{{name=\"{name}\"}}` later in this document, a `<hub>` repeats its choices until \
          an `exit` choice, and another scene is reached through the occasion it answers (`on:` \
          in its frontmatter)"
     )
@@ -375,8 +375,10 @@ fn ink_declaration(kw: &str, rest: &str) -> String {
 /// The `state:` entry an Ink `VAR` / Yarn `<<declare>>` of `name = value`
 /// becomes, typed from the literal when it is one.
 fn state_decl(what: &str, name: &str, value: &str) -> String {
-    let ty = if value.parse::<f64>().is_ok() {
-        "number"
+    let ty = if value.parse::<i64>().is_ok() {
+        "int"
+    } else if value.parse::<f64>().is_ok() {
+        "double"
     } else if matches!(value, "true" | "false") {
         "bool"
     } else if value.starts_with('"') {
@@ -432,14 +434,14 @@ fn yarn_command(line: &str) -> String {
             };
             format!(
                 "`{shown}` is a Yarn conditional; Lute chooses between lines with `<match \
-                 on=\"…\">` and its `<when is=\"…\">`/`<when test=\"…\">` arms, or guards one \
+                 subject=\"…\">` and its `<when is=\"…\">`/`<when test=\"…\">` arms, or guards one \
                  line: `@narrator{{when=\"{cond}\"}}: …`"
             )
         }
         "jump" => format!("`{shown}` is a Yarn jump; {}", no_diverts(args)),
         "stop" => format!("`{shown}` is a Yarn command; a scene ends with `::end`"),
         "once" | "endonce" => format!(
-            "`{shown}` is a Yarn once block; Lute counts in a number path it `::set`s (`scene.*` \
+            "`{shown}` is a Yarn once block; Lute counts in an `int` path it `::set`s (`scene.*` \
              for this presentation, `run.*` for the run) and chooses the lines with a `<match>` \
              on it; a menu option offered once is a hub `<choice … once>`"
         ),
@@ -479,7 +481,7 @@ mod tests {
 
     #[test]
     fn ink_diverts_point_at_next_and_end() {
-        assert!(hint("-> ledger").contains("`::next{to=\"ledger\"}`"));
+        assert!(hint("-> ledger").contains("`::jump{to=\"ledger\"}`"));
         // `-> END` ends the story (the schema's `terminal:`); `-> DONE` ends
         // the scene (`::end`). Pointing END at `::end` taught the mistake of
         // a game that goes on to its next chapter.
@@ -519,7 +521,7 @@ mod tests {
     fn ink_logic_and_globals_point_at_set_and_state() {
         assert!(hint("~ run.oil = run.oil + 2").contains("`::set{run.oil = run.oil + 2}`"));
         assert!(hint("~ oil += 1").contains("`run.oil`"));
-        assert!(hint("VAR x = 1").contains("`run.x: { type: number, default: 1 }`"));
+        assert!(hint("VAR x = 1").contains("`run.x: { type: int, default: 1 }`"));
         assert!(hint("VAR met = false").contains("type: bool"));
         assert!(hint("CONST MAX = 3").contains("`defs:`"));
     }
@@ -542,8 +544,9 @@ mod tests {
     fn yarn_commands_are_rewritten_with_state_paths() {
         assert!(hint("<<set $oil to 3>>").contains("`::set{run.oil = 3}`"));
         assert!(hint("<<if $oil > 2>>").contains("`@narrator{when=\"run.oil > 2\"}: …`"));
-        assert!(hint("<<jump Lamp_Room>>").contains("`::next{to=\"Lamp_Room\"}`"));
-        assert!(hint("<<declare $oil = 1>>").contains("type: number"));
+        assert!(hint("<<if $oil > 2>>").contains("`<match subject=\"…\">`"));
+        assert!(hint("<<jump Lamp_Room>>").contains("`::jump{to=\"Lamp_Room\"}`"));
+        assert!(hint("<<declare $oil = 1>>").contains("type: int"));
         assert!(hint("title: Lamp_Room").contains("Yarn node header"));
     }
 

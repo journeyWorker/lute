@@ -1,0 +1,77 @@
+{
+  "kind": "scene",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilityVersion": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.staging/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Removed envelope field"
+  },
+  "state": [],
+  "enums": [
+    {
+      "name": "anchor",
+      "members": [
+        "center"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0100",
+      "character": "hero"
+    },
+    {
+      "kind": "actor",
+      "family": "staging",
+      "position": "001-0200",
+      "character": "hero",
+      "anchor": "center",
+      "provenance": {
+        "by": "auto-anchor-on-show",
+        "explanation": "`hero` shown without an explicit anchor; defaulting to `center`"
+      }
+    },
+    {
+      "kind": "camera",
+      "family": "staging",
+      "position": "001-0300",
+      "focus": "hero",
+      "timing": {
+        "wait": true,
+        "duration": 0.5
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Hello.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Stage"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

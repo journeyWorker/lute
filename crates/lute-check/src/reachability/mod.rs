@@ -302,7 +302,7 @@ pub(crate) fn check_reachability_in(
         }
     };
     // A scene's shots are one body: `scene.*`/`run.*` persist across shots.
-    let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+    let shots: Vec<&[Node]> = doc.sections.iter().map(|s| s.body.as_slice()).collect();
     let scene_body = env.folded.is_some();
     walk_body(&shots, env.beat_when, base_ctx, scene_body, &mut diags);
     for quest in &doc.quests {

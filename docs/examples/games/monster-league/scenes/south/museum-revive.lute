@@ -14,12 +14,12 @@ when: "run.southFossil != 'none'"
 ## The back room
 
 ::bg{location="museum-lab" time="day"}
-::auto{character="pebbletonKell" anchor="center" action="enter"}
+::actor{character="pebbletonKell" anchor="center" action="enter"}
 @pebbletonKell{code="0010" emotion="surprised"}: Is that — from Moonstone? From the deep beds? Give it here. Gently. GENTLY.
 @pebbletonKell{code="0020"}: The machine is old, the theory is older, and I have done this exactly twice. Stand back. Further. Behind the lead screen, please.
 ::sfx{sound="revive-machine"}
 ::vfx{type="flash"}
-<match on="run.southFossil">
+<match subject="run.southFossil">
   <when is="dome">
     @pebbletonKell{code="0030" emotion="happy"}: It moved! It's a Domefossil! It's looking at you like you owe it seventy million years of rent.
     ::gift{species="domefossil" level="5"}

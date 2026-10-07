@@ -8,7 +8,7 @@ advances: slot
 ## A
 
 <branch id="choice">
-  <choice id="go" label="Go">
+  <choice id="go" text="Go">
     @narrator: A choice.
   </choice>
 </branch>

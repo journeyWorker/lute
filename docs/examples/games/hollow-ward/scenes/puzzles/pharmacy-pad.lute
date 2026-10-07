@@ -13,7 +13,7 @@ spentBy: "holds('solved', ['pharmacyPad'])"
 @narrator{code="0010"}: Four digits. The keys are worn, but not in any helpful pattern: every key is worn, as if every number had been tried.
 @nell{code="0010" mono when="entry.plaque.read"}: The plaque in the lobby. The year they opened the doors.
 ::keypad{pad="pharmacyPad" resultKey="pad"}
-<match on="scene.keypad.pad.entered">
+<match subject="scene.keypad.pad.entered">
   <when test="$ == @pharmacyCode">
     @narrator{code="0020"}: The letters go from green to white. The lock lets go with a sound like a held breath let out.
     ::assert{solved(pharmacyPad)}

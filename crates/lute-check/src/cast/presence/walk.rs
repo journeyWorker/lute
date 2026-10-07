@@ -53,12 +53,7 @@ impl Presence<'_> {
     pub(super) fn walk(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
-                Node::Line(l) => {
-                    if let Some((id, _)) = literal_attr(&l.attrs, "id") {
-                        self.label(id);
-                    }
-                    self.line(l);
-                }
+                Node::Line(l) => self.line(l),
                 Node::Directive(d) => self.directive(d),
                 Node::Set(s) => self.kill_path(&s.path),
                 Node::Timeline(t) => {
@@ -135,9 +130,9 @@ impl Presence<'_> {
     }
 
     fn directive(&mut self, d: &Directive) {
-        use lute_manifest::core::MARK_DIRECTIVE;
-        if d.tag == MARK_DIRECTIVE {
-            if let Some((id, _)) = literal_attr(&d.attrs, "id") {
+        use lute_manifest::core::LABEL_DIRECTIVE;
+        if d.tag == LABEL_DIRECTIVE {
+            if let Some((id, _)) = literal_attr(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
                 self.label(id);
             }
         } else if let Some((quest, _)) = d.accept_quest() {
@@ -231,7 +226,7 @@ impl Presence<'_> {
         self.fork(arms);
     }
 
-    /// A `::next` target: the jump may arrive from outside the enclosing
+    /// A `::jump` target: the jump may arrive from outside the enclosing
     /// regions, so their guards stop counting from here.
     fn label(&mut self, id: &str) {
         if self.jumps.contains(id) {

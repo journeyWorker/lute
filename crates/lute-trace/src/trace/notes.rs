@@ -378,7 +378,7 @@ pub(super) fn mock_unproducible_notes(
         return Vec::new();
     }
     let mut live_assert: BTreeSet<String> = project_asserts.cloned().unwrap_or_default();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_assert_relations(&shot.body, &mut live_assert);
     }
     for quest in &doc.quests {

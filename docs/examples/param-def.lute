@@ -12,7 +12,7 @@ defs:
 
 ## The Parameterized Guard
 
-<match on="scene.flag">
+<match subject="scene.flag">
   <when test="@atLeast(3)">
     @narrator: high enough
   </when>

@@ -6,7 +6,7 @@ params:
 
 ## The fire
 
-<match on="@flare">
+<match subject="@flare">
   <when is="high">
     ::vfx{type="emberBurst"}
     ::sfx{sound="fire roar"}

@@ -86,7 +86,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     // identity is document + owning branch/hub id + option id; it is stable
     // across unrelated source movement and is the spelling used by context
     // targets (for example `choice:scene.key:branch.option`).
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         let parent = NodeKey::new(NodeKind::Shot, format!("{doc_id}:{}", shot.heading));
         add_choice_nodes(g, d, &doc_id, &parent, &shot.body, &mut owners);
     }
@@ -96,7 +96,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     }
 
     let mut line_nodes: Vec<(Span, NodeKey)> = Vec::new();
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         let key = NodeKey::new(NodeKind::Shot, format!("{doc_id}:{}", shot.heading));
         g.node(key.clone(), Some(d.path.clone()), Some(shot.span));
         g.edge(
@@ -147,7 +147,10 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
                 );
                 owners.push((o.span, ok.clone()));
                 for (i, r) in o.rewards.iter().enumerate() {
-                    let rk = NodeKey::new(NodeKind::Reward, format!("{}.{}#{}", q.id, o.id, i));
+                    let rk = NodeKey::new(
+                        NodeKind::Reward,
+                        format!("{}.{}#{}", q.id, o.id, r.key_segment(i)),
+                    );
                     g.node(rk.clone(), Some(d.path.clone()), Some(r.span));
                     g.edge(
                         ok.clone(),
@@ -172,7 +175,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             Evidence::Proven,
         );
         for (i, r) in q.rewards.iter().enumerate() {
-            let rk = NodeKey::new(NodeKind::Reward, format!("{}#{}", q.id, i));
+            let rk = NodeKey::new(NodeKind::Reward, format!("{}#{}", q.id, r.key_segment(i)));
             g.node(rk.clone(), Some(d.path.clone()), Some(r.span));
             g.edge(
                 qk.clone(),
@@ -259,12 +262,12 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             if let Some(info) = d
                 .source_map
                 .as_ref()
-                .and_then(|m| m.by_addr.get(&line.addr))
+                .and_then(|m| m.by_addr.get(&line.position))
             {
                 let lk = NodeKey::new(NodeKind::Line, line.line_id.clone());
                 let expanded = line.stamp.source.is_some();
                 let host_span = if expanded {
-                    expansion_sites.get(&line.addr).copied()
+                    expansion_sites.get(&line.position).copied()
                 } else {
                     Some(info.span)
                 };
@@ -334,7 +337,10 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         for n in &q.body {
             let Node::Objective(o) = n else { continue };
             for (i, reward) in o.rewards.iter().enumerate() {
-                let rk = NodeKey::new(NodeKind::Reward, format!("{}.{}#{}", q.id, o.id, i));
+                let rk = NodeKey::new(
+                    NodeKind::Reward,
+                    format!("{}.{}#{}", q.id, o.id, reward.key_segment(i)),
+                );
                 if let Some(when) = &reward.when {
                     add_slot_dependency_edges(g, &rk, &d.path, when);
                 }
@@ -501,7 +507,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             }
         }
     };
-    for shot in &d.doc.shots {
+    for shot in &d.doc.sections {
         lute_check::directive_facts::for_each_call(&shot.body, &mut directive_effects);
     }
     for quest in &d.doc.quests {
@@ -909,7 +915,7 @@ fn authored_line_spans(doc: &lute_syntax::ast::Document) -> BTreeSet<(usize, usi
         }
     }
     let mut out = BTreeSet::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         walk(&shot.body, &mut out);
     }
     for quest in &doc.quests {

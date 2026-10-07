@@ -1,7 +1,7 @@
 # Lute — Plugin System (overview & rationale)
 
 **Status:** **implemented.** The manifest loader, capability resolution, profile
-activation, the capability snapshot + `capabilityVersion`, providers, bridge
+activation, the capability snapshot + `capabilitySnapshot`, providers, bridge
 declarations, and declarative lowering all ship in `lute-manifest` /
 `lute-check` / `lute-compile`. (This line previously read "draft /
 forward-looking, not yet implemented" long after the system shipped — a stale
@@ -67,20 +67,22 @@ flow; (5) no cross-sibling/global reasoning beyond declared resource conflicts; 
 change; (7) no ordering-sensitive interpretation beyond the existing timeline/`wait` model. Any
 false → **code** (a compiler-core change, not a plugin).
 
-- *Data:* a new `::shake`, `emotion="smug"`, `::vfx type="rain"`, `musicAction="duck"`, a new
+- *Data:* a new `::shake`, `emotion="smug"`, `::vfx type="rain"`, `::music{playback="duck"}`, a new
   `::bg transition="wipe"` attr.
 
   `emotion="smug"` is the example this document led with from the start, and until dsl 0.9.0 it
   was **aspirational**: the six baseline vocabularies shipped as closed members inside
   `lute.core`, so a project schema declaring `emotion:` got `E-DOMAIN-DUP` and a plugin
   exporting it failed whole-project resolution. As of 0.9.0 it is simply true. **The core ships
-  no members at all** — it declares the seven slots (`emotion`, `action`, `anchor`, `mood`,
-  `volume`, `musicAction`, `vfxType`) and nothing else, so every member comes from one of three
+  no members at all** — it declares the vocabulary slots (since 0.37.0: `emotion`, `action`,
+  `anchor`, `costume`, `mood`, `volume`, `musicPlayback`, `vfxType`, plus the staging domains
+  `framing`, `cameraMove`, `transition`, `cgLayout`, `sequence`, and `textStyle`) and nothing
+  else, so every member comes from one of three
   declaration routes — an `enums:` block in the using document's own frontmatter, a project
   schema's `enums:` reached through `uses:`/`extends:`, or a plugin's `enums` export — and using a
   slot nobody declared is `E-DOMAIN-UNKNOWN` rather than silently unchecked (dsl 0.9.0 §2–§3).
   The routes differ only in reach and reporting: a plugin export is capability surface
-  (`capabilityVersion`), the two project routes are project data that travels into the artifact,
+  (`capabilitySnapshot`), the two project routes are project data that travels into the artifact,
   a plugin wins an `E-DOMAIN-DUP` clash against either, and inline wins over an imported
   declaration of the same slot provided it re-declares a superset of its members. One scope
   limit: a component body resolves vocabulary against the **importing** document — a component's
@@ -159,7 +161,7 @@ earlier deny. A separately trusted host can add the same kind of ceiling with
 `--permission-profile NAME` without activating that profile's plugins or
 changing the source-selected profile.
 
-The resolved permission layers are folded into `capabilityVersion` only when
+The resolved permission layers are folded into `capabilitySnapshot` only when
 restrictive, preserving every policy-free hash byte-for-byte. The checker gates
 authored directives and effects—including defaults, seed facts, transitive
 components, quests, and rewards—and the compiler rechecks the same pass before
@@ -179,10 +181,10 @@ does (proposal §10).
 
 ## Declarative lowering vs named hooks
 
-Trivial one-record directives lower as data (`lower: { record: "camera.set", fields: {…} }`).
+Trivial one-record directives lower as data (`lower: { record: bg, fields: {…} }`).
 Lowering that reads prior commands, pairs show/hide, allocates timeline tracks, expands to a
 variable number of records, or inspects siblings needs an **imperative hook** — but a *narrow,
-named* one from a closed core registry (`lower: { kind: builtin, name: autoCharacterAction }`). No
+named* one from a closed core registry (`lower: { kind: builtin, name: actorStage }`). No
 inline code in a manifest; each hook declares input/output record schemas + unit tests; the
 directive still declares attrs/validation/writes/semantics as data. **Adding a hook is a core code
 change, not content registration** (proposal §8.2). This is what stops the manifest from becoming a
@@ -190,12 +192,12 @@ hidden programming language.
 
 Here, **lowering** means translating an authored directive into executable IR.
 Directives mapped to core records keep that record's `kind` (for example,
-`background` or `sprite`). Host directives emitted as `kind: "plugin"` carry
+`bg` or `actor`). Host directives emitted as `kind: "plugin"` carry
 `plugin`, the owning package id, alongside `tag`, the authored directive name,
 and typed `fields`. For example:
 
 ```json
-{"kind":"plugin","addr":"001-0100","plugin":"game.presentation","tag":"host-panel","fields":{}}
+{"kind":"plugin","family":"plugin","position":"001-0100","tag":"host-panel","plugin":"game.presentation","fields":{}}
 ```
 
 Consumers can dispatch these extension records by `(plugin, tag)` without

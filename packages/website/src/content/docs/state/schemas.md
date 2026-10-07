@@ -25,8 +25,9 @@ Each `<path>` segment is a name (letters, digits, `_` or `-`, not starting with 
 
 An `enums:` block does double duty. Its domains are argument types for the
 [relational layer](/state/facts-and-datalog/), and since language `0.9.0` they are also how a project
-declares the **content vocabulary** — `emotion`, `action`, `anchor`, `mood`, `volume`, `musicAction`,
-`vfxType`. The compiler ships no members for those slots, so a schema reached through `uses:` is the
+declares the **content vocabulary** — `emotion`, `action`, `anchor`, `costume`, `mood`, `volume`,
+`musicPlayback`, `vfxType`, `framing`, `cameraMove`, `transition`, `cgLayout`, `sequence`, and
+`textStyle`. The compiler ships no members for those slots, so a schema reached through `uses:` is the
 route a multi-document project should prefer for declaring them; `action` and `anchor` additionally
 carry required member semantics. That is a distinct concern from the scalar tiers this page is about
 — see [Content vocabulary](/language/vocabulary/).

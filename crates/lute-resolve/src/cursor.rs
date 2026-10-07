@@ -56,7 +56,7 @@ pub enum Cursor<'a> {
         directive: Option<&'a str>,
         key: &'a str,
     },
-    /// Inside a CEL slot. `in_match_subject` is set for a `<match on=…>` subject
+    /// Inside a CEL slot. `in_match_subject` is set for a `<match subject=…>` subject
     /// (so completion offers `scene.choices.<id>` ids).
     Cel {
         slot: &'a CelSlot,
@@ -119,7 +119,7 @@ pub enum QuestConstruct {
 /// when the offset lands on structural trivia (headings, whitespace, the
 /// frontmatter).
 pub fn resolve(doc: &Document, off: usize) -> Option<Cursor<'_>> {
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         if span_contains(shot.span, off) {
             if let Some(c) = resolve_nodes(&shot.body, off) {
                 return Some(c);
@@ -815,7 +815,7 @@ pub fn attr_at(doc: &Document, off: usize) -> Option<&Attr> {
         }
         None
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         if span_contains(shot.span, off) {
             if let Some(a) = scan(&shot.body, off) {
                 return Some(a);
@@ -907,7 +907,7 @@ pub fn is_state_path(path: &str) -> bool {
 /// Document span of the `<branch id=…>` declaring `id`, searched depth-first
 /// through nested bodies (a branch may live in a match arm / another choice).
 pub fn branch_span(doc: &Document, id: &str) -> Option<Span> {
-    doc.shots
+    doc.sections
         .iter()
         .find_map(|s| branch_span_nodes(&s.body, id))
         .or_else(|| {
@@ -1019,7 +1019,7 @@ pub fn subject_domain(
     }
 }
 
-/// Whether the `<match on=…>` subject is a declared `number` state path — the
+/// Whether the `<match subject=…>` subject is a declared `number` state path — the
 /// checker's `Domain::Number` (dsl 0.18.0 §2), whose `is=` literals are points
 /// and inclusive ranges (`N..M`, `N..`, `..M`) over the reals rather than a
 /// finite member menu. Same subject reconstruction as [`subject_domain`] (which
@@ -1031,7 +1031,7 @@ pub fn subject_is_number(meta: &lute_check::TypedMeta, subject_path: &str) -> bo
         .unwrap_or(false)
 }
 
-/// Reconstruct the `<match on=…>` subject's dotted path the SAME way the checker
+/// Reconstruct the `<match subject=…>` subject's dotted path the SAME way the checker
 /// does (`lute_check::match_check::subject_path` = `lute_cel::parse_slot` +
 /// `cel_paths::select_path`): a pure `Ident`/`Select` chain becomes `a.b.c`,
 /// anything else (a compound expression, or a hyphenated `pick-one` that
@@ -1076,7 +1076,7 @@ fn hub_decl_id(h: &Hub) -> Option<&str> {
 /// `id` (the checker's unfolded -> INFINITE -> no-domain case).
 fn branch_choice_ids(doc: &Document, id: &str) -> Option<Vec<String>> {
     let mut latest = None;
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         branch_choice_ids_nodes(&shot.body, id, &mut latest);
     }
     latest
@@ -1135,7 +1135,7 @@ fn is_visited_bool(doc: &Document, path: &str) -> bool {
     if choice.contains('.') {
         return false;
     }
-    doc.shots
+    doc.sections
         .iter()
         .any(|s| visited_in_nodes(&s.body, hub, choice))
 }
@@ -1255,7 +1255,7 @@ pub fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
             }
         }
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_line_interps(
             &shot.body,
             &|i| i.kind == InterpKind::Ref && interp_ref_name(&i.raw).as_deref() == Some(name),
@@ -1270,7 +1270,7 @@ pub fn ref_uses(doc: &Document, name: &str) -> Vec<Span> {
 /// (bare or quoted, [`path_tokens`]), plus content-line `{{path}}` interps.
 pub fn path_uses(doc: &Document, path: &str) -> Vec<Span> {
     let mut out = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         collect_set_paths(&shot.body, path, &mut out);
         collect_line_interps(
             &shot.body,
@@ -1483,7 +1483,7 @@ mod tests {
     /// count a same-spelled dotted string literal in a sibling arm test.
     #[test]
     fn references_ignore_path_inside_cel_string_literal() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = 1}\n<match on=\"scene.affect.marina\">\n<when test=\"'scene.affect.marina' == 'x'\">\n@f: a.\n</when>\n<otherwise>\n@f: b.\n</otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\n---\n## Shot 1.\n::set{scene.affect.marina = 1}\n<match subject=\"scene.affect.marina\">\n<when test=\"'scene.affect.marina' == 'x'\">\n@f: a.\n</when>\n<otherwise>\n@f: b.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         let slot_uses = all_slots(&doc)
             .into_iter()
@@ -1504,7 +1504,7 @@ mod tests {
     /// `test=` value still resolves to [`Cursor::Cel`] (regression guard).
     #[test]
     fn resolve_when_is_vs_test() {
-        let text = "## Shot 1.\n<match on=\"scene.choices.pick\">\n<when is=\"a\">\n@f: x.\n</when>\n<when test=\"true\">\n@f: y.\n</when>\n<otherwise>\n@f: z.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<match subject=\"scene.choices.pick\">\n<when is=\"a\">\n@f: x.\n</when>\n<when test=\"true\">\n@f: y.\n</when>\n<otherwise>\n@f: z.\n</otherwise>\n</match>\n";
         let (doc, _) = parse(text);
         let is_off = text.find("is=\"a\"").unwrap() + "is=\"".len();
         match resolve(&doc, is_off) {
@@ -1528,7 +1528,7 @@ mod tests {
     const QUEST_DOC: &str = "---\nkind: quest\n---\n\
         <quest id=\"q\" start=\"run.s\" fail=\"run.f\">\n\
         <objective id=\"o\" done=\"run.d\">\n\
-        <branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n::set{run.x = 1}\n</choice>\n</branch>\n\
+        <branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n::set{run.x = 1}\n</choice>\n</branch>\n\
         </objective>\n\
         <on event=\"questComplete\">\n@narrator: bye\n</on>\n\
         </quest>\n";

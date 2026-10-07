@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 character: hero
 season: 1
 episode: 1
@@ -12,7 +12,7 @@ uses: ./schema.yaml
 
 @narrator: Tallying the score.
 
-<match on="run.score">
+<match subject="run.score">
   <when is="..0">
     @hero: Nothing yet.
   </when>

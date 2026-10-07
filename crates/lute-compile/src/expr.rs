@@ -131,7 +131,7 @@ pub(crate) enum ArmExpr {
 ///
 /// - `is` is the `<when is="…">` value (trimmed), or `None` when absent.
 /// - `test_raw` is the `test` guard CEL — empty when there is no `test` attr.
-/// - `subject_raw` is the `<match on="…">` subject CEL (a state path).
+/// - `subject_raw` is the `<match subject="…">` subject CEL (a state path).
 ///
 /// Mirrors `lute_check::match_check::analyze_is_pattern`: every alternative of
 /// the `is` value ([`is_alternatives`]) is classified by the shared

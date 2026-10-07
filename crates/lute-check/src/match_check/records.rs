@@ -239,10 +239,10 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
         });
         let d = match named_exit {
             Some(c) => {
-                let label = if c.label.is_empty() {
+                let label = if c.text.is_empty() {
                     String::new()
                 } else {
-                    format!(" label=\"{}\"", c.label)
+                    format!(" text=\"{}\"", c.text)
                 };
                 diag(
                     E_HUB_NO_EXIT,

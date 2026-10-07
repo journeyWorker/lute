@@ -1,0 +1,15 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+title: Voice key collision
+pov: hero
+uses: ./schema.yaml
+---
+
+## Lines
+
+@hero{code="0010"}: :emphasis[Hello] there.
+@hero{code="0020"}: Goodbye.

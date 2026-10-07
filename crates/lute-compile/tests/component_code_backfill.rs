@@ -46,7 +46,7 @@ fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
 
 /// Untagged, exactly as ashen-stair shipped `hearth-fire.component.lute`.
 const FIRE: &str = "---\ncomponent: fire\nparams:\n  flare: { enum: [low, high] }\n---\n\
-## The fire\n<match on=\"@flare\">\n  <when is=\"high\">\n    @narrator: It leaps.\n  </when>\n\
+## The fire\n<match subject=\"@flare\">\n  <when is=\"high\">\n    @narrator: It leaps.\n  </when>\n\
   <when is=\"low\">\n    @narrator: It settles.\n  </when>\n</match>\n";
 
 const SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\

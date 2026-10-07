@@ -30,11 +30,11 @@ impl Label {
 #[derive(Clone, Debug)]
 pub struct Rec {
     pub labels: Vec<Label>,
-    /// dsl 0.12.0: NAMED labels bound at this record — `::mark{id}` / a
+    /// dsl 0.12.0: NAMED labels bound at this record — `::label{name}` / a
     /// content line's `id=` — mirrors `labels` but keyed by the author's
     /// own string rather than a compiler-fresh numeric [`Label`]. Resolved
     /// DOCUMENT-WIDE (not per-shot like `labels`) by
-    /// `address::assign_addresses`'s named-label pass, since a `::next` may
+    /// `address::assign_addresses`'s named-label pass, since a `::jump` may
     /// target a label in a LATER shot — see that function's doc comment.
     pub named: Vec<String>,
     pub cmd: Command,
@@ -88,11 +88,25 @@ impl Emitter {
         self.pending.push(l);
     }
 
-    /// Park a NAMED label (dsl 0.12.0: `::mark{id}` / a line's `id=`) to
-    /// bind on the next pushed record (or trail past the end) — mirrors
-    /// [`Self::bind`] for the document-wide named-label table.
+    /// Park a NAMED label (dsl 0.37.0: `::label{name}`) to bind on the next
+    /// pushed record (or trail past the end) — mirrors [`Self::bind`] for the
+    /// document-wide named-label table.
     pub fn bind_named(&mut self, id: String) {
         self.pending_named.push(id);
+    }
+
+    /// Take the parked NAMED labels so a node's injected records push past
+    /// them; [`Self::restore_named`] parks them again for the node's authored
+    /// record. A `::label{name}` names the authored step it precedes, never a
+    /// reducer injection (`posReset`, a scene change's hides) emitted ahead of
+    /// it. Anonymous labels stay parked: a converge lands on the first record.
+    pub fn defer_named(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.pending_named)
+    }
+
+    /// Park named labels taken by [`Self::defer_named`] again.
+    pub fn restore_named(&mut self, named: Vec<String>) {
+        self.pending_named.extend(named);
     }
 
     /// Push `cmd`. `origin` runs only on a mapping emitter.

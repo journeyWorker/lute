@@ -1,0 +1,3 @@
+# Linear scene: the `sections` table carries `{#id}` for the first and third
+# section; the second has no id and keeps only its positional fallback.
+{}

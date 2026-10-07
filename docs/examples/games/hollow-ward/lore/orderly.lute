@@ -9,26 +9,26 @@ title: The Orderly
   @narrator{code="0010"}: The squeaking stops. In the doorway, stooped under the frame: a man in a grey orderly's coat, one hand on the rail of a gurney. His face is a lamp that has been switched off.
   @orderly{code="0010"}: Round's at three. You're out of bed.
   <branch id="react" prompt="He hasn't moved yet.">
-    <choice id="hide" label="Hide">
+    <choice id="hide" text="Hide">
       ::use{component="chase" tactic="hide" flavor="You fold yourself into the nearest shadow and stop breathing." instance="use-001"}
     </choice>
-    <choice id="run" label="Run">
+    <choice id="run" text="Run">
       ::use{component="chase" tactic="run" flavor="You run. Behind you the wheels start up again, unhurried." instance="use-002"}
     </choice>
-    <choice id="freeze" label="Don't move">
+    <choice id="freeze" text="Don't move">
       ::use{component="chase" tactic="freeze" flavor="You stand as still as a patient at inspection." instance="use-003"}
     </choice>
-    <choice id="lantern" label="Turn the lantern up in his face" when="holds('holding', ['lantern']) && entry.orderlyFile.read">
+    <choice id="lantern" text="Turn the lantern up in his face" when="holds('holding', ['lantern']) && entry.orderlyFile.read">
       ::use{component="chase" tactic="lantern" flavor="You wind the wick all the way up and hold the light out like a cross." instance="use-004"}
     </choice>
-    <choice id="needle" label="Use the syringe" when="holds('holding', ['sedative'])">
+    <choice id="needle" text="Use the syringe" when="holds('holding', ['sedative'])">
       @narrator{code="0020"}: You get the needle into the back of his hand. He looks at it, then at you, and sits down on the floor like a man who has been waiting forty years for permission.
       @orderly{code="0020"}: Thank you, Sister. I'm ever so tired.
       ::consume{item="sedative"}
       ::set{run.chases += 1}
     </choice>
   </branch>
-  <match on="run.fate">
+  <match subject="run.fate">
     <when is="taken">
       ::end{reason="taken"}
     </when>
@@ -36,7 +36,7 @@ title: The Orderly
       @narrator{code="0030"}: When you can hear again, the corridor is empty.
     </otherwise>
   </match>
-  <match on="scene.evade.chase.outcome">
+  <match subject="scene.evade.chase.outcome">
     <when is="hurt" test="@withToby">
       ::retract{following(tobias)}
       ::assert{taken(tobias)}
@@ -57,7 +57,7 @@ title: The Orderly
 </beat>
 
 <beat id="wheels" on="footsteps" target="kind:room" once="false">
-  <match on="run.sanity">
+  <match subject="run.sanity">
     <when is="..3">
       @narrator{code="0010"}: The wheels are in the next room. The wheels are in the walls. The wheels are in your teeth.
       @orderly{code="0010" os}: Bed. Bed. Bed.

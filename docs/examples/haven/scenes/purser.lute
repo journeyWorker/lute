@@ -10,9 +10,9 @@ after: 'visited("haven.s01ep07") || visited("haven.s01ep08")'
 ## The Purser
 
 ::bg{location="purser-core" time="ship-night"}
-::music{action="start" mood="pressurized" volume="normal"}
-::auto{character="vesna" anchor="port" action="brace"}
-::auto{character="ottavio" anchor="starboard" action="drift"}
+::music{playback="start" mood="pressurized" volume="normal"}
+::actor{character="vesna" anchor="port" action="brace"}
+::actor{character="ottavio" anchor="starboard" action="drift"}
 
 @narrator{code="0010"}: The passage ended in a wall that was warm to the touch, and behind the wall something had been adding for eleven years without once being interrupted.
 @ottavio{code="0020" emotion="frayed"}: That's it? That's the whole of it?
@@ -33,7 +33,7 @@ flag anyone remembered to set. `count(awake(_))` counts the `facts:` seed
 (`awake(vesna)`), the ep06 `::assert{awake(ottavio)}`, and whichever of Toma or
 Ilsabet the cryobank woke.
 */
-<match on="true">
+<match subject="true">
   <when test="count('awake', ['_']) >= 3">
     @vesna{code="0110" emotion="level"}: Three of us awake, and one of us not written down anywhere. It'll have to do.
   </when>
@@ -42,13 +42,13 @@ Ilsabet the cryobank woke.
   </otherwise>
 </match>
 
-<match on="true">
+<match subject="true">
   <when test="holds('awake', ['toma'])">
-    ::auto{character="toma" action="brace"}
+    ::actor{character="toma" action="brace"}
     @toma{code="0130" emotion="clipped"}: It's a cabinet. Cabinets have a maintenance mode, and maintenance mode has a key, and I've had the key for twelve years.
   </when>
   <when test="holds('awake', ['ilsabet'])">
-    ::auto{character="ilsabet" action="brace"}
+    ::actor{character="ilsabet" action="brace"}
     @ilsabet{code="0140" emotion="clipped"}: It's a navigation problem. I am the navigator, and it has been flying my ship to a plan I did not file.
   </when>
   <otherwise>
@@ -60,7 +60,7 @@ Ilsabet the cryobank woke.
 @vesna{code="0170" emotion="hollowed" when="!holds('can_halt', ['toma']) && !holds('can_halt', ['vesna']) && !holds('awake', ['ilsabet'])"}: We came up here with a stowaway and a grievance. Let's find out what that buys.
 
 <branch id="theCorrection">
-  <choice id="haltTheSequence" label="Halt the sequence" when="holds('can_halt', ['toma']) || holds('can_halt', ['vesna'])">
+  <choice id="haltTheSequence" text="Halt the sequence" when="holds('can_halt', ['toma']) || holds('can_halt', ['vesna'])">
     ::set{run.vesnaTrust += 1}
     @vesna{code="0180" emotion="clipped" when="holds('can_halt', ['vesna'])"}: Halt condition, subsection four. This is your own page. I am reading you your own page.
     @toma{code="0190" emotion="level" when="holds('can_halt', ['toma'])"}: Maintenance hold. Two hands, both of them steady, and you have to mean it.
@@ -68,7 +68,7 @@ Ilsabet the cryobank woke.
     @purser{code="0210" emotion="level" os}: Pending is not cancelled. Allocation remains short by one module.
     @vesna{code="0220" emotion="hollowed"}: It'll wait. That isn't the same as stopping. But it'll wait, and waiting is a thing we can stand in.
   </choice>
-  <choice id="invalidateTheVoyage" label="Tell it the voyage is already over" when="holds('awake', ['ilsabet']) && holds('knows', ['ilsabet', 'true_heading'])">
+  <choice id="invalidateTheVoyage" text="Tell it the voyage is already over" when="holds('awake', ['ilsabet']) && holds('knows', ['ilsabet', 'true_heading'])">
     ::set{run.vesnaTrust += 1}
     @ilsabet{code="0230" emotion="clipped"}: Filed voyage. Eleven years, four months, destination as filed. Read me the date.
     @purser{code="0240" emotion="level" os}: Filed arrival is four months from the yard. Elapsed is eleven years, four months.
@@ -85,7 +85,7 @@ Ilsabet the cryobank woke.
   so a guard on them could never close (`check-project` reports such a guard as
   `W-FACT-GUARANTEED`). This lever's licence is the route, not a choice.
   */
-  <choice id="listTheMass" label="Put Ottavio on the manifest">
+  <choice id="listTheMass" text="Put Ottavio on the manifest">
     ::set{run.shedPressure += 1}
     ::assert{knows(vesna, manifest)}
     @ottavio{code="0310" emotion="frayed"}: Say it out loud. If you're going to do it, do it out loud, because I have waited six weeks to hear somebody aboard say it.
@@ -96,12 +96,12 @@ Ilsabet the cryobank woke.
     @vesna{code="0360" emotion="stricken"}: It counted you. That's what being counted costs on this ship.
     @ottavio{code="0370" emotion="level"}: I'd sooner be a number than a rounding error. Leave it as it stands.
   </choice>
-  <choice id="sayNothing" label="Say nothing and let it finish">
-    ::camera{focus="vesna" zoom="1.2" duration="1.6" wait="true"}
+  <choice id="sayNothing" text="Say nothing and let it finish">
+    ::camera{focus="vesna" framing="close" duration="1.6" wait="true"}
     @narrator{code="0380"}: You did not say anything. The fan behind the wall did not change its note, and the arithmetic went on being right.
     @vesna{code="0390" emotion="hollowed"}: All right.
     @vesna{code="0400" emotion="frayed"}: All right. Then we go up and we watch it happen, because somebody aboard ought to be looking when it does.
-    ::auto{character="vesna" action="turnAway"}
+    ::actor{character="vesna" action="turnAway"}
   </choice>
 </branch>
 

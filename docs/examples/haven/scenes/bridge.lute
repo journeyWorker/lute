@@ -8,6 +8,6 @@ after: 'visited("haven.s01ep09")'
 ---
 
 ## The Bridge
-::auto{character="vesna" anchor="center" action="brace"}
+::actor{character="vesna" anchor="center" action="brace"}
 @vesna{code="0010" emotion="level"}: Whatever's left of the ship, it's steering.
 ::end{reason="bridge-reached"}

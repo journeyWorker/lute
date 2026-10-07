@@ -22,8 +22,9 @@ pub struct ExecutionIr {
     pub lute: String,
     /// IR schema version (A9), independent of `lute`; engines gate parsing on it.
     pub ir_version: String,
-    /// Plugin-system §13 capability snapshot stamp (A9): `snapshot.version`.
-    pub capability_version: String,
+    /// Plugin-system §13 capability snapshot stamp (A9): `snapshot.version`,
+    /// serialized as `capabilitySnapshot` (dsl 0.37.0 §5.3).
+    pub capability_snapshot: String,
     /// Resolved authored rename ledger relevant to this artifact. Empty
     /// ledgers are omitted from the wire shape.
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -69,16 +70,14 @@ pub struct ExecutionIr {
     /// above moved (byte-stability contract, file header).
     #[serde(rename = "prereqEdges", skip_serializing_if = "Vec::is_empty")]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
-    /// Authored shot headings (dsl 0.8.0 §6), 1-based `shot` number → the
-    /// verbatim `## ` heading text. 0.6.0 made shot headings free text and
-    /// dropped `Shot.number` from the AST; before 0.8.0 the heading was
-    /// discarded entirely at lowering, so a compile → decompile round trip
-    /// lost the author's section titles (the only authored structure with no
-    /// other IR carrier). Emitted only for shots whose heading is non-empty;
-    /// omitted entirely when no shot carries one. APPENDED LAST — after
-    /// `prereqEdges`, the prior last field (byte-stability contract).
+    /// Authored document sections (dsl 0.37.0 §5.3): the 1-based document-
+    /// position `section` number, its verbatim `## ` heading text, and its
+    /// optional stable `{#id}`. Purely descriptive — control flow never
+    /// references it; a `position`'s first segment is the join. Emitted only
+    /// for sections with a non-empty heading or an id; omitted entirely when
+    /// none qualifies.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub shots: Vec<ShotEntry>,
+    pub sections: Vec<SectionEntry>,
     /// dsl 0.24.0 §1: the project's declared clock, verbatim — the `day` /
     /// `slot` paths, the slot order, the occasion raised after an advance,
     /// the week. An engine derives `clock.index` / `clock.weekday` /
@@ -161,14 +160,17 @@ pub struct SeasonEntry {
     pub live: CelPair,
 }
 
-/// One authored shot heading (dsl 0.8.0 §6): the 1-based document-position
-/// shot number and its verbatim `## ` text. Purely descriptive — control flow
-/// never references it; `addr`'s shot segment is the join.
+/// One authored document section (dsl 0.37.0 §5.3): the 1-based document-
+/// position section number, its verbatim `## ` heading text (the `{#id}`
+/// suffix excluded), and the optional stable section id. Purely descriptive —
+/// control flow never references it; a `position`'s first segment is the join.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ShotEntry {
-    pub shot: i64,
+pub struct SectionEntry {
+    pub section: i64,
     pub heading: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 /// One advisory prerequisite edge (connectivity spec §2.6, T13): a single
@@ -709,22 +711,15 @@ pub struct StateEntry {
     pub member_domain: Option<(String, Vec<String>)>,
 }
 
-/// Cross-cutting optional stamps (§4.3), flattened into every stamped record:
-/// resolved blocking, timing, timeline clip placement, injection provenance,
-/// component source.
+/// Cross-cutting optional stamps (dsl 0.37.0 §5.2), flattened into every
+/// stamped record: the nested `timing` object, injection provenance,
+/// component source, and plugin cross-cutting attrs.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stamp {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wait: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delay: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub at: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeline: Option<u32>,
+    /// Resolved blocking and timing; omitted when every member is absent.
+    #[serde(skip_serializing_if = "Timing::is_empty")]
+    pub timing: Timing,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance: Option<lute_check::Provenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -736,14 +731,38 @@ pub struct Stamp {
     #[serde(skip)]
     pub authored: Option<String>,
     /// Plugin-declared CROSS-CUTTING attrs (plugin 0.0.2 §14.1 `stampAttrs:`),
-    /// flattened alongside the reserved timing keys above. An engine reads
-    /// these exactly like a directive `fields` entry — typed by the declaring
-    /// plugin's `AttrDecl`, absent when unauthored. Assembly REJECTS a
-    /// `stampAttrs` name colliding with any reserved key above
-    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can never shadow them.
-    /// Serialized LAST within the stamp so existing field order is untouched.
+    /// flattened beside `timing`. An engine reads these exactly like a
+    /// directive `fields` entry — typed by the declaring plugin's `AttrDecl`,
+    /// absent when unauthored. Assembly REJECTS a `stampAttrs` name colliding
+    /// with any reserved key (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can
+    /// never shadow them. Serialized LAST within the stamp.
     #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// A record's `timing` object (dsl 0.37.0 §5.2). `duration`, `delay`, and
+/// `at` are seconds (finite, >= 0); `timeline` is the zero-based ordinal of
+/// the `<timeline>` the record was emitted from — an ordinal, not seconds.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Timing {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wait: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delay: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeline: Option<u32>,
+}
+
+impl Timing {
+    /// No member present — the whole `timing` object is omitted.
+    pub fn is_empty(&self) -> bool {
+        *self == Timing::default()
+    }
 }
 
 /// `source { component }` on component-expanded records (§4.3, D8).
@@ -759,24 +778,16 @@ pub struct Source {
     pub stable: bool,
 }
 
-/// `:line` role (§4.4, foundation D7). Voiced roles carry a `voiceKey`
-/// (§4.2): `Dialogue`/`Voiceover`/`Offscreen` are heard (an off-screen line
-/// is still spoken audio, just with no on-screen sprite this line);
-/// `Monologue` (inner voice, not spoken aloud) and `Narration` are not.
+/// `:line` role (dsl 0.37.0 D6): the authored delivery name. Every role
+/// carries a `voiceKey` — a key is a join, not a recording obligation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Dialogue,
     Narration,
-    Monologue,
-    Voiceover,
-    Offscreen,
-}
-
-impl Role {
-    pub fn voiced(self) -> bool {
-        matches!(self, Role::Dialogue | Role::Voiceover | Role::Offscreen)
-    }
+    Mono,
+    Os,
+    Vo,
 }
 
 /// Document kind (dsl 0.2.0 §2/§3.1, dsl 0.19.0 §2): `"scene"` | `"quest"` |
@@ -802,21 +813,22 @@ impl From<lute_check::DocKind> for DocKind {
     }
 }
 
-/// One record (§4.4). Internally tagged on `kind`; the `Other` variant is the
-/// plugin-directive passthrough (plan spec-gap note 1) and serializes as
-/// `kind: "plugin"`.
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+/// One record (dsl 0.37.0 §5.3). Serialized as `kind`, then `family`
+/// ([`Family`]), then the record's own fields — see the `Serialize` impl.
+/// Each kind is named after the authored directive that produces it;
+/// `Plugin` is the plugin-directive passthrough (`kind: "plugin"`).
+#[derive(Clone, Debug)]
 pub enum Command {
     Line(LineCmd),
-    Background(BackgroundCmd),
+    Bg(BgCmd),
     Music(MusicCmd),
     Sfx(SfxCmd),
     Vfx(VfxCmd),
-    Sprite(SpriteCmd),
+    Actor(ActorCmd),
     Camera(CameraCmd),
-    Cut(CutCmd),
+    Cg(CgCmd),
     Video(VideoCmd),
+    Sequence(SequenceCmd),
     Set(SetCmd),
     Assert(AssertCmd),
     Retract(RetractCmd),
@@ -828,15 +840,88 @@ pub enum Command {
     Barrier(BarrierCmd),
     Quest(QuestCmd),
     On(OnCmd),
-    #[serde(rename = "plugin")]
-    Other(OtherCmd),
-    /// dsl 0.19.0 §7: `<entry>` declaration head. Appended LAST.
+    Plugin(PluginCmd),
+    /// dsl 0.19.0 §7: `<entry>` declaration head.
     Entry(EntryCmd),
-    /// dsl 0.21.0 §7a.3: `::accept{quest}`. Appended after `Entry`.
+    /// dsl 0.21.0 §7a.3: `::accept{quest}`.
     Accept(AcceptCmd),
     /// dsl 0.23.0 §4: a bundle `<beat>` declaration head in a lore artifact.
-    /// Appended after `Accept`.
     Beat(BeatCmd),
+}
+
+/// A record's `family` (dsl 0.37.0 §5.1) — the normative kind grouping a
+/// runtime dispatches on before `kind`. Named `family`, not `category`, so it
+/// never collides with a lore `<entry category=…>` record field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Family {
+    Content,
+    Staging,
+    State,
+    Control,
+    Declaration,
+    Plugin,
+}
+
+impl Family {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Family::Content => "content",
+            Family::Staging => "staging",
+            Family::State => "state",
+            Family::Control => "control",
+            Family::Declaration => "declaration",
+            Family::Plugin => "plugin",
+        }
+    }
+}
+
+/// `kind`, `family`, then the record's own (flattened) fields.
+#[derive(Serialize)]
+struct TaggedRecord<'a, T: Serialize> {
+    kind: &'static str,
+    family: Family,
+    #[serde(flatten)]
+    record: &'a T,
+}
+
+impl Serialize for Command {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        fn tagged<S: serde::Serializer, T: Serialize>(
+            cmd: &Command,
+            record: &T,
+            s: S,
+        ) -> Result<S::Ok, S::Error> {
+            TaggedRecord { kind: cmd.kind(), family: cmd.family(), record }.serialize(s)
+        }
+        match self {
+            Command::Line(c) => tagged(self, c, s),
+            Command::Bg(c) => tagged(self, c, s),
+            Command::Music(c) => tagged(self, c, s),
+            Command::Sfx(c) => tagged(self, c, s),
+            Command::Vfx(c) => tagged(self, c, s),
+            Command::Actor(c) => tagged(self, c, s),
+            Command::Camera(c) => tagged(self, c, s),
+            Command::Cg(c) => tagged(self, c, s),
+            Command::Video(c) => tagged(self, c, s),
+            Command::Sequence(c) => tagged(self, c, s),
+            Command::Set(c) => tagged(self, c, s),
+            Command::Assert(c) => tagged(self, c, s),
+            Command::Retract(c) => tagged(self, c, s),
+            Command::Choice(c) => tagged(self, c, s),
+            Command::Match(c) => tagged(self, c, s),
+            Command::Hub(c) => tagged(self, c, s),
+            Command::Jump(c) => tagged(self, c, s),
+            Command::End(c) => tagged(self, c, s),
+            Command::Barrier(c) => tagged(self, c, s),
+            Command::Quest(c) => tagged(self, c, s),
+            Command::On(c) => tagged(self, c, s),
+            Command::Plugin(c) => tagged(self, c, s),
+            Command::Entry(c) => tagged(self, c, s),
+            Command::Accept(c) => tagged(self, c, s),
+            Command::Beat(c) => tagged(self, c, s),
+        }
+    }
 }
 
 /// One `{{…}}` interpolation placeholder (IR A3): the runtime substitutes it
@@ -952,12 +1037,31 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
     }
 }
 
+/// One run of a modified line's presentation (dsl 0.37.0 §3.6): coalesced
+/// text carrying the active text styles (outermost first) and the innermost
+/// `speed` rate, or a `pause` leaf in seconds. Absent members are omitted.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Segment {
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        styles: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rate: Option<f64>,
+    },
+    Pause { pause: f64 },
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineCmd {
-    pub addr: String,
+    pub position: String,
     pub role: Role,
     pub speaker: String,
+    /// The plain-text derivation of the authored text (dsl 0.37.0 §3.6):
+    /// modifier delimiters and attributes removed, escapes decoded, `{{…}}`
+    /// markers verbatim.
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emotion: Option<String>,
@@ -970,18 +1074,31 @@ pub struct LineCmd {
     #[serde(rename = "as", skip_serializing_if = "Option::is_none")]
     pub as_label: Option<String>,
     pub line_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub voice_key: Option<String>,
+    /// The voice asset join (dsl 0.37.0 D6): present on EVERY line, any role.
+    pub voice_key: String,
     /// IR A3: `{{…}}` interpolations found in `text`, in left-to-right order.
     /// Absent when the line has no interpolation (byte-stability: skip-if-empty).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
-    /// Merged locale texts (dsl 0.8.0 §7), locale tag → translated text, keyed
-    /// on this record's `lineId`. Populated only when `compile --locales` was
-    /// given a locale bundle; `text` always remains the SOURCE-language string
-    /// (`contentLang`), so a 0.7 consumer is unaffected. Absent when empty.
+    /// dsl 0.37.0 §3.6: the line's presentation runs — present only when the
+    /// authored text carries an inline modifier.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<Segment>,
+    /// Merged locale texts (dsl 0.8.0 §7, 0.37.0 §6), locale tag → the
+    /// translation's plain-text derivation, keyed on this record's `lineId`.
+    /// Populated only when `compile --locales` was given a locale bundle;
+    /// `text` always remains the SOURCE-language string. Absent when empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// dsl 0.37.0 §6: locale tag → the translation's [`Segment`]s, for a
+    /// line whose source carries an inline modifier. Absent when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub locale_segments: BTreeMap<String, Vec<Segment>>,
+    /// The source text's inline modifier multiset
+    /// ([`lute_syntax::ast::inline_modifier_multiset`]) — what a translation
+    /// must match (`E-L10N-MODIFIERS`). Internal, NEVER serialized.
+    #[serde(skip)]
+    pub modifiers: BTreeMap<String, usize>,
     /// Authored (or back-filled) per-speaker `code` — feeds `lineId`/`voiceKey`
     /// in the addressing pass, NEVER serialized (3-id model, §4.2).
     #[serde(skip)]
@@ -992,8 +1109,8 @@ pub struct LineCmd {
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BackgroundCmd {
-    pub addr: String,
+pub struct BgCmd {
+    pub position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1007,16 +1124,15 @@ pub struct BackgroundCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MusicCmd {
-    pub addr: String,
-    pub action: String,
+    pub position: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playback: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mood: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub volume: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub track: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1024,13 +1140,11 @@ pub struct MusicCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SfxCmd {
-    pub addr: String,
+    pub position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sound: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub asset_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1038,8 +1152,8 @@ pub struct SfxCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VfxCmd {
-    pub addr: String,
-    pub vfx_type: String,
+    pub position: String,
+    pub r#type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1048,12 +1162,13 @@ pub struct VfxCmd {
     pub stamp: Stamp,
 }
 
-/// Authored `::auto` OR an injected sprite command (§7.4) — injected records
-/// are SEPARATE records with `provenance` in their stamp.
+/// Authored `::actor` OR an injected actor record (§7.4) — injected records
+/// are SEPARATE records with `provenance` in their stamp; `posReset` and
+/// `preload` appear only on injected ones.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SpriteCmd {
-    pub addr: String,
+pub struct ActorCmd {
+    pub position: String,
     pub character: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anchor: Option<String>,
@@ -1062,61 +1177,69 @@ pub struct SpriteCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub emotion: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub costume: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pos_reset: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preload: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub emotion: Option<String>,
-    /// A1 (schema-only): resolved costume id from the character-cast plugin;
-    /// always `None` until cast ships, so it never serializes (skip-if-none).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub costume: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
 
+/// `::camera` (dsl 0.37.0 D1): opaque project-domain members; at least one
+/// is present after checking. No numeric transform is synthesized.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CameraCmd {
-    pub addr: String,
+    pub position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub focus: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub zoom: Option<f64>,
+    pub framing: Option<String>,
+    #[serde(rename = "move", skip_serializing_if = "Option::is_none")]
+    pub camera_move: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub move_x: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub move_y: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shake: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reset: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub easing: Option<String>,
+    pub transition: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
 
+/// `::cg` (dsl 0.37.0 D2): `display` is the resolved value (`show` by
+/// default) and always present.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CutCmd {
-    pub addr: String,
+pub struct CgCmd {
+    pub position: String,
     pub asset_id: String,
+    pub display: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub full: Option<bool>,
+    pub layout: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
 
+/// `::video` (dsl 0.37.0 D2): `display` is the resolved value (`show` by
+/// default) and always present.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoCmd {
-    pub addr: String,
+    pub position: String,
     pub asset_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
+    pub display: String,
+    #[serde(flatten)]
+    pub stamp: Stamp,
+}
+
+/// `::sequence{name}` (dsl 0.37.0 D3): a reference to a project-declared
+/// sequence. Carries only its name and resolved timing (`wait` defaults
+/// `true`); no bound characters.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SequenceCmd {
+    pub position: String,
+    pub name: String,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1124,7 +1247,7 @@ pub struct VideoCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetCmd {
-    pub addr: String,
+    pub position: String,
     pub path: String,
     pub op: String,
     pub value: CelPair,
@@ -1138,7 +1261,7 @@ pub struct SetCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssertCmd {
-    pub addr: String,
+    pub position: String,
     pub relation: String,
     /// Ground literals; bools as "true"/"false". Never "_" (checker-enforced
     /// `E-RETRACT-WILDCARD-ASSERT`).
@@ -1153,7 +1276,7 @@ pub struct AssertCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetractCmd {
-    pub addr: String,
+    pub position: String,
     pub relation: String,
     /// Ground literals or "_" wildcards (§5 RetractPattern).
     pub args: Vec<String>,
@@ -1168,7 +1291,7 @@ pub struct RetractCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcceptCmd {
-    pub addr: String,
+    pub position: String,
     pub quest: String,
     /// dsl 0.24.0 §2: `"nextRun"` for `::accept{… at="nextRun"}` (named
     /// `applies` on the wire: `at` is the flattened `Stamp` offset) — the
@@ -1191,19 +1314,19 @@ pub enum AcceptAt {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChoiceCmd {
-    pub addr: String,
+    pub position: String,
     pub branch_id: String,
-    pub record_key: String,
+    pub selection_key: String,
     pub options: Vec<ChoiceOption>,
     pub converge: String,
     /// dsl 0.11.0: the choice-situation sentence for the UI. Absent unless
     /// authored (skip-if-empty, matching `ChoiceOption::when`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
-    /// dsl 0.11.0: the countdown, in whole seconds, matching the wire's
-    /// `timeoutSec` name. Absent unless authored.
+    /// dsl 0.11.0: the countdown, in whole seconds (dsl 0.37.0 §5.3
+    /// `timeout`). Absent unless authored.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_sec: Option<u32>,
+    pub timeout: Option<u32>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1212,19 +1335,19 @@ pub struct ChoiceCmd {
 #[serde(rename_all = "camelCase")]
 pub struct ChoiceOption {
     pub id: String,
-    pub label: String,
+    pub text: String,
     pub line_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     pub target: String,
-    /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
-    /// when the label has none (skip-if-empty). Label text stays verbatim.
+    /// IR A3: `{{…}}` interpolations in `text`, in left-to-right order. Absent
+    /// when the text has none (skip-if-empty). The text stays verbatim.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
-    /// Merged locale labels (dsl 0.8.0 §7), locale tag → translated label,
-    /// keyed on this option's `lineId`. See `LineCmd::texts`.
+    /// Merged locale texts (dsl 0.8.0 §7), locale tag → translated option
+    /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub labels: BTreeMap<String, String>,
+    pub texts: BTreeMap<String, String>,
 }
 
 /// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
@@ -1233,9 +1356,9 @@ pub struct ChoiceOption {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HubCmd {
-    pub addr: String,
+    pub position: String,
     pub id: String,
-    pub record_key: String,
+    pub selection_key: String,
     pub options: Vec<HubOption>,
     pub converge: String,
     /// dsl 0.23.0 §4: the prompt line shown with the hub's options. Absent
@@ -1259,27 +1382,27 @@ pub struct HubCmd {
 #[serde(rename_all = "camelCase")]
 pub struct HubOption {
     pub id: String,
-    pub label: String,
+    pub text: String,
     pub line_id: String,
     pub once: bool,
     pub exit: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
     pub target: String,
-    /// IR A3: `{{…}}` interpolations in `label`, in left-to-right order. Absent
-    /// when the label has none (skip-if-empty). Label text stays verbatim.
+    /// IR A3: `{{…}}` interpolations in `text`, in left-to-right order. Absent
+    /// when the text has none (skip-if-empty). The text stays verbatim.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
-    /// Merged locale labels (dsl 0.8.0 §7), locale tag → translated label,
-    /// keyed on this option's `lineId`. See `LineCmd::texts`.
+    /// Merged locale texts (dsl 0.8.0 §7), locale tag → translated option
+    /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub labels: BTreeMap<String, String>,
+    pub texts: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MatchCmd {
-    pub addr: String,
+    pub position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject: Option<CelPair>,
     pub arms: Vec<MatchArm>,
@@ -1302,7 +1425,7 @@ pub struct MatchArm {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct JumpCmd {
-    pub addr: String,
+    pub position: String,
     pub target: String,
 }
 
@@ -1315,7 +1438,7 @@ pub struct JumpCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EndCmd {
-    pub addr: String,
+    pub position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     #[serde(flatten)]
@@ -1324,7 +1447,7 @@ pub struct EndCmd {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct BarrierCmd {
-    pub addr: String,
+    pub position: String,
     pub timeline: u32,
     pub at: f64,
 }
@@ -1370,8 +1493,8 @@ pub struct FactRecord {
 /// the authored tag, and its attrs typed via the manifest `AttrDecl`s.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OtherCmd {
-    pub addr: String,
+pub struct PluginCmd {
+    pub position: String,
     pub tag: String,
     /// Owning plugin id for a resolved plugin directive. Core and unknown
     /// directives omit this field.
@@ -1401,7 +1524,7 @@ pub struct OtherCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestCmd {
-    pub addr: String,
+    pub position: String,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -1570,7 +1693,7 @@ pub struct ObjectiveEntry {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OnCmd {
-    pub addr: String,
+    pub position: String,
     pub event: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<CelPair>,
@@ -1592,7 +1715,7 @@ pub struct OnCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryCmd {
-    pub addr: String,
+    pub position: String,
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -1657,7 +1780,7 @@ pub struct EntryCmd {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BeatCmd {
-    pub addr: String,
+    pub position: String,
     pub id: String,
     pub on: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1827,6 +1950,10 @@ fn cel_quote(value: &str) -> String {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RewardEntry {
+    /// dsl 0.37.0 D10: the authored `<reward id>`, unique within its quest.
+    /// Omitted when unauthored (the declaration index is the fallback key).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -1875,6 +2002,7 @@ impl RewardEntry {
             None
         };
         RewardEntry {
+            id: reward.id.as_ref().map(|(id, _)| id.clone()),
             kind: reward.kind.clone(),
             target: reward.target.clone(),
             amount,
@@ -1888,39 +2016,101 @@ impl RewardEntry {
 }
 
 impl Command {
-    /// The record's `addr` slot (filled by the addressing pass, Task 11).
-    pub fn addr_mut(&mut self) -> &mut String {
+    /// The serialized `kind` — the name of the authored directive or tag that
+    /// produces the record (dsl 0.37.0 §5.3).
+    pub fn kind(&self) -> &'static str {
         match self {
-            Command::Line(c) => &mut c.addr,
-            Command::Background(c) => &mut c.addr,
-            Command::Music(c) => &mut c.addr,
-            Command::Sfx(c) => &mut c.addr,
-            Command::Vfx(c) => &mut c.addr,
-            Command::Sprite(c) => &mut c.addr,
-            Command::Camera(c) => &mut c.addr,
-            Command::Cut(c) => &mut c.addr,
-            Command::Video(c) => &mut c.addr,
-            Command::Set(c) => &mut c.addr,
-            Command::Assert(c) => &mut c.addr,
-            Command::Retract(c) => &mut c.addr,
-            Command::Choice(c) => &mut c.addr,
-            Command::Match(c) => &mut c.addr,
-            Command::Hub(c) => &mut c.addr,
-            Command::Jump(c) => &mut c.addr,
-            Command::Barrier(c) => &mut c.addr,
-            Command::End(c) => &mut c.addr,
-            Command::Other(c) => &mut c.addr,
-            Command::Quest(c) => &mut c.addr,
-            Command::On(c) => &mut c.addr,
-            Command::Entry(c) => &mut c.addr,
-            Command::Accept(c) => &mut c.addr,
-            Command::Beat(c) => &mut c.addr,
+            Command::Line(_) => "line",
+            Command::Bg(_) => "bg",
+            Command::Music(_) => "music",
+            Command::Sfx(_) => "sfx",
+            Command::Vfx(_) => "vfx",
+            Command::Actor(_) => "actor",
+            Command::Camera(_) => "camera",
+            Command::Cg(_) => "cg",
+            Command::Video(_) => "video",
+            Command::Sequence(_) => "sequence",
+            Command::Set(_) => "set",
+            Command::Assert(_) => "assert",
+            Command::Retract(_) => "retract",
+            Command::Choice(_) => "choice",
+            Command::Match(_) => "match",
+            Command::Hub(_) => "hub",
+            Command::Jump(_) => "jump",
+            Command::End(_) => "end",
+            Command::Barrier(_) => "barrier",
+            Command::Quest(_) => "quest",
+            Command::On(_) => "on",
+            Command::Plugin(_) => "plugin",
+            Command::Entry(_) => "entry",
+            Command::Accept(_) => "accept",
+            Command::Beat(_) => "beat",
+        }
+    }
+
+    /// The normative `family` of the record's kind (dsl 0.37.0 §5.1).
+    pub fn family(&self) -> Family {
+        match self {
+            Command::Line(_) => Family::Content,
+            Command::Bg(_)
+            | Command::Music(_)
+            | Command::Sfx(_)
+            | Command::Vfx(_)
+            | Command::Actor(_)
+            | Command::Camera(_)
+            | Command::Cg(_)
+            | Command::Video(_)
+            | Command::Sequence(_) => Family::Staging,
+            Command::Set(_) | Command::Assert(_) | Command::Retract(_) => Family::State,
+            Command::Choice(_)
+            | Command::Match(_)
+            | Command::Hub(_)
+            | Command::Jump(_)
+            | Command::End(_)
+            | Command::Barrier(_) => Family::Control,
+            Command::Quest(_)
+            | Command::On(_)
+            | Command::Entry(_)
+            | Command::Accept(_)
+            | Command::Beat(_) => Family::Declaration,
+            Command::Plugin(_) => Family::Plugin,
+        }
+    }
+
+    /// The record's `position` slot (filled by the addressing pass).
+    pub fn position_mut(&mut self) -> &mut String {
+        match self {
+            Command::Line(c) => &mut c.position,
+            Command::Bg(c) => &mut c.position,
+            Command::Music(c) => &mut c.position,
+            Command::Sfx(c) => &mut c.position,
+            Command::Vfx(c) => &mut c.position,
+            Command::Actor(c) => &mut c.position,
+            Command::Camera(c) => &mut c.position,
+            Command::Cg(c) => &mut c.position,
+            Command::Video(c) => &mut c.position,
+            Command::Sequence(c) => &mut c.position,
+            Command::Set(c) => &mut c.position,
+            Command::Assert(c) => &mut c.position,
+            Command::Retract(c) => &mut c.position,
+            Command::Choice(c) => &mut c.position,
+            Command::Match(c) => &mut c.position,
+            Command::Hub(c) => &mut c.position,
+            Command::Jump(c) => &mut c.position,
+            Command::Barrier(c) => &mut c.position,
+            Command::End(c) => &mut c.position,
+            Command::Plugin(c) => &mut c.position,
+            Command::Quest(c) => &mut c.position,
+            Command::On(c) => &mut c.position,
+            Command::Entry(c) => &mut c.position,
+            Command::Accept(c) => &mut c.position,
+            Command::Beat(c) => &mut c.position,
         }
     }
 
     /// Visit every control-flow target field (option/arm `target`s,
     /// `otherwise`, `converge`, jump `target`) — the addressing pass rewrites
-    /// symbolic labels to concrete `addr`s through this single seam.
+    /// symbolic labels to concrete positions through this single seam.
     pub fn for_each_target(&mut self, f: &mut impl FnMut(&mut String)) {
         match self {
             Command::Jump(j) => f(&mut j.target),
@@ -1962,20 +2152,21 @@ impl Command {
             Command::Entry(e) => f(&mut e.body),
             Command::Beat(b) => f(&mut b.body),
             Command::Line(_)
-            | Command::Background(_)
+            | Command::Bg(_)
             | Command::Music(_)
             | Command::Sfx(_)
             | Command::Vfx(_)
-            | Command::Sprite(_)
+            | Command::Actor(_)
             | Command::Camera(_)
-            | Command::Cut(_)
+            | Command::Cg(_)
             | Command::Video(_)
+            | Command::Sequence(_)
             | Command::Set(_)
             | Command::Assert(_)
             | Command::Retract(_)
             | Command::Barrier(_)
             | Command::End(_)
-            | Command::Other(_)
+            | Command::Plugin(_)
             | Command::Accept(_) => {}
         }
     }
@@ -1984,21 +2175,22 @@ impl Command {
     pub fn stamp_mut(&mut self) -> Option<&mut Stamp> {
         match self {
             Command::Line(c) => Some(&mut c.stamp),
-            Command::Background(c) => Some(&mut c.stamp),
+            Command::Bg(c) => Some(&mut c.stamp),
             Command::Music(c) => Some(&mut c.stamp),
             Command::Sfx(c) => Some(&mut c.stamp),
             Command::Vfx(c) => Some(&mut c.stamp),
-            Command::Sprite(c) => Some(&mut c.stamp),
+            Command::Actor(c) => Some(&mut c.stamp),
             Command::Camera(c) => Some(&mut c.stamp),
-            Command::Cut(c) => Some(&mut c.stamp),
+            Command::Cg(c) => Some(&mut c.stamp),
             Command::Video(c) => Some(&mut c.stamp),
+            Command::Sequence(c) => Some(&mut c.stamp),
             Command::Set(c) => Some(&mut c.stamp),
             Command::Assert(c) => Some(&mut c.stamp),
             Command::Retract(c) => Some(&mut c.stamp),
             Command::Choice(c) => Some(&mut c.stamp),
             Command::Match(c) => Some(&mut c.stamp),
             Command::Hub(c) => Some(&mut c.stamp),
-            Command::Other(c) => Some(&mut c.stamp),
+            Command::Plugin(c) => Some(&mut c.stamp),
             Command::Quest(c) => Some(&mut c.stamp),
             Command::On(c) => Some(&mut c.stamp),
             Command::Entry(c) => Some(&mut c.stamp),
@@ -2009,24 +2201,25 @@ impl Command {
         }
     }
 
-    /// `(addr, authored directive)` of a record a directive lowered to —
+    /// `(position, authored directive)` of a record a directive lowered to —
     /// staging, `::end`, a plugin passthrough ([`Stamp::authored`]) — and
     /// of the match a guarded `::use` compiled to (dsl 0.26.0 §4).
     pub fn authored(&self) -> Option<(&str, &str)> {
-        let (addr, stamp) = match self {
-            Command::Background(c) => (&c.addr, &c.stamp),
-            Command::Music(c) => (&c.addr, &c.stamp),
-            Command::Sfx(c) => (&c.addr, &c.stamp),
-            Command::Vfx(c) => (&c.addr, &c.stamp),
-            Command::Sprite(c) => (&c.addr, &c.stamp),
-            Command::Camera(c) => (&c.addr, &c.stamp),
-            Command::Cut(c) => (&c.addr, &c.stamp),
-            Command::Video(c) => (&c.addr, &c.stamp),
-            Command::End(c) => (&c.addr, &c.stamp),
-            Command::Other(c) => (&c.addr, &c.stamp),
-            Command::Match(c) => (&c.addr, &c.stamp),
+        let (position, stamp) = match self {
+            Command::Bg(c) => (&c.position, &c.stamp),
+            Command::Music(c) => (&c.position, &c.stamp),
+            Command::Sfx(c) => (&c.position, &c.stamp),
+            Command::Vfx(c) => (&c.position, &c.stamp),
+            Command::Actor(c) => (&c.position, &c.stamp),
+            Command::Camera(c) => (&c.position, &c.stamp),
+            Command::Cg(c) => (&c.position, &c.stamp),
+            Command::Video(c) => (&c.position, &c.stamp),
+            Command::Sequence(c) => (&c.position, &c.stamp),
+            Command::End(c) => (&c.position, &c.stamp),
+            Command::Plugin(c) => (&c.position, &c.stamp),
+            Command::Match(c) => (&c.position, &c.stamp),
             _ => return None,
         };
-        Some((addr, stamp.authored.as_deref()?))
+        Some((position, stamp.authored.as_deref()?))
     }
 }

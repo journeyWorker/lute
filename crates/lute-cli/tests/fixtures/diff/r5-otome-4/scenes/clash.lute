@@ -6,10 +6,10 @@ id: clash
 ## Clash
 
 <branch id="side">
-  <choice id="ren" label="Side with Ren">
+  <choice id="ren" text="Side with Ren">
     ::assert{locked(kai)}
   </choice>
-  <choice id="kai" label="Side with Kai">
+  <choice id="kai" text="Side with Kai">
     ::assert{locked(ren)}
   </choice>
 </branch>

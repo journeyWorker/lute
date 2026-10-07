@@ -1,13 +1,15 @@
 ---
-title: "AI harness surface — 0.36.6"
+title: "AI harness surface — 0.37.0"
 status: Draft
 ---
 
 # AI harness surface
 
-This page is the thin adapter contract for 0.36.6. The normative semantics are
-in `docs/proposals/scenario-dsl/0.36.0.md`; this page only gives a harness the
-stable command sequence and JSON boundaries. The CLI is the boundary, not a
+This page is the thin adapter contract for 0.37.0. The current language is
+`docs/proposals/scenario-dsl/0.37.0.md`; the context/patch/diff source-edit
+contract it relies on was specified in `docs/proposals/scenario-dsl/0.35.0.md`
+and `0.36.0.md`, and 0.37.0 leaves it unchanged. This page only gives a harness
+the stable command sequence and JSON boundaries. The CLI is the boundary, not a
 chat app, session manager, MCP server, or Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).
 
@@ -36,7 +38,10 @@ writes nothing.
 
 The context result contains `schemaVersion`, `projectRevision`, `files`,
 `target`, `declared`, `references.in`/`out`, `affected`, `tests`, `plays`,
-`vocabulary`, and `notIncluded`. Static tests/plays are only scripts whose
+`vocabulary`, and `notIncluded`. The authoring-surface form
+(`lute context <file> --json`) reports the `capabilitySnapshot` its vocabulary
+was resolved under, the same value as the compiled IR envelope.
+Static tests/plays are only scripts whose
 steps or expectations name the target (scene/beat/entry/quest ID or lineId).
 `witnessed` is reserved for scripts actually executed with `--run`; all other
 scripts are listed in `notIncluded` with a count and reason. The result is
@@ -100,7 +105,7 @@ semantic fields; formatting-only changes produce an empty array. Guards compare
 as exact-profile canonical CEL ASTs (literal kind preserved); unparsable
 conditions produce `conditionUnparsable` and fail relevant preserve checks.
 Scheduling inputs and authored-content reward identity are compared as
-specified by the proposal. Spans and build-local `addr` do not make a
+specified by the proposal. Spans and build-local command `position` do not make a
 semantic change.
 
 Consumers MUST pin the returned JSON `schemaVersion`, treat refusal as a
@@ -128,7 +133,9 @@ Inspect `context.json`, then plan a request whose `base.project` and
 $ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
 ```
 
-The successful patch JSON has `schemaVersion: "0.36.0.patch"`, `ok: true`,
+The successful patch JSON has `schemaVersion: "0.36.0.patch"` (unchanged in
+0.37.0: the patch report contract did not change, so its schema id keeps the
+release that last changed it), `ok: true`,
 `before`, `after`, `diff`, and `writes`. `diff.changes` is the semantic
 review surface; formatting-only edits have no changes. Apply the identical
 request only after review:

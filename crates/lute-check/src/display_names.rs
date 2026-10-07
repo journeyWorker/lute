@@ -204,8 +204,7 @@ enum Visit<'d> {
 /// Every content line and directive of `doc`, in document order: shots,
 /// quests, entries, bundle beats, and every nested body and timeline clip.
 fn for_each_node<'d>(doc: &'d Document, f: &mut dyn FnMut(Visit<'d>)) {
-    let bodies = doc
-        .shots
+    let bodies = doc.sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

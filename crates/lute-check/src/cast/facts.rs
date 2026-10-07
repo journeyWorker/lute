@@ -121,7 +121,7 @@ pub fn fact_producers(
         {
             continue;
         }
-        let units = std::iter::once((0, doc.shots.iter().map(|s| &s.body[..]).collect::<Vec<_>>()))
+        let units = std::iter::once((0, doc.sections.iter().map(|s| &s.body[..]).collect::<Vec<_>>()))
             .chain(
                 doc.quests
                     .iter()

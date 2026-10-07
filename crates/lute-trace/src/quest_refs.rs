@@ -1,6 +1,6 @@
 //! dsl 0.5.1 §1.1: the set of reserved `quest.<id>.state`/
 //! `quest.<id>.objectives.<oid>.done` paths a document actually
-//! REFERENCES — in a `<match on=…>` subject, a `<when>`/`when=` guard, an
+//! REFERENCES — in a `<match subject=…>` subject, a `<when>`/`when=` guard, an
 //! interpolation, or any other CEL slot
 //! ([`lute_syntax::walk::for_each_cel_slot`]'s canonical pre-order visits
 //! every one, exhaustively). [`crate::mock::validate`] admits a `--state`
@@ -182,7 +182,7 @@ mod tests {
     fn collects_match_subject_and_guard_reads() {
         let doc = doc_for(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-             <match on=\"quest.foo.state\">\n\
+             <match subject=\"quest.foo.state\">\n\
              <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n@x: a\n</when>\n\
              <otherwise>\n@x: b\n</otherwise>\n\
              </match>\n",
@@ -198,7 +198,7 @@ mod tests {
         let doc = doc_for(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
              state:\n  run.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
-             <match on=\"run.flag\">\n<when is=\"true\">\n@x: a\n</when>\n\
+             <match subject=\"run.flag\">\n<when is=\"true\">\n@x: a\n</when>\n\
              <otherwise>\n@x: b\n</otherwise>\n</match>\n",
         );
         let refs = collect_referenced_reserved_quest_paths(&doc);

@@ -11,7 +11,7 @@ when: "run.day == 4 && holds('at', ['sol', 'roof']) && quest.meteor.state == 'ac
 ## Thursday night
 
 ::bg{location="roof" time="night"}
-::music{action="start" mood="romantic" volume="normal"}
+::music{playback="start" mood="romantic" volume="normal"}
 ::use{component="enter" who="sol" instance="use-001"}
 @sol{code="0010" emotion="laughing"}: You came! I brought the good blanket. It's the same blanket. I washed it.
 @narrator{code="0010"}: You lie side by side on the tar. The first one goes over before you're settled — a white scratch, there and gone.
@@ -19,12 +19,12 @@ when: "run.day == 4 && holds('at', ['sol', 'roof']) && quest.meteor.state == 'ac
 @sol{code="0020" emotion="fond"}: That's one. Say a number every time. Ines counts them for the log; I count them for me.
 
 <branch id="count" prompt="The sky keeps striking matches.">
-  <choice id="count" label="Count them with him, out loud">
+  <choice id="count" text="Count them with him, out loud">
     ::set{run.aff.sol += 2}
     @narrator{code="0020"}: Forty-one. Forty-two. Somewhere after sixty you both stop counting and just breathe out whenever one falls.
     @sol{code="0030" emotion="shy"}: This is the best one I've had. The shower, I mean. Obviously the shower.
   </choice>
-  <choice id="quiet" label="Just watch">
+  <choice id="quiet" text="Just watch">
     ::set{run.aff.sol += 1}
     @narrator{code="0030"}: You watch until your eyes water. When you look over, he is watching you instead of the sky, and pretends he wasn't.
   </choice>

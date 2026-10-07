@@ -279,7 +279,7 @@ fn a_plugin_builtin_hook_lowers_to_the_core_op() {
             ),
             (
                 "b.lute",
-                "---\nkind: scene\nid: b\nenums:\n  action:\n    members: [fadeInUp, fadeOutDown]\n    exits: [fadeOutDown]\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n\n## B\n\n::auto{character=\"corvin\" action=\"fadeInUp\"}\n@corvin: Hi.\n::wipe\n@narrator: Gone.\n",
+                "---\nkind: scene\nid: b\nenums:\n  action:\n    members: [fadeInUp, fadeOutDown]\n    exits: [fadeOutDown]\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n\n## B\n\n::actor{character=\"corvin\" action=\"fadeInUp\"}\n@corvin: Hi.\n::wipe\n@narrator: Gone.\n",
             ),
         ],
     );

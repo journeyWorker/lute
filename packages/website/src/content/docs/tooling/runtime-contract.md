@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.36.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.36.schema.json)
+[`schemas/lute-ir-0.37.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.37.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -88,14 +88,14 @@ Every artifact opens with a fixed envelope (the `ExecutionIr` struct in
 | `kind` | `"scene"` \| `"quest"` — read first; selects `meta`'s shape. |
 | `lute` | language-version pin (informational for the runtime). |
 | `irVersion` | the IR schema version you **gate on first**. |
-| `capabilityVersion` | a plugin-snapshot hash; refuse a mismatch. |
+| `capabilitySnapshot` | the plugin capability snapshot hash; refuse a mismatch. |
 | `requiredSemantics` | compiler-derived, sorted semantic ids used by the artifact; authors cannot edit this list. |
 | `meta` | scene meta or quest meta. |
 | `state` | the folded init/type table. |
 | `entities` / `enums` / `relations` / `seedFacts` / `rules` | the declared vocabulary (omitted when empty). |
-| `commands` | the flat, ordered, addressed command stream. |
+| `commands` | the flat, ordered command stream; every record carries `kind`, `family`, and `position`. |
 | `prereqEdges` | advisory raw graph edges (omitted when empty). |
-| `shots` | authored shot headings (omitted when empty). |
+| `sections` | the document's `##` sections, each `{ section, heading, id? }` (omitted when none has a heading or id). |
 | `seasons` / `gates` / `terminal` / `terminalPersists` | optional clock and occasion controls. |
 
 `requiredSemantics` is the sorted union of the lowered features in one
@@ -104,6 +104,65 @@ document artifacts, allowing `check-project`, `play`, and an engine to
 negotiate before opening every document. The complete registry and trigger
 mapping live in [the 0.33.0 proposal §2–§3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry);
 this page intentionally does not duplicate that registry.
+
+### Command records
+
+Every command record has three required fields and three optional siblings:
+
+| field | meaning |
+| ----- | ------- |
+| `kind` | the record kind; an unknown `kind` is a hard error. |
+| `family` | the normative grouping of `kind` (below), read by dispatch before `kind`. |
+| `position` | the record's build-local execution position (see [Positions](#positions)). |
+| `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. |
+| `provenance` | optional `{ by, explanation }` on a record the compiler synthesized. |
+| `source` | optional source location. |
+
+| `family` | kinds |
+| -------- | ----- |
+| `content` | `line` |
+| `staging` | `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` |
+| `state` | `set`, `assert`, `retract` |
+| `control` | `choice`, `match`, `hub`, `jump`, `end`, `barrier` |
+| `declaration` | `quest`, `on`, `entry`, `accept`, `beat` |
+| `plugin` | `plugin` |
+
+`timing.wait` is a boolean; `duration`, `delay`, and `at` are finite,
+non-negative seconds; `timeline` is the zero-based ordinal of the
+`<timeline>` the record was emitted from — an ordinal, not seconds. A
+`barrier` has no `timing`: its `timeline` ordinal and `at` seconds are direct
+fields. Read timing only from `timing`.
+
+Staging values are opaque members of the project's declared domains:
+`actor.anchor`/`action`/`emotion`/`costume`, `camera.framing`/`move`/
+`transition` (plus `focus`, a cast reference), `cg.layout`, `music.playback`,
+and `sequence.name`. Lute synthesizes no numeric camera transform. `cg` and
+`video` always carry the resolved `display` (`show` by default). A `sequence`
+record names an external cinematic; with `timing.wait: true` the engine
+finishes presenting it before advancing. An actor exit is the derived
+`actor.exit: true` (from the `action` domain's `exits:`); it is omitted when
+false.
+
+A `line` carries `role` (`dialogue`, `narration`, `mono`, `os`, or `vo`),
+`speaker`, `text`, `lineId`, and a `voiceKey` on every role — a join key, not a
+promise that a recording exists. `text` is the plain derivation of the
+authored text: inline modifiers removed, escapes decoded, `{{…}}` markers kept.
+A line that uses an inline modifier also carries `segments`, the presentation
+runs: `{ text, styles?, rate? }` text runs and `{ pause }` leaves (seconds).
+A line without modifiers has no `segments`. See [Localized text](#localized-text)
+for the locale forms.
+
+```json
+{
+  "kind": "music",
+  "family": "staging",
+  "position": "001-0400",
+  "playback": "play",
+  "assetId": "theme",
+  "timing": { "duration": 1.5 }
+}
+```
+
 ## Activation and evaluation
 
 An engine evaluates each CEL slot against nested maps built from live state:
@@ -131,16 +190,15 @@ across every artifact it loads, exactly as it concatenates the command streams.
 schema stood still. It has always carried the domains an author declares in an
 `enums:` block; since content-vocabulary members became the project's to
 declare, those domains — `emotion`, `action`, `anchor`, `mood`, `volume`,
-`musicAction`, `vfxType` — arrive through the same array. A project declaring
+`musicPlayback`, `vfxType` — arrive through the same array. A project declaring
 them inline or through `uses:`/`extends:` emits them; a project whose members
 come from a plugin's `enums` export emits **no** `enums` at all, because a
-plugin vocabulary is capability surface (folded into `capabilityVersion`), not
+plugin vocabulary is capability surface (folded into `capabilitySnapshot`), not
 per-document data. Either way this is data an engine already unions, so nothing
 new is required of it — the `enums` move added, renamed, and moved no field.
-`irVersion` reads `0.10.2`. The shape *does* change at `0.10.2`, in one place
-unrelated to `enums`: a plugin-owned, checker-validated frontmatter key now
-reaches the artifact (`meta.plugin`). See
-[What IR 0.10.2 changed](#what-ir-0102-changed). Members carrying
+That move did not change the IR shape. (The unrelated `meta.plugin` key arrived
+in the same release; see the history entry
+[What IR 0.10.2 changed](#what-ir-0102-changed).) Members carrying
 compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
@@ -149,9 +207,11 @@ serialized: an engine needs no member semantics at runtime.
 
 Every host negotiates in this order, before opening a playback session:
 
-1. **Exact-minor IR gate.** Before 1.0, a `0.34` engine accepts only
-   `0.34.*` artifacts. It refuses `0.33.*` and `0.35.*`; patch handling is
-   the engine's policy. From 1.0 onward, the released major's policy applies.
+1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
+   execution-IR shape, so an engine pins the exact `irVersion` major.minor
+   line: a `0.37` engine accepts only `0.37.*` artifacts and refuses `0.36.*`
+   and `0.38.*`; patch handling is the engine's policy. From 1.0 onward, the
+   released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
    `engine`, `irVersion`, and unique `supportedIds` are required; `version`
@@ -162,7 +222,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.34.0"
+irVersion: "0.37.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -177,16 +237,18 @@ description: "Text-only chat client: no staging, timeline, or clock"
 `lute run --engine <file>` and `lute play --engine <file>` perform both gates.
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
-bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an unsupported
-exact-minor line uses `E-ENGINE-IR-VERSION`. Unknown artifact or registry ids
-use `E-SEMANTICS-UNKNOWN`.
+bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
+the matrix's exact major.minor line (a `0.36.*` artifact against the `0.37.0`
+matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
+artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
+artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
 
 `lute check --engine <file>` and `lute check-project --engine <file>` perform
 author-time negotiation without playback. Missing capabilities are reported as
 `E-CHECK-ENGINE-SEMANTICS` with the lowered construct's source span, semantic
 id, and engine name. The project form checks the project-index union and lists
 each contributing document/span. Plugin compatibility remains the exact
-`capabilityVersion` check and is not folded into this matrix.
+`capabilitySnapshot` check and is not folded into this matrix.
 
 The reference executor's built-in matrix is named `reference` and supports
 every current semantic id.
@@ -202,6 +264,39 @@ When the match subject is a bare state path with no effective value, an arm
 with `is` other than `"unset"` is definitely not satisfied; `is: "unset"` is
 satisfied. Other arms are evaluated normally, and an evaluation error means
 not satisfied.
+
+### What IR 0.37.0 changed
+
+**A clean surface cutover: renamed kinds and fields, one new kind, removed fields.** An
+engine on the 0.36 line must refuse a 0.37 artifact, and nothing old is accepted as an
+alias. To move an engine to 0.37 (dsl 0.37.0 §2.2, §5):
+
+- **Envelope:** `capabilityVersion` is `capabilitySnapshot` (the project index and
+  `lute context --json` use the same key); `shots` is `sections`, each
+  `{ section, heading, id? }`, where `id` is the authored `## Heading {#id}` suffix.
+- **Every record** carries the new required `family` (see
+  [Command records](#command-records)); the common `addr` is `position`, with the
+  same format; the flattened timing fields move into one `timing` object; and
+  `provenance.injected` is removed.
+- **Kinds:** `background` is `bg`, `sprite` is `actor`, `cut` is `cg`, and `sequence` is
+  new. `music.action` is `music.playback`; `cg.action` and `video.action` are `display`;
+  `cg.full` is the domain-valued `layout`; `vfx.vfxType` is `type`; `music.track` and
+  `sfx.name` are removed. Camera's numeric `zoom`/`moveX`/`moveY`/`shake`/`reset`/`easing`
+  are replaced by the domain-valued `framing`, `move`, and `transition`.
+- **Lines:** roles `monologue`, `offscreen`, and `voiceover` are `mono`, `os`, and `vo`;
+  every line carries `voiceKey`; a line with inline modifiers adds `segments`, and its
+  translations add `localeSegments`.
+- **Control:** choice and hub option `label` is `text` (its locale map is `texts`);
+  `recordKey` is `selectionKey`.
+
+The schema file is `lute-ir-0.37.schema.json`.
+
+## IR change history
+
+*History, retained for anyone migrating an engine from an older line.* Each
+entry below describes the gate rules of its own release (some predate the
+exact major.minor gate); a current engine follows
+[Version negotiation](#version-negotiation-and-engine-integration) above.
 
 ### What IR 0.30.0 changed
 
@@ -263,7 +358,7 @@ New behaviour and optional fields, each omitted when unauthored:
 - **`outsideRun: [occasion]`** on the artifact and `project.index.json`, name-sorted: raise these
   occasions even after `terminal` holds (a title screen, a gallery between runs); every other
   occasion stays closed once the game is over.
-- **`HubCmd.return`**: the address of the hub's `<return>` segment. Run it each time a non-exit
+- **`HubCmd.return`**: the position of the hub's `<return>` segment. Run it each time a non-exit
   option's segment ends, before the hub is judged and presented again — never before the first
   menu and never after an `exit` option. Like an option target, it bounds the segment before it.
 - **`clock.raiseAtStart: true`**: raise the clock's slot occasion (the string form, or the map's
@@ -417,7 +512,7 @@ beat repeats. To play them as written:
   `true`, or `{ "prefix", "entity" }`. For a domain, the checker guarantees every beat target of
   that occasion is `<prefix>.<member>` of the project's entity kind `entity`, so raise the
   occasion with targets of that shape. Occasion declarations stay out of the artifact. A domain
-  changes `capabilityVersion`; `true` and `false` keep their 0.21 stamp.
+  changes `capabilitySnapshot`; `true` and `false` keep their 0.21 stamp.
 - **`owner: engine`.** A `state:` declaration may name the engine as the path's writer. The
   checker refuses a content `::set` of such a path, or of a field under it
   (`E-ENGINE-OWNED-WRITE`), so no `set` record in a clean artifact targets it: the engine writes
@@ -477,7 +572,7 @@ rename — the first shape change since `0.8.0`.** The injection
 provenance stamp's `reason` becomes **`explanation`**:
 
 ```json
-{ "injected": true, "by": "auto-pose-reset",
+{ "by": "auto-pose-reset",
   "explanation": "pre-loading `vesna`'s first emotion `level` seen ahead of the entrance" }
 ```
 
@@ -489,10 +584,7 @@ and nothing else in common is exactly the trap a renamed field removes, and
 `explanation` reads correctly beside `by`.
 
 Nothing else in the shape moves: no field added, no field retyped, no new
-command `kind`, no changed constraint. `Provenance.injected` is **retained but
-is now constant-`true`** — with `W-INJECT-CONFLICT` removed nothing can
-construct a `false`, so do not read a `true` as distinguishing anything.
-Removing the field would be a second IR break and is deferred.
+command `kind`, no changed constraint.
 
 **The gate above is normative, and this bump costs you two edits rather than
 one.** An engine that implements IR `0.9` **must refuse** an artifact stamped
@@ -508,7 +600,7 @@ If you validate against the JSON Schema, repoint at
 Artifact **content** also moves, in a way that costs nothing: clip `at`,
 `duration`, `delay` and the barrier `at` are still JSON numbers in seconds, but
 they are now computed from integer milliseconds, so a cursor-derived `1.2` stops
-serializing as `1.2000000000000002`. And `capabilityVersion` changes —
+serializing as `1.2000000000000002`. And the capability snapshot changes —
 `W-INJECT-CONFLICT` left the code set and eleven codes joined it.
 
 ### What IR 0.9.0 changed
@@ -520,8 +612,8 @@ or retyped, no new command `kind`. The number moved only because Lute's
 re-aligns every visible axis number on every release, and widening the gate to
 accept `0.9` was the entire migration. What *did* move was artifact **content**:
 `enums` began carrying the project's content-vocabulary domains (see
-[the envelope](#the-envelope)) and `capabilityVersion` changed because the core's
-vocabulary emptied — both new values in fields that already existed.
+[the envelope](#the-envelope)) and the capability snapshot changed because the
+core's vocabulary emptied — both new values in fields that already existed.
 
 ### What IR 0.8.0 changed
 
@@ -536,37 +628,35 @@ with the minor bump. Three deltas matter to a consumer:
   through would play content the author marked unreachable. This is why
   termination is a core kind rather than a plugin directive: a plugin directive
   lowers to `kind: "plugin"`, which an older engine would happily skip.
-- **`shots` and the locale maps are append-only optional fields**, so by the
-  ignore-unknown-fields rule a 0.7 engine still loads a 0.8 artifact that
-  carries no `end` record.
-- **The `addr` width invariant is new**, and it is the one change that can
+- **The section-heading table and the locale maps are append-only optional
+  fields**, so by the ignore-unknown-fields rule a 0.7 engine still loads a 0.8
+  artifact that carries no `end` record.
+- **The position width invariant is new**, and it is the one change that can
   alter bytes in an artifact you already consume. See below.
 
-## Addressing
+## Positions
 
-Every executable record carries an `addr`, a position string
-`"{shot}-{(index + 1) * 100}"` (e.g. `"001-0300"`). It is **regenerated on
-every compile** — a position, not an identity. The stable content joins are
-`lineId` / `voiceKey`.
+Every command record carries a `position`, a string
+`"{section}-{(index + 1) * 100}"` (e.g. `"001-0300"`): the one-based `##`
+section number, then the record's order within that section. It is
+**regenerated on every compile** — a build-local execution position, never an
+identity, a localization key, or a save key. The stable content joins are
+`lineId` / `voiceKey`; a section's stable identity is its optional `id` in
+`sections`.
 
 Both segments are zero-padded to a width computed from the document — at least
-`3` for the shot and `4` for the index, wider when the document needs it — and
-that width is **uniform across the whole artifact**. The guarantee that follows
-is the one you can rely on:
+`3` for the section and `4` for the index, wider when the document needs it —
+and that width is **uniform across the whole artifact**. The guarantee that
+follows is the one you can rely on:
 
-> Within one artifact, every emitted `addr` has the same length; therefore
-> **lexicographic order over `addr` equals execution order.**
+> Within one artifact, every emitted `position` has the same length;
+> therefore **lexicographic order over `position` equals execution order.**
 
-A document whose every shot emits fewer than 100 addresses, with fewer than
-1000 shots, is byte-identical to what 0.7.0 produced — the widths only grow
-past their minimums when the artifact actually needs them.
-
-**If you may load artifacts built by a 0.7-or-earlier toolchain, compare `addr`
-segment-wise numerically, never as a plain string.** Before 0.8.0 the index
-segment was fixed at 4 digits, so a shot with 100+ records emitted `001-11500`
-beside `001-1400` and string comparison reported `"001-11500" < "001-1400"` —
-an engine ordering or range-checking addresses lexicographically would rewind
-into already-played content.
+The fields that carry a position are exactly: every command `position`;
+`choice.converge` and `choice.options[].target`; `hub.converge`, `hub.return`,
+and `hub.options[].target`; `match.converge`, `match.otherwise`, and
+`match.arms[].target`; `jump.target`; `quest.objectives[].body` (`null` for an
+empty body); and `on.body`, `entry.body`, and `beat.body`.
 
 ## Streaming snapshot replacement
 
@@ -577,15 +667,15 @@ count and only identifies the newly appended array region; it is not a runtime
 PC and does not request execution of every record in that region.
 
 When a snapshot arrives, replace the immutable program image and rebuild the
-`addr -> command index` map. Retain the **numeric** command cursor, current
+`position -> command index` map. Retain the **numeric** command cursor, current
 state values, facts, selected control-flow stack, and host-owned effect/
 idempotency records. Initialize only newly declared state slots. Never reapply
 an existing default or seed fact merely because the artifact object was
 replaced.
 
-Rebuilding address lookup is required because appending commands can widen
-uniform address padding across the complete artifact. The compiler compares
-typed addresses and control targets by numeric `(shot, index)` meaning, so this
+Rebuilding position lookup is required because appending commands can widen
+uniform position padding across the complete artifact. The compiler compares
+typed positions and control targets by numeric `(section, index)` meaning, so this
 formatting-only change is accepted; it rejects any semantic mutation of an
 already emitted command or state entry with `E-STREAM-PREFIX-CHANGED`.
 
@@ -600,8 +690,9 @@ synthesizes an `end`.
 
 The `commands` array is already in execution order. Control-flow fields —
 `jump.target`, choice/hub option `target` and `converge`, match arm
-`target`/`otherwise`/`converge` — are all [addrs](#addressing). Walk with a
-program counter over an `addr → index` map, dispatching on `kind`:
+`target`/`otherwise`/`converge` — are all [positions](#positions). Walk with a
+program counter over a `position → index` map, dispatching on `family` and
+`kind`:
 
 ```ts
 // Every CEL slot carries its verbatim source under its own key — `option.when`,
@@ -611,25 +702,26 @@ program counter over an `addr → index` map, dispatching on `kind`:
 const evalSlot = (raw, expr, state, facts) =>
   expr !== undefined ? evalExpr(expr, state) : evalCel(raw, state, facts);
 
-const index = new Map(artifact.commands.map((c, i) => [c.addr, i]));
+const index = new Map(artifact.commands.map((c, i) => [c.position, i]));
 let pc = 0;
 while (pc < artifact.commands.length) {
   const cmd = artifact.commands[pc];
   let next: string | null = null; // null ⇒ fall through to pc + 1
 
   switch (cmd.kind) {
-    // content & staging
-    case "line":       present(cmd, state); break; // substitute cmd.placeholders
-    case "background": case "music": case "sfx": case "vfx":
-    case "sprite":     case "camera": case "cut": case "video":
-      stage(cmd); break;
+    // family "content"
+    case "line":       present(cmd, state); break; // placeholders; segments when present
+    // family "staging": opaque domain members; honor cmd.timing
+    case "bg":    case "music":  case "sfx": case "vfx":   case "actor":
+    case "camera": case "cg":    case "video": case "sequence":
+      stage(cmd, cmd.timing); break;
 
-    // state & facts
+    // family "state"
     case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
     case "assert":  facts.assert(cmd.relation, cmd.args); break;
     case "retract": facts.retract(cmd.relation, cmd.args); break;
 
-    // control flow
+    // family "control"
     case "choice":
     case "hub": {
       const opt = pickOption(cmd, state);   // per option: evalSlot(o.when, o.expr, …)
@@ -643,7 +735,7 @@ while (pc < artifact.commands.length) {
     case "end":     finish(cmd.reason); return;  // terminates the walk
     case "barrier": joinTimeline(cmd.timeline, cmd.at); break;
 
-    // quest declarations & plugin bridges
+    // family "declaration" and family "plugin"
     case "quest":   registerQuest(cmd); break;
     case "on":      registerHandler(cmd); break;
     case "accept":  acceptQuest(cmd.quest); break; // activates it iff still `unset`
@@ -656,11 +748,12 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-The full scene and quest command set is twenty-two kinds: `line`, `background`,
-`music`, `sfx`, `vfx`, `sprite`, `camera`, `cut`, `video`, `set`, `assert`,
-`retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`,
-`accept`, `plugin`. A lore artifact adds the `entry` declaration head, which
-the engine looks up rather than plays ([Lore entries](/language/lore-entries/)).
+The full scene and quest command set is twenty-three kinds: `line`, `bg`,
+`music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`,
+`assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`,
+`quest`, `on`, `accept`, `plugin`. A lore artifact adds the `entry` and `beat`
+declaration heads, which the engine looks up rather than plays
+([Lore entries](/language/lore-entries/)).
 
 `accept` (dsl 0.21.0) is the scene-side `::accept{quest}`: the engine activates
 that accept-driven quest if its state is still `unset` and ignores the record
@@ -673,29 +766,52 @@ except the reason is available.
 
 ## Localized text
 
-A `line` record's `text` and a choice/hub option's `label` are always the
-**source language** (`contentLang`). When the artifact was built with
+A `line` record's `text` and a choice/hub option's `text` are always the
+**source language** (`contentLang`), as plain text. When the artifact was built
+with
 [`lute compile --locales`](/tooling/cli/#--locales--merge-a-translation-bundle),
-the record also carries a `texts` map (option: `labels`), locale tag →
-translated string, keyed on the record's `lineId`:
+the record also carries a `texts` map, locale tag → translated plain text,
+keyed on the record's `lineId`. A line with inline modifiers carries `segments`
+for the source and, per translated locale, `localeSegments` beside the plain
+`texts` entry — every translated locale always has its `texts` entry, so
+backlog, TTS, and search never need to flatten segments:
 
 ```json
 {
   "kind": "line",
-  "addr": "001-0100",
+  "family": "content",
+  "position": "001-0200",
   "role": "narration",
   "speaker": "narrator",
-  "text": "Welcome to your new Lute project.",
-  "lineId": "narrator.s01ep01.narrator_0010",
-  "texts": { "ja-JP": "Lute プロジェクトへようこそ。" }
+  "text": "Wait for it here it comes.",
+  "lineId": "opening.narrator_0020",
+  "voiceKey": "opening.narrator-0020",
+  "segments": [
+    { "text": "Wait for it" },
+    { "pause": 0.5 },
+    { "text": " " },
+    { "text": "here it comes", "rate": 1.25 },
+    { "text": "." }
+  ],
+  "texts": { "ja-JP": "待って 来るよ。" },
+  "localeSegments": {
+    "ja-JP": [
+      { "text": "待って" },
+      { "pause": 0.5 },
+      { "text": " " },
+      { "text": "来るよ", "rate": 1.25 },
+      { "text": "。" }
+    ]
+  }
 }
 ```
 
-Both maps are omitted when empty, so an artifact compiled without `--locales`
-is byte-identical to before, and a consumer that ignores them keeps rendering
-the source language. Present a locale by looking it up in `texts` and falling
-back to `text` — the compiler warns at build time (`W-L10N-MISSING`) about
-exactly those gaps, so a complete bundle leaves nothing to fall back to.
+The locale maps are omitted when empty, so an artifact compiled without
+`--locales` is byte-identical to before, and a consumer that ignores them keeps
+rendering the source language. Present a locale by looking it up in `texts`
+(and `localeSegments` for a modified line) and falling back to `text` — the
+compiler warns at build time (`W-L10N-MISSING`) about exactly those gaps, so a
+complete bundle leaves nothing to fall back to.
 
 ## The runtime docs
 
@@ -703,7 +819,7 @@ Each surface has its own contract document under
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime):
 
 - **[incremental-continuations.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md)** — checked continuation compilation, full-snapshot replacement, cursor/state retention, stream finalization, and prefix stability.
-- **[execution-model.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md)** — the artifact shape, version gate, addressing, and the dispatcher loop.
+- **[execution-model.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md)** — the artifact shape, version gate, positions, and the dispatcher loop.
 - **[state-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md)** — the `scene`/`run`/`user`/`app`/`quest.<id>` tiers, initialization, and reset boundaries.
 - **[cel-and-facts.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md)** — evaluating the `expr` AST, the fact store's assert/retract deltas, and the stratified least-fixpoint the engine computes.
 - **[quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md)** — `start`/`fail` precedence, required vs. optional objectives, monotone completion, run-tier quests, and lifecycle events.

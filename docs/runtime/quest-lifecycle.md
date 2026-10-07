@@ -96,9 +96,9 @@ command stream, typically inside a choice branch:
 
 ```ts
 type AcceptCmd = {
-  kind: "accept"; addr: string; quest: string;
+  kind: "accept"; family: "declaration"; position: string; quest: string;
   applies?: "nextRun"          // dsl 0.24.0 §2 — ::accept{… at="nextRun"}
-  /* + Stamp */
+  timing?: Timing; provenance?: Provenance; source?: Source;
 };
 ```
 
@@ -273,7 +273,7 @@ Each `ObjectiveEntry` in `QuestCmd.objectives`:
 | `visibleWhen` | an optional `{cel, expr, authored?}` **visibility** condition (authored `visibleWhen=`) — it decides whether the objective is *shown/tracked*, **never** the completion obligation (dsl §6.3). |
 | `optional`    | `bool` (always present). A non-`optional` objective is *required*: it must be `done` for the quest to complete. |
 | `title` / `titleLineId` | present only when authored; `titleLineId` is `{questId}.{objectiveId}` for localization. |
-| `body`        | **always present**; the `addr` of the objective's completion-body segment, or `null` when the body is empty. |
+| `body`        | **always present**; the `position` of the objective's completion-body segment, or `null` when the body is empty. |
 | `on`          | present only when authored (dsl 0.21.0 §7a.2): the occasion at which `done` is judged — see below. |
 | `target`      | present only when authored, always beside `on` (dsl 0.23.0 §2): the objective is judged only when `on` is raised for this target — see below. |
 | `by`          | present only when authored (dsl 0.23.0 §2): a `{cel, expr, authored?}` **deadline** predicate, judged at every evaluation instant — see below. |
@@ -476,7 +476,7 @@ whatever gate produced it, and the reserved-path guards
 
 ## Rewards
 
-A `<reward kind= target= amount= when= outcome=/>` (dsl 0.16.0 §2) is a
+A `<reward id= kind= target= amount= when= outcome=/>` (dsl 0.16.0 §2) is a
 **declaration**, not flow: a self-closing element legal only as a direct
 child of `<quest>` or `<objective>`. It lowers to pure data — a
 `RewardEntry` in `QuestCmd.rewards` or `ObjectiveEntry.rewards`, never
@@ -485,6 +485,32 @@ the subquest surfaces above; `::grant` is plugin vocabulary and the core
 language must never depend on any plugin's directive existing, spec D-B).
 The engine grants; the reference runtime emits a deterministic transcript
 event per grant.
+
+`RewardEntry.id` is present when the author wrote `id="…"`; it is unique among
+the rewards of its owning quest (`E-REWARD-DUP`) and is the reward's stable
+key in source maps and models. A reward without `id` is keyed by its
+declaration index within its owner. For example:
+
+```lute check
+---
+kind: quest
+id: grantInstance
+title: Grant Instance
+state:
+  run.ready: { type: bool, default: false }
+  run.finished: { type: bool, default: false }
+---
+<quest id="grantInstance" title="Repeatable" tier="run" start="run.ready == true">
+  <reward id="xp" kind="XP" amount="10"/>
+  <objective id="finish" title="Finish" done="run.finished == true">
+    <reward id="coin" kind="GOLD" amount="1"/>
+  </objective>
+</quest>
+```
+
+compiles its quest-level rewards to `"rewards": [{ "id": "xp", "kind": "XP",
+"amount": 10 }]` and the objective's to `"rewards": [{ "id": "coin", "kind":
+"GOLD", "amount": 1 }]`.
 
 ### When grants fire (engine-derived)
 
@@ -542,7 +568,9 @@ by `lute trace` as a `Step::Grant`:
 { "kind": "grant",
   "quest": "<questId>",
   "objective": "<oid>"?,            // present iff an objective grant
-  "reward": { …RewardEntry sans when… },
+  "instance": <n>,                  // the quest instance (§Instance and grant identity)
+  "index": <i>,                     // owner-relative declaration index of the reward
+  "reward": { …RewardEntry sans id and when… },
   "onFailed": true?                 // present iff the reward's on == "failed"
 }
 ```
@@ -550,9 +578,10 @@ by `lute trace` as a `Step::Grant`:
 `objective` is present only for objective-owned rewards. `onFailed` is
 present only for quest-owned `outcome="failed"` rewards (the default
 `complete` transition omits the field). `reward` carries the wire-shape
-`RewardEntry` minus `when` — a grant event only fires when `when` (if
-authored) decided `true`, so re-serializing the predicate is noise. Range
-bounds are the declared literals; a rolled amount NEVER appears.
+`RewardEntry` minus `id` and `when` — the grant's identity is the
+`(quest, instance, objective, index)` key, and a grant event only fires when
+`when` (if authored) decided `true`, so re-serializing the predicate is noise.
+Range bounds are the declared literals; a rolled amount NEVER appears.
 
 ### Coexistence with `<on questComplete>` + `::grant`
 
@@ -607,7 +636,7 @@ quest's declaration table):
   `beats-and-occasions.md`); a plain world event, a raise for another target
   and the lifecycle events never run it. Without `target` a handler answers
   every raise of its event, as before.
-- `body` — the `addr` of the action segment (a line, `::set`, `::assert` /
+- `body` — the `position` of the action segment (a line, `::set`, `::assert` /
   `::retract`, etc.) the engine plays when the event fires and `when` holds.
 
 A `questFailed` handler on a quest that can never reach `failed` never runs.

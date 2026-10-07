@@ -25,11 +25,11 @@ pub struct ShotRecords {
     pub recs: Vec<Rec>,
     pub trailing: Vec<Label>,
     /// dsl 0.12.0: NAMED labels (`Rec::named`'s own trailing counterpart)
-    /// left dangling past this unit's last record — a `::mark`/line `id=`
+    /// left dangling past this unit's last record — a `::label`/line `id=`
     /// at the very end of a shot. Resolves to this shot's SAME one-past-end
     /// converge addr `trailing` does; the runtime's sorted-next-addr
     /// fallback (`lute-cli::runner::resolve`) then falls through to the
-    /// NEXT shot's first record — exactly how a `::next` "joins a later
+    /// NEXT shot's first record — exactly how a `::jump` "joins a later
     /// shot" (0.12.0 spec) actually works at runtime, no special case.
     pub trailing_named: Vec<String>,
     /// Source-only steps after the unit's last record (a mapping emitter's
@@ -81,14 +81,14 @@ pub(crate) fn assign_addresses_into(
         idx_w = idx_w.max(decimal_digits(widest_emitted_index(shot)));
     }
 
-    // dsl 0.12.0: document-wide named-label table (`::mark`/line `id=` ->
+    // dsl 0.12.0: document-wide named-label table (`::label`/line `id=` ->
     // resolved addr), built BEFORE any shot is CONSUMED below — a
-    // `::next{to}` authored in an EARLIER shot may target a label in a
+    // `::jump{to}` authored in an EARLIER shot may target a label in a
     // LATER one (the whole point of a forward jump spanning shots), so
     // this table must see every shot's addrs before the rewrite pass
     // resolves any of them. Mirrors the per-shot local `labels` map one
     // loop down, at DOCUMENT scope instead of shot scope. A check-clean
-    // document (`lute-check::next_labels`, E-MARK-DUP) never has two
+    // document (`lute-check::next_labels`, E-LABEL-DUP) never has two
     // entries for the same id, so first-insert-wins is unreachable in
     // practice; kept total (never overwrites) rather than panicking.
     let mut named: BTreeMap<String, String> = BTreeMap::new();
@@ -133,25 +133,25 @@ pub(crate) fn assign_addresses_into(
             if let (Some(map), Some(origin)) = (map.as_deref_mut(), rec.origin.take()) {
                 map.by_addr.insert(addr.clone(), origin);
             }
-            *rec.cmd.addr_mut() = addr;
+            *rec.cmd.position_mut() = addr;
             rec.cmd.for_each_target(&mut |t: &mut String| {
                 if let Some(n) = Label::parse_sym(t) {
                     match labels.get(&n) {
                         Some(addr) => *t = addr.clone(),
                         None => diags.push(internal(format!(
-                            "unresolved control-flow label `@{n}` in shot {}",
+                            "unresolved control-flow label `@{n}` in section {}",
                             shot.shot
                         ))),
                     }
                 } else if let Some(id) = t.strip_prefix('#') {
-                    // dsl 0.12.0: a `::next{to}` target, encoded `"#<id>"`
+                    // dsl 0.12.0: a `::jump{to}` target, encoded `"#<id>"`
                     // at stage time (`lower::lower_directive`'s `next` arm)
                     // — resolved against the DOCUMENT-WIDE table above,
                     // never the per-shot `labels` map.
                     match named.get(id) {
                         Some(addr) => *t = addr.clone(),
                         None => diags.push(internal(format!(
-                            "unresolved `::next` mark `#{id}` in shot {}",
+                            "unresolved `::jump` target `#{id}` in section {}",
                             shot.shot
                         ))),
                     }
@@ -201,7 +201,7 @@ fn index_value(position: usize) -> i64 {
 fn widest_emitted_index(shot: &ShotRecords) -> i64 {
     // dsl 0.12.0: a NAMED trailing label (`trailing_named`) ALSO causes the
     // one-past-the-end converge addr to be embedded in the artifact (as a
-    // resolved `::next` target) — the SAME condition `trailing` documents
+    // resolved `::jump` target) — the SAME condition `trailing` documents
     // above, widened to either kind of trailing label.
     let has_trailing = !shot.trailing.is_empty() || !shot.trailing_named.is_empty();
     let emitted = shot.recs.len() + usize::from(has_trailing);
@@ -250,7 +250,7 @@ fn addr_of(shot: i64, position: usize, shot_w: usize, idx_w: usize) -> String {
     format!("{shot:0shot_w$}-{idx:0idx_w$}")
 }
 
-/// `lineId` on every line + option label; `voiceKey` on voiced lines; codes
+/// `lineId` on every line + option; `voiceKey` on every line; codes
 /// back-filled per speaker (max authored + 10 steps, `{:04}` — tag.rs's
 /// scheme). `segments` describes each addressing unit's `(prefix, count)` in
 /// EMISSION order (lengths sum to `cmds.len()`); ADJACENT segments sharing
@@ -340,10 +340,9 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                     scoped.as_str()
                 };
                 l.line_id = identity.render_line_id(prefix, &l.speaker, &code);
-                if l.role.voiced() {
-                    // v1: voiceKey bank == characterId == the speaker (§11).
-                    l.voice_key = Some(identity.render_voice_key(prefix, &l.speaker, &code));
-                }
+                // dsl 0.37.0 D6: every line, any role, carries its voice join.
+                // v1: voiceKey bank == characterId == the speaker (§11).
+                l.voice_key = identity.render_voice_key(prefix, &l.speaker, &code);
                 l.code = Some(code);
             }
             Command::Choice(c) => {
@@ -390,7 +389,7 @@ mod tests {
 
     fn line(speaker: &str, code: Option<&str>) -> Command {
         Command::Line(LineCmd {
-            addr: String::new(),
+            position: String::new(),
             role: Role::Dialogue,
             speaker: speaker.to_string(),
             text: String::new(),
@@ -400,9 +399,12 @@ mod tests {
             dialog_motion: None,
             as_label: None,
             line_id: String::new(),
-            voice_key: None,
+            voice_key: String::new(),
             placeholders: Vec::new(),
+            segments: Vec::new(),
             texts: BTreeMap::new(),
+            locale_segments: BTreeMap::new(),
+            modifiers: BTreeMap::new(),
             code: code.map(str::to_string),
             stamp: Stamp::default(),
         })
@@ -430,7 +432,7 @@ mod tests {
         if converge {
             if let Some(last) = recs.last_mut() {
                 last.cmd = Command::Jump(JumpCmd {
-                    addr: String::new(),
+                    position: String::new(),
                     target: Label(0).sym(),
                 });
             }
@@ -447,8 +449,8 @@ mod tests {
 
     fn addr(cmd: &Command) -> &str {
         match cmd {
-            Command::Line(l) => &l.addr,
-            Command::Jump(j) => &j.addr,
+            Command::Line(l) => &l.position,
+            Command::Jump(j) => &j.position,
             _ => panic!("unexpected command in an addressing test"),
         }
     }
@@ -599,7 +601,7 @@ mod tests {
                 format!("bardstale.s01ep02.{}_{}", l.speaker, code)
             );
             let want_voice = format!("bardstale.s01ep02.{}-{}", l.speaker, code);
-            assert_eq!(l.voice_key.as_deref(), Some(want_voice.as_str()));
+            assert_eq!(Some(l.voice_key.as_str()), Some(want_voice.as_str()));
         }
         assert!(IdentityTemplates::default().validate().is_empty());
     }
@@ -621,11 +623,11 @@ mod tests {
 
         let tagged = as_line(&cmds[0]);
         assert_eq!(tagged.line_id, "bardstale.s01ep02/fixer#0050");
-        assert_eq!(tagged.voice_key.as_deref(), Some("vo_fixer_0050"));
+        assert_eq!(Some(tagged.voice_key.as_str()), Some("vo_fixer_0050"));
 
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.line_id, "bardstale.s01ep02/fixer#0060");
-        assert_eq!(untagged.voice_key.as_deref(), Some("vo_fixer_0060"));
+        assert_eq!(Some(untagged.voice_key.as_str()), Some("vo_fixer_0060"));
     }
 
     /// An unknown `{token}` is `E-IDENTITY-TEMPLATE`, reported per offending
@@ -677,7 +679,7 @@ mod tests {
         assert_eq!(tagged.code.as_deref(), Some("0050"));
         assert_eq!(tagged.line_id, "bardstale.s01ep02.fixer_0050");
         assert_eq!(
-            tagged.voice_key.as_deref(),
+            Some(tagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-0050")
         );
 
@@ -685,7 +687,7 @@ mod tests {
         assert_eq!(untagged.code.as_deref(), Some("0060"));
         assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
         assert_eq!(
-            untagged.voice_key.as_deref(),
+            Some(untagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-0060")
         );
     }
@@ -712,7 +714,7 @@ mod tests {
             "bardstale.s01ep02.fixer_18446744073709551615"
         );
         assert_eq!(
-            tagged.voice_key.as_deref(),
+            Some(tagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-18446744073709551615")
         );
 
@@ -721,7 +723,7 @@ mod tests {
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.code, None);
         assert_eq!(untagged.line_id, "");
-        assert_eq!(untagged.voice_key, None);
+        assert_eq!(untagged.voice_key, "");
     }
 
     /// Two addressing units with DIFFERENT prefixes (IR addendum §4, D7):

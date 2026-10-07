@@ -16,8 +16,8 @@ when: "quest.sefaChart.state == 'active'"
 @sefa{code="0010"}: Where did you get to this time?
 
 <hub id="mapping" prompt="The chart is spread between you.">
-  <choice id="depth" label="Tell her how deep you got" once>
-    <match on="run.depth">
+  <choice id="depth" text="Tell her how deep you got" once>
+    <match subject="run.depth">
       <when is="..2">
         @ilo{code="0010"}: Not far. The antechamber, the flooded stair.
         @sefa{code="0020"}: Everyone has to start at the stair.
@@ -29,11 +29,11 @@ when: "quest.sefaChart.state == 'active'"
       </otherwise>
     </match>
   </choice>
-  <choice id="mother" label="Ask about her grandmother's map" once>
+  <choice id="mother" text="Ask about her grandmother's map" once>
     @sefa{code="0040" emotion="shy"}: She drew the palace when it was still above water. Before the Regent pulled it down.
     ::set{user.bond.sefa += 1}
   </choice>
-  <choice id="done" label="Leave her to it" exit>
+  <choice id="done" text="Leave her to it" exit>
     @sefa{code="0050"}: Go on. I've enough to ink for an hour.
   </choice>
 </hub>

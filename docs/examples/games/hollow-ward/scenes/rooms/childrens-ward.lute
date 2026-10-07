@@ -15,16 +15,16 @@ priority: 10
 @narrator{code="0020"}: Crayon drawings cover the lower half of the walls, exactly as high as a child can reach. One is newer than the others.
 @child{code="0010" os}: Are you the new nurse?
 <branch id="answer" prompt="The voice is behind the twelfth crib.">
-  <choice id="yes" label="&quot;Yes.&quot;">
+  <choice id="yes" text="&quot;Yes.&quot;">
     @nell{code="0010"}: Yes. I'm the new nurse.
     @child{code="0020" os}: Then you have to do the round. At three. Everybody has to be in bed at three.
   </choice>
-  <choice id="no" label="&quot;No. Who's there?&quot;">
+  <choice id="no" text="&quot;No. Who's there?&quot;">
     @nell{code="0020"}: No. Who's there? Come out, I won't...
     @child{code="0030" os}: Shh. He counts the beds.
     ::fright
   </choice>
-  <choice id="silent" label="Say nothing">
+  <choice id="silent" text="Say nothing">
     @narrator{code="0030"}: You hold your breath. After a while the crib creaks, as if someone small had got down off it.
   </choice>
 </branch>

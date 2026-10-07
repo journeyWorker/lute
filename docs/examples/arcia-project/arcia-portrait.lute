@@ -3,15 +3,14 @@ kind: scene
 character: marina
 season: 1
 episode: 6
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 profile: date-minigame
 plugins:
   arcia.minigame:
     resultScope: scene
     allowedKinds: [rhythm]
+title: Portrait asset demo
 ---
-
-# Portrait asset demo
 
 ## The Portrait
 

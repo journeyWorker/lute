@@ -12,6 +12,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.36.6"
+  pov: corvin
+  luteVersion: "0.37.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   questTier: run

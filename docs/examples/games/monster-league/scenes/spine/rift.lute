@@ -11,6 +11,6 @@ when: "@champion && !holds('caught', ['aethon'])"
 ## The deepest chamber
 
 ::bg{location="rift-cavern" time="night"}
-::music{action="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="down"}
 @narrator{code="0010"}: At the bottom of the cavern the air hums. A shape unfolds from the dark and looks at {{userName}} as if it has been expecting them.
 ::encounter{species="aethon" level="70"}

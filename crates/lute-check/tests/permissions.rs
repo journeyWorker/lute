@@ -51,10 +51,10 @@ state:
 ## Shot
 ::set{scene.allowed = true}
 <branch id="menu">
-  <choice id="yes" label="Yes">
+  <choice id="yes" text="Yes">
     @narrator: yes
   </choice>
-  <choice id="no" label="No">
+  <choice id="no" text="No">
     @narrator: no
   </choice>
 </branch>
@@ -93,7 +93,7 @@ facts:
 ::set{run.direct = true}
 ::assert{ memory(ana) }
 <hub id="menu">
-  <choice id="yes" label="Yes" into="run.choice" exit>
+  <choice id="yes" text="Yes" into="run.choice" exit>
     @narrator: yes
   </choice>
 </hub>

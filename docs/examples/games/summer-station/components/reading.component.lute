@@ -9,7 +9,7 @@ params:
 
 @narrator{code="0010"}: {{@hour}}. You unlatch the white louvred box and read down the column, the way Ines taught you.
 
-<match on="@sky">
+<match subject="@sky">
   <when is="clear">
     @narrator{code="0020"}: Dry bulb seventeen point two. Wet bulb thirteen. Pressure steady, a hair above yesterday.
     @narrator{code="0030"}: The sky is the hard blue it only is at altitude.

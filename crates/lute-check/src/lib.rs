@@ -53,6 +53,7 @@ pub mod producible;
 pub mod project_check;
 pub mod reachability;
 pub mod rel_schema;
+pub mod renames;
 pub(crate) mod reserved_names;
 pub mod rule_index;
 pub mod schema_import;
@@ -78,7 +79,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.36.6";
+pub const LUTE_LANG_VERSION: &str = "0.37.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -176,7 +177,8 @@ pub use cel_resolve::{
 };
 pub use check::{
     check, check_parsed, diagnostic_order, fold_env, order_diagnostics, CheckInput, CheckResult,
-    DomainUse, FoldedEnv, Resolved, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    DomainUse, FoldedEnv, Resolved, E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP,
+    INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
@@ -210,7 +212,7 @@ pub use lore::{
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,
     is_exhaustive, is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
-    E_REWARD_ATTR, E_REWARD_KIND, E_WHEN_RANGE,
+    E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_WHEN_RANGE,
 };
 pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,

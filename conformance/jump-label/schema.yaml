@@ -1,0 +1,3 @@
+state:
+  run.hasKey: { type: bool, default: false }
+  run.visits: { type: int, default: 0 }

@@ -7,20 +7,20 @@ title: Morning in Hollowtown
 ## Upstairs
 
 ::bg{location="player-house" time="morning"}
-::music{action="start" mood="upbeat" volume="down"}
+::music{playback="start" mood="upbeat" volume="down"}
 @narrator{code="0010"}: Sunlight on the floorboards. The console in the corner is still switched on from last night.
 @narrator{code="0020"}: It is {{clock.weekdayLabel}} morning in Hollowtown.
-::auto{character="mom" anchor="right" action="enter"}
+::actor{character="mom" anchor="right" action="enter"}
 @mom{code="0010"}: {{userName}}! Professor Alder came by while you were asleep. He said to meet him at the lab.
 
 <branch id="homeWake" prompt="Mom waits at the bottom of the stairs.">
-  <choice id="go" label="On my way!">
+  <choice id="go" text="On my way!">
     @mom{code="0020" emotion="happy"}: That's my kid. Take a sandwich for the road.
   </choice>
-  <choice id="late" label="Five more minutes...">
+  <choice id="late" text="Five more minutes...">
     @mom{code="0030" emotion="worried"}: He said it was important, sleepyhead. Kai left an hour ago.
   </choice>
 </branch>
 
 @mom{code="0040"}: Every kid in Hollowtown dreams of the day they get their first monster. Go on. Today's yours.
-::auto{character="mom" action="exit"}
+::actor{character="mom" action="exit"}

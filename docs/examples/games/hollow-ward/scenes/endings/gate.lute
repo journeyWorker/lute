@@ -15,10 +15,10 @@ when: "holds('holding', ['keycard'])"
 @nell{code="0010" mono when="entry.ledgerPage1.read && entry.ledgerPage2.read && entry.ledgerPage3.read"}: Two. Seven. Five. The gate remembers them in order.
 @tobias{code="0010" when="@withToby"}: Nell. Nell, the wheels. Hurry.
 ::keypad{pad="gatePad" resultKey="gate"}
-<match on="scene.keypad.gate.entered">
+<match subject="scene.keypad.gate.entered">
   <when test="$ == @gateCode">
     @narrator{code="0020"}: The lock clunks. The gate swings outward on hinges that have not moved since 1979, and the air on the other side smells of wet road and petrol and nothing else at all.
-    <match on="quest.quietWard.state">
+    <match subject="quest.quietWard.state">
       <when is="complete">
         ::set{run.fate = "released"}
         @narrator{code="0030"}: Behind you, one by one, the windows of St. Agathe's go dark, not like lights going out but like eyes closing.
@@ -34,7 +34,7 @@ when: "holds('holding', ['keycard'])"
         @narrator{code="0040"}: Behind you, very faintly, a gurney squeaks, turns, and goes back inside to wait.
       </otherwise>
     </match>
-    ::music{action="stop"}
+    ::music{playback="stop"}
     ::end{reason="out"}
   </when>
   <otherwise>

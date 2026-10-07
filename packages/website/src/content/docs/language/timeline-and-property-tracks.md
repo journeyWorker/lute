@@ -11,12 +11,12 @@ as the playhead advances, and the whole block blocks the following content until
 ```lute
 <timeline duration="1.4">
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.35" duration="0.4"}
-    ::camera{shake="0.6" duration="0.3" at="0.5"}
+    ::camera{focus="marina" framing="tight" duration="0.4"}
+    ::camera{move="shake" duration="0.3" at="0.5"}
   </track>
   <track channel="fg">
-    ::cut{assetId="CUT.scenarios.marina.s01ep02.01" at="0.5"}
-    ::cut{assetId="CUT.scenarios.marina.s01ep02.01" action="hide" at="1.1"}
+    ::cg{assetId="CUT.scenarios.marina.s01ep02.01" at="0.5"}
+    ::cg{assetId="CUT.scenarios.marina.s01ep02.01" display="hide" at="1.1"}
   </track>
   <track channel="vfx">
     ::vfx{type="whiteOut" transition="flash" at="0.5"}
@@ -34,7 +34,7 @@ as the playhead advances, and the whole block blocks the following content until
 A `<track>` is identified by its key, given one of three ways:
 
 - **`subject="camera"`** — a subject track (a whole staged entity, e.g. the camera or a character).
-- **`channel="fg"`** — a channel track (a staging channel such as foreground cut-ins, vfx, sfx,
+- **`channel="fg"`** — a channel track (a staging channel such as foreground CGs, vfx, sfx,
   music).
 - **`subject="marina" property="pos"`** — a **property track**: split one subject across
   property-scoped concurrent tracks.
@@ -50,14 +50,14 @@ her position and her opacity simultaneously, alongside an independent camera tra
 ```lute
 <timeline duration="1.2">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slideInLeft"}
+    ::actor{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="marina" framing="close" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
 </timeline>
 ```
@@ -87,7 +87,7 @@ its duration. Use it when the pause is the point.
 ```
 
 ```json
-{ "kind": "barrier", "addr": "001-0100", "timeline": 1, "at": 1.2 }
+{ "kind": "barrier", "family": "control", "position": "001-0100", "timeline": 0, "at": 1.2 }
 ```
 
 ## Constraints

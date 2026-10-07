@@ -1,8 +1,8 @@
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -29,7 +29,8 @@
   "commands": [
     {
       "kind": "match",
-      "addr": "001-0100",
+      "family": "control",
+      "position": "001-0100",
       "subject": {
         "cel": "has(run.missing) && run.missing == 'ok'",
         "expr": {
@@ -77,25 +78,30 @@
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "narration",
       "speaker": "narrator",
       "text": "absent is false",
-      "lineId": "celErrors.narrator_0010"
+      "lineId": "celErrors.narrator_0010",
+      "voiceKey": "celErrors.narrator-0010"
     },
     {
       "kind": "jump",
-      "addr": "001-0300",
+      "family": "control",
+      "position": "001-0300",
       "target": "001-0500"
     },
     {
       "kind": "jump",
-      "addr": "001-0400",
+      "family": "control",
+      "position": "001-0400",
       "target": "001-0500"
     },
     {
       "kind": "match",
-      "addr": "001-0500",
+      "family": "control",
+      "position": "001-0500",
       "subject": {
         "cel": "run.i != 0 && run.i / run.zero > 1",
         "expr": {
@@ -167,25 +173,30 @@
     },
     {
       "kind": "line",
-      "addr": "001-0600",
+      "family": "content",
+      "position": "001-0600",
       "role": "narration",
       "speaker": "narrator",
       "text": "divide error is false",
-      "lineId": "celErrors.narrator_0020"
+      "lineId": "celErrors.narrator_0020",
+      "voiceKey": "celErrors.narrator-0020"
     },
     {
       "kind": "jump",
-      "addr": "001-0700",
+      "family": "control",
+      "position": "001-0700",
       "target": "001-0900"
     },
     {
       "kind": "jump",
-      "addr": "001-0800",
+      "family": "control",
+      "position": "001-0800",
       "target": "001-0900"
     },
     {
       "kind": "match",
-      "addr": "001-0900",
+      "family": "control",
+      "position": "001-0900",
       "subject": {
         "cel": "run.i == 3 || has(run.missing)",
         "expr": {
@@ -233,26 +244,30 @@
     },
     {
       "kind": "line",
-      "addr": "001-1000",
+      "family": "content",
+      "position": "001-1000",
       "role": "narration",
       "speaker": "narrator",
       "text": "short circuit",
-      "lineId": "celErrors.narrator_0030"
+      "lineId": "celErrors.narrator_0030",
+      "voiceKey": "celErrors.narrator-0030"
     },
     {
       "kind": "jump",
-      "addr": "001-1100",
+      "family": "control",
+      "position": "001-1100",
       "target": "001-1300"
     },
     {
       "kind": "jump",
-      "addr": "001-1200",
+      "family": "control",
+      "position": "001-1200",
       "target": "001-1300"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "Errors"
     }
   ],

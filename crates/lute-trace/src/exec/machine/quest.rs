@@ -1099,7 +1099,7 @@ impl<D: Driver> Machine<D> {
                 None => continue,
             };
             self.driver.observe(json!({
-                "kind": "on", "event": event, "quest": h.quest, "addr": h.addr,
+                "kind": "on", "event": event, "quest": h.quest, "position": h.addr,
                 "outcome": outcome, "guard": h.when.as_deref().map(str::trim),
             }));
             if verdict != Some(true) {

@@ -41,10 +41,20 @@ must declare an identity: an **`id`**, or the triple **`character`**, **`season`
 - **`episodeId`** — a stable opaque episode id, the input to that derived key. When omitted it
   defaults to `s{season:02}ep{episode:02}` (e.g. `season: 1, episode: 2` → `s01ep02`). Pinning it
   explicitly lets you renumber `season`/`episode` without breaking translation or voice keys.
-- **`title`** — an optional human title (localizable).
-- **`pov`** — the id of the point-of-view (protagonist) speaker, for readers of the source. It is
-  descriptive only: that speaker's lines compile as ordinary dialogue, and the artifact does not
-  carry `pov` (see [Dialogue & cast](/language/dialogue-and-cast/)).
+- **`title`** — an optional human title (localizable), carried as the artifact's `meta.title`. It
+  is the document's only title: a `# ` heading in the body is `E-INERT-TITLE`, and the message
+  names `title:`.
+- **`pov`** — the id of the point-of-view (protagonist) speaker. It decides who may speak `mono`:
+  a `{mono}` line's speaker must be the effective POV or appear in `monoSpeakers`, else
+  `E-MONO-POV` (`E-MONO-NO-POV` when no POV resolves at all). The effective POV is the document's
+  `pov:`, or else the project's `defaults.pov` in `lute.project.yaml`. Otherwise the POV speaker's
+  lines compile as ordinary lines, and the artifact does not carry `pov` (see
+  [Dialogue & cast](/language/dialogue-and-cast/)).
+- **`monoSpeakers`** — a list of further speaker ids who may speak `mono` beside the POV, such as
+  `monoSpeakers: [mira]` for a scene that also gives `mira` interior monologue. Like `pov`, it can
+  be set once for the project under `defaults.monoSpeakers`; a document's own list replaces the
+  project's. A line expanded from a [component](/language/components-and-extends/#speaker-params)
+  is checked against the POV and `monoSpeakers` of the document whose `::use` expands it.
 - **`luteVersion`** — the language-version pin; distinct from `app.lang` game state.
 - **`contentLang`** — the source authoring language (a BCP 47 code such as `en-US` or `ko-KR`).
 - **`mode`** — the authoring mode; `inline` is the only defined form.

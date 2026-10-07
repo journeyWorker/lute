@@ -11,14 +11,14 @@ when: "run.slot != 'morning'"
 @cook{code="0010"}: If you're here about that spoon, I've been at the oven all afternoon.
 
 <hub id="askCook" prompt="What do you ask Mrs. Dunn?">
-  <choice id="oven" label="Ask what she was baking" once into="run.tastedCake">
+  <choice id="oven" text="Ask what she was baking" once into="run.tastedCake">
     @cook{code="0020"}: Seed cake. The vicar's favourite.
   </choice>
-  <choice id="scullery" label="Peek into the scullery" once>
+  <choice id="scullery" text="Peek into the scullery" once>
     @narrator{code="0020"}: A tray of washed spoons. Five of them.
     ::set{run.cluesFound += 1}
   </choice>
-  <choice id="leave" label="Thank her and go" exit>
+  <choice id="leave" text="Thank her and go" exit>
     @cook{code="0030"}: Mind the step.
   </choice>
 </hub>

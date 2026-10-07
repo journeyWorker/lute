@@ -603,7 +603,7 @@ pub fn reconcile_collected(
                     folded,
                     &project,
                 );
-                // dsl 0.28.0: a kind beat's `<match on="occasion.target">`
+                // dsl 0.28.0: a kind beat's `<match subject="occasion.target">`
                 // needs no arm for a member its `when` never holds for with
                 // the facts in scope.
                 lute_check::fact_check::reconcile_member_matches(
@@ -683,8 +683,7 @@ pub fn reconcile_collected(
             else {
                 continue;
             };
-            let all_nodes: Vec<lute_syntax::ast::Node> = doc
-                .shots
+            let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();

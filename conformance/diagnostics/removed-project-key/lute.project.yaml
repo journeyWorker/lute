@@ -1,0 +1,5 @@
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+sequence: [source.lute]

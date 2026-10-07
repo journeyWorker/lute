@@ -4,9 +4,9 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1",
@@ -66,7 +66,8 @@ expression: json
   "commands": [
     {
       "kind": "quest",
-      "addr": "001-0100",
+      "family": "declaration",
+      "position": "001-0100",
       "id": "rescueHalsin",
       "title": "Rescue",
       "titleLineId": "rescueHalsin.title",

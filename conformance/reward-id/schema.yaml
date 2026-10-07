@@ -1,0 +1,2 @@
+state:
+  run.atGoal: { type: bool, default: false }

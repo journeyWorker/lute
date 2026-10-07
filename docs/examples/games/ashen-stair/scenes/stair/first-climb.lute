@@ -10,7 +10,7 @@ once: user
 ## The first step
 
 ::bg{location="stair" time="night"}
-::music{action="start" mood="stair" volume="normal"}
+::music{playback="start" mood="stair" volume="normal"}
 @narrator{code="0010"}: The first step is warm from the Hearth. The second is not. By the tenth she can see her breath.
 @wren{code="0010" mono}: One at a time. Everyone says that like it helps.
 @narrator{code="0020"}: Somewhere above, something with too many teeth notices her.

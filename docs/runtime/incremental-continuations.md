@@ -1,6 +1,6 @@
 # Checked streaming continuations
 
-A continuation compiler lets a host append ordinary Lute shot-body text to a
+A continuation compiler lets a host append ordinary Lute section-body text to a
 trusted, already complete scene template and receive checked ordinary IR after
 each complete unit, before stdin or another transport reaches EOF. It is useful
 for interactive authoring and generated continuations where first checked output
@@ -23,14 +23,14 @@ It shipped with Lute `0.17.0`.
 The host owns and trusts the template, project manifest, provider snapshots,
 components, defaults, and identity templates. Resolve them before constructing
 the compiler and keep them frozen for the stream. The template must be a valid
-`kind: scene` document with at least one `## ` shot. It may already contain body
-content.
+`kind: scene` document with at least one `## ` section. It may already contain
+body content.
 
-Only the **body of the template's last shot** is appendable. Streamed text may
-contain the same legal constructs as any shot body—dialogue, directives, closed
-`<branch>`, `<match>`, `<hub>`, and `<timeline>` units, component use, and plugin
-directives—but may not replace frontmatter, create a shot/label, or introduce a
-quest root.
+Only the **body of the template's last section** is appendable. Streamed text
+may contain the same legal constructs as any section body—dialogue, directives,
+closed `<branch>`, `<match>`, `<hub>`, and `<timeline>` units, component use,
+and plugin directives—but may not replace frontmatter, start a new section, or
+introduce a quest root.
 
 Compilation proves the source satisfies Lute's existing rules. It does not make
 untrusted generated text trusted, call a model, grant filesystem or network
@@ -39,7 +39,7 @@ sandbox. The host owns those policy and effect boundaries.
 
 ## CLI: runnable end-to-end example
 
-Create a complete scene template whose final shot is ready for more body text:
+Create a complete scene template whose final section is ready for more body text:
 
 ```console
 $ cat > /tmp/live-scene.lute <<'LUTE'
@@ -111,7 +111,7 @@ assert!(done.finished && done.diagnostics.is_empty());
 ```
 
 `new` checks and compiles the complete template immediately. If the prefix is not
-a valid scene with a shot, it returns `Err(Vec<Diagnostic>)` before any body is
+a valid scene with a section, it returns `Err(Vec<Diagnostic>)` before any body is
 accepted. `artifact()` is the latest accepted ordinary artifact.
 
 `push(&str)` accepts decoded UTF-8 text and can return zero, one, or many updates.
@@ -181,12 +181,12 @@ snapshot's command count**, identifying where the newly appended array region
 begins. It is not a program counter and does not instruct a runtime to execute
 every record after that index.
 
-### Address padding and prefix rejection
+### Position padding and prefix rejection
 
-Lute computes uniform address widths for a complete artifact. Adding enough
-commands can widen every address, such as `001-0900` to `001-00900`. The service
-accepts this formatting-only change by comparing typed addresses and control
-flow targets as numeric `(shot, index)` pairs.
+Lute computes uniform position widths for a complete artifact. Adding enough
+commands can widen every `position`, such as `001-0900` to `001-00900`. The
+service accepts this formatting-only change by comparing typed positions and
+control-flow targets as numeric `(section, index)` pairs.
 
 It does not normalize arbitrary strings. If an append retroactively changes an
 earlier line identity, stage-injected command, payload, control-flow meaning, or
@@ -198,7 +198,7 @@ existing state-table entry, the candidate is rejected with
 Treat an update as a new immutable program image:
 
 1. replace the previous artifact snapshot;
-2. rebuild the `addr -> command index` lookup, because padding may have changed;
+2. rebuild the `position -> command index` lookup, because padding may have changed;
 3. retain the numerical command cursor, live state values, facts, selected
    control-flow stack, and host effect/idempotency records;
 4. initialize only state slots that are newly declared; and
@@ -226,7 +226,7 @@ checker, resolution, and compile diagnostics intact. The service adds:
 | Code | Meaning |
 | --- | --- |
 | `E-STREAM-TEMPLATE` | The initial prefix cannot establish the required checked scene and artifact. |
-| `E-STREAM-BODY` | Streamed source is not admitted as final-shot body content. |
+| `E-STREAM-BODY` | Streamed source is not admitted as final-section body content. |
 | `E-STREAM-PREFIX-CHANGED` | A candidate would retroactively alter accepted commands or state. |
 | `E-STREAM-CLOSED` | `push` or `finish` was called after the compiler became terminal. |
 

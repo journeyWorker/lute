@@ -1,7 +1,7 @@
 # Helix Tower in one go, after east lifted the siege: every floor, Kai beaten,
 # Admin Maelis beaten; the lair cleared and the Mind Gym door open. (The
 # retry and Kai-wins paths are in plays/mid.play.yaml: a scenario test stops
-# at a taken ::next.)
+# at a taken ::jump.)
 file: ../../scenes/mid/helix-tower.lute
 state: { run.lair.towerSiege: cleared }
 bridges: { battle: [ { won: true }, { won: true }, { won: true }, { won: true }, { won: true }, { won: true } ] }

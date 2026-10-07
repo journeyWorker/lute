@@ -8,7 +8,7 @@ uses: child.schema.yaml
 
 ## Blessed with Fortune
 
-<match on="run.blessed">
+<match subject="run.blessed">
   <when test="@wealthy">
     @elena: Fortune smiles on me today.
   </when>

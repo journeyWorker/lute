@@ -25,13 +25,13 @@
 //!   unconditional choice, or a non-exhaustive match, also meets the
 //!   pre-block set. A `<hub>` body runs zero or more times: its entry set is
 //!   the greatest fixpoint `X = pre ∩ ⋂ arm_out(X)`, which is also its exit.
-//! - `::end` sends the current set to the document's exit; `::next{to}` sends
+//! - `::end` sends the current set to the document's exit; `::jump{to}` sends
 //!   it (with its own guard assumed, when guarded) to its label, where it is
-//!   met with the fall-through route; an unguarded `::next` ends the
+//!   met with the fall-through route; an unguarded `::jump` ends the
 //!   fall-through route.
 //! - A guard is an assumption inside its region (D-D): every positive
 //!   top-level conjunct `holds(F)` of a `<when test>`, `<choice when>`,
-//!   guarded `::next`, `<on when>`, `<objective done>`, entry `when`, or scene
+//!   guarded `::jump`, `<on when>`, `<objective done>`, entry `when`, or scene
 //!   beat `when` (dsl 0.21.0 §3.1) with a ground `F` is in the set inside it.
 //!   A content line's `when=` guards nothing after it.
 //!
@@ -433,8 +433,7 @@ impl<'a> Root<'a> {
         }
         for item in docs {
             let doc = item.doc;
-            let bodies = doc
-                .shots
+            let bodies = doc.sections
                 .iter()
                 .map(|s| &s.body)
                 .chain(doc.quests.iter().map(|q| &q.body))
@@ -656,7 +655,7 @@ fn walk_doc(
     if let Some(when) = item.meta.beat.as_ref().and_then(|b| b.when.as_ref()) {
         w.guard(when, &mut flow);
     }
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         w.walk(&shot.body, &mut flow);
     }
     let mut end = w.exit.take();
@@ -716,7 +715,7 @@ struct Walk<'a> {
     vocab: &'a RelVocab,
     /// Guard slot → (span, the meet of its visits' sets).
     slots: BTreeMap<(usize, usize), (Span, Facts)>,
-    /// `::next{to}` label → the meet of the sets jumping to it.
+    /// `::jump{to}` label → the meet of the sets jumping to it.
     pending: BTreeMap<String, Facts>,
     /// The meet of every `::end` route.
     exit: Flow,
@@ -889,9 +888,6 @@ impl<'a> Walk<'a> {
         for node in nodes {
             match node {
                 Node::Line(l) => {
-                    if let Some(id) = attr_str(&l.attrs, "id") {
-                        self.label(id, flow);
-                    }
                     // dsl 0.24.0 §4: an unguarded line is its own slot —
                     // `W-CAST-ABSENT` reads the facts guaranteed there.
                     match &l.when {
@@ -956,15 +952,15 @@ impl<'a> Walk<'a> {
     }
 
     fn directive(&mut self, d: &Directive, flow: &mut Flow) {
-        use lute_manifest::core::{END_DIRECTIVE, MARK_DIRECTIVE, NEXT_DIRECTIVE};
+        use lute_manifest::core::{END_DIRECTIVE, LABEL_DIRECTIVE, JUMP_DIRECTIVE};
         match d.tag.as_str() {
             END_DIRECTIVE => meet(&mut self.exit, flow.take()),
-            MARK_DIRECTIVE => {
-                if let Some(id) = attr_str(&d.attrs, "id") {
+            LABEL_DIRECTIVE => {
+                if let Some(id) = attr_str(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
                     self.label(id, flow);
                 }
             }
-            NEXT_DIRECTIVE => {
+            JUMP_DIRECTIVE => {
                 let to = attr_str(&d.attrs, "to");
                 match (&d.when, to) {
                     (Some(when), to) => {

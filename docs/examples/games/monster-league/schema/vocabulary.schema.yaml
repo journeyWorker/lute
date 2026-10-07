@@ -10,5 +10,6 @@ enums:
     exits: [exit]
   mood: [calm, upbeat, tense, battle, eerie, triumphant, sad, festive]
   volume: [down, normal, up]
-  musicAction: [start, change, stop, fadeOut]
+  musicPlayback: [start, change, stop, fadeOut]
   vfxType: [flash, whiteOut, blackOut, sparkle, rain, fog]
+  cameraMove: [shake]

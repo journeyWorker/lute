@@ -1,0 +1,1 @@
+./lute.project.yaml:5:1: error [E-REMOVED-PROJECT-KEY] `sequence:` was removed from lute.project.yaml and is never read; 0.37 has no replacement key — declare each chain in `chapters: [{ on: <occasion>, scenes: [<scene id>, …] }]`

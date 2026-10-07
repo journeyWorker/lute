@@ -46,7 +46,7 @@ fn callers_of_component(root: &Path, name: &str) -> Vec<PathBuf> {
 /// `<beat use="name">` applies it as a beat template (dsl 0.27.0 §6). Reads
 /// the same attribute `lute_check`'s `fold_use` reads.
 fn document_uses_component(doc: &lute_syntax::ast::Document, name: &str) -> bool {
-    doc.shots
+    doc.sections
         .iter()
         .any(|shot| nodes_use_component(&shot.body, name))
         || doc
@@ -144,7 +144,7 @@ pub(crate) fn component_name_of(file: &Path) -> Option<(String, Span)> {
 /// the expander has no notion of: it looks up `bodies` alone and calls any miss
 /// `"names no known def body"`. Expanding a component AS A ROOT would therefore
 /// report the absence of a call site as a fault of the component, which it is
-/// not — `<match on="@p">` over a declared param is the one logic block a
+/// not — `<match subject="@p">` over a declared param is the one logic block a
 /// component body admits (dsl 0.4.0 §6.2). Binding first measures the body,
 /// which is the only thing this leg can decide.
 pub(crate) fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {

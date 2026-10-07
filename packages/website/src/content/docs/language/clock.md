@@ -136,9 +136,7 @@ when: "clock.weekday == 5 && run.slot == 'morning'"
 once: false
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: {{clock.weekdayLabel}}, day {{run.day}}. The market is up before the bells.
 ```
@@ -148,7 +146,7 @@ once: false
 `run.day` and `run.slot` alone you would have to spell that condition out slot by slot.
 
 Both weekday paths are typed tightly, so the checker treats them like any closed domain.
-`<match on="clock.weekday">` with arms `is="0..4"` and `is="5..6"` is exhaustive without an
+`<match subject="clock.weekday">` with arms `is="0..4"` and `is="5..6"` is exhaustive without an
 `<otherwise>`, and leaving out Sunday is `E-NONEXHAUSTIVE` naming the gap (`` `6` is not
 covered ``). `is="7"` is `E-WHEN-LITERAL-DOMAIN`, and a guard `clock.weekday == 7` is dead
 (`E-ARM-DEAD` on a line). The labels are the members of `clock.weekdayLabel`, so a misspelled
@@ -156,7 +154,7 @@ covered ``). `is="7"` is `E-WHEN-LITERAL-DOMAIN`, and a guard `clock.weekday == 
 naming the nearest label (`` did you mean `'Sun'`? ``):
 
 ```lute
-<match on="clock.weekday">
+<match subject="clock.weekday">
   <when is="0..4">
     @narrator: Another working day.
   </when>
@@ -200,9 +198,7 @@ target: npc.wren
 once: day
 ---
 
-# The bakery
-
-## Shot 1.
+## Opening {#opening}
 
 @wren: Morning! It's {{clock.weekdayLabel}}, so the rye is fresh.
 ```
@@ -261,9 +257,7 @@ target: npc.hale
 once: week
 ---
 
-# The post office
-
-## Shot 1.
+## Opening {#opening}
 
 @hale: Your weekly letter. Same handwriting as last {{clock.weekdayLabel}}.
 ```
@@ -278,9 +272,7 @@ on: townVisit
 once: day
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: The bell rings.
 ```
@@ -626,9 +618,7 @@ state:
   run.weekday: { type: { domain: weekday }, default: mon }
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: Today is {{run.weekday}}.
 ```
@@ -648,9 +638,7 @@ state:
   run.weekday: { type: { domain: weekday }, default: mon }
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: Today is {{run.weekday}}.
 ```
@@ -677,9 +665,7 @@ defs:
   restDay: "run.day % 7 == 0"
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: The shutters stay down. Nobody works on the seventh day.
 ```
@@ -697,9 +683,7 @@ state:
   run.day: { type: int, default: 1 }
 ---
 
-# The square
-
-## Shot 1.
+## Opening {#opening}
 
 @narrator: Half a rest.
 ```
@@ -725,9 +709,7 @@ state:
   run.warmed.wren: { type: int, default: 0 }
 ---
 
-# The bakery
-
-## Shot 1.
+## Opening {#opening}
 
 @wren: You again. Sit, the kettle's on.
 ::set{run.aff.wren += 1 when="run.warmed.wren < run.day"}
@@ -747,9 +729,7 @@ state:
   run.aff.wren: { type: int, default: 0 }
 ---
 
-# The bakery
-
-## Shot 1.
+## Opening {#opening}
 
 @wren: Take this.
 ::set{run.aff.wren += 1 when="run.day > 5 && run.day < 3"}

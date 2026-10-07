@@ -11,7 +11,7 @@ Linting complements, rather than replaces, `lute check`:
   including existing `W-TIMELINE-*` thresholds, is unchanged.
 - **`lute lint`** evaluates advisory content rules. Levels and thresholds are
   project policy, so lint rules do not participate in the capability snapshot or
-  `capabilityVersion` and never change artifact identity.
+  `capabilitySnapshot` and never change artifact identity.
 
 Run `lute lint` with no configuration to use the built-in rule defaults. The
 optional `--config PATH` selects a different config file; otherwise the command
@@ -45,7 +45,7 @@ custom:
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `shot`, `scene`, `speaker`, and `group` targets; `project` rules are CLI-only in v1. |
+| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, and `group` targets; `project` rules are CLI-only in v1. |
 | `ignore` | list of project-root-relative globs | `[]` | Documents excluded from linting. |
 | `rules` | map | `{}` | Per-rule level and option overrides for core and active plugin rules. |
 | `custom` | list of rules | `[]` | Project-local declarative CEL rules. |
@@ -70,7 +70,7 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `shot`, `scene`, `speaker`, `group`, or `project`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, or `project`. |
 | `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path. `{expr:%}` renders shares as percentages. |
@@ -92,8 +92,8 @@ scalar counts.
 | target | row | fields |
 | --- | --- | --- |
 | `line` | each content `Line` | `words`, `chars`, `speaker` (`""` for narration), `attrs` (string map; `BoolTrue` is `"true"`) |
-| `shot` | each `##` shot | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`), `kind` |
-| `scene` | each document | `kind`, `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `shots`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
+| `section` | each `##` section | `index` (1-based), `title`, `dialogueLines`, `words`, `firstStagingTag` (or `""`), `kind` |
+| `scene` | each document | `kind`, `dialogueLines`, `words`, `bodyNodes` (nested included), `directives`, `sets`, `choices`, `sections`, `maxLineWords`, `avgLineWords`, `dialogueRatio` |
 | `speaker` | each document/speaker with dialogue | `lines`, `words`, `axis`, `attrShare` |
 | `group` | each document/attribute/value for configured `groupBy` | `attr`, `key`, `count`, `speakers` |
 | `project` | project root | `scenes`, `sceneWords`, `spreadRatio` |
@@ -101,9 +101,9 @@ scalar counts.
 `scene.kind` classifies the document (dsl 0.22.0): `scene` for a linear scene,
 `beat` for a scene with `on:`, `component` for a document declaring
 `component:`, and otherwise its authored `kind:` (`quest`, `lore`, …);
-`shot.kind` repeats its document's value. `scene.directives` and
-`shot.firstStagingTag` count staging directives only — `::accept`, `::use`,
-`::end`, `::mark`, and `::next` are skipped.
+`section.kind` repeats its document's value. `scene.directives` and
+`section.firstStagingTag` count staging directives only — `::accept`, `::use`,
+`::end`, `::label`, and `::jump` are skipped.
 
 `scene.dialogueRatio` is `dialogueLines / bodyNodes`, or `0.0` when there are no
 body nodes. `project.scenes` counts linear scenes only (`scene.kind == "scene"`),
@@ -132,7 +132,7 @@ Set any rule to `level: error` to make it release-blocking for that project.
 | `dialogue-length` | line | warn | `line.words > maxWords`; `maxWords: 40`. Keeps individual lines readable and performable. |
 | `dialogue-ratio` | scene | warn | `scene.kind == "scene"`, `bodyNodes >= minNodes`, and `dialogueRatio < min`; `minNodes: 10`, `min: 0.35`. Flags linear scenes with too little dialogue relative to their authored body. |
 | `scene-length-spread` | project | warn | `scenes >= 2` and `spreadRatio > maxRatio`, over linear scenes only; `maxRatio: 3.0`. Finds an unusually uneven scene-length mix. |
-| `shot-starts-with-background` | shot | warn | `shot.kind == "scene"` and `firstStagingTag != "bg"`, including a shot with no staging directive. Encourages each shot of a linear scene to establish its background first; a beat, component, quest, or lore entry is presented into staging someone else set. |
+| `section-starts-with-background` | section | warn | `section.kind == "scene"` and `firstStagingTag != "bg"`, including a section with no staging directive. Encourages each section of a linear scene to establish its background first; a beat, component, quest, or lore entry is presented into staging someone else set. |
 | `emotion-distribution` | speaker | warn | Checks the selected axis once a speaker has at least `minLines: 10`: `domain: emotion`, optional `pairWith`, `runMax: 3`, `streakAvgMin: 1.5`, `maxShare: 0.4`. It applies the upstream lineage's hard cap of three identical emotion streaks, thrash floor of 1.5 average streak length, and 40% dominance cap; when `pairWith` is set it also checks the paired axis. One finding per failing speaker joins all reasons. |
 | `variant-composition` | speaker and group | warn | `attr: variant`, optional `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. With `groupBy`, groups below `minPerGroup` fire. With `minShare > 0`, speakers meeting its own `minLines` whose `attrShare[attr]` is below the threshold fire. |
 | `asset-exists` | line/directive | error | `providers: {}` (inert), `sentinels: [clear, empty, false, none, null, stop]`. For each mapped directive tag, checks `assetId` against the pinned provider snapshot. Absent assets fire; stale catalog data downgrades the finding to warn. Sentinel values are case-insensitively exempt. |
@@ -164,7 +164,7 @@ A plugin rule is data only when it asserts over these fixed, core-computed metri
 tables. If the rule needs another metric, traversal, ordering rule, or evaluation
 primitive, that is a core change—not a YAML extension. Plugin lint declarations
 are advisory and are excluded from both the capability snapshot and
-`capabilityVersion`.
+`capabilitySnapshot`.
 
 ## Codes, denial, and exit status
 
@@ -180,7 +180,7 @@ The built-in rule codes are:
 | `dialogue-length` | `L-DIALOGUE-LENGTH` |
 | `dialogue-ratio` | `L-DIALOGUE-RATIO` |
 | `scene-length-spread` | `L-SCENE-LENGTH-SPREAD` |
-| `shot-starts-with-background` | `L-SHOT-STARTS-WITH-BACKGROUND` |
+| `section-starts-with-background` | `L-SECTION-STARTS-WITH-BACKGROUND` |
 | `emotion-distribution` | `L-EMOTION-DISTRIBUTION` |
 | `variant-composition` | `L-VARIANT-COMPOSITION` |
 | `asset-exists` | `L-ASSET-EXISTS` |

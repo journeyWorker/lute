@@ -1,9 +1,9 @@
 ---
 title: Tracing guide
-description: "Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too), the previous run and plugin bridge answers via flags or a mock YAML file, credited rewards and objective bodies, quest structure, presenting one bundle beat or a kind beat's member, how the project's rules derive over them, reading the decision transcript (def references as authored, or `--expand`ed; a taken `::next` followed to its label), and the E-TRACE-* refusals."
+description: "Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too), the previous run and plugin bridge answers via flags or a mock YAML file, credited rewards and objective bodies, quest structure, presenting one bundle beat or a kind beat's member, how the project's rules derive over them, reading the decision transcript (def references as authored, or `--expand`ed; a taken `::jump` followed to its label), and the E-TRACE-* refusals."
 ---
 
-`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::next` to its mark and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::next`](#following-a-taken-next) and [`lute test`](/tooling/cli/#test).
+`lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::jump` to its `::label` and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::jump`](#following-a-taken-jump) and [`lute test`](/tooling/cli/#test).
 
 ## Seeding the world
 
@@ -193,14 +193,14 @@ trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
     @elena  Thank you. I won't forget this.
     ::set  run.metHelpfully = true  (into sugar)
   ## Reading It Back
-  <match run.metHelpfully>   -> arm 1 (run.metHelpfully == true)
+  <match run.metHelpfully>   -> arm 1 (is="true")
     @elena  You helped me back then. I've been meaning to thank you again.
-trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @45:1)
+trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @42:1)
 ```
 
 An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. A forced choice still counts: the summary reads `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)` and names the atoms that would decide it, and `--json` lists it under `forcedUnknown`. The exit code stays what the rest of the walk earned. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`, and since 0.24.0 `quest.<id>.failedBy` and `…objectives.<oid>.failed`) resolve to their defaults (`unset` / `false`) unless mocked (`quests:` or `--state`); without a project each carries an "existence unverified" note, and with one trace checks the id against the project's quests.
 
-**Def references read as authored** (dsl 0.24.0). A `<match on="@def">` header, an arm or choice guard, and the coverage summary print a def reference the way the author wrote it; `--expand` prints the expansion the walk evaluated:
+**Def references read as authored** (dsl 0.24.0). A `<match subject="@def">` header, an arm or choice guard, and the coverage summary print a def reference the way the author wrote it; `--expand` prints the expansion the walk evaluated:
 
 ```console
 $ lute trace week.lute --state user.runs=3 --choose ask=old
@@ -210,7 +210,7 @@ trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
     @narrator  Monday again.
   <branch ask>   eligible: old, new   -> old (@atLeast(3))
     @narrator  You remember.
-trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 (@weekday @14:1)
+trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 (@weekday @13:1)
 $ lute trace week.lute --state user.runs=3 --choose ask=old --expand
 trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   ## Morning
@@ -218,7 +218,7 @@ trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
     @narrator  Monday again.
   <branch ask>   eligible: old, new   -> old ((user.runs >= 3))
     @narrator  You remember.
-trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 ((run.day == 1 ? 'mon' : run.day == 2 ? 'tue' : 'other') @14:1)
+trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 ((run.day == 1 ? 'mon' : run.day == 2 ? 'tue' : 'other') @13:1)
 ```
 
 `--json` always carries the expansion in `id`, `guard` and a coverage entry's `label`, and adds the author's text — only where an expansion changed it — as `authoredId`, `authoredGuard` and `authoredLabel`.
@@ -238,9 +238,9 @@ trace: scenes/shed.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 1 decision; choices 1/2 (offer)
 ```
 
-### Following a taken `::next`
+### Following a taken `::jump`
 
-A `::next{to="<mark>"}` the walk takes jumps to its `::mark`, exactly as `lute run` and `lute play` jump (dsl 0.26.0 §7): the transcript shows `<next -> <mark>>` (JSON step `{"kind": "jump", "to": "<mark>"}`) and the walk goes on from the mark, so `trace complete` — and a test's `end: complete` — means the walk reached the end of the document. Before 0.26.0 the walk ended at a taken jump and still reported complete, so a test could pass on a transcript that play never shows. A vault whose door choice jumps past the guard:
+A `::jump{to="<label>"}` the walk takes jumps to its `::label{name="<label>"}`, exactly as `lute run` and `lute play` jump (dsl 0.26.0 §7): the transcript shows `<jump -> <label>>` (JSON step `{"kind": "jump", "to": "<label>"}`) and the walk goes on from the label, so `trace complete` — and a test's `end: complete` — means the walk reached the end of the document. Before 0.26.0 the walk ended at a taken jump and still reported complete, so a test could pass on a transcript that play never shows. A vault whose door choice jumps past the guard:
 
 ```console
 $ lute trace scenes/vault.lute --project . --choose enter=yes
@@ -248,9 +248,9 @@ trace: scenes/vault.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The door
     @narrator  The vault door stands open.
   <branch enter>   eligible: yes, no   -> yes
-    <next -> hall>
+    <jump -> hall>
   ## The hall
-    <mark>
+    <label>
     @narrator  The treasure hall.
     ::set  run.gold = 10
 trace complete: 1 decision; choices 1/2 (enter)
@@ -349,20 +349,20 @@ rules:
 @inspector: Everyone stays in this room.
 
 <branch id="ask">
-  <choice id="maid" label="Ask the maid first">
+  <choice id="maid" text="Ask the maid first">
     @maid: Miss Ann? She was at the harbour all evening.
     ::assert{ alibi(ann) }
   </choice>
-  <choice id="skip" label="Ask no one">
+  <choice id="skip" text="Ask no one">
     @inspector: No more questions.
   </choice>
 </branch>
 
 <branch id="verdict">
-  <choice id="ann" label="Name Ann" when="holds('culprit', ['ann'])">
+  <choice id="ann" text="Name Ann" when="holds('culprit', ['ann'])">
     @inspector: It was Ann. No one can place her anywhere else.
   </choice>
-  <choice id="wait" label="Keep looking">
+  <choice id="wait" text="Keep looking">
     @inspector: Then we start again.
   </choice>
 </branch>
@@ -433,10 +433,10 @@ rules:
 ## The station
 
 <branch id="arrest">
-  <choice id="now" label="Arrest Ann" when="holds('warrant', ['ann'])">
+  <choice id="now" text="Arrest Ann" when="holds('warrant', ['ann'])">
     @inspector: The warrant came through. Bring her in.
   </choice>
-  <choice id="later" label="Wait for the warrant">
+  <choice id="later" text="Wait for the warrant">
     @inspector: Not yet.
   </choice>
 </branch>
@@ -459,7 +459,7 @@ With `--state run.day=3` the rule concludes `warrant(ann)` and `now` is eligible
 ```console
 $ lute trace accuse.lute --choose ask=skip --choose verdict=ann --no-derive
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
-note: the schema declares seed facts (e.g. `suspect`) but under `derive: false` trace does not auto-load them (§3.1, the explicit-world model) — supply seeded relations explicitly via --fact
+note: the schema declares seed facts (e.g. `suspect`) but under `derive: false` trace does not auto-load them (the explicit-world model) — supply seeded relations explicitly via --fact
 note: derived relation `culprit` read under `derive: false`: its rules were not applied, so an unmocked `culprit(…)` is unknown — supply it via --fact, or drop `derive: false`
   ## The parlour
     @inspector  Everyone stays in this room.
@@ -481,14 +481,14 @@ Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-e
 ```console
 $ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choose look=nothing
 trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
-  ## Shot 1.
+  ## First light
   <branch look>   eligible: saw, nothing   -> nothing
     @narrator  Nobody answers.
-  <match holds('seenAfter', ['elias']) && !holds('fell', ['elias'])>   -> otherwise
+  <match>   -> otherwise
     ::assert  calm(maren)
     ✗ exclusive: calm(maren) and panicked(maren) both hold
-trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (holds('seenAfter', ['elias']) && !holds('fell', ['elias']) @21:1)
-scenes/dawn.lute:22:1: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold
+trace stopped at the `✗ exclusive` line above (exit 1); choices 1/2 (look), arms 1/2 (match @26:1)
+scenes/dawn.lute:31:5: error [E-FACT-EXCLUSIVE] this write makes exclusive relations hold together: calm(maren) and panicked(maren) both hold
 trace refused: scenes/dawn.lute — exclusive relations hold together
 ```
 

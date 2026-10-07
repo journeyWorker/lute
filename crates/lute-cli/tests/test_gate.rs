@@ -45,7 +45,7 @@ const DERIVED_MATCH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode:
      state:\n  run.met: { type: bool, default: true }\n\
      facts:\n  - \"friend(ana, bo)\"\n\
      rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n@narrator: before.\n\
-     <match on=\"run.met\">\n<when is=\"true\" test=\"holds('allied', ['ana', 'bo'])\">\n\
+     <match subject=\"run.met\">\n<when is=\"true\" test=\"holds('allied', ['ana', 'bo'])\">\n\
      @narrator: allied.\n</when>\n\
      <otherwise>\n@narrator: apart.\n</otherwise>\n</match>\n@narrator: after.\n";
 
@@ -231,9 +231,9 @@ fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
         &dir,
         "s.lute",
         "---\nkind: scene\nid: kitchen\n---\n\n## K\n\n<hub id=\"askCook\">\n\
-         <choice id=\"oven\" label=\"Oven\" once>\n@narrator: Seed cake.\n</choice>\n\
-         <choice id=\"scullery\" label=\"Scullery\" once>\n@narrator: Spoons.\n</choice>\n\
-         <choice id=\"leave\" label=\"Go\" exit>\n@narrator: Mind the step.\n</choice>\n\
+         <choice id=\"oven\" text=\"Oven\" once>\n@narrator: Seed cake.\n</choice>\n\
+         <choice id=\"scullery\" text=\"Scullery\" once>\n@narrator: Spoons.\n</choice>\n\
+         <choice id=\"leave\" text=\"Go\" exit>\n@narrator: Mind the step.\n</choice>\n\
          </hub>\n\n@narrator: Upstairs.\n",
     );
     write_at(
@@ -419,8 +419,8 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
          relations:\n  friend: { args: [npc, npc], tier: run }\n  allied: { args: [npc, npc], derive: true }\n\
          facts:\n  - \"friend(ana, bo)\"\n\
          rules:\n  - \"allied(A, B) :- friend(A, B)\"\n---\n\n## One\n\n\
-         <branch id=\"ask\">\n<choice id=\"trust\" label=\"Trust\" when=\"holds('allied', ['ana', 'bo'])\">\n\
-         @narrator: trusted.\n</choice>\n<choice id=\"leave\" label=\"Leave\">\n\
+         <branch id=\"ask\">\n<choice id=\"trust\" text=\"Trust\" when=\"holds('allied', ['ana', 'bo'])\">\n\
+         @narrator: trusted.\n</choice>\n<choice id=\"leave\" text=\"Leave\">\n\
          @narrator: left.\n</choice>\n</branch>\n",
     );
     let file = dir.join("s.lute");

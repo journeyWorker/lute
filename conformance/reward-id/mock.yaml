@@ -1,0 +1,4 @@
+# The objective completes, so the tagged objective reward and both quest
+# rewards (one tagged `xp`, one untagged) are granted.
+state:
+  run.atGoal: true

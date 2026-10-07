@@ -9,12 +9,12 @@
 //!    the code the README's table pins to that transcript's `exit`. This is
 //!    the contract a third-party engine is measured against.
 //! 2. **Live stamps** — the recorded `artifact.json` carries TODAY's
-//!    `irVersion` / `lute` / `capabilityVersion`, and the fixture's own
+//!    `irVersion` / `lute` / `capabilitySnapshot`, and the fixture's own
 //!    `source.lute` carries today's `luteVersion:`, not whichever ones were
 //!    current when it was last recorded. Invariant 1 alone cannot see this: a
 //!    recorded artifact replayed against a recorded transcript stays green
 //!    while the two are stale *together*. That is exactly how a
-//!    `capabilityVersion` drift went unnoticed for two releases — `f876a2f`
+//!    `capabilitySnapshot` drift went unnoticed for two releases — `f876a2f`
 //!    re-hashed the core capability snapshot and updated the insta snapshots,
 //!    but never propagated to these fixtures — and how five fixture sources
 //!    stayed stamped `luteVersion: "0.10.0"` six releases on, since the
@@ -211,7 +211,7 @@ fn every_fixture_replays_byte_identically() {
 /// the toolchain emits TODAY.
 ///
 /// `irVersion` and `lute` are pinned to the live constants directly.
-/// `capabilityVersion` is a content hash of the resolved capability snapshot,
+/// `capabilitySnapshot` is a content hash of the resolved capability snapshot,
 /// so no constant exists to compare against — the live value is obtained by
 /// recompiling the fixture's own `source.lute` through the same resolution
 /// `lute compile` uses, which is step one of the README's regenerate recipe.
@@ -310,14 +310,14 @@ fn every_fixture_carries_live_stamps() {
 
         let fresh = json_at(&fresh_path);
         let (want, got) = (
-            fresh["capabilityVersion"].as_str().unwrap_or("<missing>"),
-            recorded["capabilityVersion"]
+            fresh["capabilitySnapshot"].as_str().unwrap_or("<missing>"),
+            recorded["capabilitySnapshot"]
                 .as_str()
                 .unwrap_or("<missing>"),
         );
         if got != want {
             failures.push(format!(
-                "{name}: artifact.json `capabilityVersion` is {got} but \
+                "{name}: artifact.json `capabilitySnapshot` is {got} but \
                  recompiling source.lute today yields {want} — the capability \
                  surface moved and this fixture was left behind; re-record it \
                  per conformance/README.md",
@@ -413,6 +413,70 @@ fn invalid_engine_matrices_are_rejected() {
         assert_eq!(out.status.code(), Some(2), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
         assert!(String::from_utf8_lossy(&out.stderr).contains(diagnostic), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
     }
+}
+
+/// Checker-diagnostic fixtures (dsl 0.37.0 §8): `conformance/diagnostics/*/`
+/// pins the exact `--json` diagnostics an invalid source produces, byte for
+/// byte, with exit 1. The command follows the fixture's files, as in
+/// `conformance/regenerate.sh`: a `lute.project.yaml` selects `check-project
+/// .`; a `loc/` translation set selects `compile --locales locales.json`;
+/// otherwise `check source.lute`. The command runs from the fixture
+/// directory and the directory's absolute prefix is removed, so recorded
+/// paths are fixture-relative.
+#[test]
+fn every_diagnostic_fixture_reproduces() {
+    let root = corpus_dir().join("diagnostics");
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", root.display()))
+        .map(|entry| entry.expect("diagnostics dir entry").path())
+        .filter(|path| path.join("expected.json").is_file())
+        .collect();
+    dirs.sort();
+    assert!(!dirs.is_empty(), "no diagnostic fixtures under {}", root.display());
+
+    let mut failures: Vec<String> = Vec::new();
+    for dir in &dirs {
+        let name = dir.file_name().unwrap().to_string_lossy().into_owned();
+        let args: &[&str] = if dir.join("lute.project.yaml").is_file() {
+            &["check-project", ".", "--json"]
+        } else if dir.join("loc").is_dir() {
+            &["compile", "source.lute", "--locales", "locales.json", "--json"]
+        } else {
+            &["check", "source.lute", "--json"]
+        };
+        let out = Command::new(BIN)
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap_or_else(|e| panic!("diagnostics/{name}: cannot spawn {BIN}: {e}"));
+        if out.status.code() != Some(1) {
+            failures.push(format!(
+                "diagnostics/{name}: exit {:?}, want 1\n  stderr: {}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).trim(),
+            ));
+            continue;
+        }
+        let prefix = format!("{}/", dir.canonicalize().unwrap().display());
+        let got = format!(
+            "{}\n",
+            String::from_utf8_lossy(&out.stdout).trim_end().replace(&prefix, "")
+        );
+        let want = read(&dir.join("expected.json"));
+        if got != want {
+            failures.push(format!(
+                "diagnostics/{name}: output is NOT byte-identical to expected.json\n{}",
+                first_difference(&got, &want),
+            ));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of {} diagnostic fixture(s) failed:\n\n{}",
+        failures.len(),
+        dirs.len(),
+        failures.join("\n\n"),
+    );
 }
 
 /// A standalone compile must carry the same expanded ledger and semantic

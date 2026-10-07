@@ -8,7 +8,7 @@ params:
 ## Lamp
 
 @narrator: {{@keeper}} lights the lamp.
-<match on="@glass">
+<match subject="@glass">
   <when is="steady">
     @narrator: Steady.
   </when>

@@ -35,15 +35,15 @@ title: The Earth Gym — Team Eclipse's last floor
 // ── Admin Selene: two phases ────────────────────────────────────────────────
 
 <beat id="earthGymAdminSelene" on="trainerSpotted" target="trainer.earthGymAdminSelene" title="Admin Selene" once="false" when="!holds('defeated', ['earthGymAdminSelene']) && !holds('defeated', ['vex'])">
-  ::auto{character="earthGymAdminSelene" anchor="center" action="enter"}
+  ::actor{character="earthGymAdminSelene" anchor="center" action="enter"}
   @earthGymAdminSelene{code="0010" emotion="smug"}: Admin Selene, Team Eclipse. I run the Director's calendar, and you are not on it.
-  ::music{action="change" mood="battle" volume="up"}
+  ::music{playback="change" mood="battle" volume="up"}
   ::battle{foe="earthGymAdminSelene" kind="boss" team="first" resultKey="fight"}
-  <match on="scene.battle.fight.won">
+  <match subject="scene.battle.fight.won">
     <when is="true">
       @earthGymAdminSelene{code="0020" emotion="angry"}: You think that was my team? That was my warm-up. Rhinotitan! Out!
       ::battle{foe="earthGymAdminSelene" kind="boss" team="second" resultKey="fight"}
-      <match on="scene.battle.fight.won">
+      <match subject="scene.battle.fight.won">
         <when is="true">
           @earthGymAdminSelene{code="0030"}: ...Fine. The door is yours. He is expecting you. He has been expecting you since Moonstone Cave.
           ::assert{defeated(earthGymAdminSelene)}

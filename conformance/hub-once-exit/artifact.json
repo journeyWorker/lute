@@ -1,8 +1,8 @@
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -45,13 +45,14 @@
   "commands": [
     {
       "kind": "hub",
-      "addr": "001-0100",
+      "family": "control",
+      "position": "001-0100",
       "id": "talk",
-      "recordKey": "scene.choices.talk",
+      "selectionKey": "scene.choices.talk",
       "options": [
         {
           "id": "probe",
-          "label": "Probe once",
+          "text": "Probe once",
           "lineId": "hero.s01ep01.talk.probe",
           "once": true,
           "exit": false,
@@ -59,7 +60,7 @@
         },
         {
           "id": "leave",
-          "label": "End it",
+          "text": "End it",
           "lineId": "hero.s01ep01.talk.leave",
           "once": false,
           "exit": true,
@@ -70,7 +71,8 @@
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "dialogue",
       "speaker": "hero",
       "text": "Tell me more.",
@@ -79,7 +81,8 @@
     },
     {
       "kind": "set",
-      "addr": "001-0300",
+      "family": "state",
+      "position": "001-0300",
       "path": "run.probes",
       "op": "+=",
       "value": {
@@ -91,7 +94,8 @@
     },
     {
       "kind": "line",
-      "addr": "001-0400",
+      "family": "content",
+      "position": "001-0400",
       "role": "dialogue",
       "speaker": "hero",
       "text": "We're done here.",
@@ -100,21 +104,24 @@
     },
     {
       "kind": "jump",
-      "addr": "001-0500",
+      "family": "control",
+      "position": "001-0500",
       "target": "001-0600"
     },
     {
       "kind": "line",
-      "addr": "001-0600",
+      "family": "content",
+      "position": "001-0600",
       "role": "narration",
       "speaker": "narrator",
       "text": "The interview is over.",
-      "lineId": "hero.s01ep01.narrator_0010"
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
     }
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
+      "section": 1,
       "heading": "The Interrogation"
     }
   ],

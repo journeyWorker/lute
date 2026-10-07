@@ -13,7 +13,7 @@ fn body(nodes_src: &str) -> Vec<Node> {
             .all(|d| d.severity != lute_core_span::Severity::Error),
         "unexpected: {diags:?}"
     );
-    doc.shots.into_iter().next().unwrap().body
+    doc.sections.into_iter().next().unwrap().body
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn malformed_payload_emits_datalog_parse_and_sentinel() {
         diags.iter().any(|d| d.code == "E-DATALOG-PARSE"),
         "{diags:?}"
     );
-    let Node::Assert(a) = &doc.shots[0].body[0] else {
+    let Node::Assert(a) = &doc.sections[0].body[0] else {
         panic!()
     };
     assert!(a.pattern.relation.is_empty(), "sentinel");

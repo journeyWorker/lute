@@ -1383,8 +1383,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         };
         let (_, doc) = &docs.documents()[idx];
         let folded = &foldeds[idx];
-        let all_nodes: Vec<lute_syntax::ast::Node> = doc
-            .shots
+        let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
             .iter()
             .flat_map(|s| s.body.iter().cloned())
             .collect();
@@ -1916,9 +1915,9 @@ fn single_file_maybe_unset_points_at_check_project_for_ordered_scenes() {
     assert_eq!(msgs.len(), 1, "{msgs:?}");
     assert!(!msgs[0].contains(hint), "no `after:`/`on:`: {}", msgs[0]);
     // Set here on one route only: still maybe-unset, but a local matter.
-    let branch = "<branch id=\"b\">\n<choice id=\"p\" label=\"Pass\">\n\
+    let branch = "<branch id=\"b\">\n<choice id=\"p\" text=\"Pass\">\n\
                   ::set{run.exam = 'passed'}\n</choice>\n\
-                  <choice id=\"q\" label=\"Quit\">\n@narrator: no.\n</choice>\n</branch>\n";
+                  <choice id=\"q\" text=\"Quit\">\n@narrator: no.\n</choice>\n</branch>\n";
     let msgs = maybe_unset(&scene("after: \"visited('early')\"\n", branch));
     assert_eq!(msgs.len(), 1, "{msgs:?}");
     assert!(!msgs[0].contains(hint), "written in this file: {}", msgs[0]);
@@ -2039,8 +2038,7 @@ fn parsed_scene(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
     let input = input_for(text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let nodes: Vec<lute_syntax::ast::Node> = doc
-        .shots
+    let nodes: Vec<lute_syntax::ast::Node> = doc.sections
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
@@ -2061,12 +2059,12 @@ fn parsed_quest(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
 
 #[test]
 fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
-    // Each fixture plants exactly ONE domain-exhaustive `<match on="run.x">`
+    // Each fixture plants exactly ONE domain-exhaustive `<match subject="run.x">`
     // (finite enum + `<otherwise>`) at increasing nesting depth -- proving
     // the span-collector recurses through every construct `check.rs`'s own
     // (former) `Walker::walk` traversal did, never a shallower one that
     // would silently reintroduce the soundness bug for a nested case.
-    let m = "<match on=\"run.x\">\n<when test=\"$ == 'a'\">\n@narrator: a\n</when>\n\
+    let m = "<match subject=\"run.x\">\n<when test=\"$ == 'a'\">\n@narrator: a\n</when>\n\
              <otherwise>\n@narrator: b\n</otherwise>\n</match>";
 
     let scene_of = |body: String| -> String {
@@ -2084,10 +2082,10 @@ fn exhaustive_match_subject_spans_recurses_into_nested_constructs() {
 
     let top_level = scene_of(m.to_string());
     let in_branch = scene_of(format!(
-        "<branch id=\"br\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</branch>"
+        "<branch id=\"br\">\n<choice id=\"c\" text=\"go\">\n{m}\n</choice>\n</branch>"
     ));
     let in_hub = scene_of(format!(
-        "<hub id=\"h\">\n<choice id=\"c\" label=\"go\">\n{m}\n</choice>\n</hub>"
+        "<hub id=\"h\">\n<choice id=\"c\" text=\"go\">\n{m}\n</choice>\n</hub>"
     ));
     let in_on = quest_of(format!("<on event=\"questComplete\">\n{m}\n</on>"));
     let in_objective = quest_of(format!(
@@ -2136,7 +2134,7 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean()
     // unconditional `<branch>` choices via `into="run.pick"` (0.6.0 §2 record sugar)
     // (so `intersect_all` does NOT prove it guaranteed -- the OTHER choice
     // never writes it), then reads it as the subject of a
-    // domain-exhaustive `<match on="run.pick">` with `<otherwise>`
+    // domain-exhaustive `<match subject="run.pick">` with `<otherwise>`
     // covering the unset case. `run.pick` has no schema default and is not
     // locally proven -- yet `check()`'s own T4.4/T4.6 exemption
     // (`suppress_exhaustive_subject_reads`, now sourced from
@@ -2146,14 +2144,14 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean()
     let x6 = "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  \
               run.pick: { type: { enum: [warm, cold] } }\n---\n## Shot 1.\n\
               <branch id=\"br\">\n\
-              <choice id=\"a\" label=\"warm\" into=\"run.pick\" value=\"warm\">\n\
+              <choice id=\"a\" text=\"warm\" into=\"run.pick\" value=\"warm\">\n\
               @narrator: chose warm\n\
               </choice>\n\
-              <choice id=\"b\" label=\"skip\">\n\
+              <choice id=\"b\" text=\"skip\">\n\
               @narrator: skipped\n\
               </choice>\n\
               </branch>\n\
-              <match on=\"run.pick\">\n\
+              <match subject=\"run.pick\">\n\
               <when test=\"$ == 'warm'\">\n\
               @narrator: warm result\n\
               </when>\n\

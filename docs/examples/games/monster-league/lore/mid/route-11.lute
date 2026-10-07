@@ -10,7 +10,7 @@ title: Route 11, the Fen Walk (Wardenmere to Fairhaven)
 
 <beat id="arrive" on="enterRoute" target="route.r11" title="The Fen Walk" priority="10" once="run">
   ::bg{location="route-11" time="day"}
-  ::music{action="change" mood="calm" volume="normal"}
+  ::music{playback="change" mood="calm" volume="normal"}
   @narrator{code="0010"}: Boardwalks over black water, reeds higher than your head, and the smell of peat. To the north, the Wildmoor Preserve fence; to the south, the lights of Fairhaven.
   @narrator{code="0020"}: Every few planks, a fisherman. None of them have caught anything. All of them are happy about it.
 </beat>

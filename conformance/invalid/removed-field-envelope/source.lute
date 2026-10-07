@@ -1,0 +1,18 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+enums:
+  anchor:
+    members: [center]
+    default: center
+title: Removed envelope field
+---
+
+## Stage
+
+::actor{character="hero"}
+::camera{focus="hero" duration="0.5" wait="true"}
+@hero: Hello.

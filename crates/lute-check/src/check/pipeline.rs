@@ -135,7 +135,7 @@ const STRUCTURAL_CODES: &[&str] = &[
     // dsl 0.5.0 §2.1: split off E-UNCLASSIFIED / E-UNCLOSED-TAG — each
     // corrupts the node stream the SAME way its parent code did (a dropped
     // line, or a tag whose attrs/close never resolve as intended).
-    "E-CONTENT-OUTSIDE-SHOT",
+    "E-CONTENT-OUTSIDE-SECTION",
     "E-CONTENT-LINE-BRACKET",
     "E-TAG-NOT-ONE-LINE",
     // dsl §2.3: an inline `<tag …>body</tag>` body is DROPPED from the node
@@ -382,7 +382,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 cast: &own_cast,
                 own: component_own_slots(&doc, &input.snapshot, &input.components),
             };
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 walk_component_body(
                     &shot.body,
                     &input.snapshot,
@@ -418,9 +418,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                     .diags
                     .extend(check_beat_when(spent_by, &arena, &base_ctx, &scope));
             }
-            let shots: Vec<&[Node]> = doc.shots.iter().map(|s| s.body.as_slice()).collect();
+            let shots: Vec<&[Node]> = doc.sections.iter().map(|s| s.body.as_slice()).collect();
             walker.assume = walker.assumption(beat_when.as_ref(), &shots, &env.state);
-            for shot in &doc.shots {
+            for shot in &doc.sections {
                 walker.walk(&shot.body, &base_ctx);
             }
         }
@@ -585,8 +585,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut exhaustive_subject_spans: Vec<Span> = Vec::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
-            let all_nodes: Vec<Node> = doc
-                .shots
+            let all_nodes: Vec<Node> = doc.sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
@@ -690,7 +689,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let line_code_diags =
         crate::match_check::check_line_codes_with_policy(&doc, input.snapshot.identity_require_stable);
     let mut instance_diags = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         super::use_site::check_instance_scope(&shot.body, &mut instance_diags);
     }
     for quest in &doc.quests {
@@ -732,7 +731,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut inject_state = StageState::default();
     let mut injections = Vec::new();
     let mut using = Vec::new();
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         fold_injections(
             &shot.body,
             &mut inject_state,
@@ -761,8 +760,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
     // identically.
     let commands_preview: Vec<String> = match folded.doc_kind {
-        crate::meta::DocKind::Scene => doc
-            .shots
+        crate::meta::DocKind::Scene => doc.sections
             .iter()
             .flat_map(|s| s.body.iter().map(node_summary))
             .collect(),
@@ -858,6 +856,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &folded.typed.speaker_params,
     ));
     diags.extend(state_merge_diags);
+    // dsl 0.37.0 §3.4: who may speak `mono` — this document's lines, then
+    // every component line each `::use` site brings in.
+    diags.extend(super::mono::check_mono(&doc, &folded.typed, &input.components));
+    diags.extend(super::section_ids::check_section_ids(&doc));
+    diags.extend(super::author_case::check_author_case(&doc));
     diags.extend(std::mem::take(&mut walker.diags));
     diags.extend(defassign_diags);
     diags.extend(line_code_diags);
@@ -906,8 +909,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (E-ATTR-DEF-DYNAMIC) and a `{{@def}}` must inline into one standalone
     // expression (E-INTERP-DEF) — the artifact has no defs table.
     diags.extend(crate::def_inline::check_def_inlining(&doc, &folded, input));
-    // dsl 0.12.0: forward-jump labels — E-MARK-DUP / E-NEXT-UNDEFINED /
-    // E-NEXT-BACKWARD, a whole-document pass (the label namespace spans
+    // dsl 0.12.0: forward-jump labels — E-LABEL-DUP / E-JUMP-UNDEFINED /
+    // E-JUMP-BACKWARD, a whole-document pass (the label namespace spans
     // every shot/quest, unlike reachability's per-body scope above).
     diags.extend(crate::next_labels::check_next_labels(&doc));
     // dsl 0.18.0 §3: W-WHEN-TEST-LITERAL — a `<when test>` that only compares
@@ -989,6 +992,19 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         });
     }
 
+    // dsl 0.37.0 §2.1: a `snake_case` key is `E-AUTHOR-CASE` (naming its
+    // lowerCamelCase spelling), the one report at its position.
+    let cased: std::collections::BTreeSet<usize> = diags
+        .iter()
+        .filter(|d| d.code == super::author_case::E_AUTHOR_CASE)
+        .map(|d| d.span.byte_start)
+        .collect();
+    if !cased.is_empty() {
+        diags.retain(|d| {
+            !(matches!(d.code.as_str(), "E-UNKNOWN-ATTR" | "E-META-UNKNOWN-KEY")
+                && cased.contains(&d.span.byte_start))
+        });
+    }
     // dsl 0.26.0 §4: one of each identical report inside a guarded `::use`
     // (its guard rides every write it splices into the host).
     let diags = dedup_guarded_use_reports(&doc, diags);
@@ -1112,7 +1128,7 @@ fn node_summary(node: &Node) -> String {
         Node::Directive(d) => format!("::{}", d.tag),
         Node::Set(s) => format!("::set{{{} {} …}}", s.path, s.op),
         Node::Branch(b) => format!("<branch id=\"{}\"> ({} choices)", b.id, b.choices.len()),
-        Node::Match(m) => format!("<match on=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
+        Node::Match(m) => format!("<match subject=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
         Node::On(o) => format!("<on event=\"{}\">", o.event),

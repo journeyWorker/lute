@@ -102,9 +102,9 @@ fn project(tag: &str, extra_rules: &str) -> PathBuf {
         "---\nkind: scene\nid: door\non: gate\nwhen: \"holds('open', ['earth'])\"\n---\n\n## Door\n\n\
          @narrator: The earth door opens.\n\
          <branch id=\"who\" prompt=\"Who?\">\n  \
-         <choice id=\"ann\" label=\"Ann\" when=\"holds('traveled', ['ann'])\">\n    @narrator: Ann.\n  </choice>\n  \
-         <choice id=\"bob\" label=\"Bob\" when=\"holds('traveled', ['bob'])\">\n    @narrator: Bob.\n  </choice>\n  \
-         <choice id=\"nobody\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
+         <choice id=\"ann\" text=\"Ann\" when=\"holds('traveled', ['ann'])\">\n    @narrator: Ann.\n  </choice>\n  \
+         <choice id=\"bob\" text=\"Bob\" when=\"holds('traveled', ['bob'])\">\n    @narrator: Bob.\n  </choice>\n  \
+         <choice id=\"nobody\" text=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
          </branch>\n",
     );
     write(

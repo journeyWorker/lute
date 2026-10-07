@@ -393,6 +393,24 @@ pub fn parse_meta_kind_with_defaults(
     typed.episode = get_i64(map, "episode");
     typed.episode_id = get_str(map, "episodeId");
     typed.pov = get_str(map, "pov");
+    // dsl 0.37.0 §3.4: `monoSpeakers:` — speaker ids beside the effective
+    // POV that may speak `mono`. A list of strings; anything else is
+    // `E-META-VALUE` and lifts nothing.
+    if let Some(value) = map.get(yaml_key("monoSpeakers")) {
+        let ids: Option<Vec<String>> = value
+            .as_sequence()
+            .and_then(|items| items.iter().map(|i| i.as_str().map(str::to_string)).collect());
+        match ids {
+            Some(ids) => typed.mono_speakers = ids,
+            None => diags.push(err_at(
+                "E-META-VALUE",
+                "`monoSpeakers:` must be a list of speaker ids, e.g. `monoSpeakers: [mira]` — \
+                 the speakers beside the POV who may speak `mono` (dsl 0.37.0 §3.4)"
+                    .to_string(),
+                meta_key_span(meta, "monoSpeakers"),
+            )),
+        }
+    }
     typed.lute_version = get_str(map, "luteVersion");
     typed.after = get_str(map, "after");
 

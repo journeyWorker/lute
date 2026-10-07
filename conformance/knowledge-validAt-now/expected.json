@@ -1,46 +1,46 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "fact": "seen(mira, map)",
-      "kind": "assert"
+      "kind": "assert",
+      "position": "001-0100"
     },
     {
-      "addr": "001-0200",
       "kind": "match",
+      "position": "001-0200",
       "result": "arm 1"
     },
     {
-      "addr": "001-0300",
       "kind": "line",
+      "position": "001-0300",
       "speaker": "narrator",
       "text": "holds"
     },
     {
-      "addr": "001-0600",
       "kind": "match",
+      "position": "001-0600",
       "result": "arm 1"
     },
     {
-      "addr": "001-0700",
       "kind": "line",
+      "position": "001-0700",
       "speaker": "narrator",
       "text": "count"
     },
     {
-      "addr": "001-1000",
       "kind": "match",
+      "position": "001-1000",
       "result": "arm 1"
     },
     {
-      "addr": "001-1100",
       "kind": "line",
+      "position": "001-1100",
       "speaker": "narrator",
       "text": "distinct"
     },
     {
-      "addr": "001-1400",
       "kind": "match",
+      "position": "001-1400",
       "result": "otherwise"
     }
   ],
@@ -49,7 +49,7 @@
     "seen(jon, key)",
     "seen(mira, map)"
   ],
-  "irVersion": "0.36",
+  "irVersion": "0.37",
   "kind": "scene",
   "quests": {},
   "state": {}

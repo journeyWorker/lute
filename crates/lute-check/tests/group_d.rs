@@ -26,9 +26,9 @@ fn codes(text: &str) -> Vec<String> {
 fn c5_nested_match_on_dollar_is_error() {
     let t = format!(
         "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
-         <match on=\"scene.g\">\n\
+         <match subject=\"scene.g\">\n\
          <when test=\"$ == true\">\n\
-           <match on=\"$\">\n\
+           <match subject=\"$\">\n\
            <otherwise>@narrator: a\n</otherwise>\n\
            </match>\n\
          </when>\n\
@@ -37,7 +37,7 @@ fn c5_nested_match_on_dollar_is_error() {
     );
     assert!(
         codes(&t).contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()),
-        "nested `<match on=\"$\">` must report E-DOLLAR-OUTSIDE-MATCH (dsl §8.2); got {:?}",
+        "nested `<match subject=\"$\">` must report E-DOLLAR-OUTSIDE-MATCH (dsl §8.2); got {:?}",
         codes(&t)
     );
 }
@@ -48,7 +48,7 @@ fn c4_disjunctive_guard_does_not_prove_read() {
     // read of a non-defaulted run tier is E-MAYBE-UNSET (dsl §9.4).
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: int }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
-         <match on=\"scene.y\">\n\
+         <match subject=\"scene.y\">\n\
          <when test=\"has(run.x) || run.x > 0\">@narrator: a\n</when>\
          <otherwise>@narrator: b\n</otherwise>\n\
          </match>\n"
@@ -65,7 +65,7 @@ fn c4_conjunctive_guard_still_proves_read() {
     // Regression guard: a top-level / conjunctive `has` MUST still prove.
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: int }}\n  scene.y: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
-         <match on=\"scene.y\">\n\
+         <match subject=\"scene.y\">\n\
          <when test=\"has(run.x) && run.x > 0\">@narrator: a\n</when>\
          <otherwise>@narrator: b\n</otherwise>\n\
          </match>\n"
@@ -83,7 +83,7 @@ fn c1_scene_bool_unwritten_subject_is_maybe_unset() {
     // The unset subject read must NOT be suppressed (dsl §9.4).
     let t = format!(
         "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
-         <match on=\"scene.flag\">\n\
+         <match subject=\"scene.flag\">\n\
          <when test=\"$ == true\">@narrator: a\n</when>\n\
          <when test=\"$ == false\">@narrator: b\n</when>\n\
          </match>\n"
@@ -102,7 +102,7 @@ fn c1b_scene_bool_written_subject_is_clean() {
     let t = format!(
         "{HDR}state:\n  scene.flag: {{ type: bool }}\n---\n## Shot 1.\n\
          ::set{{scene.flag = true}}\n\
-         <match on=\"scene.flag\">\n\
+         <match subject=\"scene.flag\">\n\
          <when test=\"$ == true\">@narrator: a\n</when>\n\
          <when test=\"$ == false\">@narrator: b\n</when>\n\
          </match>\n"
@@ -124,7 +124,7 @@ fn c2_exhaustive_match_without_otherwise_folds_assignment() {
     // assign scene.x; the read AFTER the match must be proven (no E-MAYBE-UNSET).
     let t = format!(
         "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: int }}\n---\n## Shot 1.\n\
-         <match on=\"scene.g\">\n\
+         <match subject=\"scene.g\">\n\
          <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
          <when test=\"$ == false\">\n::set{{scene.x = 2}}\n</when>\n\
          </match>\n\
@@ -143,7 +143,7 @@ fn c2b_nonexhaustive_match_does_not_fold_assignment() {
     // NOT fold — the read after is genuinely maybe-unset.
     let t = format!(
         "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n  scene.x: {{ type: int }}\n---\n## Shot 1.\n\
-         <match on=\"scene.g\">\n\
+         <match subject=\"scene.g\">\n\
          <when test=\"$ == true\">\n::set{{scene.x = 1}}\n</when>\n\
          </match>\n\
          ::set{{scene.x += 5}}\n"

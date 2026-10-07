@@ -1,0 +1,32 @@
+[
+  {
+    "code": "0010",
+    "file": "./source.lute",
+    "kind": "line",
+    "line": 13,
+    "lineId": "hero.s01ep01.hero_0010",
+    "source": null,
+    "speaker": "hero",
+    "text": ":speed[やあ :emphasis[大きな :whisper[世界]] {{run.guest}}]{rate=1.25}:pause{s=0.5}!"
+  },
+  {
+    "code": "0020",
+    "file": "./source.lute",
+    "kind": "line",
+    "line": 14,
+    "lineId": "hero.s01ep01.hero_0020",
+    "source": null,
+    "speaker": "hero",
+    "text": "ふつうの \\: 行と \\[括弧\\]。"
+  },
+  {
+    "code": "0030",
+    "file": "./source.lute",
+    "kind": "line",
+    "line": 15,
+    "lineId": "hero.s01ep01.hero_0030",
+    "source": null,
+    "speaker": "hero",
+    "text": ":speed[:speed[d]{rate=2}]{rate=0.5} c :emphasis[b]:emphasis[a]"
+  }
+]

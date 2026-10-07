@@ -17,17 +17,17 @@ after: 'visited("haven.s01ep03")'
 @toma{code="0030" emotion="frayed" os when="holds('awake', ['toma'])"}: Don't put a hand on that ring. It'll take the arm and thank you for it.
 @narrator{code="0040" when="!holds('awake', ['toma'])"}: There was nobody down here to tell you which of the four handles was the one.
 /*
-The subject is a dummy. A relation may not be a `<match on>` subject
+The subject is a dummy. A relation may not be a `<match subject>` subject
 (E-MATCH-RELATION-SUBJECT) but IS admitted in a `<when test>`, so the only
 way to gate a BLOCK on `awake(toma)` is to open the match on something the
 guard never reads. See T7 in the drive-test findings log.
 */
-<match on="true">
+<match subject="true">
   <when test="holds('awake', ['toma'])">
-    ::auto{character="toma" anchor="port" action="brace"}
+    ::actor{character="toma" anchor="port" action="brace"}
     @toma{code="0050" emotion="clipped"}: Shim's behind you. The steel one. Composite's for people who enjoy fires.
     @toma{code="0060" emotion="level"}: Quarter turn. Stop when it stops arguing with you.
-    ::auto{character="toma" action="seal"}
+    ::actor{character="toma" action="seal"}
     @toma{code="0070" emotion="frayed"}: That's a seat. That's a real seat — it'll let go clean when the time comes.
     @toma{code="0080" emotion="hollowed"}: Twelve years I kept this ship's joints honest and it's shedding me a module at a time.
     @purser{code="0090" emotion="level" os}: Coupling five-six is within tolerance. Schedule unchanged.

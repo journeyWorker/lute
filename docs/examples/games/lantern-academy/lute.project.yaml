@@ -18,7 +18,8 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.36.6"
+  pov: you
+  luteVersion: "0.37.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   # every quest is a term quest unless it says tier="user"
   questTier: run

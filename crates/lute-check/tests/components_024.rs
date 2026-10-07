@@ -213,7 +213,7 @@ fn an_effects_guard_still_may_not_read_ambient_state() {
 }
 
 const REACTION: &str = "---\ncomponent: reaction\neffects: true\nparams:\n  who: speaker\n---\n\
-## Scene 1.\n@narrator: {{@who}} approves.\n<match on=\"@who\">\n<when is=\"isolde\">\n::set{run.approval.isolde += 1}\n</when>\n<otherwise>\n@narrator: Nobody minds.\n</otherwise>\n</match>\n";
+## Scene 1.\n@narrator: {{@who}} approves.\n<match subject=\"@who\">\n<when is=\"isolde\">\n::set{run.approval.isolde += 1}\n</when>\n<otherwise>\n@narrator: Nobody minds.\n</otherwise>\n</match>\n";
 
 const PARTY: &[(&str, &str)] = &[("isolde", "Isolde Vane"), ("corvin", "Corvin")];
 
@@ -248,7 +248,7 @@ fn speaker_arg_is_any_identifier_without_a_cast_but_never_a_def() {
 #[test]
 fn speaker_match_dispatches_over_the_cast() {
     // Every cast id and `narrator` covered without `<otherwise>`: exhaustive.
-    let comp = "---\ncomponent: reaction\nparams:\n  who: speaker\n---\n## Scene 1.\n<match on=\"@who\">\n<when is=\"isolde\">\n@narrator: A.\n</when>\n<when is=\"corvin|narrator\">\n@narrator: B.\n</when>\n</match>\n";
+    let comp = "---\ncomponent: reaction\nparams:\n  who: speaker\n---\n## Scene 1.\n<match subject=\"@who\">\n<when is=\"isolde\">\n@narrator: A.\n</when>\n<when is=\"corvin|narrator\">\n@narrator: B.\n</when>\n</match>\n";
     let s = scene("", "::use{component=\"reaction\" who=\"corvin\"}");
     let ds = run(comp, &s, PARTY);
     assert!(!ds.iter().any(|d| d.code.starts_with("E-")), "{ds:#?}");

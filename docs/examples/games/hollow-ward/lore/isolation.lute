@@ -21,7 +21,7 @@ components: [../components/soothe.component.lute]
 <beat id="breathing" on="lightsFlicker" for="kind:patient" once="false" after="visited('room.isolation')" when="holds('restless', [occasion.target])">
   @narrator{code="0010"}: In the dark, {{occasion.target}} is sitting up in bed.
   /* the family is written member by member: one ::set per patient */
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="edith">
       ::set{run.unrest.edith += 1}
     </when>
@@ -41,7 +41,7 @@ components: [../components/soothe.component.lute]
 </beat>
 
 <beat id="back" on="lightsFlicker" priority="-10" once="false" after="visited('room.isolation')">
-  <match on="run.hush">
+  <match subject="run.hush">
     <when is="3..">
       @narrator{code="0010"}: The lights come back on three quiet beds.
     </when>

@@ -34,7 +34,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
     };
     let mut state = StageState::default();
     let mut shots = Vec::new();
-    for (i, shot) in doc.shots.iter().enumerate() {
+    for (i, shot) in doc.sections.iter().enumerate() {
         let mut em = Emitter::default();
         state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
         // dsl 0.6.0 §3.2: positional 1-based shot number.
@@ -65,10 +65,10 @@ episode: 2
 @fixer{code="0050"}: Marina. Your number.
 @fixer: And again.
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @marina{code="0010" emotion="surprised"}: Oh!
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
@@ -82,7 +82,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
         .iter()
         .map(|c| {
             let mut c = c.clone();
-            c.addr_mut().clone()
+            c.position_mut().clone()
         })
         .collect();
     // Shot 1: two lines. The second shot's `## Shot 4.` heading is now opaque
@@ -111,7 +111,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
     };
     let last_addr = {
         let mut last = cmds.last().unwrap().clone();
-        last.addr_mut().clone()
+        last.position_mut().clone()
     };
     let expected_past_end = format!("002-{:04}", last_addr[4..].parse::<i64>().unwrap() + 100);
     assert_eq!(choice.converge, expected_past_end);
@@ -132,7 +132,7 @@ fn line_ids_and_voice_keys_follow_the_speaker_code_model() {
             Command::Line(l) => Some((
                 l.speaker.as_str(),
                 l.line_id.as_str(),
-                l.voice_key.as_deref(),
+                Some(l.voice_key.as_str()),
             )),
             _ => None,
         })
@@ -147,8 +147,12 @@ fn line_ids_and_voice_keys_follow_the_speaker_code_model() {
                 "marina.s01ep02.fixer_0010",
                 Some("marina.s01ep02.fixer-0010")
             ),
-            // Narrator: lineId for i18n, NO voiceKey (unvoiced role).
-            ("narrator", "marina.s01ep02.narrator_0010", None),
+            // Narrator: every role carries a voiceKey (dsl 0.37.0 D6).
+            (
+                "narrator",
+                "marina.s01ep02.narrator_0010",
+                Some("marina.s01ep02.narrator-0010")
+            ),
             (
                 "fixer",
                 "marina.s01ep02.fixer_0050",

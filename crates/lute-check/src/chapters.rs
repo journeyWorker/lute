@@ -41,17 +41,13 @@ pub const CHAPTERS_MARKER: &str = "# lute: derived from lute.project.yaml `chapt
 /// malformed and not applied ([`Unapplied::Rejected`]).
 const REJECTED_MARKER: &str = "# lute: listed by a `chapters:` chain that is not applied\n";
 
-/// Appended when the scene is listed by the retired `sequence:` key
-/// ([`Unapplied::Retired`]).
-const RETIRED_MARKER: &str = "# lute: listed by the retired `sequence:` key\n";
-
 /// What every message about a key [`apply_chapters`] derived appends.
 pub const PROVENANCE: &str = " (written by `chapters:` in lute.project.yaml)";
 
 /// The authored part of a frontmatter (`raw_yaml` up to the first marker
 /// [`apply_chapters`] appended).
 pub fn authored_yaml(raw_yaml: &str) -> &str {
-    [CHAPTERS_MARKER, REJECTED_MARKER, RETIRED_MARKER]
+    [CHAPTERS_MARKER, REJECTED_MARKER]
         .iter()
         .filter_map(|m| raw_yaml.find(m))
         .min()
@@ -83,16 +79,12 @@ pub fn provenance(meta: &lute_syntax::ast::Meta, key: &str) -> &'static str {
 pub enum Unapplied {
     /// Its chain is malformed (`E-CHAPTERS` at the manifest).
     Rejected,
-    /// It is listed by the retired `sequence:` key.
-    Retired,
 }
 
 /// Whether the manifest lists this scene without deriving its keys.
 pub fn unapplied(meta: &lute_syntax::ast::Meta) -> Option<Unapplied> {
     if meta.raw_yaml.contains(REJECTED_MARKER) {
         Some(Unapplied::Rejected)
-    } else if meta.raw_yaml.contains(RETIRED_MARKER) {
-        Some(Unapplied::Retired)
     } else {
         None
     }
@@ -106,10 +98,6 @@ pub fn unapplied_note(u: Unapplied) -> &'static str {
             "lute.project.yaml lists this scene in `chapters:`, but that chain is not applied \
              (its `E-CHAPTERS` error is reported at the manifest), so it gives the scene no \
              `on:` — fix the chain"
-        }
-        Unapplied::Retired => {
-            "lute.project.yaml lists this scene under `sequence:`, which is now `chapters:`, so \
-             it gives the scene no `on:` — rename the key"
         }
     }
 }
@@ -168,11 +156,7 @@ pub fn apply_chapters(
     // A chain on an occasion nothing declares is refused at the manifest
     // (`E-CHAPTERS`), as a malformed one is: apply neither.
     if !chain.applied || (!occasions.is_empty() && !occasions.contains_key(&chain.on)) {
-        raw.push_str(if chain.retired {
-            RETIRED_MARKER
-        } else {
-            REJECTED_MARKER
-        });
+        raw.push_str(REJECTED_MARKER);
         return;
     }
     let Some(derived) = chain.derived(id.trim(), chained(&chain.on, occasions)) else {
@@ -425,9 +409,6 @@ pub fn check_project_chapters(
         .collect();
     let project_scope = ProjectScope { docs, foldeds };
     for (index, chain) in project.defaults.chapters().iter().enumerate() {
-        if chain.retired {
-            continue;
-        }
         for (path, d) in check_chain(index, chain, &manifest, &project_scope) {
             out.push((path.unwrap_or_else(|| manifest_path.clone()), d));
         }
@@ -649,7 +630,7 @@ fn paths_that_may_stay(when: &str, folded: &FoldedEnv) -> Option<Vec<String>> {
     }
 }
 
-/// One chain's project-wide checks. Every chain but a retired one:
+/// One chain's project-wide checks:
 ///
 /// * `on:` names a declared occasion (with a did-you-mean); while no plugin
 ///   declares occasions (shape-only), a near-miss of an occasion other
@@ -957,7 +938,6 @@ mod tests {
             on: on.to_string(),
             scenes: scenes.iter().map(|s| s.to_string()).collect(),
             applied: true,
-            retired: false,
         }
     }
 

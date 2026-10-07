@@ -1,32 +1,32 @@
 {
   "commands": [
     {
-      "addr": "001-0100",
       "kind": "line",
+      "position": "001-0100",
       "speaker": "narrator",
       "text": "The road ends at the river."
     },
     {
-      "addr": "001-0200",
       "branch": "parting",
       "chose": "leave",
-      "kind": "choice"
+      "kind": "choice",
+      "position": "001-0200"
     },
     {
-      "addr": "001-0600",
       "kind": "line",
+      "position": "001-0600",
       "speaker": "hero",
       "text": "There's nothing left here."
     },
     {
-      "addr": "001-0700",
       "kind": "end",
+      "position": "001-0700",
       "reason": "left"
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.36",
+  "irVersion": "0.37",
   "kind": "scene",
   "quests": {},
   "state": {

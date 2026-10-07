@@ -1,0 +1,35 @@
+---
+kind: scene
+luteVersion: "0.37.0"
+character: hero
+season: 1
+episode: 1
+title: Jump and label
+uses: ./schema.yaml
+---
+
+## Gate
+
+@narrator: The gate is shut.
+::jump{to="inside" when="run.hasKey"}
+@narrator: You wait outside.
+::label{name="inside"}
+@narrator: The gate swings open.
+
+<branch id="door">
+  <choice id="knock" text="Knock">
+    @hero: Hello?
+  </choice>
+  <choice id="leave" text="Leave">
+    @hero: Never mind.
+  </choice>
+</branch>
+
+<match subject="run.visits">
+  <when is="2..">
+    @narrator: Welcome back.
+  </when>
+  <otherwise>
+    @narrator: First time here.
+  </otherwise>
+</match>

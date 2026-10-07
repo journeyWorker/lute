@@ -65,7 +65,7 @@ fn vocabulary_schema() -> String {
 # set below is a convention, not a rule.
 #
 # `action` must declare `exits:` (which members end a character's presence on
-# stage) and `anchor` must declare `default:` (the member used when a `::auto`
+# stage) and `anchor` must declare `default:` (the member used when a `::actor`
 # omits it). The compiler reads those instead of guessing from names.
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
@@ -76,11 +76,11 @@ enums:
     members: [fadeInUp, sway, lean, idle, fadeOut, hide]
     exits: [fadeOut, hide]
   # The four remaining slots, typed by the staging directives (`::music`,
-  # `::vfx`, `::auto`). Declared up front so reaching for one is an edit to
+  # `::vfx`, `::actor`). Declared up front so reaching for one is an edit to
   # THIS list rather than an `E-DOMAIN-UNKNOWN`.
   mood: [peaceful, tense, romantic, sad, upbeat]
   volume: [silent, down, normal, up, full]
-  musicAction: [start, change, stop, resume, fadeOut]
+  musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
 "
     .to_string()
@@ -369,15 +369,15 @@ once: run
 // Each accusation is offered only when the case file supports it: `culprit`
 // is derived, so what the detective has found decides what can be said.
 <branch id=\"accusation\" prompt=\"Who do you accuse?\">
-  <choice id=\"blake\" label=\"Arthur Blake\" when=\"holds('culprit', ['blake'])\">
+  <choice id=\"blake\" text=\"Arthur Blake\" when=\"holds('culprit', ['blake'])\">
     @detective: You were not at your club, Blake. The ledger was written in this room at eleven, in your hand.
     ::set{ run.accused = \"blake\" }
   </choice>
-  <choice id=\"cass\" label=\"Cass Moreau\" when=\"holds('culprit', ['cass'])\">
+  <choice id=\"cass\" text=\"Cass Moreau\" when=\"holds('culprit', ['cass'])\">
     @detective: It was your knife, Cass.
     ::set{ run.accused = \"cass\" }
   </choice>
-  <choice id=\"wait\" label=\"Not yet\">
+  <choice id=\"wait\" text=\"Not yet\">
     @detective: Not yet. Something doesn't fit.
   </choice>
 </branch>
@@ -669,12 +669,12 @@ priority: 10
 @mara{emotion=\"content\"}: You're new. The lamp by the door has been dark for a week.
 
 <branch id=\"maraAsk\" prompt=\"What do you say?\">
-  <choice id=\"lamp\" label=\"Offer to find out why\">
+  <choice id=\"lamp\" text=\"Offer to find out why\">
     @mara{emotion=\"delighted\"}: Would you? Tomas keeps the oil. Ask him.
     ::set{ user.bond.mara += 1 }
     ::accept{quest=\"lampOut\"}
   </choice>
-  <choice id=\"leave\" label=\"Say nothing\">
+  <choice id=\"leave\" text=\"Say nothing\">
     @mara: Suit yourself.
   </choice>
 </branch>
@@ -1378,7 +1378,7 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
         dest.defaults
             .chapters()
             .iter()
-            .any(|c| !c.retired && c.on == *on)
+            .any(|c| c.on == *on)
     });
     let target_line = target.map_or_else(String::new, |t| format!("target: {t}\n"));
     let raised_for = target.map_or_else(String::new, |t| format!(" for `{t}`"));

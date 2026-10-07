@@ -9,9 +9,9 @@ after: 'visited("rock.report")'
 ## The Hearing Room
 
 ::bg{location="board_room" time="day"}
-::auto{character="chair" anchor="center" action="fadeInUp"}
+::actor{character="chair" anchor="center" action="fadeInUp"}
 @chair{code="0010"}: The inquiry into the loss of Keeper Elias Voss, Skerry Rock light. The inspector's report is before us.
-<match on="run.verdictFate">
+<match subject="run.verdictFate">
   <when is="fell">
     @chair{code="0020"}: The inspector finds that Voss fell from the lantern gallery while clearing salt from the glass, the seaward rail having failed.
   </when>
@@ -22,7 +22,7 @@ after: 'visited("rock.report")'
     @chair{code="0040"}: The inspector finds that Voss was taken by the sea from the landing.
   </when>
 </match>
-<match on="run.verdictOnRock">
+<match subject="run.verdictOnRock">
   <when is="ada">
     @chair{code="0050"}: And that the assistant keeper, Miss Pell, was on the rock against orders, and kept the light burning until dawn.
   </when>

@@ -11,13 +11,13 @@ title: The Rose Garden
 @pippa{code="0020" mono when="run.sawPocket"}: Not a hymn book in the vicar's pocket, then. Something shinier?
 
 <branch id="accuse" prompt="Who took the Hollin spoon?">
-  <choice id="accuseCook" label="Mrs. Dunn, the cook" into="run.accused" value="cook">
+  <choice id="accuseCook" text="Mrs. Dunn, the cook" into="run.accused" value="cook">
     @pippa{code="0030"}: Mrs. Dunn, you washed five spoons, not six.
   </choice>
-  <choice id="accuseVicar" label="The vicar" into="run.accused" value="vicar">
+  <choice id="accuseVicar" text="The vicar" into="run.accused" value="vicar">
     @pippa{code="0040"}: Vicar, turn out your pocket.
   </choice>
-  <choice id="accuseMagpie" label="The magpie" into="run.accused" value="magpie" when="run.cluesFound >= 2">
+  <choice id="accuseMagpie" text="The magpie" into="run.accused" value="magpie" when="run.cluesFound >= 2">
     @pippa{code="0050"}: It was never a person at all.
   </choice>
 </branch>

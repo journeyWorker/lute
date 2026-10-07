@@ -228,7 +228,7 @@ fn render_text(r: &Report) -> String {
 
 /// Every top-level node body of `doc`: shots, quests, entries, bundle beats.
 fn for_each_body(doc: &Document, f: &mut dyn FnMut(&[Node])) {
-    for shot in &doc.shots {
+    for shot in &doc.sections {
         f(&shot.body);
     }
     for quest in &doc.quests {

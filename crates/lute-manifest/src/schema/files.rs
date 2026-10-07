@@ -211,7 +211,7 @@ pub struct StampAttrsFile {
 /// shared `merge_named` path (key = raw rule id).
 ///
 /// Excluded from [`crate::snapshot::CapabilitySnapshot`] and
-/// `capabilityVersion` by construction: neither ever references this
+/// `capabilitySnapshot` by construction: neither ever references this
 /// file (or [`crate::loader::LoadedPlugin::lints`]), so a plugin can add,
 /// remove, or change lints without perturbing artifact identity.
 #[derive(Debug, Deserialize)]

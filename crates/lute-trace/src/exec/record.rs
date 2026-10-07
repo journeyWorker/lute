@@ -18,9 +18,10 @@ use serde_json::Value as Json;
 
 /// The command fields a line head never shows: identity, text and the
 /// role (rendered as its flag).
-const HEAD_SKIP: [&str; 9] = [
-    "addr",
+const HEAD_SKIP: [&str; 10] = [
+    "position",
     "kind",
+    "family",
     "text",
     "speaker",
     "lineId",
@@ -61,9 +62,7 @@ pub fn render_attrs(cmd: &Json, skip: &[&str]) -> String {
 /// artifact command `cmd` the line record came from.
 pub fn line_head(speaker: &str, cmd: Option<&Json>) -> String {
     let flag = match cmd.and_then(|c| c.get("role")).and_then(Json::as_str) {
-        Some("monologue") => Some("mono"),
-        Some("voiceover") => Some("vo"),
-        Some("offscreen") => Some("os"),
+        Some(flag @ ("mono" | "vo" | "os")) => Some(flag),
         _ => None,
     };
     let attrs = cmd.map(|c| render_attrs(c, &HEAD_SKIP)).unwrap_or_default();
@@ -421,7 +420,7 @@ impl NeedleVocab {
 }
 
 /// Authored content-line attributes a line head never shows: `code` feeds
-/// the line's identity and `id` is a `::next` label.
+/// the line's identity and `id` is a `::jump` label.
 const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
 
 /// The speaker a needle line's head names — `@name` right before its `:`
@@ -562,7 +561,7 @@ mod tests {
 
     #[test]
     fn the_head_is_the_role_flag_then_the_attributes() {
-        let cmd = json!({"kind": "line", "addr": "a", "role": "monologue", "speaker": "wren",
+        let cmd = json!({"kind": "line", "position": "a", "role": "mono", "speaker": "wren",
                          "text": "x", "emotion": "sad", "variant": 0, "lineId": "l"});
         let rec = json!({"kind": "line", "speaker": "wren", "text": "Quiet."});
         assert_eq!(

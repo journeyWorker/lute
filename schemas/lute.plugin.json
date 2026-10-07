@@ -702,7 +702,7 @@
       }
     },
     "stampAttrsFile": {
-      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's stamp rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR. `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
+      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's stamp rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR. `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
       "type": "object",
       "required": [
         "stampAttrs"
@@ -717,7 +717,7 @@
       }
     },
     "lintsFile": {
-      "description": "schema.rs::LintsFile (export `lints/*.yaml`, lint-system design §6). A sequence of lintRuleDecl entries a plugin publishes. Excluded from `CapabilitySnapshot` and `capabilityVersion` by construction — lints are advisory and must never change artifact identity (design §1 non-goals).",
+      "description": "schema.rs::LintsFile (export `lints/*.yaml`, lint-system design §6). A sequence of lintRuleDecl entries a plugin publishes. Excluded from `CapabilitySnapshot` and `capabilitySnapshot` by construction — lints are advisory and must never change artifact identity (design §1 non-goals).",
       "type": "object",
       "required": [
         "lints"
@@ -747,7 +747,7 @@
         "target": {
           "enum": [
             "line",
-            "shot",
+            "section",
             "scene",
             "speaker",
             "group",

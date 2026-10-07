@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.36.6**.
+**0.37.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -49,7 +49,9 @@ pov: fixer
   by it. It is names joined by `.` (a name is letters, digits, `_` or `-`, not starting with
   `-`: `door-notes` and `doorNotes` both work); `mira.s01ep01` reads as "Mira, season 1,
   episode 1", but any name works (`prologue`, `diner.opening`).
-- `title` — a human-readable title for tools and search.
+- `title` — the document's human-readable title, for tools and search. The frontmatter is the
+  only place a title goes: a `# A Quiet Table` line in the body is `E-INERT-TITLE`, which tells
+  you to write `title: A Quiet Table` here instead.
 - `pov` — the id of the player character (the protagonist the player controls).
 
 The `E-META-MISSING` error above is the `id:` line: its `opening` is only an example name, and
@@ -85,7 +87,7 @@ everything this guide writes:
   Writing `when: "run.accused == "ruben""` ends the string at the second `"`: `lute check`
   reports `E-META-PARSE` on that line and suggests single quotes inside. Switch the inner pair.
 - **Straight quotes only.** Word processors and note apps turn `"` into curly `“ ”`. Lute reads only
-  the straight `"` and `'`, in the frontmatter and in tag attributes such as `label="…"` alike; a
+  the straight `"` and `'`, in the frontmatter and in tag attributes such as `text="…"` alike; a
   curly quote in a tag attribute is `E-ATTR-QUOTE`, which says to retype it.
 
 Inside a `.lute` body, tag attributes are always double-quoted, so a condition in one uses single
@@ -104,23 +106,28 @@ Check again:
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:8:1: error [E-CONTENT-OUTSIDE-SECTION] content lives inside a section; add a `## <title>` heading above it
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 The rule to remember: **all content lives under a heading.** A Lute document is a sequence of
-"shots" — beats of the scene — and every line of dialogue, narration, or staging sits inside one.
-Add a heading before the line:
+**sections** — beats of the scene — and every line of dialogue, narration, or staging sits inside
+one. Add a heading before the line:
 
 ```lute
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 
 (The heading is free text after `## ` — `## The Counter`, `## Scene 1. The diner`, `## Prologue` are all
-valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: shots are
-numbered by their document order.)
+valid. A number in the heading is not grammar: sections are numbered by their document order.)
+
+The `{#counter}` at the end is optional: it gives the section a **stable id**, which is not part
+of the heading text. Section numbers shift whenever you add or reorder sections; the id stays
+put, so tools that follow a section across edits use it. An id starts with a letter, continues
+with letters, digits, `_` or `-`, and is unique within the document. It names the section and
+nothing more: it is not something the story can jump to.
 
 ```
 $ lute check my-scene.lute
@@ -152,10 +159,11 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 Nothing is misspelled — this is the rule that **Lute ships the slot, you ship the members.**
-`emotion` is one of seven vocabulary slots the language knows about (`emotion`, `action`, `anchor`,
-`mood`, `volume`, `musicAction`, `vfxType`), but the compiler holds no opinion about which emotions
-your characters have. That is your story's call, so no value is legal until you say it is. Declare
-the members where you declare everything else about the document — the frontmatter:
+`emotion` is one of the vocabulary slots the language knows about — `emotion`, `action`,
+`anchor`, `costume`, `mood`, `volume`, `musicPlayback`, `vfxType`, and the camera, CG, sequence
+and text-style slots — but the compiler holds no opinion about which emotions your characters
+have. That is your story's call, so no value is legal until you say it is. Declare the members
+where you declare everything else about the document — the frontmatter:
 
 ```yaml
 enums:
@@ -164,10 +172,11 @@ enums:
 
 Declare only the slots your scene actually uses; this one uses `emotion` and nothing else. (Two
 slots carry required semantics once you declare them: `action` needs an `exits:` list naming the
-members that take a character off stage, and `anchor` needs a `default:`. `lute init` scaffolds all
-seven with a starter member list, in a shared `vocabulary.schema.yaml` that scenes pull in with
-`uses:` — the right shape once several files share one vocabulary. For a single tutorial file,
-frontmatter is simpler.)
+members that take a character off stage, and `anchor` needs a `default:`. `lute init` scaffolds
+seven of them — `emotion`, `anchor`, `action`, `mood`, `volume`, `musicPlayback`, `vfxType` — with
+a starter member list, in a shared `vocabulary.schema.yaml` that scenes pull in with `uses:` — the
+right shape once several files share one vocabulary. For a single tutorial file, frontmatter is
+simpler.)
 
 Re-check:
 
@@ -183,11 +192,29 @@ Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 ```
 
 `{mono}` is a **delivery flag**: a bare word in the braces (no `=value`) that changes how the line
-is delivered. `{mono}` means interior monologue — it renders as thought, not speech, and works for
-any character. Two other delivery flags exist: `{os}` marks a line as **off-screen** (the speaker
-is heard but not staged), and `{vo}` marks it as **voiceover** (narration-style delivery layered
-over the scene). All three are mutually exclusive — at most one per line — and none is allowed on
-`@narrator`.
+is delivered. `{mono}` means interior monologue — it renders as thought, not speech. Two other
+delivery flags exist: `{os}` marks a line as **off-screen** (the speaker is heard but not
+staged), and `{vo}` marks it as **voiceover** (narration-style delivery layered over the scene).
+All three are mutually exclusive — at most one per line — and none is allowed on `@narrator`.
+
+Check it:
+
+<!-- lute-diagnostics -->
+```
+$ lute check my-scene.lute
+my-scene.lute:16:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`fixer`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+Whose thoughts the player may hear is a story decision, so Lute makes you state it. By default
+only the point-of-view character — the `pov:` you declared, here the player's `fixer` — has an
+inner voice. To let the player hear Mira think, list her in the frontmatter:
+
+```yaml
+monoSpeakers: [mira]
+```
+
+Re-check, and it comes back `ok`.
 
 The file so far:
 
@@ -197,11 +224,12 @@ kind: scene
 id: mira.s01ep01
 title: A Quiet Table
 pov: fixer
+monoSpeakers: [mira]
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 
@@ -213,7 +241,7 @@ enums:
 ## Part 3 — Giving the player a choice
 
 A `<branch>` presents the player with a menu; each `<choice>` inside it is one option, with its own
-`id`, a `label` (the button text), and the lines that play if the player picks it.
+`id`, a `text` (the button text), and the lines that play if the player picks it.
 
 Sometimes a choice should only appear under certain conditions — say, only if the player has met
 Mira before. That's a **guard**: `when="<condition>"`. Guards read declared **state** — a small
@@ -228,10 +256,10 @@ Now the branch:
 
 ```lute
 <branch id="orderChoice">
-  <choice id="black" label="Order it black">
+  <choice id="black" text="Order it black">
     @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
   </choice>
-  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+  <choice id="familiar" text="Say hi like an old friend" when="scene.knowsMira">
     @mira{emotion="surprised" variant="0"}: You remembered. That's new.
   </choice>
 </branch>
@@ -256,7 +284,7 @@ Say you type an old-style sigil out of habit — a colon instead of `@` — on t
 <!-- lute-diagnostics -->
 ```
 $ lute check my-scene.lute
-my-scene.lute:18:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:19:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
@@ -291,9 +319,12 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
   "meta": {
     "id": "mira.s01ep01",
     "title": "A Quiet Table"
@@ -303,15 +334,18 @@ $ lute compile my-scene.lute
   "commands": [
     {
       "kind": "line",
-      "addr": "001-0100",
+      "family": "content",
+      "position": "001-0100",
       "role": "narration",
       "speaker": "narrator",
       "text": "The diner is empty at this hour, and Mira likes it that way.",
-      "lineId": "mira.s01ep01.narrator_0010"
+      "lineId": "mira.s01ep01.narrator_0010",
+      "voiceKey": "mira.s01ep01.narrator-0010"
     },
     {
       "kind": "line",
-      "addr": "001-0200",
+      "family": "content",
+      "position": "001-0200",
       "role": "dialogue",
       "speaker": "mira",
       "text": "{{userName}}, you made it.",
@@ -323,24 +357,30 @@ $ lute compile my-scene.lute
     },
     …
   ],
-  "shots": [
+  "sections": [
     {
-      "shot": 1,
-      "heading": "The Counter"
+      "section": 1,
+      "heading": "The Counter",
+      "id": "counter"
     }
-  ]
+  ],
+  "outsideRun": [],
+  "celEnv": { … }
 }
 ```
 
 (`…` marks where output was trimmed for space; everything else is verbatim.) Your `enums:`
 declaration rides along into the artifact's own **`enums`** block, so the engine resolves values
 against exactly the vocabulary the checker used. Your `id:` is the prefix of every `lineId` and
-`voiceKey`, so each line of this scene has a name no other scene's line can take. Two other fields
-are worth knowing on sight.
-**`addr`** is the record's address, `{shot}-{index}`, and every `addr` in one
-artifact is padded to the same width — so sorting the `addr` strings gives you execution order, no
-parsing required. **`shots`** carries your `## ` headings through to the artifact, so a tool
-downstream can still say *which beat* a record belongs to.
+`voiceKey`, so each line of this scene has a name no other scene's line can take. Three other
+fields are worth knowing on sight.
+**`family`** sorts every record into one of a few groups — `content` for lines, `control` for
+choices and jumps, `staging`, `state`, and so on — so an engine can route a record before it reads
+the `kind`. **`position`** is the record's place, `{section}-{index}`, and every `position` in one
+artifact is padded to the same width — so sorting the `position` strings gives you execution
+order, no parsing required. It is recomputed whenever you reorder the source, so it is a place, not
+a name. **`sections`** carries your `## ` headings through to the artifact, each with its `{#id}`,
+so a tool downstream can still say *which beat* a record belongs to.
 
 You never hand-edit this file — it's the compiled artifact the engine consumes. That it compiled
 without error is proof the scene is **statically valid**: every construct well-formed, every state
@@ -433,7 +473,7 @@ episodes/
   booth.lute        ← the new follow-up, below
 ```
 
-Every voice line is already keyed by its scene — the default `voiceKey` is
+Every line is already keyed by its scene — the default `voiceKey` is
 `{prefix}.{speaker}-{code}` — so the diner's and the booth's first Mira lines are
 `mira.s01ep01.mira-0010` and `mira.s01ep02.mira-0010`, two recordings, with nothing to configure:
 
@@ -463,7 +503,7 @@ state:
   run.metMira: { type: bool }
 ---
 
-## The Counter
+## The Counter {#counter}
 
 @mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
 
@@ -503,7 +543,6 @@ the question you most want before writing a `when=` guard — *what state is saf
 
 ```
 $ lute scenario episodes envelope mira.s01ep02
-project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira   written by: scene(mira.s01ep01)
@@ -545,7 +584,7 @@ expect:
 
 ```
 $ lute test episodes --project episodes
-PASS  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 1 passed, 0 failed
 ```
@@ -555,9 +594,9 @@ A failing test says why. Change the choice to `familiar`, which is guarded by `s
 <!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
 ```
 $ lute test episodes --project episodes
-FAIL  episodes/tests/diner.test.yaml  (episodes/tests/../diner.lute)
+FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
       trace refused:
-        episodes/tests/../diner.lute:25:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
+        episodes/diner.lute:26:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
 
 0 passed, 1 failed
 ```
@@ -577,28 +616,41 @@ one line to each scene and a play script, and `lute play` walks the story the wa
 
 **Not sure what's legal to write?** `lute context <file>` prints exactly the vocabulary your
 project accepts — the staging directives, their attributes, the vocabulary members in scope (your
-`emotion` list, say), the declared state, the delivery-flag vocabulary, the language's own
-built-in directives, and the scene ids you can name in `visited(…)` — resolved for the specific
-file you give it:
+`emotion` list, say), the declared state, the delivery-flag vocabulary, the inline text
+modifiers, the language's own built-in directives, and the scene ids you can name in
+`visited(…)` — resolved for the specific file you give it:
 
 ```
 $ lute context episodes/diner.lute
 lute: note: using project episodes (nearest lute.project.yaml); pass --project to choose another
-capabilityVersion: f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225
+
+CEL conditions (standard CEL profile):
+  numbers: int and double are distinct; arithmetic/comparison do not mix them; use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only
+  presence: has(path) tests whether path has an effective value; "key" in map tests key presence
+  host functions:
+    holds(string, list(dyn)) -> bool
+    count(string, list(dyn)) -> int
+    countDistinct(string, list(dyn), int) -> int
+    validAt(string, list(dyn), int) -> bool
+    now() -> int
+    visited(string) -> bool
+  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); single quotes are required inside double-quoted attributes
+capabilitySnapshot: babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (12):
-  auto: character: string, anchor: domain:anchor, action: domain:action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+directives (13):
+  actor: character: string (required), anchor: domain:anchor, action: domain:action, emotion: domain:emotion, costume: domain:costume   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
   bg: location: string, time: string, assetId: string   [mutatesScene]
-  camera: focus: string, zoom: double, moveX: double, moveY: double, shake: double, reset: bool, duration: double, easing: string, delay: double, wait: bool
+  camera: focus: string, framing: domain:framing, move: domain:cameraMove, transition: domain:transition, duration: double, delay: double, wait: bool
+  cg: assetId: string (required), display: enum[show, hide], layout: domain:cgLayout
   clear:    [reads.onStage mayExitCharacter]
-  cut: assetId: string, action: enum[show, hide], full: bool
   end: reason: string   [terminatesWalk]
-  mark: id: string (required)
-  music: action: domain:musicAction, mood: domain:mood, volume: domain:volume, assetId: string, track: string   [mutatesScene]
-  next: to: string (required), when: string
-  sfx: sound: string, assetId: string, name: string
+  jump: to: string (required), when: string
+  label: name: string (required)
+  music: playback: domain:musicPlayback, mood: domain:mood, volume: domain:volume, assetId: string   [mutatesScene]
+  sequence: name: domain:sequence (required), wait: bool
+  sfx: sound: string, assetId: string
   vfx: type: domain:vfxType, label: string, transition: string
-  video: assetId: string, action: enum[show, hide], wait: bool
+  video: assetId: string (required), display: enum[show, hide], wait: bool
 bridges (0):
 rewardKinds (0):
 occasions (0):
@@ -610,9 +662,14 @@ stateSchema (4):
   scene.choices.orderChoice: enum [black, familiar, unset] (owner: engine)
   scene.knowsMira: bool
 deliveryFlags (3):
-  {mono}: interior monologue / thought (not spoken aloud in-scene)
+  {mono}: interior monologue / thought (not spoken aloud in-scene); only the document's point of view (`pov:`, else the project's `defaults.pov`) or a speaker its `monoSpeakers:` lists may speak it (E-MONO-POV / E-MONO-NO-POV)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+textModifiers (inline, content-line text only):
+  :pause{s=0.5} [leaf]: a pause of `s` seconds (required, non-negative) at that point of the line
+  :speed[text]{rate=1.25} [span]: the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate
+  textStyle: not declared (declare `textStyle` in `enums:` for style spans)
+  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (10):
@@ -622,8 +679,8 @@ builtinDirectives (10):
   ::accept{quest="<questId>" [at="nextRun"] [when="<condition>"]} — accept a quest that has no `start` condition; `at="nextRun"` queues it until after the next new run
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
   ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes
-  ::next{to="<string>" [when="<condition>"]} — jump forward to the `::mark` named by `to` (only while `when` holds)
-  ::mark{id="<string>" [when="<condition>"]} — name the position a `::next{to=…}` jumps to
+  ::jump{to="<string>" [when="<condition>"]} — jump forward to the `::label` named by `to` (only while `when` holds)
+  ::label{name="<string>" [when="<condition>"]} — name the position a `::jump{to=…}` jumps to
   ::end{[reason="<string>"] [when="<condition>"]} — end this presentation here
   ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
 directiveAttrs (5; beyond each directive's own):
@@ -632,7 +689,7 @@ directiveAttrs (5; beyond each directive's own):
   delay: double — every directive but ::clear
   wait: bool — every directive but ::clear
   at: time — a directive inside a <track> clip only
-beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
+beatKeys (12; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
   on: <occasion> — the occasion the beat answers
   target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
   for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
@@ -644,6 +701,7 @@ beatKeys (11; scene frontmatter `key: value`; <entry> / <beat> attributes `key="
   share: <key> — beats with one `share` key spend one `once` together
   after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
   use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
+  advances: slot | day | <whole number ≥ 1> — moves the clock after this beat presents
 questKeys (10; <quest> attributes):
   id="<questId>" — read as quest.<id>.state
   title="<text>" — the quest's name
@@ -666,7 +724,8 @@ objectiveKeys (10; <objective> attributes):
   by="<condition>" — a deadline: the first time it holds while not done, the objective fails
   target="<prefix>.<member>" — with `on`: judged only for a raise for that target
   until="<condition>" — with `on`: a deadline judged only when the objective's occasion is raised, after `done`
-rewardKeys (5; <reward> attributes):
+rewardKeys (6; <reward> attributes):
+  id="<token>" — the reward's stable identity, unique among its quest's rewards
   kind="<rewardKind>" — what the engine pays
   target="<id>" — what the reward is for, per its kind
   amount="<integer> | <N>..<M>" — how much
@@ -699,13 +758,19 @@ actually resolves `emotion="content"`.
 behalf so a later construct can read which option the player took, and `prev.run.metMira`, the
 read-only value `run.metMira` had when the previous run ended.
 
+`directives` are the staging directives: `::actor` puts a character on stage, `::bg` sets the
+background, and `::camera`, `::cg`, `::music` and the rest stage the scene, each attribute typed —
+a `domain:` attribute takes members of a vocabulary slot you declare, as `emotion` did.
+`textModifiers` lists the inline markup a line's text may carry, such as `:pause{s=0.5}`.
+
 `builtinDirectives` lists the directives the language itself provides — `::set` you have already
-used. `beatKeys` and `questKeys` list every key a beat's header (a scene's frontmatter, an
-`<entry>` or `<beat>`) and a `<quest>` element may carry, with one line on what each does — the
-place to look when you meet `on:` or `once:` in someone else's scene. `scenes` lists the ids
-`visited("…")` can name. `episodes/` holds a `lute.project.yaml`, so `context` resolves the file
-against that project, as `lute check` does, and says so in the `lute: note:` line; the list therefore
-covers every scene in the project, alongside its quests and lore entries.
+used. `::jump{to="…"}` skips forward to the `::label{name="…"}` you name; a section's `{#id}` is
+not a jump target. `beatKeys` and `questKeys` list every key a beat's header (a scene's
+frontmatter, an `<entry>` or `<beat>`) and a `<quest>` element may carry, with one line on what
+each does — the place to look when you meet `on:` or `once:` in someone else's scene. `scenes`
+lists the ids `visited("…")` can name. `episodes/` holds a `lute.project.yaml`, so `context`
+resolves the file against that project, as `lute check` does, and says so in the `lute: note:`
+line; the list therefore covers every scene in the project, alongside its quests and lore entries.
 
 Run it any time you need to double-check a directive name, an attribute, or a legal `emotion` value
 instead of guessing. From here, follow the **Language** section for each construct in depth, keep

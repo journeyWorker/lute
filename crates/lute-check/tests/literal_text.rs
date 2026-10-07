@@ -3,7 +3,7 @@
 //! ` // note`, a trailing `# tag` and a `[bracketed]` label are literal, so
 //! each now warns naming what Lute writes; `{{…}}` interpolation, attribute
 //! braces and a URL's `//` stay quiet. Also T3-7: `::greet{}` for a
-//! component names `::use`, and T3-60: `::goto` names `::next`.
+//! component names `::use`, and T3-60: `::goto` names `::jump`.
 use lute_check::{check, CheckInput, ComponentSet, Mode, SchemaImports};
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
@@ -102,22 +102,22 @@ fn comment_and_tag_tails_warn() {
 #[test]
 fn bracket_label_warns() {
     let diags = check_body(
-        "<branch id=\"door\">\n  <choice id=\"in\" label=\"[Go inside]\">\n    @narrator: In.\n  \
-         </choice>\n  <choice id=\"out\" label=\"Stay\">\n    @narrator: Out.\n  </choice>\n\
+        "<branch id=\"door\">\n  <choice id=\"in\" text=\"[Go inside]\">\n    @narrator: In.\n  \
+         </choice>\n  <choice id=\"out\" text=\"Stay\">\n    @narrator: Out.\n  </choice>\n\
          </branch>",
     );
     let hits = warnings(&diags, "W-TEXT-BRACKET-LABEL");
     assert_eq!(hits.len(), 1, "{diags:#?}");
     assert!(
-        hits[0].message.contains("`label=\"Go inside\"`"),
+        hits[0].message.contains("`text=\"Go inside\"`"),
         "{}",
         hits[0].message
     );
     // Anchored at the label's value, not at `<choice`: line 12 is the
-    // choice, and `  <choice id="in" label="` is 25 characters.
+    // choice, and `  <choice id="in" text="` is 24 characters.
     assert_eq!(
         (hits[0].span.line, hits[0].span.column),
-        (12, 26),
+        (12, 25),
         "{:#?}",
         hits[0]
     );
@@ -128,8 +128,8 @@ fn bracket_label_warns() {
 #[test]
 fn tagged_label_does_not_warn() {
     let diags = check_body(
-        "<branch id=\"door\">\n  <choice id=\"in\" label=\"[Persuasion] Step into the light.\">\n    \
-         @narrator: In.\n  </choice>\n  <choice id=\"out\" label=\"Stay\">\n    @narrator: Out.\n  \
+        "<branch id=\"door\">\n  <choice id=\"in\" text=\"[Persuasion] Step into the light.\">\n    \
+         @narrator: In.\n  </choice>\n  <choice id=\"out\" text=\"Stay\">\n    @narrator: Out.\n  \
          </choice>\n</branch>",
     );
     assert!(
@@ -142,8 +142,8 @@ fn tagged_label_does_not_warn() {
 #[test]
 fn label_brace_is_anchored_in_the_label() {
     let diags = check_body(
-        "<branch id=\"door\">\n  <choice id=\"in\" label=\"Oil {run.oil}\">\n    @narrator: In.\n  \
-         </choice>\n  <choice id=\"out\" label=\"Stay\">\n    @narrator: Out.\n  </choice>\n\
+        "<branch id=\"door\">\n  <choice id=\"in\" text=\"Oil {run.oil}\">\n    @narrator: In.\n  \
+         </choice>\n  <choice id=\"out\" text=\"Stay\">\n    @narrator: Out.\n  </choice>\n\
          </branch>",
     );
     let d = warnings(&diags, "W-TEXT-SINGLE-BRACE")[0];
@@ -152,7 +152,7 @@ fn label_brace_is_anchored_in_the_label() {
         "{}",
         d.message
     );
-    assert_eq!((d.span.line, d.span.column), (12, 30), "{d:#?}");
+    assert_eq!((d.span.line, d.span.column), (12, 29), "{d:#?}");
 }
 
 #[test]
@@ -207,13 +207,13 @@ fn lute_syntax_and_plain_text_do_not_warn() {
 
 #[test]
 fn goto_names_next() {
-    let diags = check_body("::goto{to=\"x\"}\n::mark{id=\"x\"}\n@narrator: hi");
+    let diags = check_body("::goto{to=\"x\"}\n::label{name=\"x\"}\n@narrator: hi");
     let d = diags
         .iter()
         .find(|d| d.code == "E-UNKNOWN-DIRECTIVE")
         .unwrap_or_else(|| panic!("{diags:#?}"));
     assert!(
-        d.message.contains("did you mean `::next{to=\"…\"}`?"),
+        d.message.contains("did you mean `::jump{to=\"…\"}`?"),
         "{}",
         d.message
     );

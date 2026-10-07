@@ -13,10 +13,10 @@ after: 'visited("mid.helixTower")'
 ## The last cave
 
 ::bg{location="victory-road" time="day"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: Victory Road is a mountain hollowed out by a hundred years of trainers. Ladders, ledges, boulders shoved aside, and at the first landing, a red jacket.
 ::use{component="rivalBattle" meet="road" intro="There you are. I beat every trainer between here and the gate while I waited. Eight badges each. No more gyms, no more excuses. Let's settle it before the Plateau does!" win="Tch. Fine. The Plateau is where it counts anyway." lose="See? I was just being nice before. See you at the top." instance="use-001"}
 @rival{code="0010" when="@wonFight" emotion="angry"}: Don't look so pleased. Next time there's a crowd watching, and I don't lose in front of crowds.
 @rival{code="0020" when="!@wonFight" emotion="laughing"}: Don't take too long getting up there. I hate waiting almost as much as I hate losing.
 @rival{code="0030"}: I'm going ahead. First to the Plateau buys dinner.
-::auto{character="rival" action="exit"}
+::actor{character="rival" action="exit"}

@@ -1,9 +1,9 @@
 ---
 title: Streaming continuation compiler
-description: Append ordinary Lute shot-body text to a checked scene template, receive flushed full-artifact snapshots with lute compile-stream, and preserve runtime cursor and state correctly.
+description: Append ordinary Lute section-body text to a checked scene template, receive flushed full-artifact snapshots with lute compile-stream, and preserve runtime cursor and state correctly.
 ---
 
-The checked continuation compiler appends ordinary Lute **shot-body source** to
+The checked continuation compiler appends ordinary Lute **section-body source** to
 a host-owned scene template and returns a checked, ordinary IR artifact after
 each complete unit—before stdin reaches EOF. Use it when an interactive author
 or generator should produce executable, statically checked Lute incrementally.
@@ -22,7 +22,7 @@ describe an Unreleased toolchain feature, not a published-version claim.
 ## Run a complete stream
 
 Create a trusted template. It must already be a valid `kind: scene` document
-with at least one shot; continuation text is appended only to the final shot.
+with at least one section; continuation text is appended only to the final section.
 
 ```console
 $ cat > /tmp/live-scene.lute <<'LUTE'
@@ -131,7 +131,7 @@ pub struct ContinuationCompilation {
 `CheckInput` includes the complete prefix text and its resolved capability,
 provider, import, component, defaults, URI, and analysis inputs.
 `IdentityTemplates` is frozen at construction. `new` checks and compiles the
-prefix immediately; a non-scene, missing shot, or existing gate failure returns
+prefix immediately; a non-scene, missing section, or existing gate failure returns
 diagnostics before any continuation is read. `artifact()` exposes the latest
 accepted full artifact.
 
@@ -144,11 +144,11 @@ unit and everything after it produce no IR. Keep those earlier updates.
 The continuation may use the existing legal body grammar:
 
 - inline dialogue and narration, `@speaker{attributes}: text`;
-- ordinary directives;
+- ordinary directives, including `::label{name="…"}`;
 - complete `<branch>`, `<match>`, `<hub>`, and `<timeline>` blocks;
 - component use and resolved plugin directives.
 
-It cannot replace frontmatter, add a shot heading or label, or introduce a quest
+It cannot replace frontmatter, add a `##` section heading, or introduce a quest
 root. A forward target that ordinary compilation cannot resolve yet fails now;
 the compiler does not guess future source or fabricate a closer.
 
@@ -193,7 +193,7 @@ EOF is not Lute `::end`:
 
 Every complete unit runs the accumulated template and accepted body through the
 **existing** parser, checker, normalization, component expansion, stage
-injection, lowering, address assignment, and artifact assembly. There is no
+injection, lowering, position assignment, and artifact assembly. There is no
 second lowering algorithm to drift from `lute compile`.
 
 This improves time to first checked output, not total compiler complexity. Unit
@@ -207,7 +207,7 @@ incremental compiler.
 Each update is a complete immutable program snapshot. A consumer must:
 
 1. replace the old artifact with `update.artifact`;
-2. rebuild `addr -> command index` lookup;
+2. rebuild `position -> command index` lookup;
 3. retain its **numeric command cursor**, live state, facts, selected control-flow
    stack, and host-owned effect/idempotency records;
 4. initialize only newly declared state slots; and
@@ -216,9 +216,9 @@ Each update is a complete immutable program snapshot. A consumer must:
 Do not reapply defaults for existing state or seed facts. Do not start executing
 at `appendFrom` merely because records are new.
 
-Rebuilding address lookup matters because Lute uses uniform address padding.
-More commands can widen every address—`001-0900` may become `001-00900`—without
-changing its numeric `(shot, index)` meaning. The compiler accepts that
+Rebuilding position lookup matters because Lute uses uniform position padding.
+More commands can widen every position—`001-0900` may become `001-00900`—without
+changing its numeric `(section, index)` meaning. The compiler accepts that
 formatting-only widening. It never normalizes arbitrary payload strings.
 
 If appended source would change an earlier line identity, stage-injected
@@ -239,7 +239,7 @@ The streaming service adds:
 | Code | Meaning |
 | --- | --- |
 | `E-STREAM-TEMPLATE` | The initial input cannot establish the required checked scene prefix and artifact. |
-| `E-STREAM-BODY` | Appended text is outside the final-shot body surface. |
+| `E-STREAM-BODY` | Appended text is outside the final-section body surface. |
 | `E-STREAM-PREFIX-CHANGED` | A candidate would retroactively change accepted commands or state. |
 | `E-STREAM-CLOSED` | The caller used an instance after success or failure made it terminal. |
 
@@ -253,7 +253,7 @@ range, `Vec<Node>`, and syntax diagnostics local to that source. Its
 `IncompleteContinuation`.
 
 That API intentionally performs no project or provider resolution, semantic
-checking, component merge, lowering, addressing, or IR assembly. It is useful
+checking, component merge, lowering, position assignment, or IR assembly. It is useful
 parser documentation, but it is not a substitute for `ContinuationCompiler`
 when a runtime will consume the result.
 

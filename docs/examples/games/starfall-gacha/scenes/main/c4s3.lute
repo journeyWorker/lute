@@ -13,7 +13,7 @@ once: user
 @narrator{code="0020" when="count('rowedWith', ['_']) >= 1"}: The one at the bow leans over the side and looks down with you.
 @nyx{code="0010" when="holds('vigilWish', ['vesper'])"}: Vesper's candle is down there too. The one you lit at the vigil. She pretends she doesn't know.
 @lumi{code="0010" when="holds('learned', ['frostKing'])"}: The Frost King's lantern. The codex said he'd drowned it himself.
-<match on="quest.frostMissions.state">
+<match subject="quest.frostMissions.state">
   <when is="complete">
     @nyx{code="0020" emotion="happy" when="count('vigilWish', ['_']) == 0"}: You lit your vigil candle for him. Look, it's still going.
     @nyx{code="0030" when="count('vigilWish', ['_']) >= 1"}: You kept the whole vigil. Every candle out there is a little bit yours.

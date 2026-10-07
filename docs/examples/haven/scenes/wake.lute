@@ -7,8 +7,8 @@ uses: [../vocabulary.schema.yaml]
 ---
 
 ## Cold Wake
-::auto{character="vesna" anchor="port" action="brace"}
+::actor{character="vesna" anchor="port" action="brace"}
 @vesna{code="0010" emotion="clipped"}: Cryo's gone. We don't go back under.
 @vesna{code="0020" emotion="level"}: So we walk.
 @vesna{code="0030" emotion="hollowed"}: If the second pod's intact, I'm taking it.
-::auto{character="vesna" action="goUnder"}
+::actor{character="vesna" action="goUnder"}

@@ -6,5 +6,7 @@ enums:
   anchor: { members: [port, center, starboard], default: center }
   mood: [quiet, pressurized, failing, weightless]
   volume: [silent, muted, normal, raised, alarm]
-  musicAction: [start, swell, cut, resume, fadeOut]
+  musicPlayback: [start, swell, cut, resume, fadeOut]
   vfxType: [shed, klaxon, pressureDrop, frost]
+  framing: [close]
+  cameraMove: [shake]

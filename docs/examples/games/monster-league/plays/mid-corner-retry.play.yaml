@@ -1,5 +1,5 @@
 # A second go at the hideout after losing in the vault corridor. A scenario
-# test cannot cover this: `lute trace` / `lute test` stop at a taken ::next
+# test cannot cover this: `lute trace` / `lute test` stop at a taken ::jump
 # (the skipped stair guard) and still report the walk complete, so the retry
 # is a play (see FINDINGS-mid M3).
 #

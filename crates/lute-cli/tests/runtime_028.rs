@@ -131,7 +131,7 @@ fn a_judge_before_judgement_that_ends_the_game_still_presents_its_occasion() {
     let epilogue = scene(
         "h",
         "on: hearing\n",
-        "<match on=\"quest.case.state\">\n  <when is=\"complete\">\n    \
+        "<match subject=\"quest.case.state\">\n  <when is=\"complete\">\n    \
          @narrator: The case is closed in your favour.\n  </when>\n  <otherwise>\n    \
          @narrator: Something else.\n  </otherwise>\n</match>",
     );
@@ -199,7 +199,7 @@ fn a_sequence_raise_judges_each_beat_at_its_turn() {
 fn a_for_entry_writes_on_each_members_first_read() {
     let lore = "---\nkind: lore\nid: send\n---\n\n\
                 <entry id=\"sendOff\" on=\"departure\" for=\"kind:npc\" once=\"run\">\n  \
-                @narrator: {{occasion.target}} waves.\n  <match on=\"occasion.target\">\n    \
+                @narrator: {{occasion.target}} waves.\n  <match subject=\"occasion.target\">\n    \
                 <when is=\"maud\">\n      ::set{run.bond.maud += 1}\n    </when>\n    \
                 <when is=\"oskar\">\n      ::set{run.bond.oskar += 1}\n    </when>\n    \
                 <when is=\"sable\">\n      ::set{run.bond.sable += 1}\n    </when>\n  \

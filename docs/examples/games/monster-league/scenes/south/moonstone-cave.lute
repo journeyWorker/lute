@@ -15,7 +15,7 @@ priority: 10
 ## The cave mouth
 
 ::bg{location="moonstone-cave" time="day"}
-::music{action="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="down"}
 @narrator{code="0010"}: Moonstone Cave. The miners' ladders go down into the dark, and the dark smells of wet stone and lamp oil.
 @narrator{code="0020"}: Chalked on the first beam: "DUSKBATS SLEEP HERE. BE NICE." Underneath, in a different hand: "BE QUICK."
 

@@ -211,6 +211,10 @@ impl Parser<'_> {
     /// Report the `</tag>` at `cursor` as closing no open block, naming the
     /// block that is open there (if any).
     pub(super) fn report_stray_close(&mut self) {
+        if close_tag_name(&self.trimmed(self.cursor)).as_deref() == Some("scene") {
+            self.report_removed_scene_tag(self.cursor);
+            return;
+        }
         let close = match close_tag_name(&self.trimmed(self.cursor)) {
             Some(n) => format!("`</{n}>`"),
             None => "this closing tag".to_string(),
@@ -741,15 +745,15 @@ impl Parser<'_> {
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
-        let (label, label_span) = take_str_spanned(&mut attrs, "label")
+        let (text, text_span) = take_str_spanned(&mut attrs, "text")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.start_o)));
         let when = take_cel(&mut attrs, "when", CelKind::Condition);
         let (body, end_o) = self.parse_block_body("choice", &open);
         Choice {
             id,
             id_span,
-            label,
-            label_span,
+            text,
+            text_span,
             when,
             attrs,
             body,
@@ -761,7 +765,7 @@ impl Parser<'_> {
     pub(super) fn parse_match(&mut self) -> Match {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
-        let subject = take_cel(&mut attrs, "on", CelKind::MatchSubject).unwrap_or_else(|| {
+        let subject = take_cel(&mut attrs, "subject", CelKind::MatchSubject).unwrap_or_else(|| {
             CelSlot::raw(
                 CelKind::MatchSubject,
                 String::new(),
@@ -974,9 +978,9 @@ impl Parser<'_> {
                 let line = self.cursor;
                 if let Node::Directive(mut d) = self.parse_directive() {
                     // dsl 0.26.0 §4: as for `::set`, a guard is logic — no
-                    // clip keeps one. (`::next` is refused whole by the
+                    // clip keeps one. (`::jump` is refused whole by the
                     // checker, guard and all.)
-                    if d.tag != "next" && d.when.take().is_some() {
+                    if d.tag != "jump" && d.when.take().is_some() {
                         self.emit_line(
                             E_TIMELINE_CONTENT,
                             "a <track> directive cannot carry `when=` — a conditional clip is \
@@ -1139,6 +1143,7 @@ impl Parser<'_> {
             self.open_blocks.pop();
         }
         let mut attrs = open.attrs.clone();
+        let id = take_str_spanned(&mut attrs, "id");
         let (kind, kind_span) = take_str_spanned(&mut attrs, "kind")
             .unwrap_or_else(|| (String::new(), self.span_o(open.start_o, open.end_o)));
         let (target, target_span) = match take_str_spanned(&mut attrs, "target") {
@@ -1168,6 +1173,7 @@ impl Parser<'_> {
             None => (None, None),
         };
         Reward {
+            id,
             kind,
             kind_span,
             target,
@@ -1288,7 +1294,7 @@ mod tests {
     /// and the enclosing block still closes normally.
     #[test]
     fn a_mismatched_close_names_the_open_tag() {
-        let src = "## S\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n@narrator: hi.\n</branch>\n@narrator: after.\n";
+        let src = "## S\n<branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n@narrator: hi.\n</branch>\n@narrator: after.\n";
         let (doc, diags) = parse(src);
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(diags[0].code, "E-UNCLOSED-TAG");
@@ -1297,7 +1303,7 @@ mod tests {
             "`<choice>` from line 3 is never closed: `</branch>` on line 5 closes the enclosing \
              `<branch>` — add `</choice>` above it"
         );
-        let body = &doc.shots[0].body;
+        let body = &doc.sections[0].body;
         assert_eq!(
             body.len(),
             2,
@@ -1314,8 +1320,8 @@ mod tests {
     /// a `<choice>` "outside a `<branch>`".
     #[test]
     fn an_unclosed_arm_ends_at_its_next_sibling() {
-        let src = "## S\n<branch id=\"b\">\n<choice id=\"a\" label=\"A\">\n@narrator: A.\n\
-                   <choice id=\"c\" label=\"C\">\n@narrator: C.\n</choice>\n</branch>\n";
+        let src = "## S\n<branch id=\"b\">\n<choice id=\"a\" text=\"A\">\n@narrator: A.\n\
+                   <choice id=\"c\" text=\"C\">\n@narrator: C.\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(
@@ -1323,17 +1329,17 @@ mod tests {
             "`<choice>` from line 3 is never closed: the next `<choice>` opens on line 5 — add \
              `</choice>` above it"
         );
-        let Node::Branch(b) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::Branch(b) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(b.choices.len(), 2);
 
-        let src = "## S\n<match on=\"run.x\">\n<when is=\"a\">\n@narrator: A.\n\
+        let src = "## S\n<match subject=\"run.x\">\n<when is=\"a\">\n@narrator: A.\n\
                    <otherwise>\n@narrator: B.\n</otherwise>\n</match>\n";
         let (doc, diags) = parse(src);
         assert_eq!(diags.len(), 1, "{diags:?}");
-        let Node::Match(m) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::Match(m) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(m.arms.len(), 2);
     }
@@ -1342,7 +1348,7 @@ mod tests {
     /// open and skipped; that block's real close still ends it.
     #[test]
     fn a_stray_close_inside_a_block_names_the_open_block_and_is_skipped() {
-        let src = "## S\n<match on=\"run.x\">\n<when is=\"1\">\n@narrator: one.\n</whem>\n</when>\n</match>\n";
+        let src = "## S\n<match subject=\"run.x\">\n<when is=\"1\">\n@narrator: one.\n</whem>\n</when>\n</match>\n";
         let (doc, diags) = parse(src);
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(diags[0].code, "E-UNCLOSED-TAG");
@@ -1352,7 +1358,7 @@ mod tests {
             "`</whem>` closes no open block — the block open here is `<when>` from line 3, \
              which `</when>` closes"
         );
-        let Node::Match(m) = &doc.shots[0].body[0] else {
+        let Node::Match(m) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(m.arms.len(), 1);
@@ -1365,7 +1371,7 @@ mod tests {
     fn a_child_outside_its_parent_is_named_and_dropped() {
         for (open, close, parent) in [
             (
-                "<choice id=\"c\" label=\"C\">",
+                "<choice id=\"c\" text=\"C\">",
                 "</choice>",
                 "`<branch>` or `<hub>`",
             ),
@@ -1389,7 +1395,7 @@ mod tests {
                 "{open}: {}",
                 diags[0].message
             );
-            let body = &doc.shots[0].body;
+            let body = &doc.sections[0].body;
             assert_eq!(body.len(), 1, "{open}: only `after` remains: {body:?}");
             assert!(matches!(&body[0], Node::Line(_)), "{open}: {body:?}");
         }
@@ -1397,10 +1403,10 @@ mod tests {
 
     #[test]
     fn hub_parses_choices_with_flags() {
-        let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" label=\"Ask\" once>\n@marina: Sure.\n</choice>\n<choice id=\"leave\" label=\"Go\" exit>\n@fixer: Bye.\n</choice>\n</hub>\n";
+        let src = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"a\" text=\"Ask\" once>\n@marina: Sure.\n</choice>\n<choice id=\"leave\" text=\"Go\" exit>\n@fixer: Bye.\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(h.choices.len(), 2);
@@ -1419,10 +1425,10 @@ mod tests {
     /// the options keep their order and bodies.
     #[test]
     fn hub_parses_its_return_block() {
-        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: The lamp room again.\n</return>\n<choice id=\"a\" label=\"A\">\n@narrator: a\n</choice>\n<choice id=\"b\" label=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
+        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: The lamp room again.\n</return>\n<choice id=\"a\" text=\"A\">\n@narrator: a\n</choice>\n<choice id=\"b\" text=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(h.choices.len(), 2);
@@ -1437,7 +1443,7 @@ mod tests {
     /// reported once at its own line; the first stays the hub's.
     #[test]
     fn hub_return_misplaced_is_reported() {
-        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: one\n</return>\n<return>\n@narrator: two\n</return>\n<choice id=\"a\" label=\"A\">\n<return>\n@narrator: three\n</return>\n</choice>\n<choice id=\"b\" label=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
+        let src = "## S\n<hub id=\"lamp\">\n<return>\n@narrator: one\n</return>\n<return>\n@narrator: two\n</return>\n<choice id=\"a\" text=\"A\">\n<return>\n@narrator: three\n</return>\n</choice>\n<choice id=\"b\" text=\"B\" exit>\n@narrator: b\n</choice>\n</hub>\n";
         let (doc, diags) = parse(src);
         let lines: Vec<_> = diags
             .iter()
@@ -1449,7 +1455,7 @@ mod tests {
             "{diags:?}"
         );
         assert!(diags[0].message.contains("at most one `<return>`"));
-        let Node::Hub(h) = &doc.shots[0].body[0] else {
+        let Node::Hub(h) = &doc.sections[0].body[0] else {
             panic!()
         };
         let r = h.on_return.as_ref().expect("the first <return>");
@@ -1470,8 +1476,8 @@ mod tests {
             ("<again>", "</again>", "hub", "did you mean `<return>`?"),
         ] {
             let src = format!(
-                "## S\n<{menu} id=\"m\">\n{open}{body}{close}\n<choice id=\"a\" label=\"A\">\n\
-                 @narrator: a\n</choice>\n<choice id=\"x\" label=\"X\" exit>\n@narrator: x\n\
+                "## S\n<{menu} id=\"m\">\n{open}{body}{close}\n<choice id=\"a\" text=\"A\">\n\
+                 @narrator: a\n</choice>\n<choice id=\"x\" text=\"X\" exit>\n@narrator: x\n\
                  </choice>\n</{menu}>\n"
             );
             let (doc, diags) = parse(&src);
@@ -1483,7 +1489,7 @@ mod tests {
                 "{open}: {}",
                 diags[0].message
             );
-            let choices = match &doc.shots[0].body[0] {
+            let choices = match &doc.sections[0].body[0] {
                 Node::Branch(b) => b.choices.len(),
                 Node::Hub(h) => h.choices.len(),
                 n => panic!("{n:?}"),
@@ -1496,17 +1502,17 @@ mod tests {
     fn hub_nested_in_choice_bodies_parse() {
         // Node::Hub must flow through next_node inside <choice> bodies, both in a
         // sibling <hub> and inside a <branch>'s <choice> (dsl §7.3.2).
-        let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" label=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" label=\"X\">\n@marina: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" label=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" label=\"Y\">\n@fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
+        let src = "## Shot 1.\n<hub id=\"outer\">\n<choice id=\"a\" text=\"A\">\n<hub id=\"inner\">\n<choice id=\"x\" text=\"X\">\n@marina: hi\n</choice>\n</hub>\n</choice>\n</hub>\n<branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n<hub id=\"h2\">\n<choice id=\"y\" text=\"Y\">\n@fixer: yo\n</choice>\n</hub>\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Hub(outer) = &doc.shots[0].body[0] else {
+        let Node::Hub(outer) = &doc.sections[0].body[0] else {
             panic!("expected outer Hub")
         };
         let Node::Hub(inner) = &outer.choices[0].body[0] else {
             panic!("expected inner Hub")
         };
         assert_eq!(inner.choices.len(), 1);
-        let Node::Branch(br) = &doc.shots[0].body[1] else {
+        let Node::Branch(br) = &doc.sections[0].body[1] else {
             panic!("expected Branch")
         };
         let Node::Hub(h2) = &br.choices[0].body[0] else {
@@ -1521,8 +1527,8 @@ mod tests {
             "## Shot 1.\n<on event=\"combatEnd\" when=\"run.dead\">\n@narrator: silence.\n</on>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::On(on) = &doc.shots[0].body[0] else {
-            panic!("{:?}", doc.shots[0].body)
+        let Node::On(on) = &doc.sections[0].body[0] else {
+            panic!("{:?}", doc.sections[0].body)
         };
         assert_eq!(on.event, "combatEnd");
         assert!(on.when.is_some());
@@ -1535,7 +1541,7 @@ mod tests {
             "## Shot 1.\n<objective id=\"reach\" title=\"Reach\" done=\"run.here\"/>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(o.id, "reach");
@@ -1548,7 +1554,7 @@ mod tests {
     #[test]
     fn objective_optional_flag_parses() {
         let (doc, _) = crate::parse("## Shot 1.\n<objective id=\"x\" done=\"a\" optional/>\n");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert!(o.optional);
@@ -1563,7 +1569,7 @@ mod tests {
             let (doc, _) = crate::parse(&format!(
                 "## Shot 1.\n<objective id=\"x\" done=\"a\" {attr}/>\n"
             ));
-            let Node::Objective(o) = &doc.shots[0].body[0] else {
+            let Node::Objective(o) = &doc.sections[0].body[0] else {
                 panic!()
             };
             o.clone()
@@ -1586,7 +1592,7 @@ mod tests {
             "## Shot 1.\n<objective id=\"x\" done=\"a\">\n::set{run.x = 1}\n</objective>\n",
         );
         assert!(diags.is_empty(), "{diags:?}");
-        let Node::Objective(o) = &doc.shots[0].body[0] else {
+        let Node::Objective(o) = &doc.sections[0].body[0] else {
             panic!()
         };
         assert_eq!(o.body.len(), 1);
@@ -1654,7 +1660,7 @@ mod tests {
         // misplaced and dropped.
         let src = "## Shot 1.\n<reward kind=\"gold\" amount=\"1\"/>\n";
         let (doc, diags) = crate::parse(src);
-        assert!(doc.shots[0].body.is_empty());
+        assert!(doc.sections[0].body.is_empty());
         assert_eq!(diags.len(), 1, "{diags:?}");
         assert_eq!(diags[0].code, "E-LOGIC-CONTENT");
         assert!(

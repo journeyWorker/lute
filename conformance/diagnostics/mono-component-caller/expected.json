@@ -1,0 +1,55 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-MONO-POV",
+      "layer": "content",
+      "message": "component `thought` (thought.component.lute:7:7), used here: `@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`hero`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`",
+      "related": [
+        {
+          "diagnostic": {
+            "code": "E-MONO-POV",
+            "layer": "content",
+            "message": "`@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`hero`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`",
+            "severity": "error",
+            "span": {
+              "byte_end": 50,
+              "byte_start": 46,
+              "column": 7,
+              "line": 7,
+              "utf16_range": [
+                46,
+                50
+              ]
+            },
+            "spec": [
+              "dsl 0.37.0 §3.4"
+            ]
+          },
+          "file": "thought.component.lute"
+        }
+      ],
+      "severity": "error",
+      "span": {
+        "byte_end": 209,
+        "byte_start": 166,
+        "column": 1,
+        "line": 14,
+        "utf16_range": [
+          166,
+          209
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.4"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      "::use"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

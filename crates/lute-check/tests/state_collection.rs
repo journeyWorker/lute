@@ -44,8 +44,8 @@ fn codes(text: &str) -> Vec<String> {
 fn scene(state_block: &str, cond: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{state_block}---\n\
-         ## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n\
-         </choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+         ## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"{cond}\">\n@narrator: hi\n\
+         </choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 

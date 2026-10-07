@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn fills_valid_cel_slots_and_reports_invalid() {
-        let text = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.a\">\n<when test=\"1 +\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.a\">\n<when test=\"1 +\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n";
         let (mut doc, _) = parse(text);
         let mut arena = CelArena::default();
         let errs = fill_document(&mut arena, &mut doc);
@@ -93,11 +93,11 @@ mod tests {
             "::camera{focus=@fond}\n",       // Directive.attrs Ref
             "::set{scene.a = 1}\n",          // top-level Set.expr
             "<branch id=\"b\" flag=@joy>\n", // Branch.attrs Ref
-            "<choice id=\"c\" label=\"l\" when=\"scene.a > 0\" pick=@joy>\n", // Choice.when + Choice.attrs Ref
+            "<choice id=\"c\" text=\"l\" when=\"scene.a > 0\" pick=@joy>\n", // Choice.when + Choice.attrs Ref
             "::set{scene.b = 2}\n", // Set inside choice body
             "</choice>\n",
             "</branch>\n",
-            "<match on=\"scene.a\">\n",       // Match.subject
+            "<match subject=\"scene.a\">\n",       // Match.subject
             "<when test=\"scene.a == 1\">\n", // Arm::When test
             "::set{scene.c = 3}\n",           // Set inside when body
             "</when>\n",
@@ -107,7 +107,7 @@ mod tests {
             "</match>\n",
             "<timeline duration=\"1.4\">\n", // Timeline.duration
             "<track channel=\"fg\">\n",
-            "::cut{assetId=\"x\" cue=@joy}\n", // clip Directive.attrs Ref
+            "::cg{assetId=\"x\" cue=@joy}\n", // clip Directive.attrs Ref
             "::set{scene.e = 5}\n",            // clip Set.expr (ClipNode::Set)
             "</track>\n",
             "</timeline>\n",

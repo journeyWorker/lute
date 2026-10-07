@@ -144,7 +144,7 @@ impl LanguageServer for Backend {
         let providers = built.input.providers;
         let imports = built.input.imports;
         let off = position_to_byte(&text, pos.position);
-        let items = completion::complete_at(&doc, &snapshot, &providers, &imports, off);
+        let items = completion::complete_at(&doc, &text, &snapshot, &providers, &imports, off);
         if items.is_empty() {
             return Ok(None);
         }

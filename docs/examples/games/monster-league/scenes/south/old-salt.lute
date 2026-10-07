@@ -12,7 +12,7 @@ priority: 20
 ## The end of the pier
 
 ::bg{location="tidewell-pier" time="day"}
-::auto{character="tidewellMorrow" anchor="center" action="enter"}
+::actor{character="tidewellMorrow" anchor="center" action="enter"}
 @tidewellMorrow{code="0010"}: Sit down, sit down. You've the look of someone who's never held a rod. Everyone in Tidewell was fishing before they could walk. Some of us instead of walking.
 @tidewellMorrow{code="0020" emotion="laughing"}: Here. It's old, like me, and it bends, like me, and it's never once let go of a fish. Unlike me.
 ::give{item="oldRod"}

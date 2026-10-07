@@ -17,22 +17,22 @@ fn compile_marina_exits_zero_with_artifact_json() {
         String::from_utf8_lossy(&out.stderr)
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["lute"], "0.36.6");
-    assert_eq!(v["irVersion"], "0.36.6");
+    assert_eq!(v["lute"], "0.37.0");
+    assert_eq!(v["irVersion"], "0.37.0");
     assert_eq!(
         v["requiredSemantics"],
         serde_json::json!(["lute.core/1", "lute.staging/1", "lute.timeline/1"])
     );
     assert!(
-        v["capabilityVersion"]
+        v["capabilitySnapshot"]
             .as_str()
             .is_some_and(|s| !s.is_empty()),
-        "capabilityVersion must be a non-empty snapshot stamp"
+        "capabilitySnapshot must be a non-empty snapshot stamp"
     );
     assert_eq!(v["meta"]["episodeId"], "s01ep02");
     let commands = v["commands"].as_array().unwrap();
     assert!(!commands.is_empty());
-    assert_eq!(commands[0]["addr"], "001-0100");
+    assert_eq!(commands[0]["position"], "001-0100");
 }
 
 #[test]

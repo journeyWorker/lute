@@ -98,7 +98,7 @@ fn assemble_with(lower: Lowering) -> Vec<AssembleError> {
 #[test]
 fn valid_record_lowering_assembles_clean() {
     let errs = assemble_with(record_lowering(
-        "background",
+        "bg",
         "{ assetId: { fromAttr: img } }",
     ));
     assert!(errs.is_empty(), "{errs:?}");
@@ -132,14 +132,14 @@ fn bad_record_name_reaches_assembly_with_its_own_code() {
     assert_eq!(
         msg,
         "directive `::backdrop` lowers to unknown record `line`; declarative lowering \
-         targets the staging kinds (background, music, sfx, vfx, sprite, camera, cut, video)"
+         targets the staging kinds (bg, music, sfx, vfx, actor, camera, cg, video, sequence)"
     );
 }
 
 #[test]
 fn bad_field_name_reaches_assembly_with_its_own_code() {
     let errs = assemble_with(record_lowering(
-        "background",
+        "bg",
         "{ backdropId: { fromAttr: img } }",
     ));
     let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
@@ -149,7 +149,7 @@ fn bad_field_name_reaches_assembly_with_its_own_code() {
 #[test]
 fn bad_from_attr_reaches_assembly_with_its_own_code() {
     let errs = assemble_with(record_lowering(
-        "background",
+        "bg",
         "{ assetId: { fromAttr: missing } }",
     ));
     let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
@@ -235,7 +235,7 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
         pdir.join("d.yaml"),
         "directives:\n\
          \x20 - { name: backdrop, attrs: [ { name: img, type: string } ], \
-         lower: { record: background, fields: { assetId: { fromAttr: img } } } }\n\
+         lower: { record: bg, fields: { assetId: { fromAttr: img } } } }\n\
          \x20 - { name: narrate, attrs: [ { name: who, type: string } ], \
          lower: { record: line, fields: { speaker: { fromAttr: who } } } }\n",
     )
@@ -266,7 +266,7 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
             (
                 "E-LOWER-RECORD-UNKNOWN",
                 "directive `::narrate` lowers to unknown record `line`; declarative lowering \
-                 targets the staging kinds (background, music, sfx, vfx, sprite, camera, cut, video)"
+                 targets the staging kinds (bg, music, sfx, vfx, actor, camera, cg, video, sequence)"
             ),
         ],
         "{diags:?}"

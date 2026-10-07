@@ -32,7 +32,7 @@ fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
 // Minimal valid scene reading an imported run path via <match>.
 const SCENE_READS_RUN: &str =
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-<match on=\"run.choseHelp\">\n<when test=\"$ == true\">@x: a\n</when>\n\
+<match subject=\"run.choseHelp\">\n<when test=\"$ == true\">@x: a\n</when>\n\
 <otherwise>@x: b\n</otherwise>\n</match>\n";
 // Same but the scene ALSO inline-declares run.x which the import owns.
 const SCENE_REDECLARES: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: bool }\n---\n## Shot 1.\n@x: hi\n";
@@ -577,7 +577,7 @@ fn scene_inline_refines_extends_base_default() {
     let imports2 = resolve_imports(&dir2, &[], &["base.lute".to_string()], zero_span());
     let reads = |state: &str| -> Vec<String> {
         let text = format!(
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{state}---\n## Shot 1.\n<match on=\"run.gold\">\n<when test=\"$ == 5\">@x: a\n</when>\n</match>\n"
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{state}---\n## Shot 1.\n<match subject=\"run.gold\">\n<when test=\"$ == 5\">@x: a\n</when>\n</match>\n"
         );
         check_codes(&text, imports2.clone())
     };

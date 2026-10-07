@@ -180,7 +180,7 @@ The LSP shares the resolver and checker, publishes the same diagnostics, and
 removes prohibited directives and bridges from completion. Editor filtering is
 a writing aid; `check` and `compile` remain the enforcement boundary.
 
-Restrictive permissions participate in `capabilityVersion`. A wholly
+Restrictive permissions participate in `capabilitySnapshot`. A wholly
 unrestricted policy is normalized away, preserving policy-free capability
 hashes byte-for-byte. The hash distinguishes authoring surfaces for caches; it
 is not a signature or proof that an artifact was authorized.
@@ -211,7 +211,7 @@ Capability permissions are compile-time admission control. They do **not**:
   secrets;
 - implement, roll, grant, settle, or persist rewards; or
 - make untrusted plugins, projects, artifacts, or externally supplied
-  `capabilityVersion` hashes safe.
+  `capabilitySnapshot` hashes safe.
 
 The host still authorizes runtime principals and resources, maps bridges only to
 intended implementations, owns persistence/idempotency, and loads only trusted

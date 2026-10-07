@@ -6,7 +6,7 @@ season: 1
 episode: 3
 title: The Mood Reading
 pov: fixer
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 # Root capability profile (project lute.project.yaml), with the SAME scene-local
 # `plugins:` options episode01.lute narrows to: a project compiles to one capability
 # snapshot (`compile --all`, `play`, `check-project` refuse two — E-CAPABILITY-MISMATCH),
@@ -36,8 +36,6 @@ assigned, so full `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2).
 Checks clean against `--project docs/examples/showcase`.
 */
 
-# S01EP03 — The Mood Reading
-
 ## Reading the Room
 
 @narrator: Marina watches you from across the counter, reading the room.
@@ -49,7 +47,7 @@ Checks clean against `--project docs/examples/showcase`.
 literals (`is="calm"`, `is="tense"`) and one `is="joyful|playful"` ALTERNATION —
 cover all four members, so the match is exhaustive with NO <otherwise>.
 */
-<match on="scene.mood">
+<match subject="scene.mood">
   <when is="calm">
     @fixer{mono}: Steady breathing. Nothing to prove tonight.
   </when>

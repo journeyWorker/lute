@@ -126,7 +126,7 @@ fn dialogue_ratio_silent_below_min_nodes() {
 }
 
 // ---------------------------------------------------------------------------
-// shot-starts-with-background (shot)
+// section-starts-with-background (shot)
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -145,7 +145,7 @@ fn shot_starts_with_background_ok_when_first_is_bg() {
         empty_span(),
         LintScope::Full,
     );
-    let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
+    let rows = only_code(&out.diagnostics, "L-SECTION-STARTS-WITH-BACKGROUND");
     assert!(rows.is_empty(), "unexpected: {:?}", codes(&out.diagnostics));
 }
 
@@ -154,7 +154,7 @@ fn shot_starts_with_background_fires_when_first_is_not_bg() {
     let doc = input(
         "scene.lute",
         "---\nkind: scene\n---\n## Shot 1.\n\
-         ::music{action=\"start\"}\n@alice: hi\n",
+         ::music{playback=\"start\"}\n@alice: hi\n",
     );
     let out = lint(
         &[doc],
@@ -165,7 +165,7 @@ fn shot_starts_with_background_fires_when_first_is_not_bg() {
         empty_span(),
         LintScope::Full,
     );
-    let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
+    let rows = only_code(&out.diagnostics, "L-SECTION-STARTS-WITH-BACKGROUND");
     assert_eq!(rows.len(), 1, "codes: {:?}", codes(&out.diagnostics));
 }
 
@@ -184,7 +184,7 @@ fn shot_starts_with_background_fires_when_no_directives() {
         empty_span(),
         LintScope::Full,
     );
-    let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
+    let rows = only_code(&out.diagnostics, "L-SECTION-STARTS-WITH-BACKGROUND");
     assert_eq!(rows.len(), 1);
 }
 
@@ -290,7 +290,6 @@ fn chapters(on: &str, scenes: &[&str]) -> lute_manifest::project::MetaDefaults {
             on: on.to_string(),
             scenes: scenes.iter().map(|s| s.to_string()).collect(),
             applied: true,
-            retired: false,
         },
     ])
 }
@@ -324,7 +323,7 @@ fn chain_derived_on_makes_a_beat() {
     );
     let out = lint_default(vec![stage, own_on, long_a, long_b]);
     assert!(
-        only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND").is_empty(),
+        only_code(&out, "L-SECTION-STARTS-WITH-BACKGROUND").is_empty(),
         "codes: {:?}",
         codes(&out)
     );
@@ -369,7 +368,7 @@ fn sequence_chain_continuation_needs_no_background() {
         "---\nkind: scene\nid: rock.night\n---\n## The Gallery\n@keeper: Salt again.\n",
     );
     let out = lint_default(vec![hearing, rail, loose]);
-    let bg: Vec<_> = only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND")
+    let bg: Vec<_> = only_code(&out, "L-SECTION-STARTS-WITH-BACKGROUND")
         .into_iter()
         .map(|(p, _)| p)
         .collect();
@@ -489,7 +488,7 @@ fn linear_vn_rules_skip_beats_components_quests_and_lore() {
     ];
     let out = lint_default(docs);
     for code in [
-        "L-SHOT-STARTS-WITH-BACKGROUND",
+        "L-SECTION-STARTS-WITH-BACKGROUND",
         "L-DIALOGUE-RATIO",
         "L-SCENE-LENGTH-SPREAD",
     ] {
@@ -528,19 +527,19 @@ fn scene_length_spread_ignores_beats() {
     );
 }
 
-/// Only staging directives open a shot: `::accept`/`::use`/`::mark` before
+/// Only staging directives open a shot: `::accept`/`::use`/`::label` before
 /// the `::bg` do not make a linear scene's shot "start with" something else.
 #[test]
 fn shot_opening_skips_control_directives() {
     let doc = input(
         "scene.lute",
         "---\nkind: scene\n---\n## Shot 1.\n\
-         ::accept{quest=\"q\"}\n::use{component=\"c\"}\n::mark{id=\"top\"}\n\
+         ::accept{quest=\"q\"}\n::use{component=\"c\"}\n::label{name=\"top\"}\n\
          ::bg{location=\"a\"}\n@alice: hi\n",
     );
     let out = lint_default(vec![doc]);
     assert!(
-        only_code(&out, "L-SHOT-STARTS-WITH-BACKGROUND").is_empty(),
+        only_code(&out, "L-SECTION-STARTS-WITH-BACKGROUND").is_empty(),
         "codes: {:?}",
         codes(&out)
     );
@@ -840,11 +839,11 @@ fn level_off_disables_rule() {
     let doc = input(
         "scene.lute",
         "---\nkind: scene\n---\n## Shot 1.\n\
-         ::music{action=\"start\"}\n@alice: hi\n",
+         ::music{playback=\"start\"}\n@alice: hi\n",
     );
     let mut cfg = LintConfig::default();
     cfg.rules.insert(
-        "shot-starts-with-background".into(),
+        "section-starts-with-background".into(),
         lute_lint::RuleOverride {
             level: Some(lute_manifest::lint::LintLevel::Off),
             options: Default::default(),
@@ -859,7 +858,7 @@ fn level_off_disables_rule() {
         empty_span(),
         LintScope::Full,
     );
-    let rows = only_code(&out.diagnostics, "L-SHOT-STARTS-WITH-BACKGROUND");
+    let rows = only_code(&out.diagnostics, "L-SECTION-STARTS-WITH-BACKGROUND");
     assert!(rows.is_empty());
 }
 
@@ -945,9 +944,9 @@ fn custom_rule_fires() {
 custom:
   - id: too-few-shots
     target: scene
-    when: "scene.shots < options.min"
+    when: "scene.sections < options.min"
     level: warn
-    message: "only {scene.shots} shots (need {options.min})"
+    message: "only {scene.sections} shots (need {options.min})"
     options: { min: 3 }
 "#,
         empty_span(),

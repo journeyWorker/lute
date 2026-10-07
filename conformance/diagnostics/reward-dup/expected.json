@@ -1,0 +1,31 @@
+{
+  "diagnostics": [
+    {
+      "code": "E-REWARD-DUP",
+      "layer": "logic",
+      "message": "reward id `pay` is already used in quest `rescue` (line 8) — a reward id is unique among its quest's rewards, objectives' included",
+      "severity": "error",
+      "span": {
+        "byte_end": 245,
+        "byte_start": 242,
+        "column": 17,
+        "line": 10,
+        "utf16_range": [
+          242,
+          245
+        ]
+      },
+      "spec": [
+        "dsl 0.37.0 §3.5"
+      ]
+    }
+  ],
+  "ok": false,
+  "resolved": {
+    "commands_preview": [
+      "<objective id=\"arrive\">"
+    ],
+    "injections": [],
+    "timeline_tables": []
+  }
+}

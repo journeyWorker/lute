@@ -193,12 +193,35 @@ fn run_compile(
             // `compile_with_check` has already stamped every final `lineId`,
             // which is the ONLY key a bundle joins on.
             if let Some(bundle) = &bundle {
-                let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
+                let merged = lute_compile::locale::merge_locales(&mut artifact, bundle);
+                let refused = merged.iter().any(|d| d.severity == Severity::Error);
+                // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
+                // fails the build outright — a failed gate, so `--json`
+                // prints the merge diagnostics as JSON on stdout, exactly as
+                // a failed check gate does below.
+                if refused && json {
+                    let mut s = match pretty_json(&merged) {
+                        Ok(s) => s,
+                        Err(error) => {
+                            eprintln!("lute: failed to serialize diagnostics: {error}");
+                            return ExitCode::from(2);
+                        }
+                    };
+                    s.push('\n');
+                    if write_stdout(&s).is_err() {
+                        return ExitCode::from(2);
+                    }
+                    return ExitCode::FAILURE;
+                }
                 // STDERR, not stdout: without `-o` the execution IR itself is on
                 // stdout, and a warning line in the middle of it would make
                 // the compile output unparseable.
-                eprint!("{}", render_diagnostics(file, &missing, policy));
-                let denied = missing.iter().filter(|d| policy.denied(d)).count();
+                eprint!("{}", render_diagnostics(file, &merged, policy));
+                if refused {
+                    eprintln!("locale merge failed; no execution IR emitted");
+                    return ExitCode::FAILURE;
+                }
+                let denied = merged.iter().filter(|d| policy.denied(d)).count();
                 if denied > 0 {
                     eprintln!("--deny promoted {denied} diagnostic(s); no execution IR emitted");
                     return ExitCode::FAILURE;

@@ -98,11 +98,11 @@ fn use_codes(body: &str) -> Vec<String> {
 const FORBIDDEN: &[(&str, &str)] = &[
     // presenting a menu records the selection: a state write (§6.2)
     (
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>",
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>",
         "E-COMPONENT-BODY",
     ),
     (
-        "<hub id=\"h\">\n<choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</hub>",
+        "<hub id=\"h\">\n<choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</hub>",
         "E-COMPONENT-BODY",
     ),
     // a component body performs no state writes
@@ -111,7 +111,7 @@ const FORBIDDEN: &[(&str, &str)] = &[
     ("::retract{awake(vesna)}", "E-COMPONENT-BODY"),
     // choreography and quest structure are not presentational
     (
-        "<timeline duration=\"1.0\">\n<track subject=\"x\">\n::camera{shake=\"0.2\"}\n</track>\n</timeline>",
+        "<timeline duration=\"1.0\">\n<track subject=\"x\">\n::camera{focus=\"hero\"}\n</track>\n</timeline>",
         "E-COMPONENT-BODY",
     ),
     (
@@ -172,7 +172,7 @@ fn standalone_component_rejects_logic_blocks() {
 fn standalone_component_admits_presentational_forms() {
     let admitted = [
         "@narrator: a line is presentational",
-        "::auto{character=\"marina\" action=\"fadeInUp\"}",
+        "::actor{character=\"marina\" action=\"fadeInUp\"}",
     ];
     for body in admitted {
         let codes = standalone_codes(body);
@@ -184,7 +184,7 @@ fn standalone_component_admits_presentational_forms() {
     // A param-scoped `<match>` needs a declared param, so it does not fit the
     // paramless `component_file` shape above.
     let param_match = "---\ncomponent: c\nparams:\n  tier: string\n---\n## Scene 1.\n\
-<match on=\"@tier\">\n<when is=\"gold\">\n@narrator: hi\n</when>\n<otherwise>\n\
+<match subject=\"@tier\">\n<when is=\"gold\">\n@narrator: hi\n</when>\n<otherwise>\n\
 @narrator: ho\n</otherwise>\n</match>\n";
     let codes = check_codes(
         param_match.to_string(),

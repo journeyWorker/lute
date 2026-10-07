@@ -48,7 +48,7 @@ use super::*;
 /// premise moves the head with the write, a negated one against it) — an
 /// `::accept` of a quest it reads. Sibling `<choice>`es and `<match>` arms
 /// are separate paths: a guard survives a branch when it survives every
-/// arm. A hub's writes count from its first round, and a `::next` target
+/// arm. A hub's writes count from its first round, and a `::jump` target
 /// label drops the guards of the region it sits in (the jump may come from
 /// outside it). A `{vo}` line is exempt: a voice-over does not put its
 /// speaker in the room (an `{os}` speaker is there, out of frame).
@@ -76,7 +76,7 @@ pub fn check_presence(
     for body in doc_bodies(doc) {
         visit(body, &mut |node| {
             if let Node::Directive(d) = node {
-                if d.tag == lute_manifest::core::NEXT_DIRECTIVE {
+                if d.tag == lute_manifest::core::JUMP_DIRECTIVE {
                     if let Some((to, _)) = literal_attr(&d.attrs, "to") {
                         jumps.insert(to.to_string());
                     }
@@ -164,7 +164,7 @@ pub fn check_presence(
         scene_ladder,
         scene_absent,
         &scene_after,
-        doc.shots.iter().map(|s| &s.body[..]),
+        doc.sections.iter().map(|s| &s.body[..]),
     );
     for quest in &doc.quests {
         let mut conds = Vec::new();
@@ -413,7 +413,7 @@ pub(super) struct Presence<'a> {
     producers: Option<&'a FactProducers>,
     params: &'a BTreeMap<String, DomainInfo>,
     defs: DefTable<'a>,
-    /// Every `::next{to}` target of the document.
+    /// Every `::jump{to}` target of the document.
     jumps: BTreeSet<String>,
     guards: Vec<Guard>,
     /// `guards[..base]` are the current unit's own assumptions.

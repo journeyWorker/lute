@@ -4,7 +4,7 @@ description: Choice mechanics — when guards and the into= run-record sugar —
 ---
 
 A `<choice>` is one option inside a [`<branch>`](/language/branch-match-when/) or a `<hub>`. Every
-choice requires an **`id`** (the recorded key) and a **`label`** (the button text, which may
+choice requires an **`id`** (the recorded key) and a **`text`** (the button text, which may
 interpolate). Beyond that it carries guards and run-record sugar.
 
 ## Guards
@@ -14,7 +14,7 @@ branch must still contain at least one unguarded choice (`E-BRANCH-ALL-GUARDED`)
 never provably empty.
 
 ```lute
-<choice id="soft" label="Ask gently" when="@showcaseReady">
+<choice id="soft" text="Ask gently" when="@showcaseReady">
   @fixer{code="0052"}: Marina — would you mind terribly if I had your number?
 </choice>
 ```
@@ -23,20 +23,20 @@ never provably empty.
 
 Selecting a choice records its id into the reserved path `scene.choices.<branchId>` (domain: the
 branch's choice ids ∪ `unset`). That path clears at episode end, so it drives **intra-episode**
-reactions only — a later shot's `<match on="scene.choices.…">`.
+reactions only — a later section's `<match subject="scene.choices.…">`.
 
 To make a choice affect a **later episode** of the same run, record a **named** `run.*` fact with
 the `into=` sugar:
 
 ```lute
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" into="run.metHelpfully">
+  <choice id="help" text="Help her up" into="run.metHelpfully">
     @elena: Thank you. I won't forget this.
   </choice>
-  <choice id="warmly" label="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
+  <choice id="warmly" text="Help, and stay a while" into="run.sofaHelpOutcome" value="warm">
     @elena: You're very kind — really.
   </choice>
-  <choice id="tip" label="Leave a little something" into="run.tip" value="5">
+  <choice id="tip" text="Leave a little something" into="run.tip" value="5">
     @elena: Oh — you didn't have to.
   </choice>
 </branch>
@@ -52,7 +52,7 @@ automatically.) A later episode reacts by reading the named fact — never the r
 has already cleared:
 
 ```lute
-<match on="run.metHelpfully">
+<match subject="run.metHelpfully">
   <when is="true">
     @elena: You helped me back then. I've been meaning to thank you again.
   </when>
@@ -62,6 +62,60 @@ has already cleared:
 </match>
 ```
 
+## The compiled record
+
+A `<branch>` compiles to one `choice` record. A `prompt="…"` is the line the host shows above the
+options, and `timeout="N"` is a countdown in whole seconds (a positive integer, else
+`E-BRANCH-TIMEOUT`):
+
+```lute check
+---
+kind: scene
+id: bar.counter
+title: The number
+---
+
+## Counter
+
+<branch id="number" prompt="Ask for her number?" timeout="10">
+  <choice id="blunt" text="Just ask, flatly">
+    @fixer: Marina. Your number.
+  </choice>
+  <choice id="soft" text="Ask gently">
+    @fixer: Would you mind terribly?
+  </choice>
+</branch>
+```
+
+```json
+{
+  "kind": "choice",
+  "family": "control",
+  "position": "001-0100",
+  "branchId": "number",
+  "selectionKey": "scene.choices.number",
+  "options": [
+    {"id": "blunt", "text": "Just ask, flatly", "lineId": "bar.counter.number.blunt", "target": "001-0200"},
+    {"id": "soft", "text": "Ask gently", "lineId": "bar.counter.number.soft", "target": "001-0400"}
+  ],
+  "converge": "001-0600",
+  "prompt": "Ask for her number?",
+  "timeout": 10
+}
+```
+
+- **`selectionKey`** is the path the pick is recorded into, `scene.choices.<branchId>`.
+- Each option carries its button **`text`**, a `lineId` of `{prefix}.{branch id}.{choice id}` for
+  translation, and the `target` position its arm starts at. Every arm continues at `converge`.
+- **`prompt`** and **`timeout`** are present only when authored. A `timeout` can end the branch
+  without a pick, so a `<match>` on `scene.choices.number` after it needs an `is="unset"` arm or an
+  `<otherwise>`.
+
+A `<hub>` compiles to a `hub` record of the same shape: `id`, `selectionKey`
+(`scene.choices.<hubId>`), `options` whose entries add the `once` and `exit` flags, `converge`, and
+an optional `prompt` and, for a hub with a [`<return>`](#coming-back-return) block, the `return`
+position that block starts at.
+
 ## Revisit hubs
 
 A `<hub id>` is a revisit conversation: on entry, and after each non-`exit` arm completes, it
@@ -70,14 +124,14 @@ order. Hub choices carry two extra boolean flags — **`once`** and **`exit`**:
 
 ```lute
 <hub id="chatWithMarina">
-  <choice id="askCoffee" label="Ask about the coffee" once>
+  <choice id="askCoffee" text="Ask about the coffee" once>
     @marina{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
   </choice>
-  <choice id="compliment" label="Say she was kind earlier" when="@helped">
+  <choice id="compliment" text="Say she was kind earlier" when="@helped">
     @fixer{code="0030"}: You were gentle about it before. It stuck with me.
     ::set{scene.affect.marina += 1}
   </choice>
-  <choice id="leave" label="Head out" exit>
+  <choice id="leave" text="Head out" exit>
     @fixer{code="0040"}: I'd better get moving.
   </choice>
 </hub>
@@ -112,17 +166,16 @@ one-off menu:
 ---
 kind: scene
 id: bar.marina
+title: The bar
 ---
 
-# The bar
-
-## Shot 1.
+## Bar
 
 <hub id="chat" prompt="Marina polishes a glass and waits.">
-  <choice id="coffee" label="Ask about the coffee" once>
+  <choice id="coffee" text="Ask about the coffee" once>
     @marina: House blend. Bold, like the clientele.
   </choice>
-  <choice id="leave" label="Head out" exit>
+  <choice id="leave" text="Head out" exit>
     @fixer: I'd better get moving.
   </choice>
 </hub>
@@ -143,21 +196,20 @@ the options are shown again. It does not run before the first menu or after an `
 ---
 kind: scene
 id: lighthouse.lamp
+title: The lighthouse
 ---
 
-# The lighthouse
-
-## Shot 1.
+## Lamp room
 
 @narrator: A lamp room, all brass and salt.
 <hub id="lamp">
   <return>
     @narrator: The lamp room again.
   </return>
-  <choice id="ledger" label="Read the ledger">
+  <choice id="ledger" text="Read the ledger">
     @narrator: The last entry is smudged.
   </choice>
-  <choice id="leave" label="Go down the stairs" exit>
+  <choice id="leave" text="Go down the stairs" exit>
     @narrator: You leave the lamp burning.
   </choice>
 </hub>

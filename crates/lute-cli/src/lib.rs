@@ -34,7 +34,7 @@
 //!   `CheckResult`s + the project-wide diagnostics); otherwise per-file
 //!   human lines plus a project-wide section.
 //! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
-//!   `<dir>` against the current `capabilityVersion` and clear its `stale` flag,
+//!   `<dir>` against the current `capabilitySnapshot` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
 //!   (plugin §10; "an explicit `catalog refresh` precedes a build"). Correctness
 //!   never depends on a live/remote catalog — refresh only canonicalizes and
@@ -323,7 +323,7 @@ pub fn run() -> ExitCode {
             expand,
         ),
         Command::Tag { path, force } => rewrite::run_tag(&path, force),
-        Command::Fix { path } => rewrite::run_fix(&path),
+        Command::Fix { paths } => rewrite::run_fix(&paths),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }

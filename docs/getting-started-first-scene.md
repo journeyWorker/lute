@@ -83,23 +83,29 @@ Check again:
 <!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SHOT] content lives inside a shot; add a `## <title>` heading above it
+my-scene.lute:10:1: error [E-CONTENT-OUTSIDE-SECTION] content lives inside a section; add a `## <title>` heading above it
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 This is the rule to remember: **all content lives under a heading.** A Lute document is a
-sequence of "shots" — beats of the scene — and every line of dialogue, narration, or staging has
-to sit inside one. Add a heading before the line:
+sequence of **sections** — beats of the scene — and every line of dialogue, narration, or staging
+has to sit inside one. Add a heading before the line:
 
 ```
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 ```
 
 (The heading is free text after `## ` — `## The Counter`, `## Scene 1. The diner`, `## Prologue` are all
-valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: shots are
+valid. `The Counter`, `The Regular`, … stays a fine convention, but the number is not grammar: sections are
 numbered by their document order.)
+
+The `{#counter}` at the end is optional: it gives the section a **stable id**, which is not part
+of the heading text. Section numbers shift whenever you add or reorder sections; the id stays
+put, so tools that follow a section across edits use it. An id starts with a letter, continues
+with letters, digits, `_` or `-`, and is unique within the document. It names the section and
+nothing more: it is not something the story can jump to.
 
 ```
 $ ./target/debug/lute check my-scene.lute
@@ -133,8 +139,9 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 Nothing is misspelled. This is the rule that **Lute ships the slot, you ship the members.**
-`emotion` is one of seven vocabulary *slots* the language knows about — `emotion`, `action`,
-`anchor`, `mood`, `volume`, `musicAction`, `vfxType` — but the compiler holds no opinion about
+`emotion` is one of the vocabulary *slots* the language knows about — `emotion`, `action`,
+`anchor`, `costume`, `mood`, `volume`, `musicPlayback`, `vfxType`, and the camera, CG, sequence
+and text-style slots — but the compiler holds no opinion about
 which emotions your characters have. That is your story's call, so no value is legal until you
 say it is. Declare the members where you declare everything else about the document — the
 frontmatter:
@@ -147,8 +154,9 @@ enums:
 Declare only the slots your scene actually uses; this one uses `emotion` and nothing else. Two
 slots carry required semantics once you declare them: `action` needs an `exits:` list naming the
 members that take a character off stage, and `anchor` needs a `default:`. You don't have to type
-any of this by hand for a real project — `lute init` scaffolds all seven slots with a starter
-member list into a shared `vocabulary.schema.yaml` that scenes pull in with `uses:`, which is the
+any of this by hand for a real project — `lute init` scaffolds seven of them (`emotion`, `anchor`,
+`action`, `mood`, `volume`, `musicPlayback`, `vfxType`) with a starter member list into a shared
+`vocabulary.schema.yaml` that scenes pull in with `uses:`, which is the
 right shape once several files share one vocabulary. For a single tutorial file, frontmatter is
 simpler.
 
@@ -167,13 +175,28 @@ Now add an inner-voice line for Mira — her private thought, not spoken aloud:
 
 `{mono}` is a **delivery flag**: a bare word in the braces (no `=value`) that changes how the
 line is delivered. `{mono}` means "this is that character's inner monologue" — it renders as
-thought, not speech, and works for any character, not just the player. Two other delivery flags
-exist alongside it: `{os}` marks a line as **off-screen** (the speaker is heard but not currently
-staged/visible), and `{vo}` marks it as **voiceover** (narration-style delivery layered over the
-scene). All three are mutually exclusive — at most one per line — and none is allowed on
-`@narrator`. `lute context` (Part 6) always lists the full set with its meanings.
+thought, not speech. Two other delivery flags exist alongside it: `{os}` marks a line as
+**off-screen** (the speaker is heard but not currently staged/visible), and `{vo}` marks it as
+**voiceover** (narration-style delivery layered over the scene). All three are mutually
+exclusive — at most one per line — and none is allowed on `@narrator`. `lute context` (Part 6)
+always lists the full set with its meanings.
 
-Check the file again:
+Check the file again. This one does **not** pass yet:
+
+<!-- lute-diagnostics -->
+```
+$ ./target/debug/lute check my-scene.lute
+my-scene.lute:18:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`fixer`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`
+failed: my-scene.lute (1 error(s), 0 warning(s))
+```
+
+Whose thoughts the player may hear is a story decision, so Lute makes you state it. By default
+only the point-of-view character — the `pov:` you declared, here the player's `fixer` — has an
+inner voice. To let the player hear Mira think, list her in the frontmatter:
+
+```yaml
+monoSpeakers: [mira]
+```
 
 ```
 $ ./target/debug/lute check my-scene.lute
@@ -190,11 +213,12 @@ character: mira
 season: 1
 episode: 1
 pov: fixer
+monoSpeakers: [mira]
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
 ---
 
-## The Counter
+## The Counter {#counter}
 
 @narrator: The diner is empty at this hour, and Mira likes it that way.
 
@@ -206,7 +230,7 @@ enums:
 ## Part 3 — Giving the player a choice
 
 A `<branch>` presents the player with a menu; each `<choice>` inside it is one option, with its
-own `id`, a `label` (the button text), and the lines that play if the player picks it.
+own `id`, a `text` (the button text), and the lines that play if the player picks it.
 
 Sometimes a choice should only appear under certain conditions — say, only if the player has met
 Mira before. That's a **guard**: `when="<condition>"`. Guards read declared **state** — a small
@@ -225,10 +249,10 @@ Now the branch:
 
 ```lute
 <branch id="orderChoice">
-  <choice id="black" label="Order it black">
+  <choice id="black" text="Order it black">
     @mira{emotion="content" variant="0"}: Good. No nonsense in a cup.
   </choice>
-  <choice id="familiar" label="Say hi like an old friend" when="scene.knowsMira">
+  <choice id="familiar" text="Say hi like an old friend" when="scene.knowsMira">
     @mira{emotion="surprised" variant="0"}: You remembered. That's new.
   </choice>
 </branch>
@@ -260,12 +284,12 @@ Say you type the old-style sigil out of habit — a colon instead of `@` — on 
 <!-- lute-diagnostics -->
 ```
 $ ./target/debug/lute check my-scene.lute
-my-scene.lute:20:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
+my-scene.lute:21:1: error [E-LEGACY-CONTENT-SIGIL] content line sigil `:` was replaced by `@` in 0.2.2 — write `@speaker{…}: text`; `lute fix` applies this migration automatically
 failed: my-scene.lute (1 error(s), 0 warning(s))
 ```
 
 **Reading a diagnostic:** `file:line:col: error [CODE] message`. Here it names the exact line
-(20), the exact problem (an old sigil), and exactly what to write instead. When the message is
+(21), the exact problem (an old sigil), and exactly what to write instead. When the message is
 not enough, `./target/debug/lute --explain E-LEGACY-CONTENT-SIGIL` prints what the code means and
 the link to its entry in the diagnostics reference. For this specific, mechanical class of fix,
 you don't have to hand-edit it — run:
@@ -290,9 +314,10 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
-  "capabilityVersion": "f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": ["lute.core/1"],
   "meta": {
     "id": "mira.s01ep01",
     "character": "mira",
@@ -316,44 +341,55 @@ $ ./target/debug/lute compile my-scene.lute
       "members": ["neutral", "surprised", "delighted", "shy", "content", "angry", "sad"] }
   ],
   "commands": [
-    { "kind": "line", "addr": "001-0100", "role": "narration", "speaker": "narrator",
+    { "kind": "line", "family": "content", "position": "001-0100", "role": "narration",
+      "speaker": "narrator",
       "text": "The diner is empty at this hour, and Mira likes it that way.",
-      "lineId": "mira.s01ep01.narrator_0010" },
-    { "kind": "line", "addr": "001-0200", "role": "dialogue", "speaker": "mira",
-      "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0,
+      "lineId": "mira.s01ep01.narrator_0010", "voiceKey": "mira.s01ep01.narrator-0010" },
+    { "kind": "line", "family": "content", "position": "001-0200", "role": "dialogue",
+      "speaker": "mira", "text": "{{userName}}, you made it.", "emotion": "content", "variant": 0,
       "lineId": "mira.s01ep01.mira_0010", "voiceKey": "mira.s01ep01.mira-0010",
       "placeholders": [{ "kind": "reserved", "token": "userName" }] },
-    { "kind": "line", "addr": "001-0300", "role": "monologue", "speaker": "mira",
-      "text": "I should not be this pleased about a coffee order.",
-      "lineId": "mira.s01ep01.mira_0020" },
-    { "kind": "choice", "addr": "001-0400", "branchId": "orderChoice",
-      "recordKey": "scene.choices.orderChoice",
+    { "kind": "line", "family": "content", "position": "001-0300", "role": "mono",
+      "speaker": "mira", "text": "I should not be this pleased about a coffee order.",
+      "lineId": "mira.s01ep01.mira_0020", "voiceKey": "mira.s01ep01.mira-0020" },
+    { "kind": "choice", "family": "control", "position": "001-0400", "branchId": "orderChoice",
+      "selectionKey": "scene.choices.orderChoice",
       "options": [
-        { "id": "black", "label": "Order it black",
+        { "id": "black", "text": "Order it black",
           "lineId": "mira.s01ep01.orderChoice.black", "target": "001-0500" },
-        { "id": "familiar", "label": "Say hi like an old friend",
-          "lineId": "mira.s01ep01.orderChoice.familiar", "when": "scene.knowsMira",
-          "expr": { "path": "scene.knowsMira" }, "target": "001-0700" }
+        { "id": "familiar", "text": "Say hi like an old friend",
+          "lineId": "mira.s01ep01.orderChoice.familiar",
+          "when": { "cel": "scene.knowsMira", "expr": { "path": "scene.knowsMira" } },
+          "target": "001-0700" }
       ],
       "converge": "001-0900" },
-    { "kind": "line", "addr": "001-0500", "role": "dialogue", "speaker": "mira",
-      "text": "Good. No nonsense in a cup.", "emotion": "content", "variant": 0,
+    { "kind": "line", "family": "content", "position": "001-0500", "role": "dialogue",
+      "speaker": "mira", "text": "Good. No nonsense in a cup.", "emotion": "content", "variant": 0,
       "lineId": "mira.s01ep01.mira_0030", "voiceKey": "mira.s01ep01.mira-0030" },
-    { "kind": "jump", "addr": "001-0600", "target": "001-0900" },
-    { "kind": "line", "addr": "001-0700", "role": "dialogue", "speaker": "mira",
-      "text": "You remembered. That's new.", "emotion": "surprised", "variant": 0,
+    { "kind": "jump", "family": "control", "position": "001-0600", "target": "001-0900" },
+    { "kind": "line", "family": "content", "position": "001-0700", "role": "dialogue",
+      "speaker": "mira", "text": "You remembered. That's new.", "emotion": "surprised", "variant": 0,
       "lineId": "mira.s01ep01.mira_0040", "voiceKey": "mira.s01ep01.mira-0040" },
-    { "kind": "jump", "addr": "001-0800", "target": "001-0900" }
+    { "kind": "jump", "family": "control", "position": "001-0800", "target": "001-0900" }
   ],
-  "shots": [
-    { "shot": 1, "heading": "The Counter" }
-  ]
+  "sections": [
+    { "section": 1, "heading": "The Counter", "id": "counter" }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [{ "name": "scene", "type": "map(string, dyn)" }],
+    "functions": []
+  }
 }
 ```
 
-(Shown reformatted for space; the real output is one JSON document, unindented choices included
-verbatim.) Your `enums:` declaration rides along into the artifact's own **`enums`** block, so
-the engine resolves values against exactly the vocabulary the checker used. You will never
+(Shown reformatted for space; the real output is one JSON document with the same fields in the
+same order.) Your `enums:` declaration rides along into the artifact's own **`enums`** block, so
+the engine resolves values against exactly the vocabulary the checker used. **`family`** sorts
+every record into one of a few groups — `content` for lines, `control` for choices and jumps,
+`staging`, `state`, and so on. **`position`** is the record's place, `{section}-{index}`; it is
+recomputed whenever you reorder the source, so it is a place, not a name. **`sections`** carries
+your `## ` headings through to the artifact, each with its `{#id}`. You will never
 hand-edit this file — it's the compiled artifact the engine consumes.
 Its existence, and that it compiled without error, is proof the scene is **statically valid** —
 every construct well-formed, every state path declared, every `<match>` exhaustive — and that
@@ -514,7 +550,7 @@ state:
   run.metMira: { type: bool }
 ---
 
-## The Counter
+## The Counter {#counter}
 
 @mira{emotion="content" variant="0" when="run.metMira"}: Back again. You know where you sit.
 
@@ -634,21 +670,34 @@ specific file you give it:
 
 ```
 $ ./target/debug/lute context my-scene.lute
-capabilityVersion: f78bb8efcaab8c3ea4ccf1bbee976a80596a04b1aca59fbe74123abfa1f55225
+
+CEL conditions (standard CEL profile):
+  numbers: int and double are distinct; arithmetic/comparison do not mix them; use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only
+  presence: has(path) tests whether path has an effective value; "key" in map tests key presence
+  host functions:
+    holds(string, list(dyn)) -> bool
+    count(string, list(dyn)) -> int
+    countDistinct(string, list(dyn), int) -> int
+    validAt(string, list(dyn), int) -> bool
+    now() -> int
+    visited(string) -> bool
+  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); single quotes are required inside double-quoted attributes
+capabilitySnapshot: babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
-directives (12):
-  auto: character, anchor, action   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
-  bg: location, time, assetId   [mutatesScene]
-  camera: focus, zoom, moveX, moveY, shake, reset, duration, easing, delay, wait
+directives (13):
+  actor: character: string (required), anchor: domain:anchor, action: domain:action, emotion: domain:emotion, costume: domain:costume   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
+  bg: location: string, time: string, assetId: string   [mutatesScene]
+  camera: focus: string, framing: domain:framing, move: domain:cameraMove, transition: domain:transition, duration: double, delay: double, wait: bool
+  cg: assetId: string (required), display: enum[show, hide], layout: domain:cgLayout
   clear:    [reads.onStage mayExitCharacter]
-  cut: assetId, action, full
-  end: reason   [terminatesWalk]
-  mark: id
-  music: action, mood, volume, assetId, track   [mutatesScene]
-  next: to, when
-  sfx: sound, assetId, name
-  vfx: type, label, transition
-  video: assetId, action, wait
+  end: reason: string   [terminatesWalk]
+  jump: to: string (required), when: string
+  label: name: string (required)
+  music: playback: domain:musicPlayback, mood: domain:mood, volume: domain:volume, assetId: string   [mutatesScene]
+  sequence: name: domain:sequence (required), wait: bool
+  sfx: sound: string, assetId: string
+  vfx: type: domain:vfxType, label: string, transition: string
+  video: assetId: string (required), display: enum[show, hide], wait: bool
 bridges (0):
 rewardKinds (0):
 occasions (0):
@@ -657,41 +706,92 @@ enums (0):
 stateSchema (4):
   prev.run.metMira: bool (owner: engine)
   run.metMira: bool
-  scene.choices.orderChoice: enum [black, familiar, unset]
+  scene.choices.orderChoice: enum [black, familiar, unset] (owner: engine)
   scene.knowsMira: bool
 deliveryFlags (3):
-  {mono}: interior monologue / thought (not spoken aloud in-scene)
+  {mono}: interior monologue / thought (not spoken aloud in-scene); only the document's point of view (`pov:`, else the project's `defaults.pov`) or a speaker its `monoSpeakers:` lists may speak it (E-MONO-POV / E-MONO-NO-POV)
   {os}: off-screen: the speaker is heard but not currently staged/visible
   {vo}: voiceover: narration-style delivery layered over the scene
+textModifiers (inline, content-line text only):
+  :pause{s=0.5} [leaf]: a pause of `s` seconds (required, non-negative) at that point of the line
+  :speed[text]{rate=1.25} [span]: the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate
+  textStyle: not declared (declare `textStyle` in `enums:` for style spans)
+  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
-builtinDirectives (5):
-  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; `owner: engine` paths are the engine's (E-ENGINE-OWNED-WRITE)
+builtinDirectives (10):
+  ::set{ <path> = <expr> [when="<condition>"] }  (also += / -=) — write a declared state path; engine-owned paths are the engine's (E-ENGINE-OWNED-WRITE)
   ::assert{ <relation>(<arg>, …) [when="<condition>"] } — assert a ground fact of a declared, non-derived, non-reserved relation
   ::retract{ <relation>(<arg | _>, …) [when="<condition>"] } — retract the matching facts of a declared, non-derived, non-reserved relation
-  ::accept{quest="<questId>" [when="<condition>"]} — accept a quest that has no `start` condition
+  ::accept{quest="<questId>" [at="nextRun"] [when="<condition>"]} — accept a quest that has no `start` condition; `at="nextRun"` queues it until after the next new run
   ::use{component="<name>" <param>=<value> … [when="<condition>"]} — expand an imported component with named arguments; a param with a default may be omitted
-beatKeys (11; scene frontmatter; <entry> / <beat> attributes):
+  ::body — in a component with a `beat:` header, at the top level of its body: where a `<beat use=…>`'s own body goes
+  ::jump{to="<string>" [when="<condition>"]} — jump forward to the `::label` named by `to` (only while `when` holds)
+  ::label{name="<string>" [when="<condition>"]} — name the position a `::jump{to=…}` jumps to
+  ::end{[reason="<string>"] [when="<condition>"]} — end this presentation here
+  ::clear{[when="<condition>"]} — take every character on stage off it; takes no attributes
+directiveAttrs (5; beyond each directive's own):
+  when: condition — every directive
+  duration: double — every directive but ::clear
+  delay: double — every directive but ::clear
+  wait: bool — every directive but ::clear
+  at: time — a directive inside a <track> clip only
+beatKeys (12; scene frontmatter `key: value`; <entry> / <beat> attributes `key="value"`):
   on: <occasion> — the occasion the beat answers
   target: <prefix>.<member> | kind:<kind> — the one target it answers, or every member of a kind (read as occasion.target)
   for: kind:<kind> — on an untargeted `select: sequence` occasion: presented once per member whose `when` holds, binding occasion.target
   when: <condition> — eligible only while it holds
   priority: <integer> — the higher eligible beat wins
   once: run | user | false | day | slot | week | season:<name> — presented at most once per run, ever, without limit, per clock day / slot / week, or per window of a season
-  spentBy: <condition> — instead of `once`: repeatable until the condition holds
+  spentBy: <condition> — spent once the condition has held; `once` sets how long it stays spent (`run` unless written)
   also: true — scene and bundle beats, on a `select: first` occasion: presented after the winner too
   share: <key> — beats with one `share` key spend one `once` together
   after: <prerequisite> — scene and bundle beats: eligible once it holds, e.g. visited("<id>")
   use: <component> — bundle `<beat>`: its header from the component's `beat:` template, the component's params as attributes
-questKeys (8; <quest> attributes):
-  start: <condition> — activates the quest when it holds; without it the quest is accept-driven
-  fail: <condition> — fails the active quest when it holds
-  after: <prerequisite> — its place in the scene graph; does not gate activation
-  tier: user | run | season:<name> — when it returns to unset: never, at each new run, or each time the season opens
-  rearm: <condition> — returns the quest to unset (objectives cleared) each time the condition goes false→true
-  complete: all | any — completes when every / any one required objective is done
-  activate: accept — a child that waits for an ::accept instead of activating with its parent
-  accept: external — the engine accepts the quest outside any document
+  advances: slot | day | <whole number ≥ 1> — moves the clock after this beat presents
+questKeys (10; <quest> attributes):
+  id="<questId>" — read as quest.<id>.state
+  title="<text>" — the quest's name
+  start="<condition>" — activates the quest when it holds; without it the quest is accept-driven
+  fail="<condition>" — fails the active quest when it holds
+  follows="<prerequisite>" — the quest's place in the scene graph; never gates activation (to wait, write start="visited('…')")
+  tier="user | run | season:<name>" — when it returns to unset: never, at each new run, or each time the season opens
+  activate="accept" — a child that waits for an ::accept instead of activating with its parent
+  complete="all | any" — completes when every / any one required objective is done
+  accept="external" — the engine accepts the quest outside any document
+  rearm="<condition>" — returns the quest to unset (objectives cleared) each time the condition goes false→true
+objectiveKeys (10; <objective> attributes):
+  id="<objectiveId>" — read as quest.<quest>.objectives.<id>.done / .failed
+  done="<condition>" — the objective is done once it holds
+  quest="<questId>" — a subquest objective: done when that quest completes
+  visibleWhen="<condition>" — hides the objective while false; never gates `done`
+  title="<text>" — the objective's name
+  optional="true" — not required for the quest to complete
+  on="<occasion>" — judged when that occasion is raised
+  by="<condition>" — a deadline: the first time it holds while not done, the objective fails
+  target="<prefix>.<member>" — with `on`: judged only for a raise for that target
+  until="<condition>" — with `on`: a deadline judged only when the objective's occasion is raised, after `done`
+rewardKeys (6; <reward> attributes):
+  id="<token>" — the reward's stable identity, unique among its quest's rewards
+  kind="<rewardKind>" — what the engine pays
+  target="<id>" — what the reward is for, per its kind
+  amount="<integer> | <N>..<M>" — how much
+  when="<condition>" — granted only while it holds
+  outcome="failed" — grant when the quest fails; without it the reward grants on complete
+enginePaths (13; the engine writes these — read them, never declare or ::set them):
+  quest.<quest>.state: enum [active, complete, failed, unset] [quest] — the quest's lifecycle; `unset` until it activates (always assigned)
+  quest.<quest>.failedBy: enum [unset, fail, by, until, subquest, cascade, superseded] [quest] — why the quest failed: its `fail`, a required objective's `by` / `until`, a required `subquest` that failed, a `cascade` from its parent, or `superseded` by a sibling; `unset` while it has not failed
+  quest.<quest>.activatedAt: narrativeTime [quest] — the moment the quest activated
+  quest.<quest>.objectives.<objective>.done: bool [quest] — the objective is done
+  quest.<quest>.objectives.<objective>.failed: bool [quest] — the objective failed (its `by` / `until` deadline passed first)
+  entry.<entry>.read: bool [run] — the entry was read this run
+  entry.<entry>.everRead: bool [user] — the entry was ever read (a new run does not reset it)
+  scene.choices.<branch> [scene] — the choice a `<branch>` / `<hub>` took: one of its choice ids, `unset` before
+  scene.visited.<hub>.<choice> [scene] — that `<hub>` choice was ever taken (bool)
+  occasion.target [occasion] — in a beat of a targeted occasion: the member the answered raise is for
+  occasion.payload.<field> [occasion] — in a beat of an occasion with a `payload:`: that field of the answered raise
+  clock.<field> [run] — derived from the declared `clock:` (day, slot, weekday, index, ended …)
+  prev.<path> [run] — the previous run's (or season window's) value of `<path>`
 scenes (1; read as visited("<id>")):
   mira.s01ep01
 ```

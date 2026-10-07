@@ -210,7 +210,7 @@ impl TryFrom<RawRewardTarget> for RewardTarget {
 }
 
 /// Hand-written so a pre-0.26 `{ provider: p }` contract prints exactly as
-/// it did (`capabilityVersion` hashes [`RewardKindDecl`]'s `Debug`): only the
+/// it did (`capabilitySnapshot` hashes [`RewardKindDecl`]'s `Debug`): only the
 /// fields a contract sets are shown.
 impl std::fmt::Debug for RewardTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -249,7 +249,7 @@ pub struct RewardKindDecl {
 }
 
 /// Hand-written so a kind without `credits` prints exactly as it did before
-/// the field existed: `capabilityVersion` hashes this `Debug`, and a
+/// the field existed: `capabilitySnapshot` hashes this `Debug`, and a
 /// vocabulary that declares no credit path must keep its stamp.
 impl std::fmt::Debug for RewardKindDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -339,7 +339,7 @@ pub struct CastMember {
 }
 
 /// Hand-written so a member without `present`/`emotions` prints exactly as
-/// it did before those fields existed: `capabilityVersion` hashes this
+/// it did before those fields existed: `capabilitySnapshot` hashes this
 /// `Debug`, and a cast that declares neither must keep its stamp.
 impl std::fmt::Debug for CastMember {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

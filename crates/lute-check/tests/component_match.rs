@@ -87,7 +87,7 @@ fn snapshot_with_directive(decl: DirectiveDecl) -> CapabilitySnapshot {
 /// (exhaustiveness is Task 7 — not checked here).
 const REACTION: &str = "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n@marina{emotion=\"delighted\"}: You remembered! You actually remembered.\n</when>\n\
 <when is=\"warm\">\n@marina{emotion=\"content\"}: Not bad at all, Mr. Fixer.\n</when>\n\
 <when is=\"cold\">\n@marina{emotion=\"neutral\"}: ...Shall we begin?\n</when>\n\
@@ -104,7 +104,7 @@ fn param_match_is_admitted() {
     let cs = codes(&dir, &s);
     assert!(
         !cs.contains(&"E-COMPONENT-BODY".to_string()),
-        "the §6.5 reaction body (a `<match on=\"@tier\">`) must NOT flag E-COMPONENT-BODY; got {cs:?}"
+        "the §6.5 reaction body (a `<match subject=\"@tier\">`) must NOT flag E-COMPONENT-BODY; got {cs:?}"
     );
     assert!(
         !cs.contains(&"E-COMPONENT-STATE".to_string()),
@@ -120,7 +120,7 @@ fn ambient_test_is_component_state() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when test=\"run.affection > 1\">\n@marina: hi\n</when>\n\
 <otherwise>\n@marina: bye\n</otherwise>\n\
 </match>\n",
@@ -143,7 +143,7 @@ fn state_subject_is_component_state() {
         &dir,
         "logic.lute",
         "---\ncomponent: logic\n---\n## Scene 1.\n\
-<match on=\"scene.affect.marina\">\n\
+<match subject=\"scene.affect.marina\">\n\
 <when test=\"$ >= 1\">\n@narrator: hi\n</when>\n\
 <otherwise>\n@narrator: bye\n</otherwise>\n\
 </match>\n",
@@ -152,7 +152,7 @@ fn state_subject_is_component_state() {
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-COMPONENT-STATE".to_string()),
-        "a `<match on=\"scene....\">` subject reads ambient state and must flag E-COMPONENT-STATE; got {cs:?}"
+        "a `<match subject=\"scene....\">` subject reads ambient state and must flag E-COMPONENT-STATE; got {cs:?}"
     );
     assert!(
         !cs.contains(&"E-COMPONENT-BODY".to_string()),
@@ -167,7 +167,7 @@ fn literal_subject_is_component_body() {
         &dir,
         "logic.lute",
         "---\ncomponent: logic\n---\n## Scene 1.\n\
-<match on=\"'fond'\">\n\
+<match subject=\"'fond'\">\n\
 <when is=\"fond\">\n@narrator: hi\n</when>\n\
 <otherwise>\n@narrator: bye\n</otherwise>\n\
 </match>\n",
@@ -176,7 +176,7 @@ fn literal_subject_is_component_body() {
     let cs = codes(&dir, &s);
     assert!(
         cs.contains(&"E-COMPONENT-BODY".to_string()),
-        "a literal `<match on=\"'fond'\">` subject is not an admitted form and must flag E-COMPONENT-BODY; got {cs:?}"
+        "a literal `<match subject=\"'fond'\">` subject is not an admitted form and must flag E-COMPONENT-BODY; got {cs:?}"
     );
     assert!(
         !cs.contains(&"E-COMPONENT-STATE".to_string()),
@@ -192,7 +192,7 @@ fn fact_query_and_now_flag() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when test=\"holds('inParty', ['x'])\">\n@marina: hi\n</when>\n\
 <when test=\"now() < run.t\">\n@marina: yo\n</when>\n\
 <otherwise>\n@marina: bye\n</otherwise>\n\
@@ -217,7 +217,7 @@ fn ambient_interp_is_component_state() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n@marina: you have {{run.tip}}\n</when>\n\
 <otherwise>\n@marina: bye\n</otherwise>\n\
 </match>\n",
@@ -286,7 +286,7 @@ fn effectless_directive_stays_admitted() {
     write_lute(
         &dir,
         "c.lute",
-        "---\ncomponent: c\n---\n## Scene 1.\n::sfx{sound=\"drip\" assetId=\"a\" name=\"amb\"}\n",
+        "---\ncomponent: c\n---\n## Scene 1.\n::sfx{sound=\"drip\" assetId=\"a\"}\n",
     );
     let s = scene("c.lute", "::use{component=\"c\"}");
     let cs = codes(&dir, &s);
@@ -304,8 +304,8 @@ fn set_branch_hub_stay_component_body() {
         "c.lute",
         "---\ncomponent: c\n---\n## Scene 1.\n\
 ::set{scene.x = 1}\n\
-<branch id=\"b\">\n<choice id=\"c1\" label=\"C1\">\n@narrator: hi\n</choice>\n</branch>\n\
-<hub id=\"h\">\n<choice id=\"c2\" label=\"C2\" exit>\n@narrator: hey\n</choice>\n</hub>\n",
+<branch id=\"b\">\n<choice id=\"c1\" text=\"C1\">\n@narrator: hi\n</choice>\n</branch>\n\
+<hub id=\"h\">\n<choice id=\"c2\" text=\"C2\" exit>\n@narrator: hey\n</choice>\n</hub>\n",
     );
     let s = scene("c.lute", "::use{component=\"c\"}");
     let cs = codes(&dir, &s);
@@ -334,7 +334,7 @@ fn param_forwarding_use_is_clean() {
         "outer.lute",
         "---\ncomponent: outer\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n::use{component=\"inner\" tier=@tier}\n</when>\n\
 <otherwise>\n@narrator: nothing\n</otherwise>\n\
 </match>\n",
@@ -356,7 +356,7 @@ fn param_forwarding_use_is_clean() {
         "a.lute",
         "---\ncomponent: a\nparams:\n  tier: { enum: [x, y] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"x\">\n::use{component=\"b\" tier=@tier}\n</when>\n\
 <otherwise>\n@narrator: hi\n</otherwise>\n\
 </match>\n",
@@ -432,7 +432,7 @@ fn missing_member_is_nonexhaustive() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n@marina: hi\n</when>\n\
 <when is=\"warm\">\n@marina: hey\n</when>\n\
 </match>\n",
@@ -459,7 +459,7 @@ fn number_param_requires_otherwise() {
         "gauge.lute",
         "---\ncomponent: gauge\nparams:\n  budget: int\n---\n\
 ## Scene 1.\n\
-<match on=\"@budget\">\n\
+<match subject=\"@budget\">\n\
 <when is=\"1\">\n@narrator: one\n</when>\n\
 <when is=\"2\">\n@narrator: two\n</when>\n\
 </match>\n",
@@ -483,7 +483,7 @@ fn unset_on_param_is_literal_domain() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"unset\">\n@narrator: x\n</when>\n\
 <otherwise>\n@narrator: y\n</otherwise>\n\
 </match>\n",
@@ -510,7 +510,7 @@ fn foreign_member_on_param_flags() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"blazing\">\n@narrator: x\n</when>\n\
 <otherwise>\n@narrator: y\n</otherwise>\n\
 </match>\n",
@@ -537,7 +537,7 @@ fn subsumed_param_arm_is_dead() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond|warm\">\n@narrator: x\n</when>\n\
 <when is=\"warm\">\n@narrator: y\n</when>\n\
 <when is=\"cold\">\n@narrator: z\n</when>\n\
@@ -568,7 +568,7 @@ fn dup_otherwise_and_overlap_apply() {
         "reaction.lute",
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"warm\">\n@narrator: a\n</when>\n\
 <when test=\"$ == 'warm'\">\n@narrator: b\n</when>\n\
 <otherwise>\n@narrator: c\n</otherwise>\n\
@@ -602,7 +602,7 @@ fn param_guard_test_decides() {
         format!(
             "---\ncomponent: gauge\nparams:\n  budget: int\n---\n\
 ## Scene 1.\n\
-<match on=\"@budget\">\n\
+<match subject=\"@budget\">\n\
 <when test=\"{test}\">\n@narrator: high\n</when>\n\
 <otherwise>\n@narrator: low\n</otherwise>\n\
 </match>\n"

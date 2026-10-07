@@ -12,7 +12,7 @@ once a day; the engine pays the gift the ::stamp animation shows. */
 </beat>
 
 <beat id="standardCard" on="login" once="day" priority="20">
-  <match on="user.loginStreak">
+  <match subject="user.loginStreak">
     <when is="7..">
       ::use{component="loginStamp" card="standard" line="Seven days straight! The big gift, as promised. Don't spend it all on one pull. Or do." instance="use-001"}
     </when>

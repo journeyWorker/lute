@@ -3,7 +3,7 @@
 //! declared, a content line whose speaker is outside it is
 //! [`E_CAST_UNKNOWN`] with a did-you-mean; without one, speakers stay
 //! shape-only. `narrator` is always a speaker. Since dsl 0.24.0 §4 the
-//! character a staging directive names — `::auto{character}` and
+//! character a staging directive names — `::actor{character}` and
 //! `::camera{focus}` — is held to the same cast.
 
 use std::collections::{BTreeMap, BTreeSet};

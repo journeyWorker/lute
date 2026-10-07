@@ -11,7 +11,7 @@
 //!
 //! Lints are ADVISORY. They are DELIBERATELY NOT folded into the
 //! [`crate::snapshot::CapabilitySnapshot`] and never touch
-//! `capabilityVersion` (design §1 non-goals, §6): a project changing its
+//! `capabilitySnapshot` (design §1 non-goals, §6): a project changing its
 //! lint set MUST NOT change artifact identity. The loader carries the
 //! declarations through; assembly reads none of it.
 //!
@@ -80,7 +80,7 @@ pub struct LintRuleDecl {
 #[serde(rename_all = "lowercase")]
 pub enum LintTarget {
     Line,
-    Shot,
+    Section,
     Scene,
     Speaker,
     Group,

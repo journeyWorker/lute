@@ -11,7 +11,7 @@ after: 'visited("hotaru.date")'
 ## The jetty, every lantern lit
 
 ::bg{location="lakeshore" time="night"}
-::auto{character="hotaru" anchor="center" action="fadeInUp"}
+::actor{character="hotaru" anchor="center" action="fadeInUp"}
 @hotaru{code="0010" emotion="fond"}: If someone floats a lantern with the keeper, the keeper can let hers go. That's the rule. I made it up just now, but I think the lake agrees.
 @hotaru{code="0020" emotion="sad"}: I won't remember you, after. That's the price. You'll remember me for both of us.
 @you{code="0010"}: Then I'll remember all of it. Every term.

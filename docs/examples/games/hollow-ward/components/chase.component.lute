@@ -12,7 +12,7 @@ means. A beat that needs more (Tobias) reads scene.evade.chase.outcome
 after the ::use. */
 @narrator{code="0010"}: {{@flavor}}
 ::evade{tactic=@tactic resultKey="chase"}
-<match on="scene.evade.chase.outcome">
+<match subject="scene.evade.chase.outcome">
   <when is="lost">
     @narrator{code="0020"}: The wheels squeal past. They slow. They go on down the corridor.
     ::set{run.chases += 1}

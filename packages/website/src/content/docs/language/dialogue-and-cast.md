@@ -1,6 +1,6 @@
 ---
 title: Dialogue & cast
-description: Content lines — the @speaker syntax for dialogue and narration — plus the declared cast that closes the set of speakers (with per-speaker presence and emotions), delivery flags, line attributes, interpolation and ordinals, and display names.
+description: Content lines — the @speaker syntax for dialogue and narration — plus document sections and their stable ids, the declared cast that closes the set of speakers (with per-speaker presence and emotions), delivery flags and the mono point-of-view rule, line attributes and voice keys, interpolation and ordinals, inline text modifiers, and display names.
 ---
 
 Content is the spoken and narrated text of a scene. Every content line has the same shape:
@@ -14,13 +14,14 @@ The **speaker** selects the line's kind:
 - the reserved **`narrator`** → **narration** (speakerless);
 - any other speaker id → **dialogue**, carrying that speaker.
 
-Frontmatter `pov` names the scene's point-of-view character for readers of the source. It does not
-change how that speaker's lines compile: the protagonist's lines are ordinary dialogue, and the
-artifact carries neither `pov` nor a player role. An engine that renders its protagonist
-differently (no sprite, the player's chosen name as the label) keys that on the speaker id; in line
-text, write `{{userName}}` for the player's name.
+Frontmatter `pov` names the scene's point-of-view character, falling back to the project's
+`defaults.pov`. It does not change how that speaker's ordinary lines compile: the protagonist's
+lines are dialogue, and the artifact carries neither `pov` nor a player role. It does decide who
+may speak [`{mono}`](#delivery-flags). An engine that renders its protagonist differently (no
+portrait, the player's chosen name as the label) keys that on the speaker id; in line text, write
+`{{userName}}` for the player's name.
 
-There is no separate monologue or prose node — role is derived from the speaker plus its delivery
+There is no separate thought or prose node — role is derived from the speaker plus its delivery
 (below).
 
 ```lute
@@ -31,6 +32,47 @@ There is no separate monologue or prose node — role is derived from the speake
 
 *(From [`docs/examples/showcase/episode01.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/episode01.lute).)*
 
+## Sections
+
+Content lives in **sections**. A section starts at a `## ` heading and runs to the next one; the
+heading text is for the author and tools. A document has no body title — its title is frontmatter
+`title:`, and a `# ` heading in the body is `E-INERT-TITLE`.
+
+A heading may end in a **stable id**, `{#id}`: a letter followed by up to 63 letters, digits, `-`
+or `_`, unique among the document's sections (`E-SECTION-DUP` otherwise). The id is not part of the
+heading text:
+
+```lute check
+---
+kind: scene
+id: diner.night
+title: Night Shift
+---
+
+## The Counter {#counter}
+
+@narrator: The diner hums.
+
+## Closing Time
+
+@narrator: The lights go out one by one.
+```
+
+The artifact lists the sections in document order, numbered from 1:
+
+```json
+"sections": [
+  {"section": 1, "heading": "The Counter", "id": "counter"},
+  {"section": 2, "heading": "Closing Time"}
+]
+```
+
+A section's number is also the first segment of every record `position` in it (`001-0100` is the
+first record of section 1). Positions and numbers follow source order, so they change when sections
+move; tools that need a section to keep its identity across edits read its `{#id}`, and report a
+section without one as having no stable identity. A section id is identity only: it is not a jump
+target — [`::jump`](/language/directives/#jump-and-label--forward-jumps) goes to a `::label`.
+
 ## Line attributes
 
 Attributes in `{…}` are content metadata: `code` (a stable per-line id), `emotion`, `variant`,
@@ -39,18 +81,29 @@ vocabulary, not grammar — run `lute context <file>` to list the legal `emotion
 for your project. None is required; a missing `code` is back-filled deterministically at compile
 time and can be persisted with `lute tag`.
 
+Every line compiles with a `lineId` and a **`voiceKey`** — narration and `{mono}` lines included:
+
+```json
+{"kind": "line", "family": "content", "position": "001-0100", "role": "narration", "speaker": "narrator", "text": "The diner hums.", "lineId": "diner.night.narrator_0010", "voiceKey": "diner.night.narrator-0010"}
+```
+
+A voice key is a join key for recordings, not a claim that a recording exists; a project that does
+not voice its narration simply has no asset under those keys. Two lines in a project that share a
+`voiceKey` must say the same text (compared after [inline modifiers](#inline-text-modifiers) are
+stripped), or `check-project` reports `E-DUP-VOICEKEY`.
+
 `action=` is the one line attribute with a **stage** consequence, and it is a
 small one: it sets the speaker's pose for that line and marks them dirty, so
 the next plain line from the same speaker gets a `posReset` injected ahead of
 it (`provenance.by: "auto-pose-reset"`). That is the whole of it — it is a
-delivery detail, not staging. **A character's entrance and exit are `::auto`**,
-and only `::auto` can end one character's presence; `::clear` (0.24.0) ends everyone's (see
+delivery detail, not staging. **A character's entrance and exit are `::actor`**,
+and only `::actor` can end one character's presence; `::clear` (0.24.0) ends everyone's (see
 [Core directives](/language/directives/); `lute context` lists
-`mayExitCharacter` among `auto`'s semantics for exactly this reason). Writing a
+`mayExitCharacter` among `actor`'s semantics for exactly this reason). Writing a
 member of the `action` domain's `exits:` list on a content line is
 `W-EXIT-INERT`: the pose is honoured, the character stays on stage, and the
 artifact gets no `exit` record. Once a character has left — by a declared exit,
-a `::bg` scene change, or a `::clear` — a line from them before an `::auto` shows them again
+a `::bg` scene change, or a `::clear` — a line from them before an `::actor` shows them again
 is `W-STAGE-ABSENT`, judged along every path through choices and `<match>` arms
 (see [Stage state](/language/directives/#stage-state)).
 
@@ -80,7 +133,7 @@ cast:
 ```
 
 A plugin can ship one as well, with a `cast` export of `cast/*.yaml` files in the same shape (see
-[Manifests](/plugins/manifests/#cast)), so an engine pack declares the characters its sprites and
+[Manifests](/plugins/manifests/#cast)), so an engine pack declares the characters its portraits and
 voices exist for.
 
 Once a cast is declared, every speaker must be in it. Scene lines, quest bodies, lore entries, and
@@ -133,11 +186,11 @@ A plugin's `cast/*.yaml` entry takes the same key. A merge gate that runs
 
 ### Staging is checked against the cast too
 
-With a cast declared, the character a staging directive names must be in it, like a speaker (dsl 0.24.0 §4). `::auto{character}` and `::camera{focus}` outside the cast are `E-CAST-UNKNOWN`, with the same did-you-mean. Timeline clips and the bodies of `<match>` arms and choices are checked as well. Before 0.24.0, `::auto{character="marra"}` passed while `@marra:` did not:
+With a cast declared, the character a staging directive names must be in it, like a speaker (dsl 0.24.0 §4). `::actor{character}` and `::camera{focus}` outside the cast are `E-CAST-UNKNOWN`, with the same did-you-mean. Timeline clips and the bodies of `<match>` arms and choices are checked as well:
 
 <!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from check-project output" -->
 ```
-./scenes/ridge.lute:11:19: error [E-CAST-UNKNOWN] `::auto{character}` `corvn` is not in the declared cast — did you mean `corvin`?
+./scenes/ridge.lute:11:20: error [E-CAST-UNKNOWN] `::actor{character}` `corvn` is not in the declared cast — did you mean `corvin`?
 ./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast — did you mean `isolde`?
 ```
 
@@ -176,12 +229,12 @@ The checker then asks, for every line by `isolde`, whether the guards around the
 @isolde: Right here.
 @isolde{when="holds('inParty', ['isolde'])"}: Right behind you.
 <branch id="ask">
-  <choice id="call" label="Call her over" when="holds('inParty', ['isolde'])">
+  <choice id="call" text="Call her over" when="holds('inParty', ['isolde'])">
     @isolde{emotion="calm"}: I came.
     ::retract{ inParty(isolde) }
     @isolde: And now I'm leaving.
   </choice>
-  <choice id="wait" label="Wait">
+  <choice id="wait" text="Wait">
     @corvin: We wait, then.
   </choice>
 </branch>
@@ -207,7 +260,7 @@ A `holds(A)` guard over a derived relation also implies the bodies of A's rules:
 
 A write cancels a guard only when it can falsify it on that path. An `::assert` or `::retract` voids a guard atom of the same relation with unifiable arguments, or one derived through a rule that has the written relation as a premise, and only when it moves the atom the wrong way. Asserting `inParty(corvin)` keeps a `holds('inParty', ['isolde'])` guard, and so does asserting a positive premise of it. A `::set` voids a guard that reads the path, including through such a rule. Each `&&` conjunct of a guard is judged on its own, and a write in one `<choice>` or `<match>` arm does not reach its siblings.
 
-A `{vo}` line is exempt, since a voiceover is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
+A `{vo}` line is exempt, since a voice-over is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
 
 Facts are the one place where `lute check` and `check-project` differ. `check-project` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check` cannot see those facts, so it warns on that line too and adds a note saying that `check-project` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
 
@@ -262,7 +315,7 @@ Guard those lines with the whole condition, `@isolde{when="holds('inParty', ['is
 
 ### Leaving the stage: `::clear`
 
-Presence is about who is *with the player*. Who is *on stage* is the stage state (see [Stage state](/language/directives/#stage-state)). An `::auto` brings a character on, and a declared exit or a `::bg` takes them off. Since 0.24.0 the leaf `::clear` takes everyone off at once, leaving the background and music in place (see [Core directives](/language/directives/#clear--emptying-the-stage)). A line from a cleared character before an `::auto` shows them again is `W-STAGE-ABSENT`, and the warning names the `::clear`.
+Presence is about who is *with the player*. Who is *on stage* is the stage state (see [Stage state](/language/directives/#stage-state)). An `::actor` brings a character on, and a declared exit or a `::bg` takes them off. Since 0.24.0 the leaf `::clear` takes everyone off at once, leaving the background and music in place (see [Core directives](/language/directives/#clear--emptying-the-stage)). A line from a cleared character before an `::actor` shows them again is `W-STAGE-ABSENT`, and the warning names the `::clear`.
 
 ## Delivery flags
 
@@ -271,22 +324,59 @@ delivered:
 
 - **`{mono}`** — interior monologue / thought (not spoken aloud in-scene).
 - **`{os}`** — off-screen: the speaker is heard but not currently staged or visible.
-- **`{vo}`** — voiceover: narration-style delivery layered over the scene.
+- **`{vo}`** — voice-over: narration-style delivery layered over the scene.
 
 ```lute
 @fixer{mono}: An android, then. Which would, on reflection, explain the ramen.
 ```
 
 The three are **mutually exclusive** — at most one per line (`E-DELIVERY-CONFLICT` on two) — and
-none is allowed on `@narrator` (`E-DELIVERY-NARRATOR`). `{mono}` works for *any* character, not
-just the protagonist: a `{mono}` line is that character's inner voice.
+none is allowed on `@narrator` (`E-DELIVERY-NARRATOR`).
 
-Roles derive from speaker + delivery: `narrator` → narration; any character with `{mono}` →
-monologue; any character with `{vo}` → voiceover; any character otherwise → dialogue.
+Roles derive from speaker + delivery, and the artifact's `role` uses the same words: `narrator` →
+`narration`; `{mono}` → `mono`; `{os}` → `os`; `{vo}` → `vo`; any character otherwise →
+`dialogue`.
+
+### Who may speak `{mono}`
+
+A `{mono}` line is the point-of-view character's inner voice. The **effective POV** is the
+document's `pov:`, else the project's `defaults.pov`. A `{mono}` line is legal when its speaker is
+the effective POV or is listed in **`monoSpeakers:`** — a list of speaker ids in the document's
+frontmatter, or in the project's `defaults:` for every document (the document's own list wins).
+Use it for a scene that shares the inner voice, such as a second protagonist:
+
+```lute check
+---
+kind: scene
+id: diner.night
+pov: fixer
+monoSpeakers: [mira]
+---
+
+## The Counter
+
+@fixer{mono}: Another night, another coffee.
+@mira{mono}: He looks tired.
+@mira{os}: Order up!
+@fixer{vo}: I remember that night.
+```
+
+Without `monoSpeakers: [mira]`, `@mira{mono}` is `E-MONO-POV`; when no POV resolves at all — no
+`pov:` and no `defaults.pov` — a `{mono}` line by a speaker outside `monoSpeakers` is
+`E-MONO-NO-POV`:
+
+<!-- lute-diagnostics -->
+```
+diner.lute:10:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but `mira` is not this document's point of view (`fixer`) and not in `monoSpeakers:` (which lists none) — only the POV character and the speakers `monoSpeakers:` lists may speak `mono`; add `mira` to `monoSpeakers:`, or write the line as dialogue, `{os}` or `{vo}`
+```
+
+A [component](/language/components-and-extends/)'s `{mono}` lines are checked at each `::use`, against
+the calling document's POV and `monoSpeakers`; the error is reported at the `::use` and names the
+component's line.
 
 ## Interpolation
 
-Content `Text` (and a `<choice>` label) may embed **`{{…}}`** interpolations that read game state at
+Content `Text` (and a `<choice>`'s `text`) may embed **`{{…}}`** interpolations that read game state at
 render time:
 
 ```lute
@@ -298,13 +388,14 @@ render time:
 
 `{{userName}}` is the always-available reserved token. Any other interpolation must name a
 **declared** state path; an interpolation is a *read* for definite-assignment analysis, so a
-maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. The text after the second colon
-is otherwise opaque to end of line — parentheses, `<`, `//`, `#`, single braces and anything else
-are literal, never parsed. The checker warns on the shapes that are markup in Ink or Yarn, since
-the player would see them: a single-brace `{run.oil}` or `{run.oil > 0: …}`
-(`W-TEXT-SINGLE-BRACE`; interpolation is `{{run.oil}}`, conditional text is a guarded line), and
-a ` // note` or trailing `# tag` (`W-TEXT-COMMENT-LIKE`; a comment is `//` on a line of its own).
-See [Coming from Ink or Yarn](/guides/coming-from-ink-yarn/).
+maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. Apart from interpolations and
+[inline modifiers](#inline-text-modifiers), the text after the second colon is opaque to end of
+line — parentheses, `<`, `//`, `#`, single braces and anything else are literal, never parsed. The
+checker warns on the shapes that are markup in Ink or Yarn, since the player would see them: a
+single-brace `{run.oil}` or `{run.oil > 0: …}` (`W-TEXT-SINGLE-BRACE`; interpolation is
+`{{run.oil}}`, conditional text is a guarded line), and a ` // note` or trailing `# tag`
+(`W-TEXT-COMMENT-LIKE`; a comment is `//` on a line of its own). See
+[Coming from Ink or Yarn](/guides/coming-from-ink-yarn/).
 
 A path typed against an enum whose members carry display `labels:` renders the label, not the
 member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
@@ -388,3 +479,84 @@ entities:
 `{{occasion.target:start}} is quiet.` reads `The smugglers' cut is quiet.` for `cut`. When a form is absent the hint falls back: `:start` capitalizes the text (`Ashwraith den`), and `:indefinite` puts `an` before a text whose first letter is a vowel and `a` before any other (`an ashwraith den`). Declare `indefinite:` for the words that rule gets wrong (`an hour`, `a unicorn`). A label entry is a string or `{ text, start, indefinite }` with `text:` required; any other key is `E-ENTITY-KIND-SHAPE`. The IR carries the hint as the placeholder's `format` and the forms as `labelForms` on the kind's `entities[]` entry and on a state path typed by the kind, so an engine can localize them. A component param spliced as a literal takes the fallbacks.
 
 The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double`, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool.
+
+## Inline text modifiers
+
+A line's text may mark up part of itself for presentation — a styled word, a pause, a slowed
+phrase. A **modifier** is a colon, a lowerCamel name, then a bracketed span, a braced attribute
+list, or both:
+
+- **span** — `:name[text]` wraps text;
+- **leaf** — `:name{attrs}` marks a point in the text;
+- **span with attributes** — `:name[text]{attrs}`.
+
+Modifiers are legal only in the text after a content line's second colon — never in headings,
+attributes, tag text or a `<choice>`'s `text`. The core has two:
+
+| Modifier | Form | Meaning |
+|---|---|---|
+| `:pause{s=0.5}` | leaf | a pause of `s` seconds (required, non-negative) |
+| `:speed[text]{rate=1.25}` | span | the wrapped text is delivered at `rate` (required, positive) |
+
+Every other name is a **text style**: a member of the project's `textStyle` domain, declared in
+`enums:` like any other [staging vocabulary](/language/directives/#staging-vocabulary-is-the-projects).
+A style is a span with no attributes; what `emphasis` or `whisper` looks like is the engine's
+business.
+
+```lute check
+---
+kind: scene
+id: diner.night
+pov: fixer
+enums:
+  textStyle: [emphasis, whisper]
+state:
+  run.tips: { type: int, default: 3 }
+---
+
+## The Counter
+
+@mira: You look :emphasis[tired].:pause{s=0.5} Coffee?
+@fixer: :speed[Just... one more cup.]{rate=0.75}
+@mira: :whisper[I counted :emphasis[{{run.tips}}] tips tonight.]
+@fixer: Write \:emphasis[this] to show the markup itself.
+@fixer: The sign says 10:30 :) and nothing else.
+```
+
+In the artifact, `text` is always the **plain** text: modifier markup removed, escapes decoded,
+`{{…}}` kept. A line that uses a modifier also gets `segments` — text runs carrying the active
+`styles` (outermost first) and `rate`, and `{pause}` leaves; a line without one has no `segments`:
+
+```json
+{"kind": "line", "family": "content", "position": "001-0100", "role": "dialogue", "speaker": "mira", "text": "You look tired. Coffee?", "lineId": "diner.night.mira_0010", "voiceKey": "diner.night.mira-0010", "segments": [{"text": "You look "}, {"text": "tired", "styles": ["emphasis"]}, {"text": "."}, {"pause": 0.5}, {"text": " Coffee?"}]}
+{"kind": "line", "family": "content", "position": "001-0200", "role": "dialogue", "speaker": "fixer", "text": "Just... one more cup.", "lineId": "diner.night.fixer_0010", "voiceKey": "diner.night.fixer-0010", "segments": [{"text": "Just... one more cup.", "rate": 0.75}]}
+{"kind": "line", "family": "content", "position": "001-0300", "role": "dialogue", "speaker": "mira", "text": "I counted {{run.tips}} tips tonight.", "lineId": "diner.night.mira_0020", "voiceKey": "diner.night.mira-0020", "placeholders": [{"kind": "path", "path": "run.tips"}], "segments": [{"text": "I counted ", "styles": ["whisper"]}, {"text": "{{run.tips}}", "styles": ["whisper", "emphasis"]}, {"text": " tips tonight.", "styles": ["whisper"]}]}
+{"kind": "line", "family": "content", "position": "001-0400", "role": "dialogue", "speaker": "fixer", "text": "Write :emphasis[this] to show the markup itself.", "lineId": "diner.night.fixer_0020", "voiceKey": "diner.night.fixer-0020"}
+```
+
+The rules, line by line above:
+
+- **Nesting.** Spans nest; an interpolation may sit inside a span and stays in `text` and
+  `placeholders`. Nested styles stack (`["whisper", "emphasis"]`); a nested `:speed` uses the
+  innermost `rate`. Adjacent runs with the same styles and rate are merged.
+- **Escapes.** `\:` is a literal colon that never starts a modifier. Inside a modifier, `\[`, `\]`,
+  `\{`, `\}` and `\\` write the bracket, brace or backslash; any other escape there is
+  `E-TEXT-ESCAPE`. The `\{{` literal-interpolation escape is unchanged.
+- **Plain colons stay text.** A colon starts a modifier only when a name and then `[` or `{`
+  follow it, so `10:30` and `:)` need no escape.
+
+A malformed modifier is `E-TEXT-MODIFIER`: an unterminated span, a name that is neither core nor a
+`textStyle` member, attributes on a style, or a positional value (`:pause{0.5}` — write `s=0.5`):
+
+<!-- lute-diagnostics unverified="verbatim lute check output; crates/lute-check/src/content_line.rs splices a did-you-mean `{hint}` mid-message, empty here since no member is near `shout`, so no single format! literal matches" -->
+```
+diner.lute:11:33: error [E-TEXT-MODIFIER] inline modifier span is missing a closing `]`
+diner.lute:12:10: error [E-TEXT-MODIFIER] `:shout` is neither a core modifier (`pause`, `speed`) nor a member of `textStyle` (it has `emphasis`)
+diner.lute:13:26: error [E-TEXT-MODIFIER] text style `:emphasis` takes no attributes, got `size` — only the core `pause`/`speed` carry attributes
+```
+
+Voice keys compare the plain text, so restyling a line never collides with its recording.
+[`lute loc export`](/tooling/cli/#loc-export) exports the source markup; a translation must carry
+the same modifiers — same names, forms and attributes, in any order — or it is not merged
+(`E-L10N-MODIFIERS`). A translated locale always gets its plain text in `texts`, and a modified
+line also gets `localeSegments` for that locale.

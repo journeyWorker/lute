@@ -363,13 +363,13 @@ fn coverage_names_guards_attributes_component_matches_and_relative_paths() {
         &dir,
         "components/card.lute",
         "---\ncomponent: card\nparams:\n  n: int\n---\n## Card\n\
-         <match on=\"@n\">\n<when is=\"1\">\n@narrator: Calm.\n</when>\n<otherwise>\n@narrator: Wild.\n</otherwise>\n</match>\n",
+         <match subject=\"@n\">\n<when is=\"1\">\n@narrator: Calm.\n</when>\n<otherwise>\n@narrator: Wild.\n</otherwise>\n</match>\n",
     );
     write(
         &dir,
         "scenes/s.lute",
         "---\nkind: scene\nid: s\ncomponents: [../components/card.lute]\n---\n## S\n\
-         <match on=\"run.day\">\n<when is=\"1\">\n::use{component=\"card\" n=@today}\n</when>\n\
+         <match subject=\"run.day\">\n<when is=\"1\">\n::use{component=\"card\" n=@today}\n</when>\n\
          <when is=\"2\">\n@narrator: Two.\n</when>\n<otherwise>\n@narrator: Later.\n</otherwise>\n</match>\n\
          @narrator{when=\"run.day == 2\"}: Guarded.\n",
     );
@@ -457,7 +457,7 @@ fn a_headless_template_plays_and_beats_notes_the_when_a_use_replaces() {
     );
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(0), "{out}");
-    assert!(!out.contains("E-CONTENT-OUTSIDE-SHOT"), "{out}");
+    assert!(!out.contains("E-CONTENT-OUTSIDE-SECTION"), "{out}");
     let (_, beats) = run(&dir, &["beats", "."]);
     assert!(
         beats.contains(

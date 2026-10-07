@@ -1,0 +1,4 @@
+{
+  "error": "E-IR-REMOVED-FIELD: command 2 (`camera`) carries removed field `wait`",
+  "exit": 2
+}

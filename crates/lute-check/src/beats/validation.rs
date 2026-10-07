@@ -623,7 +623,7 @@ pub(crate) fn check_occasion_target_scope(
                 .filter(|b| !scoped || (!is_kind(&b.target) && !is_kind(&b.for_kind)))
                 .map(|b| &b.body),
         )
-        .chain(doc.shots.iter().filter(|_| !scoped).map(|s| &s.body));
+        .chain(doc.sections.iter().filter(|_| !scoped).map(|s| &s.body));
     for body in bodies {
         lines(body, &mut |l| {
             faults.extend(

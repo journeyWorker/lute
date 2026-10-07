@@ -331,8 +331,8 @@ fn coverage_counts_play_picks_and_lists_beats_no_play_presented() {
         &dir,
         "scenes/ask.lute",
         "---\nkind: scene\nid: ask\non: ask\nonce: false\n---\n\n## Ask\n\n@narrator: Well?\n\
-         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" label=\"D\">\n    \
-         @narrator: d.\n  </choice>\n  <choice id=\"murdered\" label=\"M\">\n    \
+         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" text=\"D\">\n    \
+         @narrator: d.\n  </choice>\n  <choice id=\"murdered\" text=\"M\">\n    \
          @narrator: m.\n  </choice>\n</branch>\n",
     );
     write(
@@ -382,9 +382,9 @@ fn coverage_counts_play_picks_and_lists_beats_no_play_presented() {
 const ASK: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
      state:\n  run.bold: { type: bool, default: false }\n---\n\n## One\n\n\
      <branch id=\"ask\">\n\
-     <choice id=\"demand\" label=\"Demand\" when=\"run.bold\">\n@narrator: demanded.\n</choice>\n\
-     <choice id=\"plead\" label=\"Plead\">\n@narrator: pleaded.\n</choice>\n\
-     <choice id=\"leave\" label=\"Leave\">\n@narrator: left.\n</choice>\n\
+     <choice id=\"demand\" text=\"Demand\" when=\"run.bold\">\n@narrator: demanded.\n</choice>\n\
+     <choice id=\"plead\" text=\"Plead\">\n@narrator: pleaded.\n</choice>\n\
+     <choice id=\"leave\" text=\"Leave\">\n@narrator: left.\n</choice>\n\
      </branch>\n";
 
 #[test]
@@ -425,7 +425,7 @@ fn quests_seed_the_status_a_scene_reads() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## One\n\n\
-         <match on=\"quest.caseClosed.state\">\n<when is=\"complete\">\n@narrator: solved.\n\
+         <match subject=\"quest.caseClosed.state\">\n<when is=\"complete\">\n@narrator: solved.\n\
          </when>\n<otherwise>\n@narrator: open.\n</otherwise>\n</match>\n",
     );
     write(
@@ -666,9 +666,9 @@ fn options_judges_a_hub_like_a_branch() {
         &dir,
         "s.lute",
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## H\n\n\
-         <hub id=\"chat\">\n  <choice id=\"a\" label=\"A\">\n    @narrator: a.\n  </choice>\n  \
-         <choice id=\"never\" label=\"N\" when=\"scene.visited.chat.leave\">\n    @narrator: n.\n  </choice>\n  \
-         <choice id=\"leave\" label=\"Leave\" exit>\n    @narrator: bye.\n  </choice>\n</hub>\n",
+         <hub id=\"chat\">\n  <choice id=\"a\" text=\"A\">\n    @narrator: a.\n  </choice>\n  \
+         <choice id=\"never\" text=\"N\" when=\"scene.visited.chat.leave\">\n    @narrator: n.\n  </choice>\n  \
+         <choice id=\"leave\" text=\"Leave\" exit>\n    @narrator: bye.\n  </choice>\n</hub>\n",
     );
     write(
         &dir,
@@ -837,9 +837,9 @@ fn play_harness_details() {
         "scenes/ask.lute",
         "---\nkind: scene\nid: ask\nuses: ../world.schema.yaml\non: ask\nonce: false\n---\n\n\
          ## Ask\n\n@hypnos: Well?\n\
-         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" label=\"D\">\n    @hypnos: d.\n  </choice>\n  \
-         <choice id=\"murdered\" label=\"M\">\n    @hypnos: m.\n  </choice>\n  \
-         <choice id=\"never\" label=\"N\" when=\"run.hubVisits > 9\">\n    @hypnos: n.\n  </choice>\n</branch>\n",
+         <branch id=\"fate\" prompt=\"?\">\n  <choice id=\"drowned\" text=\"D\">\n    @hypnos: d.\n  </choice>\n  \
+         <choice id=\"murdered\" text=\"M\">\n    @hypnos: m.\n  </choice>\n  \
+         <choice id=\"never\" text=\"N\" when=\"run.hubVisits > 9\">\n    @hypnos: n.\n  </choice>\n</branch>\n",
     );
     let run_play = |script: &str| {
         let s = write(&project, "plays/probe.play.yaml", script);
@@ -1001,7 +1001,7 @@ fn play_in(project: &Path, script: &str) -> Output {
 const LATE_SCENE: &str = "---\nkind: scene\nid: probe.late\ntitle: Late\non: townVisit\n\
      when: 'run.day > 3'\n---\n\n## Late\n\n\
      ::check{skill=\"stealth\" dc=\"10\" resultKey=\"late\" sync=\"true\"}\n\
-     <match on=\"scene.check.late.passed\">\n  <when is=\"true\">\n    @narrator: Slipped in.\n  \
+     <match subject=\"scene.check.late.passed\">\n  <when is=\"true\">\n    @narrator: Slipped in.\n  \
      </when>\n  <when is=\"false\">\n    @narrator: Caught.\n  </when>\n</match>\n";
 
 /// A lore entry whose `when` is false on day 1.
@@ -1380,8 +1380,8 @@ fn festival_project(tag: &str) -> PathBuf {
         &dir,
         "scenes/festival.lute",
         "---\nkind: scene\nid: festival\ntitle: The festival\non: evening\nonce: user\n---\n\n\
-         ## The jetty\n\n<branch id=\"pick\">\n  <choice id=\"ren\" label=\"Ren\" into=\"run.route\" value=\"ren\">\n    \
-         @narrator: You float Ren's lantern.\n  </choice>\n  <choice id=\"mika\" label=\"Mika\" into=\"run.route\" value=\"mika\">\n    \
+         ## The jetty\n\n<branch id=\"pick\">\n  <choice id=\"ren\" text=\"Ren\" into=\"run.route\" value=\"ren\">\n    \
+         @narrator: You float Ren's lantern.\n  </choice>\n  <choice id=\"mika\" text=\"Mika\" into=\"run.route\" value=\"mika\">\n    \
          @narrator: You float Mika's lantern.\n  </choice>\n</branch>\n",
     );
     dir

@@ -142,7 +142,7 @@ fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
 
 /// D-Z, prophylactic: a canonical `defaults:` path is absolute and
 /// machine-specific and MUST NOT reach any serialised surface — not the
-/// capability snapshot, not `capabilityVersion`, not a compiled artifact,
+/// capability snapshot, not `capabilitySnapshot`, not a compiled artifact,
 /// not `lute context --json`. Pre-resolution is for resolution only.
 #[test]
 fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
@@ -198,7 +198,7 @@ fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
     }
 
     // And the stamp itself: the SAME project resolved from two different
-    // absolute locations must compute the SAME capabilityVersion.
+    // absolute locations must compute the SAME capabilitySnapshot.
     let twin = temp_dir("defaults-no-leak-twin");
     std::fs::create_dir_all(twin.join("scenes")).unwrap();
     for f in ["lute.project.yaml", "world.schema.yaml", "scenes/s.lute"] {
@@ -216,12 +216,12 @@ fn a_canonical_defaults_path_never_reaches_a_serialised_surface() {
             .output()
             .unwrap();
         let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-        v["capabilityVersion"].as_str().unwrap().to_string()
+        v["capabilitySnapshot"].as_str().unwrap().to_string()
     };
     assert_eq!(
         version(&dir),
         version(&twin),
-        "capabilityVersion must not depend on where the project lives on disk (D-Z)"
+        "capabilitySnapshot must not depend on where the project lives on disk (D-Z)"
     );
 }
 

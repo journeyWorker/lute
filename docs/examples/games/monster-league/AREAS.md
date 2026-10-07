@@ -45,7 +45,7 @@ Areas: `south`, `east`, `mid`, `north`, and (postgame, round 6) `isles`.
 - Any id in §3, the occasions and their targets, the reward kinds, the `::battle` bridge and the
   engine directives, the shared components' params.
 - The **contract** of a seeded contract beat: its id, occasion and target, and the facts and state
-  it produces (listed in its header comment and in §6). You may rewrite its lines, add shots,
+  it produces (listed in its header comment and in §6). You may rewrite its lines, add sections,
   add branches, split it, add `after:` edges.
 - Another area's files and roster blocks.
 
@@ -223,7 +223,7 @@ Rules that come from the language, not taste:
 - (0.26) The battle components read their own `::battle` result; there is no `won=` argument.
   After a `::use`, the host reads the outcome as `@wonFight` (`scene.battle.fight.won`).
 - **After the component, read the outcome with `@wonFight`** (`::set{… when="@wonFight"}`,
-  `@narrator{when="@wonFight"}: …`) or `<match on="scene.battle.fight.won">`.
+  `@narrator{when="@wonFight"}: …`) or `<match subject="scene.battle.fight.won">`.
 - **Calling `::battle` directly** (a double battle, a boss with phases): always
   `resultKey="fight"`, then read `scene.battle.fight.won`. One scene holds one outcome at a time.
 - **Route trainers speak as `@trainer{as="Youngster Ada"}`**, also in their after-battle lines,

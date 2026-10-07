@@ -195,7 +195,7 @@ fn component(tag: &str, broken: bool) -> PathBuf {
         format!(
             "---\ncomponent: interject\nparams:\n  pressure: string\n  code: string\n\
              {defs}---\n\n\
-             ## Interjection\n<match on=\"@pressure\">\n<when is=\"rising\">\n\
+             ## Interjection\n<match subject=\"@pressure\">\n<when is=\"rising\">\n\
              @purser{{code={code}}}: The schedule advances.\n</when>\n\
              <otherwise>\n@purser: Allocation is nominal.\n</otherwise>\n</match>\n"
         ),
@@ -314,7 +314,7 @@ fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
     std::fs::write(
         &file,
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n\
-         ## Shot 1.\n<match on=\"run.n\">\n<when test=\"@ready\">\n@x: yes\n</when>\n\
+         ## Shot 1.\n<match subject=\"run.n\">\n<when test=\"@ready\">\n@x: yes\n</when>\n\
          <otherwise>\n@x: no\n</otherwise>\n</match>\n",
     )
     .unwrap();

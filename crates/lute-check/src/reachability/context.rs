@@ -12,7 +12,7 @@ use crate::match_check::{CoverItem, DomainValue};
 use crate::solution::{disjoint, SolutionSet};
 
 /// What [`check_reachability_in`] needs beyond the decide context (dsl
-/// 0.24.0): the def result types a `<match on="@def">` subject takes its
+/// 0.24.0): the def result types a `<match subject="@def">` subject takes its
 /// domain from, the scene beat's `when` (a frontmatter slot, outside the
 /// document tree), and the snapshot a body's directives are looked up in —
 /// `None` (a component body) makes no [`Assumption`]. dsl 0.28.0: and the
@@ -49,7 +49,7 @@ impl<'a> ReachEnv<'a> {
 }
 
 /// One body's walk context: [`ReachEnv::def_types`], the body's own
-/// [`Assumption`], the document's `::next` targets (dsl 0.27.0), and the
+/// [`Assumption`], the document's `::jump` targets (dsl 0.27.0), and the
 /// pick records the enclosing options hold (dsl 0.28.0, [`Pick`]).
 pub(super) struct Reach<'a> {
     pub(super) def_types: &'a BTreeMap<String, Type>,

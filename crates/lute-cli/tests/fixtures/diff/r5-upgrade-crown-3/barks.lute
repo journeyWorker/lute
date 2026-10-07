@@ -5,7 +5,7 @@ title: Barks
 ---
 
 <entry id="again" on="bossDefeated" target="kind:foe" category="bark" once="run">
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="eel">
       @narrator: The eel again.
     </when>
