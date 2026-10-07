@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: Behold the Performance of All-Purpose Marina
 pov: fixer
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 
 # The project's content vocabulary (dsl 0.9.0): `emotion`/`action`/`anchor`/
 # `mood`/`volume`/`musicPlayback`/`vfxType` are compiler-declared SLOTS with no
@@ -31,7 +31,6 @@ Three things are woven in to demonstrate the new surface, each marked NEW / demo
 - <timeline> + <track>   (the finger-beam "performance" as one multi-track beat)
 - <branch>/<match>/state (canon EP02 has no player choice — shown illustratively)
 */
-
 
 ## Arrival at Venny's
 

@@ -6,7 +6,7 @@ season: 1
 episode: 2
 title: The Revisit Hub
 pov: fixer
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 # Root capability profile (project lute.project.yaml), with the SAME scene-local
 # `plugins:` options episode01.lute narrows to: a project compiles to one capability
 # snapshot (`compile --all`, `play`, `check-project` refuse two — E-CAPABILITY-MISMATCH),
@@ -33,7 +33,6 @@ Plan C: `<hub>` LOWERING is DONE. A hub PASSES `lute check` AND COMPILES to a
 check and compile `--project` integration tests (`hub_demo_example_checks_clean`
 + `hub_demo_example_compiles`).
 */
-
 
 ## Closing Up
 /*

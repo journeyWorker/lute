@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "quest",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",

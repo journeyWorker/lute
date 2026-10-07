@@ -17,7 +17,6 @@ exactly `::set{run.<path> = <value>}` appended to that arm. `value` defaults to
 (or shot) reacts by reading the named fact, never the raw choice key.
 */
 
-
 ## Recording the Choice
 
 @narrator: Elena had slipped on the wet step. You could help — or walk on.

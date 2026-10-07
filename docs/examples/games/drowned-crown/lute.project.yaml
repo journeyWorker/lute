@@ -12,7 +12,7 @@ identity:
   requireStable: true
 defaults:
   pov: ilo
-  luteVersion: "0.36.6"
+  luteVersion: "0.37.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   components: [components/gauge.component.lute, components/keepsake.component.lute, components/bond-story.component.lute]
 # The last dive, chained: rail, throne, crown (dsl 0.27.0 §8). The occasion is

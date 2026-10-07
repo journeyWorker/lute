@@ -282,7 +282,7 @@ diagnostics, the compiled JSON IR, and a mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.36.6**.
+compiles, traces, and inspects them. The current language version is **0.37.0**.
 
 ## Quick start with `bunx`
 
@@ -338,9 +338,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.36.6
-language      0.36.6
-IR schema     0.36.6
+lute toolchain 0.37.0
+language      0.37.0
+IR schema     0.37.0
 ```
 
 The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
@@ -353,10 +353,10 @@ For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.36.6","language":"0.36.6","ir":"0.36.6"}
+{"toolchain":"0.37.0","language":"0.37.0","ir":"0.37.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.36.6` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.37.0` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
 prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
@@ -385,7 +385,7 @@ Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.36.6**.
+**0.37.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -698,8 +698,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.36.6",
-  "irVersion": "0.36.6",
+  "lute": "0.37.0",
+  "irVersion": "0.37.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
@@ -1747,7 +1747,7 @@ Create `scenes/crime-scene.lute`:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -1794,7 +1794,7 @@ Create `scenes/interview.lute`:
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -1860,7 +1860,7 @@ Create `quests/identify-killer.lute`:
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -1893,7 +1893,7 @@ Create `scenes/confrontation.lute`:
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
@@ -2211,8 +2211,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.36.6"` /
-`"irVersion": "0.36.6"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.37.0"` /
+`"irVersion": "0.37.0"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 
@@ -12833,7 +12833,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.36.6 and the AI edit-loop
+contract; the repository's current release is 0.37.0 and the AI edit-loop
 commands are documented below.
 
 ## compile

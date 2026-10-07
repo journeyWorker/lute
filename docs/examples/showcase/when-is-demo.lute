@@ -6,7 +6,7 @@ season: 1
 episode: 3
 title: The Mood Reading
 pov: fixer
-luteVersion: "0.36.6"
+luteVersion: "0.37.0"
 # Root capability profile (project lute.project.yaml), with the SAME scene-local
 # `plugins:` options episode01.lute narrows to: a project compiles to one capability
 # snapshot (`compile --all`, `play`, `check-project` refuse two — E-CAPABILITY-MISMATCH),
@@ -35,7 +35,6 @@ literal-pattern arms (§7.3.1) over a PLAIN scene-local finite enum
 assigned, so full `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2).
 Checks clean against `--project docs/examples/showcase`.
 */
-
 
 ## Reading the Room
 

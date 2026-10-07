@@ -151,7 +151,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.36.6 and the AI edit-loop
+contract; the repository's current release is 0.37.0 and the AI edit-loop
 commands are documented below.
 
 ## compile

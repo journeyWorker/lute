@@ -415,8 +415,9 @@ mod tests {
                 _ => {}
             }
         }
+        let minor = crate::LUTE_IR_VERSION.rsplit_once('.').expect("x.y.z").0;
         let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../schemas/lute-ir-0.37.schema.json");
+            .join(format!("../../schemas/lute-ir-{minor}.schema.json"));
         let text = std::fs::read_to_string(&schema_path)
             .unwrap_or_else(|e| panic!("{}: {e}", schema_path.display()));
         let schema: serde_json::Value = serde_json::from_str(&text).expect("schema parses");
@@ -432,7 +433,7 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.36.6".into(), ir_version: "0.36.6".into(),
+            kind: DocKind::Scene, lute: "0.37.0".into(), ir_version: "0.37.0".into(),
             capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),
