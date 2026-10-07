@@ -6,10 +6,11 @@
  * hand-written classifier). It only recognizes the grammar's *shapes* well
  * enough for editor features, mirroring the §4.3 line classification:
  *
- *   1. `## ` shot heading / `# ` document title      (§6.2, §6.3)
+ *   1. `## ` section heading (+ optional `{#id}`)    (dsl 0.37.0 §3.1)
  *   2. `::set{ … }` assignment directive             (§7.3.4)  — tried before `::`
  *   3. `::`ident`{ … }` staging directive (leaf)      (§7.2)
- *   4. `@speaker{attrs}: text` content line          (§7.1)   — text, may {{…}}
+ *   4. `@speaker{attrs}: text` content line          (§7.1)   — text, may carry
+ *      `{{…}}` interpolations and inline modifiers  (dsl 0.37.0 §3.6)
  *   5. `<tag …> … </tag>` logic / timeline BLOCKS     (§7.3, §7.4) — these NEST
  *   6. `/* … *​/` comments are trivia                  (§4.2)   — `extras`
  *
@@ -28,34 +29,50 @@ module.exports = grammar({
   // them, but they float outside the structural tree.
   extras: ($) => [/[ \t\r\n]/, $.comment],
 
-  externals: ($) => [$.frontmatter],
+  // `frontmatter` is the leading YAML envelope; `modifier_name` is the `:name`
+  // head of an inline text modifier, recognized only when the next char is `[`
+  // or `{` (dsl 0.37.0 §3.6) — a lookahead a DFA token cannot express.
+  externals: ($) => [$.frontmatter, $.modifier_name],
 
   rules: {
-    // Document ::= Meta? DocItem*  (§6). The corpus permits bare nodes/title at
-    // the top level (a directive with no enclosing shot), then shot blocks that
-    // greedily absorb the rest. Splitting "pre-shot items" from "shots" removes
-    // the shift/reduce ambiguity of a node that could attach to either a shot
-    // body or the top level.
+    // Document ::= Meta? DocItem*  (§6). The corpus permits bare nodes at the
+    // top level (a directive with no enclosing section — the checker owns
+    // E-CONTENT-OUTSIDE-SECTION), then section blocks that greedily absorb the
+    // rest. Splitting "pre-section items" from "sections" removes the
+    // shift/reduce ambiguity of a node that could attach to either a section
+    // body or the top level. There is no body `# title` node (dsl 0.37.0 §3.1:
+    // the frontmatter `title:` is the only document title).
     source_file: ($) =>
       seq(
         optional($.frontmatter),
-        repeat($._pre_item),
-        repeat(choice($.shot, $.quest, $.entry, $.beat)),
+        repeat($._node),
+        repeat(choice($.section, $.quest, $.entry, $.beat)),
       ),
 
-    // Items legal before the first shot heading: the document title and bare
-    // nodes (the corpus' top-level directive lives here).
-    _pre_item: ($) => choice($.title, $._node),
+    // ---- sections (dsl 0.37.0 §3.1) ----------------------------------------
+    // Section ::= "## " Heading SectionId? Node*. Heading text is opaque to EOL
+    // (no inline modifiers — those are content-line only, §3.6); the body
+    // greedily absorbs nodes until the next `## ` heading or EOF.
+    section: ($) =>
+      seq("##", $.heading, optional($.section_id), repeat($._node)),
 
-    // ---- headings ----------------------------------------------------------
-    // Title ::= "# " Text (§6.2). Text opaque to EOL.
-    title: ($) => seq("#", $.text),
+    // Heading text. Runs of literal text plus `{{…}}` interpolations (a heading
+    // interpolation is a harmless editor over-recognition; the checker owns it).
+    heading: ($) =>
+      repeat1(choice($._heading_chunk, $._heading_special, $.escape, $.interpolation)),
 
-    // ShotBlock ::= ShotHeading Node* (§6.3). Heading text opaque to EOL; the
-    // body greedily absorbs nodes until the next `## ` heading or EOF.
-    shot: ($) => seq("##", $.text, repeat($._node)),
+    // A run of heading text: anything but a brace, a backslash, or a newline.
+    // `prec(1)` beats the `comment` extra, as for content `_text_chunk`.
+    _heading_chunk: ($) => token.immediate(prec(1, /[^{\\\r\n]+/)),
 
-    // A body Node (§7). NB: no `title` here — a `# ` inside a shot ends it.
+    // A lone `{` or `\` in a heading that opens neither `{{`, `{#`, nor an escape.
+    _heading_special: ($) => token.immediate(/[{\\]/),
+
+    // SectionId ::= "{#" Token "}" — the optional final heading suffix
+    // (§3.1). One token; the 64-char bound and uniqueness are the checker's.
+    section_id: ($) => token.immediate(/\{#[A-Za-z][A-Za-z0-9_-]*\}/),
+
+    // A body Node (§7). A `## ` inside a section body starts the next section.
     _node: ($) =>
       choice(
         $.assert,
@@ -77,6 +94,7 @@ module.exports = grammar({
       seq(
         alias("::set{", "::set{"),
         $.path,
+        repeat($.index),
         $.assign_op,
         optional($.cel_expr),
         "}",
@@ -84,17 +102,18 @@ module.exports = grammar({
 
     // Assert ::= "::assert{" FactPattern "}" (dsl 0.3.0 §5). Leaf; ground args.
     assert: ($) =>
-      seq(alias("::assert{", "::assert{"), $.fact_pattern, "}"),
+      seq(alias("::assert{", "::assert{"), $.fact_pattern, repeat($._tag_attr), "}"),
 
     // Retract ::= "::retract{" FactPattern "}" (dsl 0.3.0 §5). `_` retract-only —
     // grammar admits it in both; the CHECKER owns E-RETRACT-WILDCARD-ASSERT.
     retract: ($) =>
-      seq(alias("::retract{", "::retract{"), $.fact_pattern, "}"),
+      seq(alias("::retract{", "::retract{"), $.fact_pattern, repeat($._tag_attr), "}"),
 
     // FactPattern ::= Ident "(" FactArg ("," FactArg)* ")" (dsl 0.3.0 Appendix C).
     fact_pattern: ($) =>
       seq($.ident, "(", $.fact_arg, repeat(seq(",", $.fact_arg)), ")"),
-    fact_arg: ($) => choice($.ident, $.wildcard),
+    // A component body may pass a `@param` ref as a fact argument.
+    fact_arg: ($) => choice($.ident, $.ref, $.wildcard),
     wildcard: ($) => "_",
 
     // Directive ::= "::" Ident Attrs? (§7.2). Leaf — does NOT nest.
@@ -182,7 +201,7 @@ module.exports = grammar({
     match: ($) =>
       seq(
         "<match",
-        repeat($._tag_attr),
+        repeat(choice($._tag_attr, alias($._match_subject, $.cel_attr))),
         ">",
         repeat($.when),
         optional($.otherwise),
@@ -266,7 +285,7 @@ module.exports = grammar({
 
     // ---- quest blocks (nest; dsl 0.2.0 §6) ---------------------------------
     // Quest ::= "<quest" Attrs ">" QuestBody "</quest>" (§6.3). A DOCUMENT
-    // TOP-LEVEL declaration (mirrors `shot`, not a `_node` alternative) — the
+    // TOP-LEVEL declaration (mirrors `section`, not a `_node` alternative) — the
     // quest kind admits `<quest>` only at the top level.
     quest: ($) =>
       seq(
@@ -297,7 +316,7 @@ module.exports = grammar({
     // BeatDecl ::= "<beat" Attrs ">" SceneBody "</beat>" (dsl 0.23.0 §4, beat
     // bundles). A DOCUMENT TOP-LEVEL declaration of a `kind: lore` document,
     // exactly like `entry`. The body is the ordinary node stream; its scene
-    // shot body admission is the checker's. Attributes (`id`/`on`/`target`/
+    // section body admission is the checker's. Attributes (`id`/`on`/`target`/
     // `title`/`priority`/`once`, bare `also`, CEL `when`) ride the generic
     // `_tag_attr` machinery. dsl 0.27.0 §6: a template use (`use="…"` plus
     // its param attrs) may be self-closing — `<beat use="trainer" id="r3"/>`
@@ -342,16 +361,19 @@ module.exports = grammar({
     // any editor surfaces immediately). Reachable ONLY as a direct child of
     // `<quest>` or `<objective>` (owner-scoped), never in `_node` — so an
     // exhaustive body walk elsewhere in the tooling can never see a reward
-    // out of place (spec D-A). Attribute set (`kind`/`target`/`amount`/
-    // `when`/`on`) rides the generic `_tag_attr` machinery; the checker owns
-    // shape/vocabulary via `E-REWARD-ATTR`/`E-REWARD-KIND`.
+    // out of place (spec D-A). Attribute set (optional stable `id`, dsl
+    // 0.37.0 §3.5; `kind`/`target`/`amount`/`when`/`on`) rides the generic
+    // `_tag_attr` machinery; the checker owns shape/vocabulary via
+    // `E-REWARD-ATTR`/`E-REWARD-KIND` and duplicate ids via `E-REWARD-DUP`.
     reward: ($) =>
       seq("<reward", repeat($._tag_attr), "/>"),
 
     // ---- attributes (§4.5) -------------------------------------------------
     // Attrs ::= "{" ( Attr ( WS Attr )* )? "}"  — the brace-delimited form used
     // by `:line` and `::` directives. Tag attributes reuse `_tag_attr` directly.
-    attrs: ($) => seq("{", repeat($._tag_attr), "}"),
+    // A `,` between attributes is tolerated (the core attribute scanner skips
+    // non-ident separators).
+    attrs: ($) => seq("{", repeat(choice($._tag_attr, ",")), "}"),
 
     // An attribute in any position (brace-form or bare tag attribute). Splitting
     // the CEL-valued keys (`on`/`test`/`when`, §7.3/§8) into their own node lets
@@ -363,24 +385,30 @@ module.exports = grammar({
     attr: ($) =>
       seq(
         $.key,
-        optional(seq("=", choice($.string, $.ref))),
+        optional(seq("=", choice($.string, $.ref, $.value))),
       ),
 
     // CelAttr ::= CelKey "=" ( CelString | Ref )  — the CEL-valued attributes
-    // `<match on>`, `<when test>`, `<choice when>` (§7.3, §11.1–11.2). The value
+    // `<match subject>`, `<when test>`, `<choice when>` (§7.3, §11.1–11.2). The value
     // is a CEL expression (§8): a double-quoted `CelString` (§4.4) or a bare
     // `@ref` macro (§8.1). Distinct from `attr` so highlight/tag queries can
     // capture the CEL innards (@ref, state-path) rather than an opaque string.
     cel_attr: ($) => seq($.cel_key, "=", choice($.cel_string, $.ref)),
 
-    // CelKey — the reserved attribute keys whose value is CEL (§7.3): `on` is a
-    // `<match>` subject, `test` a `<when>` guard, `when` a `<choice>` guard,
+    // CelKey — the reserved attribute keys whose value is CEL (§7.3): `test`
+    // is a `<when>` guard, `when` a `<choice>` guard,
     // `visibleWhen` an objective's visibility condition, `rearm` a quest's
     // re-arm condition and `spentBy` a beat's spend condition (dsl 0.27.0 §5).
     // A named node (lexes ahead of the generic `key` on a tie) so editors treat
     // these keys distinctly and know their value is embedded CEL.
     cel_key: ($) =>
-      choice("on", "test", "when", "visibleWhen", "done", "start", "fail", "rearm", "spentBy"),
+      choice("test", "when", "visibleWhen", "done", "start", "fail", "rearm", "spentBy"),
+
+    // `<match subject="…">` (dsl 0.37.0 §3.5) — the match subject is CEL. A
+    // `cel_attr` scoped to `<match>` (like `when_is` to `<when>`): `subject` is
+    // a keyword only there, so `<track subject="camera">` stays a plain attr.
+    _match_subject: ($) =>
+      seq(alias("subject", $.cel_key), "=", choice($.cel_string, $.ref)),
 
     // CelString (§4.4) — a double-quoted CEL expression used as an attribute
     // value. Unlike the opaque `string` token, its interior is *structured* so
@@ -435,7 +463,16 @@ module.exports = grammar({
     key: ($) => /[A-Za-z][A-Za-z0-9_-]*/,
 
     // Speaker ::= Ident (§7.1) — a character id (incl. reserved narrator/pov).
-    speaker: ($) => /[A-Za-z][A-Za-z0-9_-]*/,
+    // A component's speaker parameter is `@@name` (the `@` marker + `@name`).
+    speaker: ($) => /@?[A-Za-z][A-Za-z0-9_-]*/,
+
+    // Bare (unquoted) attribute value — `n=2`, `amount=5`, `rate=1.25`: the
+    // core scanner reads `key=` + token to whitespace/terminator as a string.
+    value: ($) => /[^ \t\r\n"'@}>,\/][^ \t\r\n"}>,\/]*/,
+
+    // Subscript `[expr]` on a state path (`user.bond[occasion.target]`), in
+    // `::set` targets and `{{…}}` interpolations. Opaque, single-line.
+    index: ($) => token.immediate(/\[[^\]\r\n]*\]/),
 
     // String / CelString (§4.4): double-quoted, backslash escapes, no raw
     // newline. CEL strings use single quotes internally, so a `'x'` inside is
@@ -462,31 +499,97 @@ module.exports = grammar({
         /([^"'}\n]|"([^"\\\n]|\\[^\n])*"|'([^'\\\n]|\\[^\n])*')+/,
       ),
 
-    // Text (§4.4/§7.1): the rest of a content line to EOL. Was one opaque token;
-    // now a run of opaque text chunks and `{{…}}` interpolations (§7.6). Chunks
-    // and openers are `token.immediate`, so `extras` (whitespace, comments, the
-    // newline) are never skipped mid-text: a `//` or `/*` INSIDE text stays
-    // literal text (Text is opaque, §4.2), text never spills onto the next line,
-    // and the leading space after `: ` is kept. NB: shared by `title`/`shot`
-    // headings — a heading with no `{{` yields a bare `(text)` exactly as before;
-    // a heading `{{…}}` is a harmless editor over-recognition (the spec restricts
-    // interpolation to content + `<choice label>`, enforced by the checker/LSP).
+    // Text (§4.4/§7.1, dsl 0.37.0 §3.6): the rest of a content line to EOL — a
+    // run of opaque text chunks, escapes, `{{…}}` interpolations (§7.6) and
+    // inline modifiers. Every piece is `token.immediate`, so `extras`
+    // (whitespace, comments, the newline) are never skipped mid-text: a `//` or
+    // `/*` INSIDE text stays literal text (Text is opaque, §4.2), text never
+    // spills onto the next line, and the leading space after `: ` is kept.
+    // Content-line only: section headings use `heading` (no modifiers).
     text: ($) =>
-      repeat1(choice($._text_chunk, $._text_special, $.escape, $.interpolation)),
+      repeat1(
+        choice($._text_chunk, $._text_special, $.escape, $.interpolation, $.modifier),
+      ),
 
-    // A run of literal text: anything but a brace, a backslash, or a newline.
-    // Stops at `{`/`\` so the longer `{{`/`\{{` tokens win by maximal munch.
-    _text_chunk: ($) => token.immediate(/[^{\\\r\n]+/),
+    // A run of literal text: anything but a brace, bracket, colon, backslash,
+    // or newline. Stops at those so the longer `{{`/escape/modifier tokens win.
+    // `prec(1)` beats the `comment` extra: a `//` or `/*` after an inline `:` /
+    // `[` / `{` stays literal text instead of lexing as a trailing comment.
+    _text_chunk: ($) => token.immediate(prec(1, /[^{}\[\]:\\\r\n]+/)),
 
-    // A lone `{` or `\` that does NOT open `{{`/`\{{` — literal text.
-    _text_special: ($) => token.immediate(/[{\\]/),
+    // A lone punctuation char that opens no interpolation, escape or modifier —
+    // literal text (`:` not followed by `name[`/`name{` is ordinary, §3.6).
+    _text_special: ($) => token.immediate(/[{}\[\]:\\]/),
 
-    // Escape ::= "\{{" — a literal `{{` (renders one `{{`, §7.6). Consumed whole
-    // (3 chars) so its `{{` never opens an interpolation.
-    escape: ($) => token.immediate(/\\\{\{/),
+    // Escape ::= "\{{" | "\:" | "\[" | "\]" | "\{" | "\}" | "\\" (§7.6, dsl
+    // 0.37.0 §3.6). `\{{` is consumed whole (3 chars) so its `{{` never opens
+    // an interpolation; `\:` never starts a modifier. An unknown escape is the
+    // checker's `E-TEXT-ESCAPE` (here a lone `\` is literal text).
+    escape: ($) => token.immediate(/\\\{\{|\\[:\[\]{}\\]/),
 
-    // Interp ::= "{{" WS? ( Path | Ref | ReservedToken ) WS? "}}"  (§7.6). Only
-    // the three legal forms are admitted (a bare CEL expr is not, §7.6). The
+    // Modifier ::= ":" Name Span? Attrs? (dsl 0.37.0 §3.6) — `:pause{s=0.5}`,
+    // `:speed[text]{rate=1.25}`, `:emphasis[text]`. `modifier_name` (external)
+    // is the `:name` head and only matches when `[` or `{` follows, so `Note:`
+    // or `12:30` stay ordinary text. Name vocabulary (`pause`/`speed`/the
+    // project `textStyle` domain) and attr shape are the checker's
+    // `E-TEXT-MODIFIER`.
+    modifier: ($) =>
+      seq(
+        $.modifier_name,
+        choice(
+          seq($.span, optional(alias($._modifier_attrs, $.attrs))),
+          alias($._modifier_attrs, $.attrs),
+        ),
+      ),
+
+    // Span ::= "[" Text "]" — modifier spans nest; interpolations inside a span
+    // stay interpolations. A `]` closes the span (escape it as `\]`).
+    span: ($) =>
+      seq(
+        token.immediate("["),
+        optional(alias($._span_text, $.text)),
+        token.immediate("]"),
+      ),
+
+    _span_text: ($) =>
+      repeat1(
+        choice($._text_chunk, $._span_special, $.escape, $.interpolation, $.modifier),
+      ),
+
+    // Span-body literal punctuation: like `_text_special` minus the closing `]`.
+    _span_special: ($) => token.immediate(/[{}\[:\\]/),
+
+    // Attrs ::= "{" Attr (hws Attr)* "}" on a modifier — aliased to the shared
+    // `attrs`/`attr` nodes so attribute queries apply. Immediate throughout,
+    // so a modifier never spans a newline.
+    _modifier_attrs: ($) =>
+      seq(
+        token.immediate("{"),
+        repeat(choice(token.immediate(/[ \t]+/), alias($._modifier_attr, $.attr))),
+        token.immediate("}"),
+      ),
+
+    // Attr ::= Name "=" Value | Name; Value ::= Quoted | Ref | Number | Bare.
+    _modifier_attr: ($) =>
+      seq(
+        alias(token.immediate(/[A-Za-z][A-Za-z0-9_-]*/), $.key),
+        optional(
+          seq(
+            token.immediate("="),
+            choice(
+              alias(token.immediate(/"([^"\\\n]|\\[^\n])*"/), $.string),
+              alias(token.immediate(/@[A-Za-z][A-Za-z0-9_-]*/), $.ref),
+              alias(token.immediate(/-?[0-9]+(\.[0-9]+)?/), $.number),
+              alias(token.immediate(/[A-Za-z][A-Za-z0-9_-]*/), $.value),
+            ),
+          ),
+        ),
+      ),
+
+    // Interp ::= "{{" WS? ( Path | Ref | ReservedToken ) Index* Format? WS? "}}"
+    // (§7.6). Only the three legal bases are admitted (a bare CEL expr is not,
+    // §7.6); `Index` is a `[expr]` subscript and `Format` a `:name(args)?`
+    // display suffix (`:plural(one|# many)`, `:ordinal`). The
     // interior is immediate (no `extras` ⇒ no newline), so an unterminated `{{`
     // fails on its line instead of swallowing the next. `ReservedToken` is
     // `userName` (the runtime player name, §7.6).
@@ -501,6 +604,15 @@ module.exports = grammar({
           ),
           alias(token.immediate(/@[A-Za-z][A-Za-z0-9_-]*(\([^)\n]*\))?/), $.ref),
           alias(token.immediate("userName"), $.reserved),
+        ),
+        repeat($.index),
+        // Display format suffix: `:plural(one|# many)`, `:ordinal`.
+        optional(
+          seq(
+            token.immediate(":"),
+            alias(token.immediate(/[A-Za-z][A-Za-z0-9_]*/), $.format),
+            optional(alias(token.immediate(/\([^)\r\n]*\)/), $.format_args)),
+          ),
         ),
         optional(token.immediate(/[ \t]+/)),
         token.immediate("}}"),

@@ -1,0 +1,39 @@
+==================
+bare attribute values and comma separators
+==================
+::fright{amount=2}
+@inspector{code="0010" mono,when="@x"}: Hm.
+---
+(source_file
+  (directive (ident) (attrs (attr (key) (value))))
+  (line
+    (speaker)
+    (attrs (attr (key) (string)) (attr (key)) (cel_attr (cel_key) (cel_string (ref))))
+    (text)))
+
+==================
+component speaker parameter and ref fact arguments with a guard
+==================
+@@who{code="0010"}: {{@line}}
+::assert{gifted(@who, item)}
+::assert{islesLensBack(coralreach) when="@wonFight"}
+---
+(source_file
+  (line (speaker) (attrs (attr (key) (string))) (text (interpolation (ref))))
+  (assert (fact_pattern (ident) (fact_arg (ref)) (fact_arg (ident))))
+  (assert (fact_pattern (ident) (fact_arg (ident))) (cel_attr (cel_key) (cel_string (ref)))))
+
+==================
+subscripted state paths and interpolation display formats
+==================
+::set{user.bond[occasion.target] += 1}
+@narrator: Bond {{user.bond[occasion.target]}}, {{run.day:ordinal}}, {{run.hush:plural(One|# of them)}}.
+---
+(source_file
+  (set (path) (index) (assign_op) (cel_expr))
+  (line
+    (speaker)
+    (text
+      (interpolation (path) (index))
+      (interpolation (path) (format))
+      (interpolation (path) (format) (format_args)))))

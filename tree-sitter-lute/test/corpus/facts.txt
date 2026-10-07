@@ -5,14 +5,14 @@ assert leaf (unary fact)
 kind: scene
 ---
 
-## Shot 1.
+## Section 1.
 ::assert{ inParty(shadowheart) }
 ----------------------------------------
 
 (source_file
   (frontmatter)
-  (shot
-    (text)
+  (section
+    (heading)
     (assert (fact_pattern (ident) (fact_arg (ident))))))
 
 ==================
@@ -22,14 +22,14 @@ assert binary fact
 kind: scene
 ---
 
-## Shot 1.
+## Section 1.
 ::assert{ atLocation(shadowheart, grove) }
 ----------------------------------------
 
 (source_file
   (frontmatter)
-  (shot
-    (text)
+  (section
+    (heading)
     (assert (fact_pattern (ident) (fact_arg (ident)) (fact_arg (ident))))))
 
 ==================
@@ -39,14 +39,14 @@ retract with wildcard
 kind: scene
 ---
 
-## Shot 1.
+## Section 1.
 ::retract{ atLocation(shadowheart, _) }
 ----------------------------------------
 
 (source_file
   (frontmatter)
-  (shot
-    (text)
+  (section
+    (heading)
     (retract (fact_pattern (ident) (fact_arg (ident)) (fact_arg (wildcard))))))
 
 ==================

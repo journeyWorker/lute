@@ -1,0 +1,109 @@
+==================
+0.37 staging and control directives (actor / cg / sequence / jump / label)
+==================
+## Arrival {#arrival}
+::actor{character="marina" anchor="left" action="enter" emotion="smile"}
+::cg{assetId="cg-01" display="show" layout="full"}
+::sequence{name="opening" wait="true"}
+::label{name="afterOpening"}
+::jump{to="afterOpening"}
+---
+(source_file
+  (section
+    (heading)
+    (section_id)
+    (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)) (attr (key) (string)) (attr (key) (string))))
+    (directive (ident) (attrs (attr (key) (string)) (attr (key) (string)) (attr (key) (string))))
+    (directive (ident) (attrs (attr (key) (string)) (attr (key) (string))))
+    (directive (ident) (attrs (attr (key) (string))))
+    (directive (ident) (attrs (attr (key) (string))))))
+
+==================
+choice text= is a plain attribute; match subject= is CEL
+==================
+<branch id="ask">
+  <choice id="soft" text="Ask gently, {{user.name}}" when="@fond">
+    @fixer: Your number?
+  </choice>
+</branch>
+<match subject="scene.choices.ask">
+  <when is="soft">
+    @fixer{mono}: Asked nicely.
+  </when>
+</match>
+---
+(source_file
+  (branch
+    (attr (key) (string))
+    (choice
+      (attr (key) (string))
+      (attr (key) (string))
+      (cel_attr (cel_key) (cel_string (ref)))
+      (line (speaker) (text))))
+  (match
+    (cel_attr (cel_key) (cel_string (path)))
+    (when
+      (when_is (when_key) (when_pattern (when_literal)))
+      (line (speaker) (attrs (attr (key))) (text)))))
+
+==================
+beat/reward on= is a plain string attribute, not CEL
+==================
+<quest id="q">
+  <reward id="coins" kind="currency" amount="5" on="complete"/>
+</quest>
+---
+(source_file
+  (quest
+    (attr (key) (string))
+    (reward (attr (key) (string)) (attr (key) (string)) (attr (key) (string)) (attr (key) (string)))))
+
+==================
+inline span modifier with and without attrs
+==================
+@marina: Say :emphasis[hello] and :speed[slowly now]{rate=0.75}.
+---
+(source_file
+  (line
+    (speaker)
+    (text
+      (modifier (modifier_name) (span (text)))
+      (modifier (modifier_name) (span (text)) (attrs (attr (key) (number)))))))
+
+==================
+inline leaf modifier, nested spans, interpolation inside a span
+==================
+@marina: Wait:pause{s=0.5} :speed[ok :emphasis[{{user.name}}]]{rate=1.25 mode=soft ref=@x label="a b"}!
+---
+(source_file
+  (line
+    (speaker)
+    (text
+      (modifier (modifier_name) (attrs (attr (key) (number))))
+      (modifier
+        (modifier_name)
+        (span
+          (text
+            (modifier (modifier_name) (span (text (interpolation (path)))))))
+        (attrs
+          (attr (key) (number))
+          (attr (key) (value))
+          (attr (key) (ref))
+          (attr (key) (string)))))))
+
+==================
+colon not followed by a name and bracket/brace is ordinary text
+==================
+@narrator: At 12:30 the note said: see http://x [aside] {plain} :Upper[x]
+---
+(source_file (line (speaker) (text)))
+
+==================
+text escapes never start a modifier or interpolation
+==================
+@narrator: Literal \:emphasis\[x\] and \{{ and \{ \} \\ done
+---
+(source_file
+  (line
+    (speaker)
+    (text (escape) (escape) (escape) (escape) (escape) (escape) (escape))))

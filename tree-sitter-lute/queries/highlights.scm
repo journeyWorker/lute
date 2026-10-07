@@ -23,18 +23,36 @@
 
 ; ---- interpolation (§7.6) -------------------------------------------------
 ; `{{ path | @ref | userName }}` — a render-time state read embedded in content
-; text (and, per the checker, `<choice label>`). Delimiters read as special
+; text (and, per the checker, `<choice text>`). Delimiters read as special
 ; punctuation; the interior reuses the property / ref / constant families, and
 ; `\{{` is an escaped literal `{{`.
 (interpolation ["{{" "}}"] @punctuation.special)
 (interpolation (path) @property)
 (interpolation (reserved) @constant.builtin)
+; `:plural(…)` / `:ordinal` display format suffix and `[expr]` subscripts.
+(interpolation (format) @function.call)
+(interpolation (format_args) @string.special)
+(index) @property
 (escape) @string.escape
+
+; ---- inline text modifiers (dsl 0.37.0 §3.6) -----------------------------
+; `:pause{s=0.5}`, `:speed[text]{rate=1.25}`, `:emphasis[text]` — the `:name`
+; head reads as a macro call; the span brackets as special punctuation; the
+; span text stays string-family (spans nest); attr keys reuse the attribute
+; family below, and numbers read as numbers.
+(modifier (modifier_name) @function.macro)
+(span ["[" "]"] @punctuation.special)
+(span (text) @string)
+(modifier (attrs (attr (number) @number)))
 
 ; ---- STAGING layer (§7.2, §7.4) -------------------------------------------
 ; `::`ident staging directives — the directive name reads as a call (@function).
 (directive "::" @punctuation.special)
 (directive (ident) @function)
+; `::jump` / `::label` (dsl 0.37.0 §3.5) are control flow, not staging: the
+; forward jump and its document-wide target read in the logic keyword family.
+((directive (ident) @keyword.control)
+  (#any-of? @keyword.control "jump" "label"))
 
 ; `<timeline>` / `<track>` staging blocks — block "macros" that expand into
 ; scheduled directives; kept in the function family, distinct from logic tags.
@@ -93,11 +111,11 @@
 ; ---- distinct arch captures -----------------------------------------------
 ; CEL expression (the `::set` right-hand side) — an embedded expression lang.
 (cel_expr) @embedded
-; CEL-valued attribute value (`<match on>`, `<when test>`, `<choice when>`,
+; CEL-valued attribute value (`<match subject>`, `<when test>`, `<choice when>`,
 ; §7.3/§8) — also embedded CEL, so it colors like `::set` RHS, not a string.
 (cel_string) @embedded
 ; State path (`scene.affect.marina`) — dotted member access. Captured both as a
-; `::set` target and wherever it appears inside a CEL value (`<match on="…">`).
+; `::set` target and wherever it appears inside a CEL value (`<match subject="…">`).
 (set (path) @property)
 (cel_string (path) @property)
 ; Bare `@ref` (defs-backed guard / value reference). The bare pattern also
@@ -106,16 +124,18 @@
 
 ; ---- attributes (§4.5) ----------------------------------------------------
 (attr (key) @attribute)
-; CEL-valued attribute key (`on`/`test`/`when`) — an attribute key like any
+; CEL-valued attribute key (`subject`/`test`/`when`) — an attribute key like any
 ; other, but its value is embedded CEL (captured above), not an opaque string.
 (cel_attr (cel_key) @attribute)
 (string) @string
+; Bare unquoted attribute value (`amount=2`).
+(attr (value) @constant)
 
-; ---- headings (§6.2, §6.3) ------------------------------------------------
-(title (text) @markup.heading.1)
-(title "#" @punctuation.special)
-(shot (text) @markup.heading.2)
-(shot "##" @punctuation.special)
+; ---- section headings (dsl 0.37.0 §3.1) -----------------------------------
+(section (heading) @markup.heading.2)
+(section "##" @punctuation.special)
+; `{#stable-id}` suffix — identity metadata, not part of the heading text.
+(section_id) @label
 
 ; ---- trivia / frontmatter -------------------------------------------------
 (comment) @comment
