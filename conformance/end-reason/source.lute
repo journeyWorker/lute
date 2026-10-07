@@ -22,11 +22,11 @@ is a whole-branch property, not a straight-line one.
 @narrator: The road ends at the river.
 
 <branch id="parting">
-  <choice id="stay" label="Hold the crossing">
+  <choice id="stay" text="Hold the crossing">
     @hero: I'll hold the crossing.
     ::end{reason="stayed"}
   </choice>
-  <choice id="leave" label="Walk away">
+  <choice id="leave" text="Walk away">
     @hero: There's nothing left here.
     ::end{reason="left"}
   </choice>

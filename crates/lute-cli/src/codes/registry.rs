@@ -13,7 +13,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-AGE-GATE",
-        summary: r#"An age-gated `<match on="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case."#,
+        summary: r#"An age-gated `<match subject="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case."#,
         spec: &["dsl §11.2"],
     },
     Code {
@@ -23,7 +23,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-ARM-DEAD",
-        summary: "A gated content line, `<match>` arm, `<choice when>`, or `::next{when}` carries a `when` guard that is provably always false, so it can never be shown or taken.",
+        summary: "A gated content line, `<match>` arm, `<choice when>`, or `::jump{when}` carries a `when` guard that is provably always false, so it can never be shown or taken.",
         spec: &["dsl 0.4.0 §5.2", "dsl 0.4.0 §7.2", "dsl 0.20.0 §5"],
     },
     Code {
@@ -107,13 +107,23 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.11.1 §4"],
     },
     Code {
+        code: "E-CAMERA-EMPTY",
+        summary: "A `::camera` directive names none of `focus`, `framing`, `move` or `transition`, so it has nothing to do.",
+        spec: &["dsl 0.37.0 §3.3"],
+    },
+    Code {
+        code: "E-CAMERA-REMOVED",
+        summary: "A `::camera` directive uses a removed numeric or legacy attribute (`zoom`, `moveX`, `moveY`, `shake`, `reset`, `easing`); camera values are now project-declared `framing`, `cameraMove` or `transition` members, so the attribute must be migrated by hand.",
+        spec: &["dsl 0.37.0 §3.3", "dsl 0.37.0 §4"],
+    },
+    Code {
         code: "E-CAPABILITY-MISMATCH",
         summary: "Two documents in the same project resolve different capability snapshots, so the project has no single `capabilityVersion` to index.",
         spec: &["dsl §13"],
     },
     Code {
         code: "E-CAST-UNKNOWN",
-        summary: "A content line's speaker, or a `::auto{character}`/`::camera{focus}` literal, names an id outside the project's declared cast.",
+        summary: "A content line's speaker, or a `::actor{character}`/`::camera{focus}` literal, names an id outside the project's declared cast.",
         spec: &["dsl 0.23.0 §7", "dsl 0.24.0 §4"],
     },
     Code {
@@ -130,6 +140,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-CEL-TYPE",
         summary: "A condition's types cannot mean what is written: a comparison between a bool, a number and a string (`visited('x') > 2`, `run.oil == true`, `run.day == 'monday'`), an ordering of anything but numbers (`run.hour >= 'h03'`), a non-bool operand of `&&` / `||` / `!` / `?:` or condition, arithmetic that cannot be computed, or an operand of the integer modulo operator `%` that is not an integer.",
         spec: &["dsl 0.24.0 §1", "dsl 0.28.0 §1"],
+    },
+    Code {
+        code: "E-CG-LAYOUT",
+        summary: "A `::cg` directive uses the removed `full` attribute; only a project-declared `cgLayout` member written as `layout=` can replace it, so it must be migrated by hand.",
+        spec: &["dsl 0.37.0 §3.3", "dsl 0.37.0 §4"],
     },
     Code {
         code: "E-CHAPTERS",
@@ -283,7 +298,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CONTENT-OUTSIDE-SECTION",
-        summary: "A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` shot heading, since content only belongs inside a shot body.",
+        summary: "A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` section heading, since content only belongs inside a section body.",
         spec: &["dsl 0.5.0 §2.1", "dsl 0.6.0 §3.3"],
     },
     Code {
@@ -592,6 +607,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.6.0 §2.2"],
     },
     Code {
+        code: "E-JUMP-BACKWARD",
+        summary: "A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.",
+        spec: &["dsl 0.12.0"],
+    },
+    Code {
+        code: "E-JUMP-UNDEFINED",
+        summary: "A `::jump{to}` names a label that no `::label` anywhere in the document declares.",
+        spec: &["dsl 0.12.0"],
+    },
+    Code {
         code: "E-KIND-MISSING",
         summary: "A root document declares no `kind:` frontmatter key and the manifest's `defaults:` also names none, so the document's kind cannot be resolved.",
         spec: &["dsl 0.2.0 §3.1", "dsl 0.19.0 §2", "dsl 0.10.0 §6.3"],
@@ -600,6 +625,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-KIND-NAME-CLASH",
         summary: "An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.",
         spec: &["dsl 0.3.0 §4"],
+    },
+    Code {
+        code: "E-LABEL-DUP",
+        summary: "A label name — a `::label{name}` — is declared more than once anywhere in the document; every label shares one document-wide namespace.",
+        spec: &["dsl 0.12.0"],
     },
     Code {
         code: "E-LEGACY-CONTENT-SIGIL",
@@ -652,23 +682,18 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.28.0 §1"],
     },
     Code {
-        code: "E-MARK-DUP",
-        summary: "A mark id — a `::mark{id}` or a content line's `id=` — is declared more than once anywhere in the document; both share one namespace.",
-        spec: &["dsl 0.12.0"],
-    },
-    Code {
         code: "E-MATCH-DUP-OTHERWISE",
         summary: "A `<match>` contains more than one `<otherwise>` arm, though at most one is allowed.",
         spec: &["dsl §11.2"],
     },
     Code {
         code: "E-MATCH-NO-SUBJECT",
-        summary: "A `<when is=…>` arm sits in a `<match>` with no `on=`, so its literal has no subject to be compared against; add `on=` to the `<match>`, or write the arm as `test=`.",
+        summary: "A `<when is=…>` arm sits in a `<match>` with no `subject=`, so its literal has no subject to be compared against; add `subject=` to the `<match>`, or write the arm as `test=`.",
         spec: &[],
     },
     Code {
         code: "E-MATCH-RELATION-SUBJECT",
-        summary: "A `<match on>` subject, directly or via an `@def` it expands to, is a fact query (`holds`/`count`/`validAt`), which match subjects may not be.",
+        summary: "A `<match subject>` subject, directly or via an `@def` it expands to, is a fact query (`holds`/`count`/`validAt`), which match subjects may not be.",
         spec: &["dsl 0.27.0 §2", "dsl 0.3.0 §8"],
     },
     Code {
@@ -710,16 +735,6 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-MOCK-SUBJECT",
         summary: "A `--mock`/`mocks/*.yaml` entry declares no `file:`, names a `file:` path that does not exist or is not a `.lute` document, or disagrees with the document named on the command line.",
         spec: &["dsl 0.10.0 §8"],
-    },
-    Code {
-        code: "E-NEXT-BACKWARD",
-        summary: "A `::next{to}` names a mark that is not forward of the `::next` in document order — jumps must go forward only.",
-        spec: &["dsl 0.12.0"],
-    },
-    Code {
-        code: "E-NEXT-UNDEFINED",
-        summary: "A `::next{to}` names a mark that no `::mark` (or content line `id=`) anywhere in the document declares.",
-        spec: &["dsl 0.12.0"],
     },
     Code {
         code: "E-NONEXHAUSTIVE",
@@ -1042,6 +1057,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §4"],
     },
     Code {
+        code: "E-REMOVED-ATTR",
+        summary: "A directive uses a removed attribute with no lossless rewrite (`::music{track}`, `::sfx{name}`); the message names the replacement, and the migration is by hand.",
+        spec: &["dsl 0.37.0 §3.3", "dsl 0.37.0 §4"],
+    },
+    Code {
         code: "E-RENAME-LEDGER",
         summary: "A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.",
         spec: &["dsl 0.36.0 §3"],
@@ -1055,6 +1075,21 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-RENAME-LEDGER-STALE",
         summary: "A ledger source key is still present, or its destination key is absent after project resolution.",
         spec: &["dsl 0.36.0 §3"],
+    },
+    Code {
+        code: "E-RENAMED-ATTR",
+        summary: "A directive or content line uses an attribute's old spelling (`::music{action}`, `::video{action}`, `::cg{action}`, `::label{id}`, a content line's `id=`); the message names the new spelling, and `lute fix` rewrites it.",
+        spec: &["dsl 0.37.0 §2.2", "dsl 0.37.0 §4"],
+    },
+    Code {
+        code: "E-RENAMED-DIRECTIVE",
+        summary: "A directive uses its old tag (`::auto`, `::cut`, `::next`, `::mark`); the message names the new tag (`::actor`, `::cg`, `::jump`, `::label`), and `lute fix` rewrites it.",
+        spec: &["dsl 0.37.0 §2.2", "dsl 0.37.0 §4"],
+    },
+    Code {
+        code: "E-RENAMED-TAG-ATTR",
+        summary: "A `<choice>` or `<match>` uses an attribute's old spelling (`label=`, `on=`); the message names `text=` or `subject=`, and `lute fix` rewrites it.",
+        spec: &["dsl 0.37.0 §3.5", "dsl 0.37.0 §4"],
     },
     Code {
         code: "E-RESERVED-NAME",
@@ -1183,7 +1218,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-STREAM-TEMPLATE",
-        summary: "A streaming continuation's template is not a scene with at least one shot.",
+        summary: "A streaming continuation's template is not a scene with at least one section.",
         spec: &[],
     },
     Code {
@@ -1273,7 +1308,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TITLE-PLACEMENT",
-        summary: "A document's `# ` title appears more than once, or appears after the first shot instead of before it.",
+        summary: "A document's `# ` title appears more than once, or appears after the first section instead of before it.",
         spec: &["dsl §6.2"],
     },
     Code {
@@ -1328,7 +1363,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNCLASSIFIED",
-        summary: "A body line is no Lute construct — not a content line, directive, `::set` or known block — or a block stands where it cannot, such as a `<quest>` inside a shot.",
+        summary: "A body line is no Lute construct — not a content line, directive, `::set` or known block — or a block stands where it cannot, such as a `<quest>` inside a section.",
         spec: &["dsl 0.5.0 §2.1"],
     },
     Code {
@@ -1502,8 +1537,8 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.8.0"],
     },
     Code {
-        code: "W-CODE-AFTER-NEXT",
-        summary: "Content follows an unguarded `::next` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.",
+        code: "W-CODE-AFTER-JUMP",
+        summary: "Content follows an unguarded `::jump` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.",
         spec: &["dsl 0.12.0"],
     },
     Code {
@@ -1683,7 +1718,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-STAGE-ABSENT",
-        summary: "A content line or `::auto` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.",
+        summary: "A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.",
         spec: &["dsl 0.22.0 §12"],
     },
     Code {

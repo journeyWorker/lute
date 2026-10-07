@@ -238,9 +238,9 @@ fn a_reported_state_row_is_not_judged_again_at_its_reads() {
                 \x20 run.gold: { type: int, defualt: 0 }\n\
                 \x20 run.lock: { type: { enum: [open, unset] }, default: open }\n\
                 ---\n## One\n\
-                <match on=\"run.route\">\n<when is=\"ren\">\n@narrator: Ren.\n</when>\n\
+                <match subject=\"run.route\">\n<when is=\"ren\">\n@narrator: Ren.\n</when>\n\
                 <when is=\"mkia\">\n@narrator: Mika.\n</when>\n</match>\n\
-                <match on=\"run.lock\">\n<when is=\"open\">\n@narrator: Open.\n</when>\n</match>\n\
+                <match subject=\"run.lock\">\n<when is=\"open\">\n@narrator: Open.\n</when>\n</match>\n\
                 ::set{run.gold = run.gold + 1}\n\
                 @narrator: {{run.gold}} and {{run.route}}.\n";
     let mut got = codes(text, SchemaImports::default());
@@ -255,7 +255,7 @@ fn an_unset_arm_guards_the_read_of_an_uncovered_match() {
     let text = "---\nkind: scene\nid: a\nstate:\n\
                 \x20 run.killedBy: { type: { enum: [eel, choir, archivist] } }\n\
                 ---\n## Rail\n\
-                <match on=\"run.killedBy\">\n<when is=\"eel\">\n@narrator: Teeth.\n</when>\n\
+                <match subject=\"run.killedBy\">\n<when is=\"eel\">\n@narrator: Teeth.\n</when>\n\
                 <when is=\"unset\">\n@narrator: Nobody knows.\n</when>\n</match>\n";
     let mut got = codes(text, SchemaImports::default());
     got.sort();
@@ -267,7 +267,7 @@ fn an_unset_arm_guards_the_read_of_an_uncovered_match() {
 #[test]
 fn content_before_the_first_shot_is_one_report() {
     let text = "---\nkind: scene\nid: probe\n---\n\n\
-                <match on=\"run.route\">\n  <when is=\"ren\">\n    @narrator: Ren.\n  </when>\n\
+                <match subject=\"run.route\">\n  <when is=\"ren\">\n    @narrator: Ren.\n  </when>\n\
                 \x20 <when is=\"mika\">\n    @narrator: Mika.\n  </when>\n</match>\n\n\
                 ## The jetty\n\n@narrator: Hello.\n";
     let out = lute_check::check(&input(text));
@@ -325,8 +325,8 @@ fn on_one_position_the_cause_comes_first() {
 #[test]
 fn a_refused_exit_flag_is_one_report() {
     let text = "---\nkind: scene\nid: k\n---\n## K\n<hub id=\"ask\">\n\
-                <choice id=\"oven\" label=\"Oven\">\n@cook: Cake.\n</choice>\n\
-                <choice id=\"leave\" label=\"Go\" exit=\"yes\">\n@cook: Bye.\n</choice>\n</hub>\n";
+                <choice id=\"oven\" text=\"Oven\">\n@cook: Cake.\n</choice>\n\
+                <choice id=\"leave\" text=\"Go\" exit=\"yes\">\n@cook: Bye.\n</choice>\n</hub>\n";
     let codes: Vec<String> = lute_check::check(&input(text))
         .diagnostics
         .into_iter()
@@ -376,8 +376,8 @@ fn a_text_ternary_interpolation_is_told_to_split_into_lines() {
 #[test]
 fn a_refused_write_is_one_report() {
     let text = "---\nkind: scene\nid: d\n---\n## D\n<branch id=\"door\">\n\
-                <choice id=\"a\" label=\"A\">\n@narrator: A.\n</choice>\n\
-                <choice id=\"b\" label=\"B\">\n@narrator: B.\n</choice>\n</branch>\n\
+                <choice id=\"a\" text=\"A\">\n@narrator: A.\n</choice>\n\
+                <choice id=\"b\" text=\"B\">\n@narrator: B.\n</choice>\n</branch>\n\
                 ::set{scene.choices.door = true}\n";
     assert_eq!(
         codes(text, SchemaImports::default()),
@@ -403,9 +403,9 @@ fn a_yarn_variable_is_one_report() {
 #[test]
 fn a_literal_choice_name_is_reported_where_it_is_named() {
     let text = "---\nkind: scene\nid: t\n---\n## T\n<branch id=\"b\">\n\
-                <choice id=\"true\" label=\"Yes\">\n@narrator: Y.\n</choice>\n\
-                <choice id=\"no\" label=\"No\">\n@narrator: N.\n</choice>\n</branch>\n\
-                <match on=\"scene.choices.b\">\n<when is=\"true\">\n@narrator: yes\n</when>\n\
+                <choice id=\"true\" text=\"Yes\">\n@narrator: Y.\n</choice>\n\
+                <choice id=\"no\" text=\"No\">\n@narrator: N.\n</choice>\n</branch>\n\
+                <match subject=\"scene.choices.b\">\n<when is=\"true\">\n@narrator: yes\n</when>\n\
                 <otherwise>\n@narrator: no\n</otherwise>\n</match>\n";
     assert_eq!(codes(text, SchemaImports::default()), ["E-RESERVED-NAME"]);
 }

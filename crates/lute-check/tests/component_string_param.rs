@@ -55,7 +55,7 @@ fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {
 /// line is the inspector's thought, different at each call site.
 const LAMPS_OUT: &str = "---\ncomponent: lampsOut\nparams:\n  memory: string\n  \
 depth: { enum: [brief, long] }\n---\n## Lamps out\n\
-<match on=\"@depth\">\n  <when is=\"brief\">\n    @narrator: The lamps gutter.\n  </when>\n  \
+<match subject=\"@depth\">\n  <when is=\"brief\">\n    @narrator: The lamps gutter.\n  </when>\n  \
 <when is=\"long\">\n    @narrator: The tunnel swallows the train.\n  </when>\n</match>\n\
 @narrator: {{@memory}}\n";
 

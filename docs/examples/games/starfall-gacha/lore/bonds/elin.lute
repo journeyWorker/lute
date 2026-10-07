@@ -28,10 +28,10 @@ kind:sr summon beat in lore/summons.lute. */
   @elin{code="0010"}: Someone in the last battle hurt you. I saw.
   @elin{code="0020" emotion="surprised"}: I hit him with my staff. Hard. I've never done that before.
   <branch id="elinR2Answer" prompt="Elin is shaking a little.">
-    <choice id="proud" label="I'm proud of you.">
+    <choice id="proud" text="I'm proud of you.">
       @elin{code="0030" emotion="happy"}: Don't be proud! Be careful! ...Be a little proud.
     </choice>
-    <choice id="okay" label="Are you okay?">
+    <choice id="okay" text="Are you okay?">
       @elin{code="0040" emotion="shy"}: Nobody ever asks the healer that. I'm okay. Now I am.
     </choice>
   </branch>

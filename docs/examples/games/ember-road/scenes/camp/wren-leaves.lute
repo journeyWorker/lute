@@ -9,9 +9,9 @@ when: "holds('inParty', ['wren']) && (quest.toll.state == 'complete' || run.appr
 
 ## The Edge of the Firelight
 
-::auto{character="wren" anchor="center" action="fadeInUp"}
+::actor{character="wren" anchor="center" action="fadeInUp"}
 @narrator{code="0010"}: Wren has her pack on. She has not said goodbye to anyone, which is how you know she means to.
-<match on="quest.toll.state">
+<match subject="quest.toll.state">
   <when is="complete">
     @wren{code="0010" emotion="angry"}: Tam's friends are in a Duskbound cage tonight because you wanted a bridge more than you wanted to be a person.
     @wren{code="0020"}: I'm going home. Somebody at the ford has to be there when Maelis's people come knocking. It won't be you.
@@ -21,6 +21,6 @@ when: "holds('inParty', ['wren']) && (quest.toll.state == 'complete' || run.appr
   </otherwise>
 </match>
 @wren{code="0040"}: Don't follow me. The river knows your face now.
-::auto{character="wren" action="fadeOut"}
+::actor{character="wren" action="fadeOut"}
 ::assert{departed(wren)}
 @narrator{code="0020"}: Wren has left the party.

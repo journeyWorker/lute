@@ -13,7 +13,7 @@ priority: 10
 ## The cottage
 
 ::bg{location="tidewell-cape" time="day"}
-::auto{character="cassius" anchor="center" action="enter"}
+::actor{character="cassius" anchor="center" action="enter"}
 @cassius{code="0010" emotion="surprised"}: A visitor! Nobody comes out to the cape. Mind the charts; they're in order. It's a very particular order.
 @cassius{code="0020"}: I'm Cassius. I study monster migrations, mostly from boats. The Galewings go north in spring, the Sealpups go south in autumn, and I go wherever they're going.
 @cassius{code="0030"}: Except this year. The Meridian docks in Portvolt this week, and I have a ticket I will never use. Eclipse has boats in the strait; the Galewings won't go near them, and neither will I.

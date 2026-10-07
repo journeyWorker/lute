@@ -12,11 +12,11 @@ state:
 <beat id="porter" on="talk" target="npc.porter" title="The porter" priority="5" when="run.porterTrust >= 0">
   @porter: You again.
   <branch id="porterTalk">
-    <choice id="ask" label="Ask about the night">
+    <choice id="ask" text="Ask about the night">
       @porter: I saw nothing.
       ::set{run.porterTrust += 1}
     </choice>
-    <choice id="leave" label="Leave">
+    <choice id="leave" text="Leave">
       @porter: Good.
     </choice>
   </branch>
@@ -24,10 +24,10 @@ state:
 
 <beat id="lamps" on="talk" target="npc.porter" once="false" also>
   <hub id="look" prompt="Where do you look?">
-    <choice id="lamp" label="The lamp" once>
+    <choice id="lamp" text="The lamp" once>
       @narrator: It is cold.
     </choice>
-    <choice id="done" label="Done" exit>
+    <choice id="done" text="Done" exit>
       @narrator: Enough.
     </choice>
   </hub>

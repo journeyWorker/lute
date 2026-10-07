@@ -24,7 +24,7 @@ title: Moonstone Cave — the cave, its trainers, and the dig's ramp crew
 <beat use="trainerBattle" id="moonstoneSuperNerdPell" who="moonstoneSuperNerdPell" intro="I came for the fossils and there are PEOPLE IN BLACK taking all the fossils. I am upset. I will battle you about it." win="I feel slightly less upset." lose="That helped a lot, actually." prize="336" instance="use-002"/>
 
 <entry id="southMoonstoneSuperNerdPellAfter" on="talk" target="npc.moonstoneSuperNerdPell" category="bark" when="holds('defeated', ['moonstoneSuperNerdPell'])">
-  <match on="run.lair.quarryDig">
+  <match subject="run.lair.quarryDig">
     <when is="cleared">
       @moonstoneSuperNerdPell{code="0010"}: You chased them out! If you took a fossil, take it to Dr. Kell at the Pebbleton museum. She can bring them back. Back to LIFE.
     </when>

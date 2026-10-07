@@ -128,10 +128,10 @@ rules:
 ---
 ## Shot 1.
 <branch id="verdict">
-<choice id="accuse" label="Accuse" when="holds('culprit', ['ann'])">
+<choice id="accuse" text="Accuse" when="holds('culprit', ['ann'])">
 @narrator: accused
 </choice>
-<choice id="wait" label="Wait">
+<choice id="wait" text="Wait">
 ::assert{ alibi(ann) }
 @narrator: waited
 </choice>
@@ -202,10 +202,10 @@ rules:
 ---
 ## Shot 1.
 <branch id="tunnel">
-<choice id="river" label="River" when="holds('inParty', ['wren'])">
+<choice id="river" text="River" when="holds('inParty', ['wren'])">
 @narrator: river
 </choice>
-<choice id="road" label="Road">
+<choice id="road" text="Road">
 @narrator: road
 </choice>
 </branch>
@@ -255,10 +255,10 @@ rules:
 ---
 ## Shot 1.
 <branch id="go">
-<choice id="now" label="Now" when="holds('ready', ['ann'])">
+<choice id="now" text="Now" when="holds('ready', ['ann'])">
 @narrator: now
 </choice>
-<choice id="later" label="Later">
+<choice id="later" text="Later">
 @narrator: later
 </choice>
 </branch>
@@ -330,13 +330,13 @@ defs:
 ---
 ## Shot 1.
 <branch id="count">
-<choice id="yes" label="Yes" when="holds('testified', ['bob']) && holds('quiet', ['cy']) && !holds('quiet', ['ann']) && holds('early', ['ann']) && countDistinct('sawAt', ['_', '_'], 0) == 2">
+<choice id="yes" text="Yes" when="holds('testified', ['bob']) && holds('quiet', ['cy']) && !holds('quiet', ['ann']) && holds('early', ['ann']) && countDistinct('sawAt', ['_', '_'], 0) == 2">
 @narrator: yes
 </choice>
-<choice id="no" label="No" when="countDistinct('sawAt', ['_', '_'], 0) >= 3">
+<choice id="no" text="No" when="countDistinct('sawAt', ['_', '_'], 0) >= 3">
 @narrator: no
 </choice>
-<choice id="other" label="Other">
+<choice id="other" text="Other">
 @narrator: other
 </choice>
 </branch>
@@ -510,10 +510,10 @@ rules:
 ---
 ## Shot 1.
 <branch id="gate">
-<choice id="pass" label="Pass" when="holds('open', ['earth']) && holds('traveled', ['ann']) && !holds('traveled', ['bob'])">
+<choice id="pass" text="Pass" when="holds('open', ['earth']) && holds('traveled', ['ann']) && !holds('traveled', ['bob'])">
 @narrator: pass
 </choice>
-<choice id="wait" label="Wait">
+<choice id="wait" text="Wait">
 @narrator: wait
 </choice>
 </branch>

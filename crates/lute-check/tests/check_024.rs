@@ -59,9 +59,9 @@ fn scene(body: &str) -> String {
 #[test]
 fn staged_character_outside_the_cast_is_unknown_with_a_suggestion() {
     let src = scene(
-        "::auto{character=\"marra\" action=\"fadeInUp\"}\n\
+        "::actor{character=\"marra\" action=\"fadeInUp\"}\n\
          @mara: Hi.\n\
-         <match on=\"run.x\">\n<otherwise>\n::camera{focus=\"tomsa\" zoom=\"1.1\"}\n</otherwise>\n</match>\n\
+         <match subject=\"run.x\">\n<otherwise>\n::camera{focus=\"tomsa\"}\n</otherwise>\n</match>\n\
          <timeline>\n<track subject=\"camera\">\n::camera{focus=\"marq\" duration=\"0.4\"}\n</track>\n</timeline>\n",
     );
     let ds = run(&src, core(), cast_imports("bad"));
@@ -72,7 +72,7 @@ fn staged_character_outside_the_cast_is_unknown_with_a_suggestion() {
         .collect();
     assert_eq!(anchored, ["marra", "tomsa", "marq"], "{ds:?}");
     assert!(
-        hits[0].message.contains("`::auto{character}` `marra`"),
+        hits[0].message.contains("`::actor{character}` `marra`"),
         "{}",
         hits[0].message
     );
@@ -96,13 +96,13 @@ fn staged_character_outside_the_cast_is_unknown_with_a_suggestion() {
 #[test]
 fn staged_cast_members_and_shape_only_projects_are_clean() {
     let src = scene(
-        "::auto{character=\"mara\" action=\"fadeInUp\"}\n\
-         ::camera{focus=\"tomas\" zoom=\"1.1\"}\n\
+        "::actor{character=\"mara\" action=\"fadeInUp\"}\n\
+         ::camera{focus=\"tomas\"}\n\
          @mara: Hi.\n",
     );
     assert!(with_code(&run(&src, core(), cast_imports("ok")), "E-CAST-UNKNOWN").is_empty());
     // Without a declared cast staging stays shape-only, like speakers.
-    let loose = scene("::auto{character=\"anyone\" action=\"fadeInUp\"}\n@narrator: Hi.\n");
+    let loose = scene("::actor{character=\"anyone\" action=\"fadeInUp\"}\n@narrator: Hi.\n");
     assert!(with_code(
         &run(&loose, core(), SchemaImports::default()),
         "E-CAST-UNKNOWN"

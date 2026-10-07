@@ -141,7 +141,7 @@ fn once_day_needs_a_clock() {
 #[test]
 fn an_undeclared_match_subject_is_no_nonexhaustive_match() {
     let scene = "---\nkind: scene\nid: a\nuses: ../world.schema.yaml\n---\n\n## A\n\n\
-                 <match on=\"run.route\">\n<when is=\"none\">\n@narrator: none\n</when>\n\
+                 <match subject=\"run.route\">\n<when is=\"none\">\n@narrator: none\n</when>\n\
                  <when is=\"sol\">\n@narrator: sol\n</when>\n</match>\n";
     let swallowed =
         format!("{CLOCK}  run.route: {{ type: {{ enum: [none, sol] }}, default: none }}\n");
@@ -494,8 +494,8 @@ fn a_day_start_only_clock_takes_selection_expectations() {
                               raise: { dayStart: dawn }\n";
     const DAWN_SCENE: &str = "---\nkind: scene\nid: day.dawn\nuses: ../world.schema.yaml\non: dawn\n\
                               once: false\n---\n\n## Dawn\n\n@narrator: Dawn on {{clock.weekdayLabel}}.\n\n\
-                              <branch id=\"wake\">\n<choice id=\"rise\" label=\"Rise\">\n@narrator: Up.\n</choice>\n\
-                              <choice id=\"doze\" label=\"Doze\">\n@narrator: Five more minutes.\n</choice>\n\
+                              <branch id=\"wake\">\n<choice id=\"rise\" text=\"Rise\">\n@narrator: Up.\n</choice>\n\
+                              <choice id=\"doze\" text=\"Doze\">\n@narrator: Five more minutes.\n</choice>\n\
                               </branch>\n";
     let dir = project_with(
         "dawn",
@@ -723,9 +723,9 @@ fn weekday_matches_are_exhaustive_and_checked() {
         )
     };
     let clean = scene(
-        "<match on=\"clock.weekday\">\n<when is=\"0\">\n@narrator: Monday.\n</when>\n\
+        "<match subject=\"clock.weekday\">\n<when is=\"0\">\n@narrator: Monday.\n</when>\n\
          <when is=\"1..5\">\n@narrator: Midweek.\n</when>\n<when is=\"6\">\n@narrator: Sunday.\n</when>\n</match>\n\
-         <match on=\"clock.weekdayLabel\">\n<when is=\"Sat|Sun\">\n@narrator: Weekend.\n</when>\n\
+         <match subject=\"clock.weekdayLabel\">\n<when is=\"Sat|Sun\">\n@narrator: Weekend.\n</when>\n\
          <when is=\"Mon|Tue|Wed|Thu|Fri\">\n@narrator: Workday.\n</when>\n</match>\n",
     );
     let dir = project(
@@ -737,9 +737,9 @@ fn weekday_matches_are_exhaustive_and_checked() {
     assert!(out.status.success(), "{}", text(&out));
 
     let bad = scene(
-        "<match on=\"clock.weekday\">\n<when is=\"0..5\">\n@narrator: a.\n</when>\n\
+        "<match subject=\"clock.weekday\">\n<when is=\"0..5\">\n@narrator: a.\n</when>\n\
          <when is=\"7\">\n@narrator: b.\n</when>\n</match>\n\
-         <match on=\"clock.weekdayLabel\">\n<when is=\"Sundy\">\n@narrator: c.\n</when>\n\
+         <match subject=\"clock.weekdayLabel\">\n<when is=\"Sundy\">\n@narrator: c.\n</when>\n\
          <otherwise>\n@narrator: d.\n</otherwise>\n</match>\n\
          @narrator{when=\"clock.weekdayLabel == 'Sundy'\"}: e.\n",
     );

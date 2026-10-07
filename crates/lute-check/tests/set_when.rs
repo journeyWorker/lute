@@ -60,7 +60,7 @@ fn guard_is_checked_as_a_bool_condition() {
 #[test]
 fn dollar_is_out_of_scope_in_the_guard_even_in_a_match() {
     let cs = codes(
-        "<match on=\"run.flag\">\n<when test=\"$ == true\">\n\
+        "<match subject=\"run.flag\">\n<when test=\"$ == true\">\n\
          ::set{run.a = 1 when=\"$ == true\"}\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>",
     );
     assert!(cs.contains(&"E-DOLLAR-OUTSIDE-MATCH".to_string()), "{cs:?}");

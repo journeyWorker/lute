@@ -11,10 +11,10 @@ once: user
 @narrator{code="0010"}: There used to be ten thousand stars. The Hollow King ate them, one by one, until only a handful were left.
 @lumi{code="0010" emotion="surprised"}: Oh! You're awake! You're the Wishkeeper, right? Please say you're the Wishkeeper.
 <branch id="prologueName" prompt="A small star is hovering an inch from your nose.">
-  <choice id="yes" label="I'm the Wishkeeper.">
+  <choice id="yes" text="I'm the Wishkeeper.">
     @lumi{code="0020" emotion="happy"}: I knew it! I'm Lumi. I'm a star. A small one. I'm your guide!
   </choice>
-  <choice id="who" label="Who's asking?">
+  <choice id="who" text="Who's asking?">
     @lumi{code="0030" emotion="smug"}: The last free star in the sky, that's who. Lumi. Pleased to meet you. You're the Wishkeeper.
   </choice>
 </branch>

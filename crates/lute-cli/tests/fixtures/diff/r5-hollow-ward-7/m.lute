@@ -9,7 +9,7 @@ defs:
 ## M
 
 @narrator{when="@d"}: (line guard) He is here.
-<match on="@d">
+<match subject="@d">
   <when is="true">
     @narrator: (match arm) He is here.
   </when>

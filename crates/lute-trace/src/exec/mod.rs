@@ -24,7 +24,7 @@
 //! `guard: "seeded"`), `{kind: "objective", quest, objective, outcome: done
 //! | pending | failed, guard}`, `{kind: "on", event, quest, addr, outcome:
 //! fires | skipped, guard}`, `{kind: "acceptSpent", quest, parent, why}` and
-//! `{kind: "jump", addr}` (every `jump` taken: an authored `::next`, or a
+//! `{kind: "jump", addr}` (every `jump` taken: an authored `::jump`, or a
 //! structural one the source map hangs source-only steps on). Under
 //! [`Machine::with_arm_probe`] (the differential harness's IR oracle) also
 //! `{kind: "armExpr", addr, arm, expr, held, reads}`.

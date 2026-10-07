@@ -65,10 +65,10 @@ episode: 2
 @fixer{code="0050"}: Marina. Your number.
 @fixer: And again.
 <branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @marina{code="0010" emotion="surprised"}: Oh!
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>

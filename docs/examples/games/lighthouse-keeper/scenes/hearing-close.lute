@@ -10,7 +10,7 @@ after: 'visited("rock.report")'
 
 // `inquest` is `judge: before`: the reconstruction's `until` objectives are
 // already judged when this scene plays, so it can read the Board's verdict.
-<match on="quest.reconstruction.state">
+<match subject="quest.reconstruction.state">
   <when is="complete">
     @chair{code="0010"}: The Board accepts the inspector's reconstruction in full.
   </when>

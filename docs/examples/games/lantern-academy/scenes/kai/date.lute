@@ -11,15 +11,15 @@ after: 'visited("common.festival")'
 ## The old music room
 
 ::bg{location="musicRoom" time="dusk"}
-::music{action="start" mood="romantic" volume="down"}
-::auto{character="kai" anchor="center" action="fadeInUp"}
+::music{playback="start" mood="romantic" volume="down"}
+::actor{character="kai" anchor="center" action="fadeInUp"}
 @kai{code="0010" emotion="smirk"}: Mind the floor. Left of the piano is a hole. Right of the piano is a bigger hole.
 @kai{code="0020"}: Four bars. I've had four bars for a year. Sit. Play the fifth one.
 @kai{code="0030" emotion="happy" when="holds('locked', ['ren'])"}: Aoki still thinks the room is empty. You lied very well for someone who's bad at lying.
 
 ::date{with="kai" spot="musicRoom" resultKey="duet"}
 
-<match on="scene.date.duet.mood">
+<match subject="scene.date.duet.mood">
   <when is="perfect">
     @kai{code="0040" emotion="fond"}: ...That's it. That's the fifth bar. Play it again, I need to hear it's real.
     ::use{component="cg" id="cgKaiDuet" instance="use-001"}

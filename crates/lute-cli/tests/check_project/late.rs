@@ -515,7 +515,7 @@ fn replaced_default_components_is_named_on_the_template_use() {
 fn branch_scene(branch: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n\
-         <branch id=\"{branch}\">\n<choice id=\"c\" label=\"L\">\n@a: yo\n</choice>\n</branch>\n"
+         <branch id=\"{branch}\">\n<choice id=\"c\" text=\"L\">\n@a: yo\n</choice>\n</branch>\n"
     )
 }
 
@@ -538,7 +538,7 @@ fn check_project_warns_on_a_branch_id_two_documents_share() {
         &dir,
         "scenes/d.lute",
         &format!(
-            "{}<branch id=\"twice\">\n<choice id=\"c\" label=\"L\">\n@a: yo\n</choice>\n</branch>\n",
+            "{}<branch id=\"twice\">\n<choice id=\"c\" text=\"L\">\n@a: yo\n</choice>\n</branch>\n",
             branch_scene("twice")
         ),
     );
@@ -589,7 +589,7 @@ fn check_project_prints_causes_before_documents() {
         &dir,
         "scenes/a.lute",
         "---\nkind: scene\nid: a\n---\n## A\n<branch id=\"pick one\" prompt=\"?\">\n  \
-         <choice id=\"x\" label=\"X\">\n    @n: x\n  </choice>\n</branch>\n",
+         <choice id=\"x\" text=\"X\">\n    @n: x\n  </choice>\n</branch>\n",
     );
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);

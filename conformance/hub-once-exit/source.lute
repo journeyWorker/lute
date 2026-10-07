@@ -11,11 +11,11 @@ uses: ./schema.yaml
 ## The Interrogation
 
 <hub id="talk">
-  <choice id="probe" label="Probe once" once>
+  <choice id="probe" text="Probe once" once>
     @hero: Tell me more.
     ::set{run.probes += 1}
   </choice>
-  <choice id="leave" label="End it" exit>
+  <choice id="leave" text="End it" exit>
     @hero: We're done here.
   </choice>
 </hub>

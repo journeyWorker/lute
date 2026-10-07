@@ -223,7 +223,7 @@ fn acceptance_refusal_matrix_has_named_cases() {
     let root = project();
     cases.push(("unknown target", root.clone(), patch(&root, vec![NodeKey::new(NodeKind::Line, "missing")], vec![], vec![]), "E-PATCH-TARGET"));
 
-    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" label=\"Go\">\n@hero: A\n</choice>\n<choice id=\"go\" label=\"Go again\">\n@hero: B\n</choice>\n</branch>");
+    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" text=\"Go\">\n@hero: A\n</choice>\n<choice id=\"go\" text=\"Go again\">\n@hero: B\n</choice>\n</branch>");
     let ambiguous = node(&root, NodeKind::Choice, ".go");
     cases.push(("ambiguous target", root.clone(), patch(&root, vec![ambiguous], vec![], vec![]), "E-PATCH-TARGET"));
 
@@ -295,10 +295,10 @@ fn acceptance_preserve_matrix_has_named_cases() {
     let line = line_info(&root).0;
     cases.push(("voiceKeys", root, line.clone(), PatchEdit::ReplaceNode { node: line.clone(), text: "@villain{code=\"0010\"}: Hello".into() }, lute_model::Preserve::VoiceKeys));
 
-    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" label=\"Go\">\n::set{run.flag = true}\n</choice>\n<choice id=\"stop\" label=\"Stop\">\n@hero: Stop\n</choice>\n</branch>");
+    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" text=\"Go\">\n::set{run.flag = true}\n</choice>\n<choice id=\"stop\" text=\"Stop\">\n@hero: Stop\n</choice>\n</branch>");
     let choice = node(&root, NodeKind::Choice, ".go");
     cases.push(("choiceEffects", root, choice.clone(), PatchEdit::ReplaceNode {
-        node: choice.clone(), text: "<choice id=\"go\" label=\"Go\">\n::set{run.flag = false}\n</choice>".into(),
+        node: choice.clone(), text: "<choice id=\"go\" text=\"Go\">\n::set{run.flag = false}\n</choice>".into(),
     }, lute_model::Preserve::ChoiceEffects(vec![choice])));
 
     let root = quest_project("<quest id=\"q\" start=\"true\">\n<reward kind=\"gold\" amount=\"1\"/>\n</quest>");
@@ -387,10 +387,10 @@ fn acceptance_success_matrix_has_named_cases() {
         let _ = std::fs::remove_dir_all(root);
     }
 
-    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" label=\"Go\">\n@hero: Hello\n</choice>\n</branch>");
+    let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" text=\"Go\">\n@hero: Hello\n</choice>\n</branch>");
     let choice = node(&root, NodeKind::Choice, ".go");
     assert!(apply_patch(&root, patch(&root, vec![choice.clone()], vec![PatchEdit::ReplaceAttr {
-        node: choice, attr: "label".into(), value: "Continue".into(),
+        node: choice, attr: "text".into(), value: "Continue".into(),
     }], vec![]), true).is_ok(), "replaceAttr");
     let _ = std::fs::remove_dir_all(root);
 
@@ -482,7 +482,7 @@ fn replace_node_adds_match_arm_with_plugin_directives() {
     let (shot, text) = shot_text(&root);
     let replacement = text.replacen(
         "    ::assert{defeated(morwen)}\n  </when>",
-        "    ::assert{defeated(morwen)}\n    <match on=\"scene.battle.fight.fainted\">\n      <when is=\"1..\">\n        @narrator: You won, but victory came at a cost.\n      </when>\n      <otherwise>\n        // no fainted cost was reported\n      </otherwise>\n    </match>\n  </when>",
+        "    ::assert{defeated(morwen)}\n    <match subject=\"scene.battle.fight.fainted\">\n      <when is=\"1..\">\n        @narrator: You won, but victory came at a cost.\n      </when>\n      <otherwise>\n        // no fainted cost was reported\n      </otherwise>\n    </match>\n  </when>",
         1,
     );
     assert_ne!(replacement, text);

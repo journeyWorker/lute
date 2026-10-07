@@ -75,10 +75,10 @@ fn kind(cmd: &Command) -> &'static str {
 }
 
 const BRANCH: &str = r#"<branch id="number">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer{code="0050"}: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently">
+  <choice id="soft" text="Ask gently">
     ::set{scene.affect.marina += 1}
   </choice>
 </branch>
@@ -112,7 +112,7 @@ fn branch_flattens_to_header_arms_jumps_converge() {
 
 #[test]
 fn match_flattens_with_otherwise_and_omits_it_when_absent() {
-    let m = r#"<match on="scene.flags.saw_beam">
+    let m = r#"<match subject="scene.flags.saw_beam">
   <when test="$ == true">
     @fixer{mono}: saw
   </when>
@@ -137,7 +137,7 @@ fn match_flattens_with_otherwise_and_omits_it_when_absent() {
     assert_eq!(mc.converge, recs[5].labels[0].sym());
 
     // No <otherwise> arm (gate-proven covered) => field omitted (§11.2).
-    let covered = r#"<match on="scene.flags.saw_beam">
+    let covered = r#"<match subject="scene.flags.saw_beam">
   <when test="$ == true">
     @fixer{mono}: t
   </when>
@@ -156,8 +156,8 @@ fn match_flattens_with_otherwise_and_omits_it_when_absent() {
 #[test]
 fn nested_block_lays_inner_convergence_before_outer_jump() {
     let nested = r#"<branch id="outer">
-  <choice id="a" label="A">
-    <match on="scene.flags.saw_beam">
+  <choice id="a" text="A">
+    <match subject="scene.flags.saw_beam">
       <when test="$ == true">
         @fixer{mono}: saw
       </when>
@@ -166,7 +166,7 @@ fn nested_block_lays_inner_convergence_before_outer_jump() {
       </otherwise>
     </match>
   </choice>
-  <choice id="b" label="B">
+  <choice id="b" text="B">
     @fixer{code="0010"}: b
   </choice>
 </branch>
@@ -203,7 +203,7 @@ fn nested_block_lays_inner_convergence_before_outer_jump() {
 #[test]
 fn empty_arm_is_a_bare_labeled_jump_and_last_block_converges_past_end() {
     let b = r#"<branch id="tail">
-  <choice id="go" label="Go">
+  <choice id="go" text="Go">
   </choice>
 </branch>"#;
     let (recs, trailing) = flatten(b);
@@ -223,7 +223,7 @@ fn empty_arm_is_a_bare_labeled_jump_and_last_block_converges_past_end() {
 #[test]
 fn component_sentinels_stamp_source_and_emit_nothing() {
     let src = r#"::__component-begin{component="greet"}
-::auto{character="marina" anchor="center" action="fadeInUp"}
+::actor{character="marina" anchor="center" action="fadeInUp"}
 ::__component-end
 @narrator: after."#;
     let (recs, _) = flatten(src);
@@ -250,7 +250,7 @@ fn component_sentinels_stamp_source_and_emit_nothing() {
 #[test]
 fn branch_prompt_and_timeout_flow_into_choice_cmd() {
     let b = r#"<branch id="firstMove" prompt="What do you do first?" timeout="10">
-  <choice id="go" label="Go">
+  <choice id="go" text="Go">
     @narrator: went.
   </choice>
 </branch>"#;

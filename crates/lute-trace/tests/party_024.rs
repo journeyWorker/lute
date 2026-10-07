@@ -36,16 +36,16 @@ rules:
 ## Shot 1.
 ::set{run.approval.isolde += 3}
 <branch id="who">
-<choice id="isolde" label="Isolde" when="holds('loyal', ['isolde'])">
+<choice id="isolde" text="Isolde" when="holds('loyal', ['isolde'])">
 @narrator: isolde
 </choice>
-<choice id="corvin" label="Corvin" when="holds('loyal', ['corvin'])">
+<choice id="corvin" text="Corvin" when="holds('loyal', ['corvin'])">
 @narrator: corvin
 </choice>
-<choice id="party" label="Party" when="holds('inParty', ['corvin'])">
+<choice id="party" text="Party" when="holds('inParty', ['corvin'])">
 @narrator: party
 </choice>
-<choice id="leave" label="Leave">
+<choice id="leave" text="Leave">
 @narrator: leave
 </choice>
 </branch>

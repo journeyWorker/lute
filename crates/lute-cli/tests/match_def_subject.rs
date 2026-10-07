@@ -100,7 +100,7 @@ fn arms_of(dir: &Path) -> Vec<serde_json::Value> {
 fn a_def_subject_without_a_portable_expr_takes_its_true_arm_in_play() {
     let dir = project(
         "visited",
-        "<match on=\"@seen\">\n  <when is=\"true\">\n    @narrator: (match arm) He is here.\n  </when>\n  \
+        "<match subject=\"@seen\">\n  <when is=\"true\">\n    @narrator: (match arm) He is here.\n  </when>\n  \
          <otherwise>\n    @narrator: (match otherwise) Alone.\n  </otherwise>\n</match>",
     );
     let arms = arms_of(&dir);
@@ -119,7 +119,7 @@ fn a_def_subject_without_a_portable_expr_takes_its_true_arm_in_play() {
 fn an_is_arm_with_an_unportable_test_still_compares_its_subject() {
     let dir = project(
         "isandtest",
-        "<match on=\"run.mood\">\n  <when is=\"calm\" test=\"@seen\">\n    @narrator: Calm and seen.\n  </when>\n  \
+        "<match subject=\"run.mood\">\n  <when is=\"calm\" test=\"@seen\">\n    @narrator: Calm and seen.\n  </when>\n  \
          <otherwise>\n    @narrator: Not calm.\n  </otherwise>\n</match>",
     );
     let arms = arms_of(&dir);

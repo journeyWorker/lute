@@ -13,11 +13,11 @@ priority: 20
 ## The quiet town
 
 ::bg{location="ashgrove" time="day"}
-::music{action="change" mood="sad" volume="down"}
+::music{playback="change" mood="sad" volume="down"}
 @narrator{code="0010"}: Ashgrove. Grey roofs, grey smoke, and above them all the old tower, taller than anything should be in a town this small.
 @narrator{code="0020"}: Paper lanterns hang unlit from every eave. Nobody is in the street.
-::auto{character="ashgroveCaretaker" anchor="center" action="enter"}
+::actor{character="ashgroveCaretaker" anchor="center" action="enter"}
 @ashgroveCaretaker{code="0010"}: A trainer? Oh, thank goodness. No, don't thank goodness, you're a child. Listen.
 @ashgroveCaretaker{code="0020"}: Men in black went up the tower three days ago. Team Eclipse, they call themselves. Elder Rook went up after them to tell them off. He hasn't come down.
 @ashgroveCaretaker{code="0030" emotion="worried"}: And the stairs. Something on the stairs won't let anyone else up. You can feel it looking at you.
-::auto{character="ashgroveCaretaker" action="exit"}
+::actor{character="ashgroveCaretaker" action="exit"}

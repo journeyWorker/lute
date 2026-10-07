@@ -1,7 +1,7 @@
 //! The `auto-anchor-on-show` rule's IMPLICIT `anchor` domain read (dsl 0.9.0
 //! D-D), end-to-end through `check()`.
 //!
-//! `::auto` without an `anchor` attribute is injected at the `anchor` domain's
+//! `::actor` without an `anchor` attribute is injected at the `anchor` domain's
 //! declared `default:`. Nothing in the document names `anchor` on that path, so
 //! directive validation — which walks AUTHORED attrs only — cannot see the
 //! dependency: before this pin, a project that declared `action` but forgot
@@ -19,14 +19,14 @@ use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 
 /// `action` declared in the 0.9.0 long form. Every scene below needs it, since
-/// `::auto{action=…}` is itself a domain-typed attr.
+/// `::actor{action=…}` is itself a domain-typed attr.
 const ACTION: &str = "  action:\n    members: [show, hide]\n    exits: [hide]\n";
 
 /// `anchor` declared in the 0.9.0 long form (`default:` mandatory for the slot).
 const ANCHOR: &str = "  anchor:\n    members: [left, center, right]\n    default: center\n";
 
 /// A scene whose frontmatter declares `enums:` inline, staging `marina` through
-/// the `::auto` in `body`.
+/// the `::actor` in `body`.
 fn scene(enums: &str, body: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 1\nenums:\n{enums}---\n\
@@ -58,14 +58,14 @@ fn error_codes(text: &str) -> Vec<String> {
 }
 
 /// Row 3 of the release measurement: `action` declared, `anchor` NOT declared,
-/// no `anchor` attribute. The `::auto` still reads `anchor`'s `default:`, so the
+/// no `anchor` attribute. The `::actor` still reads `anchor`'s `default:`, so the
 /// missing declaration is an error — it used to check clean and drop the
 /// command.
 #[test]
 fn implicit_anchor_read_without_the_domain_is_an_error() {
     let codes = error_codes(&scene(
         ACTION,
-        "::auto{character=\"marina\" action=\"show\"}",
+        "::actor{character=\"marina\" action=\"show\"}",
     ));
     assert!(
         codes.contains(&"E-DOMAIN-UNKNOWN".to_string()),
@@ -79,7 +79,7 @@ fn implicit_anchor_read_without_the_domain_is_an_error() {
 fn implicit_anchor_read_with_the_domain_checks_clean() {
     let text = scene(
         &format!("{ACTION}{ANCHOR}"),
-        "::auto{character=\"marina\" action=\"show\"}",
+        "::actor{character=\"marina\" action=\"show\"}",
     );
     assert_eq!(error_codes(&text), Vec::<String>::new());
 }
@@ -91,7 +91,7 @@ fn implicit_anchor_read_with_the_domain_checks_clean() {
 fn explicit_anchor_without_the_domain_is_still_an_error() {
     let codes = error_codes(&scene(
         ACTION,
-        "::auto{character=\"marina\" action=\"show\" anchor=\"center\"}",
+        "::actor{character=\"marina\" action=\"show\" anchor=\"center\"}",
     ));
     assert!(
         codes.contains(&"E-DOMAIN-UNKNOWN".to_string()),

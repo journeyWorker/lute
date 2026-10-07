@@ -17,7 +17,7 @@ fn absent(body: &str) -> Vec<Diagnostic> {
     let text = format!(
         "---\nkind: scene\ncharacter: vesna\nseason: 1\nepisode: 1\nstate:\n  \
          run.mood: {{ type: enum, values: [calm, tense], default: calm }}\n{ENUMS}---\n\
-         ## Shot 1.\n::auto{{character=\"vesna\" action=\"show\"}}\n{body}\n"
+         ## Shot 1.\n::actor{{character=\"vesna\" action=\"show\"}}\n{body}\n"
     );
     let input = CheckInput {
         text,
@@ -37,8 +37,8 @@ fn absent(body: &str) -> Vec<Diagnostic> {
 }
 
 const BRANCH_EXIT_ON_A: &str = "<branch id=\"fork\">\n\
-     <choice id=\"a\" label=\"A\">\n::auto{character=\"vesna\" action=\"hide\"}\n</choice>\n\
-     <choice id=\"b\" label=\"B\">\n@vesna: Still here.\n</choice>\n</branch>";
+     <choice id=\"a\" text=\"A\">\n::actor{character=\"vesna\" action=\"hide\"}\n</choice>\n\
+     <choice id=\"b\" text=\"B\">\n@vesna: Still here.\n</choice>\n</branch>";
 
 #[test]
 fn an_exit_in_one_choice_arm_does_not_warn_in_its_sibling() {
@@ -49,8 +49,8 @@ fn an_exit_in_one_choice_arm_does_not_warn_in_its_sibling() {
 #[test]
 fn an_exit_in_one_match_arm_does_not_warn_in_its_sibling() {
     let ds = absent(
-        "<match on=\"run.mood\">\n\
-         <when is=\"calm\">\n::auto{character=\"vesna\" action=\"hide\"}\n</when>\n\
+        "<match subject=\"run.mood\">\n\
+         <when is=\"calm\">\n::actor{character=\"vesna\" action=\"hide\"}\n</when>\n\
          <when is=\"tense\">\n@vesna: Still here.\n</when>\n</match>",
     );
     assert!(ds.is_empty(), "{ds:#?}");
@@ -70,9 +70,9 @@ fn a_line_after_convergence_warns_when_any_arm_took_the_character_off() {
 fn a_line_after_convergence_is_silent_when_every_arm_keeps_the_character() {
     let ds = absent(
         "<branch id=\"fork\">\n\
-         <choice id=\"a\" label=\"A\">\n::auto{character=\"vesna\" action=\"hide\"}\n\
-         ::auto{character=\"vesna\" action=\"show\"}\n</choice>\n\
-         <choice id=\"b\" label=\"B\">\n@vesna: Still here.\n</choice>\n</branch>\n\
+         <choice id=\"a\" text=\"A\">\n::actor{character=\"vesna\" action=\"hide\"}\n\
+         ::actor{character=\"vesna\" action=\"show\"}\n</choice>\n\
+         <choice id=\"b\" text=\"B\">\n@vesna: Still here.\n</choice>\n</branch>\n\
          @vesna: After.",
     );
     assert!(ds.is_empty(), "{ds:#?}");
@@ -89,7 +89,7 @@ fn a_line_after_a_bg_auto_hide_warns_until_the_character_is_shown_again() {
     );
 
     let ds = absent(
-        "::bg{location=\"cafe\"}\n::auto{character=\"vesna\" action=\"show\"}\n@vesna: Hello.",
+        "::bg{location=\"cafe\"}\n::actor{character=\"vesna\" action=\"show\"}\n@vesna: Hello.",
     );
     assert!(ds.is_empty(), "{ds:#?}");
 }
@@ -99,9 +99,9 @@ fn a_line_after_a_bg_auto_hide_warns_until_the_character_is_shown_again() {
 /// so her later line without a re-show warns.
 #[test]
 fn a_character_shown_in_some_match_arms_is_hidden_at_the_next_bg() {
-    let body = "::auto{character=\"vesna\" action=\"hide\"}\n\
-                <match on=\"run.mood\">\n\
-                <when is=\"calm\">\n::auto{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
+    let body = "::actor{character=\"vesna\" action=\"hide\"}\n\
+                <match subject=\"run.mood\">\n\
+                <when is=\"calm\">\n::actor{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
                 <when is=\"tense\">\n@narrator: Nobody.\n</when>\n</match>\n\
                 ::bg{location=\"slipway\"}\n@pell: Still here?";
     let ds = absent(body);
@@ -115,7 +115,7 @@ fn a_character_shown_in_some_match_arms_is_hidden_at_the_next_bg() {
     );
     // Re-shown after the cut: silent.
     let ds = absent(&format!(
-        "{}\n::auto{{character=\"pell\" action=\"show\"}}\n@pell: Back.",
+        "{}\n::actor{{character=\"pell\" action=\"show\"}}\n@pell: Back.",
         body.trim_end_matches("\n@pell: Still here?")
     ));
     assert!(ds.is_empty(), "{ds:#?}");
@@ -125,7 +125,7 @@ fn a_character_shown_in_some_match_arms_is_hidden_at_the_next_bg() {
 /// and the warning says so and names the fix — not "stages someone".
 #[test]
 fn an_exit_after_a_bg_auto_hide_is_named_redundant() {
-    let ds = absent("::bg{location=\"cafe\"}\n::auto{character=\"vesna\" action=\"hide\"}");
+    let ds = absent("::bg{location=\"cafe\"}\n::actor{character=\"vesna\" action=\"hide\"}");
     assert_eq!(ds.len(), 1, "{ds:#?}");
     let m = &ds[0].message;
     assert!(
@@ -144,7 +144,7 @@ fn an_exit_after_a_bg_auto_hide_is_named_redundant() {
 #[test]
 fn a_line_after_a_clear_warns_naming_the_clear() {
     let ds = absent(
-        "::auto{character=\"pell\" action=\"show\"}\n@pell: Both here.\n::clear\n\
+        "::actor{character=\"pell\" action=\"show\"}\n@pell: Both here.\n::clear\n\
          @vesna: Hello?\n@pell: Anyone?",
     );
     assert_eq!(ds.len(), 2, "{ds:#?}");
@@ -164,7 +164,7 @@ fn a_line_after_a_clear_warns_naming_the_clear() {
 /// other one, not re-shown, still warns.
 #[test]
 fn a_reshow_after_a_clear_is_clean() {
-    let ds = absent("::clear\n::auto{character=\"vesna\" action=\"show\"}\n@vesna: Back.");
+    let ds = absent("::clear\n::actor{character=\"vesna\" action=\"show\"}\n@vesna: Back.");
     assert!(ds.is_empty(), "{ds:#?}");
 }
 
@@ -172,9 +172,9 @@ fn a_reshow_after_a_clear_is_clean() {
 /// as at a `::bg`.
 #[test]
 fn a_clear_takes_off_a_character_on_stage_on_some_paths() {
-    let body = "::auto{character=\"vesna\" action=\"hide\"}\n\
-                <match on=\"run.mood\">\n\
-                <when is=\"calm\">\n::auto{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
+    let body = "::actor{character=\"vesna\" action=\"hide\"}\n\
+                <match subject=\"run.mood\">\n\
+                <when is=\"calm\">\n::actor{character=\"pell\" action=\"show\"}\n@pell: Here.\n</when>\n\
                 <when is=\"tense\">\n@narrator: Nobody.\n</when>\n</match>\n\
                 ::clear\n@pell: Still here?";
     let ds = absent(body);
@@ -191,7 +191,7 @@ fn a_clear_takes_off_a_character_on_stage_on_some_paths() {
 /// An exit after a `::clear` does nothing, and the warning says so.
 #[test]
 fn an_exit_after_a_clear_is_named_redundant() {
-    let ds = absent("::clear\n::auto{character=\"vesna\" action=\"hide\"}");
+    let ds = absent("::clear\n::actor{character=\"vesna\" action=\"hide\"}");
     assert_eq!(ds.len(), 1, "{ds:#?}");
     let m = &ds[0].message;
     assert!(

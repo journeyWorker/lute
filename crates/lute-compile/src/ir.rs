@@ -1048,7 +1048,7 @@ pub struct VfxCmd {
     pub stamp: Stamp,
 }
 
-/// Authored `::auto` OR an injected sprite command (§7.4) — injected records
+/// Authored `::actor` OR an injected sprite command (§7.4) — injected records
 /// are SEPARATE records with `provenance` in their stamp.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -10,7 +10,7 @@ title: Route 14 — the Ember Channel
 
 <beat id="enter" on="enterRoute" target="route.r14" title="Route 14" priority="10">
   ::bg{location="route-14" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: East of Frostharbor the sea gets warmer, then warmer still. Steam curls off the swell. On the horizon a cone of black rock smokes gently.
   @narrator{code="0020"}: A sign on a sea stack: ROUTE 14 — THE EMBER CHANNEL. CINDER ISLE AHEAD. DO NOT DRINK THE WATER. IT IS WARM FOR A REASON.
 </beat>

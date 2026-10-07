@@ -7,7 +7,7 @@ uses: ../world.schema.yaml
 ---
 
 <entry id="shedPlaque" target="place.shed" category="place">
-  <match on="run.shedPressure">
+  <match subject="run.shedPressure">
     <when is="2..">
       @narrator{code="0010"}: The brass plaque has buckled. Whatever the shed held, it held too much.
     </when>

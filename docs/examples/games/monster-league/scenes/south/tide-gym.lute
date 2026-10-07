@@ -14,7 +14,7 @@ when: "!holds('defeated', ['marin'])"
 ## The pool
 
 ::bg{location="tide-gym" time="day"}
-::music{action="change" mood="upbeat" volume="normal"}
+::music{playback="change" mood="upbeat" volume="normal"}
 @narrator{code="0010"}: The Tide Gym is a swimming pool with a lighthouse's worth of windows. The floating walkways dip under your feet. At the deep end, somebody is doing lengths faster than seems reasonable.
 @marin{code="0010" emotion="laughing"}: Hang on! Twelve more! ... Okay, I'm lying, that was the last one. Hi!
 

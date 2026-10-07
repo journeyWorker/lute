@@ -13,7 +13,7 @@ state:
 
 <beat id="arrive" on="enterTown" target="town.cinderisle" title="Cinder Isle" priority="10">
   ::bg{location="cinder-isle" time="day"}
-  ::music{action="change" mood="upbeat" volume="normal"}
+  ::music{playback="change" mood="upbeat" volume="normal"}
   @narrator{code="0010"}: Cinder Isle is black sand, white steam and red roofs. The volcano above the town grumbles like a sleeping dog.
   @narrator{code="0020"}: On the hill stands the Blaze Gym, its doors chained. Past it, the shell of a burned mansion leans against the sky.
 </beat>
@@ -86,36 +86,36 @@ state:
 // Once a day: three questions; all three right earns a Rare Candy.
 
 <beat id="grannyQuiz" on="talk" target="npc.cinderGranny" title="Granny Ember's quiz" once="day" priority="10">
-  ::auto{character="cinderGranny" anchor="center" action="enter"}
+  ::actor{character="cinderGranny" anchor="center" action="enter"}
   @cinderGranny{code="0010" emotion="laughing"}: A young trainer! Sit, sit. Ignatius learned his quizzes from me, you know. Three questions. Get them all and Granny has a treat.
   <branch id="northQuizOne" prompt="Which type puts out a fire?">
-    <choice id="water" label="Water">
+    <choice id="water" text="Water">
       ::set{scene.quizScore += 1}
       @cinderGranny{code="0020"}: Of course. Even a bucket knows that.
     </choice>
-    <choice id="grass" label="Grass">
+    <choice id="grass" text="Grass">
       @cinderGranny{code="0030"}: Grass? Dear, grass is what fire eats for breakfast.
     </choice>
   </branch>
   <branch id="northQuizTwo" prompt="What does the Volcano Key open?">
-    <choice id="gym" label="The Blaze Gym">
+    <choice id="gym" text="The Blaze Gym">
       ::set{scene.quizScore += 1}
       @cinderGranny{code="0040"}: Right. Silly boy, locking his own gym.
     </choice>
-    <choice id="volcano" label="The volcano">
+    <choice id="volcano" text="The volcano">
       @cinderGranny{code="0050"}: Hah! Nobody opens the volcano. The volcano opens itself.
     </choice>
   </branch>
   <branch id="northQuizThree" prompt="How many badges before Victory Road lets you in?">
-    <choice id="seven" label="Seven">
+    <choice id="seven" text="Seven">
       @cinderGranny{code="0060"}: Seven gets you into the Earth Gym. Victory Road wants more.
     </choice>
-    <choice id="eight" label="Eight">
+    <choice id="eight" text="Eight">
       ::set{scene.quizScore += 1}
       @cinderGranny{code="0070"}: Eight. All of them. No shortcuts in Verdane.
     </choice>
   </branch>
-  <match on="scene.quizScore">
+  <match subject="scene.quizScore">
     <when is="3..">
       @cinderGranny{code="0080" emotion="happy"}: Three out of three! Here, a sweet for your strongest one.
       ::give{item="rareCandy"}

@@ -8,7 +8,7 @@ once: false
 
 ## On the Road
 
-<match on="run.leg">
+<match subject="run.leg">
   <when is="..1">
     @narrator{code="0010"}: Ostwick's walls drop behind the hills. The road is good here. The Company built it well.
   </when>

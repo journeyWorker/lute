@@ -11,10 +11,10 @@ title: The Parlour
 @vicar{code="0010"}: Perhaps it simply wandered off, Mabel.
 
 <branch id="firstLook" prompt="Where do you look first?">
-  <choice id="sugarBowl" label="Look in the sugar bowl">
+  <choice id="sugarBowl" text="Look in the sugar bowl">
     @pippa{code="0010"}: Nothing but lumps.
   </choice>
-  <choice id="vicarPocket" label="Glance at the vicar's pocket" into="run.sawPocket">
+  <choice id="vicarPocket" text="Glance at the vicar's pocket" into="run.sawPocket">
     @pippa{code="0020" mono}: Something bulges. Probably a hymn book.
     ::set{run.cluesFound += 1}
   </choice>

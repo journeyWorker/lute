@@ -25,7 +25,7 @@ const SCHEMA: &str = "---\nstate:\n  run.choseHelp: { type: bool, default: false
 // that content line and is `E-TAG-INLINE-BODY` (dsl §2.3).
 const SCENE: &str =
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n\
-## Shot 1.\n<match on=\"run.choseHelp\">\n<when test=\"$ == true\">\n@x: a\n</when>\n\
+## Shot 1.\n<match subject=\"run.choseHelp\">\n<when test=\"$ == true\">\n@x: a\n</when>\n\
 <otherwise>\n@x: b\n</otherwise>\n</match>\n";
 
 #[test]

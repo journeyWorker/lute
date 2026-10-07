@@ -29,7 +29,7 @@
 //!   domain's message names the uncovered members, a number domain's the first
 //!   uncovered gap, dsl 0.18.0 §4).
 //!
-//! A whole-subject `@def` (`<match on="@wd">`, dsl 0.24.0) takes its domain from
+//! A whole-subject `@def` (`<match subject="@wd">`, dsl 0.24.0) takes its domain from
 //! [`resolve_subject`]: the one state path its body is, else its declared or
 //! inferred result type.
 //! - **`E-WHEN-PATTERN`** — a `<when>` arm with neither an `is` pattern nor a
@@ -40,7 +40,7 @@
 //! - **`E-UNSET-UNCOVERED`** — the subject is *maybe-unset* (`scene.choices.*`, or
 //!   a `run.*`/`user.*`/`app.*` decl with no schema `default`) and the `unset`
 //!   case is not covered by an `unset`-matching arm nor an `<otherwise>`.
-//! - **`E-AGE-GATE`** — an age-gated `<match on="app.rating">` that covers neither
+//! - **`E-AGE-GATE`** — an age-gated `<match subject="app.rating">` that covers neither
 //!   a `teen` arm nor an `<otherwise>` (a release-build hard gate, §11.2).
 //! - **`E-MATCH-DUP-OTHERWISE`** — more than one `<otherwise>`; §11.2 allows at
 //!   most one. Flatten routes only the last, so earlier otherwise bodies would be

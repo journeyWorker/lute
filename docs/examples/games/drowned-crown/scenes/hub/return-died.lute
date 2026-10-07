@@ -13,7 +13,7 @@ when: "@died"
 ::bg{location="deck" time="night"}
 @narrator{code="0010"}: The line goes slack, then heavy. They haul him up hand over hand.
 
-<match on="run.killedBy">
+<match subject="run.killedBy">
   <when is="eel">
     @narrator{code="0020"}: There are tooth-marks in his diving leathers, a hand's width apart.
   </when>
@@ -36,7 +36,7 @@ when: "@died"
 
 @tavi{code="0010" when="quest.eelBounty.failedBy == 'until'"}: No eel, then. The pot stays on anyway.
 
-<match on="user.deaths">
+<match subject="user.deaths">
   <when is="..1">
     @brann{code="0010"}: Again. You died again, and you came back again.
   </when>

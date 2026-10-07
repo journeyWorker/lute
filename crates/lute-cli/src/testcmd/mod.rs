@@ -375,7 +375,7 @@ impl TestResult {
 /// Coverage accumulated across every traced path and play in the run, keyed
 /// by the construct's whole-project identity — `"{file}:{id}"` for a
 /// branch/hub, `"{file}:{line}:{column}"` for a match (#24, T9.13). Before
-/// 0.10.0 the key was the guard TEXT, so six `<match on="true">` blocks
+/// 0.10.0 the key was the guard TEXT, so six `<match subject="true">` blocks
 /// across four files rendered as one row reading `3/3`. Nothing here is
 /// presented as whole-space coverage — only "what these N paths and plays
 /// touched" (D1: trace explains, it never proves).

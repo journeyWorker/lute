@@ -18,7 +18,7 @@ when: "!holds('defeated', ['vex'])"
 ## The Director's office
 
 ::bg{location="earth-gym" time="day"}
-::music{action="change" mood="tense" volume="down"}
+::music{playback="change" mood="tense" volume="down"}
 @narrator{code="0010"}: At the back of the gym there is no arena, only an office: a desk, a map of Verdane stuck with black pins, and a tall man standing at the window with his back to the door.
 @narrator{code="0020" when="holds('defeated', ['earthGymAdminSelene'])"}: Selene's voice crackles from a radio on the desk: "Director. The child is through. I could not hold them." He switches it off.
 @narrator{code="0030"}: The leader of the Earth Gym turns around. It is the voice from the radio.

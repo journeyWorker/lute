@@ -10,7 +10,7 @@ title: Notes under the door
 // as occasion.target (slotStart is an untargeted select: sequence occasion).
 <beat id="note" on="slotStart" for="kind:suitor" title="A note under the door" when="run.day == 8 && run.slot == 'evening' && run.route != occasion.target && run.aff[occasion.target] >= 3 && !holds('locked', [occasion.target])">
   @narrator{code="0010"}: A folded note under the door, in {{occasion.target}}'s handwriting.
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="ren">
       @ren{code="0010" vo emotion="stern"}: For the record: I was not waiting on the jetty. I was supervising it. — R.A.
     </when>

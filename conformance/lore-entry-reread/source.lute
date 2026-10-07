@@ -6,7 +6,7 @@ title: Ship's records
 ---
 
 <entry id="scientistLog1" target="item.torn_note_1" category="note" series="scientistLog" order="1" title="Research log, day 3">
-  <match on="run.labBurned">
+  <match subject="run.labBurned">
     <when is="true">
       @scientist: Day three. The page is scorched at the edges.
     </when>

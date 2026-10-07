@@ -13,7 +13,7 @@ state:
 ## The Sugar Form
 /*
 The `when=` sugar (§7.2): a content-line `when="G"` attr emits the line
-iff G holds. Canonically `@s{when="G"}: T` ≡ `<match on="G"><when
+iff G holds. Canonically `@s{when="G"}: T` ≡ `<match subject="G"><when
 test="$">@s: T</when><otherwise/></match>` (§7.4) — it MUST lower to
 that exact one-arm match record, identity-preserving (`code`/`lineId`/
 `voiceKey` are byte-for-byte unaffected by the wrapping, §7.4).
@@ -26,7 +26,7 @@ The equivalent explicit block (§7.2) — exactly what Shot 1's sugar
 desugars to at compile time. Kept here as a living twin so the two forms
 stay visibly interchangeable.
 */
-<match on="run.metHelpfully">
+<match subject="run.metHelpfully">
   <when test="$">
     @elena: You helped me back then. I've been meaning to thank you.
   </when>

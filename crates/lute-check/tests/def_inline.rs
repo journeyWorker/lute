@@ -49,20 +49,20 @@ fn count(c: &[String], code: &str) -> usize {
 
 #[test]
 fn constant_def_in_attr_is_accepted() {
-    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" zoom=@closeUp}\n"));
+    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" duration=@closeUp}\n"));
     assert_eq!(count(&c, "E-ATTR-DEF-DYNAMIC"), 0, "got {c:?}");
 }
 
 #[test]
 fn state_dependent_def_in_attr_is_rejected() {
-    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" zoom=@zoomDyn}\n"));
+    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" duration=@zoomDyn}\n"));
     assert_eq!(count(&c, "E-ATTR-DEF-DYNAMIC"), 1, "got {c:?}");
 }
 
 #[test]
 fn folded_literal_is_validated_like_an_authored_one() {
     // `action` is `enum: [show, hide]`; `@blink` folds to `blink`.
-    let c = codes_in(None, &scene("", "::cut{assetId=\"x\" action=@blink}\n"));
+    let c = codes_in(None, &scene("", "::cg{assetId=\"x\" display=@blink}\n"));
     assert_eq!(count(&c, "E-BAD-ENUM"), 1, "got {c:?}");
     assert_eq!(count(&c, "E-ATTR-DEF-DYNAMIC"), 0, "got {c:?}");
 }
@@ -101,7 +101,7 @@ fn component_dir(body: &str) -> PathBuf {
 
 #[test]
 fn dynamic_def_arg_reaching_a_component_attr_is_rejected() {
-    let dir = component_dir("::camera{focus=\"demo\" zoom=@z}\n");
+    let dir = component_dir("::camera{focus=\"demo\" duration=@z}\n");
     let text = scene(
         "components: [shot.component.lute]\n",
         "::use{component=\"shot\" z=@zoomDyn}\n",

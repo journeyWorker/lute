@@ -35,7 +35,7 @@ pub const CORE_DATA_YAML: &[&str] = &[
     include_str!("../rules/dialogue-length.yaml"),
     include_str!("../rules/dialogue-ratio.yaml"),
     include_str!("../rules/scene-length-spread.yaml"),
-    include_str!("../rules/shot-starts-with-background.yaml"),
+    include_str!("../rules/section-starts-with-background.yaml"),
 ];
 
 /// One rule ready for evaluation: id, target, resolved level, merged
@@ -133,7 +133,7 @@ fn core_entries() -> Vec<CoreEntry> {
             kind: CoreKind::Data(CORE_DATA_YAML[2]),
         },
         CoreEntry {
-            id: "shot-starts-with-background",
+            id: "section-starts-with-background",
             target: LintTarget::Shot,
             default_level: LintLevel::Warn,
             kind: CoreKind::Data(CORE_DATA_YAML[3]),

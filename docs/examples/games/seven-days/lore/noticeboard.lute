@@ -17,7 +17,7 @@ title: The harbour square notice board
 </entry>
 
 <entry id="noticeWalkThanks" on="noticeBoard" target="place.square" category="note" title="Thank you" when="run.day > 5">
-  <match on="quest.festivalLantern.state">
+  <match subject="quest.festivalLantern.state">
     <when is="complete">
       @narrator{code="0010"}: THANK YOU to everyone who walked. Special mention: the shop on Tern Street, back after a year off. Forty-one years!
     </when>

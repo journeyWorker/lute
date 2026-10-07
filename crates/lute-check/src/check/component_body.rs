@@ -660,7 +660,7 @@ fn component_guard(
 /// purely-presentational staging directives (incl. nested `::use`) are
 /// validated as before; `<branch>`/`<hub>`/`<timeline>`/`<on>`/`<objective>`/
 /// `::set`/`::assert`/`::retract` stay `E-COMPONENT-BODY` (§6.1's ban).
-/// `<match>` is no longer a blanket rejection (§6.2): a `<match on="@param">`
+/// `<match>` is no longer a blanket rejection (§6.2): a `<match subject="@param">`
 /// is ADMITTED and its arms walk recursively through this same function; any
 /// other subject either reads ambient state (`E-COMPONENT-STATE`) or has no
 /// domain to dispatch on (`E-COMPONENT-BODY`). A directive whose resolved

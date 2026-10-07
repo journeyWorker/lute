@@ -452,7 +452,7 @@ fn components_scene() {
 
 /// 0.21.1 T1-3/T1-4: the two `::use` sites ship DISTINCT texts (the param is
 /// substituted as a literal, twice per line), `{{@twice}}`'s placeholder
-/// carries the inlined def body as `expr`, and `zoom=@closeUp` folds to the
+/// carries the inlined def body as `expr`, and `duration=@closeUp` folds to the
 /// number `1.3` instead of vanishing.
 #[test]
 fn def_inline() {
@@ -464,7 +464,7 @@ fn def_inline() {
 /// the selected `@marina` line, zero match records) plus one def-bound
 /// `::use{tier=@currentTier}` site (§6.4 case 2: an ordinary residual
 /// `MatchCmd` on the substituted subject). B2: the caller's OWN
-/// `<match on="scene.affect.marina">` is a scene-level match — untouched by
+/// `<match subject="scene.affect.marina">` is a scene-level match — untouched by
 /// this fold either way.
 #[test]
 fn affinity_reaction() {

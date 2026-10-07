@@ -525,7 +525,7 @@ impl<D: Driver> Machine<D> {
         loop {
             // Eligible = not a `once` option already taken (its
             // `scene.visited.<hub>.<option>` is true, D8: the memory is the
-            // reserved visit record, so a hub `::next` re-enters still knows
+            // reserved visit record, so a hub `::jump` re-enters still knows
             // it), and its guard does not DECIDE false right now (an unknown
             // guard stays eligible — the same three-valued discipline
             // `do_choice`'s guard refusal uses). The spent and guard-closed

@@ -14,14 +14,14 @@ after: 'visited("spine.lab")'
 ## The square
 
 ::bg{location="hollowtown" time="day"}
-::music{action="start" mood="upbeat" volume="normal"}
+::music{playback="start" mood="upbeat" volume="normal"}
 @narrator{code="0010"}: Hollowtown: eleven houses, one lab, one lighthouse that has not worked since your grandmother was small, and the sea on three sides.
-::auto{character="hollowtownWren" anchor="left" action="enter"}
+::actor{character="hollowtownWren" anchor="left" action="enter"}
 @hollowtownWren{code="0010" emotion="happy"}: Well! Look who's got a monster. I remember when you were frightened of my Puffsong.
 @hollowtownWren{code="0020"}: Kai went through here an hour ago like a gull after chips. Didn't say goodbye to anyone. Don't you be like that.
-::auto{character="hollowtownTeo" anchor="right" action="enter"}
+::actor{character="hollowtownTeo" anchor="right" action="enter"}
 @hollowtownTeo{code="0010" emotion="sad"}: You got one? Already? I'm nine. Nine and three quarters. The professor says ten.
 @hollowtownTeo{code="0020" emotion="happy"}: When you come back, will you show me every single one you caught? Every single one?
-::auto{character="hollowtownTeo" action="exit"}
+::actor{character="hollowtownTeo" action="exit"}
 @hollowtownWren{code="0030"}: Route 1 is north, past the hay fields. Pebbleton is two days' walk for a grown-up and half a day for a child with a monster. Go on, then.
-::auto{character="hollowtownWren" action="exit"}
+::actor{character="hollowtownWren" action="exit"}

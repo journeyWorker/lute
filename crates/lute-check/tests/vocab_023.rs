@@ -44,7 +44,7 @@ fn prev_run_mirrors_every_declared_run_path_and_is_maybe_unset() {
     let clean = scene(
         RUN_STATE,
         "@narrator{when=\"has(prev.run.day) && prev.run.day > 2\"}: Back again.\n\
-         <match on=\"prev.run.slot\">\n<when is=\"night\">\n@narrator: Late last time.\n</when>\n\
+         <match subject=\"prev.run.slot\">\n<when is=\"night\">\n@narrator: Late last time.\n</when>\n\
          <otherwise>\n@narrator: Otherwise.\n</otherwise>\n</match>\n",
     );
     let ds = run(&clean, core(), SchemaImports::default());

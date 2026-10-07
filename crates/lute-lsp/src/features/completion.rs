@@ -7,7 +7,7 @@
 //!   (per its schema, minus keys already present);
 //! - at an enum-typed attr value -> the enum's members;
 //! - `@` in a CEL slot -> author `defs:` + snapshot def names;
-//! - a `<match on=…>` subject -> `scene.choices.<id>` ids from every `<branch>`;
+//! - a `<match subject=…>` subject -> `scene.choices.<id>` ids from every `<branch>`;
 //! - any other state-path position in CEL -> declared state paths.
 //!
 //! Empty result (`vec![]`) when nothing is offerable — never a placeholder item.
@@ -629,7 +629,7 @@ fn state_path_items(meta: &lute_check::TypedMeta) -> Vec<CompletionItem> {
         .collect()
 }
 
-/// `scene.choices.<id>` ids from every `<branch>` (for a `<match on=…>` subject).
+/// `scene.choices.<id>` ids from every `<branch>` (for a `<match subject=…>` subject).
 fn choice_path_items(doc: &Document) -> Vec<CompletionItem> {
     let mut ids = Vec::new();
     for shot in &doc.sections {
@@ -923,7 +923,7 @@ mod tests {
         );
         let ls = labels(&items);
         assert!(ls.contains(&"focus"), "has focus: {ls:?}");
-        assert!(ls.contains(&"zoom"), "has zoom: {ls:?}");
+        assert!(ls.contains(&"framing"), "has framing: {ls:?}");
     }
 
     #[test]
@@ -944,12 +944,12 @@ mod tests {
             !ls.contains(&"focus"),
             "focus already present, should be gone: {ls:?}"
         );
-        assert!(ls.contains(&"zoom"), "zoom still offered: {ls:?}");
+        assert!(ls.contains(&"framing"), "framing still offered: {ls:?}");
     }
 
     #[test]
     fn completion_of_enum_values_at_enum_attr() {
-        let text = "## Shot 1.\n::auto{character=\"b\" anchor=\"\"}\n";
+        let text = "## Shot 1.\n::actor{character=\"b\" anchor=\"\"}\n";
         let doc = parsed(text);
         // Cursor inside the empty `anchor=""` value.
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
@@ -976,7 +976,7 @@ mod tests {
         let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n\
                     enums:\n  anchor:\n    members: [portside, midships, starboard]\n    \
                     default: midships\n---\n## Shot 1.\n\
-                    ::auto{character=\"b\" anchor=\"\"}\n";
+                    ::actor{character=\"b\" anchor=\"\"}\n";
         let doc = parsed(text);
         let off = text.find("anchor=\"\"").unwrap() + "anchor=\"".len();
         let items = complete_at(
@@ -1014,9 +1014,9 @@ mod tests {
 
     #[test]
     fn completion_of_choice_ids_in_match_subject() {
-        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" label=\"A\">\n    @f: a.\n  </choice>\n</branch>\n<match on=\"\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" text=\"A\">\n    @f: a.\n  </choice>\n</branch>\n<match subject=\"\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
-        let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
+        let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
         let items = complete_at(
             &doc,
             &load_core_snapshot(),
@@ -1031,14 +1031,14 @@ mod tests {
         );
     }
 
-    /// D2: `<match on="">` subject completion must offer a `<branch id="inner">`
+    /// D2: `<match subject="">` subject completion must offer a `<branch id="inner">`
     /// that is nested inside a `<hub>` choice body (`collect_branch_ids` must
     /// descend into hub choices).
     #[test]
     fn completion_of_choice_ids_offers_hub_nested_branch() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" label=\"A\">\n@f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" text=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
-        let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
+        let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
         let items = complete_at(
             &doc,
             &load_core_snapshot(),
@@ -1054,13 +1054,13 @@ mod tests {
     }
 
     /// D2: a `<hub>` folds an implicit `scene.choices.<hubId>` enum (same shape
-    /// as a `<branch>`), so `<match on="">` subject completion must offer the
+    /// as a `<branch>`), so `<match subject="">` subject completion must offer the
     /// hub's own id, not just ids nested inside its choice bodies.
     #[test]
     fn completion_of_choice_ids_offers_hub_own_id() {
-        let text = "## Shot 1.\n<hub id=\"chatWithMarina\">\n<choice id=\"ask\" label=\"Ask\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chatWithMarina\">\n<choice id=\"ask\" text=\"Ask\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
-        let off = text.find("on=\"").unwrap() + "on=\"".len(); // inside the empty subject
+        let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
         let items = complete_at(
             &doc,
             &load_core_snapshot(),
@@ -1082,7 +1082,7 @@ mod tests {
     /// into hub choices).
     #[test]
     fn attr_key_completion_dedupes_present_keys_in_hub_choice() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" label=\"Ask\" once>\n::camera{focus=\"b\" }\n</choice>\n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" text=\"Ask\" once>\n::camera{focus=\"b\" }\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
@@ -1098,7 +1098,7 @@ mod tests {
             !ls.contains(&"focus"),
             "focus already present in hub-nested directive, should be gone: {ls:?}"
         );
-        assert!(ls.contains(&"zoom"), "zoom still offered: {ls:?}");
+        assert!(ls.contains(&"framing"), "framing still offered: {ls:?}");
     }
 
     #[test]
@@ -1345,7 +1345,7 @@ mod tests {
     /// state paths (the pre-D3 fall-through when `is` was discarded).
     #[test]
     fn completion_in_when_is_offers_enum_members() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
         let items = complete_at(
@@ -1365,12 +1365,12 @@ mod tests {
         );
     }
 
-    /// D3: `<match on="scene.choices.chat">` over a top-level `<hub id="chat">`
+    /// D3: `<match subject="scene.choices.chat">` over a top-level `<hub id="chat">`
     /// (choices askCoffee/leave) — `is=` completion offers the hub's choice ids ∪
     /// `unset` (the implicit recording enum, dsl §11.1.3).
     #[test]
     fn completion_in_when_is_offers_hub_choice_ids() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"askCoffee\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1387,12 +1387,12 @@ mod tests {
         );
     }
 
-    /// D3: `<match on="scene.visited.chat.askCoffee">` over a `<hub id="chat">`
+    /// D3: `<match subject="scene.visited.chat.askCoffee">` over a `<hub id="chat">`
     /// with a `<choice id="askCoffee">` — the folded per-choice bool (dsl §9.6,
     /// §11.1.3), so `is=` completion offers true/false/unset.
     #[test]
     fn completion_in_when_is_offers_visited_bool() {
-        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" label=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" label=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match on=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"true\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1413,7 +1413,7 @@ mod tests {
     /// CEL slot (offers def names), never the `is=` literal domain.
     #[test]
     fn completion_on_when_test_is_unchanged_cel() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@warm").unwrap() + 1; // just past `@`
         let items = complete_at(
@@ -1434,7 +1434,7 @@ mod tests {
         );
     }
 
-    /// D3 fix (non-CEL subject): a hyphenated `<match on="scene.choices.pick-one">`
+    /// D3 fix (non-CEL subject): a hyphenated `<match subject="scene.choices.pick-one">`
     /// subject is NOT a pure CEL path — cel-parser reads `pick-one` as subtraction,
     /// so the checker's `subject_path` reconstruction (parse + `select_path`)
     /// yields `None` (an INFINITE subject, no `is=` menu). Even with a `<branch
@@ -1443,7 +1443,7 @@ mod tests {
     /// choices because `-` is a path byte).
     #[test]
     fn completion_in_when_is_rejects_non_cel_subject() {
-        let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" label=\"A\">\n@f: a.\n</choice>\n<choice id=\"b\" label=\"B\">\n@f: b.\n</choice>\n</branch>\n<match on=\"scene.choices.pick-one\">\n<when is=\"a\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n<choice id=\"b\" text=\"B\">\n@f: b.\n</choice>\n</branch>\n<match subject=\"scene.choices.pick-one\">\n<when is=\"a\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"a\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1467,7 +1467,7 @@ mod tests {
     /// first's — the pre-fix walk early-returned on the FIRST match.
     #[test]
     fn completion_in_when_is_uses_last_duplicate_branch() {
-        let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" label=\"F1\">\n@f: a.\n</choice>\n<choice id=\"first2\" label=\"F2\">\n@f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" label=\"L1\">\n@f: c.\n</choice>\n<choice id=\"last2\" label=\"L2\">\n@f: d.\n</choice>\n</branch>\n<match on=\"scene.choices.dup\">\n<when is=\"last1\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" text=\"F1\">\n@f: a.\n</choice>\n<choice id=\"first2\" text=\"F2\">\n@f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" text=\"L1\">\n@f: c.\n</choice>\n<choice id=\"last2\" text=\"L2\">\n@f: d.\n</choice>\n</branch>\n<match subject=\"scene.choices.dup\">\n<when is=\"last1\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"last1\"").unwrap() + "is=\"".len() + 1;
         let items = complete_at(
@@ -1559,8 +1559,8 @@ mod tests {
     #[test]
     fn hub_attr_area_completion_offers_prompt() {
         let text =
-            "## Shot 1.\n<hub id=\"h\" >\n<choice id=\"a\" label=\"A\" once>\n@f: a.\n</choice>\n\
-                    \n<choice id=\"leave\" label=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
+            "## Shot 1.\n<hub id=\"h\" >\n<choice id=\"a\" text=\"A\" once>\n@f: a.\n</choice>\n\
+                    \n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n";
         let off = text.find("\" >").unwrap() + 2;
         let ls: Vec<String> = labels(&complete(text, off))
             .into_iter()

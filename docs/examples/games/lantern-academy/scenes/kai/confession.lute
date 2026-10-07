@@ -11,17 +11,17 @@ after: 'visited("kai.date")'
 ## Outside the music room
 
 ::bg{location="musicRoom" time="night"}
-::auto{character="kai" anchor="center" action="fadeInUp"}
+::actor{character="kai" anchor="center" action="fadeInUp"}
 @kai{code="0010" emotion="angry"}: They padlocked it. Maintenance, finally. Aoki didn't even have to win.
 @kai{code="0020" emotion="sad"}: The piano's getting scrapped Friday. The song goes with it. Whatever. It was four and a half bars.
 @kai{code="0030" emotion="fond" when="holds('cleared', ['kai', 'bittersweet'])"}: Don't say anything. I've got a feeling you said something last time, and it was the wrong thing, and I walked.
 
 <branch id="kaiAsk" prompt="Kai has his forehead against the door.">
-  <choice id="hum" label="Hum the fifth bar back to him">
+  <choice id="hum" text="Hum the fifth bar back to him">
     @kai{code="0040" emotion="happy"}: ...You remembered it. Then it isn't going anywhere. It lives in you now. Great. Terrible. Great.
     ::set{run.aff.kai += 1}
   </choice>
-  <choice id="fix" label="Offer to ask the council to reopen it">
+  <choice id="fix" text="Offer to ask the council to reopen it">
     @kai{code="0050" emotion="angry"}: Ask Aoki? For me? Don't. I'd rather lose the room than owe him.
     ::set{run.aff.kai -= 1}
   </choice>

@@ -11,7 +11,7 @@ when: "@badgeCount >= 1"
 ## Radio Verdane
 
 ::sfx{sound="radio-static"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @announcer{code="0010"}: Good morning, Verdane! It's {{clock.weekdayLabel}}, and the weather along the coast is...
 ::sfx{sound="radio-squeal"}
 @vex{code="0010" vo}: Citizens of Verdane. Forgive the interruption. I am Director Vex, of Team Eclipse.

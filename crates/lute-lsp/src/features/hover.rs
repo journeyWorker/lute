@@ -454,7 +454,7 @@ mod tests {
         assert!(rendered.contains("stable `true`"), "{rendered}");
     }
 
-    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.affect.marina\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
+    const WITH_DEF_FOND: &str = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: int, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match subject=\"scene.affect.marina\">\n  <when test=\"@fond\">\n    @fixer: gently.\n  </when>\n  <otherwise>\n    @fixer: bluntly.\n  </otherwise>\n</match>\n";
 
     #[test]
     fn hover_on_ref_shows_def_cel() {
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn hover_on_enum_attr_value_shows_domain() {
-        let text = "## Shot 1.\n::auto{character=\"b\" anchor=\"center\"}\n";
+        let text = "## Shot 1.\n::actor{character=\"b\" anchor=\"center\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "center");
         let h = hover_at(
@@ -537,7 +537,7 @@ mod tests {
         let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n\
                     enums:\n  anchor:\n    members: [portside, midships, starboard]\n    \
                     default: midships\n---\n## Shot 1.\n\
-                    ::auto{character=\"b\" anchor=\"midships\"}\n";
+                    ::actor{character=\"b\" anchor=\"midships\"}\n";
         let doc = parsed(text);
         let off = pos_on(text, "\"midships\"") + 1;
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off)
@@ -684,7 +684,7 @@ mod tests {
     #[test]
     fn hover_on_imported_ref_shows_def() {
         // `@helped` is NOT declared inline — it is only imported via `uses:`.
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match on=\"scene.affect.marina\">\n  <when test=\"@helped\">\n    @fixer: yes.\n  </when>\n  <otherwise>\n    @fixer: no.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n<match subject=\"scene.affect.marina\">\n  <when test=\"@helped\">\n    @fixer: yes.\n  </when>\n  <otherwise>\n    @fixer: no.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = pos_on(text, "@helped");
         let h = hover_at(&doc, &load_core_snapshot(), &schema_imports(), off).unwrap();
@@ -766,7 +766,7 @@ mod tests {
     /// uses. Pre-D3 the `is` value was discarded (no hover).
     #[test]
     fn hover_on_when_is_shows_enum_domain() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match on=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
@@ -785,7 +785,7 @@ mod tests {
     /// inclusive — there is no finite member menu to list.
     #[test]
     fn hover_on_when_is_range_shows_number_domain() {
-        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.hp: { type: int }\n---\n## Shot 1.\n<match on=\"scene.hp\">\n<when is=\"..0 | 5..\">\n@fixer: edge.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
+        let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.hp: { type: int }\n---\n## Shot 1.\n<match subject=\"scene.hp\">\n<when is=\"..0 | 5..\">\n@fixer: edge.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"..0").unwrap() + "is=\"".len() + 1; // inside "..0"
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();

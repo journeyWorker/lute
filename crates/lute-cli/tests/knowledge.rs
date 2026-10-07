@@ -91,9 +91,9 @@ fn inquiry(tag: &str) -> PathBuf {
         "scenes/report.lute",
         "---\nkind: scene\nid: inquiry.report\non: report\n---\n\n## Report\n\n\
          <branch id=\"fate\" prompt=\"Who?\">\n  \
-         <choice id=\"tobias\" label=\"Tobias\" when=\"holds('alibied', ['tobias'])\">\n    @narrator: Tobias.\n  </choice>\n  \
-         <choice id=\"ada\" label=\"Ada\" when=\"holds('alibied', ['ada'])\">\n    @narrator: Ada.\n  </choice>\n  \
-         <choice id=\"nobody\" label=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
+         <choice id=\"tobias\" text=\"Tobias\" when=\"holds('alibied', ['tobias'])\">\n    @narrator: Tobias.\n  </choice>\n  \
+         <choice id=\"ada\" text=\"Ada\" when=\"holds('alibied', ['ada'])\">\n    @narrator: Ada.\n  </choice>\n  \
+         <choice id=\"nobody\" text=\"Nobody\">\n    @narrator: Nobody.\n  </choice>\n\
          </branch>\n\n\
          @narrator{when=\"holds('alibied', ['tobias'])\"}: Tobias walks free.\n\
          @tobias{when=\"!holds('departed', ['tobias'])\"}: I am still here.\n",
@@ -486,8 +486,8 @@ fn a_kind_bound_negated_premise_names_its_defeater() {
         &d,
         "scenes/clash.lute",
         "---\nkind: scene\nid: clash\n---\n\n## Clash\n\n<branch id=\"side\">\n  \
-         <choice id=\"ren\" label=\"Ren\">\n    ::assert{locked(kai)}\n  </choice>\n  \
-         <choice id=\"kai\" label=\"Kai\">\n    ::assert{locked(ren)}\n  </choice>\n</branch>\n",
+         <choice id=\"ren\" text=\"Ren\">\n    ::assert{locked(kai)}\n  </choice>\n  \
+         <choice id=\"kai\" text=\"Kai\">\n    ::assert{locked(ren)}\n  </choice>\n</branch>\n",
     );
     write(
         &d,

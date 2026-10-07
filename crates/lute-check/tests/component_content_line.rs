@@ -232,7 +232,7 @@ fn nested_match_arm_line_is_checked() {
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"warm\">\n@marina{emotion=\"TOTALLY-UNDECLARED\"}: hi\n</when>\n\
 <when is=\"cold\">\n@marina{pose=\"idle\"}: hi\n</when>\n\
 </match>\n",

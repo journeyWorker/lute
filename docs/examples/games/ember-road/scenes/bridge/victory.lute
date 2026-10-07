@@ -11,7 +11,7 @@ after: 'visited("bridge.arrival")'
 ## The Near Arch
 
 ::bg{location="tollbridge" time="dusk"}
-::music{action="change" mood="sad" volume="down"}
+::music{playback="change" mood="sad" volume="down"}
 @narrator{code="0010"}: The chain is down because someone cut it. Crossbows lie along the parapet like dropped cutlery. The gorge takes the smoke and gives back nothing.
 @narrator{code="0020" when="holds('fell', ['maelis'])"}: Maelis of Coldwater lies across the chain she guarded. Somebody has closed her eyes. Nobody will say who.
 @narrator{code="0030" when="!holds('fell', ['maelis'])"}: Maelis is not among the dead. Her people say she went over the parapet on a rope when the chain fell, and that she will be back.

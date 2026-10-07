@@ -11,17 +11,17 @@ after: 'visited("mika.date")'
 ## The bleachers
 
 ::bg{location="track" time="night"}
-::auto{character="mika" anchor="center" action="fadeInUp"}
+::actor{character="mika" anchor="center" action="fadeInUp"}
 @mika{code="0010" emotion="sad"}: The scout from the mainland came. He watched me walk. He left before I sat down.
 @mika{code="0020" emotion="hurt"}: If I'm not the fast one, I don't know which one I am.
 @mika{code="0030" emotion="fond" when="holds('cleared', ['mika', 'bittersweet'])"}: Weird. I feel like I've sat here before and said the wrong thing. You too?
 
 <branch id="mikaAsk" prompt="Mika is looking at his shoes.">
-  <choice id="more" label="Tell him he's the one who makes everyone laugh at the finish line">
+  <choice id="more" text="Tell him he's the one who makes everyone laugh at the finish line">
     @mika{code="0040" emotion="happy"}: ...Yeah? Yeah. That one. I can be that one.
     ::set{run.aff.mika += 1}
   </choice>
-  <choice id="heal" label="Tell him he'll be fast again by spring">
+  <choice id="heal" text="Tell him he'll be fast again by spring">
     @mika{code="0050" emotion="neutral"}: Sure. By spring. Everyone keeps saying spring.
     ::set{run.aff.mika -= 1}
   </choice>

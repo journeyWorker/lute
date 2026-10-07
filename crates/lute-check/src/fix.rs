@@ -60,6 +60,19 @@
 //!      the checker's `W-WHEN-TEST-LITERAL` fixit does, so the two are
 //!      byte-identical. Idempotent: a rewritten arm carries `is=`, which the
 //!      rule never touches.
+//!   7. **renamed directive tags** (dsl 0.37.0 §7.1): `::auto` → `::actor`,
+//!      `::cut` → `::cg`, `::next` → `::jump`, `::mark` → `::label`.
+//!   8. **renamed directive attributes** (§7.1–2): `::label{id}` → `name`,
+//!      `::music{action}` → `playback`, `::video{action}`/`::cg{action}` →
+//!      `display` — also under a directive's old tag in the same pass.
+//!   9. **renamed tag attributes** (§7.3): `<choice label>` → `text`,
+//!      `<match on>` → `subject`.
+//!  10. **content-line `id="x"`** (§7.4) → a `::label{name="x"}` line
+//!      inserted immediately before the line, and the attribute removed.
+//!
+//!   Rules 7–10 read [`crate::renames`]' tables, the same ones the checker's
+//!   `E-RENAMED-*` diagnostics use. Lossy forms — camera numerics, `::cg{full}`,
+//!   `::music{track}`, `::sfx{name}` — are diagnosed, never guessed.
 //!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
@@ -68,7 +81,7 @@
 //! byte offset maps 1:1 onto the original text.
 
 use lute_core_span::Severity;
-use lute_syntax::ast::{Arm, AttrValue, Choice, Line, Node};
+use lute_syntax::ast::{Arm, AttrValue, Choice, ClipNode, Directive, Line, Match, Node};
 use lute_syntax::parse;
 
 /// The result of a migration pass: the (possibly rewritten) document text and
@@ -270,6 +283,42 @@ pub fn fix_document(text: &str) -> FixResult {
         let new_text = rw.new_text();
         edits2.push((rw.start, rw.end, new_text));
     }
+
+    // -- dsl 0.37.0 §7 renames (rules 7–10): directive tags and attrs, the
+    // `<choice label>`/`<match on>` keys, and a content line's `id=` moved
+    // to a preceding `::label{name}`. Each rewrites only a KEY or TAG span
+    // (or inserts a whole line), so values and comments stay byte-exact; a
+    // rewritten construct no longer carries the old spelling, so a re-run
+    // never re-fires.
+    let bodies: Vec<&[Node]> = doc2
+        .sections
+        .iter()
+        .map(|s| s.body.as_slice())
+        .chain(doc2.quests.iter().map(|q| q.body.as_slice()))
+        .chain(doc2.entries.iter().map(|e| e.body.as_slice()))
+        .chain(doc2.beats.iter().map(|b| b.body.as_slice()))
+        .collect();
+    let mut directives: Vec<&Directive> = Vec::new();
+    let mut matches: Vec<&Match> = Vec::new();
+    for body in &bodies {
+        collect_directives(body, &mut directives, &mut matches);
+    }
+    for d in &directives {
+        edits2.extend(directive_renames(bytes1, d));
+    }
+    for c in &choices {
+        if let Some(edit) = rename_key(&c.attrs, "label", "text") {
+            edits2.push(edit);
+        }
+    }
+    for m in &matches {
+        if let Some(edit) = rename_key(&m.attrs, "on", "subject") {
+            edits2.push(edit);
+        }
+    }
+    for l in &lines {
+        edits2.extend(line_id_to_label(bytes1, l));
+    }
     let phase2 = edits2.len();
     let text2 = splice(&text1, edits2);
 
@@ -329,6 +378,131 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
             Node::Objective(o) => collect_choices(&o.body, out),
             Node::Line(_) | Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
+        }
+    }
+}
+
+/// Rule 7–8 (dsl 0.37.0 §7.1–2): a renamed directive tag (`::auto` →
+/// `::actor`, …) and its renamed attribute keys (`::music{action}` →
+/// `playback`, `::cut{action}` → `::cg{display}`, `::mark{id}` →
+/// `::label{name}`), read from the checker's own [`crate::renames`] tables.
+/// A key is rewritten only when the new key is not already written, so the
+/// result never carries a duplicate attribute.
+fn directive_renames(bytes: &[u8], d: &Directive) -> Vec<(usize, usize, String)> {
+    let mut edits = Vec::new();
+    let new_tag = crate::renames::renamed_directive(&d.tag);
+    if let Some(new_tag) = new_tag {
+        let sigil = format!("::{}", d.tag);
+        let start = d.span.byte_start;
+        if bytes[start..].starts_with(sigil.as_bytes()) {
+            edits.push((start + 2, start + sigil.len(), new_tag.to_string()));
+        }
+    }
+    let tag = new_tag.unwrap_or(&d.tag);
+    for a in &d.attrs {
+        if let Some(new_key) = crate::renames::renamed_directive_attr(tag, &a.key) {
+            if let Some(edit) = rename_key(&d.attrs, &a.key, new_key) {
+                edits.push(edit);
+            }
+        }
+    }
+    edits
+}
+
+/// The key-span edit renaming attribute `old` to `new` in `attrs`, unless
+/// `new` is already written (rule 9: `<choice label>` → `text`,
+/// `<match on>` → `subject`). `Attr.span` starts at the key's first byte.
+fn rename_key(
+    attrs: &[lute_syntax::ast::Attr],
+    old: &str,
+    new: &str,
+) -> Option<(usize, usize, String)> {
+    if attrs.iter().any(|a| a.key == new) {
+        return None;
+    }
+    let a = attrs.iter().find(|a| a.key == old)?;
+    let start = a.span.byte_start;
+    Some((start, start + old.len(), new.to_string()))
+}
+
+/// Rule 10 (dsl 0.37.0 §7.4): a content line's `id="x"` becomes a
+/// `::label{name="x"}` on its own line immediately before the line (same
+/// indentation), and the attribute is removed — with its `{…}` when it was
+/// the only one written. A non-literal `id=` is left for the checker.
+fn line_id_to_label(bytes: &[u8], l: &Line) -> Vec<(usize, usize, String)> {
+    let Some(a) = l.attrs.iter().find(|a| a.key == "id") else {
+        return Vec::new();
+    };
+    let AttrValue::Str(name) = &a.value else {
+        return Vec::new();
+    };
+    let line_start = bytes[..l.span.byte_start]
+        .iter()
+        .rposition(|b| *b == b'\n')
+        .map_or(0, |i| i + 1);
+    let indent = &bytes[line_start..l.span.byte_start];
+    if !indent.iter().all(|b| *b == b' ' || *b == b'\t') {
+        return Vec::new();
+    }
+    let indent = String::from_utf8_lossy(indent);
+    let (start, end) = (a.span.byte_start, a.span.byte_end);
+    let removal = if l.attrs.len() == 1 && l.when.is_none() {
+        find_enclosing_braces(bytes, l.span.byte_start, l.text_span.byte_start, start, end)
+            .unwrap_or_else(|| widen_removed_attr(bytes, start, end))
+    } else {
+        widen_removed_attr(bytes, start, end)
+    };
+    vec![
+        (
+            line_start,
+            line_start,
+            format!(
+                "{indent}::{}{{{}=\"{name}\"}}\n",
+                lute_manifest::core::LABEL_DIRECTIVE,
+                lute_manifest::core::LABEL_NAME_ATTR
+            ),
+        ),
+        (removal.0, removal.1, String::new()),
+    ]
+}
+
+/// Every directive (timeline clips included) and every `<match>` in
+/// document order, at any depth.
+fn collect_directives<'a>(
+    nodes: &'a [Node],
+    out: &mut Vec<&'a Directive>,
+    matches: &mut Vec<&'a Match>,
+) {
+    for node in nodes {
+        match node {
+            Node::Directive(d) => out.push(d),
+            Node::Timeline(t) => {
+                for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
+                    if let ClipNode::Directive(d) = &clip.node {
+                        out.push(d);
+                    }
+                }
+            }
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_directives(&c.body, out, matches);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_directives(b, out, matches);
+                }
+            }
+            Node::Match(m) => {
+                matches.push(m);
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    collect_directives(body, out, matches);
+                }
+            }
+            Node::On(o) => collect_directives(&o.body, out, matches),
+            Node::Objective(o) => collect_directives(&o.body, out, matches),
+            Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -540,12 +714,12 @@ mod tests {
     #[test]
     fn migrates_branch_choice_as_to_into() {
         let out = fix_document(&wrap(
-            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</branch>\n",
         ));
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -559,12 +733,12 @@ mod tests {
     #[test]
     fn migrates_hub_choice_as_to_into() {
         let out = fix_document(&wrap(
-            "<hub id=\"h\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</hub>\n",
+            "<hub id=\"h\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</hub>\n",
         ));
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -583,7 +757,7 @@ mod tests {
         // rewrite either, so `lute fix` leaves it byte-identical (changed == 0).
         // The content line already uses the current `@` sigil.
         let src = wrap(
-            "<branch id=\"b\">\n<choice id=\"help\" label=\"Help\" into=\"run.metHelpfully\">\n@marina: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"help\" text=\"Help\" into=\"run.metHelpfully\">\n@marina: hi\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
@@ -615,7 +789,7 @@ mod tests {
         // left for the `as`→`into` rule to fire on; only the new sigil
         // rewrite fires (dsl 0.2.2 §7.1, Task C3).
         let src = wrap(
-            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" into=\"run.flag\">\n:speaker: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" into=\"run.flag\">\n:speaker: hi\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
@@ -630,7 +804,7 @@ mod tests {
     #[test]
     fn migrates_both_line_and_choice_as() {
         let src = wrap(
-            ":line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n",
+            ":line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
         // phase1 (`:line[` removal + both lines' `:`→`@`) + phase2 (`as`→`into`).
@@ -642,7 +816,7 @@ mod tests {
         );
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.flag\">"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.flag\">"),
             "got:\n{}",
             out.text
         );
@@ -662,18 +836,18 @@ mod tests {
         // `<objective>` body gets migrated — pre-merge, `fix_document` only
         // walked `doc.shots`, so this quest doc would parse clean but yield
         // `changed: 0` and leave both `as=` keys untouched.
-        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n:narrator: hi\n</choice>\n</branch>\n</on>\n<objective id=\"o\" done=\"run.d\">\n<branch id=\"b2\">\n<choice id=\"c2\" label=\"M\" as=\"run.y\">\n:narrator: yo\n</choice>\n</branch>\n</objective>\n</quest>\n";
+        let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n:narrator: hi\n</choice>\n</branch>\n</on>\n<objective id=\"o\" done=\"run.d\">\n<branch id=\"b2\">\n<choice id=\"c2\" text=\"M\" as=\"run.y\">\n:narrator: yo\n</choice>\n</branch>\n</objective>\n</quest>\n";
         let out = fix_document(src);
         assert_eq!(out.changed, 4, "got:\n{}", out.text);
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.x\">"),
             "on-nested choice not migrated, got:\n{}",
             out.text
         );
         assert!(
             out.text
-                .contains("<choice id=\"c2\" label=\"M\" into=\"run.y\">"),
+                .contains("<choice id=\"c2\" text=\"M\" into=\"run.y\">"),
             "objective-nested choice not migrated, got:\n{}",
             out.text
         );
@@ -776,7 +950,7 @@ mod tests {
     fn migrates_bundle_beat_body() {
         let out = fix_document(
             "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" on=\"talk\">\n\
-             @x{delivery=\"thought\"}: a\n<branch id=\"k\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+             @x{delivery=\"thought\"}: a\n<branch id=\"k\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n\
              @y: b\n</choice>\n</branch>\n</beat>\n",
         );
         assert_eq!(out.changed, 2, "{}", out.text);
@@ -790,7 +964,7 @@ mod tests {
         // meaning-preserving to delete (the pair recorded before; `into=`
         // records now) — `lute fix` applies the `"migrate"` deletion.
         let out = fix_document(&wrap(
-            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"run\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
         ));
         assert_eq!(
             out.changed, 1,
@@ -799,7 +973,7 @@ mod tests {
         );
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.x\">"),
             "persist= must splice away leaving one clean space, got:\n{}",
             out.text
         );
@@ -818,12 +992,12 @@ mod tests {
     #[test]
     fn migrates_hub_choice_persist_run_with_into_deletes_persist() {
         let out = fix_document(&wrap(
-            "<hub id=\"h\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\" exit>\n@marina: hi\n</choice>\n</hub>\n",
+            "<hub id=\"h\">\n<choice id=\"c\" text=\"L\" persist=\"run\" into=\"run.x\" exit>\n@marina: hi\n</choice>\n</hub>\n",
         ));
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
         assert!(
             out.text
-                .contains("<choice id=\"c\" label=\"L\" into=\"run.x\" exit>"),
+                .contains("<choice id=\"c\" text=\"L\" into=\"run.x\" exit>"),
             "got:\n{}",
             out.text
         );
@@ -837,7 +1011,7 @@ mod tests {
         // preserving, so the doc is byte-identical (the checker's
         // E-PERSIST-REMOVED still offers the fixit for a human to apply).
         let src = wrap(
-            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\">\n@marina: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"run\">\n@marina: hi\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
@@ -849,7 +1023,7 @@ mod tests {
         // Only the provable `persist="run"` shape is auto-migrated; a `persist=`
         // with any other value stays MANUAL even alongside `into=`.
         let src = wrap(
-            "<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"scene\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"scene\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
         );
         let out = fix_document(&src);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
@@ -934,6 +1108,109 @@ mod tests {
             "a non-grammar free heading is untouched; got:\n{}",
             out.text
         );
+        assert_eq!(out.text, src);
+    }
+
+    /// Applies `fix_document` and asserts the exact output, the edit count,
+    /// and idempotence (a second run changes nothing).
+    fn fixes_to(body: &str, want: &str, changed: usize) {
+        let out = fix_document(&wrap(body));
+        assert_eq!(out.text, wrap(want), "got:\n{}", out.text);
+        assert_eq!(out.changed, changed, "got:\n{}", out.text);
+        let again = fix_document(&out.text);
+        assert_eq!(again.changed, 0, "not idempotent:\n{}", again.text);
+        assert_eq!(again.text, out.text);
+    }
+
+    #[test]
+    fn renames_auto_to_actor() {
+        fixes_to(
+            "::auto{character=\"m\" anchor=\"left\"} // enter\n",
+            "::actor{character=\"m\" anchor=\"left\"} // enter\n",
+            1,
+        );
+    }
+
+    #[test]
+    fn renames_cut_to_cg_with_its_action() {
+        fixes_to(
+            "::cut{assetId=\"C\" action=\"hide\"}\n",
+            "::cg{assetId=\"C\" display=\"hide\"}\n",
+            2,
+        );
+    }
+
+    #[test]
+    fn renames_next_and_mark() {
+        fixes_to(
+            "::next{to=\"x\" when=\"run.a\"}\n@m: skipped\n::mark{id=\"x\"} /* here */\n@m: hi\n",
+            "::jump{to=\"x\" when=\"run.a\"}\n@m: skipped\n::label{name=\"x\"} /* here */\n@m: hi\n",
+            3,
+        );
+    }
+
+    #[test]
+    fn renames_music_and_video_action() {
+        fixes_to(
+            "::music{mood=\"calm\" action=\"start\"}\n::video{assetId=\"V\" action=\"show\"}\n",
+            "::music{mood=\"calm\" playback=\"start\"}\n::video{assetId=\"V\" display=\"show\"}\n",
+            2,
+        );
+    }
+
+    #[test]
+    fn renames_directives_inside_timeline_clips() {
+        fixes_to(
+            "<timeline duration=\"1\">\n  <track subject=\"m\">\n    ::auto{character=\"m\"}\n  \
+             </track>\n</timeline>\n",
+            "<timeline duration=\"1\">\n  <track subject=\"m\">\n    ::actor{character=\"m\"}\n  \
+             </track>\n</timeline>\n",
+            1,
+        );
+    }
+
+    #[test]
+    fn renames_choice_label_to_text() {
+        fixes_to(
+            "<branch id=\"b\">\n<choice id=\"c\" label=\"Go\">\n@m: hi\n</choice>\n</branch>\n",
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"Go\">\n@m: hi\n</choice>\n</branch>\n",
+            1,
+        );
+    }
+
+    #[test]
+    fn renames_match_on_to_subject() {
+        fixes_to(
+            "<match on=\"run.n\">\n<when is=\"1\">\n@m: one\n</when>\n<otherwise>\n@m: other\n\
+             </otherwise>\n</match>\n",
+            "<match subject=\"run.n\">\n<when is=\"1\">\n@m: one\n</when>\n<otherwise>\n@m: \
+             other\n</otherwise>\n</match>\n",
+            1,
+        );
+    }
+
+    #[test]
+    fn moves_line_id_to_a_preceding_label() {
+        fixes_to(
+            "  @m{id=\"x\"}: hi\n",
+            "  ::label{name=\"x\"}\n  @m: hi\n",
+            2,
+        );
+        fixes_to(
+            "@m{emotion=\"calm\" id=\"x\"}: hi\n",
+            "::label{name=\"x\"}\n@m{emotion=\"calm\"}: hi\n",
+            2,
+        );
+    }
+
+    /// Lossy forms are diagnosed by the checker, never guessed.
+    #[test]
+    fn leaves_lossy_forms_alone() {
+        let src = wrap(
+            "::camera{focus=\"m\" zoom=\"1.2\"}\n::cg{assetId=\"C\" full}\n::music{track=\"t\"}\n",
+        );
+        let out = fix_document(&src);
+        assert_eq!(out.changed, 0, "got:\n{}", out.text);
         assert_eq!(out.text, src);
     }
 }

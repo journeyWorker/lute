@@ -12,6 +12,6 @@ beat:
 
 ## Interview
 
-::auto{character=@who anchor="right" action="fadeInUp"}
+::actor{character=@who anchor="right" action="fadeInUp"}
 ::body
-::auto{character=@who action="fadeOut"}
+::actor{character=@who action="fadeOut"}

@@ -106,8 +106,8 @@ fn a_later_shot_is_never_entered() {
 fn end_inside_a_chosen_branch_arm_terminates_the_whole_walk() {
     let text = format!(
         "{HDR}<branch id=\"exit\">\n\
-         <choice id=\"stay\" label=\"Stay\">\n@narrator: staying\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
+         <choice id=\"stay\" text=\"Stay\">\n@narrator: staying\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
          </branch>\n\
          @narrator: after the converge\n"
     );
@@ -126,8 +126,8 @@ fn end_inside_a_chosen_branch_arm_terminates_the_whole_walk() {
 fn the_unterminated_arm_still_reaches_the_converge() {
     let text = format!(
         "{HDR}<branch id=\"exit\">\n\
-         <choice id=\"stay\" label=\"Stay\">\n@narrator: staying\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
+         <choice id=\"stay\" text=\"Stay\">\n@narrator: staying\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
          </branch>\n\
          @narrator: after the converge\n"
     );

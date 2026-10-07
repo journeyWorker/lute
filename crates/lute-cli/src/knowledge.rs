@@ -4,7 +4,7 @@
 //! `validAt(…)`) — in every guard slot (scene and bundle beat `when`, entry
 //! `when`, quest `start`/`fail`, objective `done`/`visibleWhen`/`by`/`until`, reward
 //! `when`, `<on when>`, line `when=`, `<choice when>`, `<when>` arm tests,
-//! `::next{when}`, `::set{when}`),
+//! `::jump{when}`, `::set{when}`),
 //! grouped by document: the relations it reads, and for each relation who
 //! makes it true — the documents that `::assert` it, the seed facts, the
 //! engine (a `reserved` relation), or the rules that derive it, traced

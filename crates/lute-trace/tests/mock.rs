@@ -255,8 +255,8 @@ fn reserved_relation_fact_is_a_legal_mock() {
 fn guard_false_forcing_choice_passes_structural_validation() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
                 <branch id=\"approach\">\n\
-                <choice id=\"soft\" label=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
-                <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
+                <choice id=\"soft\" text=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
+                <choice id=\"blunt\" text=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let (folded, doc) = folded_and_doc(text, "guard-false", Path::new("."));
     let mocks = MockSet {
@@ -479,7 +479,7 @@ fn end_to_end_yaml_file_plus_flag_state_win_validates_clean() {
 
 fn quest_state_reader_text() -> &'static str {
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-     <match on=\"quest.foo.state\">\n\
+     <match subject=\"quest.foo.state\">\n\
      <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n@x: a\n</when>\n\
      <when is=\"complete | failed\">\n@x: b\n</when>\n\
      <otherwise>\n@x: c\n</otherwise>\n\
@@ -657,7 +657,7 @@ fn own_quest_state_seed_admitted_in_its_reserved_domain() {
 fn local_quest_state_mock_unset_admitted_when_document_references_it() {
     let text = "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
                 <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-                <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
+                <on event=\"questComplete\">\n<match subject=\"quest.q.state\">\n\
                 <when is=\"complete\">\n@x: done\n</when>\n<otherwise>\n@x: -\n</otherwise>\n\
                 </match>\n</on>\n</quest>\n";
     let (folded, doc) = folded_and_doc(text, "local-quest-referenced", Path::new("."));

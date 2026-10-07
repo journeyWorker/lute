@@ -32,10 +32,10 @@ fn doc_with_when(raw: &str) -> String {
     format!(
         "{FM}## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"a\" label=\"A\" when=\"{raw}\">\n\
+         <choice id=\"a\" text=\"A\" when=\"{raw}\">\n\
          @narrator: a.\n\
          </choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n\
          @narrator: bye.\n\
          </choice>\n\
          </branch>\n"
@@ -231,10 +231,10 @@ fn masked_operators_stay_silent() {
     // `translate_cel_parse` scan ever runs and no E-CEL-PARSE appears.
     let text = format!(
         "{FM_STR}## Shot 1.\n<branch id=\"b\">\n\
-         <choice id=\"a\" label=\"A\" when=\"run.s == 'a = b & c'\">\n\
+         <choice id=\"a\" text=\"A\" when=\"run.s == 'a = b & c'\">\n\
          @narrator: a.\n\
          </choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n\
          @narrator: bye.\n\
          </choice>\n\
          </branch>\n"
@@ -268,7 +268,7 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
         dir.join("reaction.lute"),
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
          ## Scene 1.\n\
-         <match on=\"@tier\">\n\
+         <match subject=\"@tier\">\n\
          <when test=\"run.act = 1\">\n@narrator: hi\n</when>\n\
          <otherwise>\n@narrator: bye\n</otherwise>\n\
          </match>\n",

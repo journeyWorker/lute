@@ -12,7 +12,7 @@ priority: 30
 ## The returns desk
 
 ::bg{location="library_reading_room" time="afternoon"}
-::auto{character="ines" anchor="center" action="fadeInUp"}
+::actor{character="ines" anchor="center" action="fadeInUp"}
 ::set{run.seen.ines = run.day}
 @ines{code="0010" emotion="neutral"}: Oh. It's you.
 @narrator{code="0010"}: She slides a parcel across the desk without looking up. The sheets inside are the colour of weak tea.
@@ -20,4 +20,4 @@ priority: 30
 ::set{run.lantern.paper = true}
 @sol{code="0010"}: Ines, I'm sorry, I —
 @ines{code="0030" emotion="sad"}: It's fine. It's paper. Mind the corners.
-::auto{character="ines" action="fadeOut"}
+::actor{character="ines" action="fadeOut"}

@@ -11,13 +11,13 @@ after: 'visited("common.festival")'
 ## The jetty, after the storm
 
 ::bg{location="lakeshore" time="morning"}
-::music{action="start" mood="sad" volume="down"}
+::music{playback="start" mood="sad" volume="down"}
 @narrator{code="0010"}: It rained all night. The lake is grey and flat, and the jetty is covered in wet paper.
 @nana{code="0010" emotion="worried" when="run.lanterns >= 1"}: The wind took the window, too. {{run.lanterns:plural(One lantern|All # lanterns)}}, gone into the lake.
 @nana{code="0020" emotion="sad" when="run.lanterns == 0"}: At least we had nothing on the window to lose. That's the bright side. That's the only side.
 @nana{code="0030" emotion="teasing"}: New week, new window. Somebody has to light the dorm lanterns again. Somebody who is you.
 
-<match on="run.route">
+<match subject="run.route">
   <when is="ren">
     @ren{code="0010" emotion="stern"}: Storm damage to school property, item one. The festival lanterns are council business. I'll have them fished out by noon.
     @ren{code="0020" emotion="flustered"}: ...Not ours. Ours can stay in the lake. It's where we put it.

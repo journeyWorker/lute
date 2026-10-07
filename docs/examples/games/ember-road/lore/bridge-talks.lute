@@ -16,7 +16,7 @@ components: [../components/reaction.component.lute]
       @maelis{code="0020"}: My mother's hand. She kept the roll. Two hundred and six. She kept counting after.
     </otherwise>
   </match>
-  <match on="run.hostagesFreed">
+  <match subject="run.hostagesFreed">
     <when is="true">
       @maelis{code="0030"}: And you already took the miller's twins back out of my tunnel, so you are not here to bargain. You are here to be right. Gods help me, you are.
     </when>
@@ -35,7 +35,7 @@ components: [../components/reaction.component.lute]
   @corvin{code="0010"}: Three deserters, a sack of your silver, and the cellar under the ford where they sleep. Ask me how I know.
   @maelis{code="0010"}: I don't care how you know. I care whether it's true.
   <branch id="sale" prompt="Maelis is listening. So is everyone else.">
-    <choice id="sell" label="Tell her where they hide.">
+    <choice id="sell" text="Tell her where they hide.">
       @maelis{code="0020"}: Then we have a bargain, Warden. Drop the chain.
       ::set{run.bridge = "sold"}
       ::use{component="reaction" who="corvin" feel="adores" instance="use-001"}
@@ -43,7 +43,7 @@ components: [../components/reaction.component.lute]
       ::set{run.approval.wren -= 4}
       @wren{code="0010" when="@wrenWithUs"}: Those are my neighbours. Tam's mother bakes on the fourth day. You just sold her son for a bridge.
     </choice>
-    <choice id="balk" label="No. Not like this.">
+    <choice id="balk" text="No. Not like this.">
       @corvin{code="0020"}: Suit yourself. I'll be over here, being right, quietly.
       ::set{run.tollRefused = true}
       ::use{component="reaction" who="corvin" feel="disapproves" instance="use-003"}
@@ -53,7 +53,7 @@ components: [../components/reaction.component.lute]
 </beat>
 
 <beat after="visited('bridge.arrival')" id="maelisWaiting" on="talk" target="npc.maelis" title="Maelis on the chain" once="false">
-  <match on="run.bridge">
+  <match subject="run.bridge">
     <when is="held">
       @maelis{code="0010"}: Till the fourth night, Warden. I can count too.
     </when>

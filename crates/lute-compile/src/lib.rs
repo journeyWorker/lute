@@ -568,7 +568,7 @@ fn compile_inner(
             // note 8): whatever this walk re-derives on `StageState::diags` is
             // dropped rather than reported a second time. Since dsl 0.9.0 D-D
             // that channel is no longer warning-only — `auto-anchor-on-show`
-            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::auto` that relies
+            // pushes `E-DOMAIN-UNKNOWN` (an Error) for an `::actor` that relies
             // on an undeclared `anchor` domain's `default:`. So the drop needs
             // an argument that covers an Error, not the old one about warnings
             // never gating. (dsl 0.10.0 §12.3 removed `W-INJECT-CONFLICT`;
@@ -588,7 +588,7 @@ fn compile_inner(
             //     fact (nothing declares an `anchor` domain).
             //     `normalize_document` and `expand_document` rewrite attr
             //     VALUES and inline component bodies; neither invents an
-            //     `::auto` nor adds or removes an attr key, so the trigger is
+            //     `::actor` nor adds or removes an attr key, so the trigger is
             //     invariant under everything separating this tree from the one
             //     `check()` folds.
             //   * The component-body divergence Task 7g closed is structural,

@@ -23,12 +23,12 @@ components: [../components/reaction.component.lute, ../components/idle.component
   @isolde{code="0020"}: I was at Coldwater. Company colours, Company horse. We were told it was a plague village. It wasn't. I rode out before the torches, and I have been riding out ever since.
   @isolde{code="0030"}: I swore that the next time, I would stay and stand in the way. I would like someone to hold me to it.
   <branch id="oath" prompt="Isolde is waiting.">
-    <choice id="hold" label="\"I'll hold you to it. And you hold me.\"">
+    <choice id="hold" text="\"I'll hold you to it. And you hold me.\"">
       ::accept{quest="isoldeOath"}
       ::use{component="reaction" who="isolde" feel="approves" instance="use-002"}
       @isolde{code="0040" emotion="content"}: Then that's two of us. It's a start.
     </choice>
-    <choice id="past" label="Coldwater was years ago. Let it go.">
+    <choice id="past" text="Coldwater was years ago. Let it go.">
       ::use{component="reaction" who="isolde" feel="disapproves" instance="use-003"}
       @isolde{code="0050"}: The people of Coldwater would find that easier if they were alive to try.
     </choice>
@@ -36,7 +36,7 @@ components: [../components/reaction.component.lute, ../components/idle.component
 </beat>
 
 <beat use="idle" id="isoldeIdle" who="isolde" instance="use-001">
-  <match on="run.approval.isolde">
+  <match subject="run.approval.isolde">
     <when is="3..">
       @isolde{code="0010" emotion="content"}: Sit. The fire's better on this side. So is the company.
     </when>
@@ -55,12 +55,12 @@ components: [../components/reaction.component.lute, ../components/idle.component
   @corvin{code="0020"}: And hypothetically that person had helped them get there, for a fee, some months ago.
   @corvin{code="0030"}: Then that person would be sitting on the price of a bridge. Hypothetically.
   <branch id="scheme" prompt="Corvin is picking his teeth with a knife and not looking at you.">
-    <choice id="listen" label="Go on. Hypothetically.">
+    <choice id="listen" text="Go on. Hypothetically.">
       ::accept{quest="toll"}
       ::use{component="reaction" who="corvin" feel="approves" instance="use-004"}
       @corvin{code="0040"}: I'll do the talking when we see her. You do the nodding. You're good at nodding.
     </choice>
-    <choice id="refuse" label="They're under Marrow roofs. No.">
+    <choice id="refuse" text="They're under Marrow roofs. No.">
       ::use{component="reaction" who="corvin" feel="disapproves" instance="use-005"}
       @corvin{code="0050"}: Noble. Expensive, but noble.
     </choice>
@@ -68,7 +68,7 @@ components: [../components/reaction.component.lute, ../components/idle.component
 </beat>
 
 <beat use="idle" id="corvinIdle" who="corvin" instance="use-002">
-  <match on="run.approval.corvin">
+  <match subject="run.approval.corvin">
     <when is="3..">
       @corvin{code="0010"}: You know, Warden, I'm starting to think you might be worth the trouble.
     </when>
@@ -89,7 +89,7 @@ components: [../components/reaction.component.lute, ../components/idle.component
 </beat>
 
 <beat use="idle" id="wrenIdle" who="wren" instance="use-003">
-  <match on="run.approval.wren">
+  <match subject="run.approval.wren">
     <when is="2..">
       @wren{code="0010"}: The water's calm tonight. So am I. Don't get used to it.
     </when>
@@ -118,7 +118,7 @@ unasked (`for`, dsl 0.27 §3: once per member, on the untargeted camp). */
 </beat>
 
 <beat id="odaWaiting" on="talk" target="npc.oda" title="Oda" once="false">
-  <match on="quest.hostages.state">
+  <match subject="quest.hostages.state">
     <when is="active">
       @oda{code="0010"}: The mill. The Duskbound came and went by the mill. I'd swear to it.
     </when>

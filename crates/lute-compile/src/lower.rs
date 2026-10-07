@@ -146,7 +146,7 @@ pub fn lower_retract(r: &Retract) -> Command {
 /// ([`lower_record`]), else falls through to the `Some(Command::Other(..))`
 /// passthrough.
 ///
-/// `domains` is the resolved vocabulary: whether an `::auto`'s `action` ENDS the
+/// `domains` is the resolved vocabulary: whether an `::actor`'s `action` ENDS the
 /// character's presence is the `action` domain's declared `exits:` (dsl 0.9.0
 /// D-D), not a prefix convention this crate re-guesses.
 pub fn lower_directive(
@@ -155,8 +155,6 @@ pub fn lower_directive(
     domains: &BTreeMap<String, Domain>,
 ) -> Option<Command> {
     let get = |k: &str| attr_string(&dir.attrs, k);
-    let get_f64 = |k: &str| attr_f64(&dir.attrs, k);
-    let get_bool = |k: &str| attr_bool(&dir.attrs, k);
     let decl = snapshot.directive(&dir.tag);
     let stamp = Stamp {
         wait: effective_wait(dir, snapshot),
@@ -185,18 +183,18 @@ pub fn lower_directive(
         }),
         "music" => Command::Music(MusicCmd {
             addr: String::new(),
-            action: get("action").unwrap_or_default(),
+            action: get("playback").unwrap_or_default(),
             mood: get("mood"),
             volume: get("volume"),
             asset_id: get("assetId"),
-            track: get("track"),
+            track: None,
             stamp,
         }),
         "sfx" => Command::Sfx(SfxCmd {
             addr: String::new(),
             sound: get("sound"),
             asset_id: get("assetId"),
-            name: get("name"),
+            name: None,
             stamp,
         }),
         "vfx" => Command::Vfx(VfxCmd {
@@ -206,7 +204,7 @@ pub fn lower_directive(
             transition: get("transition"),
             stamp,
         }),
-        "auto" => {
+        lute_manifest::core::ACTOR_DIRECTIVE => {
             let action = get("action");
             // ONE reader of `exits:` for both crates (dsl 0.9.0 D-E): this used
             // to be a private prefix heuristic kept in sync by hand.
@@ -222,33 +220,33 @@ pub fn lower_directive(
                 exit,
                 pos_reset: None,
                 preload: None,
-                emotion: None,
-                costume: None,
+                emotion: get("emotion"),
+                costume: get("costume"),
                 stamp,
             })
         }
         "camera" => Command::Camera(CameraCmd {
             addr: String::new(),
             focus: get("focus"),
-            zoom: get_f64("zoom"),
-            move_x: get_f64("moveX"),
-            move_y: get_f64("moveY"),
-            shake: get_f64("shake"),
-            reset: get_bool("reset"),
-            easing: get("easing"),
+            zoom: None,
+            move_x: None,
+            move_y: None,
+            shake: None,
+            reset: None,
+            easing: None,
             stamp,
         }),
-        "cut" => Command::Cut(CutCmd {
+        "cg" => Command::Cut(CutCmd {
             addr: String::new(),
             asset_id: get("assetId").unwrap_or_default(),
-            action: get("action"),
-            full: get_bool("full"),
+            action: get("display"),
+            full: None,
             stamp,
         }),
         "video" => Command::Video(VideoCmd {
             addr: String::new(),
             asset_id: get("assetId").unwrap_or_default(),
-            action: get("action"),
+            action: get("display"),
             stamp,
         }),
         // dsl 0.8.0: the walk terminator. `::end` declares no `wait` attr, so
@@ -276,21 +274,21 @@ pub fn lower_directive(
                 .map(|_| crate::ir::AcceptAt::NextRun),
             stamp,
         }),
-        // dsl 0.12.0: `::mark{id}` is a pure position anchor — emits NO
+        // dsl 0.12.0: `::label{name}` is a pure position anchor — emits NO
         // record. `id` is consumed by `stage::walk_seq`/`walk_quest`'s own
         // `mark` interception (`Emitter::bind_named`) BEFORE this function
         // is ever reached for a `mark` node — this arm exists only so the
         // generic `emit_primitive` dispatch (which calls `lower_directive`
         // for EVERY `Node::Directive`, mark included) stays total.
-        lute_manifest::core::MARK_DIRECTIVE => return None,
+        lute_manifest::core::LABEL_DIRECTIVE => return None,
         // dsl 0.24.0 §4: `::clear` emits no record of its own. Its exits
         // depend on who is on stage, which only the walk's threaded
         // `StageState` knows: the reducer (`lute_check::inject`'s
         // `stage-clear` rule) injects one `sprite` exit per character, and
         // `stage::emit_primitive` emits those in its place.
         lute_manifest::core::CLEAR_DIRECTIVE => return None,
-        // dsl 0.12.0: `::next{to [when]}` — an unconditional forward jump.
-        // A GUARDED `::next` is desugared by
+        // dsl 0.12.0: `::jump{to [when]}` — an unconditional forward jump.
+        // A GUARDED `::jump` is desugared by
         // `normalize::synth_when_next_match` into a canonical one-arm
         // `<match>` BEFORE this ever runs (mirrors the gated-line desugar),
         // so this arm only ever sees the UNCONDITIONAL form — reuses the
@@ -299,7 +297,7 @@ pub fn lower_directive(
         // placeholder (`"#<id>"`), resolved to a real `addr` by
         // `address::assign_addresses`'s document-wide named-label pass,
         // exactly like a numeric `"@<n>"` resolves the anonymous ones.
-        lute_manifest::core::NEXT_DIRECTIVE => Command::Jump(JumpCmd {
+        lute_manifest::core::JUMP_DIRECTIVE => Command::Jump(JumpCmd {
             addr: String::new(),
             target: format!("#{}", get("to").unwrap_or_default()),
         }),
@@ -599,7 +597,7 @@ pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<
     }
     match dir.tag.as_str() {
         "bg" | "video" => Some(true),
-        "cut" | "camera" => Some(false),
+        "cg" | "camera" => Some(false),
         _ => None,
     }
 }
@@ -938,16 +936,12 @@ mod tests {
         assert_eq!(v["time"], "afternoon");
         assert_eq!(v["assetId"], "BG.x");
         assert_eq!(v["wait"], true);
-        let v = lower_first(
-            "::camera{focus=\"marina\" zoom=\"1.1\" moveX=\"0.2\" duration=\"0.5\" easing=\"ease-out\"}",
-        );
+        let v = lower_first("::camera{focus=\"marina\" framing=\"close\" duration=\"0.5\"}");
         assert_eq!(v["kind"], "camera");
-        assert_eq!(v["zoom"], 1.1);
-        assert_eq!(v["moveX"], 0.2);
+        assert_eq!(v["focus"], "marina");
         assert_eq!(v["duration"], 0.5);
-        assert_eq!(v["easing"], "ease-out");
         assert_eq!(v["wait"], false); // manifest default (arch §1 open question)
-        let v = lower_first("::camera{shake=\"0.6\" wait=\"true\"}");
+        let v = lower_first("::camera{move=\"shake\" wait=\"true\"}");
         assert_eq!(v["wait"], true); // author override beats the default
     }
 
@@ -955,19 +949,19 @@ mod tests {
     fn wait_family_materialized_cut_gains_false_others_carry_none() {
         // IR A8 / compile-IR §4.4: the wait-family (bg/video/camera/cut/plugin)
         // MUST carry a resolved `wait`; music/sfx/vfx/sprite carry NO `wait`.
-        // THE FIX: `::cut` resolves to a concrete `false` (v1 non-blocking).
-        let v = lower_first("::cut{assetId=\"CUT.x\"}");
+        // THE FIX: `::cg` resolves to a concrete `false` (v1 non-blocking).
+        let v = lower_first("::cg{assetId=\"CUT.x\"}");
         assert_eq!(v["kind"], "cut");
         assert_eq!(v["wait"], false);
         // bg/video default true; camera default false (manifest) — unchanged.
         assert_eq!(lower_first("::bg{location=\"r\"}")["wait"], true);
         assert_eq!(
-            lower_first("::video{assetId=\"MOVIE.x\" action=\"show\"}")["wait"],
+            lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}")["wait"],
             true
         );
-        assert_eq!(lower_first("::camera{shake=\"0.6\"}")["wait"], false);
+        assert_eq!(lower_first("::camera{move=\"shake\"}")["wait"], false);
         // Non-wait families (§4.4) carry NO `wait` key.
-        assert!(lower_first("::music{action=\"start\"}")
+        assert!(lower_first("::music{playback=\"start\"}")
             .get("wait")
             .is_none());
         assert!(lower_first("::sfx{sound=\"ding\"}").get("wait").is_none());
@@ -975,7 +969,7 @@ mod tests {
             .get("wait")
             .is_none());
         assert!(
-            lower_first("::auto{character=\"marina\" anchor=\"center\"}")
+            lower_first("::actor{character=\"marina\" anchor=\"center\"}")
                 .get("wait")
                 .is_none()
         );
@@ -984,7 +978,7 @@ mod tests {
     #[test]
     fn remaining_core_directives_lower_to_their_kinds() {
         let v = lower_first(
-            "::music{action=\"start\" mood=\"peaceful\" volume=\"down\" assetId=\"m.mp3\"}",
+            "::music{playback=\"start\" mood=\"peaceful\" volume=\"down\" assetId=\"m.mp3\"}",
         );
         assert_eq!(v["kind"], "music");
         assert_eq!(v["action"], "start");
@@ -996,19 +990,18 @@ mod tests {
         let v = lower_first("::vfx{type=\"whiteOut\" transition=\"flash\"}");
         assert_eq!(v["kind"], "vfx");
         assert_eq!(v["vfxType"], "whiteOut");
-        let v = lower_first("::cut{assetId=\"CUT.x\" full}");
+        let v = lower_first("::cg{assetId=\"CUT.x\"}");
         assert_eq!(v["kind"], "cut");
         assert_eq!(v["assetId"], "CUT.x");
-        assert_eq!(v["full"], true);
-        let v = lower_first("::video{assetId=\"MOVIE.x\" action=\"show\"}");
+        let v = lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}");
         assert_eq!(v["kind"], "video");
         assert_eq!(v["wait"], true);
-        let v = lower_first("::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}");
+        let v = lower_first("::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}");
         assert_eq!(v["kind"], "sprite");
         assert_eq!(v["character"], "marina");
         assert_eq!(v["anchor"], "center");
         assert!(v.get("exit").is_none());
-        let v = lower_first("::auto{character=\"marina\" action=\"fadeOutDown\"}");
+        let v = lower_first("::actor{character=\"marina\" action=\"fadeOutDown\"}");
         assert_eq!(v["exit"], true);
     }
 
@@ -1050,44 +1043,28 @@ mod tests {
     }
 
     #[test]
-    fn camera_shake_and_zoom_serialize_as_json_numbers() {
-        // IR A10: typed numeric camera attrs are JSON numbers, not strings.
-        // `shake` must match `zoom`/`moveX`/`moveY` (the audit found it emitted
-        // as the string "0.4" beside `zoom: 1.2`).
-        let v = lower_first("::camera{shake=\"0.4\" zoom=\"1.2\"}");
+    fn camera_duration_is_a_json_number_and_removed_numerics_are_absent() {
+        // IR A10: a typed numeric attr is a JSON number, not a string. dsl
+        // 0.37.0 §3.3 removed the numeric camera fields, so a domain-valued
+        // camera fills none of them.
+        let v = lower_first("::camera{framing=\"close\" move=\"shake\" duration=\"0.4\"}");
         assert_eq!(v["kind"], "camera");
         assert!(
-            v["shake"].is_number(),
-            "shake must be a JSON number, got {}",
-            v["shake"]
+            v["duration"].is_number(),
+            "duration must be a JSON number, got {}",
+            v["duration"]
         );
-        assert_eq!(v["shake"], 0.4);
-        assert!(
-            v["zoom"].is_number(),
-            "zoom must be a JSON number, got {}",
-            v["zoom"]
-        );
-        assert_eq!(v["zoom"], 1.2);
-    }
-
-    #[test]
-    fn camera_bool_attr_serializes_as_json_bool() {
-        // IR A10: a typed bool attr is a JSON bool, not a string (confirms the
-        // existing `get_bool` coercion for core records).
-        let v = lower_first("::camera{shake=\"0.4\" reset=\"true\"}");
-        assert!(
-            v["reset"].is_boolean(),
-            "reset must be a JSON bool, got {}",
-            v["reset"]
-        );
-        assert_eq!(v["reset"], true);
+        assert_eq!(v["duration"], 0.4);
+        for removed in ["zoom", "moveX", "moveY", "shake", "reset", "easing"] {
+            assert!(v.get(removed).is_none(), "{removed}: {v}");
+        }
     }
 
     #[test]
     fn sprite_record_omits_costume_until_cast_ships() {
         // IR A1 (schema-only): `costume` is always None until the character-cast
         // plugin ships, so it never serializes (skip-if-none).
-        let v = lower_first("::auto{character=\"marina\" anchor=\"center\"}");
+        let v = lower_first("::actor{character=\"marina\" anchor=\"center\"}");
         assert_eq!(v["kind"], "sprite");
         assert!(
             v.get("costume").is_none(),

@@ -15,10 +15,10 @@ when: "holds('hasBadge', ['tide'])"
 ## The back room
 
 ::bg{location="museum-lab" time="day"}
-::auto{character="pebbletonKell" anchor="center" action="enter"}
+::actor{character="pebbletonKell" anchor="center" action="enter"}
 @pebbletonKell{code="0010"}: Ottoline and I have been arguing. She says the wing fossil belongs to the museum. I say it belongs to the sky.
 @pebbletonKell{code="0020" emotion="happy"}: I won. Well. She said "fine, if the child has both badges." And you do.
-::auto{character="pebbletonCurator" anchor="left" action="enter"}
+::actor{character="pebbletonCurator" anchor="left" action="enter"}
 @pebbletonCurator{code="0010"}: I said it very reluctantly. Please write it down that I was reluctant.
 ::sfx{sound="revive-machine"}
 ::vfx{type="whiteOut"}

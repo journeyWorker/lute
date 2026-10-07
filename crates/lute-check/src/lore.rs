@@ -253,7 +253,7 @@ pub(crate) fn series_order_message(series: &str, order: u32, first: &str, id: &s
 /// write that could be lost (see [`W_ENTRY_WRITE_REREAD`]). dsl 0.28.0
 /// (T1-6): a write under a condition that holds only while `read`
 /// (`entry.<id>.read`) is false — in its own `when=`, an enclosing `<when
-/// test>` / `<choice when>`, or a `<match on="entry.<id>.read">` arm
+/// test>` / `<choice when>`, or a `<match subject="entry.<id>.read">` arm
 /// `is="false"` — applies on the first read on purpose (`guarded`) and is
 /// skipped.
 fn first_write(

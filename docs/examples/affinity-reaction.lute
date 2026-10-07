@@ -28,7 +28,7 @@ defs:
 /* Every `tier` arg here is a literal, so each `::use` expands to exactly one
 `@marina` line (§6.4 case 1) — the compiled artifact is indistinguishable
 from hand-duplicating the block three times. */
-<match on="scene.affect.marina">
+<match subject="scene.affect.marina">
   <when is="3..">
     ::use{component="reaction" tier="fond"}
   </when>

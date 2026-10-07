@@ -20,10 +20,10 @@ defs:
 ## Shot 1.
 
 <branch id="number">
-  <choice id="blunt" label="Flat">
+  <choice id="blunt" text="Flat">
     @fixer: a
   </choice>
-  <choice id="soft" label="Gentle">
+  <choice id="soft" text="Gentle">
     @fixer: b
   </choice>
 </branch>

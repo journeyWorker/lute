@@ -82,7 +82,7 @@ fn value_words_and_numbers_cannot_be_members() {
 
 #[test]
 fn reserved_ids_are_refused_at_the_id() {
-    let body = "<branch id=\"door\">\n  <choice id=\"true\" label=\"Yes\">\n    @narrator: y\n  </choice>\n  <choice id=\"none\" label=\"No\">\n    @narrator: n\n  </choice>\n</branch>";
+    let body = "<branch id=\"door\">\n  <choice id=\"true\" text=\"Yes\">\n    @narrator: y\n  </choice>\n  <choice id=\"none\" text=\"No\">\n    @narrator: n\n  </choice>\n</branch>";
     let ms = reserved("", body);
     assert!(
         ms.iter()

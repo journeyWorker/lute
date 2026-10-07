@@ -1168,7 +1168,7 @@ single quotes are required inside double-quoted attributes\n");
                 .unwrap_or_default();
             // #32 / T2.5: `--json` has always carried these and the human
             // outline dropped them. `mayExitCharacter` is the machine-readable
-            // statement that `::auto` is the construct that ends a presence,
+            // statement that `::actor` is the construct that ends a presence,
             // and it is on no page of the shipped website.
             let semantics: Vec<&str> = d["semantics"]
                 .as_array()

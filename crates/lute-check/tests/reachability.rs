@@ -40,7 +40,7 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
 #[test]
 fn foreign_enum_member_is_literal_domain() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"platnum\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -56,7 +56,7 @@ fn foreign_enum_member_is_literal_domain() {
 #[test]
 fn span_points_at_the_literal() {
     let text = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"platnum\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -80,7 +80,7 @@ fn span_points_at_the_literal() {
 #[test]
 fn mixed_alternation_flags_only_foreign() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold|platnum\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -104,7 +104,7 @@ fn mixed_alternation_flags_only_foreign() {
 #[test]
 fn comma_separated_members_suggest_the_bar() {
     let result = run(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"bronze, gold\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -129,7 +129,7 @@ fn comma_separated_members_suggest_the_bar() {
 #[test]
 fn foreign_literal_with_decided_false_guard_is_not_also_arm_dead() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"platnum\" test=\"1 > 2\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -150,7 +150,7 @@ fn foreign_literal_with_decided_false_guard_is_not_also_arm_dead() {
 #[test]
 fn bool_literal_against_enum_flags() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"true\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -167,11 +167,11 @@ fn bool_literal_against_enum_flags() {
 #[test]
 fn unset_on_defaulted_path_flags() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.flag\">\n\
+        "{HDR}<match subject=\"run.flag\">\n\
          <when is=\"unset\">\n@narrator: a\n</when>\n\
          <otherwise>\n@narrator: b\n</otherwise>\n\
          </match>\n\
-         <match on=\"run.n\">\n\
+         <match subject=\"run.n\">\n\
          <when is=\"unset\">\n@narrator: c\n</when>\n\
          <otherwise>\n@narrator: d\n</otherwise>\n\
          </match>\n"
@@ -191,7 +191,7 @@ fn unset_on_defaulted_path_flags() {
 #[test]
 fn unset_on_maybe_unset_path_is_clean() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.unbound\">\n\
+        "{HDR}<match subject=\"run.unbound\">\n\
          <when is=\"unset\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -208,7 +208,7 @@ fn unset_on_maybe_unset_path_is_clean() {
 #[test]
 fn unresolved_subject_is_silent() {
     let out = codes(&format!(
-        "{HDR}<match on=\"scene.nonsense.x\">\n\
+        "{HDR}<match subject=\"scene.nonsense.x\">\n\
          <when is=\"whatever\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -227,7 +227,7 @@ fn unresolved_subject_is_silent() {
 #[test]
 fn in_domain_literal_never_flags() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -249,7 +249,7 @@ fn in_domain_literal_never_flags() {
 #[test]
 fn decided_false_test_is_arm_dead() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"1 > 2\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -267,7 +267,7 @@ fn decided_false_test_is_arm_dead() {
 #[test]
 fn foreign_dollar_eq_guard_is_literal_domain() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -341,7 +341,7 @@ fn def_hidden_false_guard_is_arm_dead() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
                 run.rank: { type: { enum: [fail, bronze, silver, gold] }, default: fail }\n\
                 defs:\n  never: { type: bool, cel: \"1 > 2\" }\n---\n## Shot 1.\n\
-                <match on=\"run.rank\">\n\
+                <match subject=\"run.rank\">\n\
                 <when test=\"@never\">\n@narrator: x\n</when>\n\
                 <otherwise>\n@narrator: o\n</otherwise>\n\
                 </match>\n";
@@ -360,7 +360,7 @@ fn def_hidden_false_guard_is_arm_dead() {
 #[test]
 fn spec_54_subsumption_example() {
     let text = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold | silver\">\n@narrator: a\n</when>\n\
          <when is=\"gold\">\n@narrator: b\n</when>\n\
          <when is=\"platnum\">\n@narrator: c\n</when>\n\
@@ -406,7 +406,7 @@ fn spec_54_subsumption_example() {
 #[test]
 fn guarded_earlier_arm_never_subsumes() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold\" test=\"run.flag\">\n@narrator: a\n</when>\n\
          <when is=\"gold\">\n@narrator: b\n</when>\n\
          <otherwise>\n@narrator: c\n</otherwise>\n\
@@ -429,7 +429,7 @@ fn guarded_earlier_arm_never_subsumes() {
 fn dead_choice_when_in_branch_and_hub() {
     let branch_out = codes(&format!(
         "{HDR}<branch id=\"approach\">\n\
-         <choice id=\"soft\" label=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
+         <choice id=\"soft\" text=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -443,7 +443,7 @@ fn dead_choice_when_in_branch_and_hub() {
 
     let hub_out = codes(&format!(
         "{HDR}<hub id=\"h\">\n\
-         <choice id=\"soft\" label=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
+         <choice id=\"soft\" text=\"Soft\" when=\"1 > 2\">\n@narrator: a\n</choice>\n\
          </hub>\n"
     ));
     assert!(
@@ -462,7 +462,7 @@ fn dead_choice_when_in_branch_and_hub() {
 #[test]
 fn otherwise_dead_on_covered_bool() {
     let text = format!(
-        "{HDR}<match on=\"run.flag\">\n\
+        "{HDR}<match subject=\"run.flag\">\n\
          <when is=\"true\">\n@narrator: a\n</when>\n\
          <when is=\"false\">\n@narrator: b\n</when>\n\
          <otherwise>\n@narrator: c\n</otherwise>\n\
@@ -483,7 +483,7 @@ fn otherwise_dead_on_covered_bool() {
 fn otherwise_live_when_maybe_unset() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
                 run.flag2: { type: bool }\n---\n## Shot 1.\n\
-                <match on=\"run.flag2\">\n\
+                <match subject=\"run.flag2\">\n\
                 <when is=\"true\">\n@narrator: a\n</when>\n\
                 <when is=\"false\">\n@narrator: b\n</when>\n\
                 <otherwise>\n@narrator: c\n</otherwise>\n\
@@ -502,7 +502,7 @@ fn otherwise_live_when_maybe_unset() {
 #[test]
 fn undecided_guard_is_never_flagged() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"run.n > 1\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -728,7 +728,7 @@ fn holds_guards_stay_undecided() {
 // -- Finding 3: standalone component-file reachability param domains ------
 //
 // A component file checked STANDALONE (no `::use`/`resolve_components`)
-// routes `<match on="@param">` through `check_param_match` (T7/T8
+// routes `<match subject="@param">` through `check_param_match` (T7/T8
 // exhaustiveness), but the SEPARATE reachability pass (`check_reachability`,
 // this module) previously built `$`'s domain from schema paths + an EMPTY
 // param map — so a bare-`@param` subject's domain was never seeded on the
@@ -740,7 +740,7 @@ fn standalone_component_dollar_eq_guard_foreign_to_param_is_literal_domain() {
     let cs = codes(
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
          ## Scene 1.\n\
-         <match on=\"@tier\">\n\
+         <match subject=\"@tier\">\n\
          <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n",
@@ -757,7 +757,7 @@ fn standalone_component_covered_param_otherwise_is_dead() {
     let cs = codes(
         "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
          ## Scene 1.\n\
-         <match on=\"@tier\">\n\
+         <match subject=\"@tier\">\n\
          <when is=\"cold|warm|fond\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n",
@@ -776,7 +776,7 @@ fn scene_reachability_not_polluted_by_param_seeding() {
     // to `MetaKind::Component` only, mirroring `fragment_kind.rs`'s
     // `scene_doc_not_polluted_by_component_param_seeding`).
     let out = codes(&format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"$ == 'gone'\">\n@narrator: x\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\
          </match>\n"
@@ -806,7 +806,7 @@ fn unset_sentinel_choice_flags_literal_owns_arm_dead_keeps_maybe_unset() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -832,7 +832,7 @@ fn unset_sentinel_not_equals_still_flags_literal() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.phase != 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.phase != 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -848,7 +848,7 @@ fn unset_sentinel_reversed_operands_flag_literal() {
     let eq = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"'unset' == run.phase\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"'unset' == run.phase\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -858,7 +858,7 @@ fn unset_sentinel_reversed_operands_flag_literal() {
     let ne = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"'unset' != run.phase\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"'unset' != run.phase\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -873,7 +873,7 @@ fn unset_sentinel_reversed_operands_flag_literal() {
 fn unset_sentinel_nested_in_boolean_expr_flags_literal() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -889,7 +889,7 @@ fn unset_sentinel_nested_in_boolean_expr_flags_literal() {
 fn unset_sentinel_match_arm_dollar_flags_literal_owns_arm_dead() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
-         <match on=\"run.phase\">\n\
+         <match subject=\"run.phase\">\n\
          <when test=\"$ == 'unset'\">\n@x: a\n</when>\n\
          <otherwise>\n@x: o\n</otherwise>\n\
          </match>\n",
@@ -917,7 +917,7 @@ fn control_undefaulted_foreign_enum_not_unset_is_literal_domain() {
                run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
     let out = codes(&format!(
         "{hdr}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.grade == 'legendary'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.grade == 'legendary'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -937,7 +937,7 @@ fn control_undefaulted_foreign_enum_not_unset_is_literal_domain() {
 fn control_defaulted_enum_foreign_typo_is_literal_domain() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.rank == 'legendary'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.rank == 'legendary'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -975,7 +975,7 @@ fn control_legit_unset_enum_member_is_normal_comparison() {
                run.phase: { type: { enum: [unset, active] } }\n---\n## Shot 1.\n";
     let out = codes(&format!(
         "{hdr}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(
@@ -996,7 +996,7 @@ fn control_quest_state_in_domain_comparison_unchanged() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.phase == 'active'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.phase == 'active'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(!out.contains(&"E-ARM-DEAD".to_string()), "{out:?}");
@@ -1023,7 +1023,7 @@ fn sentinel_alongside_independently_false_clause_keeps_arm_dead() {
     let out = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"false && run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"false && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
     assert!(
@@ -1047,7 +1047,7 @@ fn sentinel_alongside_foreign_typo_flags_both_roots() {
                run.phase: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n";
     let out = codes(&format!(
         "{hdr}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" \
+         <choice id=\"c\" text=\"C\" \
          when=\"run.grade == 'legendary' && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
@@ -1069,7 +1069,7 @@ fn sentinel_alongside_foreign_typo_flags_both_roots() {
 fn sentinel_as_sole_cause_still_suppresses_arm_dead() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"C\" when=\"run.flag && run.phase == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n"
     ));
     assert!(out.contains(&"E-UNSET-LITERAL".to_string()), "{out:?}");
@@ -1091,7 +1091,7 @@ fn two_sentinel_comparisons_both_flag_and_arm_dead_stays_suppressed() {
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.phase: { type: { enum: [active, complete, failed] } }\n  \
          run.stage: { type: { enum: [active, complete, failed] } }\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"C\" \
+         <choice id=\"c\" text=\"C\" \
          when=\"run.phase == 'unset' || run.stage == 'unset'\">\n@x: a\n</choice>\n\
          </branch>\n",
     );
@@ -1334,12 +1334,12 @@ fn an_options_own_visit_record_is_true_in_its_arm() {
     let hub = |inner: &str| {
         format!(
             "---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
-             <choice id=\"ledger\" label=\"Read\">\n{inner}</choice>\n\
-             <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
+             <choice id=\"ledger\" text=\"Read\">\n{inner}</choice>\n\
+             <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
         )
     };
     let text = hub(
-        "<match on=\"scene.visited.lamp.ledger\">\n<when is=\"false\">\n@narrator: First.\n</when>\n\
+        "<match subject=\"scene.visited.lamp.ledger\">\n<when is=\"false\">\n@narrator: First.\n</when>\n\
          <otherwise>\n@narrator: Again.\n</otherwise>\n</match>\n",
     );
     let ds = run(&text).diagnostics;
@@ -1354,7 +1354,7 @@ fn an_options_own_visit_record_is_true_in_its_arm() {
     );
     // A guard deciding the record false there is dead the same way.
     let guard = run(&hub(
-        "<match on=\"scene.visited.lamp.leave\">\n<when test=\"!scene.visited.lamp.ledger\">\n\
+        "<match subject=\"scene.visited.lamp.leave\">\n<when test=\"!scene.visited.lamp.ledger\">\n\
          @narrator: First.\n</when>\n<otherwise>\n@narrator: Again.\n</otherwise>\n</match>\n",
     ))
     .diagnostics;
@@ -1366,14 +1366,14 @@ fn an_options_own_visit_record_is_true_in_its_arm() {
     );
     // One `true` arm is exhaustive there: no arm for `false` is demanded.
     let one = codes(&hub(
-        "<match on=\"scene.visited.lamp.ledger\">\n<when is=\"true\">\n@narrator: Again.\n</when>\n</match>\n",
+        "<match subject=\"scene.visited.lamp.ledger\">\n<when is=\"true\">\n@narrator: Again.\n</when>\n</match>\n",
     ));
     assert!(!one.contains(&"E-NONEXHAUSTIVE".to_string()), "{one:?}");
     // The other option's arm knows nothing about `ledger`'s record.
     let other = codes(&format!(
         "---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
-         <choice id=\"ledger\" label=\"Read\">\n@narrator: Read.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n<match on=\"scene.visited.lamp.ledger\">\n\
+         <choice id=\"ledger\" text=\"Read\">\n@narrator: Read.\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n<match subject=\"scene.visited.lamp.ledger\">\n\
          <when is=\"false\">\n@narrator: Unread.\n</when>\n<otherwise>\n@narrator: Read.\n</otherwise>\n\
          </match>\n</choice>\n</hub>\n"
     ));
@@ -1389,11 +1389,11 @@ fn a_hubs_return_knows_what_ran_before_it() {
     let hub = |stays: &str, ret: &str| {
         format!(
             "<hub id=\"h\">\n<return>\n{ret}</return>\n{stays}\
-             <choice id=\"x\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
+             <choice id=\"x\" text=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n"
         )
     };
     let scene = |body: &str| format!("---\nkind: scene\nid: s\n---\n## Room\n{body}");
-    let a = "<choice id=\"a\" label=\"A\">\n@narrator: A.\n</choice>\n";
+    let a = "<choice id=\"a\" text=\"A\">\n@narrator: A.\n</choice>\n";
     let line = |guard: &str| format!("@narrator{{when=\"{guard}\"}}: Never.\n");
     for guard in [
         "scene.visited.h.x",
@@ -1408,13 +1408,13 @@ fn a_hubs_return_knows_what_ran_before_it() {
         );
     }
     // Two options stay: which one ran is not known.
-    let two = format!("{a}<choice id=\"b\" label=\"B\">\n@narrator: B.\n</choice>\n");
+    let two = format!("{a}<choice id=\"b\" text=\"B\">\n@narrator: B.\n</choice>\n");
     let cs = codes(&scene(&hub(&two, &line("!scene.visited.h.a"))));
     assert!(!cs.contains(&"E-ARM-DEAD".to_string()), "{cs:?}");
     // Entered again from an outer hub's option: `x` may have been taken.
     let nested = scene(&format!(
-        "<hub id=\"o\">\n<choice id=\"talk\" label=\"Talk\">\n{}</choice>\n\
-         <choice id=\"go\" label=\"Go\" exit>\n@narrator: Go.\n</choice>\n</hub>\n",
+        "<hub id=\"o\">\n<choice id=\"talk\" text=\"Talk\">\n{}</choice>\n\
+         <choice id=\"go\" text=\"Go\" exit>\n@narrator: Go.\n</choice>\n</hub>\n",
         hub(a, &line("scene.visited.h.x"))
     ));
     let cs = codes(&nested);
@@ -1430,9 +1430,9 @@ fn a_branch_that_always_picks_sets_its_record() {
     let branch = |attrs: &str| {
         format!(
             "---\nkind: scene\nid: w\n---\n## A\n<branch id=\"door\"{attrs}>\n\
-             <choice id=\"inside\" label=\"In\">\n@narrator: In.\n</choice>\n\
-             <choice id=\"stay\" label=\"Out\">\n@narrator: Out.\n</choice>\n</branch>\n\
-             <match on=\"scene.choices.door\">\n<when is=\"inside\">\n@narrator: a\n</when>\n\
+             <choice id=\"inside\" text=\"In\">\n@narrator: In.\n</choice>\n\
+             <choice id=\"stay\" text=\"Out\">\n@narrator: Out.\n</choice>\n</branch>\n\
+             <match subject=\"scene.choices.door\">\n<when is=\"inside\">\n@narrator: a\n</when>\n\
              <when is=\"stay\">\n@narrator: b\n</when>\n</match>\n"
         )
     };

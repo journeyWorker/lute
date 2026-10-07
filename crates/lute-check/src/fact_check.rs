@@ -5,7 +5,7 @@
 //!
 //! | slot | decides false | decides true |
 //! | --- | --- | --- |
-//! | `<when test>`, `<choice when>`, `::next{when}`, content line `when=` | `E-ARM-DEAD` | — |
+//! | `<when test>`, `<choice when>`, `::jump{when}`, content line `when=` | `E-ARM-DEAD` | — |
 //! | lore entry `when` | [`E_ENTRY_UNREACHABLE`] | — |
 //! | scene beat `when` (dsl 0.21.0) | [`crate::beats::E_BEAT_UNREACHABLE`] | — |
 //! | `<objective done>` | `E-OBJECTIVE-UNSATISFIABLE` | — |
@@ -283,7 +283,7 @@ pub fn check_fact_guards(
     out
 }
 
-/// dsl 0.28.0: in a kind or `for=` beat, a `<match on="occasion.target">`
+/// dsl 0.28.0: in a kind or `for=` beat, a `<match subject="occasion.target">`
 /// needs an arm only for the members the beat's `when` can hold for. With
 /// the fact envelope in scope, members the per-file check could not rule
 /// out may be: the match's `E-NONEXHAUSTIVE` in `diags` (the document's
@@ -410,7 +410,7 @@ pub fn beat_never_for(beat: &crate::ProjectBeat<'_>, env: &FactEnv) -> Vec<Strin
     }
 }
 
-/// Every `<match on="occasion.target">` in `nodes`, nested ones included.
+/// Every `<match subject="occasion.target">` in `nodes`, nested ones included.
 fn target_matches<'n>(nodes: &'n [Node], out: &mut Vec<&'n lute_syntax::ast::Match>) {
     for node in nodes {
         match node {
@@ -1005,7 +1005,7 @@ impl<'a> Guards<'a> {
         if v.newly_false() {
             if !self.literal_owns(slot, dollar) {
                 // dsl 0.23.0 §10: `--wip` grades a dead arm, choice, gated
-                // line, or `::next` like every other dead guard.
+                // line, or `::jump` like every other dead guard.
                 out.push(v.grade(dead(&v)));
             }
         } else if warn_guaranteed {
@@ -1203,7 +1203,7 @@ impl<'a> Guards<'a> {
                                     E_ARM_DEAD,
                                     Severity::Error,
                                     format!(
-                                        "this `::next` never fires: its `when` guard `{}` is \
+                                        "this `::jump` never fires: its `when` guard `{}` is \
                                          provably false — {} (dsl 0.20.0 §5)",
                                         when.raw.trim(),
                                         v.dead_reasons()

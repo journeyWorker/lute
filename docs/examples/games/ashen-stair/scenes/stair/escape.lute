@@ -10,7 +10,7 @@ when: '@escapedThisClimb'
 ## Sky
 
 ::bg{location="outside" time="dawn"}
-::music{action="start" mood="triumph" volume="up"}
+::music{playback="start" mood="triumph" volume="up"}
 @narrator{code="0010"}: Grass. Real grass, wet, cold, and the sky is enormous and does not care about her at all. It is the best thing she has ever seen.
 @narrator{code="0020" when="run.carriesFeather"}: The grey feather slips out of her collar and goes up, and up, and does not come down.
 @narrator{code="0030" when="user.ashfallOn"}: By the door outside, one grey lily has come up through the grass. She takes it for Maud.

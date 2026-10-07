@@ -8,11 +8,11 @@ title: Vesna's request
 
 @vesna: The pressure in the shed keeps climbing. Will you help?
 <branch id="request">
-  <choice id="accept" label="I'll keep it calm">
+  <choice id="accept" text="I'll keep it calm">
     ::accept{quest="calmTheShed"}
     @vesna: Thank you.
   </choice>
-  <choice id="decline" label="Not now">
+  <choice id="decline" text="Not now">
     @vesna: Another time, then.
   </choice>
 </branch>

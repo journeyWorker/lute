@@ -260,7 +260,7 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let mut text = std::fs::read_to_string("../../docs/examples/marina-s01ep02.lute").unwrap();
     text.push_str("\n## Shot 99.\n\n<timeline>\n<track subject=\"camera\">\n");
     for i in 0..13 {
-        text.push_str(&format!("::camera{{focus=\"marina\" zoom=\"1.{i}\"}}\n"));
+        text.push_str(&format!("::camera{{focus=\"marina\" duration=\"1.{i}\"}}\n"));
     }
     text.push_str("</track>\n</timeline>\n");
     let res = check(&input_for_in(
@@ -453,7 +453,7 @@ fn divergence_holds_under_plugin_defs() {
     // line and is `E-TAG-INLINE-BODY` (dsl §2.3).
     let scene = |guard: &str| {
         format!(
-            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n<when test=\"{guard}\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n"
+            "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\nstate:\n  scene.flag: {{ type: bool, default: false }}\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"{guard}\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n"
         )
     };
 
@@ -768,12 +768,12 @@ fn divergence_holds_under_components() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("greet.lute"),
-        "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n::auto{character=@who}\n@narrator: hi\n",
+        "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scene 1.\n::actor{character=@who}\n@narrator: hi\n",
     )
     .unwrap();
 
     // (a) happy path: import + ::use a valid component cleanly; projections agree.
-    // `greet.lute`'s `::auto` writes no `anchor`, so `auto-anchor-on-show` reads
+    // `greet.lute`'s `::actor` writes no `anchor`, so `auto-anchor-on-show` reads
     // the `anchor` domain's `default:` — the scene declares that slot inline, or
     // the implicit read is `E-DOMAIN-UNKNOWN` (dsl 0.9.0 D-D) and drowns out the
     // component projection this case is about.

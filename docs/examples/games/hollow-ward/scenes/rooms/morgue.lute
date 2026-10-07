@@ -10,7 +10,7 @@ priority: 10
 ## Morgue
 
 ::bg{location="morgue" time="night"}
-::music{action="start" mood="pulse" volume="low"}
+::music{playback="start" mood="pulse" volume="low"}
 @narrator{code="0010"}: The cold is the first thing and the second thing. A wall of steel drawers, twenty-four of them, and one gurney parked in the middle of the floor with its sheet folded back like a hotel bed.
 @narrator{code="0020"}: The gurney is where he rests. You know this the way you know a dog's basket.
 @nell{code="0010" mono}: If Toby is anywhere, he's in one of those drawers. Please be cold. Cold is alive, in here.

@@ -10,19 +10,19 @@ priority: 100
 ## The promenade at dusk
 
 ::bg{location="promenade" time="night"}
-::music{action="start" mood="festive" volume="normal"}
+::music{playback="start" mood="festive" volume="normal"}
 ::vfx{type="lanterns"}
 @narrator{code="0010"}: The whole town walks the promenade in the blue hour, carrying lanterns on sticks: fish, stars, a lopsided whale, a lantern shaped like a lantern.
 
-<match on="quest.festivalLantern.state">
+<match subject="quest.festivalLantern.state">
   <when is="complete">
-    ::auto{character="pell" anchor="center" action="fadeInUp"}
+    ::actor{character="pell" anchor="center" action="fadeInUp"}
     @pell{code="0010" emotion="happy"}: That's ours. That's the shop's. Forty-one years.
     @narrator{code="0020"}: Your lantern is not the most beautiful on the promenade. It is the only one that is yours.
   </when>
   <when is="failed">
     @narrator{code="0030"}: The Lantern Walk starts without a lantern from the shop on Tern Street, for the first time in forty years.
-    ::auto{character="pell" anchor="center" action="fadeInUp"}
+    ::actor{character="pell" anchor="center" action="fadeInUp"}
     @pell{code="0020" emotion="sad"}: Never mind, love. It's only paper.
     @sol{code="0010" mono}: It is not only paper. She has said "only paper" twice now, and her hands are shaking worse than on Monday.
   </when>
@@ -37,22 +37,22 @@ priority: 100
 @narrator{code="0050"}: At the bottom of the slipway people crouch and let their lanterns go. The tide takes them out in a slow, glowing line toward the lighthouse.
 
 <branch id="walkWith" prompt="Someone should be beside you when the lanterns go out.">
-  <choice id="ines" label="Find Ines." into="run.festivalWith" value="ines" when="run.aff.ines >= 2">
-    ::auto{character="ines" anchor="left" action="fadeInUp"}
+  <choice id="ines" text="Find Ines." into="run.festivalWith" value="ines" when="run.aff.ines >= 2">
+    ::actor{character="ines" anchor="left" action="fadeInUp"}
     @ines{code="0010" emotion="shy"}: I hoped you'd look for me. I didn't want to hope it out loud.
     ::set{run.aff.ines += 1}
   </choice>
-  <choice id="theo" label="Find Theo." into="run.festivalWith" value="theo" when="run.aff.theo >= 2">
-    ::auto{character="theo" anchor="right" action="fadeInUp"}
+  <choice id="theo" text="Find Theo." into="run.festivalWith" value="theo" when="run.aff.theo >= 2">
+    ::actor{character="theo" anchor="right" action="fadeInUp"}
     @theo{code="0010" emotion="happy"}: Qualified hands. You floated it. I'm — yeah. Proud's a weird word. I'm that.
     ::set{run.aff.theo += 1}
   </choice>
-  <choice id="pell" label="Stay with Aunt Pell." into="run.festivalWith" value="pell">
-    ::auto{character="pell" anchor="center" action="fadeInUp"}
+  <choice id="pell" text="Stay with Aunt Pell." into="run.festivalWith" value="pell">
+    ::actor{character="pell" anchor="center" action="fadeInUp"}
     @pell{code="0030"}: You don't have to babysit me.
     @sol{code="0020"}: I know.
   </choice>
 </branch>
 
 @narrator{code="0060"}: The last lantern rounds the breakwater. For a moment the whole bay holds its breath, lit from underneath.
-::music{action="fadeOut"}
+::music{playback="fadeOut"}

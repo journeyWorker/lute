@@ -346,7 +346,7 @@ fn ever_read_is_a_readable_reserved_flag_and_unwritable() {
     let src = scene(
         "a.ever",
         "state:\n  run.x: { type: bool, default: false }\n",
-        "<match on=\"entry.note.everRead\">\n<when is=\"true\">\n@narrator: again\n</when>\n\
+        "<match subject=\"entry.note.everRead\">\n<when is=\"true\">\n@narrator: again\n</when>\n\
          <otherwise>\n@narrator: first\n</otherwise>\n</match>\n::set{entry.note.everRead = true}\n",
     );
     let ds = diags(&src);

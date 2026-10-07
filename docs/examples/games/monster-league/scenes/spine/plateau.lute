@@ -10,7 +10,7 @@ once: false
 ## The gate
 
 ::bg{location="summit-plateau" time="day"}
-::auto{character="gatekeeper" anchor="center" action="enter"}
+::actor{character="gatekeeper" anchor="center" action="enter"}
 <match>
   <when test="@badgeCount >= 8">
     @gatekeeper{code="0010"}: Eight badges. The Summit League is ready for you. Beyond this door are the Elite Four, and past them, the Champion.

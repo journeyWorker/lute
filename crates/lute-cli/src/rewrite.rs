@@ -220,20 +220,25 @@ fn tag_file(file: &Path, force: bool, scope: Scope<'_>) -> (Outcome, usize) {
 /// §3 and 0.32.0 §1.3), rewriting a file only when a span was actually
 /// changed. CEL slots are visited through the shared syntax walker; YAML
 /// project surfaces use the same byte-preserving CEL rewriter.
-pub fn run_fix(path: &Path) -> ExitCode {
-    let files = if path.is_dir() {
-        match fix_targets(path) {
-            Ok(files) => files,
-            Err(e) => {
-                eprintln!("lute: cannot walk {}: {e}", path.display());
-                return ExitCode::from(2);
-            }
+pub fn run_fix(paths: &[PathBuf]) -> ExitCode {
+    if let [path] = paths {
+        if !path.is_dir() {
+            return fix_file(path, Scope::Single).0.exit_code();
         }
-    } else {
-        vec![path.to_path_buf()]
-    };
-    if files.len() == 1 && !path.is_dir() {
-        return fix_file(&files[0], Scope::Single).0.exit_code();
+    }
+    let mut files = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            match fix_targets(path) {
+                Ok(found) => files.extend(found),
+                Err(e) => {
+                    eprintln!("lute: cannot walk {}: {e}", path.display());
+                    return ExitCode::from(2);
+                }
+            }
+        } else {
+            files.push(path.clone());
+        }
     }
     let mut worst = Outcome::Unchanged;
     let mut changed = 0;

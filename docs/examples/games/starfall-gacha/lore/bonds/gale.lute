@@ -30,10 +30,10 @@ title: Gale, Balladeer of Questionable Rhyme (SR)
 <beat use="bondStory" id="galeR2" who="gale" rank="r2" prev="bonds.gale.galeR1" vow="Every tavern from here to the sea will know your name. Spelled wrong, probably." instance="use-002">
   @gale{code="0010"}: I finished your song. Do you want to hear it?
   <branch id="galeR2Song" prompt="Gale tunes his lute, hopeful.">
-    <choice id="yes" label="Of course.">
+    <choice id="yes" text="Of course.">
       @gale{code="0020" emotion="happy"}: "They came from the stars, and they stayed." ...That's the whole song. Short songs last longer.
     </choice>
-    <choice id="rhymes" label="Does it rhyme?">
+    <choice id="rhymes" text="Does it rhyme?">
       @gale{code="0030" emotion="smug"}: Not even slightly. It's my best work.
     </choice>
   </branch>

@@ -10,13 +10,13 @@ beats outrank it when their moment comes. */
   @brann{code="0010" emotion="grim"}: Sit. No, sit. I've dragged four bodies out of that water this year and you're the only one that argued.
   @brann{code="0020"}: I don't know what you are, boy. I know what I want. Come up on your own, once. Then we'll talk about the crown.
   <branch id="oathAnswer" prompt="Brann waits.">
-    <choice id="swear" label="\"I'll come up on my own.\"">
+    <choice id="swear" text="\"I'll come up on my own.\"">
       @ilo{code="0010"}: I'll come up on my own.
       @brann{code="0030" emotion="wry"}: Everyone swears that. Go on, then.
       ::set{user.bond.brann += 1}
       ::accept{quest="brannOath"}
     </choice>
-    <choice id="shrug" label="Say nothing">
+    <choice id="shrug" text="Say nothing">
       @brann{code="0040"}: Suit yourself. The rope's there when you want it.
     </choice>
   </branch>

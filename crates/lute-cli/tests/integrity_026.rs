@@ -275,7 +275,7 @@ fn a_state_path_two_imports_declare_is_reported_at_the_later_import() {
         "state:\n  run.fossil: { type: { enum: [none, dome, helix] }, default: none }\n",
     );
     let body =
-        "<match on=\"run.fossil\">\n  <when is=\"none\">\n    @narrator: none.\n  </when>\n  \
+        "<match subject=\"run.fossil\">\n  <when is=\"none\">\n    @narrator: none.\n  </when>\n  \
                 <when is=\"dome\">\n    @narrator: dome.\n  </when>\n</match>\n";
     write(&dir, "scenes/a.lute", &scene("a", "", body));
     let out = run(&dir, &["check-project", "."]);
@@ -314,7 +314,7 @@ fn a_duplicate_plugin_id_is_located_and_the_project_is_still_checked() {
     write(
         &dir,
         "scenes/b.lute",
-        &scene("b", "", "<match on=\"run.nope\">\n</match>\n"),
+        &scene("b", "", "<match subject=\"run.nope\">\n</match>\n"),
     );
     let out = run(&dir, &["check-project", "."]);
     let s = text(&out);
@@ -597,7 +597,7 @@ fn refs_project(tag: &str) -> PathBuf {
     write(
         &dir,
         "scenes/east.lute",
-        &scene("east", "", "::give{item=\"goodRod\"}\n<branch id=\"b\">\n  <choice id=\"c\" label=\"C\">\n    ::give{item=\"potion\"}\n  </choice>\n</branch>\n"),
+        &scene("east", "", "::give{item=\"goodRod\"}\n<branch id=\"b\">\n  <choice id=\"c\" text=\"C\">\n    ::give{item=\"potion\"}\n  </choice>\n</branch>\n"),
     );
     write(
         &dir,

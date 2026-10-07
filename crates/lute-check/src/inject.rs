@@ -42,7 +42,7 @@
 //! `E-DOMAIN-UNKNOWN` (see [`missing_anchor_domain_diag`]). Every other rule
 //! either reads no vocabulary at all (`auto_pose_reset`, `entry_emotion_lookahead`,
 //! `stage_bookkeeping`'s scene-change arm) or reads it only from an attribute the
-//! author WROTE (`is_declared_exit` on `::auto`'s `action`), which the attribute
+//! author WROTE (`is_declared_exit` on `::actor`'s `action`), which the attribute
 //! check already covers. A new rule of the first shape must diagnose, not
 //! silently skip: skipping turns an undeclared slot into a behavior change.
 //!
@@ -50,10 +50,10 @@
 //! The arch doc's ideal is *manifest-driven, code-executed*: the manifest's
 //! per-directive `reads`/`writes`/`semantics` flags declare *which* directives
 //! touch stage state, and the resolver algorithm stays code. `lute.core`'s
-//! `::auto` already carries `["reads.onStage", "usesAnchor", "mayExitCharacter",
+//! `::actor` already carries `["reads.onStage", "usesAnchor", "mayExitCharacter",
 //! "writes.characterState"]` (see `assets/lute.core/directives/staging.yaml`).
 //! At Task 4.8 the reducer hardcodes the *known* `lute.core` staging vocabulary
-//! (`::auto` = entrance/exit/pose, `::bg` = scene change, `::line` emotion/pose
+//! (`::actor` = entrance/exit/pose, `::bg` = scene change, `::line` emotion/pose
 //! attrs) rather than reading those flags, because a stable, documented baseline
 //! is more valuable here than a premature flag-driven dispatch. Swapping the
 //! `is_*`/tag checks below for `semantics`-flag lookups is a mechanical follow-up
@@ -130,7 +130,7 @@ pub struct StageState {
 /// in `W-STAGE-ABSENT`, with the 1-based line of the exit / `::bg` / `::clear`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Departure {
-    /// An `::auto` whose `action` is a declared exit member.
+    /// An `::actor` whose `action` is a declared exit member.
     Exit { line: u32 },
     /// Auto-hidden by a `::bg` scene change while on stage.
     SceneChange { line: u32 },
@@ -146,7 +146,7 @@ impl StageState {
     /// * `on_stage`: a character is present only if present in every arm with
     ///   an identical `SpriteState`; differing or partial → dropped (that
     ///   encodes `Unknown`: a later plain line assumes no pose — no false
-    ///   posReset — and a later `::auto` is a fresh show → anchor + preload).
+    ///   posReset — and a later `::actor` is a fresh show → anchor + preload).
     /// * `dirty` survives for a carried character if ANY arm marks it (a
     ///   redundant posReset beats a missing one — a `variant`/`dialogMotion`-
     ///   only line dirties without changing `SpriteState`).
@@ -265,8 +265,8 @@ pub fn lower_node(
 ) -> (StageState, Vec<InjectedCommand>) {
     let mut emit = Vec::new();
     match node {
-        Node::Directive(d) if d.tag == "auto" => {
-            lower_auto(&mut state, d, lookahead, &mut emit, domains)
+        Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE => {
+            lower_actor(&mut state, d, lookahead, &mut emit, domains)
         }
         Node::Directive(d) if d.tag == "bg" => stage_bookkeeping_bg(&mut state, d, &mut emit),
         Node::Directive(d) if d.tag == lute_manifest::core::CLEAR_DIRECTIVE => {
@@ -274,20 +274,22 @@ pub fn lower_node(
         }
         Node::Directive(d) if d.tag == "music" => {
             // Bookkeeping only: no implicit command.
-            state.music = attr_str(&d.attrs, "mood").or_else(|| attr_str(&d.attrs, "action"));
+            state.music = attr_str(&d.attrs, "mood").or_else(|| attr_str(&d.attrs, "playback"));
         }
         Node::Line(l) => lower_line(&mut state, l, lookahead, &mut emit, domains),
-        // Other leaf directives (sfx/vfx/cut/video/camera) and Set/Branch/Match/
+        // Other leaf directives (sfx/vfx/cg/video/camera/sequence) and Set/Branch/Match/
         // Timeline don't participate in stage-entity lifetime here.
         _ => {}
     }
     (state, emit)
 }
 
-/// Lower an `::auto` directive — the character entrance / exit / pose node.
+/// Lower an `::actor` directive — the character entrance / exit / pose node.
 /// Runs the show rules in arch-doc order: `auto-anchor-on-show`, then
-/// `entry-emotion-lookahead`, then `stage-bookkeeping`.
-fn lower_auto(
+/// `entry-emotion-lookahead`, then `stage-bookkeeping`. An authored `emotion`
+/// updates the stage emotion like a line's (dsl 0.37.0 §5.1) and makes the
+/// entrance lookahead unnecessary.
+fn lower_actor(
     state: &mut StageState,
     d: &Directive,
     lookahead: &[Node],
@@ -298,15 +300,16 @@ fn lower_auto(
         return;
     };
     let action = attr_str(&d.attrs, "action");
+    let authored_emotion = attr_str(&d.attrs, "emotion");
 
-    // Exit: the `::auto` IS the hide command — bookkeeping just frees the slot.
+    // Exit: the `::actor` IS the hide command — bookkeeping just frees the slot.
     if action
         .as_deref()
         .is_some_and(|a| is_declared_exit(a, domains))
     {
         // §11.2 position 2 (**D-X**): a declared exit for a character the
         // threaded state already records as gone. Only after an EXPLICIT
-        // earlier exit — `exited`, never `!on_stage` — so a first-ever `::auto`
+        // earlier exit — `exited`, never `!on_stage` — so a first-ever `::actor`
         // exit for a character nothing staged is not the finding and is silent.
         if let Some(how) = state.exited.get(&character).copied() {
             state
@@ -333,6 +336,10 @@ fn lower_auto(
                 sp.pose = Some(p.clone());
                 mark_dirty = true;
             }
+            if let Some(e) = &authored_emotion {
+                sp.emotion = Some(e.clone());
+                mark_dirty = true;
+            }
         }
         if mark_dirty {
             state.dirty.insert(character);
@@ -342,7 +349,10 @@ fn lower_auto(
 
     // Entrance / show.
     auto_anchor_on_show(state, d, &character, emit, domains);
-    let emotion = entry_emotion_lookahead(&character, lookahead, emit);
+    let emotion = match authored_emotion {
+        Some(e) => Some(e),
+        None => entry_emotion_lookahead(&character, lookahead, emit),
+    };
     stage_bookkeeping_show(state, d, &character, emotion, domains);
 }
 
@@ -367,7 +377,7 @@ fn lower_auto(
 /// the author's own.
 ///
 /// The no-attribute arm makes the `anchor` domain an **implicit dependency of
-/// the `::auto` itself**, and therefore a CHECKED one: see
+/// the `::actor` itself**, and therefore a CHECKED one: see
 /// [`missing_anchor_domain_diag`].
 fn auto_anchor_on_show(
     state: &mut StageState,
@@ -442,7 +452,7 @@ fn entry_emotion_lookahead(
 /// dsl 0.10.0 §11.2 (**D-X**): also the site of [`W_EXIT_INERT`]. The resolved
 /// `action` domain is demonstrably in hand here — `content_line.rs` already
 /// enumerates its members on this exact attribute for `E-BAD-ENUM` — and the
-/// reducer already consults `exits:` one construct away, in [`lower_auto`]. The
+/// reducer already consults `exits:` one construct away, in [`lower_actor`]. The
 /// missing piece was only ever a lookup.
 fn lower_line(
     state: &mut StageState,
@@ -692,7 +702,7 @@ fn attr_value_str(value: &AttrValue) -> Option<String> {
 
 /// Whether the **two-event form** is written for `speaker` at this point:
 /// scanning forward, the first node that concerns that character's stage
-/// presence is an `::auto` whose `action` is a declared exit member.
+/// presence is an `::actor` whose `action` is a declared exit member.
 ///
 /// This lookahead is not an optimisation. Spec §11.2 remedy 1 (**D-AD**) says
 /// in as many words that writing the departure where it happens *discharges*
@@ -713,7 +723,7 @@ fn exit_is_written_next(
             {
                 return false
             }
-            Node::Directive(d) if d.tag == "auto" => {
+            Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE => {
                 if attr_str(&d.attrs, "character").as_deref() == Some(speaker) {
                     return attr_str(&d.attrs, "action")
                         .is_some_and(|a| is_declared_exit(&a, domains));
@@ -748,7 +758,7 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
             "`{action}` is a declared exit of the `action` domain, but on a content line it is \
              honoured as an action and does NOT remove `{speaker}` from the stage — the artifact \
              gets no `exit` record. Either write the two-event form (keep this line, then \
-             `::auto{{character=\"{speaker}\" action=\"{action}\"}}`), or, if `{action}` is a \
+             `::actor{{character=\"{speaker}\" action=\"{action}\"}}`), or, if `{action}` is a \
              pose rather than a departure, remove it from the `action` domain's `exits:` \
              (dsl 0.10.0 §11.2)"
         ),
@@ -788,19 +798,19 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
         (Staged::Line, Departure::Exit { line }) => format!(
             "`{character}` left the stage on an earlier declared exit (line {line}) on a path \
              that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::auto` before this point, or \
+             someone who is not present. Show them again with an `::actor` before this point, or \
              remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)"
         ),
         (Staged::Line, Departure::SceneChange { line }) => format!(
             "`{character}` was auto-hidden by an earlier `::bg` scene change (line {line}) on a \
              path that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::auto` after the `::bg` (dsl \
+             someone who is not present. Show them again with an `::actor` after the `::bg` (dsl \
              0.10.0 §11.2, 0.22.0 §12)"
         ),
         (Staged::Exit, Departure::Exit { line }) => format!(
             "`{character}` already left on the declared exit at line {line} on a path that \
              reaches here and has not been shown again, so this exit does nothing. Delete it, \
-             or show them again with an `::auto` before it (dsl 0.10.0 §11.2)"
+             or show them again with an `::actor` before it (dsl 0.10.0 §11.2)"
         ),
         (Staged::Exit, Departure::SceneChange { line }) => format!(
             "`{character}` is already off stage (hidden by the `::bg` at line {line}) on a path \
@@ -810,7 +820,7 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
         (Staged::Line, Departure::Clear { line }) => format!(
             "`{character}` was taken off stage by an earlier `::clear` (line {line}) on a path \
              that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::auto` after the `::clear` \
+             someone who is not present. Show them again with an `::actor` after the `::clear` \
              (dsl 0.24.0 §4)"
         ),
         (Staged::Exit, Departure::Clear { line }) => format!(
@@ -834,7 +844,7 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
 }
 
 /// Build the `E-DOMAIN-UNKNOWN` error for `auto-anchor-on-show`'s IMPLICIT read
-/// of the `anchor` domain (dsl 0.9.0 D-C/D-D), anchored at the `::auto` that
+/// of the `anchor` domain (dsl 0.9.0 D-C/D-D), anchored at the `::actor` that
 /// carries the dependency — the only span an author can act on, since no
 /// attribute exists to point at.
 ///
@@ -856,7 +866,7 @@ fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
         code: "E-DOMAIN-UNKNOWN".to_string(),
         severity: Severity::Error,
         message: format!(
-            "`{character}` is shown without an explicit `anchor`, so this `::auto` uses the \
+            "`{character}` is shown without an explicit `anchor`, so this `::actor` uses the \
              `anchor` domain's declared `default:` — but no source declares an `anchor` domain. \
              Declare it in an `enums:` block in this document's own frontmatter, in a project \
              schema reached through `uses:`, or in a plugin's `enums` export, or write an \
@@ -899,7 +909,7 @@ mod tests {
 
     fn auto(attrs: Vec<Attr>) -> Node {
         Node::Directive(Directive {
-            tag: "auto".to_string(),
+            tag: lute_manifest::core::ACTOR_DIRECTIVE.to_string(),
             attrs,
             when: None,
             span: span(),
@@ -1090,7 +1100,7 @@ mod tests {
         // The shipped test vocabulary declares `fadeOutDown` an exit, which is
         // what this test always meant by it.
         let (st2, injected) = lower_node(st, &exit, &[], &lute_test_vocab::test_domains());
-        assert!(injected.is_empty(), "the ::auto is itself the hide");
+        assert!(injected.is_empty(), "the ::actor is itself the hide");
         assert!(!st2.on_stage.contains_key("marina"));
         assert!(!st2.dirty.contains("marina"));
     }
@@ -1240,7 +1250,7 @@ mod tests {
         d
     }
 
-    /// An `::auto` with no `anchor` attr READS the `anchor` domain's `default:`,
+    /// An `::actor` with no `anchor` attr READS the `anchor` domain's `default:`,
     /// so the domain is a dependency of the DIRECTIVE. Nothing authored the
     /// domain name, and directive validation walks AUTHORED attrs only — so
     /// unless the reducer reports it, 0.8.0's default-anchor command simply
@@ -1286,7 +1296,7 @@ mod tests {
 
     /// An EXPLICIT `anchor` with no declared `anchor` domain is the ATTRIBUTE
     /// path's error (`check_domain_member`), never the reducer's. Pinned so the
-    /// two paths keep reporting once each and never twice for one `::auto`.
+    /// two paths keep reporting once each and never twice for one `::actor`.
     #[test]
     fn explicit_anchor_without_a_declared_domain_is_the_attributes_error() {
         let show = auto(vec![attr("character", "marina"), attr("anchor", "center")]);
@@ -1365,7 +1375,7 @@ mod tests {
             .unwrap()
             .message;
         assert!(
-            m.contains("::auto{"),
+            m.contains("::actor{"),
             "remedy 1, the two-event form, must be written out; got {m}"
         );
         assert!(
@@ -1398,7 +1408,7 @@ mod tests {
     }
 
     /// **D-AD remedy 1**, which spec §11.2 says *discharges* the warning: keep
-    /// the line and follow it with the `::auto` that actually leaves. The
+    /// the line and follow it with the `::actor` that actually leaves. The
     /// message names this remedy, so the remedy must work.
     #[test]
     fn exit_inert_discharged_by_the_two_event_form() {
@@ -1473,7 +1483,7 @@ mod tests {
         );
     }
 
-    /// Position 2: an `::auto` whose `action` is a declared exit member, for a
+    /// Position 2: an `::actor` whose `action` is a declared exit member, for a
     /// character already off stage — the double exit T2.4 measured.
     #[test]
     fn second_declared_exit_warns_absent() {
@@ -1507,7 +1517,7 @@ mod tests {
         );
     }
 
-    /// The same restriction on the `::auto` half: a first-ever declared exit for
+    /// The same restriction on the `::actor` half: a first-ever declared exit for
     /// a character nothing ever staged is absent-but-never-departed, so it is
     /// silent too. Only a SECOND exit is impossible.
     #[test]

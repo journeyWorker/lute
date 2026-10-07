@@ -19,11 +19,11 @@ defs:
 
 @achilles: You've come back again, lad. Take this.
 <branch id="gift">
-  <choice id="accept" label="Take it">
+  <choice id="accept" text="Take it">
     ::set{run.giftTaken = true}
     @achilles: Use it well.
   </choice>
-  <choice id="refuse" label="Not now">
+  <choice id="refuse" text="Not now">
     @achilles: Suit yourself.
   </choice>
 </branch>

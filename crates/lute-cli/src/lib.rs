@@ -323,7 +323,7 @@ pub fn run() -> ExitCode {
             expand,
         ),
         Command::Tag { path, force } => rewrite::run_tag(&path, force),
-        Command::Fix { path } => rewrite::run_fix(&path),
+        Command::Fix { paths } => rewrite::run_fix(&paths),
         Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
             run_refresh(&dir, project.as_deref())
         }

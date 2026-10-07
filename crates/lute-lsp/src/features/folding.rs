@@ -325,7 +325,7 @@ mod tests {
     #[test]
     fn entry_and_its_match_fold() {
         let text = "---\nkind: lore\n---\n\
-            <entry id=\"e\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <entry id=\"e\">\n<match subject=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
             <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
         let idx = TextIndex::new(text);
         let all = folds(text);

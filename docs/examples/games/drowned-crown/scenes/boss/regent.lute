@@ -13,7 +13,7 @@ priority: 10
 ## Throne
 
 ::bg{location="throne" time="night"}
-::music{action="stop"}
+::music{playback="stop"}
 @regent{code="0010"}: Little heir. Little drowned heir. You think the crown is a prize.
 @ilo{code="0010"}: I think it's mine.
 @regent{code="0020"}: It was mine. It was my father's. It will be yours, and it will drown you slower than the sea did.

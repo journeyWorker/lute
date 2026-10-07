@@ -10,7 +10,7 @@
 //!
 //! ## Canonical pre-order (per shot body, per node in source order)
 //! - [`Node::Line`] → `when` (if any), then each `AttrValue::Ref` slot in
-//!   `attrs` order. [`Node::Directive`] → `when` (if any — `::next`, dsl
+//!   `attrs` order. [`Node::Directive`] → `when` (if any — `::jump`, dsl
 //!   0.12.0; any directive, dsl 0.26.0 §4), then each `AttrValue::Ref` slot
 //!   in `attrs` order.
 //! - [`Node::Set`] → `expr`; then `when` (if any, dsl 0.24.0 §1).
@@ -543,8 +543,8 @@ mod tests {
                     Choice {
                         id: "cA".to_string(),
                         id_span: span(),
-                        label: "A".to_string(),
-                        label_span: span(),
+                        text: "A".to_string(),
+                        text_span: span(),
                         when: Some(slot("s5")),
                         attrs: vec![ref_attr("pick", "s6")],
                         body: vec![set_node("scene.b", "s7")],
@@ -553,8 +553,8 @@ mod tests {
                     Choice {
                         id: "cB".to_string(),
                         id_span: span(),
-                        label: "B".to_string(),
-                        label_span: span(),
+                        text: "B".to_string(),
+                        text_span: span(),
                         when: None,
                         attrs: vec![ref_attr("pick", "s8")],
                         body: vec![Node::Line(Line {
@@ -712,7 +712,7 @@ mod tests {
         // precedes a quest in the source.
         let (doc, _) = crate::parse(
             "<entry id=\"e1\" when=\"run.e1\">\n\
-             <match on=\"run.m\">\n<when is=\"true\">\n@x: a\n</when>\n</match>\n\
+             <match subject=\"run.m\">\n<when is=\"true\">\n@x: a\n</when>\n</match>\n\
              </entry>\n\
              <quest id=\"q\" start=\"run.s\">\n</quest>\n\
              <entry id=\"e2\">\n::set{run.k = run.v}\n</entry>\n",

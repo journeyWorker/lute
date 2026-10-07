@@ -14,12 +14,12 @@ when: "!holds('defeated', ['kessler'])"
 ## The invisible walls
 
 ::bg{location="venom-gym" time="night"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: The Venom Gym is lit like a stage. The floor looks empty. It is not: you walk into three invisible walls before you learn to watch the jugglers' feet.
 
 ## Kessler
 
-::auto{character="kessler" anchor="center" action="enter"}
+::actor{character="kessler" anchor="center" action="enter"}
 @kessler{code="0010" emotion="smug"}: You found the way through my walls. Most challengers find their noses first.
 ::use{component="gymLeader" who="kessler" badge="venom" intro="Fwahahaha! A mere child like you dares to challenge me? Very well, I shall show you true terror as a master of poison!" win="Humph! You have proven your worth! Here, the Venom Badge! With it your monsters can Surf, should you ever find the disc." lose="Poison is patient. So am I." prize="4300" instance="use-001"}
 @kessler{code="0020" when="@wonFight"}: The Wildmoor rangers keep an old Surf disc at the rest house. Tell Holt I said so. And tell him to find his teeth.

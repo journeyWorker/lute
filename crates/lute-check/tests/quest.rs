@@ -128,7 +128,7 @@ fn quest_state_readable_in_match() {
     let cs = codes(
         "---\nkind: quest\nstate:\n  run.d: { type: bool, default: false }\n---\n\
                     <quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-                    <on event=\"questComplete\">\n<match on=\"quest.q.state\">\n\
+                    <on event=\"questComplete\">\n<match subject=\"quest.q.state\">\n\
                     <when is=\"complete\">\n@x: done\n</when>\n<otherwise>\n@x: -\n</otherwise>\n\
                     </match>\n</on>\n</quest>\n",
     );
@@ -156,7 +156,7 @@ fn foreign_quest_state_and_objective_done_reads_are_not_undeclared() {
     // match must be fully clean, not merely free of `E-UNDECLARED`.
     let cs = codes(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-         <match on=\"quest.foo.state\">\n\
+         <match subject=\"quest.foo.state\">\n\
          <when is=\"active\" test=\"quest.foo.objectives.bar.done\">\n@x: a\n</when>\n\
          <when is=\"complete | failed\">\n@x: b\n</when>\n\
          <otherwise>\n@x: c\n</otherwise>\n\
@@ -202,7 +202,7 @@ fn scene_rejects_on_and_objective_and_quest() {
 #[test]
 fn quest_rejects_hub_timeline_and_headings() {
     let cs = codes("---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
-                    <hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>\n@x: bye\n</choice>\n</hub>\n</quest>\n");
+                    <hub id=\"h\">\n<choice id=\"c\" text=\"L\" exit>\n@x: bye\n</choice>\n</hub>\n</quest>\n");
     assert!(cs.contains(&"E-GRAMMAR-NOT-ADMITTED".to_string()), "{cs:?}");
 }
 
@@ -274,8 +274,8 @@ fn quest_branch_duplicate_choice_ids_errors() {
     // never ran (and its implicit scene.choices.<id> decl was never folded).
     let cs = codes(
         "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"run.d\"/>\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"A\">\n@x: hi\n</choice>\n\
-         <choice id=\"c\" label=\"B\">\n@x: bye\n</choice>\n</branch>\n</quest>\n",
+         <branch id=\"b\">\n<choice id=\"c\" text=\"A\">\n@x: hi\n</choice>\n\
+         <choice id=\"c\" text=\"B\">\n@x: bye\n</choice>\n</branch>\n</quest>\n",
     );
     assert!(cs.contains(&"E-CHOICE-DUP".to_string()), "{cs:?}");
 }
@@ -393,7 +393,7 @@ fn quest_on_directive_slot_opens_scene_path() {
     let text = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n\
                 <on event=\"questActive\">\n\
                 ::minigame{kind=\"rhythm\" id=\"x\" resultKey=\"service01\" wait=\"true\"}\n\
-                <match on=\"scene.minigame.service01.rank\">\n\
+                <match subject=\"scene.minigame.service01.rank\">\n\
                 <when test=\"$ == 'gold'\">\n@x: hi\n</when>\n\
                 <otherwise>\n@x: bye\n</otherwise>\n\
                 </match>\n</on>\n</quest>\n";
@@ -721,13 +721,13 @@ fn has_on_quest_state_warns() {
 #[test]
 fn quest_state_match_covers_unset_as_a_member() {
     let full = codes(&format!(
-        "{T11_SCENE}<match on=\"quest.qq.state\">\n<when is=\"unset\">\n@x: u\n</when>\n\
+        "{T11_SCENE}<match subject=\"quest.qq.state\">\n<when is=\"unset\">\n@x: u\n</when>\n\
          <when is=\"active\">\n@x: a\n</when>\n<when is=\"complete | failed\">\n@x: c\n</when>\n\
          </match>\n"
     ));
     assert!(full.is_empty(), "{full:?}");
     let missing = codes(&format!(
-        "{T11_SCENE}<match on=\"quest.qq.state\">\n<when is=\"active\">\n@x: a\n</when>\n\
+        "{T11_SCENE}<match subject=\"quest.qq.state\">\n<when is=\"active\">\n@x: a\n</when>\n\
          <when is=\"complete | failed\">\n@x: c\n</when>\n</match>\n"
     ));
     assert!(

@@ -31,9 +31,9 @@ fn every_choice_guarded_flags_all_guarded() {
     let t = format!(
         "{HDR}state:\n  scene.x: {{ type: bool }}\n  scene.y: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"approach\">\n\
-         <choice id=\"soft\" label=\"Soft\" when=\"scene.x\">\n\
+         <choice id=\"soft\" text=\"Soft\" when=\"scene.x\">\n\
          </choice>\n\
-         <choice id=\"blunt\" label=\"Blunt\" when=\"scene.y\">\n\
+         <choice id=\"blunt\" text=\"Blunt\" when=\"scene.y\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -50,9 +50,9 @@ fn one_unguarded_choice_is_clean() {
     let t = format!(
         "{HDR}state:\n  scene.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"approach\">\n\
-         <choice id=\"soft\" label=\"Soft\" when=\"scene.x\">\n\
+         <choice id=\"soft\" text=\"Soft\" when=\"scene.x\">\n\
          </choice>\n\
-         <choice id=\"blunt\" label=\"Blunt\">\n\
+         <choice id=\"blunt\" text=\"Blunt\">\n\
          </choice>\n\
          </branch>\n"
     );

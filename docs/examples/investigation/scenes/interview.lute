@@ -13,27 +13,27 @@ uses: ../world.schema.yaml
 @narrator: Three chairs, one table, and the smell of cold coffee.
 
 <hub id="interrogate">
-  <choice id="pressLedger" label="Press them on the ledger">
+  <choice id="pressLedger" text="Press them on the ledger">
     @detective: These numbers were bled dry. Explain them.
     ::set{run.suspectFocus = "blake"}
     ::set{run.leadStrength += 1}
   </choice>
-  <choice id="pressLetter" label="Press them on the letter">
+  <choice id="pressLetter" text="Press them on the letter">
     @detective: You signed this, then you tried to unsign it.
     ::set{run.suspectFocus = "blake"}
     ::set{run.leadStrength += 1}
   </choice>
-  <choice id="askAlibi" label="Ask for an alibi" once>
+  <choice id="askAlibi" text="Ask for an alibi" once>
     @detective: Walk me through last night. Slowly.
   </choice>
-  <choice id="leave" label="End the interview" exit>
+  <choice id="leave" text="End the interview" exit>
     @detective: We're done here. For now.
   </choice>
 </hub>
 
 ## Reading the Room
 
-<match on="run.suspectFocus">
+<match subject="run.suspectFocus">
   <when is="blake">
     @detective{mono}: Blake keeps surfacing. A thread worth pulling.
   </when>

@@ -12,7 +12,7 @@ params:
 ::sfx{sound="brass needle ticking"}
 @narrator{code="0010"}: The depth gauge on the rail still shows {{@fathoms}} fathoms, where the needle stuck.
 
-<match on="@mood">
+<match subject="@mood">
   <when is="grim">
     @sefa{code="0010" emotion="sad"}: I'll mark it on the chart. Another line that ends in a cross.
   </when>

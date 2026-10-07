@@ -297,14 +297,14 @@ mod tests {
 
     #[test]
     fn stream_round_trips() {
-        for source in ["", "## S\n@a: hello\n", "---\n# c\n---\n\n<match on=\"x\">\n</match>\n", "/* unterminated"] {
+        for source in ["", "## S\n@a: hello\n", "---\n# c\n---\n\n<match subject=\"x\">\n</match>\n", "/* unterminated"] {
             assert_eq!(concat(&source_stream(source)), source);
         }
     }
 
     #[test]
     fn canonical_rules_and_idempotence() {
-        let source = "## S\r\n\r\n\r\n<match on=\"x\">\r\n <when is=\"true\">\r\n @a{ x=\"y\"   z=\"q\" }: hi  \r\n </when>\r\n</match>\r\n";
+        let source = "## S\r\n\r\n\r\n<match subject=\"x\">\r\n <when is=\"true\">\r\n @a{ x=\"y\"   z=\"q\" }: hi  \r\n </when>\r\n</match>\r\n";
         let first = format_source(source, &FormatOptions::default()).unwrap().text;
         let second = format_source(&first, &FormatOptions::default()).unwrap().text;
         assert_eq!(first, second);

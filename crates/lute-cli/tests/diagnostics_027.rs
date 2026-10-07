@@ -95,7 +95,7 @@ fn a_fact_query_match_subject_shows_the_subjectless_form() {
     write(
         &dir,
         "scenes/gate.lute",
-        "---\nkind: scene\nid: gate\ntitle: Gate\n---\n\n## Gate\n\n<match on=\"@badgeCount\">\n\
+        "---\nkind: scene\nid: gate\ntitle: Gate\n---\n\n## Gate\n\n<match subject=\"@badgeCount\">\n\
          \x20 <when is=\"2..\">\n    @narrator: Two.\n  </when>\n  <otherwise>\n    @narrator: Fewer.\n  </otherwise>\n</match>\n",
     );
     let t = check_project(&dir);
@@ -135,8 +135,8 @@ fn component_project(tag: &str, use_line: &str) -> PathBuf {
         "scenes/end.lute",
         &format!(
             "---\nkind: scene\nid: end\ntitle: End\n---\n\n## End\n\n<branch id=\"pick\">\n  \
-             <choice id=\"a\" label=\"A\" into=\"run.route\" value=\"kia\">\n    @narrator: A.\n  </choice>\n\
-             \x20 <choice id=\"b\" label=\"B\">\n    @narrator: B.\n  </choice>\n</branch>\n\n{use_line}\n"
+             <choice id=\"a\" text=\"A\" into=\"run.route\" value=\"kia\">\n    @narrator: A.\n  </choice>\n\
+             \x20 <choice id=\"b\" text=\"B\">\n    @narrator: B.\n  </choice>\n</branch>\n\n{use_line}\n"
         ),
     );
     dir
@@ -185,7 +185,7 @@ fn a_when_is_literal_gets_a_did_you_mean() {
     write(
         &dir,
         "scenes/end.lute",
-        "---\nkind: scene\nid: end\ntitle: End\n---\n\n## End\n\n<match on=\"run.ending\">\n  \
+        "---\nkind: scene\nid: end\ntitle: End\n---\n\n## End\n\n<match subject=\"run.ending\">\n  \
          <when is=\"god\">\n    @narrator: G.\n  </when>\n  <otherwise>\n    @narrator: O.\n  </otherwise>\n</match>\n",
     );
     let t = check_project(&dir);

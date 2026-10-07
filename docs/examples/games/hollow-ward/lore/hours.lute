@@ -5,7 +5,7 @@ title: The hours
 ---
 
 <beat id="chime" on="hourStrikes" once="false">
-  <match on="run.hour">
+  <match subject="run.hour">
     <when is="h00">
       @narrator{code="0010"}: Midnight. Every clock in the building is stopped at half past four, and yet somewhere a clock strikes twelve.
     </when>

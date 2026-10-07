@@ -22,7 +22,7 @@ state:
 </entry>
 
 <entry id="rustyKey" target="item.rusty_key" category="item">
-  <match on="run.labBurned">
+  <match subject="run.labBurned">
     <when is="true">
       @narrator: A scorched key. Someone's name has melted into the grip.
     </when>

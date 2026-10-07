@@ -62,10 +62,10 @@ facts:
 @marina{code=\"0010\"}: Hello there.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>

@@ -35,7 +35,7 @@ fn write(p: &Path, body: &str) {
 
 /// A scene whose `@bob` line runs past the 40-word default cap and whose
 /// first shot opens without a `::bg` (so both `L-DIALOGUE-LENGTH` and
-/// `L-SHOT-STARTS-WITH-BACKGROUND` fire by default).
+/// `L-SECTION-STARTS-WITH-BACKGROUND` fire by default).
 const LONG_LINE: &str = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one";
 
 fn scene_with_long_line() -> String {
@@ -328,7 +328,7 @@ fn chapters_listed_scene_lints_as_a_beat() {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|d| d["code"] == "L-SHOT-STARTS-WITH-BACKGROUND")
+        .filter(|d| d["code"] == "L-SECTION-STARTS-WITH-BACKGROUND")
         .map(|d| d["path"].as_str().unwrap_or_default().to_string())
         .collect();
     assert_eq!(bg.len(), 1, "{v}");

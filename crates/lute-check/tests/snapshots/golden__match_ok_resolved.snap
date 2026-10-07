@@ -4,6 +4,6 @@ expression: res.resolved
 ---
 commands_preview:
   - "<branch id=\"number\"> (2 choices)"
-  - "<match on=\"scene.choices.number\"> (3 arms)"
+  - "<match subject=\"scene.choices.number\"> (3 arms)"
 timeline_tables: []
 injections: []

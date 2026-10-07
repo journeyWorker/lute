@@ -16,7 +16,7 @@ when: "holds('hasItem', ['spectralLens']) && run.lair.towerSiege != 'cleared'"
 ## The third step
 
 ::bg{location="ash-tower-hall" time="night"}
-::music{action="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="down"}
 ::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
 @narrator{code="0010"}: You raise the Spectral Lens. The thing on the third step has a shape now: a phantomaw, grey as candle smoke, standing between the stairs and the living.
 @narrator{code="0020"}: It is not angry. It is guarding something. It does not know how to stop.

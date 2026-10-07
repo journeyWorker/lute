@@ -13,11 +13,11 @@ params:
 ## Gym leader
 /* The leader on stage speaking as themself (`@@who`), the battle, and on a
 win the badge. The outcome is this component's own ::battle result. */
-::auto{character=@who action="enter"}
+::actor{character=@who action="enter"}
 @@who{code="0010"}: {{@intro}}
-::music{action="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="up"}
 ::battle{foe=@who kind="gym" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @@who{code="0020"}: {{@win}}
     ::assert{defeated(@who)}

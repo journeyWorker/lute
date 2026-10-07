@@ -28,7 +28,7 @@ pub fn declared_cast(
 
 /// `E-CAST-UNKNOWN` for every line of `doc` (scene shots, quest bodies, lore
 /// entries and bundle beats) whose speaker is neither `narrator` nor a cast
-/// member, and (dsl 0.24.0 §4) for every `::auto{character}` /
+/// member, and (dsl 0.24.0 §4) for every `::actor{character}` /
 /// `::camera{focus}` literal naming such an id — timeline clips included.
 /// A def-valued attribute (`character=@who`) is not a literal id and is left
 /// to the def rules. Silent when `cast` is empty (shape-only). A `@@p:`
@@ -80,10 +80,10 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
 }
 
 /// The character-naming attribute of a staging directive (dsl 0.24.0 §4):
-/// `::auto{character}` and `::camera{focus}`.
+/// `::actor{character}` and `::camera{focus}`.
 fn staged_attr(tag: &str) -> Option<&'static str> {
     match tag {
-        "auto" => Some("character"),
+        lute_manifest::core::ACTOR_DIRECTIVE => Some("character"),
         "camera" => Some("focus"),
         _ => None,
     }
@@ -94,7 +94,7 @@ fn push_staged<'a>(d: &'a Directive, out: &mut Vec<(&'static str, &'a str, Span)
         return;
     };
     let what = if key == "character" {
-        "`::auto{character}`"
+        "`::actor{character}`"
     } else {
         "`::camera{focus}`"
     };

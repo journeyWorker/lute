@@ -35,7 +35,7 @@ const HDR: &str = "---\nkind: scene\ncharacter: fixer\nseason: 1\nepisode: 1\nst
 #[test]
 fn inline_arm_bodies_report_only_the_inline_body_mistake() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.mood\">\n\
+        "{HDR}<match subject=\"run.mood\">\n\
          <when is=\"calm\"> @fixer{{mono}}: Steady. </when>\n\
          <otherwise> @fixer{{mono}}: Not steady. </otherwise>\n\
          </match>\n"
@@ -55,7 +55,7 @@ fn inline_arm_bodies_report_only_the_inline_body_mistake() {
 #[test]
 fn block_form_arms_check_clean() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.mood\">\n\
+        "{HDR}<match subject=\"run.mood\">\n\
          <when is=\"calm\">\n@fixer{{mono}}: Steady.\n</when>\n\
          <otherwise>\n@fixer{{mono}}: Not steady.\n</otherwise>\n\
          </match>\n"
@@ -87,7 +87,7 @@ fn wrapped_opener_still_reports_tag_not_one_line() {
 fn inline_body_on_sibling_element_reports_the_same_mistake() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\"> @fixer: hi. </choice>\n\
+         <choice id=\"c\" text=\"L\"> @fixer: hi. </choice>\n\
          </branch>\n"
     ));
     assert_eq!(
@@ -102,7 +102,7 @@ fn inline_body_on_sibling_element_reports_the_same_mistake() {
 fn block_form_sibling_checks_clean() {
     let out = codes(&format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\">\n@fixer: hi.\n</choice>\n\
+         <choice id=\"c\" text=\"L\">\n@fixer: hi.\n</choice>\n\
          </branch>\n"
     ));
     assert!(out.is_empty(), "block form must check clean: {out:?}");
@@ -114,7 +114,7 @@ fn block_form_sibling_checks_clean() {
 #[test]
 fn whole_branch_on_one_line_never_claims_an_empty_branch() {
     let out = codes(&format!(
-        "{HDR}<branch id=\"b\"><choice id=\"c\" label=\"L\">@fixer: hi.</choice></branch>\n"
+        "{HDR}<branch id=\"b\"><choice id=\"c\" text=\"L\">@fixer: hi.</choice></branch>\n"
     ));
     assert_eq!(
         out,
@@ -126,7 +126,7 @@ fn whole_branch_on_one_line_never_claims_an_empty_branch() {
 #[test]
 fn whole_hub_on_one_line_never_claims_a_missing_exit() {
     let out = codes(&format!(
-        "{HDR}<hub><choice id=\"c\" label=\"L\" exit>@fixer: hi.</choice></hub>\n"
+        "{HDR}<hub><choice id=\"c\" text=\"L\" exit>@fixer: hi.</choice></hub>\n"
     ));
     assert_eq!(
         out,
@@ -140,7 +140,7 @@ fn whole_hub_on_one_line_never_claims_a_missing_exit() {
 #[test]
 fn whole_match_on_one_line_never_judges_exhaustiveness() {
     let out = codes(&format!(
-        "{HDR}<match on=\"run.mood\"><when is=\"calm\"></when></match>\n"
+        "{HDR}<match subject=\"run.mood\"><when is=\"calm\"></when></match>\n"
     ));
     assert!(
         out.contains(&"E-TAG-INLINE-BODY".to_string()),

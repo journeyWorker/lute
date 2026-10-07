@@ -11,9 +11,9 @@ when: "has(prev.run.outcome)"
 
 ## Memory
 
-<match on="prev.run.outcome">
+<match subject="prev.run.outcome">
   <when is="died">
-    <match on="prev.run.killedBy">
+    <match subject="prev.run.killedBy">
       <when is="eel">
         @ilo{code="0010" mono}: Last time the eel. Stay off the floor of the long hall.
       </when>

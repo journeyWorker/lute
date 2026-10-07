@@ -421,7 +421,7 @@ impl NeedleVocab {
 }
 
 /// Authored content-line attributes a line head never shows: `code` feeds
-/// the line's identity and `id` is a `::next` label.
+/// the line's identity and `id` is a `::jump` label.
 const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
 
 /// The speaker a needle line's head names — `@name` right before its `:`

@@ -25,24 +25,37 @@ const ENUMS: &str = include_str!("../assets/lute.core/enums.yaml");
 /// shared rather than re-spelled per crate.
 pub const END_DIRECTIVE: &str = "end";
 
-/// The `lute.core` tag of a position label (dsl 0.12.0): `::mark{id}` binds
-/// a NAMED forward-jump target to whatever record follows it (or, trailing
-/// past a shot's last record, that shot's one-past-end converge addr —
-/// mirrors an anonymous converge label, `lute-compile::cfg::Emitter::bind`).
-/// Emits NO record of its own — dispatch is by TAG
-/// (`lute-compile::lower::lower_directive`'s `mark` arm returns `None`), the
-/// SAME `terminatesWalk`-style tag dispatch [`END_DIRECTIVE`] documents.
-pub const MARK_DIRECTIVE: &str = "mark";
+/// The `lute.core` tag of a position label (dsl 0.37.0 §3.5): `::label{name}`
+/// binds a NAMED forward-jump target to whatever record follows it (or,
+/// trailing past a section's last record, that section's one-past-end converge
+/// position — mirrors an anonymous converge label,
+/// `lute-compile::cfg::Emitter::bind`). Emits NO record of its own — dispatch
+/// is by TAG (`lute-compile::lower::lower_directive`'s `label` arm returns
+/// `None`), the SAME `terminatesWalk`-style tag dispatch [`END_DIRECTIVE`]
+/// documents.
+pub const LABEL_DIRECTIVE: &str = "label";
 
-/// The `lute.core` tag of a forward jump (dsl 0.12.0): `::next{to [when]}`.
+/// The attribute of [`LABEL_DIRECTIVE`] that names the label.
+pub const LABEL_NAME_ATTR: &str = "name";
+
+/// The `lute.core` tag of a forward jump (dsl 0.37.0 §3.5): `::jump{to [when]}`.
 /// Unconditional or guarded via the SAME typed CEL `when` a content-line
-/// guard gets (`lute_syntax::ast::Directive::when`, parser-extracted only
-/// for this tag). Shared as a const for the same reason [`END_DIRECTIVE`]
-/// is: `lute-check`'s reachability/definite-assignment/label passes,
-/// `lute-compile`'s `lower_directive` (→ `Command::Jump`) and
-/// `normalize::synth_when_next_match`, and `lute-trace`'s walk all dispatch
-/// on this tag and MUST agree.
-pub const NEXT_DIRECTIVE: &str = "next";
+/// guard gets (`lute_syntax::ast::Directive::when`). Shared as a const for the
+/// same reason [`END_DIRECTIVE`] is: `lute-check`'s reachability/definite-
+/// assignment/label passes, `lute-compile`'s `lower_directive`
+/// (→ `Command::Jump`) and `normalize::synth_when_next_match`, and
+/// `lute-trace`'s walk all dispatch on this tag and MUST agree.
+pub const JUMP_DIRECTIVE: &str = "jump";
+
+/// The `lute.core` tag of an on-stage character directive (dsl 0.37.0 §3.3):
+/// `::actor{character [anchor] [action] [emotion] [costume]}`. Shared by the
+/// checker's stage reducer, cast checks, the compiler and the trace walk.
+pub const ACTOR_DIRECTIVE: &str = "actor";
+
+/// The `lute.core` tag of a sequence reference (dsl 0.37.0 §3.3):
+/// `::sequence{name}` names a member of the project `sequence` domain; `wait`
+/// defaults to `true`. A reference, not an inline cinematic.
+pub const SEQUENCE_DIRECTIVE: &str = "sequence";
 
 /// The `lute.core` tag of the stage-clearing leaf (dsl 0.24.0 §4): `::clear`
 /// takes every character on stage off it. Shared as a const for the same
@@ -168,12 +181,12 @@ mod tests {
     use crate::types::Type;
 
     /// The `lute.core` baseline is CLOSED (dsl Appendix A + the 0.8.0
-    /// terminator + the 0.12.0 forward-jump pair + the 0.24.0 `::clear`):
-    /// exactly these twelve
-    /// directives, no more. Asserting the exact set — not just presence — is
-    /// what makes an accidental addition/removal in `staging.yaml` a test
-    /// failure rather than a silent vocabulary change every downstream
-    /// `E-UNKNOWN-DIRECTIVE` decision depends on.
+    /// terminator + the jump/label pair + the 0.24.0 `::clear` + the 0.37.0
+    /// `::sequence`): exactly these thirteen directives, no more. Asserting
+    /// the exact set — not just presence — is what makes an accidental
+    /// addition/removal in `staging.yaml` a test failure rather than a silent
+    /// vocabulary change every downstream `E-UNKNOWN-DIRECTIVE` decision
+    /// depends on.
     #[test]
     fn core_snapshot_has_baseline_directives() {
         let snap = load_core_snapshot();
@@ -181,20 +194,21 @@ mod tests {
         assert_eq!(
             names,
             [
-                "auto",
+                ACTOR_DIRECTIVE,
                 "bg",
                 "camera",
+                "cg",
                 CLEAR_DIRECTIVE,
-                "cut",
                 END_DIRECTIVE,
-                MARK_DIRECTIVE,
+                JUMP_DIRECTIVE,
+                LABEL_DIRECTIVE,
                 "music",
-                NEXT_DIRECTIVE,
+                SEQUENCE_DIRECTIVE,
                 "sfx",
                 "vfx",
                 "video",
             ],
-            "the lute.core baseline is exactly 12 directives"
+            "the lute.core baseline is exactly 13 directives"
         );
     }
 
@@ -214,40 +228,41 @@ mod tests {
         assert_eq!(reason.ty, crate::types::Type::Str);
     }
 
+    /// dsl 0.37.0 §3.3: camera values are domain members; the numeric
+    /// transform fields are gone.
     #[test]
-    fn camera_has_timing_attrs() {
+    fn camera_has_domain_slots_and_timing_attrs() {
         let snap = load_core_snapshot();
         let cam = snap.directive("camera").unwrap();
         let names: Vec<_> = cam.attrs.iter().map(|a| a.name.as_str()).collect();
-        for k in ["focus", "zoom", "duration", "wait"] {
-            assert!(names.contains(&k), "camera missing {k}");
-        }
+        assert_eq!(
+            names,
+            ["focus", "framing", "move", "transition", "duration", "delay", "wait"]
+        );
     }
 
-    /// dsl 0.9.0 D-A: `musicAction` used to be a five-member core enum. It
-    /// survives as a SLOT — `::music{action}` still names it, so a project or
-    /// plugin declaring `musicAction` members gets them checked — but the core
-    /// itself ships none. Asserting the absence, rather than dropping the
-    /// test, is what keeps `fadeOut` and friends from creeping back in.
+    /// dsl 0.37.0 §3.2: `musicPlayback` (formerly `musicPlayback`) is a SLOT —
+    /// `::music{playback}` names it, so a project or plugin declaring its
+    /// members gets them checked — but the core itself ships none.
     #[test]
-    fn music_action_is_a_slot_with_no_members() {
+    fn music_playback_is_a_slot_with_no_members() {
         let snap = load_core_snapshot();
-        let action = snap
+        let playback = snap
             .directive("music")
-            .and_then(|d| d.attrs.iter().find(|a| a.name == "action"))
-            .expect("missing music.action");
-        assert_eq!(action.ty, Type::Domain("musicAction".into()));
-        assert_eq!(snap.enums.get("musicAction"), None);
-        assert!(!snap.domains.contains_key("musicAction"));
+            .and_then(|d| d.attrs.iter().find(|a| a.name == "playback"))
+            .expect("missing music.playback");
+        assert_eq!(playback.ty, Type::Domain("musicPlayback".into()));
+        assert_eq!(snap.enums.get("musicPlayback"), None);
+        assert!(!snap.domains.contains_key("musicPlayback"));
     }
 
-    /// dsl 0.9.0 D-A: the core's vocabulary surface is exactly this set of
-    /// domain NAMES, referenced from attribute types and populated by nobody.
-    /// (`emotion` and the content-line `action` are the two further slots, but
-    /// they are named by `lute-check`'s content-line pass rather than by a
-    /// directive attr, so they are out of this snapshot's reach.) Pinning the
-    /// exact set makes an accidental new slot — or a silently dropped one —
-    /// a failure here rather than an `E-DOMAIN-UNKNOWN` in an author's file.
+    /// dsl 0.9.0 D-A / 0.37.0 §3.2: the core's vocabulary surface is exactly
+    /// this set of domain NAMES, referenced from attribute types and populated
+    /// by nobody. (The content-line `emotion`/`action` and `textStyle` are
+    /// named by `lute-check`'s content-line pass rather than by a directive
+    /// attr only.) Pinning the exact set makes an accidental new slot — or a
+    /// silently dropped one — a failure here rather than an
+    /// `E-DOMAIN-UNKNOWN` in an author's file.
     #[test]
     fn core_domain_slots_are_declared_as_attr_types() {
         let snap = load_core_snapshot();
@@ -267,8 +282,15 @@ mod tests {
             [
                 "action",
                 "anchor",
+                "cameraMove",
+                "cgLayout",
+                "costume",
+                "emotion",
+                "framing",
                 "mood",
-                "musicAction",
+                "musicPlayback",
+                "sequence",
+                "transition",
                 "vfxType",
                 "volume"
             ]
@@ -305,8 +327,13 @@ mod tests {
                 .map(|a| a.ty.clone())
                 .unwrap_or_else(|| panic!("missing {dir}.{attr}"))
         };
-        assert_eq!(ty("auto", "action"), Type::Domain("action".into()));
-        assert_eq!(ty("auto", "anchor"), Type::Domain("anchor".into()));
+        assert_eq!(ty(ACTOR_DIRECTIVE, "action"), Type::Domain("action".into()));
+        assert_eq!(ty(ACTOR_DIRECTIVE, "anchor"), Type::Domain("anchor".into()));
+        assert_eq!(ty(ACTOR_DIRECTIVE, "emotion"), Type::Domain("emotion".into()));
+        assert_eq!(ty(ACTOR_DIRECTIVE, "costume"), Type::Domain("costume".into()));
+        assert_eq!(ty("camera", "move"), Type::Domain("cameraMove".into()));
+        assert_eq!(ty("cg", "layout"), Type::Domain("cgLayout".into()));
+        assert_eq!(ty(SEQUENCE_DIRECTIVE, "name"), Type::Domain("sequence".into()));
         assert_eq!(ty("music", "mood"), Type::Domain("mood".into()));
         assert_eq!(ty("vfx", "type"), Type::Domain("vfxType".into()));
     }

@@ -469,8 +469,8 @@ fn or_with_one_possible_arm_is_not_dead() {
 fn choice_when_over_impossible_fact_is_arm_dead() {
     let text = scene(
         1,
-        "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds('knows', ['toma', 'heading'])\">\n\
-         @toma: fine.\n</choice>\n<choice id=\"go\" label=\"Go\">\n@toma: bye.\n</choice>\n</branch>",
+        "<branch id=\"b\">\n<choice id=\"ask\" text=\"Ask\" when=\"holds('knows', ['toma', 'heading'])\">\n\
+         @toma: fine.\n</choice>\n<choice id=\"go\" text=\"Go\">\n@toma: bye.\n</choice>\n</branch>",
     );
     let r = root(&[("a.lute", &text)]);
     let ds = r.guards("a.lute");
@@ -486,7 +486,7 @@ fn choice_when_over_impossible_fact_is_arm_dead() {
 fn when_test_arm_over_impossible_fact_is_arm_dead() {
     let text = scene(
         1,
-        "<match on=\"run.mood\">\n<when test=\"holds('found', ['toma'])\">\n@toma: here.\n</when>\n\
+        "<match subject=\"run.mood\">\n<when test=\"holds('found', ['toma'])\">\n@toma: here.\n</when>\n\
          <otherwise>\n@toma: gone.\n</otherwise>\n</match>",
     )
     .replace(
@@ -727,8 +727,8 @@ fn with_mood(text: String) -> String {
 
 fn branch(arm_x: &str, arm_y: &str) -> String {
     format!(
-        "<branch id=\"b\">\n<choice id=\"x\" label=\"X\">\n{arm_x}\n@vesna: x.\n</choice>\n\
-         <choice id=\"y\" label=\"Y\">\n{arm_y}\n@vesna: y.\n</choice>\n</branch>\n"
+        "<branch id=\"b\">\n<choice id=\"x\" text=\"X\">\n{arm_x}\n@vesna: x.\n</choice>\n\
+         <choice id=\"y\" text=\"Y\">\n{arm_y}\n@vesna: y.\n</choice>\n</branch>\n"
     )
 }
 
@@ -809,7 +809,7 @@ fn a_skipping_next_keeps_the_skipped_assert_out_of_the_label() {
     let text = with_mood(scene(
         1,
         &format!(
-            "::next{{to=\"skip\" when=\"run.mood > 0\"}}\n{ASSERT_KNOWS}\n::mark{{id=\"skip\"}}\n{KNOWS}"
+            "::jump{{to=\"skip\" when=\"run.mood > 0\"}}\n{ASSERT_KNOWS}\n::label{{name=\"skip\"}}\n{KNOWS}"
         ),
     ));
     let r = root(&[("a.lute", &text)]);
@@ -827,15 +827,15 @@ fn a_guard_is_an_assumption_inside_its_region() {
     let in_when = with_mood(scene(
         1,
         &format!(
-            "<match on=\"run.mood\">\n<when test=\"holds('knows', ['vesna', 'manifest'])\">\n{KNOWS}\n</when>\n\
+            "<match subject=\"run.mood\">\n<when test=\"holds('knows', ['vesna', 'manifest'])\">\n{KNOWS}\n</when>\n\
              <otherwise>\n@vesna: no.\n</otherwise>\n</match>"
         ),
     ));
     let in_choice = scene(
         1,
         &format!(
-            "<branch id=\"b\">\n<choice id=\"ask\" label=\"Ask\" when=\"holds('knows', ['vesna', 'manifest']) && true\">\n\
-             {KNOWS}\n</choice>\n<choice id=\"go\" label=\"Go\">\n@vesna: bye.\n</choice>\n</branch>"
+            "<branch id=\"b\">\n<choice id=\"ask\" text=\"Ask\" when=\"holds('knows', ['vesna', 'manifest']) && true\">\n\
+             {KNOWS}\n</choice>\n<choice id=\"go\" text=\"Go\">\n@vesna: bye.\n</choice>\n</branch>"
         ),
     );
     for (text, guard) in [(&in_when, "<when test"), (&in_choice, "<choice id=\"ask\"")] {
@@ -918,8 +918,8 @@ fn a_hub_body_assert_is_not_guaranteed_after_the_hub() {
     let text = scene(
         1,
         &format!(
-            "<hub id=\"h\">\n<choice id=\"t\" label=\"Talk\">\n{ASSERT_KNOWS}\n@vesna: told.\n</choice>\n\
-             <choice id=\"leave\" label=\"Leave\" exit>\n@vesna: bye.\n</choice>\n</hub>\n{KNOWS}"
+            "<hub id=\"h\">\n<choice id=\"t\" text=\"Talk\">\n{ASSERT_KNOWS}\n@vesna: told.\n</choice>\n\
+             <choice id=\"leave\" text=\"Leave\" exit>\n@vesna: bye.\n</choice>\n</hub>\n{KNOWS}"
         ),
     );
     let r = root(&[("a.lute", &text)]);
@@ -1216,8 +1216,8 @@ fn wip_downgrades_a_dead_choice_and_gated_line_too() {
     // produces yet is graded like a dead entry under `--wip`.
     let text = scene(
         1,
-        "<hub id=\"look\">\n<choice id=\"cab\" label=\"Cabin\" when=\"holds('found', ['toma'])\">\n@vesna: Cabin.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n@vesna: Go.\n</choice>\n</hub>\n\
+        "<hub id=\"look\">\n<choice id=\"cab\" text=\"Cabin\" when=\"holds('found', ['toma'])\">\n@vesna: Cabin.\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n@vesna: Go.\n</choice>\n</hub>\n\
          @vesna{when=\"holds('found', ['toma'])\"}: Found him.",
     );
     let plain = root(&[("a.lute", &text)]).guards("a.lute");
@@ -1252,8 +1252,8 @@ fn read_guarded(guard: &str) -> (String, String) {
     let text = scene(
         1,
         &format!(
-            "<branch id=\"b\">\n<choice id=\"x\" label=\"X\" when=\"{guard}\">\n{KNOWS}\n</choice>\n\
-             <choice id=\"y\" label=\"Y\">\n@vesna: y.\n</choice>\n</branch>"
+            "<branch id=\"b\">\n<choice id=\"x\" text=\"X\" when=\"{guard}\">\n{KNOWS}\n</choice>\n\
+             <choice id=\"y\" text=\"Y\">\n@vesna: y.\n</choice>\n</branch>"
         ),
     );
     (lore, text)
@@ -1280,7 +1280,7 @@ fn a_read_entry_guarantees_what_its_body_asserts() {
 #[test]
 fn an_entry_read_guarantees_nothing_its_body_only_may_assert() {
     let lore = lore(&format!(
-        "<entry id=\"log3\">\n  <match on=\"run.mood\">\n  <when is=\"1\">\n  {ASSERT_KNOWS}\n  \
+        "<entry id=\"log3\">\n  <match subject=\"run.mood\">\n  <when is=\"1\">\n  {ASSERT_KNOWS}\n  \
          @narrator: a.\n  </when>\n  <otherwise>\n  @narrator: b.\n  </otherwise>\n  </match>\n</entry>"
     ));
     let lore = lore.replace(

@@ -49,11 +49,11 @@ const PORTER: &str =
     "<beat id=\"porter\" on=\"talk\" target=\"npc.porter\" when=\"run.trust >= 0\">\n\
      @porter: You again.\n\
      <branch id=\"talk\">\n\
-     <choice id=\"ask\" label=\"Ask\">\n@porter: Nothing.\n::set{run.trust += 1}\n</choice>\n\
-     <choice id=\"leave\" label=\"Leave\">\n@porter: Good.\n</choice>\n\
+     <choice id=\"ask\" text=\"Ask\">\n@porter: Nothing.\n::set{run.trust += 1}\n</choice>\n\
+     <choice id=\"leave\" text=\"Leave\">\n@porter: Good.\n</choice>\n\
      </branch>\n\
      <hub id=\"look\" prompt=\"Where do you look?\">\n\
-     <choice id=\"lamp\" label=\"The lamp\" exit>\n::bg{location=\"station\"}\n</choice>\n\
+     <choice id=\"lamp\" text=\"The lamp\" exit>\n::bg{location=\"station\"}\n</choice>\n\
      </hub>\n\
      </beat>\n";
 

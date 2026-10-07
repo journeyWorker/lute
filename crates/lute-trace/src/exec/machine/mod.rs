@@ -656,7 +656,7 @@ impl<D: Driver> Machine<D> {
             }
             "jump" => {
                 // Not a transcript record: `lute trace` reports an authored
-                // `::next` and the source-only steps that ride on the jump.
+                // `::jump` and the source-only steps that ride on the jump.
                 self.driver
                     .observe(json!({ "kind": "jump", "addr": cmd.get("addr") }));
                 let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");

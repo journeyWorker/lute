@@ -831,7 +831,7 @@ impl Parser<'_> {
 
     /// `Directive ::= "::" Ident Attrs?` (§7.2). Layer = Staging.
     ///
-    /// dsl 0.12.0 §…: `::next{to when?}`'s `when` is extracted into a typed
+    /// dsl 0.12.0 §…: `::jump{to when?}`'s `when` is extracted into a typed
     /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`).
     /// dsl 0.26.0 §4: every directive's `when=` is its guard, so it is
     /// extracted for every tag; which directives may carry one is the

@@ -89,10 +89,10 @@ fn marina_block_assembly_is_correct() {
     assert_eq!(branch.id, "number");
     assert_eq!(branch.choices.len(), 2);
     assert_eq!(branch.choices[1].id, "soft");
-    assert_eq!(branch.choices[1].label, "Ask gently");
+    assert_eq!(branch.choices[1].text, "Ask gently");
     assert_eq!(branch.choices[1].body.len(), 2); // :speaker line + ::set
 
-    // Shot 5: <match on="…"> with two <when>s + <otherwise>.
+    // Shot 5: <match subject="…"> with two <when>s + <otherwise>.
     let m = doc.sections[4]
         .body
         .iter()

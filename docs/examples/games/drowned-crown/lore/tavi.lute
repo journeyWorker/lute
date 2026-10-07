@@ -7,11 +7,11 @@ title: Tavi's galley
 <beat id="bounty" on="talk" target="npc.tavi" title="Tavi's bounty" priority="30" when="!holds('felled', ['eel']) && quest.eelBounty.state != 'active'">
   @tavi{code="0010"}: That eel in the long hall. Kill it and drag a piece home and I'll pay you in pearls. And in dinner.
   <branch id="bountyAnswer" prompt="Tavi sharpens a knife meaningfully.">
-    <choice id="take" label="Take the bounty">
+    <choice id="take" text="Take the bounty">
       @ilo{code="0010"}: One eel. Coming up.
       ::accept{quest="eelBounty" at="nextRun"}
     </choice>
-    <choice id="pass" label="Not this dive">
+    <choice id="pass" text="Not this dive">
       @tavi{code="0020"}: Your loss. It's very good eel.
     </choice>
   </branch>
@@ -20,7 +20,7 @@ title: Tavi's galley
 <beat id="meal" on="talk" target="npc.tavi" title="Something hot" priority="20">
   @tavi{code="0010"}: Sit. Eat. You're blue round the edges.
   ::set{run.sharedMeal = true}
-  <match on="user.deaths">
+  <match subject="user.deaths">
     <when is="0">
       @tavi{code="0020"}: Nobody's died on my food yet. Don't be first.
     </when>

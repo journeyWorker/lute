@@ -24,12 +24,12 @@ title: Sable, by the water
   @sable{code="0010"}: You keep coming back. I used to. Before I stopped having a body to come back in.
   @sable{code="0020" emotion="fond"}: Sable. That was it. Say it once so it's said.
   <branch id="sayIt" prompt="Sable is waiting.">
-    <choice id="say" label="Sable.">
+    <choice id="say" text="Sable.">
       ::set{user.knowsSableName = true}
       ::set{user.bond.sable += 1}
       @sable{code="0030" emotion="stricken"}: ...Thank you. Forty years is a long time to go unsaid.
     </choice>
-    <choice id="silent" label="Say nothing.">
+    <choice id="silent" text="Say nothing.">
       ::set{user.knowsSableName = true}
       @sable{code="0040" emotion="guarded"}: Fair. Names are heavy. You'll carry it anyway, now.
     </choice>

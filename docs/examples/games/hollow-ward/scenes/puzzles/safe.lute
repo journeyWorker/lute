@@ -13,7 +13,7 @@ spentBy: "holds('solved', ['officeSafe'])"
 @narrator{code="0010"}: A dial with a keypad beside it, retrofitted by someone who did not trust dials. Three digits.
 @nell{code="0010" mono when="entry.hymnBoard.read"}: Three hymns on the board in the chapel. He was a churchgoer, the director. They always are.
 ::keypad{pad="officeSafe" resultKey="safe"}
-<match on="scene.keypad.safe.entered">
+<match subject="scene.keypad.safe.entered">
   <when test="$ == @safeCode">
     @narrator{code="0020"}: The door swings. Inside: a stack of death certificates already signed, dates left blank, and a white plastic keycard on a lanyard marked GATE.
     ::give{item="keycard"}

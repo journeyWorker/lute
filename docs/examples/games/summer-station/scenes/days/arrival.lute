@@ -10,7 +10,7 @@ when: "run.day == 1 && run.slot == 'morning'"
 ## The top station
 
 ::bg{location="funicular_top" time="morning"}
-::music{action="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="down"}
 @narrator{code="0010"}: The funicular car shudders the last ten metres and stops against the buffers with a sound like a dropped drawer.
 @narrator{code="0020"}: Hallen Ridge Weather Station: two stone huts, a mast, a white louvred box on legs, and more sky than you have ever been under.
 @narrator{code="0030" when="has(prev.run.route)"}: It looks exactly as you left it last summer. The door still sticks.
@@ -30,12 +30,12 @@ when: "run.day == 1 && run.slot == 'morning'"
 @ines{code="0060" emotion="worried"}: And the village wants something from us this year.
 
 <branch id="village" prompt="Ines taps a letter pinned by the barometer.">
-  <choice id="ask" label="Ask what the village wants">
+  <choice id="ask" text="Ask what the village wants">
     @ines{code="0070"}: The Lantern Festival is Sunday night. Maren wants a forecast by Friday, so they know whether to hang the lanterns or cancel.
     @ines{code="0080" emotion="stern"}: A real forecast. Signed. That means you and I, with a week of your readings.
     ::accept{quest="forecast"}
   </choice>
-  <choice id="shrug" label="Say you're only here for the readings">
+  <choice id="shrug" text="Say you're only here for the readings">
     @ines{code="0090" emotion="neutral"}: That's the job. The forecast is mine, then.
     @ines{code="0100"}: If you change your mind, it's due Friday. The village doesn't forgive a wet festival.
     ::accept{quest="forecast"}
@@ -43,4 +43,4 @@ when: "run.day == 1 && run.slot == 'morning'"
 </branch>
 
 @ines{code="0110"}: Go and look around. The station is small. You'll run out of it by lunch.
-::auto{character="ines" action="fadeOut"}
+::actor{character="ines" action="fadeOut"}

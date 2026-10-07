@@ -111,7 +111,7 @@ pub fn doc_kind(raw_yaml: &str) -> String {
 
 /// Whether a directive tag stages something. The language's control
 /// directives — `::accept` (quest acceptance), `::use` (component
-/// invocation), `::end`, `::mark`, `::next` (walk control) — present nothing,
+/// invocation), `::end`, `::label`, `::jump` (walk control) — present nothing,
 /// so they never count as a shot's opening staging (dsl 0.22.0 §13).
 pub fn is_staging_tag(tag: &str) -> bool {
     !matches!(
@@ -119,8 +119,8 @@ pub fn is_staging_tag(tag: &str) -> bool {
         lute_syntax::ast::ACCEPT_DIRECTIVE
             | "use"
             | lute_manifest::core::END_DIRECTIVE
-            | lute_manifest::core::MARK_DIRECTIVE
-            | lute_manifest::core::NEXT_DIRECTIVE
+            | lute_manifest::core::LABEL_DIRECTIVE
+            | lute_manifest::core::JUMP_DIRECTIVE
     )
 }
 

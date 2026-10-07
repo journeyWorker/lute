@@ -3,7 +3,7 @@
 # pressure. Component (dsl §13) because the beat is the same beat: a
 # ship-voice line, over the announcement channel, reading the crew's draw
 # against the shed schedule. The body is presentational — content lines and a
-# param-scoped `<match on="@pressure">` (dsl 0.4.0 §6.2), which is the only
+# param-scoped `<match subject="@pressure">` (dsl 0.4.0 §6.2), which is the only
 # logic block a component body admits.
 component: purserInterject
 params:
@@ -16,7 +16,7 @@ uses: ../vocabulary.schema.yaml
 ---
 
 ## Interjection
-<match on="@pressure">
+<match subject="@pressure">
   <when is="rising">
     @purser{code="0020" emotion="level" os}: Draw exceeds projection. The schedule advances.
   </when>

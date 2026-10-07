@@ -9,7 +9,7 @@ when: "quest.league.state == 'complete'"
 ## The records room
 
 ::bg{location="hall-of-fame" time="day"}
-::music{action="change" mood="triumphant" volume="up"}
+::music{playback="change" mood="triumphant" volume="up"}
 ::set{user.hallOfFame += 1}
 @profAlder{code="0010"}: This is where the League keeps its Champions. Every team that ever won is recorded here.
 @narrator{code="0010"}: The Hall of Fame records {{userName}} and team. Hall of Fame entry number {{user.hallOfFame}}.

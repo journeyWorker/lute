@@ -24,7 +24,7 @@ fn requires(ir: ExecutionIr, ids: &[&str]) {
 fn core_source() { requires(artifact("", "@narrator: baseline"), &[]); }
 
 #[test]
-fn staging_source() { requires(artifact("", "::camera{zoom=\"1.1\" duration=\"0.5\"}"), &["lute.staging/1"]); }
+fn staging_source() { requires(artifact("", "::camera{focus=\"hero\" duration=\"0.5\"}"), &["lute.staging/1"]); }
 
 #[test]
 fn temporal_source() {
@@ -62,7 +62,7 @@ fn rules_source() {
 
 #[test]
 fn plain_enum_staging_has_no_facts() {
-    requires(artifact("enums:\n  mode: [quiet, loud]\nstate:\n  scene.mode: {type: {enum: [quiet, loud]}, default: quiet}\n", "::camera{zoom=\"1.1\"}"), &["lute.staging/1"]);
+    requires(artifact("enums:\n  mode: [quiet, loud]\nstate:\n  scene.mode: {type: {enum: [quiet, loud]}, default: quiet}\n", "::camera{focus=\"hero\"}"), &["lute.staging/1"]);
 }
 
 #[test]

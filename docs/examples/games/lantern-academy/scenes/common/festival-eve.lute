@@ -11,12 +11,12 @@ after: 'visited("common.exam")'
 ## Lakeshore
 
 ::bg{location="lakeshore" time="evening"}
-::music{action="start" mood="peaceful" volume="down"}
-::auto{character="hotaru" anchor="center" action="fadeInUp"}
+::music{playback="start" mood="peaceful" volume="down"}
+::actor{character="hotaru" anchor="center" action="fadeInUp"}
 @narrator{code="0010"}: A girl in an old-fashioned uniform is sitting on the jetty, lighting lanterns nobody asked her to light.
 @hotaru{code="0010" emotion="smiling"}: You can see me. Most transfers can't, the first week.
 
-<match on="user.terms">
+<match subject="user.terms">
   <when is="0">
     @hotaru{code="0020"}: I'm Hotaru. I keep the lanterns. Tomorrow the whole school floats them, and every one of them comes back to me.
     @you{code="0010"}: Comes back?
@@ -30,7 +30,7 @@ after: 'visited("common.exam")'
   </otherwise>
 </match>
 
-<match on="prev.run.ending">
+<match subject="prev.run.ending">
   <when is="good">
     @hotaru{code="0060" emotion="neutral"}: Last time it was {{prev.run.route}}'s lantern. It came back to me warm.
   </when>
@@ -49,4 +49,4 @@ after: 'visited("common.exam")'
 </match>
 
 @hotaru{code="0100" emotion="fond" when="quest.fourLanterns.state == 'complete' && !holds('cgSeen', ['cgKeeperEnd'])"}: Four lanterns, four people. You've given this lake everyone but me. Tomorrow... float one for me?
-::auto{character="hotaru" action="fadeOut"}
+::actor{character="hotaru" action="fadeOut"}

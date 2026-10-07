@@ -257,10 +257,12 @@ pub(crate) enum Command {
     /// `isSet`) to their standard-CEL 0.32 forms. Byte-exact and
     /// comment-preserving; writes back only when something changed. A
     /// directory migrates `.lute` and project/schema YAML files recursively,
-    /// sorted. Exit `0` on success, `2` on an I/O failure.
+    /// sorted; several paths migrate in the order given. Exit `0` on success,
+    /// `2` on an I/O failure.
     Fix {
-        /// The `.lute`/YAML file to migrate, or a directory to migrate recursively.
-        path: PathBuf,
+        /// The `.lute`/YAML files to migrate, or directories to migrate recursively.
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
     },
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
     /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
@@ -578,7 +580,7 @@ pub(crate) enum Command {
         explain: Vec<String>,
         /// Print staging as the lowered IR records (`::background`,
         /// `::sprite`, injected preloads and pose resets) instead of the
-        /// authored directives (`::bg`, `::auto`, …).
+        /// authored directives (`::bg`, `::actor`, …).
         #[arg(long)]
         ir: bool,
         /// Leave out the candidates that were not eligible at each raise:

@@ -228,7 +228,7 @@ fn walk_choice<'a>(
         source: region.map(|(f, _)| (f.to_string(), choice.span.line)),
         line_id: cx.prefix.map(|p| format!("{p}.{key}")),
         key,
-        label: choice.label.clone(),
+        label: choice.text.clone(),
     });
     walk_nodes(cx, &choice.body, region, cx.prefix, out);
 }

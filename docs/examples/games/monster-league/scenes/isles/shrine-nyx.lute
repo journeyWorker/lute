@@ -17,7 +17,7 @@ priority: 10
 ::bg{location="sunfall-shrine" time="night"}
 @duskAdminNyx{code="0010" emotion="angry"}: Vex gave up. I did not. This shrine is the last thing Team Eclipse ever wanted, and I will have it.
 ::battle{foe="duskAdminNyx" kind="boss" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     ::assert{defeated(duskAdminNyx)}
     ::set{run.money += 6000}

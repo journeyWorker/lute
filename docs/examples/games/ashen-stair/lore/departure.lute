@@ -13,7 +13,7 @@ keepsake and trusts her, in member order: Maud, Oskar, Sable. */
 
 <entry id="sendOff" on="departure" for="kind:npc" once="run" when="user.bond[occasion.target] >= 3 && holds('keepsakeFrom', [occasion.target])">
   @narrator{code="0010"}: {{occasion.target}} looks up as she passes.
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="maud">
       @maud{code="0010" emotion="fond"}: Kettle'll be on. Mind the ankles.
     </when>

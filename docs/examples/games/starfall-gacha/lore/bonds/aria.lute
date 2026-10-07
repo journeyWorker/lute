@@ -34,10 +34,10 @@ Summon intro and dupe line, home-screen tap, birthday, bond stories r1-r3. */
   @aria{code="0010"}: I tried to call a star for you tonight. The brightest one.
   @aria{code="0020" emotion="sad"}: It didn't come. Maybe I'm not as good as they say.
   <branch id="ariaR2Answer" prompt="Aria looks at her hands.">
-    <choice id="stayed" label="You called me. I stayed.">
+    <choice id="stayed" text="You called me. I stayed.">
       @aria{code="0030" emotion="shy"}: ...That's a really unfair thing to say. Thank you.
     </choice>
-    <choice id="tomorrow" label="Try again tomorrow. I'll watch.">
+    <choice id="tomorrow" text="Try again tomorrow. I'll watch.">
       @aria{code="0040" emotion="happy"}: Tomorrow, then. Bring a blanket. The roof is cold.
     </choice>
   </branch>

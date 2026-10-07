@@ -14,7 +14,7 @@ when: "holds('hasItem', ['goldTooth'])"
 ## The warden's house
 
 ::bg{location="warden-house" time="day"}
-::auto{character="wardenHolt" anchor="center" action="enter"}
+::actor{character="wardenHolt" anchor="center" action="enter"}
 @wardenHolt{code="0010" emotion="sad"}: Hwah? Ish that... ish that mah teef? Mah gold teef! Ah losht 'em in the Pweserve!
 @narrator{code="0010"}: Warden Holt takes the gold tooth, gives it a polish on his sleeve, and puts it back in with a click.
 ::retract{hasItem(goldTooth)}

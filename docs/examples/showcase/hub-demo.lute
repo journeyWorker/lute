@@ -56,14 +56,14 @@ The hub implicitly folds `scene.choices.chatWithMarina` (enum of choice ids
 U `unset`) and `scene.visited.chatWithMarina.<choiceId>: bool` (default false).
 */
 <hub id="chatWithMarina">
-  <choice id="askCoffee" label="Ask about the coffee" once>
+  <choice id="askCoffee" text="Ask about the coffee" once>
     @marina{code="0020" emotion="content" variant="0"}: House blend. Bold, like the clientele.
   </choice>
-  <choice id="compliment" label="Say she was kind earlier" when="@helped">
+  <choice id="compliment" text="Say she was kind earlier" when="@helped">
     @fixer{code="0030"}: You were gentle about it before. It stuck with me.
     ::set{scene.affect.marina += 1}
   </choice>
-  <choice id="leave" label="Head out" exit>
+  <choice id="leave" text="Head out" exit>
     @fixer{code="0040"}: I'd better get moving.
   </choice>
 </hub>
@@ -74,7 +74,7 @@ U `unset`) and `scene.visited.chatWithMarina.<choiceId>: bool` (default false).
 recording enum `scene.choices.chatWithMarina` (choice ids U `unset`). FULL
 `is` coverage is exhaustive WITHOUT an <otherwise> (§11.2, the normative path).
 */
-<match on="scene.choices.chatWithMarina">
+<match subject="scene.choices.chatWithMarina">
   <when is="askCoffee">
     @fixer{mono}: Coffee talk. Safe ground.
   </when>
@@ -93,7 +93,7 @@ A `bool` `<when is>` pair over the per-choice visited flag
 `scene.visited.chatWithMarina.askCoffee` (default false) — the second
 recording namespace the hub folds. `is="true"|"false"` covers the bool domain.
 */
-<match on="scene.visited.chatWithMarina.askCoffee">
+<match subject="scene.visited.chatWithMarina.askCoffee">
   <when is="true">
     @marina{code="0050" emotion="content" variant="0"}: You already know the blend.
   </when>

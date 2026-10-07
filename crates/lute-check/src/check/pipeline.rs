@@ -904,8 +904,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (E-ATTR-DEF-DYNAMIC) and a `{{@def}}` must inline into one standalone
     // expression (E-INTERP-DEF) — the artifact has no defs table.
     diags.extend(crate::def_inline::check_def_inlining(&doc, &folded, input));
-    // dsl 0.12.0: forward-jump labels — E-MARK-DUP / E-NEXT-UNDEFINED /
-    // E-NEXT-BACKWARD, a whole-document pass (the label namespace spans
+    // dsl 0.12.0: forward-jump labels — E-LABEL-DUP / E-JUMP-UNDEFINED /
+    // E-JUMP-BACKWARD, a whole-document pass (the label namespace spans
     // every shot/quest, unlike reachability's per-body scope above).
     diags.extend(crate::next_labels::check_next_labels(&doc));
     // dsl 0.18.0 §3: W-WHEN-TEST-LITERAL — a `<when test>` that only compares
@@ -1110,7 +1110,7 @@ fn node_summary(node: &Node) -> String {
         Node::Directive(d) => format!("::{}", d.tag),
         Node::Set(s) => format!("::set{{{} {} …}}", s.path, s.op),
         Node::Branch(b) => format!("<branch id=\"{}\"> ({} choices)", b.id, b.choices.len()),
-        Node::Match(m) => format!("<match on=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
+        Node::Match(m) => format!("<match subject=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
         Node::On(o) => format!("<on event=\"{}\">", o.event),

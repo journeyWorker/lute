@@ -10,7 +10,7 @@ priority: 10
 ## Chapel
 
 ::bg{location="chapel" time="night"}
-::music{action="start" mood="hush" volume="low"}
+::music{playback="start" mood="hush" volume="low"}
 @narrator{code="0010"}: Six pews, all facing the wrong way: towards the door, towards you.
 @narrator{code="0020"}: The hymn board still holds three numbers. A bell rope hangs through a hole in the ceiling, frayed to a ponytail at the end. A box of altar matches sits on the lectern.
 @nell{code="0010" mono when="@shaken"}: The pews were turned so the patients could watch the door. So they would see him coming.

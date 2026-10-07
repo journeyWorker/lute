@@ -74,10 +74,10 @@ fn slot_project(names: &[&str; 18]) -> PathBuf {
             "scenes/door.lute",
             &format!(
                 "---\nkind: scene\nid: \"{scene}\"\non: visit\nonce: user\nshare: \"{share}\"\n---\n\n\
-                 ## Door\n\n@mara: Hi.\n::mark{{id=\"{mark}\"}}\n\n\
-                 <branch id=\"{branch}\" prompt=\"?\">\n  <choice id=\"{choice}\" label=\"Offer\">\n    \
+                 ## Door\n\n@mara: Hi.\n::label{{name=\"{mark}\"}}\n\n\
+                 <branch id=\"{branch}\" prompt=\"?\">\n  <choice id=\"{choice}\" text=\"Offer\">\n    \
                  @mara: Yes.\n  </choice>\n</branch>\n\
-                 <hub id=\"{hub}\" prompt=\"More?\">\n  <choice id=\"bye\" label=\"Bye\" exit>\n    \
+                 <hub id=\"{hub}\" prompt=\"More?\">\n  <choice id=\"bye\" text=\"Bye\" exit>\n    \
                  @mara: Bye.\n  </choice>\n</hub>\n"
             ),
         ),
@@ -135,7 +135,7 @@ const SLOTS: [(&str, &str, &str, &str); 18] = [
     ("branch id", "E-PATH-IDENT", "mara-ask", "mara ask"),
     ("choice id", "E-PATH-IDENT", "lamp-offer", "lamp'offer"),
     ("hub id", "E-PATH-IDENT", "chat-hub", "chat hub"),
-    ("mark id", "E-PATH-IDENT", "the-mark", "the mark"),
+    ("label name", "E-PATH-IDENT", "the-mark", "the mark"),
     ("enum", "E-PATH-IDENT", "tone-2", "tone 2"),
     ("enum member", "E-PATH-IDENT", "half-loud", "half loud"),
     ("entity kind", "E-PATH-IDENT", "street-cat", "street cat"),

@@ -214,7 +214,7 @@ fn dup_line_code_across_match_arms_in_component_body() {
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
-         ## Scene 1.\n<match on=\"@tier\">\n<when is=\"fond\">\n@marina{code=\"0010\"}: a\n\
+         ## Scene 1.\n<match subject=\"@tier\">\n<when is=\"fond\">\n@marina{code=\"0010\"}: a\n\
          </when>\n<otherwise>\n@marina{code=\"0010\"}: b\n</otherwise>\n</match>\n",
     )
     .unwrap();

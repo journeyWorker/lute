@@ -12,7 +12,7 @@ priority: 10
 ::bg{location="boiler" time="night"}
 @narrator{code="0010"}: The lantern finds the stairs one at a time. At the bottom: the boiler, the size of a bus, and beside it the furnace door, a mouth with a latch.
 @narrator{code="0020"}: Three levers on a panel, numbered I, II, III in stencil. Behind the gauge glass, a needle twitches as if the thing were dreaming.
-<match on="run.power">
+<match subject="run.power">
   <when is="true">
     @narrator{code="0030"}: The boiler breathes. Pipes tick all through the building like knuckles cracking.
   </when>

@@ -189,12 +189,12 @@ fn a_foreign_literal_compared_with_a_domain_path_is_refused() {
 #[test]
 fn an_into_value_outside_a_domain_is_refused() {
     let d = check_scene(
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"End\" into=\"run.ending\" value=\"tragic\">\n\
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"End\" into=\"run.ending\" value=\"tragic\">\n\
          </choice>\n</branch>",
     );
     assert!(codes(&d).contains(&"E-INTO-VALUE"), "{d:?}");
     let d = check_scene(
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"End\" into=\"run.ending\" value=\"good\">\n\
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"End\" into=\"run.ending\" value=\"good\">\n\
          </choice>\n</branch>",
     );
     assert!(!codes(&d).contains(&"E-INTO-VALUE"), "{d:?}");
@@ -203,7 +203,7 @@ fn an_into_value_outside_a_domain_is_refused() {
 #[test]
 fn a_match_over_a_domain_path_is_exhaustive_over_its_members() {
     let arms = |is: &[&str]| {
-        let mut s = "<match on=\"run.ending\">\n".to_string();
+        let mut s = "<match subject=\"run.ending\">\n".to_string();
         for m in is {
             s.push_str(&format!("<when is=\"{m}\">\n@narrator: {m}\n</when>\n"));
         }

@@ -39,7 +39,7 @@ directives:
       - { name: wait, type: bool, default: true }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     bridge: { service: minigame, operation: play }
-    lower: { kind: builtin, name: autoStage }
+    lower: { kind: builtin, name: actorStage }
 "#;
 
     #[test]
@@ -158,10 +158,10 @@ writes:
         );
         assert!(err.contains(&BUILTIN_LOWERING_HOOKS.join(", ")), "{err}");
         assert!(err.contains("omit `lower:`"), "{err}");
-        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: autoStag }")
+        let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: actorStag }")
             .unwrap_err()
             .to_string();
-        assert!(err.contains("did you mean `autoStage`?"), "{err}");
+        assert!(err.contains("did you mean `actorStage`?"), "{err}");
     }
 
     #[test]

@@ -240,7 +240,7 @@ pub(crate) fn check_match_with_domain(
         }
     }
 
-    // Age-gate special case (§11.2): an age-gated `<match on="app.rating">` MUST
+    // Age-gate special case (§11.2): an age-gated `<match subject="app.rating">` MUST
     // carry a `teen` arm or an `<otherwise>` — a release-build hard gate.
     if subject == Some("app.rating")
         && !has_otherwise
@@ -249,7 +249,7 @@ pub(crate) fn check_match_with_domain(
         diags.push(diag(
             "E-AGE-GATE",
             Severity::Error,
-            "age-gated `<match on=\"app.rating\">` must cover a `teen` arm or carry an \
+            "age-gated `<match subject=\"app.rating\">` must cover a `teen` arm or carry an \
              `<otherwise>` (dsl §11.2)"
                 .to_string(),
             m.span,

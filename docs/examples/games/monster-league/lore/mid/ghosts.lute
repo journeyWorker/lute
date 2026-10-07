@@ -11,24 +11,24 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="oriel" on="talk" target="npc.silvercrestMedium" title="Madame Oriel" once="false" when="quest.midGhostStories.state != 'complete'">
   ::bg{location="oriel-parlour" time="night"}
-  ::auto{character="silvercrestMedium" anchor="center" action="enter"}
+  ::actor{character="silvercrestMedium" anchor="center" action="enter"}
   @silvercrestMedium{code="0010" when="quest.midGhostStories.state == 'unset'"}: Come in, come in, mind the cat, it isn't there. I collect ghost stories, dear. Hundreds of them. Three are true.
   @silvercrestMedium{code="0020" when="quest.midGhostStories.state == 'unset'"}: Nobody believes me, of course. But you have the look of someone who has seen things through the wrong end of a lens.
   ::accept{quest="midGhostStories" when="quest.midGhostStories.state == 'unset'"}
   <hub id="midOrielStories" prompt="Madame Oriel shuffles a deck of very old cards.">
-    <choice id="theater" label="The theater ghost" once when="quest.midGhostTheater.state == 'unset'">
+    <choice id="theater" text="The theater ghost" once when="quest.midGhostTheater.state == 'unset'">
       @silvercrestMedium{code="0030"}: The old theater on the square closed after the last night of "The Silver Queen". The leading lady took her bow and never came off stage. They say she's still waiting for the curtain.
       ::accept{quest="midGhostTheater"}
     </choice>
-    <choice id="well" label="The well ghost" once when="quest.midGhostWell.state == 'unset'">
+    <choice id="well" text="The well ghost" once when="quest.midGhostWell.state == 'unset'">
       @silvercrestMedium{code="0040" emotion="worried"}: In Wardenmere there is a well at the end of the boardwalk. A girl used to sing into it for the echo. One night the echo sang back first.
       ::accept{quest="midGhostWell"}
     </choice>
-    <choice id="lighthouse" label="The lighthouse ghost" once when="quest.midGhostLighthouse.state == 'unset'">
+    <choice id="lighthouse" text="The lighthouse ghost" once when="quest.midGhostLighthouse.state == 'unset'">
       @silvercrestMedium{code="0050"}: The Fairhaven lighthouse went dark thirty years ago, the night its keeper climbed up to fix the lamp. The lamp has been trying to light itself ever since. Or someone has.
       ::accept{quest="midGhostLighthouse"}
     </choice>
-    <choice id="leave" label="Leave" exit>
+    <choice id="leave" text="Leave" exit>
       @silvercrestMedium{code="0060" when="!holds('hasItem', ['spectralLens'])"}: You'll need to see them, of course, not just hear about them. There's a lens for that, somewhere in this city. Somewhere underground.
       @silvercrestMedium{code="0070" when="holds('hasItem', ['spectralLens'])"}: Take that lens of yours and go and look. Then come back and tell me I was right.
     </choice>
@@ -43,7 +43,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="theaterGhost" on="enterPlace" target="place.silvercrestTheater" title="The theater ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['silvercrestTheater'])">
   ::bg{location="silvercrest-theater" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: Dust sheets over the seats, and a spotlight that nobody switched on. On the stage, through the lens, a woman in a silver gown is bowing to an empty house.
   @narrator{code="0020"}: She straightens up, sees you, and smiles as if you were the whole audience. Then she comes down the steps.
   ::assert{midGhostSeen(silvercrestTheater)}
@@ -62,7 +62,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="wellGhost" on="enterPlace" target="place.wardenmereWell" title="The well ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['wardenmereWell'])">
   ::bg{location="wardenmere-well" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: You lean over the well and look down through the lens. Far below, a girl looks up and sings the first line of a song you almost know.
   @narrator{code="0020"}: The echo sings the second line. Then something climbs out of the well to hear the rest.
   ::assert{midGhostSeen(wardenmereWell)}
@@ -81,7 +81,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="lighthouseGhost" on="enterPlace" target="place.fairhavenLighthouse" title="The lighthouse ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['fairhavenLighthouse'])">
   ::bg{location="fairhaven-lighthouse" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: A hundred and twelve steps to the lamp room. At the top, through the lens, an old man in oilskins is striking match after match against the dead lamp.
   @narrator{code="0020"}: He looks round at you, holds out the matchbox, and when you don't take it, he gets angry.
   ::assert{midGhostSeen(fairhavenLighthouse)}

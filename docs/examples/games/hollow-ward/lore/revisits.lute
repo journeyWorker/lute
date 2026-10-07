@@ -15,7 +15,7 @@ title: Coming back to a room
 </beat>
 
 <beat id="chapel" on="enter" target="room.chapel" once="false">
-  <match on="run.bellRung">
+  <match subject="run.bellRung">
     <when is="true">
       @narrator{code="0010"}: The chapel. The pews have turned back to face the altar.
     </when>

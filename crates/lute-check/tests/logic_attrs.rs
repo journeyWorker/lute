@@ -39,7 +39,7 @@ fn unknown_attrs(text: &str) -> usize {
 #[test]
 fn choice_goto_is_unknown_attr() {
     let t = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"c\" label=\"L\" goto=\"ep08\">\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"c\" text=\"L\" goto=\"ep08\">\n\
          @narrator: hi\n</choice>\n</branch>\n"
     );
     assert_eq!(unknown_attrs(&t), 1, "{:?}", codes(&t));
@@ -50,7 +50,7 @@ fn choice_goto_is_unknown_attr() {
 #[test]
 fn span_is_the_attribute_key() {
     let t = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"c\" label=\"L\" goto=\"ep08\">\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"c\" text=\"L\" goto=\"ep08\">\n\
          @narrator: hi\n</choice>\n</branch>\n"
     );
     let d = run(&t)
@@ -68,7 +68,7 @@ fn span_is_the_attribute_key() {
 #[test]
 fn curly_quoted_value_is_one_attr_quote_error() {
     let t = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"oven\" label=“Open the bread oven”>\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"oven\" text=“Open the bread oven”>\n\
          @narrator: Hot.\n</choice>\n</branch>\n"
     );
     let ds = run(&t).diagnostics;
@@ -90,13 +90,13 @@ fn curly_quoted_value_is_one_attr_quote_error() {
 #[test]
 fn once_and_exit_are_hub_only() {
     let branch = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"c\" label=\"L\" once exit>\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"c\" text=\"L\" once exit>\n\
          @narrator: hi\n</choice>\n</branch>\n"
     );
     assert_eq!(unknown_attrs(&branch), 2, "{:?}", codes(&branch));
     let hub = format!(
-        "{HDR}<hub id=\"h\">\n<choice id=\"c\" label=\"L\" once>\n@narrator: hi\n</choice>\n\
-         <choice id=\"c2\" label=\"M\" exit>\n@narrator: bye\n</choice>\n</hub>\n"
+        "{HDR}<hub id=\"h\">\n<choice id=\"c\" text=\"L\" once>\n@narrator: hi\n</choice>\n\
+         <choice id=\"c2\" text=\"M\" exit>\n@narrator: bye\n</choice>\n</hub>\n"
     );
     assert_eq!(unknown_attrs(&hub), 0, "{:?}", codes(&hub));
 }
@@ -108,7 +108,7 @@ fn once_and_exit_are_hub_only() {
 #[test]
 fn hub_id_is_permitted() {
     let t = format!(
-        "{HDR}<hub id=\"h\">\n<choice id=\"c\" label=\"L\" exit>\n@narrator: hi\n</choice>\n</hub>\n"
+        "{HDR}<hub id=\"h\">\n<choice id=\"c\" text=\"L\" exit>\n@narrator: hi\n</choice>\n</hub>\n"
     );
     assert_eq!(unknown_attrs(&t), 0, "{:?}", codes(&t));
 }
@@ -118,7 +118,7 @@ fn hub_id_is_permitted() {
 #[test]
 fn match_when_otherwise_close() {
     let t = format!(
-        "{HDR}<match on=\"run.rank\" bogus=\"1\">\n\
+        "{HDR}<match subject=\"run.rank\" bogus=\"1\">\n\
          <when is=\"a\" nonsense=\"2\">\n@narrator: a\n</when>\n\
          <otherwise junk=\"3\">\n@narrator: o\n</otherwise>\n</match>\n"
     );
@@ -132,7 +132,7 @@ fn match_when_otherwise_close() {
 #[test]
 fn otherwise_attr_is_no_longer_logic_content() {
     let t = format!(
-        "{HDR}<match on=\"run.rank\">\n<when is=\"a\">\n@narrator: a\n</when>\n\
+        "{HDR}<match subject=\"run.rank\">\n<when is=\"a\">\n@narrator: a\n</when>\n\
          <otherwise junk=\"3\">\n@narrator: o\n</otherwise>\n</match>\n"
     );
     let cs = codes(&t);
@@ -159,7 +159,7 @@ fn logic_content_still_owns_body_shape() {
 #[test]
 fn persist_is_told_once_by_its_own_code() {
     let t = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"c\" label=\"L\" persist=\"run\" into=\"run.x\">\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"run\" into=\"run.x\">\n\
          @narrator: hi\n</choice>\n</branch>\n"
     );
     let cs = codes(&t);
@@ -173,7 +173,7 @@ fn persist_is_told_once_by_its_own_code() {
 #[test]
 fn as_is_not_claimed_by_the_closure_rule() {
     let t = format!(
-        "{HDR}<branch id=\"b\">\n<choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+        "{HDR}<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n\
          @narrator: hi\n</choice>\n</branch>\n"
     );
     assert!(
@@ -189,11 +189,11 @@ fn as_is_not_claimed_by_the_closure_rule() {
 fn the_corpus_vocabulary_is_permitted() {
     let t = format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" when=\"run.x\" into=\"run.x\" value=\"true\">\n\
+         <choice id=\"c\" text=\"L\" when=\"run.x\" into=\"run.x\" value=\"true\">\n\
          @narrator: hi\n</choice>\n</branch>\n\
-         <hub id=\"h\">\n<choice id=\"h1\" label=\"L\" once>\n@narrator: a\n</choice>\n\
-         <choice id=\"h2\" label=\"M\" exit>\n@narrator: b\n</choice>\n</hub>\n\
-         <match on=\"run.rank\">\n<when is=\"a\">\n@narrator: c\n</when>\n\
+         <hub id=\"h\">\n<choice id=\"h1\" text=\"L\" once>\n@narrator: a\n</choice>\n\
+         <choice id=\"h2\" text=\"M\" exit>\n@narrator: b\n</choice>\n</hub>\n\
+         <match subject=\"run.rank\">\n<when is=\"a\">\n@narrator: c\n</when>\n\
          <when test=\"run.x\">\n@narrator: d\n</when>\n\
          <otherwise>\n@narrator: e\n</otherwise>\n</match>\n"
     );
@@ -207,7 +207,7 @@ fn the_corpus_vocabulary_is_permitted() {
 fn branch_prompt_and_timeout_are_permitted_and_valid() {
     let t = format!(
         "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"10\">\n\
-         <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+         <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
     );
     assert_eq!(codes(&t), Vec::<String>::new(), "{:?}", codes(&t));
 }
@@ -221,7 +221,7 @@ fn branch_timeout_zero_or_non_numeric_is_rejected() {
     for bad in ["0", "abc"] {
         let t = format!(
             "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"{bad}\">\n\
-             <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+             <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
         );
         assert_eq!(
             codes(&t),
@@ -239,7 +239,7 @@ fn branch_timeout_zero_or_non_numeric_is_rejected() {
 fn branch_empty_prompt_is_rejected_at_its_own_span() {
     let t = format!(
         "{HDR}<branch id=\"b\" prompt=\"\" timeout=\"10\">\n\
-         <choice id=\"c\" label=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+         <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
     );
     let d = run(&t)
         .diagnostics
@@ -474,8 +474,8 @@ fn a_flag_with_a_non_flag_value_is_flag_value_at_the_attribute() {
     );
 
     let hub = format!(
-        "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" exit=\"yes\">\n@x: a\n</choice>\n\
-         <choice id=\"b\" label=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
+        "{HDR}<hub id=\"h\">\n<choice id=\"a\" text=\"A\" exit=\"yes\">\n@x: a\n</choice>\n\
+         <choice id=\"b\" text=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
     );
     let fv = flag_values(&hub);
     assert_eq!(fv.len(), 1, "{:?}", codes(&hub));
@@ -496,8 +496,8 @@ fn a_flag_with_a_non_flag_value_is_flag_value_at_the_attribute() {
 fn a_period_on_a_choice_once_says_it_is_a_beat_key() {
     for period in ["run", "user", "day", "week", "slot", "season:harvest"] {
         let t = format!(
-            "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" once=\"{period}\">\n@x: a\n</choice>\n\
-             <choice id=\"b\" label=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
+            "{HDR}<hub id=\"h\">\n<choice id=\"a\" text=\"A\" once=\"{period}\">\n@x: a\n</choice>\n\
+             <choice id=\"b\" text=\"B\" exit>\n@x: b\n</choice>\n</hub>\n"
         );
         let fv = flag_values(&t);
         assert_eq!(fv.len(), 1, "{period}: {:?}", codes(&t));
@@ -518,8 +518,8 @@ fn a_period_on_a_choice_once_says_it_is_a_beat_key() {
 fn true_and_false_flag_values_mean_what_they_say() {
     let hub = |a: &str, b: &str| {
         format!(
-            "{HDR}<hub id=\"h\">\n<choice id=\"a\" label=\"A\" {a}>\n@x: a\n</choice>\n\
-             <choice id=\"b\" label=\"B\" {b}>\n@x: b\n</choice>\n</hub>\n"
+            "{HDR}<hub id=\"h\">\n<choice id=\"a\" text=\"A\" {a}>\n@x: a\n</choice>\n\
+             <choice id=\"b\" text=\"B\" {b}>\n@x: b\n</choice>\n</hub>\n"
         )
     };
     let exit_true = hub("once=\"true\"", "exit=\"true\"");

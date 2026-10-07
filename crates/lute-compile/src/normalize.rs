@@ -78,7 +78,7 @@ pub fn is_body_split(d: &Directive) -> bool {
 /// `::use` by it.
 pub(crate) const AUTHORED_ATTR: &str = "__authored";
 
-/// Marks the `<match on="occasion.target">` [`expand_target_uses`]
+/// Marks the `<match subject="occasion.target">` [`expand_target_uses`]
 /// synthesizes to play a `::use{… who=occasion.target}` for the bound
 /// member: its record is compiler-injected, never an authored decision.
 pub(crate) const TARGET_USE_ATTR: &str = "__targetUse";
@@ -260,7 +260,7 @@ pub fn normalize_document(
 /// dsl 0.28.0 §3: a `::use` passing `occasion.target` as an argument, in a
 /// beat or entry that targets a kind or runs for each member of one, plays
 /// the component for the member the beat runs for: it becomes a
-/// `<match on="occasion.target">` with one `<when is="<member>">` arm per
+/// `<match subject="occasion.target">` with one `<when is="<member>">` arm per
 /// member of `targets`' enclosing scope, each holding the `::use` with that
 /// member as the argument. So a `speaker` param speaks as the member, a
 /// kind-typed one renders its label, and the body's writes name it — every
@@ -566,14 +566,14 @@ fn normalize_nodes(
             i += 1;
             continue;
         }
-        // dsl 0.12.0: a GUARDED `::next{to when}` desugars to a one-arm
+        // dsl 0.12.0: a GUARDED `::jump{to when}` desugars to a one-arm
         // `<match>` the SAME way a gated line does (`synth_when_next_match`
         // mirrors `synth_when_match` exactly, wrapping the directive
         // instead of the line) — so `stage::walk_match`'s existing two-arm
         // lowering handles both fall-through cases with zero new code.
         let is_gated_next = matches!(
             &nodes[i],
-            Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE && d.when.is_some()
+            Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE && d.when.is_some()
         );
         if is_gated_next {
             let d = match nodes.remove(i) {
@@ -692,7 +692,7 @@ fn marker_component(d: &Directive) -> Option<&str> {
 /// `expr::synth_arm_expr`) reads only `.raw`, so the slot's `kind` never
 /// reaches the artifact) and the arm's `test` is the literal text `"$"` —
 /// the arm fires iff the guard itself decides true, exactly
-/// `<match on="G"><when test="$">…</when><otherwise/></match>` (§7.4's
+/// `<match subject="G"><when test="$">…</when><otherwise/></match>` (§7.4's
 /// "MUST lower to that same match record", pinned by
 /// `when_sugar::sugared_line_lowers_to_canonical_match_record`). The
 /// `<otherwise>` alternative is the sugar's implicit empty else-case
@@ -713,9 +713,9 @@ fn synth_when_match(mut line: Line) -> Node {
 /// when=None]}, Otherwise{body: []}] }` — mirrors [`synth_when_match`]
 /// EXACTLY (same hoisted subject, same synthesized `"$"` test arm, same
 /// implicit empty `<otherwise>` fall-through), so `stage::walk_match` lowers
-/// a guarded `::next` through the IDENTICAL two-arm machinery a gated line
+/// a guarded `::jump` through the IDENTICAL two-arm machinery a gated line
 /// already uses — no new lowering code. `d.when` is cleared on the nested
-/// copy so a re-normalized desugared `::next` can never re-enter this
+/// copy so a re-normalized desugared `::jump` can never re-enter this
 /// rewrite (idempotent by construction, mirrors `synth_when_match`).
 fn synth_when_next_match(mut d: Directive) -> Node {
     let guard = d.when.take().expect("caller guarantees `d.when.is_some()`");
@@ -724,12 +724,12 @@ fn synth_when_next_match(mut d: Directive) -> Node {
 }
 
 /// dsl 0.24.0 §1: `Node::Set{when: Some(g), ..}` → the same one-arm
-/// `<match on="g"><when test="$">::set{…}</when><otherwise/></match>` as
+/// `<match subject="g"><when test="$">::set{…}</when><otherwise/></match>` as
 /// [`synth_when_match`], so the IR, `lute run`/`lute play` and `lute trace`
 /// all apply the write exactly when the guard holds with no new record
 /// shape. `s.when` is cleared on the nested copy (idempotent).
 ///
-/// Unlike the line/`::next` sugar this runs from `expand::expand_nodes`, NOT
+/// Unlike the line/`::jump` sugar this runs from `expand::expand_nodes`, NOT
 /// [`normalize_nodes`]: a `::set` RHS may read an enclosing `<match>`'s `$`,
 /// which must expand against THAT subject before the write is wrapped in a
 /// match of its own (whose `$` is the guard). dsl 0.26.0 §4: a guarded
@@ -1432,7 +1432,7 @@ mod tests {
     fn use_expands_component_inline_with_bound_params_and_sentinels() {
         // Real fixture: docs/examples/components/greet.component.lute declares
         // `component: greet`, `params: { who: string }`, body =
-        // `::auto{character=@who action="fadeInUp"}` + a narrator line.
+        // `::actor{character=@who action="fadeInUp"}` + a narrator line.
         let base = Path::new("../../docs/examples/components");
         let scene = std::fs::read_to_string(base.join("scene.lute")).unwrap();
         let mut doc = parse_clean(&scene);
@@ -1449,7 +1449,7 @@ mod tests {
         assert!(diags.is_empty(), "{diags:#?}");
 
         let body = &doc.sections[0].body;
-        // ::use replaced by: begin sentinel, ::auto (param bound), line, end sentinel, then the scene's own line.
+        // ::use replaced by: begin sentinel, ::actor (param bound), line, end sentinel, then the scene's own line.
         let tags: Vec<String> = body
             .iter()
             .map(|n| match n {
@@ -1462,7 +1462,7 @@ mod tests {
             tags,
             vec![
                 format!("::{COMPONENT_BEGIN}"),
-                "::auto".to_string(),
+                "::actor".to_string(),
                 "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
                 "@narrator".to_string(),
@@ -1524,7 +1524,7 @@ episode: 1
         // `params: { who: string }`, but this `::use` supplies no `who` and an
         // unknown `extra` arg. Normalization must degrade to E-COMPILE-COMPONENT
         // rather than expand the body with an unbound `@who` — no component
-        // sentinels, no spliced `::auto`, no residual `::use`.
+        // sentinels, no spliced `::actor`, no residual `::use`.
         let base = Path::new("../../docs/examples/components");
         let src = r#"---
 kind: scene
@@ -1563,13 +1563,13 @@ components: [greet.component.lute]
             msg.contains("greet") && msg.contains("who") && msg.contains("extra"),
             "diagnostic should name component + mismatched params: {msg:?}"
         );
-        // No expansion leaked: no sentinels, no `::auto` body, no `::use` remnant.
+        // No expansion leaked: no sentinels, no `::actor` body, no `::use` remnant.
         let body = &doc.sections[0].body;
         assert!(
             body.iter().all(|n| !matches!(n, Node::Directive(d)
                 if d.tag == COMPONENT_BEGIN
                     || d.tag == COMPONENT_END
-                    || d.tag == "auto"
+                    || d.tag == lute_manifest::core::ACTOR_DIRECTIVE
                     || d.tag == "use")),
             "no component body should splice in on arg mismatch: {body:#?}"
         );
@@ -1587,13 +1587,13 @@ episode: 1
 ## Shot 1.
 
 <branch id="sofaHelp">
-  <choice id="help" label="Help her up" into="run.metHelpfully">
+  <choice id="help" text="Help her up" into="run.metHelpfully">
     @elena: Thank you.
   </choice>
-  <choice id="warmly" label="Stay a while" into="run.outcome" value="warm">
+  <choice id="warmly" text="Stay a while" into="run.outcome" value="warm">
     @elena: Kind.
   </choice>
-  <choice id="tip" label="Leave a tip" into="run.tip" value="5">
+  <choice id="tip" text="Leave a tip" into="run.tip" value="5">
     @elena: Oh.
   </choice>
 </branch>
@@ -1721,7 +1721,7 @@ components: [greet.component.lute]
             vec![
                 "objective".to_string(),
                 format!("::{COMPONENT_BEGIN}"),
-                "::auto".to_string(),
+                "::actor".to_string(),
                 "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
                 "on".to_string(),
@@ -1735,7 +1735,7 @@ components: [greet.component.lute]
             on_tags,
             vec![
                 format!("::{COMPONENT_BEGIN}"),
-                "::auto".to_string(),
+                "::actor".to_string(),
                 "@narrator".to_string(),
                 format!("::{COMPONENT_END}"),
             ],

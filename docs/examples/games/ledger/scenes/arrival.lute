@@ -9,7 +9,7 @@ title: Arrival
 @narrator{code="0010"}: The boat leaves you on the rock at dusk. The keeper's door is unlocked.
 
 <branch id="door">
-  <choice id="inside" label="Go inside">
+  <choice id="inside" text="Go inside">
     @narrator{code="0020"}: The hinges complain. Stairs spiral up into the dark.
   </choice>
 </branch>

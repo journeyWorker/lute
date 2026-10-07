@@ -14,13 +14,13 @@ uses: ../world.schema.yaml
 @detective{mono}: One name. I only get to say one.
 
 <branch id="accuse">
-  <choice id="accuseBlake" label="Accuse Blake" into="run.accused" value="blake">
+  <choice id="accuseBlake" text="Accuse Blake" into="run.accused" value="blake">
     @detective: Blake. The ledger and the letter were both yours.
   </choice>
-  <choice id="accuseCass" label="Accuse Cass" into="run.accused" value="cass">
+  <choice id="accuseCass" text="Accuse Cass" into="run.accused" value="cass">
     @detective: Cass. You balanced these books in blood.
   </choice>
-  <choice id="accuseDana" label="Accuse Dana" into="run.accused" value="dana">
+  <choice id="accuseDana" text="Accuse Dana" into="run.accused" value="dana">
     @detective: Dana. You were never as far away as you claimed.
   </choice>
 </branch>

@@ -43,7 +43,7 @@ title: Tidewell — services, the derby, the pier, the lighthouse and the cape
 </entry>
 
 <entry id="southMorrow" on="talk" target="npc.tidewellMorrow" category="bark">
-  <match on="quest.southOldSalt.state">
+  <match subject="quest.southOldSalt.state">
     <when is="complete">
       @tidewellMorrow{code="0010" emotion="laughing"}: The student has become the fisherman! Sit. Don't talk. That's the last lesson.
     </when>
@@ -127,7 +127,7 @@ title: Tidewell — services, the derby, the pier, the lighthouse and the cape
 <beat use="trainerBattle" id="tidewellFishermanOskar" who="tidewellFishermanOskar" intro="I've won the derby six times! Six! Want to see my trophy? Battle me first!" win="Seven times, next Sunday. Watch." lose="Six-time champion!" prize="360" instance="use-002"/>
 
 <entry id="southTidewellFishermanOskarAfter" on="talk" target="npc.tidewellFishermanOskar" category="bark" when="holds('defeated', ['tidewellFishermanOskar'])">
-  <match on="quest.southDerby.state">
+  <match subject="quest.southDerby.state">
     <when is="complete">
       @tidewellFishermanOskar{code="0010"}: You got a Seahorsling on derby day. On your first try. I'm going to need a minute. A long minute. Maybe a week.
     </when>

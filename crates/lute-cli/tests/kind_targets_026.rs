@@ -74,7 +74,7 @@ fn project(tag: &str) -> PathBuf {
         "---\nkind: lore\nid: dex\nuses: ../world.schema.yaml\n---\n\n\
          <beat id=\"bug\" on=\"caught\" target=\"kind:bug\" priority=\"5\" once=\"false\" \
          when=\"occasion.target != 'bee' || run.score >= 1\">\n\
-         \x20 <match on=\"occasion.target\">\n\
+         \x20 <match subject=\"occasion.target\">\n\
          \x20   <when is=\"ant\">\n      ::set{run.score += 1}\n    </when>\n\
          \x20   <when is=\"bee\">\n      ::set{run.score += 10}\n    </when>\n\
          \x20 </match>\n\
@@ -128,7 +128,7 @@ fn a_kind_beat_answers_each_member_and_reads_it_as_occasion_target() {
     );
     let ant = &v["steps"][0];
     assert_eq!(ant["winner"], "dex.bug", "{ant}");
-    // The body's `<match on="occasion.target">` and `{{occasion.target}}`
+    // The body's `<match subject="occasion.target">` and `{{occasion.target}}`
     // both see the raised member, prefix stripped.
     assert_eq!(lines(ant), ["A ant."], "{ant}");
     assert_eq!(

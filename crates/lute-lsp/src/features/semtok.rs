@@ -527,7 +527,7 @@ mod tests {
     /// the distinct `statePath` type — the two CEL sub-token classes.
     #[test]
     fn ref_and_state_path_get_distinct_types() {
-        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
+        let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\nstate:\n  scene.affect.marina: { type: number, default: 0 }\ndefs:\n  fond: { type: bool, cel: \"scene.affect.marina >= 1\" }\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n  <when test=\"@fond\">\n    @f: a.\n  </when>\n  <otherwise>\n    @f: b.\n  </otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
 
@@ -559,7 +559,7 @@ mod tests {
     /// the arm openers go untokenized and the logic layer is under-highlighted.
     #[test]
     fn choice_and_arm_openers_are_logic_tokens() {
-        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\">\n@f: a.\n</choice>\n</branch>\n<match on=\"scene.x\">\n<when test=\"$ == 1\">\n@f: b.\n</when>\n<otherwise>\n@f: c.\n</otherwise>\n</match>\n";
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\">\n@f: a.\n</choice>\n</branch>\n<match subject=\"scene.x\">\n<when test=\"$ == 1\">\n@f: b.\n</when>\n<otherwise>\n@f: c.\n</otherwise>\n</match>\n";
         let idx = TextIndex::new(text);
         let decoded = decode(&tokens(text));
         for (kw, len) in [("<choice", 7u32), ("<when", 5), ("<otherwise", 10)] {

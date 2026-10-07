@@ -40,9 +40,9 @@ the feature -> line map.
 ## Venny's Again
 /* Core staging directives with attrs (Appendix A vocabulary). */
 ::bg{location="family_restaurant" time="evening" assetId="BG.space.family_restaurant.interior.evening"}
-::music{action="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
+::music{playback="start" mood="bright" assetId="sound-bgm-common-vn-mood-bright-0.mp3" volume="normal"}
 ::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
-::auto{character="marina" action="fadeInUp"}
+::actor{character="marina" action="fadeInUp"}
 
 @narrator: Venny's again. The chain restaurant that has never offended anyone.
 @marina{code="0010" emotion="delighted" variant="1"}: Mr. Fixer! You came back!
@@ -57,18 +57,18 @@ tracks with distinct keys — a pure `subject` track (camera), a `channel` track
 */
 <timeline duration="1.4">
   <track subject="marina" property="pos">
-    ::auto{character="marina" anchor="left" action="slideInLeft"}
+    ::actor{character="marina" anchor="left" action="slideInLeft"}
   </track>
   <track subject="marina" property="opacity">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.2" duration="0.6"}
-    ::camera{shake="0.4" duration="0.3" at="0.7"}
+    ::camera{focus="marina" framing="close" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
   <track channel="fg">
-    ::cut{assetId="CUT.showcase.debut.01" at="0.5"}
-    ::cut{assetId="CUT.showcase.debut.01" action="hide" at="1.1"}
+    ::cg{assetId="CUT.showcase.debut.01" at="0.5"}
+    ::cg{assetId="CUT.showcase.debut.01" display="hide" at="1.1"}
   </track>
 </timeline>
 /* State writes: a pure `=` write (scene tier) ... */
@@ -90,7 +90,7 @@ is a finite enum [fail, bronze, silver, gold]: first-match-wins; `$` is the
 match subject; `<otherwise>` covers fail. A `+=` compound write reads-then-
 writes (only legal because the path is definitely assigned).
 */
-<match on="scene.serve.debut.rank">
+<match subject="scene.serve.debut.rank">
   <when is="gold">
     @marina{code="0020" emotion="delighted" variant="1"}: A perfect service!
     ::set{scene.affect.marina += 1}
@@ -114,14 +114,14 @@ writes (only legal because the path is definitely assigned).
 guards use an inline @ref, a plugin-exported @ref, and a parameterized def call.
 */
 <branch id="approach">
-  <choice id="blunt" label="Just ask, flatly">
+  <choice id="blunt" text="Just ask, flatly">
     @fixer{code="0050"}: Marina. Your number.
   </choice>
-  <choice id="soft" label="Ask gently" when="@showcaseReady" into="run.metHelpfully">
+  <choice id="soft" text="Ask gently" when="@showcaseReady" into="run.metHelpfully">
     @fixer{code="0052"}: Marina — would you mind terribly if I had your number?
     ::set{scene.affect.marina += 1}
   </choice>
-  <choice id="linger" label="Ask, and linger a while" when="@atLeast(1)" into="run.sofaOutcome" value="warm">
+  <choice id="linger" text="Ask, and linger a while" when="@atLeast(1)" into="run.sofaOutcome" value="warm">
     @fixer{code="0054"}: And perhaps I'll stay through your break.
     ::set{run.affection += 1}
   </choice>
@@ -136,7 +136,7 @@ Intra-episode reaction reads the recorded choice key (scene.choices.approach,
 domain = the branch's choice ids + unset). `@fond` is the inline def; `$` is
 the subject; `<otherwise>` is mandatory (a @ref guard proves no coverage).
 */
-<match on="scene.choices.approach">
+<match subject="scene.choices.approach">
   <when test="@fond">
     @fixer{mono}: I asked nicely, which I am electing not to examine.
   </when>
@@ -153,7 +153,7 @@ run.metHelpfully has a default (bool, finite -> no <otherwise> needed here since
 both members are covered); run.sofaOutcome has NO default, so it is maybe-unset
 and its `unset` case MUST be covered by <otherwise>.
 */
-<match on="run.metHelpfully">
+<match subject="run.metHelpfully">
   <when is="true">
     @marina{code="0070" emotion="content" variant="0"}: You were kind about it. I noticed.
   </when>
@@ -162,7 +162,7 @@ and its `unset` case MUST be covered by <otherwise>.
   </when>
 </match>
 
-<match on="run.sofaOutcome">
+<match subject="run.sofaOutcome">
   <when is="warm">
     @marina{code="0090" emotion="delighted" variant="1"}: Staying? That would be lovely.
   </when>
@@ -173,11 +173,11 @@ and its `unset` case MUST be covered by <otherwise>.
 
 ## Content Gates
 /*
-app.* is read-only content gating (§9.5). An age-gated <match on="app.rating">
+app.* is read-only content gating (§9.5). An age-gated <match subject="app.rating">
 MUST cover `teen` or carry <otherwise> (release-build hard gate, §11.2). No
 ::set targets app.* anywhere — the write policy is respected.
 */
-<match on="app.rating">
+<match subject="app.rating">
   <when is="teen">
     @narrator: A gentle evening, suitable for all.
   </when>
@@ -190,7 +190,7 @@ Parameterized def call `@atLeast(3)` (base schema def, cel `user.level >= n`,
 reads the user tier) and `@veteran` (child schema def added by the `extends`
 refinement). Subject scene.affect.marina; <otherwise> mandatory.
 */
-<match on="scene.affect.marina">
+<match subject="scene.affect.marina">
   <when test="@atLeast(3)">
     @fixer{mono}: She has earned a veteran's welcome.
   </when>
@@ -210,13 +210,13 @@ directive (§10) — never `E-UNKNOWN-DIRECTIVE`.
 ::use{component="stinger" cue="tense"}
 
 ::vfx{type="petals" transition="fade"}
-::music{action="stop"}
+::music{playback="stop"}
 /*
 app.lang is a maybe-unset enum ([ko, en], no default), so this read-only app.*
 gate MUST carry <otherwise> (§11.2). app.* is never ::set — read-only content
 gating, same policy as the app.rating gate above.
 */
-<match on="app.lang">
+<match subject="app.lang">
   <when is="ko">
     @narrator: Subtitles render in Korean.
   </when>

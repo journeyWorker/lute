@@ -68,7 +68,7 @@
 //!
 //! ## Defs, assumptions, short-circuits (dsl 0.24.0)
 //! - A `@def` is a macro: every use site — a CEL slot, a `{{@def}}`
-//!   interpolation, a `::use` argument, a `<match on="@def">` subject — is
+//!   interpolation, a `::use` argument, a `<match subject="@def">` subject — is
 //!   checked on its EXPANDED text, so a maybe-unset read inside a def body is
 //!   `E-MAYBE-UNSET` at the use, naming the def.
 //! - A beat `when:` / bundle `<beat when>` / entry `when=` is an assumption
@@ -105,7 +105,7 @@ use crate::meta::StateSchema;
 
 /// What a definite-assignment walk resolves names against: the folded state
 /// schema, the def table every `@def` use expands through, and the def result
-/// types a `<match on="@def">` subject takes its domain from (dsl 0.24.0).
+/// types a `<match subject="@def">` subject takes its domain from (dsl 0.24.0).
 pub struct Scope<'a> {
     pub schema: &'a StateSchema,
     pub defs: DefTable<'a>,
@@ -429,7 +429,7 @@ fn walk_nodes(
                 }
                 None => check_interp_reads(&line.interps, cx, &flow.available, diags, reads),
             },
-            // dsl 0.12.0 / 0.26.0 §4: a directive `when=` (`::next`, `::use`,
+            // dsl 0.12.0 / 0.26.0 §4: a directive `when=` (`::jump`, `::use`,
             // `::give`, …) is a one-arm, NON-DOMINATING construct — the SAME
             // treatment a gated line's `when=` gets above: fork, prove THIS
             // guard's own reads via `apply_condition`, check the directive's
@@ -662,7 +662,7 @@ fn walk_branch(
         // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
         // is OFFERED — after its own `when` guard proves (a guarded choice's label
         // shows only when the guard holds), so check against the post-guard arm.
-        check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
+        check_label_reads(&choice.text, cx, &arm.available, choice.span, diags, reads);
         if !branch.id.is_empty() {
             arm.available.insert(record.clone());
         }
@@ -703,7 +703,7 @@ fn walk_hub(
         }
         // Label reads (§7.6): checked against the post-guard arm, then discarded
         // with the rest of the fork.
-        check_label_reads(&choice.label, cx, &arm.available, choice.span, diags, reads);
+        check_label_reads(&choice.text, cx, &arm.available, choice.span, diags, reads);
         // dsl 0.28.0 (T1-23, T3-61): the option's pick is recorded before its arm.
         if let Some(id) = hub_id(hub) {
             arm.available.insert(format!("scene.choices.{id}"));
@@ -1286,7 +1286,7 @@ fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &StateSchem
 
 /// Whether evaluating `expr` from entry state may read an unset path: a
 /// declared, undefaulted read its own short-circuits do not prove (a
-/// `<match on="@def">` domain's `unset` case, dsl 0.24.0).
+/// `<match subject="@def">` domain's `unset` case, dsl 0.24.0).
 pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &StateSchema) -> bool {
     collect_path_uses(expr).iter().any(|u| {
         u.role == PathRole::Read
@@ -1551,7 +1551,7 @@ mod tests {
     fn run_path_no_default_read_is_maybe_unset() {
         // `run.metHelpfully` declared without a default; read in a guarded arm's
         // body with no prior `::set` and no guard on THIS path.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match on=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.metHelpfully: { type: bool }\n  run.gate: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"run.gate\">\n<when test=\"run.gate\">\n::set{run.gate = run.metHelpfully}\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1564,7 +1564,7 @@ mod tests {
     #[test]
     fn dominating_write_proves_path() {
         // `::set{run.x = 1}` dominates the later read `run.x` in the `<when>` test.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n---\n## Shot 1.\n::set{run.x = 1}\n<match on=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n---\n## Shot 1.\n::set{run.x = 1}\n<match subject=\"run.x\">\n<when test=\"run.x > 0\">\n@narrator: hi\n</when>\n</match>\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1618,7 +1618,7 @@ mod tests {
     #[test]
     fn is_arm_proves_its_subject_set() {
         let errs = narrowing_errs(
-            "<match on=\"run.mood\">\n<when is=\"calm|tense\">\n@narrator: Mood {{run.mood}}.\n</when>\n\
+            "<match subject=\"run.mood\">\n<when is=\"calm|tense\">\n@narrator: Mood {{run.mood}}.\n</when>\n\
              <when is=\"unset\">\n@narrator: none.\n</when>\n</match>",
         );
         assert!(errs.is_empty(), "{errs:?}");
@@ -1627,7 +1627,7 @@ mod tests {
     #[test]
     fn arms_after_an_unset_arm_see_the_subject_set() {
         let errs = narrowing_errs(
-            "<match on=\"run.rival\">\n<when is=\"unset\">\n@narrator: none.\n</when>\n\
+            "<match subject=\"run.rival\">\n<when is=\"unset\">\n@narrator: none.\n</when>\n\
              <when test=\"$ > 0\">\n@narrator: Rival {{run.rival}}.\n</when>\n\
              <otherwise>\n@narrator: Low {{run.rival}}.\n</otherwise>\n</match>",
         );
@@ -1640,9 +1640,9 @@ mod tests {
         // with a `test` does not take every unset value. After the match the
         // subject is as unknown as before.
         let errs = narrowing_errs(
-            "<match on=\"run.rival\">\n<when is=\"1..\">\n@narrator: {{run.rival}}.\n</when>\n\
+            "<match subject=\"run.rival\">\n<when is=\"1..\">\n@narrator: {{run.rival}}.\n</when>\n\
              <otherwise>\n@narrator: Maybe {{run.rival}}.\n</otherwise>\n</match>\n\
-             <match on=\"run.mood\">\n<when is=\"unset\" test=\"1 > 0\">\n@narrator: a.\n</when>\n\
+             <match subject=\"run.mood\">\n<when is=\"unset\" test=\"1 > 0\">\n@narrator: a.\n</when>\n\
              <otherwise>\n@narrator: {{run.mood}}.\n</otherwise>\n</match>\n\
              @narrator: After {{run.mood}}.",
         );
@@ -1658,10 +1658,10 @@ mod tests {
 
     #[test]
     fn g1_subject_isset_guard_nonexhaustive_leaks() {
-        // `<match on="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
+        // `<match subject="isSet(run.x)">` is a SUBJECT guard; a non-exhaustive match
         // may fall through, so the subject guard must NOT prove `run.x` past the
         // block. A later read of `run.x` is therefore maybe-unset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match on=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match subject=\"isSet(run.x)\">\n<when test=\"true\">\n@narrator: hi\n</when>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1673,10 +1673,10 @@ mod tests {
 
     #[test]
     fn g2_subject_has_guard_exhaustive_leaks() {
-        // `<match on="has(run.x)">` with an `<otherwise>` is exhaustive, but no
+        // `<match subject="has(run.x)">` with an `<otherwise>` is exhaustive, but no
         // arm writes `run.x`; the subject guard must NOT survive `intersect_all`.
         // A later read of `run.x` is maybe-unset.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match on=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match subject=\"has(run.x)\">\n<when test=\"true\">\n@narrator: a\n</when>\n<otherwise>\n@narrator: b\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1742,7 +1742,7 @@ mod tests {
         // WRITE-ONLY set — that write-only set is the envelope's `G`
         // (`crate::envelope::guaranteed`), which must never claim a path is
         // guaranteed WRITTEN when two of three arms never wrote it (RevT8 P1).
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match on=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<match subject=\"run.flag\">\n<when is=\"true\" test=\"isSet(run.x)\">\n@narrator: a\n</when>\n<when is=\"false\" test=\"isSet(run.x)\">\n@narrator: b\n</when>\n<otherwise>\n::set{run.x = 1}\n</otherwise>\n</match>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1765,7 +1765,7 @@ mod tests {
         // runs, so its record write must satisfy a read AFTER the branch
         // exactly like an ordinary `::set` would — and land in the returned
         // guaranteed WRITE set. `into=` alone drives the record now.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" into=\"run.x\" value=\"1\">\n@narrator: pick\n</choice>\n</branch>\n::set{run.out = run.x}\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1784,7 +1784,7 @@ mod tests {
         // The record write is applied AFTER the choice body (mirrors the
         // engine appending the write on selection) — it must NOT retroactively
         // satisfy a read of the same path INSIDE that same body.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
@@ -1799,7 +1799,7 @@ mod tests {
         // Every `<branch>` arm records `run.x` (one guarded, one unconditional
         // so the branch is exhaustive) -> `run.x` must join the returned
         // guaranteed WRITE set, exactly like an exhaustive `::set`.
-        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" label=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" label=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n  run.x: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" when=\"run.flag\" into=\"run.x\" value=\"1\">\n@narrator: a\n</choice>\n<choice id=\"c2\" text=\"L2\" into=\"run.x\" value=\"2\">\n@narrator: b\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);

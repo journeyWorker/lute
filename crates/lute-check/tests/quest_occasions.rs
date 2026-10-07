@@ -151,8 +151,8 @@ fn visited_is_legal_in_line_and_choice_when() {
         "haven.s01ep06",
         "",
         "@vesna{when=\"visited('haven.s01ep04')\"}: We met before.\n\
-         <branch id=\"b\">\n<choice id=\"c\" label=\"Remind her\" when=\"visited('haven.s01ep04')\">\n\
-         @vesna: I remember.\n</choice>\n<choice id=\"d\" label=\"Leave\">\n@vesna: Bye.\n</choice>\n\
+         <branch id=\"b\">\n<choice id=\"c\" text=\"Remind her\" when=\"visited('haven.s01ep04')\">\n\
+         @vesna: I remember.\n</choice>\n<choice id=\"d\" text=\"Leave\">\n@vesna: Bye.\n</choice>\n\
          </branch>\n",
     );
     let ds = diags(&src);
@@ -381,8 +381,8 @@ fn project_accept_of_an_accept_driven_quest_is_clean() {
     let scene = scene_doc(
         "haven.s01ep04",
         "",
-        "<branch id=\"offer\">\n<choice id=\"yes\" label=\"Help\">\n::accept{quest=\"helpVesna\"}\n\
-         </choice>\n<choice id=\"no\" label=\"Leave\">\n@vesna: Fine.\n</choice>\n</branch>\n",
+        "<branch id=\"offer\">\n<choice id=\"yes\" text=\"Help\">\n::accept{quest=\"helpVesna\"}\n\
+         </choice>\n<choice id=\"no\" text=\"Leave\">\n@vesna: Fine.\n</choice>\n</branch>\n",
     );
     let quest =
         quest_doc("<quest id=\"helpVesna\">\n<objective id=\"o\" done=\"run.d\"/>\n</quest>\n");

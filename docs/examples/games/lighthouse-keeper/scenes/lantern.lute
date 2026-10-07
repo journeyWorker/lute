@@ -14,13 +14,13 @@ priority: 10
 @narrator{code="0020"}: The clockwork that turns it is jammed with salt and verdigris. A crank handle lies on the floor where it was dropped.
 @narrator{code="0030"}: On the desk under the window, the keeper's log lies open.
 <hub id="lanternLook" prompt="What do you look at?">
-  <choice id="clockwork" label="The clockwork" once>
+  <choice id="clockwork" text="The clockwork" once>
     @narrator{code="0040"}: The escapement is seized solid. Someone turned the lens by hand for hours; the brass is polished bright where the palms went.
   </choice>
-  <choice id="door" label="The gallery door" once>
+  <choice id="door" text="The gallery door" once>
     @narrator{code="0050"}: The door to the outside gallery has been left on the latch. It bangs gently in the wind.
   </choice>
-  <choice id="done" label="Leave the lantern" exit>
+  <choice id="done" text="Leave the lantern" exit>
     @narrator{code="0060"}: You leave the log where it lies. It is not going anywhere.
   </choice>
 </hub>

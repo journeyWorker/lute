@@ -9,7 +9,7 @@ title: Route 16 — the League Road
 
 <beat id="enter" on="enterRoute" target="route.r16" title="Route 16" priority="10">
   ::bg{location="route-16" time="day"}
-  ::music{action="change" mood="tense" volume="normal"}
+  ::music{playback="change" mood="tense" volume="normal"}
   @narrator{code="0010"}: The road out of Verdant City is wide and paved, lined with banners of past Champions. Every trainer on it looks like they have somewhere to be.
   @narrator{code="0020"}: A stone marker: ROUTE 16 — THE LEAGUE ROAD. VICTORY ROAD GATE AHEAD. EIGHT BADGES, NO EXCEPTIONS.
 </beat>

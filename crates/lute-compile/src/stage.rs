@@ -65,14 +65,14 @@ pub fn walk_seq(
                 let name = cx.components.pop().map(|(name, _, _)| name);
                 em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
             }
-            // dsl 0.12.0: `::mark{id}` emits NO record — bind the author's
+            // dsl 0.12.0: `::label{name}` emits NO record — bind the author's
             // NAMED label to whatever gets pushed NEXT (or, nothing left
             // in this body, `Emitter::finish`'s `trailing_named` — mirrors
             // a branch/match converge's `em.bind`, keyed by the author's
             // string instead of a fresh anonymous `Label`).
-            Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+            Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
                 em.marker(|| directive_marker(d));
-                if let Some(id) = attr_string(&d.attrs, "id") {
+                if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
                     em.bind_named(id);
                 }
             }
@@ -84,11 +84,11 @@ pub fn walk_seq(
             | Node::Set(_)
             | Node::Assert(_)
             | Node::Retract(_) => {
-                // Only an `::auto` entrance consumes the lookahead
+                // Only an `::actor` entrance consumes the lookahead
                 // (`entry-emotion-lookahead`); build the CFG-reachable
                 // continuation just for it and pass nothing otherwise, so the
                 // common line/set path never clones the tail.
-                let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
+                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
                     reachable_after(&nodes[i + 1..], tail)
                 } else {
                     Vec::new()
@@ -155,11 +155,11 @@ fn walk_timeline(
             ClipNode::Directive(d) => Node::Directive(d.clone()),
             ClipNode::Set(s) => Node::Set(s.clone()),
         };
-        // A scheduled `::auto` entrance consumes the CFG-reachable
+        // A scheduled `::actor` entrance consumes the CFG-reachable
         // continuation for `entry-emotion-lookahead`, exactly like a linear
-        // `::auto` (T9): clips carry no prose `:line`s, so the post-timeline
+        // `::actor` (T9): clips carry no prose `:line`s, so the post-timeline
         // continuation is the whole lookahead. Every other clip takes none.
-        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == "auto") {
+        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
             cont
         } else {
             &[]
@@ -228,13 +228,12 @@ fn emit_primitive(
         em.marker(|| directive_marker(d));
     }
     let span = node_span(node);
-    // Placement (plan spec-gap note 4): an `::auto`'s injections (anchor,
+    // Placement (plan spec-gap note 4): an `::actor`'s injections (anchor,
     // preload) FOLLOW the authored show (§4.5); a line's posReset and a
     // scene-change's hides PRECEDE theirs.
-    let auto_first = matches!(node, Node::Directive(d) if d.tag == "auto");
+    let auto_first = matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE);
     if auto_first {
         if let Some(cmd) = authored {
-            bind_line_label(em, node);
             emit_authored(em, cmd, node, cx, clip);
         }
         for ic in &injected {
@@ -250,6 +249,13 @@ fn emit_primitive(
             }
             _ => None,
         };
+        // A pending `::label` binds to the authored record, past the
+        // injections emitted ahead of it (the old line `id=` did the same).
+        let deferred = if authored.is_some() {
+            em.defer_named()
+        } else {
+            Vec::new()
+        };
         for ic in &injected {
             let mut cmd = inject_cmd(ic);
             if let (Some(text), Some(stamp)) = (clear.take(), cmd.stamp_mut()) {
@@ -257,8 +263,8 @@ fn emit_primitive(
             }
             emit_stamped(em, cmd, cx, clip, || injected_origin(span));
         }
+        em.restore_named(deferred);
         if let Some(cmd) = authored {
-            bind_line_label(em, node);
             emit_authored(em, cmd, node, cx, clip);
         }
     }
@@ -344,21 +350,6 @@ fn boundary_marker(d: &Directive, name: &str) -> SourceMarker {
     }
 }
 
-/// dsl 0.12.0: a content line's `id=` (forward-jump label, mirrors
-/// `::mark`) — bound to the LINE's own emitted record specifically, so this
-/// must run immediately before its push, AFTER any preceding injected
-/// sprite record (`entry-emotion-lookahead`'s anchor/preload emits ahead of
-/// a plain line in the non-`auto_first` branch above; binding any earlier
-/// would let the label resolve to that injected record's addr instead of
-/// the authored line's own).
-fn bind_line_label(em: &mut Emitter, node: &Node) {
-    if let Node::Line(l) = node {
-        if let Some(id) = attr_string(&l.attrs, "id") {
-            em.bind_named(id);
-        }
-    }
-}
-
 fn emit_stamped(
     em: &mut Emitter,
     mut cmd: Command,
@@ -426,11 +417,11 @@ fn walk_branch(
         .zip(&arms)
         .map(|(c, l)| ChoiceOption {
             id: c.id.clone(),
-            label: c.label.clone(),
+            label: c.text.clone(),
             line_id: String::new(),
             when: c.when.as_ref().map(CelPair::from_slot),
             target: l.sym(),
-            placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
+            placeholders: lute_syntax::scan_label_interps(&c.text, c.span)
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
@@ -500,13 +491,13 @@ fn walk_hub(
         .zip(&arms)
         .map(|(c, l)| HubOption {
             id: c.id.clone(),
-            label: c.label.clone(),
+            label: c.text.clone(),
             line_id: String::new(),
             once: attr_bool(&c.attrs, "once").unwrap_or(false),
             exit: attr_bool(&c.attrs, "exit").unwrap_or(false),
             when: c.when.as_ref().map(CelPair::from_slot),
             target: l.sym(),
-            placeholders: lute_syntax::scan_label_interps(&c.label, c.span)
+            placeholders: lute_syntax::scan_label_interps(&c.text, c.span)
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
@@ -646,7 +637,7 @@ fn walk_match(
                         diags.push(arm_diag(
                             "E-COMPILE-INTERNAL",
                             format!(
-                                "checked <match on=\"{}\"> arm condition did not lower to \
+                                "checked <match subject=\"{}\"> arm condition did not lower to \
                                  portable CEL",
                                 m.subject.raw.trim()
                             ),
@@ -1001,9 +992,9 @@ pub fn walk_quest(
             }
             // dsl 0.12.0: mirrors `walk_seq`'s `mark` interception exactly
             // — see its own comment.
-            Node::Directive(d) if d.tag == lute_manifest::core::MARK_DIRECTIVE => {
+            Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
                 em.marker(|| directive_marker(d));
-                if let Some(id) = attr_string(&d.attrs, "id") {
+                if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
                     em.bind_named(id);
                 }
             }
@@ -1015,7 +1006,7 @@ pub fn walk_quest(
             | Node::Set(_)
             | Node::Assert(_)
             | Node::Retract(_) => {
-                let look = if matches!(node, Node::Directive(d) if d.tag == "auto") {
+                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
                     reachable_after(&quest.body[i + 1..], &[])
                 } else {
                     Vec::new()

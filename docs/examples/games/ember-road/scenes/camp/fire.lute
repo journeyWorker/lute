@@ -10,8 +10,8 @@ priority: 100
 ## The Fire
 
 ::bg{location="camp" time="night"}
-::music{action="change" mood="peaceful" volume="down"}
-<match on="run.night">
+::music{playback="change" mood="peaceful" volume="down"}
+<match subject="run.night">
   <when is="..1">
     @narrator{code="0010"}: The first night out of Ostwick. The wagons circle, the mules complain, and somebody burns the beans.
   </when>

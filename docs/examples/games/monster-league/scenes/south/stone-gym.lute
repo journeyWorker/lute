@@ -15,7 +15,7 @@ when: "!holds('defeated', ['petra'])"
 ## The rock garden
 
 ::bg{location="stone-gym" time="day"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: The Stone Gym is one long hall floored with raked gravel. At the far end, on a slab of granite, a woman sits with her eyes closed and a Craghold asleep at her feet.
 @petra{code="0010" emotion="neutral"}: I heard you coming from the door. Gravel tells me everything. It says you walk like someone who hasn't lost yet.
 

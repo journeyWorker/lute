@@ -15,9 +15,9 @@ when: "!holds('rivalFought', ['bridge'])"
 ## The bridge
 
 ::bg{location="route-4-bridge" time="day"}
-::music{action="change" mood="upbeat" volume="normal"}
+::music{playback="change" mood="upbeat" volume="normal"}
 @narrator{code="0010"}: The Tidewell bridge is long and white and swings a little in the wind. Somebody is sitting on the railing at the near end, swinging their legs over the drop.
-::auto{character="rival" anchor="right" action="enter"}
+::actor{character="rival" anchor="right" action="enter"}
 @rival{code="0010" emotion="smug"}: There you are. I was about to send a search party. A search party of one. Me. Going the other way.
 @rival{code="0020"}: I've been through the cave already. Did you see the guys in black? I didn't stop. Not my problem.
 
@@ -27,5 +27,5 @@ when: "!holds('rivalFought', ['bridge'])"
 @rival{code="0030" when="@wonFight" emotion="angry"}: Fine. FINE. My monsters were tired from the cave. That's science.
 @rival{code="0040" when="!@wonFight" emotion="laughing"}: Don't feel bad. Everybody loses to me. It's practically a region tradition.
 @rival{code="0050"}: There's a guy called Cassius out on the cape who knows everything about ferries. Not that you'd need a ferry. I'm getting mine Thursday. Smell you later!
-::auto{character="rival" action="exit"}
+::actor{character="rival" action="exit"}
 @narrator{code="0020"}: Five trainers are spaced along the bridge, one every twenty paces, as if somebody had set them out like chess pieces.

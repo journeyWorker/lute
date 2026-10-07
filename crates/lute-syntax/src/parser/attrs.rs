@@ -570,7 +570,7 @@ mod tests {
             .body
             .iter()
             .find_map(|n| match n {
-                crate::ast::Node::Branch(b) => Some(b.choices[0].label.clone()),
+                crate::ast::Node::Branch(b) => Some(b.choices[0].text.clone()),
                 _ => None,
             })
             .expect("a branch")
@@ -581,7 +581,7 @@ mod tests {
     #[test]
     fn escaped_double_quote_is_unescaped_in_the_value() {
         let label = first_choice_label(
-            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"\\\"Hi.\\\" she said\">\n\
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"\\\"Hi.\\\" she said\">\n\
              @x: a\n</choice>\n</branch>\n",
         );
         assert_eq!(label, "\"Hi.\" she said");
@@ -611,7 +611,7 @@ mod tests {
     fn character_references_are_decoded_in_the_value() {
         let label = first_choice_label(
             "## Shot 1.\n<branch id=\"b\">\n\
-             <choice id=\"c\" label=\"&quot;Quoted&quot; &amp; &lt;b&gt; it&apos;s &#65;&#x42;\">\n\
+             <choice id=\"c\" text=\"&quot;Quoted&quot; &amp; &lt;b&gt; it&apos;s &#65;&#x42;\">\n\
              @x: a\n</choice>\n</branch>\n",
         );
         assert_eq!(label, "\"Quoted\" & <b> it's AB");
@@ -623,7 +623,7 @@ mod tests {
     fn other_ampersands_stay_literal() {
         let label = first_choice_label(
             "## Shot 1.\n<branch id=\"b\">\n\
-             <choice id=\"c\" label=\"a & b && c &nbsp; &#xZZ; &#; &amp;quot; &quot\">\n\
+             <choice id=\"c\" text=\"a & b && c &nbsp; &#xZZ; &#; &amp;quot; &quot\">\n\
              @x: a\n</choice>\n</branch>\n",
         );
         assert_eq!(label, "a & b && c &nbsp; &#xZZ; &#; &quot; &quot");
@@ -634,7 +634,7 @@ mod tests {
     // is consumed whole so the next attribute still parses.
     #[test]
     fn single_quoted_value_is_attr_quote_error() {
-        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label='Hi there' once>\n\
+        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text='Hi there' once>\n\
                    @x: a\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         assert_eq!(
@@ -645,7 +645,7 @@ mod tests {
         let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch expected");
         };
-        assert_eq!(b.choices[0].label, "Hi there");
+        assert_eq!(b.choices[0].text, "Hi there");
         assert!(
             b.choices[0].attrs.iter().any(|a| a.key == "once"),
             "{:?}",
@@ -659,7 +659,7 @@ mod tests {
     // curly-quoted span is the value so the rest of the list still parses.
     #[test]
     fn curly_quoted_value_is_one_attr_quote_error() {
-        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=“Open the oven” once>\n\
+        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=“Open the oven” once>\n\
                    @x: a\n</choice>\n</branch>\n";
         let (doc, diags) = parse(src);
         let quote: Vec<_> = diags.iter().filter(|d| d.code == "E-ATTR-QUOTE").collect();
@@ -671,13 +671,13 @@ mod tests {
         );
         assert_eq!(
             (quote[0].span.line, quote[0].span.column),
-            (3, 22),
+            (3, 21),
             "anchored at the curly quote"
         );
         let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch expected");
         };
-        assert_eq!(b.choices[0].label, "Open the oven");
+        assert_eq!(b.choices[0].text, "Open the oven");
         let keys: Vec<_> = b.choices[0].attrs.iter().map(|a| a.key.as_str()).collect();
         assert!(keys.contains(&"once") && !keys.contains(&"the"), "{keys:?}");
     }
@@ -689,12 +689,12 @@ mod tests {
     #[test]
     fn mixed_and_single_curly_quotes_are_attr_quote_errors() {
         let label = first_choice_label(
-            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"Open it”>\n\
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"Open it”>\n\
              @x: a\n</choice>\n</branch>\n",
         );
         assert_eq!(label, "Open it");
         for src in [
-            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"Open it”>\n@x: a\n</choice>\n</branch>\n",
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"Open it”>\n@x: a\n</choice>\n</branch>\n",
             "## Shot 1.\n::sfx{sound=“a b\" note=\"n\"}\n",
             "## Shot 1.\n::sfx{sound=‘a b’ note=\"n\"}\n",
         ] {

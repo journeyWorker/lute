@@ -304,7 +304,7 @@ mod tests {
         assert!(branch.selection_range.end.line <= branch.range.end.line);
     }
 
-    /// The `<match on="scene.choices.number">` in shot 5 nests as an OBJECT child
+    /// The `<match subject="scene.choices.number">` in shot 5 nests as an OBJECT child
     /// named by its subject.
     #[test]
     fn match_is_a_nested_child_symbol() {
@@ -384,7 +384,7 @@ mod tests {
     fn entries_are_top_level_symbols() {
         let text = "---\nkind: lore\n---\n\
             <entry id=\"a\" target=\"item.key\">\n@narrator: one\n</entry>\n\
-            <entry id=\"b\">\n<match on=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
+            <entry id=\"b\">\n<match subject=\"run.x\">\n<when is=\"true\">\n@narrator: y\n</when>\n\
             <otherwise>\n@narrator: n\n</otherwise>\n</match>\n</entry>\n";
         let syms = symbols(text);
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();

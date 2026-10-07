@@ -34,10 +34,10 @@ title: Vesper, the Knight Who Left (limited SSR)
 <beat use="bondStory" id="vesperR2" who="vesper" rank="r2" prev="bonds.vesper.vesperR1" vow="If he comes, he comes through me. Then through you. He won't enjoy either." instance="use-002">
   @vesper{code="0010"}: He'll come for me. You know that.
   <branch id="vesperR2Answer" prompt="Vesper doesn't look at you.">
-    <choice id="letHim" label="Let him come.">
+    <choice id="letHim" text="Let him come.">
       @vesper{code="0020" emotion="smug"}: Reckless. Good. I hate careful people.
     </choice>
-    <choice id="hideYou" label="Then we'll hide you somewhere bright.">
+    <choice id="hideYou" text="Then we'll hide you somewhere bright.">
       @vesper{code="0030" emotion="sad"}: ...Somewhere bright. I'd forgotten that was an option.
     </choice>
   </branch>

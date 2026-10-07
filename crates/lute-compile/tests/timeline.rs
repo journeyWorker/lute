@@ -48,12 +48,12 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
 // The marina-s01ep02 performance beat (docs/examples, Shot 3), verbatim.
 const BEAT: &str = r#"<timeline duration="1.4">
   <track subject="camera">
-    ::camera{focus="marina" zoom="1.35" duration="0.4"}
-    ::camera{shake="0.6" duration="0.3" at="0.5"}
+    ::camera{focus="marina" framing="tight" duration="0.4"}
+    ::camera{move="shake" duration="0.3" at="0.5"}
   </track>
   <track channel="fg">
-    ::cut{assetId="CUT.x.01" at="0.5"}
-    ::cut{assetId="CUT.x.01" action="hide" at="1.1"}
+    ::cg{assetId="CUT.x.01" at="0.5"}
+    ::cg{assetId="CUT.x.01" display="hide" at="1.1"}
   </track>
   <track channel="vfx">
     ::vfx{type="whiteOut" transition="flash" at="0.5"}
@@ -82,7 +82,7 @@ fn clips_emit_in_at_then_track_order_with_stamps_and_barrier() {
     assert_eq!(
         desc,
         vec![
-            "camera@0", // zoom, omitted at => track cursor 0.0
+            "camera@0", // framing, omitted at => track cursor 0.0
             "camera@0.5",
             "cut@0.5",
             "vfx@0.5",
@@ -98,11 +98,11 @@ fn clips_emit_in_at_then_track_order_with_stamps_and_barrier() {
         let stamp = c.stamp_mut().expect("clip records are stamped").clone();
         assert_eq!(stamp.timeline, Some(1));
     }
-    // Durations stamp through (zoom clip: 0.4).
-    let Command::Camera(zoom) = &recs[0].cmd else {
+    // Durations stamp through (framing clip: 0.4).
+    let Command::Camera(framing) = &recs[0].cmd else {
         panic!()
     };
-    assert_eq!(zoom.stamp.duration, Some(0.4));
+    assert_eq!(framing.stamp.duration, Some(0.4));
     let Command::Barrier(b) = &recs[6].cmd else {
         panic!()
     };
@@ -114,7 +114,7 @@ fn stage_changing_clip_threads_the_reducer_and_carries_post_barrier_state() {
     // marina is on stage; a ::bg clip INSIDE the timeline is a scene change:
     // the auto-hide injects as a timeline-stamped record, and the walker's
     // post-barrier state carries the new bg forward.
-    let body = r#"::auto{character="marina" anchor="center" action="fadeInUp"}
+    let body = r#"::actor{character="marina" anchor="center" action="fadeInUp"}
 <timeline>
   <track channel="scene">
     ::bg{location="street" time="night"}
@@ -152,7 +152,7 @@ fn second_timeline_gets_ordinal_two_and_barrier_defaults_to_max_end() {
 </timeline>
 <timeline>
   <track subject="camera">
-    ::camera{zoom="1.2" duration="0.7"}
+    ::camera{focus="marina" duration="0.7"}
   </track>
 </timeline>"#;
     let (recs, _) = walk(body);
@@ -169,15 +169,15 @@ fn second_timeline_gets_ordinal_two_and_barrier_defaults_to_max_end() {
 
 #[test]
 fn timeline_auto_clip_preloads_post_timeline_emotion() {
-    // T10 continuation threading: a fresh `::auto` for `marina` scheduled
+    // T10 continuation threading: a fresh `::actor` for `marina` scheduled
     // INSIDE a `<timeline>`, with her first emotion line AFTER `</timeline>`
     // — a clock-paced clip whose CFG-reachable successor is the post-timeline
     // continuation. entry-emotion-lookahead must find `surprised` through the
-    // threaded continuation, exactly like a linear `::auto`, and the preload
+    // threaded continuation, exactly like a linear `::actor`, and the preload
     // stays stamped as part of the timeline.
     let body = r#"<timeline>
   <track channel="stage">
-    ::auto{character="marina" action="fadeInUp"}
+    ::actor{character="marina" action="fadeInUp"}
   </track>
 </timeline>
 @marina{emotion="surprised"}: Oh!"#;
@@ -188,7 +188,7 @@ fn timeline_auto_clip_preloads_post_timeline_emotion() {
             Command::Sprite(s) if s.preload == Some(true) => Some(s),
             _ => None,
         })
-        .expect("timeline ::auto must preload the post-timeline emotion");
+        .expect("timeline ::actor must preload the post-timeline emotion");
     assert_eq!(preload.emotion.as_deref(), Some("surprised"));
     assert_eq!(
         preload.stamp.provenance.as_ref().map(|p| p.by.as_str()),

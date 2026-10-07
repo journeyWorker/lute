@@ -9,5 +9,5 @@ enums:
     exits: [fadeOut, hide]
   mood: [hearth, stair, dread, triumph, elegy]
   volume: [silent, down, normal, up]
-  musicAction: [start, change, stop, fadeOut]
+  musicPlayback: [start, change, stop, fadeOut]
   vfxType: [emberBurst, ashFall, whiteOut, blackOut]

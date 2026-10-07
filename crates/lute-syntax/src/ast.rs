@@ -108,7 +108,7 @@ fn inline_plain_text(nodes: &[InlineNode]) -> String {
 pub struct Directive {
     pub tag: String,
     pub attrs: Vec<Attr>,
-    /// A directive's `when="COND"` guard — `::next` (dsl 0.12.0) and, since
+    /// A directive's `when="COND"` guard — `::jump` (dsl 0.12.0) and, since
     /// dsl 0.26.0 §4, `::use`, `::accept` and plugin passthrough directives
     /// (skipped when false, like `::set{… when=}`). Extracted into a typed
     /// CEL slot the SAME way `Line.when`/`Choice.when` are (`take_cel`,
@@ -221,18 +221,19 @@ pub struct Choice {
     pub id: String,
     /// Span of the `id=` value (the open tag's start when none is written).
     pub id_span: Span,
-    pub label: String,
-    /// Span of the `label=` value (the `<choice` open tag's start when no
-    /// label is written), where a finding about the label text anchors.
-    pub label_span: Span,
+    /// The displayed choice text (`text=`, dsl 0.37.0 §3.5).
+    pub text: String,
+    /// Span of the `text=` value (the `<choice` open tag's start when no
+    /// text is written), where a finding about the choice text anchors.
+    pub text_span: Span,
     pub when: Option<CelSlot>,
     pub attrs: Vec<Attr>,
     pub body: Vec<Node>,
     pub span: Span,
 }
 
-/// `<match on> When+ Otherwise? "</match>"` (dsl §7.3, §11.2). `attrs` is the
-/// residual (post-`on`-extraction) list, mirroring [`Branch`]/[`Hub`]. It is
+/// `<match subject> When+ Otherwise? "</match>"` (dsl §7.3, §11.2; 0.37.0
+/// §3.5). `attrs` is the residual (post-`subject`-extraction) list, mirroring [`Branch`]/[`Hub`]. It is
 /// retained rather than dropped so the checker's per-tag attribute closure
 /// (dsl 0.10.0 §4, D-J) has something to close over: a rule about attributes
 /// the checker never receives is not a rule. Normally empty.

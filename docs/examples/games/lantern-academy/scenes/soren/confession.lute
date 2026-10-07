@@ -11,17 +11,17 @@ after: 'visited("soren.date") && visited("common.exam")'
 ## The reading room
 
 ::bg{location="library" time="night"}
-::auto{character="soren" anchor="center" action="fadeInUp"}
+::actor{character="soren" anchor="center" action="fadeInUp"}
 @soren{code="0010" emotion="sad"}: My exchange ends with the term. They're sending me home. I'm a library book, and I'm overdue.
 @soren{code="0020" emotion="fond" when="holds('cleared', ['soren', 'bittersweet'])"}: I dreamt I left, once. You waved from the ferry dock. I've been afraid of ferries ever since.
 @soren{code="0030" emotion="shy" when="run.exam == 'top'"}: You took my rank on the midterm. I've never been so happy to lose anything.
 
 <branch id="sorenAsk" prompt="Soren holds out a return slip with nothing written on it.">
-  <choice id="write" label="Write your address on it">
+  <choice id="write" text="Write your address on it">
     @soren{code="0040" emotion="happy"}: Then I'm not overdue. I'm on loan. That's — that's much better.
     ::set{run.aff.soren += 1}
   </choice>
-  <choice id="keep" label="Keep the slip blank, as a souvenir">
+  <choice id="keep" text="Keep the slip blank, as a souvenir">
     @soren{code="0050" emotion="sad"}: Oh. A souvenir. Yes. Of course.
     ::set{run.aff.soren -= 1}
   </choice>

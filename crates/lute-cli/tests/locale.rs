@@ -54,10 +54,10 @@ episode: 1
 @kai{code=\"0010\"}: Hi.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>
@@ -213,7 +213,7 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
          @scientist{code=\"0010\"}: Day three.\n\
          </entry>\n\n\
          <entry id=\"key\" target=\"item.key\">\n\
-         <match on=\"run.burned\">\n\
+         <match subject=\"run.burned\">\n\
          <when is=\"true\">\n@narrator{code=\"0010\"}: A scorched key.\n</when>\n\
          <otherwise>\n@narrator{code=\"0020\"}: A rusty key.\n</otherwise>\n\
          </match>\n\
@@ -302,7 +302,7 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
          <beat id=\"dock\" on=\"talk\">\n\
          @dockhand{code=\"0010\"}: She came in last night.\n\
          <branch id=\"ask\">\n\
-         <choice id=\"more\" label=\"Tell me more\">\n@dockhand{code=\"0020\"}: Nobody got off.\n</choice>\n\
+         <choice id=\"more\" text=\"Tell me more\">\n@dockhand{code=\"0020\"}: Nobody got off.\n</choice>\n\
          </branch>\n\
          </beat>\n",
     );
@@ -837,7 +837,7 @@ id: authored.myid
 @narrator{code=\"0020\"}: There.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go\">
+  <choice id=\"go\" text=\"Go\">
     @narrator{code=\"0030\"}: Onward.
   </choice>
 </branch>
@@ -891,10 +891,10 @@ episode: 1
 @kai{code=\"0010\"}: Hi.
 
 <branch id=\"pick\">
-  <choice id=\"go\" label=\"Go on\">
+  <choice id=\"go\" text=\"Go on\">
     @marina{code=\"0020\"}: Onward.
   </choice>
-  <choice id=\"stay\" label=\"Stay here\">
+  <choice id=\"stay\" text=\"Stay here\">
     @marina{code=\"0030\"}: Fine.
   </choice>
 </branch>

@@ -37,7 +37,7 @@ fn lint(text: &str) -> Vec<Diagnostic> {
 #[test]
 fn literal_test_warns_with_migrate_fixit() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"$ == 'gold'\">\n@x: a\n</when>\n\
          <otherwise>\n@x: b\n</otherwise>\n\
          </match>\n"
@@ -72,12 +72,12 @@ fn literal_test_warns_with_migrate_fixit() {
 #[test]
 fn fixit_and_lute_fix_agree_and_clear_the_warning() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"$ in ['silver', 'bronze']\">\n@x: a\n</when>\n\
          <when test=\"'gold' == $\">\n@x: b\n</when>\n\
          <otherwise>\n@x: c\n</otherwise>\n\
          </match>\n\
-         <match on=\"run.n\">\n\
+         <match subject=\"run.n\">\n\
          <when test=\"$ >= 1 && $ <= 5\">\n@x: d\n</when>\n\
          <when test=\"$ <= 0\">\n@x: e\n</when>\n\
          <when test=\"$ >= 5.5\">\n@x: f\n</when>\n\
@@ -115,13 +115,13 @@ fn fixit_and_lute_fix_agree_and_clear_the_warning() {
 #[test]
 fn non_literal_and_unsafe_tests_do_not_warn() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when test=\"$ != 'gold'\">\n@x: a\n</when>\n\
          <when test=\"$ == 'true'\">\n@x: b\n</when>\n\
          <when test=\"$ == null\">\n@x: c\n</when>\n\
          <otherwise>\n@x: d\n</otherwise>\n\
          </match>\n\
-         <match on=\"run.n\">\n\
+         <match subject=\"run.n\">\n\
          <when test=\"$ > 2\">\n@x: e\n</when>\n\
          <when test=\"$ >= 3 && $ <= 1\">\n@x: f\n</when>\n\
          <otherwise>\n@x: g\n</otherwise>\n\
@@ -136,7 +136,7 @@ fn non_literal_and_unsafe_tests_do_not_warn() {
 #[test]
 fn arm_with_is_is_left_alone() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold\" test=\"$ == 'gold'\">\n@x: a\n</when>\n\
          <otherwise>\n@x: b\n</otherwise>\n\
          </match>\n"
@@ -150,10 +150,10 @@ fn arm_with_is_is_left_alone() {
 #[test]
 fn choice_guard_inside_an_arm_does_not_warn() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when is=\"gold\">\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" when=\"$ == 'gold'\">\n@x: a\n</choice>\n\
+         <choice id=\"c\" text=\"L\" when=\"$ == 'gold'\">\n@x: a\n</choice>\n\
          </branch>\n\
          </when>\n\
          <otherwise>\n@x: b\n</otherwise>\n\
@@ -168,7 +168,7 @@ fn choice_guard_inside_an_arm_does_not_warn() {
 #[test]
 fn fix_rewrites_only_the_test_attribute() {
     let src = format!(
-        "{HDR}<match on=\"run.rank\">\n\
+        "{HDR}<match subject=\"run.rank\">\n\
          <when foo=\"1\" test=\"$ == 'gold'\" bar>\n@x: a\n</when>\n\
          <otherwise>\n@x: b\n</otherwise>\n\
          </match>\n"
@@ -188,10 +188,10 @@ fn fix_rewrites_only_the_test_attribute() {
 fn fix_reaches_arms_nested_in_branches_hubs_and_arms() {
     let src = format!(
         "{HDR}<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\">\n\
-         <match on=\"run.rank\">\n\
+         <choice id=\"c\" text=\"L\">\n\
+         <match subject=\"run.rank\">\n\
          <when test=\"$ == 'gold'\">\n\
-         <match on=\"run.n\">\n\
+         <match subject=\"run.n\">\n\
          <when test=\"$ == 2\">\n@x: a\n</when>\n\
          <otherwise>\n@x: b\n</otherwise>\n\
          </match>\n\
@@ -201,8 +201,8 @@ fn fix_reaches_arms_nested_in_branches_hubs_and_arms() {
          </choice>\n\
          </branch>\n\
          <hub id=\"h\">\n\
-         <choice id=\"d\" label=\"M\" exit>\n\
-         <match on=\"run.rank\">\n\
+         <choice id=\"d\" text=\"M\" exit>\n\
+         <match subject=\"run.rank\">\n\
          <when test=\"$ in ['fail']\">\n@x: d\n</when>\n\
          <otherwise>\n@x: e\n</otherwise>\n\
          </match>\n\
@@ -228,7 +228,7 @@ fn fix_reaches_quest_bodies() {
                run.rank: { type: { enum: [fail, gold] }, default: fail }\n---\n\
                <quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n\
                <on event=\"questActive\">\n\
-               <match on=\"run.rank\">\n\
+               <match subject=\"run.rank\">\n\
                <when test=\"$ == 'gold'\">\n@x: hi\n</when>\n\
                <otherwise>\n@x: bye\n</otherwise>\n\
                </match>\n</on>\n</quest>\n";

@@ -202,7 +202,7 @@ fn a_weekday_name_against_the_weekday_number_names_the_label_path() {
 fn an_is_literal_that_is_no_number_never_matches_a_number() {
     let ds = diagnostics(
         &beat(
-            "  <match on=\"run.oil\">\n    <when is=\"<=3\">\n      @narrator: low\n    </when>\n    \
+            "  <match subject=\"run.oil\">\n    <when is=\"<=3\">\n      @narrator: low\n    </when>\n    \
              <otherwise>\n      @narrator: high\n    </otherwise>\n  </match>\n",
         ),
         world(""),

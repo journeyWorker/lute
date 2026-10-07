@@ -82,7 +82,7 @@ title: Pebbleton — services, the east road, and its people
 </entry>
 
 <entry id="southBrask" on="talk" target="npc.pebbletonBrask" category="bark">
-  <match on="run.lair.quarryDig">
+  <match subject="run.lair.quarryDig">
     <when is="cleared">
       @pebbletonBrask{code="0010"}: You ran them off? The lot in black? Then I'll buy you a lemonade, and I'll tell everyone I'd have done it myself if my knees were younger.
     </when>

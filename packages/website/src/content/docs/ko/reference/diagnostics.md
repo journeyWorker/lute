@@ -18,16 +18,16 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 `::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다.
 
 명세: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+
 ### E-ADVANCE-CASCADE
 
 반복 가능한 비트가 자신을 표시한 클록 상승 이벤트에 응답하면서 다음 위치로 시간을 이동해, 반복되는 중첩 `advances:` 연쇄를 만듭니다.
 
 명세: [dsl 0.31.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
 
-
 ### E-AGE-GATE
 
-연령 게이트가 적용된 `<match on="app.rating">`가 `teen` 분기도 `<otherwise>`도 포함하지 않아, 릴리스 빌드에서 어느 경우에도 매치되지 않을 수 있습니다.
+연령 게이트가 적용된 `<match subject="app.rating">`가 `teen` 분기도 `<otherwise>`도 포함하지 않아, 릴리스 빌드에서 어느 경우에도 매치되지 않을 수 있습니다.
 
 명세: [dsl §11.2](/spec/)
 
@@ -39,7 +39,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-ARM-DEAD
 
-게이트가 걸린 콘텐츠 라인, `<match>` 분기, `<choice when>`, 또는 `::next{when}`의 `when` 가드가 항상 거짓임이 증명되어 절대 표시되거나 선택될 수 없습니다.
+게이트가 걸린 콘텐츠 라인, `<match>` 분기, `<choice when>`, 또는 `::jump{when}`의 `when` 가드가 항상 거짓임이 증명되어 절대 표시되거나 선택될 수 없습니다.
 
 명세: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.20.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md)
 
@@ -87,7 +87,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-ATTR-TYPE
 
-속성 값이 선언된 타입과 맞지 않습니다. 예를 들어 숫자가 아닌 `duration`/`zoom`/`shake`, 불리언이 아닌 플래그, 인용된 문자열이 필요한 자리의 맨 식별자, 또는 공급자·도메인·엔티티 종류의 구성원을 가리키지 않는 값입니다.
+속성 값이 선언된 타입과 맞지 않습니다. 예를 들어 숫자가 아닌 `duration`/`delay`, 불리언이 아닌 플래그, 인용된 문자열이 필요한 자리의 맨 식별자, 또는 공급자·도메인·엔티티 종류의 구성원을 가리키지 않는 값입니다.
 
 ### E-BAD-ENUM
 
@@ -137,6 +137,18 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md)
 
+### E-CAMERA-EMPTY
+
+`::camera` 지시어가 `focus`, `framing`, `move`, `transition` 중 어느 것도 지정하지 않아 할 일이 없습니다.
+
+명세: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-CAMERA-REMOVED
+
+`::camera` 지시어가 제거된 수치·구식 속성(`zoom`, `moveX`, `moveY`, `shake`, `reset`, `easing`)을 씁니다. 카메라 값은 이제 프로젝트가 선언하는 `framing`, `cameraMove`, `transition` 구성원이므로 손으로 옮겨야 합니다.
+
+명세: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-CAPABILITY-MISMATCH
 
 같은 프로젝트의 두 문서가 서로 다른 기능(capability) 스냅샷으로 해석되어, 프로젝트가 색인할 단일 `capabilityVersion`을 가지지 못합니다.
@@ -145,7 +157,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-CAST-UNKNOWN
 
-콘텐츠 라인의 화자나 `::auto{character}`/`::camera{focus}` 리터럴이 프로젝트에 선언된 캐스트 밖의 id를 가리킵니다.
+콘텐츠 라인의 화자나 `::actor{character}`/`::camera{focus}` 리터럴이 프로젝트에 선언된 캐스트 밖의 id를 가리킵니다.
 
 명세: [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
@@ -167,18 +179,23 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 명세: [dsl 0.24.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
+### E-CG-LAYOUT
+
+`::cg` 지시어가 제거된 `full` 속성을 씁니다. 이를 대신할 수 있는 것은 `layout=`으로 쓰는 프로젝트 선언 `cgLayout` 구성원뿐이므로 손으로 옮겨야 합니다.
+
+명세: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-CHAPTERS
 
 프로젝트의 `chapters:`가 잘못되었습니다. `{ on, scenes }` 체인의 목록이 아니거나, 둘 중 어느 것도 아닌 키가 있거나(체인은 occasion을 `occasion:`이 아니라 `on:`으로 씁니다), 장면 id가 아닌 항목이 있거나, 장면이 두 번 나열되었거나, 한 occasion에 체인이 둘 있거나, 매니페스트가 아직 폐지된 `sequence:` 키를 씁니다. 또는 체인이 어떤 플러그인도 선언하지 않은 occasion을 가리키거나(shape-only에서는 다른 비트가 응답하는 occasion의 오타), 어떤 장면도 선언하지 않은 id를 나열하거나(번들 비트·lore 항목·문서면 그렇다고 말합니다), 나열된 장면의 `on:`이 다른 occasion에 응답하거나, target과 함께 올리는 occasion에서 `target:`이 없는 장면을 나열합니다(모든 target에서 재생됩니다). 잘못된 체인은 적용되지 않고, 나머지 체인은 적용됩니다. 매니페스트 줄에서 보고되며(빠진 `target:`은 장면의 `id:`에서), 문서들은 그대로 검사됩니다.
 
 명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### E-CHECK-ENGINE-SEMANTICS
 
 선택한 엔진이 지원하지 않는 의미 기능을 구성 요소가 요구합니다.
 
 명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
-
-
 
 ### E-CHOICE-DUP
 
@@ -523,6 +540,7 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 선택한 엔진이 아티팩트에 필요한 의미 기능을 지원하지 않습니다.
 
 명세: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md)
+
 ### E-ENTITY-KIND-CLASH
 
 어떤 id가 서로 다른 두 엔티티 종류의 `members:`에 함께 나열되었지만, 한 종류가 다른 종류의 `subsetOf:`로 선언되지 않는 한 id는 정확히 하나의 종류에만 속해야 합니다.
@@ -693,6 +711,18 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
+### E-JUMP-BACKWARD
+
+`::jump{to}`가 문서 순서상 자신보다 앞서거나 같은 위치의 레이블을 가리킵니다 — 점프는 항상 앞으로만 가능합니다.
+
+명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+
+### E-JUMP-UNDEFINED
+
+`::jump{to}`가 문서 내 어떤 `::label`도 선언하지 않은 레이블을 가리킵니다.
+
+명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+
 ### E-KIND-MISSING
 
 루트 문서가 `kind:` 프런트매터 키를 선언하지 않았고 매니페스트의 `defaults:`에도 지정된 것이 없어 문서의 kind를 확정할 수 없습니다.
@@ -704,6 +734,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `entities:` 블록에서 같은 엔티티 kind 이름을 두 번 선언했거나, 두 스키마가 한 kind를 다르게 선언했거나, 한 이름이 엔티티 kind이자 관계로 동시에 선언되었습니다.
 
 명세: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-LABEL-DUP
+
+레이블 이름(`::label{name}`)이 문서 내 어딘가에서 두 번 이상 선언되었습니다 — 모든 레이블은 문서 전체에서 하나의 네임스페이스를 공유합니다.
+
+명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
 ### E-LEGACY-CONTENT-SIGIL
 
@@ -753,12 +789,6 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
-### E-MARK-DUP
-
-마크 id(`::mark{id}` 또는 콘텐츠 줄의 `id=`)가 문서 내 어딘가에서 두 번 이상 선언되었습니다 — 둘은 하나의 네임스페이스를 공유합니다.
-
-명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
-
 ### E-MATCH-DUP-OTHERWISE
 
 `<match>`에 `<otherwise>` 분기가 두 개 이상 있지만, 최대 하나만 허용됩니다.
@@ -767,11 +797,11 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-MATCH-NO-SUBJECT
 
-`on=`이 없는 `<match>`에 `<when is=…>` 분기가 있어서, 그 리터럴을 비교할 주어가 없습니다. `<match>`에 `on=`을 쓰거나, 분기를 `test=`로 쓰세요.
+`subject=`가 없는 `<match>`에 `<when is=…>` 분기가 있어서, 그 리터럴을 비교할 주어가 없습니다. `<match>`에 `subject=`를 쓰거나, 분기를 `test=`로 쓰세요.
 
 ### E-MATCH-RELATION-SUBJECT
 
-`<match on>` 주어가 직접, 또는 확장되는 `@def`를 통해 `holds`/`count`/`validAt` 같은 사실 질의가 되었는데, match 주어로는 허용되지 않습니다.
+`<match subject>` 주어가 직접, 또는 확장되는 `@def`를 통해 `holds`/`count`/`validAt` 같은 사실 질의가 되었는데, match 주어로는 허용되지 않습니다.
 
 명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.3.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
@@ -816,18 +846,6 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `--mock`/`mocks/*.yaml` 항목이 `file:`을 선언하지 않았거나, 존재하지 않거나 `.lute` 문서가 아닌 `file:` 경로를 지정했거나, 명령줄에 지정된 문서와 일치하지 않습니다.
 
 명세: [dsl 0.10.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
-
-### E-NEXT-BACKWARD
-
-`::next{to}`가 문서 순서상 자신보다 앞서거나 같은 위치의 마크를 가리킵니다 — 점프는 항상 앞으로만 가능합니다.
-
-명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
-
-### E-NEXT-UNDEFINED
-
-`::next{to}`가 문서 내 어떤 `::mark`(또는 콘텐츠 줄의 `id=`)도 선언하지 않은 마크를 가리킵니다.
-
-명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
 ### E-NONEXHAUSTIVE
 
@@ -1173,6 +1191,12 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-REMOVED-ATTR
+
+지시어가 손실 없이 바꿔 쓸 수 없는 제거된 속성(`::music{track}`, `::sfx{name}`)을 씁니다. 메시지가 대체할 방법을 알려 주며, 옮기는 작업은 손으로 해야 합니다.
+
+명세: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-RENAME-LEDGER
 
 이름 변경 항목이 잘못되었거나, 알 수 없는 종류/키를 사용하거나, 출발지 또는 목적지를 중복하거나, 정식 키 매핑이 아닙니다.
@@ -1190,6 +1214,24 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 프로젝트 해석 후에도 원본 키가 남아 있거나 목적지 키가 없습니다.
 
 명세: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAMED-ATTR
+
+지시어나 콘텐츠 줄이 속성의 옛 이름(`::music{action}`, `::video{action}`, `::cg{action}`, `::label{id}`, 콘텐츠 줄의 `id=`)을 씁니다. 메시지가 새 이름을 알려 주고, `lute fix`가 바꿔 씁니다.
+
+명세: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-RENAMED-DIRECTIVE
+
+지시어가 옛 태그(`::auto`, `::cut`, `::next`, `::mark`)를 씁니다. 메시지가 새 태그(`::actor`, `::cg`, `::jump`, `::label`)를 알려 주고, `lute fix`가 바꿔 씁니다.
+
+명세: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-RENAMED-TAG-ATTR
+
+`<choice>`나 `<match>`가 속성의 옛 이름(`label=`, `on=`)을 씁니다. 메시지가 `text=` 또는 `subject=`를 알려 주고, `lute fix`가 바꿔 씁니다.
+
+명세: [dsl 0.37.0 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-RESERVED-NAME
 
@@ -1331,7 +1373,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-STREAM-TEMPLATE
 
-스트리밍 이어쓰기의 템플릿이 샷을 하나 이상 가진 씬이 아닙니다.
+스트리밍 이어쓰기의 템플릿이 섹션을 하나 이상 가진 씬이 아닙니다.
 
 ### E-STRING-ESCAPE
 
@@ -1429,7 +1471,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TITLE-PLACEMENT
 
-문서의 `# ` 제목이 두 번 이상 나타나거나, 첫 샷 이전이 아니라 이후에 나타났습니다.
+문서의 `# ` 제목이 두 번 이상 나타나거나, 첫 섹션 이전이 아니라 이후에 나타났습니다.
 
 명세: [dsl §6.2](/spec/)
 
@@ -1495,7 +1537,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-UNCLASSIFIED
 
-본문 줄이 Lute 구문이 아닙니다 — 콘텐츠 줄, 디렉티브, `::set`, 알려진 블록 중 어느 것도 아니거나 — 블록이 올 수 없는 자리(예: 샷 안의 `<quest>`)에 있습니다.
+본문 줄이 Lute 구문이 아닙니다 — 콘텐츠 줄, 디렉티브, `::set`, 알려진 블록 중 어느 것도 아니거나 — 블록이 올 수 없는 자리(예: 섹션 안의 `<quest>`)에 있습니다.
 
 명세: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md)
 
@@ -1687,9 +1729,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.8.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
 
-### W-CODE-AFTER-NEXT
+### W-CODE-AFTER-JUMP
 
-같은 직선 흐름의 본문 안에서 조건 없는 `::next` 지시어 뒤에 콘텐츠가 이어지지만, 그 점프가 본문을 벗어나므로 이후 내용은 실행될 수 없습니다.
+같은 직선 흐름의 본문 안에서 조건 없는 `::jump` 지시어 뒤에 콘텐츠가 이어지지만, 그 점프가 본문을 벗어나므로 이후 내용은 실행될 수 없습니다.
 
 명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
@@ -1801,12 +1843,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.15.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md)
 
-
 ### W-OBJECTIVE-HIDDEN
 
 필수(`!optional`) 목표(objective)의 `visibleWhen` 표시 조건이 결코 참이 될 수 없어, 완료 판정에는 여전히 관여하면서도 결코 표시되거나 추적될 수 없습니다.
 
 명세: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
+
 ### W-OBJECTIVE-STRANDED
 
 필수 목표가 시계로 제한된 비트로만 완료될 수 있고 그 비트들의 시간 창이 모두 닫힐 수 있지만, 목표에 `until=`이나 `by=` 기한이 없습니다. 기한과 `failedBy` 처리기를 추가하거나 기한 실패를 처리하는 콘텐츠를 작성하세요. run 계층 퀘스트에서는 다음 실행에서 다시 시도하므로 정보성 진단입니다.
@@ -1884,6 +1926,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 `once: season:<name>`인 비트(또는 `start`가 있는 `tier="season:<name>"` 퀘스트)의 `when`(또는 `start`)이 그 시즌의 `live` 조건을 함의하지 않습니다. `once`는 비트가 얼마나 오래 소진된 상태로 남는지만 정하므로, 시즌이 한 번도 열리지 않았어도 비트가 재생됩니다. 시즌의 `live` 조건(또는 그것을 읽는 def)을 `when`에 더하세요.
 
 명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
 ### W-SLOT-CONTENTION
 
 한 퀘스트 안의 두 필수 run 계층 목표가 같은 하나의 시계 위치에서만 완료될 수 있고, 두 목표를 완료하는 비트가 모두 시간을 전진시킵니다. 하나를 표시하면 다른 목표가 완료될 유일한 슬롯도 소비됩니다.
@@ -1898,7 +1941,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-STAGE-ABSENT
 
-대사 줄이나 `::auto`가, 이미 무대를 떠나(퇴장 지시어, `::bg` 장면 전환, 또는 `::clear`) 다시 등장하지 않은 캐릭터를 대상으로 하여 연출이 불가능합니다.
+대사 줄이나 `::actor`가, 이미 무대를 떠나(퇴장 지시어, `::bg` 장면 전환, 또는 `::clear`) 다시 등장하지 않은 캐릭터를 대상으로 하여 연출이 불가능합니다.
 
 명세: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 

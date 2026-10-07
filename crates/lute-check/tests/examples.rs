@@ -59,7 +59,7 @@ fn marina_example_checks_clean() {
 
 #[test]
 fn undeclared_state_read_is_reported() {
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.nope\">\n<otherwise>\n@narrator: hi\n</otherwise>\n</match>\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match subject=\"scene.nope\">\n<otherwise>\n@narrator: hi\n</otherwise>\n</match>\n";
     let res = check(&input_for(text));
     assert!(
         res.diagnostics.iter().any(|d| d.code == "E-UNDECLARED"),
@@ -95,7 +95,7 @@ fn two_distinct_undeclared_paths_in_one_slot_both_survive() {
     // span for both (cel-parser 0.10.1 has no per-node offsets). Path-aware
     // dedup must keep BOTH — collapsing only same-path+overlapping-span pairs —
     // so the author sees every undeclared path at once, not one at a time.
-    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match on=\"scene.a == scene.b\">\n<otherwise>\n@narrator: hi\n</otherwise>\n</match>\n";
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<match subject=\"scene.a == scene.b\">\n<otherwise>\n@narrator: hi\n</otherwise>\n</match>\n";
     let res = check(&input_for(text));
     let paths: Vec<&str> = res
         .diagnostics
@@ -281,7 +281,7 @@ fn new_split_codes_are_structural_and_suppress_the_resolved_view() {
         ),
         (
             "E-TAG-INLINE-BODY",
-            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" label=\"L\"> @x: hi. </choice>\n</branch>\n",
+            "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\"> @x: hi. </choice>\n</branch>\n",
         ),
     ] {
         let res = check(&input_for(text));

@@ -34,7 +34,7 @@ fn codes(text: &str) -> Vec<String> {
 /// discipline as `tests/fact_query.rs::scene_when`).
 fn scene_when(cond: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 
@@ -55,7 +55,7 @@ fn input_with_anchor(cond: &str) -> CheckInput {
     );
     CheckInput {
         text: format!(
-            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n"
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"{cond}\">\n@narrator: hi\n</choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n"
         ),
         uri: "t".into(),
         snapshot: lute_manifest::core::load_core_snapshot(),
@@ -80,7 +80,7 @@ const VOCAB: &str =
 
 fn validat_scene(t_arg: &str) -> String {
     format!(
-        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" label=\"a\" when=\"validAt('inParty', ['ana'], {t_arg})\">\n@narrator: hi\n</choice>\n<choice id=\"b\" label=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{VOCAB}---\n## Shot 1.\n<branch>\n<choice id=\"a\" text=\"a\" when=\"validAt('inParty', ['ana'], {t_arg})\">\n@narrator: hi\n</choice>\n<choice id=\"b\" text=\"b\">\n@narrator: bye\n</choice>\n</branch>\n",
     )
 }
 

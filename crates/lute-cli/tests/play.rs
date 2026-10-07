@@ -651,9 +651,9 @@ fn quest_occasion_project(tag: &str) -> PathBuf {
         "scenes/shed.lute",
         "---\nkind: scene\nid: haven.shed\nuses: ../world.schema.yaml\non: hubVisit\n---\n\n\
          ## Shed\n\n@guard: The shed is quiet.\n\n<branch id=\"offer\">\n\
-         <choice id=\"take\" label=\"Take the job\">\n@guard: Deal.\n\
+         <choice id=\"take\" text=\"Take the job\">\n@guard: Deal.\n\
          ::accept{quest=\"sideJob\"}\n</choice>\n\
-         <choice id=\"pass\" label=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
+         <choice id=\"pass\" text=\"Pass\">\n@guard: Suit yourself.\n</choice>\n</branch>\n",
     );
     write(
         &dir,
@@ -911,22 +911,22 @@ fn stage_project(tag: &str) -> PathBuf {
         "---\nkind: scene\nid: parlor\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
          enums:\n  emotion: [calm, cross]\n  anchor: { members: [left, right], default: left }\n---\n\n\
          ## Parlor\n\n::bg{location=\"parlor\"}\n@wren{mono}: Quiet in here.\n\
-         ::auto{character=\"maud\" anchor=\"left\"}\n\
+         ::actor{character=\"maud\" anchor=\"left\"}\n\
          @maud{as=\"The Smith\" emotion=\"cross\"}: You again.\n\
          @maud{when=\"run.flag\"}: The lamp is lit.\n@maud{when=\"!run.flag\"}: Dark in here.\n\n\
          <hub id=\"look\">\n\
-         <choice id=\"piano\" label=\"Piano\" when=\"run.lamp\" once>\n@narrator: Keys.\n</choice>\n\
-         <choice id=\"table\" label=\"Table\" once>\n@narrator: A cup.\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n",
+         <choice id=\"piano\" text=\"Piano\" when=\"run.lamp\" once>\n@narrator: Keys.\n</choice>\n\
+         <choice id=\"table\" text=\"Table\" once>\n@narrator: A cup.\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: Out.\n</choice>\n</hub>\n",
     );
     write(
         &dir,
         "scenes/offer.lute",
         "---\nkind: scene\nid: offer\nuses: ../world.schema.yaml\non: talk\nonce: false\n---\n\n\
          ## Offer\n\n@oskar: Well?\n\n<branch id=\"ask\">\n\
-         <choice id=\"notYet\" label=\"Not yet\">\n@oskar: Later, then.\n</choice>\n\
-         <choice id=\"accept\" label=\"Yes\">\n@oskar: Good.\n</choice>\n\
-         <choice id=\"secret\" label=\"The secret\" when=\"run.lamp\">\n@oskar: Hush.\n</choice>\n\
+         <choice id=\"notYet\" text=\"Not yet\">\n@oskar: Later, then.\n</choice>\n\
+         <choice id=\"accept\" text=\"Yes\">\n@oskar: Good.\n</choice>\n\
+         <choice id=\"secret\" text=\"The secret\" when=\"run.lamp\">\n@oskar: Hush.\n</choice>\n\
          </branch>\n",
     );
     write(
@@ -1034,7 +1034,7 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
     );
     assert!(
         text.lines()
-            .any(|l| l == "::auto{character=\"maud\" anchor=\"left\"}"),
+            .any(|l| l == "::actor{character=\"maud\" anchor=\"left\"}"),
         "{text}"
     );
     assert!(
@@ -2250,7 +2250,7 @@ fn integer_modulo_in_a_match_arm_is_evaluated_by_the_runner() {
         &dir,
         "scenes/main.lute",
         "---\nkind: scene\nid: hub.main\nuses: ../world.schema.yaml\non: hubVisit\nonce: false\n---\n\n\
-         ## hub.main\n\n<match on=\"run.day\">\n<when test=\"$ % 7 == 0\">\n@maud: Sunday.\n</when>\n\
+         ## hub.main\n\n<match subject=\"run.day\">\n<when test=\"$ % 7 == 0\">\n@maud: Sunday.\n</when>\n\
          <otherwise>\n@maud: Weekday.\n</otherwise>\n</match>\n",
     );
     let out = play_in(
@@ -2366,8 +2366,8 @@ fn hall_project(tag: &str) -> PathBuf {
         "---\nkind: scene\nid: hall\nuses: ../world.schema.yaml\non: visit\nonce: false\n\
          enums:\n  anchor: { members: [left, right], default: left }\n\
          defs:\n  half: { type: double, cel: \"double(user.deaths) / 2.0\" }\n---\n\
-         ## Hall\n\n::auto{character=\"maud\" anchor=\"left\"}\n\
-         ::auto{character=\"oskar\" anchor=\"right\"}\n\
+         ## Hall\n\n::actor{character=\"maud\" anchor=\"left\"}\n\
+         ::actor{character=\"oskar\" anchor=\"right\"}\n\
          @maud: Your {{user.deaths:ordinal}} death, {{user.deaths}} in all; half is {{@half:ordinal}}.\n\
          @oskar: The {{user.deaths:ordinalWord}} time.\n\
          ::clear\n@narrator: The hall is empty.\n",
@@ -2894,9 +2894,9 @@ fn a_refused_pick_names_the_producer_of_its_missing_fact() {
         "scenes/counter.lute",
         "---\nkind: scene\nid: counter\ntitle: The counter\non: chapter\npriority: 20\n---\n\n\
          ## The counter\n\n<branch id=\"look\">\n  \
-         <choice id=\"receipt\" label=\"Check under the till\">\n    \
+         <choice id=\"receipt\" text=\"Check under the till\">\n    \
          @narrator: A crumpled receipt.\n    ::assert{found(receipt)}\n  </choice>\n  \
-         <choice id=\"leave\" label=\"Leave it\">\n    @narrator: You leave.\n  </choice>\n\
+         <choice id=\"leave\" text=\"Leave it\">\n    @narrator: You leave.\n  </choice>\n\
          </branch>\n",
     );
     write(
@@ -2904,11 +2904,11 @@ fn a_refused_pick_names_the_producer_of_its_missing_fact() {
         "scenes/accusation.lute",
         "---\nkind: scene\nid: accusation\ntitle: The accusation\non: chapter\npriority: 10\n\
          after: 'visited(\"counter\")'\n---\n\n## The parlour\n\n<branch id=\"askTilly\">\n  \
-         <choice id=\"receipt\" label=\"Show the receipt\" when=\"holds('found', ['receipt'])\">\n    \
+         <choice id=\"receipt\" text=\"Show the receipt\" when=\"holds('found', ['receipt'])\">\n    \
          @narrator: Tilly goes pale.\n  </choice>\n  \
-         <choice id=\"glove\" label=\"Show the glove\" when=\"holds('seen', ['glove'])\">\n    \
+         <choice id=\"glove\" text=\"Show the glove\" when=\"holds('seen', ['glove'])\">\n    \
          @narrator: A glove.\n  </choice>\n  \
-         <choice id=\"bluff\" label=\"Bluff\">\n    @narrator: She laughs.\n  </choice>\n\
+         <choice id=\"bluff\" text=\"Bluff\">\n    @narrator: She laughs.\n  </choice>\n\
          </branch>\n",
     );
     let script = |pick: &str| {

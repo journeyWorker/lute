@@ -101,8 +101,8 @@ fn end_occupies_an_ordinary_address_slot() {
 fn each_choice_arm_lowers_its_own_end() {
     let a = artifact(&format!(
         "{HDR}<branch id=\"exit\">\n\
-         <choice id=\"stay\" label=\"Stay\">\n::end{{reason=\"stayed\"}}\n</choice>\n\
-         <choice id=\"leave\" label=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
+         <choice id=\"stay\" text=\"Stay\">\n::end{{reason=\"stayed\"}}\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\">\n::end{{reason=\"left\"}}\n</choice>\n\
          </branch>\n"
     ));
     let reasons: Vec<&str> = a

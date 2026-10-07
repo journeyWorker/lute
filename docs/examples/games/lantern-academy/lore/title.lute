@@ -12,7 +12,7 @@ title: The title screen
 </beat>
 
 <beat id="returning" on="title" title="A save with terms behind it" priority="10" once="false" when="@ngPlus && quest.fourLanterns.state != 'complete'">
-  <match on="user.terms">
+  <match subject="user.terms">
     <when is="1">
       @narrator{code="0010"}: Lantern Academy. One lantern floats on the lake behind the logo. A girl on the far jetty is watching it.
     </when>

@@ -179,8 +179,8 @@ fn presentation_point_eligibility() {
                 ## Shot 1.\n\
                 ::set{run.flag = true}\n\
                 <branch id=\"b\">\n\
-                <choice id=\"a\" label=\"A\" when=\"run.flag\">\n@narrator: fired a\n</choice>\n\
-                <choice id=\"other\" label=\"Other\">\n@narrator: fired other\n</choice>\n\
+                <choice id=\"a\" text=\"A\" when=\"run.flag\">\n@narrator: fired a\n</choice>\n\
+                <choice id=\"other\" text=\"Other\">\n@narrator: fired other\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "presentation-point", Path::new("."));
     let (report, exit) = trace_document(&input, MockSet::default());
@@ -215,8 +215,8 @@ fn forcing_false_guard_is_refused() {
                 ---\n\
                 ## Shot 1.\n\
                 <branch id=\"approach\">\n\
-                <choice id=\"soft\" label=\"Soft\" when=\"holds('claims', ['halsin'])\">\n@narrator: a\n</choice>\n\
-                <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
+                <choice id=\"soft\" text=\"Soft\" when=\"holds('claims', ['halsin'])\">\n@narrator: a\n</choice>\n\
+                <choice id=\"blunt\" text=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "forced-false", Path::new("."));
     let mocks = choose(&[("approach", &["soft"])]);
@@ -254,8 +254,8 @@ fn forcing_unknown_guard_is_forced() {
                 ---\n\
                 ## Shot 1.\n\
                 <branch id=\"approach\">\n\
-                <choice id=\"soft\" label=\"Soft\" when=\"holds('believes', ['halsin'])\">\n@narrator: a\n</choice>\n\
-                <choice id=\"blunt\" label=\"Blunt\">\n@narrator: b\n</choice>\n\
+                <choice id=\"soft\" text=\"Soft\" when=\"holds('believes', ['halsin'])\">\n@narrator: a\n</choice>\n\
+                <choice id=\"blunt\" text=\"Blunt\">\n@narrator: b\n</choice>\n\
                 </branch>\n";
     let input = input_for(text, "forced-unknown", Path::new("."));
     let mocks = MockSet {
@@ -285,7 +285,7 @@ fn forcing_unknown_guard_is_forced() {
 fn unknown_match_guard_halts_exit3() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.y: { type: string }\n---\n\
                 ## Shot 1.\n\
-                <match on=\"run.y\">\n\
+                <match subject=\"run.y\">\n\
                 <when test=\"$ == 'x'\">\n@narrator: matched\n</when>\n\
                 <otherwise>\n@narrator: nope\n</otherwise>\n\
                 </match>\n";
@@ -320,7 +320,7 @@ fn unknown_match_guard_halts_exit3() {
 fn is_arms_over_an_unset_subject_fall_through_to_the_unset_arm() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.y: { type: { enum: [eel, choir] } }\n---\n\
                 ## Shot 1.\n\
-                <match on=\"run.y\">\n\
+                <match subject=\"run.y\">\n\
                 <when is=\"eel\">\n@narrator: eel\n</when>\n\
                 <when is=\"choir\">\n@narrator: choir\n</when>\n\
                 <when is=\"unset\">\n@narrator: nobody knows\n</when>\n\
@@ -357,7 +357,7 @@ fn no_arm_match_reports_and_continues() {
                 relations:\n  claims: { args: [character], tier: run }\n\
                 ---\n\
                 ## Shot 1.\n\
-                <match on=\"run.flag\">\n\
+                <match subject=\"run.flag\">\n\
                 <when is=\"true\" test=\"holds('claims', ['halsin'])\">\n@narrator: true-gate\n</when>\n\
                 <when is=\"false\" test=\"holds('claims', ['halsin'])\">\n@narrator: false-gate\n</when>\n\
                 </match>\n";
@@ -417,9 +417,9 @@ fn hub_fixture() -> String {
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.flag: { type: bool, default: false }\n---\n\
      ## Shot 1.\n\
      <hub id=\"h\">\n\
-     <choice id=\"c1\" label=\"C1\" once>\n@narrator: c1 fires\n::set{run.flag = true}\n</choice>\n\
-     <choice id=\"c2\" label=\"C2\" when=\"run.flag\">\n@narrator: c2 fires\n</choice>\n\
-     <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+     <choice id=\"c1\" text=\"C1\" once>\n@narrator: c1 fires\n::set{run.flag = true}\n</choice>\n\
+     <choice id=\"c2\" text=\"C2\" when=\"run.flag\">\n@narrator: c2 fires\n</choice>\n\
+     <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
      </hub>\n"
         .to_string()
 }
@@ -433,12 +433,12 @@ fn hub_loop_coverage_counts_distinct_picks_and_arms() {
     let text = "---\nkind: scene\nid: lamp\nstate:\n  scene.n: { type: int, default: 0 }\n---\n\
                 ## Shot 1.\n\
                 <hub id=\"h\">\n\
-                <choice id=\"c1\" label=\"C1\">\n::set{scene.n += 1}\n\
-                <match on=\"scene.n\">\n<when is=\"1\">\n@narrator: one\n</when>\n\
+                <choice id=\"c1\" text=\"C1\">\n::set{scene.n += 1}\n\
+                <match subject=\"scene.n\">\n<when is=\"1\">\n@narrator: one\n</when>\n\
                 <when is=\"2\">\n@narrator: two\n</when>\n<otherwise>\n@narrator: more\n</otherwise>\n\
                 </match>\n</choice>\n\
-                <choice id=\"c2\" label=\"C2\">\n@narrator: c2\n</choice>\n\
-                <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+                <choice id=\"c2\" text=\"C2\">\n@narrator: c2\n</choice>\n\
+                <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
                 </hub>\n";
     let input = input_for(text, "hub-coverage", Path::new("."));
     let mocks = choose(&[("h", &["c1", "c1", "c2", "c1", "leave"])]);
@@ -520,9 +520,9 @@ fn hub_return_runs_after_each_non_exit_arm() {
                 ## Shot 1.\n\
                 @narrator: up\n\
                 <hub id=\"lamp\">\n\
-                <choice id=\"ledger\" label=\"Ledger\">\n@narrator: ledger\n</choice>\n\
+                <choice id=\"ledger\" text=\"Ledger\">\n@narrator: ledger\n</choice>\n\
                 <return>\n@narrator: again\n</return>\n\
-                <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+                <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
                 </hub>\n\
                 @narrator: down\n";
     let lines = |picks: &[&str]| {
@@ -659,7 +659,7 @@ fn output_is_byte_deterministic() {
 /// what the subject decided.
 fn quest_state_match_text() -> String {
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-     <match on=\"quest.foo.state\">\n\
+     <match subject=\"quest.foo.state\">\n\
      <when is=\"active\">\n@narrator: is-active\n</when>\n\
      <when is=\"complete\">\n@narrator: is-complete\n</when>\n\
      <when is=\"failed\">\n@narrator: is-failed\n</when>\n\
@@ -672,7 +672,7 @@ fn quest_state_match_text() -> String {
 /// exhaustive over its bool domain.
 fn quest_objective_done_match_text() -> String {
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-     <match on=\"quest.foo.objectives.bar.done\">\n\
+     <match subject=\"quest.foo.objectives.bar.done\">\n\
      <when is=\"true\">\n@narrator: is-true\n</when>\n\
      <when is=\"false\">\n@narrator: is-false\n</when>\n\
      </match>\n"
@@ -747,7 +747,7 @@ fn reserved_quest_state_mock_admitted_and_previews_referenced_arm() {
 fn reserved_quest_mock_note_fires_even_when_the_referencing_arm_is_never_reached() {
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                 state:\n  run.flag: { type: bool, default: true }\n---\n## Shot 1.\n\
-                <match on=\"run.flag\">\n\
+                <match subject=\"run.flag\">\n\
                 <when is=\"true\">\n@narrator: a\n</when>\n\
                 <when is=\"false\" test=\"quest.foo.objectives.bar.done\">\n@narrator: b\n</when>\n\
                 <otherwise>\n@narrator: c\n</otherwise>\n\
@@ -1079,7 +1079,7 @@ fn range_match_text(ty: &str) -> String {
     format!(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
          state:\n  run.score: {{ type: {ty}, default: {zero} }}\n---\n## Shot 1.\n\
-         <match on=\"run.score\">\n\
+         <match subject=\"run.score\">\n\
          <when is=\"..0\">\n@narrator: low\n</when>\n\
          <when is=\"1..3\">\n@narrator: mid\n</when>\n\
          <when is=\"4..\">\n@narrator: high\n</when>\n\
@@ -1132,13 +1132,13 @@ fn revisited_branch_fixture() -> String {
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
      ## Shot 1.\n\
      <hub id=\"h\">\n\
-     <choice id=\"ask\" label=\"Ask\">\n\
+     <choice id=\"ask\" text=\"Ask\">\n\
      <branch id=\"b\">\n\
-     <choice id=\"yes\" label=\"Yes\">\n@narrator: said yes\n</choice>\n\
-     <choice id=\"no\" label=\"No\">\n@narrator: said no\n</choice>\n\
+     <choice id=\"yes\" text=\"Yes\">\n@narrator: said yes\n</choice>\n\
+     <choice id=\"no\" text=\"No\">\n@narrator: said no\n</choice>\n\
      </branch>\n\
      </choice>\n\
-     <choice id=\"leave\" label=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
+     <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: bye\n</choice>\n\
      </hub>\n"
         .to_string()
 }
@@ -1196,7 +1196,7 @@ fn guarded_set_writes_only_when_its_guard_holds() {
                 run.flag: { type: bool, default: false }\n  run.n: { type: int, default: 1 }\n---\n\
                 ## Shot 1.\n\
                 ::set{run.n += 4 when=\"run.flag\"}\n\
-                <match on=\"run.n\">\n<when test=\"$ == 5\">\n@narrator: five\n</when>\n\
+                <match subject=\"run.n\">\n<when test=\"$ == 5\">\n@narrator: five\n</when>\n\
                 <otherwise>\n@narrator: other\n</otherwise>\n</match>\n";
     let sets = |report: &lute_trace::TraceReport| -> Vec<String> {
         report
@@ -1239,13 +1239,13 @@ fn guarded_set_writes_only_when_its_guard_holds() {
     );
 }
 
-/// dsl 0.26.0 §7 (T1-4): a taken `::next` is followed to its label — the
+/// dsl 0.26.0 §7 (T1-4): a taken `::jump` is followed to its label — the
 /// content after the label plays, the content it skips does not, as in play.
 #[test]
 fn a_taken_next_continues_at_its_label() {
     let text = "---\nkind: scene\nid: jump\nstate:\n  run.gold: { type: int, default: 0 }\n---\n\n## Door\n\n\
-                ::next{to=\"hall\" when=\"run.gold == 0\"}\n@narrator: The guard blocks the door.\n\n\
-                ## Hall\n\n::mark{id=\"hall\"}\n@narrator: The treasure hall.\n::set{run.gold += 10}\n";
+                ::jump{to=\"hall\" when=\"run.gold == 0\"}\n@narrator: The guard blocks the door.\n\n\
+                ## Hall\n\n::label{name=\"hall\"}\n@narrator: The treasure hall.\n::set{run.gold += 10}\n";
     let input = input_for(text, "jump.lute", Path::new("."));
     let (report, exit) = trace_document(&input, MockSet::default());
     assert!(matches!(exit, TraceExit::Complete), "{exit:?}");

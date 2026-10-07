@@ -9,7 +9,7 @@ components: [../components/day-card.component.lute]
 
 ## Breakfast
 
-<match on="run.day">
+<match subject="run.day">
   <when is="1">
     ::use{component="dayCard" day=@today weather="grey, gulls arguing on the roof" instance="use-001"}
   </when>
@@ -33,9 +33,9 @@ components: [../components/day-card.component.lute]
   </when>
 </match>
 
-::auto{character="pell" anchor="left" action="fadeInUp"}
+::actor{character="pell" anchor="left" action="fadeInUp"}
 ::set{run.seen.pell = run.day}
-<match on="run.day">
+<match subject="run.day">
   <when is="..2">
     @pell{code="0010"}: Toast's on the side. The frame won't make itself.
   </when>
@@ -55,4 +55,4 @@ components: [../components/day-card.component.lute]
     @pell{code="0060" emotion="sad"}: Last day. Pack tonight and I'll pretend not to watch.
   </otherwise>
 </match>
-::auto{character="pell" action="fadeOut"}
+::actor{character="pell" action="fadeOut"}

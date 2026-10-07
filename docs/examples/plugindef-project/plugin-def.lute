@@ -9,7 +9,7 @@ state:
 
 ## The Warm Path
 
-<match on="scene.flag">
+<match subject="scene.flag">
   <when test="@warm">
     @narrator: warm path
   </when>

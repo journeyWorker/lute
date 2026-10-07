@@ -10,7 +10,7 @@ params:
 
 ::sfx{sound="train whistle, long"}
 ::vfx{type="blackOut"}
-<match on="@depth">
+<match subject="@depth">
   <when is="brief">
     @narrator{code="0010"}: The lamps gutter, and for a moment {{@where}} is only noise.
   </when>

@@ -424,12 +424,13 @@ impl Lowering {
 /// MUST resolve to a registered hook"), exactly the hooks the `lute.core`
 /// staging manifest names. Adding one is a core code change.
 pub const BUILTIN_LOWERING_HOOKS: &[&str] = &[
-    "autoStage",
+    "actorStage",
     "cameraTransform",
     "clearStage",
     "end",
-    "mark",
-    "next",
+    "jump",
+    "label",
+    "sequence",
 ];
 
 /// The wire shape of `lower:`, validated into a [`Lowering`].

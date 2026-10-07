@@ -11,7 +11,7 @@ title: The Frostharbor caverns
 
 <beat id="fridaySwimmer" on="enterPlace" target="place.frostCaverns" title="The Friday swimmer" priority="20" once="day" when="clock.weekday == 4 && !holds('caught', ['shellnessie'])">
   ::bg{location="frost-caverns-pool" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: The big pool is not still today. Rings spread across it from the middle, one after another, as if something underneath is breathing.
   @narrator{code="0020"}: A long neck rises out of the water, then a head like a smooth grey stone. It looks at {{userName}} for a long moment.
   ::encounter{species="shellnessie" level="40"}
@@ -23,7 +23,7 @@ title: The Frostharbor caverns
 
 <beat id="enter" on="enterPlace" target="place.frostCaverns" title="The Frostharbor caverns" priority="10">
   ::bg{location="frost-caverns" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: The caverns open under the headland like a cathedral. Icicles as long as ladders hang over a black pool, and the sea booms somewhere below.
   @narrator{code="0020"}: A rope barrier and a sign: TOURS END HERE. BEYOND THIS POINT THE ICE DOES NOT MELT. — HALVARD.
 </beat>
@@ -37,7 +37,7 @@ title: The Frostharbor caverns
 
 <beat id="frostwing" on="enterPlace" target="place.frostDepths" title="The ice bird" once="false" when="!holds('caught', ['frostwing'])">
   ::bg{location="frost-depths" time="night"}
-  ::music{action="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="down"}
   @narrator{code="0010"}: Past the rope the air hurts to breathe. The passage opens into a chamber of blue ice, and in the middle of it, folded like a sleeping swan, is a bird made of frost.
   @narrator{code="0020"}: It opens one eye. The temperature drops again.
   ::encounter{species="frostwing" level="50"}

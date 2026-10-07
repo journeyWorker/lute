@@ -17,31 +17,31 @@ when: "clock.weekday == 2 && !@isNight"
 ## Market day
 
 ::bg{location="portvolt-market" time="day"}
-::music{action="change" mood="festive" volume="normal"}
+::music{playback="change" mood="festive" volume="normal"}
 @narrator{code="0010"}: It's Wednesday, and the harbor road is all awnings: fish, fruit, bolts of cloth, and a band called Static playing too loud outside the Mart.
-::auto{character="portvoltVendor" anchor="center" action="enter"}
+::actor{character="portvoltVendor" anchor="center" action="enter"}
 @portvoltVendor{code="0010"}: Market day! Come and look, love. Looking's free. Buying isn't.
 
 <hub id="eastMarketStalls" prompt="Which stall?">
-  <choice id="fish" label="The fish stall: a Fresh Water bundle (200)" when="run.money >= 200" once>
+  <choice id="fish" text="The fish stall: a Fresh Water bundle (200)" when="run.money >= 200" once>
     ::set{run.money -= 200}
     ::give{item="freshWater" qty="3"}
     @portvoltVendor{code="0020"}: Three bottles, fresh from the spring behind the lighthouse. Your monsters will thank you.
   </choice>
-  <choice id="stone" label="The curio stall: a Thunder Stone (2100)" when="run.money >= 2100" once>
+  <choice id="stone" text="The curio stall: a Thunder Stone (2100)" when="run.money >= 2100" once>
     ::set{run.money -= 2100}
     ::give{item="thunderStone"}
     @narrator{code="0020"}: The curio seller wraps the stone in three layers of rubber and still flinches handing it over.
   </choice>
-  <choice id="charm" label="Marta's stall: a lucky net float (500)" when="run.money >= 500" once>
+  <choice id="charm" text="Marta's stall: a lucky net float (500)" when="run.money >= 500" once>
     ::set{run.money -= 500}
     ::give{item="luckyFloat"}
     @portvoltVendor{code="0030"}: My first customer today! Hang it on your bag. Fishermen swear by them. Fishermen swear by everything, mind.
   </choice>
-  <choice id="band" label="Listen to the band">
+  <choice id="band" text="Listen to the band">
     @narrator{code="0030"}: Static plays the same four chords, very loudly, with great conviction. The rocker from the Spark Gym is on guitar.
   </choice>
-  <choice id="leave" label="Head on" exit>
+  <choice id="leave" text="Head on" exit>
     @portvoltVendor{code="0040"}: Come back next Wednesday!
   </choice>
 </hub>

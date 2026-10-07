@@ -52,9 +52,11 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
         ]),
     );
     d.insert(
-        "musicAction".to_string(),
+        "musicPlayback".to_string(),
         closed(&["start", "change", "stop", "resume", "fadeOut"]),
     );
+    d.insert("framing".to_string(), closed(&["close", "tight"]));
+    d.insert("cameraMove".to_string(), closed(&["shake"]));
     d.insert(
         "anchor".to_string(),
         Domain {

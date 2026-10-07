@@ -34,7 +34,7 @@ pub(super) struct Walker<'a> {
     /// (0.4.0 T8) included). Always empty for a Scene/Quest walk.
     pub(super) param_domains: std::collections::BTreeMap<String, DomainInfo>,
     /// The document's definite-assignment scope (dsl 0.24.0): the def table a
-    /// `<match on="@def">` subject resolves through.
+    /// `<match subject="@def">` subject resolves through.
     pub(super) scope: &'a crate::defassign::Scope<'a>,
     /// The body being walked's beat / entry `when` as an assumption (dsl
     /// 0.24.0): a `<match>` needs no arm for a value it rules out — `unset`
@@ -44,7 +44,7 @@ pub(super) struct Walker<'a> {
     /// a `<match>` needs no arm for a value the record cannot hold there,
     /// as reachability's `E-ARM-DEAD` reads it.
     pub(super) picks: Vec<crate::reachability::Pick>,
-    /// The document's `::next` targets: an option arm a jump enters holds
+    /// The document's `::jump` targets: an option arm a jump enters holds
     /// no pick.
     pub(super) targets: std::collections::BTreeSet<String>,
 }
@@ -215,13 +215,13 @@ impl Walker<'_> {
                         // referent path as content lines (E-UNDECLARED /
                         // E-UNDECLARED-REF / E-REF-TYPE / §7.6 grammar).
                         check_interps(
-                            &scan_label_interps(&choice.label, choice.span),
+                            &scan_label_interps(&choice.text, choice.span),
                             ctx,
                             &mut self.diags,
                         );
                         super::literal_text::choice_label(
-                            &choice.label,
-                            choice.label_span,
+                            &choice.text,
+                            choice.text_span,
                             Some(self.src),
                             ctx,
                             &mut self.diags,
@@ -258,7 +258,7 @@ impl Walker<'_> {
                         ));
                     // The subject expression is evaluated OUTSIDE match scope: `$`
                     // is only valid in a `<when test>` (dsl §8.2), never in `on=`.
-                    // Force `in_match=false` so a nested `<match on="$">` (whose
+                    // Force `in_match=false` so a nested `<match subject="$">` (whose
                     // incoming ctx has in_match=true from the enclosing arm) is
                     // correctly flagged E-DOLLAR-OUTSIDE-MATCH.
                     let subject_ctx = Ctx {
@@ -412,15 +412,15 @@ impl Walker<'_> {
                                         d.span,
                                     ));
                                 }
-                                // dsl 0.12.0: `::mark`/`::next` are control-flow
+                                // `::label`/`::jump` are control-flow
                                 // constructs (a position label / a jump), not
                                 // staging leaves — mirrors the `::end` arm above
                                 // verbatim, reusing its exact diagnostic shape.
                                 ClipNode::Directive(d)
-                                    if d.tag == lute_manifest::core::MARK_DIRECTIVE =>
+                                    if d.tag == lute_manifest::core::LABEL_DIRECTIVE =>
                                 {
                                     self.diags.push(timeline_content_diag(
-                                        "`::mark` is a control-flow label and is not a staging \
+                                        "`::label` is a control-flow label and is not a staging \
                                          leaf; a <track> body may contain only staging \
                                          directives and ::set (dsl §7.4)"
                                             .to_string(),
@@ -428,10 +428,10 @@ impl Walker<'_> {
                                     ));
                                 }
                                 ClipNode::Directive(d)
-                                    if d.tag == lute_manifest::core::NEXT_DIRECTIVE =>
+                                    if d.tag == lute_manifest::core::JUMP_DIRECTIVE =>
                                 {
                                     self.diags.push(timeline_content_diag(
-                                        "`::next` is a control-flow jump and is not a staging \
+                                        "`::jump` is a control-flow jump and is not a staging \
                                          leaf; a <track> body may contain only staging \
                                          directives and ::set (dsl §7.4)"
                                             .to_string(),
@@ -475,13 +475,13 @@ impl Walker<'_> {
                         // §7.6: hub choice labels carry `{{…}}` interpolations too
                         // (same as branch choices) — validate their referents.
                         check_interps(
-                            &scan_label_interps(&choice.label, choice.span),
+                            &scan_label_interps(&choice.text, choice.span),
                             ctx,
                             &mut self.diags,
                         );
                         super::literal_text::choice_label(
-                            &choice.label,
-                            choice.label_span,
+                            &choice.text,
+                            choice.text_span,
                             Some(self.src),
                             ctx,
                             &mut self.diags,

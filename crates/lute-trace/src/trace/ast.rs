@@ -8,7 +8,7 @@ pub(super) fn key(span: &Span) -> (usize, usize) {
     (span.byte_start, span.byte_end)
 }
 
-/// Per content line its authored delivery, per `::next` its label — keyed by
+/// Per content line its authored delivery, per `::jump` its label — keyed by
 /// the node's span, which the source map gives every record.
 #[derive(Default)]
 pub(super) struct AstIndex {
@@ -51,7 +51,7 @@ impl AstIndex {
                 Node::Line(l) => {
                     self.deliveries.insert(key(&l.span), line_delivery(l));
                 }
-                Node::Directive(d) if d.tag == lute_manifest::core::NEXT_DIRECTIVE => {
+                Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
                     let to = d
                         .attrs
                         .iter()
@@ -161,7 +161,7 @@ pub(crate) struct TraceDriver<'a> {
     pub(super) unit: Option<i64>,
     /// The menu `addr` a pick already reached (its heads and markers shown).
     pub(super) reached: Option<String>,
-    /// The last record was an authored `::next` jump.
+    /// The last record was an authored `::jump` jump.
     pub(super) jumped: bool,
     /// The span of the last write, assert or retract record.
     pub(super) last_write: Option<Span>,

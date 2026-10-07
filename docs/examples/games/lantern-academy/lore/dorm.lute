@@ -19,7 +19,7 @@ title: Evenings with Nana
   @nana{code="0080" emotion="worried" when="holds('locked', ['soren'])"}: Remedial study, huh. The library's going to be very quiet without you.
   @nana{code="0090" emotion="worried" when="holds('locked', ['kai'])"}: Kai said a word about you I won't repeat. It rhymed with nothing.
   @nana{code="0100" emotion="happy" when="count('locked', ['_']) == 0"}: Nobody hates you yet. Honestly, a record for a transfer.
-  <match on="run.lanterns">
+  <match subject="run.lanterns">
     <when is="0">
       @nana{code="0110" emotion="worried"}: Also, we have zero lanterns for the window. Zero. We need three.
     </when>

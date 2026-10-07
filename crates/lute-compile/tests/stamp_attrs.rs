@@ -166,7 +166,7 @@ fn a_document_authoring_none_is_byte_identical() {
 /// assembly admits the name rather than assuming it — `pose` is absent from
 /// `lute-manifest`'s `RESERVED_STAMP_ATTR_NAMES`, and that is the only guard
 /// on the export. The shared test vocabulary is folded in afterwards exactly
-/// as `lute_test_vocab::vocab_snapshot` does, because the fixture's `::auto`
+/// as `lute_test_vocab::vocab_snapshot` does, because the fixture's `::actor`
 /// needs the `action`/`anchor` domains and the core snapshot ships no members
 /// (dsl 0.9.0 D-A).
 fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
@@ -257,7 +257,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
 fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     let snap = snap_with_plugin_declared_pose();
     let text = format!(
-        "{HDR}::auto{{character=\"elena\" anchor=\"center\" action=\"fadeInUp\"}}\n\
+        "{HDR}::actor{{character=\"elena\" anchor=\"center\" action=\"fadeInUp\"}}\n\
          @elena{{pose=\"crouch\"}}: A!\n\
          @elena: B.\n"
     );

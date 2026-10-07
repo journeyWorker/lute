@@ -9,7 +9,7 @@ title: What you find when nobody is there
 </entry>
 
 <entry id="libraryShut" on="placeVisit" target="place.library" category="bark" when="!@sunday && !holds('present', ['ines', 'library'])">
-  <match on="run.slot">
+  <match subject="run.slot">
     <when is="morning">
       @narrator{code="0010"}: The library doesn't open until one. Through the glass you can see a returns trolley and a sleeping cat.
     </when>
@@ -20,7 +20,7 @@ title: What you find when nobody is there
 </entry>
 
 <entry id="pierEmpty" on="placeVisit" target="place.pier" category="bark" when="!holds('present', ['theo', 'pier'])">
-  <match on="run.slot">
+  <match subject="run.slot">
     <when is="night">
       @narrator{code="0010"}: The pier at night is all creak and slap. Theo's nets are folded under a tarpaulin, weighed down with a brick.
     </when>
@@ -44,7 +44,7 @@ title: What you find when nobody is there
 
 <beat id="theoBark" on="placeVisit" target="place.pier" when="holds('present', ['theo', 'pier'])" once="false">
   ::set{run.seen.theo = run.day}
-  <match on="run.aff.theo">
+  <match subject="run.aff.theo">
     <when is="3..">
       @theo{code="0010" emotion="happy"}: Qualified hands! Come to watch me untangle things?
     </when>
@@ -60,7 +60,7 @@ title: What you find when nobody is there
 <beat id="inesBark" on="placeVisit" target="place.library" when="holds('present', ['ines', 'library'])" once="false">
   ::set{run.aff.ines += 1 when="run.seen.ines < run.day"}
   ::set{run.seen.ines = run.day}
-  <match on="run.aff.ines">
+  <match subject="run.aff.ines">
     <when is="3..">
       @ines{code="0010" emotion="happy"}: I saved you the good chair. Don't tell anyone there's a good chair.
     </when>

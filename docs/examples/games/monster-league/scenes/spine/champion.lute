@@ -11,10 +11,10 @@ when: "count('beatElite', ['_']) >= 4 && !@champion"
 ## The hall
 
 ::bg{location="champion-hall" time="day"}
-::music{action="change" mood="tense" volume="normal"}
+::music{playback="change" mood="tense" volume="normal"}
 @narrator{code="0010"}: The last door opens on a hall of white stone. Someone is already standing on the Champion's dais.
-::auto{character="rival" anchor="right" action="enter"}
-<match on="run.rivalStanding">
+::actor{character="rival" anchor="right" action="enter"}
+<match subject="run.rivalStanding">
   <when is="1..">
     @rival{code="0010" emotion="determined"}: Hey. I beat the Four an hour before you did, so I'm the Champion. You've beaten me more times than I like to count. Not today.
   </when>
@@ -27,9 +27,9 @@ when: "count('beatElite', ['_']) >= 4 && !@champion"
 </match>
 @rival{code="0040"}: Since Gramps gave us our monsters I've been everywhere. Every route, every cave, every tower. I'm the best there is!
 ::use{component="rivalBattle" meet="champion" kind="champion" intro="Do you know what that means? It means you're facing the Champion!" win="NO! That can't be! You beat my best! After all that work, my reign is over already." lose="Hahaha! I'm the Champion! Get used to it!" instance="use-001"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
-    ::auto{character="profAlder" anchor="left" action="enter"}
+    ::actor{character="profAlder" anchor="left" action="enter"}
     @profAlder{code="0010" emotion="happy"}: {{userName}}! You did it. You beat Kai, and the Four, and all of Verdane's leaders.
     @profAlder{code="0020" emotion="worried"}: Kai. You lost because you forgot to love your monsters. Think about that.
     @profAlder{code="0030"}: {{userName}}, come with me. The Hall of Fame is waiting.

@@ -18,7 +18,7 @@ title: The Verdant Dojo
 </entry>
 
 <beat id="hollisAsk" on="talk" target="npc.verdantDojoMaster" title="The challenge" priority="20" when="quest.northDojo.state == 'unset'">
-  ::auto{character="verdantDojoMaster" anchor="center" action="enter"}
+  ::actor{character="verdantDojoMaster" anchor="center" action="enter"}
   @verdantDojoMaster{code="0010" emotion="determined"}: A traveller with badges. Good. My students are getting lazy beating each other.
   @verdantDojoMaster{code="0020"}: Koji is my best. Beat him on the mats and come back to me. I will make it worth your while.
   ::accept{quest="northDojo"}

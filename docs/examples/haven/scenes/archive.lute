@@ -10,9 +10,9 @@ after: 'visited("haven.s01ep07")'
 ## The Archive
 
 ::bg{location="archive" time="ship-night"}
-::music{action="fadeOut"}
-::auto{character="vesna" anchor="port" action="unseal"}
-::auto{character="ottavio" anchor="starboard" action="drift"}
+::music{playback="fadeOut"}
+::actor{character="vesna" anchor="port" action="unseal"}
+::actor{character="ottavio" anchor="starboard" action="drift"}
 
 @narrator{code="0010"}: Nine hundred kilograms of paper, kept because paper is the only record aboard that does not need the ship's permission to be read.
 @vesna{code="0020" emotion="wry"}: Somebody in the yard was very proud of this room.
@@ -26,14 +26,14 @@ after: 'visited("haven.s01ep07")'
 @ottavio{code="0080" emotion="hollowed"}: Somebody took money to leave a line blank, and the line was me.
 @vesna{code="0090" emotion="stricken"}: And the Purser has been doing arithmetic against that blank for eleven years.
 /*
-`when=` is a content-line and `<choice>` attribute only — `::auto{… when="…"}` is
+`when=` is a content-line and `<choice>` attribute only — `::actor{… when="…"}` is
 `E-UNKNOWN-ATTR`, so staging cannot be gated in place and a single conditional
-`::auto` costs a whole block. `on="true"` is T7.6's dummy subject: a relation may
-not be a `<match on>` subject but is admitted in `<when test>`. See T8.
+`::actor` costs a whole block. `subject="true"` is T7.6's dummy subject: a relation may
+not be a `<match subject>` subject but is admitted in `<when test>`. See T8.
 */
-<match on="true">
+<match subject="true">
   <when test="holds('awake', ['ilsabet'])">
-    ::auto{character="ilsabet" action="unseal"}
+    ::actor{character="ilsabet" action="unseal"}
     @ilsabet{code="0100" emotion="clipped"}: Move. That drawer is mine and it has been for eleven years.
     @ilsabet{code="0110" emotion="stricken"}: Filed heading. And it is not the heading we are flying.
     @vesna{code="0120" emotion="clipped"}: Where, then.
@@ -53,14 +53,14 @@ not be a `<match on>` subject but is admitted in `<when test>`. See T8.
 @vesna{code="0170" emotion="level"}: Order of release. Condition of release. And the condition for stopping it.
 
 <branch id="theSequence">
-  <choice id="readItAloud" label="Read the sequence aloud">
+  <choice id="readItAloud" text="Read the sequence aloud">
     ::assert{knows(vesna, shed_sequence)}
     ::set{run.vesnaTrust += 1}
     @vesna{code="0180" emotion="clipped"}: Read it with me. If I'm the only one who knows it and I have it wrong, we all die very politely.
     @vesna{code="0190" emotion="level"}: Halt condition. Allocation satisfied, or allocation invalidated. Those are the only two.
     @vesna{code="0200" emotion="hollowed"}: So it will stop. It just won't stop for being asked.
   </choice>
-  <choice id="pocketIt" label="Fold the page and put it in your pocket">
+  <choice id="pocketIt" text="Fold the page and put it in your pocket">
     @vesna{code="0210" emotion="frayed"}: Suit yourself. Some things are easier to carry than to say out loud.
     @ottavio{code="0220" emotion="wry"}: And now there are two of us aboard who aren't written down anywhere.
   </choice>

@@ -55,7 +55,7 @@ use crate::content_line::E_UNKNOWN_ATTR;
 /// enforces that no OTHER key appears; their own VALUES are checked below
 /// by [`check_branch_value_attrs`], because the parser accepts any `Str`.
 const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout"];
-const MATCH_ATTRS: &[&str] = &["on"];
+const MATCH_ATTRS: &[&str] = &["subject"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
 /// dsl 0.23.0 §4: `<hub prompt>` attaches the prompt line shown with the
@@ -106,28 +106,48 @@ pub const OBJECTIVE_ATTRS: &[&str] = &[
     "until",
 ];
 /// Attributes that were renamed: the old spelling on that element is an
-/// `E-UNKNOWN-ATTR` whose message names the new one (clean cutover — the
-/// old key is never read). `(tag, old key, message)`.
-const RENAMED_ATTRS: &[(&str, &str, &str)] = &[
+/// error whose message names the new one (clean cutover — the old key is
+/// never read). `(tag, old key, code, message)`. The dsl 0.37.0 §4 renames
+/// raise `E-RENAMED-TAG-ATTR`; the older ones stay `E-UNKNOWN-ATTR`.
+const RENAMED_ATTRS: &[(&str, &str, &str, &str)] = &[
     (
         "quest",
         "after",
+        E_UNKNOWN_ATTR,
         "`<quest after=>` is now `follows=` — it records the quest graph and does not gate the \
          quest; to wait, write `start=\"visited('<scene id>')\"`",
     ),
     (
         "reward",
         "on",
+        E_UNKNOWN_ATTR,
         "`on=` on a `<reward>` is now `outcome=` (`outcome=\"failed\"` grants when the quest \
          fails; without it the reward grants on `complete`)",
     ),
     (
         "objective",
         "when",
+        E_UNKNOWN_ATTR,
         "`when=` on an `<objective>` is now `visibleWhen=` — it only hides the objective; to \
          gate `done`, put the condition in `done=`",
     ),
+    (
+        "choice",
+        "label",
+        E_RENAMED_TAG_ATTR,
+        "`<choice label=>` is now `text=` (dsl 0.37.0 §3.5) — `lute fix` rewrites it",
+    ),
+    (
+        "match",
+        "on",
+        E_RENAMED_TAG_ATTR,
+        "`<match on=>` is now `subject=` (dsl 0.37.0 §3.5) — `lute fix` rewrites it",
+    ),
 ];
+
+/// `E-RENAMED-TAG-ATTR` (dsl 0.37.0 §4): an old `<choice>`/`<match>`
+/// attribute spelling; the message names `text`/`subject`.
+pub const E_RENAMED_TAG_ATTR: &str = "E-RENAMED-TAG-ATTR";
 /// Keys an author reaches for that the construct spells another way, or that
 /// belong to another construct or layer: `(tag, keys, remedy)` — the
 /// `E-UNKNOWN-ATTR` names the remedy instead of a spelling neighbour. The
@@ -227,8 +247,8 @@ pub const ON_ATTRS: &[&str] = &["event", "when", "target"];
 /// `match_check.rs:488-490`); `walk_branch` never reads them. Enforcing one
 /// merged set would leave a branch choice carrying `exit` silent, which is the
 /// defect §4 closes wearing a smaller hat.
-const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "label", "when", "into", "value"];
-const HUB_CHOICE_ATTRS: &[&str] = &["id", "label", "when", "into", "value", "once", "exit"];
+const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
+const HUB_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value", "once", "exit"];
 
 /// §4's fourth column: keys a DEDICATED removal code already reports. It is
 /// NOT a permitted set — `as` and `persist` on a `<choice>` are errors, and
@@ -589,12 +609,13 @@ fn close(
         }
         let renamed = RENAMED_ATTRS
             .iter()
-            .find(|(t, old, _)| *t == tag && *old == key);
+            .find(|(t, old, _, _)| *t == tag && *old == key);
         let meant = MEANT_ATTRS
             .iter()
             .find(|(t, keys, _)| *t == tag && keys.contains(&key));
+        let code = renamed.map_or(E_UNKNOWN_ATTR, |(_, _, code, _)| *code);
         let message = match (renamed, meant, hint) {
-            (Some((_, _, message)), _, _) => (*message).to_string(),
+            (Some((_, _, _, message)), _, _) => (*message).to_string(),
             (None, Some((_, _, remedy)), _) => {
                 format!("`<{tag}>` has no attribute `{key}` — {remedy}")
             }
@@ -617,7 +638,7 @@ fn close(
             }
         };
         diags.push(Diagnostic {
-            code: E_UNKNOWN_ATTR.to_string(),
+            code: code.to_string(),
             severity: Severity::Error,
             message,
             evidence: None,

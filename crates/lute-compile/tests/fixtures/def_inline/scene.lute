@@ -19,4 +19,4 @@ defs:
 ::use{component="card" weather="grey"}
 ::use{component="card" weather="still"}
 @narrator: Def {{@twice}}.
-::camera{focus="demo" zoom=@closeUp}
+::camera{focus="demo" duration=@closeUp}

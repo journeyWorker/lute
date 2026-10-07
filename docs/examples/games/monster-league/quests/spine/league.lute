@@ -68,7 +68,7 @@ title: The League spine
   <objective id="road" title="Kai, on Victory Road" done="holds('rivalFought', ['road'])"/>
   <objective id="champion" title="Kai, in the Champion's hall" done="holds('rivalFought', ['champion'])"/>
   <on event="questComplete">
-    <match on="run.rivalStanding">
+    <match subject="run.rivalStanding">
       <when is="3..">
         @narrator{code="0010"}: Six battles with Kai. He won so few of them that he has started keeping count himself.
       </when>

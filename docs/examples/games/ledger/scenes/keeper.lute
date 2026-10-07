@@ -19,9 +19,9 @@ state:
     @narrator{code="0130"}: The lamp room again. The dark is closer.
     @narrator{code="0140" when="run.oil > 0"}: A can of oil sits by the lens.
   </return>
-  <choice id="ledger" label="Read the ledger">
+  <choice id="ledger" text="Read the ledger">
     ::set{scene.ledgerReads += 1}
-    <match on="scene.ledgerReads">
+    <match subject="scene.ledgerReads">
       <when is="1">
         @narrator{code="0030"}: The last entry is three weeks old. "Oil low. Ship due."
       </when>
@@ -33,28 +33,28 @@ state:
       </otherwise>
     </match>
   </choice>
-  <choice id="desk" label="Search the keeper's desk" when="scene.ledgerReads > 0" once>
+  <choice id="desk" text="Search the keeper's desk" when="scene.ledgerReads > 0" once>
     @narrator{code="0060"}: Under the blotter: a letter signed "Tomas Vell".
     ::set{run.knowsName = true}
   </choice>
-  <choice id="gallery" label="Look out from the gallery">
+  <choice id="gallery" text="Look out from the gallery">
     ::set{scene.gallery += 1}
     @narrator{code="0070" when="scene.gallery > 2"}: A light on the water. A ship, coming in blind.
     @narrator{code="0080" when="scene.gallery <= 2"}: Only fog.
   </choice>
-  <choice id="stores" label="Go down to the stores" once>
+  <choice id="stores" text="Go down to the stores" once>
     @narrator{code="0090"}: You find two more cans of oil.
     ::set{run.oil += 2}
   </choice>
-  <choice id="name" label="Say the keeper's name aloud" when="run.knowsName" once>
+  <choice id="name" text="Say the keeper's name aloud" when="run.knowsName" once>
     @narrator{code="0100"}: "Tomas." The lens turns a quarter, by itself.
   </choice>
-  <choice id="leap" label="Climb the rail toward the light" when="scene.gallery > 2" once>
+  <choice id="leap" text="Climb the rail toward the light" when="scene.gallery > 2" once>
     @narrator{code="0110"}: The rail is wet. The light is very far away.
     ::set{run.fate = "drowned"}
     ::end{reason="drowned"}
   </choice>
-  <choice id="dusk" label="Wait for dark" exit>
+  <choice id="dusk" text="Wait for dark" exit>
     @narrator{code="0120"}: The sun goes under.
   </choice>
 </hub>

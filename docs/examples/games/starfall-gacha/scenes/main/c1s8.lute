@@ -11,10 +11,10 @@ once: user
 @hollow{code="0010" os}: Little wishes. Little lights. You think you can take back what I have eaten?
 @aria{code="0010" emotion="sad"}: That voice. That's him. That's the one who took the winter.
 <branch id="c1s8Answer" prompt="The voice is waiting for you to answer.">
-  <choice id="defy" label="Every star, one by one.">
+  <choice id="defy" text="Every star, one by one.">
     @hollow{code="0020" os emotion="smug"}: Then I will eat them twice.
   </choice>
-  <choice id="silent" label="Say nothing. Draw your sword.">
+  <choice id="silent" text="Say nothing. Draw your sword.">
     @hollow{code="0030" os}: Silence. Good. The quiet ones taste sweeter.
   </choice>
 </branch>

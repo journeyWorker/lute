@@ -68,7 +68,7 @@ title: Interviews
 
 <beat id="liseDoor" on="talk" target="npc.lise" title="A quarter past one" when="holds('placed', ['lise'])">
   ::bg{location="dining_car" time="night"}
-  ::auto{character="lise" anchor="center" action="fadeInUp"}
+  ::actor{character="lise" anchor="center" action="fadeInUp"}
   @inspector{code="0010"}: The porter saw you at compartment 7 at a quarter past one. The watch on the dead man's wrist stopped at a quarter past one.
   @lise{code="0010" emotion="angry"}: And so I must have stopped it. With what — a high C?
   @lise{code="0020" emotion="sad"}: I went to beg. There, you can write that down. He held a note of mine, sixty crowns, and he had called it in. I wrote him a letter asking for time and I took it to his door because I could not bear to wait for the morning.
@@ -76,37 +76,37 @@ title: Interviews
   ::assert{claims(lise, cab7, early)}
   @lise{code="0040"}: Inspector. That letter is in his things somewhere. If it is read out at an inquest, no hall in Ossery will have me.
   <branch id="letter" prompt="Lise is waiting.">
-    <choice id="promise" label="I'll find the letter.">
+    <choice id="promise" text="I'll find the letter.">
       ::accept{quest="lisesLetter"}
       @inspector{code="0020"}: If it has nothing to do with his death, it goes back to you. That is all I can promise.
       @lise{code="0050" emotion="content"}: That is more than he ever did.
     </choice>
-    <choice id="refuse" label="Everything he carried is evidence.">
+    <choice id="refuse" text="Everything he carried is evidence.">
       @inspector{code="0030"}: Everything he carried is evidence, Miss Varo. Including your letter.
       @lise{code="0060" emotion="angry"}: Then I hope you enjoy the prose.
     </choice>
   </branch>
-  ::auto{character="lise" action="fadeOut"}
+  ::actor{character="lise" action="fadeOut"}
 </beat>
 
 <beat id="soltConfront" on="talk" target="npc.solt" title="The empty berth" when="holds('lied', ['solt'])" priority="10">
   ::bg{location="compartment_5" time="night"}
-  ::auto{character="solt" anchor="center" action="fadeInUp"}
+  ::actor{character="solt" anchor="center" action="fadeInUp"}
   @inspector{code="0010"}: You told me you slept in this berth from midnight until the conductor fetched you.
   @solt{code="0010"}: I did.
   @inspector{code="0020"}: At ten past two Mr. Crane came down this corridor with his taper. Your door was on the latch. Your bed was made. You were not in it.
   <branch id="press" prompt="Solt folds his spectacles, slowly.">
-    <choice id="hard" label="Where were you in the tunnel, Doctor?">
+    <choice id="hard" text="Where were you in the tunnel, Doctor?">
       @inspector{code="0030"}: Where were you during the four minutes the lamps were out?
       @solt{code="0020" emotion="angry"}: Attending to my own bowels, Inspector, since you insist on the details. Trains disagree with me.
       ::set{run.soltRattled = true}
       @inspector{code="0040" mono}: The washroom is at the end of this car. Hask's compartment is between here and there.
     </choice>
-    <choice id="soft" label="Let him fill the silence.">
+    <choice id="soft" text="Let him fill the silence.">
       @narrator{code="0010"}: You say nothing. The wheels count the rail joints.
       @solt{code="0030"}: I may have stepped out. A man does not remember every minute of a night like this.
       @inspector{code="0050" mono}: A physician does. It's the one thing they are trained to do.
     </choice>
   </branch>
-  ::auto{character="solt" action="fadeOut"}
+  ::actor{character="solt" action="fadeOut"}
 </beat>

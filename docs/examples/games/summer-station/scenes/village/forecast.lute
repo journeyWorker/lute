@@ -16,10 +16,10 @@ when: "holds('at', ['ines', 'radio']) && quest.forecast.state == 'active' && !ru
 @ines{code="0020"}: The question is whether it holds until Sunday night, or breaks on Saturday like it did in '94.
 
 <branch id="call" prompt="She slides the pen over to you.">
-  <choice id="clear" label="Forecast clear skies for Sunday night">
+  <choice id="clear" text="Forecast clear skies for Sunday night">
     @ines{code="0030" emotion="fond"}: Brave. Your numbers back you. Sign it.
   </choice>
-  <choice id="cautious" label="Forecast clear, with a chance of wind after midnight">
+  <choice id="cautious" text="Forecast clear, with a chance of wind after midnight">
     @ines{code="0040" emotion="happy"}: That's a forecaster's answer. Honest and a little cowardly. Sign it.
   </choice>
 </branch>

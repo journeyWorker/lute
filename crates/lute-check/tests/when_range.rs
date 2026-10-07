@@ -45,10 +45,10 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
     run.flag: { type: bool, default: false }\n  \
     run.name: { type: string, default: x }\n---\n## Shot 1.\n";
 
-/// A `<match on=subject>` with one `<when is=…>` arm per pattern, plus an
+/// A `<match subject=subject>` with one `<when is=…>` arm per pattern, plus an
 /// `<otherwise>` when asked.
 fn match_src(subject: &str, arms: &[&str], otherwise: bool) -> String {
-    let mut s = format!("{HDR}<match on=\"{subject}\">\n");
+    let mut s = format!("{HDR}<match subject=\"{subject}\">\n");
     for (i, pat) in arms.iter().enumerate() {
         s.push_str(&format!("<when is=\"{pat}\">\n@narrator: a{i}\n</when>\n"));
     }
@@ -229,7 +229,7 @@ fn partial_or_guarded_coverage_is_not_arm_dead() {
     let out = codes(&match_src("run.n", &["1..5", "4..6"], true));
     assert_eq!(count(&out, "E-ARM-DEAD"), 0, "{out:?}");
     let out = codes(&format!(
-        "{HDR}<match on=\"run.n\">\n\
+        "{HDR}<match subject=\"run.n\">\n\
          <when is=\"1..5\" test=\"run.flag\">\n@narrator: a\n</when>\n\
          <when is=\"2\">\n@narrator: b\n</when>\n\
          <otherwise>\n@narrator: o\n</otherwise>\n\

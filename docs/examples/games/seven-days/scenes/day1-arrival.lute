@@ -10,10 +10,10 @@ priority: 100
 ## The bus shelter
 
 ::bg{location="marrow_bay_bus_shelter" time="morning"}
-::music{action="start" mood="wistful" volume="down"}
+::music{playback="start" mood="wistful" volume="down"}
 @narrator{code="0010"}: The last stop on the coast road is a shelter with no walls, only a roof and a timetable nobody has updated since spring.
 @sol{code="0010" mono}: Seven days. Aunt Pell said seven days, and then the festival, and then the bus home.
-::auto{character="pell" anchor="center" action="fadeInUp"}
+::actor{character="pell" anchor="center" action="fadeInUp"}
 ::set{run.seen.pell = run.day}
 @pell{code="0010" emotion="happy"}: There you are! You've grown a whole head. Give me that bag before the gulls do.
 @sol{code="0020"}: Hi, Aunt Pell.
@@ -22,19 +22,19 @@ priority: 100
 ## The lantern shop
 
 ::bg{location="lantern_shop" time="morning"}
-::auto{character="pell" anchor="left" action="fadeInUp"}
+::actor{character="pell" anchor="left" action="fadeInUp"}
 @narrator{code="0020"}: The shop smells of glue and salt. Paper lanterns hang from every beam like sleeping bats.
 @pell{code="0030"}: Friday night is the Lantern Walk. Every household sends one lantern out on the tide.
 @pell{code="0040" emotion="tired"}: And this year my hands shake too much to fold the frame.
 <branch id="help" prompt="Aunt Pell looks at you over her glasses.">
-  <choice id="yes" label="I'll make the lantern.">
+  <choice id="yes" text="I'll make the lantern.">
     ::accept{quest="festivalLantern"}
     @pell{code="0050" emotion="happy"}: I knew you would. You'll want reed for the frame and good paper. The library girl knows paper.
   </choice>
-  <choice id="maybe" label="I've never made one...">
+  <choice id="maybe" text="I've never made one...">
     ::accept{quest="festivalLantern"}
     @pell{code="0060" emotion="teasing"}: Nobody has, until they have. Ask at the library for paper. Theo at the pier cuts reed.
   </choice>
 </branch>
-::auto{character="pell" action="fadeOut"}
+::actor{character="pell" action="fadeOut"}
 @sol{code="0030" mono}: Friday. Four days to build something that floats.

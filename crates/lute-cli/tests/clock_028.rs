@@ -100,7 +100,7 @@ fn scene(id: &str, on: &str, head: &str, body: &str) -> String {
 #[test]
 fn a_one_day_clock_narrows_its_slot_path_to_the_slots_it_reaches() {
     let arms = |slots: &[&str]| {
-        let mut s = String::from("<match on=\"run.hour\">\n");
+        let mut s = String::from("<match subject=\"run.hour\">\n");
         for slot in slots {
             s.push_str(&format!(
                 "  <when is=\"{slot}\">\n    @narrator: {slot}.\n  </when>\n"
@@ -602,7 +602,7 @@ fn a_component_param_can_name_the_clock_s_weekday_labels() {
     let card = |arms: &str| {
         format!(
             "---\ncomponent: dayCard\nparams:\n  day: {{ domain: clock.weekdayLabel }}\n---\n\n\
-             ## Day card\n\n<match on=\"@day\">\n{arms}</match>\n"
+             ## Day card\n\n<match subject=\"@day\">\n{arms}</match>\n"
         )
     };
     let arm =

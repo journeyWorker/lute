@@ -14,7 +14,7 @@ when: "run.slot == 'morning'"
 @narrator{code="0010"}: Your {{run.day:ordinalWord}} morning, a {{clock.weekdayLabel}}. The anemometer cups are already spinning.
 
 // clock.weekday: 0 = Monday … 6 = Sunday.
-<match on="clock.weekday">
+<match subject="clock.weekday">
   <when is="0">
     @narrator{code="0020"}: The log is clean and the pencil is sharp.
   </when>
@@ -35,11 +35,11 @@ when: "run.slot == 'morning'"
 ::use{component="reading" hour="Seven o'clock" instance="use-001"}
 
 <branch id="care" prompt="The log waits, pencil in its spine.">
-  <choice id="careful" label="Take the readings again, slowly, and write them exactly">
+  <choice id="careful" text="Take the readings again, slowly, and write them exactly">
     ::set{run.readings += 1}
     @narrator{code="0070"}: You read every dial twice. Your numbers go into the column in your smallest handwriting.
   </choice>
-  <choice id="skim" label="Jot them down and go find breakfast">
+  <choice id="skim" text="Jot them down and go find breakfast">
     @narrator{code="0080"}: Close enough. The sky won't mind a rounded decimal. Ines might.
   </choice>
 </branch>

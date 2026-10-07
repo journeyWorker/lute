@@ -11,7 +11,7 @@ title: A lantern folded for someone
 
 <beat id="treasured" on="gift" target="kind:suitor" title="A treasured lantern" when="occasion.payload.hearts >= 3 && run.route == occasion.target">
   @narrator{code="0010"}: {{occasion.target}} turns the lantern over in both hands. {{occasion.payload.hearts:plural(One heart|# hearts)}} in the fold, and every one of them showing.
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="ren">
       ::set{run.aff.ren += 1}
       @ren{code="0010" emotion="flustered"}: This is... very straight folding. I'm keeping it. On the desk. Officially.

@@ -73,7 +73,7 @@ fn anchor_and_preload_inject_after_authored_auto() {
     // entry-emotion-lookahead, each a separate record AFTER the authored
     // sprite (§4.5 worked example).
     let (recs, _) = walk(
-        "::auto{character=\"marina\" action=\"fadeInUp\"}\n@marina{emotion=\"surprised\"}: Oh!",
+        "::actor{character=\"marina\" action=\"fadeInUp\"}\n@marina{emotion=\"surprised\"}: Oh!",
     );
     let sprites: Vec<String> = recs.iter().filter_map(|r| sprite_desc(&r.cmd)).collect();
     assert_eq!(
@@ -97,7 +97,7 @@ fn anchor_and_preload_inject_after_authored_auto() {
 
 #[test]
 fn pos_reset_injects_before_the_plain_line() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
 @marina{emotion=\"delighted\" action=\"poseLean\"}: A!\n\
 @marina: B.";
     let (recs, _) = walk(body);
@@ -123,7 +123,7 @@ fn pos_reset_injects_before_the_plain_line() {
 
 #[test]
 fn scene_change_hides_lingering_sprites_before_the_bg() {
-    let body = "::auto{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}\n\
 ::bg{location=\"street\" time=\"evening\"}";
     let (recs, state) = walk(body);
     let kinds: Vec<&str> = recs
@@ -153,19 +153,19 @@ fn scene_change_hides_lingering_sprites_before_the_bg() {
 fn branch_arms_fork_from_entry_state_and_join_conservatively() {
     // D9 fork/join golden (spec §8): BOTH arms show marina fresh (each gets
     // its own anchor injection — nothing leaks from arm 1 into arm 2), and
-    // the post-join ::auto is a fresh show again (differing arm emotions =>
+    // the post-join ::actor is a fresh show again (differing arm emotions =>
     // the join drops marina).
     let body = r#"<branch id="fork">
-  <choice id="a" label="A">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="a" text="A">
+    ::actor{character="marina" action="fadeInUp"}
     @marina{emotion="surprised"}: Oh!
   </choice>
-  <choice id="b" label="B">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="b" text="B">
+    ::actor{character="marina" action="fadeInUp"}
     @marina{emotion="delighted"}: Ha!
   </choice>
 </branch>
-::auto{character="marina" action="fadeInUp"}"#;
+::actor{character="marina" action="fadeInUp"}"#;
     let (recs, _) = walk(body);
     let anchors: Vec<usize> = recs
         .iter()
@@ -181,18 +181,18 @@ fn branch_arms_fork_from_entry_state_and_join_conservatively() {
 
 #[test]
 fn arm_end_entrance_preloads_post_convergence_emotion() {
-    // D9 continuation threading: each arm ENDS with a fresh `::auto` entrance
+    // D9 continuation threading: each arm ENDS with a fresh `::actor` entrance
     // for `marina`, and her first emotion line sits AFTER `</branch>` — a
     // post-convergence, CFG-reachable successor, not inside any arm.
     // entry-emotion-lookahead must find `surprised` through the threaded
     // continuation, so BOTH arm entrances preload it, while sibling arms are
     // never consulted.
     let body = r#"<branch id="fork">
-  <choice id="a" label="A">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="a" text="A">
+    ::actor{character="marina" action="fadeInUp"}
   </choice>
-  <choice id="b" label="B">
-    ::auto{character="marina" action="fadeInUp"}
+  <choice id="b" text="B">
+    ::actor{character="marina" action="fadeInUp"}
   </choice>
 </branch>
 @marina{emotion="surprised"}: Oh!"#;
@@ -259,12 +259,12 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     // the join must carry marina AND union her dirty flag — so the next plain
     // line still fires `auto-pose-reset`. Under the old intersection merge the
     // flag was dropped and the reset silently lost.
-    let body = r#"::auto{character="marina" anchor="left" action="fadeInUp"}
+    let body = r#"::actor{character="marina" anchor="left" action="fadeInUp"}
 <branch id="fork">
-  <choice id="a" label="A">
+  <choice id="a" text="A">
     @marina{variant="closeup"}: Hm.
   </choice>
-  <choice id="b" label="B">
+  <choice id="b" text="B">
     @marina: Yo.
   </choice>
 </branch>
@@ -294,8 +294,8 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
 /// prints); the IR itself is the exits alone.
 #[test]
 fn clear_lowers_to_one_exit_per_character_on_stage() {
-    let body = "::auto{character=\"marina\" anchor=\"left\" action=\"fadeInUp\"}\n\
-::auto{character=\"kenshi\" anchor=\"right\" action=\"fadeInUp\"}\n\
+    let body = "::actor{character=\"marina\" anchor=\"left\" action=\"fadeInUp\"}\n\
+::actor{character=\"kenshi\" anchor=\"right\" action=\"fadeInUp\"}\n\
 @marina: Both of us.\n\
 ::clear\n\
 @narrator: Empty.";

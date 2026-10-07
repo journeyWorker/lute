@@ -14,46 +14,46 @@ after: 'visited("rock.arrival")'
 @inspector{code="0010" mono}: Three questions. Answer them from what I can prove, not what the island wants.
 
 <branch id="fate" prompt="What became of Elias Voss?">
-  <choice id="fell" label="He fell from the gallery while clearing the glass" into="run.verdictFate" value="fell" when="holds('fell', ['elias'])">
+  <choice id="fell" text="He fell from the gallery while clearing the glass" into="run.verdictFate" value="fell" when="holds('fell', ['elias'])">
     @inspector{code="0020" mono}: His own log puts him on the gallery. The rail is gone. And nobody honest saw him after.
   </choice>
-  <choice id="murdered" label="He was killed" into="run.verdictFate" value="murdered" when="count('suspect', ['_']) >= 1">
+  <choice id="murdered" text="He was killed" into="run.verdictFate" value="murdered" when="count('suspect', ['_']) >= 1">
     @inspector{code="0030" mono}: Someone was out here who should not have been. That is enough for the Board to hang a name on.
   </choice>
-  <choice id="drowned" label="He was washed off the landing" into="run.verdictFate" value="drowned">
+  <choice id="drowned" text="He was washed off the landing" into="run.verdictFate" value="drowned">
     @inspector{code="0040" mono}: The sea takes keepers. It does not need a reason.
   </choice>
 </branch>
 
 <branch id="onRock" prompt="Who else was on the rock that night?">
-  <choice id="ada" label="Ada Pell" into="run.verdictOnRock" value="ada" when="holds('onRock', ['ada', 'midnight'])">
+  <choice id="ada" text="Ada Pell" into="run.verdictOnRock" value="ada" when="holds('onRock', ['ada', 'midnight'])">
     @inspector{code="0050" mono}: Her hand in the log at two in the morning. Her coat on the landing at dawn.
   </choice>
-  <choice id="tobias" label="Tobias Crane" into="run.verdictOnRock" value="tobias" when="holds('suspect', ['tobias'])">
+  <choice id="tobias" text="Tobias Crane" into="run.verdictOnRock" value="tobias" when="holds('suspect', ['tobias'])">
     @inspector{code="0060" mono}: His boat is on the rocks. Where else would he have been?
   </choice>
-  <choice id="nobody" label="Nobody" into="run.verdictOnRock" value="nobody">
+  <choice id="nobody" text="Nobody" into="run.verdictOnRock" value="nobody">
     @inspector{code="0070" mono}: He was alone. Keepers usually are.
   </choice>
 </branch>
 
 <branch id="liar" prompt="Whose statement will not stand?">
-  <choice id="maren" label="Maren Hale's" into="run.verdictLiar" value="maren" when="holds('liar', ['maren'])">
+  <choice id="maren" text="Maren Hale's" into="run.verdictLiar" value="maren" when="holds('liar', ['maren'])">
     @inspector{code="0080" mono}: She swore Ada was in her house at midnight. The log says otherwise.
   </choice>
-  <choice id="tobias" label="Tobias Crane's" into="run.verdictLiar" value="tobias" when="holds('sawAt', ['tobias', 'elias', 'landing', 'dawn'])">
+  <choice id="tobias" text="Tobias Crane's" into="run.verdictLiar" value="tobias" when="holds('sawAt', ['tobias', 'elias', 'landing', 'dawn'])">
     @inspector{code="0090" mono}: A dead man waving from the landing at dawn. Either he is lying or he saw a ghost.
   </choice>
-  <choice id="nobody" label="Nobody lied" into="run.verdictLiar" value="nobody">
+  <choice id="nobody" text="Nobody lied" into="run.verdictLiar" value="nobody">
     @inspector{code="0100" mono}: Frightened people remember badly. That is not the same as lying.
   </choice>
 </branch>
 
 <branch id="cause" prompt="Could it have been prevented?">
-  <choice id="neglect" label="The rail was reported rotten and never mended" into="run.verdictCause" value="neglect" when="holds('preventable', ['gallery_rail'])">
+  <choice id="neglect" text="The rail was reported rotten and never mended" into="run.verdictCause" value="neglect" when="holds('preventable', ['gallery_rail'])">
     @inspector{code="0110" mono}: His own hand in August, and the Board's refusal in September. The rail did what he said it would.
   </choice>
-  <choice id="misadventure" label="Nobody could have prevented it" into="run.verdictCause" value="misadventure">
+  <choice id="misadventure" text="Nobody could have prevented it" into="run.verdictCause" value="misadventure">
     @inspector{code="0120" mono}: A gale, a wet ledge, a tired man. The sea needs no help.
   </choice>
 </branch>

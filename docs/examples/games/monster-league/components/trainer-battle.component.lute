@@ -27,7 +27,7 @@ shout before the sight line) play first. */
 ::body
 @@who{code="0010"}: {{@intro}}
 ::battle{foe=@who kind="trainer" resultKey="fight"}
-<match on="scene.battle.fight.won">
+<match subject="scene.battle.fight.won">
   <when is="true">
     @@who{code="0020"}: {{@win}}
     ::assert{defeated(@who)}

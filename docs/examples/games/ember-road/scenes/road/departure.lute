@@ -11,28 +11,28 @@ components: [../../components/reaction.component.lute]
 ## The Ostwick Gate
 
 ::bg{location="ostwick_gate" time="dawn"}
-::music{action="start" mood="upbeat" volume="down"}
+::music{playback="start" mood="upbeat" volume="down"}
 @narrator{code="0010"}: Eleven wagons, forty mules, and a strongbox nobody is supposed to know about. East of the gate the Ember Road opens like a wound that never closed.
-::auto{character="brannoc" anchor="center" action="fadeInUp"}
+::actor{character="brannoc" anchor="center" action="fadeInUp"}
 @brannoc{code="0010"}: Warden. The Company has paid for three things: the cargo, the road, and you. Get all eleven wagons over the Tollbridge before the fourth night.
 @brannoc{code="0020"}: Harrow's Ford is a day out. Past the ford it's Dusk country.
-::auto{character="isolde" anchor="left" action="fadeInUp"}
+::actor{character="isolde" anchor="left" action="fadeInUp"}
 @isolde{code="0010"}: The Duskbound are deserters and hungry farmers, Captain. Not demons.
 @brannoc{code="0030"}: Hungry farmers with crossbows, Vane.
-::auto{character="corvin" anchor="right" action="fadeInUp"}
+::actor{character="corvin" anchor="right" action="fadeInUp"}
 @corvin{code="0010"}: And a toll, I hear. Everyone on this road has a toll. Some of us are only more honest about it.
 
 <branch id="orders" prompt="Brannoc waits for your answer.">
-  <choice id="swear" label="\"The wagons cross. You have my word.\"">
+  <choice id="swear" text="\"The wagons cross. You have my word.\"">
     @brannoc{code="0040"}: Your word. Good. The Company collects on those.
     ::set{run.rep.company += 1}
     ::use{component="reaction" who="isolde" feel="approves" instance="use-001"}
   </choice>
-  <choice id="price" label="For what you pay, the wagons get there. The mules are a maybe.">
+  <choice id="price" text="For what you pay, the wagons get there. The mules are a maybe.">
     @brannoc{code="0050"}: Funny. Get the mules there too.
     ::use{component="reaction" who="corvin" feel="approves" instance="use-002"}
   </choice>
-  <choice id="dusk" label="What did the Company do to the Duskbound?">
+  <choice id="dusk" text="What did the Company do to the Duskbound?">
     @brannoc{code="0060" emotion="angry"}: Nothing they didn't earn. Mind your road, Warden.
     ::set{run.rep.company -= 1}
     ::use{component="reaction" who="isolde" feel="approves" instance="use-003"}
@@ -40,7 +40,7 @@ components: [../../components/reaction.component.lute]
   </choice>
 </branch>
 
-::auto{character="brannoc" action="fadeOut"}
+::actor{character="brannoc" action="fadeOut"}
 @corvin{code="0020"}: Eleven wagons. You know what's in the twelfth crate of the ninth wagon?
 @isolde{code="0030"}: Corvin.
 @corvin{code="0030"}: I'm only saying the Company counts to eleven and packs twelve.

@@ -10,6 +10,6 @@ title: Sound effect
 
 ## Shot 1.
 
-::sfx{sound="drink_bar_hum" name="ambient_hum" assetId="PLACEHOLDER_drink_bar_hum"}
+::sfx{sound="drink_bar_hum" assetId="PLACEHOLDER_drink_bar_hum"}
 
 @narrator: Somewhere a fountain keeps its small, patient promise.

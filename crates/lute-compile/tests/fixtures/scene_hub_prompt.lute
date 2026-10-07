@@ -8,10 +8,10 @@ title: The lookout
 
 @vesna: The fog is lifting.
 <hub id="look" prompt="Where do you look?">
-  <choice id="shore" label="The shore" once>
+  <choice id="shore" text="The shore" once>
     @vesna: Nothing but driftwood.
   </choice>
-  <choice id="leave" label="Head back" exit>
+  <choice id="leave" text="Head back" exit>
     @vesna: Let's go.
   </choice>
 </hub>

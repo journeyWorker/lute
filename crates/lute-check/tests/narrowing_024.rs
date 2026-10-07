@@ -2,7 +2,7 @@
 //! (round-3 T1-4, T1-5, T1-7): a read inside a def body is checked at the use
 //! site; a beat's / entry's `when` is an assumption for its body; a presence
 //! guard proves the reads its own short-circuit protects; `prev.run.*` is one
-//! snapshot; a `<match on="@def">` takes the def's domain.
+//! snapshot; a `<match subject="@def">` takes the def's domain.
 
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_core_span::Diagnostic;
@@ -69,7 +69,7 @@ fn a_def_body_read_is_checked_at_every_use_site() {
     for body in [
         "@narrator: Deep: {{@lastF}}.\n",
         "@narrator{when=\"@lastF > 30\"}: Deep.\n",
-        "<branch id=\"b\">\n<choice id=\"c\" label=\"Dive {{@lastF}}\">\n@n: x\n</choice>\n</branch>\n",
+        "<branch id=\"b\">\n<choice id=\"c\" text=\"Dive {{@lastF}}\">\n@n: x\n</choice>\n</branch>\n",
         "::set{run.a = @lastF}\n",
         "::use{component=\"gauge\" fathoms=@lastF}\n",
     ] {
@@ -103,7 +103,7 @@ fn a_def_body_read_is_checked_at_every_use_site() {
 #[test]
 fn a_def_subject_reads_and_narrows_like_its_path() {
     let defs = "defs:\n  lastO: \"prev.run.outcome\"\n";
-    let open = "<match on=\"@lastO\">\n<when is=\"diving\">\n@n: a\n</when>\n\
+    let open = "<match subject=\"@lastO\">\n<when is=\"diving\">\n@n: a\n</when>\n\
                 <when is=\"died|surfaced\">\n@n: b\n</when>\n";
     let ds = run(&scene(defs, &format!("{open}</match>\n")));
     assert_eq!(with_code(&ds, "E-UNSET-UNCOVERED").len(), 1, "{ds:#?}");
@@ -119,19 +119,19 @@ fn a_def_subject_reads_and_narrows_like_its_path() {
     assert!(ds.is_empty(), "{ds:#?}");
 }
 
-// --- T1-5: `<match on="@def">` domains -------------------------------------------
+// --- T1-5: `<match subject="@def">` domains -------------------------------------------
 
 #[test]
 fn a_def_subject_takes_the_def_domain() {
     let defs = "defs:\n  \
         wd: { type: { enum: [a, b, c] }, cel: \"run.a == 1 ? 'a' : run.a == 2 ? 'b' : 'c'\" }\n  \
         wd2: \"run.wd\"\n";
-    let exhaustive = "<match on=\"@wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+    let exhaustive = "<match subject=\"@wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
                       <when is=\"b|c\">\n@n: bc\n</when>\n</match>\n";
     let ds = run(&scene(defs, exhaustive));
     assert!(ds.is_empty(), "{ds:#?}");
 
-    let partial = "<match on=\"@wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n";
+    let partial = "<match subject=\"@wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n";
     let ds = run(&scene(defs, partial));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
@@ -141,7 +141,7 @@ fn a_def_subject_takes_the_def_domain() {
         d[0].message
     );
 
-    let typo = "<match on=\"@wd2\">\n<when is=\"zz\">\n@n: zz\n</when>\n\
+    let typo = "<match subject=\"@wd2\">\n<when is=\"zz\">\n@n: zz\n</when>\n\
                 <otherwise>\n@n: other\n</otherwise>\n</match>\n";
     let ds = run(&scene(defs, typo));
     assert_eq!(with_code(&ds, "E-WHEN-LITERAL-DOMAIN").len(), 1, "{ds:#?}");
@@ -151,7 +151,7 @@ fn a_def_subject_takes_the_def_domain() {
 fn nonexhaustive_names_the_missing_member() {
     let ds = run(&scene(
         "",
-        "<match on=\"run.wd\">\n<when is=\"a|b\">\n@n: ab\n</when>\n</match>\n",
+        "<match subject=\"run.wd\">\n<when is=\"a|b\">\n@n: ab\n</when>\n</match>\n",
     ));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
@@ -164,11 +164,11 @@ fn nonexhaustive_names_the_missing_member() {
 
 // --- T1-7 (a): a beat's / entry's `when` is an assumption --------------------------
 
-const DIVE_BODY: &str = "<match on=\"prev.run.outcome\">\n\
+const DIVE_BODY: &str = "<match subject=\"prev.run.outcome\">\n\
     <when is=\"died\">\n@narrator: Died at {{prev.run.depth}}.\n</when>\n\
     <when is=\"surfaced\">\n@narrator: Surfaced.\n</when>\n\
     <when is=\"diving\">\n@narrator: ?\n</when>\n</match>\n\
-    <match on=\"run.outcome\">\n<when is=\"diving\">\n@narrator: diving.\n</when>\n\
+    <match subject=\"run.outcome\">\n<when is=\"diving\">\n@narrator: diving.\n</when>\n\
     <when is=\"died\">\n@narrator: dead arm.\n</when>\n\
     <otherwise>\n@narrator: other.\n</otherwise>\n</match>\n";
 
@@ -197,7 +197,7 @@ fn a_beat_when_is_an_assumption_for_the_body() {
 
 #[test]
 fn a_write_in_the_body_retracts_the_value_assumption() {
-    let body = "::set{run.outcome = 'died'}\n<match on=\"run.outcome\">\n\
+    let body = "::set{run.outcome = 'died'}\n<match subject=\"run.outcome\">\n\
                 <when is=\"diving\">\n@n: a\n</when>\n<when is=\"died\">\n@n: b\n</when>\n\
                 <otherwise>\n@n: c\n</otherwise>\n</match>\n";
     let ds = run(&beat("run.outcome == 'diving'", body));
@@ -210,7 +210,7 @@ fn entry_and_bundle_beat_when_are_assumptions() {
         "---\nkind: lore\nid: notes\n{STATE}---\n\
          <entry id=\"e\" when=\"has(run.o)\">\n@n: {{{{run.o}}}}\n</entry>\n\
          <beat id=\"b\" on=\"hubVisit\" when=\"has(run.o) && run.o == 'won'\">\n\
-         <match on=\"run.o\">\n<when is=\"won\">\n@n: w\n</when>\n\
+         <match subject=\"run.o\">\n<when is=\"won\">\n@n: w\n</when>\n\
          <when is=\"lost\">\n@n: l\n</when>\n</match>\n</beat>\n"
     );
     let ds = run(&src);
@@ -226,7 +226,7 @@ fn entry_and_bundle_beat_when_are_assumptions() {
 #[test]
 fn exhaustiveness_honors_the_beat_when() {
     let when = "run.wd != 'c'";
-    let arms = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+    let arms = "<match subject=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
                 <when is=\"b\">\n@n: b\n</when>\n";
     let ds = run(&beat(when, &format!("{arms}</match>\n")));
     assert!(ds.is_empty(), "the dead arm removed is clean: {ds:#?}");
@@ -254,7 +254,7 @@ fn exhaustiveness_honors_the_beat_when() {
     // A member the guard leaves in is still required, and only it is named.
     let ds = run(&beat(
         when,
-        "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n",
+        "<match subject=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n",
     ));
     let d = with_code(&ds, "E-NONEXHAUSTIVE");
     assert_eq!(d.len(), 1, "{ds:#?}");
@@ -278,7 +278,7 @@ fn exhaustiveness_honors_the_beat_when() {
 /// narrows nothing.
 #[test]
 fn a_disjunction_or_membership_when_narrows_like_equality() {
-    let arms = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+    let arms = "<match subject=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
                 <when is=\"b\">\n@n: b\n</when>\n<when is=\"c\">\n@n: c\n</when>\n</match>\n";
     for when in [
         "run.wd == 'a' || run.wd == 'b'",
@@ -294,7 +294,7 @@ fn a_disjunction_or_membership_when_narrows_like_equality() {
             dead[0].message
         );
         // The dead arm removed, the narrowed domain is fully covered.
-        let two = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
+        let two = "<match subject=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n\
                    <when is=\"b\">\n@n: b\n</when>\n</match>\n";
         assert!(run(&beat(when, two)).is_empty(), "{when}");
     }
@@ -302,7 +302,7 @@ fn a_disjunction_or_membership_when_narrows_like_equality() {
     // partial match stays non-exhaustive.
     let mixed = "run.wd == 'a' || run.a == 1";
     assert!(with_code(&run(&beat(mixed, arms)), "E-ARM-DEAD").is_empty());
-    let partial = "<match on=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n";
+    let partial = "<match subject=\"run.wd\">\n<when is=\"a\">\n@n: a\n</when>\n</match>\n";
     assert_eq!(
         with_code(&run(&beat(mixed, partial)), "E-NONEXHAUSTIVE").len(),
         1
@@ -356,7 +356,7 @@ fn one_present_prev_run_path_proves_every_defaulted_mirror() {
     let ok = run(&scene(
         "",
         "@narrator{when=\"has(prev.run.outcome) && prev.run.depth > 3\"}: x.\n\
-         <match on=\"prev.run.outcome\">\n<when is=\"died\">\n@n: {{prev.run.depth}}\n</when>\n\
+         <match subject=\"prev.run.outcome\">\n<when is=\"died\">\n@n: {{prev.run.depth}}\n</when>\n\
          <otherwise>\n@n: o\n</otherwise>\n</match>\n",
     ));
     assert!(with_code(&ok, "E-MAYBE-UNSET").is_empty(), "{ok:#?}");

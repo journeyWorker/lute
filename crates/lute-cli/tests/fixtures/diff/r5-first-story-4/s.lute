@@ -9,7 +9,7 @@ state:
 
 ## Handcuffs
 
-<match on="run.accused">
+<match subject="run.accused">
   <when is="tilly">
     @narrator: Tilly.
   </when>

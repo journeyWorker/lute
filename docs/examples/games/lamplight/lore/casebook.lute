@@ -15,7 +15,7 @@ series: casebook
 
 <entry id="pageCufflink" on="review" category="casebook" title="M. D." when="holds('found', ['cufflink'])">
   @inspector{code="0010"}: Gold cufflink under the berth, engraved M. D. Mirela Dace says she has not seen her uncle in three years.
-  <match on="entry.mirelaCufflink.everRead">
+  <match subject="entry.mirelaCufflink.everRead">
     <when is="true">
       @inspector{code="0020"}: Her father's. Hask took them as interest and wore them to spite her. A cufflink that falls off the victim's own wrist is not a clue.
     </when>

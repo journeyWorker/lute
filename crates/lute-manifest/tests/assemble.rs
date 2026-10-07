@@ -688,7 +688,7 @@ fn assemble_rejects_core_names_as_plugin_directive_names() {
             "end",
             "it is a core directive, which content always reads as the core `::end`",
         ),
-        ("mark", "the core `::mark`"),
+        ("label", "the core `::label`"),
         ("bg", "a core directive"),
     ] {
         let reg = InstalledPlugins {
@@ -719,7 +719,7 @@ fn assemble_rejects_core_names_as_plugin_directive_names() {
             msg.contains("cannot name a plugin directive"),
             "{reserved}: {msg}"
         );
-        let core_owned = ["end", "mark", "bg"].contains(&reserved);
+        let core_owned = ["end", "label", "bg"].contains(&reserved);
         assert_eq!(
             snap.directive(reserved).is_some(),
             core_owned,

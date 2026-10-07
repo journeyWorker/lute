@@ -73,20 +73,20 @@ const USE_SCENE: &str =
     "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
 ## Shot 1.\n::use{component=\"c\"}\n";
 
-/// `::auto` whose explicit `anchor` EQUALS the `anchor` domain's declared
+/// `::actor` whose explicit `anchor` EQUALS the `anchor` domain's declared
 /// `default:` (`center`, `lute_test_vocab::test_domains`). Until 0.10.0 §12.3
 /// this was the one authored shape `W-INJECT-CONFLICT` fired on; it is now
 /// SILENT, and [`explicit_default_anchor_is_silent_on_all_three_legs`] pins
 /// that it is silent on every leg rather than on one.
 const EXPLICIT_ANCHOR_BODY: &str =
-    "::auto{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
+    "::actor{character=\"marina\" anchor=\"center\"}\n@marina: Hello.\n";
 
-/// `::auto` with NO explicit anchor, checked against a snapshot that declares
+/// `::actor` with NO explicit anchor, checked against a snapshot that declares
 /// no `anchor` domain — the injection fold's own implicit vocabulary read, and
 /// as of 0.10.0 §12.3 the only diagnostic `StageState::diags` still carries.
 /// This is what keeps every three-way test below a real test rather than an
 /// assertion that nothing happens twice.
-const NO_ANCHOR_DOMAIN_BODY: &str = "::auto{character=\"marina\"}\n@marina: Hello.\n";
+const NO_ANCHOR_DOMAIN_BODY: &str = "::actor{character=\"marina\"}\n@marina: Hello.\n";
 
 /// [`vocab_snapshot`] minus the `anchor` domain, re-stamped the way
 /// `vocab_snapshot` re-stamps: `enums` is folded into the content hash, so a
@@ -299,7 +299,7 @@ fn scene_level_fold_diag_is_not_duplicated() {
     // diagnostic each.
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [c.lute]\n---\n## Shot 1.\n\
-                 ::auto{character=\"kenshi\"}\n\
+                 ::actor{character=\"kenshi\"}\n\
                  ::use{component=\"c\"}\n";
     let diags = check_with_components_snap(
         scene,
@@ -337,7 +337,7 @@ fn scene_level_fold_diag_is_not_duplicated() {
 fn use_site_inherits_stage_state_no_invented_diag() {
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
                  components: [c.lute]\n---\n## Shot 1.\n\
-                 ::auto{character=\"marina\"}\n\
+                 ::actor{character=\"marina\"}\n\
                  ::use{component=\"c\"}\n";
     let diags = check_with_components_snap(
         scene,
@@ -352,7 +352,7 @@ fn use_site_inherits_stage_state_no_invented_diag() {
     assert_eq!(
         cs.len(),
         1,
-        "the ROOT `::auto` raises it once; the body's re-show of an already-staged \
+        "the ROOT `::actor` raises it once; the body's re-show of an already-staged \
          character raises nothing: {diags:#?}"
     );
     assert!(
@@ -445,12 +445,12 @@ fn use_cycle_terminates() {
     );
 }
 
-/// The fold is the WHOLE pass, not just its diagnostic: a body `::auto` with
+/// The fold is the WHOLE pass, not just its diagnostic: a body `::actor` with
 /// NO anchor contributes its INJECTED anchor command to the resolved view's
 /// `injections` preview, exactly as the same directive at scene level does.
 #[test]
 fn component_body_injections_reach_the_resolved_view() {
-    let body = "::auto{character=\"marina\"}\n@marina: Hi.\n";
+    let body = "::actor{character=\"marina\"}\n@marina: Hi.\n";
     let scene_injections = result_for(format!("{HDR}{body}"), Default::default())
         .resolved
         .expect("resolved view")
@@ -500,10 +500,10 @@ fn standalone_with_meta(meta: &str, body: &str) -> Vec<Diagnostic> {
     .diagnostics
 }
 
-/// A `<match on="@who">` — the shape the corpus's own component uses, and the
+/// A `<match subject="@who">` — the shape the corpus's own component uses, and the
 /// one that produces `E-UNDECLARED-REF` when `@who` resolves against nothing.
 const MATCH_ON_WHO: &str =
-    "<match on=\"@who\">\n<when is=\"a\">\n@marina: Hi.\n</when>\n<otherwise>\n@marina: Ho.\n</otherwise>\n</match>\n";
+    "<match subject=\"@who\">\n<when is=\"a\">\n@marina: Hi.\n</when>\n<otherwise>\n@marina: Ho.\n</otherwise>\n</match>\n";
 
 /// 0.10.0 §9 rule 3: a malformed `params:` is `E-COMPONENT-PARSE` on the
 /// STANDALONE leg too, and it suppresses the `E-UNDECLARED-REF` it causes.
@@ -553,7 +553,7 @@ fn standalone_component_still_reports_a_genuinely_unknown_ref() {
 fn an_importers_own_undeclared_ref_survives_a_components_parse_failure() {
     let scene =
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
-## Shot 1.\n::use{component=\"c\"}\n<match on=\"@mine\">\n<when is=\"a\">\n@marina: Hi.\n</when>\n\
+## Shot 1.\n::use{component=\"c\"}\n<match subject=\"@mine\">\n<when is=\"a\">\n@marina: Hi.\n</when>\n\
 <otherwise>\n@marina: Ho.\n</otherwise>\n</match>\n";
     let diags = check_with_components(
         scene,

@@ -12,7 +12,7 @@ priority: 40
 ## Behind the returns desk
 
 ::bg{location="library_back_room" time="afternoon"}
-::auto{character="ines" anchor="right" action="slideInRight"}
+::actor{character="ines" anchor="right" action="slideInRight"}
 ::set{run.seen.ines = run.day}
 @ines{code="0010" emotion="happy"}: You remembered! Nobody remembers Wednesdays.
 @narrator{code="0010"}: On the desk: a flat parcel in brown paper, already opened, the sheets inside the colour of weak tea.
@@ -21,14 +21,14 @@ priority: 40
 @ines{code="0030" emotion="shy"}: I could — show you how to fold the corners. So they don't tear on the frame. If you want.
 
 <branch id="fold" prompt="She has already rolled up her sleeves.">
-  <choice id="together" label="“Show me.”">
+  <choice id="together" text="“Show me.”">
     ::set{run.aff.ines += 2}
     @narrator{code="0020"}: Her hands are cold and quick. She folds; you copy; she refolds yours without comment, and then, eventually, doesn't have to.
     @ines{code="0040" emotion="happy"}: There. You have lantern hands now.
   </choice>
-  <choice id="self" label="“I'll manage, thanks.”">
+  <choice id="self" text="“I'll manage, thanks.”">
     @ines{code="0050" emotion="neutral"}: Of course. Mind the corners.
   </choice>
 </branch>
 
-::auto{character="ines" action="fadeOut"}
+::actor{character="ines" action="fadeOut"}

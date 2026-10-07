@@ -15,10 +15,10 @@ once: user
 @lumi{code="0030" when="!holds('learned', ['lanternSea'])"}: I don't know what they are. There's a page about it in the Archive, if you're the reading type.
 ::assert{learned(lanternSea)}
 <branch id="c4s1Boat" prompt="A boat is tied to the last post.">
-  <choice id="row" label="Row out.">
+  <choice id="row" text="Row out.">
     @lumi{code="0040"}: I'll steer. You row. That's how partnerships work.
   </choice>
-  <choice id="wait" label="Wait for the tide.">
+  <choice id="wait" text="Wait for the tide.">
     @lumi{code="0050"}: Fine by me. The tide's never late. That's the one thing it's good at.
   </choice>
 </branch>

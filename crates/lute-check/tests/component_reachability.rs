@@ -259,7 +259,7 @@ fn dead_line_guard_inside_match_arm_in_component_body() {
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"warm\">\n@marina{when=\"1 > 2\"}: hi\n</when>\n\
 <otherwise>\n@marina: ok\n</otherwise>\n\
 </match>\n",
@@ -293,7 +293,7 @@ fn dead_arm_guard_in_component_match_reported_once() {
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when test=\"1 > 2\">\n@marina: hi\n</when>\n\
 <otherwise>\n@marina: ok\n</otherwise>\n\
 </match>\n",

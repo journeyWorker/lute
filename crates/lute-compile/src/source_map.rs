@@ -67,15 +67,15 @@ pub struct SourceInfo {
     /// A record the stage reducer injected (anchor, preload, pos reset,
     /// hide): it has no authored node of its own.
     pub injected: bool,
-    /// A `jump` record lowered from an authored `::next`, not the
+    /// A `jump` record lowered from an authored `::jump`, not the
     /// structural jump that closes an arm.
     pub authored_jump: bool,
-    /// Source-only steps (`::mark`, component boundaries, a `::clear` or
+    /// Source-only steps (`::label`, component boundaries, a `::clear` or
     /// `::use` that lowers to no record of its own) walked right before
     /// this record.
     pub before: Vec<SourceMarker>,
     /// A `match` record desugared from a `when=` guard (a guarded line,
-    /// `::set`, directive, `::next` or `::use`), not an authored `<match>`.
+    /// `::set`, directive, `::jump` or `::use`), not an authored `<match>`.
     pub guard: bool,
     /// A `match` record expanded from a component `::use`: its `span` is in
     /// that component's file, not the host's.

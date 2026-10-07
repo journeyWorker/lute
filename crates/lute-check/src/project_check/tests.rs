@@ -209,7 +209,7 @@ mod tests {
     fn scene_doc_matching(subject: &str) -> Document {
         parsed(&format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-             <match on=\"{subject}\">\n<when is=\"true\">\n@x: a\n</when>\n\
+             <match subject=\"{subject}\">\n<when is=\"true\">\n@x: a\n</when>\n\
              <otherwise>\n@x: b\n</otherwise>\n</match>\n"
         ))
     }
@@ -328,7 +328,7 @@ mod tests {
     fn quest_refs_deduplicates_repeated_reads_in_one_document() {
         let scene = parsed(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
-             <match on=\"quest.heits.state\">\n\
+             <match subject=\"quest.heits.state\">\n\
              <when is=\"active\" test=\"quest.heits.state\">\n@x: a\n</when>\n\
              <otherwise>\n@x: b\n</otherwise>\n</match>\n",
         );
@@ -345,7 +345,7 @@ mod tests {
         let scene = parsed(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
              state:\n  run.flag: { type: bool, default: false }\n---\n## Shot 1.\n\
-             <match on=\"run.flag\">\n<when is=\"true\">\n@x: a\n</when>\n\
+             <match subject=\"run.flag\">\n<when is=\"true\">\n@x: a\n</when>\n\
              <otherwise>\n@x: b\n</otherwise>\n</match>\n",
         );
         let docs = vec![(PathBuf::from("scene.lute"), scene)];
@@ -367,7 +367,7 @@ mod tests {
             "anchor",
             "emotion",
             "mood",
-            "musicAction",
+            "musicPlayback",
             "vfxType",
             "volume",
         ] {

@@ -28,7 +28,7 @@ Spec: [dsl 0.31.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-AGE-GATE
 
-An age-gated `<match on="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case.
+An age-gated `<match subject="app.rating">` covers neither a `teen` arm nor an `<otherwise>`, so a release build could hit no matching case.
 
 Spec: [dsl §11.2](/spec/)
 
@@ -40,7 +40,7 @@ Spec: [dsl §9.5](/spec/)
 
 ### E-ARM-DEAD
 
-A gated content line, `<match>` arm, `<choice when>`, or `::next{when}` carries a `when` guard that is provably always false, so it can never be shown or taken.
+A gated content line, `<match>` arm, `<choice when>`, or `::jump{when}` carries a `when` guard that is provably always false, so it can never be shown or taken.
 
 Spec: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.20.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.20.0.md)
 
@@ -138,6 +138,18 @@ A `<branch timeout>` value does not parse as a positive whole number of seconds.
 
 Spec: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md)
 
+### E-CAMERA-EMPTY
+
+A `::camera` directive names none of `focus`, `framing`, `move` or `transition`, so it has nothing to do.
+
+Spec: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-CAMERA-REMOVED
+
+A `::camera` directive uses a removed numeric or legacy attribute (`zoom`, `moveX`, `moveY`, `shake`, `reset`, `easing`); camera values are now project-declared `framing`, `cameraMove` or `transition` members, so the attribute must be migrated by hand.
+
+Spec: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-CAPABILITY-MISMATCH
 
 Two documents in the same project resolve different capability snapshots, so the project has no single `capabilityVersion` to index.
@@ -146,7 +158,7 @@ Spec: [dsl §13](/spec/)
 
 ### E-CAST-UNKNOWN
 
-A content line's speaker, or a `::auto{character}`/`::camera{focus}` literal, names an id outside the project's declared cast.
+A content line's speaker, or a `::actor{character}`/`::camera{focus}` literal, names an id outside the project's declared cast.
 
 Spec: [dsl 0.23.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
@@ -167,6 +179,12 @@ Spec: [dsl §8.4](/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/
 A condition's types cannot mean what is written: a comparison between a bool, a number and a string (`visited('x') > 2`, `run.oil == true`, `run.day == 'monday'`), an ordering of anything but numbers (`run.hour >= 'h03'`), a non-bool operand of `&&` / `||` / `!` / `?:` or condition, arithmetic that cannot be computed, or an operand of the integer modulo operator `%` that is not an integer.
 
 Spec: [dsl 0.24.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### E-CG-LAYOUT
+
+A `::cg` directive uses the removed `full` attribute; only a project-declared `cgLayout` member written as `layout=` can replace it, so it must be migrated by hand.
+
+Spec: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-CHAPTERS
 
@@ -340,7 +358,7 @@ Spec: [dsl §2.1](/spec/)
 
 ### E-CONTENT-OUTSIDE-SECTION
 
-A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` shot heading, since content only belongs inside a shot body.
+A content-shaped line (`@speaker…`, `::directive`, a `<tag>`) appears before the document's first `## ` section heading, since content only belongs inside a section body.
 
 Spec: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md), [dsl 0.6.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
@@ -694,6 +712,18 @@ A `<choice>`'s `into=` run-record sugar has a `value` attribute that is missing,
 
 Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md)
 
+### E-JUMP-BACKWARD
+
+A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.
+
+Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+
+### E-JUMP-UNDEFINED
+
+A `::jump{to}` names a label that no `::label` anywhere in the document declares.
+
+Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+
 ### E-KIND-MISSING
 
 A root document declares no `kind:` frontmatter key and the manifest's `defaults:` also names none, so the document's kind cannot be resolved.
@@ -705,6 +735,12 @@ Spec: [dsl 0.2.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-LABEL-DUP
+
+A label name — a `::label{name}` — is declared more than once anywhere in the document; every label shares one document-wide namespace.
+
+Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
 ### E-LEGACY-CONTENT-SIGIL
 
@@ -754,12 +790,6 @@ Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
-### E-MARK-DUP
-
-A mark id — a `::mark{id}` or a content line's `id=` — is declared more than once anywhere in the document; both share one namespace.
-
-Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
-
 ### E-MATCH-DUP-OTHERWISE
 
 A `<match>` contains more than one `<otherwise>` arm, though at most one is allowed.
@@ -768,11 +798,11 @@ Spec: [dsl §11.2](/spec/)
 
 ### E-MATCH-NO-SUBJECT
 
-A `<when is=…>` arm sits in a `<match>` with no `on=`, so its literal has no subject to be compared against; add `on=` to the `<match>`, or write the arm as `test=`.
+A `<when is=…>` arm sits in a `<match>` with no `subject=`, so its literal has no subject to be compared against; add `subject=` to the `<match>`, or write the arm as `test=`.
 
 ### E-MATCH-RELATION-SUBJECT
 
-A `<match on>` subject, directly or via an `@def` it expands to, is a fact query (`holds`/`count`/`validAt`), which match subjects may not be.
+A `<match subject>` subject, directly or via an `@def` it expands to, is a fact query (`holds`/`count`/`validAt`), which match subjects may not be.
 
 Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.3.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
@@ -817,18 +847,6 @@ A directive is missing an attribute its declared schema requires.
 A `--mock`/`mocks/*.yaml` entry declares no `file:`, names a `file:` path that does not exist or is not a `.lute` document, or disagrees with the document named on the command line.
 
 Spec: [dsl 0.10.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
-
-### E-NEXT-BACKWARD
-
-A `::next{to}` names a mark that is not forward of the `::next` in document order — jumps must go forward only.
-
-Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
-
-### E-NEXT-UNDEFINED
-
-A `::next{to}` names a mark that no `::mark` (or content line `id=`) anywhere in the document declares.
-
-Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
 ### E-NONEXHAUSTIVE
 
@@ -1174,6 +1192,12 @@ A fact atom (a seed, rule, `::assert`/`::retract`, or CEL fact query) names a re
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-REMOVED-ATTR
+
+A directive uses a removed attribute with no lossless rewrite (`::music{track}`, `::sfx{name}`); the message names the replacement, and the migration is by hand.
+
+Spec: [dsl 0.37.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
 ### E-RENAME-LEDGER
 
 A rename entry is malformed, has an unknown kind/key, duplicates a source or destination, or is not a canonical key mapping.
@@ -1191,6 +1215,24 @@ Spec: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A ledger source key is still present, or its destination key is absent after project resolution.
 
 Spec: [dsl 0.36.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-RENAMED-ATTR
+
+A directive or content line uses an attribute's old spelling (`::music{action}`, `::video{action}`, `::cg{action}`, `::label{id}`, a content line's `id=`); the message names the new spelling, and `lute fix` rewrites it.
+
+Spec: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-RENAMED-DIRECTIVE
+
+A directive uses its old tag (`::auto`, `::cut`, `::next`, `::mark`); the message names the new tag (`::actor`, `::cg`, `::jump`, `::label`), and `lute fix` rewrites it.
+
+Spec: [dsl 0.37.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-RENAMED-TAG-ATTR
+
+A `<choice>` or `<match>` uses an attribute's old spelling (`label=`, `on=`); the message names `text=` or `subject=`, and `lute fix` rewrites it.
+
+Spec: [dsl 0.37.0 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-RESERVED-NAME
 
@@ -1334,7 +1376,7 @@ Appended source in a streaming continuation would change commands or state that 
 
 ### E-STREAM-TEMPLATE
 
-A streaming continuation's template is not a scene with at least one shot.
+A streaming continuation's template is not a scene with at least one section.
 
 ### E-STRING-ESCAPE
 
@@ -1432,7 +1474,7 @@ Spec: [dsl §11.4](/spec/)
 
 ### E-TITLE-PLACEMENT
 
-A document's `# ` title appears more than once, or appears after the first shot instead of before it.
+A document's `# ` title appears more than once, or appears after the first section instead of before it.
 
 Spec: [dsl §6.2](/spec/)
 
@@ -1498,7 +1540,7 @@ Spec: [dsl §7.4](/spec/)
 
 ### E-UNCLASSIFIED
 
-A body line is no Lute construct — not a content line, directive, `::set` or known block — or a block stands where it cannot, such as a `<quest>` inside a shot.
+A body line is no Lute construct — not a content line, directive, `::set` or known block — or a block stands where it cannot, such as a `<quest>` inside a section.
 
 Spec: [dsl 0.5.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.0.md)
 
@@ -1690,9 +1732,9 @@ Content follows an `::end` directive in the same straight-line body, but the wal
 
 Spec: [dsl 0.8.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
 
-### W-CODE-AFTER-NEXT
+### W-CODE-AFTER-JUMP
 
-Content follows an unguarded `::next` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.
+Content follows an unguarded `::jump` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
 
@@ -1902,7 +1944,7 @@ Spec: [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-STAGE-ABSENT
 
-A content line or `::auto` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.
+A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.
 
 Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
 

@@ -124,7 +124,7 @@ fn each_kind_beat_matches_only_its_own_members() {
         "<beat id=\"nod\" on=\"talk\" target=\"kind:villager\" once=\"false\">\n  \
          @narrator: {{occasion.target}} nods.\n</beat>\n\n\
          <beat id=\"land\" on=\"landed\" target=\"kind:fish\" once=\"false\">\n  \
-         <match on=\"occasion.target\">\n    <when is=\"cod\">\n      @narrator: A cod.\n    \
+         <match subject=\"occasion.target\">\n    <when is=\"cod\">\n      @narrator: A cod.\n    \
          </when>\n    <when is=\"eel\">\n      @narrator: An eel.\n    </when>\n  </match>\n\
          </beat>\n",
     ));
@@ -158,7 +158,7 @@ fn a_member_of_another_kind_beat_is_outside_the_domain() {
 fn a_match_needs_no_arm_for_a_member_the_when_rules_out() {
     let errs = errors(&lore(
         "<beat id=\"land\" on=\"landed\" target=\"kind:fish\" once=\"false\" \
-         when=\"occasion.target != 'eel'\">\n  <match on=\"occasion.target\">\n    \
+         when=\"occasion.target != 'eel'\">\n  <match subject=\"occasion.target\">\n    \
          <when is=\"cod\">\n      @narrator: A cod.\n    </when>\n  </match>\n</beat>\n",
     ));
     assert!(errs.is_empty(), "{errs:?}");
@@ -169,7 +169,7 @@ fn a_match_needs_no_arm_for_a_member_the_facts_rule_out() {
     let body = |arms: &str| {
         lore(&format!(
             "<beat id=\"warm\" on=\"visit\" target=\"kind:place\" once=\"false\" \
-             when=\"holds('at', ['mara', occasion.target])\">\n  <match on=\"occasion.target\">\n\
+             when=\"holds('at', ['mara', occasion.target])\">\n  <match subject=\"occasion.target\">\n\
              {arms}  </match>\n</beat>\n"
         ))
     };

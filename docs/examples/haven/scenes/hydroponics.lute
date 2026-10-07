@@ -10,8 +10,8 @@ after: 'visited("haven.s01ep03")'
 ## Hydroponics
 
 ::bg{location="hydroponics" time="ship-night"}
-::music{action="start" mood="quiet" volume="muted"}
-::auto{character="vesna" anchor="starboard" action="drift"}
+::music{playback="start" mood="quiet" volume="muted"}
+::actor{character="vesna" anchor="starboard" action="drift"}
 
 @vesna{code="0010" emotion="level"}: Careful. The mats are the only thing aboard still doing the job it was built for.
 @vesna{code="0020" emotion="wry"}: Nine trays of lettuce, outperforming the entire crew.
@@ -21,7 +21,7 @@ after: 'visited("haven.s01ep03")'
 @vesna{code="0040" emotion="clipped"}: I pulled the manifest while you were walking. Hydroponics is module nine.
 @vesna{code="0050" emotion="level"}: The schedule goes in order, and it does not skip.
 
-<match on="run.shedPressure">
+<match subject="run.shedPressure">
   <when is="2..">
     @vesna{code="0060" emotion="stricken"}: It moved twice while you were in the bank. I was counting.
   </when>
@@ -36,9 +36,9 @@ after: 'visited("haven.s01ep03")'
 @vesna{code="0090" emotion="level"}: So say it plain. What did you do down there?
 
 <branch id="thePlainAnswer">
-  <choice id="ownIt" label="Tell her exactly what you did">
+  <choice id="ownIt" text="Tell her exactly what you did">
     ::set{run.vesnaTrust += 1}
-    <match on="run.shedPressure">
+    <match subject="run.shedPressure">
       <when is="2..">
         @vesna{code="0100" emotion="stricken"}: Two pods, two modules. Now you know the exchange rate.
       </when>
@@ -51,15 +51,15 @@ after: 'visited("haven.s01ep03")'
     </match>
     @vesna{code="0130" emotion="level"}: Doesn't make it right. Makes it yours. I can work with yours.
   </choice>
-  <choice id="deflect" label="Tell her the schedule was already running">
+  <choice id="deflect" text="Tell her the schedule was already running">
     @vesna{code="0140" emotion="clipped"}: It was. That isn't what I asked.
     @vesna{code="0150" emotion="hollowed"}: Keep it, then. Everyone aboard is carrying something.
-    ::auto{character="vesna" action="turnAway"}
+    ::actor{character="vesna" action="turnAway"}
   </choice>
-  <choice id="saidNothing" label="Say nothing">
-    ::camera{focus="vesna" zoom="1.15" duration="1.4" wait="true"}
+  <choice id="saidNothing" text="Say nothing">
+    ::camera{focus="vesna" framing="close" duration="1.4" wait="true"}
     @vesna{code="0160" emotion="hollowed"}: That's an answer too.
-    ::auto{character="vesna" action="turnAway"}
+    ::actor{character="vesna" action="turnAway"}
   </choice>
 </branch>
 

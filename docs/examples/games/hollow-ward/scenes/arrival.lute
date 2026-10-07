@@ -9,10 +9,10 @@ once: run
 ## The car
 
 ::bg{location="gate" time="night"}
-::music{action="start" mood="dread" volume="low"}
+::music{playback="start" mood="dread" volume="low"}
 @narrator{code="0010"}: Tobias's car is parked across the ambulance bay, driver's door open, the dome light long dead.
 @narrator{code="0020"}: On the dash, under the parking permit he stole in 2019, a note in his square capitals.
-<match on="user.deaths">
+<match subject="user.deaths">
   <when is="0">
     @nell{code="0010" mono}: Eleven o'clock. He went in at nine. He said two hours.
   </when>
@@ -30,12 +30,12 @@ once: run
 @nell{code="0040"}: Toby? Tobias!
 @narrator{code="0040"}: The ward swallows the name. Somewhere inside, very far off, a wheel squeaks once.
 <branch id="goIn" prompt="The lobby doors stand open.">
-  <choice id="call" label="Call him again">
+  <choice id="call" text="Call him again">
     @nell{code="0050"}: Tobias Arden, you come out here right now!
     @narrator{code="0050"}: The squeak again. Closer, and then not.
     ::lure{room="lobby"}
   </choice>
-  <choice id="quiet" label="Go in quietly">
+  <choice id="quiet" text="Go in quietly">
     @nell{code="0060" mono}: Quiet. Whatever squeaks, it doesn't need to know my name.
   </choice>
 </branch>

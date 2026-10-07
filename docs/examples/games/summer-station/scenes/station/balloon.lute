@@ -21,8 +21,8 @@ when: "run.slot == 'afternoon' && run.day <= 6"
 ::set{run.balloonTries += 1}
 
 <branch id="launch" prompt="The balloon strains at its cord like a dog that has seen a cat.">
-  <choice id="now" label="Let it go now">
-    <match on="run.weather">
+  <choice id="now" text="Let it go now">
+    <match subject="run.weather">
       <when is="clear">
         ::set{run.balloonUp = true}
         @narrator{code="0010"}: It goes straight up, shrinking to a pearl, then a point, then nothing. The receiver in the radio room starts clicking.
@@ -34,7 +34,7 @@ when: "run.slot == 'afternoon' && run.day <= 6"
       </otherwise>
     </match>
   </choice>
-  <choice id="wait" label="Wait for a lull">
+  <choice id="wait" text="Wait for a lull">
     @ines{code="0050"}: Sensible. The lull doesn't come. Tomorrow, then.
   </choice>
 </branch>

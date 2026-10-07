@@ -15,7 +15,7 @@ series: wardLedger
 
 <entry id="ledgerPage3" on="read" target="note.ledgerPage3" category="page" title="Ledger, page three">
   @narrator{code="0010"}: Page 3. Only one entry, and a bed number circled: 5. At the foot of the page: THE GATE REMEMBERS THEM IN ORDER.
-  <match on="entry.ledgerPage1.read">
+  <match subject="entry.ledgerPage1.read">
     <when is="true">
       @nell{code="0010" mono}: Two. Seven. And five. Page by page.
     </when>

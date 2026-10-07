@@ -16,11 +16,11 @@ when: "run.day >= 5 && holds('at', ['sol', 'radio']) && quest.meteor.state == 'f
 @sol{code="0020" emotion="sad"}: It's fine. I said it wasn't a big deal. I say a lot of things.
 
 <branch id="sorry" prompt="He's winding the same cable around his hand.">
-  <choice id="apologise" label="Apologise, properly">
+  <choice id="apologise" text="Apologise, properly">
     ::set{run.aff.sol += 1}
     @sol{code="0030" emotion="shy"}: ...Okay. Thanks. Next time wake me if I'm asleep, and I'll do the same.
   </choice>
-  <choice id="excuse" label="Say you fell asleep over the log">
+  <choice id="excuse" text="Say you fell asleep over the log">
     @sol{code="0040" emotion="neutral"}: The log. Right. It is a very good log.
   </choice>
 </branch>

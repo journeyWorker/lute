@@ -7,15 +7,15 @@ title: The torn page
 <beat id="pieceThePage" on="examine" target="item.torn_page" title="The burnt scraps" spentBy="holds('pieced', ['torn_page'])" when="holds('carrying', ['torn_page'])">
   @narrator{code="0010"}: Seven scraps of the log's paper, browned at the edges. Ada tried to burn them and lost her nerve.
   <branch id="firstScrap" prompt="Which scrap begins the entry?">
-    <choice id="aug" label="The one dated in August">
+    <choice id="aug" text="The one dated in August">
       @narrator{code="0020"}: "Aug. 30th." The next scrap joins it along the tear, and the next. The page comes back in the keeper's hand.
       ::assert{pieced(torn_page)}
       ::assert{reported(gallery_rail)}
     </choice>
-    <choice id="tell" label="The one with the word &quot;tell&quot;">
+    <choice id="tell" text="The one with the word &quot;tell&quot;">
       @narrator{code="0030"}: The tear does not match anything. You sweep the scraps back into the envelope.
     </choice>
-    <choice id="stain" label="The one with the oil stain">
+    <choice id="stain" text="The one with the oil stain">
       @narrator{code="0040"}: A corner, no words on it. It fits nowhere yet.
     </choice>
   </branch>

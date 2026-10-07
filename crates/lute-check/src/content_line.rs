@@ -22,12 +22,6 @@ use crate::directives::{check_attr_value, check_domain_member};
 /// crates cannot drift: a key here is a record field, a key NOT here may be a
 /// plugin-declared cross-cutting `stampAttrs` entry, which lowers into the
 /// record's stamp instead (plugin §14.1).
-///
-/// `id` (dsl 0.12.0 §…) is the ONE exception to "a key here is a record
-/// field": it is a forward-jump label (`::next{to="x"}`'s target), consumed
-/// only by `lute-compile::stage`'s addressing bind (`Emitter::bind_named`)
-/// — never serialized onto `LineCmd`. Its document-wide uniqueness is
-/// `lute-check::next_labels`'s job (`E-MARK-DUP`), not this module's.
 pub const KNOWN_ATTRS: &[&str] = &[
     "code",
     "emotion",
@@ -38,8 +32,11 @@ pub const KNOWN_ATTRS: &[&str] = &[
     "os",
     "vo",
     "as",
-    "id",
 ];
+
+/// `E-RENAMED-ATTR` (dsl 0.37.0 §4): an old attribute key whose message names
+/// the new spelling. Shared by directives and content lines.
+pub const E_RENAMED_ATTR: &str = "E-RENAMED-ATTR";
 
 /// The two DOMAIN-typed content-line attributes (dsl 0.9.0 D-C). They are not
 /// directive `AttrDecl`s — a content line is not a directive — so §11.1's
@@ -98,6 +95,21 @@ pub fn check_content_line_attrs(
     let owner = format!("@{}", line.speaker);
     let mut delivery_flags: Vec<&Attr> = Vec::new();
     for attr in &line.attrs {
+        if attr.key == "id" {
+            let label = match &attr.value {
+                AttrValue::Str(s) => s.clone(),
+                _ => "…".to_string(),
+            };
+            diags.push(err(
+                E_RENAMED_ATTR,
+                format!(
+                    "a content line no longer takes `id=` (dsl 0.37.0 §3.5): write \
+                     `::label{{name=\"{label}\"}}` on the line before it — `lute fix` rewrites it"
+                ),
+                attr.span,
+            ));
+            continue;
+        }
         if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
             // plugin §14.1: a plugin-declared CROSS-CUTTING `stampAttrs` entry
             // is admissible on a content line too — the driving case is an

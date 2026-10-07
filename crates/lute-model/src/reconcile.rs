@@ -603,7 +603,7 @@ pub fn reconcile_collected(
                     folded,
                     &project,
                 );
-                // dsl 0.28.0: a kind beat's `<match on="occasion.target">`
+                // dsl 0.28.0: a kind beat's `<match subject="occasion.target">`
                 // needs no arm for a member its `when` never holds for with
                 // the facts in scope.
                 lute_check::fact_check::reconcile_member_matches(

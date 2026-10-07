@@ -10,20 +10,20 @@ priority: 10
 ## The Landing
 
 ::bg{location="skerry_landing" time="morning"}
-::music{action="start" mood="tense" volume="down"}
+::music{playback="start" mood="tense" volume="down"}
 @narrator{code="0010"}: The boat noses against the iron steps of Skerry Rock. Spray comes over the gunwale in sheets.
-::auto{character="hollis" anchor="left" action="fadeInUp"}
+::actor{character="hollis" anchor="left" action="fadeInUp"}
 @hollis{code="0010"}: This is as close as I go, Inspector. The Board pays me to ferry, not to drown.
 @hollis{code="0020" when="has(prev.run.verdictFate) && prev.run.verdictFate != 'fell'"}: They sent you back, then. The last report satisfied nobody.
 @inspector{code="0010"}: When did anyone last see the light burning?
 @hollis{code="0030" emotion="sad"}: Burned at dusk on the fourteenth, like always. By two bells it was dark. By morning it was lit again, and Elias Voss was gone.
 @inspector{code="0020" mono}: Dark, then lit again. A lamp does not relight itself.
 <branch id="firstQuestion" prompt="Hollis is already casting off.">
-  <choice id="askBoat" label="Ask about the wrecked boat">
+  <choice id="askBoat" text="Ask about the wrecked boat">
     @hollis{code="0040"}: The Guillemot. Tobias Crane's. Came ashore in pieces on the north side. Folk are saying things about Tobias.
     ::assert{implicates(guillemot, tobias)}
   </choice>
-  <choice id="askAda" label="Ask about the assistant keeper">
+  <choice id="askAda" text="Ask about the assistant keeper">
     @hollis{code="0050"}: Ada Pell. Ashore sick that week, at her aunt's. Lucky girl, some say.
   </choice>
 </branch>

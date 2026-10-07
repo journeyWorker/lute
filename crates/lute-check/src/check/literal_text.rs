@@ -134,8 +134,8 @@ pub(super) fn choice_label(
         diags.push(text.warn(
             W_TEXT_BRACKET_LABEL,
             format!(
-                "choice label `{}` shows its brackets on the button — a label is shown exactly \
-                 as written (Lute has no Ink-style bracket suppression); write `label=\"{}\"`",
+                "choice text `{}` shows its brackets on the button — choice text is shown exactly \
+                 as written (Lute has no Ink-style bracket suppression); write `text=\"{}\"`",
                 echo(trimmed),
                 inner.trim()
             ),

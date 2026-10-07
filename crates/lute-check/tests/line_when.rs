@@ -65,7 +65,7 @@ fn dollar_out_of_scope_even_in_match() {
     // `<match>`'s `<when>` arm — mirrors the `<on when>` rule.
     let t = format!(
         "{HDR}state:\n  scene.g: {{ type: bool, default: false }}\n---\n## Shot 1.\n\
-         <match on=\"scene.g\">\n\
+         <match subject=\"scene.g\">\n\
          <when test=\"$ == true\">\n\
          @x{{when=\"$ == 1\"}}: hi\n\
          </when>\n\

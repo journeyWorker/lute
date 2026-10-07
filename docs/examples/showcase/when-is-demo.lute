@@ -49,7 +49,7 @@ Checks clean against `--project docs/examples/showcase`.
 literals (`is="calm"`, `is="tense"`) and one `is="joyful|playful"` ALTERNATION —
 cover all four members, so the match is exhaustive with NO <otherwise>.
 */
-<match on="scene.mood">
+<match subject="scene.mood">
   <when is="calm">
     @fixer{mono}: Steady breathing. Nothing to prove tonight.
   </when>

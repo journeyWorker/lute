@@ -20,7 +20,7 @@ components: [../components/villager-chat.component.lute]
 
 <beat id="landedFish" on="landed" target="kind:fish" once="false" when="occasion.payload.weight >= 1">
   @narrator{code="0010"}: You land a {{occasion.payload.weight}}-kilo {{occasion.target}}.
-  <match on="occasion.target">
+  <match subject="occasion.target">
     <when is="cod">
       ::haul{fish="cod"}
     </when>

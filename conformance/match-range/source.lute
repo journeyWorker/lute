@@ -12,7 +12,7 @@ uses: ./schema.yaml
 
 @narrator: Tallying the score.
 
-<match on="run.score">
+<match subject="run.score">
   <when is="..0">
     @hero: Nothing yet.
   </when>

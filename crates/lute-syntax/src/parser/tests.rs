@@ -284,7 +284,7 @@ fn otherwise_attrs_are_retained_not_a_parse_error() {
     // dsl 0.10.0 §4 (D-J): the parser retains the attribute and says
     // nothing; the checker's closure rule reports it as `E-UNKNOWN-ATTR` at
     // the attribute's own column, uniformly with every other logic tag.
-    let src = "## Shot 1.\n<match on=\"app.rating\">\n<when test=\"$ == 'teen'\">\n@narrator: a.\n</when>\n<otherwise foo=\"bar\">\n@narrator: b.\n</otherwise>\n</match>\n";
+    let src = "## Shot 1.\n<match subject=\"app.rating\">\n<when test=\"$ == 'teen'\">\n@narrator: a.\n</when>\n<otherwise foo=\"bar\">\n@narrator: b.\n</otherwise>\n</match>\n";
     let (doc, diags) = parse(src);
     assert!(
         !diags.iter().any(|d| d.code == "E-LOGIC-CONTENT"),
@@ -307,7 +307,7 @@ fn match_when_otherwise_retain_residual_attrs() {
     // dsl 0.10.0 §4 / D-J's precondition: the three logic tags that used to
     // DROP their residual attributes now carry them. The parser still says
     // nothing about them — the checker's closure rule (Task 3) is the reader.
-    let src = "## Shot 1.\n<match on=\"app.rating\" bogus=\"x\">\n\
+    let src = "## Shot 1.\n<match subject=\"app.rating\" bogus=\"x\">\n\
                <when test=\"true\" nonsense=\"y\">\n@narrator: a.\n</when>\n\
                <otherwise junk=\"z\">\n@narrator: b.\n</otherwise>\n\
                </match>\n";
@@ -422,7 +422,7 @@ fn attr_derived_celslot_span_bounds_raw() {
     // Regression (T2.3 review Critical): attr-derived CEL slots must have
     // span == the inner value bytes, so src[slot.span] == slot.raw (matching
     // Set slots). Otherwise Phase-3 CEL sub-diagnostics drift by key.len()+2.
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.choices.number\">\n<when test=\"$ == 'gold'\">\n@narrator: hi\n</when>\n<otherwise>\n@narrator: bye\n</otherwise>\n</match>\n";
     let (doc, diags) = parse(src);
     assert!(diags.is_empty(), "{diags:?}");
     let slot_ok = |s: &CelSlot| {
@@ -448,7 +448,7 @@ fn when_is_pattern_preserved_without_test() {
     // dsl §7.3.1: `<when is="…">` is the 0.1.0 headline construct. The literal
     // pattern MUST be preserved on the arm, distinct from `test` (which stays
     // an empty synthesized CelSlot when absent).
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft | curt\">\n@narrator: hi\n</when>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.choices.x\">\n<when is=\"soft | curt\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
     let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
@@ -465,7 +465,7 @@ fn when_is_pattern_preserved_without_test() {
 fn when_is_and_test_both_preserved() {
     // A `<when>` may carry both a literal `is` pattern and a `test` guard;
     // neither clobbers the other.
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n@narrator: hi\n</when>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.choices.x\">\n<when is=\"gold\" test=\"$ != 'x'\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
     let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
@@ -480,7 +480,7 @@ fn when_is_and_test_both_preserved() {
 #[test]
 fn when_without_is_has_none() {
     // A test-only `<when>` carries no `is` pattern.
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when test=\"$ == 1\">\n@narrator: hi\n</when>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.choices.x\">\n<when test=\"$ == 1\">\n@narrator: hi\n</when>\n</match>\n";
     let (doc, _diags) = parse(src);
     let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
@@ -497,7 +497,7 @@ fn match_with_is_arm_and_otherwise_preserves_is() {
     // Final-review fixture: a full <match> whose single guarded arm uses the
     // literal `is` pattern (no `test`) must parse with the `is` value intact —
     // the pattern is not dropped at the parse layer (dsl §7.3.1).
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.choices.x\">\n<when is=\"soft\">\n@narrator: soft\n</when>\n<otherwise>\n@narrator: else\n</otherwise>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.choices.x\">\n<when is=\"soft\">\n@narrator: soft\n</when>\n<otherwise>\n@narrator: else\n</otherwise>\n</match>\n";
     let (doc, _diags) = parse(src);
     let Node::Match(m) = &doc.sections[0].body[0] else {
         panic!("expected Match")
@@ -515,7 +515,7 @@ fn stray_line_under_branch_is_diagnosed() {
     // §7.3: a <branch> body admits only <choice> children. A direct content line is
     // invalid structure and MUST be reported (not silently dropped), mirroring
     // the <track>/E-TIMELINE-CONTENT rule.
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n@narrator: stray\n<choice id=\"c\" label=\"L\">\n@narrator: ok\n</choice>\n</branch>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<branch id=\"b\">\n@narrator: stray\n<choice id=\"c\" text=\"L\">\n@narrator: ok\n</choice>\n</branch>\n";
     let (_doc, diags) = parse(src);
     assert!(
         diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
@@ -527,7 +527,7 @@ fn stray_line_under_branch_is_diagnosed() {
 fn stray_directive_under_match_is_diagnosed() {
     // §7.3: a <match> body admits only <when>/<otherwise>. A direct ::set is
     // invalid structure and MUST be reported, not silently skipped.
-    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match on=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n@narrator: ok\n</otherwise>\n</match>\n";
+    let src = "---\ncharacter: x\n---\n## Shot 1.\n<match subject=\"scene.x\">\n::set{scene.x = 1}\n<otherwise>\n@narrator: ok\n</otherwise>\n</match>\n";
     let (_doc, diags) = parse(src);
     assert!(
         diags.iter().any(|d| d.code == E_LOGIC_CONTENT),
@@ -909,7 +909,7 @@ fn entries_collect_in_document_order_beside_quests() {
 fn entry_body_is_the_ordinary_node_stream() {
     let (doc, diags) = parse(
         "<entry id=\"rustyKey\" target=\"item.rusty_key\">\n\
-         <match on=\"run.labBurned\">\n\
+         <match subject=\"run.labBurned\">\n\
          <when is=\"true\">\n@narrator: A scorched key.\n</when>\n\
          <otherwise>\n@narrator: A rusty key.\n</otherwise>\n\
          </match>\n\
@@ -947,7 +947,7 @@ fn entry_body_admission_is_not_the_parsers() {
     // entry body is the checker's E-GRAMMAR-NOT-ADMITTED.
     let (doc, diags) = parse(
         "<entry id=\"e\">\n::bg{id=\"lab\"}\n<branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\">\n@x: hi\n</choice>\n</branch>\n</entry>\n",
+         <choice id=\"c\" text=\"L\">\n@x: hi\n</choice>\n</branch>\n</entry>\n",
     );
     assert!(diags.is_empty(), "{diags:?}");
     assert!(matches!(
@@ -1010,7 +1010,7 @@ fn content_before_first_heading_is_content_outside_shot() {
 fn directive_and_tag_before_first_heading_are_also_content_outside_shot() {
     for src in [
         "::set{scene.a = 1}\n",
-        "<branch id=\"b\"><choice id=\"c\" label=\"x\"/></branch>\n",
+        "<branch id=\"b\"><choice id=\"c\" text=\"x\"/></branch>\n",
     ] {
         let (_, diags) = parse(src);
         assert!(
@@ -1123,7 +1123,7 @@ fn inline_tag_body_is_named() {
     // line) or E-UNCLASSIFIED (the following arm is well-formed).
     let (doc, diags) = parse(
         "## Shot 1.\n\
-         <match on=\"run.mood\">\n\
+         <match subject=\"run.mood\">\n\
          <when is=\"calm\"> @fixer{mono}: Steady. </when>\n\
          <otherwise> @fixer{mono}: Not steady. </otherwise>\n\
          </match>\n",
@@ -1209,7 +1209,7 @@ fn block_form_tag_body_stays_clean() {
     // same content must keep parsing with zero diagnostics.
     let (_, diags) = parse(
         "## Shot 1.\n\
-         <match on=\"run.mood\">\n\
+         <match subject=\"run.mood\">\n\
          <when is=\"calm\">\n\
          @fixer{mono}: Steady.\n\
          </when>\n\
@@ -1305,7 +1305,7 @@ fn unclassified_after_content_line_gets_continuation_hint() {
 #[test]
 fn foreign_lines_after_a_content_line_name_the_lute_form() {
     for (line, want) in [
-        ("-> ledger", "`::next{to=\"ledger\"}`"),
+        ("-> ledger", "`::jump{to=\"ledger\"}`"),
         ("-> END", "`terminal:`"),
         ("~ run.oil = run.oil + 2", "`::set{run.oil = run.oil + 2}`"),
         ("VAR x = 1", "`state:`"),

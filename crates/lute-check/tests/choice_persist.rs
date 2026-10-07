@@ -65,7 +65,7 @@ fn into_bool_default_records_clean() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" into=\"run.helped\">\n\
+         <choice id=\"c\" text=\"Help\" into=\"run.helped\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -78,7 +78,7 @@ fn into_bool_default_records_clean_on_hub_choice() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <hub id=\"h\">\n\
-         <choice id=\"c\" label=\"Help\" into=\"run.helped\" exit>\n\
+         <choice id=\"c\" text=\"Help\" into=\"run.helped\" exit>\n\
          </choice>\n\
          </hub>\n"
     );
@@ -92,7 +92,7 @@ fn into_number_requires_value() {
     let t = format!(
         "{HDR}state:\n  run.score: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Score\" into=\"run.score\">\n\
+         <choice id=\"c\" text=\"Score\" into=\"run.score\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -109,7 +109,7 @@ fn into_int_value_ok() {
     let t = format!(
         "{HDR}state:\n  run.score: {{ type: int }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Score\" into=\"run.score\" value=\"3\">\n\
+         <choice id=\"c\" text=\"Score\" into=\"run.score\" value=\"3\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -123,7 +123,7 @@ fn into_undeclared_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Ghost\" into=\"run.ghost\">\n\
+         <choice id=\"c\" text=\"Ghost\" into=\"run.ghost\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -140,7 +140,7 @@ fn into_non_run_target_errors() {
     let t = format!(
         "{HDR}state:\n  scene.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Scene\" into=\"scene.x\">\n\
+         <choice id=\"c\" text=\"Scene\" into=\"scene.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -159,7 +159,7 @@ fn into_bare_run_target_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Bare\" into=\"run\">\n\
+         <choice id=\"c\" text=\"Bare\" into=\"run\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -181,7 +181,7 @@ fn into_non_string_target_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Flag\" into>\n\
+         <choice id=\"c\" text=\"Flag\" into>\n\
          </choice>\n\
          </branch>\n"
     );
@@ -199,7 +199,7 @@ fn into_wrong_value_type_errors() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" into=\"run.helped\" value=\"7\">\n\
+         <choice id=\"c\" text=\"Help\" into=\"run.helped\" value=\"7\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -220,9 +220,9 @@ fn into_enum_member_spelled_like_bool_or_number_ok() {
         "{HDR}state:\n  run.tier: {{ type: {{ enum: [\"true\", \"3\", \"gold\"] }} }}\n---\n\
          ## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c1\" label=\"Three\" into=\"run.tier\" value=\"3\">\n\
+         <choice id=\"c1\" text=\"Three\" into=\"run.tier\" value=\"3\">\n\
          </choice>\n\
-         <choice id=\"c2\" label=\"True\" into=\"run.tier\" value=\"true\">\n\
+         <choice id=\"c2\" text=\"True\" into=\"run.tier\" value=\"true\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -237,7 +237,7 @@ fn into_arm_conflict_warns() {
     let t = format!(
         "{HDR}state:\n  run.helped: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Help\" into=\"run.helped\">\n\
+         <choice id=\"c\" text=\"Help\" into=\"run.helped\">\n\
          ::set{{run.helped = false}}\n\
          </choice>\n\
          </branch>\n"
@@ -281,7 +281,7 @@ fn no_into_no_record_diagnostics() {
     let t = format!(
         "{HDR}---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"Plain\">\n\
+         <choice id=\"c\" text=\"Plain\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -296,7 +296,7 @@ fn into_alone_records_clean_then_persist_reports_removed() {
     let clean = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" into=\"run.x\">\n\
+         <choice id=\"h\" text=\"L\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -311,7 +311,7 @@ fn into_alone_records_clean_then_persist_reports_removed() {
     let with_persist = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" persist=\"run\" into=\"run.x\">\n\
+         <choice id=\"h\" text=\"L\" persist=\"run\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -346,7 +346,7 @@ fn into_alone_records_clean_then_persist_reports_removed() {
     let mut spliced = with_persist.clone();
     spliced.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
     assert!(
-        spliced.contains("<choice id=\"h\" label=\"L\" into=\"run.x\">"),
+        spliced.contains("<choice id=\"h\" text=\"L\" into=\"run.x\">"),
         "the fixit must delete `persist=\"run\"` cleanly; got:\n{spliced}"
     );
     assert!(!spliced.contains("persist="), "got:\n{spliced}");
@@ -360,7 +360,7 @@ fn persist_removed_flags_any_value() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" persist=\"scene\" into=\"run.x\">\n\
+         <choice id=\"h\" text=\"L\" persist=\"scene\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -378,7 +378,7 @@ fn persist_without_into_still_reports_removed() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" persist=\"run\">\n\
+         <choice id=\"h\" text=\"L\" persist=\"run\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -397,7 +397,7 @@ fn fix_rule_round_trips_persist_into_to_bare_into() {
     let before = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" persist=\"run\" into=\"run.x\">\n\
+         <choice id=\"h\" text=\"L\" persist=\"run\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -410,7 +410,7 @@ fn fix_rule_round_trips_persist_into_to_bare_into() {
     let expected = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"h\" label=\"L\" into=\"run.x\">\n\
+         <choice id=\"h\" text=\"L\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -433,7 +433,7 @@ fn as_on_branch_choice_is_as_removed() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         <choice id=\"c\" text=\"L\" as=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -462,7 +462,7 @@ fn as_on_hub_choice_is_as_removed() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <hub id=\"h\">\n\
-         <choice id=\"c\" label=\"L\" as=\"run.x\" exit>\n\
+         <choice id=\"c\" text=\"L\" as=\"run.x\" exit>\n\
          </choice>\n\
          </hub>\n"
     );
@@ -482,7 +482,7 @@ fn as_removed_fixit_replaces_only_the_key() {
     let t = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         <choice id=\"c\" text=\"L\" as=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -512,7 +512,7 @@ fn as_removed_fixit_replaces_only_the_key() {
     let mut spliced = t.clone();
     spliced.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
     assert!(
-        spliced.contains("<choice id=\"c\" label=\"L\" into=\"run.x\">"),
+        spliced.contains("<choice id=\"c\" text=\"L\" into=\"run.x\">"),
         "got:\n{spliced}"
     );
 }
@@ -527,7 +527,7 @@ fn lsp_fixit_and_lute_fix_agree_byte_for_byte() {
     let before = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" as=\"run.x\">\n\
+         <choice id=\"c\" text=\"L\" as=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );
@@ -560,7 +560,7 @@ fn migrated_as_records_the_run_fact() {
     let after = format!(
         "{HDR}state:\n  run.x: {{ type: bool }}\n---\n## Shot 1.\n\
          <branch id=\"b\">\n\
-         <choice id=\"c\" label=\"L\" into=\"run.x\">\n\
+         <choice id=\"c\" text=\"L\" into=\"run.x\">\n\
          </choice>\n\
          </branch>\n"
     );

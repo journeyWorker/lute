@@ -32,7 +32,7 @@ fn input(text: &str, imports: SchemaImports) -> CheckInput {
 /// A scene declaring `defs:\n  <def>` and using `@<used>` as a bool guard.
 fn scene(def: &str, used: &str) -> String {
     format!(
-        "{HDR}defs:\n  {def}\n---\n## Shot 1.\n<match on=\"scene.flag\">\n\
+        "{HDR}defs:\n  {def}\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n\
          <when test=\"@{used}\">\n@narrator: a\n</when>\n\
          <otherwise>\n@narrator: b\n</otherwise>\n</match>\n"
     )

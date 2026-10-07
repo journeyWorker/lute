@@ -5,7 +5,7 @@ impl<'a> TraceDriver<'a> {
     /// A record of addressing unit `unit` is about to be reported: open the
     /// heads of the shots the walk entered since the last one (every shot
     /// in between on a straight walk, only the landing shot after a
-    /// `::next`), with the trailing source-only steps of the shots it left.
+    /// `::jump`), with the trailing source-only steps of the shots it left.
     pub(super) fn enter_unit(&mut self, unit: i64) {
         if !self.cx.shots || unit <= self.shot {
             return;
@@ -290,7 +290,7 @@ impl<'a> TraceDriver<'a> {
                     .and_then(|i| i.directive.clone())
                     .unwrap_or(kind.clone());
                 let exit = tag == lute_manifest::core::CLEAR_DIRECTIVE
-                    || tag == "auto" && self.auto_exits(&addr);
+                    || tag == lute_manifest::core::ACTOR_DIRECTIVE && self.auto_exits(&addr);
                 let call = (!exit)
                     .then(|| self.cx.authored.get(&addr).cloned())
                     .flatten();
@@ -306,7 +306,7 @@ impl<'a> TraceDriver<'a> {
         }
     }
 
-    /// #32 / T2.5: an `::auto` whose `action=` names a declared exit member
+    /// #32 / T2.5: an `::actor` whose `action=` names a declared exit member
     /// ENDS a presence — `Domain.exits`, the list `lute-check::inject` and
     /// `lute-compile::lower` read.
     pub(super) fn auto_exits(&self, addr: &str) -> bool {

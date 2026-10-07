@@ -103,7 +103,7 @@ fn lines(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
 /// compile-side fold over the identical shape.
 const REACTION: &str = "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold, warm, fond] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n@marina{emotion=\"delighted\"}: You remembered! You actually remembered.\n</when>\n\
 <when is=\"warm\">\n@marina{emotion=\"content\"}: Not bad at all, Mr. Fixer.\n</when>\n\
 <when is=\"cold\">\n@marina{emotion=\"neutral\"}: ...Shall we begin?\n</when>\n\
@@ -170,7 +170,7 @@ fn otherwise_selected_when_no_is_matches() {
     // matches the bound `5`, so `<otherwise>` is spliced.
     const LEVELED: &str = "---\ncomponent: leveled\nparams:\n  n: int\n---\n\
 ## Scene 1.\n\
-<match on=\"@n\">\n\
+<match subject=\"@n\">\n\
 <when is=\"10\">\n@narrator: exactly ten\n</when>\n\
 <when is=\"20\">\n@narrator: exactly twenty\n</when>\n\
 <otherwise>\n@narrator: something else\n</otherwise>\n\
@@ -257,9 +257,9 @@ fn nested_param_match_folds_recursively() {
     // splice — the fold must own its recursion, not lean on that).
     const NESTED: &str = "---\ncomponent: nested\nparams:\n  tier: { enum: [cold, fond] }\n  budget: { enum: [low, high] }\n---\n\
 ## Scene 1.\n\
-<match on=\"@tier\">\n\
+<match subject=\"@tier\">\n\
 <when is=\"fond\">\n\
-<match on=\"@budget\">\n\
+<match subject=\"@budget\">\n\
 <when is=\"high\">\n@marina: fond and high\n</when>\n\
 <when is=\"low\">\n@marina: fond and low\n</when>\n\
 </match>\n\
