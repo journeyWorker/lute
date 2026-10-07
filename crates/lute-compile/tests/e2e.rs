@@ -67,7 +67,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         .collect();
     let mut addrs: Vec<&str> = Vec::new();
     for c in commands {
-        addrs.push(c["addr"].as_str().expect("every record has addr"));
+        addrs.push(c["position"].as_str().expect("every record has addr"));
     }
     let unique: BTreeSet<&str> = addrs.iter().copied().collect();
     assert_eq!(unique.len(), addrs.len(), "addrs unique");
@@ -131,14 +131,9 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
         match c["kind"].as_str() {
             Some("line") => {
                 assert!(c["lineId"].as_str().is_some_and(|s| !s.is_empty()));
-                let voiced = matches!(
-                    c["role"].as_str(),
-                    Some("dialogue" | "voiceover" | "offscreen")
-                );
-                assert_eq!(
-                    c["voiceKey"].is_string(),
-                    voiced,
-                    "voiceKey iff voiced: {c}"
+                assert!(
+                    c["voiceKey"].as_str().is_some_and(|s| !s.is_empty()),
+                    "every line carries a voiceKey (dsl 0.37.0 D6): {c}"
                 );
                 assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
             }
@@ -508,10 +503,10 @@ fn dangling_target_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
             {
-                "kind": "line", "addr": "001-0100", "role": "dialogue",
+                "kind": "line", "position": "001-0100", "role": "dialogue",
                 "speaker": "x", "text": "hi", "lineId": "x", "voiceKey": "v"
             },
-            { "kind": "jump", "addr": "001-0200", "target": "999-9999" }
+            { "kind": "jump", "position": "001-0200", "target": "999-9999" }
         ]
     });
     let caught = std::panic::catch_unwind(|| assert_artifact_invariants(&artifact));
@@ -528,7 +523,7 @@ fn unexpanded_cel_token_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
             {
-                "kind": "set", "addr": "001-0100",
+                "kind": "set", "position": "001-0100",
                 "path": "scene.x", "op": "=", "value": "$ + 1"
             }
         ]
@@ -548,7 +543,7 @@ fn unexpanded_cel_token_fails_the_checker() {
 fn assert_relation_missing_from_schema_fails_the_checker() {
     let artifact = serde_json::json!({
         "commands": [
-            { "kind": "assert", "addr": "001-0100", "relation": "ghost", "args": ["ana"] }
+            { "kind": "assert", "position": "001-0100", "relation": "ghost", "args": ["ana"] }
         ],
         "relations": [
             { "name": "inParty", "args": ["c"], "derive": false, "reserved": false }

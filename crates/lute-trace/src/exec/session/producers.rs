@@ -58,7 +58,7 @@ pub fn decisions_of(document: &str, step: usize, transcript: &[Json]) -> Vec<Dec
             Some(Decision {
                 step,
                 document: document.to_string(),
-                addr: r.get("addr")?.as_str()?.to_string(),
+                addr: r.get("position")?.as_str()?.to_string(),
                 option: r.get("chose")?.as_str()?.to_string(),
             })
         })
@@ -84,7 +84,7 @@ impl Producers {
             let at: BTreeMap<&str, usize> = commands
                 .iter()
                 .enumerate()
-                .filter_map(|(i, c)| Some((text(c, "addr")?, i)))
+                .filter_map(|(i, c)| Some((text(c, "position")?, i)))
                 .collect();
             // (start, end, branch, option, choice addr) per option body.
             let mut ranges: Vec<(usize, usize, &str, &str, &str)> = Vec::new();
@@ -94,7 +94,7 @@ impl Producers {
                     Some("hub") => text(c, "id"),
                     _ => None,
                 };
-                let (Some(branch), Some(addr)) = (branch, text(c, "addr")) else {
+                let (Some(branch), Some(addr)) = (branch, text(c, "position")) else {
                     continue;
                 };
                 let mut starts: Vec<(usize, &str)> = c

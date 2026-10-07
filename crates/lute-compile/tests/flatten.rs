@@ -46,32 +46,7 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
 }
 
 fn kind(cmd: &Command) -> &'static str {
-    match cmd {
-        Command::Line(_) => "line",
-        Command::Background(_) => "background",
-        Command::Music(_) => "music",
-        Command::Sfx(_) => "sfx",
-        Command::Vfx(_) => "vfx",
-        Command::Sprite(_) => "sprite",
-        Command::Camera(_) => "camera",
-        Command::Cut(_) => "cut",
-        Command::Video(_) => "video",
-        Command::Set(_) => "set",
-        Command::Assert(_) => "assert",
-        Command::Retract(_) => "retract",
-        Command::Choice(_) => "choice",
-        Command::Match(_) => "match",
-        Command::Hub(_) => "hub",
-        Command::Jump(_) => "jump",
-        Command::End(_) => "end",
-        Command::Barrier(_) => "barrier",
-        Command::Other(_) => "plugin",
-        Command::Quest(_) => "quest",
-        Command::On(_) => "on",
-        Command::Entry(_) => "entry",
-        Command::Accept(_) => "accept",
-        Command::Beat(_) => "beat",
-    }
+    cmd.kind()
 }
 
 const BRANCH: &str = r#"<branch id="number">
@@ -95,7 +70,7 @@ fn branch_flattens_to_header_arms_jumps_converge() {
         panic!()
     };
     assert_eq!(c.branch_id, "number");
-    assert_eq!(c.record_key, "scene.choices.number");
+    assert_eq!(c.selection_key, "scene.choices.number");
     // Option targets point at each arm's first record's label.
     assert_eq!(c.options[0].target, recs[1].labels[0].sym());
     assert_eq!(c.options[1].target, recs[3].labels[0].sym());
@@ -228,8 +203,8 @@ fn component_sentinels_stamp_source_and_emit_nothing() {
 @narrator: after."#;
     let (recs, _) = flatten(src);
     let kinds: Vec<_> = recs.iter().map(|r| kind(&r.cmd)).collect();
-    assert_eq!(kinds, vec!["sprite", "line"]);
-    let Command::Sprite(s) = &recs[0].cmd else {
+    assert_eq!(kinds, vec!["actor", "line"]);
+    let Command::Actor(s) = &recs[0].cmd else {
         panic!()
     };
     assert_eq!(
@@ -245,7 +220,7 @@ fn component_sentinels_stamp_source_and_emit_nothing() {
 /// dsl 0.11.0 (branch prompt/timeout): `<branch prompt=… timeout=…>` flows
 /// through `walk_branch`'s residual-attr extraction into `ChoiceCmd`'s two
 /// new fields, and both survive into the serialized IR under their camelCase
-/// wire names (`prompt`/`timeoutSec`) — the JSON a `lute compile` invocation
+/// wire names (`prompt`/`timeout`) — the JSON a `lute compile` invocation
 /// actually emits.
 #[test]
 fn branch_prompt_and_timeout_flow_into_choice_cmd() {
@@ -259,13 +234,13 @@ fn branch_prompt_and_timeout_flow_into_choice_cmd() {
         panic!()
     };
     assert_eq!(c.prompt.as_deref(), Some("What do you do first?"));
-    assert_eq!(c.timeout_sec, Some(10));
+    assert_eq!(c.timeout, Some(10));
     let json = serde_json::to_string(&Command::Choice(c.clone())).unwrap();
     assert!(
         json.contains(r#""prompt":"What do you do first?""#),
         "{json}"
     );
-    assert!(json.contains(r#""timeoutSec":10"#), "{json}");
+    assert!(json.contains(r#""timeout":10"#), "{json}");
 }
 
 /// The counterpart: a `<branch>` without `prompt`/`timeout` leaves both
@@ -278,8 +253,8 @@ fn branch_without_prompt_or_timeout_omits_both_fields() {
         panic!()
     };
     assert!(c.prompt.is_none());
-    assert!(c.timeout_sec.is_none());
+    assert!(c.timeout.is_none());
     let json = serde_json::to_string(&Command::Choice(c.clone())).unwrap();
     assert!(!json.contains("prompt"), "{json}");
-    assert!(!json.contains("timeoutSec"), "{json}");
+    assert!(!json.contains("timeout"), "{json}");
 }

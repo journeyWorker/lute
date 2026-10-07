@@ -70,10 +70,10 @@ fn clips_emit_in_at_then_track_order_with_stamps_and_barrier() {
     let desc: Vec<String> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Camera(c) => format!("camera@{}", c.stamp.at.unwrap()),
-            Command::Cut(c) => format!("cut@{}", c.stamp.at.unwrap()),
-            Command::Vfx(c) => format!("vfx@{}", c.stamp.at.unwrap()),
-            Command::Sfx(c) => format!("sfx@{}", c.stamp.at.unwrap()),
+            Command::Camera(c) => format!("camera@{}", c.stamp.timing.at.unwrap()),
+            Command::Cg(c) => format!("cut@{}", c.stamp.timing.at.unwrap()),
+            Command::Vfx(c) => format!("vfx@{}", c.stamp.timing.at.unwrap()),
+            Command::Sfx(c) => format!("sfx@{}", c.stamp.timing.at.unwrap()),
             Command::Barrier(b) => format!("barrier@{}", b.at),
             Command::Line(_) => "line".to_string(),
             other => panic!("unexpected {other:?}"),
@@ -92,21 +92,21 @@ fn clips_emit_in_at_then_track_order_with_stamps_and_barrier() {
             "line",
         ]
     );
-    // Every clip record is stamped with the document-order timeline ordinal.
+    // Every clip record is stamped with the zero-based document-order timeline ordinal.
     for r in &recs[..6] {
         let mut c = r.cmd.clone();
         let stamp = c.stamp_mut().expect("clip records are stamped").clone();
-        assert_eq!(stamp.timeline, Some(1));
+        assert_eq!(stamp.timing.timeline, Some(0));
     }
     // Durations stamp through (framing clip: 0.4).
     let Command::Camera(framing) = &recs[0].cmd else {
         panic!()
     };
-    assert_eq!(framing.stamp.duration, Some(0.4));
+    assert_eq!(framing.stamp.timing.duration, Some(0.4));
     let Command::Barrier(b) = &recs[6].cmd else {
         panic!()
     };
-    assert_eq!(b.timeline, 1);
+    assert_eq!(b.timeline, 0);
 }
 
 #[test]
@@ -124,27 +124,27 @@ fn stage_changing_clip_threads_the_reducer_and_carries_post_barrier_state() {
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(s) if s.exit == Some(true) => "hide",
-            Command::Sprite(_) => "sprite",
-            Command::Background(_) => "background",
+            Command::Actor(s) if s.exit == Some(true) => "hide",
+            Command::Actor(_) => "actor",
+            Command::Bg(_) => "bg",
             Command::Barrier(_) => "barrier",
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, vec!["sprite", "hide", "background", "barrier"]);
+    assert_eq!(kinds, vec!["actor", "hide", "bg", "barrier"]);
     // The injected hide is stamped as part of the timeline too.
-    let Command::Sprite(h) = &recs[1].cmd else {
+    let Command::Actor(h) = &recs[1].cmd else {
         panic!()
     };
-    assert_eq!(h.stamp.timeline, Some(1));
-    assert_eq!(h.stamp.at, Some(0.0));
+    assert_eq!(h.stamp.timing.timeline, Some(0));
+    assert_eq!(h.stamp.timing.at, Some(0.0));
     // Post-barrier carry: stage cleared, bg recorded.
     assert!(state.on_stage.is_empty());
     assert_eq!(state.bg.as_deref(), Some("street"));
 }
 
 #[test]
-fn second_timeline_gets_ordinal_two_and_barrier_defaults_to_max_end() {
+fn second_timeline_gets_ordinal_one_and_barrier_defaults_to_max_end() {
     let body = r#"<timeline>
   <track channel="sfx">
     ::sfx{sound="a"}
@@ -164,7 +164,7 @@ fn second_timeline_gets_ordinal_two_and_barrier_defaults_to_max_end() {
         })
         .collect();
     // No authored duration => barrier at max clip end (0.0 and 0.7).
-    assert_eq!(barriers, vec![(1, 0.0), (2, 0.7)]);
+    assert_eq!(barriers, vec![(0, 0.0), (1, 0.7)]);
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn timeline_auto_clip_preloads_post_timeline_emotion() {
     let preload = recs
         .iter()
         .find_map(|r| match &r.cmd {
-            Command::Sprite(s) if s.preload == Some(true) => Some(s),
+            Command::Actor(s) if s.preload == Some(true) => Some(s),
             _ => None,
         })
         .expect("timeline ::actor must preload the post-timeline emotion");
@@ -195,6 +195,6 @@ fn timeline_auto_clip_preloads_post_timeline_emotion() {
         Some("entry-emotion-lookahead"),
         "the preload must be provenance'd to the lookahead rule reached via the threaded continuation"
     );
-    // The preload record is still stamped as part of timeline 1 (clip stamp intact).
-    assert_eq!(preload.stamp.timeline, Some(1));
+    // The preload record is still stamped as part of timeline 0 (clip stamp intact).
+    assert_eq!(preload.stamp.timing.timeline, Some(0));
 }

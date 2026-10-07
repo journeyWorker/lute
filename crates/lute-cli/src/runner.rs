@@ -547,7 +547,7 @@ mod dump_tests {
             "commands": [
                 {
                     "kind": "beat",
-                    "addr": "001",
+                    "position": "001",
                     "id": "catch.land",
                     "on": "landed",
                     "target": "kind:fish",
@@ -560,7 +560,7 @@ mod dump_tests {
                 },
                 {
                     "kind": "line",
-                    "addr": "002",
+                    "position": "002",
                     "speaker": "narrator",
                     "text": "You land a {{occasion.target}}.",
                     "placeholders": [{"kind": "occasionTarget"}]
@@ -976,7 +976,7 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
     println!("run {} execution IR {}", m.kind(), artifact.display());
     for e in &m.driver().transcript {
         let k = e.get("kind").and_then(Json::as_str).unwrap_or("");
-        let a = e.get("addr").and_then(Json::as_str).unwrap_or("");
+        let a = e.get("position").and_then(Json::as_str).unwrap_or("");
         let line = match k {
             "line" => format!(
                 "  {a}  {}: {}",

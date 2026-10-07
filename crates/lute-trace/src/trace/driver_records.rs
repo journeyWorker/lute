@@ -117,7 +117,7 @@ impl<'a> TraceDriver<'a> {
             .unwrap_or("")
             .to_string();
         let addr = rec
-            .get("addr")
+            .get("position")
             .and_then(Json::as_str)
             .unwrap_or("")
             .to_string();

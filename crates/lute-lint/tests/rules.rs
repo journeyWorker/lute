@@ -944,9 +944,9 @@ fn custom_rule_fires() {
 custom:
   - id: too-few-shots
     target: scene
-    when: "scene.shots < options.min"
+    when: "scene.sections < options.min"
     level: warn
-    message: "only {scene.shots} shots (need {options.min})"
+    message: "only {scene.sections} shots (need {options.min})"
     options: { min: 3 }
 "#,
         empty_span(),

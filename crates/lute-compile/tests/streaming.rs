@@ -105,7 +105,7 @@ fn branch_state_and_auto_injection_use_ordinary_compiler() {
     assert!(final_artifact
         .commands
         .iter()
-        .any(|command| matches!(command, Command::Sprite(_))));
+        .any(|command| matches!(command, Command::Actor(_))));
     assert!(final_artifact
         .commands
         .iter()
@@ -231,7 +231,7 @@ fn decimal_padding_growth_does_not_rewrite_the_semantic_prefix() {
     let mut compiler = ContinuationCompiler::new(input(&prefix), IdentityTemplates::default())
         .expect("valid scene template");
     let first = serde_json::to_value(&compiler.artifact().commands[0]).unwrap();
-    assert_eq!(first["addr"], "001-0100");
+    assert_eq!(first["position"], "001-0100");
 
     let update = compiler.push("@narrator{code=\"0100\"}: line 100\n");
     assert_eq!(
@@ -241,7 +241,7 @@ fn decimal_padding_growth_does_not_rewrite_the_semantic_prefix() {
     );
     assert_eq!(update.updates[0].append_from, 99);
     let first = serde_json::to_value(&update.updates[0].artifact.commands[0]).unwrap();
-    assert_eq!(first["addr"], "001-00100");
+    assert_eq!(first["position"], "001-00100");
 }
 
 #[test]

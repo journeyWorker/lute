@@ -206,7 +206,7 @@ impl<D: Driver> Machine<D> {
                     .map(|(f, p)| (f.as_str(), p.as_str()))
                     .unzip();
                 self.driver.emit(json!({
-                    "addr": addr(cmd),
+                    "position": addr(cmd),
                     "kind": "plugin",
                     "tag": tag,
                     "external": true,
@@ -228,7 +228,7 @@ impl<D: Driver> Machine<D> {
             .map(|(_, p)| p.as_str())
             .collect();
         let mut rec = serde_json::Map::new();
-        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("plugin".into()));
         rec.insert("tag".into(), Json::String(tag.clone()));
         rec.insert("external".into(), Json::Bool(true));
@@ -300,7 +300,7 @@ impl<D: Driver> Machine<D> {
                 self.write(path, Value::Unknown);
             } else {
                 let mut rec = json!({
-                    "addr": addr(cmd),
+                    "position": addr(cmd),
                     "kind": "set",
                     "path": path,
                     "value": value_to_json(&value),
@@ -325,11 +325,11 @@ impl<D: Driver> Machine<D> {
                 let before = self.store.exclusive_now();
                 let rec = if assert {
                     self.store.assert((rel.clone(), args.clone()));
-                    json!({ "addr": addr(cmd), "kind": "assert",
+                    json!({ "position": addr(cmd), "kind": "assert",
                             "fact": render_fact(&rel, &args), "effectOf": tag })
                 } else {
                     self.store.retract(&rel, &args);
-                    json!({ "addr": addr(cmd), "kind": "retract",
+                    json!({ "position": addr(cmd), "kind": "retract",
                             "pattern": render_fact(&rel, &args), "effectOf": tag })
                 };
                 self.driver.emit(rec);
@@ -356,7 +356,7 @@ impl<D: Driver> Machine<D> {
         {
             let path = e.get("path").and_then(Json::as_str).unwrap_or("");
             self.driver
-                .emit(json!({ "addr": addr(cmd), "kind": "skipped",
+                .emit(json!({ "position": addr(cmd), "kind": "skipped",
                 "effect": "set", "path": path, "effectOf": tag }));
         }
         for (key, effect, field) in [
@@ -366,7 +366,7 @@ impl<D: Driver> Machine<D> {
             for f in cmd.get(key).and_then(Json::as_array).into_iter().flatten() {
                 let (rel, args) = fact_record(f);
                 let mut rec = serde_json::Map::new();
-                rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+                rec.insert("position".into(), Json::String(addr(cmd).to_string()));
                 rec.insert("kind".into(), json!("skipped"));
                 rec.insert("effect".into(), json!(effect));
                 rec.insert(field.into(), json!(render_fact(&rel, &args)));

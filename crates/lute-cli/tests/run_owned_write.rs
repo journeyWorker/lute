@@ -26,7 +26,7 @@ fn base() -> serde_json::Value {
 fn run_refuses_engine_owned_state_write_before_execution() {
     let mut ir = base();
     ir["state"] = serde_json::json!([{"path":"clock.day", "owner":"engine"}]);
-    ir["commands"] = serde_json::json!([{"kind":"set", "addr":"set", "path":"clock.day", "op":"=", "value":"1"}]);
+    ir["commands"] = serde_json::json!([{"kind":"set", "position":"set", "path":"clock.day", "op":"=", "value":"1"}]);
     let out = run(ir);
     assert_eq!(out.status.code(), Some(1));
     let error = String::from_utf8_lossy(&out.stderr);
@@ -38,7 +38,7 @@ fn run_refuses_reserved_relation_assert_before_execution() {
     let mut ir = base();
     ir["requiredSemantics"] = serde_json::json!(["lute.core/1", "lute.knowledge.facts/1"]);
     ir["relations"] = serde_json::json!([{"name":"engineFact", "reserved":true}]);
-    ir["commands"] = serde_json::json!([{"kind":"assert", "addr":"assert", "relation":"engineFact", "args":[]}]);
+    ir["commands"] = serde_json::json!([{"kind":"assert", "position":"assert", "relation":"engineFact", "args":[]}]);
     let out = run(ir);
     assert_eq!(out.status.code(), Some(1));
     let error = String::from_utf8_lossy(&out.stderr);

@@ -7,17 +7,17 @@ impl<'a> TraceDriver<'a> {
             .and_then(Json::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|c| Some((c.get("addr")?.as_str()?.to_string(), c.clone())))
+            .filter_map(|c| Some((c.get("position")?.as_str()?.to_string(), c.clone())))
             .collect();
         let headings = cx
             .art
-            .get("shots")
+            .get("sections")
             .and_then(Json::as_array)
             .into_iter()
             .flatten()
             .filter_map(|s| {
                 Some((
-                    s.get("shot")?.as_i64()?,
+                    s.get("section")?.as_i64()?,
                     s.get("heading")
                         .and_then(Json::as_str)
                         .unwrap_or("")

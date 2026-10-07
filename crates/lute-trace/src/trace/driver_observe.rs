@@ -40,7 +40,7 @@ impl<'a> TraceDriver<'a> {
             }
             Some("on") => {
                 let span = quest_src
-                    .and_then(|q| q.handlers.get(&str_of("addr")))
+                    .and_then(|q| q.handlers.get(&str_of("position")))
                     .copied()
                     .unwrap_or_else(mock::synthetic_span);
                 let event = str_of("event");

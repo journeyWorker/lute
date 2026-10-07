@@ -82,7 +82,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
         .iter()
         .map(|c| {
             let mut c = c.clone();
-            c.addr_mut().clone()
+            c.position_mut().clone()
         })
         .collect();
     // Shot 1: two lines. The second shot's `## Shot 4.` heading is now opaque
@@ -111,7 +111,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
     };
     let last_addr = {
         let mut last = cmds.last().unwrap().clone();
-        last.addr_mut().clone()
+        last.position_mut().clone()
     };
     let expected_past_end = format!("002-{:04}", last_addr[4..].parse::<i64>().unwrap() + 100);
     assert_eq!(choice.converge, expected_past_end);
@@ -132,7 +132,7 @@ fn line_ids_and_voice_keys_follow_the_speaker_code_model() {
             Command::Line(l) => Some((
                 l.speaker.as_str(),
                 l.line_id.as_str(),
-                l.voice_key.as_deref(),
+                Some(l.voice_key.as_str()),
             )),
             _ => None,
         })
@@ -147,8 +147,12 @@ fn line_ids_and_voice_keys_follow_the_speaker_code_model() {
                 "marina.s01ep02.fixer_0010",
                 Some("marina.s01ep02.fixer-0010")
             ),
-            // Narrator: lineId for i18n, NO voiceKey (unvoiced role).
-            ("narrator", "marina.s01ep02.narrator_0010", None),
+            // Narrator: every role carries a voiceKey (dsl 0.37.0 D6).
+            (
+                "narrator",
+                "marina.s01ep02.narrator_0010",
+                Some("marina.s01ep02.narrator-0010")
+            ),
             (
                 "fixer",
                 "marina.s01ep02.fixer_0050",

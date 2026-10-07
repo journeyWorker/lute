@@ -58,7 +58,7 @@ fn date_minigame_core_only_still_errors() {
 fn refresh_stamps_resolved_version_under_project() {
     // Copy the fixture catalog to a temp dir, refresh with --project, and assert
     // the stamped manifestVersion equals the RESOLVED multi-plugin
-    // capabilityVersion (and thus differs from core-only) — proving the
+    // capabilitySnapshot (and thus differs from core-only) — proving the
     // --project path actually resolves the plugin, not just replaces "pending".
     let proj = lute_manifest::project::load_project(std::path::Path::new(
         "../../docs/examples/arcia-project",
@@ -105,7 +105,7 @@ fn refresh_stamps_resolved_version_under_project() {
         .expect("manifestVersion present");
     assert_eq!(
         stamped, resolved_version,
-        "refresh --project must stamp the RESOLVED capabilityVersion, not core-only"
+        "refresh --project must stamp the RESOLVED capabilitySnapshot, not core-only"
     );
     std::fs::remove_dir_all(&tmp).ok();
 }

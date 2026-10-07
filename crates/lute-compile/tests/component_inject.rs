@@ -81,7 +81,7 @@ fn sprite_records(artifact: &lute_compile::ExecutionIr) -> Vec<serde_json::Value
         .commands
         .iter()
         .map(|c| serde_json::to_value(c).unwrap())
-        .filter(|v| v["kind"] == "sprite")
+        .filter(|v| v["kind"] == "actor")
         .collect()
 }
 

@@ -29,16 +29,16 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
     let role = if line.speaker == "narrator" {
         Role::Narration
     } else if has_delivery_flag(&line.attrs, "mono") {
-        Role::Monologue
+        Role::Mono
     } else if has_delivery_flag(&line.attrs, "vo") {
-        Role::Voiceover
+        Role::Vo
     } else if has_delivery_flag(&line.attrs, "os") {
-        Role::Offscreen
+        Role::Os
     } else {
         Role::Dialogue
     };
     Command::Line(LineCmd {
-        addr: String::new(),
+        position: String::new(),
         role,
         speaker: line.speaker.clone(),
         text: line.text.clone(),
@@ -48,7 +48,7 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         dialog_motion: get("dialogMotion"),
         as_label: get("as"),
         line_id: String::new(),
-        voice_key: None,
+        voice_key: String::new(),
         placeholders: line.interps.iter().map(placeholder_from_interp).collect(),
         texts: Default::default(),
         // An untagged component line carries its source-order back-fill
@@ -69,7 +69,7 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
 
 pub fn lower_set(set: &Set) -> Command {
     Command::Set(SetCmd {
-        addr: String::new(),
+        position: String::new(),
         path: set.path.clone(),
         op: set.op.clone(),
         value: crate::ir::CelPair::from_slot(&set.expr),
@@ -111,7 +111,7 @@ pub(crate) fn fact_text(pattern: &lute_syntax::datalog::FactPattern) -> String {
 /// an `E-DATALOG-PARSE`/`E-DATALOG-FUNCTION` Error diagnostic.
 pub fn lower_assert(a: &Assert) -> Command {
     Command::Assert(AssertCmd {
-        addr: String::new(),
+        position: String::new(),
         relation: a.pattern.relation.clone(),
         args: a
             .pattern
@@ -128,7 +128,7 @@ pub fn lower_assert(a: &Assert) -> Command {
 /// `"_"` verbatim (§5 RetractPattern).
 pub fn lower_retract(r: &Retract) -> Command {
     Command::Retract(RetractCmd {
-        addr: String::new(),
+        position: String::new(),
         relation: r.pattern.relation.clone(),
         args: r
             .pattern
@@ -143,7 +143,7 @@ pub fn lower_retract(r: &Retract) -> Command {
 /// Lower one directive. `None` for `::use` and the component sentinels (the
 /// walker consumes those). A plugin directive lowers to its declared
 /// `lower: { record, fields }` staging command when it has one
-/// ([`lower_record`]), else falls through to the `Some(Command::Other(..))`
+/// ([`lower_record`]), else falls through to the `Some(Command::Plugin(..))`
 /// passthrough.
 ///
 /// `domains` is the resolved vocabulary: whether an `::actor`'s `action` ENDS the
@@ -157,13 +157,15 @@ pub fn lower_directive(
     let get = |k: &str| attr_string(&dir.attrs, k);
     let decl = snapshot.directive(&dir.tag);
     let stamp = Stamp {
-        wait: effective_wait(dir, snapshot),
-        // dsl 0.10.0 §10.3 (**D-T**): a time value's seconds are derived from
-        // its milliseconds, never from a bare `f64::from_str`. That also makes
-        // the artifact agree with the checker on `1.5s`/`250ms`, which
-        // `attr_f64` silently dropped while the timeline resolver accepted them.
-        duration: time_attr_seconds(&dir.attrs, "duration"),
-        delay: time_attr_seconds(&dir.attrs, "delay"),
+        timing: Timing {
+            wait: effective_wait(dir, snapshot),
+            // dsl 0.10.0 §10.3 (**D-T**): a time value's seconds are derived
+            // from its milliseconds, never from a bare `f64::from_str`, so the
+            // artifact agrees with the checker on `1.5s`/`250ms`.
+            duration: time_attr_seconds(&dir.attrs, "duration"),
+            delay: time_attr_seconds(&dir.attrs, "delay"),
+            ..Timing::default()
+        },
         // plugin §14.1: cross-cutting `stampAttrs` ride the stamp on EVERY
         // directive, core and plugin alike. A key the directive DECLARES
         // itself stays the record's own field — the same precedence the
@@ -173,33 +175,38 @@ pub fn lower_directive(
         authored: Some(authored_directive(dir, decl)),
         ..Stamp::default()
     };
+    // dsl 0.37.0 D2: `display` is emitted resolved — author, then the
+    // directive's declared default, then `show`.
+    let display = || {
+        get("display")
+            .or_else(|| attr_default_string(decl, "display"))
+            .unwrap_or_else(|| "show".to_string())
+    };
     Some(match dir.tag.as_str() {
-        "bg" => Command::Background(BackgroundCmd {
-            addr: String::new(),
+        "bg" => Command::Bg(BgCmd {
+            position: String::new(),
             location: get("location"),
             time: get("time"),
             asset_id: get("assetId"),
             stamp,
         }),
         "music" => Command::Music(MusicCmd {
-            addr: String::new(),
-            action: get("playback").unwrap_or_default(),
+            position: String::new(),
+            playback: get("playback"),
             mood: get("mood"),
             volume: get("volume"),
             asset_id: get("assetId"),
-            track: None,
             stamp,
         }),
         "sfx" => Command::Sfx(SfxCmd {
-            addr: String::new(),
+            position: String::new(),
             sound: get("sound"),
             asset_id: get("assetId"),
-            name: None,
             stamp,
         }),
         "vfx" => Command::Vfx(VfxCmd {
-            addr: String::new(),
-            vfx_type: get("type").unwrap_or_default(),
+            position: String::new(),
+            r#type: get("type").unwrap_or_default(),
             label: get("label"),
             transition: get("transition"),
             stamp,
@@ -212,48 +219,50 @@ pub fn lower_directive(
                 Some(a) if lute_check::is_declared_exit(a, domains) => Some(true),
                 _ => None,
             };
-            Command::Sprite(SpriteCmd {
-                addr: String::new(),
+            Command::Actor(ActorCmd {
+                position: String::new(),
                 character: get("character").unwrap_or_default(),
                 anchor: get("anchor"),
                 action,
                 exit,
-                pos_reset: None,
-                preload: None,
                 emotion: get("emotion"),
                 costume: get("costume"),
+                pos_reset: None,
+                preload: None,
                 stamp,
             })
         }
         "camera" => Command::Camera(CameraCmd {
-            addr: String::new(),
+            position: String::new(),
             focus: get("focus"),
-            zoom: None,
-            move_x: None,
-            move_y: None,
-            shake: None,
-            reset: None,
-            easing: None,
+            framing: get("framing"),
+            camera_move: get("move"),
+            transition: get("transition"),
             stamp,
         }),
-        "cg" => Command::Cut(CutCmd {
-            addr: String::new(),
+        "cg" => Command::Cg(CgCmd {
+            position: String::new(),
             asset_id: get("assetId").unwrap_or_default(),
-            action: get("display"),
-            full: None,
+            display: display(),
+            layout: get("layout"),
             stamp,
         }),
         "video" => Command::Video(VideoCmd {
-            addr: String::new(),
+            position: String::new(),
             asset_id: get("assetId").unwrap_or_default(),
-            action: get("display"),
+            display: display(),
+            stamp,
+        }),
+        lute_manifest::core::SEQUENCE_DIRECTIVE => Command::Sequence(SequenceCmd {
+            position: String::new(),
+            name: get("name").unwrap_or_default(),
             stamp,
         }),
         // dsl 0.8.0: the walk terminator. `::end` declares no `wait` attr, so
         // `effective_wait` yields `None` and the stamp stays omitted — the same
         // byte-stable treatment `music`/`sfx`/`vfx` get (§4.4).
         lute_manifest::core::END_DIRECTIVE => Command::End(EndCmd {
-            addr: String::new(),
+            position: String::new(),
             reason: get("reason"),
             stamp,
         }),
@@ -262,7 +271,7 @@ pub fn lower_directive(
         // fallthrough. The checker has proven `quest` a plain identifier
         // (`E-ACCEPT-TARGET`), so the quoted value lands verbatim.
         lute_syntax::ast::ACCEPT_DIRECTIVE => Command::Accept(AcceptCmd {
-            addr: String::new(),
+            position: String::new(),
             quest: dir
                 .accept_quest()
                 .map(|(q, _)| q.to_string())
@@ -298,7 +307,7 @@ pub fn lower_directive(
         // `address::assign_addresses`'s document-wide named-label pass,
         // exactly like a numeric `"@<n>"` resolves the anonymous ones.
         lute_manifest::core::JUMP_DIRECTIVE => Command::Jump(JumpCmd {
-            addr: String::new(),
+            position: String::new(),
             target: format!("#{}", get("to").unwrap_or_default()),
         }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
@@ -323,8 +332,8 @@ pub fn lower_directive(
                     // emits `wait: true`, and an engine would block for one and
                     // not the other. Author/manifest resolution still wins.
                     let mut stamp = stamp.clone();
-                    if stamp.wait.is_none() {
-                        stamp.wait = record_wait_default(record);
+                    if stamp.timing.wait.is_none() {
+                        stamp.timing.wait = record_wait_default(record);
                     }
                     lower_record(record, fields, dir, &stamp)
                 }
@@ -378,8 +387,8 @@ pub fn lower_directive(
                     })
                     .collect()
             };
-            Command::Other(OtherCmd {
-                addr: String::new(),
+            Command::Plugin(PluginCmd {
+                position: String::new(),
                 tag: dir.tag.clone(),
                 plugin: snapshot
                     .directive_owner(&dir.tag)
@@ -482,12 +491,6 @@ fn lower_record(
             },
         }
     };
-    let n = |target: &str| -> Option<f64> {
-        match srcs.get(target)? {
-            FieldSrc::Attr(a) => attr_f64(&dir.attrs, a),
-            FieldSrc::Lit(v) => v.as_f64(),
-        }
-    };
     let b = |target: &str| -> Option<bool> {
         match srcs.get(target)? {
             FieldSrc::Attr(a) => attr_bool(&dir.attrs, a),
@@ -496,94 +499,89 @@ fn lower_record(
     };
 
     let stamp = stamp.clone();
+    let display = || s("display").unwrap_or_else(|| "show".to_string());
     // Field names below are the SERIALIZED (camelCase) IR names, matching
     // `lute_manifest::validate::lower_record_fields` entry-for-entry — the
     // `record_field_table_matches_lowering` test holds the two in lockstep.
     Some(match record {
-        "background" => Command::Background(BackgroundCmd {
-            addr: String::new(),
+        "bg" => Command::Bg(BgCmd {
+            position: String::new(),
             location: s("location"),
             time: s("time"),
             asset_id: s("assetId"),
             stamp,
         }),
         "music" => Command::Music(MusicCmd {
-            addr: String::new(),
-            action: s("action").unwrap_or_default(),
+            position: String::new(),
+            playback: s("playback"),
             mood: s("mood"),
             volume: s("volume"),
             asset_id: s("assetId"),
-            track: s("track"),
             stamp,
         }),
         "sfx" => Command::Sfx(SfxCmd {
-            addr: String::new(),
+            position: String::new(),
             sound: s("sound"),
             asset_id: s("assetId"),
-            name: s("name"),
             stamp,
         }),
         "vfx" => Command::Vfx(VfxCmd {
-            addr: String::new(),
-            vfx_type: s("vfxType").unwrap_or_default(),
+            position: String::new(),
+            r#type: s("type").unwrap_or_default(),
             label: s("label"),
             transition: s("transition"),
             stamp,
         }),
-        "sprite" => Command::Sprite(SpriteCmd {
-            addr: String::new(),
+        "actor" => Command::Actor(ActorCmd {
+            position: String::new(),
             character: s("character").unwrap_or_default(),
             anchor: s("anchor"),
             action: s("action"),
             exit: b("exit"),
-            pos_reset: b("posReset"),
-            preload: b("preload"),
             emotion: s("emotion"),
             costume: s("costume"),
+            pos_reset: b("posReset"),
+            preload: b("preload"),
             stamp,
         }),
         "camera" => Command::Camera(CameraCmd {
-            addr: String::new(),
+            position: String::new(),
             focus: s("focus"),
-            zoom: n("zoom"),
-            move_x: n("moveX"),
-            move_y: n("moveY"),
-            shake: n("shake"),
-            reset: b("reset"),
-            easing: s("easing"),
+            framing: s("framing"),
+            camera_move: s("move"),
+            transition: s("transition"),
             stamp,
         }),
-        "cut" => Command::Cut(CutCmd {
-            addr: String::new(),
+        "cg" => Command::Cg(CgCmd {
+            position: String::new(),
             asset_id: s("assetId").unwrap_or_default(),
-            action: s("action"),
-            full: b("full"),
+            display: display(),
+            layout: s("layout"),
             stamp,
         }),
         "video" => Command::Video(VideoCmd {
-            addr: String::new(),
+            position: String::new(),
             asset_id: s("assetId").unwrap_or_default(),
-            action: s("action"),
+            display: display(),
             stamp,
         }),
-        // Unreachable: the table gate above admits exactly these eight.
+        "sequence" => Command::Sequence(SequenceCmd {
+            position: String::new(),
+            name: s("name").unwrap_or_default(),
+            stamp,
+        }),
+        // Unreachable: the table gate above admits exactly these nine.
         _ => return None,
     })
 }
 
 /// Resolved effective blocking (§4.3 / IR A8): author `wait` attr → manifest
 /// `AttrDecl.default` → builtin fallback. The wait-family (compile-IR §4.4) is
-/// `bg`/`video` (default `true`) and `cut`/`camera` (default `false`, v1
-/// non-blocking); `camera` is normally resolved by its manifest decl above and
-/// is listed here for completeness. `plugin` directives flow through steps 1–2
-/// (author → manifest, else none). `music`/`sfx`/`vfx`/`sprite` define no
-/// `wait` (§4.4) → `None` → the field is omitted, keeping them byte-stable.
-///
-/// Step 1 (author override) is only *reachable* through `compile()`'s D6 gate
-/// for directives whose manifest declares a `wait` attr — `video`/`camera`
-/// (dsl §999). `bg`/`cut` declare no `wait`, so an authored `wait` on them is
-/// rejected `E-UNKNOWN-ATTR` and never reaches here; they always carry the
-/// fixed resolved default (`bg`→`true`, `cut`→`false`).
+/// `bg`/`video`/`sequence` (default `true`) and `cg`/`camera` (default
+/// `false`); `camera`/`video`/`sequence` are normally resolved by their
+/// manifest decls above and are listed here for completeness. `plugin`
+/// directives flow through steps 1–2 (author → manifest, else none).
+/// `music`/`sfx`/`vfx`/`actor` define no `wait` (§4.4) → `None` → omitted.
 pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<bool> {
     if let Some(b) = attr_bool(&dir.attrs, "wait") {
         return Some(b);
@@ -595,25 +593,27 @@ pub fn effective_wait(dir: &Directive, snapshot: &CapabilitySnapshot) -> Option<
             }
         }
     }
-    match dir.tag.as_str() {
-        "bg" | "video" => Some(true),
+    record_wait_default(&dir.tag)
+}
+
+/// The builtin `wait` default of a CORE record KIND (compile-IR §4.4). Every
+/// kind is named after its core directive (dsl 0.37.0), so this one table
+/// serves both the authored tag ([`effective_wait`]) and a plugin directive
+/// that reaches the kind through `lower: { record, fields }`:
+/// `bg`/`video`/`sequence` block, `cg`/`camera` do not, and every other
+/// staging kind defines no `wait` at all (the field stays omitted).
+fn record_wait_default(record: &str) -> Option<bool> {
+    match record {
+        "bg" | "video" | "sequence" => Some(true),
         "cg" | "camera" => Some(false),
         _ => None,
     }
 }
 
-/// The builtin `wait` default of a CORE record KIND (compile-IR §4.4), keyed
-/// on the emitted `kind` rather than the authored tag. [`effective_wait`]'s
-/// own fallback keys on `dir.tag`, which is correct for core directives (whose
-/// tag and record kind coincide) but never matches a plugin directive that
-/// reaches the same record kind through `lower: { record, fields }`. Kept
-/// beside `effective_wait` so the two tables are read together and cannot
-/// drift: `background`/`video` block, `cut`/`camera` do not, and every other
-/// staging kind defines no `wait` at all (the field stays omitted).
-fn record_wait_default(record: &str) -> Option<bool> {
-    match record {
-        "background" | "video" => Some(true),
-        "cut" | "camera" => Some(false),
+/// A directive attr's declared string default (`display: show`), if any.
+fn attr_default_string(decl: Option<&DirectiveDecl>, key: &str) -> Option<String> {
+    match &decl?.attrs.iter().find(|a| a.name == key)?.default {
+        Some(Literal::Str(s)) => Some(s.clone()),
         _ => None,
     }
 }
@@ -624,10 +624,6 @@ pub(crate) fn attr_string(attrs: &[Attr], key: &str) -> Option<String> {
         AttrValue::Ref(slot) => slot.raw.clone(),
         AttrValue::BoolTrue => "true".to_string(),
     })
-}
-
-fn attr_f64(attrs: &[Attr], key: &str) -> Option<f64> {
-    attr_string(attrs, key).and_then(|s| s.parse::<f64>().ok())
 }
 
 /// A cross-cutting time attr as SECONDS, derived from its milliseconds
@@ -909,11 +905,11 @@ mod tests {
         assert_eq!(v["kind"], "line");
         assert_eq!(v["role"], "narration");
         let v = lower_first("@fixer{mono}: Hm.");
-        assert_eq!(v["role"], "monologue");
+        assert_eq!(v["role"], "mono");
         let v = lower_first("@fixer{vo}: Later.");
-        assert_eq!(v["role"], "voiceover");
+        assert_eq!(v["role"], "vo");
         let v = lower_first("@fixer{os}: Behind the door.");
-        assert_eq!(v["role"], "offscreen");
+        assert_eq!(v["role"], "os");
         let v = lower_first(
             "@marina{code=\"0010\" emotion=\"surprised\" variant=\"0\" as=\"Hostess\"}: Oh!",
         );
@@ -931,46 +927,49 @@ mod tests {
     fn bg_defaults_wait_true_camera_defaults_wait_false() {
         let v =
             lower_first("::bg{location=\"family_restaurant\" time=\"afternoon\" assetId=\"BG.x\"}");
-        assert_eq!(v["kind"], "background");
+        assert_eq!(v["kind"], "bg");
+        assert_eq!(v["category"], "staging");
         assert_eq!(v["location"], "family_restaurant");
         assert_eq!(v["time"], "afternoon");
         assert_eq!(v["assetId"], "BG.x");
-        assert_eq!(v["wait"], true);
+        assert_eq!(v["timing"]["wait"], true);
         let v = lower_first("::camera{focus=\"marina\" framing=\"close\" duration=\"0.5\"}");
         assert_eq!(v["kind"], "camera");
         assert_eq!(v["focus"], "marina");
-        assert_eq!(v["duration"], 0.5);
-        assert_eq!(v["wait"], false); // manifest default (arch §1 open question)
+        assert_eq!(v["framing"], "close");
+        assert_eq!(v["timing"]["duration"], 0.5);
+        assert_eq!(v["timing"]["wait"], false); // manifest default
         let v = lower_first("::camera{move=\"shake\" wait=\"true\"}");
-        assert_eq!(v["wait"], true); // author override beats the default
+        assert_eq!(v["move"], "shake");
+        assert_eq!(v["timing"]["wait"], true); // author override beats the default
     }
 
     #[test]
-    fn wait_family_materialized_cut_gains_false_others_carry_none() {
-        // IR A8 / compile-IR §4.4: the wait-family (bg/video/camera/cut/plugin)
-        // MUST carry a resolved `wait`; music/sfx/vfx/sprite carry NO `wait`.
-        // THE FIX: `::cg` resolves to a concrete `false` (v1 non-blocking).
+    fn wait_family_materialized_cg_gains_false_others_carry_none() {
+        // IR A8 / compile-IR §4.4: the wait-family (bg/video/sequence/camera/
+        // cg/plugin) MUST carry a resolved `timing.wait`; music/sfx/vfx/actor
+        // carry NO `timing` at all.
         let v = lower_first("::cg{assetId=\"CUT.x\"}");
-        assert_eq!(v["kind"], "cut");
-        assert_eq!(v["wait"], false);
+        assert_eq!(v["kind"], "cg");
+        assert_eq!(v["timing"]["wait"], false);
         // bg/video default true; camera default false (manifest) — unchanged.
-        assert_eq!(lower_first("::bg{location=\"r\"}")["wait"], true);
+        assert_eq!(lower_first("::bg{location=\"r\"}")["timing"]["wait"], true);
         assert_eq!(
-            lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}")["wait"],
+            lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}")["timing"]["wait"],
             true
         );
-        assert_eq!(lower_first("::camera{move=\"shake\"}")["wait"], false);
-        // Non-wait families (§4.4) carry NO `wait` key.
+        assert_eq!(lower_first("::camera{move=\"shake\"}")["timing"]["wait"], false);
+        // Non-wait families (§4.4) carry NO `timing` key.
         assert!(lower_first("::music{playback=\"start\"}")
-            .get("wait")
+            .get("timing")
             .is_none());
-        assert!(lower_first("::sfx{sound=\"ding\"}").get("wait").is_none());
+        assert!(lower_first("::sfx{sound=\"ding\"}").get("timing").is_none());
         assert!(lower_first("::vfx{type=\"whiteOut\"}")
-            .get("wait")
+            .get("timing")
             .is_none());
         assert!(
             lower_first("::actor{character=\"marina\" anchor=\"center\"}")
-                .get("wait")
+                .get("timing")
                 .is_none()
         );
     }
@@ -981,7 +980,7 @@ mod tests {
             "::music{playback=\"start\" mood=\"peaceful\" volume=\"down\" assetId=\"m.mp3\"}",
         );
         assert_eq!(v["kind"], "music");
-        assert_eq!(v["action"], "start");
+        assert_eq!(v["playback"], "start");
         assert_eq!(v["mood"], "peaceful");
         assert_eq!(v["volume"], "down");
         let v = lower_first("::sfx{sound=\"hum\" assetId=\"s.mp3\"}");
@@ -989,15 +988,17 @@ mod tests {
         assert_eq!(v["sound"], "hum");
         let v = lower_first("::vfx{type=\"whiteOut\" transition=\"flash\"}");
         assert_eq!(v["kind"], "vfx");
-        assert_eq!(v["vfxType"], "whiteOut");
+        assert_eq!(v["type"], "whiteOut");
         let v = lower_first("::cg{assetId=\"CUT.x\"}");
-        assert_eq!(v["kind"], "cut");
+        assert_eq!(v["kind"], "cg");
         assert_eq!(v["assetId"], "CUT.x");
-        let v = lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}");
+        assert_eq!(v["display"], "show");
+        let v = lower_first("::video{assetId=\"MOVIE.x\" display=\"hide\"}");
         assert_eq!(v["kind"], "video");
-        assert_eq!(v["wait"], true);
+        assert_eq!(v["display"], "hide");
+        assert_eq!(v["timing"]["wait"], true);
         let v = lower_first("::actor{character=\"marina\" anchor=\"center\" action=\"fadeInUp\"}");
-        assert_eq!(v["kind"], "sprite");
+        assert_eq!(v["kind"], "actor");
         assert_eq!(v["character"], "marina");
         assert_eq!(v["anchor"], "center");
         assert!(v.get("exit").is_none());
@@ -1050,22 +1051,21 @@ mod tests {
         let v = lower_first("::camera{framing=\"close\" move=\"shake\" duration=\"0.4\"}");
         assert_eq!(v["kind"], "camera");
         assert!(
-            v["duration"].is_number(),
+            v["timing"]["duration"].is_number(),
             "duration must be a JSON number, got {}",
-            v["duration"]
+            v["timing"]["duration"]
         );
-        assert_eq!(v["duration"], 0.4);
+        assert_eq!(v["timing"]["duration"], 0.4);
         for removed in ["zoom", "moveX", "moveY", "shake", "reset", "easing"] {
             assert!(v.get(removed).is_none(), "{removed}: {v}");
         }
     }
 
     #[test]
-    fn sprite_record_omits_costume_until_cast_ships() {
-        // IR A1 (schema-only): `costume` is always None until the character-cast
-        // plugin ships, so it never serializes (skip-if-none).
+    fn actor_record_omits_unauthored_costume() {
+        // dsl 0.37.0 D4: `costume` is emitted when authored, absent otherwise.
         let v = lower_first("::actor{character=\"marina\" anchor=\"center\"}");
-        assert_eq!(v["kind"], "sprite");
+        assert_eq!(v["kind"], "actor");
         assert!(
             v.get("costume").is_none(),
             "costume must be absent, got {:?}",
@@ -1119,16 +1119,16 @@ mod tests {
     #[test]
     fn declarative_record_lowering_emits_the_core_staging_record() {
         // The declarative-lowering promise: `::backdrop{img=…}` declaring
-        // `lower: { record: background, fields: { assetId: { fromAttr: img } } }`
-        // becomes a real `background` record — NOT the `kind: "plugin"`
-        // passthrough it used to fall into.
+        // `lower: { record: bg, fields: { assetId: { fromAttr: img } } }`
+        // becomes a real `bg` record — NOT the `kind: "plugin"` passthrough.
         let snapshot = snap_with(
             "backdrop",
             &[("img", Type::Str)],
-            record_lowering("background", "{ assetId: { fromAttr: img } }"),
+            record_lowering("bg", "{ assetId: { fromAttr: img } }"),
         );
         let v = lower_with("::backdrop{img=\"BG.x\"}", &snapshot);
-        assert_eq!(v["kind"], "background");
+        assert_eq!(v["kind"], "bg");
+        assert_eq!(v["timing"]["wait"], true, "the bg kind's wait default applies");
         assert_eq!(v["assetId"], "BG.x");
         assert!(v.get("tag").is_none(), "must not be a passthrough: {v}");
         // Unbound target fields stay absent (skip-if-none), so the record is
@@ -1161,12 +1161,12 @@ mod tests {
             "scenery",
             &[("img", Type::Str), ("where", Type::Str)],
             record_lowering(
-                "background",
+                "bg",
                 "{ assetId: { fromAttr: img }, location: { fromAttr: where }, time: dusk }",
             ),
         );
         let v = lower_with("::scenery{img=\"BG.y\"}", &snapshot);
-        assert_eq!(v["kind"], "background");
+        assert_eq!(v["kind"], "bg");
         assert_eq!(v["assetId"], "BG.y");
         assert_eq!(v["time"], "dusk");
         assert!(
@@ -1178,17 +1178,17 @@ mod tests {
     #[test]
     fn record_lowering_typed_fields_serialize_as_json_scalars() {
         let snapshot = snap_with(
-            "lens",
-            &[("z", Type::Double), ("snap", Type::Bool)],
+            "pose",
+            &[("who", Type::Str), ("gone", Type::Bool)],
             record_lowering(
-                "camera",
-                "{ zoom: { fromAttr: z }, reset: { fromAttr: snap } }",
+                "actor",
+                "{ character: { fromAttr: who }, exit: { fromAttr: gone } }",
             ),
         );
-        let v = lower_with("::lens{z=\"1.25\" snap=\"true\"}", &snapshot);
-        assert_eq!(v["kind"], "camera");
-        assert_eq!(v["zoom"], 1.25);
-        assert_eq!(v["reset"], true);
+        let v = lower_with("::pose{who=\"marina\" gone=\"true\"}", &snapshot);
+        assert_eq!(v["kind"], "actor");
+        assert_eq!(v["character"], "marina");
+        assert_eq!(v["exit"], true);
     }
 
     #[test]
@@ -1221,7 +1221,6 @@ mod tests {
                         *n,
                         match k {
                             LowerFieldKind::Str => Type::Str,
-                            LowerFieldKind::Num => Type::Double,
                             LowerFieldKind::Bool => Type::Bool,
                         },
                     )
@@ -1242,7 +1241,6 @@ mod tests {
                     .map(|(n, k)| {
                         let v = match k {
                             LowerFieldKind::Str => "v",
-                            LowerFieldKind::Num => "1.5",
                             LowerFieldKind::Bool => "true",
                         };
                         format!("{n}=\"{v}\"")

@@ -118,9 +118,9 @@ fn custom_rule_fires_from_config() {
         "custom:\n  \
          - id: too-few-shots\n    \
            target: scene\n    \
-           when: \"scene.shots < options.min\"\n    \
+           when: \"scene.sections < options.min\"\n    \
            level: warn\n    \
-           message: \"only {scene.shots} shots (need {options.min})\"\n    \
+           message: \"only {scene.sections} shots (need {options.min})\"\n    \
            options: { min: 3 }\n",
     );
 
@@ -268,9 +268,9 @@ fn plugin_lint_export_fires_end_to_end() {
         "lints:\n  \
          - id: too-few-shots\n    \
            target: scene\n    \
-           when: \"scene.shots < 3\"\n    \
+           when: \"scene.sections < 3\"\n    \
            level: warn\n    \
-           message: \"only {scene.shots} shots\"\n",
+           message: \"only {scene.sections} shots\"\n",
     );
 
     let out = run(&["lint", dir.to_str().unwrap(), "--json"]);

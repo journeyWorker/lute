@@ -152,7 +152,7 @@ fn literal_arg_folds_to_selected_arm() {
     assert_eq!(twin_lines.len(), 1);
     let mut folded_line = ls[0].clone();
     let mut twin_line = twin_lines[0].clone();
-    for key in ["addr", "source", "lineId", "voiceKey"] {
+    for key in ["position", "source", "lineId", "voiceKey"] {
         folded_line.as_object_mut().unwrap().remove(key);
         twin_line.as_object_mut().unwrap().remove(key);
     }

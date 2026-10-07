@@ -58,25 +58,27 @@ pub const REGISTRY: &[SemanticEntry] = &[
 pub const FIELD_TABLE: &[&str] = &[
     "accept","action","activate","addr","advances","after","also","amount","amountMax","amountMin",
     "anchor","applies","args","arms","as","asserts","assetId","at","atom","authored","beat","body",
-    "bool","branchId","bridgeResult","by","call","capabilityVersion","category","cel","celEnv",
-    "character","clock","commands","complete","component","cond","contentLang","converge","costume",
-    "credits","day","dayEnd","dayStart","days","default","delay","derive","dialogMotion","distinct",
-    "document","domain","done","double","duration","easing","effects","else","emotion","entities",
-    "entityKind","enums","episode","episodeId","event","excludes","exit","explanation","expr","extra",
-    "fail","fields","first","focus","follows","forKind","format","forms","from","full","functions",
-    "gates","has","head","heading","id","identityRenames","indefinite","index","injected","int","irVersion","is","key",
-    "kind","l","label","labelForms","labels","last","length","lhs","lineId","list","live","location",
-    "lute","members","meta","mood","moveX","moveY","n","name","negated","node","objectives","occasion",
-    "on","once","op","open","optional","options","order","otherwise","outcome","outsideRun","overloads",
-    "owner","params","path","placeholders","plugin","posReset","prefix","preload","prereqEdges",
-    "priority","prompt","provenance","quest","r","raise","raiseAtStart","raisedWhen","raw","rearm",
-    "reason","recordKey","ref","relation","relations","requiredSemantics","reserved","reset","result",
-    "retracts","return","rewards","rhs","role","rules","season","seasons","seedFacts","series","shake",
-    "share","shot","shots","slot","slots","sound","source","speaker","spentBy","start","state","string",
-    "subject","tag","target","targetKind","terminal","terminalPersists","terms","test","text","texts",
-    "then","tier","time","timeline","timeoutSec","title","titleLineId","token","track","transition",
-    "type","until","value","variables","variant","vfxType","visibleWhen","voiceKey","volume","wait",
-    "week","when","zoom",
+    "bool","branchId","bridgeResult","by","call","capabilitySnapshot","capabilityVersion",
+    "category","cel","celEnv","character","clock","commands","complete","component","cond",
+    "contentLang","converge","costume","credits","day","dayEnd","dayStart","days","default","delay",
+    "derive","dialogMotion","display","distinct","document","domain","done","double","duration",
+    "easing","effects","else","emotion","entities","entityKind","enums","episode","episodeId",
+    "event","excludes","exit","explanation","expr","extra","fail","fields","first","focus",
+    "follows","forKind","format","forms","framing","from","full","functions","gates","has","head",
+    "heading","id","identityRenames","indefinite","index","injected","int","irVersion","is","key",
+    "kind","l","label","labelForms","labels","last","layout","length","lhs","lineId","list","live",
+    "location","lute","members","meta","mood","move","moveX","moveY","n","name","negated","node",
+    "objectives","occasion","on","once","op","open","optional","options","order","otherwise",
+    "outcome","outsideRun","overloads","owner","params","path","placeholders","playback","plugin",
+    "posReset","position","prefix","preload","prereqEdges","priority","prompt","provenance","quest",
+    "r","raise","raiseAtStart","raisedWhen","raw","rearm","reason","recordKey","ref","relation",
+    "relations","requiredSemantics","reserved","reset","result","retracts","return","rewards","rhs",
+    "role","rules","season","seasons","section","sections","seedFacts","selectionKey","series",
+    "shake","share","shot","shots","slot","slots","sound","source","speaker","spentBy","start",
+    "state","string","subject","tag","target","targetKind","terminal","terminalPersists","terms",
+    "test","text","texts","then","tier","time","timeline","timeout","timeoutSec","timing","title",
+    "titleLineId","token","track","transition","type","until","value","variables","variant",
+    "vfxType","visibleWhen","voiceKey","volume","wait","week","when","zoom",
 ];
 
 pub fn field_is_registered(field: &str) -> bool {
@@ -142,8 +144,8 @@ pub fn collect(ir: &ExecutionIr) -> Collected {
             }
         }
     }
-    if !ir.shots.is_empty() {
-        out.add(CORE, None, "shot records");
+    if !ir.sections.is_empty() {
+        out.add(CORE, None, "section records");
     }
     if ir.clock.is_some() {
         out.add(CLOCK, None, "clock declaration");
@@ -189,10 +191,10 @@ pub fn collect(ir: &ExecutionIr) -> Collected {
 }
 
 fn add_stamp(out: &mut Collected, stamp: &Stamp, addr: Option<&str>, owner: SemanticId) {
-    if stamp.timeline.is_some() || stamp.at.is_some() {
+    if stamp.timing.timeline.is_some() || stamp.timing.at.is_some() {
         out.add(TIMELINE, addr, "timeline clip placement");
     }
-    if stamp.wait.is_some() || stamp.duration.is_some() || stamp.delay.is_some() {
+    if stamp.timing.wait.is_some() || stamp.timing.duration.is_some() || stamp.timing.delay.is_some() {
         out.add(if owner == STAGING { STAGING } else { CORE }, addr, "command timing");
     }
     if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.extra.is_empty() {
@@ -246,69 +248,70 @@ fn scan_placeholders(out: &mut Collected, placeholders: &[Placeholder], addr: Op
 fn collect_command(out: &mut Collected, command: &Command) {
     match command {
         Command::Line(c) => {
-            out.add(CORE, Some(&c.addr), "line command");
-            scan_placeholders(out, &c.placeholders, Some(&c.addr));
-            add_stamp(out, &c.stamp, Some(&c.addr), CORE);
+            out.add(CORE, Some(&c.position), "line command");
+            scan_placeholders(out, &c.placeholders, Some(&c.position));
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
-        Command::Background(c) => { out.add(STAGING, Some(&c.addr), "background command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Music(c) => { out.add(STAGING, Some(&c.addr), "music command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Sfx(c) => { out.add(STAGING, Some(&c.addr), "sfx command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Vfx(c) => { out.add(STAGING, Some(&c.addr), "vfx command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Sprite(c) => { out.add(STAGING, Some(&c.addr), "sprite command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Camera(c) => { out.add(STAGING, Some(&c.addr), "camera command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Cut(c) => { out.add(STAGING, Some(&c.addr), "cut command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Video(c) => { out.add(STAGING, Some(&c.addr), "video command"); add_stamp(out, &c.stamp, Some(&c.addr), STAGING); }
-        Command::Set(c) => { out.add(CORE, Some(&c.addr), "set command"); scan_cel(out, &c.value, Some(&c.addr), "set value"); add_stamp(out, &c.stamp, Some(&c.addr), CORE); }
-        Command::Assert(c) => { out.add(FACTS, Some(&c.addr), "assert command"); add_stamp(out, &c.stamp, Some(&c.addr), FACTS); }
-        Command::Retract(c) => { out.add(FACTS, Some(&c.addr), "retract command"); add_stamp(out, &c.stamp, Some(&c.addr), FACTS); }
+        Command::Bg(c) => { out.add(STAGING, Some(&c.position), "bg command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Music(c) => { out.add(STAGING, Some(&c.position), "music command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Sfx(c) => { out.add(STAGING, Some(&c.position), "sfx command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Vfx(c) => { out.add(STAGING, Some(&c.position), "vfx command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Actor(c) => { out.add(STAGING, Some(&c.position), "actor command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Camera(c) => { out.add(STAGING, Some(&c.position), "camera command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Cg(c) => { out.add(STAGING, Some(&c.position), "cg command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Video(c) => { out.add(STAGING, Some(&c.position), "video command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Sequence(c) => { out.add(STAGING, Some(&c.position), "sequence command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
+        Command::Set(c) => { out.add(CORE, Some(&c.position), "set command"); scan_cel(out, &c.value, Some(&c.position), "set value"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
+        Command::Assert(c) => { out.add(FACTS, Some(&c.position), "assert command"); add_stamp(out, &c.stamp, Some(&c.position), FACTS); }
+        Command::Retract(c) => { out.add(FACTS, Some(&c.position), "retract command"); add_stamp(out, &c.stamp, Some(&c.position), FACTS); }
         Command::Choice(c) => {
-            out.add(CORE, Some(&c.addr), "choice command");
-            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.addr), "choice option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.addr)); }
-            add_stamp(out, &c.stamp, Some(&c.addr), CORE);
+            out.add(CORE, Some(&c.position), "choice command");
+            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.position), "choice option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.position)); }
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Match(c) => {
-            out.add(CORE, Some(&c.addr), "match command");
-            if let Some(pair) = &c.subject { scan_cel(out, pair, Some(&c.addr), "match subject"); }
-            for arm in &c.arms { scan_cel(out, &arm.test, Some(&c.addr), "match arm test"); }
-            add_stamp(out, &c.stamp, Some(&c.addr), CORE);
+            out.add(CORE, Some(&c.position), "match command");
+            if let Some(pair) = &c.subject { scan_cel(out, pair, Some(&c.position), "match subject"); }
+            for arm in &c.arms { scan_cel(out, &arm.test, Some(&c.position), "match arm test"); }
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Hub(c) => {
-            out.add(CORE, Some(&c.addr), "hub command");
-            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.addr), "hub option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.addr)); }
-            add_stamp(out, &c.stamp, Some(&c.addr), CORE);
+            out.add(CORE, Some(&c.position), "hub command");
+            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.position), "hub option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.position)); }
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
-        Command::Jump(c) => out.add(CORE, Some(&c.addr), "jump command"),
-        Command::End(c) => { out.add(CORE, Some(&c.addr), "end command"); add_stamp(out, &c.stamp, Some(&c.addr), CORE); }
-        Command::Barrier(c) => out.add(TIMELINE, Some(&c.addr), "timeline barrier"),
+        Command::Jump(c) => out.add(CORE, Some(&c.position), "jump command"),
+        Command::End(c) => { out.add(CORE, Some(&c.position), "end command"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
+        Command::Barrier(c) => out.add(TIMELINE, Some(&c.position), "timeline barrier"),
         Command::Quest(c) => collect_quest(out, c),
         Command::On(c) => {
-            out.add(QUEST_LIFECYCLE, Some(&c.addr), "quest handler");
-            if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.addr), "handler condition"); }
-            add_stamp(out, &c.stamp, Some(&c.addr), QUEST_LIFECYCLE);
+            out.add(QUEST_LIFECYCLE, Some(&c.position), "quest handler");
+            if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "handler condition"); }
+            add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE);
         }
-        Command::Other(c) => { out.add(CORE, Some(&c.addr), "plugin record"); add_stamp(out, &c.stamp, Some(&c.addr), CORE); }
+        Command::Plugin(c) => { out.add(CORE, Some(&c.position), "plugin record"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
         Command::Entry(c) => collect_entry(out, c),
-        Command::Accept(c) => { out.add(QUEST_LIFECYCLE, Some(&c.addr), "accept command"); add_stamp(out, &c.stamp, Some(&c.addr), QUEST_LIFECYCLE); }
+        Command::Accept(c) => { out.add(QUEST_LIFECYCLE, Some(&c.position), "accept command"); add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE); }
         Command::Beat(c) => collect_beat(out, c),
     }
 }
 
 fn collect_quest(out: &mut Collected, c: &QuestCmd) {
-    out.add(QUEST_LIFECYCLE, Some(&c.addr), "quest command");
-    if let Some(pair) = &c.start { scan_cel(out, pair, Some(&c.addr), "quest start"); }
-    if let Some(pair) = &c.fail { scan_cel(out, pair, Some(&c.addr), "quest fail"); }
-    if c.tier.as_ref().is_some_and(|tier| matches!(tier, QuestTier::Season(_))) { out.add(SEASONS, Some(&c.addr), "season quest tier"); }
-    if c.rearm.is_some() { out.add(SEASONS, Some(&c.addr), "quest rearm"); }
-    collect_rewards(out, &c.rewards, Some(&c.addr));
+    out.add(QUEST_LIFECYCLE, Some(&c.position), "quest command");
+    if let Some(pair) = &c.start { scan_cel(out, pair, Some(&c.position), "quest start"); }
+    if let Some(pair) = &c.fail { scan_cel(out, pair, Some(&c.position), "quest fail"); }
+    if c.tier.as_ref().is_some_and(|tier| matches!(tier, QuestTier::Season(_))) { out.add(SEASONS, Some(&c.position), "season quest tier"); }
+    if c.rearm.is_some() { out.add(SEASONS, Some(&c.position), "quest rearm"); }
+    collect_rewards(out, &c.rewards, Some(&c.position));
     for objective in &c.objectives {
-        out.add(QUEST_LIFECYCLE, Some(&c.addr), "objective lifecycle");
-        scan_cel(out, &objective.done, Some(&c.addr), "objective done");
-        if let Some(pair) = &objective.visible_when { scan_cel(out, pair, Some(&c.addr), "objective visibility"); }
-        if let Some(pair) = &objective.by { scan_cel(out, pair, Some(&c.addr), "objective deadline"); }
-        if let Some(pair) = &objective.until { scan_cel(out, pair, Some(&c.addr), "objective deadline"); }
-        collect_rewards(out, &objective.rewards, Some(&c.addr));
+        out.add(QUEST_LIFECYCLE, Some(&c.position), "objective lifecycle");
+        scan_cel(out, &objective.done, Some(&c.position), "objective done");
+        if let Some(pair) = &objective.visible_when { scan_cel(out, pair, Some(&c.position), "objective visibility"); }
+        if let Some(pair) = &objective.by { scan_cel(out, pair, Some(&c.position), "objective deadline"); }
+        if let Some(pair) = &objective.until { scan_cel(out, pair, Some(&c.position), "objective deadline"); }
+        collect_rewards(out, &objective.rewards, Some(&c.position));
     }
-    add_stamp(out, &c.stamp, Some(&c.addr), QUEST_LIFECYCLE);
+    add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE);
 }
 
 fn collect_rewards(out: &mut Collected, rewards: &[RewardEntry], addr: Option<&str>) {
@@ -320,23 +323,23 @@ fn collect_rewards(out: &mut Collected, rewards: &[RewardEntry], addr: Option<&s
 }
 
 fn collect_entry(out: &mut Collected, c: &EntryCmd) {
-    out.add(LORE, Some(&c.addr), "entry command");
-    if c.on.is_some() || c.priority.is_some() || c.target_kind.is_some() || c.for_kind.is_some() { out.add(SELECTION, Some(&c.addr), "entry occasion selection"); }
-    if c.once.is_some() || c.share.is_some() || c.spent_by.is_some() { out.add(CADENCE, Some(&c.addr), "entry cadence"); }
-    if c.advances.is_some() { out.add(CLOCK, Some(&c.addr), "entry clock advance"); }
-    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.addr), "entry condition"); }
-    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.addr), "entry spentBy"); }
-    add_stamp(out, &c.stamp, Some(&c.addr), LORE);
+    out.add(LORE, Some(&c.position), "entry command");
+    if c.on.is_some() || c.priority.is_some() || c.target_kind.is_some() || c.for_kind.is_some() { out.add(SELECTION, Some(&c.position), "entry occasion selection"); }
+    if c.once.is_some() || c.share.is_some() || c.spent_by.is_some() { out.add(CADENCE, Some(&c.position), "entry cadence"); }
+    if c.advances.is_some() { out.add(CLOCK, Some(&c.position), "entry clock advance"); }
+    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "entry condition"); }
+    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.position), "entry spentBy"); }
+    add_stamp(out, &c.stamp, Some(&c.position), LORE);
 }
 
 fn collect_beat(out: &mut Collected, c: &BeatCmd) {
-    out.add(LORE, Some(&c.addr), "bundle beat command");
-    out.add(SELECTION, Some(&c.addr), "bundle beat candidate");
-    out.add(CADENCE, Some(&c.addr), "bundle beat cadence");
-    if c.advances.is_some() { out.add(CLOCK, Some(&c.addr), "bundle beat clock advance"); }
-    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.addr), "bundle beat condition"); }
-    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.addr), "bundle beat spentBy"); }
-    add_stamp(out, &c.stamp, Some(&c.addr), LORE);
+    out.add(LORE, Some(&c.position), "bundle beat command");
+    out.add(SELECTION, Some(&c.position), "bundle beat candidate");
+    out.add(CADENCE, Some(&c.position), "bundle beat cadence");
+    if c.advances.is_some() { out.add(CLOCK, Some(&c.position), "bundle beat clock advance"); }
+    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "bundle beat condition"); }
+    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.position), "bundle beat spentBy"); }
+    add_stamp(out, &c.stamp, Some(&c.position), LORE);
 }
 
 fn scan_beat_ir(out: &mut Collected, beat: &BeatIr) {
@@ -367,7 +370,7 @@ mod tests {
     fn rewardless_quest_is_not_rewards() {
         let mut ir = test_ir();
         ir.commands.push(Command::Quest(QuestCmd {
-            addr: "q".into(), id: "q".into(), title: None, title_line_id: None,
+            position: "q".into(), id: "q".into(), title: None, title_line_id: None,
             start: None, fail: None, objectives: vec![], rewards: vec![], tier: None,
             activate: None, complete: None, accept: None, rearm: None, stamp: Stamp::default(),
         }));
@@ -432,9 +435,9 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene, lute: "0.36.6".into(), ir_version: "0.36.6".into(),
-            capability_version: "cap".into(), identity_renames: vec![], required_semantics: vec![],
+            capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
-            state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], shots: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),
+            state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),
         }
     }
     #[test]

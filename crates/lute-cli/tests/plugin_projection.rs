@@ -33,9 +33,9 @@ fn typed_projection_preserves_core_records_and_host_fields() {
     let artifact: Value = serde_json::from_slice(&output.stdout).expect("artifact JSON");
     let commands = artifact["commands"].as_array().expect("commands array");
 
-    assert_eq!(commands[0]["kind"], "background");
+    assert_eq!(commands[0]["kind"], "bg");
     assert_eq!(commands[0]["assetId"], "BG.location_alpha.night");
-    assert_eq!(commands[1]["kind"], "sprite");
+    assert_eq!(commands[1]["kind"], "actor");
     assert_eq!(commands[1]["character"], "actor_a");
     assert_eq!(commands[1]["costume"], "ACTOR_DEFAULT");
 

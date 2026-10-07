@@ -458,7 +458,7 @@ fn a_guarded_directive_compiles_to_a_one_arm_match() {
     assert_eq!(first["subject"], serde_json::json!({"cel": "run.gate", "expr": {"path": "run.gate"}}));
     assert_eq!(first["arms"].as_array().unwrap().len(), 1);
     let target = first["arms"][0]["target"].as_str().unwrap();
-    let leaf = cmds.iter().find(|c| c["addr"] == target).unwrap();
+    let leaf = cmds.iter().find(|c| c["position"] == target).unwrap();
     assert_eq!(leaf["kind"], "plugin");
     assert_eq!(leaf["tag"], "give");
 }

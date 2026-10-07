@@ -266,7 +266,7 @@ pub(crate) enum Command {
     },
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
     /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
-    /// capabilityVersion an AI needs to WRITE valid Lute against THIS file's
+    /// capabilitySnapshot an AI needs to WRITE valid Lute against THIS file's
     /// project. A capability query, NOT validation: reuses the SAME resolution
     /// (`build_input`/`fold_env`) check/compile use, and emits regardless of
     /// document diagnostics. Exit `0` on success, `2` on an I/O failure.
@@ -908,7 +908,7 @@ pub(crate) enum CatalogCommand {
         /// Directory holding the flat per-snapshot YAML files.
         dir: PathBuf,
         /// Project directory (`lute.project.yaml` + `plugins/`) whose resolved
-        /// multi-plugin `capabilityVersion` stamps each snapshot instead of the
+        /// multi-plugin `capabilitySnapshot` stamps each snapshot instead of the
         /// core-only version. Omit for the core baseline.
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,

@@ -14,6 +14,5 @@ injections:
         character: marina
         emotion: delighted
     provenance:
-      injected: true
       by: entry-emotion-lookahead
       explanation: "pre-loading `marina`'s first emotion `delighted` seen ahead of the entrance"

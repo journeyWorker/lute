@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 /// `sourceRefs` from §10 are informative and omitted from the baseline artifact.
 ///
 /// ```yaml
-/// manifestVersion: "<capabilityVersion>"   # the snapshot was built for
+/// manifestVersion: "<capabilitySnapshot>"   # the snapshot was built for
 /// providerVersion: "1"                      # the snapshot's own id
 /// stale: false                              # served without a fresh refresh?
 /// entries:                                  # provider name -> resolved ids
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderSnapshot {
-    /// The `capabilityVersion` this snapshot was built for.
+    /// The `capabilitySnapshot` this snapshot was built for.
     pub manifest_version: String,
     /// The snapshot's own version/id.
     pub provider_version: String,

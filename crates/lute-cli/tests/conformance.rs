@@ -9,12 +9,12 @@
 //!    the code the README's table pins to that transcript's `exit`. This is
 //!    the contract a third-party engine is measured against.
 //! 2. **Live stamps** — the recorded `artifact.json` carries TODAY's
-//!    `irVersion` / `lute` / `capabilityVersion`, and the fixture's own
+//!    `irVersion` / `lute` / `capabilitySnapshot`, and the fixture's own
 //!    `source.lute` carries today's `luteVersion:`, not whichever ones were
 //!    current when it was last recorded. Invariant 1 alone cannot see this: a
 //!    recorded artifact replayed against a recorded transcript stays green
 //!    while the two are stale *together*. That is exactly how a
-//!    `capabilityVersion` drift went unnoticed for two releases — `f876a2f`
+//!    `capabilitySnapshot` drift went unnoticed for two releases — `f876a2f`
 //!    re-hashed the core capability snapshot and updated the insta snapshots,
 //!    but never propagated to these fixtures — and how five fixture sources
 //!    stayed stamped `luteVersion: "0.10.0"` six releases on, since the
@@ -211,7 +211,7 @@ fn every_fixture_replays_byte_identically() {
 /// the toolchain emits TODAY.
 ///
 /// `irVersion` and `lute` are pinned to the live constants directly.
-/// `capabilityVersion` is a content hash of the resolved capability snapshot,
+/// `capabilitySnapshot` is a content hash of the resolved capability snapshot,
 /// so no constant exists to compare against — the live value is obtained by
 /// recompiling the fixture's own `source.lute` through the same resolution
 /// `lute compile` uses, which is step one of the README's regenerate recipe.
@@ -310,14 +310,14 @@ fn every_fixture_carries_live_stamps() {
 
         let fresh = json_at(&fresh_path);
         let (want, got) = (
-            fresh["capabilityVersion"].as_str().unwrap_or("<missing>"),
-            recorded["capabilityVersion"]
+            fresh["capabilitySnapshot"].as_str().unwrap_or("<missing>"),
+            recorded["capabilitySnapshot"]
                 .as_str()
                 .unwrap_or("<missing>"),
         );
         if got != want {
             failures.push(format!(
-                "{name}: artifact.json `capabilityVersion` is {got} but \
+                "{name}: artifact.json `capabilitySnapshot` is {got} but \
                  recompiling source.lute today yields {want} — the capability \
                  surface moved and this fixture was left behind; re-record it \
                  per conformance/README.md",

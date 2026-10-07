@@ -177,7 +177,7 @@ impl IndexBeat {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectIndex {
     pub ir_version: String,
-    pub capability_version: String,
+    pub capability_snapshot: String,
     /// Sorted union of the compiler-derived capabilities of every artifact.
     pub required_semantics: Vec<String>,
     /// Resolved project identity migrations, unioned and sorted by source key.
@@ -284,7 +284,7 @@ impl std::fmt::Display for IndexError {
                 f,
                 "documents resolve different capability snapshots: `{first_doc}` is `{first}` \
                  but `{other_doc}` is `{other}` — two profiles are in play, so the project \
-                 has no single `capabilityVersion` to index (plugin §13)"
+                 has no single `capabilitySnapshot` to index (plugin §13)"
             ),
             IndexError::Conflict {
                 noun,
@@ -363,10 +363,10 @@ pub fn build_index(
 
     let capability: Option<(&str, &str)> = docs
         .first()
-        .map(|d| (d.path.as_str(), d.artifact.capability_version.as_str()));
+        .map(|d| (d.path.as_str(), d.artifact.capability_snapshot.as_str()));
     errors
         .extend(capability_mismatches(docs.iter().map(|d| {
-            (d.path.as_str(), d.artifact.capability_version.as_str())
+            (d.path.as_str(), d.artifact.capability_snapshot.as_str())
         })));
 
     let mut entities = Axis::new("entity kind");
@@ -549,7 +549,7 @@ pub fn build_index(
         .map_or((None, false), |(t, p)| (Some(t), p));
     Ok(ProjectIndex {
         ir_version: ir_version.to_string(),
-        capability_version: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
+        capability_snapshot: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
         required_semantics: required_semantics.into_iter().collect(),
         identity_renames: identity_renames.into_values().collect(),
         documents,
@@ -575,7 +575,7 @@ pub fn build_index(
 pub const E_CAPABILITY_MISMATCH: &str = "E-CAPABILITY-MISMATCH";
 
 /// The single-snapshot gate [`build_index`] enforces, over `(document,
-/// capabilityVersion)` pairs: one [`IndexError::CapabilityMismatch`] per
+/// capabilitySnapshot)` pairs: one [`IndexError::CapabilityMismatch`] per
 /// document whose snapshot differs from the FIRST document's. Shared with
 /// `check-project` (0.21.1 T1-11), which runs it over each project root's
 /// resolved snapshots so a project `play`/`compile --all` will refuse cannot
@@ -597,7 +597,7 @@ pub fn capability_mismatches<'a>(
         .collect()
 }
 
-/// `E-DUP-VOICEKEY` (0.21.1 T1-9): two voiced lines with DIFFERENT text
+/// `E-DUP-VOICEKEY` (0.21.1 T1-9, dsl 0.37.0 D6): two lines with DIFFERENT text
 /// compiled to one `voiceKey`.
 pub const E_DUP_VOICEKEY: &str = "E-DUP-VOICEKEY";
 
@@ -631,7 +631,7 @@ impl std::fmt::Display for VoiceKeyCollision {
     }
 }
 
-/// Every `voiceKey` carried by two or more voiced lines whose `text` differs,
+/// Every `voiceKey` carried by two or more lines (any role) whose `text` differs,
 /// across ALL of `docs` (a project's documents compile independently, so
 /// only a project-wide pass can see the collision). Lines repeating the same
 /// text under one key share a recording legitimately and are not reported.
@@ -641,13 +641,11 @@ pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
     for d in docs {
         for c in &d.artifact.commands {
             if let Command::Line(l) = c {
-                if let Some(key) = l.voice_key.as_deref() {
-                    by_key.entry(key).or_default().push((
-                        d.path.as_str(),
-                        l.line_id.as_str(),
-                        l.text.as_str(),
-                    ));
-                }
+                by_key.entry(l.voice_key.as_str()).or_default().push((
+                    d.path.as_str(),
+                    l.line_id.as_str(),
+                    l.text.as_str(),
+                ));
             }
         }
     }
@@ -704,7 +702,7 @@ mod tests {
             kind: DocKind::Scene,
             lute: "0.11.0".to_string(),
             ir_version: "0.11.0".to_string(),
-            capability_version: capability.to_string(),
+            capability_snapshot: capability.to_string(),
             identity_renames: Vec::new(),
             required_semantics: Vec::new(),
             meta: ArtifactMeta::Scene(SceneMeta {
@@ -726,7 +724,7 @@ mod tests {
             rules: Vec::new(),
             commands: Vec::new(),
             prereq_edges: Vec::new(),
-            shots: Vec::new(),
+            sections: Vec::new(),
             clock: None,
             gates: Vec::new(),
             terminal: None,
@@ -818,7 +816,7 @@ mod tests {
                 "lute.quest.lifecycle/1",
             ]
         );
-        assert_eq!(index.capability_version, "cap-1");
+        assert_eq!(index.capability_snapshot, "cap-1");
         assert_eq!(
             index
                 .relations
@@ -890,8 +888,8 @@ mod tests {
         }
         // Declaration order, not alphabetical.
         let pos = |k: &str| json.find(k).unwrap_or(usize::MAX);
-        assert!(pos("\"irVersion\"") < pos("\"capabilityVersion\""));
-        assert!(pos("\"capabilityVersion\"") < pos("\"documents\""));
+        assert!(pos("\"irVersion\"") < pos("\"capabilitySnapshot\""));
+        assert!(pos("\"capabilitySnapshot\"") < pos("\"documents\""));
         assert!(pos("\"documents\"") < pos("\"entities\""));
         assert!(json.ends_with('\n'));
         // dsl 0.19.0: no lore → no `entries` key (0.18 byte-identity);
@@ -917,7 +915,7 @@ mod tests {
             .enumerate()
             .map(|(i, (id, series, order))| {
                 Command::Entry(EntryCmd {
-                    addr: format!("{:03}-0100", i + 1),
+                    position: format!("{:03}-0100", i + 1),
                     id: (*id).to_string(),
                     target: Some(format!("item.{id}")),
                     category: Some("note".to_string()),

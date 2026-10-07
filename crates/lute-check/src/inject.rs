@@ -212,11 +212,6 @@ impl StageState {
 /// is visible, not silent magic.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Provenance {
-    /// Always `true`. The field is retained for IR compatibility, but with
-    /// `W-INJECT-CONFLICT` removed in 0.10.0 (§12.3, D-AA) nothing constructs a
-    /// `false`, and a consumer MUST NOT read a `true` as distinguishing
-    /// anything. Removing it is an IR break, deferred to a future cycle.
-    pub injected: bool,
     /// The named rule responsible (e.g. `"auto-anchor-on-show"`).
     pub by: String,
     /// Human-readable justification, surfaced in the LSP injection view.
@@ -398,7 +393,6 @@ fn auto_anchor_on_show(
                 anchor: default.to_string(),
             },
             provenance: Provenance {
-                injected: true,
                 by: "auto-anchor-on-show".to_string(),
                 explanation: format!(
                     "`{character}` shown without an explicit anchor; defaulting to `{default}`"
@@ -434,7 +428,6 @@ fn entry_emotion_lookahead(
             emotion: emotion.clone(),
         },
         provenance: Provenance {
-            injected: true,
             by: "entry-emotion-lookahead".to_string(),
             explanation: format!(
                 "pre-loading `{character}`'s first emotion `{emotion}` seen ahead of the entrance"
@@ -497,7 +490,6 @@ fn lower_line(
                 character: speaker.clone(),
             },
             provenance: Provenance {
-                injected: true,
                 by: "auto-pose-reset".to_string(),
                 explanation: format!(
                     "`{speaker}` had a dirty pose before a plain line; resetting to neutral"
@@ -588,7 +580,6 @@ fn hide_everyone(
                 character: character.clone(),
             },
             provenance: Provenance {
-                injected: true,
                 by: by.to_string(),
                 explanation: explain(&character, some_paths),
             },
@@ -946,8 +937,7 @@ mod tests {
         assert!(injected
             .iter()
             .any(|c| c.provenance.by == "auto-anchor-on-show"));
-        assert!(injected.iter().any(|c| c.provenance.injected
-            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
         assert!(st2.on_stage.contains_key("marina"));
     }
 
@@ -1019,7 +1009,6 @@ mod tests {
         assert!(
             matches!(&load.kind, InjectKind::SpriteLoad { emotion, .. } if emotion == "delighted")
         );
-        assert!(load.provenance.injected);
         assert_eq!(st2.on_stage["marina"].emotion.as_deref(), Some("delighted"));
     }
 
@@ -1197,8 +1186,7 @@ mod tests {
         let doms = anchor_domain("middle");
         let (st, injected) =
             lower_node(StageState::default(), &show_marina_no_anchor(), &[], &doms);
-        assert!(injected.iter().any(|c| c.provenance.injected
-            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "middle")));
+        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "middle")));
         assert_eq!(st.on_stage["marina"].anchor.as_deref(), Some("middle"));
     }
 
@@ -1288,8 +1276,7 @@ mod tests {
             &[],
             &anchor_domain("center"),
         );
-        assert!(injected.iter().any(|c| c.provenance.injected
-            && matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
         assert!(st.diags.is_empty(), "got {:?}", st.diags);
         assert_eq!(st.on_stage["marina"].anchor.as_deref(), Some("center"));
     }

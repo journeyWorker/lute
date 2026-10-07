@@ -1,14 +1,13 @@
 id: section-starts-with-background
-# The lint target is still spelled `shot` (the frozen `lute.plugin.json`
-# target enum); it binds one `## ` section.
-target: shot
+# The `section` target binds one `## ` section.
+target: section
 # A linear-VN norm: a beat is presented into an already-staged moment, and a
 # component or lore entry is spliced into someone else's staging (dsl 0.22.0
 # §13). A scene a manifest `chapters:` chain lists is a beat too — including
 # one that continues the previous scene in the same `select: sequence` raise.
 # `firstStagingTag` skips non-staging directives (`::accept`, `::use`,
 # `::end`, `::label`, `::jump`).
-when: 'shot.kind == "scene" && shot.firstStagingTag != "bg"'
+when: 'section.kind == "scene" && section.firstStagingTag != "bg"'
 level: warn
-message: "section `{shot.title}` does not open with a `::bg` staging directive"
+message: "section `{section.title}` does not open with a `::bg` staging directive"
 options: {}

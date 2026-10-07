@@ -377,7 +377,7 @@ impl Driver for Oracle {
         if rec.get("held").and_then(Json::as_bool) != Some(oracle) {
             self.disagreements.push(format!(
                 "{} arm {}: expr {} is {oracle}, the evaluated guard is {}",
-                rec["addr"].as_str().unwrap_or(""),
+                rec["position"].as_str().unwrap_or(""),
                 rec["arm"].as_u64().map_or(0, |i| i + 1),
                 rec["expr"],
                 rec["held"]
@@ -1347,13 +1347,13 @@ fn said_of(transcript: &[Json], art: &Json) -> Vec<String> {
         .and_then(Json::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|c| Some((c.get("addr")?.as_str()?, c)))
+        .filter_map(|c| Some((c.get("position")?.as_str()?, c)))
         .collect();
     transcript
         .iter()
         .filter(|r| r.get("kind").and_then(Json::as_str) == Some("line"))
         .map(|r| {
-            let at = r.get("addr").and_then(Json::as_str).unwrap_or("");
+            let at = r.get("position").and_then(Json::as_str).unwrap_or("");
             lute_trace::exec::said_line(r, cmds.get(at).copied())
         })
         .collect()

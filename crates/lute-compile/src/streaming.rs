@@ -319,7 +319,7 @@ fn preserves_emitted_prefix(old: &ExecutionIr, new: &ExecutionIr) -> bool {
 
 fn canonical_command(command: &Command) -> Option<serde_json::Value> {
     let mut command = command.clone();
-    canonicalize_address(command.addr_mut());
+    canonicalize_address(command.position_mut());
     command.for_each_target(&mut canonicalize_address);
     serde_json::to_value(command).ok()
 }

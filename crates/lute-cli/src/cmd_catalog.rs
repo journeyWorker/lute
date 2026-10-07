@@ -7,11 +7,11 @@ use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSnapshot;
 use lute_load::manifest_context;
 
-/// Re-stamp every provider snapshot in `dir` to the current `capabilityVersion`
+/// Re-stamp every provider snapshot in `dir` to the current `capabilitySnapshot`
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is
 /// created empty. Exit `0` on success, `2` on an I/O failure.
 ///
-/// With `--project`, the stamp is the RESOLVED multi-plugin `capabilityVersion`
+/// With `--project`, the stamp is the RESOLVED multi-plugin `capabilitySnapshot`
 /// (no scene ⇒ default profile, via `resolve_document_snapshot`), matching what a
 /// project build validates against (plugin §13). Without it, the core-only
 /// (`lute.core`) version is used — behavior identical to before.
@@ -100,7 +100,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     }
 
     println!(
-        "refreshed {refreshed} snapshot(s) in {} (capabilityVersion {version})",
+        "refreshed {refreshed} snapshot(s) in {} (capabilitySnapshot {version})",
         dir.display()
     );
     ExitCode::SUCCESS

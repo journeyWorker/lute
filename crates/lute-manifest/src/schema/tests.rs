@@ -89,7 +89,7 @@ writes:
         assert_eq!(e.asserts[0].relation, "holding");
         assert_eq!(e.asserts[0].args, vec![FactEffectArg::Attr("item".into())]);
         assert_eq!(e.asserts[1].to_string(), "seen(key, true)");
-        // capabilityVersion hashes `Debug`: a block without facts prints as
+        // capabilitySnapshot hashes `Debug`: a block without facts prints as
         // it did before `asserts`/`retracts` existed.
         let w: DirectiveEffects = serde_yaml::from_str(
             "writes: [ { scope: run, path: [sanity], value: { op: increment, by: -1 } } ]",
@@ -172,14 +172,14 @@ writes:
                 "the only kind is `builtin`",
             ),
             ("{ kind: builtin }", "needs `name:`"),
-            ("{ record: background }", "needs `fields:`"),
+            ("{ record: bg }", "needs `fields:`"),
             (
-                "{ record: background, fields: {}, kind: builtin, name: end }",
+                "{ record: bg, fields: {}, kind: builtin, name: end }",
                 "not a mix",
             ),
             ("{}", "`lower:` is empty"),
             (
-                "{ record: background, feilds: {} }",
+                "{ record: bg, feilds: {} }",
                 "unknown field `feilds`",
             ),
         ] {

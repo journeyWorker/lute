@@ -190,7 +190,7 @@ impl<D: Driver> Machine<D> {
 
     /// The differential harness's IR oracle (design §4.4): every `match` arm
     /// judged by its structured `expr` is observed ([`Driver::observe`]) as
-    /// `{"kind":"armExpr","addr","arm","expr","held","reads"}` — `held` the
+    /// `{"kind":"armExpr","position","arm","expr","held","reads"}` — `held` the
     /// evaluator's verdict (`null`: undecided), `reads` each state path the
     /// `expr` names with its value (`null`: unset) — so the `expr` can be
     /// judged again by the IR's own evaluator.

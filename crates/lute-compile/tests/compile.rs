@@ -160,7 +160,7 @@ state:
     assert!(lute_check::check(&input(HUB)).ok, "hub doc must pass check");
     let artifact = compile(&input(HUB)).expect("hub doc compiles to a hub record");
 
-    // The `hub` record: id, recordKey alias, filled converge, three options.
+    // The `hub` record: id, selectionKey alias, filled converge, three options.
     let hub = artifact
         .commands
         .iter()
@@ -170,7 +170,7 @@ state:
         })
         .expect("hub record");
     assert_eq!(hub.id, "chat");
-    assert_eq!(hub.record_key, "scene.choices.chat");
+    assert_eq!(hub.selection_key, "scene.choices.chat");
     assert!(
         !hub.converge.is_empty(),
         "converge addr filled by address pass"
@@ -222,7 +222,7 @@ state:
         "the exit-arm jump targets the hub converge"
     );
 
-    // Serialized shape: kind:"hub", recordKey, options[*].once/exit are bools.
+    // Serialized shape: kind:"hub", selectionKey, options[*].once/exit are bools.
     let json = serde_json::to_value(
         artifact
             .commands
@@ -232,7 +232,7 @@ state:
     )
     .unwrap();
     assert_eq!(json["kind"], "hub");
-    assert_eq!(json["recordKey"], "scene.choices.chat");
+    assert_eq!(json["selectionKey"], "scene.choices.chat");
     assert!(
         json["converge"].as_str().is_some_and(|s| !s.is_empty()),
         "converge present"
@@ -277,10 +277,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
     assert_eq!(artifact.lute, "0.36.6");
     assert_eq!(artifact.ir_version, "0.36.6");
-    assert_eq!(artifact.capability_version, inp.snapshot.version);
+    assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
     assert!(
-        !artifact.capability_version.is_empty(),
-        "capabilityVersion must be a non-empty snapshot stamp"
+        !artifact.capability_snapshot.is_empty(),
+        "capabilitySnapshot must be a non-empty snapshot stamp"
     );
     let envelope = serde_json::to_value(&artifact).unwrap();
     assert!(envelope["celEnv"].is_object(), "compiled envelope carries celEnv");
@@ -308,8 +308,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
 
     // First record: the bg, addressed densely.
     let json = serde_json::to_value(&artifact.commands[0]).unwrap();
-    assert_eq!(json["kind"], "background");
-    assert_eq!(json["addr"], "001-0100");
+    assert_eq!(json["kind"], "bg");
+    assert_eq!(json["position"], "001-0100");
 
     // Match arms expanded: @fond parenthesized; $ replaced by the subject.
     let m = artifact
@@ -340,13 +340,13 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     }
 
     // Back-filled thought-line ids (fixer max authored 0010 -> 0020/0030/0040),
-    // monologue => no voiceKey.
+    // monologue => a voiceKey too (dsl 0.37.0 D6).
     let thoughts: Vec<(&str, Option<&str>)> = artifact
         .commands
         .iter()
         .filter_map(|c| match c {
             Command::Line(l) if l.text != "Number." && l.speaker == "fixer" => {
-                Some((l.line_id.as_str(), l.voice_key.as_deref()))
+                Some((l.line_id.as_str(), Some(l.voice_key.as_str())))
             }
             _ => None,
         })
@@ -354,9 +354,9 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     assert_eq!(
         thoughts,
         vec![
-            ("marina.s01ep02.fixer_0020", None),
-            ("marina.s01ep02.fixer_0030", None),
-            ("marina.s01ep02.fixer_0040", None),
+            ("marina.s01ep02.fixer_0020", Some("marina.s01ep02.fixer-0020")),
+            ("marina.s01ep02.fixer_0030", Some("marina.s01ep02.fixer-0030")),
+            ("marina.s01ep02.fixer_0040", Some("marina.s01ep02.fixer-0040")),
         ]
     );
 
@@ -449,11 +449,11 @@ title: Cut gate
         .commands
         .iter()
         .map(|c| serde_json::to_value(c).unwrap())
-        .find(|v| v["kind"] == "cut")
-        .expect("a kind:\"cut\" record");
+        .find(|v| v["kind"] == "cg")
+        .expect("a kind:\"cg\" record");
     assert_eq!(
-        cut["wait"], false,
-        "cut carries the resolved family default"
+        cut["timing"]["wait"], false,
+        "cg carries the resolved family default"
     );
 }
 
@@ -709,7 +709,7 @@ state:
         .find(|o| o.id == "keep")
         .expect("keep option");
     // Label verbatim, interps retained.
-    assert_eq!(give.label, "Give {{run.coins}} coins");
+    assert_eq!(give.text, "Give {{run.coins}} coins");
     let give_json = serde_json::to_value(give).unwrap();
     assert_eq!(
         give_json["placeholders"],
@@ -855,7 +855,7 @@ state:
     );
     assert_ne!(
         on_body,
-        set["addr"].as_str().unwrap(),
+        set["position"].as_str().unwrap(),
         "empty <on> body must NOT dangle onto the following `::set` record: {cmds:#?}"
     );
     assert_eq!(
@@ -1184,7 +1184,7 @@ episode: 1
 
     let artifact = compile(&inp).expect("hub-choice ::use doc compiles");
     let sprite = artifact.commands.iter().find_map(|c| match c {
-        Command::Sprite(s) if s.character == "marina" => Some(s),
+        Command::Actor(s) if s.character == "marina" => Some(s),
         _ => None,
     });
     assert!(
@@ -1224,7 +1224,7 @@ episode: 1
         artifact
             .commands
             .iter()
-            .all(|c| !matches!(c, Command::Other(o) if o.tag == "use")),
+            .all(|c| !matches!(c, Command::Plugin(o) if o.tag == "use")),
         "no residual ::use record"
     );
 }
@@ -1305,7 +1305,7 @@ episode: 1
     let sprite_count = artifact
         .commands
         .iter()
-        .filter(|c| matches!(c, Command::Sprite(_)))
+        .filter(|c| matches!(c, Command::Actor(_)))
         .count();
     assert_eq!(
         sprite_count, 1,
@@ -1324,16 +1324,16 @@ episode: 1
             .unwrap_or_else(|| panic!("missing line {t:?}"))
     };
     let vo = by_text("A voiceover aside.");
-    assert_eq!(vo.role, Role::Voiceover);
-    assert!(vo.voice_key.is_some(), "voiceover is voiced (heard)");
+    assert_eq!(vo.role, Role::Vo);
+    assert!(!vo.voice_key.is_empty(), "voiceover carries a voiceKey");
 
     let os = by_text("Behind the door.");
-    assert_eq!(os.role, Role::Offscreen);
-    assert!(os.voice_key.is_some(), "offscreen is voiced (heard)");
+    assert_eq!(os.role, Role::Os);
+    assert!(!os.voice_key.is_empty(), "offscreen carries a voiceKey");
 
     let dlg = by_text("Back on stage.");
     assert_eq!(dlg.role, Role::Dialogue);
-    assert!(dlg.voice_key.is_some());
+    assert!(!dlg.voice_key.is_empty());
 }
 
 /// dsl 0.3.0 §5 delta lowering (0.3.0 T14): an `<on>` arm interleaving
@@ -1384,12 +1384,12 @@ state:
     let assert_rec = &cmds[assert_i];
     assert_eq!(assert_rec["relation"], "inParty");
     assert_eq!(assert_rec["args"], serde_json::json!(["ana"]));
-    assert!(assert_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(assert_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
 
     let retract_rec = &cmds[retract_i];
     assert_eq!(retract_rec["relation"], "atLoc");
     assert_eq!(retract_rec["args"], serde_json::json!(["ana", "_"]));
-    assert!(retract_rec["addr"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(retract_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
 }
 
 // -- dsl 0.12.0 / 0.37.0: forward jump (`::label`/`::jump`) -------------------
@@ -1432,7 +1432,7 @@ state:
 /// One command's `kind`/`addr`/`target` (Jump) as a plain triple, easing
 /// index/assert readability below.
 fn kind_addr(v: &serde_json::Value) -> (&str, &str) {
-    (v["kind"].as_str().unwrap(), v["addr"].as_str().unwrap())
+    (v["kind"].as_str().unwrap(), v["position"].as_str().unwrap())
 }
 
 /// dsl 0.12.0 §1: label/jump normal-path check+compile — an UNCONDITIONAL
@@ -1565,7 +1565,7 @@ fn guarded_jump_lowers_to_two_arm_match_both_branches() {
         .find(|c| c["kind"] == "end" && c["reason"] == "tailed")
         .expect("the tail shot's own ::end{reason=tailed} is a SEPARATE record (multi-end)");
     assert_ne!(
-        first_end["addr"], tail_end["addr"],
+        first_end["position"], tail_end["position"],
         "two independent ::end records — the multi-end combination"
     );
 }
@@ -1639,7 +1639,7 @@ episode: 2
         .find(|c| c["kind"] == "jump" && c["target"].is_string())
         .expect("the ::jump record");
     assert_eq!(
-        jump["target"], cmds[line_at]["addr"],
+        jump["target"], cmds[line_at]["position"],
         "the jump lands on the authored line, not the injected posReset: {cmds:#?}"
     );
 }
@@ -1841,7 +1841,7 @@ title: Legacy
 @narrator: Hi.
 "#;
     let art = compile(&input(DOC)).expect("legacy doc compiles");
-    let capability_version = art.capability_version.clone();
+    let capability_version = art.capability_snapshot.clone();
     let actual = serde_json::to_value(&art).unwrap();
     assert!(actual["celEnv"].is_object(), "compiled envelope carries celEnv");
 
@@ -1864,7 +1864,7 @@ title: Legacy
         "kind": "scene",
         "lute": "0.14.0",
         "irVersion": "0.14.0",
-        "capabilityVersion": capability_version,
+        "capabilitySnapshot": capability_version,
         "meta": {
             "character": "marina",
             "season": 1,
@@ -1874,7 +1874,7 @@ title: Legacy
         },
         "state": actual["state"].clone(),
         "commands": actual["commands"].clone(),
-        "shots": actual["shots"].clone(),
+        "sections": actual["sections"].clone(),
         "outsideRun": actual["outsideRun"].clone(),
     });
     assert_eq!(
@@ -1885,7 +1885,7 @@ title: Legacy
     // The core §7 claim: exactly three keys differ (`meta.id` added, two
     // version strings bumped) — nothing else moved.
     assert_eq!(actual["kind"], pinned_014["kind"]);
-    assert_eq!(actual["capabilityVersion"], pinned_014["capabilityVersion"]);
+    assert_eq!(actual["capabilitySnapshot"], pinned_014["capabilitySnapshot"]);
     assert_eq!(actual["commands"], pinned_014["commands"]);
     assert_eq!(actual["meta"]["character"], pinned_014["meta"]["character"]);
     assert_eq!(actual["meta"]["season"], pinned_014["meta"]["season"]);

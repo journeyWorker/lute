@@ -28,7 +28,7 @@ impl<D: Driver> Machine<D> {
             .unwrap_or("")
             .to_string();
         let mut rec = serde_json::Map::new();
-        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("accept".into()));
         rec.insert("quest".into(), Json::String(quest.clone()));
         if cmd.get("applies").and_then(Json::as_str) == Some("nextRun") {
@@ -87,7 +87,7 @@ impl<D: Driver> Machine<D> {
         }
         let text = self.interpolate(raw, placeholders);
         let mut rec = serde_json::Map::new();
-        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("line".into()));
         rec.insert("speaker".into(), Json::String(speaker.to_string()));
         rec.insert("text".into(), Json::String(text));
@@ -105,7 +105,7 @@ impl<D: Driver> Machine<D> {
 
     pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": kind,
         }));
     }
@@ -159,7 +159,7 @@ impl<D: Driver> Machine<D> {
             }
         }
         let rec = json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "set",
             "path": path,
             "value": value_to_json(&new),
@@ -233,7 +233,7 @@ impl<D: Driver> Machine<D> {
         let before = self.store.exclusive_now();
         self.store.assert((rel.clone(), args.clone()));
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "assert",
             "fact": render_fact(&rel, &args),
         }));
@@ -248,7 +248,7 @@ impl<D: Driver> Machine<D> {
         // `_` positions are a bulk wildcard over the ground positions.
         self.store.retract(&rel, &args);
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "retract",
             "pattern": render_fact(&rel, &args),
         }));
@@ -285,7 +285,7 @@ impl<D: Driver> Machine<D> {
     /// carries (`path` / `fact` / `pattern`), never evaluated.
     pub(super) fn rec_skipped(&mut self, cmd: &Json, kind: &str) {
         let mut rec = serde_json::Map::new();
-        rec.insert("addr".into(), Json::String(addr(cmd).to_string()));
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("skipped".into()));
         rec.insert("effect".into(), Json::String(kind.to_string()));
         // A write through `occasion.target` names the member it would have
@@ -332,7 +332,7 @@ impl<D: Driver> Machine<D> {
 
     pub(super) fn rec_barrier(&mut self, cmd: &Json) {
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "barrier",
             "timeline": cmd.get("timeline").cloned().unwrap_or(Json::Null),
             "at": cmd.get("at").cloned().unwrap_or(Json::Null),
@@ -346,7 +346,7 @@ impl<D: Driver> Machine<D> {
     pub(super) fn rec_end(&mut self, cmd: &Json) {
         self.terminated = true;
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "end",
             "reason": cmd.get("reason").cloned().unwrap_or(Json::Null),
         }));

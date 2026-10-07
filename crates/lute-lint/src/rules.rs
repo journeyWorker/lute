@@ -21,7 +21,7 @@ use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use crate::config::{deep_merge, LintConfig, RuleOverride};
 use crate::eval::{eval, render_message, Env, Value};
 use crate::metrics::{
-    AxisStats, DirectiveRow, DocTables, GroupRow, LineRow, ProjectRow, SceneRow, ShotRow,
+    AxisStats, DirectiveRow, DocTables, GroupRow, LineRow, ProjectRow, SceneRow, SectionRow,
     SpeakerRow, TopStats,
 };
 use crate::model::{
@@ -134,7 +134,7 @@ fn core_entries() -> Vec<CoreEntry> {
         },
         CoreEntry {
             id: "section-starts-with-background",
-            target: LintTarget::Shot,
+            target: LintTarget::Section,
             default_level: LintLevel::Warn,
             kind: CoreKind::Data(CORE_DATA_YAML[3]),
         },
@@ -562,10 +562,10 @@ fn evaluate_data(
                 }
             }
         }
-        LintTarget::Shot => {
-            for s in &ctx.tables.shots {
+        LintTarget::Section => {
+            for s in &ctx.tables.sections {
                 let env = Env::new()
-                    .with("shot", shot_value(s))
+                    .with("section", section_value(s))
                     .with("options", options.clone());
                 if let Some(f) = evaluate_env(env, s.span, Vec::new()) {
                     out.push(f);
@@ -916,7 +916,7 @@ fn line_value(l: &LineRow) -> Value {
     Value::Map(m)
 }
 
-fn shot_value(s: &ShotRow) -> Value {
+fn section_value(s: &SectionRow) -> Value {
     let mut m = BTreeMap::new();
     m.insert("index".into(), int(s.index));
     m.insert("title".into(), Value::Str(s.title.clone()));
@@ -936,7 +936,7 @@ fn scene_value(s: &SceneRow) -> Value {
     m.insert("directives".into(), int(s.directives));
     m.insert("sets".into(), int(s.sets));
     m.insert("choices".into(), int(s.choices));
-    m.insert("shots".into(), int(s.shots));
+    m.insert("sections".into(), int(s.sections));
     m.insert("maxLineWords".into(), int(s.maxLineWords));
     m.insert("avgLineWords".into(), num(s.avgLineWords));
     m.insert("dialogueRatio".into(), num(s.dialogueRatio));

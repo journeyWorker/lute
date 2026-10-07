@@ -144,7 +144,7 @@ fn unauthored_stamp_attrs_are_never_injected() {
 fn a_document_authoring_none_is_byte_identical() {
     // The SAME document, compiled against a snapshot that declares the
     // cross-cutting vocabulary and one that does not, must produce identical
-    // command bytes. (`capabilityVersion` legitimately differs — a changed
+    // command bytes. (`capabilitySnapshot` legitimately differs — a changed
     // capability surface — so the comparison is scoped to `commands`.)
     let text = format!(
         "{HDR}::bg{{location=\"cafe\" time=\"night\"}}\n\
@@ -293,7 +293,7 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     // …and it must not dirty the speaker's sprite, so the following PLAIN
     // line receives no injected `posReset`, and no sprite record carries the
     // authored value.
-    let sprites: Vec<&serde_json::Value> = cmds.iter().filter(|c| c["kind"] == "sprite").collect();
+    let sprites: Vec<&serde_json::Value> = cmds.iter().filter(|c| c["kind"] == "actor").collect();
     assert!(
         !sprites
             .iter()
@@ -317,7 +317,7 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     assert!(
         control
             .iter()
-            .any(|c| c["kind"] == "sprite" && c["posReset"] == serde_json::json!(true)),
+            .any(|c| c["kind"] == "actor" && c["posReset"] == serde_json::json!(true)),
         "control: the real sprite slot must still inject a `posReset`: {control:#?}"
     );
 }

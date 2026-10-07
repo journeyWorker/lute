@@ -645,7 +645,7 @@ fn malformed_lint_file_is_parse_error() {
     fs::remove_dir_all(&tmp).ok();
 }
 
-/// Lints must NEVER perturb `CapabilitySnapshot` / `capabilityVersion`
+/// Lints must NEVER perturb `CapabilitySnapshot` / `capabilitySnapshot`
 /// (design §1 non-goals). Two packages that differ ONLY by the presence
 /// of a `lints/` export produce assembled snapshots whose `version` hash
 /// is byte-identical — the concrete evidence that lints are not folded
@@ -713,7 +713,7 @@ fn lints_do_not_participate_in_capability_version() {
     assert!(eb.is_empty(), "{eb:?}");
     assert_eq!(
         snap_a.version, snap_b.version,
-        "capabilityVersion must be byte-identical whether a plugin ships lints or not"
+        "capabilitySnapshot must be byte-identical whether a plugin ships lints or not"
     );
 
     fs::remove_dir_all(&root_a).ok();

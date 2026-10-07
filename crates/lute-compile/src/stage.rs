@@ -140,8 +140,9 @@ fn walk_timeline(
     cx: &mut WalkCx<'_>,
     cont: &[Node],
 ) -> StageState {
-    cx.timelines += 1;
+    // dsl 0.37.0 §5.2: `timing.timeline` is a zero-based ordinal.
     let ordinal = cx.timelines;
+    cx.timelines += 1;
     let (clips, barrier_at) = {
         let ctx = Ctx {
             env: cx.env,
@@ -179,7 +180,7 @@ fn walk_timeline(
     }
     em.push(
         Command::Barrier(BarrierCmd {
-            addr: String::new(),
+            position: String::new(),
             timeline: ordinal,
             at: barrier_at,
         }),
@@ -362,41 +363,41 @@ fn emit_stamped(
     em.push(cmd, origin);
 }
 
-/// `InjectKind` → a SEPARATE `sprite` record with provenance (§7.4).
+/// `InjectKind` → a SEPARATE `actor` record with provenance (§7.4).
 fn inject_cmd(ic: &InjectedCommand) -> Command {
     let stamp = Stamp {
         provenance: Some(ic.provenance.clone()),
         ..Stamp::default()
     };
-    let sprite = |character: &str| SpriteCmd {
-        addr: String::new(),
+    let actor = |character: &str| ActorCmd {
+        position: String::new(),
         character: character.to_string(),
         anchor: None,
         action: None,
         exit: None,
-        pos_reset: None,
-        preload: None,
         emotion: None,
         costume: None,
+        pos_reset: None,
+        preload: None,
         stamp,
     };
-    Command::Sprite(match &ic.kind {
-        InjectKind::Anchor { character, anchor } => SpriteCmd {
+    Command::Actor(match &ic.kind {
+        InjectKind::Anchor { character, anchor } => ActorCmd {
             anchor: Some(anchor.clone()),
-            ..sprite(character)
+            ..actor(character)
         },
-        InjectKind::PosReset { character } => SpriteCmd {
+        InjectKind::PosReset { character } => ActorCmd {
             pos_reset: Some(true),
-            ..sprite(character)
+            ..actor(character)
         },
-        InjectKind::SpriteLoad { character, emotion } => SpriteCmd {
+        InjectKind::SpriteLoad { character, emotion } => ActorCmd {
             preload: Some(true),
             emotion: Some(emotion.clone()),
-            ..sprite(character)
+            ..actor(character)
         },
-        InjectKind::Hide { character } => SpriteCmd {
+        InjectKind::Hide { character } => ActorCmd {
             exit: Some(true),
-            ..sprite(character)
+            ..actor(character)
         },
     })
 }
@@ -417,7 +418,7 @@ fn walk_branch(
         .zip(&arms)
         .map(|(c, l)| ChoiceOption {
             id: c.id.clone(),
-            label: c.text.clone(),
+            text: c.text.clone(),
             line_id: String::new(),
             when: c.when.as_ref().map(CelPair::from_slot),
             target: l.sym(),
@@ -425,17 +426,17 @@ fn walk_branch(
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
-            labels: Default::default(),
+            texts: Default::default(),
         })
         .collect();
     let mut cmd = Command::Choice(ChoiceCmd {
-        addr: String::new(),
+        position: String::new(),
         branch_id: b.id.clone(),
-        record_key: format!("scene.choices.{}", b.id),
+        selection_key: format!("scene.choices.{}", b.id),
         options,
         converge: conv.sym(),
         prompt: attr_string(&b.attrs, "prompt"),
-        timeout_sec: attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok()),
+        timeout: attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok()),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);
@@ -456,7 +457,7 @@ fn walk_branch(
         em.leave_into(into.as_ref());
         em.push(
             Command::Jump(JumpCmd {
-                addr: String::new(),
+                position: String::new(),
                 target: conv.sym(),
             }),
             || SourceInfo::at(b.span),
@@ -491,7 +492,7 @@ fn walk_hub(
         .zip(&arms)
         .map(|(c, l)| HubOption {
             id: c.id.clone(),
-            label: c.text.clone(),
+            text: c.text.clone(),
             line_id: String::new(),
             once: attr_bool(&c.attrs, "once").unwrap_or(false),
             exit: attr_bool(&c.attrs, "exit").unwrap_or(false),
@@ -501,13 +502,13 @@ fn walk_hub(
                 .iter()
                 .map(placeholder_from_interp)
                 .collect(),
-            labels: Default::default(),
+            texts: Default::default(),
         })
         .collect();
     let mut cmd = Command::Hub(HubCmd {
-        addr: String::new(),
+        position: String::new(),
         id: id.clone(),
-        record_key: format!("scene.choices.{id}"),
+        selection_key: format!("scene.choices.{id}"),
         options,
         converge: conv.sym(),
         // dsl 0.23.0 §4: `<hub prompt>`, like `<branch prompt>`.
@@ -539,7 +540,7 @@ fn walk_hub(
         if attr_bool(&c.attrs, "exit").unwrap_or(false) {
             em.push(
                 Command::Jump(JumpCmd {
-                    addr: String::new(),
+                    position: String::new(),
                     target: conv.sym(),
                 }),
                 || SourceInfo::at(h.span),
@@ -678,7 +679,7 @@ fn walk_match(
         .iter()
         .any(|a| a.key == crate::normalize::TARGET_USE_ATTR);
     let mut cmd = Command::Match(MatchCmd {
-        addr: String::new(),
+        position: String::new(),
         subject: (!m.subject.raw.trim().is_empty()).then(|| CelPair::from_slot(&m.subject)),
         arms,
         otherwise,
@@ -686,7 +687,6 @@ fn walk_match(
         stamp: Stamp {
             authored,
             provenance: target_use.then(|| lute_check::Provenance {
-                injected: true,
                 by: "occasion-target-use".to_string(),
                 explanation: "plays the `::use` for the member `occasion.target` is bound to"
                     .to_string(),
@@ -721,7 +721,7 @@ fn walk_match(
         let exit = walk_seq(em, body, state.clone(), cx, tail, diags);
         em.push(
             Command::Jump(JumpCmd {
-                addr: String::new(),
+                position: String::new(),
                 target: conv.sym(),
             }),
             || SourceInfo::at(m.span),
@@ -802,14 +802,14 @@ fn component_use(cx: &WalkCx<'_>) -> Option<ComponentUse> {
     })
 }
 
-/// `timeline`/`at`/`duration` stamps on timeline-clip records (§4.3, Task 10).
+/// `timing.timeline`/`at`/`duration` on timeline-clip records (dsl 0.37.0 §5.2).
 fn apply_clip(cmd: &mut Command, clip: Option<ClipStamp>) {
     let Some(c) = clip else { return };
     if let Some(stamp) = cmd.stamp_mut() {
-        stamp.timeline = Some(c.timeline);
-        stamp.at = Some(c.at);
+        stamp.timing.timeline = Some(c.timeline);
+        stamp.timing.at = Some(c.at);
         if c.duration > 0.0 {
-            stamp.duration = Some(c.duration);
+            stamp.timing.duration = Some(c.duration);
         }
     }
 }
@@ -896,7 +896,7 @@ pub fn walk_quest(
         }
     }
     let mut cmd = Command::Quest(QuestCmd {
-        addr: String::new(),
+        position: String::new(),
         id: quest.id.clone(),
         title: quest.title.clone(),
         title_line_id: quest.title.as_ref().map(|_| format!("{}.title", quest.id)),
@@ -974,7 +974,7 @@ pub fn walk_quest(
             Node::On(on) => {
                 let label = em.fresh();
                 let mut on_cmd = Command::On(OnCmd {
-                    addr: String::new(),
+                    position: String::new(),
                     event: on.event.clone(),
                     when: on.when.as_ref().map(CelPair::from_slot),
                     body: label.sym(),
@@ -1063,7 +1063,7 @@ pub fn walk_entry(
     let text = |v: &Option<(String, lute_core_span::Span)>| v.as_ref().map(|(s, _)| s.clone());
     let advances = lute_check::advances_from_attr(entry.advances.as_ref(), &mut Vec::new());
     let mut cmd = Command::Entry(EntryCmd {
-        addr: String::new(),
+        position: String::new(),
         id: entry.id.clone(),
         target: text(&entry.target),
         category: text(&entry.category),
@@ -1140,7 +1140,7 @@ pub fn walk_bundle_beat(
     let title = beat.title.as_ref().map(|(t, _)| t.clone());
     let advances = lute_check::advances_from_attr(beat.advances.as_ref(), &mut Vec::new());
     let mut cmd = Command::Beat(BeatCmd {
-        addr: String::new(),
+        position: String::new(),
         id: key.to_string(),
         on: beat
             .on

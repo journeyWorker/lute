@@ -80,7 +80,7 @@ fn lines(artifact: &serde_json::Value) -> Vec<&serde_json::Value> {
 /// fields included) stay equal.
 fn strip_addressing(v: &mut serde_json::Value) {
     if let serde_json::Value::Object(map) = v {
-        for key in ["addr", "converge", "target", "otherwise"] {
+        for key in ["position", "converge", "target", "otherwise"] {
             map.remove(key);
         }
     }

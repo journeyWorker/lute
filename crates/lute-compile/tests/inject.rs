@@ -46,7 +46,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
 }
 
 fn sprite_desc(cmd: &Command) -> Option<String> {
-    let Command::Sprite(s) = cmd else { return None };
+    let Command::Actor(s) = cmd else { return None };
     let by = s
         .stamp
         .provenance
@@ -85,14 +85,11 @@ fn anchor_and_preload_inject_after_authored_auto() {
         ]
     );
     // The injected anchor record carries the default anchor.
-    let Command::Sprite(anchor) = &recs[1].cmd else {
+    let Command::Actor(anchor) = &recs[1].cmd else {
         panic!()
     };
     assert_eq!(anchor.anchor.as_deref(), Some("center"));
-    assert_eq!(
-        anchor.stamp.provenance.as_ref().map(|p| p.injected),
-        Some(true)
-    );
+    assert!(anchor.stamp.provenance.is_some(), "an injected record carries provenance");
 }
 
 #[test]
@@ -104,15 +101,15 @@ fn pos_reset_injects_before_the_plain_line() {
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(s) if s.pos_reset == Some(true) => "posReset",
-            Command::Sprite(_) => "sprite",
+            Command::Actor(s) if s.pos_reset == Some(true) => "posReset",
+            Command::Actor(_) => "actor",
             Command::Line(_) => "line",
             _ => "other",
         })
         .collect();
     // preload for the stateful first line, then: line A, posReset BEFORE line B.
-    assert_eq!(kinds, vec!["sprite", "sprite", "line", "posReset", "line"]);
-    let Command::Sprite(pr) = &recs[3].cmd else {
+    assert_eq!(kinds, vec!["actor", "actor", "line", "posReset", "line"]);
+    let Command::Actor(pr) = &recs[3].cmd else {
         panic!()
     };
     assert_eq!(
@@ -129,14 +126,14 @@ fn scene_change_hides_lingering_sprites_before_the_bg() {
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(s) if s.exit == Some(true) => "hide",
-            Command::Sprite(_) => "sprite",
-            Command::Background(_) => "background",
+            Command::Actor(s) if s.exit == Some(true) => "hide",
+            Command::Actor(_) => "actor",
+            Command::Bg(_) => "bg",
             _ => "other",
         })
         .collect();
-    assert_eq!(kinds, vec!["sprite", "hide", "background"]);
-    let Command::Sprite(h) = &recs[1].cmd else {
+    assert_eq!(kinds, vec!["actor", "hide", "bg"]);
+    let Command::Actor(h) = &recs[1].cmd else {
         panic!()
     };
     assert_eq!(
@@ -200,7 +197,7 @@ fn arm_end_entrance_preloads_post_convergence_emotion() {
     let preloads: Vec<String> = recs
         .iter()
         .filter_map(|r| match &r.cmd {
-            Command::Sprite(s) if s.preload == Some(true) => {
+            Command::Actor(s) if s.preload == Some(true) => {
                 assert_eq!(
                     s.stamp.provenance.as_ref().map(|p| p.by.as_str()),
                     Some("entry-emotion-lookahead"),
@@ -273,7 +270,7 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     let pos_resets: Vec<&str> = recs
         .iter()
         .filter_map(|r| match &r.cmd {
-            Command::Sprite(s) if s.pos_reset == Some(true) => Some(
+            Command::Actor(s) if s.pos_reset == Some(true) => Some(
                 s.stamp
                     .provenance
                     .as_ref()
@@ -314,14 +311,14 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
     let kinds: Vec<&str> = recs
         .iter()
         .map(|r| match &r.cmd {
-            Command::Sprite(_) => "sprite",
+            Command::Actor(_) => "actor",
             Command::Line(_) => "line",
             _ => "other",
         })
         .collect();
     assert_eq!(
         kinds,
-        ["sprite", "sprite", "line", "sprite", "sprite", "line"]
+        ["actor", "actor", "line", "actor", "actor", "line"]
     );
     let authored: Vec<Option<&str>> = recs[3..5]
         .iter()
@@ -332,7 +329,7 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
     // Nobody on stage: `::clear` emits nothing at all.
     let (recs, _) = walk("::clear\n@narrator: Nothing.");
     assert!(
-        recs.iter().all(|r| !matches!(r.cmd, Command::Sprite(_))),
+        recs.iter().all(|r| !matches!(r.cmd, Command::Actor(_))),
         "{recs:#?}"
     );
 }
@@ -369,7 +366,6 @@ fn join_unions_dirty_but_only_over_carried_characters() {
 #[test]
 fn provenance_serializes_explanation_not_reason() {
     let p = lute_check::Provenance {
-        injected: true,
         by: "auto-pose-reset".into(),
         explanation: "resetting to neutral".into(),
     };

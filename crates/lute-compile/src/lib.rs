@@ -729,7 +729,7 @@ fn compile_inner(
         kind: folded.doc_kind.into(),
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
-        capability_version: input.snapshot.version.clone(),
+        capability_snapshot: input.snapshot.version.clone(),
         identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
@@ -742,7 +742,7 @@ fn compile_inner(
         rules,
         commands,
         prereq_edges: prereq_edge_entries(&doc, &folded),
-        shots: shot_entries(&doc),
+        sections: section_entries(&doc),
         clock: folded.env.clock.clone(),
         gates: seam_gates(&folded, &table),
         terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
@@ -838,9 +838,9 @@ fn source_side_tables(
         match cmd {
             Command::Quest(q) => quest = Some(&q.id),
             Command::On(on) => {
-                let span = map.by_addr.get(&on.addr).map(|i| i.span);
+                let span = map.by_addr.get(&on.position).map(|i| i.span);
                 if let (Some(q), Some(span)) = (quest.and_then(|q| map.quests.get_mut(q)), span) {
-                    q.handlers.insert(on.addr.clone(), span);
+                    q.handlers.insert(on.position.clone(), span);
                 }
             }
             _ => {}
@@ -876,21 +876,23 @@ fn source_side_tables(
     }
 }
 
-/// Collect the authored `## ` shot headings (dsl 0.8.0 §6) into the artifact's
-/// descriptive `shots` table. Shot number is the 1-based DOCUMENT position
-/// (0.6.0 §3.2), matching the `addr` shot segment. Blank headings are skipped,
-/// so a document that titles no shot emits no table at all — byte-identical to
-/// 0.7.0. Quest documents have no shots (their addressing unit is the
-/// `<quest>`), so this returns empty for them.
-fn shot_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::ShotEntry> {
+/// Collect the authored `## ` sections (dsl 0.37.0 §5.3) into the artifact's
+/// descriptive `sections` table. The section number is the 1-based DOCUMENT
+/// position, matching a `position`'s first segment. A section with neither a
+/// heading nor an `{#id}` is skipped, so a document that titles none emits no
+/// table at all. Quest documents have no sections (their addressing unit is
+/// the `<quest>`), so this returns empty for them.
+fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
     doc.sections
         .iter()
         .enumerate()
         .filter_map(|(i, s)| {
             let heading = s.heading.trim();
-            (!heading.is_empty()).then(|| ir::ShotEntry {
-                shot: i as i64 + 1,
+            let id = s.id.as_ref().map(|(id, _)| id.clone());
+            (!heading.is_empty() || id.is_some()).then(|| ir::SectionEntry {
+                section: i as i64 + 1,
                 heading: heading.to_string(),
+                id,
             })
         })
         .collect()

@@ -171,11 +171,11 @@ impl LocaleBundle {
 ///
 /// Runs over the FINISHED execution IR, i.e. strictly downstream of
 /// [`crate::address::assign_addresses`] — every `lineId` is final. Iteration is
-/// command order (= `addr` order) then declared-locale order, so the diagnostic
+/// command order (= `position` order) then declared-locale order, so the diagnostic
 /// stream is deterministic.
 ///
-/// The record's own `text`/`label` is left untouched; only the additive
-/// `texts`/`labels` maps are written. Never panics.
+/// The record's own `text` is left untouched; only the additive
+/// `texts` maps are written. Never panics.
 pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for cmd in &mut artifact.commands {
@@ -183,12 +183,12 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
             Command::Line(l) => bind(&l.line_id, &mut l.texts, bundle, &mut diags),
             Command::Choice(c) => {
                 for o in &mut c.options {
-                    bind(&o.line_id, &mut o.labels, bundle, &mut diags);
+                    bind(&o.line_id, &mut o.texts, bundle, &mut diags);
                 }
             }
             Command::Hub(h) => {
                 for o in &mut h.options {
-                    bind(&o.line_id, &mut o.labels, bundle, &mut diags);
+                    bind(&o.line_id, &mut o.texts, bundle, &mut diags);
                 }
             }
             _ => {}

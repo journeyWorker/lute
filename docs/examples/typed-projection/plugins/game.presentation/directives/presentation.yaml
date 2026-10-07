@@ -6,7 +6,7 @@ directives:
       - { name: time, required: true, type: { providerRef: timeOfDayId } }
       - { name: assetId, required: true, type: { providerRef: assetId } }
     lower:
-      record: background
+      record: bg
       fields:
         location: { fromAttr: location }
         time: { fromAttr: time }
@@ -20,7 +20,7 @@ directives:
       - { name: anchor, type: { enumFromOption: anchor } }
       - { name: action, type: { enumFromOption: action } }
     lower:
-      record: sprite
+      record: actor
       fields:
         character: { fromAttr: character }
         costume: { fromAttr: costume }

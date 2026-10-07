@@ -1063,7 +1063,7 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
     let ir = stdout(&out);
     assert!(
         ir.lines()
-            .any(|l| l == "::background{location=\"parlor\" wait=true}"),
+            .any(|l| l == "::bg{location=\"parlor\"}"),
         "{ir}"
     );
     assert!(
@@ -1290,7 +1290,7 @@ fn the_transcript_shows_the_source_not_the_lowered_ir() {
         .iter()
         .filter(|r| r["kind"] == "line")
         .collect();
-    assert_eq!(lines[0]["role"], "monologue");
+    assert_eq!(lines[0]["role"], "mono");
     assert_eq!(lines[0]["lineId"], "parlor.wren_0010");
     let smith = lines[1];
     assert_eq!(smith["role"], "dialogue");

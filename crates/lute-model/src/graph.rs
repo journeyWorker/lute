@@ -262,12 +262,12 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             if let Some(info) = d
                 .source_map
                 .as_ref()
-                .and_then(|m| m.by_addr.get(&line.addr))
+                .and_then(|m| m.by_addr.get(&line.position))
             {
                 let lk = NodeKey::new(NodeKind::Line, line.line_id.clone());
                 let expanded = line.stamp.source.is_some();
                 let host_span = if expanded {
-                    expansion_sites.get(&line.addr).copied()
+                    expansion_sites.get(&line.position).copied()
                 } else {
                     Some(info.span)
                 };

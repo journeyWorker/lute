@@ -31,25 +31,25 @@ pub struct LoadedPlugin {
     /// (`providerRef` pattern — assembly rejects a kind whose provider is
     /// absent), and optional extra `attrs` for game-specific slots. Folded
     /// into [`crate::snapshot::CapabilitySnapshot::reward_kinds`] at
-    /// assembly, participating in `capabilityVersion` via the guarded
+    /// assembly, participating in `capabilitySnapshot` via the guarded
     /// hash section.
     pub reward_kinds: Vec<RewardKindDecl>,
     /// dsl 0.21.0 §2 `occasions/*.yaml`: engine occasion vocabulary (name,
     /// `select`, `target`). Folded into
     /// [`crate::snapshot::CapabilitySnapshot::occasions`] at assembly as a
-    /// guarded `capabilityVersion` section, the `rewardKinds` precedent.
+    /// guarded `capabilitySnapshot` section, the `rewardKinds` precedent.
     pub occasions: Vec<OccasionDecl>,
     /// lint-system design §6 `lints/*.yaml`: DECLARATIVE lint rules a
     /// plugin publishes. Stored with RAW ids; a consumer namespaces each
     /// as `<plugin-id>/<id>` via [`crate::lint::namespace_active_lints`].
     /// DELIBERATELY not folded into
-    /// [`crate::snapshot::CapabilitySnapshot`] or `capabilityVersion` —
+    /// [`crate::snapshot::CapabilitySnapshot`] or `capabilitySnapshot` —
     /// lints are advisory and must never change artifact identity
     /// (design §1 non-goals).
     pub lints: Vec<crate::lint::LintRuleDecl>,
     /// dsl 0.23.0 §7 `cast/*.yaml`: the declared speaker ids and display
     /// names. Folded into [`crate::snapshot::CapabilitySnapshot::cast`] at
-    /// assembly as a guarded `capabilityVersion` section.
+    /// assembly as a guarded `capabilitySnapshot` section.
     pub cast: Vec<CastMember>,
     /// Where each named declaration sits in the package's files — kind
     /// (`directive`, `event`, `occasion`, `rewardKind`, `cast`, …) → name →

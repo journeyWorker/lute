@@ -133,7 +133,7 @@ pub(crate) fn assign_addresses_into(
             if let (Some(map), Some(origin)) = (map.as_deref_mut(), rec.origin.take()) {
                 map.by_addr.insert(addr.clone(), origin);
             }
-            *rec.cmd.addr_mut() = addr;
+            *rec.cmd.position_mut() = addr;
             rec.cmd.for_each_target(&mut |t: &mut String| {
                 if let Some(n) = Label::parse_sym(t) {
                     match labels.get(&n) {
@@ -250,7 +250,7 @@ fn addr_of(shot: i64, position: usize, shot_w: usize, idx_w: usize) -> String {
     format!("{shot:0shot_w$}-{idx:0idx_w$}")
 }
 
-/// `lineId` on every line + option label; `voiceKey` on voiced lines; codes
+/// `lineId` on every line + option; `voiceKey` on every line; codes
 /// back-filled per speaker (max authored + 10 steps, `{:04}` — tag.rs's
 /// scheme). `segments` describes each addressing unit's `(prefix, count)` in
 /// EMISSION order (lengths sum to `cmds.len()`); ADJACENT segments sharing
@@ -340,10 +340,9 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                     scoped.as_str()
                 };
                 l.line_id = identity.render_line_id(prefix, &l.speaker, &code);
-                if l.role.voiced() {
-                    // v1: voiceKey bank == characterId == the speaker (§11).
-                    l.voice_key = Some(identity.render_voice_key(prefix, &l.speaker, &code));
-                }
+                // dsl 0.37.0 D6: every line, any role, carries its voice join.
+                // v1: voiceKey bank == characterId == the speaker (§11).
+                l.voice_key = identity.render_voice_key(prefix, &l.speaker, &code);
                 l.code = Some(code);
             }
             Command::Choice(c) => {
@@ -390,7 +389,7 @@ mod tests {
 
     fn line(speaker: &str, code: Option<&str>) -> Command {
         Command::Line(LineCmd {
-            addr: String::new(),
+            position: String::new(),
             role: Role::Dialogue,
             speaker: speaker.to_string(),
             text: String::new(),
@@ -400,7 +399,7 @@ mod tests {
             dialog_motion: None,
             as_label: None,
             line_id: String::new(),
-            voice_key: None,
+            voice_key: String::new(),
             placeholders: Vec::new(),
             texts: BTreeMap::new(),
             code: code.map(str::to_string),
@@ -430,7 +429,7 @@ mod tests {
         if converge {
             if let Some(last) = recs.last_mut() {
                 last.cmd = Command::Jump(JumpCmd {
-                    addr: String::new(),
+                    position: String::new(),
                     target: Label(0).sym(),
                 });
             }
@@ -447,8 +446,8 @@ mod tests {
 
     fn addr(cmd: &Command) -> &str {
         match cmd {
-            Command::Line(l) => &l.addr,
-            Command::Jump(j) => &j.addr,
+            Command::Line(l) => &l.position,
+            Command::Jump(j) => &j.position,
             _ => panic!("unexpected command in an addressing test"),
         }
     }
@@ -599,7 +598,7 @@ mod tests {
                 format!("bardstale.s01ep02.{}_{}", l.speaker, code)
             );
             let want_voice = format!("bardstale.s01ep02.{}-{}", l.speaker, code);
-            assert_eq!(l.voice_key.as_deref(), Some(want_voice.as_str()));
+            assert_eq!(Some(l.voice_key.as_str()), Some(want_voice.as_str()));
         }
         assert!(IdentityTemplates::default().validate().is_empty());
     }
@@ -621,11 +620,11 @@ mod tests {
 
         let tagged = as_line(&cmds[0]);
         assert_eq!(tagged.line_id, "bardstale.s01ep02/fixer#0050");
-        assert_eq!(tagged.voice_key.as_deref(), Some("vo_fixer_0050"));
+        assert_eq!(Some(tagged.voice_key.as_str()), Some("vo_fixer_0050"));
 
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.line_id, "bardstale.s01ep02/fixer#0060");
-        assert_eq!(untagged.voice_key.as_deref(), Some("vo_fixer_0060"));
+        assert_eq!(Some(untagged.voice_key.as_str()), Some("vo_fixer_0060"));
     }
 
     /// An unknown `{token}` is `E-IDENTITY-TEMPLATE`, reported per offending
@@ -677,7 +676,7 @@ mod tests {
         assert_eq!(tagged.code.as_deref(), Some("0050"));
         assert_eq!(tagged.line_id, "bardstale.s01ep02.fixer_0050");
         assert_eq!(
-            tagged.voice_key.as_deref(),
+            Some(tagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-0050")
         );
 
@@ -685,7 +684,7 @@ mod tests {
         assert_eq!(untagged.code.as_deref(), Some("0060"));
         assert_eq!(untagged.line_id, "bardstale.s01ep02.fixer_0060");
         assert_eq!(
-            untagged.voice_key.as_deref(),
+            Some(untagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-0060")
         );
     }
@@ -712,7 +711,7 @@ mod tests {
             "bardstale.s01ep02.fixer_18446744073709551615"
         );
         assert_eq!(
-            tagged.voice_key.as_deref(),
+            Some(tagged.voice_key.as_str()),
             Some("bardstale.s01ep02.fixer-18446744073709551615")
         );
 
@@ -721,7 +720,7 @@ mod tests {
         let untagged = as_line(&cmds[1]);
         assert_eq!(untagged.code, None);
         assert_eq!(untagged.line_id, "");
-        assert_eq!(untagged.voice_key, None);
+        assert_eq!(untagged.voice_key, "");
     }
 
     /// Two addressing units with DIFFERENT prefixes (IR addendum §4, D7):

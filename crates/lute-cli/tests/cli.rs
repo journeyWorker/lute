@@ -165,7 +165,7 @@ fn catalog_refresh_then_load_round_trips() {
     );
 
     // The rewritten file must still parse as a snapshot, with stale cleared and
-    // the manifest re-stamped to the current capabilityVersion.
+    // the manifest re-stamped to the current capabilitySnapshot.
     let refreshed = std::fs::read_to_string(dir.join("core.yaml")).unwrap();
     let snap: serde_yaml::Value = serde_yaml::from_str(&refreshed).unwrap();
     assert_eq!(snap["stale"], serde_yaml::Value::Bool(false));
@@ -269,7 +269,7 @@ fn hub_demo_example_compiles() {
         .find(|c| c["kind"] == "hub")
         .expect("a `hub` record in the compiled artifact");
     assert_eq!(hub["id"], "chatWithMarina");
-    assert_eq!(hub["recordKey"], "scene.choices.chatWithMarina");
+    assert_eq!(hub["selectionKey"], "scene.choices.chatWithMarina");
 }
 
 /// dsl 0.23.0 §4: `<hub prompt>` checks clean, and `lute run` carries the
@@ -403,7 +403,7 @@ fn context_surface_has_plugin_and_core_directives() {
     // With `--project`, the resolved snapshot activates the showcase plugin, so
     // the surface carries the plugin `serve` directive (with its attrs +
     // semantics) alongside the core directives, a non-empty enum map, folded
-    // `scene.*` state paths, and the resolved capabilityVersion.
+    // `scene.*` state paths, and the resolved capabilitySnapshot.
     let out = Command::new(BIN)
         .args([
             "context",
@@ -421,12 +421,12 @@ fn context_surface_has_plugin_and_core_directives() {
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
 
-    let ver = v["capabilityVersion"]
+    let ver = v["capabilitySnapshot"]
         .as_str()
-        .expect("capabilityVersion is a string");
+        .expect("capabilitySnapshot is a string");
     assert!(
         !ver.is_empty(),
-        "resolved capabilityVersion is non-empty: {v}"
+        "resolved capabilitySnapshot is non-empty: {v}"
     );
 
     let dirs = v["directives"].as_array().expect("directives array");
@@ -487,7 +487,7 @@ fn context_surface_has_plugin_and_core_directives() {
 #[test]
 fn context_core_only_has_eight_core_directives() {
     // No `--project` → the core-only `lute.core` snapshot: exactly the 8 baseline
-    // directives, no plugin `serve`, and the core capabilityVersion.
+    // directives, no plugin `serve`, and the core capabilitySnapshot.
     let out = Command::new(BIN)
         .args([
             "context",
@@ -521,11 +521,11 @@ fn context_core_only_has_eight_core_directives() {
         "core-only surface excludes the plugin `serve` directive: {names:?}"
     );
     assert!(
-        !v["capabilityVersion"]
+        !v["capabilitySnapshot"]
             .as_str()
-            .expect("capabilityVersion string")
+            .expect("capabilitySnapshot string")
             .is_empty(),
-        "core capabilityVersion is non-empty: {v}"
+        "core capabilitySnapshot is non-empty: {v}"
     );
 }
 

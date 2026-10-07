@@ -21,7 +21,7 @@ use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 /// needs to WRITE valid Lute against THIS file's project — the resolved
 /// directives/attrs/enums/asset-kinds/providers, the FOLDED state schema (author
 /// `state:` ∪ `uses:` imports ∪ implicit `<branch>`/`<hub>` choice+visited slots
-/// ∪ plugin-declared slots), the imported components, and the `capabilityVersion`
+/// ∪ plugin-declared slots), the imported components, and the `capabilitySnapshot`
 /// they were resolved under.
 ///
 /// Reuses the SAME resolution `check`/`compile` use — `build_input` (project +
@@ -854,7 +854,7 @@ fn authoring_surface(
     .collect();
 
     let mut root = Map::new();
-    root.insert("capabilityVersion".into(), snap.version.clone().into());
+    root.insert("capabilitySnapshot".into(), snap.version.clone().into());
     root.insert(
         "permissions".into(),
         serde_json::to_value(&snap.permissions)
@@ -1099,7 +1099,7 @@ fn permissions_outline(p: &serde_json::Value) -> String {
 }
 
 /// A compact human outline of the authoring surface (non-`--json` mode): the
-/// capabilityVersion, directive names + attr keys + semantics flags, enum
+/// capabilitySnapshot, directive names + attr keys + semantics flags, enum
 /// names WITH their members, state paths (with enum domains), the referenced
 /// reserved quest paths (dsl 0.5.1 §2), the relational vocabulary (entity
 /// kinds, relations w/ arity+domains+`derive`, seed facts, rules,
@@ -1124,8 +1124,8 @@ use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-on
 single quotes are required inside double-quoted attributes\n");
     let _ = writeln!(
         out,
-        "capabilityVersion: {}",
-        surface["capabilityVersion"].as_str().unwrap_or("")
+        "capabilitySnapshot: {}",
+        surface["capabilitySnapshot"].as_str().unwrap_or("")
     );
     let permissions = permissions_outline(&surface["permissions"]);
     let _ = writeln!(

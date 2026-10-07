@@ -54,7 +54,7 @@ pub struct OccasionBody {
 /// eligible beat in selection order; `sequence` (dsl 0.23.0 §3) presents
 /// every eligible beat, one after another, in selection order. Appending a
 /// variant leaves the `Debug` of `First`/`All` — and so every existing
-/// snapshot's `capabilityVersion` — unchanged.
+/// snapshot's `capabilitySnapshot` — unchanged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OccasionSelect {
@@ -100,7 +100,7 @@ impl OccasionJudge {
 ///
 /// `Debug` is written by hand: it prints exactly the derived form of the
 /// 0.23 four-field struct and adds `judge` only when it is `before`, so a
-/// snapshot that never declares `judge:` keeps its `capabilityVersion` (the
+/// snapshot that never declares `judge:` keeps its `capabilitySnapshot` (the
 /// hash folds this `Debug`).
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct OccasionDecl {
@@ -150,15 +150,15 @@ impl std::fmt::Debug for OccasionDecl {
             s.field("judge", &self.judge);
         }
         // dsl 0.27.0 §4: only when declared, so an ungated occasion keeps
-        // its `capabilityVersion`.
+        // its `capabilitySnapshot`.
         if let Some(gate) = &self.raised_when {
             s.field("raised_when", gate);
         }
-        // dsl 0.27.0 §3: only when declared (capabilityVersion stability).
+        // dsl 0.27.0 §3: only when declared (capabilitySnapshot stability).
         if !self.payload.is_empty() {
             s.field("payload", &self.payload);
         }
-        // dsl 0.28.0: only when declared (capabilityVersion stability).
+        // dsl 0.28.0: only when declared (capabilitySnapshot stability).
         if self.outside_run {
             s.field("outside_run", &self.outside_run);
         }
@@ -174,7 +174,7 @@ impl std::fmt::Debug for OccasionDecl {
 ///
 /// `Debug` prints a shape-only target as the bare bool, exactly as the 0.21
 /// `target: bool` field did, so a snapshot that never names a domain keeps
-/// its `capabilityVersion` (the hash folds `OccasionDecl`'s `Debug`); a
+/// its `capabilitySnapshot` (the hash folds `OccasionDecl`'s `Debug`); a
 /// domain without `members` prints exactly as the 0.22 `{ prefix, entity }`
 /// did, for the same reason.
 ///

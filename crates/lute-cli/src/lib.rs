@@ -34,7 +34,7 @@
 //!   `CheckResult`s + the project-wide diagnostics); otherwise per-file
 //!   human lines plus a project-wide section.
 //! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
-//!   `<dir>` against the current `capabilityVersion` and clear its `stale` flag,
+//!   `<dir>` against the current `capabilitySnapshot` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
 //!   (plugin §10; "an explicit `catalog refresh` precedes a build"). Correctness
 //!   never depends on a live/remote catalog — refresh only canonicalizes and

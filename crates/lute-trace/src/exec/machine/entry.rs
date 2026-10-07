@@ -67,7 +67,7 @@ impl<D: Driver> Machine<D> {
             return;
         }
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "entry",
             "id": id,
             "firstRead": first_read,
@@ -156,7 +156,7 @@ impl<D: Driver> Machine<D> {
             return;
         }
         self.driver.emit(json!({
-            "addr": addr(cmd),
+            "position": addr(cmd),
             "kind": "beat",
             "id": cmd.get("id").cloned().unwrap_or(Json::Null),
             "eligible": eligible,

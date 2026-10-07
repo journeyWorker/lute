@@ -75,7 +75,7 @@ pub enum Step {
     Shot {
         number: i64,
         /// The authored `## <title>` heading. Already in the IR
-        /// (`"shots":[{"shot":1,"heading":"Hydroponics"}]`); the transcript
+        /// (`"sections":[{"section":1,"heading":"Hydroponics"}]`); the transcript
         /// printed an ordinal over it (#10 row h, T7.10).
         heading: String,
     },
