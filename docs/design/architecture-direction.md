@@ -20,8 +20,9 @@ Lute is a **contract-first authoring toolchain**: humans and AI write `.lute`
 plus project declarations; the toolchain checks, analyzes and compiles them to
 an **execution IR**; engines — including the one we will build — interpret
 that IR. Lute owns the *meaning* of what it emits (evaluation order,
-required semantics, conformance cases) and a reference executor that pins that
-meaning. It does not own a shipped runtime, a VM, or play-time AI.
+required semantics, conformance cases) and, since D13, one embeddable runtime
+library that executes it. It does not own the game, settlement of
+engine-owned state, an effect router, or play-time AI.
 
 The next investments, in dependency order: lock the engine contract
 (engine-owned state and grant identity in the artifact, a portable
@@ -59,12 +60,16 @@ These are settled and are not re-litigated below.
 
 ### D1. Product boundary: Lute emits contracts; engines execute
 
-- Engines interpret the execution IR. Lute ships **no VM, no embeddable
-  runtime, no effect router, no runtime model-provider layer** (Deep's
-  runtime half is rejected — §3).
-- The reference executor (`lute run` / `play` / `trace` / `test`, the single
-  walker of `runtime-unification.md`) stays. Its role is **semantic oracle and
-  conformance reference**, not a product runtime.
+- Engines interpret the execution IR. Lute ships **no VM product, no effect
+  router, no runtime model-provider layer** (Deep's runtime half is rejected —
+  §3). Revised 2026-10-07 by D13: Lute does ship one embeddable runtime
+  *library* (`lute-runtime`) — a pure step function that returns effects as
+  data. An engine may embed it or implement the IR itself against the
+  conformance corpus; either way the host settles engine-owned state.
+- The reference executor (`lute run` / `play` / `trace` / `test`) is the
+  **semantic oracle and conformance reference**; under D13 it runs on the same
+  runtime library, so the oracle and the shipped runtime are one
+  implementation.
 - Lute still **defines execution meaning**: evaluation order (deadline vs.
   occasion vs. scene, grant order — already partly in
   `runtime/quest-lifecycle.md`), expression profile and function signatures,
@@ -348,8 +353,8 @@ Three layers with one-way contracts. Only the runtime reads the execution IR.
 |---|---|---|
 | Lute-owned play-time services: effect router, model invocation, settlement | Deep | Violates D1. A Lute **runtime library** that engines embed is D13; it returns effects as data and never settles engine-owned state. |
 | Runtime model invocation as a core operation | Deep | Play-time AI is a separate product (D1); breaks static analysis into Unknown. |
-| Wasm / subprocess / native runtime plugin tiers, MCP bridge in core | Deep | No runtime to plug into. Tooling-side TS runs out of process via CLI JSON (D10). |
-| Execution bytecode | Deep | No runtime to optimize; engines choose their own representation. |
+| Wasm / subprocess / native runtime plugin tiers, MCP bridge in core | Deep | The D13 runtime returns plugin and bridge calls as data; the host runs them. Tooling-side TS runs out of process via CLI JSON (D10). |
+| Execution bytecode | Deep | The D13 runtime executes the IR directly; a second representation needs a measured need first. |
 | Generic-language surface (`let`/`fn`/`type`/generics) | Deep | Existing state declarations and CEL cover the need; growth goes to domain modules (D4). |
 | Semantic IR as canonical source | Thesis | D2. |
 | YAML split of world/quest/narrative surfaces | Thesis | D2; only via measured experiment. |

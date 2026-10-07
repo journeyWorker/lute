@@ -196,10 +196,9 @@ come from a plugin's `enums` export emits **no** `enums` at all, because a
 plugin vocabulary is capability surface (folded into `capabilitySnapshot`), not
 per-document data. Either way this is data an engine already unions, so nothing
 new is required of it — the `enums` move added, renamed, and moved no field.
-`irVersion` reads `0.10.2`. The shape *does* change at `0.10.2`, in one place
-unrelated to `enums`: a plugin-owned, checker-validated frontmatter key now
-reaches the artifact (`meta.plugin`). See
-[What IR 0.10.2 changed](#what-ir-0102-changed). Members carrying
+That move did not change the IR shape. (The unrelated `meta.plugin` key arrived
+in the same release; see the history entry
+[What IR 0.10.2 changed](#what-ir-0102-changed).) Members carrying
 compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
@@ -208,9 +207,11 @@ serialized: an engine needs no member semantics at runtime.
 
 Every host negotiates in this order, before opening a playback session:
 
-1. **Exact-minor IR gate.** Before 1.0, a `0.34` engine accepts only
-   `0.34.*` artifacts. It refuses `0.33.*` and `0.35.*`; patch handling is
-   the engine's policy. From 1.0 onward, the released major's policy applies.
+1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
+   execution-IR shape, so an engine pins the exact `irVersion` major.minor
+   line: a `0.37` engine accepts only `0.37.*` artifacts and refuses `0.36.*`
+   and `0.38.*`; patch handling is the engine's policy. From 1.0 onward, the
+   released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
    `engine`, `irVersion`, and unique `supportedIds` are required; `version`
@@ -221,7 +222,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.34.0"
+irVersion: "0.37.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -236,9 +237,11 @@ description: "Text-only chat client: no staging, timeline, or clock"
 `lute run --engine <file>` and `lute play --engine <file>` perform both gates.
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
-bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an unsupported
-exact-minor line uses `E-ENGINE-IR-VERSION`. Unknown artifact or registry ids
-use `E-SEMANTICS-UNKNOWN`.
+bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
+the matrix's exact major.minor line (a `0.36.*` artifact against the `0.37.0`
+matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
+artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
+artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
 
 `lute check --engine <file>` and `lute check-project --engine <file>` perform
 author-time negotiation without playback. Missing capabilities are reported as
@@ -287,6 +290,13 @@ alias. To move an engine to 0.37 (dsl 0.37.0 §2.2, §5):
   `recordKey` is `selectionKey`.
 
 The schema file is `lute-ir-0.37.schema.json`.
+
+## IR change history
+
+*History, retained for anyone migrating an engine from an older line.* Each
+entry below describes the gate rules of its own release (some predate the
+exact major.minor gate); a current engine follows
+[Version negotiation](#version-negotiation-and-engine-integration) above.
 
 ### What IR 0.30.0 changed
 

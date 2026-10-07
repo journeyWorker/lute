@@ -3,7 +3,7 @@
 //! `E-AUTHOR-CASE`, naming its lowerCamelCase spelling.
 
 use lute_core_span::{Diagnostic, Layer, Severity};
-use lute_syntax::ast::{Arm, Attr, Document, Node};
+use lute_syntax::ast::{Arm, Attr, ClipNode, Document, Node};
 
 /// `E-AUTHOR-CASE`: an author key that is not lowerCamelCase (it contains
 /// `_`).
@@ -93,7 +93,15 @@ fn nodes(list: &[Node], out: &mut Vec<Diagnostic>) {
                 attrs(&o.attrs, Layer::Logic, out);
                 nodes(&o.body, out);
             }
-            Node::Timeline(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
+            Node::Timeline(t) => {
+                for clip in t.tracks.iter().flat_map(|track| &track.clips) {
+                    match &clip.node {
+                        ClipNode::Directive(d) => attrs(&d.attrs, Layer::Staging, out),
+                        ClipNode::Set(_) => {}
+                    }
+                }
+            }
+            Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }

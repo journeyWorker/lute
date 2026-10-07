@@ -596,6 +596,108 @@ mod dump_tests {
 
 }
 
+#[cfg(test)]
+mod removed_field_tests {
+    use super::*;
+
+    fn one(command: Json) -> Json {
+        json!({"irVersion": "0.37.0", "commands": [command]})
+    }
+
+    /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is
+    /// `E-IR-REMOVED-FIELD` naming the field and its 0.37 replacement.
+    #[test]
+    fn every_removed_spelling_is_refused_with_its_replacement() {
+        let cases: Vec<(Json, &str, &str)> = vec![
+            (json!({"capabilityVersion": "x", "commands": []}), "`capabilityVersion`", "`capabilitySnapshot`"),
+            (json!({"shots": [], "commands": []}), "`shots`", "`sections`"),
+            (json!({"sections": [{"shot": 1, "heading": "A"}], "commands": []}), "`shot`", "`section`"),
+            (one(json!({"kind": "line", "addr": "001"})), "`addr`", "`position`"),
+            (one(json!({"kind": "choice", "position": "001", "recordKey": "k"})), "`recordKey`", "`selectionKey`"),
+            (one(json!({"kind": "choice", "position": "001", "timeoutSec": 3})), "`timeoutSec`", "`timeout`"),
+            (one(json!({"kind": "vfx", "position": "001", "vfxType": "flash"})), "`vfxType`", "`type`"),
+            (one(json!({"kind": "bg", "position": "001", "wait": true})), "`wait`", "`timing.wait`"),
+            (one(json!({"kind": "bg", "position": "001", "duration": 1.0})), "`duration`", "`timing.duration`"),
+            (one(json!({"kind": "bg", "position": "001", "delay": 1.0})), "`delay`", "`timing.delay`"),
+            (one(json!({"kind": "bg", "position": "001", "at": 1.0})), "`at`", "`timing.at`"),
+            (one(json!({"kind": "bg", "position": "001", "timeline": 0})), "`timeline`", "`timing.timeline`"),
+            (one(json!({"kind": "camera", "position": "001", "zoom": 1.2})), "`zoom`", "`framing`"),
+            (one(json!({"kind": "camera", "position": "001", "moveX": 1})), "`moveX`", "`move`"),
+            (one(json!({"kind": "camera", "position": "001", "moveY": 1})), "`moveY`", "`move`"),
+            (one(json!({"kind": "camera", "position": "001", "shake": true})), "`shake`", "`move`"),
+            (one(json!({"kind": "camera", "position": "001", "reset": true})), "`reset`", "`transition`"),
+            (one(json!({"kind": "camera", "position": "001", "easing": "in"})), "`easing`", "`transition`"),
+            (one(json!({"kind": "cg", "position": "001", "action": "show"})), "`action`", "`display`"),
+            (one(json!({"kind": "cg", "position": "001", "full": true})), "`full`", "`layout`"),
+            (one(json!({"kind": "video", "position": "001", "action": "show"})), "`action`", "`display`"),
+            (one(json!({"kind": "music", "position": "001", "action": "play"})), "`action`", "`playback`"),
+            (one(json!({"kind": "music", "position": "001", "track": "t"})), "`track`", "`assetId`"),
+            (one(json!({"kind": "sfx", "position": "001", "name": "n"})), "`name`", "`sound`"),
+            (
+                one(json!({"kind": "choice", "position": "001", "options": [{"id": "a", "label": "A"}]})),
+                "`options[].label`",
+                "`options[].text`",
+            ),
+            (
+                one(json!({"kind": "hub", "position": "001", "options": [{"id": "a", "label": "A"}]})),
+                "`options[].label`",
+                "`options[].text`",
+            ),
+            (
+                one(json!({"kind": "choice", "position": "001", "options": [{"id": "a", "labels": {"ko": "가"}}]})),
+                "`options[].labels`",
+                "`options[].texts`",
+            ),
+            (one(json!({"kind": "line", "position": "001", "role": "monologue"})), "`monologue`", "`mono`"),
+            (one(json!({"kind": "line", "position": "001", "role": "offscreen"})), "`offscreen`", "`os`"),
+            (one(json!({"kind": "line", "position": "001", "role": "voiceover"})), "`voiceover`", "`vo`"),
+            (
+                one(json!({"kind": "actor", "position": "001", "provenance": {"injected": true}})),
+                "`provenance.injected`",
+                "no replacement",
+            ),
+            (one(json!({"kind": "line"})), "`position`", "recompile"),
+        ];
+        for (art, field, replacement) in cases {
+            let message = removed_ir_field(&art).unwrap_or_else(|| panic!("accepted: {art}"));
+            assert!(message.starts_with("E-IR-REMOVED-FIELD: "), "{message}");
+            assert!(message.contains(field), "{field} not named: {message}");
+            assert!(message.contains(replacement), "{replacement} not named: {message}");
+        }
+    }
+
+    /// Names removed from one kind stay legal where 0.37 still defines them.
+    #[test]
+    fn current_fields_sharing_a_removed_name_are_accepted() {
+        for command in [
+            json!({"kind": "actor", "position": "001", "action": "wave"}),
+            json!({"kind": "line", "position": "001", "action": "nod", "role": "mono"}),
+            json!({"kind": "vfx", "position": "001", "type": "flash", "label": "l"}),
+            json!({"kind": "sequence", "position": "001", "name": "intro"}),
+            json!({"kind": "barrier", "position": "001", "timeline": 0, "at": 1.0}),
+            json!({"kind": "choice", "position": "001", "options": [{"id": "a", "text": "A"}]}),
+        ] {
+            assert_eq!(removed_ir_field(&one(command.clone())), None, "{command}");
+        }
+    }
+
+    /// Every compiled artifact of the conformance corpus (regenerated by the
+    /// current toolchain) passes: the inventory never trips on valid 0.37 IR.
+    #[test]
+    fn compiled_corpus_artifacts_never_trip_the_check() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&root).unwrap() {
+            let path = entry.unwrap().path().join("artifact.json");
+            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let art: Json = serde_json::from_str(&text).unwrap();
+            assert_eq!(removed_ir_field(&art), None, "{}", path.display());
+            seen += 1;
+        }
+        assert!(seen >= 40, "only {seen} corpus artifacts found");
+    }
+}
+
 /// One condition's emitted `expr` tree and the scope the dump reads from it.
 pub(crate) struct DumpCondition {
     pub expr: Json,
@@ -669,9 +771,9 @@ const REMOVED_ENVELOPE_FIELDS: [(&str, &str); 2] = [
     ("shots", "`sections`"),
 ];
 
-/// Command keys 0.37 removed or renamed (dsl 0.37.0 §2.2, §5.2, §5.3). The
-/// flattened stamp members moved into the nested `timing` object; a
-/// `barrier`'s own `timeline`/`at` join fields are exempt.
+/// Command keys 0.37 removed or renamed on every kind (dsl 0.37.0 §2.2, §5.2,
+/// §5.3). The flattened stamp members moved into the nested `timing` object;
+/// a `barrier`'s own `timeline`/`at` join fields are exempt.
 const REMOVED_COMMAND_FIELDS: [(&str, &str); 9] = [
     ("addr", "`position`"),
     ("recordKey", "`selectionKey`"),
@@ -683,6 +785,29 @@ const REMOVED_COMMAND_FIELDS: [(&str, &str); 9] = [
     ("at", "`timing.at`"),
     ("timeline", "`timing.timeline`"),
 ];
+
+/// `(kind, field, replacement)`: command keys 0.37 removed from one kind only
+/// (dsl 0.37.0 §2.2, §3.3, §5.3). The same name stays legal on other kinds —
+/// `actor.action` and `line.action` are current fields, `cg.action` is not.
+const REMOVED_KIND_FIELDS: [(&str, &str, &str); 12] = [
+    ("camera", "zoom", "the `framing`/`move`/`transition` domain members"),
+    ("camera", "moveX", "the `framing`/`move`/`transition` domain members"),
+    ("camera", "moveY", "the `framing`/`move`/`transition` domain members"),
+    ("camera", "shake", "the `framing`/`move`/`transition` domain members"),
+    ("camera", "reset", "the `framing`/`move`/`transition` domain members"),
+    ("camera", "easing", "the `framing`/`move`/`transition` domain members"),
+    ("cg", "action", "`display`"),
+    ("cg", "full", "`layout`"),
+    ("video", "action", "`display`"),
+    ("music", "action", "`playback`"),
+    ("music", "track", "`assetId`"),
+    ("sfx", "name", "`sound` and/or `assetId`"),
+];
+
+/// `(old, new)`: line `role` values 0.37 renamed (dsl 0.37.0 §2.2); the old
+/// spelling is not an accepted IR alias.
+const REMOVED_LINE_ROLES: [(&str, &str); 3] =
+    [("monologue", "mono"), ("offscreen", "os"), ("voiceover", "vo")];
 
 /// `E-IR-REMOVED-FIELD` (dsl 0.37.0 §4): refuse an execution IR that still
 /// carries a field 0.37 removed or renamed, or a command with no `position`.
@@ -699,17 +824,55 @@ fn removed_ir_field(art: &Json) -> Option<String> {
             ));
         }
     }
+    let sections = art.get("sections").and_then(Json::as_array).into_iter().flatten();
+    for (index, section) in sections.enumerate() {
+        if section.get("shot").is_some() {
+            return Some(format!(
+                "{CODE}: section {index} carries removed field `shot`; 0.37 reads `section` \
+                 — {RECOMPILE}"
+            ));
+        }
+    }
     let commands = art.get("commands").and_then(Json::as_array)?;
     for (index, command) in commands.iter().enumerate() {
         let kind = command.get("kind").and_then(Json::as_str).unwrap_or("");
+        let removed = |field: &str, replacement: &str| {
+            format!(
+                "{CODE}: command {index} (`{kind}`) carries removed field `{field}`; \
+                 0.37 reads {replacement} — {RECOMPILE}"
+            )
+        };
         for (field, replacement) in REMOVED_COMMAND_FIELDS {
             if kind == "barrier" && matches!(field, "timeline" | "at") {
                 continue;
             }
             if command.get(field).is_some() {
+                return Some(removed(field, replacement));
+            }
+        }
+        for (owner, field, replacement) in REMOVED_KIND_FIELDS {
+            if kind == owner && command.get(field).is_some() {
+                return Some(removed(field, replacement));
+            }
+        }
+        if matches!(kind, "choice" | "hub") {
+            let options = command.get("options").and_then(Json::as_array).into_iter().flatten();
+            for option in options {
+                for (field, replacement) in
+                    [("label", "`options[].text`"), ("labels", "`options[].texts`")]
+                {
+                    if option.get(field).is_some() {
+                        return Some(removed(&format!("options[].{field}"), replacement));
+                    }
+                }
+            }
+        }
+        if kind == "line" {
+            let role = command.get("role").and_then(Json::as_str);
+            if let Some((old, new)) = REMOVED_LINE_ROLES.iter().find(|(old, _)| Some(*old) == role) {
                 return Some(format!(
-                    "{CODE}: command {index} (`{kind}`) carries removed field `{field}`; \
-                     0.37 reads {replacement} — {RECOMPILE}"
+                    "{CODE}: command {index} (`line`) carries removed role `{old}`; 0.37 reads \
+                     role `{new}` — {RECOMPILE}"
                 ));
             }
         }

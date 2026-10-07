@@ -17140,10 +17140,9 @@ come from a plugin's `enums` export emits **no** `enums` at all, because a
 plugin vocabulary is capability surface (folded into `capabilitySnapshot`), not
 per-document data. Either way this is data an engine already unions, so nothing
 new is required of it — the `enums` move added, renamed, and moved no field.
-`irVersion` reads `0.10.2`. The shape *does* change at `0.10.2`, in one place
-unrelated to `enums`: a plugin-owned, checker-validated frontmatter key now
-reaches the artifact (`meta.plugin`). See
-[What IR 0.10.2 changed](#what-ir-0102-changed). Members carrying
+That move did not change the IR shape. (The unrelated `meta.plugin` key arrived
+in the same release; see the history entry
+[What IR 0.10.2 changed](#what-ir-0102-changed).) Members carrying
 compiler semantics (`action`'s
 `exits:`, `anchor`'s `default:`) are resolved away at compile time and never
 serialized: an engine needs no member semantics at runtime.
@@ -17152,9 +17151,11 @@ serialized: an engine needs no member semantics at runtime.
 
 Every host negotiates in this order, before opening a playback session:
 
-1. **Exact-minor IR gate.** Before 1.0, a `0.34` engine accepts only
-   `0.34.*` artifacts. It refuses `0.33.*` and `0.35.*`; patch handling is
-   the engine's policy. From 1.0 onward, the released major's policy applies.
+1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
+   execution-IR shape, so an engine pins the exact `irVersion` major.minor
+   line: a `0.37` engine accepts only `0.37.*` artifacts and refuses `0.36.*`
+   and `0.38.*`; patch handling is the engine's policy. From 1.0 onward, the
+   released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
    `engine`, `irVersion`, and unique `supportedIds` are required; `version`
@@ -17165,7 +17166,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.34.0"
+irVersion: "0.37.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -17180,9 +17181,11 @@ description: "Text-only chat client: no staging, timeline, or clock"
 `lute run --engine <file>` and `lute play --engine <file>` perform both gates.
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
-bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an unsupported
-exact-minor line uses `E-ENGINE-IR-VERSION`. Unknown artifact or registry ids
-use `E-SEMANTICS-UNKNOWN`.
+bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
+the matrix's exact major.minor line (a `0.36.*` artifact against the `0.37.0`
+matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
+artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
+artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
 
 `lute check --engine <file>` and `lute check-project --engine <file>` perform
 author-time negotiation without playback. Missing capabilities are reported as
@@ -17231,6 +17234,13 @@ alias. To move an engine to 0.37 (dsl 0.37.0 §2.2, §5):
   `recordKey` is `selectionKey`.
 
 The schema file is `lute-ir-0.37.schema.json`.
+
+## IR change history
+
+*History, retained for anyone migrating an engine from an older line.* Each
+entry below describes the gate rules of its own release (some predate the
+exact major.minor gate); a current engine follows
+[Version negotiation](#version-negotiation-and-engine-integration) above.
 
 ### What IR 0.30.0 changed
 
@@ -20648,12 +20658,11 @@ The **repository files are the normative source of truth.** This site is the rea
 | `0.29.0` | **One identifier rule, intent you can state, games as examples**: every name an author writes — scene, beat, entry, quest, objective, branch, hub, choice and mark ids, document id segments, `share` keys, seasons, relations, defs, kinds and members, component params, and what a plugin declares — is a letter, then letters, digits or `_`, and a `-` is an error at the name under the slot's code naming the camelCase spelling (0.28 refused it only where CEL reads the name); `lute check-project` prints causes first (`lute.project.yaml`, plugins, schemas, documents in path order, then project-wide rows); `W-CHAPTER-STALL` stays specific to `chapters:`; `lute new scene --occasion` writes `on:`; a warning that can describe an intended design has a spelling that states the intent, and `terminal:` gains the long form `{ when, persists: true }` for an ending that outlives runs on purpose (`W-TERMINAL-PERSISTENT` silent, `lute play` says the game is over for good); the fourteen dogfood games ship as checked examples under `docs/examples/games/`. IR additive (`terminalPersists`); `schemas/lute-ir-0.28.schema.json` is renamed `lute-ir-0.29.schema.json`. | [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md) |
 | `0.29.1` | **Patch: engine-owned ids keep their spelling**. No new syntax and no IR shape change: the 0.29 identifier rule stays for every name Lute declares and stops reaching ids the engine owns — a `target` whose members no `entities:` kind lists and an entry's `category` accept `-` again, as in 0.28.1. `schemas/lute-ir-0.29.schema.json` kept its name and `$id`. | [CHANGELOG](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md); [versioning.md](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md) |
 | `0.30.0` | **Names as written, paths like JavaScript**: every name a condition reaches by path, index or fact argument — scene, beat, entry, quest, objective, branch, hub, choice and mark ids, document id segments, `share` keys, seasons, relations, enum and entity kinds and members, plugin occasions and events, targets and categories — is letters, digits, `_` or `-`, not starting with `-` (`lamp-out`, `zero-coke-001`, `001`), ending 0.29.1's split between Lute-declared names and engine-owned ids; a name read bare as `@name` (defs, def params, component and template params) stays an identifier. A name that is not an identifier is written in a condition as a quoted index or a quoted fact argument, as in JavaScript and CEL — `quest["zero-coke-001"].state`, `run.visits['lab-b2']`, `holds('at', ["lab-b2"])` — in guards, `::set` / `::assert` / `::retract` targets, `{{…}}`, Datalog rules and play / test / trace inputs, and both spellings are one name; a non-identifier name after a `.` is `E-PATH-IDENT` naming the bracket spelling. The IR adds no field: path fields carry the canonical dotted path, whose segments may contain `-` or start with a digit; `schemas/lute-ir-0.29.schema.json` is renamed `schemas/lute-ir-0.30.schema.json`. | [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md) |
-
 | `0.32.0` | **Standard CEL and execution IR**: the closed standard-CEL profile uses `int` / `double` and list-form fact queries in conditions while Datalog rule syntax stays unchanged; scalar state removes `number`; quest saves expose numbered `questInstances`, grants carry `instance` / `index`; execution IR carries `celEnv`, `owner`, and `{cel, expr, authored?}` slots; `W-QUEST-STATE-HAS` replaces `W-QUEST-STATE-ISSET`, with `E-FACT-QUERY` and `E-RUN-OWNED-WRITE`. | [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
+| `0.33.0` | **Domain modules and semantic negotiation**: the execution IR and project index carry compiler-derived sorted `requiredSemantics`; the registry assigns engine-visible semantic ids, while `lute.engine.yaml` declares `supportedIds`. Pre-1.0 engines gate exact major.minor first, then refuse unsupported ids before playback (`E-ENGINE-SEMANTICS`); `check --engine` and `check-project --engine` report missing ids at author time (`E-CHECK-ENGINE-SEMANTICS`). New diagnostics cover malformed matrices, unsupported IR lines, and unknown ids. The reference matrix supports every current id; plugin meaning remains pinned by the exact capability snapshot. | [0.33.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md) |
+| `0.34.0` | **Project semantic model and impact analysis**: one shared project model powers project commands; `lute impact` reports deterministic reverse dependency closures; `lute constraints` checks reachable, completable, speaker-guard, and single-slot-progress policies; diagnostics and analysis results carry explicit evidence levels and bounded scopes. | [0.34.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md) |
 | `0.36.6` | **AI edit loop**: lossless syntax and canonical formatting, source/project revisions, task-scoped context and position queries, semantic diff, and atomic revision-checked source patches. | [0.36.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md) |
 | `0.37.0` | **Surface cleanup — breaking, clean cutover**: `##` sections with an optional stable `{#id}`; `::actor`, `::cg{assetId display layout}`, `::sequence{name}`, `::music{playback}`, `::video{display}`; `::camera` takes project-declared `framing` / `move` / `transition` members; `::jump{to}` / `::label{name}`; choice `text=`; `<match subject=>`; `<reward id>`; `{mono}` only for the point of view or `monoSpeakers:`; a `voiceKey` on every line; inline text modifiers `:pause{s}`, `:speed[…]{rate}` and `textStyle` spans; frontmatter `title:` is the only title. The IR gives every command `family` and `position`, nests timing in `timing`, renames kinds to `bg` / `actor` / `cg` and roles to `mono` / `os` / `vo`, and carries `capabilitySnapshot`; `lute fix` rewrites the lossless renames. | [0.37.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md) |
-| `0.34.0` | **Project semantic model and impact analysis**: one shared project model powers project commands; `lute impact` reports deterministic reverse dependency closures; `lute constraints` checks reachable, completable, speaker-guard, and single-slot-progress policies; diagnostics and analysis results carry explicit evidence levels and bounded scopes. | [0.34.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md) |
-| `0.33.0` | **Domain modules and semantic negotiation**: the execution IR and project index carry compiler-derived sorted `requiredSemantics`; the registry assigns engine-visible semantic ids, while `lute.engine.yaml` declares `supportedIds`. Pre-1.0 engines gate exact major.minor first, then refuse unsupported ids before playback (`E-ENGINE-SEMANTICS`); `check --engine` and `check-project --engine` report missing ids at author time (`E-CHECK-ENGINE-SEMANTICS`). New diagnostics cover malformed matrices, unsupported IR lines, and unknown ids. The reference matrix supports every current id; plugin meaning remains pinned by the exact capability snapshot. | [0.33.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md) |
 | — | State-model design rationale & audit record — *why* the four-tier (`scene`/`run`/`user`/`app`) state model is shaped this way; non-normative companion to `0.0.1` §9. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 For the authoring-side reading of the vocabulary slots — the three declaration

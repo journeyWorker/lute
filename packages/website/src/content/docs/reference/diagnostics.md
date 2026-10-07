@@ -728,7 +728,7 @@ Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-IR-REMOVED-FIELD
 
-`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, or `provenance.injected`), or a command with no `position`. Recompile the source with the current toolchain.
+`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, `provenance.injected`, a per-kind field such as camera `zoom`, `cg.full`, `cg`/`video`/`music` `action`, `music.track` or `sfx.name`, an option `label`, or an old line role such as `monologue`), or a command with no `position`. The message names the 0.37 replacement. Recompile the source with the current toolchain.
 
 Spec: [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 

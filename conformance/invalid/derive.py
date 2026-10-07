@@ -29,6 +29,9 @@ def derive(name, artifact):
     elif name == "removed-field-injected":
         injected = next(c for c in commands if "provenance" in c)
         injected["provenance"]["injected"] = True
+    elif name == "removed-field-kind":
+        cg = next(c for c in commands if c["kind"] == "cg")
+        cg["action"] = cg.pop("display")
     elif name == "removed-kind-sprite":
         next(c for c in commands if c["kind"] == "actor")["kind"] = "sprite"
     else:

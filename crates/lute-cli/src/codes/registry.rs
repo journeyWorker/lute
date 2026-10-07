@@ -618,7 +618,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-IR-REMOVED-FIELD",
-        summary: "`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, or `provenance.injected`), or a command with no `position`. Recompile the source with the current toolchain.",
+        summary: "`lute run` received an execution IR that still carries a field 0.37 removed or renamed (such as `addr`, `capabilityVersion`, `recordKey`, `shots`, a flattened `wait`/`duration`/`delay`/`at`/`timeline` stamp, `provenance.injected`, a per-kind field such as camera `zoom`, `cg.full`, `cg`/`video`/`music` `action`, `music.track` or `sfx.name`, an option `label`, or an old line role such as `monologue`), or a command with no `position`. The message names the 0.37 replacement. Recompile the source with the current toolchain.",
         spec: &["dsl 0.37.0 §4", "dsl 0.37.0 §5.3"],
     },
     Code {

@@ -727,7 +727,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-IR-REMOVED-FIELD
 
-`lute run`이 받은 실행 IR에 0.37에서 제거되거나 이름이 바뀐 필드(`addr`, `capabilityVersion`, `recordKey`, `shots`, 평탄화된 `wait`/`duration`/`delay`/`at`/`timeline` 스탬프, `provenance.injected` 등)가 남아 있거나, `position`이 없는 명령이 있습니다. 현재 툴체인으로 소스를 다시 컴파일하세요.
+`lute run`이 받은 실행 IR에 0.37에서 제거되거나 이름이 바뀐 필드(`addr`, `capabilityVersion`, `recordKey`, `shots`, 평탄화된 `wait`/`duration`/`delay`/`at`/`timeline` 스탬프, `provenance.injected`, 카메라 `zoom`·`cg.full`·`cg`/`video`/`music`의 `action`·`music.track`·`sfx.name` 같은 종류별 필드, 선택지 `label`, `monologue` 같은 옛 대사 역할 등)가 남아 있거나, `position`이 없는 명령이 있습니다. 메시지가 0.37의 대체 필드를 알려 줍니다. 현재 툴체인으로 소스를 다시 컴파일하세요.
 
 명세: [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md), [dsl 0.37.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 

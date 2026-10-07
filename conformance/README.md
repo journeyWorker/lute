@@ -132,7 +132,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `jump-label` | `::label{name}` emits no record; a guarded forward `::jump{to}` is taken from the seeded `run.hasKey`; a branch option carries `text`; `<match subject=…>` reads the seeded subject |
 | `reward-id` | `<reward id=…>` reaches the IR `rewards[].id` on quest and objective rewards beside an untagged reward; the grants fire in declaration order |
 | `invalid/owned-write` | a hand-built artifact whose `set` writes an engine-owned path; `lute run` refuses it with `E-RUN-OWNED-WRITE`, exit 1 |
-| `invalid/removed-field-addr`, `invalid/removed-field-timing`, `invalid/removed-field-envelope`, `invalid/removed-field-injected` | the compiled source with one removed 0.36 field put back (`addr`, flattened `wait`/`duration`, envelope `capabilityVersion`, `provenance.injected`) by `invalid/derive.py`; `lute run` refuses each with `E-IR-REMOVED-FIELD`, exit 2 |
+| `invalid/removed-field-addr`, `invalid/removed-field-timing`, `invalid/removed-field-envelope`, `invalid/removed-field-injected`, `invalid/removed-field-kind` | the compiled source with one removed 0.36 field put back (`addr`, flattened `wait`/`duration`, envelope `capabilityVersion`, `provenance.injected`, a per-kind `cg.action`) by `invalid/derive.py`; `lute run` refuses each with `E-IR-REMOVED-FIELD`, exit 2 |
 | `invalid/removed-kind-sprite` | the compiled source with the `actor` kind renamed to the removed `sprite`; `lute run` refuses the unknown kind, exit 2 |
 
 The component-key uniqueness rule is intentionally strict: duplicate keys in

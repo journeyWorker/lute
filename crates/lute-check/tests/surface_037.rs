@@ -225,6 +225,20 @@ fn snake_case_key_is_author_case() {
     assert!(with(&d, "E-UNKNOWN-ATTR").is_empty(), "one report: {d:?}");
 }
 
+/// A clip inside `<timeline><track>` is authored too: its snake_case key is
+/// `E-AUTHOR-CASE`, not a silent pass.
+#[test]
+fn snake_case_key_in_a_timeline_clip_is_author_case() {
+    let d = scene(
+        "",
+        "<timeline>\n<track channel=\"vfx\">\n::vfx{type=\"shed\" snake_key=\"x\" at=\"0\"}\n\
+         </track>\n</timeline>\n",
+    );
+    let m = with(&d, "E-AUTHOR-CASE");
+    assert_eq!(m.len(), 1, "{d:?}");
+    assert!(m[0].contains("`snakeKey`"), "{}", m[0]);
+}
+
 /// A `@@p{mono}` line inside a `<branch>` choice of a component takes the
 /// speaker each `::use` passes: judged against the caller's POV.
 #[test]

@@ -1,0 +1,4 @@
+{
+  "error": "E-IR-REMOVED-FIELD: command 0 (`cg`) carries removed field `action`",
+  "exit": 2
+}
