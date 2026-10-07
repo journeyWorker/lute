@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use lute_manifest::schema::{DirectiveDecl, Lowering, OpBy, WriteDecl, WriteValue};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{Literal, PathSegment, Type};
-use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, Line, Retract, Set};
+use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
 use crate::ir::*;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
@@ -41,7 +41,7 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         position: String::new(),
         role,
         speaker: line.speaker.clone(),
-        text: line.text.clone(),
+        text: line.plain_text(),
         emotion: get("emotion"),
         variant: get("variant").and_then(|v| v.parse::<i64>().ok()),
         action: get("action"),
@@ -50,7 +50,10 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         line_id: String::new(),
         voice_key: String::new(),
         placeholders: line.interps.iter().map(placeholder_from_interp).collect(),
+        segments: inline_segments(&line.inline),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: line.modifier_multiset(),
         // An untagged component line carries its source-order back-fill
         // (`normalize::backfill_component_codes`); an authored code wins.
         code: get("code").or_else(|| get(crate::normalize::COMPONENT_CODE_ATTR)),
@@ -65,6 +68,55 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
             ..Stamp::default()
         },
     })
+}
+
+/// A line's presentation runs (dsl 0.37.0 §3.6): empty unless `nodes` carry
+/// an inline modifier. Text (and `{{…}}` markers, verbatim) coalesces while
+/// the active styles (outermost first) and innermost `speed` rate stay the
+/// same; `pause{s}` is a leaf of its own; empty text never appears.
+pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
+    fn walk(nodes: &[InlineNode], styles: &mut Vec<String>, rate: Option<f64>, out: &mut Vec<Segment>) {
+        for node in nodes {
+            match node {
+                InlineNode::Text { text, .. } => push_text(out, text, styles, rate),
+                InlineNode::Interpolation(i) => {
+                    push_text(out, &format!("{{{{{}}}}}", i.source), styles, rate)
+                }
+                InlineNode::Modifier(m) => {
+                    let attr = |k: &str| {
+                        m.attrs.iter().find(|a| a.key == k).and_then(|a| a.value.parse::<f64>().ok())
+                    };
+                    match m.name.as_str() {
+                        "pause" => out.push(Segment::Pause { pause: attr("s").unwrap_or(0.0) }),
+                        "speed" => walk(&m.children, styles, attr("rate").or(rate), out),
+                        style => {
+                            styles.push(style.to_string());
+                            walk(&m.children, styles, rate, out);
+                            styles.pop();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fn push_text(out: &mut Vec<Segment>, text: &str, styles: &[String], rate: Option<f64>) {
+        if text.is_empty() {
+            return;
+        }
+        if let Some(Segment::Text { text: last, styles: s, rate: r }) = out.last_mut() {
+            if s.as_slice() == styles && *r == rate {
+                last.push_str(text);
+                return;
+            }
+        }
+        out.push(Segment::Text { text: text.to_string(), styles: styles.to_vec(), rate });
+    }
+    if !nodes.iter().any(|n| matches!(n, InlineNode::Modifier(_))) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    walk(nodes, &mut Vec::new(), None, &mut out);
+    out
 }
 
 pub fn lower_set(set: &Set) -> Command {
@@ -928,7 +980,7 @@ mod tests {
         let v =
             lower_first("::bg{location=\"family_restaurant\" time=\"afternoon\" assetId=\"BG.x\"}");
         assert_eq!(v["kind"], "bg");
-        assert_eq!(v["category"], "staging");
+        assert_eq!(v["family"], "staging");
         assert_eq!(v["location"], "family_restaurant");
         assert_eq!(v["time"], "afternoon");
         assert_eq!(v["assetId"], "BG.x");

@@ -337,6 +337,28 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
     (nodes, parser.diags)
 }
 
+/// Parse a content line's TEXT alone with the inline grammar (dsl 0.37.0
+/// §3.6) — the same parser a `@speaker: text` line's text runs through. The
+/// locale merge (§6) uses it on a translation, which has no document around
+/// it; spans are offsets into `text`.
+pub fn parse_inline_text(text: &str) -> (Vec<InlineNode>, Vec<Diagnostic>) {
+    let mut parser = Parser {
+        idx: TextIndex::new(text),
+        body: text.to_string(),
+        body_start: 0,
+        lines: split_lines(text),
+        cursor: 0,
+        diags: Vec::new(),
+        doc_kind: None,
+        template_component: None,
+        top_block: None,
+        hoisted: Vec::new(),
+        open_blocks: Vec::new(),
+    };
+    let nodes = parser.parse_inline_nodes(text, 0, 0, None, false).0;
+    (nodes, parser.diags)
+}
+
 /// Parser state. Byte offsets used internally are **body-relative** (into
 /// `body`); [`Parser::orig`] converts them to original-text offsets for spans.
 pub(crate) struct Parser<'a> {

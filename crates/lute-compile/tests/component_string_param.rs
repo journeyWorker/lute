@@ -113,3 +113,39 @@ fn each_use_site_ships_its_own_sentence_under_its_own_line_id() {
         .collect();
     assert_eq!(texts, ["4분.", "오서리의 등불."]);
 }
+
+const SAID: &str = "---\ncomponent: said\nparams:\n  what: string\n---\n\
+## Said\n@narrator{code=\"0010\"}: {{@what}}\n\
+@marina{code=\"0020\"}: {{@what}} :speed[then {{@what}}]{rate=0.5}\n";
+
+const SAID_SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+components: [said.component.lute]\n---\n## Shot 1.\n\
+::use{component=\"said\" what=\":emphasis[x] {y} a]b\"}\n";
+
+/// dsl 0.37.0 §3.6: a string argument is literal text — inline modifier
+/// syntax in it never becomes a modifier (and never closes an authored
+/// span), while a modifier authored in the component body still lowers.
+#[test]
+fn a_string_argument_never_becomes_inline_modifier_syntax() {
+    let dir = unique_dir();
+    std::fs::write(dir.join("said.component.lute"), SAID).unwrap();
+    let input = input_for(&dir, SAID_SCENE);
+    let artifact = compile(&input).unwrap_or_else(|e| panic!("{e:#?}"));
+    let lines: Vec<serde_json::Value> = artifact
+        .commands
+        .iter()
+        .map(|c| serde_json::to_value(c).unwrap())
+        .filter(|v| v["kind"] == "line")
+        .collect();
+    assert_eq!(lines.len(), 2, "{lines:#?}");
+    assert_eq!(lines[0]["text"], ":emphasis[x] {y} a]b");
+    assert!(lines[0].get("segments").is_none(), "{:#?}", lines[0]);
+    assert_eq!(lines[1]["text"], ":emphasis[x] {y} a]b then :emphasis[x] {y} a]b");
+    assert_eq!(
+        lines[1]["segments"],
+        serde_json::json!([
+            {"text": ":emphasis[x] {y} a]b "},
+            {"text": "then :emphasis[x] {y} a]b", "rate": 0.5}
+        ])
+    );
+}

@@ -228,9 +228,15 @@ pub fn run(
             continue;
         };
         if let Some(bundle) = bundle {
-            let missing = lute_compile::locale::merge_locales(&mut artifact, bundle);
-            denied += missing.iter().filter(|d| policy.denied(d)).count();
-            warnings.push_str(&render_diagnostics(&doc.path, &missing, policy));
+            let merged = lute_compile::locale::merge_locales(&mut artifact, bundle);
+            // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
+            // fails its document like a check error.
+            if merged.iter().any(|d| d.severity == lute_core_span::Severity::Error) {
+                failures.insert(doc.path.clone(), render_diagnostics(&doc.path, &merged, policy));
+                continue;
+            }
+            denied += merged.iter().filter(|d| policy.denied(d)).count();
+            warnings.push_str(&render_diagnostics(&doc.path, &merged, policy));
         }
         compiled.push(Compiled {
             artifact_rel: format!("{rel}.json"),

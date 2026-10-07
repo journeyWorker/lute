@@ -39,7 +39,7 @@ fn end_lowers_to_an_end_record_with_its_reason() {
     );
     assert_eq!(
         serde_json::to_string(end).unwrap(),
-        r#"{"kind":"end","category":"control","position":"001-0200","reason":"completed"}"#
+        r#"{"kind":"end","family":"control","position":"001-0200","reason":"completed"}"#
     );
 }
 
@@ -48,7 +48,7 @@ fn a_reasonless_end_omits_the_field() {
     let a = artifact(&format!("{HDR}::end\n"));
     assert_eq!(
         serde_json::to_string(&a.commands[0]).unwrap(),
-        r#"{"kind":"end","category":"control","position":"001-0100"}"#
+        r#"{"kind":"end","family":"control","position":"001-0100"}"#
     );
 }
 
@@ -71,7 +71,7 @@ fn a_document_without_end_is_unchanged() {
     let a = artifact(&format!("{HDR}@narrator: hello\n::sfx{{sound=\"door\"}}\n"));
     assert_eq!(
         serde_json::to_string(&a.commands).unwrap(),
-        r#"[{"kind":"line","category":"content","position":"001-0100","role":"narration","speaker":"narrator","text":"hello","lineId":"x.s01ep01.narrator_0010","voiceKey":"x.s01ep01.narrator-0010"},{"kind":"sfx","category":"staging","position":"001-0200","sound":"door"}]"#
+        r#"[{"kind":"line","family":"content","position":"001-0100","role":"narration","speaker":"narrator","text":"hello","lineId":"x.s01ep01.narrator_0010","voiceKey":"x.s01ep01.narrator-0010"},{"kind":"sfx","family":"staging","position":"001-0200","sound":"door"}]"#
     );
 }
 

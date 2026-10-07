@@ -166,6 +166,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-JUMP-UNDEFINED", DiagnosticClass::SourceError),
     ("E-KIND-MISSING", DiagnosticClass::SourceError),
     ("E-KIND-NAME-CLASH", DiagnosticClass::SourceError),
+    ("E-L10N-MODIFIERS", DiagnosticClass::SourceError),
     ("E-LABEL-DUP", DiagnosticClass::SourceError),
     ("E-LEGACY-CONTENT-SIGIL", DiagnosticClass::SourceError),
     ("E-LINT-CONFIG", DiagnosticClass::SourceError),

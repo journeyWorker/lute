@@ -401,7 +401,10 @@ mod tests {
             line_id: String::new(),
             voice_key: String::new(),
             placeholders: Vec::new(),
+            segments: Vec::new(),
             texts: BTreeMap::new(),
+            locale_segments: BTreeMap::new(),
+            modifiers: BTreeMap::new(),
             code: code.map(str::to_string),
             stamp: Stamp::default(),
         })

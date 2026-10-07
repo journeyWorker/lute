@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value as Json};
 
-use super::format::value_to_json;
+use super::format::{substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
 use crate::eval::Read;
 use crate::exec::driver::{Driver, SiteKind};
@@ -85,7 +85,10 @@ impl<D: Driver> Machine<D> {
                 return;
             }
         }
-        let text = self.interpolate(raw, placeholders);
+        // Every marker renders ONCE, by its global index in the plain text;
+        // the line text and its segments both splice from that list.
+        let rendered = self.render_markers(raw, placeholders);
+        let text = substitute_markers(raw, &rendered, &mut 0);
         let mut rec = serde_json::Map::new();
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("line".into()));
@@ -97,12 +100,41 @@ impl<D: Driver> Machine<D> {
         // driver drops them: its record is the conformance contract.)
         for key in LINE_DELIVERY_KEYS {
             if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
-                rec.insert(key.into(), v.clone());
+                let v = if key == "segments" {
+                    segments_with(v, &rendered)
+                } else {
+                    v.clone()
+                };
+                rec.insert(key.into(), v);
             }
         }
         self.driver.emit(Json::Object(rec));
     }
+}
 
+/// A modified line's `segments` (dsl 0.37.0 §3.6) with each text run's
+/// `{{…}}` markers replaced from `rendered`, the line's markers rendered
+/// once in plain-text order: the runs concatenate to the plain text, so a
+/// run's first marker has the global index of every marker before it.
+fn segments_with(segments: &Json, rendered: &[String]) -> Json {
+    let Some(runs) = segments.as_array() else {
+        return segments.clone();
+    };
+    let mut next = 0;
+    let runs = runs
+        .iter()
+        .map(|run| {
+            let mut run = run.clone();
+            if let Some(text) = run.get("text").and_then(Json::as_str).map(str::to_string) {
+                run["text"] = Json::String(substitute_markers(&text, rendered, &mut next));
+            }
+            run
+        })
+        .collect();
+    Json::Array(runs)
+}
+
+impl<D: Driver> Machine<D> {
     pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
         self.driver.emit(json!({
             "position": addr(cmd),

@@ -93,7 +93,7 @@ enum Step {
 /// The `line` record fields that carry a line's identity and delivery —
 /// what a play transcript shows and `lute run --json` (the conformance
 /// contract) leaves out.
-pub const LINE_DELIVERY_KEYS: [&str; 5] = ["role", "lineId", "voiceKey", "as", "emotion"];
+pub const LINE_DELIVERY_KEYS: [&str; 6] = ["role", "lineId", "voiceKey", "as", "emotion", "segments"];
 
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and

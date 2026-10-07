@@ -22,3 +22,6 @@ enums:
   volume: [silent, down, normal, up, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
+  # dsl 0.37.0 §3.6: the inline text styles a line may wrap text in
+  # (`:emphasis[…]`); `pause` and `speed` are core and need no entry.
+  textStyle: [emphasis, whisper]

@@ -522,7 +522,9 @@ Two `<track>`s in a `<timeline>` share the same track key.
 
 ### E-DUP-VOICEKEY
 
-Two voiced lines with different text compile to the same `voiceKey`, so one recording would voice both — usually because the `voiceKey` template lacks `{prefix}` and collides across documents.
+Two lines whose plain text (inline modifier markup removed) differs compile to the same `voiceKey`, so one recording would voice both — usually because the `voiceKey` template lacks `{prefix}` and collides across documents.
+
+Spec: [dsl 0.37.0 §3.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-ENGINE-IR-VERSION
 
@@ -747,6 +749,12 @@ Spec: [dsl 0.2.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-L10N-MODIFIERS
+
+A line translation's inline modifiers (names, span/leaf form, and attributes) differ from its source line's, or its markup does not parse, so the translation is not merged.
+
+Spec: [dsl 0.37.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-LABEL-DUP
 

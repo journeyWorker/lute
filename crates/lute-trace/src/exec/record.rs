@@ -21,7 +21,7 @@ use serde_json::Value as Json;
 const HEAD_SKIP: [&str; 10] = [
     "position",
     "kind",
-    "category",
+    "family",
     "text",
     "speaker",
     "lineId",

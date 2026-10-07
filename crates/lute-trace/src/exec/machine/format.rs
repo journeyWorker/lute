@@ -9,25 +9,27 @@ use crate::exec::store::LabelForms;
 use crate::Value;
 
 impl<D: Driver> Machine<D> {
-    /// Substitute `{{…}}` markers: a `path` with its value (reserved
-    /// defaults included), a `ref` by evaluating its inlined def body
-    /// (`expr.raw`, lute 0.21.1). A marker whose value is unknown (unset
-    /// path, undecided value or ref) or a reserved token keeps its verbatim
-    /// text (state-lifecycle.md). A placeholder's `format` (dsl 0.24.0 §4)
-    /// applies to the value: a number hint to a number ([`formatted`]), a
-    /// text hint to the text it renders as ([`texted`]).
-    pub(super) fn interpolate(&mut self, text: &str, placeholders: Option<&Vec<Json>>) -> String {
-        let Some(phs) = placeholders else {
-            return text.to_string();
-        };
-        if phs.is_empty() {
-            return text.to_string();
-        }
-        let mut out = String::new();
+    /// Render each `{{…}}` marker of `text`, left to right, ONCE against its
+    /// placeholder (same index): a `path` with its value (reserved defaults
+    /// included), a `ref` by evaluating its inlined def body (`expr.raw`,
+    /// lute 0.21.1). A marker whose value is unknown (unset path, undecided
+    /// value or ref) or a reserved token keeps its verbatim text
+    /// (state-lifecycle.md). A placeholder's `format` (dsl 0.24.0 §4) applies
+    /// to the value: a number hint to a number ([`formatted`]), a text hint
+    /// to the text it renders as ([`texted`]). The line text and a modified
+    /// line's `segments` splice from this one list by global marker index
+    /// ([`substitute_markers`]), so a placeholder is evaluated once per line
+    /// however the runs split it.
+    pub(super) fn render_markers(
+        &mut self,
+        text: &str,
+        placeholders: Option<&Vec<Json>>,
+    ) -> Vec<String> {
+        let phs: &[Json] = placeholders.map(Vec::as_slice).unwrap_or_default();
+        let mut out = Vec::new();
         let mut rest = text;
         let mut it = phs.iter();
         while let Some(open) = rest.find("{{") {
-            out.push_str(&rest[..open]);
             let Some(rel_close) = rest[open..].find("}}") else {
                 break;
             };
@@ -77,10 +79,9 @@ impl<D: Driver> Machine<D> {
                 }
                 _ => marker.to_string(),
             };
-            out.push_str(&rendered);
+            out.push(rendered);
             rest = &rest[end..];
         }
-        out.push_str(rest);
         out
     }
 
@@ -151,6 +152,30 @@ impl<D: Driver> Machine<D> {
             })?
             .get(s)
     }
+}
+
+/// `text` with its `{{…}}` markers replaced, left to right, by
+/// `rendered[*next..]` — `next` is the GLOBAL marker index the first marker
+/// of `text` has, advanced past every marker replaced. A marker past the
+/// list stays verbatim.
+pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usize) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(open) = rest.find("{{") {
+        let Some(rel_close) = rest[open..].find("}}") else {
+            break;
+        };
+        let end = open + rel_close + 2;
+        out.push_str(&rest[..open]);
+        match rendered.get(*next) {
+            Some(r) => out.push_str(r),
+            None => out.push_str(&rest[open..end]),
+        }
+        *next += 1;
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A trace [`Value`] → JSON (integral numbers collapse to integers).

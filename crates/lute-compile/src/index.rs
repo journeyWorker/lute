@@ -597,7 +597,8 @@ pub fn capability_mismatches<'a>(
         .collect()
 }
 
-/// `E-DUP-VOICEKEY` (0.21.1 T1-9, dsl 0.37.0 D6): two lines with DIFFERENT text
+/// `E-DUP-VOICEKEY` (0.21.1 T1-9, dsl 0.37.0 D6): two lines with DIFFERENT
+/// plain text (dsl 0.37.0 §3.6 — inline modifier markup never counts)
 /// compiled to one `voiceKey`.
 pub const E_DUP_VOICEKEY: &str = "E-DUP-VOICEKEY";
 
@@ -631,7 +632,8 @@ impl std::fmt::Display for VoiceKeyCollision {
     }
 }
 
-/// Every `voiceKey` carried by two or more lines (any role) whose `text` differs,
+/// Every `voiceKey` carried by two or more lines (any role) whose `text` — the
+/// plain derivation, markup removed (dsl 0.37.0 §3.6) — differs,
 /// across ALL of `docs` (a project's documents compile independently, so
 /// only a project-wide pass can see the collision). Lines repeating the same
 /// text under one key share a recording legitimately and are not reported.

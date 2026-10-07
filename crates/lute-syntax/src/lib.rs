@@ -35,7 +35,7 @@ pub mod trivia;
 pub mod walk;
 
 pub use format::{format_source, format_yaml_source, FormatError, FormatOptions, FormatResult};
-pub use parser::parse;
+pub use parser::{parse, parse_inline_text};
 pub use trivia::{source_stream, SourceStream, SourceToken, TokenKind};
 pub use ast::scan_label_interps;
 

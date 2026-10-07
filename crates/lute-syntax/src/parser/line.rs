@@ -95,7 +95,7 @@ impl Parser<'_> {
         nodes
     }
 
-    fn parse_inline_nodes(
+    pub(super) fn parse_inline_nodes(
         &mut self,
         text: &str,
         base: usize,
@@ -137,13 +137,14 @@ impl Parser<'_> {
                         Layer::Content,
                     );
                 }
-                if run < b.len()
-                    && (run - j) % 2 == 1
-                    && b[run] == b'{'
-                    && run + 1 < b.len()
-                    && b[run + 1] == b'{'
-                {
+                // An odd backslash run escapes the byte after it: `\{{` is
+                // a literal interpolation, `\:` `\[` `\]` `\{` `\}` literal
+                // punctuation that never opens or closes a modifier.
+                let escaped = (run - j) % 2 == 1 && run < b.len();
+                if escaped && b[run] == b'{' && run + 1 < b.len() && b[run + 1] == b'{' {
                     j = run + 2;
+                } else if escaped && matches!(b[run], b':' | b'[' | b']' | b'{' | b'}') {
+                    j = run + 1;
                 } else {
                     j = run;
                 }

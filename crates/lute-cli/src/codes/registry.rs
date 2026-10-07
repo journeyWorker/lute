@@ -443,8 +443,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-DUP-VOICEKEY",
-        summary: "Two voiced lines with different text compile to the same `voiceKey`, so one recording would voice both — usually because the `voiceKey` template lacks `{prefix}` and collides across documents.",
-        spec: &[],
+        summary: "Two lines whose plain text (inline modifier markup removed) differs compile to the same `voiceKey`, so one recording would voice both — usually because the `voiceKey` template lacks `{prefix}` and collides across documents.",
+        spec: &["dsl 0.37.0 §3.6"],
     },
     Code {
         code: "E-ENGINE-IR-VERSION",
@@ -635,6 +635,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-KIND-NAME-CLASH",
         summary: "An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.",
         spec: &["dsl 0.3.0 §4"],
+    },
+    Code {
+        code: "E-L10N-MODIFIERS",
+        summary: "A line translation's inline modifiers (names, span/leaf form, and attributes) differ from its source line's, or its markup does not parse, so the translation is not merged.",
+        spec: &["dsl 0.37.0 §6"],
     },
     Code {
         code: "E-LABEL-DUP",

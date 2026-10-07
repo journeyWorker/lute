@@ -24,18 +24,28 @@
 //! - A record missing a locale the bundle DECLARES is [`W_L10N_MISSING`], one
 //!   diagnostic per `(lineId, locale)` pair. A warning, so
 //!   `--deny W-L10N-MISSING` promotes it in CI.
+//! - dsl 0.37.0 §6: a line translation runs the source's inline grammar.
+//!   Its plain derivation always lands in `texts`; a line whose source
+//!   carries a modifier also gets `localeSegments`. A translation whose
+//!   modifier multiset differs from the source's is [`E_L10N_MODIFIERS`]
+//!   and is not merged.
 
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use serde::Serialize;
 
-use crate::ir::{ExecutionIr, Command};
+use crate::ir::{Command, ExecutionIr, LineCmd};
 
 /// A translatable record carries no text for a locale the bundle declares
 /// (dsl 0.8.0 §7). Warning-grade: an untranslated build is still a valid
 /// build, and CI opts into strictness with `--deny W-L10N-MISSING`.
 pub const W_L10N_MISSING: &str = "W-L10N-MISSING";
+
+/// A line translation whose inline modifier multiset (names, leaf/span form,
+/// normalized attrs) differs from its source line's, or whose markup does not
+/// parse (dsl 0.37.0 §6). Error-grade: the translation is not merged.
+pub const E_L10N_MODIFIERS: &str = "E-L10N-MODIFIERS";
 
 /// The only `schemaVersion` [`LocaleBundle::parse`] accepts. Bumped only for a
 /// breaking shape change; a bundle is a tool-produced artifact, so an unknown
@@ -167,7 +177,8 @@ impl LocaleBundle {
 }
 
 /// Merge `bundle` into `artifact`, returning one [`W_L10N_MISSING`] warning per
-/// `(lineId, locale)` pair the document needs and the bundle does not carry.
+/// `(lineId, locale)` pair the document needs and the bundle does not carry,
+/// and one [`E_L10N_MODIFIERS`] error per refused line translation.
 ///
 /// Runs over the FINISHED execution IR, i.e. strictly downstream of
 /// [`crate::address::assign_addresses`] — every `lineId` is final. Iteration is
@@ -175,12 +186,12 @@ impl LocaleBundle {
 /// stream is deterministic.
 ///
 /// The record's own `text` is left untouched; only the additive
-/// `texts` maps are written. Never panics.
+/// `texts` / `localeSegments` maps are written. Never panics.
 pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for cmd in &mut artifact.commands {
         match cmd {
-            Command::Line(l) => bind(&l.line_id, &mut l.texts, bundle, &mut diags),
+            Command::Line(l) => bind_line(l, bundle, &mut diags),
             Command::Choice(c) => {
                 for o in &mut c.options {
                     bind(&o.line_id, &mut o.texts, bundle, &mut diags);
@@ -219,6 +230,60 @@ fn bind(
         if entry.is_none_or(|t| !t.contains_key(locale)) {
             diags.push(missing_diag(locale, line_id));
         }
+    }
+}
+
+/// A line's translations (dsl 0.37.0 §6): each runs the inline grammar; one
+/// whose modifier multiset matches the source's merges its plain derivation
+/// into `texts` (and, for a modified source line, its segments into
+/// `localeSegments`), any other is an [`E_L10N_MODIFIERS`] error. The
+/// completeness check is [`bind`]'s.
+fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>) {
+    let entry = bundle.entries.get(&l.line_id);
+    for (locale, text) in entry.into_iter().flatten() {
+        let (nodes, parse_diags) = lute_syntax::parse_inline_text(text);
+        if let Some(bad) = parse_diags.iter().find(|d| d.severity == Severity::Error) {
+            let why = format!("its inline markup does not parse ({}: {})", bad.code, bad.message);
+            diags.push(modifiers_diag(locale, &l.line_id, &why));
+            continue;
+        }
+        let modifiers = lute_syntax::ast::inline_modifier_multiset(&nodes);
+        if modifiers != l.modifiers {
+            let why = format!(
+                "its inline modifiers {} differ from the source's {}",
+                render_multiset(&modifiers),
+                render_multiset(&l.modifiers)
+            );
+            diags.push(modifiers_diag(locale, &l.line_id, &why));
+            continue;
+        }
+        l.texts.insert(locale.clone(), lute_syntax::ast::inline_plain_text(&nodes));
+        if !l.modifiers.is_empty() {
+            l.locale_segments.insert(locale.clone(), crate::lower::inline_segments(&nodes));
+        }
+    }
+    for locale in &bundle.locales {
+        if entry.is_none_or(|t| !t.contains_key(locale)) {
+            diags.push(missing_diag(locale, &l.line_id));
+        }
+    }
+}
+
+/// A modifier multiset as `[pause{s=0.5}, emphasis×2]` (`[]` when empty).
+fn render_multiset(set: &BTreeMap<String, usize>) -> String {
+    let items: Vec<String> = set
+        .iter()
+        .map(|(k, n)| if *n == 1 { k.clone() } else { format!("{k}×{n}") })
+        .collect();
+    format!("[{}]", items.join(", "))
+}
+
+fn modifiers_diag(locale: &str, line_id: &str, why: &str) -> Diagnostic {
+    Diagnostic {
+        code: E_L10N_MODIFIERS.to_string(),
+        severity: Severity::Error,
+        message: format!("`{locale}` text for `{line_id}` is not merged: {why}"),
+        ..missing_diag(locale, line_id)
     }
 }
 

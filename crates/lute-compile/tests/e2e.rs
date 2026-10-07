@@ -569,7 +569,7 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
             field_is_registered(field),
             "E-SEMANTICS-FIELD: serialized field `{field}` at {path} has no registry field-table row"
         );
-        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "labels" | "labelForms") {
+        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "localeSegments" | "labels" | "labelForms") {
             continue;
         }
         semantic_field_coverage_walk(child, &format!("{path}.{field}"));

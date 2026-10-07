@@ -1210,12 +1210,15 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                         }
                         .or_else(|| lute_syntax::ast::format_text(f, &s, None, None))
                     });
-                    let lit = formatted.as_deref().unwrap_or(&s);
-                    out.push_str(lit);
+                    // dsl 0.37.0 §3.6: an argument is literal text — its
+                    // inline punctuation is escaped so it can never become
+                    // modifier syntax (or close an authored span).
+                    let lit = escape_inline_literal(formatted.as_deref().unwrap_or(&s));
+                    out.push_str(&lit);
                     // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
                     // an interpolation exactly as in direct text — it keeps
                     // its placeholder record.
-                    for (s0, e0) in interp_markers(lit) {
+                    for (s0, e0) in interp_markers(&lit) {
                         let inner = &lit[s0 + 2..e0 - 2];
                         kept.push((interp_from_inner(inner, l.text_span), at + s0, at + e0));
                     }
@@ -1248,7 +1251,57 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
             interp
         })
         .collect();
+    // The spliced text re-runs the inline grammar (dsl 0.37.0 §3.6), so the
+    // lowered plain text and segments follow the bound text.
+    l.inline = lute_syntax::parse_inline_text(&out).0;
     l.text = out;
+}
+
+/// `lit` with its inline-grammar punctuation (`: [ ] { }`, dsl 0.37.0 §3.6)
+/// escaped OUTSIDE its `{{…}}` markers and `\{{` literal escapes, which stay
+/// verbatim: spliced argument text re-parses to exactly its own characters
+/// plus its interpolations, never to a modifier. A backslash is doubled only
+/// where it would otherwise escape something (before punctuation, or last),
+/// so a stray `\` reads as itself.
+fn escape_inline_literal(lit: &str) -> String {
+    fn copy_escaped(chunk: &str, out: &mut String) {
+        let mut chars = chunk.chars().peekable();
+        while let Some(ch) = chars.next() {
+            let escape = match ch {
+                ':' | '[' | ']' | '{' | '}' => true,
+                '\\' => chars.peek().is_none_or(|n| matches!(n, '\\' | ':' | '[' | ']' | '{' | '}')),
+                _ => false,
+            };
+            if escape {
+                out.push('\\');
+            }
+            out.push(ch);
+        }
+    }
+    let mut out = String::with_capacity(lit.len());
+    let b = lit.as_bytes();
+    let mut markers = interp_markers(lit).into_iter().peekable();
+    let (mut at, mut j) = (0, 0);
+    while j < b.len() {
+        if let Some(&(s, e)) = markers.peek() {
+            if j == s {
+                copy_escaped(&lit[at..s], &mut out);
+                out.push_str(&lit[s..e]);
+                (at, j) = (e, e);
+                markers.next();
+                continue;
+            }
+        }
+        if b[j] == b'\\' && lit[j + 1..].starts_with("{{") {
+            copy_escaped(&lit[at..j], &mut out);
+            out.push_str(&lit[j..j + 3]);
+            (at, j) = (j + 3, j + 3);
+            continue;
+        }
+        j += 1;
+    }
+    copy_escaped(&lit[at..], &mut out);
+    out
 }
 
 /// The `[start, end)` byte range of every `{{…}}` marker in `text`, left to

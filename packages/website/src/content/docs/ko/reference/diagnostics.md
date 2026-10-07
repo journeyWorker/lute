@@ -521,7 +521,9 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 ### E-DUP-VOICEKEY
 
-텍스트가 다른 두 음성 줄이 동일한 `voiceKey`로 컴파일되어, 하나의 녹음이 둘 다를 대신 말하게 됩니다 — 보통 `voiceKey` 템플릿에 `{prefix}`가 없어 문서 간에 충돌하기 때문입니다.
+평문 텍스트(인라인 수식 마크업을 제거한 텍스트)가 다른 두 줄이 동일한 `voiceKey`로 컴파일되어, 하나의 녹음이 둘 다를 대신 말하게 됩니다 — 보통 `voiceKey` 템플릿에 `{prefix}`가 없어 문서 간에 충돌하기 때문입니다.
+
+명세: [dsl 0.37.0 §3.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-ENGINE-IR-VERSION
 
@@ -746,6 +748,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `entities:` 블록에서 같은 엔티티 kind 이름을 두 번 선언했거나, 두 스키마가 한 kind를 다르게 선언했거나, 한 이름이 엔티티 kind이자 관계로 동시에 선언되었습니다.
 
 명세: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-L10N-MODIFIERS
+
+대사 번역문의 인라인 수식(이름, 스팬/리프 형태, 속성)이 원문 줄과 다르거나 마크업을 파싱할 수 없어, 해당 번역문을 병합하지 않습니다.
+
+명세: [dsl 0.37.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
 ### E-LABEL-DUP
 

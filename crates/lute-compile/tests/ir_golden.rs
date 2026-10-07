@@ -26,14 +26,17 @@ fn line_serializes_per_spec() {
         line_id: "marina.s01ep02.marina_0010".into(),
         voice_key: "marina-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: Some("0010".into()),
         stamp: Stamp::default(),
     });
     // `code` is #[serde(skip)] — the 3-id model (§4.2) admits no code field.
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"line","category":"content","position":"002-0500","role":"dialogue","speaker":"marina","text":"Oh!","emotion":"surprised","variant":0,"lineId":"marina.s01ep02.marina_0010","voiceKey":"marina-0010"}"#
+        r#"{"kind":"line","family":"content","position":"002-0500","role":"dialogue","speaker":"marina","text":"Oh!","emotion":"surprised","variant":0,"lineId":"marina.s01ep02.marina_0010","voiceKey":"marina-0010"}"#
     );
 }
 
@@ -52,7 +55,10 @@ fn narration_line_carries_voice_key() {
         line_id: "marina.s01ep02.narrator_0010".into(),
         voice_key: "marina.s01ep02.narrator-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
@@ -76,13 +82,16 @@ fn offscreen_line_serializes_as_voiced() {
         line_id: "marina.s01ep02.fixer_0010".into(),
         voice_key: "fixer-0010".into(),
         placeholders: Vec::new(),
+        segments: Vec::new(),
         texts: Default::default(),
+        locale_segments: Default::default(),
+        modifiers: Default::default(),
         code: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"line","category":"content","position":"002-0600","role":"os","speaker":"fixer","text":"Behind the door.","lineId":"marina.s01ep02.fixer_0010","voiceKey":"fixer-0010"}"#
+        r#"{"kind":"line","family":"content","position":"002-0600","role":"os","speaker":"fixer","text":"Behind the door.","lineId":"marina.s01ep02.fixer_0010","voiceKey":"fixer-0010"}"#
     );
 }
 
@@ -108,7 +117,7 @@ fn injected_actor_carries_provenance() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"actor","category":"staging","position":"002-0200","character":"marina","emotion":"surprised","preload":true,"provenance":{"by":"entry-emotion-lookahead","explanation":"pre-loading marina's first emotion"}}"#
+        r#"{"kind":"actor","family":"staging","position":"002-0200","character":"marina","emotion":"surprised","preload":true,"provenance":{"by":"entry-emotion-lookahead","explanation":"pre-loading marina's first emotion"}}"#
     );
 }
 
@@ -134,7 +143,7 @@ fn choice_matches_spec_worked_example() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"choice","category":"control","position":"004-0500","branchId":"number","selectionKey":"scene.choices.number","options":[{"id":"blunt","text":"Just ask, flatly","lineId":"marina.s01ep02.number.blunt","target":"004-0600"}],"converge":"004-1100"}"#
+        r#"{"kind":"choice","family":"control","position":"004-0500","branchId":"number","selectionKey":"scene.choices.number","options":[{"id":"blunt","text":"Just ask, flatly","lineId":"marina.s01ep02.number.blunt","target":"004-0600"}],"converge":"004-1100"}"#
     );
 }
 
@@ -167,7 +176,7 @@ fn hub_prompt_serializes_only_when_authored() {
     };
     assert_eq!(
         j(&hub(Some("Where do you look?"), None)),
-        r#"{"kind":"hub","category":"control","position":"003-0200","id":"look","selectionKey":"scene.choices.look","options":[{"id":"leave","text":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
+        r#"{"kind":"hub","family":"control","position":"003-0200","id":"look","selectionKey":"scene.choices.look","options":[{"id":"leave","text":"Leave","lineId":"s.look.leave","once":false,"exit":true,"target":"003-0300"}],"converge":"003-0400","prompt":"Where do you look?"}"#
     );
     assert!(!j(&hub(None, None)).contains("prompt"));
     assert!(
@@ -191,7 +200,7 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&m),
-        r#"{"kind":"match","category":"control","position":"005-0700","subject":{"cel":"scene.choices.number","expr":{"path":"scene.choices.number"}},"arms":[{"test":{"cel":"(scene.affect.marina >= 1)","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"int":1}}},"target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
+        r#"{"kind":"match","family":"control","position":"005-0700","subject":{"cel":"scene.choices.number","expr":{"path":"scene.choices.number"}},"arms":[{"test":{"cel":"(scene.affect.marina >= 1)","expr":{"op":">=","l":{"path":"scene.affect.marina"},"r":{"int":1}}},"target":"005-0800"}],"otherwise":"005-1200","converge":"005-1400"}"#
     );
     let jm = Command::Jump(JumpCmd {
         position: "004-0700".into(),
@@ -199,7 +208,7 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&jm),
-        r#"{"kind":"jump","category":"control","position":"004-0700","target":"004-1100"}"#
+        r#"{"kind":"jump","family":"control","position":"004-0700","target":"004-1100"}"#
     );
     let b = Command::Barrier(BarrierCmd {
         position: "003-0800".into(),
@@ -208,7 +217,7 @@ fn match_jump_barrier_serialize() {
     });
     assert_eq!(
         j(&b),
-        r#"{"kind":"barrier","category":"control","position":"003-0800","timeline":1,"at":1.4}"#
+        r#"{"kind":"barrier","family":"control","position":"003-0800","timeline":1,"at":1.4}"#
     );
 }
 
@@ -231,7 +240,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     });
     assert_eq!(
         j(&cam),
-        r#"{"kind":"camera","category":"staging","position":"002-0300","focus":"marina","framing":"closeUp","timing":{"wait":false,"duration":0.5}}"#
+        r#"{"kind":"camera","family":"staging","position":"002-0300","focus":"marina","framing":"closeUp","timing":{"wait":false,"duration":0.5}}"#
     );
     let set = Command::Set(SetCmd {
         position: "004-0900".into(),
@@ -242,7 +251,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     });
     assert_eq!(
         j(&set),
-        r#"{"kind":"set","category":"state","position":"004-0900","path":"scene.affect.marina","op":"+=","value":{"cel":"1","expr":{"int":1}}}"#
+        r#"{"kind":"set","family":"state","position":"004-0900","path":"scene.affect.marina","op":"+=","value":{"cel":"1","expr":{"int":1}}}"#
     );
     let mut fields = BTreeMap::new();
     fields.insert(
@@ -261,7 +270,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
     });
     assert_eq!(
         j(&other),
-        r#"{"kind":"plugin","category":"plugin","position":"001-0100","tag":"minigame","fields":{"kind":"rhythm"}}"#
+        r#"{"kind":"plugin","family":"plugin","position":"001-0100","tag":"minigame","fields":{"kind":"rhythm"}}"#
     );
 }
 
@@ -288,7 +297,7 @@ fn timeline_stamp_and_source_flatten() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"vfx","category":"staging","position":"003-0500","type":"whiteOut","transition":"flash","timing":{"at":0.5,"timeline":1},"source":{"component":"stinger"}}"#
+        r#"{"kind":"vfx","family":"staging","position":"003-0500","type":"whiteOut","transition":"flash","timing":{"at":0.5,"timeline":1},"source":{"component":"stinger"}}"#
     );
 }
 
@@ -308,7 +317,7 @@ fn bg_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"bg","category":"staging","position":"006-0100","location":"cafe","assetId":"bg_cafe_evening","timing":{"wait":true}}"#
+        r#"{"kind":"bg","family":"staging","position":"006-0100","location":"cafe","assetId":"bg_cafe_evening","timing":{"wait":true}}"#
     );
 }
 
@@ -325,7 +334,7 @@ fn music_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"music","category":"staging","position":"006-0200","playback":"play","mood":"tense","assetId":"mus_theme_a"}"#
+        r#"{"kind":"music","family":"staging","position":"006-0200","playback":"play","mood":"tense","assetId":"mus_theme_a"}"#
     );
 }
 
@@ -340,7 +349,7 @@ fn sfx_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"sfx","category":"staging","position":"006-0300","sound":"door_slam"}"#
+        r#"{"kind":"sfx","family":"staging","position":"006-0300","sound":"door_slam"}"#
     );
 }
 
@@ -359,7 +368,7 @@ fn cg_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"cg","category":"staging","position":"006-0400","assetId":"cg_intro","display":"show","layout":"full","timing":{"wait":false}}"#
+        r#"{"kind":"cg","family":"staging","position":"006-0400","assetId":"cg_intro","display":"show","layout":"full","timing":{"wait":false}}"#
     );
 }
 
@@ -377,7 +386,7 @@ fn video_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"video","category":"staging","position":"006-0500","assetId":"vid_ending","display":"show","timing":{"wait":true}}"#
+        r#"{"kind":"video","family":"staging","position":"006-0500","assetId":"vid_ending","display":"show","timing":{"wait":true}}"#
     );
 }
 
@@ -507,7 +516,7 @@ fn quest_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"quest","category":"declaration","position":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"cel":"run.act == 1","expr":{"op":"==","l":{"path":"run.act"},"r":{"int":1}}},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"cel":"run.region == \"grove\"","expr":{"op":"==","l":{"path":"run.region"},"r":{"string":"grove"}}},"optional":false,"body":null}]}"#
+        r#"{"kind":"quest","family":"declaration","position":"001-0100","id":"rescueHalsin","title":"Rescue","titleLineId":"rescueHalsin.title","start":{"cel":"run.act == 1","expr":{"op":"==","l":{"path":"run.act"},"r":{"int":1}}},"objectives":[{"id":"reachGrove","title":"Reach","titleLineId":"rescueHalsin.reachGrove","done":{"cel":"run.region == \"grove\"","expr":{"op":"==","l":{"path":"run.region"},"r":{"string":"grove"}}},"optional":false,"body":null}]}"#
     );
 }
 
@@ -720,7 +729,7 @@ fn on_record_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"on","category":"declaration","position":"001-0400","event":"questComplete","body":"001-0500"}"#
+        r#"{"kind":"on","family":"declaration","position":"001-0400","event":"questComplete","body":"001-0500"}"#
     );
 }
 
@@ -747,7 +756,7 @@ fn quest_structure_fields_serialize_when_authored() {
     });
     assert_eq!(
         j(&quest),
-        r#"{"kind":"quest","category":"declaration","position":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any","accept":"external"}"#
+        r#"{"kind":"quest","family":"declaration","position":"001-0100","id":"toll","objectives":[],"activate":"accept","complete":"any","accept":"external"}"#
     );
     let on = Command::On(OnCmd {
         position: "001-0400".into(),
@@ -759,7 +768,7 @@ fn quest_structure_fields_serialize_when_authored() {
     });
     assert_eq!(
         j(&on),
-        r#"{"kind":"on","category":"declaration","position":"001-0400","event":"bossDefeated","body":"001-0500","target":"foe.regent"}"#
+        r#"{"kind":"on","family":"declaration","position":"001-0400","event":"bossDefeated","body":"001-0500","target":"foe.regent"}"#
     );
     let accept = Command::Accept(lute_compile::ir::AcceptCmd {
         position: "001-0100".into(),
@@ -769,7 +778,7 @@ fn quest_structure_fields_serialize_when_authored() {
     });
     assert_eq!(
         j(&accept),
-        r#"{"kind":"accept","category":"declaration","position":"001-0100","quest":"eelBounty","applies":"nextRun"}"#
+        r#"{"kind":"accept","family":"declaration","position":"001-0100","quest":"eelBounty","applies":"nextRun"}"#
     );
 }
 
@@ -787,15 +796,15 @@ fn sequence_serializes_per_spec() {
     });
     assert_eq!(
         j(&cmd),
-        r#"{"kind":"sequence","category":"staging","position":"002-0700","name":"harborArrival","timing":{"wait":true}}"#
+        r#"{"kind":"sequence","family":"staging","position":"002-0700","name":"harborArrival","timing":{"wait":true}}"#
     );
 }
 
-/// dsl 0.37.0 §5.1: the normative kind → category table (the `entry`/`beat`
-/// declaration heads share `Command::category`'s exhaustive match), and
-/// `kind`, `category`, `position` serialized first, in that order.
+/// dsl 0.37.0 §5.1: the normative kind → family table (the `entry`/`beat`
+/// declaration heads share `Command::family`'s exhaustive match), and
+/// `kind`, `family`, `position` serialized first, in that order.
 #[test]
-fn every_kind_has_its_spec_category() {
+fn every_kind_has_its_spec_family() {
     let stamp = Stamp::default;
     let p = String::new;
     let cel = || CelPair::from_raw("true");
@@ -804,7 +813,8 @@ fn every_kind_has_its_spec_category() {
             Command::Line(LineCmd {
                 position: p(), role: Role::Mono, speaker: "wren".into(), text: "Hm.".into(),
                 emotion: None, variant: None, action: None, dialog_motion: None, as_label: None,
-                line_id: p(), voice_key: p(), placeholders: vec![], texts: BTreeMap::new(),
+                line_id: p(), voice_key: p(), placeholders: vec![], segments: vec![], texts: BTreeMap::new(),
+                locale_segments: BTreeMap::new(), modifiers: BTreeMap::new(),
                 code: None, stamp: stamp(),
             }),
             "line", "content",
@@ -863,11 +873,11 @@ fn every_kind_has_its_spec_category() {
             "plugin", "plugin",
         ),
     ];
-    for (cmd, kind, category) in cases {
+    for (cmd, kind, family) in cases {
         assert_eq!(cmd.kind(), kind);
-        assert_eq!(cmd.category().as_str(), category);
+        assert_eq!(cmd.family().as_str(), family);
         let json = j(&cmd);
-        let head = format!(r#"{{"kind":"{kind}","category":"{category}","position":"#);
+        let head = format!(r#"{{"kind":"{kind}","family":"{family}","position":"#);
         assert!(json.starts_with(&head), "{kind}: {json}");
     }
 }

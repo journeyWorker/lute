@@ -94,9 +94,10 @@ impl Line {
     }
 }
 
-/// The modifier multiset of `nodes` (dsl 0.37.0 §3.6, D11): each modifier,
-/// nested ones included, keyed by its name and its attributes in key order
-/// (`speed{rate=1.25}`, `pause{s=0.5}`, `emphasis`), with its count. Two
+/// The modifier multiset of `nodes` (dsl 0.37.0 §3.6, §6, D11): each
+/// modifier, nested ones included, keyed by its name, its form (`[]` for a
+/// span) and its attributes in key order (`speed[]{rate=1.25}`,
+/// `pause{s=0.5}`, `emphasis[]`), with its count. Two
 /// texts carry the same modifiers exactly when their multisets are equal —
 /// the localization check (`E-L10N-MODIFIERS`) compares a translation's with
 /// its source line's.
@@ -104,13 +105,22 @@ pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTree
     fn walk(nodes: &[InlineNode], out: &mut std::collections::BTreeMap<String, usize>) {
         for node in nodes {
             if let InlineNode::Modifier(m) = node {
-                let mut attrs: Vec<String> =
-                    m.attrs.iter().map(|a| format!("{}={}", a.key, a.value)).collect();
+                // Normalized: a numeric value compares as its number
+                // (`rate=1.50` and `rate=1.5` are one modifier).
+                let mut attrs: Vec<String> = m
+                    .attrs
+                    .iter()
+                    .map(|a| match a.value.parse::<f64>() {
+                        Ok(n) if n.is_finite() => format!("{}={n}", a.key),
+                        _ => format!("{}={}", a.key, a.value),
+                    })
+                    .collect();
                 attrs.sort();
+                let span = if m.content_span.is_some() || !m.children.is_empty() { "[]" } else { "" };
                 let key = if attrs.is_empty() {
-                    m.name.clone()
+                    format!("{}{span}", m.name)
                 } else {
-                    format!("{}{{{}}}", m.name, attrs.join(" "))
+                    format!("{}{span}{{{}}}", m.name, attrs.join(" "))
                 };
                 *out.entry(key).or_default() += 1;
                 walk(&m.children, out);
@@ -122,7 +132,9 @@ pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTree
     out
 }
 
-fn inline_plain_text(nodes: &[InlineNode]) -> String {
+/// The plain-text derivation of inline `nodes` (dsl 0.37.0 §3.6): modifier
+/// delimiters and attributes removed, escapes decoded, `{{…}}` verbatim.
+pub fn inline_plain_text(nodes: &[InlineNode]) -> String {
     let mut out = String::new();
     for node in nodes {
         match node {

@@ -1337,3 +1337,14 @@ fn legacy_sigil_diagnostic_mentions_lute_fix() {
         "legacy sigil must not ALSO/instead report E-UNCLASSIFIED: {diags:?}"
     );
 }
+
+#[test]
+fn escaped_punctuation_never_opens_or_closes_a_modifier() {
+    let (doc, diags) = parse("## Section\n@n: \\:emphasis[x] :emphasis[a\\]b] \\:pause{s=1}\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    assert_eq!(line.plain_text(), ":emphasis[x] a]b :pause{s=1}");
+    let mods = line.modifier_multiset();
+    assert_eq!(mods.len(), 1, "{mods:?}");
+    assert_eq!(mods.get("emphasis[]"), Some(&1), "{mods:?}");
+}

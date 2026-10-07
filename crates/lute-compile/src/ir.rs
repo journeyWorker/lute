@@ -813,8 +813,8 @@ impl From<lute_check::DocKind> for DocKind {
     }
 }
 
-/// One record (dsl 0.37.0 §5.3). Serialized as `kind`, then `category`
-/// ([`Category`]), then the record's own fields — see the `Serialize` impl.
+/// One record (dsl 0.37.0 §5.3). Serialized as `kind`, then `family`
+/// ([`Family`]), then the record's own fields — see the `Serialize` impl.
 /// Each kind is named after the authored directive that produces it;
 /// `Plugin` is the plugin-directive passthrough (`kind: "plugin"`).
 #[derive(Clone, Debug)]
@@ -849,11 +849,12 @@ pub enum Command {
     Beat(BeatCmd),
 }
 
-/// A record's `category` (dsl 0.37.0 §5.1) — the normative kind grouping a
-/// runtime dispatches on before `kind`.
+/// A record's `family` (dsl 0.37.0 §5.1) — the normative kind grouping a
+/// runtime dispatches on before `kind`. Named `family`, not `category`, so it
+/// never collides with a lore `<entry category=…>` record field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Category {
+pub enum Family {
     Content,
     Staging,
     State,
@@ -862,24 +863,24 @@ pub enum Category {
     Plugin,
 }
 
-impl Category {
+impl Family {
     pub fn as_str(self) -> &'static str {
         match self {
-            Category::Content => "content",
-            Category::Staging => "staging",
-            Category::State => "state",
-            Category::Control => "control",
-            Category::Declaration => "declaration",
-            Category::Plugin => "plugin",
+            Family::Content => "content",
+            Family::Staging => "staging",
+            Family::State => "state",
+            Family::Control => "control",
+            Family::Declaration => "declaration",
+            Family::Plugin => "plugin",
         }
     }
 }
 
-/// `kind`, `category`, then the record's own (flattened) fields.
+/// `kind`, `family`, then the record's own (flattened) fields.
 #[derive(Serialize)]
 struct TaggedRecord<'a, T: Serialize> {
     kind: &'static str,
-    category: Category,
+    family: Family,
     #[serde(flatten)]
     record: &'a T,
 }
@@ -891,7 +892,7 @@ impl Serialize for Command {
             record: &T,
             s: S,
         ) -> Result<S::Ok, S::Error> {
-            TaggedRecord { kind: cmd.kind(), category: cmd.category(), record }.serialize(s)
+            TaggedRecord { kind: cmd.kind(), family: cmd.family(), record }.serialize(s)
         }
         match self {
             Command::Line(c) => tagged(self, c, s),
@@ -1036,12 +1037,31 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
     }
 }
 
+/// One run of a modified line's presentation (dsl 0.37.0 §3.6): coalesced
+/// text carrying the active text styles (outermost first) and the innermost
+/// `speed` rate, or a `pause` leaf in seconds. Absent members are omitted.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Segment {
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        styles: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        rate: Option<f64>,
+    },
+    Pause { pause: f64 },
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineCmd {
     pub position: String,
     pub role: Role,
     pub speaker: String,
+    /// The plain-text derivation of the authored text (dsl 0.37.0 §3.6):
+    /// modifier delimiters and attributes removed, escapes decoded, `{{…}}`
+    /// markers verbatim.
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emotion: Option<String>,
@@ -1060,12 +1080,25 @@ pub struct LineCmd {
     /// Absent when the line has no interpolation (byte-stability: skip-if-empty).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub placeholders: Vec<Placeholder>,
-    /// Merged locale texts (dsl 0.8.0 §7), locale tag → translated text, keyed
-    /// on this record's `lineId`. Populated only when `compile --locales` was
-    /// given a locale bundle; `text` always remains the SOURCE-language string
-    /// (`contentLang`), so a 0.7 consumer is unaffected. Absent when empty.
+    /// dsl 0.37.0 §3.6: the line's presentation runs — present only when the
+    /// authored text carries an inline modifier.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub segments: Vec<Segment>,
+    /// Merged locale texts (dsl 0.8.0 §7, 0.37.0 §6), locale tag → the
+    /// translation's plain-text derivation, keyed on this record's `lineId`.
+    /// Populated only when `compile --locales` was given a locale bundle;
+    /// `text` always remains the SOURCE-language string. Absent when empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// dsl 0.37.0 §6: locale tag → the translation's [`Segment`]s, for a
+    /// line whose source carries an inline modifier. Absent when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub locale_segments: BTreeMap<String, Vec<Segment>>,
+    /// The source text's inline modifier multiset
+    /// ([`lute_syntax::ast::inline_modifier_multiset`]) — what a translation
+    /// must match (`E-L10N-MODIFIERS`). Internal, NEVER serialized.
+    #[serde(skip)]
+    pub modifiers: BTreeMap<String, usize>,
     /// Authored (or back-filled) per-speaker `code` — feeds `lineId`/`voiceKey`
     /// in the addressing pass, NEVER serialized (3-id model, §4.2).
     #[serde(skip)]
@@ -2015,10 +2048,10 @@ impl Command {
         }
     }
 
-    /// The normative `category` of the record's kind (dsl 0.37.0 §5.1).
-    pub fn category(&self) -> Category {
+    /// The normative `family` of the record's kind (dsl 0.37.0 §5.1).
+    pub fn family(&self) -> Family {
         match self {
-            Command::Line(_) => Category::Content,
+            Command::Line(_) => Family::Content,
             Command::Bg(_)
             | Command::Music(_)
             | Command::Sfx(_)
@@ -2027,20 +2060,20 @@ impl Command {
             | Command::Camera(_)
             | Command::Cg(_)
             | Command::Video(_)
-            | Command::Sequence(_) => Category::Staging,
-            Command::Set(_) | Command::Assert(_) | Command::Retract(_) => Category::State,
+            | Command::Sequence(_) => Family::Staging,
+            Command::Set(_) | Command::Assert(_) | Command::Retract(_) => Family::State,
             Command::Choice(_)
             | Command::Match(_)
             | Command::Hub(_)
             | Command::Jump(_)
             | Command::End(_)
-            | Command::Barrier(_) => Category::Control,
+            | Command::Barrier(_) => Family::Control,
             Command::Quest(_)
             | Command::On(_)
             | Command::Entry(_)
             | Command::Accept(_)
-            | Command::Beat(_) => Category::Declaration,
-            Command::Plugin(_) => Category::Plugin,
+            | Command::Beat(_) => Family::Declaration,
+            Command::Plugin(_) => Family::Plugin,
         }
     }
 

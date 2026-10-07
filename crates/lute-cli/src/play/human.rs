@@ -196,7 +196,7 @@ fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
 /// names what injected it).
 fn lowered(kind: &str, orig: Option<&Json>) -> String {
     let attrs = orig
-        .map(|c| render_attrs(c, &["position", "kind", "category"]))
+        .map(|c| render_attrs(c, &["position", "kind", "family"]))
         .unwrap_or_default();
     let injected = orig
         .filter(|c| is_injected(c))

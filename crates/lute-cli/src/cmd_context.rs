@@ -100,6 +100,7 @@ fn run_authoring_context(
         &folded.env.state,
         &folded.env.rel_vocab,
         &branch_paths,
+        &folded.domains,
     );
     // dsl 0.22.0 §13: defs, built-in directives, project ids; dsl 0.27.0:
     // beat / quest keys, clock, terminal, seasons, the manifest's chapters.
@@ -579,6 +580,7 @@ fn authoring_surface(
     state: &lute_check::StateSchema,
     rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
+    domains: &std::collections::BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
     let snap = &input.snapshot;
@@ -913,7 +915,44 @@ fn authoring_surface(
     );
     // dsl 0.5.1 §3: the fixed delivery-flag vocabulary.
     root.insert("deliveryFlags".into(), delivery_flags.into());
+    root.insert("textModifiers".into(), text_modifiers(domains));
     Value::Object(root)
+}
+
+/// dsl 0.37.0 §3.6: the inline text modifiers a content line's text may
+/// carry — the two core ones (fixed) and, when the project declares the
+/// `textStyle` domain, its members as text-style spans.
+fn text_modifiers(
+    domains: &std::collections::BTreeMap<String, lute_manifest::snapshot::Domain>,
+) -> serde_json::Value {
+    let mut o = serde_json::Map::new();
+    o.insert(
+        "core".into(),
+        serde_json::json!([
+            {
+                "name": "pause",
+                "form": "leaf",
+                "syntax": ":pause{s=0.5}",
+                "meaning": "a pause of `s` seconds (required, non-negative) at that point of the line",
+            },
+            {
+                "name": "speed",
+                "form": "span",
+                "syntax": ":speed[text]{rate=1.25}",
+                "meaning": "the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate",
+            },
+        ]),
+    );
+    if let Some(style) = domains.get(lute_check::content_line::TEXT_STYLE_DOMAIN) {
+        o.insert("textStyle".into(), style.members.clone().into());
+    }
+    o.insert(
+        "lowering".into(),
+        "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); \
+         a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves"
+            .into(),
+    );
+    serde_json::Value::Object(o)
 }
 
 /// Render a state-path `Type` for parity with `lute_compile`'s `type_label`
@@ -1349,6 +1388,34 @@ single quotes are required inside double-quoted attributes\n");
             let meaning = f["meaning"].as_str().unwrap_or("");
             let _ = writeln!(out, "  {{{flag}}}: {meaning}");
         }
+    }
+    // dsl 0.37.0 §3.6: the inline text modifiers.
+    let mods = &surface["textModifiers"];
+    if mods.is_object() {
+        let _ = writeln!(out, "textModifiers (inline, content-line text only):");
+        for m in mods["core"].as_array().into_iter().flatten() {
+            let _ = writeln!(
+                out,
+                "  {} [{}]: {}",
+                m["syntax"].as_str().unwrap_or(""),
+                m["form"].as_str().unwrap_or(""),
+                m["meaning"].as_str().unwrap_or("")
+            );
+        }
+        match mods["textStyle"].as_array() {
+            Some(styles) => {
+                let spans: Vec<String> = styles
+                    .iter()
+                    .filter_map(|s| s.as_str())
+                    .map(|s| format!(":{s}[text]"))
+                    .collect();
+                let _ = writeln!(out, "  textStyle spans (no attrs): {}", spans.join(", "));
+            }
+            None => {
+                let _ = writeln!(out, "  textStyle: not declared (declare `textStyle` in `enums:` for style spans)");
+            }
+        }
+        let _ = writeln!(out, "  {}", mods["lowering"].as_str().unwrap_or(""));
     }
     // Relational vocabulary (dsl 0.3.0 §3/§4, spec §5): entity kinds,
     // relations (name/arity/domains/derive), seed facts, rules, and the
