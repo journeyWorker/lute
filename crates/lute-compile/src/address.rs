@@ -139,7 +139,7 @@ pub(crate) fn assign_addresses_into(
                     match labels.get(&n) {
                         Some(addr) => *t = addr.clone(),
                         None => diags.push(internal(format!(
-                            "unresolved control-flow label `@{n}` in shot {}",
+                            "unresolved control-flow label `@{n}` in section {}",
                             shot.shot
                         ))),
                     }
@@ -151,7 +151,7 @@ pub(crate) fn assign_addresses_into(
                     match named.get(id) {
                         Some(addr) => *t = addr.clone(),
                         None => diags.push(internal(format!(
-                            "unresolved `::jump` mark `#{id}` in shot {}",
+                            "unresolved `::jump` target `#{id}` in section {}",
                             shot.shot
                         ))),
                     }

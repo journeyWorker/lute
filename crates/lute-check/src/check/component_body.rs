@@ -1021,7 +1021,7 @@ pub(super) fn walk_component_body(
                         if diags.len() == before {
                             diags.push(use_diag(
                                 E_COMPONENT_BODY,
-                                "a component body must be presentational (dsl 0.4 §6.2): a `<match>` subject must be a bare declared param, e.g. on=\"@tier\" — dispatch needs a domain".to_string(),
+                                "a component body must be presentational (dsl 0.4 §6.2): a `<match>` subject must be a bare declared param, e.g. subject=\"@tier\" — dispatch needs a domain".to_string(),
                                 m.span,
                             ));
                         }

@@ -1,11 +1,23 @@
 //! `textDocument/completion` (Task 6.3): candidates for the cursor position.
 //!
-//! A pure function over a parsed [`Document`] + [`CapabilitySnapshot`] + byte
-//! offset. Resolves the cursor ([`super::resolve`]) and returns:
+//! A pure function over a parsed [`Document`] (plus its source text) +
+//! [`CapabilitySnapshot`] + byte offset. Resolves the cursor
+//! ([`lute_resolve::cursor::resolve`]) and returns:
 //! - after `::` (a directive head) -> directive names;
 //! - inside a directive's `{ … }` at a key position -> that directive's attr keys
-//!   (per its schema, minus keys already present);
-//! - at an enum-typed attr value -> the enum's members;
+//!   (per its schema plus the universal `duration`/`delay`/`wait` timing keys,
+//!   minus keys already present);
+//! - at an enum- or domain-typed attr value -> the members (`framing`, `move`,
+//!   `transition`, `playback`, `layout`, `name` of `::sequence`, …);
+//! - a `::jump{to=…}` value -> the document's `::label{name=…}` names; a
+//!   `::label{name=…}` value -> jump targets no label declares yet;
+//! - inside a content line's `@speaker{…}` -> the content-line attr keys
+//!   (delivery flags `mono`/`os`/`vo` select the line role), and the
+//!   `emotion`/`action` domain members at their values;
+//! - inside a `<branch>`/`<choice>`/`<match>` open tag -> that tag's keys
+//!   (`text` on a choice, `subject` on a match);
+//! - after `:` in content-line text -> inline modifier names (`pause`,
+//!   `speed`, and the project's `textStyle` members);
 //! - `@` in a CEL slot -> author `defs:` + snapshot def names;
 //! - a `<match subject=…>` subject -> `scene.choices.<id>` ids from every `<branch>`;
 //! - any other state-path position in CEL -> declared state paths.
@@ -14,12 +26,16 @@
 
 use std::collections::BTreeSet;
 
+use lute_check::content_line::{CONTENT_LINE_DOMAIN_SLOTS, KNOWN_ATTRS};
+use lute_check::directives::UNIVERSAL_TIMING_ATTRS;
 use lute_check::{parse_meta, SchemaImports};
+use lute_core_span::Span;
+use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, AttrValue, Document, Node, ACCEPT_DIRECTIVE};
+use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node, ACCEPT_DIRECTIVE};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
 use lute_resolve::cursor::{
@@ -27,25 +43,53 @@ use lute_resolve::cursor::{
     type_label, Cursor, QuestConstruct,
 };
 
-/// Completion candidates at byte offset `off`. Empty when the cursor is somewhere
-/// with nothing to offer.
+/// Completion candidates at byte offset `off` of `src` (the text `doc` was
+/// parsed from). Empty when the cursor is somewhere with nothing to offer.
 pub fn complete_at(
     doc: &Document,
+    src: &str,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
     imports: &SchemaImports,
     off: usize,
 ) -> Vec<CompletionItem> {
     // `kind:` frontmatter value completion (dsl 0.2.0 §3.1) — `resolve()` is
-    // BODY-only (it walks `doc.shots`/`doc.quests`, never the frontmatter
+    // BODY-only (it walks `doc.sections`/`doc.quests`, never the frontmatter
     // YAML), so this is a small dedicated detector, checked first.
     if let Some(items) = kind_value_items(doc, snapshot, off) {
         return items;
     }
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
     lute_resolve::cursor::merge_imports(&mut meta, imports);
-    let Some(cursor) = lute_resolve::cursor::resolve(doc, off) else {
-        return Vec::new();
+    let cursor = lute_resolve::cursor::resolve(doc, off);
+    // A `<branch>`/`<choice>`/`<match>` open tag has no cursor of its own (or
+    // only a residual-attr key one): its fixed key set comes from the tag.
+    // A bare attr (`@x{mo|}`, `::camera{fr|}`, `<choice … on|>`) is a key being
+    // typed: its value span is its key span, so the resolver reports a value.
+    let bare = attr_at(doc, off).is_some_and(|a| matches!(a.value, AttrValue::BoolTrue));
+    let tag_key_position = match cursor {
+        None | Some(Cursor::AttrKey { directive: None, .. }) => true,
+        Some(Cursor::AttrValue { directive: None, .. }) => bare,
+        // A `<match>` without `subject=` gets an empty subject slot spanning
+        // its whole open tag.
+        Some(Cursor::Cel {
+            slot,
+            in_match_subject: true,
+        }) => {
+            slot.raw.is_empty()
+                && src
+                    .get(slot.span.byte_start..)
+                    .is_some_and(|s| s.starts_with("<match"))
+        }
+        _ => false,
+    };
+    if tag_key_position {
+        if let Some((tag, inner)) = open_tag_at(doc, src, off) {
+            return open_tag_items(tag, inner);
+        }
+    }
+    let Some(cursor) = cursor else {
+        return modifier_items(doc, snapshot, imports, &meta, off);
     };
     match cursor {
         Cursor::DirectiveName(_) => directive_items(snapshot),
@@ -54,6 +98,10 @@ pub fn complete_at(
             directive: Some(dir),
             ..
         } => attr_key_items(snapshot, dir, doc, off),
+        Cursor::AttrValue {
+            directive: Some(dir),
+            ..
+        } if bare => attr_key_items(snapshot, dir, doc, off),
         Cursor::AttrValue {
             directive: Some(dir),
             key,
@@ -68,6 +116,10 @@ pub fn complete_at(
                 });
             if !permitted {
                 Vec::new()
+            } else if dir == JUMP_DIRECTIVE && key == "to" {
+                label_items(doc)
+            } else if dir == LABEL_DIRECTIVE && key == LABEL_NAME_ATTR {
+                unlabeled_target_items(doc)
             } else if let Some(kind) = asset_kind_for(snapshot, dir, key) {
                 asset_segment_items(kind, doc, providers, off)
             } else {
@@ -94,11 +146,17 @@ pub fn complete_at(
         // directive/capability schema, unlike a `::directive`'s attrs).
         Cursor::AttrKey {
             directive: None, ..
-        } => content_line_attr_key_items(),
+        } => super::line_at(doc, off)
+            .map(content_line_attr_key_items)
+            .unwrap_or_default(),
         Cursor::AttrValue {
             directive: None,
             key,
-        } => content_line_attr_value_items(key),
+        } => match super::line_at(doc, off) {
+            Some(line) if bare => content_line_attr_key_items(line),
+            Some(_) => content_line_attr_value_items(snapshot, imports, &meta, key),
+            None => Vec::new(),
+        },
         Cursor::SetPath { .. } => state_path_items(&meta),
         // Interp interiors (dsl §7.6) get hover/def/references (Task D1) but no
         // completion — a `{{…}}` referent is authored inline, matching the prior
@@ -118,6 +176,275 @@ pub fn complete_at(
             &lute_check::declared_cast(snapshot, imports, &meta.cast),
         ),
     }
+}
+
+/// A tag whose open-tag keys are a small fixed set the checker closes over
+/// (`lute_check::logic_attrs`: `BRANCH_ATTRS`, `BRANCH_CHOICE_ATTRS`,
+/// `HUB_CHOICE_ATTRS`, `MATCH_ATTRS`) but which the cursor resolver gives no
+/// attr-area cursor of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OpenTag {
+    Branch,
+    BranchChoice,
+    HubChoice,
+    Match,
+}
+
+impl OpenTag {
+    fn keys(self) -> &'static [(&'static str, &'static str)] {
+        const CHOICE: &[(&str, &str)] = &[
+            ("id", "string"),
+            ("text", "string — the displayed choice text"),
+            ("when", "cel<bool>"),
+            ("into", "state path — records the pick"),
+            ("value", "the value `into` records"),
+        ];
+        const HUB_CHOICE: &[(&str, &str)] = &[
+            ("id", "string"),
+            ("text", "string — the displayed choice text"),
+            ("when", "cel<bool>"),
+            ("into", "state path — records the pick"),
+            ("value", "the value `into` records"),
+            ("once", "flag — offered until picked once"),
+            ("exit", "flag — leaves the hub"),
+        ];
+        match self {
+            OpenTag::Branch => &[
+                ("id", "string"),
+                ("prompt", "string"),
+                ("timeout", "positive integer seconds"),
+            ],
+            OpenTag::BranchChoice => CHOICE,
+            OpenTag::HubChoice => HUB_CHOICE,
+            OpenTag::Match => &[("subject", "cel — the value the arms match")],
+        }
+    }
+}
+
+/// The open tag (`<branch …>`, `<choice …>`, `<match …>`) whose interior
+/// holds `off`, with that interior's source text (between the keyword and the
+/// closing `>`). `None` when `off` is not inside such an open tag.
+fn open_tag_at<'s>(doc: &Document, src: &'s str, off: usize) -> Option<(OpenTag, &'s str)> {
+    fn interior<'s>(src: &'s str, start: usize, keyword: &str, off: usize) -> Option<&'s str> {
+        if !src.get(start..)?.starts_with(keyword) {
+            return None;
+        }
+        let inner = start + keyword.len();
+        let mut quoted = false;
+        let mut close = src.len();
+        for (i, b) in src.bytes().enumerate().skip(inner) {
+            match b {
+                b'"' => quoted = !quoted,
+                b'>' if !quoted => {
+                    close = i;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        (inner < off && off <= close).then(|| &src[inner..close])
+    }
+    fn scan<'s>(nodes: &[Node], src: &'s str, off: usize) -> Option<(OpenTag, &'s str)> {
+        let node = nodes.iter().find(|n| span_contains(node_span(n), off))?;
+        match node {
+            Node::Branch(b) => {
+                if let Some(inner) = interior(src, b.span.byte_start, "<branch", off) {
+                    return Some((OpenTag::Branch, inner));
+                }
+                let c = b.choices.iter().find(|c| span_contains(c.span, off))?;
+                match interior(src, c.span.byte_start, "<choice", off) {
+                    Some(inner) => Some((OpenTag::BranchChoice, inner)),
+                    None => scan(&c.body, src, off),
+                }
+            }
+            Node::Hub(h) => {
+                if let Some(c) = h.choices.iter().find(|c| span_contains(c.span, off)) {
+                    return match interior(src, c.span.byte_start, "<choice", off) {
+                        Some(inner) => Some((OpenTag::HubChoice, inner)),
+                        None => scan(&c.body, src, off),
+                    };
+                }
+                scan(&h.on_return.as_ref()?.body, src, off)
+            }
+            Node::Match(m) => {
+                if let Some(inner) = interior(src, m.span.byte_start, "<match", off) {
+                    return Some((OpenTag::Match, inner));
+                }
+                m.arms.iter().find_map(|arm| {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    scan(body, src, off)
+                })
+            }
+            Node::On(o) => scan(&o.body, src, off),
+            Node::Objective(ob) => scan(&ob.body, src, off),
+            _ => None,
+        }
+    }
+    doc.sections
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body))
+        .find_map(|body| scan(body, src, off))
+}
+
+/// Span of any [`Node`], for the open-tag descent.
+fn node_span(node: &Node) -> Span {
+    match node {
+        Node::Line(l) => l.span,
+        Node::Directive(d) => d.span,
+        Node::Set(s) => s.span,
+        Node::Branch(b) => b.span,
+        Node::Match(m) => m.span,
+        Node::Timeline(t) => t.span,
+        Node::Hub(h) => h.span,
+        Node::On(o) => o.span,
+        Node::Objective(o) => o.span,
+        Node::Assert(a) => a.span,
+        Node::Retract(r) => r.span,
+    }
+}
+
+/// The keys of `tag` not yet written in its open-tag `interior`, kind `FIELD`.
+fn open_tag_items(tag: OpenTag, interior: &str) -> Vec<CompletionItem> {
+    // Every identifier outside a quoted value is (at worst) an attr key.
+    let mut present = BTreeSet::new();
+    let mut quoted = false;
+    let mut word = String::new();
+    for c in interior.chars().chain(std::iter::once(' ')) {
+        if c == '"' {
+            quoted = !quoted;
+        }
+        if !quoted && (c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+            word.push(c);
+        } else if !word.is_empty() {
+            present.insert(std::mem::take(&mut word));
+        }
+    }
+    tag.keys()
+        .iter()
+        .filter(|(key, _)| !present.contains(*key))
+        .map(|(key, detail)| CompletionItem {
+            label: key.to_string(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(detail.to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Inline text-modifier names (dsl 0.37.0 §3.6) when `off` follows `:` (plus
+/// a partial lowerCamel name) in a content line's text: the core `pause`
+/// leaf and `speed` span, then the merged `textStyle` domain's members. A
+/// colon glued to a preceding word (`Note:`) or escaped (`\:`) is prose.
+fn modifier_items(
+    doc: &Document,
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    meta: &lute_check::TypedMeta,
+    off: usize,
+) -> Vec<CompletionItem> {
+    let Some(line) = super::line_at(doc, off) else {
+        return Vec::new();
+    };
+    let Some(local) = off.checked_sub(line.text_span.byte_start) else {
+        return Vec::new();
+    };
+    let Some(before) = line.text.get(..local) else {
+        return Vec::new();
+    };
+    let name = before.trim_end_matches(|c: char| c.is_ascii_alphanumeric());
+    let Some(lead) = name.strip_suffix(':') else {
+        return Vec::new();
+    };
+    if lead
+        .chars()
+        .next_back()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '\\')
+        || before[name.len()..].starts_with(|c: char| !c.is_ascii_lowercase())
+    {
+        return Vec::new();
+    }
+    let core = [
+        ("pause", "leaf — `:pause{s=seconds}`"),
+        ("speed", "span — `:speed[text]{rate=rate}`"),
+    ];
+    core.into_iter()
+        .map(|(label, detail)| CompletionItem {
+            label: label.to_string(),
+            kind: Some(CompletionItemKind::FUNCTION),
+            detail: Some(detail.to_string()),
+            ..Default::default()
+        })
+        .chain(
+            domain_members(snapshot, imports, meta, "textStyle")
+                .into_iter()
+                .map(|label| CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::ENUM_MEMBER),
+                    detail: Some("textStyle — `:name[text]`".to_string()),
+                    ..Default::default()
+                }),
+        )
+        .collect()
+}
+
+/// The members of closed domain `name` in the merged vocabulary
+/// (`snapshot.domains` ∪ the project's domains), via the same
+/// [`lute_check::schema_import::merge_domains`] seam `check()` uses. Empty for
+/// an undeclared or open domain.
+fn domain_members(
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    meta: &lute_check::TypedMeta,
+    name: &str,
+) -> Vec<String> {
+    let zero = lute_resolve::cursor::byte_span(0, 0);
+    let (merged, _) = lute_check::schema_import::merge_domains(snapshot, imports, meta, zero);
+    merged
+        .get(name)
+        .filter(|d| !d.open)
+        .map(|d| d.members.clone())
+        .unwrap_or_default()
+}
+
+/// Every `::label{name=…}` in the document, for a `::jump{to=…}` value (dsl
+/// 0.37.0 §3.5: one document-wide label namespace), kind `REFERENCE`.
+fn label_items(doc: &Document) -> Vec<CompletionItem> {
+    let names: BTreeSet<&str> = super::label_decls(doc)
+        .into_iter()
+        .map(|(n, _)| n)
+        .filter(|n| !n.is_empty())
+        .collect();
+    names
+        .into_iter()
+        .map(|name| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::REFERENCE),
+            detail: Some("::label".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Jump targets no `::label` declares yet, for a `::label{name=…}` value.
+fn unlabeled_target_items(doc: &Document) -> Vec<CompletionItem> {
+    let declared: BTreeSet<&str> = super::label_decls(doc).into_iter().map(|(n, _)| n).collect();
+    let targets: BTreeSet<&str> = super::jump_targets(doc)
+        .into_iter()
+        .map(|(n, _)| n)
+        .filter(|n| !n.is_empty() && !declared.contains(n))
+        .collect();
+    targets
+        .into_iter()
+        .map(|name| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::REFERENCE),
+            detail: Some("::jump target without a label".to_string()),
+            ..Default::default()
+        })
+        .collect()
 }
 
 /// The fixed (non-snapshot) attr-key set for a `<quest>`/`<on>`/`<objective>`
@@ -215,48 +542,78 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
     }
 }
 
-/// Content-line attribute keys (dsl 0.2.2 §7.1, §D7; `when` added dsl 0.4.0
-/// §7.2): a `@speaker{…}:` line's fixed 10-key vocabulary is, like
-/// [`construct_attr_key_items`]'s three quest constructs, NOT
-/// capability-schema-driven (it belongs to the content-line grammar itself,
-/// validated by `lute_check::content_line`/`Line.when` rather than a
-/// [`snapshot`]-declared `DirectiveDecl`) — always the full set; kind `FIELD`.
-/// `mono`/`os`/`vo` are bare boolean delivery flags (`AttrValue::BoolTrue`,
-/// mutually exclusive — `E-DELIVERY-CONFLICT` on more than one), not
-/// `key="value"` attrs, so they carry no completable value domain. `when` is
-/// extracted into `Line.when` (a typed `CelSlot`) at parse time — it never
-/// appears in `l.attrs` once authored — but stays in this KEY-completion
-/// vocabulary so it is offered alongside every other content-line key.
-fn content_line_attr_key_items() -> Vec<CompletionItem> {
-    const KEYS: &[(&str, &str)] = &[
-        ("code", "string"),
-        ("emotion", "enum"),
-        ("variant", "number"),
-        ("action", "string"),
-        ("dialogMotion", "string"),
-        ("mono", "flag"),
-        ("os", "flag"),
-        ("vo", "flag"),
-        ("as", "string"),
-        ("when", "condition"),
-    ];
-    KEYS.iter()
-        .map(|(name, ty)| CompletionItem {
-            label: name.to_string(),
+/// Content-line attribute keys (dsl 0.37.0 §3.4; `when`, dsl 0.4.0 §7.2): a
+/// `@speaker{…}:` line's fixed vocabulary is, like
+/// [`construct_attr_key_items`]'s constructs, NOT capability-schema-driven —
+/// it is the checker's own [`KNOWN_ATTRS`] table plus `when` (extracted into
+/// `Line.when` at parse time, so never in `l.attrs`), kind `FIELD`, minus keys
+/// already written. `mono`/`os`/`vo` are the mutually exclusive bare delivery
+/// flags selecting the line role; none is offered once one is written, nor on
+/// a `narrator` line (`E-DELIVERY-NARRATOR`). A line's `voiceKey` and
+/// `lineId` are derived (from `code` when written), never authored.
+fn content_line_attr_key_items(line: &Line) -> Vec<CompletionItem> {
+    const DELIVERY: [&str; 3] = ["mono", "os", "vo"];
+    let present: BTreeSet<&str> = line
+        .attrs
+        .iter()
+        .map(|a| a.key.as_str())
+        .chain(line.when.as_ref().map(|_| "when"))
+        .collect();
+    let no_delivery =
+        line.speaker == "narrator" || DELIVERY.iter().any(|flag| present.contains(flag));
+    KNOWN_ATTRS
+        .iter()
+        .copied()
+        .chain(std::iter::once("when"))
+        .filter(|key| !present.contains(key))
+        .filter(|key| !(no_delivery && DELIVERY.contains(key)))
+        .map(|key| CompletionItem {
+            label: key.to_string(),
             kind: Some(CompletionItemKind::FIELD),
-            detail: Some(ty.to_string()),
+            detail: content_line_attr_detail(key).map(str::to_string),
             ..Default::default()
         })
         .collect()
 }
 
-/// Content-line attribute VALUES: 0.2.2 retires the closed `delivery="…"`
-/// enum (dsl §D7 replaces it with the bare `mono`/`os`/`vo` flags, which have
-/// no `key="value"` form to complete into) — every content-line key is now
-/// `string`/`number`/flag typed with no enumerable value domain, so this
-/// offers nothing.
-fn content_line_attr_value_items(_key: &str) -> Vec<CompletionItem> {
-    Vec::new()
+/// The one-line description of a content-line attribute key (dsl 0.37.0
+/// §3.4), shared by completion details and hover.
+pub(crate) fn content_line_attr_detail(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "code" => "string — stable line code; the line's lineId/voiceKey derive from it",
+        "emotion" => "domain `emotion`",
+        "variant" => "number",
+        "action" => "domain `action`",
+        "dialogMotion" => "string",
+        "mono" => "flag — role `mono`: the effective POV speaker or a `monoSpeakers` member",
+        "os" => "flag — role `os`: spoken off-screen",
+        "vo" => "flag — role `vo`: voice-over",
+        "as" => "string",
+        "when" => "condition",
+        _ => return None,
+    })
+}
+
+/// Content-line attribute VALUES: the `emotion`/`action` domain slots
+/// ([`CONTENT_LINE_DOMAIN_SLOTS`]) offer their merged domain's members; every
+/// other key is string/number/flag typed with no enumerable value domain.
+fn content_line_attr_value_items(
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    meta: &lute_check::TypedMeta,
+    key: &str,
+) -> Vec<CompletionItem> {
+    if !CONTENT_LINE_DOMAIN_SLOTS.contains(&key) {
+        return Vec::new();
+    }
+    domain_members(snapshot, imports, meta, key)
+        .into_iter()
+        .map(|label| CompletionItem {
+            label,
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            ..Default::default()
+        })
+        .collect()
 }
 
 /// Character/cast ids from the pinned `character` provider snapshot (same
@@ -424,6 +781,8 @@ fn directive_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
 
 /// A directive's attribute keys, kind `FIELD`, minus keys already written on the
 /// directive/line at the cursor (so the list narrows as attrs are filled in).
+/// Every directive but `::clear` also takes the undeclared universal timing
+/// keys (`duration`/`delay`/`wait`, dsl 0.37.0 §3.3).
 fn attr_key_items(
     snapshot: &CapabilitySnapshot,
     directive: &str,
@@ -458,13 +817,20 @@ fn attr_key_items(
         return Vec::new();
     }
     let present = present_attr_keys(doc, off);
+    let timing = UNIVERSAL_TIMING_ATTRS
+        .iter()
+        .filter(|_| directive != CLEAR_DIRECTIVE)
+        .filter(|(name, _)| !decl.attrs.iter().any(|a| a.name == *name))
+        .map(|(name, ty)| (name.to_string(), ty));
     decl.attrs
         .iter()
-        .filter(|a| !present.contains(&a.name))
-        .map(|a| CompletionItem {
-            label: a.name.clone(),
+        .map(|a| (a.name.clone(), &a.ty))
+        .chain(timing)
+        .filter(|(name, _)| !present.contains(name))
+        .map(|(name, ty)| CompletionItem {
+            label: name,
             kind: Some(CompletionItemKind::FIELD),
-            detail: Some(type_label(&a.ty)),
+            detail: Some(type_label(ty)),
             ..Default::default()
         })
         .collect()
@@ -632,8 +998,8 @@ fn state_path_items(meta: &lute_check::TypedMeta) -> Vec<CompletionItem> {
 /// `scene.choices.<id>` ids from every `<branch>` (for a `<match subject=…>` subject).
 fn choice_path_items(doc: &Document) -> Vec<CompletionItem> {
     let mut ids = Vec::new();
-    for shot in &doc.sections {
-        collect_branch_ids(&shot.body, &mut ids);
+    for section in &doc.sections {
+        collect_branch_ids(&section.body, &mut ids);
     }
     for quest in &doc.quests {
         collect_branch_ids(&quest.body, &mut ids);
@@ -767,8 +1133,8 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
         }
     }
     let mut out = Vec::new();
-    for shot in &doc.sections {
-        scan(&shot.body, off, &mut out);
+    for section in &doc.sections {
+        scan(&section.body, off, &mut out);
     }
     for quest in &doc.quests {
         scan(&quest.body, off, &mut out);
@@ -820,13 +1186,7 @@ mod tests {
         let text = "## Shot 1.\n::";
         let doc = parsed(text);
         let off = text.find("::").unwrap() + 2; // just past `::`
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(items.iter().any(|i| i.label == "camera"));
         assert!(items.iter().any(|i| i.label == "bg"));
     }
@@ -851,13 +1211,7 @@ mod tests {
             },
         );
         let text = "## Shot 1.\n::";
-        let items = complete_at(
-            &parsed(text),
-            &snapshot,
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            text.len(),
-        );
+        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), text.len());
         assert_eq!(labels(&items), vec!["camera"]);
     }
 
@@ -877,13 +1231,7 @@ mod tests {
             },
         );
         let text = "## Shot 1.\n::";
-        let items = complete_at(
-            &parsed(text),
-            &snapshot,
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            text.len(),
-        );
+        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), text.len());
         assert!(!labels(&items).contains(&"camera"));
     }
 
@@ -898,13 +1246,7 @@ mod tests {
         );
         let text = "---\nkind: \n---\n";
         let off = text.find("kind: ").unwrap() + "kind: ".len();
-        let items = complete_at(
-            &parsed(text),
-            &snapshot,
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), off);
         // Only `quest` is permission-gated; `lore` is not quest authoring.
         assert_eq!(labels(&items), vec!["scene", "lore"]);
     }
@@ -914,13 +1256,7 @@ mod tests {
         let text = "## Shot 1.\n::camera{}\n";
         let doc = parsed(text);
         let off = text.find("{}").unwrap() + 1; // between the braces
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(ls.contains(&"focus"), "has focus: {ls:?}");
         assert!(ls.contains(&"framing"), "has framing: {ls:?}");
@@ -932,13 +1268,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -953,13 +1283,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor inside the empty `anchor=""` value.
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(
-            &doc,
-            &lute_test_vocab::vocab_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &lute_test_vocab::vocab_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
@@ -979,13 +1303,7 @@ mod tests {
                     ::actor{character=\"b\" anchor=\"\"}\n";
         let doc = parsed(text);
         let off = text.find("anchor=\"\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"portside") && ls.contains(&"midships") && ls.contains(&"starboard"),
@@ -998,13 +1316,7 @@ mod tests {
         let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items.iter().any(|i| i.label == "fond"),
             "offers def name: {:?}",
@@ -1017,13 +1329,7 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" text=\"A\">\n    @f: a.\n  </choice>\n</branch>\n<match subject=\"\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items.iter().any(|i| i.label == "scene.choices.number"),
             "offers the choice path: {:?}",
@@ -1039,13 +1345,7 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" text=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items.iter().any(|i| i.label == "scene.choices.inner"),
             "offers the hub-nested branch choice path: {:?}",
@@ -1061,13 +1361,7 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chatWithMarina\">\n<choice id=\"ask\" text=\"Ask\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items
                 .iter()
@@ -1086,13 +1380,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -1107,13 +1395,7 @@ mod tests {
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items.iter().any(|i| i.label == "scene.affect.marina"),
             "offers declared state path: {:?}",
@@ -1199,13 +1481,7 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.marina.waitress.\"}\n";
         let doc = parsed(text);
         let off = text.find("waitress.").unwrap() + "waitress.".len();
-        let items = complete_at(
-            &doc,
-            &asset_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"delighted") && ls.contains(&"content") && ls.contains(&"neutral"),
@@ -1219,13 +1495,7 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.marina.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = text.find("CH.marina").unwrap() + 1; // on the `H` of `CH`
-        let items = complete_at(
-            &doc,
-            &asset_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(ls.contains(&"CH"), "const prefix offered: {ls:?}");
     }
@@ -1248,26 +1518,14 @@ mod tests {
             )]),
             stale: false,
         });
-        let items = complete_at(
-            &doc,
-            &asset_snapshot(),
-            &providers,
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &asset_snapshot(), &providers, &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"marina") && ls.contains(&"ren"),
             "providerRef segment offers pinned ids: {ls:?}"
         );
         // An empty ProviderSet offers nothing for that segment (honest §6.9).
-        let empty = complete_at(
-            &doc,
-            &asset_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let empty = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             empty.is_empty(),
             "empty ProviderSet -> no provider ids: {:?}",
@@ -1305,13 +1563,7 @@ mod tests {
             "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold = }\n";
         let doc = parsed(text);
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &schema_imports(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &schema_imports(), off);
         assert!(
             items.iter().any(|i| i.label == "run.gold"),
             "offers imported state path: {:?}",
@@ -1326,13 +1578,7 @@ mod tests {
             "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &schema_imports(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &schema_imports(), off);
         assert!(
             items.iter().any(|i| i.label == "helped"),
             "offers imported def name: {:?}",
@@ -1348,13 +1594,7 @@ mod tests {
         let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"gold")
@@ -1373,13 +1613,7 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"askCoffee\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"askCoffee") && ls.contains(&"leave") && ls.contains(&"unset"),
@@ -1395,13 +1629,7 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"true\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"true") && ls.contains(&"false") && ls.contains(&"unset"),
@@ -1416,13 +1644,7 @@ mod tests {
         let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@warm").unwrap() + 1; // just past `@`
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"warm"),
@@ -1446,13 +1668,7 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n<choice id=\"b\" text=\"B\">\n@f: b.\n</choice>\n</branch>\n<match subject=\"scene.choices.pick-one\">\n<when is=\"a\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"a\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         assert!(
             items.is_empty(),
             "a non-path (hyphenated) subject has no finite domain, so `is=` offers nothing: {:?}",
@@ -1470,13 +1686,7 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" text=\"F1\">\n@f: a.\n</choice>\n<choice id=\"first2\" text=\"F2\">\n@f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" text=\"L1\">\n@f: c.\n</choice>\n<choice id=\"last2\" text=\"L2\">\n@f: d.\n</choice>\n</branch>\n<match subject=\"scene.choices.dup\">\n<when is=\"last1\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"last1\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"last1") && ls.contains(&"last2") && ls.contains(&"unset"),
@@ -1492,13 +1702,7 @@ mod tests {
 
     fn complete(text: &str, off: usize) -> Vec<CompletionItem> {
         let doc = parsed(text);
-        complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &SchemaImports::default(),
-            off,
-        )
+        complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off)
     }
 
     #[test]
@@ -1698,9 +1902,9 @@ mod tests {
     }
 
     #[test]
-    fn content_line_other_attr_key_has_no_value_completion() {
-        // No content-line key carries a closed value domain in 0.2.2 (the
-        // 0.2.1 `delivery` enum is retired in favor of bare flags, §D7).
+    fn content_line_emotion_value_without_a_declared_domain_offers_nothing() {
+        // The core snapshot ships no `emotion` members, so with no project
+        // vocabulary the domain slot has nothing to offer.
         let text = "## Shot 1.\n@x{emotion=\"\"}: hi\n";
         let off = text.find("emotion=\"").unwrap() + "emotion=\"".len();
         assert!(complete(text, off).is_empty());
@@ -1733,13 +1937,7 @@ mod tests {
             )]),
             stale: false,
         });
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &providers,
-            &SchemaImports::default(),
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &providers, &SchemaImports::default(), off);
         let ls = labels(&items);
         assert!(
             ls.contains(&"marina") && ls.contains(&"ren") && ls.contains(&"narrator"),
@@ -1763,14 +1961,159 @@ mod tests {
                 ..Default::default()
             },
         );
-        let items = complete_at(
-            &doc,
-            &load_core_snapshot(),
-            &ProviderSet::default(),
-            &imports,
-            off,
-        );
+        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &imports, off);
         assert_eq!(labels(&items), vec!["maud", "narrator"]);
         assert_eq!(items[0].detail.as_deref(), Some("Maud"));
+    }
+
+    fn complete_vocab(text: &str, off: usize) -> Vec<String> {
+        let items = complete_at(
+            &parsed(text),
+            text,
+            &lute_test_vocab::vocab_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
+        items.into_iter().map(|i| i.label).collect()
+    }
+
+    /// dsl 0.37.0 §3.4: content-line keys are the checker's table — no
+    /// authored `id` (lines derive their ids) and no `voiceKey` (derived) —
+    /// with the `mono`/`os`/`vo` role flags; a bare key being typed completes.
+    #[test]
+    fn content_line_keys_are_the_037_set() {
+        let text = "## Shot 1.\n@mira{mo}: hi\n";
+        let off = text.find("{mo").unwrap() + 3;
+        let ls = complete_vocab(text, off);
+        for key in ["code", "emotion", "action", "mono", "os", "vo", "when"] {
+            assert!(ls.iter().any(|l| l == key), "missing {key}: {ls:?}");
+        }
+        for gone in ["id", "voiceKey", "delivery"] {
+            assert!(!ls.iter().any(|l| l == gone), "{gone} must not be offered: {ls:?}");
+        }
+    }
+
+    /// The narrator carries no delivery flag (`E-DELIVERY-NARRATOR`), and one
+    /// written flag excludes the other two (`E-DELIVERY-CONFLICT`).
+    #[test]
+    fn content_line_delivery_flags_respect_narrator_and_exclusivity() {
+        let text = "## Shot 1.\n@narrator{code=\"a\"}: hi\n@mira{os code=\"b\"}: hi\n";
+        let narrator = complete_vocab(text, text.find("code=\"a\"").unwrap() + 1);
+        assert!(!narrator.iter().any(|l| ["mono", "os", "vo"].contains(&l.as_str())), "{narrator:?}");
+        let flagged = complete_vocab(text, text.find("code=\"b\"").unwrap() + 1);
+        assert!(!flagged.iter().any(|l| ["mono", "vo"].contains(&l.as_str())), "{flagged:?}");
+    }
+
+    /// A content line's `emotion` value offers the merged `emotion` domain.
+    #[test]
+    fn content_line_emotion_value_offers_domain_members() {
+        let text = "## Shot 1.\n@mira{emotion=\"\"}: hi\n";
+        let off = text.find("emotion=\"").unwrap() + "emotion=\"".len();
+        let ls = complete_vocab(text, off);
+        assert!(!ls.is_empty(), "the vocab emotion domain is offered");
+        let vocab = lute_test_vocab::test_domains();
+        for member in &vocab["emotion"].members {
+            assert!(ls.contains(member), "missing {member}: {ls:?}");
+        }
+    }
+
+    /// The directive list is the 0.37 snapshot: `actor`/`bg`/`cg`/`sequence`/
+    /// `jump`/`label` are offered; the removed spellings are not.
+    #[test]
+    fn directive_names_are_the_037_set() {
+        let text = "## Shot 1.\n::";
+        let ls = complete_vocab(text, text.len());
+        for name in ["actor", "bg", "cg", "sequence", "jump", "label", "camera", "music"] {
+            assert!(ls.iter().any(|l| l == name), "missing {name}: {ls:?}");
+        }
+        for gone in ["auto", "cut", "next", "mark"] {
+            assert!(!ls.iter().any(|l| l == gone), "{gone} removed: {ls:?}");
+        }
+    }
+
+    /// `::camera` keys are the domain-valued slots plus timing; the removed
+    /// numeric fields are gone.
+    #[test]
+    fn camera_keys_are_domain_slots_and_timing() {
+        let text = "## Shot 1.\n::camera{}\n";
+        let ls = complete_vocab(text, text.find("{}").unwrap() + 1);
+        for key in ["focus", "framing", "move", "transition", "duration", "delay", "wait"] {
+            assert!(ls.iter().any(|l| l == key), "missing {key}: {ls:?}");
+        }
+        for gone in ["zoom", "moveX", "moveY", "shake", "reset", "easing"] {
+            assert!(!ls.iter().any(|l| l == gone), "{gone} removed: {ls:?}");
+        }
+        let cg = "## Shot 1.\n::cg{}\n";
+        let ls = complete_vocab(cg, cg.find("{}").unwrap() + 1);
+        for key in ["assetId", "display", "layout"] {
+            assert!(ls.iter().any(|l| l == key), "missing {key}: {ls:?}");
+        }
+        assert!(!ls.iter().any(|l| l == "full" || l == "action"), "{ls:?}");
+        let clear = "## Shot 1.\n::clear{}\n";
+        assert!(complete_vocab(clear, clear.find("{}").unwrap() + 1).is_empty());
+    }
+
+    /// Domain-typed staging values offer their domain's members: `framing`
+    /// and `move` from the project vocabulary, `transition`, `layout`,
+    /// sequence `name` and music `playback` from inline / shared domains.
+    #[test]
+    fn staging_domain_values_offer_members() {
+        let text = "---\nenums:\n  transition: [fade, wipe]\n  cgLayout: [full, inset]\n  sequence: [intro, outro]\n---\n## Shot 1.\n::camera{framing=\"\" move=\"\" transition=\"\"}\n::cg{assetId=\"a\" layout=\"\"}\n::sequence{name=\"\"}\n::music{playback=\"\"}\n";
+        let at = |needle: &str| text.find(needle).unwrap() + needle.len();
+        let cases: [(&str, &[&str]); 6] = [
+            ("framing=\"", &["close", "tight"]),
+            ("move=\"", &["shake"]),
+            ("transition=\"", &["fade", "wipe"]),
+            ("layout=\"", &["full", "inset"]),
+            ("name=\"", &["intro", "outro"]),
+            ("playback=\"", &["start", "stop"]),
+        ];
+        for (needle, want) in cases {
+            let ls = complete_vocab(text, at(needle));
+            for member in want {
+                assert!(ls.iter().any(|l| l == member), "{needle} missing {member}: {ls:?}");
+            }
+        }
+    }
+
+    /// dsl 0.37.0 §3.6: after `:` in line text, the core modifiers and the
+    /// project's `textStyle` members are offered; a colon glued to a word is
+    /// prose.
+    #[test]
+    fn inline_modifier_names_offer_core_and_text_styles() {
+        let text = "---\nenums:\n  textStyle: [emphasis, whisper]\n---\n## Shot 1.\n@mira: Wait :em now. Note: x\n";
+        let ls = complete_vocab(text, text.find(":em").unwrap() + 3);
+        for name in ["pause", "speed", "emphasis", "whisper"] {
+            assert!(ls.iter().any(|l| l == name), "missing {name}: {ls:?}");
+        }
+        assert!(complete_vocab(text, text.find("Note:").unwrap() + 5).is_empty());
+    }
+
+    /// dsl 0.37.0 §3.5: a `::jump{to}` value offers the document's label
+    /// names; a `::label{name}` value offers jump targets no label declares.
+    #[test]
+    fn jump_and_label_values_offer_label_names() {
+        let text = "## Shot 1.\n::jump{to=\"\"}\n::jump{to=\"later\"}\n::label{name=\"here\"}\n@f: x.\n## Two\n::label{name=\"\"}\n::label{name=\"there\"}\n@f: y.\n";
+        let to = complete_vocab(text, text.find("to=\"\"").unwrap() + "to=\"".len());
+        assert_eq!(to, ["here", "there"]);
+        let name = complete_vocab(text, text.find("name=\"\"").unwrap() + "name=\"".len());
+        assert_eq!(name, ["later"]);
+    }
+
+    /// dsl 0.37.0 §3.5: a choice open tag offers `text` (not the removed
+    /// `label`), hub choices add `once`/`exit`, written keys drop out, and a
+    /// `<match>` open tag offers `subject`.
+    #[test]
+    fn choice_and_match_open_tags_offer_their_keys() {
+        let text = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"a\" >\n@f: a.\n</choice>\n</branch>\n<hub id=\"h\">\n<choice id=\"x\" text=\"X\" >\n@f: x.\n</choice>\n</hub>\n";
+        let branch_choice = complete_vocab(text, text.find("\"a\" >").unwrap() + 4);
+        assert_eq!(branch_choice, ["text", "when", "into", "value"]);
+        let hub_choice = complete_vocab(text, text.find("\"X\" >").unwrap() + 4);
+        assert_eq!(hub_choice, ["when", "into", "value", "once", "exit"]);
+        let body = complete_vocab(text, text.find("@f: a.").unwrap());
+        assert!(!body.iter().any(|l| l == "text"), "the body is not the open tag: {body:?}");
+        let m = "## Shot 1.\n<match >\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
+        assert_eq!(complete_vocab(m, m.find("<match ").unwrap() + 7), ["subject"]);
     }
 }

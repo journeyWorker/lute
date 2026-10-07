@@ -104,7 +104,7 @@ fn a_fact_query_match_subject_shows_the_subjectless_form() {
         "{t}"
     );
     assert!(
-        t.contains("drop `on`") && t.contains("<when test=\"@badgeCount >= 1\">"),
+        t.contains("drop `subject`") && t.contains("<when test=\"@badgeCount >= 1\">"),
         "{t}"
     );
 }

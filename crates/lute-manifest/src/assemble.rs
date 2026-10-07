@@ -120,7 +120,7 @@ impl std::fmt::Display for AssembleError {
             AssembleError::ReservedStampAttr { plugin, name } => write!(
                 f,
                 "plugin `{plugin}` declares reserved stamp attribute `{name}`; \
-                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` \
                  are owned by the core stamp (plugin §14)"
             ),
             // `InvalidDirective.msg` is already prose (the per-directive

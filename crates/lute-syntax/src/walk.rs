@@ -605,7 +605,7 @@ mod tests {
                     clips: vec![
                         Clip {
                             node: ClipNode::Directive(Directive {
-                                tag: "cut".to_string(),
+                                tag: "cg".to_string(),
                                 attrs: vec![ref_attr("a", "s15"), ref_attr("b", "s16")],
                                 when: None,
                                 span: span(),

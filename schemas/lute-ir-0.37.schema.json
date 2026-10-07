@@ -37,6 +37,28 @@
       "type": "string",
       "description": "plugin-system §13 capability snapshot stamp (`snapshot.version`, a content hash); a consumer may refuse a mismatched snapshot. dsl 0.37.0 §5.3: no `capabilityVersion` alias is emitted."
     },
+    "identityRenames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "the retired canonical NodeKey (e.g. \"quest:oldQuest\")."
+          },
+          "to": {
+            "type": "string",
+            "description": "the canonical NodeKey that replaces it."
+          }
+        }
+      },
+      "description": "OPTIONAL authored save-identity migrations from `lute.project.yaml` relevant to this artifact, sorted by `from`; omitted when empty. Engines apply them when loading save-shaped identity and MUST NOT infer renames from position, text, or spans. `project.index.json` exposes the same list."
+    },
     "requiredSemantics": {
       "type": "array",
       "items": {

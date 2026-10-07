@@ -52,19 +52,19 @@ pub(crate) fn check_match_has_subject(m: &Match, schema: &StateSchema) -> Vec<Di
         return Vec::new();
     }
     let subject = subject_for(&patterns, schema)
-        .map_or_else(|| "on=\"…\"".to_string(), |p| format!("on=\"{p}\""));
+        .map_or_else(|| "subject=\"…\"".to_string(), |p| format!("subject=\"{p}\""));
     patterns
         .iter()
         .map(|p| {
             let raw = p.raw.trim();
             let message = if reads_as_condition(raw) {
                 format!(
-                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                    "`is=\"{raw}\"` compares against the `<match subject>`; this `<match>` \
                      has none, and `{raw}` is a condition — write `<when test=\"{raw}\">`"
                 )
             } else {
                 format!(
-                    "`is=\"{raw}\"` compares against the `<match on>` subject; this `<match>` \
+                    "`is=\"{raw}\"` compares against the `<match subject>`; this `<match>` \
                      has none — add `{subject}` to the `<match>`, or write `test=` for a \
                      condition"
                 )

@@ -1,4 +1,4 @@
 W-CODE-AFTER-END false positive: content after ::end that is the target of a
-taken ::next (::mark) is reported "unreachable", but trace reaches it.
+taken ::jump (::label) is reported "unreachable", but trace reaches it.
   lute check jump.lute                        -> W-CODE-AFTER-END at 13:1
-  lute trace jump.lute --state run.bad=true   -> walks <next -> flooded> into it
+  lute trace jump.lute --state run.bad=true   -> walks <jump -> flooded> into it

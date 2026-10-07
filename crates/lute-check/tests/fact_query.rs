@@ -192,7 +192,7 @@ fn an_is_arm_in_a_match_with_no_on_is_refused_and_a_test_arm_is_not() {
     let (at, msg) = only(&src);
     assert_eq!(at, "ren");
     assert!(
-        msg.contains("add `on=\"run.route\"` to the `<match>`"),
+        msg.contains("add `subject=\"run.route\"` to the `<match>`"),
         "{msg}"
     );
     let src = doc("is=\"run.act >= 3\"");

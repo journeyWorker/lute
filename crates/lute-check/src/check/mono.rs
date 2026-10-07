@@ -32,23 +32,21 @@ impl MonoContext<'_> {
             return None;
         }
         let listed = if self.allowed.is_empty() {
-            String::new()
+            "none".to_string()
         } else {
-            format!(
-                " (it lists {})",
-                self.allowed
-                    .iter()
-                    .map(|s| format!("`{s}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
+            self.allowed
+                .iter()
+                .map(|s| format!("`{s}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
         };
         Some(match self.pov {
             Some(pov) => (
                 E_MONO_POV,
                 format!(
                     "`@{speaker}{{mono}}` is an interior monologue, but `{speaker}` is not this \
-                     document's point of view (`{pov}`) and not in `monoSpeakers:`{listed} — \
+                     document's point of view (`{pov}`) and not in `monoSpeakers:` (which lists \
+                     {listed}) — \
                      only the POV character and the speakers `monoSpeakers:` lists may speak \
                      `mono`; add `{speaker}` to `monoSpeakers:`, or write the line as dialogue, \
                      `{{os}}` or `{{vo}}` (dsl 0.37.0 §3.4)"
@@ -59,7 +57,8 @@ impl MonoContext<'_> {
                 format!(
                     "`@{speaker}{{mono}}` is an interior monologue, but no point of view \
                      resolves for this document — it writes no `pov:` and the project's \
-                     `defaults:` gives none — and `{speaker}` is not in `monoSpeakers:`{listed}; \
+                     `defaults:` gives none — and `{speaker}` is not in `monoSpeakers:` (which \
+                     lists {listed}); \
                      declare the POV (`pov: <speaker>`, or `defaults: {{ pov: <speaker> }}` in \
                      lute.project.yaml), or list `{speaker}` in `monoSpeakers:` (dsl 0.37.0 \
                      §3.4)"

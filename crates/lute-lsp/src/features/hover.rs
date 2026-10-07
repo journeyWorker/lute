@@ -7,9 +7,15 @@
 //! - an attribute key -> its [`AttrDecl`] (type, required, default);
 //! - an `@ref` -> the def's CEL text + type (author `defs:` first, then snapshot);
 //! - a state path -> its `state:` decl type + default;
-//! - an enum-typed attr value -> the enum domain.
+//! - an enum-typed attr value -> the enum domain;
 //! - an `assetKind`-typed `assetId` value -> the segment under the cursor (its
-//!   name, declared type, and authored value).
+//!   name, declared type, and authored value);
+//! - a `::jump{to=…}` / `::label{name=…}` value -> the label, where it is
+//!   declared and how many jumps target it (dsl 0.37.0 §3.5);
+//! - a content-line attr key -> its meaning (delivery flags select the line
+//!   role), and the `@speaker` -> the line's role (dsl 0.37.0 §3.4);
+//! - an inline modifier name in line text -> `pause`/`speed`/`textStyle`
+//!   (dsl 0.37.0 §3.6).
 //!
 //! A plain-string `assetId` (an attr NOT typed `assetKind`) or any other value
 //! with no capability match yields `None`. `Hover.range` is `None`: highlighting the hovered
@@ -19,7 +25,9 @@ use lute_check::{parse_meta, SchemaImports};
 use lute_manifest::asset;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_syntax::ast::{AttrValue, Document, InterpKind};
+use lute_core_span::Span;
+use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
+use lute_syntax::ast::{AttrValue, Document, InlineModifier, InlineNode, InterpKind, Line};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use lute_resolve::cursor::{
@@ -38,16 +46,24 @@ pub fn hover_at(
 ) -> Option<Hover> {
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
     lute_resolve::cursor::merge_imports(&mut meta, imports);
-    let cursor = lute_resolve::cursor::resolve(doc, off)?;
-    let mut md = match cursor {
+    let cursor = match lute_resolve::cursor::resolve(doc, off) {
+        Some(cursor) => cursor,
+        None => return hover_with_identity(doc, off, modifier_hover(doc, off)),
+    };
+    let md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
         Cursor::AttrValue {
             directive: Some(dir),
             key,
         } => {
-            // An `assetId` value documents the segment under the cursor; else an
-            // enum attr documents its domain; else the attr's own declaration.
-            if let Some(kind) = asset_kind_for(snapshot, dir, key) {
+            // A label name documents the label; an `assetId` value documents
+            // the segment under the cursor; else an enum attr documents its
+            // domain; else the attr's own declaration.
+            if (dir == JUMP_DIRECTIVE && key == "to")
+                || (dir == LABEL_DIRECTIVE && key == LABEL_NAME_ATTR)
+            {
+                super::label_name_at(doc, off).map(|name| label_hover(doc, name))
+            } else if let Some(kind) = asset_kind_for(snapshot, dir, key) {
                 asset_segment_hover(kind, doc, off)
             } else if let Some(vals) = attr_enum_values(snapshot, imports, &meta, dir, key) {
                 Some(format!("**enum** `{key}`\n\ndomain: {}", vals.join(", ")))
@@ -109,18 +125,41 @@ pub fn hover_at(
                         .to_string()
                 })
             }),
-        Cursor::DirectiveAttrArea { .. }
-        | Cursor::AttrKey {
-            directive: None, ..
+        // A content-line key; a bare delivery flag (`{os}`) resolves as a value
+        // because its key and value spans coincide.
+        Cursor::AttrKey {
+            directive: None,
+            key,
+        } => content_line_attr_hover(doc, off, key),
+        Cursor::AttrValue {
+            directive: None,
+            key,
+        } if attr_at(doc, off).is_some_and(|a| matches!(a.value, AttrValue::BoolTrue)) => {
+            content_line_attr_hover(doc, off, key)
         }
+        Cursor::Speaker => super::line_at(doc, off).map(speaker_hover),
+        Cursor::DirectiveAttrArea { .. }
         | Cursor::AttrValue {
             directive: None, ..
-        }
-        | Cursor::Speaker => None,
+        } => None,
         Cursor::SetPath { path } => state_hover(&meta, path),
         Cursor::ConstructAttrArea { construct } => Some(construct_hover(construct)),
         Cursor::OnEventValue(event) => event_hover(snapshot, event),
     };
+    hover_with_identity(doc, off, md)
+}
+
+/// A content-line attribute key's meaning (dsl 0.37.0 §3.4); `None` off a
+/// content line or for an unknown key.
+fn content_line_attr_hover(doc: &Document, off: usize, key: &str) -> Option<String> {
+    super::line_at(doc, off)?;
+    super::completion::content_line_attr_detail(key)
+        .map(|detail| format!("**`{key}`** (content line): {detail}"))
+}
+
+/// Append the identity metadata of the construct at `off` (when any) and wrap
+/// the Markdown as a [`Hover`].
+fn hover_with_identity(doc: &Document, off: usize, mut md: Option<String>) -> Option<Hover> {
     if let Some(identity) = super::identity_at(doc, off) {
         let source = format!("{:?}", identity.identity.source).to_ascii_lowercase();
         let suffix = format!(
@@ -135,13 +174,88 @@ pub fn hover_at(
             md = Some(suffix);
         }
     }
-    let md = md?;
-    Some(Hover {
+    md.map(markdown)
+}
+
+fn markdown(value: String) -> Hover {
+    Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: md,
+            value,
         }),
         range: None,
+    }
+}
+
+/// The role a content line's speaker and delivery flag select (dsl 0.37.0
+/// §3.4): `narration` for the narrator, `mono`/`os`/`vo` for those flags,
+/// `dialogue` otherwise.
+fn speaker_hover(line: &Line) -> String {
+    let flag = line.attrs.iter().find_map(|a| match (a.key.as_str(), &a.value) {
+        (flag @ ("mono" | "os" | "vo"), AttrValue::BoolTrue) => Some(flag),
+        _ => None,
+    });
+    let role = match flag {
+        _ if line.speaker == "narrator" => "narration",
+        Some(flag) => flag,
+        None => "dialogue",
+    };
+    format!(
+        "**@{}** — role `{role}`\n\nEvery line carries a derived `voiceKey` join key; \
+         `mono` is valid only for the effective POV speaker or a `monoSpeakers` member.",
+        line.speaker
+    )
+}
+
+/// A `::label` name: where it is declared and how many `::jump`s target it.
+fn label_hover(doc: &Document, name: &str) -> String {
+    let declared = super::label_decls(doc)
+        .into_iter()
+        .find(|(label, _)| *label == name)
+        .map(|(_, span)| span.line);
+    let jumps = super::jump_targets(doc)
+        .into_iter()
+        .filter(|(target, _)| *target == name)
+        .count();
+    let site = match declared {
+        Some(line) => format!("declared by `::label` on line {line}"),
+        None => "no `::label` in this document declares it".to_string(),
+    };
+    format!("**label** `{name}` — {site}; targeted by {jumps} `::jump`")
+}
+
+/// The inline modifier whose `:name` sits under `off` in a content line's
+/// text (dsl 0.37.0 §3.6): the core `pause` leaf / `speed` span, or a
+/// project `textStyle` member.
+fn modifier_hover(doc: &Document, off: usize) -> Option<String> {
+    fn find(nodes: &[InlineNode], off: usize) -> Option<&InlineModifier> {
+        nodes.iter().find_map(|node| match node {
+            InlineNode::Modifier(m) => {
+                let name = Span {
+                    byte_end: m.span.byte_start + ":".len() + m.name.len(),
+                    ..m.span
+                };
+                if lute_resolve::cursor::span_contains(name, off) {
+                    Some(m)
+                } else {
+                    find(&m.children, off)
+                }
+            }
+            _ => None,
+        })
+    }
+    let m = find(&super::line_at(doc, off)?.inline, off)?;
+    Some(match m.name.as_str() {
+        "pause" => "**:pause** — core leaf modifier: `:pause{s=seconds}` pauses the text \
+                    for `s` seconds (required, non-negative)"
+            .to_string(),
+        "speed" => "**:speed** — core span modifier: `:speed[text]{rate=rate}` plays the \
+                    span at `rate` (required, positive); the innermost rate wins"
+            .to_string(),
+        name => format!(
+            "**:{name}** — text style: a member of the project `textStyle` domain; \
+             `:{name}[text]`, no attributes"
+        ),
     })
 }
 
@@ -187,6 +301,12 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
     if let Some(layer) = &decl.layer {
         s.push_str(&format!(" — layer `{layer}`"));
     }
+    if let Some(lang) = lute_check::directives::LANGUAGE_DIRECTIVES
+        .iter()
+        .find(|d| d.name == tag)
+    {
+        s.push_str(&format!("\n\n{}", lang.meaning));
+    }
     if !decl.attrs.is_empty() {
         s.push_str("\n\n**attributes:**");
         for a in &decl.attrs {
@@ -203,10 +323,21 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
     Some(s)
 }
 
-/// Render one attribute's declaration (type, required, default).
+/// Render one attribute's declaration (type, required, default). An
+/// undeclared `duration`/`delay`/`wait` is the universal timing key every
+/// directive but `::clear` takes (dsl 0.37.0 §3.3).
 fn attr_hover(snapshot: &CapabilitySnapshot, directive: &str, key: &str) -> Option<String> {
     let decl = snapshot.directive(directive)?;
-    let attr = decl.attrs.iter().find(|a| a.name == key)?;
+    let Some(attr) = decl.attrs.iter().find(|a| a.name == key) else {
+        let (_, ty) = lute_check::directives::UNIVERSAL_TIMING_ATTRS
+            .iter()
+            .find(|(name, _)| *name == key && directive != CLEAR_DIRECTIVE)?;
+        return Some(format!(
+            "**`{key}`** (optional): {} — universal timing (seconds for \
+             `duration`/`delay`)\n\non `::{directive}`",
+            type_label(ty)
+        ));
+    };
     let req = if attr.required {
         "required"
     } else {
@@ -380,7 +511,7 @@ fn construct_hover(construct: QuestConstruct) -> String {
         }
         QuestConstruct::Beat => {
             "**\\<beat>** — a beat bundle: a scene-like beat declared inside a lore \
-             document. Its body is a scene shot body; presenting it \
+             document. Its body is a scene section body; presenting it \
              records `<document id>.<id>` in `visited`, and `scene.*` is fresh per \
              presentation.\n\n\
              **attributes:**\n\
@@ -896,5 +1027,75 @@ mod tests {
                 "{s}"
             );
         }
+    }
+
+    fn hover_text(text: &str, off: usize) -> Option<String> {
+        hover_at(&parsed(text), &load_core_snapshot(), &SchemaImports::default(), off)
+            .map(|h| contents_text(&h).to_string())
+    }
+
+    /// dsl 0.37.0 §3.5: a `::jump{to}` value names its label, where the label
+    /// is declared and how many jumps target it.
+    #[test]
+    fn hover_on_jump_target_describes_the_label() {
+        let text = "## Shot 1.\n::jump{to=\"detail\"}\n@fixer: skipped.\n::label{name=\"detail\"}\n@fixer: here.\n";
+        let md = hover_text(text, text.find("detail").unwrap() + 1).unwrap();
+        assert!(md.contains("**label** `detail`"), "{md}");
+        assert!(md.contains("line 4"), "{md}");
+        assert!(md.contains("targeted by 1 `::jump`"), "{md}");
+    }
+
+    /// The new core directives render their snapshot attrs (`::cg` `assetId`,
+    /// `display`, `layout`; `::sequence` `name`) and the language meaning of
+    /// a control-flow directive.
+    #[test]
+    fn hover_on_new_directives_lists_snapshot_attrs() {
+        let text = "## Shot 1.\n::cg{assetId=\"cg.one\"}\n::sequence{name=\"intro\"}\n::jump{to=\"x\"}\n::label{name=\"x\"}\n";
+        let cg = hover_text(text, text.find("::cg").unwrap() + 2).unwrap();
+        for attr in ["`assetId`", "`display`", "`layout`"] {
+            assert!(cg.contains(attr), "{cg}");
+        }
+        let seq = hover_text(text, text.find("::sequence").unwrap() + 2).unwrap();
+        assert!(seq.contains("`name`: domain `sequence`") || seq.contains("`name`"), "{seq}");
+        let jump = hover_text(text, text.find("::jump").unwrap() + 2).unwrap();
+        assert!(jump.contains("jump forward"), "{jump}");
+    }
+
+    /// Camera domain attrs and the music `playback` key hover their declared
+    /// domain; an undeclared universal timing key hovers as such.
+    #[test]
+    fn hover_on_camera_and_music_attr_keys() {
+        let text = "## Shot 1.\n::camera{framing=\"close\" duration=\"1\"}\n::music{playback=\"start\"}\n::cg{assetId=\"a\" delay=\"1\"}\n";
+        let framing = hover_text(text, text.find("framing").unwrap() + 1).unwrap();
+        assert!(framing.contains("**`framing`**") && framing.contains("framing"), "{framing}");
+        let playback = hover_text(text, text.find("playback").unwrap() + 1).unwrap();
+        assert!(playback.contains("musicPlayback"), "{playback}");
+        let delay = hover_text(text, text.find("delay").unwrap() + 1).unwrap();
+        assert!(delay.contains("universal timing"), "{delay}");
+    }
+
+    /// dsl 0.37.0 §3.4: a delivery flag hovers its role; the speaker hovers
+    /// the line's role.
+    #[test]
+    fn hover_on_line_role_flag_and_speaker() {
+        let text = "## Shot 1.\n@mira{os code=\"c1\"}: Hello.\n@narrator: Prose.\n";
+        let flag = hover_text(text, text.find("{os").unwrap() + 2).unwrap();
+        assert!(flag.contains("role `os`"), "{flag}");
+        let code = hover_text(text, text.find("code").unwrap() + 1).unwrap();
+        assert!(code.contains("voiceKey"), "{code}");
+        let speaker = hover_text(text, text.find("mira").unwrap() + 1).unwrap();
+        assert!(speaker.contains("role `os`"), "{speaker}");
+        let narrator = hover_text(text, text.find("narrator").unwrap() + 1).unwrap();
+        assert!(narrator.contains("role `narration`"), "{narrator}");
+    }
+
+    /// dsl 0.37.0 §3.6: an inline modifier name hovers its meaning.
+    #[test]
+    fn hover_on_inline_modifier_name() {
+        let text = "## Shot 1.\n@mira: Wait :pause{s=0.5} :emphasis[now].\n";
+        let pause = hover_text(text, text.find(":pause").unwrap() + 2).unwrap();
+        assert!(pause.contains("**:pause**"), "{pause}");
+        let style = hover_text(text, text.find(":emphasis").unwrap() + 3).unwrap();
+        assert!(style.contains("textStyle"), "{style}");
     }
 }

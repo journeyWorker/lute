@@ -891,7 +891,7 @@ fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
             hit.to_string(),
             format!(
                 "plugin `arcia.minigame` declares reserved stamp attribute `{reserved}`; \
-                 `at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source` \
+                 `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` \
                  are owned by the core stamp (plugin §14)"
             )
         );

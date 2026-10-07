@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.36.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.37.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.

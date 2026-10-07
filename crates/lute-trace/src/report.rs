@@ -983,7 +983,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             out.push_str(&format!("    quest {quest} accepted{queued}\n"))
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
-        Step::Jump { to } => out.push_str(&format!("    <next -> {to}>\n")),
+        Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),
         Step::HubReturn { hub } => out.push_str(&format!("    -- return (hub {hub}) --\n")),
         Step::Grant {
             quest,

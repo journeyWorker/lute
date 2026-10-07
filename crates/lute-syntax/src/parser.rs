@@ -583,7 +583,7 @@ impl Parser<'_> {
                         "content in a lore document lives inside an `<entry>` or `<beat>` block"
                     }
                     Some("quest") => "content in a quest document lives inside a `<quest>` block",
-                    _ => "content lives inside a shot; add a `## <title>` heading above it",
+                    _ => "content lives inside a section; add a `## <title>` heading above it",
                 };
                 outside = Some((self.diags.len(), self.cursor, self.cursor));
                 self.emit_line(E_CONTENT_OUTSIDE_SECTION, msg, self.cursor, Layer::Content);

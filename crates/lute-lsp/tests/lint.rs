@@ -14,7 +14,7 @@ use lute_manifest::provider::ProviderSet;
 
 /// A scene document whose second dialogue line is 41 whitespace-tokens long,
 /// tripping the built-in `dialogue-length` rule at its default `maxWords: 40`
-/// (design §7). One shot + one narration line keeps unrelated rules quiet
+/// (design §7). One section + one narration line keeps unrelated rules quiet
 /// (`dialogue-ratio` requires `bodyNodes >= 10` before it fires; only one
 /// document ⇒ `scene-length-spread` skipped by `scenes >= 2`).
 const DIALOGUE_LENGTH_SCENE: &str = "---\nkind: scene\n---\n## Shot 1.\n\

@@ -602,8 +602,8 @@ fn walk_match(
                     diags.push(arm_diag(
                         "E-MATCH-NO-SUBJECT",
                         format!(
-                            "`is=\"{}\"` compares against the `<match on>` subject; this \
-                             `<match>` has none — add `on=`, or write `test=`",
+                            "`is=\"{}\"` compares against the `<match subject>`; this \
+                             `<match>` has none — add `subject=`, or write `test=`",
                             p.raw.trim()
                         ),
                         p.span,

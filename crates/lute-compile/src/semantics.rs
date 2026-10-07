@@ -56,29 +56,28 @@ pub const REGISTRY: &[SemanticEntry] = &[
 /// (`extra`, plugin `fields`, labels, and locale text) are intentionally
 /// traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
-    "accept","action","activate","addr","advances","after","also","amount","amountMax","amountMin",
+    "accept","action","activate","advances","after","also","amount","amountMax","amountMin",
     "anchor","applies","args","arms","as","asserts","assetId","at","atom","authored","beat","body",
-    "bool","branchId","bridgeResult","by","call","capabilitySnapshot","capabilityVersion",
-    "category","cel","celEnv","character","clock","commands","complete","component","cond",
-    "contentLang","converge","costume","credits","day","dayEnd","dayStart","days","default","delay",
-    "derive","dialogMotion","display","distinct","document","domain","done","double","duration",
-    "easing","effects","else","emotion","entities","entityKind","enums","episode","episodeId",
-    "event","excludes","exit","explanation","expr","extra","fail","family","fields","first","focus",
-    "follows","forKind","format","forms","framing","from","full","functions","gates","has","head",
-    "heading","id","identityRenames","indefinite","index","injected","int","irVersion","is","key",
-    "kind","l","label","labelForms","labels","last","layout","length","lhs","lineId","list","live",
-    "localeSegments","location","lute","members","meta","mood","move","moveX","moveY","n","name","negated","node",
-    "objectives","occasion","on","once","op","open","optional","options","order","otherwise",
-    "outcome","outsideRun","overloads","owner","params","path","pause","placeholders","playback","plugin",
-    "posReset","position","prefix","preload","prereqEdges","priority","prompt","provenance","quest",
-    "r","raise","raiseAtStart","raisedWhen","rate","raw","rearm","reason","recordKey","ref","relation",
-    "relations","requiredSemantics","reserved","reset","result","retracts","return","rewards","rhs",
-    "role","rules","season","seasons","section","sections","seedFacts","segments","selectionKey","series",
-    "shake","share","shot","shots","slot","slots","sound","source","speaker","spentBy","start",
-    "state","string","styles","subject","tag","target","targetKind","terminal","terminalPersists","terms",
-    "test","text","texts","then","tier","time","timeline","timeout","timeoutSec","timing","title",
-    "titleLineId","token","track","transition","type","until","value","variables","variant",
-    "vfxType","visibleWhen","voiceKey","volume","wait","week","when","zoom",
+    "bool","branchId","bridgeResult","by","call","capabilitySnapshot","category","cel","celEnv",
+    "character","clock","commands","complete","component","cond","contentLang","converge","costume",
+    "credits","day","dayEnd","dayStart","days","default","delay","derive","dialogMotion","display",
+    "distinct","document","domain","done","double","duration","effects","else","emotion","entities",
+    "entityKind","enums","episode","episodeId","event","excludes","exit","explanation","expr",
+    "extra","fail","family","fields","first","focus","follows","forKind","format","forms","framing",
+    "from","functions","gates","has","head","heading","id","identityRenames","indefinite","index",
+    "int","irVersion","is","key","kind","l","label","labelForms","labels","last","layout","length",
+    "lhs","lineId","list","live","localeSegments","location","lute","members","meta","mood","move",
+    "n","name","negated","node","objectives","occasion","on","once","op","open","optional",
+    "options","order","otherwise","outcome","outsideRun","overloads","owner","params","path",
+    "pause","placeholders","playback","plugin","posReset","position","prefix","preload",
+    "prereqEdges","priority","prompt","provenance","quest","r","raise","raiseAtStart","raisedWhen",
+    "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
+    "result","retracts","return","rewards","rhs","role","rules","season","seasons","section",
+    "sections","seedFacts","segments","selectionKey","series","share","slot","slots","sound",
+    "source","speaker","spentBy","start","state","string","styles","subject","tag","target",
+    "targetKind","terminal","terminalPersists","terms","test","text","texts","then","tier","time",
+    "timeline","timeout","timing","title","titleLineId","to","token","transition","type","until","value",
+    "variables","variant","visibleWhen","voiceKey","volume","wait","week","when",
 ];
 
 pub fn field_is_registered(field: &str) -> bool {
@@ -416,9 +415,8 @@ mod tests {
                 _ => {}
             }
         }
-        let minor = crate::LUTE_IR_VERSION.rsplit_once('.').expect("x.y.z").0;
         let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(format!("../../schemas/lute-ir-{minor}.schema.json"));
+            .join("../../schemas/lute-ir-0.37.schema.json");
         let text = std::fs::read_to_string(&schema_path)
             .unwrap_or_else(|e| panic!("{}: {e}", schema_path.display()));
         let schema: serde_json::Value = serde_json::from_str(&text).expect("schema parses");
