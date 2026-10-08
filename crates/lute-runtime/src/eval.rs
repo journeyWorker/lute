@@ -12,10 +12,10 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use lute_check::{RelVocab, StateSchema};
 use lute_manifest::Literal;
 
 use crate::datalog::Program;
+use crate::schema::{RelVocab, StateSchema};
 use crate::value::{UnresolvedAtom, Value};
 
 /// The result of an [`EffectiveState::read`] — distinguishes "no effective
@@ -545,7 +545,7 @@ pub(crate) fn literal_to_value(l: &Literal) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_check::meta::{Namespace, StateDecl};
+    use crate::schema::StateDecl;
     use lute_manifest::relations::RelationDecl;
     use lute_manifest::types::Type;
 
@@ -560,14 +560,11 @@ mod tests {
 
     fn schema_with(decls: &[(&str, Type, Option<Literal>)]) -> StateSchema {
         let mut s = StateSchema::default();
-        for (path, ty, default) in decls {
+        for (path, _, default) in decls {
             s.decls.insert(
                 path.to_string(),
                 StateDecl {
-                    ty: ty.clone(),
                     default: default.clone(),
-                    namespace: Namespace::Run,
-                    owner: None,
                 },
             );
         }

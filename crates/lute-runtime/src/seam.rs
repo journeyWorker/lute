@@ -11,7 +11,8 @@
 //! `occasion:` step is a usage error.
 
 use super::session::{ExecProject, PlayHalt, SessionEvalObserver, World};
-use crate::{Driver, GuardRead, Machine, Slot};
+use crate::expr::{Expr, Func};
+use crate::{Driver, GuardRead, Machine, Slot, Value};
 
 use lute_manifest::semantics::gates::E_OCCASION_GATE;
 
@@ -182,7 +183,7 @@ pub fn refusal(
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
              raises no occasion ({raised} included); {}, or, if the engine raises `{occasion}` \
              outside a run too (a title screen, a gallery), declare it `outsideRun: true`",
-            play_on(t, p.index.terminal_persists)
+            play_on(p)
         )),
         Closed::Gate { raw, reads } => {
             // A payload read is changed by this step's own `payload:`,
@@ -226,7 +227,7 @@ pub fn advance_after_terminal(n: usize, p: &ExecProject) -> PlayHalt {
     PlayHalt::Error(format!(
         "step {n}: {E_OCCASION_GATE}: `advance:` after the game is over — `terminal: {terminal}` \
          holds, so the engine raises no occasion and the clock does not move on; {}",
-        play_on(terminal, p.index.terminal_persists)
+        play_on(p)
     ))
 }
 
@@ -234,13 +235,13 @@ pub fn advance_after_terminal(n: usize, p: &ExecProject) -> PlayHalt {
 /// run, unless the ending persists (`persists: true`: the game is over for
 /// good) or the condition reads state a new run keeps ([`persistent_read`]),
 /// when a new run does not help.
-fn play_on(terminal: &str, persists: bool) -> String {
-    if persists {
+fn play_on(p: &ExecProject) -> String {
+    if p.index.terminal_persists {
         return "the ending persists (`persists: true`), so the game is over for good and no new \
                 run reopens it — drop the step"
             .to_string();
     }
-    match persistent_read(terminal) {
+    match persistent_read(p) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
         }
@@ -248,14 +249,117 @@ fn play_on(terminal: &str, persists: bool) -> String {
     }
 }
 
-/// The first path `terminal` reads that a new run keeps
-/// ([`lute_check::gates::persistent_reads`]) — once it holds, a new run
-/// does not end the game over.
-pub fn persistent_read(terminal: &str) -> Option<String> {
+/// The first path the project's `terminal:` reads that a new run keeps
+/// ([`persistent_reads`]) — once it holds, a new run does not end the game
+/// over.
+pub fn persistent_read(p: &ExecProject) -> Option<String> {
+    let terminal = p.conds.terminal.as_ref()?;
     let unknown = |_: &str| None;
-    lute_check::gates::persistent_reads(terminal, &unknown, &unknown)
+    persistent_reads(&terminal.expr, &unknown, &unknown)
         .into_iter()
         .next()
+}
+
+/// dsl 0.28.0 (T3-19): the reads of condition `expr` a new run keeps, each
+/// once, in reading order, as a message shows them — `visited('h')`,
+/// `user.*`, `app.*`, `entry.<id>.everRead`, and a quest's `quest.<id>.*`
+/// or a relation's `holds(…)` / `count(…)` / `countDistinct(…)` when
+/// `quest_kept` / `relation_kept` say it survives a new run (`None`:
+/// unknown, not named).
+pub(crate) fn persistent_reads(
+    expr: &Expr,
+    quest_kept: &dyn Fn(&str) -> Option<bool>,
+    relation_kept: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    collect_persistent(expr, quest_kept, relation_kept, &mut out);
+    out
+}
+
+fn collect_persistent(
+    expr: &Expr,
+    quest_kept: &dyn Fn(&str) -> Option<bool>,
+    relation_kept: &dyn Fn(&str) -> Option<bool>,
+    out: &mut Vec<String>,
+) {
+    fn keep(out: &mut Vec<String>, text: String) {
+        if !out.contains(&text) {
+            out.push(text);
+        }
+    }
+    let each = |items: &[&Expr], out: &mut Vec<String>| {
+        for e in items {
+            collect_persistent(e, quest_kept, relation_kept, out);
+        }
+    };
+    if let Some(p) = expr.static_path() {
+        let kept = p.starts_with("user.")
+            || p.starts_with("app.")
+            || (lute_manifest::semantics::cel_paths::reserved_entry_id(&p).is_some()
+                && p.ends_with(".everRead"))
+            || p.strip_prefix("quest.")
+                .and_then(|r| r.split('.').next())
+                .is_some_and(|id| quest_kept(id) == Some(true));
+        if kept {
+            keep(out, p);
+        }
+        return;
+    }
+    match expr {
+        Expr::Call(Func::Visited, args) if matches!(args.as_slice(), [Expr::Lit(Value::Str(_))]) => {
+            keep(out, show(expr));
+        }
+        Expr::Call(Func::Holds | Func::Count | Func::CountDistinct, args)
+            if matches!(args.as_slice(), [Expr::Lit(Value::Str(_)), Expr::List(_), ..]) =>
+        {
+            if let [Expr::Lit(Value::Str(rel)), ..] = args.as_slice() {
+                if relation_kept(rel) == Some(true) {
+                    keep(out, show(expr));
+                }
+            }
+        }
+        Expr::Call(_, items) | Expr::List(items) => {
+            each(&items.iter().collect::<Vec<_>>(), out);
+        }
+        Expr::Not(a) | Expr::Neg(a) => each(&[a], out),
+        Expr::And(a, b)
+        | Expr::Or(a, b)
+        | Expr::In(a, b)
+        | Expr::Binary(_, a, b)
+        | Expr::Index(a, b) => each(&[a, b], out),
+        Expr::Cond(c, t, e) => each(&[c, t, e], out),
+        Expr::Path(_) | Expr::Has(_) | Expr::Lit(_) | Expr::Invalid => {}
+    }
+}
+
+/// `expr` as its CEL source shows it (`holds('owned', ['brassKey', '_'])`).
+fn show(expr: &Expr) -> String {
+    let join = |items: &[Expr]| items.iter().map(show).collect::<Vec<_>>().join(", ");
+    match expr {
+        Expr::Lit(Value::Str(s)) => format!("'{s}'"),
+        Expr::Lit(Value::Int(n)) => n.to_string(),
+        Expr::Lit(Value::Double(d)) => d.to_string(),
+        Expr::Lit(Value::Bool(b)) => b.to_string(),
+        Expr::List(items) => format!("[{}]", join(items)),
+        Expr::Call(f, args) => {
+            let name = match f {
+                Func::Holds => "holds",
+                Func::Count => "count",
+                Func::CountDistinct => "countDistinct",
+                Func::Visited => "visited",
+                Func::ValidAt => "validAt",
+                Func::Now => "now",
+                Func::Int => "int",
+                Func::Double => "double",
+                Func::Other => return "…".to_string(),
+            };
+            format!("{name}({})", join(args))
+        }
+        e => e
+            .static_path()
+            .map(|p| lute_manifest::text::bracket_spelling_of(&p))
+            .unwrap_or_else(|| "…".to_string()),
+    }
 }
 
 /// A raise the clock did not make during an `advance:` because the seam
@@ -287,5 +391,40 @@ pub fn clock_raise_open(
             });
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reads(raw: &str, kept: Option<bool>) -> Vec<String> {
+        let lowered = lute_compile::expr::lower_expr(raw).expect("CEL inside the profile");
+        let expr = Expr::decode(&serde_json::to_value(lowered).unwrap());
+        let quest = |_: &str| kept;
+        let relation = |_: &str| kept;
+        persistent_reads(&expr, &quest, &relation)
+    }
+
+    #[test]
+    fn persistent_reads_name_kept_reads_once_in_order() {
+        let raw = "user.x > 1 && visited('h') && run.y == 2 && user.x == 2 \
+                   && entry.lamp.everRead && user.flags['a'] \
+                   && holds('owned', ['k', '_']) && quest.q.state == 'complete'";
+        assert_eq!(
+            reads(raw, None),
+            ["user.x", "visited('h')", "entry.lamp.everRead", "user.flags.a"]
+        );
+        assert_eq!(
+            reads(raw, Some(true)),
+            [
+                "user.x",
+                "visited('h')",
+                "entry.lamp.everRead",
+                "user.flags.a",
+                "holds('owned', ['k', '_'])",
+                "quest.q.state",
+            ]
+        );
     }
 }

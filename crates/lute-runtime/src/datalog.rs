@@ -19,11 +19,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use lute_check::RelVocab;
 use serde_json::Value as Json;
 
 use crate::eval::{EffectiveState, EvalEnv, FactStore};
 use crate::expr::Slot;
+use crate::schema::RelVocab;
 use crate::value::{UnresolvedAtom, Value};
 
 /// A ground fact: relation and argument constants.
@@ -1072,7 +1072,7 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use lute_check::StateSchema;
+    use crate::schema::StateSchema;
     use serde_json::json;
 
     use super::Program;

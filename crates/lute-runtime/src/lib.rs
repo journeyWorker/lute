@@ -10,6 +10,7 @@ pub mod input;
 pub mod index;
 pub mod machine;
 pub mod seam;
+pub mod schema;
 pub mod session;
 pub mod store;
 pub mod value;

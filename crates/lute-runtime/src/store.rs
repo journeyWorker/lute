@@ -18,12 +18,12 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_check::{RelVocab, StateSchema};
 use serde_json::Value as Json;
 
 use super::expr::{self, Expr};
 use crate::datalog::{Fact, Program};
 use crate::eval::{Read, ReservedReadKind};
+use crate::schema::{RelVocab, StateSchema};
 use crate::{EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 
 /// One member's declared label forms (the artifact's `labelForms` entry).
