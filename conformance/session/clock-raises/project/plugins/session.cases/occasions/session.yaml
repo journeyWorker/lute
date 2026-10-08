@@ -1,0 +1,3 @@
+occasions:
+  tick: { select: first }
+  night: { select: first }

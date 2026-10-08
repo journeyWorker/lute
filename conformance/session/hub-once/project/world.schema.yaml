@@ -1,0 +1,3 @@
+state:
+  run.count: { type: int, default: 0 }
+  run.answer: { type: bool, default: false }

@@ -1,0 +1,11 @@
+steps:
+  - occasion: visit
+    expect: { winner: offer, quests: { bounty: unset }, state: { run.value: 7, user.value: 1 } }
+  - newRun: true
+    expect: { quests: { bounty: active }, state: { run.value: 0, user.value: 1 } }
+  - occasion: visit
+    expect: { winner: offer, quests: { bounty: complete }, state: { run.value: 7, user.value: 2 } }
+expect:
+  end: complete
+  quests: { bounty: complete }
+  state: { user.value: 2 }

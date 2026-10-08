@@ -1,0 +1,16 @@
+directives:
+  - name: check
+    layer: bridge
+    attrs:
+      - { name: skill, required: true, type: { enum: [persuasion] } }
+      - { name: dc, required: true, type: int }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.check } } }
+      - { name: sync, type: bool, default: true }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [check, { fromAttr: { name: resultKey, slotType: localId } }], shape: checkResult }
+    effects:
+      writes:
+        - { scope: scene, path: [check, { fromAttr: { name: resultKey } }, passed], value: { fromBridgeResult: passed } }
+    bridge: { service: dice, operation: check }

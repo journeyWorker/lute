@@ -1,0 +1,9 @@
+---
+kind: quest
+id: bounty
+luteVersion: "0.38.0"
+title: Bounty
+---
+<quest id="bounty" title="Bounty" tier="run">
+  <objective id="finish" title="Finish" done="run.value > 0"/>
+</quest>

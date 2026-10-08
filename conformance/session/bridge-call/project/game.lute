@@ -1,0 +1,22 @@
+---
+kind: scene
+id: game
+luteVersion: "0.38.0"
+title: Game
+on: chapter
+state:
+  scene.check.guards.passed: { type: bool, default: false }
+plugins:
+  bridge.demo: {}
+---
+## Game
+::check{skill="persuasion" dc="12" resultKey="guards" sync="true"}
+<match subject="scene.check.guards.passed">
+  <when is="true">
+    @narrator: Persuasion succeeded.
+  </when>
+  <when is="false">
+    @narrator: Persuasion failed.
+  </when>
+</match>
+@narrator: Score received.

@@ -1,0 +1,8 @@
+steps:
+  - advance: slot
+    expect: { state: { run.day: 1, run.slot: dusk, run.slots: 1, run.days: 0 } }
+  - advance: day
+    expect: { state: { run.day: 2, run.slot: dawn, run.slots: 2, run.days: 1 } }
+expect:
+  end: complete
+  state: { run.slots: 2, run.days: 1 }

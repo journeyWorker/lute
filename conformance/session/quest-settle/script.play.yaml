@@ -1,0 +1,7 @@
+steps:
+  - engine: { state: { run.trigger: true } }
+    expect: { quests: { earlier: complete, later: complete }, state: { run.ready: true, run.order: 12 } }
+expect:
+  end: complete
+  quests: { earlier: complete, later: complete }
+  state: { run.order: 12 }

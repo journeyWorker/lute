@@ -1,0 +1,29 @@
+---
+kind: scene
+id: hub
+luteVersion: "0.38.0"
+title: hub
+on: visit
+priority: 0
+---
+## Hub
+@narrator{code="0010"}: Before the hub.
+<hub id="desk">
+  <return>
+    @narrator{code="0020"}: Returned to the hub.
+  </return>
+  <choice id="take" text="Take it" once>
+    ::set{run.count += 1}
+    <branch id="answer" prompt="Confirm?">
+      <choice id="yes" text="Yes">
+        ::set{run.answer = true}
+      </choice>
+      <choice id="no" text="No">
+        ::set{run.answer = false}
+      </choice>
+    </branch>
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator{code="0030"}: After the hub.
+  </choice>
+</hub>

@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: dice
+    operation: check
+    replay: recorded
+    result:
+      - { name: passed, type: bool }

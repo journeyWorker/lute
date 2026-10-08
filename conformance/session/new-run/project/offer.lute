@@ -1,0 +1,13 @@
+---
+kind: scene
+id: offer
+luteVersion: "0.38.0"
+title: offer
+on: visit
+priority: 0
+---
+## Offer
+::set{run.value = 7}
+::set{user.value += 1}
+::accept{quest="bounty" at="nextRun"}
+@narrator{code="0010"}: Accepted for the next run.
