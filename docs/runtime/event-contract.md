@@ -234,9 +234,9 @@ bridge results recorded as inputs rather than rerunning external services.
 `lute play --events` exposes the reference JSON Lines stream: first seed and
 output, then input and output pairs, each stamped with `eventVersion`.
 
-Deterministic JSON uses object keys in schema order (execution records keep
-the machine's emitted key order) and the same number formatting as `lute run`.
-Independent runtimes must also reproduce these orders:
+Deterministic JSON sorts object keys by code point at every level (execution
+records included) and formats numbers as `lute run` does; never rely on key
+order. Independent runtimes must also reproduce these orders:
 
 1. Candidates start in index beat order, expand `forKind` in member order,
    then sort by descending priority, member/sub-kind/kind precedence and
