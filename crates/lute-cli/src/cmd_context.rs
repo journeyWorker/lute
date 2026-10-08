@@ -657,7 +657,7 @@ fn authoring_surface(
         .decls
         .iter()
         .filter(|(path, _)| {
-            lute_check::cel_paths::reserved_path(path).is_none() && !path.starts_with("occasion.")
+            lute_manifest::semantics::cel_paths::reserved_path(path).is_none() && !path.starts_with("occasion.")
         })
         .map(|(path, decl)| {
             // A path folded from a real `<branch>`/`<hub>` is an implicit choice

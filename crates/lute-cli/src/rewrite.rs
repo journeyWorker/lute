@@ -357,7 +357,7 @@ fn rewrite_cel_with_quote(raw: &str, quote: char) -> Rewrite {
 
 fn call_spans(raw: &str) -> Vec<(usize, usize)> {
     let bytes = raw.as_bytes();
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let mut out = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
@@ -390,7 +390,7 @@ fn call_spans(raw: &str) -> Vec<(usize, usize)> {
 
 fn matching_delimiter(raw: &str, open: usize) -> Option<usize> {
     let bytes = raw.as_bytes();
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let mut depth = 0;
     for i in open..bytes.len() {
         if mask[i] {
@@ -608,7 +608,7 @@ fn quoted_final_index(source: &str) -> Option<(String, String)> {
     if !source.ends_with(']') {
         return None;
     }
-    let mask = lute_cel::cel_string_mask(source);
+    let mask = lute_manifest::text::cel_string_mask(source);
     let open = source.bytes().enumerate().rev().find(|(i, b)| *b == b'[' && !mask[*i])?.0;
     let key_text = source[open + 1..source.len() - 1].trim();
     let mut arena = lute_cel::CelArena::default();

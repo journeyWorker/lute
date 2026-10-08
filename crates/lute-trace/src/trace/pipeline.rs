@@ -330,7 +330,7 @@ pub(super) fn trace_pipeline(
     if !mocks
         .state
         .iter()
-        .any(|(p, _, _)| p == lute_check::beats::OCCASION_TARGET)
+        .any(|(p, _, _)| p == lute_manifest::semantics::beats::OCCASION_TARGET)
     {
         fn text(v: &Option<(String, Span)>) -> Option<&str> {
             v.as_ref().map(|(s, _)| s.as_str())
@@ -403,7 +403,7 @@ pub(super) fn trace_pipeline(
                             _ => None,
                         })
                         .collect();
-                    let bare = lute_check::gates::target_member(decl, fixed);
+                    let bare = lute_manifest::semantics::gates::target_member(decl, fixed);
                     if let (false, Some((raw, other))) = (
                         raises
                             .iter()
@@ -537,7 +537,7 @@ pub(super) fn trace_pipeline(
             // A mocked raise from a test's `occasions:` or a `--occasion`
             // flag: named as raised, located by the caller that knows which.
             gate_refusals.push(logic_diag(
-                lute_check::gates::E_OCCASION_GATE,
+                lute_manifest::semantics::gates::E_OCCASION_GATE,
                 format!("the engine would not raise `{raised}` here: {why}"),
                 mock::synthetic_span(),
             ));

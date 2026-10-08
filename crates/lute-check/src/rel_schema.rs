@@ -20,7 +20,7 @@ use lute_manifest::relations::{
 };
 use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::Meta;
-use lute_syntax::datalog::{FactArg, FactTerm};
+use lute_manifest::fact::{FactArg, FactTerm};
 
 use crate::meta::{meta_key_span, FactDecl, RuleDecl, TypedMeta};
 use crate::schema_import::{

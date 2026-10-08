@@ -36,7 +36,7 @@ pub fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<Strin
 /// [`collect_referenced_reserved_quest_paths`], same walk, same admission
 /// role in [`crate::mock::validate`].
 pub(crate) fn collect_referenced_entry_read_paths(doc: &Document) -> BTreeSet<String> {
-    collect_referenced(doc, lute_check::is_reserved_entry_read)
+    collect_referenced(doc, lute_manifest::semantics::cel_paths::is_reserved_entry_read)
 }
 
 fn collect_referenced(doc: &Document, keep: fn(&str) -> bool) -> BTreeSet<String> {
@@ -81,12 +81,12 @@ pub(crate) fn collect_prereq_quest_paths(after: &str, out: &mut BTreeSet<String>
     let Some(f) = lute_check::parse_prereq(after, span).0 else {
         return;
     };
-    for atom in lute_check::prereq::atoms(&f) {
+    for atom in lute_manifest::semantics::prereq::atoms(&f) {
         match atom {
-            lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) => {
+            lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) => {
                 out.insert(format!("quest.{q}.state"));
             }
-            lute_check::prereq::Atom::Visited(_) => {}
+            lute_manifest::semantics::prereq::Atom::Visited(_) => {}
         }
     }
 }

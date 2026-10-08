@@ -29,7 +29,7 @@ use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// Why a component argument cannot be used as a ground fact term.
@@ -207,7 +207,7 @@ pub fn bind_slot_raw(
         if let (true, Ok(FactTerm::Ident(member))) = (indexed, fact_arg_constant(arg)) {
             slot.raw.replace_range(
                 s - 1..e + 1,
-                &lute_cel::path::bracket_spelling(&["", &member]),
+                &lute_manifest::text::bracket_spelling(&["", &member]),
             );
             continue;
         }
@@ -223,7 +223,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
         AttrValue::Ref(slot) => slot.raw.clone(),
         // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat runs
         // for, read where the body reads the param.
-        AttrValue::Str(s) if s == crate::beats::OCCASION_TARGET => s.clone(),
+        AttrValue::Str(s) if s == lute_manifest::semantics::beats::OCCASION_TARGET => s.clone(),
         AttrValue::Str(s) => match ty {
             Some(Type::Int) | Some(Type::Double) | Some(Type::Bool) => s.clone(),
             _ => cel_string_literal(s),
@@ -244,7 +244,7 @@ pub fn fact_arg_constant(arg: &AttrValue) -> Result<FactTerm, FactArgError> {
             "false" => Ok(FactTerm::Bool(false)),
             // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat
             // runs for, bound when the write executes.
-            crate::beats::OCCASION_TARGET => Ok(FactTerm::Target),
+            lute_manifest::semantics::beats::OCCASION_TARGET => Ok(FactTerm::Target),
             _ if lute_manifest::ident::is_name(s) => Ok(FactTerm::Ident(s.clone())),
             _ => Err(FactArgError::InvalidName { value: s.clone() }),
         },
@@ -836,7 +836,7 @@ pub fn bind_set_path(path: &mut String, args: &BTreeMap<String, AttrValue>) -> b
         }
         // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat runs for.
         Some(Ok(FactTerm::Target)) => {
-            *path = format!("{family}{}", crate::target_writes::TARGET_INDEX);
+            *path = format!("{family}{}", lute_manifest::semantics::target_writes::TARGET_INDEX);
             true
         }
         _ => false,

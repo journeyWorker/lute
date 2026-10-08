@@ -109,7 +109,7 @@ impl<'a> TraceDriver<'a> {
                     "bridges: {{ {tag}: [ {shape} ] }} (plugin `{tag}` call unanswered; `{p}` \
                      reads its `{field}` result)"
                 ),
-                None if p == lute_check::beats::OCCASION_TARGET && !self.cx.members.is_empty() => {
+                None if p == lute_manifest::semantics::beats::OCCASION_TARGET && !self.cx.members.is_empty() => {
                     format!("--state {p}=<{}>", self.cx.members.join("|"))
                 }
                 None => render_atom(a),

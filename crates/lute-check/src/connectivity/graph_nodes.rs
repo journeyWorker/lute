@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, Document};
 use crate::meta::{meta_key_span, resolve_doc_kind, DocKind};
-use crate::prereq::{atoms, parse_prereq, Atom, PrereqFormula};
+use crate::prereq::parse_prereq;
+use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
 
 /// silently paper over a real typo.
 pub const E_CONN_UNKNOWN_NODE: &str = "E-CONN-UNKNOWN-NODE";

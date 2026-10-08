@@ -28,7 +28,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::snapshot::Domain;
-use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm, Rule, RuleAtom, RuleTerm};
+use lute_manifest::fact::{FactArg, FactTerm};
+use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 
 use crate::rel_schema::{
     check_atom, RelVocab, E_FACT_DOMAIN, E_RELATION_ARITY, E_RELATION_UNKNOWN,
@@ -356,7 +357,7 @@ fn check_rule_safety(rule: &Rule, span: Span, out: &mut Vec<Diagnostic>) {
                     // A `_` (dsl 0.24 T3-9) is existential under negation —
                     // `not seen(W, _)`: no `seen(W, …)` tuple at all.
                     if let RuleTerm::Var(v) = term {
-                        if !bound.contains(v.as_str()) && !lute_syntax::datalog::is_anonymous_var(v)
+                        if !bound.contains(v.as_str()) && !lute_manifest::fact::is_anonymous_var(v)
                         {
                             out.push(diag(
                                 E_DATALOG_UNSAFE,

@@ -19,19 +19,6 @@ pub enum Value {
     Error(String),
 }
 
-/// `decide()`'s decided-constant fragment (dsl §5.1) is a strict SUBSET of
-/// what `trace` evaluates — a `Decided` is always ground, never unknown —
-/// so every `Decided` converts straight across.
-impl From<lute_check::Decided> for Value {
-    fn from(d: lute_check::Decided) -> Self {
-        match d {
-            lute_check::Decided::Bool(b) => Value::Bool(b),
-            lute_check::Decided::Num(n) => Value::Double(n),
-            lute_check::Decided::Str(s) => Value::Str(s),
-        }
-    }
-}
-
 /// Why something was unknown — drives the §4.5 `unresolved[]` report and
 /// the §4.6 "supply it as a mock" hints.
 #[derive(Clone, Debug, PartialEq)]
@@ -78,19 +65,6 @@ fn format_num(n: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn from_decided_converts_bool_num_str() {
-        assert_eq!(
-            Value::from(lute_check::Decided::Bool(true)),
-            Value::Bool(true)
-        );
-        assert_eq!(Value::from(lute_check::Decided::Num(3.5)), Value::Double(3.5));
-        assert_eq!(
-            Value::from(lute_check::Decided::Str("x".to_string())),
-            Value::Str("x".to_string())
-        );
-    }
 
     #[test]
     fn unknown_is_a_first_class_value_not_an_error() {

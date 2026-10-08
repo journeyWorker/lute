@@ -27,12 +27,13 @@
 //!   `guaranteed`.
 //!
 //! Downstream connectivity tasks (graph assembly, reachability, envelope) all
-//! consume [`PrereqFormula`]/[`atoms`] — the shapes here are load-bearing;
-//! keep the enum/fn signatures stable.
+//! consume [`PrereqFormula`]/[`lute_manifest::semantics::prereq::atoms`] — the
+//! shapes there are load-bearing; keep the enum/fn signatures stable.
 
 use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::semantics::prereq::PrereqFormula;
 
 /// `E-CONN-PROFILE` (connectivity layer, Task 1): an `after` CEL formula used a
 /// construct outside the restricted prerequisite profile — anything other than
@@ -43,32 +44,6 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 /// [`parse_prereq`], mirroring `E_CEL_PROFILE`'s stop-and-report-then-skip-the-
 /// branch shape.
 pub const E_CONN_PROFILE: &str = "E-CONN-PROFILE";
-
-/// The parsed `after` prerequisite formula: a boolean expression over
-/// `visited`/`completed`/`active` atoms, closed under `&&`/`||`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PrereqFormula {
-    Visited(String),
-    Completed(String),
-    /// lang 0.8.0 `active("questId")`: the quest reached the `active`
-    /// lifecycle state. A STRICTLY WEAKER claim than [`Self::Completed`] —
-    /// see this module's header for the graph-identical / envelope-weaker
-    /// split.
-    Active(String),
-    And(Box<PrereqFormula>, Box<PrereqFormula>),
-    Or(Box<PrereqFormula>, Box<PrereqFormula>),
-}
-
-/// A single leaf condition flattened out of a [`PrereqFormula`] by [`atoms`]
-/// (edge-extraction helper for later connectivity tasks).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Atom {
-    Visited(String),
-    Completed(String),
-    /// lang 0.8.0: see [`PrereqFormula::Active`]. Targets a QUEST node,
-    /// exactly like [`Self::Completed`].
-    Active(String),
-}
 
 /// Parse `raw` (the CEL text of an `after` value) under the restricted
 /// prerequisite profile. Returns `(Some(formula), [])` when `raw` reduces
@@ -227,27 +202,6 @@ fn out_of_profile_message(expr: &Expr) -> String {
     }
 }
 
-/// Flatten a [`PrereqFormula`] into its leaf atoms (edge-extraction helper for
-/// later connectivity tasks — graph assembly reads these to know which
-/// `visited`/`completed`/`active` targets an `after` formula depends on).
-pub fn atoms(f: &PrereqFormula) -> Vec<Atom> {
-    let mut out = Vec::new();
-    collect_atoms(f, &mut out);
-    out
-}
-
-fn collect_atoms(f: &PrereqFormula, out: &mut Vec<Atom>) {
-    match f {
-        PrereqFormula::Visited(id) => out.push(Atom::Visited(id.clone())),
-        PrereqFormula::Completed(id) => out.push(Atom::Completed(id.clone())),
-        PrereqFormula::Active(id) => out.push(Atom::Active(id.clone())),
-        PrereqFormula::And(l, r) | PrereqFormula::Or(l, r) => {
-            collect_atoms(l, out);
-            collect_atoms(r, out);
-        }
-    }
-}
-
 /// Build a `Layer::Cel` `E_CONN_PROFILE` error diagnostic (mirrors
 /// `cel_resolve::diag`'s shape).
 fn diag(message: String, span: Span) -> Diagnostic {
@@ -268,6 +222,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lute_manifest::semantics::prereq::{atoms, Atom};
 
     fn test_span() -> Span {
         Span {

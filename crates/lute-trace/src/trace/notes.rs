@@ -25,7 +25,7 @@ pub(super) fn fact_term_text(t: &FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -37,7 +37,7 @@ pub(super) fn fmt_fact(rel: &str, args: &[String]) -> String {
 /// the schema's own seed `facts:` entries and the CLI's `--fact` mocks so
 /// their declared/supplied tuples compare STRUCTURALLY, never by raw
 /// source text (whitespace, quoting).
-pub(super) fn fact_pattern_key(pat: &lute_syntax::datalog::FactPattern) -> String {
+pub(super) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
     fmt_fact(&pat.relation, &args)
 }
@@ -61,8 +61,8 @@ pub(super) fn line_delivery(l: &Line) -> Option<String> {
 
 /// A prerequisite formula as the CEL condition it stands for: `visited(K)`
 /// reads the visited set, `completed(Q)` / `active(Q)` the quest's state.
-pub(super) fn prereq_condition(f: &lute_check::PrereqFormula) -> String {
-    use lute_check::PrereqFormula as F;
+pub(super) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
+    use lute_manifest::semantics::prereq::PrereqFormula as F;
     match f {
         F::Visited(k) => format!("visited('{k}')"),
         F::Completed(q) => format!("quest.{q}.state == 'complete'"),
@@ -106,7 +106,7 @@ pub(super) fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::F
     let supplied: std::collections::HashSet<String> = mocks
         .facts
         .iter()
-        .filter_map(|raw| lute_syntax::datalog::parse_fact(raw).ok())
+        .filter_map(|raw| lute_manifest::fact::parse_fact(raw).ok())
         .map(|pat| fact_pattern_key(&pat))
         .collect();
     // "None were supplied" (§3.1) holds iff the intersection of declared
@@ -393,7 +393,7 @@ pub(super) fn mock_unproducible_notes(
     let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
     let mut unproducible: BTreeSet<String> = BTreeSet::new();
     for raw in &mocks.facts {
-        let Ok(pat) = lute_syntax::datalog::parse_fact(raw) else {
+        let Ok(pat) = lute_manifest::fact::parse_fact(raw) else {
             continue;
         };
         if producible.get(&pat.relation) == Some(&false) {

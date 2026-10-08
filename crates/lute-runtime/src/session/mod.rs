@@ -201,7 +201,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             self.driver.observer(),
         )
         {
-            let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+            let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
             self.world.state.retain(|k, _| !k.starts_with(&prefix));
             let body = StepBody::Occasion {
                 occasion: occasion.clone(),
@@ -233,7 +233,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             self.driver,
         );
         // dsl 0.27.0 §3: a payload lives only for the raise it came with.
-        let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+        let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
         self.world.state.retain(|k, _| !k.starts_with(&prefix));
         out
     }

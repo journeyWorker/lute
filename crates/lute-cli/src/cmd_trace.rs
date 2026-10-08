@@ -305,7 +305,7 @@ pub(crate) fn run_trace(
                 // anything else came from the `check` gate itself (§4.3:
                 // "MUST refuse a document with check errors ... run `check`
                 // first").
-                let gate = lute_check::gates::E_OCCASION_GATE;
+                let gate = lute_manifest::semantics::gates::E_OCCASION_GATE;
                 if exclusive {
                     println!(
                         "trace refused: {} — exclusive relations hold together",

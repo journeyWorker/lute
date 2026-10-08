@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_compile::ExecutionIr;
-use lute_runtime::{session::ExecProject, NeedleVocab};
+use lute_runtime::session::ExecProject;
+use lute_trace::exec::record::NeedleVocab;
 use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_load::nearest_manifest_dir;
 
@@ -56,7 +57,7 @@ pub(super) fn compile_project(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
-) -> Result<ExecProject, ExitCode> {
+) -> Result<(ExecProject, NeedleVocab), ExitCode> {
     let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
@@ -119,7 +120,7 @@ pub(crate) fn assemble_project_from_model(
     gate: Gate,
     matrix: &crate::EngineMatrix,
     source_model: &ProjectModel,
-) -> Result<ExecProject, ExitCode> {
+) -> Result<(ExecProject, NeedleVocab), ExitCode> {
     let Gate { cmd, refuses } = gate;
     let policy = crate::DenyPolicy::default();
     if source_model.has_resolution_errors() {
@@ -190,7 +191,7 @@ pub(crate) fn assemble_project_from_model(
             return Err(ExitCode::from(2));
         };
         let input = &source.input;
-        needles.union(NeedleVocab::of(input, &source.folded.typed));
+        needles.union(lute_trace::exec::record::needle_vocab(input, &source.folded.typed));
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,
@@ -248,9 +249,8 @@ pub(crate) fn assemble_project_from_model(
             .collect::<BTreeMap<_, _>>();
         (!authored.is_empty()).then(|| (path.clone(), authored))
     }).collect();
-    project.needles = needles;
     project.chapter_afters = chapter_afters;
-    Ok(project)
+    Ok((project, needles))
 }
 
 /// Compile the project `gate`'s command runs over ([`compile_project`]);
@@ -260,7 +260,7 @@ pub(super) fn compile_play_project(
     dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
-) -> Result<ExecProject, (ExitCode, String)> {
+) -> Result<(ExecProject, NeedleVocab), (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
             ExitCode::from(2),

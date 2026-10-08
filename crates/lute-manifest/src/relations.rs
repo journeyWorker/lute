@@ -52,7 +52,7 @@ pub struct EntityKindDecl {
 /// the sentence-start form a `:start` hint renders (`The smugglers' cut`),
 /// `indefinite` the form with its article a `:indefinite` hint renders
 /// (`an ashwraith`). Absent forms fall back
-/// (the renderer applies `lute_syntax::ast::format_text`).
+/// (the renderer applies [`crate::text::format_text`]).
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct KindLabel {
     pub text: String,

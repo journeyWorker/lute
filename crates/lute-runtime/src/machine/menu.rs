@@ -143,7 +143,7 @@ impl<D: Driver> Machine<D> {
         expr: &Expr,
         out: &mut Vec<(String, Vec<GuardRead>)>,
     ) {
-        use lute_check::templates::{top_level_and, unparen};
+        use lute_manifest::semantics::templates::{top_level_and, unparen};
         let c = unparen(raw);
         let parts = top_level_and(c);
         let operands = (parts.len() >= 2)
@@ -201,7 +201,7 @@ impl<D: Driver> Machine<D> {
     /// (`user.bond[occasion.target]`) is the member path it reads
     /// (`user.bond.ines`) with its value; unbound, `occasion.target` itself.
     fn indexed_read(&mut self, family: &str) -> GuardRead {
-        let target = lute_check::beats::OCCASION_TARGET;
+        let target = lute_manifest::semantics::beats::OCCASION_TARGET;
         match self.store.read(target) {
             Read::Value(Value::Str(member)) => self.path_read(format!("{family}.{member}")),
             _ => self.path_read(target.to_string()),
@@ -768,7 +768,7 @@ impl<D: Driver> Machine<D> {
         let subject_path = subject_slot
             .as_ref()
             .and_then(|s| s.expr.static_path())
-            .filter(|p| p != lute_check::beats::OCCASION_TARGET);
+            .filter(|p| p != lute_manifest::semantics::beats::OCCASION_TARGET);
         let subject_unset = subject_path
             .as_deref()
             .is_some_and(|p| self.store.read(p) == Read::Unset);
@@ -819,7 +819,7 @@ impl<D: Driver> Machine<D> {
                     }) => false,
                 _ => {
                     let target_unbound = atoms.iter().any(|a| {
-                        matches!(a, UnresolvedAtom::Path(p) if p == lute_check::beats::OCCASION_TARGET)
+                        matches!(a, UnresolvedAtom::Path(p) if p == lute_manifest::semantics::beats::OCCASION_TARGET)
                     });
                     let kind = if target_unbound {
                         SiteKind::OccasionTarget

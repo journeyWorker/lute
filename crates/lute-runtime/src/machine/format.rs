@@ -51,7 +51,7 @@ impl<D: Driver> Machine<D> {
                 // else by its cast display name when it is a cast id, else
                 // the id.
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
-                    match self.store.values.get(lute_check::beats::OCCASION_TARGET) {
+                    match self.store.values.get(lute_manifest::semantics::beats::OCCASION_TARGET) {
                         Some(Value::Str(m)) => {
                             let kind = ph.get("entityKind").and_then(Json::as_str);
                             match kind.and_then(|k| self.store.kind_labels.get(k)?.get(m)) {
@@ -88,7 +88,7 @@ impl<D: Driver> Machine<D> {
     /// The first `{{occasion.payload.<field>}}` marker among `placeholders`
     /// whose field this raise left unset (dsl 0.28.0, T1-13).
     pub(super) fn unset_payload(&self, placeholders: Option<&Vec<Json>>) -> Option<String> {
-        let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+        let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
         placeholders?
             .iter()
             .filter(|ph| ph.get("kind").and_then(Json::as_str) == Some("path"))
@@ -105,7 +105,7 @@ impl<D: Driver> Machine<D> {
     /// (a trace that did not mock the raise).
     pub(super) fn unbound_target(&self, placeholders: Option<&Vec<Json>>) -> bool {
         if matches!(
-            self.store.values.get(lute_check::beats::OCCASION_TARGET),
+            self.store.values.get(lute_manifest::semantics::beats::OCCASION_TARGET),
             Some(crate::Value::Str(_))
         ) {
             return false;
@@ -118,7 +118,7 @@ impl<D: Driver> Machine<D> {
                 Some("ref") => ph
                     .pointer("/expr/cel")
                     .and_then(Json::as_str)
-                    .is_some_and(lute_check::occasion_bind::mentions_target),
+                    .is_some_and(lute_manifest::semantics::occasion_bind::mentions_target),
                 _ => false,
             })
     }
@@ -190,7 +190,7 @@ pub fn value_to_json(v: &Value) -> Json {
 }
 
 /// dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: a placeholder's `format` applied
-/// to its value ([`lute_syntax::ast::format_number`]) — `ordinal` renders a
+/// to its value ([`lute_manifest::text::format_number`]) — `ordinal` renders a
 /// number as an English ordinal (`3rd`, `11th`), `ordinalWord` as a word
 /// (`third`) up to `twentieth`, `plural` as the placeholder's singular form
 /// when the number is 1 and its plural form otherwise (`#` in a form is the
@@ -203,26 +203,26 @@ fn formatted(ph: &Json, v: &Value) -> Option<String> {
             let forms: Option<Vec<String>> = ph.get("forms").and_then(Json::as_array).map(|a| {
                 a.iter().filter_map(|f| f.as_str().map(str::to_string)).collect()
             });
-            lute_syntax::ast::format_number(format, forms.as_deref(), *n as f64, &value_to_string(v))
+            lute_manifest::text::format_number(format, forms.as_deref(), *n as f64, &value_to_string(v))
         }
         (Some(format), Value::Double(n)) => {
             let forms: Option<Vec<String>> = ph.get("forms").and_then(Json::as_array).map(|a| {
                 a.iter().filter_map(|f| f.as_str().map(str::to_string)).collect()
             });
-            lute_syntax::ast::format_number(format, forms.as_deref(), *n, &value_to_string(v))
+            lute_manifest::text::format_number(format, forms.as_deref(), *n, &value_to_string(v))
         }
         _ => None,
     }
 }
 
 /// A placeholder's text hint (`capitalize`, `start`, `indefinite`) applied
-/// to the text a value renders as ([`lute_syntax::ast::format_text`]), with
+/// to the text a value renders as ([`lute_manifest::text::format_text`]), with
 /// the member's declared label `forms`; the text unchanged without one.
 fn texted(ph: &Json, text: String, forms: Option<&LabelForms>) -> String {
     ph.get("format")
         .and_then(Json::as_str)
         .and_then(|format| {
-            lute_syntax::ast::format_text(
+            lute_manifest::text::format_text(
                 format,
                 &text,
                 forms.and_then(|f| f.start.as_deref()),

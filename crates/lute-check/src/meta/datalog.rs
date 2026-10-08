@@ -27,20 +27,20 @@ pub(super) fn lift_datalog(
                     ));
                     continue;
                 };
-                match lute_syntax::datalog::parse_fact(raw) {
+                match lute_manifest::fact::parse_fact(raw) {
                     Ok(fact) => typed.rel_facts.push(FactDecl {
                         fact,
                         raw: raw.to_string(),
                         span: meta_key_span(meta, raw),
                     }),
-                    Err(lute_syntax::datalog::DatalogError::Malformed { msg, .. }) => {
+                    Err(lute_manifest::fact::DatalogError::Malformed { msg, .. }) => {
                         diags.push(err_at(
                             "E-DATALOG-PARSE",
                             format!("malformed fact `{raw}`: {msg}"),
                             meta_key_span(meta, raw),
                         ));
                     }
-                    Err(lute_syntax::datalog::DatalogError::FunctionTerm { name, .. }) => {
+                    Err(lute_manifest::fact::DatalogError::FunctionTerm { name, .. }) => {
                         diags.push(err_at(
                             "E-DATALOG-FUNCTION",
                             format!(
@@ -89,14 +89,14 @@ pub(super) fn lift_datalog(
                         raw: raw.to_string(),
                         span: scalar_span(meta, raw),
                     }),
-                    Err(lute_syntax::datalog::DatalogError::Malformed { msg, .. }) => {
+                    Err(lute_manifest::fact::DatalogError::Malformed { msg, .. }) => {
                         diags.push(err_at(
                             "E-DATALOG-PARSE",
                             format!("malformed rule `{raw}`: {msg}"),
                             scalar_span(meta, raw),
                         ));
                     }
-                    Err(lute_syntax::datalog::DatalogError::FunctionTerm { name, .. }) => {
+                    Err(lute_manifest::fact::DatalogError::FunctionTerm { name, .. }) => {
                         diags.push(err_at(
                             "E-DATALOG-FUNCTION",
                             format!(

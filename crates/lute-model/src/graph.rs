@@ -3,7 +3,7 @@ use crate::{ModelDocument, ProjectModel};
 use lute_core_span::{Evidence, Span};
 use lute_semantic::{fact_node, IdentityMetadata, NodeKey, NodeKind, SemanticGraph};
 use lute_syntax::ast::{Arm, Node};
-use lute_syntax::datalog::FactTerm;
+use lute_manifest::fact::FactTerm;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Build the deterministic graph for one project model.
@@ -358,7 +358,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         } else {
             Evidence::Proven
         };
-        if let Some(entry_id) = lute_check::cel_paths::reserved_entry_id(&read.path) {
+        if let Some(entry_id) = lute_manifest::semantics::cel_paths::reserved_entry_id(&read.path) {
             let ek = NodeKey::new(NodeKind::Entry, entry_id.to_string());
             g.edge(
                 ek,

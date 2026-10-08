@@ -276,7 +276,7 @@ pub(crate) fn severity_str(s: Severity) -> &'static str {
 /// path (`holds(…)`, `run.x.<who>`) as given.
 pub(crate) fn spelled_path(path: &str) -> String {
     match lute_cel::path::parse_path_text(path) {
-        Some(segs) => lute_cel::path::bracket_spelling(&segs),
+        Some(segs) => lute_manifest::text::bracket_spelling(&segs),
         None => path.to_string(),
     }
 }

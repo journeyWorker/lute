@@ -2399,7 +2399,7 @@ fn active_and_completed_on_one_target_record_both_edge_kinds() {
 fn active_envelope_is_strictly_weaker_than_completed() {
     use lute_check::connectivity::NodeInfo;
     use lute_check::envelope::{propagate, PerDocEffects};
-    use lute_check::PrereqFormula;
+    use lute_manifest::semantics::prereq::PrereqFormula;
 
     fn quest_node(id: &str, f: PrereqFormula) -> NodeInfo {
         NodeInfo {

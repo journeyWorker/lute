@@ -1153,6 +1153,10 @@
         "follows": {
           "type": "string",
           "description": "a quest's `follows=`: the RAW declared quest-graph formula text — unresolved, unvalidated CEL. Graph metadata only; it never gates the quest (its `start` does)."
+        },
+        "formula": {
+          "$ref": "#/$defs/prereqFormula",
+          "description": "the parsed `after` formula, so a runtime never parses `after` text. Present only on an `after` edge whose text is inside the restricted prerequisite profile; absent on `follows` edges."
         }
       },
       "additionalProperties": true,
@@ -1172,6 +1176,91 @@
         }
       ],
       "description": "One advisory graph edge (connectivity spec §2.6, T13): a single node's raw declared `after` (scene, bundle beat) or `follows` (quest), verbatim."
+    },
+    "prereqFormula": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "visited": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "visited"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "completed": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "completed"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "active": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "active"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "and": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/prereqFormula"
+                },
+                {
+                  "$ref": "#/$defs/prereqFormula"
+                }
+              ],
+              "items": false,
+              "minItems": 2
+            }
+          },
+          "required": [
+            "and"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "or": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/prereqFormula"
+                },
+                {
+                  "$ref": "#/$defs/prereqFormula"
+                }
+              ],
+              "items": false,
+              "minItems": 2
+            }
+          },
+          "required": [
+            "or"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "A parsed `after` prerequisite formula: `visited(\"id\")` / `completed(\"q\")` / `active(\"q\")` atoms joined by `&&` (`and`) / `||` (`or`), each binary node a two-element array [left, right]."
     },
     "sceneMeta": {
       "type": "object",

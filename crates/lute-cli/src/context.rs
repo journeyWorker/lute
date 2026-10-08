@@ -224,7 +224,7 @@ fn attr_rows(keys: &[&str], docs: &[(&str, &str, &str)]) -> Value {
 ///   `live`) and the manifest's `chapters` — each only when declared;
 ///
 /// [`LANGUAGE_DIRECTIVES`]: lute_check::directives::LANGUAGE_DIRECTIVES
-/// [`RESERVED_PATHS`]: lute_check::cel_paths::RESERVED_PATHS
+/// [`RESERVED_PATHS`]: lute_manifest::semantics::cel_paths::RESERVED_PATHS
 /// - `ids`: the scene, quest and entry ids declared across the project
 ///   (`--project <dir>`), or in the document alone without one.
 pub(crate) fn extend_surface(
@@ -356,9 +356,9 @@ pub(crate) fn extend_surface(
 
 /// A reserved / engine path's type label and member domain.
 fn engine_type(
-    ty: lute_check::cel_paths::EnginePathType,
+    ty: lute_manifest::semantics::cel_paths::EnginePathType,
 ) -> (&'static str, Option<Vec<&'static str>>) {
-    use lute_check::cel_paths::EnginePathType as T;
+    use lute_manifest::semantics::cel_paths::EnginePathType as T;
     match ty {
         T::Enum(members) => ("enum", Some(members.to_vec())),
         T::Bool => ("bool", None),
@@ -370,10 +370,11 @@ fn engine_type(
 /// Every engine-owned path shape the checker knows ([`RESERVED_PATHS`] then
 /// [`FOLDED_ENGINE_PATHS`]).
 ///
-/// [`RESERVED_PATHS`]: lute_check::cel_paths::RESERVED_PATHS
+/// [`RESERVED_PATHS`]: lute_manifest::semantics::cel_paths::RESERVED_PATHS
 /// [`FOLDED_ENGINE_PATHS`]: lute_check::cel_paths::FOLDED_ENGINE_PATHS
 fn engine_paths() -> Value {
-    use lute_check::cel_paths::{FOLDED_ENGINE_PATHS, RESERVED_PATHS};
+    use lute_check::cel_paths::FOLDED_ENGINE_PATHS;
+    use lute_manifest::semantics::cel_paths::RESERVED_PATHS;
     RESERVED_PATHS
         .iter()
         .chain(FOLDED_ENGINE_PATHS)
@@ -394,12 +395,12 @@ fn engine_paths() -> Value {
 /// the objective shapes), plus the `referenced` ones, path-sorted, each
 /// typed by its [`RESERVED_PATHS`] row.
 ///
-/// [`RESERVED_PATHS`]: lute_check::cel_paths::RESERVED_PATHS
+/// [`RESERVED_PATHS`]: lute_manifest::semantics::cel_paths::RESERVED_PATHS
 fn reserved_quest_paths(
     docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)],
     referenced: &std::collections::BTreeSet<String>,
 ) -> Value {
-    use lute_check::cel_paths::{reserved_path, RESERVED_PATHS};
+    use lute_manifest::semantics::cel_paths::{reserved_path, RESERVED_PATHS};
     let mut paths = referenced.clone();
     for q in docs.iter().flat_map(|(_, d, _)| &d.quests) {
         if q.id.is_empty() {

@@ -107,8 +107,8 @@ struct Read {
     negated: bool,
 }
 
-fn fact_args(p: &lute_syntax::datalog::FactPattern) -> Vec<Option<String>> {
-    use lute_syntax::datalog::FactTerm;
+fn fact_args(p: &lute_manifest::fact::FactPattern) -> Vec<Option<String>> {
+    use lute_manifest::fact::FactTerm;
     p.args
         .iter()
         .map(|a| match &a.term {
@@ -529,17 +529,17 @@ pub(crate) fn component_asserts(
     nodes: &[Node],
     components: &BTreeMap<&str, &Document>,
     effects: &lute_check::directive_facts::EffectDirectives,
-) -> Vec<(String, lute_syntax::datalog::FactPattern)> {
+) -> Vec<(String, lute_manifest::fact::FactPattern)> {
     fn uses(
         nodes: &[Node],
         components: &BTreeMap<&str, &Document>,
         effects: &lute_check::directive_facts::EffectDirectives,
         outer: &BTreeMap<String, String>,
         depth: u8,
-        out: &mut Vec<(String, lute_syntax::datalog::FactPattern)>,
+        out: &mut Vec<(String, lute_manifest::fact::FactPattern)>,
     ) {
         use lute_syntax::ast::AttrValue;
-        use lute_syntax::datalog::FactTerm;
+        use lute_manifest::fact::FactTerm;
         if depth > 8 {
             return;
         }
@@ -1638,7 +1638,7 @@ fn count_text(lit: &BodyLiteral, bound: &BTreeMap<&str, String>) -> String {
         .iter()
         .map(|t| match t {
             RuleTerm::Var(v) => bound.get(v.as_str()).cloned().unwrap_or_else(|| {
-                if lute_syntax::datalog::is_anonymous_var(v) {
+                if lute_manifest::fact::is_anonymous_var(v) {
                     "_".to_string()
                 } else {
                     v.clone()

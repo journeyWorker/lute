@@ -46,7 +46,7 @@ impl<D: Driver> Machine<D> {
         let cmd = &code.commands[at];
         // dsl 0.28.0 (T1-6): a `for="kind:<kind>"` entry is read per member
         // — the member bound as `occasion.target` has its own first read.
-        let member = match self.store.read(lute_check::beats::OCCASION_TARGET) {
+        let member = match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
             Read::Value(Value::Str(m)) if cmd.get("forKind").is_some() => Some(m),
             _ => None,
         };

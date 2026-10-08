@@ -25,7 +25,7 @@ use crate::eval::{EvalEnv, Pat, Read};
 use crate::{UnresolvedAtom, Value};
 
 /// `occasion.target`: the member an occasion is raised for.
-const OCCASION_TARGET: &str = lute_check::beats::OCCASION_TARGET;
+const OCCASION_TARGET: &str = lute_manifest::semantics::beats::OCCASION_TARGET;
 
 /// One decoded `exprNode`.
 #[derive(Clone, Debug, PartialEq)]

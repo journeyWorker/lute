@@ -8,7 +8,7 @@ use cel_parser::ast::{operators as op, EntryExpr, Expr};
 use cel_parser::reference::Val;
 use lute_core_span::Span;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, InterpKind, Node};
-use lute_syntax::datalog::{FactArg, FactPattern, FactTerm};
+use lute_manifest::fact::{FactArg, FactPattern, FactTerm};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StateUse {

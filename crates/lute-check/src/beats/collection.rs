@@ -523,7 +523,7 @@ pub(crate) fn lift_scene_beat(
     if crate::chapters::derived(meta, "on") {
         occasion_diags.retain(|d| d.code != E_OCCASION_UNKNOWN);
         for d in &mut occasion_diags {
-            d.message.push_str(crate::chapters::PROVENANCE);
+            d.message.push_str(lute_manifest::semantics::chapters::PROVENANCE);
         }
     }
     diags.extend(occasion_diags);

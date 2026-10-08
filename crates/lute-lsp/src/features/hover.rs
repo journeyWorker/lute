@@ -382,7 +382,7 @@ fn state_hover(meta: &lute_check::TypedMeta, path: &str) -> Option<String> {
     let decl = meta.state.decls.get(path)?;
     let mut s = format!(
         "**state** `{}`: {}",
-        lute_cel::path::bracket_spelling_of(path),
+        lute_manifest::text::bracket_spelling_of(path),
         type_label(&decl.ty)
     );
     if let Some(def) = &decl.default {

@@ -95,10 +95,6 @@ pub struct ExecProject {
     pub display_names: BTreeMap<String, String>,
     /// dsl 0.27.0 §5: the seasons and quest rearms the session observes.
     pub cadence: crate::cadence::CadencePlan,
-    /// 0.27 prerelease OT-F-2: what a transcript needle's attribute block
-    /// may name — the union of every document's vocabulary. Empty (every
-    /// value legal, stamps unknown) unless the caller fills it.
-    pub needles: crate::input::NeedleVocab,
     /// dsl 0.28.0 §4: the scene ids whose `after:` a chain of the manifest's
     /// `chapters:` derived (never one the scene wrote, whatever its text), so
     /// a reason can say where that `after:` comes from. Empty unless the
@@ -186,7 +182,7 @@ impl ExecProject {
         }
         if index.documents.is_empty() { artifacts = bundle.artifacts; }
         for beat in &mut index.beats {
-            if !lute_check::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
+            if !lute_manifest::semantics::beats::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
         }
         let mut state_table: BTreeMap<String, Json> = BTreeMap::new();
         let mut declared_in = BTreeMap::new();
@@ -229,7 +225,7 @@ impl ExecProject {
         let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
         let world_events = index.world_events.iter().cloned().collect();
         let display_names = index.cast.clone();
-        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, needles: Default::default(), chapter_afters: Default::default(), conds })
+        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
     }
 
     /// The occasion's declared `select:` (default `first`).

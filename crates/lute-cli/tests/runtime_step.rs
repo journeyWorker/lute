@@ -279,9 +279,9 @@ fn nested_hub_and_branch_resume_matches_uninterrupted_play() {
     let (seed, steps, top_choose, top_bridges) = script(&text, script_path.parent()).unwrap();
     let runtime = build_runtime(&project).unwrap();
     let reference = run_runtime_reference(&project, &script_path).unwrap();
-    let (state, output) = runtime.begin(seed).unwrap();
+    let (state, begun) = runtime.begin(seed).unwrap();
+    let mut records = records(&begun.events);
     let (state, output) = match runtime.step(state, steps[0].input.clone()) { Ok(value) => value, Err((_, error)) => panic!("step rejected: {} {}", error.code, error.message) };
-    let mut records = Vec::new();
     let (state, _) = answer_loop(&runtime, state, output, &steps[0], &top_choose, &top_bridges, &mut BTreeMap::new(), &mut BTreeMap::new(), &mut records).unwrap();
     assert_eq!(records, reference.records);
     world_eq(&state.world, &reference.world);
@@ -299,6 +299,21 @@ fn rejected_inputs_leave_state_unchanged() {
     assert_eq!(returned.request, before.request);
     assert_eq!(format!("{:?}", returned.phase), format!("{:?}", before.phase));
     assert!(returned.continuation.is_none());
+    let hub_project = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().parent().unwrap().join("conformance/session/snapshot-hub/project");
+    let hub_script = hub_project.join("script.play.yaml");
+    let text = fs::read_to_string(&hub_script).unwrap();
+    let (seed, steps, _, _) = script(&text, hub_script.parent()).unwrap();
+    let runtime = build_runtime(&hub_project).unwrap();
+    let (state, _) = runtime.begin(seed).unwrap();
+    let (state, output) = match runtime.step(state, steps[0].input.clone()) { Ok(value) => value, Err((_, error)) => panic!("step rejected: {} {}", error.code, error.message) };
+    if let Await::Choice { request, menu } = output.await_ {
+        let before = state.world.clone();
+        let (returned, rejected) = match runtime.step(state, Input::Choose { request: request + 1, option: menu.options[0].id.clone() }) { Err(err) => err, Ok(_) => panic!("wrong request unexpectedly succeeded") };
+        assert_eq!(rejected.code, "E-RUNTIME-REQUEST");
+        world_eq(&returned.world, &before);
+    } else {
+        panic!("hub did not await a choice");
+    }
 }
 
 #[test]

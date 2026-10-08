@@ -23,13 +23,10 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::schema::{OccasionDecl, OccasionTarget};
+use lute_manifest::semantics::gates::target_member;
+use lute_manifest::semantics::occasion_bind::mentions_target;
 
-use crate::occasion_bind::{instantiate, mentions_target};
-
-/// `E-OCCASION-GATE` (dsl 0.27.0 §4): a `lute play` step raises an occasion
-/// the engine would not raise — its `raisedWhen` gate is false, or the
-/// project's `terminal:` condition holds.
-pub const E_OCCASION_GATE: &str = "E-OCCASION-GATE";
+use crate::occasion_bind::instantiate;
 
 /// The project's `terminal:` from every declaration (in order, duplicates
 /// once): one condition as written, several joined by `||` — the game is
@@ -229,19 +226,6 @@ pub fn gate_of<'o>(occasions: &'o BTreeMap<String, OccasionDecl>, on: &str) -> O
         .as_deref()
         .map(str::trim)
         .filter(|g| !g.is_empty())
-}
-
-/// The member a concrete `target` (`room.office`) names on a domain-target
-/// occasion (`office`); `None` for a shape-only occasion or another prefix.
-pub fn target_member(decl: &OccasionDecl, target: &str) -> Option<String> {
-    let OccasionTarget::Domain { prefix, .. } = &decl.target else {
-        return None;
-    };
-    target
-        .strip_prefix(prefix.as_str())?
-        .strip_prefix('.')
-        .filter(|m| !m.is_empty())
-        .map(str::to_string)
 }
 
 /// Every member a domain-target occasion is raised for (its `members`
@@ -839,7 +823,7 @@ fn gate_hits(
         Some(members) => {
             schema = folded.env.state.clone();
             schema.decls.insert(
-                crate::beats::OCCASION_TARGET.to_string(),
+                lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 crate::meta::StateDecl {
                     ty: lute_manifest::types::Type::Enum(members),
                     default: None,

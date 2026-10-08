@@ -74,7 +74,7 @@ impl<D: Driver> Machine<D> {
         // A kind beat's `{{occasion.target}}` with no member bound has no
         // text to print either.
         if self.unbound_target(placeholders) {
-            let target = lute_check::beats::OCCASION_TARGET;
+            let target = lute_manifest::semantics::beats::OCCASION_TARGET;
             let atoms = [UnresolvedAtom::Path(target.to_string())];
             self.unresolved.extend(atoms.iter().cloned());
             if self.at_unknown(
@@ -150,7 +150,7 @@ impl<D: Driver> Machine<D> {
     /// target writes `F.<member>`, the member bound as `occasion.target`.
     pub(super) fn exec_set(&mut self, cmd: &Json) {
         let written = cmd.get("path").and_then(Json::as_str).unwrap_or("");
-        let path = match lute_check::target_writes::indexed_family(written) {
+        let path = match lute_manifest::semantics::target_writes::indexed_family(written) {
             None => written.to_string(),
             Some(family) => {
                 let site = Site::new(SiteKind::OccasionTarget, written, addr(cmd));
@@ -217,11 +217,11 @@ impl<D: Driver> Machine<D> {
     ///
     /// [`UnknownSite`]: crate::driver::UnknownSite
     pub(super) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
-        match self.store.read(lute_check::beats::OCCASION_TARGET) {
+        match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
             Read::Value(Value::Str(member)) => Some(member),
             _ => {
                 let atoms = [UnresolvedAtom::Path(
-                    lute_check::beats::OCCASION_TARGET.to_string(),
+                    lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 )];
                 self.unresolved.extend(atoms.iter().cloned());
                 self.at_unknown(site, raw, &atoms);
@@ -244,13 +244,13 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
-        if args.iter().any(|a| a == lute_check::beats::OCCASION_TARGET) {
+        if args.iter().any(|a| a == lute_manifest::semantics::beats::OCCASION_TARGET) {
             let written = render_fact(&rel, &args);
             let site = Site::new(SiteKind::OccasionTarget, &written, addr(cmd));
             let member = self.bound_target(site, &written)?;
             for a in args
                 .iter_mut()
-                .filter(|a| *a == lute_check::beats::OCCASION_TARGET)
+                .filter(|a| *a == lute_manifest::semantics::beats::OCCASION_TARGET)
             {
                 a.clone_from(&member);
             }
@@ -322,7 +322,7 @@ impl<D: Driver> Machine<D> {
         rec.insert("effect".into(), Json::String(kind.to_string()));
         // A write through `occasion.target` names the member it would have
         // written, when one is bound.
-        let member = match self.store.read(lute_check::beats::OCCASION_TARGET) {
+        let member = match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
             Read::Value(Value::Str(m)) => Some(m),
             _ => None,
         };
@@ -330,7 +330,7 @@ impl<D: Driver> Machine<D> {
             "set" => {
                 let path = cmd.get("path").and_then(Json::as_str).unwrap_or("");
                 let path = match &member {
-                    Some(m) => lute_check::target_writes::member_path(path, m),
+                    Some(m) => lute_manifest::semantics::target_writes::member_path(path, m),
                     None => path.to_string(),
                 };
                 rec.insert("path".into(), Json::String(path));
@@ -345,7 +345,7 @@ impl<D: Driver> Machine<D> {
                         Some(m) => args
                             .into_iter()
                             .map(|a| {
-                                if a == lute_check::beats::OCCASION_TARGET {
+                                if a == lute_manifest::semantics::beats::OCCASION_TARGET {
                                     m.clone()
                                 } else {
                                     a

@@ -9,7 +9,7 @@
 //! writer-facing surface (CLI human, CLI JSON `message`, LSP).
 //!
 //! [`translate_cel_parse`] replaces that text with a **pre-parse lexical scan**
-//! of the raw slot text — string-mask aware via [`lute_cel::cel_string_mask`],
+//! of the raw slot text — string-mask aware via [`lute_manifest::text::cel_string_mask`],
 //! independent of the backend's own error taxonomy (that independence is what
 //! makes the six T2 detections reliably implementable without depending on
 //! backend error strings). `backend`'s span is read ONLY as a last-resort
@@ -35,7 +35,8 @@
 //! expression" naming the slot text, at the backend's recovered span when it
 //! looks like a real position inside this slot, else the whole slot.
 
-use lute_cel::{cel_string_mask, CelParseError};
+use lute_cel::CelParseError;
+use lute_manifest::text::cel_string_mask;
 use lute_core_span::{Fixit, Span, TextEdit};
 use lute_syntax::ast::CelKind;
 

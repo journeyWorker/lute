@@ -1003,14 +1003,14 @@ fn rel_entries(
 /// `Bool` as `"true"`/`"false"`. `Wildcard` never occurs in a seed fact
 /// (D12/`E-RETRACT-WILDCARD-ASSERT` — check-gated) but lowers to `"_"`
 /// rather than panic, matching every other node here's total discipline.
-fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
-    use lute_syntax::datalog::FactTerm;
+fn fact_term_string(t: &lute_manifest::fact::FactTerm) -> String {
+    use lute_manifest::fact::FactTerm;
     match t {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -1313,9 +1313,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 // guard, not a real branch — the same string
                 // `artifact_meta` stamps as `SceneMeta.id`.
                 let node = canonical_scene_key(&folded.typed).unwrap_or_default();
+                let span = lute_check::meta::meta_key_span(&doc.meta, "after");
                 out.push(PrereqEdgeEntry {
                     node,
                     edge: PrereqEdge::After(after.to_string()),
+                    formula: lute_check::parse_prereq(after, span).0,
                 });
             }
         }
@@ -1325,6 +1327,7 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                     out.push(PrereqEdgeEntry {
                         node: quest.id.clone(),
                         edge: PrereqEdge::Follows(follows.to_string()),
+                        formula: None,
                     });
                 }
             }
@@ -1334,10 +1337,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
         lute_check::DocKind::Lore => {
             if let Some(doc_id) = folded.typed.id.as_deref() {
                 for beat in &doc.beats {
-                    if let Some((after, _)) = &beat.after {
+                    if let Some((after, span)) = &beat.after {
                         out.push(PrereqEdgeEntry {
                             node: lute_check::bundle_beat_key(doc_id, &beat.id),
                             edge: PrereqEdge::After(after.clone()),
+                            formula: lute_check::parse_prereq(after, *span).0,
                         });
                     }
                 }
@@ -1448,7 +1452,7 @@ fn state_entries(
         // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
         // table carries only what content declares or quests reserve.
         .filter(|(path, _)| {
-            !lute_check::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
+            !lute_manifest::semantics::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
         })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is

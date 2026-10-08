@@ -807,7 +807,7 @@ fn run_one_test(
             .enumerate()
             .filter_map(move |(i, v)| Some((key, i, v.as_str()?)))
     };
-    let needles = lute_runtime::NeedleVocab::of(&input, &meta);
+    let needles = lute_trace::exec::record::needle_vocab(&input, &meta);
     let needle_problems: Vec<String> = expect_items("transcriptContains")
         .chain(expect_items("transcriptLacks"))
         .filter_map(|(key, i, n)| {
@@ -840,7 +840,7 @@ fn run_one_test(
         let problems: Vec<String> = expect_atoms
             .iter()
             .flat_map(|&(key, i, atom)| {
-                let whys: Vec<String> = match lute_syntax::datalog::parse_fact(
+                let whys: Vec<String> = match lute_manifest::fact::parse_fact(
                     &crate::play_expect::canonical_atom(atom),
                 ) {
                     Err(_) => Vec::new(),
@@ -1078,7 +1078,7 @@ fn run_one_test(
                 } else if d.span.line > 0 {
                     format!("{lute_display}:{}:{}", d.span.line, d.span.column)
                 } else {
-                    let key = (d.code == lute_check::gates::E_OCCASION_GATE).then_some("occasions");
+                    let key = (d.code == lute_manifest::semantics::gates::E_OCCASION_GATE).then_some("occasions");
                     match key
                         .and_then(|k| lute_trace::yaml_span(&text, &[lute_trace::YamlStep::Key(k)]))
                     {

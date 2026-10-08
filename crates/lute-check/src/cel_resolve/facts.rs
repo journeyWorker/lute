@@ -276,7 +276,7 @@ pub(crate) fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg
             Expr::Call(call) if call.func_name.starts_with(lute_cel::REF_MARKER) => {
                 FactTerm::Param(call.func_name[lute_cel::REF_MARKER.len()..].to_string())
             }
-            e if crate::cel_paths::select_path(e).as_deref() == Some(crate::beats::OCCASION_TARGET) => {
+            e if crate::cel_paths::select_path(e).as_deref() == Some(lute_manifest::semantics::beats::OCCASION_TARGET) => {
                 FactTerm::Target
             }
             _ => return None,

@@ -300,15 +300,15 @@ const HINT_LIST: &str = "`:ordinal`, `:ordinalWord`, `:cardinalWord` and \
 
 /// dsl 0.24.0 §4 / 0.25.0 §8 / 0.27.0 §7: validate an interpolation's format
 /// hint ([`Interp::format`], the `:ordinal` of `{{user.deaths:ordinal}}`).
-/// The hints are [`lute_syntax::ast::INTERP_FORMATS`]: an unknown one and
+/// The hints are [`lute_manifest::text::INTERP_FORMATS`]: an unknown one and
 /// an argument on a hint other than `plural` are `E-CEL-PROFILE`, the §7.6
 /// interpolation-grammar code ([`interp_grammar_diag`]) — the hint is part
 /// of the `{{…}}` form; `plural` forms that are not a bare singular and a
 /// bare plural are [`E_PLURAL_FORM`]. A number hint
-/// ([`lute_syntax::ast::INTERP_NUMBER_FORMATS`]) on a referent whose type is
+/// ([`lute_manifest::text::INTERP_NUMBER_FORMATS`]) on a referent whose type is
 /// KNOWN and not a number — a declared state path, a def's produced type,
 /// the reserved `userName` string — and a text hint
-/// ([`lute_syntax::ast::INTERP_TEXT_FORMATS`]) on a number or a bool are
+/// ([`lute_manifest::text::INTERP_TEXT_FORMATS`]) on a number or a bool are
 /// `E-REF-TYPE`, the interpolation rendering-type code. An unresolved
 /// referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
 /// `type_flagged` as non-renderable already are not flagged again.
@@ -323,15 +323,15 @@ pub(super) fn check_interp_format(
     };
     let raw = &interp.raw;
     let hint = interp.hint_text().unwrap_or_default();
-    let plural = format == lute_syntax::ast::INTERP_FORMAT_PLURAL;
-    let (code, message) = if !lute_syntax::ast::INTERP_FORMATS.contains(&format) {
+    let plural = format == lute_manifest::text::INTERP_FORMAT_PLURAL;
+    let (code, message) = if !lute_manifest::text::INTERP_FORMATS.contains(&format) {
         (
             crate::cel_resolve::E_CEL_PROFILE,
             format!(
                 "`{{{{{raw}:{hint}}}}}` names an unknown format `{format}`{} — {HINT_LIST}",
                 lute_manifest::suggest::did_you_mean(
                     format,
-                    lute_syntax::ast::INTERP_FORMATS.iter().copied()
+                    lute_manifest::text::INTERP_FORMATS.iter().copied()
                 )
             ),
         )
@@ -368,7 +368,7 @@ pub(super) fn check_interp_format(
                 .find(|r| !r.is_dollar)
                 .and_then(|r| env.def_types.get(&r.name).cloned()),
         };
-        let text_hint = lute_syntax::ast::INTERP_TEXT_FORMATS.contains(&format);
+        let text_hint = lute_manifest::text::INTERP_TEXT_FORMATS.contains(&format);
         match ty {
             Some(ty) if text_hint && matches!(ty, Type::Int | Type::Double | Type::Bool) => (
                 "E-REF-TYPE",

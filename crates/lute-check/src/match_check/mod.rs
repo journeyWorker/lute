@@ -94,9 +94,9 @@ use lute_syntax::ast::{
 };
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, IsLiteralError};
 
-use crate::cel_paths::{
-    is_reserved_entry_read, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
-    E_PATH_IDENT,
+use crate::cel_paths::{is_reserved_quest_activated_at, E_PATH_IDENT};
+use lute_manifest::semantics::cel_paths::{
+    is_reserved_entry_read, is_reserved_quest_objective_done, QUEST_STATES,
 };
 use crate::meta::{Namespace, StateDecl, StateSchema};
 use crate::Ctx;
@@ -129,7 +129,6 @@ use pattern::{
 };
 pub(crate) use pattern::{
     arm_takes_unset, is_pattern_proves_set, literal_is_foreign, quest_state_is_literal,
-    QUEST_STATES,
 };
 pub use records::{
     check_branch, check_hub, check_quest, BranchRecord, HubRecord, QuestRecord,

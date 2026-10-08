@@ -1383,7 +1383,7 @@ fn collect_line_interps(nodes: &[Node], matches: &impl Fn(&Interp) -> bool, out:
 pub fn interp_path(raw: &str) -> String {
     lute_cel::path::parse_path_text(raw).map_or_else(
         || raw.trim().to_string(),
-        |segs| lute_cel::path::render_path(&segs),
+        |segs| lute_manifest::text::render_path(&segs),
     )
 }
 
@@ -1393,18 +1393,18 @@ pub fn interp_path(raw: &str) -> String {
 ///
 /// Dotted text inside a CEL string literal (§4.4) is literal content, not a
 /// state path, so a path never starts inside one (the shared
-/// [`lute_cel::cel_string_mask`], the same quote-tracking
+/// [`lute_manifest::text::cel_string_mask`], the same quote-tracking
 /// `scan_refs`/`slot_tokens` use for @ref/$); a quoted segment is part of the
 /// path it follows.
 pub fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let b = raw.as_bytes();
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
         if (b[i].is_ascii_alphabetic() || b[i] == b'_') && !mask[i] {
             let (segs, len) = lute_cel::path::scan_path(&raw[i..]);
-            out.push((lute_cel::path::render_path(&segs), (i, i + len)));
+            out.push((lute_manifest::text::render_path(&segs), (i, i + len)));
             i += len;
         } else if is_name_byte(b[i]) && !mask[i] {
             // The rest of a number or a `-`-joined word: no path starts here.
@@ -1446,7 +1446,7 @@ mod tests {
 
     /// S3 (dsl §4.4): a dotted path INSIDE a CEL string literal is literal text,
     /// not a state-path use. `path_tokens` must skip it (reusing the same
-    /// quote-tracking `lute_cel::cel_string_mask` FE3 uses for @ref/$ scanning).
+    /// quote-tracking `lute_manifest::text::cel_string_mask` FE3 uses for @ref/$ scanning).
     #[test]
     fn path_tokens_skips_dotted_text_inside_cel_string() {
         // A real state path outside the string + a look-alike inside a literal.

@@ -17,7 +17,7 @@ use lute_manifest::schema::{DirectiveDecl, FactEffect, FactEffectArg};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{Attr, Directive, Node};
-use lute_syntax::datalog::{FactArg, FactPattern, FactTerm};
+use lute_manifest::fact::{FactArg, FactPattern, FactTerm};
 
 use crate::rel_schema::RelVocab;
 use crate::Ctx;
@@ -173,7 +173,7 @@ pub fn pattern_text(p: &FactPattern) -> String {
             FactTerm::Bool(b) => b.to_string(),
             FactTerm::Wildcard => "_".to_string(),
             FactTerm::Param(n) => format!("@{n}"),
-            FactTerm::Target => crate::beats::OCCASION_TARGET.to_string(),
+            FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
         })
         .collect();
     format!("{}({})", p.relation, args.join(", "))

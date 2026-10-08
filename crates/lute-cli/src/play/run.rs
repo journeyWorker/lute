@@ -332,7 +332,7 @@ fn terminal_note(s: &Session<'_, '_, PlayDriverState>) -> String {
              (`occasion:` / `advance:` steps are refused; a new run does not reopen it)"
         );
     }
-    let after = match lute_runtime::seam::persistent_read(terminal) {
+    let after = match lute_runtime::seam::persistent_read(s.project()) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
         }

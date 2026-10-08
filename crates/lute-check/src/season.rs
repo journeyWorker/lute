@@ -547,7 +547,7 @@ pub(crate) fn check_ungated(
 ) -> Vec<Diagnostic> {
     let gate = |on: &str| {
         crate::gates::gate_of(&folded.occasions, on)
-            .filter(|g| !crate::occasion_bind::mentions_target(g))
+            .filter(|g| !lute_manifest::semantics::occasion_bind::mentions_target(g))
     };
     // (what, season, its condition's parts, the slot a fix edits, span)
     let mut units: Vec<(String, &str, Vec<&str>, Gate, Span)> = Vec::new();

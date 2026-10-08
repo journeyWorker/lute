@@ -27,7 +27,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{type_accepts, Literal, Type};
 pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
-use lute_syntax::datalog::{parse_fact, DatalogError};
+use lute_manifest::fact::{parse_fact, DatalogError};
 
 
 /// Runtime mock data with trace-local YAML source metadata.
@@ -167,7 +167,7 @@ pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<Bridg
 /// name.
 pub fn state_key(raw: &str) -> String {
     lute_cel::path::parse_path_text(raw)
-        .map(|segs| lute_cel::path::render_path(&segs))
+        .map(|segs| lute_manifest::text::render_path(&segs))
         .unwrap_or_else(|| raw.to_string())
 }
 
@@ -1000,14 +1000,14 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         // flag of it from any CEL slot — the reserved-quest-path rule above,
         // checked against the reserved `bool` domain. A save that read the
         // entry is one fact with two tiers, so both flags go together.
-        if let Some(id) = lute_check::reserved_entry_id(path) {
+        if let Some(id) = lute_manifest::semantics::cel_paths::reserved_entry_id(path) {
             let referenced = folded.env.state.decls.contains_key(path)
                 || doc.entries.iter().any(|e| e.id == id)
                 || referenced_entry_reads
                     .get_or_insert_with(|| {
                         crate::quest_refs::collect_referenced_entry_read_paths(doc)
                             .iter()
-                            .filter_map(|p| lute_check::reserved_entry_id(p).map(str::to_string))
+                            .filter_map(|p| lute_manifest::semantics::cel_paths::reserved_entry_id(p).map(str::to_string))
                             .collect()
                     })
                     .contains(id);
@@ -1132,7 +1132,7 @@ fn describe_datalog_error(e: &DatalogError) -> String {
     }
 }
 
-/// `--fact` validation (§4.3): parse via [`lute_syntax::datalog::parse_fact`],
+/// `--fact` validation (§4.3): parse via [`lute_manifest::fact::parse_fact`],
 /// then D18's [`lute_check::check_atom`] reuse for unknown-relation/arity/
 /// foreign-arg — every hit re-coded [`E_TRACE_MOCK_FACT`]. `check_atom`
 /// alone (never the write-policy layer `::assert`/`::retract` go through)

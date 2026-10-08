@@ -94,9 +94,11 @@ use lute_syntax::ast::{
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::cel_paths::{
-    collect_path_uses, is_reserved_entry_read, is_reserved_quest_activated_at,
-    is_reserved_quest_objective_done, is_reserved_quest_path, is_reserved_quest_state,
-    is_state_path, PathRole,
+    collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_state, is_state_path,
+    PathRole,
+};
+use lute_manifest::semantics::cel_paths::{
+    is_reserved_entry_read, is_reserved_quest_objective_done, is_reserved_quest_path,
 };
 use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
@@ -565,7 +567,7 @@ fn walk_set(
     // dsl 0.28.0 §3: `run.approval[occasion.target]` names the member the
     // beat runs for; the walker judges the write once per member.
     if crate::component_effects::set_path_index(target).is_some()
-        || crate::target_writes::indexed_family(target).is_some()
+        || lute_manifest::semantics::target_writes::indexed_family(target).is_some()
     {
         return;
     }
@@ -1353,9 +1355,9 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
         || crate::cel_paths::is_reserved_quest_objective_failed(path)
         || is_reserved_entry_read(path)
         // dsl 0.26.0 §5: bound whenever a kind beat runs.
-        || path == crate::beats::OCCASION_TARGET
+        || path == lute_manifest::semantics::beats::OCCASION_TARGET
         // dsl 0.27.0 §3: bound by the raise its beat answers.
-        || path.starts_with(&format!("{}.", crate::occasion_bind::OCCASION_PAYLOAD))
+        || path.starts_with(&format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD))
         || schema
             .decls
             .iter()

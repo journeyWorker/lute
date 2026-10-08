@@ -244,7 +244,7 @@ pub fn check_cel_slot(
                 .env
                 .state
                 .decls
-                .contains_key(crate::beats::OCCASION_TARGET) => {}
+                .contains_key(lute_manifest::semantics::beats::OCCASION_TARGET) => {}
             None => diags.push(diag(
                 "E-UNDECLARED",
                 crate::beats::occasion_target_scope_message(),
@@ -406,7 +406,7 @@ pub(crate) fn group_per_member(
             }
         }
     }
-    let target = crate::beats::OCCASION_TARGET;
+    let target = lute_manifest::semantics::beats::OCCASION_TARGET;
     groups
         .into_iter()
         .map(|((_, abstracted), mut d, ms)| {

@@ -12,7 +12,7 @@
 //! attributes (every one it names, the line may carry more); a needle line
 //! without one matches a line whatever its attributes (round-5 T1-11).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
 
@@ -364,12 +364,105 @@ fn record_shape(line: &str) -> Option<&'static str> {
     }
 }
 
+/// One project's vocabulary of attributes and speakers that transcript
+/// needles may name. Needle matching and diagnostics remain in `lute-trace`.
+#[derive(Clone, Debug, Default)]
+pub struct NeedleVocab {
+    pub members: BTreeMap<String, Option<BTreeSet<String>>>,
+    pub stamps: BTreeSet<String>,
+    pub speakers: Option<BTreeSet<String>>,
+    pub seen: bool,
+}
+
+impl NeedleVocab {
+    /// Union another document's vocabulary into this project vocabulary.
+    pub fn union(&mut self, other: NeedleVocab) {
+        for (slot, theirs) in other.members {
+            match (self.members.get_mut(&slot), theirs) {
+                (Some(Some(ours)), Some(theirs)) => ours.extend(theirs),
+                (Some(ours), None) => *ours = None,
+                (Some(None), Some(_)) => {}
+                (None, theirs) => {
+                    self.members.insert(slot, theirs);
+                }
+            }
+        }
+        self.stamps.extend(other.stamps);
+        self.speakers = match (self.seen, other.seen) {
+            (_, false) => self.speakers.take(),
+            (false, true) => other.speakers,
+            (true, true) => match (self.speakers.take(), other.speakers) {
+                (Some(mut ours), Some(theirs)) => {
+                    ours.extend(theirs);
+                    Some(ours)
+                }
+                _ => None,
+            },
+        };
+        self.seen |= other.seen;
+    }
+
+    /// Every key a line head can show, flags first.
+    pub fn keys(&self) -> Vec<&str> {
+        let valued = lute_check::content_line::KNOWN_ATTRS
+            .iter()
+            .copied()
+            .filter(|key| !HEAD_FLAGS.contains(key) && !HEAD_SKIP_AUTHORED.contains(key));
+        HEAD_FLAGS
+            .iter()
+            .copied()
+            .chain(valued)
+            .chain(self.stamps.iter().map(String::as_str))
+            .collect()
+    }
+}
+
+/// Build a vocabulary from one checked document.
+pub fn needle_vocab(
+    input: &lute_check::CheckInput,
+    meta: &lute_check::TypedMeta,
+) -> NeedleVocab {
+    let nowhere = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
+    let (domains, _) = lute_check::schema_import::merge_domains(
+        &input.snapshot,
+        &input.imports,
+        meta,
+        nowhere,
+    );
+    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &meta.cast);
+    NeedleVocab {
+        members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
+            .iter()
+            .map(|slot| {
+                let members = domains
+                    .get(*slot)
+                    .filter(|domain| !domain.open)
+                    .map(|domain| domain.members.iter().cloned().collect());
+                (slot.to_string(), members)
+            })
+            .collect(),
+        stamps: input.snapshot.stamp_attrs.keys().cloned().collect(),
+        speakers: (!cast.is_empty()).then(|| {
+            cast.into_keys()
+                .chain(std::iter::once("narrator".to_string()))
+                .collect()
+        }),
+        seen: true,
+    }
+}
+
 /// Why `needle` can never match a presented line, as a usage error with a
 /// did-you-mean — `None` when every head names a speaker of the project
 /// (its cast or `narrator`; any id while speakers are shape-only), every
 /// key is one a line head shows and every value is one it can carry (0.27
 /// prerelease OT-F-2, OT N-2). A needle without a head is never refused.
-pub fn needle_problem(needle: &str, vocab: &lute_runtime::NeedleVocab) -> Option<String> {
+pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
     let near = |s: &str, known: &[&str]| {
         lute_manifest::suggest::nearest(s, known.iter().copied(), 2)
             .map(|k| format!(" — did you mean `{k}`?"))
@@ -449,9 +542,8 @@ pub fn needle_problem(needle: &str, vocab: &lute_runtime::NeedleVocab) -> Option
 
 #[cfg(test)]
 mod tests {
-    use super::{find, judge, needle_problem, nearest, said_line};
+    use super::{find, judge, needle_problem, nearest, said_line, NeedleVocab};
     use std::collections::{BTreeMap, BTreeSet};
-    use lute_runtime::NeedleVocab;
     use serde_json::json;
 
     const SAID: &str =

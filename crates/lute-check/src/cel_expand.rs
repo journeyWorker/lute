@@ -19,7 +19,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use lute_cel::{cel_string_mask, scan_refs};
+use lute_cel::scan_refs;
+use lute_manifest::text::cel_string_mask;
 use lute_manifest::types::Type;
 
 /// Failure while expanding a textual CEL definition reference.

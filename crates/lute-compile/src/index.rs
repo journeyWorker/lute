@@ -835,6 +835,7 @@ mod tests {
         a.prereq_edges = vec![PrereqEdgeEntry {
             node: "marina.s01ep02".to_string(),
             edge: PrereqEdge::After("visited(\"a.b\")".to_string()),
+            formula: None,
         }];
         let mut b = scene("kai", "cap-1");
         b.required_semantics = vec!["lute.core/1".into(), "lute.quest.lifecycle/1".into()];

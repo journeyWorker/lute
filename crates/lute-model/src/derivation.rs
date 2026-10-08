@@ -12,7 +12,8 @@ use std::path::PathBuf;
 
 use lute_core_span::{Evidence, Span};
 use lute_manifest::relations::KindShape;
-use lute_syntax::datalog::{BodyLiteral, FactPattern, FactTerm, RuleAtom, RuleTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
+use lute_syntax::datalog::{BodyLiteral, RuleAtom, RuleTerm};
 
 use lute_semantic::{fact_node, format_fact, NodeKey, NodeKind, SemanticGraph};
 use crate::{ModelDocument, ProjectModel};
@@ -326,7 +327,7 @@ fn rule_variables(rule: &lute_syntax::datalog::Rule) -> BTreeSet<String> {
     {
         for term in &a.terms {
             if let RuleTerm::Var(name) = term {
-                if !lute_syntax::datalog::is_anonymous_var(name) {
+                if !lute_manifest::fact::is_anonymous_var(name) {
                     out.insert(name.clone());
                 }
             }
@@ -383,7 +384,7 @@ fn unify(atom: &RuleAtom, fact: &GroundAtom, initial: &Bindings) -> Option<Bindi
         match term {
             RuleTerm::Const(expected) if value != &Value::Text(expected.clone()) => return None,
             RuleTerm::Bool(expected) if value != &Value::Bool(*expected) => return None,
-            RuleTerm::Var(name) if !lute_syntax::datalog::is_anonymous_var(name) => {
+            RuleTerm::Var(name) if !lute_manifest::fact::is_anonymous_var(name) => {
                 if let Some(old) = env.get(name) {
                     if old != value {
                         return None;
@@ -441,7 +442,7 @@ fn symbolic_atom(atom: &RuleAtom, env: &Bindings) -> Option<FactPattern> {
         relation_span: (0, 0),
         args: args
             .into_iter()
-            .map(|term| lute_syntax::datalog::FactArg { term, span: (0, 0) })
+            .map(|term| lute_manifest::fact::FactArg { term, span: (0, 0) })
             .collect(),
         span: (0, 0),
     })

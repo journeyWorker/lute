@@ -389,7 +389,7 @@ pub fn shadowers_at(
 /// strengthening: an `||` with a dropped side drops whole). `None` when
 /// nothing remains or the value is out of profile.
 pub(super) fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Option<String> {
-    use crate::prereq::PrereqFormula as F;
+    use lute_manifest::semantics::prereq::PrereqFormula as F;
     fn cel(f: &F, afters: &BTreeMap<String, &str>, seen: &mut Vec<String>) -> Option<String> {
         match f {
             F::Visited(k) => {

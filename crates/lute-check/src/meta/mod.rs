@@ -6,7 +6,8 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{lit_str, type_accepts, type_str, Literal, Type};
 use lute_syntax::ast::Meta;
 
-use crate::cel_paths::{is_reserved_quest_path, E_PATH_IDENT};
+use crate::cel_paths::E_PATH_IDENT;
+use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 
 mod types;
 mod kind;

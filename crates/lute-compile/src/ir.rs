@@ -185,6 +185,11 @@ pub struct PrereqEdgeEntry {
     /// The RAW declared formula, keyed by what it means on the wire.
     #[serde(flatten)]
     pub edge: PrereqEdge,
+    /// The parsed `after` formula ([`lute_check::parse_prereq`]), so the
+    /// runtime never parses `after` text. `None` for `follows` edges and for
+    /// an `after` outside the prerequisite profile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formula: Option<lute_manifest::semantics::prereq::PrereqFormula>,
 }
 
 /// The two kinds of graph edge a node declares, serialized as the single
@@ -1020,7 +1025,7 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         // `{{run.visits["lab-b2"]}}` ships its canonical dotted path.
         InterpKind::Path => Placeholder::Path {
             path: lute_cel::path::parse_path_text(&i.raw)
-                .map_or_else(|| i.raw.clone(), |segs| lute_cel::path::render_path(&segs)),
+                .map_or_else(|| i.raw.clone(), |segs| lute_manifest::text::render_path(&segs)),
             format: i.format.clone(),
             forms: i.forms.clone(),
         },

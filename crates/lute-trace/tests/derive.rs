@@ -421,7 +421,7 @@ mod explain {
 
     fn explain(base: &[Fact]) -> Explanation {
         let p = program();
-        let schema = lute_check::StateSchema::default();
+        let schema = lute_runtime::schema::StateSchema::default();
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let base: BTreeSet<Fact> = base.iter().cloned().collect();
         let closure = p.fixpoint(&base, &state);

@@ -156,7 +156,7 @@ mod tests {
     }
 
     fn fact(relation: &str) -> crate::meta::FactDecl {
-        let pattern = lute_syntax::datalog::parse_fact(&format!("{relation}(a)")).unwrap();
+        let pattern = lute_manifest::fact::parse_fact(&format!("{relation}(a)")).unwrap();
         crate::meta::FactDecl {
             fact: pattern,
             raw: format!("{relation}(a)"),

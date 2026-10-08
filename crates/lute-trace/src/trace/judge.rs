@@ -52,8 +52,8 @@ pub(super) fn judge(
         .artifacts
         .get(&row.document)
         .and_then(|d| exec::session::beat_prereq(d, &row.id));
-    for atom in prereq.iter().flat_map(lute_check::prereq::atoms) {
-        if let lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) = atom {
+    for atom in prereq.iter().flat_map(lute_manifest::semantics::prereq::atoms) {
+        if let lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) = atom {
             if let lute_runtime::eval::Read::Value(Value::Str(s)) =
                 m.read(&format!("quest.{q}.state"))
             {
@@ -61,7 +61,7 @@ pub(super) fn judge(
             }
         }
     }
-    let member = match m.read(lute_check::beats::OCCASION_TARGET) {
+    let member = match m.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
         lute_runtime::eval::Read::Value(Value::Str(s)) => Some(s),
         _ => None,
     };
@@ -89,7 +89,7 @@ pub(super) fn premise_text(
     kind: BeatKind,
     when: Option<&str>,
 ) -> String {
-    use lute_check::prereq::Atom;
+    use lute_manifest::semantics::prereq::Atom;
     match prem {
         Premise::When { raw } => when_text(m, mocks, raw, when.unwrap_or(raw.as_str())),
         Premise::After {
@@ -114,7 +114,7 @@ pub(super) fn premise_text(
                 BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
                 BeatKind::Scene | BeatKind::Entry if *chapters => format!(
                     "its `after: {raw}`{} is false{hint}",
-                    lute_check::chapters::PROVENANCE
+                    lute_manifest::semantics::chapters::PROVENANCE
                 ),
                 BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
             }
@@ -182,7 +182,7 @@ pub(super) fn when_text(
     };
     match conjuncts.as_slice() {
         [] => format!("its `when` ({authored}) is false"),
-        [(c, reads)] if c == lute_check::templates::unparen(raw) => {
+        [(c, reads)] if c == lute_manifest::semantics::templates::unparen(raw) => {
             format!("its `when` ({authored}) is false{}", found(reads))
         }
         _ => {

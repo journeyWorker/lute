@@ -968,6 +968,7 @@ pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String
 /// were written ([`in_file_order`]).
 pub(super) fn plan_script(
     project: &ExecProject,
+    needles: &lute_trace::exec::record::NeedleVocab,
     script: &PlayScript,
     script_path: &Path,
     no_derive: bool,
@@ -982,7 +983,7 @@ pub(super) fn plan_script(
         }
     };
     check_expect_names(project, script, &mut errs);
-    check_needles(project, script, &mut errs);
+    check_needles(needles, script, &mut errs);
     check_expect_facts(project, script, &mut errs);
     check_expect_state_values(project, script, &mut errs);
     if let Err(e) = resolve_bridges(project, "top level", &script.surfaces.bridges) {
@@ -1019,7 +1020,7 @@ pub(super) fn plan_script(
 /// ([`lute_trace::exec::record::needle_problem`]) — otherwise the needle can
 /// never match, and a `transcriptLacks` holds although the line was said. A
 /// usage error (exit 2) before anything plays, located at the needle.
-fn check_needles(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
+fn check_needles(vocab: &lute_trace::exec::record::NeedleVocab, script: &PlayScript, errs: &mut Vec<String>) {
     let Some(expect) = &script.expect else {
         return;
     };
@@ -1031,7 +1032,7 @@ fn check_needles(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
             let Some(needle) = needle.as_str() else {
                 continue;
             };
-            if let Some(why) = lute_trace::exec::record::needle_problem(needle, &p.needles) {
+            if let Some(why) = lute_trace::exec::record::needle_problem(needle, vocab) {
                 errs.push(top_error(
                     script,
                     &["expect", key],

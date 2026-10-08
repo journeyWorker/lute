@@ -19,11 +19,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use lute_check::RelVocab;
 use serde_json::Value as Json;
 
 use crate::eval::{EffectiveState, EvalEnv, FactStore};
 use crate::expr::Slot;
+use crate::schema::RelVocab;
 use crate::value::{UnresolvedAtom, Value};
 
 /// A ground fact: relation and argument constants.
@@ -78,7 +78,7 @@ pub enum Lit {
     },
 }
 
-pub use lute_syntax::datalog::CountOp;
+use lute_manifest::fact::CountOp;
 
 /// A parsed rule `head :- body`, with its source text.
 #[derive(Clone, Debug, PartialEq)]
@@ -213,7 +213,7 @@ impl Program {
     }
     /// Whether a rule guard text mentions the canonical state path.
     pub fn reads_state_path(&self, path: &str) -> bool {
-        let bracket = lute_cel::path::bracket_spelling_of(path);
+        let bracket = lute_manifest::text::bracket_spelling_of(path);
         self.rules.iter().any(|r| {
             r.body.iter().any(|lit| match lit {
                 Lit::Guard { slot } => slot.raw.contains(path) || slot.raw.contains(&bracket),
@@ -587,8 +587,8 @@ pub fn fact_spelling(f: &str) -> String {
 /// a `_` wildcard or a leading-uppercase rule variable (`prime(X)`) is not
 /// ground.
 pub fn parse_ground(s: &str) -> Option<Fact> {
-    use lute_syntax::datalog::FactTerm;
-    let pat = lute_syntax::datalog::parse_fact(s).ok()?;
+    use lute_manifest::fact::FactTerm;
+    let pat = lute_manifest::fact::parse_fact(s).ok()?;
     let mut args = Vec::with_capacity(pat.args.len());
     for a in &pat.args {
         match &a.term {
@@ -976,13 +976,13 @@ fn eval_rule_guard(
 /// Substitute each bound rule variable in a guard fragment with its ground
 /// value — a numeric value inlined bare, any other quoted as a CEL string
 /// literal. String-literal regions are left untouched
-/// (`lute_cel::cel_string_mask`), so a `'@gold'`-style value is never
+/// (`lute_manifest::text::cel_string_mask`), so a `'@gold'`-style value is never
 /// rewritten.
 fn substitute_vars(cel: &str, binding: &Binding) -> String {
     if binding.is_empty() {
         return cel.to_string();
     }
-    let mask = lute_cel::cel_string_mask(cel);
+    let mask = lute_manifest::text::cel_string_mask(cel);
     let bytes = cel.as_bytes();
     let mut out = String::with_capacity(cel.len());
     let mut i = 0;
@@ -1018,7 +1018,7 @@ fn render_term(t: &Term, b: &Binding) -> String {
     match t {
         Term::Const(c) => c.clone(),
         Term::Var(v) => b.get(v).cloned().unwrap_or_else(|| {
-            if lute_syntax::datalog::is_anonymous_var(v) {
+            if lute_manifest::fact::is_anonymous_var(v) {
                 "_".to_string()
             } else {
                 v.clone()
@@ -1072,7 +1072,7 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use lute_check::StateSchema;
+    use crate::schema::StateSchema;
     use serde_json::json;
 
     use super::Program;

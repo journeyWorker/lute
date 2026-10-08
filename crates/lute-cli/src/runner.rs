@@ -919,7 +919,7 @@ fn owned_write_refusal(art: &Json) -> Option<String> {
         .collect();
     let owns = |path: &str| {
         owned.contains(path)
-            || lute_check::target_writes::indexed_family(path).is_some_and(|family| {
+            || lute_manifest::semantics::target_writes::indexed_family(path).is_some_and(|family| {
                 owned.contains(family)
                     || owned.iter().any(|p| {
                         p.strip_prefix(family).is_some_and(|rest| rest.starts_with('.'))
@@ -1067,7 +1067,7 @@ pub(crate) fn bind_direct_occasion_target<D: Driver, B, C>(
     if !mock
         .state
         .iter()
-        .any(|(path, _, _)| path == lute_check::beats::OCCASION_TARGET)
+        .any(|(path, _, _)| path == lute_manifest::semantics::beats::OCCASION_TARGET)
     {
         if let Some(member) = direct_occasion_member(art, mock, entry, beat) {
             m.bind_occasion_target(Some(&member));
