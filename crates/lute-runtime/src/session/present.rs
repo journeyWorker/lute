@@ -11,7 +11,7 @@ use super::eligibility::kind_label;
 use super::project::ExecProject;
 use super::resolve::ever_read_path;
 use super::walk::{absorb, play_machine, walk_stop, PlayHalt};
-use super::world::{json_to_value, World};
+use super::world::{clock_at, json_to_value, World};
 use super::step::StepBody;
 use crate::datalog::Fact;
 use crate::{Carry, Seed};
@@ -156,6 +156,13 @@ pub fn present<B, C, F: super::WalkDriver>(
     mock: &MockSet<B, C>,
     factory: &mut F,
 ) -> (Presented, Option<PlayHalt>) {
+    factory.event(crate::runtime::Event::Presentation {
+        occasion: None,
+        target: member.map(str::to_string),
+        beat: beat.id.clone(),
+        document: beat.document.clone(),
+        kind: match beat.kind { BeatKind::Scene => "scene", BeatKind::Entry => "entry", BeatKind::Bundle => "bundle" }.into(),
+    });
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
     let (facts_before, visited_before, quests_before) =
@@ -184,6 +191,11 @@ pub fn present<B, C, F: super::WalkDriver>(
     };
     let result = m.run();
     let outcome = factory.finish(m);
+    factory.event(crate::runtime::Event::PresentationEnd {
+        beat: beat.id.clone(),
+        document: beat.document.clone(),
+        reason: None,
+    });
     absorb(w, &outcome);
     match beat.kind {
         BeatKind::Scene | BeatKind::Bundle => {
@@ -239,6 +251,7 @@ pub fn present<B, C, F: super::WalkDriver>(
                     .raise
                     .as_ref()
                     .map_or_else(Default::default, |r| r.moments());
+                let clock_before = clock_at(p, w);
                 w.advance_cascade_depth += 1;
                 let (advance_body, _, raised_stop) = super::advance::run_advance(
                     p,
@@ -252,6 +265,11 @@ pub fn present<B, C, F: super::WalkDriver>(
                     factory,
                 );
                 w.advance_cascade_depth -= 1;
+                if let (Some(from), Some(to)) = (clock_before, clock_at(p, w)) {
+                    if from != to {
+                        factory.event(crate::runtime::Event::Clock { from: serde_json::json!({ "day": from.day, "slot": from.slot }), to: serde_json::json!({ "day": to.day, "slot": to.slot }), passed: None });
+                    }
+                }
                 if let StepBody::Advance { raised: Some(occasion), .. } = advance_body {
                     if let StepBody::Occasion { presented, .. } = *occasion {
                         raised = presented;

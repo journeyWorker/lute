@@ -37,6 +37,7 @@ pub fn advance_quests<F: super::WalkDriver>(
     for _ in 0..passes {
         let (moved, stop) = advance_pass(p, w, None, &mut out, factory);
         if stop.is_some() {
+            emit_quest_events(factory, &out);
             return (out, stop);
         }
         if !moved {
@@ -68,6 +69,7 @@ pub fn advance_quests<F: super::WalkDriver>(
             })],
         });
     }
+    emit_quest_events(factory, &out);
     (out, None)
 }
 
@@ -280,4 +282,12 @@ pub fn settle_before<F: super::WalkDriver>(
         w.defer_by = None;
     }
     (settled, stop)
+}
+fn emit_quest_events<F: super::WalkDriver>(factory: &mut F, advances: &[QuestAdvance]) {
+    for advance in advances {
+        factory.event(crate::runtime::Event::Quest {
+            document: advance.document.clone(),
+            commands: advance.transcript.clone(),
+        });
+    }
 }

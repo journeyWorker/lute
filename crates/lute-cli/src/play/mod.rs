@@ -633,6 +633,54 @@ pub(crate) fn run_play_for_test(
     })
 }
 
+/// The machine records and final world produced by the normal play driver.
+/// This is intentionally small so integration tests can compare the public
+/// resumable runtime without depending on the CLI's private report model.
+pub struct RuntimePlayReference {
+    pub records: Vec<(String, Json)>,
+    pub world: World,
+}
+
+/// Run a play script through the same `Session`/`PlayDriver` path as the CLI.
+pub fn run_runtime_reference(dir: &Path, script: &Path) -> Result<RuntimePlayReference, String> {
+    let project = compile_play_project(
+        &lute_model::ModelMemo::default(),
+        dir,
+        project::PLAY,
+        &crate::EngineMatrix::reference(),
+    )
+    .map_err(|(_, message)| if message.is_empty() {
+        format!("could not compile {}", dir.display())
+    } else {
+        message
+    })?;
+    let script_value = load_script(script).map_err(|(_, message)| message)?;
+    let (plan, world) = plan_script(&project, &script_value, script, false)
+        .map_err(|(_, message)| message)?;
+    let mut driver = driver_for(&project, &script_value, None);
+    let play = execute(&script_value, &plan, Session::resume(&project, world, &mut driver));
+    Ok(RuntimePlayReference {
+        records: driver.records,
+        world: play.world,
+    })
+}
+
+/// Build the public runtime over the project's in-memory compile bundle.
+pub fn build_runtime(dir: &Path) -> Result<lute_runtime::Runtime, String> {
+    let project = compile_play_project(
+        &lute_model::ModelMemo::default(),
+        dir,
+        project::PLAY,
+        &crate::EngineMatrix::reference(),
+    )
+    .map_err(|(_, message)| if message.is_empty() {
+        format!("could not compile {}", dir.display())
+    } else {
+        message
+    })?;
+    Ok(lute_runtime::Runtime::from_project(project))
+}
+
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
     fn walk(value: &Json, out: &mut BTreeSet<String>) {
         match value {

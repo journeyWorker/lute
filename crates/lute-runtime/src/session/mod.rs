@@ -45,7 +45,7 @@ pub use world::*;
 
 use std::collections::BTreeMap;
 
-use serde_json::Value as Json;
+use serde_json::{json, Value as Json};
 
 use crate::{Driver, Machine, Value};
 
@@ -74,6 +74,8 @@ pub trait WalkDriver {
     fn observer(&self) -> Option<SessionEvalObserver> {
         None
     }
+    /// Host event sink. The default keeps legacy play/report drivers unchanged.
+    fn event(&mut self, _event: crate::runtime::Event) {}
 }
 
 /// What one step operation did: its body record, the quest advances it
@@ -256,7 +258,8 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
-        run_advance(
+        let from = clock_at(self.project, &self.world);
+        let out = run_advance(
             self.project,
             &mut self.world,
             n,
@@ -266,7 +269,14 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             pick,
             choose,
             self.driver,
-        )
+        );
+        let to = clock_at(self.project, &self.world);
+        if let (Some(from), Some(to)) = (from, to) {
+            if from != to {
+                self.driver.event(crate::runtime::Event::Clock { from: json!({ "day": from.day, "slot": from.slot }), to: json!({ "day": to.day, "slot": to.slot }), passed: None });
+            }
+        }
+        out
     }
 
     /// dsl 0.27.0 §4: whether the project's `terminal:` holds — the game is

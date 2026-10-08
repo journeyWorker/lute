@@ -52,7 +52,7 @@
       "type": "object", "additionalProperties": false, "required": ["type", "occasion"],
       "properties": {
         "type": { "const": "raiseOccasion" }, "occasion": { "type": "string" },
-        "target": { "type": ["string", "null"] }, "payload": { "type": "object" },
+        "target": { "type": ["string", "null"] }, "payload": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Scalar" } },
         "pick": { "$ref": "#/$defs/Pick" }, "writes": { "$ref": "#/$defs/Writes" }
       }
     },
@@ -62,7 +62,7 @@
     },
     "BridgeResult": {
       "type": "object", "additionalProperties": false, "required": ["type", "request", "fields"],
-      "properties": { "type": { "const": "bridgeResult" }, "request": { "type": "integer", "minimum": 0 }, "fields": { "type": "object" } }
+      "properties": { "type": { "const": "bridgeResult" }, "request": { "type": "integer", "minimum": 0 }, "fields": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Scalar" } } }
     },
     "AdvanceBy": {
       "oneOf": [

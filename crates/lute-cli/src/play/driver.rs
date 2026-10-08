@@ -27,6 +27,7 @@ pub(crate) struct PlayDriverState {
     pub(crate) decisions: Vec<Decision>,
     pub(crate) step: usize,
     pub(crate) document: String,
+    pub(crate) records: Vec<(String, Json)>,
     override_cursors: Vec<Vec<(String, Option<usize>)>>,
     observer: Option<SessionEvalObserver>,
     producers: Option<Arc<Producers>>,
@@ -182,6 +183,7 @@ impl WalkDriver for PlayDriverState {
             driver.premises.step,
             &driver.transcript,
         ));
+        self.records.extend(driver.transcript.iter().cloned().map(|record| (driver.premises.document.clone(), record)));
         Walked {
             carry,
             transcript: driver.transcript,

@@ -1182,6 +1182,41 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.32.0 §5"],
     },
     Code {
+        code: "E-RUNTIME-BRIDGE-SHAPE",
+        summary: "A runtime bridge result omits a field read by the pending bridge call or gives that field a value of the wrong type.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-BUSY",
+        summary: "A runtime input is not accepted while another input is suspended, or an answer is supplied without a matching await.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-HALTED",
+        summary: "An input was supplied after the runtime state entered a halted lineage.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-INPUT",
+        summary: "A runtime seed or input names an unknown project item or contains a value that cannot resolve to its declared type.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-IR-VERSION",
+        summary: "A runtime bundle declares an execution IR major or minor version the runtime does not support.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-OPTION",
+        summary: "A runtime choice names an option absent from the pending menu or an option whose verdict is not open.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
+        code: "E-RUNTIME-REQUEST",
+        summary: "A runtime choice or bridge result carries a request id different from the pending await.",
+        spec: &["scenario-dsl 0.38.0 §5.3"],
+    },
+    Code {
         code: "E-SEASON-DECL",
         summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
