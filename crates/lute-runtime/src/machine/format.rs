@@ -51,7 +51,7 @@ impl<D: Driver> Machine<D> {
                 // else by its cast display name when it is a cast id, else
                 // the id.
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("occasionTarget") => {
-                    match self.store.values.get(lute_check::beats::OCCASION_TARGET) {
+                    match self.store.values.get(lute_manifest::semantics::beats::OCCASION_TARGET) {
                         Some(Value::Str(m)) => {
                             let kind = ph.get("entityKind").and_then(Json::as_str);
                             match kind.and_then(|k| self.store.kind_labels.get(k)?.get(m)) {
@@ -88,7 +88,7 @@ impl<D: Driver> Machine<D> {
     /// The first `{{occasion.payload.<field>}}` marker among `placeholders`
     /// whose field this raise left unset (dsl 0.28.0, T1-13).
     pub(super) fn unset_payload(&self, placeholders: Option<&Vec<Json>>) -> Option<String> {
-        let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+        let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
         placeholders?
             .iter()
             .filter(|ph| ph.get("kind").and_then(Json::as_str) == Some("path"))
@@ -105,7 +105,7 @@ impl<D: Driver> Machine<D> {
     /// (a trace that did not mock the raise).
     pub(super) fn unbound_target(&self, placeholders: Option<&Vec<Json>>) -> bool {
         if matches!(
-            self.store.values.get(lute_check::beats::OCCASION_TARGET),
+            self.store.values.get(lute_manifest::semantics::beats::OCCASION_TARGET),
             Some(crate::Value::Str(_))
         ) {
             return false;
@@ -118,7 +118,7 @@ impl<D: Driver> Machine<D> {
                 Some("ref") => ph
                     .pointer("/expr/cel")
                     .and_then(Json::as_str)
-                    .is_some_and(lute_check::occasion_bind::mentions_target),
+                    .is_some_and(lute_manifest::semantics::occasion_bind::mentions_target),
                 _ => false,
             })
     }

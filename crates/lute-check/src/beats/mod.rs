@@ -39,12 +39,11 @@ pub use ordering::{
     check_project_beats, ReportedErrors, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
 };
 pub use project::{
-    in_selection_order, project_beats, reorder, selection_order, BeatCells, ProjectBeat,
+    in_selection_order, project_beats, BeatCells, ProjectBeat,
     ProjectBeatKind,
 };
 pub use validation::{
-    beat_target_restricts, kind_target_members, occasion_target_members, occasion_target_ok,
-    OCCASION_TARGET,
+    kind_target_members, occasion_target_members, occasion_target_ok,
 };
 pub(crate) use collection::{
     check_entry_beat_attrs, check_entry_occasions, lift_scene_beat,

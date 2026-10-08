@@ -420,11 +420,11 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
     let ended: Vec<(String, Value)> = w
         .state
         .iter()
-        .filter_map(|(k, v)| lute_check::cel_paths::prev_run_path(k).map(|prev| (prev, v.clone())))
+        .filter_map(|(k, v)| lute_manifest::semantics::cel_paths::prev_run_path(k).map(|prev| (prev, v.clone())))
         .collect();
     let prev_run = ended.clone();
     w.state
-        .retain(|k, _| !run_tier(k) && !lute_check::cel_paths::is_prev_path(k));
+        .retain(|k, _| !run_tier(k) && !lute_manifest::semantics::cel_paths::is_prev_path(k));
     w.state.extend(ended);
     for (path, e) in &p.state_table {
         if run_tier(path) {

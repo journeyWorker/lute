@@ -178,7 +178,7 @@ pub(super) fn raised_member(
     };
     let member = occasions
         .get(on)
-        .and_then(|d| lute_check::gates::target_member(d, target))
+        .and_then(|d| lute_manifest::semantics::gates::target_member(d, target))
         .unwrap_or_else(|| target.to_string());
     if members.contains(&member) {
         return Ok(Some(member));

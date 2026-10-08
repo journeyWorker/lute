@@ -36,7 +36,7 @@ pub fn collect_referenced_reserved_quest_paths(doc: &Document) -> BTreeSet<Strin
 /// [`collect_referenced_reserved_quest_paths`], same walk, same admission
 /// role in [`crate::mock::validate`].
 pub(crate) fn collect_referenced_entry_read_paths(doc: &Document) -> BTreeSet<String> {
-    collect_referenced(doc, lute_check::is_reserved_entry_read)
+    collect_referenced(doc, lute_manifest::semantics::cel_paths::is_reserved_entry_read)
 }
 
 fn collect_referenced(doc: &Document, keep: fn(&str) -> bool) -> BTreeSet<String> {

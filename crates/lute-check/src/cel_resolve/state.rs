@@ -5,7 +5,7 @@ pub(crate) fn raw_uses_reserved_marker(raw: &str) -> bool {
     if raw.len() < marker.len() {
         return false;
     }
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     raw.as_bytes()
         .windows(marker.len())
         .enumerate()
@@ -155,7 +155,7 @@ pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags:
                  with a rule variable inside a rule `cel()` guard"
             );
         } else if let Some(field) = path
-            .strip_prefix(crate::occasion_bind::OCCASION_PAYLOAD)
+            .strip_prefix(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD)
             .and_then(|f| f.strip_prefix('.'))
         {
             // dsl 0.27.0 §3, 0.28.0 (T2-8): payload fields come from the
@@ -167,7 +167,7 @@ pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags:
                  answers, so declare `{field}` under that occasion's `payload:` (dsl 0.27.0 §3)"
             );
             if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
-                .filter(|s| s.starts_with(crate::occasion_bind::OCCASION_PAYLOAD))
+                .filter(|s| s.starts_with(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD))
             {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
             }

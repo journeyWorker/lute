@@ -415,7 +415,7 @@ fn target_matches<'n>(nodes: &'n [Node], out: &mut Vec<&'n lute_syntax::ast::Mat
     for node in nodes {
         match node {
             Node::Match(m) => {
-                if subject_path(m).as_deref() == Some(crate::beats::OCCASION_TARGET) {
+                if subject_path(m).as_deref() == Some(lute_manifest::semantics::beats::OCCASION_TARGET) {
                     out.push(m);
                 }
                 for arm in &m.arms {
@@ -849,7 +849,7 @@ impl<'a> Guards<'a> {
         members: Option<&'m [String]>,
     ) -> MemberVerdicts<'m> {
         let members = members
-            .filter(|_| crate::occasion_bind::mentions_target(&when.raw))
+            .filter(|_| lute_manifest::semantics::occasion_bind::mentions_target(&when.raw))
             .unwrap_or_default();
         let verdicts: Option<Vec<SlotVerdict>> = members
             .iter()

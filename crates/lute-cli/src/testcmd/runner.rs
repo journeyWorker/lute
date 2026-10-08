@@ -1078,7 +1078,7 @@ fn run_one_test(
                 } else if d.span.line > 0 {
                     format!("{lute_display}:{}:{}", d.span.line, d.span.column)
                 } else {
-                    let key = (d.code == lute_check::gates::E_OCCASION_GATE).then_some("occasions");
+                    let key = (d.code == lute_manifest::semantics::gates::E_OCCASION_GATE).then_some("occasions");
                     match key
                         .and_then(|k| lute_trace::yaml_span(&text, &[lute_trace::YamlStep::Key(k)]))
                     {

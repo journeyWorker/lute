@@ -355,7 +355,7 @@ impl Store {
         if let Some(v) = self.values.get(path) {
             return Read::Value(v.clone());
         }
-        if lute_check::is_reserved_entry_read(path) || is_entry_ever_read(path) {
+        if lute_manifest::semantics::cel_paths::is_reserved_entry_read(path) || is_entry_ever_read(path) {
             return Read::Value(Value::Bool(false));
         }
         if crate::eval::is_reserved_quest_path(path) {
@@ -366,7 +366,7 @@ impl Store {
 
     /// Set a value with no consequence (a seed, a carried value).
     pub(crate) fn put(&mut self, path: String, v: Value) {
-        let is_occasion_target = path == lute_check::beats::OCCASION_TARGET;
+        let is_occasion_target = path == lute_manifest::semantics::beats::OCCASION_TARGET;
         self.values.insert(path, v);
         self.dirty |= self.rules_read_state
             && (!is_occasion_target || self.rules_read_occasion_target);
@@ -376,7 +376,7 @@ impl Store {
     pub(crate) fn remove(&mut self, path: &str) {
         if self.values.remove(path).is_some() {
             self.dirty |= self.rules_read_state
-                && (path != lute_check::beats::OCCASION_TARGET || self.rules_read_occasion_target);
+                && (path != lute_manifest::semantics::beats::OCCASION_TARGET || self.rules_read_occasion_target);
         }
     }
 
@@ -395,7 +395,7 @@ impl Store {
     pub(crate) fn write(&mut self, path: &str, v: Value) {
         self.values.insert(path.to_string(), v);
         self.dirty |= self.rules_read_state
-            && (path != lute_check::beats::OCCASION_TARGET || self.rules_read_occasion_target);
+            && (path != lute_manifest::semantics::beats::OCCASION_TARGET || self.rules_read_occasion_target);
         if self
             .clock
             .as_ref()

@@ -66,7 +66,7 @@ pub(super) fn start_source(
 ) -> Option<NodeId> {
     let entry = |e: &Expr| {
         let path = crate::cel_paths::select_path(e)?;
-        let id = crate::cel_paths::reserved_entry_id(&path)?;
+        let id = lute_manifest::semantics::cel_paths::reserved_entry_id(&path)?;
         (crate::cel_paths::is_entry_ever_read(&path) && decls.entries.contains_key(id))
             .then(|| NodeId::Entry(id.to_string()))
     };

@@ -13,7 +13,7 @@
 use super::session::{ExecProject, PlayHalt, SessionEvalObserver, World};
 use crate::{Driver, GuardRead, Machine, Slot};
 
-use lute_check::gates::E_OCCASION_GATE;
+use lute_manifest::semantics::gates::E_OCCASION_GATE;
 
 /// Why the engine would not raise an occasion now.
 #[derive(Clone, Debug, PartialEq)]
@@ -81,7 +81,7 @@ pub fn terminal_holds(
 fn member<'t>(p: &ExecProject, occasion: &str, target: &'t str) -> std::borrow::Cow<'t, str> {
     p.occasions
         .get(occasion)
-        .and_then(|d| lute_check::gates::target_member(d, target))
+        .and_then(|d| lute_manifest::semantics::gates::target_member(d, target))
         .map_or(std::borrow::Cow::Borrowed(target), std::borrow::Cow::Owned)
 }
 
@@ -187,7 +187,7 @@ pub fn refusal(
         Closed::Gate { raw, reads } => {
             // A payload read is changed by this step's own `payload:`,
             // anything else before the raise.
-            let payload = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
+            let payload = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
             let by_payload =
                 |r: &GuardRead| matches!(r, GuardRead::Path(p, _) if p.starts_with(&payload));
             let by_clock = |r: &GuardRead| {

@@ -38,7 +38,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
-use crate::cel_paths::{is_entry_path, is_reserved_quest_path};
+use crate::cel_paths::is_entry_path;
+use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
 
@@ -94,7 +95,7 @@ pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
         WriteOwner::QuestReserved
     } else if is_entry_path(path) {
         WriteOwner::EntryReserved
-    } else if crate::cel_paths::is_prev_path(path) {
+    } else if lute_manifest::semantics::cel_paths::is_prev_path(path) {
         WriteOwner::PrevReserved
     } else if lute_manifest::clock::is_clock_path(path) {
         WriteOwner::ClockReserved

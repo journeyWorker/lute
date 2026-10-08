@@ -670,7 +670,7 @@ impl Walker<'_> {
             }
             ds
         };
-        let target = match crate::target_writes::indexed_family(&s.path) {
+        let target = match lute_manifest::semantics::target_writes::indexed_family(&s.path) {
             None => {
                 self.diags.extend(judge(s));
                 Some(s.path.clone())
@@ -680,13 +680,13 @@ impl Walker<'_> {
                     self.diags
                         .extend(crate::cel_resolve::group_per_member(members, |m| {
                             judge(&lute_syntax::ast::Set {
-                                path: crate::target_writes::member_path(&s.path, m),
+                                path: lute_manifest::semantics::target_writes::member_path(&s.path, m),
                                 ..s.clone()
                             })
                         }));
                     members
                         .first()
-                        .map(|m| crate::target_writes::member_path(&s.path, m))
+                        .map(|m| lute_manifest::semantics::target_writes::member_path(&s.path, m))
                 }
                 Err(d) => {
                     self.diags.push(d);

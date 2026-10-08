@@ -1000,14 +1000,14 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         // flag of it from any CEL slot — the reserved-quest-path rule above,
         // checked against the reserved `bool` domain. A save that read the
         // entry is one fact with two tiers, so both flags go together.
-        if let Some(id) = lute_check::reserved_entry_id(path) {
+        if let Some(id) = lute_manifest::semantics::cel_paths::reserved_entry_id(path) {
             let referenced = folded.env.state.decls.contains_key(path)
                 || doc.entries.iter().any(|e| e.id == id)
                 || referenced_entry_reads
                     .get_or_insert_with(|| {
                         crate::quest_refs::collect_referenced_entry_read_paths(doc)
                             .iter()
-                            .filter_map(|p| lute_check::reserved_entry_id(p).map(str::to_string))
+                            .filter_map(|p| lute_manifest::semantics::cel_paths::reserved_entry_id(p).map(str::to_string))
                             .collect()
                     })
                     .contains(id);

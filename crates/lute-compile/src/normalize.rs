@@ -349,7 +349,7 @@ fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
             Node::Match(Match {
                 subject: CelSlot::raw(
                     CelKind::MatchSubject,
-                    lute_check::beats::OCCASION_TARGET.to_string(),
+                    lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                     span,
                 ),
                 // Synthesized, not authored: only the marker.

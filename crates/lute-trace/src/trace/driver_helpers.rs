@@ -32,7 +32,7 @@ pub(super) fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
         .map(|f| {
             f.iter()
                 .map(|(k, v)| match v {
-                    Json::String(s) if s == lute_check::beats::OCCASION_TARGET => {
+                    Json::String(s) if s == lute_manifest::semantics::beats::OCCASION_TARGET => {
                         format!("{k}={s}")
                     }
                     Json::String(s) => format!("{k}={s:?}"),

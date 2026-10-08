@@ -1196,6 +1196,6 @@ fn entry_read(e: &Expr) -> Option<(String, bool)> {
         other => other,
     };
     let path = crate::cel_paths::select_path(e)?;
-    let id = crate::cel_paths::reserved_entry_id(&path)?.to_string();
+    let id = lute_manifest::semantics::cel_paths::reserved_entry_id(&path)?.to_string();
     Some((id, crate::cel_paths::is_entry_ever_read(&path)))
 }

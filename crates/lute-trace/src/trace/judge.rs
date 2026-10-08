@@ -61,7 +61,7 @@ pub(super) fn judge(
             }
         }
     }
-    let member = match m.read(lute_check::beats::OCCASION_TARGET) {
+    let member = match m.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
         lute_runtime::eval::Read::Value(Value::Str(s)) => Some(s),
         _ => None,
     };
@@ -114,7 +114,7 @@ pub(super) fn premise_text(
                 BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
                 BeatKind::Scene | BeatKind::Entry if *chapters => format!(
                     "its `after: {raw}`{} is false{hint}",
-                    lute_check::chapters::PROVENANCE
+                    lute_manifest::semantics::chapters::PROVENANCE
                 ),
                 BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
             }
@@ -182,7 +182,7 @@ pub(super) fn when_text(
     };
     match conjuncts.as_slice() {
         [] => format!("its `when` ({authored}) is false"),
-        [(c, reads)] if c == lute_check::templates::unparen(raw) => {
+        [(c, reads)] if c == lute_manifest::semantics::templates::unparen(raw) => {
             format!("its `when` ({authored}) is false{}", found(reads))
         }
         _ => {

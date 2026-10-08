@@ -358,7 +358,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         } else {
             Evidence::Proven
         };
-        if let Some(entry_id) = lute_check::cel_paths::reserved_entry_id(&read.path) {
+        if let Some(entry_id) = lute_manifest::semantics::cel_paths::reserved_entry_id(&read.path) {
             let ek = NodeKey::new(NodeKind::Entry, entry_id.to_string());
             g.edge(
                 ek,

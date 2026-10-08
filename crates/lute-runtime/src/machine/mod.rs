@@ -454,7 +454,7 @@ impl<D: Driver> Machine<D> {
                     occasion_target: self
                         .store
                         .values
-                        .get(lute_check::beats::OCCASION_TARGET)
+                        .get(lute_manifest::semantics::beats::OCCASION_TARGET)
                         .and_then(|v| match v {
                             Value::Str(s) => Some(s.as_str()),
                             _ => None,

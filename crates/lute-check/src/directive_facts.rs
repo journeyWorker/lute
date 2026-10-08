@@ -173,7 +173,7 @@ pub fn pattern_text(p: &FactPattern) -> String {
             FactTerm::Bool(b) => b.to_string(),
             FactTerm::Wildcard => "_".to_string(),
             FactTerm::Param(n) => format!("@{n}"),
-            FactTerm::Target => crate::beats::OCCASION_TARGET.to_string(),
+            FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
         })
         .collect();
     format!("{}({})", p.relation, args.join(", "))

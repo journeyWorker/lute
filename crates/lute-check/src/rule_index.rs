@@ -36,7 +36,7 @@ struct IndexUse {
 /// brackets (a literal, an expression) is not an indexed read and is left to
 /// the ordinary CEL checks.
 fn index_uses(cel: &str) -> Vec<IndexUse> {
-    let mask = lute_cel::cel_string_mask(cel);
+    let mask = lute_manifest::text::cel_string_mask(cel);
     let b = cel.as_bytes();
     let in_string = |i: usize| mask.get(i).copied().unwrap_or(false);
     let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
@@ -110,7 +110,7 @@ struct VarUse {
 /// outside string literals) in `cel` that is not a `F[<Var>]` index, a call,
 /// a field (`x.Y`) or a `@ref`.
 fn var_uses(cel: &str) -> Vec<VarUse> {
-    let mask = lute_cel::cel_string_mask(cel);
+    let mask = lute_manifest::text::cel_string_mask(cel);
     let b = cel.as_bytes();
     let in_string = |i: usize| mask.get(i).copied().unwrap_or(false);
     let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';

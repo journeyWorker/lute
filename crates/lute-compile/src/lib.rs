@@ -1010,7 +1010,7 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -1448,7 +1448,7 @@ fn state_entries(
         // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
         // table carries only what content declares or quests reserve.
         .filter(|(path, _)| {
-            !lute_check::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
+            !lute_manifest::semantics::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
         })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is

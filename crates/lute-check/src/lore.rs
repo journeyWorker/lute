@@ -8,7 +8,7 @@
 //! schema — so a document's OWN entries type `entry.<id>.read` as `bool`
 //! (default `false`) through the ordinary schema lookup. A read of an entry
 //! another document declares is admitted by shape instead
-//! ([`crate::cel_paths::is_reserved_entry_read`]), exactly as a foreign
+//! ([`lute_manifest::semantics::cel_paths::is_reserved_entry_read`]), exactly as a foreign
 //! `quest.<id>.state` is; `check-project` resolves the id
 //! (`W-ENTRY-REF-UNKNOWN`, [`crate::project_check`]).
 
@@ -313,7 +313,7 @@ fn first_write(
 /// `!entry.tape.read`, `!(entry.tape.read)`, `entry.tape.read == false`, or
 /// any of them in a conjunction.
 fn first_read_only(raw: &str, read: &str) -> bool {
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let bytes = raw.as_bytes();
     let joins = |c: u8| c.is_ascii_alphanumeric() || c == b'_' || c == b'.';
     let mut probe = String::with_capacity(raw.len());

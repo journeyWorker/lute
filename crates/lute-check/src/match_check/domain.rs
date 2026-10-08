@@ -110,7 +110,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
     if crate::cel_paths::is_reserved_quest_failed_by(path) {
         return DomainInfo {
             domain: Domain::Finite(
-                crate::cel_paths::QUEST_FAILED_BY
+                lute_manifest::semantics::cel_paths::QUEST_FAILED_BY
                     .iter()
                     .map(|s| DomainValue::Str((*s).to_string()))
                     .collect(),
@@ -152,7 +152,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             // beat runs. Engine-derived clock roots with a declared default
             // are likewise assigned before content can match on them.
             let maybe_unset = decl.default.is_none()
-                && path != crate::beats::OCCASION_TARGET
+                && path != lute_manifest::semantics::beats::OCCASION_TARGET
                 && matches!(
                     decl.namespace,
                     Namespace::Scene

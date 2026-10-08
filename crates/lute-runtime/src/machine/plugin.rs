@@ -508,7 +508,7 @@ fn fact_record(f: &Json) -> (String, Vec<String>) {
     (rel, args)
 }
 
-const TARGET: &str = lute_check::beats::OCCASION_TARGET;
+const TARGET: &str = lute_manifest::semantics::beats::OCCASION_TARGET;
 
 /// Whether a plugin record writes through `occasion.target`: an effect path
 /// `F[occasion.target]`, a fact argument or a field given it.
@@ -524,7 +524,7 @@ fn mentions_target(cmd: &Json) -> bool {
         .flatten();
     paths
         .filter_map(|e| e.get("path").and_then(Json::as_str))
-        .any(|p| lute_check::target_writes::indexed_family(p).is_some())
+        .any(|p| lute_manifest::semantics::target_writes::indexed_family(p).is_some())
         || facts
             .filter_map(|f| f.get("args").and_then(Json::as_array))
             .flatten()
@@ -545,7 +545,7 @@ fn bind_target(cmd: &Json, member: &str) -> Json {
         .flatten()
     {
         if let Some(Json::String(p)) = e.get_mut("path") {
-            *p = lute_check::target_writes::member_path(p, member);
+            *p = lute_manifest::semantics::target_writes::member_path(p, member);
         }
     }
     for key in ["asserts", "retracts"] {

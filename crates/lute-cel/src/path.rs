@@ -91,7 +91,7 @@ impl GluedPath {
 /// (`run.hp-1`, `run.a-scene.b` are subtractions); a segment after a `.`
 /// that opens with a digit is always a glued name.
 pub fn glued_paths(raw: &str, is_root: impl Fn(&str) -> bool) -> Vec<GluedPath> {
-    let mask = crate::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let b = raw.as_bytes();
     let continues =
         |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'@' | b'$' | b'-');

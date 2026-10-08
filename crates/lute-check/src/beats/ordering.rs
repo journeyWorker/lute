@@ -1,4 +1,5 @@
 use super::*;
+use lute_manifest::semantics::beats::{reorder, selection_order};
 
 pub(super) fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
     share

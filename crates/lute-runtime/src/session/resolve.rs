@@ -175,7 +175,7 @@ pub fn typed_payload(
         let value =
             payload_value(p, ty, lit).map_err(|why| format!("`payload.{field}: {lit}` — {why}"))?;
         out.insert(
-            format!("{}.{field}", lute_check::occasion_bind::OCCASION_PAYLOAD),
+            format!("{}.{field}", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD),
             value,
         );
     }

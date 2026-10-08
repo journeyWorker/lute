@@ -158,7 +158,7 @@ pub use accept::{
 };
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
-    advances_from_attr, beat_target_restricts, check_project_beats, occasion_target_ok,
+    advances_from_attr, check_project_beats, occasion_target_ok,
     parse_beat_priority, project_beats, AdvanceSpec, BeatMeta, BeatOnce, ProjectBeat,
     ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN,
     W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
@@ -170,7 +170,7 @@ pub use bundles::{
 pub use cast::{check_speakers, decide_guard_implication, declared_cast, E_CAST_UNKNOWN};
 pub use cel_expand::{expand_cel, DefTable, ExpandError};
 pub use cel_message::{translate_cel_parse, Translation};
-pub use cel_paths::{is_entry_ever_read, is_reserved_entry_read, reserved_entry_id, E_PATH_IDENT};
+pub use cel_paths::{is_entry_ever_read, E_PATH_IDENT};
 pub use cel_resolve::{
     check_cel_slot, check_rule_guards, visited_call_target, visited_targets, E_CEL_PROFILE,
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,

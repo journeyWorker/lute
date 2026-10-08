@@ -589,6 +589,7 @@ version = "0.38.0"
 dependencies = [
  "cel-parser",
  "lute-core-span",
+ "lute-manifest",
  "lute-syntax",
 ]
 

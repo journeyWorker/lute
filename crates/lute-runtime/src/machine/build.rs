@@ -202,7 +202,7 @@ impl<D: Driver> Machine<D> {
     /// dsl 0.26.0 §5: the member a `target="kind:<kind>"` beat was raised
     /// for, readable as `occasion.target` (cleared with `None`).
     pub fn bind_occasion_target(&mut self, member: Option<&str>) {
-        let path = lute_check::beats::OCCASION_TARGET;
+        let path = lute_manifest::semantics::beats::OCCASION_TARGET;
         self.occasion_target = member.map(str::to_string);
         match member {
             Some(m) => self.store.put(path.to_string(), Value::Str(m.to_string())),

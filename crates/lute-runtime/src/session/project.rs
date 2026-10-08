@@ -186,7 +186,7 @@ impl ExecProject {
         }
         if index.documents.is_empty() { artifacts = bundle.artifacts; }
         for beat in &mut index.beats {
-            if !lute_check::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
+            if !lute_manifest::semantics::beats::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
         }
         let mut state_table: BTreeMap<String, Json> = BTreeMap::new();
         let mut declared_in = BTreeMap::new();

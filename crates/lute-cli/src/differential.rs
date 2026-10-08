@@ -238,7 +238,7 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
         }
     }
     obs.quests.extend(quests);
-    obs.state.remove(lute_check::beats::OCCASION_TARGET);
+    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
@@ -544,7 +544,7 @@ fn trace_observation((report, exit): &(TraceReport, TraceExit)) -> Observation {
             }
         }
     }
-    obs.state.remove(lute_check::beats::OCCASION_TARGET);
+    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
@@ -1239,7 +1239,7 @@ fn presentation_cases(
         }
         if let Some(m) = &pr.member {
             mock.state.push((
-                lute_check::beats::OCCASION_TARGET.to_string(),
+                lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 m.clone(),
                 None,
             ));

@@ -70,7 +70,7 @@ impl std::fmt::Display for Premise {
             Premise::After { raw, chapters, .. } => {
                 write!(f, "after: {raw} is not satisfied")?;
                 if *chapters {
-                    f.write_str(lute_check::chapters::PROVENANCE)?;
+                    f.write_str(lute_manifest::semantics::chapters::PROVENANCE)?;
                 }
                 Ok(())
             }
@@ -290,7 +290,7 @@ fn answering<'p>(
 }
 
 /// Every candidate for `occasion`/`target` with its verdict, in selection
-/// order ([`lute_check::beats::selection_order`]): priority descending, a
+/// order ([`lute_manifest::semantics::beats::selection_order`]): priority descending, a
 /// kind beat after the other beats of its priority and a sub-kind's before
 /// its parent's (dsl 0.26.0 §5, dsl 0.27.0), then `ProjectIndex.beats` order. Pure over
 /// the world — what a play step presents from and what `lute calendar`
@@ -335,7 +335,7 @@ pub(super) fn candidates(
         .collect();
     // dsl 0.26.0 §5, dsl 0.27.0 (T3-10): the checker's order — priority
     // descending, member > sub-kind > kind, then index order.
-    let order = lute_check::beats::selection_order(
+    let order = lute_manifest::semantics::beats::selection_order(
         &out.iter()
             .map(|(idx, c)| {
                 let kind = p.index.beats[*idx].target_kind.as_ref();
@@ -343,7 +343,7 @@ pub(super) fn candidates(
             })
             .collect::<Vec<_>>(),
     );
-    lute_check::beats::reorder(out, &order)
+    lute_manifest::semantics::beats::reorder(out, &order)
         .into_iter()
         .map(|(_, c)| c)
         .collect()

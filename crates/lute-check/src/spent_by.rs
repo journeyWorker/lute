@@ -788,9 +788,9 @@ fn pin_start(e: &mut IdedExpr, pins: &BTreeMap<String, Val>, quests: &QuestStart
             Some(v.clone())
         } else if crate::cel_paths::is_reserved_quest_state(&path) {
             quest().map(|s| Val::String(s.to_string()))
-        } else if crate::cel_paths::is_reserved_quest_objective_done(&path) {
+        } else if lute_manifest::semantics::cel_paths::is_reserved_quest_objective_done(&path) {
             quest().map(|_| Val::Boolean(false))
-        } else if crate::cel_paths::is_reserved_entry_read(&path)
+        } else if lute_manifest::semantics::cel_paths::is_reserved_entry_read(&path)
             || crate::cel_paths::is_entry_ever_read(&path)
         {
             Some(Val::Boolean(false))

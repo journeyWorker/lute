@@ -1,13 +1,5 @@
 use super::*;
-
-/// dsl 0.24.0 §6: whether a beat's `target` restricts its candidacy on
-/// occasion `on` — every occasion but one DECLARED without a target, where an
-/// entry's `target=` is metadata. (An undeclared occasion keeps the 0.21
-/// shape-only meaning: a target restricts.) The one rule the checker's beat
-/// passes and `lute play`'s candidate filter share.
-pub fn beat_target_restricts(on: &str, occasions: &BTreeMap<String, OccasionDecl>) -> bool {
-    occasions.get(on).is_none_or(|d| d.target.takes_target())
-}
+use lute_manifest::semantics::beats::OCCASION_TARGET;
 
 /// dsl 0.21.0 §7a.2 (D-I): every `<objective on="<occasion>">` of `quests`
 /// — the occasion at which the objective's `done` is judged — checked
@@ -474,10 +466,6 @@ pub(crate) fn check_beat_target_domains(
     diags
 }
 
-/// dsl 0.26.0 §5: the member a `target="kind:<kind>"` beat was raised for —
-/// readable in its `when`, guards and text, typed by the kind.
-pub const OCCASION_TARGET: &str = "occasion.target";
-
 /// Why a read of [`OCCASION_TARGET`] outside a kind beat has no value.
 pub(crate) fn occasion_target_scope_message() -> String {
     format!(
@@ -506,7 +494,7 @@ pub(crate) fn defs_reading_target(
 ) -> std::collections::BTreeSet<String> {
     let mut out: std::collections::BTreeSet<String> = bodies
         .iter()
-        .filter(|(_, body)| crate::occasion_bind::mentions_target(body))
+        .filter(|(_, body)| lute_manifest::semantics::occasion_bind::mentions_target(body))
         .map(|(name, _)| name.clone())
         .collect();
     loop {

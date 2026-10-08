@@ -976,13 +976,13 @@ fn eval_rule_guard(
 /// Substitute each bound rule variable in a guard fragment with its ground
 /// value — a numeric value inlined bare, any other quoted as a CEL string
 /// literal. String-literal regions are left untouched
-/// (`lute_cel::cel_string_mask`), so a `'@gold'`-style value is never
+/// (`lute_manifest::text::cel_string_mask`), so a `'@gold'`-style value is never
 /// rewritten.
 fn substitute_vars(cel: &str, binding: &Binding) -> String {
     if binding.is_empty() {
         return cel.to_string();
     }
-    let mask = lute_cel::cel_string_mask(cel);
+    let mask = lute_manifest::text::cel_string_mask(cel);
     let bytes = cel.as_bytes();
     let mut out = String::with_capacity(cel.len());
     let mut i = 0;

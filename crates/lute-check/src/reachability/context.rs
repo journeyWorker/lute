@@ -110,7 +110,7 @@ impl Assumption {
                 })
                 .collect()
         };
-        if let Some(members) = schema.string_members(crate::beats::OCCASION_TARGET) {
+        if let Some(members) = schema.string_members(lute_manifest::semantics::beats::OCCASION_TARGET) {
             let params = BTreeMap::new();
             let ctx = DecideCtx {
                 schema,
@@ -190,7 +190,7 @@ pub(crate) fn dead_members(
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
 ) -> Vec<String> {
-    if !crate::occasion_bind::mentions_target(raw) {
+    if !lute_manifest::semantics::occasion_bind::mentions_target(raw) {
         return Vec::new();
     }
     members
@@ -211,7 +211,7 @@ pub(super) fn member_conjunct(members: &[String], dead: &[String]) -> (String, S
         .map(|m| DomainValue::Str(m.clone()))
         .collect();
     (
-        crate::beats::OCCASION_TARGET.to_string(),
+        lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
         SolutionSet::Values(live),
     )
 }

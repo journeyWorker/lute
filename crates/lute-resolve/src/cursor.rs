@@ -1393,12 +1393,12 @@ pub fn interp_path(raw: &str) -> String {
 ///
 /// Dotted text inside a CEL string literal (§4.4) is literal content, not a
 /// state path, so a path never starts inside one (the shared
-/// [`lute_cel::cel_string_mask`], the same quote-tracking
+/// [`lute_manifest::text::cel_string_mask`], the same quote-tracking
 /// `scan_refs`/`slot_tokens` use for @ref/$); a quoted segment is part of the
 /// path it follows.
 pub fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     let b = raw.as_bytes();
-    let mask = lute_cel::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
@@ -1446,7 +1446,7 @@ mod tests {
 
     /// S3 (dsl §4.4): a dotted path INSIDE a CEL string literal is literal text,
     /// not a state-path use. `path_tokens` must skip it (reusing the same
-    /// quote-tracking `lute_cel::cel_string_mask` FE3 uses for @ref/$ scanning).
+    /// quote-tracking `lute_manifest::text::cel_string_mask` FE3 uses for @ref/$ scanning).
     #[test]
     fn path_tokens_skips_dotted_text_inside_cel_string() {
         // A real state path outside the string + a look-alike inside a literal.

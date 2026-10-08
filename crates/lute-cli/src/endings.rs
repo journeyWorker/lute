@@ -1143,7 +1143,7 @@ impl<'g> Producers<'g> {
             "app" | "clock" => return need(Vec::new(), false, Some("the engine".to_string())),
             _ => {}
         }
-        let (target, earlier) = match lute_check::cel_paths::is_prev_path(path) {
+        let (target, earlier) = match lute_manifest::semantics::cel_paths::is_prev_path(path) {
             true => (path.strip_prefix("prev.").unwrap_or(path).to_string(), true),
             false => (path.to_string(), false),
         };

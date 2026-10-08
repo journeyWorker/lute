@@ -141,7 +141,7 @@ fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -469,7 +469,7 @@ pub(crate) fn authored_directive(dir: &Directive, decl: Option<&DirectiveDecl>) 
         .filter(|a| !a.key.starts_with("__"))
         .map(|a| match &a.value {
             AttrValue::Str(s)
-                if s == lute_check::beats::OCCASION_TARGET
+                if s == lute_manifest::semantics::beats::OCCASION_TARGET
                     || (decl.is_some() && !attr_json(a, decl).is_string()) =>
             {
                 format!("{}={s}", a.key)

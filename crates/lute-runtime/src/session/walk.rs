@@ -27,7 +27,7 @@ pub fn absorb(w: &mut World, outcome: &Walked) {
     let carry = &outcome.carry;
     for (k, v) in &carry.state {
         // dsl 0.26.0 §5: `occasion.target` lives only while its beat runs.
-        if !k.starts_with("scene.") && k != lute_check::beats::OCCASION_TARGET {
+        if !k.starts_with("scene.") && k != lute_manifest::semantics::beats::OCCASION_TARGET {
             w.state.insert(k.clone(), v.clone());
         }
     }

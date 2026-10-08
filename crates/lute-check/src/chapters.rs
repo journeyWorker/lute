@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::project::{chain_label, Chain, ChapterAnchor, MetaDefaults, E_CHAPTERS};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
+use lute_manifest::semantics::chapters::PROVENANCE;
 use lute_syntax::ast::Document;
 
 use crate::project_doc::ProjectDoc;
@@ -40,9 +41,6 @@ pub const CHAPTERS_MARKER: &str = "# lute: derived from lute.project.yaml `chapt
 /// Appended instead of derived keys when the chain that lists the scene is
 /// malformed and not applied ([`Unapplied::Rejected`]).
 const REJECTED_MARKER: &str = "# lute: listed by a `chapters:` chain that is not applied\n";
-
-/// What every message about a key [`apply_chapters`] derived appends.
-pub const PROVENANCE: &str = " (written by `chapters:` in lute.project.yaml)";
 
 /// The authored part of a frontmatter (`raw_yaml` up to the first marker
 /// [`apply_chapters`] appended).

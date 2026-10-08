@@ -104,7 +104,7 @@ impl<'a> EffectiveState<'a> {
     /// (§1.3's note surface); a write is never logged (`writes` only ever
     /// holds paths this SAME walk derived, so it is never "foreign").
     /// [`is_reserved_quest_path`] is this crate's own copy of
-    /// `lute_check::cel_paths::is_reserved_quest_path` — `pub(crate)` to
+    /// `lute_manifest::semantics::cel_paths::is_reserved_quest_path` — `pub(crate)` to
     /// that crate, so not reusable across the D1 quarantine boundary
     /// ([`expr_path`] carries the same idiom below).
     pub fn read(&self, path: &str) -> Read {
@@ -131,7 +131,7 @@ impl<'a> EffectiveState<'a> {
         }
         // dsl 0.19.0 §5: `entry.<id>.read` is engine-written, default
         // `false` — an un-mocked read in trace is a first read.
-        if lute_check::is_reserved_entry_read(path) {
+        if lute_manifest::semantics::cel_paths::is_reserved_entry_read(path) {
             return Read::Value(Value::Bool(false));
         }
         if is_reserved_quest_path(path) {
@@ -194,7 +194,7 @@ impl<'a> EffectiveState<'a> {
 /// `objectives`, segment 4 == `done`) — plus dsl 0.24.0 §2's
 /// `quest.<id>.failedBy` and `quest.<id>.objectives.<oid>.failed` —
 /// [`EffectiveState::read`]'s own copy of
-/// `lute_check::cel_paths::is_reserved_quest_path` (`pub(crate)` there, so
+/// `lute_manifest::semantics::cel_paths::is_reserved_quest_path` (`pub(crate)` there, so
 /// not reusable across the D1 quarantine boundary).
 pub fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
@@ -208,7 +208,7 @@ pub fn is_reserved_quest_path(path: &str) -> bool {
 /// `quest.<id>.objectives.<oid>.done` or (dsl 0.24.0 §2) `….failed` — whose
 /// reserved default is `false` rather than `"unset"`
 /// ([`reserved_quest_default`]). Mirrors
-/// `lute_check::cel_paths::is_reserved_quest_objective_done` (`pub(crate)`
+/// `lute_manifest::semantics::cel_paths::is_reserved_quest_objective_done` (`pub(crate)`
 /// there too).
 pub fn is_reserved_quest_objective_done_path(path: &str) -> bool {
     matches!(
@@ -934,7 +934,7 @@ mod tests {
             .collect();
         if let Some(m) = member {
             seed.insert(
-                lute_check::beats::OCCASION_TARGET.to_string(),
+                lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 Value::Str(m.to_string()),
             );
         }

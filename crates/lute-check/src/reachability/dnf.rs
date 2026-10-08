@@ -124,7 +124,7 @@ fn collect_conjuncts(expr: &Expr, ctx: &ConjunctCtx<'_>, out: &mut Vec<(String, 
         let path = crate::cel_paths::select_path(e)?;
         // The reserved entry flags are engine-written bools (dsl 0.19.0 §5,
         // 0.22.0 §7), undeclared in `state:`.
-        (crate::cel_paths::reserved_entry_id(&path).is_some()
+        (lute_manifest::semantics::cel_paths::reserved_entry_id(&path).is_some()
             || matches!(crate::set_op::resolve_type(&path, ctx.schema)?, Type::Bool))
         .then_some(path)
     };
@@ -467,7 +467,7 @@ fn literal_conjuncts(
         return true;
     }
     let bool_path = crate::cel_paths::select_path(expr).filter(|path| {
-        crate::cel_paths::reserved_entry_id(path).is_some()
+        lute_manifest::semantics::cel_paths::reserved_entry_id(path).is_some()
             || matches!(
                 crate::set_op::resolve_type(path, ctx.schema),
                 Some(Type::Bool)

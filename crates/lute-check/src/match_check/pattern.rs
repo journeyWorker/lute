@@ -156,10 +156,6 @@ fn analyze_is_pattern(raw: &str, subject: Option<&str>, cov: &mut ArmCoverage) {
     }
 }
 
-/// The `quest.<id>.state` lifecycle members, in IR domain order (0.21.1 T1-1;
-/// `lute-compile` emits the same list — the folded enum plus `unset`).
-pub(crate) const QUEST_STATES: &[&str] = &["active", "complete", "failed", "unset"];
-
 /// 0.21.1 T1-1: on a `quest.<id>.state` subject, `<when is="unset">` names the
 /// lifecycle MEMBER `unset` — the value the engine stores before the quest
 /// activates — not the never-set sentinel (that subject is always assigned,

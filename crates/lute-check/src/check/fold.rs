@@ -326,7 +326,7 @@ pub fn fold_env(
         .decls
         .iter()
         .filter_map(|(path, decl)| {
-            crate::cel_paths::prev_run_path(path).map(|prev| {
+            lute_manifest::semantics::cel_paths::prev_run_path(path).map(|prev| {
                 let mirror = crate::meta::StateDecl {
                     ty: decl.ty.clone(),
                     default: None,
@@ -543,7 +543,7 @@ pub fn fold_env(
     let target_scoped = !occasion_members.is_empty();
     if target_scoped {
         schema.decls.insert(
-            crate::beats::OCCASION_TARGET.to_string(),
+            lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
             crate::meta::StateDecl {
                 ty: lute_manifest::types::Type::Enum(occasion_members),
                 default: None,
@@ -949,7 +949,7 @@ fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
             let mut sorted = ms.clone();
             sorted.sort();
             sorted.dedup();
-            if let Some(decl) = scoped.state.decls.get_mut(crate::beats::OCCASION_TARGET) {
+            if let Some(decl) = scoped.state.decls.get_mut(lute_manifest::semantics::beats::OCCASION_TARGET) {
                 decl.ty = lute_manifest::types::Type::Enum(sorted);
             }
             (ms.clone(), scoped)
