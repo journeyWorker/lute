@@ -3595,6 +3595,74 @@
         ]
       },
       "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared. dsl 0.27.0 §4: a finite clock (`last` / `days`) stops at its last position — an advance whose destination lies past it walks there (raising `dayEnd` / `dayStart` at each midnight it crosses on the way), raises the last day's `dayEnd` (never `slot`) and ends the clock; any later advance is the usage error `E-CLOCK-END` until a new run starts the clock over."
+    },
+    "indexOccasion": {
+      "type": "object",
+      "patternProperties": {
+        "^select$": { "enum": ["first", "all", "sequence"] },
+        "^target$": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "patternProperties": {
+                "^prefix$": { "type": "string" },
+                "^entity$": { "type": "string" },
+                "^members$": { "type": "array", "items": { "type": "string" } }
+              },
+              "additionalProperties": false,
+              "required": ["prefix", "entity"]
+            }
+          ]
+        },
+        "^judge$": { "enum": ["before", "after"] },
+        "^payload$": { "type": "object", "additionalProperties": true },
+        "^outsideRun$": { "type": "boolean" }
+      },
+      "additionalProperties": false,
+      "required": ["select", "target"],
+      "description": "The serializable capability occasion shape in project.index.json, without description or raisedWhen."
+    },
+    "indexStateDomain": {
+      "type": "object",
+      "patternProperties": {
+        "^kind$": { "type": "string" },
+        "^members$": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false,
+      "required": ["kind", "members"],
+      "description": "A closed state member domain, keyed by state path in project.index.json."
+    },
+    "projectIndex": {
+      "type": "object",
+      "patternProperties": {
+        "^occasions$": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/indexOccasion" }
+        },
+        "^worldEvents$": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "^bridgeResults$": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "enum": ["bool", "number", "string"] }
+          }
+        },
+        "^cast$": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "^stateDomains$": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/indexStateDomain" }
+        }
+      },
+      "additionalProperties": true,
+      "description": "The optional capability unions carried by project.index.json."
     }
   }
 }

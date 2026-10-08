@@ -545,3 +545,44 @@ fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
         "its own root's defaults are not applied — that is the inertness: {art}"
     );
 }
+
+#[test]
+fn all_indexes_capability_unions_from_starfall_example() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/examples/games/starfall-gacha");
+    let out = temp_dir("starfall-unions-out");
+    let result = support::run_cli([
+        "compile",
+        "--all",
+        root.to_str().unwrap(),
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let index = read_json(&out.join("project.index.json"));
+
+    assert_eq!(index["occasions"]["summon"]["select"], "first");
+    assert_eq!(index["occasions"]["summon"]["target"]["prefix"], "hero");
+    assert_eq!(index["occasions"]["summon"]["payload"]["copies"], "int");
+    assert_eq!(index["worldEvents"][0], "seasonClose");
+    assert_eq!(index["bridgeResults"]["purchase"]["bought"], "bool");
+    assert_eq!(index["bridgeResults"]["purchase"]["remaining"], "number");
+    assert_eq!(index["cast"]["aria"], "Aria");
+    assert_eq!(
+        index["stateDomains"]["occasion.payload.banner"]["kind"],
+        "banner"
+    );
+    assert_eq!(
+        index["stateDomains"]["occasion.payload.banner"]["members"]
+            .as_array()
+            .unwrap()
+            .first()
+            .unwrap(),
+        "standard"
+    );
+}
