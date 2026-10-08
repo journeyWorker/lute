@@ -307,8 +307,21 @@ steps:
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--explain <ATOM>]…
+$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--explain <ATOM>]…
 ```
+
+### 런타임 이벤트 스트림(`--events`)
+
+`--events`는 재개 가능한 런타임 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 시드와 그 출력이,
+그 다음 줄부터는 플레이어가 보낸 각 입력과 출력이 짝을 이룹니다(`choose`, `bridgeResult` 응답도 포함).
+모든 출력에는 `eventVersion: "0.38.0"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
+함께 사용할 수 없습니다.
+
+허브 적합성 프로젝트에서 얻은 짧은 실제 스트림은 다음과 같습니다(첫 선택 뒤에 두 번째 대기가 열립니다).
+
+```json
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.38.0","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.38.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를

@@ -156,7 +156,11 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    `lute-runtime` out of `lute-trace`; `lute play` / `lute test` on it;
    conformance gains session-level cases (occasions, quests, beat selection,
    clock, timed choice, save/load replay). Byte-identical CLI output vs 0.37
-   except deliberate contract changes.
+   except deliberate contract changes. **Done in 0.38.0** (spec
+   `docs/proposals/scenario-dsl/0.38.0.md`, Implemented): the CLI's human and
+   `--json` play reports stay on the session through the report seam, and
+   `lute play --events` is the public `step` path; save/load replay is the
+   snapshot test over every example play rather than a session case.
 2. **R2:** game-facing bindings (wasm + C ABI) and a thin TS shell
    (`packages/runtime`, Effect) with a replay test from a recorded input log.
 3. **R3:** `packages/player` — player-core statecharts, cue scheduler,

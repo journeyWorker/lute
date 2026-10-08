@@ -565,7 +565,10 @@ pub(crate) enum Command {
         /// Engine capability matrix YAML (defaults to the built-in reference matrix).
         #[arg(long, value_name = "FILE")]
         engine: Option<PathBuf>,
-        /// Emit the resumable runtime event stream as compact JSON Lines.
+        /// Emit the resumable runtime event stream as compact JSON Lines:
+        /// a seed/output pair followed by input/output pairs, including
+        /// choice and bridge answers. Exclusive with `--json`, `--ir`,
+        /// `--explain` and `--dump-conditions`.
         #[arg(long)]
         events: bool,
         /// Emit the machine-readable transcript as JSON.

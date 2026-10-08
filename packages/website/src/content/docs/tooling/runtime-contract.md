@@ -15,6 +15,16 @@ The machine-checkable shape is
 [`schemas/lute-ir-0.38.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.38.schema.json)
 (JSON Schema draft 2020-12).
 
+## Runtime event contract and `lute-runtime`
+
+For the resumable runtime API and its JSON wire format, see the
+[runtime event contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md).
+The `lute-runtime` crate exposes the pure integration surface: load a
+`compile --all` bundle with `Runtime::load`, create a session with `begin`,
+advance it with `step`, and use `snapshot`/`restore` plus the read-only
+queries for host inspection. Hosts own rendering, pacing, bridge calls, and
+grant settlement; the runtime returns those effects as data.
+
 :::caution[Permissions stop at the artifact boundary]
 [Capability permissions](/tooling/capability-permissions/) reject forbidden
 authored effects before compilation. They are not a runtime sandbox and do not

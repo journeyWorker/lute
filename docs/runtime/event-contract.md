@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: Draft until 0.38.0 release.**
+**Status: 0.38.0 runtime contract.**
 
 Runtime R1 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls

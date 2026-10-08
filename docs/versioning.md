@@ -1025,10 +1025,12 @@ regenerated, but its package version stays independent.
 **`0.38.0` aligns toolchain, language, IR and the new Event axis at `0.38.0`;
 the language is a no-op for authors.** Runtime R1 introduces the pure resumable
 step function and its input, output and snapshot contract
-([`0.38.0.md`](proposals/scenario-dsl/0.38.0.md)). The IR adds runtime unions to
-`project.index.json`; document artifacts are unchanged apart from stamps.
-The schema file advances to `lute-ir-0.38.schema.json`, and
-`lute-events-0.38.schema.json` publishes the first event contract. Engines
+([`0.38.0.md`](proposals/scenario-dsl/0.38.0.md)). The IR adds the runtime
+unions (occasions, world events, bridge results, cast, state domains) and
+each `after:` prerequisite's parsed `formula` to `project.index.json`;
+document artifacts are unchanged apart from stamps. The schema file advances
+to `lute-ir-0.38.schema.json`, and `lute-events-0.38.schema.json` and
+`lute-snapshot-0.38.schema.json` publish the first event contract. Engines
 and hosts gate on the exact minor line: `0.37` artifacts require a widened
 IR gate, while the Event axis begins at `0.38`. Existing CLI outputs remain
 byte-identical apart from stamps; `lute play --events` is new.
