@@ -321,7 +321,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 
 ```json
 {"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.38.0","events":[]}}
-{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.38.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.38.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를

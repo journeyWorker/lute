@@ -157,7 +157,7 @@ pub fn present<B, C, F: super::WalkDriver>(
     factory: &mut F,
 ) -> (Presented, Option<PlayHalt>) {
     factory.event(crate::runtime::Event::Presentation {
-        occasion: None,
+        occasion: (!beat.on.is_empty()).then(|| beat.on.clone()),
         target: member.map(str::to_string),
         beat: beat.id.clone(),
         document: beat.document.clone(),
