@@ -1386,6 +1386,18 @@ A runtime choice or bridge result carries a request id different from the pendin
 
 Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
 
+### E-RUNTIME-SNAPSHOT-PROJECT
+
+A runtime snapshot belongs to a different project bundle.
+
+Spec: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-SNAPSHOT-VERSION
+
+A runtime snapshot major or minor version is incompatible.
+
+Spec: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
 ### E-SEASON-DECL
 
 A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.

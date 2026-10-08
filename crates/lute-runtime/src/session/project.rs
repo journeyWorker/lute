@@ -17,6 +17,8 @@ use crate::{BridgeReads, Slot};
 
 /// Everything the playthrough reads from the compiled project.
 pub struct ExecProject {
+    /// SHA-256 identity of the bundle that produced this project.
+    pub fingerprint: String,
     /// project-relative path -> compiled artifact JSON.
     pub artifacts: BTreeMap<String, Json>,
     /// project-relative path -> addr -> the directive as authored
@@ -166,10 +168,9 @@ impl Conds {
         self.beats.get(&(beat.document.clone(), beat.id.clone()))
     }
 }
-
 impl ExecProject {
-    /// Load a compiled bundle (`project.index.json` plus artifact JSON).
     pub fn load(bundle: Bundle) -> Result<ExecProject, (u8, Vec<String>)> {
+        let fingerprint = crate::snapshot::fingerprint(&bundle.index, &bundle.artifacts);
         let mut index: ProjectIndex = serde_json::from_value(bundle.index)
             .map_err(|e| (2, vec![format!("cannot decode project.index.json: {e}")]))?;
         let occasions = index_occasions(&index);
@@ -225,7 +226,7 @@ impl ExecProject {
         let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
         let world_events = index.world_events.iter().cloned().collect();
         let display_names = index.cast.clone();
-        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
+        Ok(ExecProject { fingerprint, artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
     }
 
     /// The occasion's declared `select:` (default `first`).

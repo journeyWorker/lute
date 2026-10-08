@@ -211,7 +211,7 @@ pub struct LatchPlan {
 }
 
 /// The cadence memory a playthrough carries between steps.
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cadence {
     /// Each season's `live` as last observed (absent before the first).

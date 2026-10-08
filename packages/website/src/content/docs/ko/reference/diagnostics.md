@@ -1384,6 +1384,17 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 런타임 `choose`나 `bridgeResult`의 request id가 대기 중인 요청과 다릅니다.
 
 명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+### E-RUNTIME-SNAPSHOT-PROJECT
+
+런타임 스냅샷이 다른 프로젝트 bundle에 속합니다.
+
+명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-SNAPSHOT-VERSION
+
+런타임 스냅샷의 major 또는 minor 버전이 호환되지 않습니다.
+
+명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
 
 ### E-SEASON-DECL
 

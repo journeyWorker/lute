@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lute.dev/schemas/lute-snapshot-0.38.schema.json",
+  "title": "Lute runtime snapshot 0.38",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshotVersion", "project", "await", "request", "world"],
+  "properties": {
+    "snapshotVersion": { "const": "0.38.0" },
+    "project": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "await": { "type": ["string", "object"] },
+    "request": { "type": "integer", "minimum": 0 },
+    "project": { "type": "string", "pattern": "^[^:]+:[^:]*:[0-9a-f]{64}$" },
+    "continuation": { "$ref": "#/$defs/continuation" }
+  },
+  "$defs": {
+    "world": { "type": "object", "additionalProperties": true },
+    "continuation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["before", "input", "answers", "pending", "delivered"],
+      "properties": {
+        "before": { "$ref": "#/$defs/world" },
+        "input": { "type": "object", "required": ["type"] },
+        "answers": { "type": "array", "items": { "type": "object" } },
+        "pending": { "type": "object", "required": ["type"] },
+        "delivered": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

@@ -10,6 +10,7 @@ pub mod input;
 pub mod index;
 pub mod machine;
 pub mod runtime;
+pub mod snapshot;
 pub mod seam;
 pub mod schema;
 pub mod session;

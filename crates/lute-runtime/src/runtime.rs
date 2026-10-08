@@ -10,6 +10,11 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
+mod arc_world {
+    use super::*;
+    pub fn serialize<S: serde::Serializer>(v: &Arc<crate::session::World>, s: S) -> Result<S::Ok, S::Error> { v.as_ref().serialize(s) }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Arc<crate::session::World>, D::Error> { Ok(Arc::new(crate::session::World::deserialize(d)?)) }
+}
 use crate::driver::{BridgeCall, BridgeReply, Driver, Forced, Menu, MenuKind, OnUnknown, Pick, UnknownSite, Verdict};
 use crate::Machine;
 use crate::index::Bundle;
@@ -240,30 +245,35 @@ impl Output {
 #[serde(deny_unknown_fields)]
 pub struct Rejected { pub code: String, pub message: String }
 
-/// A resumable runtime state.  World and continuation are intentionally
-/// public for hosts that keep their own state store; snapshot serialization is
-/// supplied by the snapshot slice once World is serializable.
-#[derive(Clone)]
+/// A resumable runtime state.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct State {
-    pub world: World,
+    #[serde(with = "arc_world")]
+    pub world: Arc<World>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuation: Option<Continuation>,
     pub request: u64,
     pub phase: Phase,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Continuation {
-    pub before: World,
+    #[serde(with = "arc_world")]
+    pub before: Arc<World>,
     pub input: Input,
     pub(crate) answers: Vec<Answer>,
     pub pending: Await,
     pub(crate) delivered: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Phase { Idle, Ended, Halted { kind: String, message: String } }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) enum Answer { Choice { id: String, option: String }, Bridge { tag: String, fields: BTreeMap<String, Json> } }
 
 /// The loaded executable project and its host-facing operations.
@@ -277,6 +287,35 @@ impl Runtime {
         ExecProject::load(bundle)
             .map(Self::from_project)
             .map_err(|(_, messages)| reject("E-RUNTIME-IR-VERSION", messages.join("; ")))
+    }
+
+    pub fn snapshot(&self, state: &State) -> Json {
+        let await_value = match &state.continuation {
+            Some(c) => serde_json::to_value(&c.pending).unwrap_or(Json::Null),
+            None => match &state.phase {
+                Phase::Idle => Json::String("idle".into()),
+                Phase::Ended => Json::String("ended".into()),
+                Phase::Halted { .. } => Json::String("halted".into()),
+            },
+        };
+        serde_json::json!({
+            "snapshotVersion": EVENT_VERSION,
+            "project": self.project.fingerprint,
+            "await": await_value,
+            "request": state.request,
+            "world": state.world.as_ref(),
+            "continuation": state.continuation,
+        })
+    }
+    pub fn restore(&self, value: Json) -> Result<State, Rejected> {
+        let version = value.get("snapshotVersion").and_then(Json::as_str).ok_or_else(|| reject("E-RUNTIME-SNAPSHOT-VERSION", "snapshotVersion is missing"))?;
+        let major_minor = |s: &str| s.split('.').take(2).collect::<Vec<_>>().join(".");
+        if major_minor(version) != major_minor(EVENT_VERSION) { return Err(reject("E-RUNTIME-SNAPSHOT-VERSION", "snapshot version is incompatible")); }
+        if value.get("project").and_then(Json::as_str) != Some(self.project.fingerprint.as_str()) { return Err(reject("E-RUNTIME-SNAPSHOT-PROJECT", "snapshot belongs to a different project")); }
+        #[derive(Deserialize)] struct Wire { world: World, continuation: Option<Continuation>, request: u64 }
+        let wire: Wire = serde_json::from_value(value).map_err(|e| reject("E-RUNTIME-SNAPSHOT-VERSION", format!("invalid snapshot: {e}")))?;
+        let phase = match &wire.continuation { Some(c) => match &c.pending { Await::Ended { .. } => Phase::Ended, Await::Halted { kind, message, .. } => Phase::Halted { kind: kind.clone(), message: message.clone() }, _ => Phase::Idle }, None => Phase::Idle };
+        Ok(State { world: Arc::new(wire.world), continuation: wire.continuation, request: wire.request, phase })
     }
 
     pub fn begin(&self, seed: Seed) -> Result<(State, Output), Rejected> {
@@ -300,13 +339,13 @@ impl Runtime {
                         let Some(item) = menu.options.iter().find(|o| o.id == *option) else { return Err((unchanged.clone(), reject("E-RUNTIME-OPTION", format!("option `{option}` is not in menu `{}`", menu.id)))); };
                         if item.verdict != "open" { return Err((unchanged.clone(), reject("E-RUNTIME-OPTION", format!("option `{option}` is not open")))); }
                         let mut a = c.answers; a.push(Answer::Choice { id: menu.id.clone(), option: option.clone() });
-                        (c.before, c.input, a, c.delivered)
+                        (Arc::new((*c.before).clone()).as_ref().clone(), c.input, a, c.delivered)
                     }
                     (Input::BridgeResult { request, fields }, Await::Bridge { request: expected, tag, fields: shape, .. }) => {
                         if request != expected { return Err((unchanged.clone(), reject("E-RUNTIME-REQUEST", "bridge request does not match the pending await"))); }
                         if let Err(m) = validate_bridge(shape, fields) { return Err((unchanged.clone(), reject("E-RUNTIME-BRIDGE-SHAPE", m))); }
                         let mut a = c.answers; a.push(Answer::Bridge { tag: tag.clone(), fields: fields.clone() });
-                        (c.before, c.input, a, c.delivered)
+                        (Arc::new((*c.before).clone()).as_ref().clone(), c.input, a, c.delivered)
                     }
                     _ => return Err((unchanged.clone(), reject("E-RUNTIME-BUSY", "an input is already suspended"))),
                 }
@@ -315,7 +354,7 @@ impl Runtime {
                 if matches!(input, Input::Choose { .. } | Input::BridgeResult { .. }) {
                     return Err((unchanged.clone(), reject("E-RUNTIME-BUSY", "no choice or bridge await is pending")));
                 }
-                (state.world.clone(), input.clone(), Vec::new(), 0)
+                ((*state.world).clone(), input.clone(), Vec::new(), 0)
             }
         };
         match self.run_input(base.clone(), original.clone(), answers, delivered, state.request) {
@@ -326,22 +365,22 @@ impl Runtime {
 
     pub fn candidates(&self, state: &State, occasion: &str, target: Option<&str>) -> Vec<crate::session::Candidate> {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
-        let s = Session::resume(&self.project, state.world.clone(), &mut f);
+        let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.candidates(occasion, target)
     }
     pub fn eligibility(&self, state: &State, beat: &str, member: Option<&str>) -> Option<crate::session::Candidate> {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
-        let s = Session::resume(&self.project, state.world.clone(), &mut f);
+        let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.eligibility(beat, member)
     }
     pub fn clock(&self, state: &State) -> Option<lute_manifest::clock::ClockAt> { clock_at(&self.project, &state.world) }
     pub fn terminal(&self, state: &State) -> bool {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
-        Session::resume(&self.project, state.world.clone(), &mut f).terminal()
+        Session::resume(&self.project, (*state.world).clone(), &mut f).terminal()
     }
     pub fn view(&self, state: &State, with_facts: bool) -> crate::session::WorldView {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
-        Session::resume(&self.project, state.world.clone(), &mut f).view(with_facts)
+        Session::resume(&self.project, (*state.world).clone(), &mut f).view(with_facts)
     }
 
     fn seed_world(&self, seed: &Seed) -> Result<World, Rejected> {
@@ -383,18 +422,18 @@ impl Runtime {
         if let Some(await_) = factory.pending.take() {
             let cut = factory.pending_cut.unwrap_or(events.len()).min(events.len());
             let await_ = set_request(await_, request + 1);
-            let state = State { world: world.clone(), continuation: Some(Continuation { before: world, input, answers, pending: await_.clone(), delivered: cut }), request: request + 1, phase: Phase::Idle };
+            let state = State { world: Arc::new(world.clone()), continuation: Some(Continuation { before: Arc::new(world), input, answers, pending: await_.clone(), delivered: cut }), request: request + 1, phase: Phase::Idle };
             return Ok((state, Output::new(events[delivered.min(cut)..cut].to_vec(), await_)));
         }
         if let Some(halt) = stop {
             let message = halt.message().into_owned();
             let kind = halt.exit_label().to_string();
             let await_ = Await::Halted { kind: kind.clone(), message: message.clone(), site: None };
-            let state = State { world: final_world, continuation: None, request: delivered as u64, phase: Phase::Halted { kind, message: message.clone() } };
+            let state = State { world: Arc::new(final_world), continuation: None, request: delivered as u64, phase: Phase::Halted { kind, message: message.clone() } };
             return Ok((state, Output::new(events[delivered.min(events.len())..].to_vec(), await_)));
         }
         let await_ = if ended { Await::Ended { reason: "terminal".into() } } else { Await::Idle };
-        let state = State { world: final_world, continuation: None, request: delivered as u64, phase: if ended { Phase::Ended } else { Phase::Idle } };
+        let state = State { world: Arc::new(final_world), continuation: None, request: delivered as u64, phase: if ended { Phase::Ended } else { Phase::Idle } };
         Ok((state, Output::new(events[delivered.min(events.len())..].to_vec(), await_)))
     }
 

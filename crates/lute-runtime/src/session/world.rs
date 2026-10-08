@@ -45,9 +45,7 @@ impl Driver for NoDecisionDriver {
     fn emit(&mut self, _rec: Json) {}
 }
 
-/// Everything that carries from one step to the next.
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct World {
     /// Persistent-tier state (`run.*`/`user.*`/`app.*`/`quest.*`/`entry.*`);
     /// `scene.*` never lives here — it resets at every scene boundary.
