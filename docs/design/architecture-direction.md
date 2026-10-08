@@ -314,6 +314,8 @@ These are settled and are not re-litigated below.
 ### D13. Runtime and player (2026-10-07)
 
 Three layers with one-way contracts. Only the runtime reads the execution IR.
+Working brief (decisions taken in discussion, code facts, open questions,
+suggested order): [`runtime-player.md`](./runtime-player.md).
 
 | Layer | Owns | Never owns |
 |---|---|---|
