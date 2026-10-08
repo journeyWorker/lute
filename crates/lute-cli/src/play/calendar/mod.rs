@@ -53,7 +53,7 @@ use lute_runtime::index::IndexBeat;
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::OccasionSelect;
 use lute_runtime::datalog::Fact;
-use lute_runtime::Value;
+use lute_runtime::{BridgeQueues, Value};
 use serde_json::{json, Value as Json};
 
 use lute_runtime::session::{
@@ -428,7 +428,12 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                 _ => at.push((axis.path.clone(), text.clone(), value_to_json(value))),
             }
         }
-        if let Some(h) = advance_quests(&p, &mut w).1 {
+        let mut eval_driver = super::driver::PlayDriverState::for_project(
+            &p,
+            BTreeMap::new(),
+            BridgeQueues::default(),
+        );
+        if let Some(h) = advance_quests(&p, &mut w, &mut eval_driver).1 {
             notes.push(format!("quest settle halted — {}", h.message()));
         }
         for (axis, &i) in resolved.iter().zip(&picks) {
@@ -486,12 +491,17 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                     let ending = rule.rule.ending(clock, here).then(|| {
                         let mut ended = w.clone();
                         lute_runtime::clock::set_ended(clock, &mut ended.state, true);
-                        advance_quests(&p, &mut ended);
+                        let mut eval_driver = super::driver::PlayDriverState::for_project(
+                            &p,
+                            BTreeMap::new(),
+                            BridgeQueues::default(),
+                        );
+                        advance_quests(&p, &mut ended, &mut eval_driver);
                         ended
                     });
                     let judged = ending.as_ref().unwrap_or(&w);
                     let over = ending.as_ref().and_then(|e| {
-                        match lute_runtime::seam::closed(&p, e, &col.occasion, None) {
+                        match lute_runtime::seam::closed(&p, e, &col.occasion, None, None) {
                             Some(lute_runtime::seam::Closed::Terminal(t)) => Some(t),
                             _ => None,
                         }

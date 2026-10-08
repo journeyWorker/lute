@@ -10,10 +10,14 @@
 //! through [`Session`]; they keep only script parsing, planning, the step
 //! loop's I/O and rendering.
 //!
-//! The session builds every walk's [`Machine`] itself, so the walk driver is
-//! the session's: [`PlayDriver`] (scripted `choose:` over the world's
-//! cursor, the world's bridge answers, refusal of a pick that is not
-//! offered, a halt at every unknown site).
+//! The session takes a caller-owned walk factory: [`WalkDriver`] supplies each
+//! machine's driver and folds its result back into the caller's state.
+//!
+//! [`Machine`]: crate::Machine
+
+// The walk factory is intentionally kept separate from [`World`].  Script
+// cursors, bridge queues and transcript/report state belong to a host (the
+// CLI's play driver), not to runtime state.
 //!
 //! wasm-clean: no filesystem, process or threads.
 //!
@@ -23,7 +27,6 @@ mod advance;
 mod eligibility;
 mod lifecycle;
 mod present;
-mod producers;
 mod project;
 mod resolve;
 mod step;
@@ -34,7 +37,6 @@ pub use advance::*;
 pub use eligibility::*;
 pub use lifecycle::*;
 pub use present::*;
-pub use producers::*;
 pub use project::*;
 pub use resolve::*;
 pub use step::*;
@@ -43,40 +45,70 @@ pub use world::*;
 
 use std::collections::BTreeMap;
 
-use crate::Value;
+use serde_json::Value as Json;
+
+use crate::{Driver, Machine, Value};
+
+/// A host-owned source of fresh walk drivers.
+///
+/// Runtime state deliberately does not contain scripted choices, bridge
+/// answers, cursors or report observers. Hosts keep those in this factory,
+/// create a fresh driver for each walk, and fold the finished walk back.
+pub trait WalkDriver {
+    type Driver: Driver;
+
+    fn new_driver(
+        &mut self,
+        document: &str,
+        choose: &BTreeMap<String, Vec<String>>,
+        world: &World,
+    ) -> Self::Driver;
+    fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked;
+    fn halt(
+        &self,
+        result: Result<(), String>,
+        outcome: &Walked,
+        what: &str,
+        doc_json: &Json,
+    ) -> Option<PlayHalt>;
+    fn observer(&self) -> Option<SessionEvalObserver> {
+        None
+    }
+}
 
 /// What one step operation did: its body record, the quest advances it
 /// made after the body, and what ends the playthrough, if anything.
 pub type StepOutcome = (StepBody, Vec<QuestAdvance>, Option<PlayHalt>);
 
-/// One playthrough over one project (`docs/design/runtime-unification.md`
-/// §3.7): the [`World`] and every operation that moves it. Every operation
-/// that changes the world settles the quest lifecycle after it — a
-/// presentation, an `engine:` write, a new run (dsl 0.22.0 §1.1) — and a
-/// raised occasion or event is then answered by the quests. `n` is the
-/// script step an operation runs for, the `N` of its "step N" messages.
-#[derive(Clone)]
-pub struct Session<'p> {
+/// One playthrough over one project, driven by a caller-owned walk factory.
+pub struct Session<'p, 'd, F: WalkDriver> {
     project: &'p ExecProject,
     pub world: World,
+    pub driver: &'d mut F,
 }
 
-impl<'p> Session<'p> {
+impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
     /// The playthrough's starting world ([`seed_world`]); `Err` is every seed
     /// the project cannot take.
     pub fn seed<B, C>(
         project: &'p ExecProject,
         seed: &WorldSeed<'_, B, C>,
+        driver: &'d mut F,
     ) -> Result<Self, Vec<SeedError>> {
         Ok(Session {
             project,
             world: seed_world(project, seed)?,
+            driver,
         })
     }
 
     /// A session over `world` as it stands.
-    pub fn resume(project: &'p ExecProject, world: World) -> Self {
-        Session { project, world }
+    pub fn resume(project: &'p ExecProject, world: World, driver: &'d mut F) -> Self {
+        Session {
+            project,
+            world,
+            driver,
+        }
     }
 
     pub fn project(&self) -> &'p ExecProject {
@@ -85,7 +117,7 @@ impl<'p> Session<'p> {
 
     /// The start settle: every quest lifecycle advanced to a fixpoint.
     pub fn settle(&mut self) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
-        advance_quests(self.project, &mut self.world)
+        advance_quests(self.project, &mut self.world, self.driver)
     }
 
     /// dsl 0.25.0 §1: every pair of exclusive facts that hold together now.
@@ -111,7 +143,13 @@ impl<'p> Session<'p> {
     /// Every candidate of `occasion` / `target` with its verdict, in
     /// selection order ([`eligible_at`]).
     pub fn candidates(&self, occasion: &str, target: Option<&str>) -> Vec<Candidate> {
-        eligible_at(self.project, &self.world, occasion, target)
+        eligible_at(
+            self.project,
+            &self.world,
+            occasion,
+            target,
+            self.driver.observer(),
+        )
     }
 
     /// One beat's eligibility in this world — the one judgment `lute play`
@@ -126,6 +164,7 @@ impl<'p> Session<'p> {
             .evaluator_with_schema(
                 &self.project.eval_json,
                 self.project.store_schemas[self.world.derive.unwrap_or(true) as usize].clone(),
+                self.driver.observer(),
             )
             .with_visited(&self.world.visited);
         Some(judge_beat(
@@ -150,11 +189,15 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
-        self.world.step = n;
         // dsl 0.27.0 §4: a raise the engine would not make (its gate is
         // false, or the game is over) is refused.
-        if let Some(why) =
-            super::seam::closed(self.project, &self.world, occasion, target.as_deref())
+        if let Some(why) = super::seam::closed(
+            self.project,
+            &self.world,
+            occasion,
+            target.as_deref(),
+            self.driver.observer(),
+        )
         {
             let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
             self.world.state.retain(|k, _| !k.starts_with(&prefix));
@@ -185,6 +228,7 @@ impl<'p> Session<'p> {
             target,
             pick,
             choose,
+            self.driver,
         );
         // dsl 0.27.0 §3: a payload lives only for the raise it came with.
         let prefix = format!("{}.", lute_check::occasion_bind::OCCASION_PAYLOAD);
@@ -212,7 +256,6 @@ impl<'p> Session<'p> {
         pick: &Option<Pick>,
         choose: &BTreeMap<String, Vec<String>>,
     ) -> StepOutcome {
-        self.world.step = n;
         run_advance(
             self.project,
             &mut self.world,
@@ -222,6 +265,7 @@ impl<'p> Session<'p> {
             raise,
             pick,
             choose,
+            self.driver,
         )
     }
 
@@ -230,11 +274,10 @@ impl<'p> Session<'p> {
     /// not end the game).
     pub fn terminal(&self) -> bool {
         matches!(
-            super::seam::terminal_holds(self.project, &self.world),
+            super::seam::terminal_holds(self.project, &self.world, self.driver.observer()),
             Ok(true)
         )
     }
-
     /// `newRun` ([`new_run`]), then the settle.
     pub fn new_run(&mut self, n: usize, seed: &Writes) -> StepOutcome {
         let (p, w) = (self.project, &mut self.world);
@@ -248,7 +291,7 @@ impl<'p> Session<'p> {
                 prev_run,
                 unjudged,
             }) => {
-                let (quests, stop) = advance_quests(p, w);
+                let (quests, stop) = advance_quests(p, w, self.driver);
                 let body = StepBody::NewRun {
                     writes,
                     reset_quests,
@@ -296,7 +339,7 @@ impl<'p> Session<'p> {
                         return (StepBody::Engine { writes }, Vec::new(), Some(halt));
                     }
                 }
-                let (quests, stop) = advance_quests(p, w);
+                let (quests, stop) = advance_quests(p, w, self.driver);
                 (StepBody::Engine { writes }, quests, stop)
             }
             Err(e) => (
@@ -309,7 +352,8 @@ impl<'p> Session<'p> {
 
     /// Fire a declared world event (dsl 0.22.0 §9): the quests answer it.
     pub fn event(&mut self, event: &str) -> StepOutcome {
-        let (quests, stop) = raise(self.project, &mut self.world, Raise::Event(event));
+        let (quests, stop) =
+            raise(self.project, &mut self.world, Raise::Event(event), self.driver);
         (
             StepBody::Event {
                 event: event.to_string(),

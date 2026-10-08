@@ -43,7 +43,7 @@ use serde_json::{json, Value as Json};
 
 use crate::session::{
     ever_read_path, json_to_value, spend_group, value_to_json, Conds, ExecProject, QuestAdvance,
-    World,
+    SessionEvalObserver, World,
 };
 use crate::expr::Slot;
 use crate::Value;
@@ -522,13 +522,21 @@ pub fn reset_quest(w: &mut World, id: &str, objectives: &[String]) -> Option<Str
 /// "closed"}` (an opening also carries `prev`: the paths the last window's
 /// values moved to) and `{kind: "quest", quest, state: "unset", reset:
 /// "rearm" | "season:<name>", was}` for every quest that left `unset`.
-pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
+pub fn observe(
+    p: &ExecProject,
+    w: &mut World,
+    observer: Option<SessionEvalObserver>,
+) -> Vec<QuestAdvance> {
     let plan = &p.cadence;
     if plan.is_empty() {
         return Vec::new();
     }
     let mut eval = w
-        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
         .with_visited(&w.visited);
     let seasons: Vec<Option<bool>> = plan
         .seasons
@@ -614,7 +622,11 @@ pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
 /// doc): a world mid-settle (a quest its `start` is about to activate) is
 /// never latched on. Its clock position is recorded for a `day` / `slot` /
 /// `week` period; an undecided condition latches nothing.
-pub fn observe_latches(p: &ExecProject, w: &mut World) {
+pub fn observe_latches(
+    p: &ExecProject,
+    w: &mut World,
+    observer: Option<SessionEvalObserver>,
+) {
     if p.cadence.latches.is_empty() {
         return;
     }
@@ -625,7 +637,11 @@ pub fn observe_latches(p: &ExecProject, w: &mut World) {
         .and_then(|c| crate::clock::position(c, &w.state));
     let mut held = Vec::new();
     let mut eval = w
-        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
         .with_visited(&w.visited);
     for l in &p.cadence.latches {
         let Some(beat) = p.index.beats.iter().find(|b| b.id == l.beat) else {

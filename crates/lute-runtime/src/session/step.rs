@@ -153,7 +153,7 @@ impl StepBody {
 /// script's), every quest settle after each presentation, and the quests'
 /// answer to the raise.
 #[allow(clippy::too_many_arguments)]
-pub fn run_occasion(
+pub fn run_occasion<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     n: usize,
@@ -161,6 +161,7 @@ pub fn run_occasion(
     target: &Option<String>,
     pick: &Option<Pick>,
     choose: &BTreeMap<String, Vec<String>>,
+    factory: &mut F,
 ) -> (StepBody, Vec<QuestAdvance>, Option<PlayHalt>) {
     // dsl 0.21.0 §7a.2: the occasion judges the `on=` objectives of every
     // active quest — for the step's target (dsl 0.23.0 §2) — and fires the
@@ -184,13 +185,23 @@ pub fn run_occasion(
     // dsl 0.28.0 (T1-22): the seam (`terminal:`, the gate) is decided when
     // the occasion is raised — before a `judge: before` judgement — and the
     // raise's own beats are judged under it.
-    let seam = RaiseSeam::decide(p, w, occasion, target.as_deref());
+    let seam = RaiseSeam::decide(
+        p,
+        w,
+        occasion,
+        target.as_deref(),
+        factory.observer(),
+    );
     if before {
         // dsl 0.24.0 §2: the quests are judged and settled before the beats;
-        // the `<on>` handlers that answer (the same-named event, the
-        // lifecycle transitions) run after them.
+        // the `<on>` handlers that answer run after them.
         w.defer_handlers = true;
-        let (more, s) = raise(p, w, Raise::Occasion(occasion, target.as_deref()));
+        let (more, s) = raise(
+            p,
+            w,
+            Raise::Occasion(occasion, target.as_deref()),
+            factory,
+        );
         w.defer_handlers = false;
         judged = more;
         if s.is_some() {
@@ -211,7 +222,14 @@ pub fn run_occasion(
         }
     }
     let select = p.select_of(occasion);
-    let mut cands = candidates(p, w, occasion, target.as_deref(), Some(&seam));
+    let mut cands = candidates(
+        p,
+        w,
+        occasion,
+        target.as_deref(),
+        Some(&seam),
+        factory.observer(),
+    );
     let halt = if let Some(c) = deciding_unknown(&cands, select) {
         let Verdict::Unknown(detail) = &c.verdict else {
             unreachable!("deciding_unknown returns only unknown verdicts")
@@ -279,7 +297,15 @@ pub fn run_occasion(
         }
         if sequence {
             if !presented_beats.is_empty() {
-                let now = rejudge(p, w, occasion, target.as_deref(), &cands[i], &seam);
+                let now = rejudge(
+                    p,
+                    w,
+                    occasion,
+                    target.as_deref(),
+                    &cands[i],
+                    &seam,
+                    factory.observer(),
+                );
                 if now != cands[i].verdict {
                     cands[i].verdict = now;
                     cands[i].rejudged = true;
@@ -318,24 +344,24 @@ pub fn run_occasion(
         if !c.also && winner.is_none() {
             winner = Some(c.id.clone());
         }
-        let (pr, s) = present_with_choose(p, w, b, member, choose);
+        let (pr, s) = present_with_choose(p, w, b, member, choose, factory);
         presented_beats.push(pr);
         stop = s;
         if stop.is_none() {
-            let (more, s) = advance_quests(p, w);
+            let (more, s) = advance_quests(p, w, factory);
             quests.extend(more);
             stop = s;
         }
     }
     if stop.is_none() && judged_here && !before {
-        let (more, s) = raise(p, w, Raise::Occasion(occasion, target.as_deref()));
+        let (more, s) = raise(p, w, Raise::Occasion(occasion, target.as_deref()), factory);
         quests.extend(more);
         stop = s;
     }
     // dsl 0.24.0 §2: a `judge: before` raise's handlers run after the beats.
     let handlers = std::mem::take(&mut w.deferred_handlers);
     if stop.is_none() && !handlers.is_empty() {
-        let (more, s) = run_deferred_handlers(p, w, handlers);
+        let (more, s) = run_deferred_handlers(p, w, handlers, factory);
         quests.extend(more);
         stop = s;
     }

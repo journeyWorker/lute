@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde_json::{json, Value as Json};
 
 use super::project::ExecProject;
-use super::walk::{absorb, play_machine, walk_stop, PlayHalt, Walked};
+use super::walk::{absorb, play_machine, walk_stop, PlayHalt};
 use super::world::World;
 use crate::input::str_of;
 use crate::machine::Seed;
@@ -25,13 +25,17 @@ pub struct QuestAdvance {
 /// spent once the lifecycle settles.
 ///
 /// [`Machine::advance_quests`]: crate::Machine::advance_quests
-pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
+pub fn advance_quests<F: super::WalkDriver>(
+    p: &ExecProject,
+    w: &mut World,
+    factory: &mut F,
+) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     // dsl 0.27.0 §5: seasons opening and quests rearming since the last
     // settle apply first, so the fixpoint below starts from them.
-    let mut out = crate::cadence::observe(p, w);
+    let mut out = crate::cadence::observe(p, w, factory.observer());
     let passes = p.quest_docs.len() * 8 + 8;
     for _ in 0..passes {
-        let (moved, stop) = advance_pass(p, w, None, &mut out);
+        let (moved, stop) = advance_pass(p, w, None, &mut out, factory);
         if stop.is_some() {
             return (out, stop);
         }
@@ -40,11 +44,10 @@ pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Opt
         }
         // A pass that moved a quest may flip a `rearm` or a season's `live`
         // reading it: observed before the next pass.
-        out.extend(crate::cadence::observe(p, w));
+        out.extend(crate::cadence::observe(p, w, factory.observer()));
     }
-    // `spentBy` latches see the settled world only: a quest its `start`
-    // activates in this settle is `active`, never its `unset` before.
-    crate::cadence::observe_latches(p, w);
+    // `spentBy` latches see the settled world only.
+    crate::cadence::observe_latches(p, w, factory.observer());
     // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
     // while its parent is not active is spent — the transcript says so.
     for id in std::mem::take(&mut w.accepts) {
@@ -83,13 +86,14 @@ pub enum Raise<'a> {
 /// Raise an occasion or a world event — ONE pass in which every quest
 /// document answers it (the moment is never re-raised by the fixpoint),
 /// then the ordinary settle to a fixpoint.
-pub fn raise(
+pub fn raise<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     moment: Raise<'_>,
+    factory: &mut F,
 ) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     let mut out = Vec::new();
-    let (_, stop) = advance_pass(p, w, Some(moment), &mut out);
+    let (_, stop) = advance_pass(p, w, Some(moment), &mut out, factory);
     // dsl 0.24.0 §2.1: the raise judged the `done`s it deferred `by` for.
     if matches!(moment, Raise::Occasion(..)) {
         w.defer_by = None;
@@ -97,7 +101,7 @@ pub fn raise(
     if stop.is_some() {
         return (out, stop);
     }
-    let (more, stop) = advance_quests(p, w);
+    let (more, stop) = advance_quests(p, w, factory);
     out.extend(more);
     (out, stop)
 }
@@ -106,10 +110,11 @@ pub fn raise(
 /// answered (`(quest document, body addr)`, firing order) — after the
 /// occasion's beats — then settle every quest to a fixpoint, as after any
 /// presentation. Consecutive bodies of one document share one walk.
-pub fn run_deferred_handlers(
+pub fn run_deferred_handlers<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     handlers: Vec<(String, String)>,
+    factory: &mut F,
 ) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     let mut out = Vec::new();
     let mut rest = handlers.as_slice();
@@ -119,12 +124,14 @@ pub fn run_deferred_handlers(
         rest = &rest[len..];
         let doc_json = &p.artifacts[doc];
         let no_script = BTreeMap::new();
-        let mut m = play_machine(p, w, doc, Seed::from(&w.mock()), w.carry(), &no_script)
+        let mut m =
+            play_machine(p, w, doc, Seed::from(&w.mock()), w.carry(), &no_script, factory)
             .with_failed_objectives(&w.failed_objectives);
         let result = m.run_deferred_handlers(&bodies);
-        let outcome = Walked::of(m);
+        let outcome = factory.finish(m);
         absorb(w, &outcome);
         let stop = walk_stop(
+            factory,
             result,
             &outcome,
             &format!("quest document `{doc}`"),
@@ -140,7 +147,7 @@ pub fn run_deferred_handlers(
             return (out, stop);
         }
     }
-    let (more, stop) = advance_quests(p, w);
+    let (more, stop) = advance_quests(p, w, factory);
     out.extend(more);
     (out, stop)
 }
@@ -148,11 +155,12 @@ pub fn run_deferred_handlers(
 /// One pass over every quest document, path order: its runner resumes the
 /// carried lifecycle with the pending accepts and, when given, the moment
 /// raised. `true` when any document transitioned.
-pub fn advance_pass(
+pub fn advance_pass<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     moment: Option<Raise<'_>>,
     out: &mut Vec<QuestAdvance>,
+    factory: &mut F,
 ) -> (bool, Option<PlayHalt>) {
     let mut moved = false;
     for doc in &p.quest_docs {
@@ -169,12 +177,13 @@ pub fn advance_pass(
         }
         let skipped = handlers_skipped(doc_json, &w.quests, moment);
         let no_script = BTreeMap::new();
-        let mut m = play_machine(p, w, doc, Seed::from(&mock), w.carry(), &no_script)
+        let mut m =
+            play_machine(p, w, doc, Seed::from(&mock), w.carry(), &no_script, factory)
             .with_failed_objectives(&w.failed_objectives)
             .with_deferred_by(w.defer_by.as_deref())
             .with_deferred_handlers(w.defer_handlers);
         let result = m.advance_quests();
-        let outcome = Walked::of(m);
+        let outcome = factory.finish(m);
         absorb(w, &outcome);
         w.deferred_handlers.extend(
             outcome
@@ -184,7 +193,7 @@ pub fn advance_pass(
                 .map(|b| (doc.clone(), b.clone())),
         );
         let what = format!("quest document `{doc}`");
-        let stop = walk_stop(result, &outcome, &what, doc_json);
+        let stop = walk_stop(factory, result, &outcome, &what, doc_json);
         let mut transcript = skipped;
         transcript.extend(outcome.transcript.into_iter().filter(|c| {
             !c.get("done").is_some_and(Json::is_null) && !c.get("failed").is_some_and(Json::is_null)
@@ -257,15 +266,16 @@ pub fn handlers_skipped(
 /// Settle every quest after the clock moved; the settle before a raise
 /// defers the `by` of the `on=` objectives that raise judges (dsl 0.24.0
 /// §2.1).
-pub fn settle_before(
+pub fn settle_before<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     next: Option<&String>,
+    factory: &mut F,
 ) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     if let Some(occasion) = next.filter(|o| p.objective_occasions.contains(*o)) {
         w.defer_by = Some(occasion.clone());
     }
-    let (settled, stop) = advance_quests(p, w);
+    let (settled, stop) = advance_quests(p, w, factory);
     if stop.is_some() {
         w.defer_by = None;
     }

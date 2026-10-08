@@ -271,6 +271,7 @@ impl StepSource {
 
     /// `msg` located at the value of the key `keys` names inside the step
     /// (else at the key, as [`Self::locate_keys`]).
+    #[allow(dead_code)]
     pub(super) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
         use lute_trace::YamlStep::{Item, Key, Value};
         let mut path = Vec::with_capacity(keys.len() + 3);
@@ -351,6 +352,7 @@ impl ScriptSource {
 
     /// `file:line:col` of the value of the top-level key `keys` names, else
     /// [`Self::at`] of the key.
+    #[allow(dead_code)]
     pub(super) fn at_value(&self, keys: &[&str]) -> String {
         use lute_trace::YamlStep::{Key, Value};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();

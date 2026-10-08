@@ -104,9 +104,6 @@ pub struct ExecProject {
     /// a reason can say where that `after:` comes from. Empty unless the
     /// caller fills it.
     pub chapter_afters: std::collections::BTreeSet<String>,
-    /// Every asserting site of the compiled project — what a play's refused
-    /// pick names for a fact its guard misses.
-    pub producers: std::sync::Arc<super::producers::Producers>,
     /// The project-level conditions, decoded once ([`Conds`]).
     pub(crate) conds: Conds,
 }
@@ -230,11 +227,9 @@ impl ExecProject {
         let bridge_reads = Arc::new(BridgeReads { result_types, ..BridgeReads::of(artifacts.values()) });
         let conds = Conds::of(&index, &artifacts);
         let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
-        let reserved = index.relations.iter().filter(|r| r.reserved).map(|r| r.name.clone()).collect();
-        let producers = Arc::new(super::producers::Producers::of(&artifacts, reserved));
         let world_events = index.world_events.iter().cloned().collect();
         let display_names = index.cast.clone();
-        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, needles: Default::default(), chapter_afters: Default::default(), producers, conds })
+        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, needles: Default::default(), chapter_afters: Default::default(), conds })
     }
 
     /// The occasion's declared `select:` (default `first`).

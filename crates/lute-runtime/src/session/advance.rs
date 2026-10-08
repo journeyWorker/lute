@@ -158,13 +158,14 @@ pub fn move_clock(
 /// when `settled` already holds records (which the caller shows after its
 /// writes), appended to it too, so the transcript keeps the clock's order.
 /// On a halt `*at` is the position the clock stopped at.
-pub fn walk_clock(
+pub fn walk_clock<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     clock: &lute_manifest::clock::ClockDecl,
     at: &mut lute_manifest::clock::ClockAt,
     to: lute_manifest::clock::ClockAt,
     settled: &mut Vec<QuestAdvance>,
+    factory: &mut F,
 ) -> (Vec<Json>, Option<PlayHalt>) {
     // Nothing to settle: one move.
     if p.cadence.is_empty() && p.quest_docs.is_empty() {
@@ -183,7 +184,7 @@ pub fn walk_clock(
         if *at == to {
             break;
         }
-        let (s, halt) = advance_quests(p, w);
+        let (s, halt) = advance_quests(p, w, factory);
         if !s.is_empty() || halt.is_some() {
             // Already there: the rewrite only yields the records.
             let moved = move_clock(p, w, clock, shown, *at);
@@ -224,7 +225,7 @@ pub fn walk_clock(
 /// clock crosses to the next day's first slot and `dayStart` is raised
 /// there; each move settles the quests first.
 #[allow(clippy::too_many_arguments)]
-pub fn run_advance(
+pub fn run_advance<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     n: usize,
@@ -233,6 +234,7 @@ pub fn run_advance(
     raise: &lute_manifest::clock::RaiseMoments,
     pick: &Option<Pick>,
     choose: &BTreeMap<String, Vec<String>>,
+    factory: &mut F,
 ) -> (StepBody, Vec<QuestAdvance>, Option<PlayHalt>) {
     use lute_manifest::clock::{Advance, ClockAt};
     let clock = p
@@ -302,7 +304,7 @@ pub fn run_advance(
     };
     // dsl 0.27.0 §4: once the game is over the clock does not move on — the
     // refused step still says where the clock stands (HW27-08).
-    if let Ok(true) = crate::seam::terminal_holds(p, w) {
+    if let Ok(true) = crate::seam::terminal_holds(p, w, None) {
         let at = clock.describe(from);
         return (
             body(
@@ -373,13 +375,13 @@ pub fn run_advance(
             } else {
                 clock.day_end(at)
             };
-            let (moved, halt) = walk_clock(p, w, clock, &mut at, last, &mut settled);
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, last, &mut settled, factory);
             writes.extend(moved);
             if halt.is_some() {
                 stop = halt;
                 break;
             }
-            let (s, halt) = settle_before(p, w, Some(end));
+            let (s, halt) = settle_before(p, w, Some(end), factory);
             settled.extend(s);
             if halt.is_some() {
                 stop = halt;
@@ -387,8 +389,16 @@ pub fn run_advance(
             }
             // dsl 0.27.0 §4: a closed seam (terminal, a false gate) raises
             // nothing; the clock still moves and settles.
-            if crate::seam::clock_raise_open(p, w, end, || clock.describe(at), &mut closed) {
-                let (occasion, quests, halt) = run_occasion(p, w, n, end, &None, &None, choose);
+            if crate::seam::clock_raise_open(
+                p,
+                w,
+                end,
+                || clock.describe(at),
+                &mut closed,
+                factory.observer(),
+            ) {
+                let (occasion, quests, halt) =
+                    run_occasion(p, w, n, end, &None, &None, choose, factory);
                 days.push(DayRaise {
                     at: clock.describe(at),
                     writes: std::mem::take(&mut writes),
@@ -415,7 +425,7 @@ pub fn run_advance(
             writes.extend(move_clock(p, w, clock, at, next));
             at = next;
         } else {
-            let (moved, halt) = walk_clock(p, w, clock, &mut at, next, &mut settled);
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, next, &mut settled, factory);
             writes.extend(moved);
             if halt.is_some() {
                 stop = halt;
@@ -425,17 +435,25 @@ pub fn run_advance(
         let Some(start) = &raise.day_start else {
             continue;
         };
-        let (s, halt) = settle_before(p, w, Some(start));
+        let (s, halt) = settle_before(p, w, Some(start), factory);
         settled.extend(s);
         if halt.is_some() {
             stop = halt;
             break;
         }
-        if !crate::seam::clock_raise_open(p, w, start, || clock.describe(at), &mut closed) {
+        if !crate::seam::clock_raise_open(
+            p,
+            w,
+            start,
+            || clock.describe(at),
+            &mut closed,
+            factory.observer(),
+        ) {
             w.defer_by = None;
             continue;
         }
-        let (occasion, quests, halt) = run_occasion(p, w, n, start, &None, &None, choose);
+        let (occasion, quests, halt) =
+            run_occasion(p, w, n, start, &None, &None, choose, factory);
         days.push(DayRaise {
             at: clock.describe(at),
             writes: std::mem::take(&mut writes),
@@ -455,7 +473,7 @@ pub fn run_advance(
             writes.extend(move_clock(p, w, clock, at, to));
             at = to;
         } else {
-            let (moved, halt) = walk_clock(p, w, clock, &mut at, to, &mut settled);
+            let (moved, halt) = walk_clock(p, w, clock, &mut at, to, &mut settled, factory);
             writes.extend(moved);
             stop = halt;
         }
@@ -466,7 +484,7 @@ pub fn run_advance(
     if ends && stop.is_none() {
         crate::clock::set_ended(clock, &mut w.state, true);
         if let Some(end) = &raise.day_end {
-            let (s, halt) = settle_before(p, w, Some(end));
+            let (s, halt) = settle_before(p, w, Some(end), factory);
             settled.extend(s);
             stop = halt;
             if stop.is_none()
@@ -476,9 +494,11 @@ pub fn run_advance(
                     end,
                     || clock.describe(at),
                     &mut closed,
+                    factory.observer(),
                 )
             {
-                let (occasion, q, halt) = run_occasion(p, w, n, end, &None, &None, choose);
+                let (occasion, q, halt) =
+                    run_occasion(p, w, n, end, &None, &None, choose, factory);
                 days.push(DayRaise {
                     at: clock.describe(at),
                     writes: std::mem::take(&mut writes),
@@ -500,18 +520,26 @@ pub fn run_advance(
     }
     if stop.is_none() {
         let next = if ends { None } else { raise.slot.as_ref() };
-        let (s, halt) = settle_before(p, w, next);
+        let (s, halt) = settle_before(p, w, next, factory);
         settled.extend(s);
         stop = halt;
         let open = next.filter(|o| {
             stop.is_none()
-                && crate::seam::clock_raise_open(p, w, o, || clock.describe(at), &mut closed)
+                && crate::seam::clock_raise_open(
+                    p,
+                    w,
+                    o,
+                    || clock.describe(at),
+                    &mut closed,
+                    factory.observer(),
+                )
         });
         if open.is_none() {
             w.defer_by = None;
         }
         if let (Some(occasion), None) = (open, &stop) {
-            let (b, q, halt) = run_occasion(p, w, n, occasion, &None, pick, choose);
+            let (b, q, halt) =
+                run_occasion(p, w, n, occasion, &None, pick, choose, factory);
             raised = Some(Box::new(b));
             quests = q;
             stop = halt;
