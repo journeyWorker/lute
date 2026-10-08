@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_compile::ExecutionIr;
-use lute_manifest::schema::OccasionDecl;
-use lute_runtime::{session::ExecProject, BridgeReads, NeedleVocab};
+use lute_runtime::{session::ExecProject, NeedleVocab};
 use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_load::nearest_manifest_dir;
 
@@ -172,12 +171,8 @@ pub(crate) fn assemble_project_from_model(
         );
         return Err(ExitCode::from(1));
     }
-    let mut occasions: BTreeMap<String, OccasionDecl> = BTreeMap::new();
     let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
-    let mut world_events: BTreeSet<String> = BTreeSet::new();
-    let mut bridge_types = BridgeReads::default();
-    let mut display_names: BTreeMap<String, String> = BTreeMap::new();
     let mut needles = NeedleVocab::default();
     let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
@@ -195,16 +190,6 @@ pub(crate) fn assemble_project_from_model(
             return Err(ExitCode::from(2));
         };
         let input = &source.input;
-        for (name, decl) in &input.snapshot.occasions {
-            occasions.entry(name.clone()).or_insert_with(|| decl.clone());
-        }
-        world_events.extend(input.snapshot.events.keys().cloned());
-        for (id, m) in lute_check::cast::declared_cast(&input.snapshot, &input.imports, &[]) {
-            if let Some(name) = m.name {
-                display_names.entry(id).or_insert(name);
-            }
-        }
-        bridge_types = bridge_types.with_result_types(&input.snapshot);
         needles.union(NeedleVocab::of(input, &source.folded.typed));
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
@@ -245,19 +230,24 @@ pub(crate) fn assemble_project_from_model(
         return Err(ExitCode::from(1));
     }
 
-    let mut project = ExecProject::assemble(
-        &compiled,
-        occasions,
-        world_events,
-        bridge_types,
-        display_names,
-    )
+    let unions = crate::bundle::collect_index_unions(source_model);
+    let bundle = crate::bundle::build_bundle(&compiled, &unions).map_err(|(code, lines)| {
+        for line in &lines { eprintln!("{line}"); }
+        ExitCode::from(code)
+    })?;
+    let mut project = ExecProject::load(bundle)
     .map_err(|(code, lines)| {
         for line in &lines {
             eprintln!("{line}");
         }
         ExitCode::from(code)
     })?;
+    project.authored = compiled.iter().filter_map(|(path, artifact)| {
+        let authored = artifact.commands.iter().filter_map(|command| command.authored())
+            .map(|(position, text)| (position.to_string(), text.to_string()))
+            .collect::<BTreeMap<_, _>>();
+        (!authored.is_empty()).then(|| (path.clone(), authored))
+    }).collect();
     project.needles = needles;
     project.chapter_afters = chapter_afters;
     Ok(project)

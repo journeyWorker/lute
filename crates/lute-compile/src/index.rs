@@ -387,13 +387,6 @@ impl<T: Clone + Serialize> Axis<T> {
 pub fn build_index(
     ir_version: &str,
     docs: &[IndexInput<'_>],
-) -> Result<ProjectIndex, Vec<IndexError>> {
-    build_index_with_unions(ir_version, docs, &IndexUnions::default())
-}
-
-pub fn build_index_with_unions(
-    ir_version: &str,
-    docs: &[IndexInput<'_>],
     unions: &IndexUnions,
 ) -> Result<ProjectIndex, Vec<IndexError>> {
     let mut errors = Vec::new();
@@ -852,7 +845,7 @@ mod tests {
 
         // Deliberately UNSORTED input: `documents` must still come out sorted.
         let docs = [("z/b.lute", b), ("a/a.lute", a)];
-        let index = build_index("0.9.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
 
         assert_eq!(
             index
@@ -895,7 +888,7 @@ mod tests {
         let mut b = scene("kai", "cap-1");
         b.relations = vec![relation("knows", &["npc", "item"])];
         let docs = [("a.lute", a), ("b.lute", b)];
-        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("arity differs");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("arity differs");
         assert_eq!(
             errors,
             vec![IndexError::Conflict {
@@ -918,7 +911,7 @@ mod tests {
             ("a.lute", scene("marina", "cap-1")),
             ("b.lute", scene("kai", "cap-2")),
         ];
-        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("two profiles");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("two profiles");
         assert!(
             matches!(errors[0], IndexError::CapabilityMismatch { .. }),
             "{errors:?}"
@@ -928,7 +921,7 @@ mod tests {
     #[test]
     fn empty_vocabulary_arrays_are_still_emitted() {
         let docs = [("a.lute", scene("marina", "cap-1"))];
-        let index = build_index("0.9.0", &inputs(&docs)).unwrap();
+        let index = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).unwrap();
         let json = index.to_json().unwrap();
         for key in [
             "entities",
@@ -1020,7 +1013,7 @@ mod tests {
                 ),
             ),
         ];
-        let index = build_index("0.19.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.19.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, &str)> = index
             .entries
             .iter()
@@ -1136,7 +1129,7 @@ mod tests {
                 beat_scene("dawn", beat("dayStart", None, 0, BeatOnce::None)),
             ),
         ];
-        let index = build_index("0.21.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.21.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, BeatKind, &str)> = index
             .beats
             .iter()
@@ -1219,7 +1212,7 @@ mod tests {
                 beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run)),
             ),
         ];
-        let index = build_index("0.23.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.23.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
         assert_eq!(v["beats"][0]["when"], "run.slot != \"night\"");
         assert_eq!(v["beats"][0]["title"], "At the shop");

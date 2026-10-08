@@ -6,8 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lute_check::PrereqFormula;
-use lute_compile::index::{BeatKind, IndexBeat};
-use lute_compile::BeatOnce;
+use crate::index::{BeatKind, BeatOnce, IndexBeat};
 use lute_manifest::schema::OccasionSelect;
 use serde_json::Value as Json;
 

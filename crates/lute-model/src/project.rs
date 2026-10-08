@@ -267,7 +267,7 @@ impl ProjectModel {
             if inputs.is_empty() {
                 None
             } else {
-                match build_index(lute_compile::LUTE_IR_VERSION, &inputs) {
+                match build_index(lute_compile::LUTE_IR_VERSION, &inputs, &Default::default()) {
                     Ok(index) => Some(index),
                     Err(errors) => {
                         for error in errors {
@@ -359,7 +359,7 @@ impl ProjectModel {
                                 })
                             })
                             .collect();
-                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs).ok();
+                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs, &Default::default()).ok();
                     }
                 }
                 Err(errors) => {

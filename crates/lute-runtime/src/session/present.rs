@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_compile::index::{BeatKind, IndexBeat};
+use crate::index::{AdvanceSpec, BeatKind, IndexBeat};
 use lute_manifest::clock::Advance;
 use serde_json::Value as Json;
 
@@ -229,9 +229,9 @@ pub fn present<B, C>(
                 )));
             } else if let Some(clock) = p.index.clock.as_ref() {
                 let by = match spec {
-                    lute_check::AdvanceSpec::Slot => Advance::Slots(1),
-                    lute_check::AdvanceSpec::Day => Advance::Day,
-                    lute_check::AdvanceSpec::Slots(n) => Advance::Slots(n),
+                    AdvanceSpec::Slot => Advance::Slots(1),
+                    AdvanceSpec::Day => Advance::Day,
+                    AdvanceSpec::Slots(n) => Advance::Slots(n),
                 };
                 let raise = clock
                     .raise
