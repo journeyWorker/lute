@@ -167,11 +167,13 @@ An undecided guard never becomes an `unknown` menu verdict: it halts as
 `incomplete`. Request ids are unsigned integers, incremented for each await
 and never reused within a state lineage. Restoring preserves the pending id.
 
-The resumable walk stores an explicit serializable frame stack, including
-nested menus, entries, quest bodies, handlers and session loops such as
-sequence raises, clock cascades and settle passes. A choice or bridge may
-suspend any of these. Resumption continues at the saved frame; it must not
-repeat a completed walk, settle pass, day or handler.
+A choice or bridge call may occur anywhere an input reaches: nested menus,
+lore entries, quest bodies, handlers, every beat of a sequence raise, the
+raises of a clock cascade. The runtime resumes a suspended input by
+deterministic replay: it keeps the world from before the input, the input
+and the answers given so far, re-runs the input with those answers, and
+stops at the next unanswered await. Each step returns only the events
+produced since the previous await, so a host sees every event once.
 
 ## Rejections and halts
 
@@ -211,7 +213,7 @@ are host data, not runtime state.
 
 A snapshot serializes state with `snapshotVersion`, a bundle `project`
 fingerprint, await, request, world and continuation. This guide does not
-specify the internal world or frame wire layout. Restore rejects a different
+specify the internal world or continuation wire layout. Restore rejects a different
 bundle fingerprint (`E-RUNTIME-SNAPSHOT-PROJECT`) or snapshot major.minor
 (`E-RUNTIME-SNAPSHOT-VERSION`); content-version save migration is not R1.
 For every reachable state and input, stepping a restored snapshot must equal

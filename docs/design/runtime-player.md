@@ -142,6 +142,13 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    `docs/runtime/execution-model.md` saying relational slots carry CEL text
    only is out of date. The work is a parser-free `expr` evaluator in
    the runtime; no IR change is needed.
+10. **(Implementation, 2026-10-08) Resumption:** after two failed attempts
+    to turn the recursive walk and session loops into an explicit frame
+    stack, the owner chose deterministic replay: a suspended input keeps
+    (world before the input, input, answers so far) and re-runs with the
+    answers until the next unanswered await. Cost `O(k·W)` per input with
+    `k` awaits (example plays: `k` ≤ 10, p99 4). A frame stack can replace
+    it later without changing inputs, outputs or snapshots (spec §8).
 
 ## 5. Suggested order
 
