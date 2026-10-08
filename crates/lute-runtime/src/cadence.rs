@@ -38,8 +38,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use std::sync::Arc;
 
-use lute_compile::index::{BeatKind, IndexBeat, ProjectIndex};
-use lute_compile::BeatOnce;
+use crate::index::{BeatKind, BeatOnce, IndexBeat, ProjectIndex};
 use serde_json::{json, Value as Json};
 
 use crate::session::{

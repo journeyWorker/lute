@@ -46,7 +46,7 @@ use crate::report::{
     GrantReward, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 use lute_runtime::value::{UnresolvedAtom, Value};
-use lute_compile::index::BeatKind;
+use lute_runtime::index::BeatKind;
 
 mod ast;
 mod driver_core;

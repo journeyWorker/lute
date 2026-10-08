@@ -5,7 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use lute_compile::index::BeatKind;
+use crate::index::BeatKind;
 use serde_json::{json, Value as Json};
 
 use super::present::{share_of, spend_shared};

@@ -7,6 +7,7 @@ pub mod driver;
 pub mod eval;
 pub mod expr;
 pub mod input;
+pub mod index;
 pub mod machine;
 pub mod seam;
 pub mod session;

@@ -49,7 +49,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::process::ExitCode;
 
-use lute_compile::index::IndexBeat;
+use lute_runtime::index::IndexBeat;
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::OccasionSelect;
 use lute_runtime::datalog::Fact;

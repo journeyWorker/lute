@@ -1803,6 +1803,7 @@ fn lore_document_series_resolves_positions_everywhere() {
             artifact_path: "lore/log.lute.json".to_string(),
             artifact: &art,
         }],
+        &Default::default(),
     )
     .expect("index builds");
     assert_eq!(index.documents[0].key, "haven.captainsLog");

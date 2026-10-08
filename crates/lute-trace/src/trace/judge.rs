@@ -7,15 +7,18 @@ pub(super) fn judging_project(
     artifact: lute_compile::ExecutionIr,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
 ) -> Option<ExecProject> {
-    let docs = BTreeMap::from([(uri.to_string(), artifact)]);
-    ExecProject::assemble(
-        &docs,
-        occasions.clone(),
-        BTreeSet::new(),
-        Default::default(),
-        BTreeMap::new(),
-    )
-    .ok()
+    let inputs = [lute_compile::index::IndexInput {
+        path: uri.to_string(),
+        artifact_path: format!("{uri}.json"),
+        artifact: &artifact,
+    }];
+    let unions = lute_compile::index::IndexUnions {
+        occasions: occasions.iter().map(|(name, decl)| (name.clone(), decl.into())).collect(),
+        ..Default::default()
+    };
+    let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
+    let artifacts = BTreeMap::from([(format!("{uri}.json"), serde_json::to_value(artifact).ok()?)]);
+    ExecProject::load(lute_runtime::index::Bundle::new(artifacts, serde_json::to_value(index).ok()?)).ok()
 }
 
 /// Judge `row` by the session's ONE eligibility rule
@@ -28,7 +31,7 @@ pub(super) fn judge(
     p: &ExecProject,
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
-    row: &lute_compile::index::IndexBeat,
+    row: &lute_runtime::index::IndexBeat,
 ) -> (exec::session::Candidate, SessionWorld) {
     let mut w = SessionWorld {
         visited: mocks.visited.iter().cloned().collect(),
@@ -117,7 +120,7 @@ pub(super) fn premise_text(
             }
         }
         Premise::Spent {
-            once: Some(lute_compile::BeatOnce::User),
+            once: Some(lute_runtime::index::BeatOnce::User),
             ..
         } if kind == BeatKind::Scene => {
             "it is `once: user` and the mocked `visited:` already lists it".to_string()
