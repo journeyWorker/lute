@@ -49,7 +49,7 @@
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
 //!   the SAME `beats` rows (and tiebreak order), rules, seed facts and
 //!   relation tiers `compile --all` writes to `project.index.json`.
-//! - Execution: [`lute_trace::exec::Machine`] — the walker `lute run` uses
+//! - Execution: [`lute_runtime::machine::Machine`] — the walker `lute run` uses
 //!   — driven by [`PlayDriver`], runs every scene beat, every entry beat
 //!   (its `--entry` path: first-read effects, `entry.<id>.read`), every
 //!   quest-lifecycle advance ([`Machine::advance_quests`]) and every `when`
@@ -72,7 +72,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use lute_trace::exec::session::{
+use lute_runtime::session::{
     domain_members, entry_flag, is_candidate, json_to_value, kind_label, resolve_fact,
     resolve_state, value_to_json, ExecProject, PlayHalt, Played, Presented, Session,
     SessionEvalObserver, StepBody, Verdict, World,
@@ -273,7 +273,7 @@ fn install_condition_dump(
         use std::io::Write;
         writeln!(f).map_err(|e| format!("cannot write condition dump header: {e}"))?;
     }
-    let defaults: std::collections::BTreeMap<String, lute_trace::Value> = project
+    let defaults: std::collections::BTreeMap<String, lute_runtime::Value> = project
         .state_table
         .iter()
         .filter_map(|(path, entry)| {
@@ -291,27 +291,27 @@ fn install_condition_dump(
         // Only paths `activation_json_paths` can emit: cloning the whole state
         // and every default per evaluation dominated large dumps.
         let wanted = |path: &str| crate::runner::path_wanted(&paths, path);
-        let mut dump_state: std::collections::BTreeMap<String, lute_trace::Value> = snapshot
+        let mut dump_state: std::collections::BTreeMap<String, lute_runtime::Value> = snapshot
             .state
             .iter()
             .filter(|(path, _)| wanted(path))
             .map(|(path, value)| (path.clone(), value.clone()))
             .collect();
         for (path, read) in snapshot.reads {
-            if let lute_trace::Read::Value(value) = read {
+            if let lute_runtime::Read::Value(value) = read {
                 dump_state.insert(path.clone(), value.clone());
             }
         }
         for (id, status) in snapshot.quest_status {
             let path = format!("quest.{id}.state");
             if wanted(&path) {
-                dump_state.insert(path, lute_trace::Value::Str(status.clone()));
+                dump_state.insert(path, lute_runtime::Value::Str(status.clone()));
             }
         }
         if let Some(target) = snapshot.occasion_target {
             dump_state.insert(
                 "occasion.target".to_string(),
-                lute_trace::Value::Str(target.to_string()),
+                lute_runtime::Value::Str(target.to_string()),
             );
         }
         for (path, default) in &defaults {
@@ -388,7 +388,7 @@ pub fn run_play(
         None
     } else {
         let w = &play.world;
-        let kinds = lute_trace::datalog::closed_kinds(&project.kinds);
+        let kinds = lute_runtime::datalog::closed_kinds(&project.kinds);
         let origins = fact_origins(&play, &initial_facts);
         match crate::explain::render(
             &project.rules,

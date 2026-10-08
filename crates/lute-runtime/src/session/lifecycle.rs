@@ -9,8 +9,8 @@ use serde_json::{json, Value as Json};
 use super::project::ExecProject;
 use super::walk::{absorb, play_machine, walk_stop, PlayHalt, Walked};
 use super::world::World;
-use crate::exec::record::str_of;
-use crate::exec::Seed;
+use crate::input::str_of;
+use crate::machine::Seed;
 
 /// One quest document's lifecycle transitions from one advance.
 pub struct QuestAdvance {
@@ -24,11 +24,11 @@ pub struct QuestAdvance {
 /// another's state. The pending accepts (§7a.3) ride every pass and are
 /// spent once the lifecycle settles.
 ///
-/// [`Machine::advance_quests`]: crate::exec::Machine::advance_quests
+/// [`Machine::advance_quests`]: crate::Machine::advance_quests
 pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Option<PlayHalt>) {
     // dsl 0.27.0 §5: seasons opening and quests rearming since the last
     // settle apply first, so the fixpoint below starts from them.
-    let mut out = crate::exec::cadence::observe(p, w);
+    let mut out = crate::cadence::observe(p, w);
     let passes = p.quest_docs.len() * 8 + 8;
     for _ in 0..passes {
         let (moved, stop) = advance_pass(p, w, None, &mut out);
@@ -40,11 +40,11 @@ pub fn advance_quests(p: &ExecProject, w: &mut World) -> (Vec<QuestAdvance>, Opt
         }
         // A pass that moved a quest may flip a `rearm` or a season's `live`
         // reading it: observed before the next pass.
-        out.extend(crate::exec::cadence::observe(p, w));
+        out.extend(crate::cadence::observe(p, w));
     }
     // `spentBy` latches see the settled world only: a quest its `start`
     // activates in this settle is `active`, never its `unset` before.
-    crate::exec::cadence::observe_latches(p, w);
+    crate::cadence::observe_latches(p, w);
     // dsl 0.24.0 §2 (ER N15): an accept of an `activate="accept"` child
     // while its parent is not active is spent — the transcript says so.
     for id in std::mem::take(&mut w.accepts) {

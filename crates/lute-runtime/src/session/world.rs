@@ -13,7 +13,7 @@ use super::project::ExecProject;
 use super::resolve::{ever_read_path, resolve_bridges, resolve_fact, resolve_state};
 use super::walk::PlayDriver;
 use crate::datalog::Fact;
-use crate::exec::{BridgeQueues, Carry, EvalSnapshot, Machine, Seed};
+use crate::{BridgeQueues, Carry, EvalSnapshot, Machine, Seed};
 use crate::{MockSet, UnresolvedAtom, Value};
 
 /// A shared observer for every CEL evaluation made during a play.
@@ -63,7 +63,7 @@ pub struct World {
     /// Per `<branch>` id: the decisions of a multi-decision `choose:` list
     /// earlier presentations consumed ([`ScriptedChoices::cursor`]).
     ///
-    /// [`ScriptedChoices::cursor`]: crate::exec::ScriptedChoices::cursor
+    /// [`ScriptedChoices::cursor`]: crate::driver::ScriptedChoices::cursor
     pub choice_cursor: BTreeMap<String, usize>,
     /// The script-wide `choose:` every presentation is scripted by (a
     /// step's own `choose:` replaces it key by key, dsl 0.22.0 §2).
@@ -98,7 +98,7 @@ pub struct World {
     pub advance_cascade_depth: usize,
     /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
     /// the season-scoped spends.
-    pub cadence: crate::exec::cadence::Cadence,
+    pub cadence: crate::cadence::Cadence,
     /// The script step running now (`Session::occasion` / `advance` set
     /// it) and every decision the playthrough made so far — what a refused
     /// pick names beside a premise's producers.
@@ -141,11 +141,11 @@ impl World {
     pub(crate) fn evaluator_with_schema(
         &self,
         art: &Json,
-        schema: std::sync::Arc<crate::exec::store::StoreSchema>,
+        schema: std::sync::Arc<crate::store::StoreSchema>,
     ) -> Machine<PlayDriver> {
         let machine = Machine::resume_with_project_schema(
             art,
-            std::sync::Arc::new(crate::exec::machine::Code::of(art)),
+            std::sync::Arc::new(crate::machine::Code::of(art)),
             Seed::from(&self.mock()),
             self.carry(),
             PlayDriver::default(),
@@ -291,8 +291,8 @@ pub struct SaveSeed {
 
 /// Everything a world is seeded from: the trace-mock surfaces (`state:`,
 /// `facts:`, `choose:`, `bridges:`), the save, and the `derive:` setting.
-pub struct WorldSeed<'a> {
-    pub surfaces: &'a MockSet,
+pub struct WorldSeed<'a, B = (), C = ()> {
+    pub surfaces: &'a MockSet<B, C>,
     pub save: &'a SaveSeed,
     pub derive: Option<bool>,
 }
@@ -339,7 +339,10 @@ impl std::fmt::Display for SeedError {
 /// the other. A seed naming an undeclared path, id, quest or relation — or a
 /// value that does not fit — is a usage error, never a silent no-op; every
 /// one is reported.
-pub fn seed_world(p: &ExecProject, seed: &WorldSeed<'_>) -> Result<World, Vec<SeedError>> {
+pub fn seed_world<B, C>(
+    p: &ExecProject,
+    seed: &WorldSeed<'_, B, C>,
+) -> Result<World, Vec<SeedError>> {
     let mut errs: Vec<SeedError> = Vec::new();
     let top_bridges = resolve_bridges(p, "top level", &seed.surfaces.bridges).unwrap_or_else(|e| {
         errs.push(SeedError::at(&["bridges"], e));

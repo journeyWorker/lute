@@ -1,6 +1,6 @@
 use super::*;
 pub(super) fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
-    m.read(path) == crate::eval::Read::Value(Value::Bool(true))
+    m.read(path) == lute_runtime::eval::Read::Value(Value::Bool(true))
 }
 
 /// The world a walk left, for the report's final state and facts.

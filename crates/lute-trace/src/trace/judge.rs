@@ -51,13 +51,15 @@ pub(super) fn judge(
         .and_then(|d| exec::session::beat_prereq(d, &row.id));
     for atom in prereq.iter().flat_map(lute_check::prereq::atoms) {
         if let lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) = atom {
-            if let crate::eval::Read::Value(Value::Str(s)) = m.read(&format!("quest.{q}.state")) {
+            if let lute_runtime::eval::Read::Value(Value::Str(s)) =
+                m.read(&format!("quest.{q}.state"))
+            {
                 w.quests.insert(q, s);
             }
         }
     }
     let member = match m.read(lute_check::beats::OCCASION_TARGET) {
-        crate::eval::Read::Value(Value::Str(s)) => Some(s),
+        lute_runtime::eval::Read::Value(Value::Str(s)) => Some(s),
         _ => None,
     };
     let cand = exec::session::judge_beat(p, &w, m, row, member.as_deref(), member.as_deref());

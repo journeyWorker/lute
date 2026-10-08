@@ -11,7 +11,7 @@
 //! `occasion:` step is a usage error.
 
 use super::session::{ExecProject, PlayHalt, World};
-use crate::exec::{Driver, GuardRead, Machine, Slot};
+use crate::{Driver, GuardRead, Machine, Slot};
 
 use lute_check::gates::E_OCCASION_GATE;
 

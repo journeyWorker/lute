@@ -11,8 +11,8 @@ use serde_json::{json, Value as Json};
 use super::format::value_to_json;
 use super::{addr, fold_op, Code, Machine, Site};
 use crate::eval::Read;
-use crate::exec::driver::{Driver, SiteKind};
-use crate::exec::expr::{Expr, Slot};
+use crate::driver::{Driver, SiteKind};
+use crate::expr::{Expr, Slot};
 use crate::Value;
 
 /// A parsed quest declaration head (quest-lifecycle.md).

@@ -8,10 +8,8 @@ use serde_json::Value as Json;
 
 use super::project::{decision_options, state_entry_type, ExecProject};
 use super::world::World;
-use crate::exec::{
-    BridgeCall, BridgeQueues, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown,
-    Pick as MenuPick, ScriptedChoices, Seed, UnknownSite, Verdict as OptionVerdict,
-};
+use crate::{BridgeCall, BridgeQueues, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown,
+Pick as MenuPick, ScriptedChoices, Seed, UnknownSite, Verdict as OptionVerdict,};
 use crate::UnresolvedAtom;
 
 /// The session's [`Driver`] (`lute play`, `lute calendar`, the play files of
@@ -78,7 +76,7 @@ impl Driver for PlayDriver {
     /// A play has no mocks: a fact the guard misses names what in the
     /// project asserts it and what the play chose there so far — this
     /// walk's own decisions included.
-    fn premise_hint(&self, read: &crate::exec::GuardRead) -> String {
+    fn premise_hint(&self, read: &crate::GuardRead) -> String {
         let pr = &self.premises;
         let Some(producers) = &pr.producers else {
             return String::new();
@@ -215,7 +213,7 @@ pub fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<Pla
     if outcome.carry.incomplete {
         if let Some(rec) =
             outcome.transcript.iter().rev().find(|c| {
-                c.get("note").and_then(Json::as_str) == Some(crate::exec::NOTE_NO_DECISION)
+                c.get("note").and_then(Json::as_str) == Some(crate::NOTE_NO_DECISION)
             })
         {
             let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("choice");

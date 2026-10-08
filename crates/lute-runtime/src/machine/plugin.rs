@@ -9,8 +9,8 @@ use serde_json::{json, Value as Json};
 use super::format::value_to_json;
 use super::{addr, fold_op, Machine, Site};
 use crate::eval::Read;
-use crate::exec::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
-use crate::exec::store::{json_arg_to_string, json_to_value, render_fact};
+use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
+use crate::store::{json_arg_to_string, json_to_value, render_fact};
 use crate::Value;
 
 /// dsl 0.25.0 §7: what content reads of the plugin calls' bridge results,
@@ -90,7 +90,7 @@ impl BridgeReads {
             else {
                 continue;
             };
-            for (field, _) in crate::mock::bridge_result_writes(decl) {
+            for (field, _) in crate::input::bridge_result_writes(decl) {
                 let Some(f) = cap.result.iter().find(|f| f.name == field) else {
                     continue;
                 };

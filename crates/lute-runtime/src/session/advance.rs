@@ -302,7 +302,7 @@ pub fn run_advance(
     };
     // dsl 0.27.0 §4: once the game is over the clock does not move on — the
     // refused step still says where the clock stands (HW27-08).
-    if let Ok(true) = crate::exec::seam::terminal_holds(p, w) {
+    if let Ok(true) = crate::seam::terminal_holds(p, w) {
         let at = clock.describe(from);
         return (
             body(
@@ -316,7 +316,7 @@ pub fn run_advance(
                 Vec::new(),
             ),
             Vec::new(),
-            Some(crate::exec::seam::advance_after_terminal(n, p)),
+            Some(crate::seam::advance_after_terminal(n, p)),
         );
     }
     // dsl 0.27.0 §4 (T2-5): a finite clock stops at its last position. An
@@ -387,7 +387,7 @@ pub fn run_advance(
             }
             // dsl 0.27.0 §4: a closed seam (terminal, a false gate) raises
             // nothing; the clock still moves and settles.
-            if crate::exec::seam::clock_raise_open(p, w, end, || clock.describe(at), &mut closed) {
+            if crate::seam::clock_raise_open(p, w, end, || clock.describe(at), &mut closed) {
                 let (occasion, quests, halt) = run_occasion(p, w, n, end, &None, &None, choose);
                 days.push(DayRaise {
                     at: clock.describe(at),
@@ -431,7 +431,7 @@ pub fn run_advance(
             stop = halt;
             break;
         }
-        if !crate::exec::seam::clock_raise_open(p, w, start, || clock.describe(at), &mut closed) {
+        if !crate::seam::clock_raise_open(p, w, start, || clock.describe(at), &mut closed) {
             w.defer_by = None;
             continue;
         }
@@ -470,7 +470,7 @@ pub fn run_advance(
             settled.extend(s);
             stop = halt;
             if stop.is_none()
-                && crate::exec::seam::clock_raise_open(
+                && crate::seam::clock_raise_open(
                     p,
                     w,
                     end,
@@ -505,7 +505,7 @@ pub fn run_advance(
         stop = halt;
         let open = next.filter(|o| {
             stop.is_none()
-                && crate::exec::seam::clock_raise_open(p, w, o, || clock.describe(at), &mut closed)
+                && crate::seam::clock_raise_open(p, w, o, || clock.describe(at), &mut closed)
         });
         if open.is_none() {
             w.defer_by = None;

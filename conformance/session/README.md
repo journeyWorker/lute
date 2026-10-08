@@ -1,6 +1,7 @@
 # Runtime session conformance cases
 
-Each case is a minimal project and `script.play.yaml` used by `lute play`.
+Each case is a minimal project under `<case>/project/`, played by its
+`project/script.play.yaml` with `lute play`.
 
 - `occasion-first` — first selection and priority tie ordering.
 - `occasion-sequence` — sequence selection consumes ordered candidates.

@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use lute_trace::exec::session::{
+use lute_runtime::session::{
     kind_label, value_to_json, Candidate, Presented, QuestAdvance, StepBody, Verdict,
 };
 use serde_json::{json, Value as Json};
-use lute_trace::Value;
+use lute_runtime::Value;
 
 use super::human::pick_label;
 use super::run::Playthrough;

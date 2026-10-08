@@ -10,10 +10,10 @@ use serde_json::{json, Value as Json};
 use super::format::value_to_json;
 use super::{addr, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED};
 use crate::eval::Read;
-use crate::exec::driver::{
+use crate::driver::{
     guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
 };
-use crate::exec::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
+use crate::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
 use crate::{UnresolvedAtom, Value};
 
 /// One premise of a failed rule attempt, named for a refusal when it is
@@ -225,7 +225,7 @@ impl<D: Driver> Machine<D> {
                 }
                 match self.store.read(a) {
                     Read::Value(v) if a.contains('.') => {
-                        crate::report::value_text(&v).unwrap_or_else(|| a.to_string())
+                        crate::value_text(&v).unwrap_or_else(|| a.to_string())
                     }
                     _ => a.to_string(),
                 }

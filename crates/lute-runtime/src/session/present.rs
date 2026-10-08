@@ -14,7 +14,7 @@ use super::walk::{absorb, consumed_bridges, play_machine, walk_stop, PlayHalt, W
 use super::world::{json_to_value, World};
 use super::step::StepBody;
 use crate::datalog::Fact;
-use crate::exec::{Carry, Seed};
+use crate::{Carry, Seed};
 use crate::{MockSet, Value};
 /// Maximum depth of a declared-advance cascade before a likely cycle is
 /// rejected. Ordinary plays have one or a small finite chain; this is only a
@@ -118,12 +118,12 @@ pub fn spend_group<'p>(p: &'p ExecProject, id: &'p str) -> Vec<&'p str> {
 
 /// The `once` keys one presentation of `id` (for `member`) spends: every
 /// beat of its [`spend_group`], a `for` beat's per member (dsl 0.28.0,
-/// [`crate::exec::cadence::spend_key`]).
+/// [`spend_key`](crate::cadence::spend_key).
 fn spend_keys(p: &ExecProject, id: &str, member: Option<&str>) -> Vec<String> {
     spend_group(p, id)
         .into_iter()
         .map(|m| match p.index.beats.iter().find(|b| b.id == m) {
-            Some(b) => crate::exec::cadence::spend_key(b, member),
+            Some(b) => crate::cadence::spend_key(b, member),
             None => m.to_string(),
         })
         .collect()
@@ -148,12 +148,12 @@ pub fn spend_shared(p: &ExecProject, w: &mut World, id: &str, member: Option<&st
 /// through its entry path (first-read effects, `entry.<id>.read`), a bundle
 /// beat through its `beat` record's body (dsl 0.23.0 §4). `member` is the
 /// raised member a kind beat reads as `occasion.target` (dsl 0.26.0 §5).
-pub fn present(
+pub fn present<B, C>(
     p: &ExecProject,
     w: &mut World,
     beat: &IndexBeat,
     member: Option<&str>,
-    mock: &MockSet,
+    mock: &MockSet<B, C>,
 ) -> (Presented, Option<PlayHalt>) {
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
@@ -188,21 +188,21 @@ pub fn present(
             w.visited.insert(beat.id.clone());
             spend_shared(p, w, &beat.id, member, true);
             spend_at_clock(p, w, &beat.id, member);
-            crate::exec::cadence::spend_season(p, w, &beat.id, member);
+            crate::cadence::spend_season(p, w, &beat.id, member);
         }
         // dsl 0.22.0 §7: a completed first read sets the user-tier
         // `everRead` beside the runner's run-tier `read`; never reset. dsl
         // 0.25.0 §2: a shared entry's read spends its key's other beats.
         // dsl 0.28.0 (T1-6): a `for` entry is read per member.
         BeatKind::Entry => {
-            let read = crate::exec::cadence::entry_read_flag(beat, member);
+            let read = crate::cadence::entry_read_flag(beat, member);
             if w.state.get(&read) == Some(&Value::Bool(true)) {
                 w.state.insert(ever_read_path(&beat.id), Value::Bool(true));
                 if beat.share.is_some() || beat.for_kind.is_some() {
                     spend_shared(p, w, &beat.id, member, true);
                 }
                 spend_at_clock(p, w, &beat.id, member);
-                crate::exec::cadence::spend_season(p, w, &beat.id, member);
+                crate::cadence::spend_season(p, w, &beat.id, member);
             }
         }
     }

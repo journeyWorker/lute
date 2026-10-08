@@ -13,8 +13,8 @@ use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
 
 use crate::datalog::Fact;
-use crate::exec::store::{Store, StoreSchema};
-use crate::exec::{BridgeReads, Slot};
+use crate::store::{Store, StoreSchema};
+use crate::{BridgeReads, Slot};
 
 /// Everything the playthrough reads from the compiled project.
 pub struct ExecProject {
@@ -62,7 +62,7 @@ pub struct ExecProject {
     pub(crate) store_schemas: [std::sync::Arc<StoreSchema>; 2],
     /// Each artifact's command stream, decoded once: every Machine a
     /// playthrough builds over a document shares it.
-    pub(crate) codes: BTreeMap<String, std::sync::Arc<crate::exec::machine::Code>>,
+    pub(crate) codes: BTreeMap<String, std::sync::Arc<crate::machine::Code>>,
     /// Capability-declared world events, unioned across the documents — what
     /// an `event:` step may fire (dsl 0.22.0 §9).
     pub world_events: BTreeSet<String>,
@@ -95,11 +95,11 @@ pub struct ExecProject {
     /// — how `{{occasion.target}}` renders a member that is a cast id.
     pub display_names: BTreeMap<String, String>,
     /// dsl 0.27.0 §5: the seasons and quest rearms the session observes.
-    pub cadence: crate::exec::cadence::CadencePlan,
+    pub cadence: crate::cadence::CadencePlan,
     /// 0.27 prerelease OT-F-2: what a transcript needle's attribute block
     /// may name — the union of every document's vocabulary. Empty (every
     /// value legal, stamps unknown) unless the caller fills it.
-    pub needles: crate::exec::record::NeedleVocab,
+    pub needles: crate::input::NeedleVocab,
     /// dsl 0.28.0 §4: the scene ids whose `after:` a chain of the manifest's
     /// `chapters:` derived (never one the scene wrote, whatever its text), so
     /// a reason can say where that `after:` comes from. Empty unless the
@@ -480,7 +480,7 @@ impl ExecProject {
         ];
         let codes = artifacts
             .iter()
-            .map(|(doc, art)| (doc.clone(), std::sync::Arc::new(crate::exec::machine::Code::of(art))))
+            .map(|(doc, art)| (doc.clone(), std::sync::Arc::new(crate::machine::Code::of(art))))
             .collect();
 
         let bridge_reads = std::sync::Arc::new(BridgeReads {
@@ -488,7 +488,7 @@ impl ExecProject {
             ..BridgeReads::of(artifacts.values())
         });
         let conds = Conds::of(&index, &artifacts);
-        let cadence = crate::exec::cadence::CadencePlan::of(
+        let cadence = crate::cadence::CadencePlan::of(
             &index,
             &artifacts,
             &quest_docs,
@@ -607,7 +607,7 @@ impl ExecProject {
 /// derived over in another, and a `run.*`/`user.*`/`quest.*` path declared
 /// elsewhere still needs its declared type here.
 ///
-/// [`Machine`]: crate::exec::Machine
+/// [`Machine`]: crate::Machine
 pub fn play_artifact_json(doc_json: &Json, p: &ExecProject) -> Json {
     let mut v = doc_json.clone();
     if let Json::Object(map) = &mut v {

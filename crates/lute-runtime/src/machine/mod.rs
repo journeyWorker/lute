@@ -11,7 +11,7 @@
 //!   resolution for a `converge` that points one past the last record;
 //! - **CEL guards** (cel-and-facts.md): every guard, `::set` value and match
 //!   arm is the slot's IR `expr`, decoded once per [`Code`] and evaluated by
-//!   [`crate::exec::expr`] — no CEL is parsed at run time (spec 0.38.0 §13);
+//!   [`crate::expr`] — no CEL is parsed at run time (spec 0.38.0 §13);
 //!   the slot's `cel` text is kept for messages;
 //! - **one write path** ([`Machine::write`] over the [`Store`]): every state
 //!   write — `::set`, a directive effect, a bridge answer, a grant credit, a
@@ -102,18 +102,18 @@ pub const MENU_MARK_KEYS: [&str; 2] = ["spent", "ineligible"];
 /// The `note` of a `choice` / `hub` record where the driver made no
 /// decision ([`Pick::Unscripted`]) — what `lute play`'s halt looks for.
 ///
-/// [`Pick::Unscripted`]: crate::exec::Pick::Unscripted
+/// [`Pick::Unscripted`]: crate::Pick::Unscripted
 pub const NOTE_NO_DECISION: &str = "no mock decision — incomplete";
 /// The `note` of a `choice` / `hub` record where an automatic pick
 /// ([`Pick::AutoFirst`] / [`Pick::HubAutoPass`]) found no open option.
 ///
-/// [`Pick::AutoFirst`]: crate::exec::Pick::AutoFirst
-/// [`Pick::HubAutoPass`]: crate::exec::Pick::HubAutoPass
+/// [`Pick::AutoFirst`]: crate::Pick::AutoFirst
+/// [`Pick::HubAutoPass`]: crate::Pick::HubAutoPass
 pub const NOTE_NO_ELIGIBLE: &str = "no option decided eligible — incomplete";
 /// The `note` of a `choice` record whose scripted decision the driver
 /// dropped ([`Forced::Skip`] on a branch).
 ///
-/// [`Forced::Skip`]: crate::exec::Forced::Skip
+/// [`Forced::Skip`]: crate::Forced::Skip
 pub const NOTE_SKIPPED: &str = "scripted decision skipped — incomplete";
 
 /// What a walk starts from beyond the artifact and any carryover — the
@@ -140,8 +140,8 @@ pub struct Seed {
     pub derive: bool,
 }
 
-impl From<&MockSet> for Seed {
-    fn from(mock: &MockSet) -> Self {
+impl<B, C> From<&MockSet<B, C>> for Seed {
+    fn from(mock: &MockSet<B, C>) -> Self {
         Seed {
             state: mock
                 .state

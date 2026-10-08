@@ -19,6 +19,7 @@ lute-model = { path = "../lute-model" }
 lute-semantic = { path = "../lute-semantic" }
 lute-resolve = { path = "../lute-resolve" }
 lute-trace = { path = "../lute-trace" }
+lute-runtime = { path = "../lute-runtime" }
 lute-cel = { path = "../lute-cel" }
 lute-lint = { path = "../lute-lint" }
 clap = { version = "4", features = ["derive"] }

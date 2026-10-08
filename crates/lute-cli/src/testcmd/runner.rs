@@ -807,7 +807,7 @@ fn run_one_test(
             .enumerate()
             .filter_map(move |(i, v)| Some((key, i, v.as_str()?)))
     };
-    let needles = lute_trace::exec::record::NeedleVocab::of(&input, &meta);
+    let needles = lute_runtime::NeedleVocab::of(&input, &meta);
     let needle_problems: Vec<String> = expect_items("transcriptContains")
         .chain(expect_items("transcriptLacks"))
         .filter_map(|(key, i, n)| {
@@ -1402,12 +1402,12 @@ fn run_one_test(
                         .collect::<Vec<_>>()
                         .join(", ")
                 });
-                let known = |r: &str| lute_trace::exec::session::PREMISE_KINDS.contains(&r);
+                let known = |r: &str| lute_runtime::session::PREMISE_KINDS.contains(&r);
                 let expected = match (want, &reason) {
                     (Some(_), Some(r)) if known(r) => format!("false ({r})"),
                     (Some(_), Some(r)) => format!(
                         "false for a reason, and `{r}` is none (one of: {})",
-                        lute_trace::exec::session::PREMISE_KINDS.join(", ")
+                        lute_runtime::session::PREMISE_KINDS.join(", ")
                     ),
                     (Some(b), None) => b.to_string(),
                     (None, _) => "true, false or `{ false: <reason> }`".to_string(),
@@ -1870,7 +1870,7 @@ fn eligibility_alone(
     doc: &lute_syntax::ast::Document,
     input: &lute_check::CheckInput,
     checked: &lute_check::CheckResult,
-    mocks: &lute_trace::MockSet,
+    mocks: &lute_trace::mock::MockSet,
     id: &str,
     project_asserts: Option<&BTreeSet<String>>,
 ) -> Option<TraceReport> {

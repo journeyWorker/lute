@@ -7,11 +7,10 @@ use std::process::ExitCode;
 
 use lute_compile::ExecutionIr;
 use lute_manifest::schema::OccasionDecl;
-use lute_trace::exec::record::NeedleVocab;
+use lute_runtime::{session::ExecProject, BridgeReads, NeedleVocab};
 use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_load::nearest_manifest_dir;
-use lute_trace::exec::session::ExecProject;
-use lute_trace::exec::BridgeReads;
+
 /// `path` relative to `root`, forward-slash joined — the project-relative
 /// artifact identity `compile_all.rs`'s private `rel_slash` uses.
 fn project_rel(path: &Path, root: &Path) -> Option<String> {

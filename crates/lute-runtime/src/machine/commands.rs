@@ -7,8 +7,8 @@ use serde_json::{json, Value as Json};
 use super::format::{substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
 use crate::eval::Read;
-use crate::exec::driver::{Driver, SiteKind};
-use crate::exec::store::{json_arg_to_string, render_fact};
+use crate::driver::{Driver, SiteKind};
+use crate::store::{json_arg_to_string, render_fact};
 use crate::{UnresolvedAtom, Value};
 
 impl<D: Driver> Machine<D> {
@@ -215,7 +215,7 @@ impl<D: Driver> Machine<D> {
     /// beat's, or a trace left it unmocked) the write is an [`UnknownSite`]
     /// at `site` and is not applied.
     ///
-    /// [`UnknownSite`]: crate::exec::driver::UnknownSite
+    /// [`UnknownSite`]: crate::driver::UnknownSite
     pub(super) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
         match self.store.read(lute_check::beats::OCCASION_TARGET) {
             Read::Value(Value::Str(member)) => Some(member),

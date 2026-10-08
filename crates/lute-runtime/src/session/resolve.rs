@@ -10,7 +10,7 @@ use serde_json::Value as Json;
 use super::project::{state_entry_type, ExecProject};
 use super::world::parse_ground_fact;
 use crate::datalog::Fact;
-use crate::exec::BridgeQueues;
+use crate::driver::BridgeQueues;
 use crate::Value;
 
 /// A `state:` write resolved against the declared type.

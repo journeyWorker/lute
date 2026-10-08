@@ -1,4 +1,4 @@
-//! The [`crate::exec::Machine`]'s world (`docs/design/runtime-unification.md`
+//! The [`crate::Machine`]'s world (`docs/design/runtime-unification.md`
 //! §3.4): live state, base facts, the Datalog closure over them, the visited
 //! set — and the one write path every construct uses.
 //!

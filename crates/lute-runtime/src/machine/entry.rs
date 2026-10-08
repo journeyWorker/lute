@@ -8,7 +8,7 @@ use serde_json::{json, Value as Json};
 
 use super::{addr, Machine, Site};
 use crate::eval::Read;
-use crate::exec::driver::{Driver, SiteKind};
+use crate::driver::{Driver, SiteKind};
 use crate::Value;
 
 
@@ -52,7 +52,7 @@ impl<D: Driver> Machine<D> {
         };
         let any_read = format!("entry.{id}.read");
         let read_path = match &member {
-            Some(m) => crate::exec::cadence::entry_member_read_path(&id, m),
+            Some(m) => crate::cadence::entry_member_read_path(&id, m),
             None => any_read.clone(),
         };
         let first_read = self.store.read(&read_path) != Read::Value(Value::Bool(true));

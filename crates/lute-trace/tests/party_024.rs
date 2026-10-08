@@ -8,8 +8,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::datalog::{ir_kinds, Explanation, Fact, Premise, Program, Proof};
-use lute_trace::{trace_document, EffectiveState, MockSet, TraceExit, Value};
+use lute_runtime::{
+    datalog::{ir_kinds, Explanation, Fact, Premise, Program, Proof},
+    eval::EffectiveState,
+    value::Value,
+};
+use lute_trace::{trace_document, TraceExit};
+use lute_trace::mock::MockSet;
 
 const PARTY: &str = r#"---
 kind: scene

@@ -1,4 +1,4 @@
-//! The [`Driver`] seam of the [`crate::exec::Machine`]: the only places the
+//! The [`Driver`] seam of the [`crate::Machine`]: the only places the
 //! runtimes (`lute run`, `lute play`, `lute trace`) may differ
 //! (`docs/design/runtime-unification.md` §3.3). Everything else — guards,
 //! effects, derivation, quests, handlers, jumps — is one rule in the Machine.
@@ -7,10 +7,10 @@ use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::Value as Json;
 
-use crate::mock::BridgeAnswer;
+use crate::input::BridgeAnswer;
 use crate::value::UnresolvedAtom;
 
-/// What a runtime decides for the walk the [`crate::exec::Machine`] drives.
+/// What a runtime decides for the walk the [`crate::Machine`] drives.
 pub trait Driver {
     /// A `<branch>` / `<hub>` presentation. Option verdicts are already judged.
     fn choose(&mut self, menu: &Menu<'_>) -> Pick;
@@ -150,7 +150,7 @@ impl GuardRead {
         match self {
             GuardRead::Path(p, v) => {
                 let p = lute_cel::path::bracket_spelling_of(p);
-                match crate::report::value_text(v) {
+                match crate::value_text(v) {
                     Some(t) => format!("`{p}` is {t}"),
                     None => format!("`{p}` is unset"),
                 }
@@ -180,7 +180,7 @@ impl GuardRead {
     pub fn yaml_mock(&self) -> String {
         use crate::datalog::fact_spelling as f_;
         match self {
-            GuardRead::Path(p, _) => match crate::exec::session::quest_state_id(p) {
+            GuardRead::Path(p, _) => match crate::session::quest_state_id(p) {
                 Some(q) => format!("`quests: {{ {q}: <state> }}`"),
                 None => format!("`state: {{ {p}: <value> }}`"),
             },

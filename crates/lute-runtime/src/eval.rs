@@ -196,7 +196,7 @@ impl<'a> EffectiveState<'a> {
 /// [`EffectiveState::read`]'s own copy of
 /// `lute_check::cel_paths::is_reserved_quest_path` (`pub(crate)` there, so
 /// not reusable across the D1 quarantine boundary).
-pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
+pub fn is_reserved_quest_path(path: &str) -> bool {
     let segs: Vec<&str> = path.split('.').collect();
     matches!(
         segs.as_slice(),
@@ -210,7 +210,7 @@ pub(crate) fn is_reserved_quest_path(path: &str) -> bool {
 /// ([`reserved_quest_default`]). Mirrors
 /// `lute_check::cel_paths::is_reserved_quest_objective_done` (`pub(crate)`
 /// there too).
-pub(crate) fn is_reserved_quest_objective_done_path(path: &str) -> bool {
+pub fn is_reserved_quest_objective_done_path(path: &str) -> bool {
     matches!(
         path.split('.').collect::<Vec<&str>>().as_slice(),
         ["quest", _, "objectives", _, "done" | "failed"]
@@ -218,7 +218,7 @@ pub(crate) fn is_reserved_quest_objective_done_path(path: &str) -> bool {
 }
 
 /// dsl 0.24.0 §2: `quest.<id>.failedBy` — the reason enum of a failed quest.
-pub(crate) fn is_reserved_quest_failed_by_path(path: &str) -> bool {
+pub fn is_reserved_quest_failed_by_path(path: &str) -> bool {
     matches!(
         path.split('.').collect::<Vec<&str>>().as_slice(),
         ["quest", _, "failedBy"]
@@ -230,7 +230,7 @@ pub(crate) fn is_reserved_quest_failed_by_path(path: &str) -> bool {
 /// here since trace bypasses that decl tier for reserved paths);
 /// `quest.<id>.state` and `quest.<id>.failedBy` → the literal string
 /// `"unset"` (their pre-activation / pre-failure value, dsl 0.2.0 §5.2).
-pub(crate) fn reserved_quest_default(path: &str) -> Value {
+pub fn reserved_quest_default(path: &str) -> Value {
     if is_reserved_quest_objective_done_path(path) {
         Value::Bool(false)
     } else {
@@ -552,9 +552,9 @@ mod tests {
     /// Lower `raw` exactly as `lute compile` does and evaluate its `expr`.
     fn eval_str(raw: &str, env: &EvalEnv<'_>) -> (Value, Vec<UnresolvedAtom>) {
         let lowered = lute_compile::expr::lower_expr(raw).expect("CEL inside the profile");
-        let expr = crate::exec::expr::Expr::decode(&serde_json::to_value(lowered).unwrap());
+        let expr = crate::expr::Expr::decode(&serde_json::to_value(lowered).unwrap());
         let mut unresolved = Vec::new();
-        let v = crate::exec::expr::eval(&expr, env, None, &mut unresolved);
+        let v = crate::expr::eval(&expr, env, None, &mut unresolved);
         (v, unresolved)
     }
 

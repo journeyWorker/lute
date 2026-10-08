@@ -21,7 +21,7 @@
 //! (a rearmed quest whose `start` holds activates in the same settle) and
 //! before the next eligibility judgment. An `advance:` settles the quests —
 //! and so observes — at every position the clock crosses
-//! ([`walk_clock`](crate::exec::session::walk_clock)): a window that opens
+//! ([`walk_clock`](crate::session::walk_clock)): a window that opens
 //! and closes inside one advance is still seen, and its quests start, fail
 //! and reset there. The first observation is the baseline: a condition
 //! already true when the playthrough starts opens nothing.
@@ -42,11 +42,11 @@ use lute_compile::index::{BeatKind, IndexBeat, ProjectIndex};
 use lute_compile::BeatOnce;
 use serde_json::{json, Value as Json};
 
-use crate::exec::session::{
+use crate::session::{
     ever_read_path, json_to_value, spend_group, value_to_json, Conds, ExecProject, QuestAdvance,
     World,
 };
-use crate::exec::Slot;
+use crate::expr::Slot;
 use crate::Value;
 
 /// One declared season, resolved against the project.
@@ -360,10 +360,10 @@ pub fn once_word(once: &BeatOnce) -> std::borrow::Cow<'static, str> {
 /// when its condition has held within its `once` period ([`latched`]) or
 /// holds now, `Ok(None)` when not (or the beat declares none), `Err` with
 /// the atoms when it is undecided now.
-pub fn spent_by<D: crate::exec::Driver>(
+pub fn spent_by<D: crate::Driver>(
     p: &ExecProject,
     w: &World,
-    eval: &mut crate::exec::Machine<D>,
+    eval: &mut crate::Machine<D>,
     beat: &IndexBeat,
     member: Option<&str>,
 ) -> Result<Option<String>, Vec<crate::UnresolvedAtom>> {

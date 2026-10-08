@@ -17,7 +17,7 @@
 //!
 //! wasm-clean: no filesystem, process or threads.
 //!
-//! [`Machine`]: crate::exec::Machine
+//! [`Machine`]: crate::Machine
 
 mod advance;
 mod eligibility;
@@ -64,7 +64,10 @@ pub struct Session<'p> {
 impl<'p> Session<'p> {
     /// The playthrough's starting world ([`seed_world`]); `Err` is every seed
     /// the project cannot take.
-    pub fn seed(project: &'p ExecProject, seed: &WorldSeed<'_>) -> Result<Self, Vec<SeedError>> {
+    pub fn seed<B, C>(
+        project: &'p ExecProject,
+        seed: &WorldSeed<'_, B, C>,
+    ) -> Result<Self, Vec<SeedError>> {
         Ok(Session {
             project,
             world: seed_world(project, seed)?,

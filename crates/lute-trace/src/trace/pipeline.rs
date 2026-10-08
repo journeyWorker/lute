@@ -303,7 +303,7 @@ pub(super) fn trace_pipeline(
         .occasions
         .iter()
         .filter_map(|raw| {
-            let (on, Some(target)) = crate::split_occasion(raw) else {
+            let (on, Some(target)) = lute_runtime::split_occasion(raw) else {
                 return None;
             };
             let decl = input.snapshot.occasions.get(on)?;
@@ -398,7 +398,7 @@ pub(super) fn trace_pipeline(
                     let raises: Vec<(&String, &str)> = mocks
                         .occasions
                         .iter()
-                        .filter_map(|r| match crate::split_occasion(r) {
+                        .filter_map(|r| match lute_runtime::split_occasion(r) {
                             (name, Some(t)) if name == on => Some((r, t)),
                             _ => None,
                         })
@@ -514,7 +514,7 @@ pub(super) fn trace_pipeline(
     let mut gate_refusals: Vec<Diagnostic> = Vec::new();
     if let Some(p) = judging.as_ref().filter(|_| quest_raises) {
         for raised in &mocks.occasions {
-            let (name, target) = crate::split_occasion(raised);
+            let (name, target) = lute_runtime::split_occasion(raised);
             let closed = exec::seam::closed_in(p, &mut m, name, target);
             m.bind_occasion_target(None);
             let why = match closed {

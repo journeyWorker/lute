@@ -9,9 +9,9 @@ use serde_json::Value as Json;
 
 use super::plugin::BridgeReads;
 use super::{Carry, Code, Machine, Seed};
-use crate::exec::driver::Driver;
-use crate::exec::session::parse_ground_fact;
-use crate::exec::store::{Store, StoreSchema, World};
+use crate::driver::Driver;
+use crate::session::parse_ground_fact;
+use crate::store::{Store, StoreSchema, World};
 use crate::Value;
 
 /// Where a Machine's [`Store`] reads its declarations from.

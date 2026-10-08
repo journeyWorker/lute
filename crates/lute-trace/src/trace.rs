@@ -32,19 +32,20 @@ use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
 use lute_syntax::datalog::FactTerm;
 use serde_json::Value as Json;
 
-use crate::exec::session::{
+use lute_runtime::session::{
     ExecProject, Premise, Verdict as SessionVerdict, World as SessionWorld,
 };
-use crate::exec::{
-    self, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine, Menu,
-    MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
+use lute_runtime::{
+    self as exec, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine,
+    Menu, MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
 };
-use crate::mock::{self, BridgeAnswer, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
+use lute_runtime::BridgeAnswer;
+use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
     self, ComponentBoundary, ComponentSite, Coverage, CoverageCount, Decision, GrantCredit,
     GrantReward, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
-use crate::value::{UnresolvedAtom, Value};
+use lute_runtime::value::{UnresolvedAtom, Value};
 use lute_compile::index::BeatKind;
 
 mod ast;

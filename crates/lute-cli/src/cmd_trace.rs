@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use lute_check::check;
-use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
+use lute_runtime::MockSet;
+use lute_trace::{merge, parse_mock_yaml, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use lute_load::{build_input, BuiltInput};

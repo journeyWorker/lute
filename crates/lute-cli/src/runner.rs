@@ -11,7 +11,7 @@
 //! under three-valued logic and refuses to run the engine machinery: `run`
 //! consumes the EXECUTION IR an engine would and actually does the engine's job.
 //!
-//! The walk itself is [`lute_trace::exec::Machine`] — the one walker `lute
+//! The walk itself is [`lute_runtime::Machine`] — the one walker `lute
 //! play` runs too (its module doc lists what it implements: the dispatcher,
 //! CEL guards, the Datalog fixpoint, `choice`/`hub`/`match`, the quest
 //! lifecycle, `visited(…)`, lore entries and bundle beats). This module is
@@ -58,7 +58,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::ExitCode;
 
-use lute_trace::exec::{
+use lute_runtime::{
     render_fact, value_to_json, value_to_string, BridgeCall, BridgeQueues, BridgeReply, Driver,
     Forced, Machine, Menu, OnUnknown, Pick, ScriptedChoices, Seed, UnknownSite, Verdict,
     LINE_DELIVERY_KEYS, MENU_MARK_KEYS,
@@ -185,7 +185,7 @@ pub fn run_artifact(
 
     // ── Mock playthrough (same surfaces as `lute trace --mock`). ──
     let mut mock_set = match mock {
-        None => lute_trace::MockSet::default(),
+        None => lute_runtime::MockSet::default(),
         Some(path) => match std::fs::read_to_string(path) {
             Ok(t) => match lute_trace::parse_mock_yaml(&t) {
                 Ok(m) => m,
@@ -241,20 +241,20 @@ pub fn run_artifact(
             let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
             let mut dump_state = snapshot.state.clone();
             for (path, read) in snapshot.reads {
-                if let lute_trace::Read::Value(value) = read {
+                if let lute_runtime::Read::Value(value) = read {
                     dump_state.insert(path.clone(), value.clone());
                 }
             }
             for (id, status) in snapshot.quest_status {
                 dump_state.insert(
                     format!("quest.{id}.state"),
-                    lute_trace::Value::Str(status.clone()),
+                    lute_runtime::Value::Str(status.clone()),
                 );
             }
             if let Some(target) = snapshot.occasion_target {
                 dump_state.insert(
                     "occasion.target".to_string(),
-                    lute_trace::Value::Str(target.to_string()),
+                    lute_runtime::Value::Str(target.to_string()),
                 );
             }
             let line = ConditionDumpRecord {
@@ -297,27 +297,27 @@ pub fn run_artifact(
         }
     }
 }
-pub(crate) fn typed_value(value: &lute_trace::Value) -> Json {
+pub(crate) fn typed_value(value: &lute_runtime::Value) -> Json {
     match value {
-        lute_trace::Value::Bool(v) => json!({"bool": v}),
-        lute_trace::Value::Int(v) => json!({"int": v}),
-        lute_trace::Value::Double(v) => json!({"double": if v.is_nan() { json!("nan") } else if v.is_infinite() { json!(if *v > 0.0 { "inf" } else { "-inf" }) } else { json!(v) }}),
-        lute_trace::Value::Str(v) => json!({"string": v}),
-        lute_trace::Value::Unknown => json!({"error": "unknown"}),
-        lute_trace::Value::Error(v) => json!({"error": v}),
+        lute_runtime::Value::Bool(v) => json!({"bool": v}),
+        lute_runtime::Value::Int(v) => json!({"int": v}),
+        lute_runtime::Value::Double(v) => json!({"double": if v.is_nan() { json!("nan") } else if v.is_infinite() { json!(if *v > 0.0 { "inf" } else { "-inf" }) } else { json!(v) }}),
+        lute_runtime::Value::Str(v) => json!({"string": v}),
+        lute_runtime::Value::Unknown => json!({"error": "unknown"}),
+        lute_runtime::Value::Error(v) => json!({"error": v}),
     }
 }
 
 #[allow(dead_code)]
 pub(crate) fn activation_json(
-    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    state: &std::collections::BTreeMap<String, lute_runtime::Value>,
     types: &std::collections::BTreeMap<String, String>,
 ) -> Json {
     activation_json_scoped(state, types, &BTreeSet::new())
 }
 
 pub(crate) fn activation_json_scoped(
-    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    state: &std::collections::BTreeMap<String, lute_runtime::Value>,
     types: &std::collections::BTreeMap<String, String>,
     selected_roots: &BTreeSet<String>,
 ) -> Json {
@@ -325,10 +325,10 @@ pub(crate) fn activation_json_scoped(
 }
 
 pub(crate) fn activation_json_scoped_with_defaults(
-    state: &std::collections::BTreeMap<String, lute_trace::Value>,
+    state: &std::collections::BTreeMap<String, lute_runtime::Value>,
     types: &std::collections::BTreeMap<String, String>,
     selected_roots: &BTreeSet<String>,
-    defaults: &BTreeMap<String, lute_trace::Value>,
+    defaults: &BTreeMap<String, lute_runtime::Value>,
 ) -> Json {
     fn insert(node: &mut Json, parts: &[&str], value: Json) {
         if parts.is_empty() {
@@ -443,7 +443,7 @@ pub(crate) fn condition_scope(expr: &Json) -> (BTreeSet<String>, BTreeSet<String
 
 
 pub(crate) fn activation_json_paths(
-    state: &BTreeMap<String, lute_trace::Value>,
+    state: &BTreeMap<String, lute_runtime::Value>,
     types: &BTreeMap<String, String>,
     selected_paths: &BTreeSet<String>,
 ) -> Json {
@@ -498,7 +498,7 @@ pub(crate) fn path_wanted(selected_paths: &BTreeSet<String>, candidate: &str) ->
 }
 
 pub(crate) fn condition_facts(
-    facts: &std::collections::BTreeSet<lute_trace::datalog::Fact>,
+    facts: &std::collections::BTreeSet<lute_runtime::datalog::Fact>,
     relations: &BTreeSet<String>,
 ) -> Json {
     facts.iter().filter(|(rel, _)| relations.contains(rel)).map(|(rel, args)| json!({
@@ -513,16 +513,16 @@ mod dump_tests {
 
     #[test]
     fn typed_encoder_preserves_numeric_kinds_and_errors() {
-        assert_eq!(typed_value(&lute_trace::Value::Int(3)), json!({"int": 3}));
-        assert_eq!(typed_value(&lute_trace::Value::Double(3.5)), json!({"double": 3.5}));
-        assert_eq!(typed_value(&lute_trace::Value::Error("division by zero".into())), json!({"error": "division by zero"}));
+        assert_eq!(typed_value(&lute_runtime::Value::Int(3)), json!({"int": 3}));
+        assert_eq!(typed_value(&lute_runtime::Value::Double(3.5)), json!({"double": 3.5}));
+        assert_eq!(typed_value(&lute_runtime::Value::Error("division by zero".into())), json!({"error": "division by zero"}));
     }
 
     #[test]
     fn activation_omits_unset_slots_but_exposes_quest_state() {
         let state = std::collections::BTreeMap::from([(
             "run.visits".to_string(),
-            lute_trace::Value::Bool(true),
+            lute_runtime::Value::Bool(true),
         )]);
         let types = std::collections::BTreeMap::from([
             ("run.tip".to_string(), "string".to_string()),
@@ -538,8 +538,8 @@ mod dump_tests {
     #[test]
     fn path_activation_omits_unset_leaf_but_keeps_read_list() {
         let state = BTreeMap::from([
-            ("run.visits.0".to_string(), lute_trace::Value::Str("zero".into())),
-            ("run.visits.1".to_string(), lute_trace::Value::Str("one".into())),
+            ("run.visits.0".to_string(), lute_runtime::Value::Str("zero".into())),
+            ("run.visits.1".to_string(), lute_runtime::Value::Str("one".into())),
         ]);
         let types = BTreeMap::new();
         let paths = BTreeSet::from(["run.lantern.wish".to_string(), "run.visits".to_string()]);
@@ -574,7 +574,7 @@ mod dump_tests {
                 }
             ]
         });
-        let mock = lute_trace::MockSet {
+        let mock: lute_runtime::MockSet = lute_runtime::MockSet {
             occasions: vec!["landed@fish.cod".into()],
             ..Default::default()
         };
@@ -585,7 +585,8 @@ mod dump_tests {
             .transcript
             .iter()
             .any(|record| record["text"] == "You land a cod."));
-        let mut unraised = run_machine(&art, &Default::default(), None, Some("catch.land"));
+        let mut unraised =
+            run_machine(&art, &lute_runtime::MockSet::<(), ()>::default(), None, Some("catch.land"));
         unraised.run().unwrap();
         assert!(unraised
             .driver()
@@ -993,9 +994,9 @@ fn owned_write_refusal(art: &Json) -> Option<String> {
 /// compiled target metadata carries the same member set trace uses: a
 /// `targetKind` carries its occasion prefix, while `forKind` carries members
 /// and accepts either a bare member or a prefixed target.
-fn direct_occasion_member(
+fn direct_occasion_member<B, C>(
     art: &Json,
-    mock: &lute_trace::MockSet,
+    mock: &lute_runtime::MockSet<B, C>,
     entry: Option<&str>,
     beat: Option<&str>,
 ) -> Option<String> {
@@ -1014,7 +1015,7 @@ fn direct_occasion_member(
     })?;
     let occasion = command.get("on").and_then(Json::as_str)?;
     let target = mock.occasions.iter().find_map(|raise| {
-        let (name, target) = lute_trace::split_occasion(raise);
+        let (name, target) = lute_runtime::split_occasion(raise);
         (name == occasion).then_some(target).flatten()
     });
     let target_kind = command
@@ -1056,10 +1057,10 @@ fn direct_occasion_member(
 
 /// Bind a direct lore presentation's occasion target, unless the mock seeded
 /// `occasion.target` explicitly (the trace path gives that seed precedence).
-pub(crate) fn bind_direct_occasion_target<D: Driver>(
+pub(crate) fn bind_direct_occasion_target<D: Driver, B, C>(
     m: &mut Machine<D>,
     art: &Json,
-    mock: &lute_trace::MockSet,
+    mock: &lute_runtime::MockSet<B, C>,
     entry: Option<&str>,
     beat: Option<&str>,
 ) {
@@ -1076,9 +1077,9 @@ pub(crate) fn bind_direct_occasion_target<D: Driver>(
 
 /// `lute run`'s Machine over `art`: a fresh walk seeded by `mock`,
 /// presenting `entry` / `beat` of a lore artifact when given.
-pub(crate) fn run_machine(
+pub(crate) fn run_machine<B, C>(
     art: &Json,
-    mock: &lute_trace::MockSet,
+    mock: &lute_runtime::MockSet<B, C>,
     entry: Option<&str>,
     beat: Option<&str>,
 ) -> Machine<RunDriver> {
@@ -1114,7 +1115,7 @@ pub(crate) struct RunDriver {
 }
 
 impl RunDriver {
-    pub(crate) fn from_mock(mock: &lute_trace::MockSet) -> Self {
+    pub(crate) fn from_mock<B, C>(mock: &lute_runtime::MockSet<B, C>) -> Self {
         RunDriver {
             choices: ScriptedChoices::new(mock.choose.clone(), Default::default()),
             bridges: BridgeQueues {
@@ -1172,7 +1173,7 @@ impl Driver for RunDriver {
 fn reported_state<'m>(
     m: &'m Machine<RunDriver>,
     art: &Json,
-) -> impl Iterator<Item = (&'m String, &'m lute_trace::Value)> {
+) -> impl Iterator<Item = (&'m String, &'m lute_runtime::Value)> {
     let declared: std::collections::BTreeSet<String> = art
         .get("state")
         .and_then(Json::as_array)

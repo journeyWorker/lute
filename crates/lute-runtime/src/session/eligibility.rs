@@ -14,7 +14,7 @@ use serde_json::Value as Json;
 use super::project::ExecProject;
 use super::walk::describe_atoms;
 use super::world::World;
-use crate::exec::{Driver, Machine, Slot};
+use crate::{Driver, Machine, Slot};
 use crate::{UnresolvedAtom, Value};
 
 /// A candidate's verdict (dsl 0.21.0 §4).
@@ -56,7 +56,7 @@ pub enum Premise {
     Gate {
         occasion: String,
         raw: String,
-        reads: Vec<crate::exec::GuardRead>,
+        reads: Vec<crate::GuardRead>,
     },
     /// dsl 0.27.0 §4 (HW27-04): the project's `terminal:` (`raw`) holds —
     /// the game is over and the engine raises no occasion (`occasion`, the
@@ -83,7 +83,7 @@ impl std::fmt::Display for Premise {
             } => write!(
                 f,
                 "`{occasion}` is not raised: its `raisedWhen: {raw}` is false{}",
-                crate::exec::seam::Closed::reads_text(reads)
+                crate::seam::Closed::reads_text(reads)
             ),
             Premise::Terminal { raw, .. } => {
                 write!(f, "the game is over: `terminal: {raw}` holds")
@@ -350,7 +350,7 @@ pub(super) fn candidates(
 /// own beats are judged under it: a `judge: before` judgement, or an
 /// earlier beat of a `select: sequence` raise, that makes `terminal:` hold
 /// does not close the beats of the raise already made.
-pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::exec::seam::Closed>>);
+pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::seam::Closed>>);
 
 impl RaiseSeam {
     /// Decide the seam of every candidate of `occasion` / `target` in `w`.
@@ -362,7 +362,7 @@ impl RaiseSeam {
             answering(p, occasion, target)
                 .into_iter()
                 .map(|(idx, beat, member)| {
-                    let closed = crate::exec::seam::closed_in(
+                    let closed = crate::seam::closed_in(
                         p,
                         &mut eval,
                         &beat.on,
@@ -374,7 +374,7 @@ impl RaiseSeam {
         )
     }
 
-    fn of(&self, idx: usize, member: Option<&str>) -> Option<crate::exec::seam::Closed> {
+    fn of(&self, idx: usize, member: Option<&str>) -> Option<crate::seam::Closed> {
         self.0
             .get(&(idx, member.map(str::to_string)))
             .cloned()
@@ -443,7 +443,7 @@ fn judge_with<D: Driver>(
     beat: &IndexBeat,
     member: Option<&str>,
     raised: Option<&str>,
-    decided: Option<Option<crate::exec::seam::Closed>>,
+    decided: Option<Option<crate::seam::Closed>>,
 ) -> Candidate {
     let flag = |path: String| w.state.get(&path) == Some(&Value::Bool(true));
     // dsl 0.26.0 §5: bind before every eligibility read so the evaluator
@@ -454,7 +454,7 @@ fn judge_with<D: Driver>(
     // by, decided by this evaluator (or when the raise was made).
     let seam = match decided {
         Some(closed) => closed,
-        None => crate::exec::seam::closed_in(
+        None => crate::seam::closed_in(
             p,
             eval,
             &beat.on,
@@ -466,10 +466,10 @@ fn judge_with<D: Driver>(
     // window (dsl 0.24.0 §1, 0.27.0 §5) until it moves on; a `share` key's
     // sibling names itself (dsl 0.25.0 §2). dsl 0.28.0: a `for` beat's
     // `once` is spent per member.
-    let spent = crate::exec::cadence::once_spent(p, w, beat, member);
+    let spent = crate::cadence::once_spent(p, w, beat, member);
     // `spentBy` — spent once its condition has held (for this member),
     // until its `once` period ends.
-    let spent_by = crate::exec::cadence::spent_by(p, w, eval, beat, member);
+    let spent_by = crate::cadence::spent_by(p, w, eval, beat, member);
     // A scene's `after:` / a bundle beat's `after=` (dsl 0.25.0 §3).
     let after = matches!(beat.kind, BeatKind::Scene | BeatKind::Bundle)
         .then(|| p.artifacts.get(&beat.document))
@@ -483,7 +483,7 @@ fn judge_with<D: Driver>(
         })
     };
     let verdict = if let Some(closed) = seam {
-        use crate::exec::seam::Closed;
+        use crate::seam::Closed;
         match closed {
             Closed::Terminal(raw) => Verdict::Ineligible(Premise::Terminal {
                 occasion: beat.on.clone(),
@@ -539,7 +539,7 @@ fn judge_with<D: Driver>(
         priority: beat.priority,
         verdict,
         read: beat.kind == BeatKind::Entry
-            && flag(crate::exec::cadence::entry_read_flag(beat, member)),
+            && flag(crate::cadence::entry_read_flag(beat, member)),
         also: beat_also(p, beat),
         for_member: None,
         rejudged: false,

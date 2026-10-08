@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use serde_json::Value as Json;
 
-use lute_trace::exec::seam::Closed;
-use lute_trace::exec::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, World};
+use lute_runtime::seam::Closed;
+use lute_runtime::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, World};
 
 use super::plan::{Action, Scope, Step};
 use super::script::PlayScript;
@@ -327,7 +327,7 @@ fn terminal_note(s: &Session<'_>) -> String {
              (`occasion:` / `advance:` steps are refused; a new run does not reopen it)"
         );
     }
-    let after = match lute_trace::exec::seam::persistent_read(terminal) {
+    let after = match lute_runtime::seam::persistent_read(terminal) {
         Some(read) => {
             format!("it still holds after a new run: it reads `{read}`, which a new run keeps")
         }
@@ -444,7 +444,7 @@ fn passed_raise_note(s: &Session<'_>, body: &StepBody) -> Option<String> {
 struct OpenScope {
     scope: Arc<Scope>,
     choose: Vec<(String, Option<Vec<String>>, Option<usize>)>,
-    bridges: Vec<(String, Option<VecDeque<lute_trace::BridgeAnswer>>)>,
+    bridges: Vec<(String, Option<VecDeque<lute_runtime::BridgeAnswer>>)>,
     used: Used,
 }
 
@@ -561,7 +561,7 @@ fn name_ended_include(
     };
     let unscripted = last.and_then(|r| {
         step_transcript(r).find_map(|rec| {
-            (rec.get("note").and_then(|n| n.as_str()) == Some(lute_trace::exec::NOTE_NO_DECISION))
+            (rec.get("note").and_then(|n| n.as_str()) == Some(lute_runtime::NOTE_NO_DECISION))
                 .then(|| menu_id(rec))
                 .flatten()
         })
@@ -741,7 +741,7 @@ fn clock_raised_note(
     // dsl 0.27.0 §4: a finite clock stops at its last position, raising
     // its last `dayEnd` once; an advance after that moves nothing.
     let last = clock.last_at();
-    let mut ended = lute_trace::clock::ended(&s.world.state);
+    let mut ended = lute_runtime::clock::ended(&s.world.state);
     let passed = later
         .iter()
         .take_while(|s| !matches!(s.action, Action::NewRun(_) | Action::End))
@@ -782,7 +782,7 @@ fn clock_raised_note(
 /// expected to decide something decided nothing.
 fn unconsumed_step_bridges(
     n: usize,
-    leftover: &BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    leftover: &BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
 ) -> Option<PlayHalt> {
     if leftover.is_empty() {
         return None;
@@ -812,7 +812,7 @@ fn unconsumed_step_bridges(
 /// changes the world settles the quest lifecycle after it — a presentation,
 /// an `engine:` write, a new run (dsl 0.22.0 §1.1) — and a raised occasion
 /// or event is then answered by the quests.
-fn run_step(s: &mut Session<'_>, step: &Step) -> lute_trace::exec::session::StepOutcome {
+fn run_step(s: &mut Session<'_>, step: &Step) -> lute_runtime::session::StepOutcome {
     let n = step.n;
     match &step.action {
         Action::Occasion {

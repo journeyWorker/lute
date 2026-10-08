@@ -91,7 +91,7 @@ pub enum StepBody {
         days: Vec<DayRaise>,
         raised: Option<Box<StepBody>>,
         ended: bool,
-        closed: Vec<crate::exec::seam::ClosedRaise>,
+        closed: Vec<crate::seam::ClosedRaise>,
         passed: Option<super::advance::PassedRaise>,
     },
     /// `end: true` — the playthrough ends here.
@@ -435,7 +435,7 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
         .collect();
     let mut reset_quests = Vec::new();
     for (id, objectives) in &p.run_quests {
-        if let Some(status) = crate::exec::cadence::reset_quest(w, id, objectives) {
+        if let Some(status) = crate::cadence::reset_quest(w, id, objectives) {
             reset_quests.push((id.clone(), status));
         }
     }
@@ -455,7 +455,7 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
     }
     // A `spentBy` beat spent this run is spendable again (its `user` /
     // `season:<name>` latches stay; its clock-period ones go with the clock).
-    crate::exec::cadence::new_run_latches(p, w, clock_restarts.is_some());
+    crate::cadence::new_run_latches(p, w, clock_restarts.is_some());
     // dsl 0.24.0 §2: acceptances queued for the next run apply now, after
     // the reset, so a run-tier quest taken between runs survives it.
     let accepted = std::mem::take(&mut w.next_run_accepts);

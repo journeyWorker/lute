@@ -169,7 +169,7 @@ pub(super) fn raised_member(
         mocks
             .occasions
             .iter()
-            .find_map(|r| match crate::split_occasion(r) {
+            .find_map(|r| match lute_runtime::split_occasion(r) {
                 (name, Some(t)) if name == on => Some((r, t)),
                 _ => None,
             })

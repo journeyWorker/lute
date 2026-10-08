@@ -28,15 +28,17 @@ use std::sync::Arc;
 
 use lute_check::{CheckInput, CheckResult};
 use lute_core_span::Severity;
-use lute_trace::{MockSet, Step, TraceExit, TraceReport, Value};
+use lute_trace::{Step, TraceExit, TraceReport};
+use lute_trace::mock::MockSet;
+use lute_runtime::{
+    BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
+    UnknownSite, Value, Verdict,
+};
+use lute_runtime::datalog::Fact;
 use rayon::prelude::*;
 use lute_load::build_input;
 use serde_json::Value as Json;
-use lute_trace::datalog::Fact;
-use lute_trace::exec::{
-    BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
-    UnknownSite, Verdict,
-};
+use lute_runtime::session::json_to_value;
 use crate::runner::{bind_direct_occasion_target, RunDriver};
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
 const COMPARED_FLOOR: usize = 201;
@@ -242,7 +244,11 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
 
 /// `lute run`'s walk of `art` (the `run_machine` construction) with the
 /// IR oracle's probe on.
-fn probed(art: &Json, mock: &MockSet, names: &BTreeMap<String, String>) -> Machine<Oracle> {
+fn probed<B, C>(
+    art: &Json,
+    mock: &lute_runtime::MockSet<B, C>,
+    names: &BTreeMap<String, String>,
+) -> Machine<Oracle> {
     Machine::new(
         art,
         Seed::from(mock),
@@ -394,7 +400,7 @@ impl Driver for Oracle {
 /// it has no model for is `Unknown`, never a guess.
 fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value {
     if let Some(lit) = node.get("lit") {
-        return lute_trace::exec::session::json_to_value(lit).unwrap_or(Value::Unknown);
+        return json_to_value(lit).unwrap_or(Value::Unknown);
     }
     if let Some(i) = node.get("int").and_then(Json::as_i64) {
         return Value::Int(i);
@@ -411,7 +417,7 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
     if let Some(path) = node.get("path").and_then(Json::as_str) {
         return reads
             .get(path)
-            .and_then(lute_trace::exec::session::json_to_value)
+            .and_then(json_to_value)
             .unwrap_or(Value::Unknown);
     }
     if let Some(path) = node
@@ -821,7 +827,7 @@ struct ProjectData {
     model: lute_model::ProjectModel,
     /// Canonical document path -> index into `model.documents()`.
     documents: HashMap<PathBuf, usize>,
-    exec: Option<lute_trace::exec::session::ExecProject>,
+    exec: Option<lute_runtime::session::ExecProject>,
     gate: crate::ReconciledProject,
 }
 

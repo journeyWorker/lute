@@ -13,13 +13,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::StateSchema;
-use lute_trace::datalog::{
+use lute_runtime::datalog::{
     parse_ground, render_fact, Attempt, Closure, Explanation, Kinds, Premise, Program, Proof,
 };
-use lute_trace::{EffectiveState, Value};
+use lute_runtime::{EffectiveState, Value};
 use serde_json::{json, Value as Json};
 
-use lute_trace::datalog::Fact;
+use lute_runtime::datalog::Fact;
 
 /// Explain every atom in `atoms` over `rules` (the project's IR rules
 /// array, whose bodies may name the closed entity `kinds`) applied to

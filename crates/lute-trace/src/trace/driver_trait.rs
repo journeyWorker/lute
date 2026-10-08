@@ -152,12 +152,12 @@ impl Driver for TraceDriver<'_> {
             .directives
             .get(call.tag)
             .map(|decl| {
-                let writes = mock::bridge_result_writes(decl);
+                let writes = lute_runtime::bridge_result_writes(decl);
                 // A read the textual scan cannot see (a component body) still
                 // halts on UNKNOWN; its hint then names every field.
                 let read = mock::bridge_fields_read(&writes, self.cx.content_reads);
                 let decls = &self.cx.folded.env.state.decls;
-                mock::bridge_answer_shape(
+                lute_runtime::bridge_answer_shape(
                     call.reads
                         .iter()
                         .filter(|(f, _)| read.is_empty() || read.contains(f.as_str()))

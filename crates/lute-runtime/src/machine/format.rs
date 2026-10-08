@@ -4,8 +4,8 @@
 use serde_json::{json, Value as Json};
 
 use super::Machine;
-use crate::exec::driver::Driver;
-use crate::exec::store::LabelForms;
+use crate::driver::Driver;
+use crate::store::LabelForms;
 use crate::Value;
 
 impl<D: Driver> Machine<D> {

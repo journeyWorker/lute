@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 use serde_json::Value as Json;
 
 use super::project::ExecProject;
-use crate::exec::store::json_arg_to_string;
-use crate::exec::GuardRead;
+use crate::store::json_arg_to_string;
+use crate::driver::GuardRead;
 
 /// One asserting command of the compiled project.
 #[derive(Clone, Debug)]

@@ -7,7 +7,7 @@ pub(super) fn render_atom(a: &UnresolvedAtom) -> String {
     match a {
         UnresolvedAtom::Path(p) => format!("--state {p}=<value>"),
         UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
-            let f = crate::datalog::fact_spelling(f);
+            let f = lute_runtime::datalog::fact_spelling(f);
             // A quoted argument keeps the shell's quotes apart from CEL's.
             if f.contains('"') {
                 format!("--fact '{f}'")
@@ -154,7 +154,7 @@ pub(super) fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
 /// text) holds even when the mocked path sits inside a branch/event arm
 /// the walk never takes — or (b) had a reserved path actually resolve to
 /// its DEFAULT during the walk (§1.2, sourced from `reserved_reads`,
-/// [`crate::eval::EffectiveState::reserved_reads`] — a default is
+/// [`lute_runtime::eval::EffectiveState::reserved_reads`] — a default is
 /// necessarily read-time, there is no "admitted but unread" analog for
 /// it). Grouped by quest id (one note per id, never per path);
 /// informational only, never an error, never a reachability claim, exit
@@ -177,7 +177,7 @@ pub(super) fn reserved_quest_notes(
     }
     let mut ids: BTreeSet<&str> = defaulted_by_id.keys().copied().collect();
     for (path, _, _) in &mocks.state {
-        if !crate::eval::is_reserved_quest_path(path) {
+        if !lute_runtime::eval::is_reserved_quest_path(path) {
             continue;
         }
         let id = reserved_quest_id(path);
@@ -227,7 +227,7 @@ pub(super) fn reserved_quest_id(path: &str) -> &str {
 }
 
 pub(super) fn reserved_default_text(path: &str) -> &'static str {
-    if crate::eval::is_reserved_quest_objective_done_path(path) {
+    if lute_runtime::eval::is_reserved_quest_objective_done_path(path) {
         "false"
     } else {
         "unset"
@@ -288,7 +288,7 @@ pub(super) fn occasion_notes(
         .collect();
     let mut seen = BTreeSet::new();
     for name in occasions {
-        let (bare, _) = crate::mock::split_occasion(name);
+        let (bare, _) = lute_runtime::split_occasion(name);
         if answered.contains(bare) || binding.contains(bare) || !seen.insert(name.as_str()) {
             continue;
         }
@@ -318,7 +318,7 @@ pub(super) fn occasion_notes(
             if settled
                 || occasions
                     .iter()
-                    .any(|r| crate::mock::raise_judges(r, on, target))
+                    .any(|r| lute_runtime::raise_judges(r, on, target))
             {
                 continue;
             }

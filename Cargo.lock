@@ -575,6 +575,7 @@ dependencies = [
  "lute-check",
  "lute-cli",
  "lute-model",
+ "lute-runtime",
  "lute-semantic",
  "lute-trace",
  "serde",
@@ -623,6 +624,7 @@ dependencies = [
  "lute-manifest",
  "lute-model",
  "lute-resolve",
+ "lute-runtime",
  "lute-semantic",
  "lute-syntax",
  "lute-trace",
@@ -754,6 +756,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-runtime"
+version = "0.38.0"
+dependencies = [
+ "cel-parser",
+ "lute-cel",
+ "lute-check",
+ "lute-compile",
+ "lute-core-span",
+ "lute-manifest",
+ "lute-syntax",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+]
+
+[[package]]
 name = "lute-semantic"
 version = "0.38.0"
 dependencies = [
@@ -788,6 +806,7 @@ dependencies = [
  "lute-compile",
  "lute-core-span",
  "lute-manifest",
+ "lute-runtime",
  "lute-syntax",
  "serde",
  "serde_json",

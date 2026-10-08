@@ -19,19 +19,19 @@
 //! 3. **`trace` MUST NOT execute engine machinery** beyond the project's
 //!    own Datalog rules: no capability bridge, no dice, no scheduler. Since
 //!    dsl 0.22.0 §6 (D-B) `trace`/`test` apply the seed facts and rules by
-//!    default through [`datalog`] — the SAME stratified fixpoint the
+//!    default through [`lute_runtime::datalog`] — the SAME stratified fixpoint the
 //!    reference runner (`lute run`/`lute play`) uses, so the toolchain
 //!    cannot disagree with itself. `derive: false` restores the 0.21
-//!    lookup-only [`eval::FactStore`]. Every other answer the engine would
+//!    lookup-only [`lute_runtime::eval::FactStore`]. Every other answer the engine would
 //!    compute is either supplied as a mock or reported
-//!    [`value::Value::Unknown`].
+//!    [`lute_runtime::Value::Unknown`].
 //! 4. **Isolation is structural, not conventional.** This crate is wired
 //!    ONLY into `lute-cli`. `lute-cel` stays parse-only (it holds no
 //!    evaluator and MUST NOT gain one); `lute-check` and `lute-compile`
 //!    depending on `lute-trace` is a conformance violation — enforced by
 //!    `tests/quarantine.rs`, which reads every quarantined sibling's
 //!    `Cargo.toml` directly and fails the build if any names `lute-trace`.
-//! 5. **The evaluated subset (§4.3) is CLOSED.** [`eval::eval`] implements
+//! 5. **The evaluated subset (§4.3) is CLOSED.** [`lute_runtime::eval`] implements
 //!    EXACTLY that subset; widening it — modeling narrative time, calling a
 //!    bridge — is a spec revision, not a convenience.
 //!
@@ -42,25 +42,17 @@
 //! [`value::Value::Unknown`] here ([`eval::eval`]'s doc comment spells out
 //! the K3 lift).
 
-pub mod clock;
-pub mod datalog;
-pub mod eval;
 pub mod exec;
 pub mod mock;
 pub mod quest_refs;
 pub mod report;
 pub mod trace;
-pub mod value;
-
-pub use eval::{EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
-    bridge_answer_shape, bridge_result_writes, content_read_paths, entry_local_id, merge,
-    mock_subject, parse_bridges, parse_mock_surfaces, parse_mock_yaml, raise_judges,
-    split_occasion, state_key, type_placeholder, validate, validate_bridges, yaml_span,
-    BridgeAnswer, BridgeSpans, ChooseSpans, MockSet, YamlStep, E_MOCK_SUBJECT, E_TRACE_ACCEPT,
-    E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY, E_TRACE_EVENT, E_TRACE_MOCK_FACT,
-    E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED, MOCK_TEXT, MOCK_TOP_KEYS,
-    W_TRACE_MOCK_UNPRODUCIBLE,
+    content_read_paths, entry_local_id, merge, mock_subject, parse_bridges, parse_mock_surfaces,
+    parse_mock_yaml, state_key, validate, validate_bridges, yaml_span, YamlStep, BridgeSpans,
+    ChooseSpans, E_MOCK_SUBJECT, E_TRACE_ACCEPT, E_TRACE_BEAT, E_TRACE_CHOICE, E_TRACE_ENTRY,
+    E_TRACE_EVENT, E_TRACE_MOCK_FACT, E_TRACE_MOCK_PARSE, E_TRACE_MOCK_TYPE,
+    E_TRACE_MOCK_UNDECLARED, MOCK_TEXT, MOCK_TOP_KEYS, W_TRACE_MOCK_UNPRODUCIBLE,
 };
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{
@@ -71,4 +63,3 @@ pub use trace::{
     lowered, trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check,
     trace_entry, trace_entry_with_check, trace_with_check, NOTE_ACCEPT_SPENT, NOTE_BEAT_WHEN,
 };
-pub use value::{UnresolvedAtom, Value};

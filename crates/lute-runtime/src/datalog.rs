@@ -23,7 +23,7 @@ use lute_check::RelVocab;
 use serde_json::Value as Json;
 
 use crate::eval::{EffectiveState, EvalEnv, FactStore};
-use crate::exec::Slot;
+use crate::expr::Slot;
 use crate::value::{UnresolvedAtom, Value};
 
 /// A ground fact: relation and argument constants.
@@ -962,7 +962,7 @@ fn eval_rule_guard(
     let fs = FactStore::new(&vocab);
     let env = EvalEnv { state, facts: &fs };
     let mut atoms = Vec::new();
-    let v = crate::exec::expr::eval(&slot.expr, &env, Some(binding), &mut atoms);
+    let v = crate::expr::eval(&slot.expr, &env, Some(binding), &mut atoms);
     if !matches!(v, Value::Bool(_)) {
         for a in atoms {
             if !unknown.contains(&a) {

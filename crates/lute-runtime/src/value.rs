@@ -56,6 +56,25 @@ pub enum UnresolvedAtom {
     Time,
 }
 
+/// Render a decided value for runtime refusal explanations.
+pub fn value_text(v: &Value) -> Option<String> {
+    match v {
+        Value::Unknown | Value::Error(_) => None,
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Int(n) => Some(n.to_string()),
+        Value::Double(n) => Some(format_num(*n)),
+        Value::Str(s) => Some(s.clone()),
+    }
+}
+
+fn format_num(n: f64) -> String {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{}", n as i64)
+    } else {
+        n.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

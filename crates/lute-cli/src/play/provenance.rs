@@ -3,10 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_trace::exec::session::{kind_label, parse_ground_fact, Played, Presented, StepBody};
+use lute_runtime::session::{kind_label, parse_ground_fact, Played, Presented, StepBody};
 use serde_json::Value as Json;
 
-use lute_trace::datalog::Fact;
+use lute_runtime::datalog::Fact;
 
 use super::run::Playthrough;
 

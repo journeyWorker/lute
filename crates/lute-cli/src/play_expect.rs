@@ -25,7 +25,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use lute_trace::Value;
+use lute_runtime::Value;
 use serde_yaml::Value as Yaml;
 
 /// The complete legal key set of a STEP `expect:`.
@@ -81,7 +81,7 @@ pub(crate) struct WorldWants {
     pub facts: bool,
 }
 
-pub(crate) use lute_trace::exec::session::{ClockView, WorldView};
+pub(crate) use lute_runtime::session::{ClockView, WorldView};
 
 /// The complete legal key set of the top-level (end-of-play) `expect:`.
 pub(crate) const PLAY_EXPECT_KEYS: &[&str] = &[
@@ -421,7 +421,7 @@ fn validate_value(key: &str, v: &Yaml) -> Vec<ExpectError> {
                         i,
                         format!(
                             "`expect.{key}` entry `{atom}` is not a ground atom `rel(a, b)`{}",
-                            lute_trace::exec::session::split_atom_hint(atom, next.as_deref())
+                            lute_runtime::session::split_atom_hint(atom, next.as_deref())
                         ),
                     ));
                 }

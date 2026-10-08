@@ -17,9 +17,10 @@ use std::path::Path;
 use lute_check::{CheckInput, FoldedEnv, Mode};
 use lute_syntax::ast::Document;
 use lute_trace::{
-    merge, parse_mock_yaml, validate, MockSet, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
+    merge, parse_mock_yaml, validate, E_TRACE_ACCEPT, E_TRACE_CHOICE, E_TRACE_EVENT,
     E_TRACE_MOCK_FACT, E_TRACE_MOCK_TYPE, E_TRACE_MOCK_UNDECLARED,
 };
+use lute_trace::mock::MockSet;
 
 /// Assemble `(FoldedEnv, Document)` for `text` exactly as `lute check`/
 /// `lute compile` do (no `--project`; `base` resolves any `uses:`/
