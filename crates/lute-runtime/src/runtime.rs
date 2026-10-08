@@ -29,12 +29,15 @@ use crate::driver::{
 };
 use crate::index::Bundle;
 use crate::session::{
-    clock_at, resolve_fact, resolve_state, ExecProject, Pick as SessionPick,
-    PlayHalt, SaveSeed, Session, StepBody, WalkDriver, Walked, World, WorldSeed, Write, Writes,
+    clock_at, resolve_fact, resolve_state, ExecProject, Pick as SessionPick, PlayHalt, SaveSeed,
+    Session, StepBody, WalkDriver, Walked, World, WorldSeed, Write, Writes,
 };
 use crate::Machine;
 
-const EVENT_VERSION: &str = "0.38.0";
+/// The event contract version outputs and snapshots are stamped with.
+pub const EVENT_VERSION: &str = "0.38.0";
+/// The execution IR version this runtime executes (major.minor gate).
+pub const IR_VERSION: &str = "0.38.0";
 
 /// One scalar state write in the wire format.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -381,22 +384,56 @@ pub(crate) enum Answer {
 /// The loaded executable project and its host-facing operations.
 pub struct Runtime {
     project: Arc<ExecProject>,
+    /// The bundle's identity (spec 0.38.0 §7.2), what snapshots carry.
+    fingerprint: String,
 }
 
 impl Runtime {
-    pub fn new(project: Arc<ExecProject>) -> Self {
-        Self { project }
-    }
-    pub fn from_project(project: ExecProject) -> Self {
-        Self::new(Arc::new(project))
-    }
     pub fn project(&self) -> &ExecProject {
         &self.project
     }
+
+    /// Load a `lute compile --all` bundle (spec 0.38.0 §4.1). Rejected with
+    /// `E-RUNTIME-IR-VERSION` when the index or an artifact is stamped with
+    /// another IR major.minor than [`IR_VERSION`], when a command has a
+    /// `kind` this runtime does not execute, or when the bundle does not
+    /// decode.
     pub fn load(bundle: Bundle) -> Result<Self, Rejected> {
-        ExecProject::load(bundle)
-            .map(Self::from_project)
-            .map_err(|(_, messages)| reject("E-RUNTIME-IR-VERSION", messages.join("; ")))
+        let ir_line = |v: &str| v.split('.').take(2).collect::<Vec<_>>().join(".");
+        let stamps = std::iter::once(("project.index.json", &bundle.index))
+            .chain(bundle.artifacts.iter().map(|(path, a)| (path.as_str(), a)));
+        for (path, json) in stamps {
+            let stamp = json.get("irVersion").and_then(Json::as_str).unwrap_or("");
+            if ir_line(stamp) != ir_line(IR_VERSION) {
+                return Err(reject(
+                    "E-RUNTIME-IR-VERSION",
+                    format!(
+                        "{path} is IR `{stamp}`; this runtime executes IR {}.x",
+                        ir_line(IR_VERSION)
+                    ),
+                ));
+            }
+        }
+        let fingerprint = crate::snapshot::fingerprint(&bundle.index, &bundle.artifacts);
+        let project = ExecProject::load(bundle)
+            .map_err(|(_, messages)| reject("E-RUNTIME-IR-VERSION", messages.join("; ")))?;
+        for (path, code) in &project.codes {
+            if let Some(kind) = code
+                .commands
+                .iter()
+                .map(|c| c.get("kind").and_then(Json::as_str).unwrap_or(""))
+                .find(|kind| !crate::machine::COMMAND_KINDS.contains(kind))
+            {
+                return Err(reject(
+                    "E-RUNTIME-IR-VERSION",
+                    format!("{path}: command kind `{kind}` is not one this runtime executes"),
+                ));
+            }
+        }
+        Ok(Self {
+            project: Arc::new(project),
+            fingerprint,
+        })
     }
 
     /// The snapshot of `state` (spec §7.2): `await` is the state's current
@@ -404,7 +441,7 @@ impl Runtime {
     pub fn snapshot(&self, state: &State) -> Json {
         let mut snapshot = serde_json::json!({
             "snapshotVersion": EVENT_VERSION,
-            "project": self.project.fingerprint,
+            "project": self.fingerprint,
             "await": state.current_await(),
             "request": state.request,
             "world": state.world.as_ref(),
@@ -430,7 +467,7 @@ impl Runtime {
                 format!("snapshot version {version} is not {EVENT_VERSION}'s major.minor"),
             ));
         }
-        if value.get("project").and_then(Json::as_str) != Some(self.project.fingerprint.as_str()) {
+        if value.get("project").and_then(Json::as_str) != Some(self.fingerprint.as_str()) {
             return Err(reject(
                 "E-RUNTIME-SNAPSHOT-PROJECT",
                 "snapshot belongs to a different project bundle",

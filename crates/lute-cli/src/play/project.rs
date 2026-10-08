@@ -58,6 +58,16 @@ pub(super) fn compile_project(
     gate: Gate,
     matrix: &crate::EngineMatrix,
 ) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+    compile_bundle(memo, project_dir, gate, matrix)?.load()
+}
+
+/// [`compile_project`] stopped at the bundle.
+fn compile_bundle(
+    memo: &ModelMemo,
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+) -> Result<PlayBundle, ExitCode> {
     let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
@@ -65,7 +75,7 @@ pub(super) fn compile_project(
         eprintln!("{}: cannot build {}: {error}", gate.cmd, project_dir.display());
         ExitCode::from(1)
     })?;
-    assemble_project_from_model(&project_dir, gate, matrix, &source_model)
+    assemble_bundle_from_model(&project_dir, gate, matrix, &source_model)
 }
 
 /// Refuse a project whose manifests are invalid or whose chapters do not
@@ -115,12 +125,24 @@ fn model_options() -> ModelOptions {
     }
 }
 
+/// The project of `source_model`, for the differential oracle.
+#[cfg(test)]
 pub(crate) fn assemble_project_from_model(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
     source_model: &ProjectModel,
 ) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+    assemble_bundle_from_model(project_dir, gate, matrix, source_model)?.load()
+}
+
+/// [`assemble_project_from_model`] stopped at the bundle.
+fn assemble_bundle_from_model(
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+    source_model: &ProjectModel,
+) -> Result<PlayBundle, ExitCode> {
     let Gate { cmd, refuses } = gate;
     let policy = crate::DenyPolicy::default();
     if source_model.has_resolution_errors() {
@@ -236,21 +258,40 @@ pub(crate) fn assemble_project_from_model(
         for line in &lines { eprintln!("{line}"); }
         ExitCode::from(code)
     })?;
-    let mut project = ExecProject::load(bundle)
-    .map_err(|(code, lines)| {
-        for line in &lines {
-            eprintln!("{line}");
-        }
-        ExitCode::from(code)
-    })?;
-    project.authored = compiled.iter().filter_map(|(path, artifact)| {
+    let authored = compiled.iter().filter_map(|(path, artifact)| {
         let authored = artifact.commands.iter().filter_map(|command| command.authored())
             .map(|(position, text)| (position.to_string(), text.to_string()))
             .collect::<BTreeMap<_, _>>();
         (!authored.is_empty()).then(|| (path.clone(), authored))
     }).collect();
-    project.chapter_afters = chapter_afters;
-    Ok((project, needles))
+    Ok(PlayBundle { bundle, authored, chapter_afters, needles })
+}
+
+/// A compiled project as the runtime loads it (spec 0.38.0 §4.1), plus what
+/// `lute play` reports beside the runtime's events: authored directive
+/// text, chapter-derived `after:` provenance and the transcript needle
+/// vocabulary.
+pub(crate) struct PlayBundle {
+    pub(crate) bundle: lute_runtime::index::Bundle,
+    authored: BTreeMap<String, BTreeMap<String, String>>,
+    chapter_afters: BTreeSet<String>,
+    needles: NeedleVocab,
+}
+
+impl PlayBundle {
+    /// The project a command walks: the bundle loaded, with the report
+    /// data. `Err` carries the exit code after the messages.
+    pub(crate) fn load(self) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+        let mut project = ExecProject::load(self.bundle).map_err(|(code, lines)| {
+            for line in &lines {
+                eprintln!("{line}");
+            }
+            ExitCode::from(code)
+        })?;
+        project.authored = self.authored;
+        project.chapter_afters = self.chapter_afters;
+        Ok((project, self.needles))
+    }
 }
 
 /// Compile the project `gate`'s command runs over ([`compile_project`]);
@@ -261,11 +302,23 @@ pub(super) fn compile_play_project(
     gate: Gate,
     matrix: &crate::EngineMatrix,
 ) -> Result<(ExecProject, NeedleVocab), (ExitCode, String)> {
+    compile_play_bundle(memo, dir, gate, matrix)?
+        .load()
+        .map_err(|code| (code, String::new()))
+}
+
+/// [`compile_play_project`] stopped at the bundle.
+pub(super) fn compile_play_bundle(
+    memo: &ModelMemo,
+    dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+) -> Result<PlayBundle, (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
             ExitCode::from(2),
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_project(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
+    compile_bundle(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
 }

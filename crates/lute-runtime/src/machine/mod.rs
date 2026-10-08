@@ -205,6 +205,15 @@ impl Carry {
     }
 }
 
+/// Every command `kind` [`Machine`]'s dispatch executes — what
+/// `Runtime::load` accepts (spec 0.38.0 §4.1). Keep in step with the
+/// `match kind` of the step dispatch.
+pub(crate) const COMMAND_KINDS: &[&str] = &[
+    "accept", "actor", "assert", "barrier", "beat", "bg", "camera", "cg", "choice", "end",
+    "entry", "hub", "jump", "line", "match", "music", "on", "plugin", "quest", "retract",
+    "sequence", "set", "sfx", "vfx", "video",
+];
+
 /// An artifact's command stream as a [`Machine`] walks it: read-only, so the
 /// Machines a playthrough builds over one document can share it.
 pub(crate) struct Code {

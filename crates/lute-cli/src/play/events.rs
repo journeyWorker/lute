@@ -58,7 +58,7 @@ pub struct ScriptRun {
 /// or compile message.
 pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<ScriptRun, String> {
     let script = super::load_script(script_path).map_err(|(_, message)| message)?;
-    let (project, needles) = super::project::compile_play_project(
+    let compiled = super::project::compile_play_bundle(
         &lute_model::ModelMemo::default(),
         dir,
         super::project::PLAY,
@@ -71,6 +71,13 @@ pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Scr
             message
         }
     })?;
+    // The runtime loads the bundle as a host would; `lute play`'s report
+    // path loads the same bundle with its report data.
+    let runtime =
+        Runtime::load(compiled.bundle.clone()).map_err(|r| format!("{}: {}", r.code, r.message))?;
+    let (project, needles) = compiled
+        .load()
+        .map_err(|_| format!("{} does not load", dir.display()))?;
     let (plan, world) =
         super::plan::plan_script(&project, &needles, &script, script_path, no_derive)
             .map_err(|(_, message)| message)?;
@@ -87,10 +94,9 @@ pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Scr
         };
         inputs.extend(std::iter::repeat_n(input, step.repeat));
     }
-    let seed = seed(&script, no_derive);
     Ok(ScriptRun {
-        runtime: Runtime::from_project(project),
-        seed,
+        runtime,
+        seed: seed(&script, no_derive),
         inputs,
         answers: driver.answers,
         reference: Reference {

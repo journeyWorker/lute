@@ -17,8 +17,6 @@ use crate::{BridgeReads, Slot};
 
 /// Everything the playthrough reads from the compiled project.
 pub struct ExecProject {
-    /// SHA-256 identity of the bundle that produced this project.
-    pub fingerprint: String,
     /// project-relative path -> compiled artifact JSON.
     pub artifacts: BTreeMap<String, Json>,
     /// project-relative path -> addr -> the directive as authored
@@ -169,19 +167,32 @@ impl Conds {
     }
 }
 impl ExecProject {
+    /// The project a bundle holds: its index decoded, then [`Self::from_index`].
     pub fn load(bundle: Bundle) -> Result<ExecProject, (u8, Vec<String>)> {
-        let fingerprint = crate::snapshot::fingerprint(&bundle.index, &bundle.artifacts);
-        let mut index: ProjectIndex = serde_json::from_value(bundle.index)
+        let index: ProjectIndex = serde_json::from_value(bundle.index)
             .map_err(|e| (2, vec![format!("cannot decode project.index.json: {e}")]))?;
+        Self::from_index(index, bundle.artifacts)
+    }
+
+    /// The project of a decoded index and its artifacts, keyed by the
+    /// index's `artifact` paths.
+    pub fn from_index(
+        mut index: ProjectIndex,
+        mut bundled: BTreeMap<String, Json>,
+    ) -> Result<ExecProject, (u8, Vec<String>)> {
         let occasions = index_occasions(&index);
-        let mut artifacts = BTreeMap::new();
-        for doc in &index.documents {
-            let Some(artifact) = bundle.artifacts.get(&doc.artifact).cloned() else {
-                return Err((2, vec![format!("bundle is missing artifact {} for {}", doc.artifact, doc.path)]));
-            };
-            artifacts.insert(doc.path.clone(), artifact);
-        }
-        if index.documents.is_empty() { artifacts = bundle.artifacts; }
+        let artifacts = if index.documents.is_empty() {
+            bundled
+        } else {
+            let mut artifacts = BTreeMap::new();
+            for doc in &index.documents {
+                let Some(artifact) = bundled.remove(&doc.artifact) else {
+                    return Err((2, vec![format!("bundle is missing artifact {} for {}", doc.artifact, doc.path)]));
+                };
+                artifacts.insert(doc.path.clone(), artifact);
+            }
+            artifacts
+        };
         for beat in &mut index.beats {
             if !lute_manifest::semantics::beats::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
         }
@@ -226,7 +237,7 @@ impl ExecProject {
         let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
         let world_events = index.world_events.iter().cloned().collect();
         let display_names = index.cast.clone();
-        Ok(ExecProject { fingerprint, artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
+        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
     }
 
     /// The occasion's declared `select:` (default `first`).

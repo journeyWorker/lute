@@ -17,8 +17,11 @@ pub(super) fn judging_project(
         ..Default::default()
     };
     let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
+    // The compiler's index as the runtime decodes it — through its JSON
+    // text, the bundle format, without a `serde_json::Value` tree.
+    let index = serde_json::from_slice(&serde_json::to_vec(&index).ok()?).ok()?;
     let artifacts = BTreeMap::from([(format!("{uri}.json"), serde_json::to_value(artifact).ok()?)]);
-    ExecProject::load(lute_runtime::index::Bundle::new(artifacts, serde_json::to_value(index).ok()?)).ok()
+    ExecProject::from_index(index, artifacts).ok()
 }
 
 /// Judge `row` by the session's ONE eligibility rule
