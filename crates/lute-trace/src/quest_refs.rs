@@ -81,12 +81,12 @@ pub(crate) fn collect_prereq_quest_paths(after: &str, out: &mut BTreeSet<String>
     let Some(f) = lute_check::parse_prereq(after, span).0 else {
         return;
     };
-    for atom in lute_check::prereq::atoms(&f) {
+    for atom in lute_manifest::semantics::prereq::atoms(&f) {
         match atom {
-            lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) => {
+            lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) => {
                 out.insert(format!("quest.{q}.state"));
             }
-            lute_check::prereq::Atom::Visited(_) => {}
+            lute_manifest::semantics::prereq::Atom::Visited(_) => {}
         }
     }
 }

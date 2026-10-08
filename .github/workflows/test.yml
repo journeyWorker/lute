@@ -95,6 +95,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
@@ -115,6 +117,15 @@ jobs:
       # nextest does not run doctests.
       - name: cargo test --doc --workspace
         run: cargo test --workspace --doc
+
+      - name: lute-runtime dependency boundary
+        run: |
+          deps=$(cargo tree -p lute-runtime -e normal --depth 1 --prefix none | tail -n +2 | awk '{print $1}' | sort -u | tr '\n' ' ')
+          allowed="lute-core-span lute-manifest serde serde_json "
+          [ "$deps" = "$allowed" ] || { echo "lute-runtime deps: '$deps' (allowed: '$allowed')"; exit 1; }
+
+      - name: lute-runtime builds for wasm32
+        run: cargo check -p lute-runtime --target wasm32-unknown-unknown
 
   gates:
     name: JS harnesses + doc gates (offline)

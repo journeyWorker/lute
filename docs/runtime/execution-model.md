@@ -71,7 +71,9 @@ struct (`ir.rs`):
   per `## ` section, in document order (see
   [Addressing](#addressing));
 - an advisory **`prereqEdges`** graph (this document's raw `after` / quest `follows` formulas;
-  connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
+  an `after` row also carries its parsed `formula` — `{"visited":"id"}`,
+  `{"completed":"q"}`, `{"active":"q"}`, `{"and":[l,r]}`, `{"or":[l,r]}` — so an
+  engine never parses `after` text; connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
   cross-document reachability is out of scope for a single artifact).
 
 A project's engine **unions** the per-document `relations` / `rules` /

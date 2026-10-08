@@ -10,7 +10,7 @@ use cel_parser::reference::Val;
 use lute_core_span::Diagnostic;
 use lute_syntax::ast::Node;
 use crate::meta::{resolve_doc_kind, DocKind};
-use crate::prereq::{atoms, Atom};
+use lute_manifest::semantics::prereq::{atoms, Atom};
 
 pub(super) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
     if let Expr::Call(c) = e {

@@ -82,7 +82,7 @@ use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::meta::StateSchema;
-use crate::prereq::PrereqFormula;
+use lute_manifest::semantics::prereq::PrereqFormula;
 use crate::rel_schema::RelVocab;
 
 /// Guaranteed facts, each with where it is established.

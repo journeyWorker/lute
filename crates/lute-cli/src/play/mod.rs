@@ -230,8 +230,9 @@ fn load(
     matrix: &crate::EngineMatrix,
 ) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let project = compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
-    let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
+    let (project, needles) =
+        compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
+    let (plan, world) = plan_script(&project, &needles, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
         project,
@@ -507,7 +508,7 @@ pub(crate) struct PlayTestRun {
 /// A project compiled once for every play of one `lute test` run (T2-1):
 /// `Err` is why no play can run over it — the usage error, or that it does
 /// not compile (the compile gate's diagnostics are already printed).
-pub(crate) struct PlayProject(Result<ExecProject, String>);
+pub(crate) struct PlayProject(Result<(ExecProject, lute_trace::exec::record::NeedleVocab), String>);
 
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
@@ -543,8 +544,9 @@ pub(crate) fn run_play_for_test(
 ) -> Result<PlayTestRun, String> {
     let script_path = script;
     let script = load_script(script_path).map_err(|(_, msg)| msg)?;
-    let p = project.0.as_ref().map_err(String::clone)?;
-    let (plan, world) = plan_script(p, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
+    let (p, needles) = project.0.as_ref().map_err(String::clone)?;
+    let (plan, world) =
+        plan_script(p, needles, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
     let mut driver = driver_for(p, &script, None);
     let play = execute(&script, &plan, Session::resume(p, world, &mut driver));
     let outcome = play_outcome(&p, &play);
@@ -681,6 +683,7 @@ pub(crate) struct PlayedBeat {
 #[cfg(test)]
 pub(crate) fn presentations_for_diff(
     project: &ExecProject,
+    needles: &lute_trace::exec::record::NeedleVocab,
     script_path: &Path,
 ) -> Result<Vec<PlayedBeat>, String> {
     let text = std::fs::read_to_string(script_path)
@@ -690,7 +693,7 @@ pub(crate) fn presentations_for_diff(
         return Ok(Vec::new());
     }
     let (plan, world) =
-        plan_script(project, &script, script_path, false).map_err(|(_, msg)| msg)?;
+        plan_script(project, needles, &script, script_path, false).map_err(|(_, msg)| msg)?;
     let mut driver = driver_for(project, &script, None);
     let play = execute(&script, &plan, Session::resume(project, world, &mut driver));
     let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);

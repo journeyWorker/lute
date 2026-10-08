@@ -42,6 +42,14 @@ table.
 
 Version stamps aligned; details follow in later slices.
 
+### IR
+
+- `prereqEdges` `after` rows carry the parsed prerequisite as `formula`
+  (`{"visited":"id"}`, `{"completed":"q"}`, `{"active":"q"}`, `{"and":[l,r]}`,
+  `{"or":[l,r]}`), so an engine evaluates `after` without parsing CEL; the
+  reference runtime reads it and no longer depends on the checker, compiler
+  or a CEL parser.
+
 
 ## [0.37.0] - 2026-10-07
 

@@ -212,8 +212,8 @@ When the engine raises occasion `O`, optionally for target `T`:
    restricts).
 2. A candidate is **eligible** when all of these hold:
    - a scene beat's `after:` (or a bundle beat's `after=`, dsl 0.25.0 §3)
-     holds — the artifact's `prereqEdges` row whose `node` is the beat's
-     `id`, evaluated as it is for any scene (`quest-lifecycle.md`); an entry
+     holds — the parsed `formula` of the artifact's `prereqEdges` row whose
+     `node` is the beat's `id`, evaluated as it is for any scene (`quest-lifecycle.md`); an entry
      has no `after:`;
    - its `when` is absent or evaluates true against live state and facts
      (`evalSlot(when.cel, when.expr, …)`, `execution-model.md`) at the moment

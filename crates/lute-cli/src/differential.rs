@@ -827,7 +827,7 @@ struct ProjectData {
     model: lute_model::ProjectModel,
     /// Canonical document path -> index into `model.documents()`.
     documents: HashMap<PathBuf, usize>,
-    exec: Option<lute_runtime::session::ExecProject>,
+    exec: Option<(lute_runtime::session::ExecProject, lute_trace::exec::record::NeedleVocab)>,
     gate: crate::ReconciledProject,
 }
 
@@ -1154,8 +1154,8 @@ fn presentation_cases(
     let project = project_root(play, &root.dir).ok_or("no lute.project.yaml above the play")?;
     // A root `lute play` refuses refuses every play under it, with
     // `compile_play_project`'s empty message.
-    let exec = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
-    let played = crate::play::presentations_for_diff(exec, play)?;
+    let (exec, needles) = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
+    let played = crate::play::presentations_for_diff(exec, needles, play)?;
     let stem = play
         .file_name()
         .and_then(|n| n.to_str())

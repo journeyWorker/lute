@@ -252,7 +252,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         super::project::CALENDAR,
         &crate::EngineMatrix::reference(),
     ) {
-        Ok(p) => p,
+        Ok((p, _)) => p,
         Err(code) => return code,
     };
     let mut resolved = Vec::with_capacity(args.axes.len());

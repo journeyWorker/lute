@@ -525,8 +525,8 @@ fn effective(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
 }
 
 /// Whether the `after:` formula cannot hold until `visited("<id>")` does.
-fn requires_visited(f: &crate::prereq::PrereqFormula, id: &str) -> bool {
-    use crate::prereq::PrereqFormula as F;
+fn requires_visited(f: &lute_manifest::semantics::prereq::PrereqFormula, id: &str) -> bool {
+    use lute_manifest::semantics::prereq::PrereqFormula as F;
     match f {
         F::Visited(v) => v == id,
         F::Completed(_) | F::Active(_) => false,

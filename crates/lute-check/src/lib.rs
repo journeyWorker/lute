@@ -225,7 +225,7 @@ pub use permissions::{
     check_permissions, E_PERMISSION_BRIDGE, E_PERMISSION_DIRECTIVE, E_PERMISSION_FACT,
     E_PERMISSION_QUEST, E_PERMISSION_REWARD, E_PERMISSION_STATE,
 };
-pub use prereq::{atoms, parse_prereq, Atom, PrereqFormula, E_CONN_PROFILE};
+pub use prereq::{parse_prereq, E_CONN_PROFILE};
 pub use project_check::{
     check_project_branch_ids, check_project_domain_reads, check_project_entry_ids,
     check_project_entry_refs, check_project_quest_handlers, check_project_quest_ids,

@@ -18,7 +18,7 @@ pub mod value;
 pub use eval::{EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use input::{
     bridge_answer_shape, bridge_result_writes, raise_judges, split_occasion, str_of,
-    type_placeholder, BridgeAnswer, MockSet, NeedleVocab,
+    type_placeholder, BridgeAnswer, MockSet,
 };
 pub use machine::{
     render_fact, value_to_json, value_to_string, BridgeReads, Carry, EvalObserver, EvalSnapshot,

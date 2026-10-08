@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use lute_check::PrereqFormula;
+use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
 use crate::index::{BeatKind, BeatOnce, IndexBeat};
 use lute_manifest::schema::OccasionSelect;
 use serde_json::Value as Json;
@@ -43,7 +43,7 @@ pub enum Premise {
     /// manifest's `chapters:` wrote it (dsl 0.28.0 §4), not the scene.
     After {
         raw: String,
-        unmet: Vec<lute_check::prereq::Atom>,
+        unmet: Vec<Atom>,
         chapters: bool,
     },
     /// dsl 0.27.0 §5: its `spentBy` condition holds.
@@ -140,28 +140,24 @@ pub fn kind_label(kind: BeatKind) -> &'static str {
 }
 
 /// A scene's declared `after:` or (dsl 0.25.0 §3) a bundle beat's `after=`
-/// — the `prereqEdges` row whose `node` is the beat's id — parsed by the
-/// checker's restricted profile parser the compile gate already proved it
-/// well-formed under.
+/// — the `formula` the compiler parsed onto the `prereqEdges` row whose
+/// `node` is the beat's id. A blank `after` has none.
 pub fn beat_prereq(doc_json: &Json, id: &str) -> Option<PrereqFormula> {
-    let raw = beat_prereq_raw(doc_json, id)?;
-    let span = lute_core_span::Span {
-        byte_start: 0,
-        byte_end: 0,
-        line: 0,
-        column: 0,
-        utf16_range: (0, 0),
-    };
-    lute_check::parse_prereq(raw, span).0
+    serde_json::from_value(beat_prereq_row(doc_json, id)?.get("formula")?.clone()).ok()
 }
 
-/// The `after` text of the beat's `prereqEdges` row, blank → `None`.
-fn beat_prereq_raw<'a>(doc_json: &'a Json, id: &str) -> Option<&'a str> {
+/// The beat's `prereqEdges` row.
+fn beat_prereq_row<'a>(doc_json: &'a Json, id: &str) -> Option<&'a Json> {
     doc_json
         .get("prereqEdges")
         .and_then(Json::as_array)?
         .iter()
-        .find(|e| e.get("node").and_then(Json::as_str) == Some(id))?
+        .find(|e| e.get("node").and_then(Json::as_str) == Some(id))
+}
+
+/// The `after` text of the beat's `prereqEdges` row, blank → `None`.
+fn beat_prereq_raw<'a>(doc_json: &'a Json, id: &str) -> Option<&'a str> {
+    beat_prereq_row(doc_json, id)?
         .get("after")
         .and_then(Json::as_str)
         .filter(|raw| !raw.trim().is_empty())
@@ -202,9 +198,8 @@ pub fn eval_prereq(
 
 /// The atoms of `f` the world does not satisfy — what a mock would have to
 /// add for the prerequisite to hold.
-fn unmet_prereq(p: &ExecProject, f: &PrereqFormula, w: &World) -> Vec<lute_check::prereq::Atom> {
-    use lute_check::prereq::Atom;
-    lute_check::prereq::atoms(f)
+fn unmet_prereq(p: &ExecProject, f: &PrereqFormula, w: &World) -> Vec<Atom> {
+    atoms(f)
         .into_iter()
         .filter(|a| {
             let holds = match a {

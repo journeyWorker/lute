@@ -61,8 +61,8 @@ pub(super) fn line_delivery(l: &Line) -> Option<String> {
 
 /// A prerequisite formula as the CEL condition it stands for: `visited(K)`
 /// reads the visited set, `completed(Q)` / `active(Q)` the quest's state.
-pub(super) fn prereq_condition(f: &lute_check::PrereqFormula) -> String {
-    use lute_check::PrereqFormula as F;
+pub(super) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
+    use lute_manifest::semantics::prereq::PrereqFormula as F;
     match f {
         F::Visited(k) => format!("visited('{k}')"),
         F::Completed(q) => format!("quest.{q}.state == 'complete'"),

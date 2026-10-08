@@ -10,7 +10,7 @@ use lute_syntax::ast::{Arm, Assert, Node};
 use lute_manifest::fact::FactPattern;
 use crate::check::CheckResult;
 use crate::meta::{resolve_doc_kind, DocKind};
-use crate::prereq::{atoms, PrereqFormula};
+use lute_manifest::semantics::prereq::{atoms, PrereqFormula};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reachability {

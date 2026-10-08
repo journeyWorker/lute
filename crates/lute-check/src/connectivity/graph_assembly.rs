@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Span};
 use lute_syntax::ast::{Quest, Node};
 use crate::meta::meta_key_span;
-use crate::prereq::{atoms, parse_prereq};
+use crate::prereq::parse_prereq;
+use lute_manifest::semantics::prereq::atoms;
 
 pub fn assemble_graph(
     docs: &[ProjectDoc<'_>],

@@ -5,5 +5,6 @@ pub mod cel_paths;
 pub mod chapters;
 pub mod gates;
 pub mod occasion_bind;
+pub mod prereq;
 pub mod target_writes;
 pub mod templates;

@@ -52,8 +52,8 @@ pub(super) fn judge(
         .artifacts
         .get(&row.document)
         .and_then(|d| exec::session::beat_prereq(d, &row.id));
-    for atom in prereq.iter().flat_map(lute_check::prereq::atoms) {
-        if let lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) = atom {
+    for atom in prereq.iter().flat_map(lute_manifest::semantics::prereq::atoms) {
+        if let lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) = atom {
             if let lute_runtime::eval::Read::Value(Value::Str(s)) =
                 m.read(&format!("quest.{q}.state"))
             {
@@ -89,7 +89,7 @@ pub(super) fn premise_text(
     kind: BeatKind,
     when: Option<&str>,
 ) -> String {
-    use lute_check::prereq::Atom;
+    use lute_manifest::semantics::prereq::Atom;
     match prem {
         Premise::When { raw } => when_text(m, mocks, raw, when.unwrap_or(raw.as_str())),
         Premise::After {

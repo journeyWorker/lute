@@ -1313,9 +1313,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 // guard, not a real branch — the same string
                 // `artifact_meta` stamps as `SceneMeta.id`.
                 let node = canonical_scene_key(&folded.typed).unwrap_or_default();
+                let span = lute_check::meta::meta_key_span(&doc.meta, "after");
                 out.push(PrereqEdgeEntry {
                     node,
                     edge: PrereqEdge::After(after.to_string()),
+                    formula: lute_check::parse_prereq(after, span).0,
                 });
             }
         }
@@ -1325,6 +1327,7 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                     out.push(PrereqEdgeEntry {
                         node: quest.id.clone(),
                         edge: PrereqEdge::Follows(follows.to_string()),
+                        formula: None,
                     });
                 }
             }
@@ -1334,10 +1337,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
         lute_check::DocKind::Lore => {
             if let Some(doc_id) = folded.typed.id.as_deref() {
                 for beat in &doc.beats {
-                    if let Some((after, _)) = &beat.after {
+                    if let Some((after, span)) = &beat.after {
                         out.push(PrereqEdgeEntry {
                             node: lute_check::bundle_beat_key(doc_id, &beat.id),
                             edge: PrereqEdge::After(after.clone()),
+                            formula: lute_check::parse_prereq(after, *span).0,
                         });
                     }
                 }

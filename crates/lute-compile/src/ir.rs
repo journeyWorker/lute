@@ -185,6 +185,11 @@ pub struct PrereqEdgeEntry {
     /// The RAW declared formula, keyed by what it means on the wire.
     #[serde(flatten)]
     pub edge: PrereqEdge,
+    /// The parsed `after` formula ([`lute_check::parse_prereq`]), so the
+    /// runtime never parses `after` text. `None` for `follows` edges and for
+    /// an `after` outside the prerequisite profile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub formula: Option<lute_manifest::semantics::prereq::PrereqFormula>,
 }
 
 /// The two kinds of graph edge a node declares, serialized as the single
