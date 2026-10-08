@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.37.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.38.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.

@@ -27,7 +27,7 @@
   "facts": [
     "seen(jon, key)"
   ],
-  "irVersion": "0.37",
+  "irVersion": "0.38",
   "kind": "lore",
   "quests": {},
   "state": {

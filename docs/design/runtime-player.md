@@ -109,26 +109,39 @@ its own version axis (`docs/versioning.md`).
 | `Timeout` / `TimeElapsed` | |
 | `Load { snapshot }` | |
 
-## 4. Open — settle in the phase-1 spec
+## 4. Open questions — owner answers (2026-10-08)
 
-1. Suspension granularity: does the runtime stop after every line
-   (`AwaitAdvance`) or emit runs of non-blocking records until the next input
-   point and let player-core pace them?
-2. Snapshot granularity for rollback (per input? per line?) and snapshot cost
-   (copy-on-write discipline; no deep clones — see the 0.36.4 lesson).
-3. Cross-run data — read history (keyed by `lineId`), gallery, endings: Lute
-   `user.*` state owned by the runtime, or a player/host profile?
-4. Non-blocking dialogue (barks, walk-and-talk): may occasions interleave with
-   an open conversation? This is runtime meaning, not presentation.
-5. Typed IR vs JSON inside the runtime; where the IR types crate lives.
-6. Which `lute-trace` parts move (walk, store, datalog, session) and which stay
-   preview-only; how `lute trace` keeps its three-valued preview on top of the
-   runtime.
-7. Event contract version axis name and how `lute play --json` relates to it
-   (same stream, or a projection).
-8. Order-dependent semantics: where `BTreeMap` iteration order is de facto
-   meaning (quest updates, rule application) — pin it in the spec and
-   conformance so an independent runtime can match.
+Answered by the owner before the phase-1 spec; the spec makes them normative.
+
+1. **Suspension granularity:** the runtime runs to the next input point
+   (choice, bridge wait, occasion, end) and emits the non-blocking records in
+   between as one batch; player-core paces them line by line.
+2. Snapshot granularity follows from 1: one snapshot per input point;
+   copy-on-write, no deep clones. Settled in the spec.
+3. **Cross-run data:** anything a condition can read (endings, gallery
+   unlocks) is runtime `user.*` state; per-`lineId` read history (read-skip)
+   is a player profile.
+4. **Non-blocking dialogue:** not in R1. One open presentation at a time; a
+   `RaiseOccasion` while one is open is refused with a defined outcome.
+   Concurrent walks are a later spec.
+5. **IR inside the runtime:** R1 keeps `serde_json::Value` access; typed IR is
+   a later slice.
+6. Which `lute-trace` parts move: settled in the spec.
+7. **Version axis:** a new `event` axis in `docs/versioning.md`, aligned like
+   every other axis. `lute play --json` stays the CLI report, unchanged; the
+   runtime event stream is a separate output.
+8. Order-dependent semantics: pinned in the spec and conformance.
+9. **(Found during spec research) CEL evaluation:** the owner chose "the
+   compiler lowers every slot to `expr`". Verified at v0.37.0: it already
+   does — `CelPair::from_slot` panics on an unlowerable slot
+   (`crates/lute-compile/src/ir.rs:1827-1864`), the schema requires
+   `{cel, expr}` on every `celSlot`, and host calls (`holds`, `count`,
+   `countDistinct`, `validAt`, `now`, `visited`) lower to `{call, args}`
+   (`crates/lute-compile/src/expr.rs:371-392`). The executor ignores `expr`
+   and parses `.cel` (`Store::eval` → `lute_cel::parse_slot`). The comment in
+   `docs/runtime/execution-model.md` saying relational slots carry CEL text
+   only is out of date. The work is a parser-free `expr` evaluator in
+   the runtime; no IR change is needed.
 
 ## 5. Suggested order
 

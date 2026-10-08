@@ -1,11 +1,11 @@
 ---
-title: "AI harness surface — 0.37.0"
+title: "AI harness surface — 0.38.0"
 status: Draft
 ---
 
 # AI harness surface
 
-This page is the thin adapter contract for 0.37.0. The current language is
+This page is the thin adapter contract for 0.38.0. The current language is
 `docs/proposals/scenario-dsl/0.37.0.md`; the context/patch/diff source-edit
 contract it relies on was specified in `docs/proposals/scenario-dsl/0.35.0.md`
 and `0.36.0.md`, and 0.37.0 leaves it unchanged. This page only gives a harness

@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED execution IR
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.37.schema.json`).
+//! `schemas/lute-ir-0.38.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! execution IR (`lute compile` output), gates on `irVersion` by exact minor
@@ -601,7 +601,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.37.0", "commands": [command]})
+        json!({"irVersion": "0.38.0", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is
