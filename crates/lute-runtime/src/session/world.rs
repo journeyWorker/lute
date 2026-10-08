@@ -5,6 +5,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
+use serde::{Deserialize, Serialize};
+
 use crate::index::BeatKind;
 use serde_json::{json, Value as Json};
 
@@ -44,7 +46,8 @@ impl Driver for NoDecisionDriver {
 }
 
 /// Everything that carries from one step to the next.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct World {
     /// Persistent-tier state (`run.*`/`user.*`/`app.*`/`quest.*`/`entry.*`);
     /// `scene.*` never lives here — it resets at every scene boundary.

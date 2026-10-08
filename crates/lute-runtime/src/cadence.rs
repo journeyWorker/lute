@@ -33,7 +33,7 @@
 //! `unset`.
 //!
 //! wasm-clean: no filesystem, process or threads.
-
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 use std::sync::Arc;
@@ -211,7 +211,8 @@ pub struct LatchPlan {
 }
 
 /// The cadence memory a playthrough carries between steps.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Cadence {
     /// Each season's `live` as last observed (absent before the first).
     pub live: BTreeMap<String, bool>,

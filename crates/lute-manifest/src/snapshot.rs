@@ -2,6 +2,13 @@ use std::collections::BTreeMap;
 
 use sha2::{Digest, Sha256};
 
+/// Return a SHA-256 digest as lowercase hexadecimal.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    format!("{:x}", h.finalize())
+}
+
 use crate::permissions::Permissions;
 use crate::schema::*;
 use crate::types::Literal;
