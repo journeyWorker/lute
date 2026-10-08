@@ -161,15 +161,15 @@ impl<D: Driver> Machine<D> {
             }
         };
         let op = cmd.get("op").and_then(Json::as_str).unwrap_or("=");
-        let Some(rhs_raw) = super::cel_raw(cmd.get("value")) else {
+        let Some(rhs) = self.slot(cmd.get("value")) else {
             self.fatal = Some(format!(
                 "set `{path}` has a malformed value (expected a CEL pair)"
             ));
             return;
         };
-        let (rhs, mut atoms) = self.eval_atoms(&rhs_raw);
+        let (rhs_value, mut atoms) = self.eval_atoms(&rhs);
         let new = if op == "=" {
-            rhs
+            rhs_value
         } else {
             let cur = match self.store.read(&path) {
                 Read::Value(v) => v,
@@ -178,7 +178,7 @@ impl<D: Driver> Machine<D> {
                     Value::Unknown
                 }
             };
-            fold_op(op, &cur, &rhs)
+            fold_op(op, &cur, &rhs_value)
         };
         if let Value::Error(message) = &new {
             self.fatal = Some(format!("set `{path}` failed: {message}"));
@@ -186,7 +186,7 @@ impl<D: Driver> Machine<D> {
         }
         if new == Value::Unknown {
             let site = Site::new(SiteKind::SetValue, &path, addr(cmd));
-            if self.at_unknown(site, &rhs_raw, &atoms) {
+            if self.at_unknown(site, &rhs.raw, &atoms) {
                 return;
             }
         }

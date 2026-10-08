@@ -529,7 +529,10 @@ pub(super) fn beat_when_note(
     let beat = folded.typed.beat.as_ref()?;
     let mut slot = beat.when.clone()?;
     let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
-    let v = m.eval_guard(&slot.raw);
+    let v = match lowered(&slot.raw) {
+        Some(cond) => m.eval_guard(&cond),
+        None => Err(Vec::new()),
+    };
     let raw = beat.when.as_ref().map(|s| s.raw.trim()).unwrap_or_default();
     match v {
         Ok(false) => Some(format!(

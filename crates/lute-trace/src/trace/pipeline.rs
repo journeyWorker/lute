@@ -546,11 +546,7 @@ pub(super) fn trace_pipeline(
 
     // How the walk ended, in play's words: the project's `terminal:` (the
     // artifact carries it) holding in the world it left is `end: terminal`.
-    let terminal = art
-        .get("terminal")
-        .and_then(|t| t.get("cel"))
-        .and_then(Json::as_str)
-        .map(str::to_string);
+    let terminal = art.get("terminal").and_then(exec::Slot::of);
     let terminal = terminal.as_deref();
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
     // `--fact`, the project's seeds, and what the rules derive over them —

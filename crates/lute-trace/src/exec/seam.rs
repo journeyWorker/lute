@@ -11,7 +11,7 @@
 //! `occasion:` step is a usage error.
 
 use super::session::{ExecProject, PlayHalt, World};
-use crate::exec::{Driver, GuardRead, Machine};
+use crate::exec::{Driver, GuardRead, Machine, Slot};
 
 use lute_check::gates::E_OCCASION_GATE;
 
@@ -42,11 +42,12 @@ impl Closed {
     }
 }
 
-/// Decide `raw` in `eval`; `Err` names what was unknown.
-fn decide<D: Driver>(eval: &mut Machine<D>, raw: &str) -> Result<bool, String> {
-    eval.eval_guard(raw).map_err(|atoms| {
+/// Decide `cond` in `eval`; `Err` names what was unknown.
+fn decide<D: Driver>(eval: &mut Machine<D>, cond: &Slot) -> Result<bool, String> {
+    eval.eval_guard(cond).map_err(|atoms| {
         format!(
-            "`{raw}` evaluates unknown: {}",
+            "`{}` evaluates unknown: {}",
+            cond.raw(),
             super::session::describe_atoms(&atoms)
         )
     })
@@ -55,13 +56,13 @@ fn decide<D: Driver>(eval: &mut Machine<D>, raw: &str) -> Result<bool, String> {
 /// Whether the project's `terminal:` holds in `w` (`Ok(false)` without
 /// one); `Err` names what was unknown.
 pub fn terminal_holds(p: &ExecProject, w: &World) -> Result<bool, String> {
-    match &p.index.terminal {
+    match &p.conds.terminal {
         None => Ok(false),
         Some(t) => decide(
             &mut w
                 .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
                 .with_visited(&w.visited),
-            &t.raw,
+            t,
         ),
     }
 }
@@ -104,26 +105,28 @@ pub fn closed_in<D: Driver>(
         .index
         .terminal
         .as_ref()
+        .zip(p.conds.terminal.as_ref())
         .filter(|_| !p.index.outside_run.iter().any(|o| o == occasion));
     if terminal.is_none() && gate.is_none() {
         return None;
     }
     let member = target.map(|t| member(p, occasion, t));
     eval.bind_occasion_target(member.as_deref());
-    if let Some(t) = terminal {
-        match decide(eval, &t.raw) {
+    if let Some((t, cond)) = terminal {
+        match decide(eval, cond) {
             Ok(true) => return Some(Closed::Terminal(t.shown().to_string())),
             Ok(false) => {}
             Err(unknown) => return Some(Closed::Unknown(unknown)),
         }
     }
-    let gate = &gate?.raised_when;
-    match decide(eval, &gate.raw) {
+    let gate = gate?;
+    let cond = p.conds.gates.get(&gate.occasion)?;
+    match decide(eval, cond) {
         Ok(true) => None,
         Ok(false) => {
             let mut reads: Vec<GuardRead> = Vec::new();
             for r in eval
-                .false_conjuncts(&gate.raw)
+                .false_conjuncts(cond)
                 .into_iter()
                 .flat_map(|(_, r)| r)
             {
@@ -132,7 +135,7 @@ pub fn closed_in<D: Driver>(
                 }
             }
             Some(Closed::Gate {
-                raw: gate.shown().to_string(),
+                raw: gate.raised_when.shown().to_string(),
                 reads,
             })
         }

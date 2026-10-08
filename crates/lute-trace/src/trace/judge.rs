@@ -157,7 +157,9 @@ pub(super) fn when_text(
         let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
         mocks.facts.iter().any(|s| bare(s) == bare(f))
     };
-    let conjuncts = m.false_conjuncts(raw);
+    let conjuncts = lowered(raw)
+        .map(|cond| m.false_conjuncts(&cond))
+        .unwrap_or_default();
     let authored = authored.trim();
     // What one false conjunct read, ` (…)`, or nothing.
     let found = |reads: &[GuardRead]| {

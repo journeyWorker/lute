@@ -36,20 +36,24 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use std::sync::Arc;
+
 use lute_compile::index::{BeatKind, IndexBeat, ProjectIndex};
 use lute_compile::BeatOnce;
 use serde_json::{json, Value as Json};
 
 use crate::exec::session::{
-    ever_read_path, json_to_value, spend_group, value_to_json, ExecProject, QuestAdvance, World,
+    ever_read_path, json_to_value, spend_group, value_to_json, Conds, ExecProject, QuestAdvance,
+    World,
 };
+use crate::exec::Slot;
 use crate::Value;
 
 /// One declared season, resolved against the project.
 pub struct SeasonPlan {
     pub name: String,
     /// The `live` condition, `@def`-expanded.
-    pub live: String,
+    pub live: Arc<Slot>,
     /// Every declared `season.<name>.*` path with its declared default.
     pub paths: Vec<(String, Option<Value>)>,
     /// `tier="season:<name>"` quests -> their objective ids.
@@ -64,7 +68,7 @@ pub struct SeasonPlan {
 pub struct RearmPlan {
     pub quest: String,
     pub document: String,
-    pub raw: String,
+    pub cond: Arc<Slot>,
     pub objectives: Vec<String>,
 }
 
@@ -79,11 +83,12 @@ pub struct CadencePlan {
 impl CadencePlan {
     /// The plan of a project: the index's seasons, the state table's season
     /// paths, and every quest record's `tier` / `rearm`.
-    pub fn of(
+    pub(crate) fn of(
         index: &ProjectIndex,
         artifacts: &BTreeMap<String, Json>,
         quest_docs: &[String],
         state_table: &BTreeMap<String, Json>,
+        conds: &Conds,
     ) -> Self {
         let quests: Vec<(&String, &Json)> = quest_docs
             .iter()
@@ -109,16 +114,17 @@ impl CadencePlan {
         let seasons = index
             .seasons
             .iter()
-            .map(|s| {
+            .filter_map(|s| {
                 let mine = |c: &&(&String, &Json)| {
                     c.1.get("tier")
                         .and_then(Json::as_str)
                         .and_then(lute_manifest::season::season_ref)
                         == Some(s.name.as_str())
                 };
-                SeasonPlan {
+                let live = serde_json::to_value(&s.live).ok().and_then(|j| Slot::of(&j))?;
+                Some(SeasonPlan {
                     name: s.name.clone(),
-                    live: s.live.raw.clone(),
+                    live,
                     paths: state_table
                         .iter()
                         .filter(|(p, _)| {
@@ -147,17 +153,17 @@ impl CadencePlan {
                         })
                         .map(|r| r.name.clone())
                         .collect(),
-                }
+                })
             })
             .collect();
         let rearms = quests
             .iter()
             .filter_map(|(rel, c)| {
-                let raw = c.get("rearm")?.get("cel")?.as_str()?;
+                let cond = Slot::of(c.get("rearm")?)?;
                 Some(RearmPlan {
                     quest: id_of(c)?,
                     document: (*rel).clone(),
-                    raw: raw.to_string(),
+                    cond,
                     objectives: objectives(c),
                 })
             })
@@ -166,7 +172,7 @@ impl CadencePlan {
             .beats
             .iter()
             .filter_map(|b| {
-                let raw = b.spent_by.as_ref()?;
+                let cond = conds.beat(b)?.spent_by.clone()?;
                 let members: Vec<Option<String>> = match (&b.for_kind, &b.target_kind) {
                     (Some(k), _) => k.members.iter().cloned().map(Some).collect(),
                     (None, Some(k)) => k.members.iter().cloned().map(Some).collect(),
@@ -174,7 +180,7 @@ impl CadencePlan {
                 };
                 Some(LatchPlan {
                     beat: b.id.clone(),
-                    raw: raw.clone(),
+                    cond,
                     members,
                 })
             })
@@ -199,7 +205,7 @@ impl CadencePlan {
 pub struct LatchPlan {
     pub beat: String,
     /// The `spentBy` condition, `@def`-expanded.
-    pub raw: String,
+    pub cond: Arc<Slot>,
     /// `Some(member)` for a `for=` / `target="kind:…"` beat (bound as
     /// `occasion.target`), else one `None`.
     pub members: Vec<Option<String>>,
@@ -361,7 +367,7 @@ pub fn spent_by<D: crate::exec::Driver>(
     beat: &IndexBeat,
     member: Option<&str>,
 ) -> Result<Option<String>, Vec<crate::UnresolvedAtom>> {
-    let Some(raw) = beat.spent_by.as_deref() else {
+    let Some(cond) = p.conds.beat(beat).and_then(|c| c.spent_by.as_ref()) else {
         return Ok(None);
     };
     if let Some(reason) = latched(p, w, beat, member) {
@@ -369,8 +375,8 @@ pub fn spent_by<D: crate::exec::Driver>(
     }
     let who = member.map(|m| format!(" for {m}")).unwrap_or_default();
     Ok(eval
-        .eval_guard(raw)?
-        .then(|| format!("spentBy: `{raw}` holds{who}")))
+        .eval_guard(cond)?
+        .then(|| format!("spentBy: `{}` holds{who}", cond.raw())))
 }
 
 /// The key a `spentBy` beat is latched under: `<id>@<member>` for a kind
@@ -533,7 +539,7 @@ pub fn observe(p: &ExecProject, w: &mut World) -> Vec<QuestAdvance> {
     let rearms: Vec<Option<bool>> = plan
         .rearms
         .iter()
-        .map(|r| eval.eval_guard(&r.raw).ok())
+        .map(|r| eval.eval_guard(&r.cond).ok())
         .collect();
     drop(eval);
     let mut out: Vec<QuestAdvance> = Vec::new();
@@ -632,7 +638,7 @@ pub fn observe_latches(p: &ExecProject, w: &mut World) {
                 continue;
             }
             eval.bind_occasion_target(member);
-            if matches!(eval.eval_guard(&l.raw), Ok(true)) {
+            if matches!(eval.eval_guard(&l.cond), Ok(true)) {
                 held.push(latch_key(&l.beat, member));
             }
         }

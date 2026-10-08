@@ -16,17 +16,15 @@
 //!   Machine's (it records and refuses).
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::rc::Rc;
+use std::collections::{BTreeMap, BTreeSet};
 
-use cel_parser::ast::Expr;
-use lute_cel::CelArena;
 use lute_check::{RelVocab, StateSchema};
 use serde_json::Value as Json;
 
+use super::expr::{self, Expr};
 use crate::datalog::{Fact, Program};
 use crate::eval::{Read, ReservedReadKind};
-use crate::{eval, EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
+use crate::{EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 
 /// One member's declared label forms (the artifact's `labelForms` entry).
 #[derive(Clone, Debug, Default)]
@@ -446,28 +444,8 @@ impl Store {
         }
     }
 
-    /// Evaluate a `raw` CEL fragment over live state and the closure. Empty
-    /// or unparsable text is unknown, with no atom.
-    pub(crate) fn eval(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
-        match parse(raw) {
-            Some(expr) => self.eval_expr(&expr),
-            None => {
-                if self.capture_reads {
-                    self.last_reads.clear();
-                }
-                (Value::Unknown, Vec::new())
-            }
-        }
-    }
-
-    /// Evaluate the canonical dotted `path` (`run.visits.lab-b2`), a path
-    /// field of the artifact, through its CEL spelling
-    /// (`run.visits["lab-b2"]`): a segment need not be an identifier.
-    pub(crate) fn eval_path(&mut self, path: &str) -> (Value, Vec<UnresolvedAtom>) {
-        self.eval(&lute_cel::path::bracket_spelling_of(path))
-    }
-
-    pub(crate) fn eval_expr(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
+    /// Evaluate `expr` over live state and the closure.
+    pub(crate) fn eval(&mut self, expr: &Expr) -> (Value, Vec<UnresolvedAtom>) {
         self.derive();
         let eff = if self.capture_reads {
             EffectiveState::over(&self.store_schema.state, &self.values).with_read_log()
@@ -485,7 +463,7 @@ impl Store {
             facts: &fs,
         };
         let mut atoms = Vec::new();
-        let v = eval(expr, &env, &mut atoms);
+        let v = expr::eval(expr, &env, None, &mut atoms);
         if self.capture_reads {
             self.last_reads = eff.reads();
         }
@@ -494,6 +472,12 @@ impl Store {
         }
         self.derived_reads.extend(fs.derived_reads());
         (v, atoms)
+    }
+
+    /// Evaluate the canonical dotted `path` (`run.visits.lab-b2`), a path
+    /// field of the artifact: a segment need not be an identifier.
+    pub(crate) fn eval_path(&mut self, path: &str) -> (Value, Vec<UnresolvedAtom>) {
+        self.eval(&Expr::Path(path.into()))
     }
 
     /// HW27-10: why the derived `fact` does not hold — every rule that could
@@ -577,37 +561,6 @@ fn is_entry_ever_read(path: &str) -> bool {
         ["entry", _, "everRead"]
     )
 }
-
-/// Parse `raw` (`None` for blank or unparsable text), once per thread: a
-/// play judges the same guards, `::set` values and rule-body `cel(…)`
-/// fragments at every raise and settle, and parsing them afresh each time
-/// was most of its run time. The memo holds at most [`PARSED_CAP`] texts.
-pub(crate) fn parse(raw: &str) -> Option<Rc<Expr>> {
-    thread_local! {
-        static PARSED: RefCell<HashMap<String, Option<Rc<Expr>>>> = RefCell::default();
-    }
-    if raw.trim().is_empty() {
-        return None;
-    }
-    if let Some(hit) = PARSED.with_borrow(|m| m.get(raw).cloned()) {
-        return hit;
-    }
-    let mut arena = CelArena::default();
-    let parsed = lute_cel::parse_slot(&mut arena, raw, 0)
-        .ok()
-        .and_then(|h| arena.get(h))
-        .map(|e| Rc::new(e.expr.clone()));
-    PARSED.with_borrow_mut(|m| {
-        if m.len() >= PARSED_CAP {
-            m.clear();
-        }
-        m.insert(raw.to_string(), parsed.clone());
-    });
-    parsed
-}
-
-/// How many parsed texts [`parse`] keeps per thread before starting over.
-const PARSED_CAP: usize = 4096;
 
 pub fn render_fact(rel: &str, args: &[String]) -> String {
     format!("{rel}({})", args.join(", "))
@@ -738,16 +691,17 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn visited_guard_cache_invalidates_when_visited_changes() {
+    fn visited_reads_the_live_visited_set() {
         let artifact = json!({
             "state": [],
             "rules": [],
             "entities": []
         });
         let mut store = Store::of_artifact(&artifact, false, None);
-        assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(false));
+        let visited = Expr::decode(&json!({"call": "visited", "args": [{"string": "scene-a"}]}));
+        assert_eq!(store.eval(&visited).0, Value::Bool(false));
         store.visit_all(&BTreeSet::from([String::from("scene-a")]));
-        assert_eq!(store.eval("visited('scene-a')").0, Value::Bool(true));
+        assert_eq!(store.eval(&visited).0, Value::Bool(true));
     }
 
     /// The closure memo is exact: a Store over a different world (another

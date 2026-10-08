@@ -4,22 +4,24 @@
 //! and handler firing.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
-use super::{addr, cel_raw, fold_op, Machine, Site};
+use super::{addr, fold_op, Code, Machine, Site};
 use crate::eval::Read;
 use crate::exec::driver::{Driver, SiteKind};
+use crate::exec::expr::{Expr, Slot};
 use crate::Value;
 
 /// A parsed quest declaration head (quest-lifecycle.md).
 struct QuestDecl {
     id: String,
-    /// `raw` activation predicate; `None` ⇒ activates at start / accept-driven.
-    start: Option<String>,
-    /// `raw` failure predicate, evaluated before derived completion.
-    fail: Option<String>,
+    /// Activation predicate; `None` ⇒ activates at start / accept-driven.
+    start: Option<Arc<Slot>>,
+    /// Failure predicate, evaluated before derived completion.
+    fail: Option<Arc<Slot>>,
     objectives: Vec<Obj>,
     /// dsl 0.16.0 §3 D-D: owner-declared `<reward/>` entries in
     /// declaration order. Grants fire at fresh `complete`/`failed`
@@ -36,7 +38,8 @@ struct QuestDecl {
 
 struct Obj {
     id: String,
-    done: String,
+    /// Blank (unknown, no atom) when the objective declares none.
+    done: Arc<Slot>,
     optional: bool,
     /// `addr` of the completion body segment, or `None` (empty body).
     body: Option<String>,
@@ -50,12 +53,12 @@ struct Obj {
     /// dsl 0.21.0 §7a.2: `ObjectiveEntry.on` — the occasion at which this
     /// objective's `done` is judged; `None` ⇒ judged continuously.
     on: Option<String>,
-    /// dsl 0.23.0 §2: `ObjectiveEntry.by` raw — while not done, the first
-    /// time it is true the objective fails.
-    by: Option<String>,
-    /// dsl 0.24.0 §2.1: `ObjectiveEntry.until` raw — judged only when the
+    /// dsl 0.23.0 §2: `ObjectiveEntry.by` — while not done, the first time
+    /// it is true the objective fails.
+    by: Option<Arc<Slot>>,
+    /// dsl 0.24.0 §2.1: `ObjectiveEntry.until` — judged only when the
     /// objective's occasion (and target) is raised, after its `done`.
-    until: Option<String>,
+    until: Option<Arc<Slot>>,
     /// dsl 0.23.0 §2: `ObjectiveEntry.target` — with `on`, judged only by a
     /// raise for this target.
     target: Option<String>,
@@ -73,7 +76,7 @@ struct RewardRec {
     amount: Option<i64>,
     amount_min: Option<i64>,
     amount_max: Option<i64>,
-    when: Option<String>,
+    when: Option<Arc<Slot>>,
     outcome: Option<String>,
     /// dsl 0.23.0 §8: `RewardEntry.credits` — the state path a grant adds
     /// its (scalar) amount to.
@@ -103,7 +106,7 @@ struct Handler {
     /// The `on` record's `addr`.
     addr: String,
     event: String,
-    when: Option<String>,
+    when: Option<Arc<Slot>>,
     body: String,
     quest: Option<String>,
     /// dsl 0.24.0 §2: `OnCmd.target` — fires only for a raise of the
@@ -120,7 +123,7 @@ impl<D: Driver> Machine<D> {
         let mut handlers: Vec<Handler> = Vec::new();
         for cmd in &self.code.commands {
             match cmd.get("kind").and_then(Json::as_str) {
-                Some("quest") => quests.push(parse_quest(cmd)),
+                Some("quest") => quests.push(parse_quest(&self.code, cmd)),
                 Some("on") => {
                     handlers.push(Handler {
                         event: cmd
@@ -128,7 +131,7 @@ impl<D: Driver> Machine<D> {
                             .and_then(Json::as_str)
                             .unwrap_or("")
                             .to_string(),
-                        when: cel_raw(cmd.get("when")).map(str::to_string),
+                        when: self.code.slot(cmd.get("when")),
                         body: cmd
                             .get("body")
                             .and_then(Json::as_str)
@@ -246,19 +249,20 @@ impl<D: Driver> Machine<D> {
             }
             let started = match &q.start {
                 None => None,
-                Some(raw) => Some(self.judge(raw, Site::quest(SiteKind::QuestStart, &q.id, &q.id))),
+                Some(cond) => Some(self.judge(cond, Site::quest(SiteKind::QuestStart, &q.id, &q.id))),
             };
             if self.stopped() {
                 return;
             }
+            let start_raw = q.start.as_deref().map(Slot::raw);
             match started {
                 Some(Some(true)) => {
-                    self.activate_quest(&q.id, q.start.as_deref(), false, &handlers, &seg_starts)
+                    self.activate_quest(&q.id, start_raw, false, &handlers, &seg_starts)
                 }
                 _ if self.is_accepted(&q.id) => {
                     self.activate_quest(&q.id, None, true, &handlers, &seg_starts)
                 }
-                Some(Some(false)) => self.observe_waiting(&q.id, "never", q.start.as_deref()),
+                Some(Some(false)) => self.observe_waiting(&q.id, "never", start_raw),
                 None => self.observe_waiting(&q.id, "awaiting accept", None),
                 Some(None) => {}
             }
@@ -366,11 +370,11 @@ impl<D: Driver> Machine<D> {
                     // could still fail the quest — as stuck as an undecidable
                     // `done`. `by` is judged at every settle; `until` only
                     // where the objective is judged.
-                    let unknown = |this: &mut Self, slot: &Option<String>| {
+                    let unknown = |this: &mut Self, slot: &Option<Arc<Slot>>| {
                         slot.as_ref()
-                            .is_some_and(|c| this.eval_raw(c) == Value::Unknown)
+                            .is_some_and(|c| this.eval_value(c) == Value::Unknown)
                     };
-                    let (key, stuck) = if judged && self.eval_raw(&o.done) == Value::Unknown {
+                    let (key, stuck) = if judged && self.eval_value(&o.done) == Value::Unknown {
                         ("done", true)
                     } else if unknown(self, &o.by) || (judged && unknown(self, &o.until)) {
                         ("failed", true)
@@ -458,12 +462,12 @@ impl<D: Driver> Machine<D> {
                                 }
                             }
                             None => Some((None, false)),
-                            Some(raw) => {
+                            Some(cond) => {
                                 let site = Site::quest(SiteKind::QuestStart, &q.id, &q.id);
-                                match self.judge(raw, site) {
-                                    Some(true) => Some((Some(raw.as_str()), false)),
+                                match self.judge(cond, site) {
+                                    Some(true) => Some((Some(cond.raw()), false)),
                                     Some(false) => {
-                                        self.observe_waiting(&q.id, "never", Some(raw));
+                                        self.observe_waiting(&q.id, "never", Some(cond.raw()));
                                         None
                                     }
                                     None => None,
@@ -549,7 +553,7 @@ impl<D: Driver> Machine<D> {
                         if self.failed_objectives.contains(&key) {
                             let kind = self.objective_failed_by.get(&key).copied().unwrap_or("by");
                             let text = if kind == "until" { &o.until } else { &o.by };
-                            return Some((kind, text.clone()));
+                            return Some((kind, text.as_ref().map(|s| s.raw.clone())));
                         }
                         let child = o.quest.as_ref()?;
                         let failed =
@@ -564,7 +568,7 @@ impl<D: Driver> Machine<D> {
                         Some(fail) => {
                             let site = Site::quest(SiteKind::QuestFail, &q.id, &q.id);
                             (self.judge(fail, site) == Some(true))
-                                .then(|| ("fail", Some(fail.clone())))
+                                .then(|| ("fail", Some(fail.raw.clone())))
                         }
                         None => None,
                     },
@@ -710,7 +714,7 @@ impl<D: Driver> Machine<D> {
             Some(false) => {
                 self.driver.observe(json!({
                     "kind": "objective", "quest": q.id, "objective": o.id,
-                    "outcome": "pending", "guard": o.done.trim(),
+                    "outcome": "pending", "guard": o.done.raw.trim(),
                 }));
                 false
             }
@@ -735,7 +739,7 @@ impl<D: Driver> Machine<D> {
         done.insert((qi, oi));
         self.driver.observe(json!({
             "kind": "objective", "quest": q.id, "objective": o.id,
-            "outcome": "done", "guard": o.done.trim(),
+            "outcome": "done", "guard": o.done.raw.trim(),
         }));
         self.write(
             &format!("quest.{}.objectives.{}.done", q.id, o.id),
@@ -842,7 +846,7 @@ impl<D: Driver> Machine<D> {
         }
         self.driver.observe(json!({
             "kind": "objective", "quest": q.id, "objective": o.id,
-            "outcome": "failed", "guard": cond.trim(),
+            "outcome": "failed", "guard": cond.raw.trim(),
         }));
         self.record_objective_failure(&q.id, &o.id, kind);
         self.driver.emit(json!({
@@ -1100,7 +1104,7 @@ impl<D: Driver> Machine<D> {
             };
             self.driver.observe(json!({
                 "kind": "on", "event": event, "quest": h.quest, "position": h.addr,
-                "outcome": outcome, "guard": h.when.as_deref().map(str::trim),
+                "outcome": outcome, "guard": h.when.as_deref().map(|s| s.raw.trim()),
             }));
             if verdict != Some(true) {
                 continue;
@@ -1129,7 +1133,7 @@ impl<D: Driver> Machine<D> {
     }
 }
 
-fn parse_quest(cmd: &Json) -> QuestDecl {
+fn parse_quest(code: &Code, cmd: &Json) -> QuestDecl {
     let id = cmd
         .get("id")
         .and_then(Json::as_str)
@@ -1142,27 +1146,27 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
             arr.iter()
                 .map(|o| Obj {
                     id: o.get("id").and_then(Json::as_str).unwrap_or("").to_string(),
-                    done: cel_raw(o.get("done"))
-                        .map(str::to_string)
-                        .unwrap_or_default(),
+                    done: code.slot(o.get("done")).unwrap_or_else(|| {
+                        Arc::new(Slot::synthetic(String::new(), Expr::Invalid))
+                    }),
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),
-                    rewards: parse_rewards(o),
+                    rewards: parse_rewards(code, o),
                     on: o.get("on").and_then(Json::as_str).map(str::to_string),
-                    by: cel_raw(o.get("by")).map(str::to_string),
+                    by: code.slot(o.get("by")),
                     target: o.get("target").and_then(Json::as_str).map(str::to_string),
-                    until: cel_raw(o.get("until")).map(str::to_string),
+                    until: code.slot(o.get("until")),
                 })
                 .collect()
         })
         .unwrap_or_default();
     QuestDecl {
         id,
-        start: cel_raw(cmd.get("start")).map(str::to_string),
-        fail: cel_raw(cmd.get("fail")).map(str::to_string),
+        start: code.slot(cmd.get("start")),
+        fail: code.slot(cmd.get("fail")),
         objectives,
-        rewards: parse_rewards(cmd),
+        rewards: parse_rewards(code, cmd),
         accept_activated: cmd.get("activate").and_then(Json::as_str) == Some("accept"),
         complete_any: cmd.get("complete").and_then(Json::as_str) == Some("any"),
     }
@@ -1176,15 +1180,15 @@ fn parse_quest(cmd: &Json) -> QuestDecl {
 /// from the wire (`kind`/`target`/`amount`/`amountMin`/`amountMax`/
 /// `when.raw`/`outcome`); a malformed entry keeps default values (empty
 /// `kind` filters at grant time via [`Machine::emit_grants`]).
-fn parse_rewards(owner: &Json) -> Vec<RewardRec> {
+fn parse_rewards(code: &Code, owner: &Json) -> Vec<RewardRec> {
     owner
         .get("rewards")
         .and_then(Json::as_array)
-        .map(|arr| arr.iter().map(parse_reward).collect())
+        .map(|arr| arr.iter().map(|r| parse_reward(code, r)).collect())
         .unwrap_or_default()
 }
 
-fn parse_reward(r: &Json) -> RewardRec {
+fn parse_reward(code: &Code, r: &Json) -> RewardRec {
     RewardRec {
         kind: r
             .get("kind")
@@ -1195,7 +1199,7 @@ fn parse_reward(r: &Json) -> RewardRec {
         amount: r.get("amount").and_then(Json::as_i64),
         amount_min: r.get("amountMin").and_then(Json::as_i64),
         amount_max: r.get("amountMax").and_then(Json::as_i64),
-        when: cel_raw(r.get("when")).map(str::to_string),
+        when: code.slot(r.get("when")),
         outcome: r.get("outcome").and_then(Json::as_str).map(str::to_string),
         credits: r.get("credits").and_then(Json::as_str).map(str::to_string),
     }

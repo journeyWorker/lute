@@ -77,7 +77,10 @@ pub(super) fn start_world(
 /// `--where`: whether `cel` holds over the cell's world. Unknown is an
 /// error — a cell is never dropped (or kept) on a guess.
 pub(super) fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
+    let Some(cond) = lute_trace::lowered(cel) else {
+        return Err(describe_atoms(&[]));
+    };
     let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
-    eval.eval_guard(cel).map_err(|atoms| describe_atoms(&atoms))
+    eval.eval_guard(&cond).map_err(|atoms| describe_atoms(&atoms))
 }
 

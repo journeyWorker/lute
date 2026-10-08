@@ -12,10 +12,11 @@
 use std::collections::BTreeSet;
 
 use cel_parser::ast::{EntryExpr, Expr};
+use lute_cel::path::static_path_string as expr_path;
 use lute_cel::CelArena;
 use lute_syntax::ast::Document;
 
-use crate::eval::{expr_path, is_reserved_quest_path};
+use crate::eval::is_reserved_quest_path;
 
 /// Every reserved quest path referenced anywhere in `doc` (§1.1). Each
 /// [`lute_syntax::ast::CelSlot`]'s `raw` text is re-parsed fresh into a

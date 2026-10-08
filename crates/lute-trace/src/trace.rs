@@ -77,3 +77,13 @@ pub use pipeline::{
     trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check, trace_entry,
     trace_entry_with_check, trace_with_check,
 };
+
+/// A condition held as source text (a document's beat `when`, a `--where`
+/// filter), lowered to the IR's `expr` exactly as `lute compile` lowers it:
+/// the executor evaluates `expr` only and never parses CEL (spec 0.38.0
+/// §13). `None` for text outside the profile — what the checker already
+/// refused.
+pub fn lowered(raw: &str) -> Option<std::sync::Arc<exec::Slot>> {
+    let expr = serde_json::to_value(lute_compile::expr::lower_expr(raw)?).ok()?;
+    exec::Slot::of(&serde_json::json!({ "cel": raw, "expr": expr }))
+}

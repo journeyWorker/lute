@@ -33,6 +33,7 @@
 
 pub mod cadence;
 mod driver;
+pub(crate) mod expr;
 mod machine;
 pub mod record;
 pub mod seam;
@@ -43,9 +44,10 @@ pub use driver::{
     guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu,
     MenuKind, MenuOption, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict,
 };
+pub use expr::Slot;
 pub use machine::{
-    expr_to_cel, render_fact, value_to_json, value_to_string, BridgeReads, Carry, EvalObserver,
-    EvalSnapshot, Machine, Seed, LINE_DELIVERY_KEYS, MENU_MARK_KEYS, NOTE_NO_DECISION,
-    NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
+    render_fact, value_to_json, value_to_string, BridgeReads, Carry, EvalObserver, EvalSnapshot,
+    Machine, Seed, LINE_DELIVERY_KEYS, MENU_MARK_KEYS, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE,
+    NOTE_SKIPPED,
 };
 pub use record::{line_head, render_attrs, said_line};

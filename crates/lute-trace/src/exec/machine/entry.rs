@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
 
-use super::{addr, cel_raw, Machine, Site};
+use super::{addr, Machine, Site};
 use crate::eval::Read;
 use crate::exec::driver::{Driver, SiteKind};
 use crate::Value;
@@ -56,11 +56,11 @@ impl<D: Driver> Machine<D> {
             None => any_read.clone(),
         };
         let first_read = self.store.read(&read_path) != Read::Value(Value::Bool(true));
-        let eligible = match cel_raw(cmd.get("when")) {
+        let eligible = match code.slot(cmd.get("when")) {
             None => Json::Bool(true),
-            Some(raw) => {
+            Some(when) => {
                 let site = Site::new(SiteKind::EntryWhen, &id, addr(cmd));
-                self.judge(raw, site).map(Json::Bool).unwrap_or(Json::Null)
+                self.judge(&when, site).map(Json::Bool).unwrap_or(Json::Null)
             }
         };
         if self.stopped() {
@@ -145,11 +145,11 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_str)
             .unwrap_or("")
             .to_string();
-        let eligible = match cel_raw(cmd.get("when")) {
+        let eligible = match code.slot(cmd.get("when")) {
             None => Json::Bool(true),
-            Some(raw) => {
+            Some(when) => {
                 let site = Site::new(SiteKind::BeatWhen, &canonical, addr(cmd));
-                self.judge(raw, site).map(Json::Bool).unwrap_or(Json::Null)
+                self.judge(&when, site).map(Json::Bool).unwrap_or(Json::Null)
             }
         };
         if self.stopped() {

@@ -15,10 +15,13 @@ pub(super) struct World {
     pub(super) terminal: Option<bool>,
 }
 
-/// Whether the project's `terminal:` condition `raw` holds in the walk's
-/// world — `None` without one, or when the mocks leave it undecided.
-pub(super) fn terminal_at(m: &mut Machine<&mut TraceDriver<'_>>, raw: Option<&str>) -> Option<bool> {
-    m.eval_guard(raw?).ok()
+/// Whether the project's `terminal:` condition holds in the walk's world —
+/// `None` without one, or when the mocks leave it undecided.
+pub(super) fn terminal_at(
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    terminal: Option<&exec::Slot>,
+) -> Option<bool> {
+    m.eval_guard(terminal?).ok()
 }
 
 impl World {

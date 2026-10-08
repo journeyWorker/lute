@@ -3,6 +3,7 @@
 //! selection order, and what an occasion presents.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use lute_check::PrereqFormula;
 use lute_compile::index::{BeatKind, IndexBeat};
@@ -13,7 +14,7 @@ use serde_json::Value as Json;
 use super::project::ExecProject;
 use super::walk::describe_atoms;
 use super::world::World;
-use crate::exec::{Driver, Machine};
+use crate::exec::{Driver, Machine, Slot};
 use crate::{UnresolvedAtom, Value};
 
 /// A candidate's verdict (dsl 0.21.0 §4).
@@ -217,33 +218,10 @@ fn unmet_prereq(p: &ExecProject, f: &PrereqFormula, w: &World) -> Vec<lute_check
         .collect()
 }
 
-/// The compiled CEL pair's executable text. The `raw` source spelling is not
-/// part of the runtime contract: compiled artifacts carry the canonical CEL
-/// under `cel`.
-fn cel_text(pair: &Json) -> Option<String> {
-    pair.get("cel")
-        .and_then(Json::as_str)
-        .filter(|r| !r.trim().is_empty())
-        .map(str::to_string)
-}
-
-/// The beat's when CEL: a scene's `meta.beat.when`, an entry's own
-/// `when` on its `entry` record, a bundle beat's on its `beat` record.
-pub fn beat_when(p: &ExecProject, beat: &IndexBeat) -> Option<String> {
-    let doc = p.artifacts.get(&beat.document)?;
-    let pair = match beat.kind {
-        BeatKind::Scene => doc.get("meta")?.get("beat")?.get("when")?,
-        BeatKind::Entry | BeatKind::Bundle => doc
-            .get("commands")?
-            .as_array()?
-            .iter()
-            .find(|c| {
-                c.get("kind").and_then(Json::as_str) == Some(record_kind(beat.kind))
-                    && c.get("id").and_then(Json::as_str) == Some(beat.id.as_str())
-            })?
-            .get("when")?,
-    };
-    cel_text(pair)
+/// The beat's `when`: a scene's `meta.beat.when`, an entry's own `when` on
+/// its `entry` record, a bundle beat's on its `beat` record.
+pub(crate) fn beat_when(p: &ExecProject, beat: &IndexBeat) -> Option<Arc<Slot>> {
+    p.conds.beat(beat)?.when.clone()
 }
 
 /// dsl 0.23.0 §3: the beat's `also: true` — a scene's `meta.beat.also`, a
@@ -499,9 +477,9 @@ fn judge_with<D: Driver>(
         .and_then(|doc| Some((beat_prereq_raw(doc, &beat.id)?, beat_prereq(doc, &beat.id)?)))
         .map(|(raw, f)| (raw, eval_prereq(p, &f, w), f));
     let when = |eval: &mut Machine<D>| {
-        beat_when(p, beat).map(|raw| {
-            let v = eval.eval_guard(&raw);
-            (raw, v)
+        beat_when(p, beat).map(|cond| {
+            let v = eval.eval_guard(&cond);
+            (cond.raw().to_string(), v)
         })
     };
     let verdict = if let Some(closed) = seam {
@@ -607,18 +585,5 @@ pub fn presented(select: OccasionSelect, cands: &[Candidate]) -> Vec<usize> {
         OccasionSelect::All | OccasionSelect::Sequence => {
             (0..cands.len()).filter(|&i| eligible(&cands[i])).collect()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::cel_text;
-    use serde_json::json;
-
-    #[test]
-    fn compiled_cel_pair_uses_executable_slot_not_source_raw() {
-        let pair = json!({"raw": "legacy spelling", "cel": "run.ready == true"});
-        assert_eq!(cel_text(&pair).as_deref(), Some("run.ready == true"));
-        assert_eq!(cel_text(&json!({"raw": "legacy spelling"})), None);
     }
 }

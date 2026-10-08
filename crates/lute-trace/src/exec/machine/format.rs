@@ -70,10 +70,10 @@ impl<D: Driver> Machine<D> {
                     }
                 }
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("ref") => {
-                    let raw = ph.pointer("/expr/cel").and_then(Json::as_str).unwrap_or("");
-                    match self.eval_raw(raw) {
-                        Value::Unknown => marker.to_string(),
-                        v => formatted(ph, &v)
+                    let value = self.slot(ph.get("expr")).map(|s| self.eval_value(&s));
+                    match value {
+                        None | Some(Value::Unknown) => marker.to_string(),
+                        Some(v) => formatted(ph, &v)
                             .unwrap_or_else(|| texted(ph, value_to_string(&v), None)),
                     }
                 }

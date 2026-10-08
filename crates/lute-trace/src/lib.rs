@@ -52,7 +52,7 @@ pub mod report;
 pub mod trace;
 pub mod value;
 
-pub use eval::{eval, EffectiveState, EvalEnv, FactStore, Pat, Read};
+pub use eval::{EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use mock::{
     bridge_answer_shape, bridge_result_writes, content_read_paths, entry_local_id, merge,
     mock_subject, parse_bridges, parse_mock_surfaces, parse_mock_yaml, raise_judges,
@@ -68,7 +68,7 @@ pub use report::{
     NotRaised, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 pub use trace::{
-    trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check, trace_entry,
-    trace_entry_with_check, trace_with_check, NOTE_ACCEPT_SPENT, NOTE_BEAT_WHEN,
+    lowered, trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check,
+    trace_entry, trace_entry_with_check, trace_with_check, NOTE_ACCEPT_SPENT, NOTE_BEAT_WHEN,
 };
 pub use value::{UnresolvedAtom, Value};

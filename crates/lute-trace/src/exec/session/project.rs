@@ -4,6 +4,7 @@
 //! decision's options).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use lute_compile::index::{build_index, BeatKind, IndexBeat, IndexInput, ProjectIndex};
 use lute_compile::{ExecutionIr, BeatOnce};
@@ -13,7 +14,8 @@ use serde_json::{json, Value as Json};
 
 use crate::datalog::Fact;
 use crate::exec::store::{Store, StoreSchema};
-use crate::exec::BridgeReads;
+use crate::exec::{BridgeReads, Slot};
+
 /// Everything the playthrough reads from the compiled project.
 pub struct ExecProject {
     /// project-relative path -> compiled artifact JSON.
@@ -106,6 +108,71 @@ pub struct ExecProject {
     /// Every asserting site of the compiled project — what a play's refused
     /// pick names for a fact its guard misses.
     pub producers: std::sync::Arc<super::producers::Producers>,
+    /// The project-level conditions, decoded once ([`Conds`]).
+    pub(crate) conds: Conds,
+}
+
+/// The conditions the session decides outside a walk, decoded once at
+/// assembly (spec 0.38.0 §13): the seam's `terminal` and occasion gates,
+/// and each beat's `when` / `spentBy`, keyed by `(document, beat id)` —
+/// the artifacts' `{cel, expr}` pairs (the index carries their text only).
+#[derive(Default)]
+pub(crate) struct Conds {
+    pub(crate) terminal: Option<Arc<Slot>>,
+    pub(crate) gates: BTreeMap<String, Arc<Slot>>,
+    pub(crate) beats: BTreeMap<(String, String), BeatConds>,
+}
+
+#[derive(Default)]
+pub(crate) struct BeatConds {
+    pub(crate) when: Option<Arc<Slot>>,
+    pub(crate) spent_by: Option<Arc<Slot>>,
+}
+
+impl Conds {
+    fn of(index: &ProjectIndex, artifacts: &BTreeMap<String, Json>) -> Self {
+        let typed = |pair: &lute_compile::ir::CelPair| {
+            serde_json::to_value(pair).ok().and_then(|j| Slot::of(&j))
+        };
+        let beat = |head: &Json| BeatConds {
+            when: head.get("when").and_then(Slot::of),
+            spent_by: head.get("spentBy").and_then(Slot::of),
+        };
+        let mut beats = BTreeMap::new();
+        for (rel, art) in artifacts {
+            if let (Some(id), Some(head)) = (
+                art.pointer("/meta/id").and_then(Json::as_str),
+                art.pointer("/meta/beat"),
+            ) {
+                beats.insert((rel.clone(), id.to_string()), beat(head));
+            }
+            let heads = art
+                .get("commands")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter(|c| matches!(c.get("kind").and_then(Json::as_str), Some("entry" | "beat")));
+            for head in heads {
+                if let Some(id) = head.get("id").and_then(Json::as_str) {
+                    beats.insert((rel.clone(), id.to_string()), beat(head));
+                }
+            }
+        }
+        Conds {
+            terminal: index.terminal.as_ref().and_then(typed),
+            gates: index
+                .gates
+                .iter()
+                .filter_map(|g| Some((g.occasion.clone(), typed(&g.raised_when)?)))
+                .collect(),
+            beats,
+        }
+    }
+
+    /// Beat `beat`'s conditions (none when it declares none).
+    pub(crate) fn beat(&self, beat: &IndexBeat) -> Option<&BeatConds> {
+        self.beats.get(&(beat.document.clone(), beat.id.clone()))
+    }
 }
 
 impl ExecProject {
@@ -420,8 +487,14 @@ impl ExecProject {
             result_types: bridge_types.result_types,
             ..BridgeReads::of(artifacts.values())
         });
-        let cadence =
-            crate::exec::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table);
+        let conds = Conds::of(&index, &artifacts);
+        let cadence = crate::exec::cadence::CadencePlan::of(
+            &index,
+            &artifacts,
+            &quest_docs,
+            &state_table,
+            &conds,
+        );
         let reserved = index
             .relations
             .iter()
@@ -459,6 +532,7 @@ impl ExecProject {
             needles: Default::default(),
             chapter_afters: Default::default(),
             producers,
+            conds,
         })
     }
 

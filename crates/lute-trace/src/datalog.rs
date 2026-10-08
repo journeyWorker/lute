@@ -3,13 +3,12 @@
 //! / `lute test` (dsl 0.22.0 §6, `derive: true`) share, so the toolchain can
 //! never disagree with itself about what a project's rules conclude.
 //!
-//! A [`Program`] is the rule set, parsed from either surface it arrives on:
-//! the compiled artifact's `rules` array ([`Program::from_ir`], the runner)
-//! or the checker's merged relational vocabulary ([`Program::from_vocab`],
-//! trace). [`Program::fixpoint`] evaluates it over a base fact set, stratum by
-//! stratum; a rule-body CEL guard reads scalar state through the same
-//! [`crate::eval::eval`] every other guard uses. [`Program::explain`] answers
-//! "why (not)" for one ground atom (`lute play --explain`).
+//! A [`Program`] is the rule set, parsed from the compiled artifact's
+//! `rules` array ([`Program::from_ir`]). [`Program::fixpoint`] evaluates it
+//! over a base fact set, stratum by stratum; a rule-body CEL guard reads
+//! scalar state through the same `exprNode` evaluator every other guard
+//! uses (`exec::expr`). [`Program::explain`] answers "why (not)" for one
+//! ground atom (`lute play --explain`).
 //!
 //! Three-valued honesty: trace state may be unknown, so a rule guard can
 //! decide neither way. Such a rule instance derives nothing, and its head
@@ -18,11 +17,13 @@
 //! runner, whose state is always ground, never produces one.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use lute_check::RelVocab;
 use serde_json::Value as Json;
 
-use crate::eval::{eval, EffectiveState, EvalEnv, FactStore};
+use crate::eval::{EffectiveState, EvalEnv, FactStore};
+use crate::exec::Slot;
 use crate::value::{UnresolvedAtom, Value};
 
 /// A ground fact: relation and argument constants.
@@ -64,8 +65,9 @@ pub enum Lit {
         rhs: Term,
         negated: bool,
     },
+    /// A `cel(…)` guard: the IR's `{cel, expr}` pair, decoded once.
     Guard {
-        cel: String,
+        slot: Arc<Slot>,
     },
     /// `count(atom) op n`, or with `distinct` `countDistinct(atom, V…) op n`.
     Count {
@@ -182,23 +184,6 @@ impl Program {
         Self::new(rules)
     }
 
-    /// The checker's merged rules (`RelVocab.rules`), lowered exactly as
-    /// `lute-compile` lowers them to the IR (`RuleTerm::Bool` → a `"true"` /
-    /// `"false"` constant; a rule reading entity-indexed state by a rule
-    /// variable grounded per member, `lute_check::evaluable_rules`), with the
-    /// vocabulary's closed entity kinds.
-    pub fn from_vocab(vocab: &RelVocab) -> Self {
-        let rules = lute_check::evaluable_rules(vocab)
-            .iter()
-            .map(|r| Rule {
-                head: syntax_atom(&r.rule.head),
-                body: r.rule.body.iter().map(syntax_lit).collect(),
-                raw: r.raw.clone(),
-            })
-            .collect();
-        Self::new(rules).with_kinds(closed_kinds(&vocab.kinds))
-    }
-
     fn new(rules: Vec<Rule>) -> Self {
         let derived: BTreeSet<String> = rules.iter().map(|r| r.head.rel.clone()).collect();
         let strata = compute_strata(&rules, &derived);
@@ -231,7 +216,7 @@ impl Program {
         let bracket = lute_cel::path::bracket_spelling_of(path);
         self.rules.iter().any(|r| {
             r.body.iter().any(|lit| match lit {
-                Lit::Guard { cel } => cel.contains(path) || cel.contains(&bracket),
+                Lit::Guard { slot } => slot.raw.contains(path) || slot.raw.contains(&bracket),
                 _ => false,
             })
         })
@@ -667,13 +652,9 @@ fn ir_lit(l: &Json) -> Option<Lit> {
             rhs: ir_term(l.get("rhs")?)?,
             negated,
         }),
-        "guard" => {
-            // CEL slots are `{cel, expr}` pairs in the 0.32 artifact.
-            let cel = l.get("cel")?.get("cel").and_then(Json::as_str)?;
-            Some(Lit::Guard {
-                cel: cel.to_string(),
-            })
-        },
+        "guard" => Some(Lit::Guard {
+            slot: Slot::of(l.get("cel")?)?,
+        }),
         "count" => Some(Lit::Count {
             atom: ir_atom(l.get("atom")?)?,
             distinct: l
@@ -689,56 +670,6 @@ fn ir_lit(l: &Json) -> Option<Lit> {
             n: l.get("n").and_then(Json::as_u64)?,
         }),
         _ => None,
-    }
-}
-
-fn syntax_term(t: &lute_syntax::datalog::RuleTerm) -> Term {
-    use lute_syntax::datalog::RuleTerm;
-    match t {
-        RuleTerm::Var(v) => Term::Var(v.clone()),
-        RuleTerm::Const(c) => Term::Const(c.clone()),
-        RuleTerm::Bool(b) => Term::Const(b.to_string()),
-    }
-}
-
-fn syntax_atom(a: &lute_syntax::datalog::RuleAtom) -> Atom {
-    Atom {
-        rel: a.relation.clone(),
-        terms: a.terms.iter().map(syntax_term).collect(),
-    }
-}
-
-fn syntax_lit(l: &lute_syntax::datalog::BodyLiteral) -> Lit {
-    use lute_syntax::datalog::BodyLiteral;
-    match l {
-        BodyLiteral::Pos(a) => Lit::Atom {
-            atom: syntax_atom(a),
-            negated: false,
-        },
-        BodyLiteral::Neg(a) => Lit::Atom {
-            atom: syntax_atom(a),
-            negated: true,
-        },
-        BodyLiteral::Guard { cel, .. } => Lit::Guard { cel: cel.clone() },
-        BodyLiteral::Cmp {
-            lhs, rhs, negated, ..
-        } => Lit::Cmp {
-            lhs: syntax_term(lhs),
-            rhs: syntax_term(rhs),
-            negated: *negated,
-        },
-        BodyLiteral::Count {
-            atom,
-            distinct,
-            op,
-            n,
-            ..
-        } => Lit::Count {
-            atom: syntax_atom(atom),
-            distinct: distinct.clone(),
-            op: *op,
-            n: *n,
-        },
     }
 }
 
@@ -931,7 +862,7 @@ fn test_holds(
             (Some(l), Some(r)) => Some((l == r) != *negated),
             _ => Some(false),
         },
-        Lit::Guard { cel } => match eval_rule_guard(cel, b, state, unknown) {
+        Lit::Guard { slot } => match eval_rule_guard(slot, b, state, unknown) {
             Value::Bool(v) => Some(v),
             _ => None,
         },
@@ -1019,23 +950,19 @@ fn unify(terms: &[Term], args: &[String], binding: &Binding) -> Option<Binding> 
 
 /// A rule-body CEL guard reads only scalar state and the ground terms the
 /// join bound — never facts (a fact query in a rule guard is rejected by the
-/// checker). Each bound rule variable is substituted by its ground value,
-/// then the fragment is evaluated over `state` with an empty fact store.
+/// checker). Its `expr` is evaluated over `state` with an empty fact store,
+/// each bound rule variable read as its ground value.
 fn eval_rule_guard(
-    cel: &str,
+    slot: &Slot,
     binding: &Binding,
     state: &EffectiveState<'_>,
     unknown: &mut Vec<UnresolvedAtom>,
 ) -> Value {
-    let substituted = substitute_vars(cel, binding);
-    let Some(expr) = crate::exec::store::parse(&substituted) else {
-        return Value::Bool(false);
-    };
     let vocab = RelVocab::default();
     let fs = FactStore::new(&vocab);
     let env = EvalEnv { state, facts: &fs };
     let mut atoms = Vec::new();
-    let v = eval(&expr, &env, &mut atoms);
+    let v = crate::exec::expr::eval(&slot.expr, &env, Some(binding), &mut atoms);
     if !matches!(v, Value::Bool(_)) {
         for a in atoms {
             if !unknown.contains(&a) {
@@ -1120,7 +1047,7 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
             if *negated { "!=" } else { "=" },
             render_term(rhs, b)
         ),
-        Lit::Guard { cel } => format!("cel(\"{}\")", substitute_vars(cel, b)),
+        Lit::Guard { slot } => format!("cel(\"{}\")", substitute_vars(&slot.raw, b)),
         Lit::Count {
             atom,
             distinct,
@@ -1143,23 +1070,56 @@ fn render_test(lit: &Lit, b: &Binding) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ir_lit, Lit};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    use lute_check::StateSchema;
     use serde_json::json;
 
+    use super::Program;
+    use crate::{EffectiveState, Value};
+
+    /// A rule guard reads a bound rule variable as its ground value, also as
+    /// a family index: `run.aff[S]` under `S = mira` reads `run.aff.mira`.
     #[test]
-    fn ir_guard_reads_cel_from_compiled_pair() {
-        let lit = json!({
-            "kind": "guard",
-            "cel": {
-                "cel": "user.bond.sable >= 2",
-                "expr": {"op": ">=", "l": {"path": "user.bond.sable"}, "r": {"int": 2}}
+    fn guard_reads_bound_variables_as_values() {
+        let var = |n: &str| json!({"kind": "var", "name": n});
+        let rules = json!([
+            {
+                "head": {"relation": "liked", "terms": [var("S")]},
+                "body": [
+                    {"kind": "atom", "atom": {"relation": "npc", "terms": [var("S")]}},
+                    {"kind": "guard", "cel": {
+                        "cel": "run.aff[S] >= 3",
+                        "expr": {"op": ">=",
+                                 "l": {"index": {"path": "run.aff"}, "key": {"path": "S"}},
+                                 "r": {"int": 3}}
+                    }}
+                ]
+            },
+            {
+                "head": {"relation": "stalked", "terms": [var("S")]},
+                "body": [
+                    {"kind": "atom", "atom": {"relation": "npc", "terms": [var("S")]}},
+                    {"kind": "guard", "cel": {
+                        "cel": "run.stalker == S",
+                        "expr": {"op": "==", "l": {"path": "run.stalker"}, "r": {"path": "S"}}
+                    }}
+                ]
             }
-        });
-        assert_eq!(
-            ir_lit(&lit),
-            Some(Lit::Guard {
-                cel: "user.bond.sable >= 2".to_string()
-            })
-        );
+        ]);
+        let program = Program::from_ir(Some(&rules));
+        let base: BTreeSet<_> = ["mira", "ren"]
+            .map(|n| ("npc".to_string(), vec![n.to_string()]))
+            .into();
+        let schema = StateSchema::default();
+        let state = BTreeMap::from([
+            ("run.aff.mira".to_string(), Value::Int(3)),
+            ("run.aff.ren".to_string(), Value::Int(1)),
+            ("run.stalker".to_string(), Value::Str("ren".to_string())),
+        ]);
+        let closure = program.fixpoint(&base, &EffectiveState::over(&schema, &state));
+        let holds = |rel: &str, a: &str| closure.facts.contains(&(rel.to_string(), vec![a.to_string()]));
+        assert!(holds("liked", "mira") && !holds("liked", "ren"));
+        assert!(holds("stalked", "ren") && !holds("stalked", "mira"));
     }
 }

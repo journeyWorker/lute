@@ -1,9 +1,9 @@
 //! Menus and decisions: `choice` and `hub` presentation through
 //! [`Driver::choose`], option verdicts, the refusal of a scripted pick that
-//! is not offered, and `match` arms (an `is` arm's structured `expr` read
-//! as CEL, [`expr_to_cel`]).
+//! is not offered, and `match` arms.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
 
@@ -13,6 +13,7 @@ use crate::eval::Read;
 use crate::exec::driver::{
     guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
 };
+use crate::exec::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
 use crate::{UnresolvedAtom, Value};
 
 /// One premise of a failed rule attempt, named for a refusal when it is
@@ -52,12 +53,6 @@ fn base_missing(attempts: &[crate::datalog::Attempt], out: &mut Vec<String>) {
     }
 }
 
-fn option_when(option: &Json) -> Option<&str> {
-    option
-        .get("when")
-        .and_then(|v| super::cel_raw(Some(v)))
-}
-
 impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
@@ -67,10 +62,15 @@ impl<D: Driver> Machine<D> {
         self.refused = true;
     }
 
+    /// A menu option's `when` slot.
+    fn option_when(&self, option: &Json) -> Option<Arc<Slot>> {
+        self.slot(option.get("when"))
+    }
+
     /// Judge one option guard for a menu: `Open` / `Closed`, or `Unknown`
     /// with the atoms this evaluation recorded (left in
     /// [`Machine::unresolved`]).
-    fn option_verdict(&mut self, when: &str) -> Verdict {
+    fn option_verdict(&mut self, when: &Slot) -> Verdict {
         match self.eval_atoms(when) {
             (Value::Bool(true), _) => Verdict::Open,
             (Value::Bool(false), _) => Verdict::Closed(Vec::new()),
@@ -81,14 +81,14 @@ impl<D: Driver> Machine<D> {
     /// [`Machine::option_verdict`] for a scripted pick the driver rules on:
     /// a guard that decided false names the reads it is false over
     /// ([`Machine::false_reads`], round-5 T3-12).
-    fn picked_verdict(&mut self, when: &str) -> Verdict {
+    fn picked_verdict(&mut self, when: &Slot) -> Verdict {
         match self.option_verdict(when) {
-            Verdict::Closed(_) => Verdict::Closed(self.false_reads(when)),
+            Verdict::Closed(_) => Verdict::Closed(self.false_reads(&when.expr)),
             verdict => verdict,
         }
     }
 
-    /// The premises a guard `raw` that decided false is false over (round-5
+    /// The premises a guard that decided false is false over (round-5
     /// T3-12, HW27-10), in document order: every state path it reads with
     /// its value, every fact pattern that does not hold (its path arguments
     /// read, `canEnter(occasion.target)` → `canEnter(office)`; a derived
@@ -96,90 +96,94 @@ impl<D: Driver> Machine<D> {
     /// misses), every scene `visited(…)` has not seen. What a refusal
     /// names — a scripted pick's (`E-TRACE-CHOICE`), an occasion gate's
     /// (`E-OCCASION-GATE`) — so each tool says what to change.
-    pub fn false_reads(&mut self, raw: &str) -> Vec<GuardRead> {
+    pub(crate) fn false_reads(&mut self, expr: &Expr) -> Vec<GuardRead> {
         let mut atoms = Vec::new();
-        if let Some(expr) = crate::exec::store::parse(raw) {
-            crate::eval::guard_atoms(&expr, &mut atoms);
-        }
+        guard_atoms(expr, &mut atoms);
         atoms
             .into_iter()
             .filter_map(|a| match a {
-                crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
-                crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
-                crate::eval::GuardAtom::Fact(f) => {
+                GuardAtom::Path(p) => Some(self.path_read(p)),
+                GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
+                GuardAtom::Fact(f) => {
                     if self.fact_value(&f) != Value::Bool(false) {
                         return None;
                     }
                     Some(self.fact_read(&f))
                 }
-                crate::eval::GuardAtom::Visited(k) => {
+                GuardAtom::Visited(k) => {
                     (!self.store.visited.contains(&k)).then_some(GuardRead::Visited(k))
                 }
             })
             .collect()
     }
 
-    /// OT-F-10: the conjuncts of a guard `raw` that decided false which are
-    /// false themselves, in document order — every top-level `&&`, a
+    /// OT-F-10: the conjuncts of a guard that decided false which are false
+    /// themselves, in document order — every top-level `&&`, a
     /// parenthesized conjunction split again — each with the reads it is
-    /// false over ([`Machine::conjunct_reads`]). `raw` is the one conjunct
-    /// when its top level is no conjunction; empty unless `raw` is false.
-    pub fn false_conjuncts(&mut self, raw: &str) -> Vec<(String, Vec<GuardRead>)> {
+    /// false over ([`Machine::conjunct_reads`]). The guard is the one
+    /// conjunct when its top level is no conjunction; empty unless it is
+    /// false. Each conjunct is named by its text, cut from the slot's CEL
+    /// at its top-level `&&`s, and evaluated as the matching operand of the
+    /// slot's left-associated `&&` chain.
+    pub fn false_conjuncts(&mut self, slot: &Slot) -> Vec<(String, Vec<GuardRead>)> {
         let mut out = Vec::new();
-        if self.store.eval(raw).0 == Value::Bool(false) {
-            self.push_false_conjuncts(raw, &mut out);
+        if self.store.eval(&slot.expr).0 == Value::Bool(false) {
+            self.push_false_conjuncts(&slot.raw, &slot.expr, &mut out);
             if out.is_empty() {
-                out.push((raw.to_string(), self.conjunct_reads(raw)));
+                out.push((slot.raw.clone(), self.conjunct_reads(&slot.expr)));
             }
         }
         out
     }
 
-    /// [`Machine::false_conjuncts`] of a `raw` known false.
-    fn push_false_conjuncts(&mut self, raw: &str, out: &mut Vec<(String, Vec<GuardRead>)>) {
+    /// [`Machine::false_conjuncts`] of a `raw` / `expr` known false.
+    fn push_false_conjuncts(
+        &mut self,
+        raw: &str,
+        expr: &Expr,
+        out: &mut Vec<(String, Vec<GuardRead>)>,
+    ) {
         use lute_check::templates::{top_level_and, unparen};
         let c = unparen(raw);
         let parts = top_level_and(c);
-        if parts.len() < 2 {
-            out.push((c.to_string(), self.conjunct_reads(c)));
+        let operands = (parts.len() >= 2)
+            .then(|| expr.conjuncts(parts.len()))
+            .flatten();
+        let Some(operands) = operands else {
+            out.push((c.to_string(), self.conjunct_reads(expr)));
             return;
-        }
-        for part in parts {
-            if self.store.eval(part).0 == Value::Bool(false) {
-                self.push_false_conjuncts(part, out);
+        };
+        for (part, operand) in parts.into_iter().zip(operands) {
+            if self.store.eval(operand).0 == Value::Bool(false) {
+                self.push_false_conjuncts(part, operand, out);
             }
         }
     }
 
-    /// Every read of one false conjunct `raw`, in document order: each state
-    /// path with its value, each fact pattern with whether it holds (one
-    /// that does not with [`Machine::fact_read`]'s why), each scene
-    /// `visited(…)` asks about with whether it is visited. Undecided facts
-    /// are left out.
-    fn conjunct_reads(&mut self, raw: &str) -> Vec<GuardRead> {
+    /// Every read of one false conjunct, in document order: each state path
+    /// with its value, each fact pattern with whether it holds (one that
+    /// does not with [`Machine::fact_read`]'s why), each scene `visited(…)`
+    /// asks about with whether it is visited. Undecided facts are left out.
+    fn conjunct_reads(&mut self, expr: &Expr) -> Vec<GuardRead> {
         let mut atoms = Vec::new();
-        if let Some(expr) = crate::exec::store::parse(raw) {
-            crate::eval::guard_atoms(&expr, &mut atoms);
-        }
+        guard_atoms(expr, &mut atoms);
         atoms
             .into_iter()
             .filter_map(|a| match a {
-                crate::eval::GuardAtom::Path(p) => Some(self.path_read(p)),
-                crate::eval::GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
-                crate::eval::GuardAtom::Fact(f) => {
-                    match self.fact_value(&f) {
-                        Value::Bool(true) => {
-                            let (rel, args) = self.fact_args(&f);
-                            Some(GuardRead::Holds(format!("{rel}({})", args.join(", "))))
-                        }
-                        Value::Bool(false) => Some(self.fact_read(&f)),
-                        _ => None,
+                GuardAtom::Path(p) => Some(self.path_read(p)),
+                GuardAtom::Indexed(family) => Some(self.indexed_read(&family)),
+                GuardAtom::Fact(f) => match self.fact_value(&f) {
+                    Value::Bool(true) => {
+                        let (rel, args) = self.fact_args(&f);
+                        Some(GuardRead::Holds(format!("{rel}({})", args.join(", "))))
                     }
-                }
-                crate::eval::GuardAtom::Visited(k) if self.store.visited.contains(&k) => {
+                    Value::Bool(false) => Some(self.fact_read(&f)),
+                    _ => None,
+                },
+                GuardAtom::Visited(k) if self.store.visited.contains(&k) => {
                     Some(GuardRead::Seen(k))
                 }
-                crate::eval::GuardAtom::Visited(k) => Some(GuardRead::Visited(k)),
+                GuardAtom::Visited(k) => Some(GuardRead::Visited(k)),
             })
             .collect()
     }
@@ -232,19 +236,21 @@ impl<D: Driver> Machine<D> {
 
     fn fact_value(&mut self, pattern: &str) -> Value {
         let (rel, args) = self.fact_args(pattern);
-        let relation = serde_json::to_string(rel).expect("relation string");
-        let rendered_args = args
-            .iter()
+        let args = args
+            .into_iter()
             .map(|arg| {
                 if arg.contains('.') {
-                    arg.clone()
+                    Expr::Path(arg.into())
                 } else {
-                    serde_json::to_string(arg).expect("fact argument string")
+                    Expr::Lit(Value::Str(arg))
                 }
             })
-            .collect::<Vec<_>>()
-            .join(", ");
-        self.store.eval(&format!("holds({relation}, [{rendered_args}])")).0
+            .collect();
+        let query = Expr::Call(
+            Func::Holds,
+            vec![Expr::Lit(Value::Str(rel.to_string())), Expr::List(args)],
+        );
+        self.store.eval(&query).0
     }
 
     /// A fact pattern `rel(a, b)` that does not hold, its path arguments
@@ -290,8 +296,8 @@ impl<D: Driver> Machine<D> {
             let Some(oid) = o.get("id").and_then(Json::as_str) else {
                 continue;
             };
-            let verdict = match option_when(o) {
-                Some(when) => self.option_verdict(when),
+            let verdict = match self.option_when(o) {
+                Some(when) => self.option_verdict(&when),
                 None => Verdict::Open,
             };
             out.push(MenuOption {
@@ -354,13 +360,12 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_str)
             .map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
-        let options = cmd
+        let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
-            .cloned()
-            .unwrap_or_default();
+            .map_or(&[], Vec::as_slice);
 
-        let judged = self.branch_verdicts(&options);
+        let judged = self.branch_verdicts(options);
         // A menu marks what was not offered.
         let closed: Vec<&str> = judged
             .iter()
@@ -422,7 +427,7 @@ impl<D: Driver> Machine<D> {
             .iter()
             .find(|o| o.get("id").and_then(Json::as_str) == Some(&forced))
         {
-            Some(o) => o.clone(),
+            Some(o) => o,
             None => {
                 self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
                 return Step::Halt;
@@ -438,13 +443,14 @@ impl<D: Driver> Machine<D> {
         // no mock surface (`now()`/`validAt(...)`, a bridgeResult), and
         // refusing on that would refuse a legal replay.
         if !auto {
-            if let Some(when) = option_when(&opt) {
-                let verdict = self.picked_verdict(when);
+            if let Some(when) = self.option_when(opt) {
+                let verdict = self.picked_verdict(&when);
                 if verdict != Verdict::Open {
                     match self.driver.forced(&menu, &forced, &verdict) {
                         Forced::Take => {}
                         Forced::Refuse => {
-                            self.refuse(self.refusal("branch", &branch, &forced, &when, &verdict));
+                            let msg = self.refusal("branch", &branch, &forced, &when.raw, &verdict);
+                            self.refuse(msg);
                             return Step::Halt;
                         }
                         Forced::Skip => {
@@ -492,11 +498,10 @@ impl<D: Driver> Machine<D> {
         let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         let converge_idx = self.resolve(converge);
-        let options = cmd
+        let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
-            .cloned()
-            .unwrap_or_default();
+            .map_or(&[], Vec::as_slice);
 
         // Segment starts in stream order: every option target, then the
         // `<return>` segment (dsl 0.28.0 §5), then the converge. A segment
@@ -532,7 +537,7 @@ impl<D: Driver> Machine<D> {
             // options ride the visit record, so a menu shows what was really
             // offered.
             let mut judged = Vec::new();
-            for o in &options {
+            for o in options {
                 let Some(oid) = o.get("id").and_then(Json::as_str) else {
                     continue;
                 };
@@ -540,8 +545,8 @@ impl<D: Driver> Machine<D> {
                 let verdict = if once && self.hub_visited(&id, oid) {
                     Verdict::Spent
                 } else {
-                    match option_when(o) {
-                        Some(w) => self.option_verdict(w),
+                    match self.option_when(o) {
+                        Some(w) => self.option_verdict(&w),
                         None => Verdict::Open,
                     }
                 };
@@ -657,7 +662,7 @@ impl<D: Driver> Machine<D> {
                 self.fatal = Some(format!("hub `{id}` has no option `{choice_id}`"));
                 return Step::Halt;
             };
-            let opt = options[at].clone();
+            let opt = &options[at];
             let once = opt.get("once").and_then(Json::as_bool).unwrap_or(false);
             let is_exit = opt.get("exit").and_then(Json::as_bool).unwrap_or(false);
             if !auto {
@@ -679,14 +684,16 @@ impl<D: Driver> Machine<D> {
                 // presented repeatedly, so this is evaluated per visit
                 // against live state — a guard false on the first pass may
                 // be true on the third, which is precisely what a hub is for.
-                if let Some(when) = option_when(&opt) {
-                    let verdict = self.picked_verdict(when);
+                if let Some(when) = self.option_when(opt) {
+                    let verdict = self.picked_verdict(&when);
                     if verdict != Verdict::Open {
                         match self.driver.forced(&menu, &choice_id, &verdict) {
                             Forced::Take => {}
                             Forced::Skip => continue,
                             Forced::Refuse => {
-                                self.refuse(self.refusal("hub", &id, &choice_id, &when, &verdict));
+                                let msg =
+                                    self.refusal("hub", &id, &choice_id, &when.raw, &verdict);
+                                self.refuse(msg);
                                 return Step::Halt;
                             }
                         }
@@ -742,9 +749,7 @@ impl<D: Driver> Machine<D> {
     }
 
     /// `<match>`: the first arm whose condition holds is taken, else
-    /// `otherwise`, else converge. Every arm is judged by the one CEL
-    /// evaluator: its `test` text, or — an `is` arm without one — its
-    /// structured `expr` ([`expr_to_cel`]); S3 guarantees one of the two.
+    /// `otherwise`, else converge. Every arm is judged by its `test` slot.
     /// An `is` pattern over a bare path subject that is unset matches only
     /// `unset` (definite, as `isSet` is), so an arm the unset subject cannot
     /// match is false, never unknown — except `occasion.target`, a binding,
@@ -753,28 +758,30 @@ impl<D: Driver> Machine<D> {
     /// when the unbound target is what is missing): a driver that halts
     /// stops the walk here; one that continues skips the arm.
     pub(super) fn do_match(&mut self, cmd: &Json) -> Step {
-        let arms = cmd
+        let arms: &[Json] = cmd
             .get("arms")
             .and_then(Json::as_array)
-            .cloned()
-            .unwrap_or_default();
+            .map_or(&[], Vec::as_slice);
         let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
-        let subject = cmd
-            .get("subject")
-            .and_then(|v| v.get("cel").and_then(Json::as_str))
-            .unwrap_or("");
-        let subject_path = crate::exec::store::parse(subject)
-            .and_then(|e| crate::eval::expr_path(&e))
+        let subject_slot = self.slot(cmd.get("subject"));
+        let subject = subject_slot.as_ref().map_or("", |s| s.raw.as_str());
+        let subject_path = subject_slot
+            .as_ref()
+            .and_then(|s| s.expr.static_path())
             .filter(|p| p != lute_check::beats::OCCASION_TARGET);
         let subject_unset = subject_path
             .as_deref()
             .is_some_and(|p| self.store.read(p) == Read::Unset);
         for (i, arm) in arms.iter().enumerate() {
             let test_slot = arm.get("test");
-            let raw = super::cel_raw(test_slot).unwrap_or_default();
+            let test = self.slot(test_slot);
+            let raw = test.as_ref().map_or("", |t| t.raw.as_str());
             // `is` is semantic IR data; `test.authored` remains diagnostic only.
             let is_arm = arm.get("is").and_then(Json::as_str);
-            let (v, atoms) = self.eval_atoms(&raw);
+            let (v, atoms) = match &test {
+                Some(t) => self.eval_atoms(t),
+                None => (Value::Unknown, Vec::new()),
+            };
             if self.probe_arms {
                 if let Some(expr) = test_slot.and_then(|t| t.get("expr")) {
                     let mut paths = BTreeSet::new();
@@ -823,7 +830,7 @@ impl<D: Driver> Machine<D> {
                         arm: Some(i),
                         ..Site::new(kind, subject, addr(cmd))
                     };
-                    if self.at_unknown(site, &raw, &atoms) {
+                    if self.at_unknown(site, raw, &atoms) {
                         return Step::Halt;
                     }
                     false
@@ -865,11 +872,6 @@ fn unknown_atoms(options: &[MenuOption]) -> Vec<UnresolvedAtom> {
         .collect()
 }
 
-/// An IR structured `expr` node (`lute_compile::expr::ExprNode`'s serialized
-/// shape — `lit` / `path` / `op` / `cond` / `list` / `isSet` / `has`, a
-/// subset of CEL) as CEL text, so an `is` arm is judged by the one CEL
-/// evaluator (design §3.4). Every operand is parenthesized. `None` for a
-/// shape outside the set.
 /// Every state path an IR `expr` node names (`path`, `isSet`, `has`).
 fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
     match node {
@@ -886,77 +888,5 @@ fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
         }
         Json::Array(items) => items.iter().for_each(|n| expr_paths(n, out)),
         _ => {}
-    }
-}
-
-pub fn expr_to_cel(node: &Json) -> Option<String> {
-    if let Some(lit) = node.get("lit") {
-        return Some(match lit {
-            Json::String(s) => format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")),
-            Json::Bool(b) => b.to_string(),
-            Json::Number(n) => match n.as_f64() {
-                Some(f) if f.fract() == 0.0 && f.abs() < 9.007e15 => format!("{}", f as i64),
-                Some(f) => f.to_string(),
-                None => return None,
-            },
-            _ => return None,
-        });
-    }
-    if let Some(i) = node.get("int").and_then(Json::as_i64) {
-        return Some(i.to_string());
-    }
-    if let Some(d) = node.get("double").and_then(Json::as_f64) {
-        return Some(d.to_string());
-    }
-    if let Some(b) = node.get("bool").and_then(Json::as_bool) {
-        return Some(b.to_string());
-    }
-    if let Some(s) = node.get("string").and_then(Json::as_str) {
-        return Some(format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'")));
-    }
-    if let Some(path) = node.get("path").and_then(Json::as_str) {
-        return Some(lute_cel::path::bracket_spelling_of(path));
-    }
-    if let Some(path) = node.get("isSet").and_then(Json::as_str) {
-        return Some(format!(
-            "isSet({})",
-            lute_cel::path::bracket_spelling_of(path)
-        ));
-    }
-    if let Some(path) = node.get("has").and_then(Json::as_str) {
-        return Some(format!(
-            "has({})",
-            lute_cel::path::bracket_spelling_of(path)
-        ));
-    }
-    if let Some(items) = node.get("list").and_then(Json::as_array) {
-        let items: Option<Vec<String>> = items.iter().map(expr_to_cel).collect();
-        return Some(format!("[{}]", items?.join(", ")));
-    }
-    if let (Some(c), Some(t), Some(e)) = (node.get("cond"), node.get("then"), node.get("else")) {
-        return Some(format!(
-            "({}) ? ({}) : ({})",
-            expr_to_cel(c)?,
-            expr_to_cel(t)?,
-            expr_to_cel(e)?
-        ));
-    }
-    let op = node.get("op").and_then(Json::as_str)?;
-    let l = expr_to_cel(node.get("l")?)?;
-    match node.get("r") {
-        Some(r) => Some(format!("({l}) {op} ({})", expr_to_cel(r)?)),
-        None => Some(format!("{op}({l})")),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::option_when;
-    use serde_json::json;
-
-    #[test]
-    fn menu_guards_read_compiled_cel_pairs() {
-        let option = json!({"when": {"cel": "run.money >= 500"}});
-        assert_eq!(option_when(&option).as_deref(), Some("run.money >= 500"));
     }
 }

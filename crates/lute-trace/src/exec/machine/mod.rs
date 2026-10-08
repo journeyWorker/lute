@@ -10,10 +10,9 @@
 //!   `match`/`converge`) against an `addr → index` map, with fall-through
 //!   resolution for a `converge` that points one past the last record;
 //! - **CEL guards** (cel-and-facts.md): every guard, `::set` value and match
-//!   arm is evaluated from CEL via `lute_cel::parse_slot` + [`crate::eval`] —
-//!   the tree's one CEL evaluator (an `is` arm without `test` text through
-//!   its structured `expr`, [`expr_to_cel`]) — so guard semantics match the
-//!   checker exactly (including `holds`/`count`);
+//!   arm is the slot's IR `expr`, decoded once per [`Code`] and evaluated by
+//!   [`crate::exec::expr`] — no CEL is parsed at run time (spec 0.38.0 §13);
+//!   the slot's `cel` text is kept for messages;
 //! - **one write path** ([`Machine::write`] over the [`Store`]): every state
 //!   write — `::set`, a directive effect, a bridge answer, a grant credit, a
 //!   menu's record key, a quest or entry flag — refreshes the clock when it
@@ -67,19 +66,19 @@ mod menu;
 mod plugin;
 mod quest;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
 
 use super::driver::{Driver, OnUnknown, SiteKind, UnknownSite};
+use super::expr::Slot;
 pub use super::store::render_fact;
 use super::store::Store;
 use crate::datalog::Fact;
 use crate::eval::Read;
 use crate::{MockSet, UnresolvedAtom, Value};
 pub use format::{value_to_json, value_to_string};
-pub use menu::expr_to_cel;
 pub use plugin::BridgeReads;
 
 /// The bounded step outcome of the dispatcher.
@@ -208,7 +207,6 @@ impl Carry {
 
 /// An artifact's command stream as a [`Machine`] walks it: read-only, so the
 /// Machines a playthrough builds over one document can share it.
-#[derive(Debug)]
 pub(crate) struct Code {
     pub(crate) kind: String,
     pub(crate) commands: Vec<Json>,
@@ -216,6 +214,17 @@ pub(crate) struct Code {
     pub(crate) addr_index: BTreeMap<String, usize>,
     /// `(addr, index)` in stream (== addr-sorted) order, for fall-through.
     pub(crate) addr_order: Vec<(String, usize)>,
+    /// Every CEL slot of `commands`, decoded once ([`Code::slot`]).
+    slots: HashMap<usize, Arc<Slot>>,
+}
+
+impl std::fmt::Debug for Code {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Code")
+            .field("kind", &self.kind)
+            .field("commands", &self.commands.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Code {
@@ -233,11 +242,13 @@ impl Code {
             .unwrap_or_default();
         let mut addr_index = BTreeMap::new();
         let mut addr_order = Vec::new();
+        let mut slots = HashMap::new();
         for (i, c) in commands.iter().enumerate() {
             if let Some(a) = c.get("position").and_then(Json::as_str) {
                 addr_index.insert(a.to_string(), i);
                 addr_order.push((a.to_string(), i));
             }
+            collect_slots(c, &mut slots);
         }
         addr_order.sort();
         Code {
@@ -245,7 +256,46 @@ impl Code {
             commands,
             addr_index,
             addr_order,
+            slots,
         }
+    }
+
+    /// The decoded slot of a `{cel, expr}` pair (`None` when absent or its
+    /// text is blank): from the table when `pair` lies in
+    /// [`Code::commands`], else decoded now (a record copied out of the
+    /// stream).
+    pub(crate) fn slot(&self, pair: Option<&Json>) -> Option<Arc<Slot>> {
+        let pair = pair?;
+        cel_raw(Some(pair))?;
+        match self.slots.get(&slot_key(pair)) {
+            Some(slot) => Some(Arc::clone(slot)),
+            None => Slot::of(pair),
+        }
+    }
+}
+
+/// [`Code::slots`]' key: the pair's address. `commands` is never mutated
+/// after [`Code::of`], so the address of every value inside it is stable
+/// and unique for the Code's lifetime; a value outside it can never share
+/// one while the Code is alive.
+fn slot_key(pair: &Json) -> usize {
+    pair as *const Json as usize
+}
+
+/// Every `{cel, expr}` pair under `v`, decoded into `out`.
+fn collect_slots(v: &Json, out: &mut HashMap<usize, Arc<Slot>>) {
+    match v {
+        Json::Object(map) => {
+            if map.get("cel").is_some_and(Json::is_string) && map.contains_key("expr") {
+                if let Some(slot) = Slot::of(v) {
+                    out.insert(slot_key(v), slot);
+                }
+                return;
+            }
+            map.values().for_each(|c| collect_slots(c, out));
+        }
+        Json::Array(items) => items.iter().for_each(|c| collect_slots(c, out)),
+        _ => {}
     }
 }
 
@@ -381,13 +431,18 @@ impl<D: Driver> Machine<D> {
         self
     }
 
-    /// Evaluate a `raw` CEL fragment over live state + the closure, through
-    /// the one CEL evaluator.
-    fn eval_atoms(&mut self, raw: &str) -> (Value, Vec<UnresolvedAtom>) {
-        let (v, atoms) = self.store.eval(raw);
+    /// The `{cel, expr}` pair `pair` of this walk's command stream, decoded
+    /// once ([`Code::slot`]); `None` when absent or blank.
+    pub(crate) fn slot(&self, pair: Option<&Json>) -> Option<Arc<Slot>> {
+        self.code.slot(pair)
+    }
+
+    /// Evaluate `slot` over live state + the closure.
+    fn eval_atoms(&mut self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
+        let (v, atoms) = self.store.eval(&slot.expr);
         if let Some(observer) = &mut self.eval_observer {
             observer(
-                raw,
+                &slot.raw,
                 &v,
                 &atoms,
                 EvalSnapshot {
@@ -414,20 +469,20 @@ impl<D: Driver> Machine<D> {
         (v, atoms)
     }
 
-    fn eval_raw(&mut self, raw: &str) -> Value {
-        self.eval_atoms(raw).0
+    fn eval_value(&mut self, slot: &Slot) -> Value {
+        self.eval_atoms(slot).0
     }
 
     /// A guard judged at `site`: `Some(bool)` when decided; `None` when
     /// undecided — the driver was asked ([`Driver::unknown`]) and, when it
     /// halts, the walk is incomplete from here.
-    fn judge(&mut self, raw: &str, site: Site<'_>) -> Option<bool> {
-        let (v, atoms) = self.eval_atoms(raw);
+    fn judge(&mut self, slot: &Slot, site: Site<'_>) -> Option<bool> {
+        let (v, atoms) = self.eval_atoms(slot);
         match v {
             Value::Bool(b) => Some(b),
             Value::Error(_) => Some(false),
             _ => {
-                self.at_unknown(site, raw, &atoms);
+                self.at_unknown(site, &slot.raw, &atoms);
                 None
             }
         }
@@ -701,13 +756,13 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    /// `lute play` (dsl 0.21.0 §4): decide one beat `when` over this runner's
+    /// `lute play` (dsl 0.21.0 §4): decide one condition over this runner's
     /// live snapshot — state plus the Datalog fixpoint — through the same
-    /// [`Machine::eval_raw`] chokepoint every guard of a walk uses. `Err`
+    /// [`Machine::eval_atoms`] chokepoint every guard of a walk uses. `Err`
     /// carries the [`UnresolvedAtom`]s of an undecided (or non-bool) result.
-    pub fn eval_guard(&mut self, raw: &str) -> Result<bool, Vec<UnresolvedAtom>> {
+    pub fn eval_guard(&mut self, slot: &Slot) -> Result<bool, Vec<UnresolvedAtom>> {
         let before = self.unresolved.len();
-        match self.eval_raw(raw) {
+        match self.eval_value(slot) {
             Value::Bool(b) => Ok(b),
             Value::Error(_) => Ok(false),
             _ => Err(self.unresolved.split_off(before)),
