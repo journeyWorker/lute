@@ -68,7 +68,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::io::Write;
-use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -359,6 +358,26 @@ fn install_condition_dump(
     Ok(())
 }
 
+/// `lute play --events` (spec 0.38.0 §10.2): the script through the public
+/// runtime, as JSON Lines on stdout.
+fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode {
+    let run = match events::script_run(dir, script_path, no_derive) {
+        Ok(run) => run,
+        Err(e) => {
+            eprintln!("lute play: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let (out, code, message) = events::run_events(&run);
+    if crate::write_stdout(&out).is_err() {
+        return ExitCode::from(2);
+    }
+    if let Some(message) = message {
+        eprintln!("lute play: {message}");
+    }
+    ExitCode::from(code)
+}
+
 /// See [`crate::Command::Play`].
 pub fn run_play(
     dir: &Path,
@@ -373,15 +392,14 @@ pub fn run_play(
     dump_conditions: Option<&Path>,
 ) -> ExitCode {
     if events {
-        if json { eprintln!("lute play: --events cannot be combined with --json"); return ExitCode::from(2); }
-        let _ = (engine, no_derive, explain, ir, quiet, dump_conditions);
-        let text = match fs::read_to_string(script_path) { Ok(t) => t, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
-        let (seed, steps, choose, bridges) = match events::parse_script(&text, script_path.parent()) { Ok(v) => v, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
-        let runtime = match build_runtime(dir) { Ok(r) => r, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
-        return match events::run_events(&runtime, seed, &steps, &choose, &bridges) {
-            Ok((out, code)) => { if crate::write_stdout(&out).is_err() { ExitCode::from(2) } else { ExitCode::from(code) } }
-            Err(e) => { eprintln!("lute play: {e}"); ExitCode::from(3) }
-        };
+        if json || ir || !explain.is_empty() || dump_conditions.is_some() {
+            eprintln!(
+                "lute play: --events prints the runtime stream; it cannot be combined with \
+                 --json, --ir, --explain or --dump-conditions"
+            );
+            return ExitCode::from(2);
+        }
+        return run_play_events(dir, script_path, no_derive);
     }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
@@ -649,53 +667,7 @@ pub(crate) fn run_play_for_test(
     })
 }
 
-/// The machine records and final world produced by the normal play driver.
-/// This is intentionally small so integration tests can compare the public
-/// resumable runtime without depending on the CLI's private report model.
-pub struct RuntimePlayReference {
-    pub records: Vec<(String, Json)>,
-    pub world: World,
-}
 
-/// Run a play script through the same `Session`/`PlayDriver` path as the CLI.
-pub fn run_runtime_reference(dir: &Path, script: &Path) -> Result<RuntimePlayReference, String> {
-    let (project, needles) = compile_play_project(
-        &lute_model::ModelMemo::default(),
-        dir,
-        project::PLAY,
-        &crate::EngineMatrix::reference(),
-    )
-    .map_err(|(_, message)| if message.is_empty() {
-        format!("could not compile {}", dir.display())
-    } else {
-        message
-    })?;
-    let script_value = load_script(script).map_err(|(_, message)| message)?;
-    let (plan, world) = plan_script(&project, &needles, &script_value, script, false)
-        .map_err(|(_, message)| message)?;
-    let mut driver = driver_for(&project, &script_value, None);
-    let play = execute(&script_value, &plan, Session::resume(&project, world, &mut driver));
-    Ok(RuntimePlayReference {
-        records: driver.records,
-        world: play.world,
-    })
-}
-
-/// Build the public runtime over the project's in-memory compile bundle.
-pub fn build_runtime(dir: &Path) -> Result<lute_runtime::Runtime, String> {
-    let (project, _) = compile_play_project(
-        &lute_model::ModelMemo::default(),
-        dir,
-        project::PLAY,
-        &crate::EngineMatrix::reference(),
-    )
-    .map_err(|(_, message)| if message.is_empty() {
-        format!("could not compile {}", dir.display())
-    } else {
-        message
-    })?;
-    Ok(lute_runtime::Runtime::from_project(project))
-}
 
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
     fn walk(value: &Json, out: &mut BTreeSet<String>) {

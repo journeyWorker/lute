@@ -39,8 +39,7 @@
 //!   never depends on a live/remote catalog — refresh only canonicalizes and
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
-pub use play::{build_runtime, run_runtime_reference, RuntimePlayReference};
-pub use play::events::{parse_script, run_events, ScriptStep};
+pub use play::events;
 use std::process::ExitCode;
 
 use clap::Parser;

@@ -1,21 +1,98 @@
+//! Session conformance (spec 0.38.0 §12): every `conformance/session/<case>`
+//! — `lute play --events` reproduces `expected.jsonl`, and replaying
+//! `inputs.jsonl` through the runtime library reproduces every output
+//! byte-for-byte.
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use lute_cli::build_runtime;
+
+use lute_cli::events;
 use lute_runtime::runtime::{Input, Seed};
 use serde_json::Value;
 
-fn root() -> PathBuf { Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/session") }
-fn cases() -> Vec<PathBuf> { let mut out=Vec::new(); for e in std::fs::read_dir(root()).unwrap() { let p=e.unwrap().path(); if p.join("project/script.play.yaml").is_file(){out.push(p)} } out.sort(); out }
-fn lines(path:&Path)->Vec<Value>{std::fs::read_to_string(path).unwrap().lines().map(|x|serde_json::from_str(x).unwrap()).collect()}
+fn cases() -> Vec<PathBuf> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/session");
+    let mut out: Vec<PathBuf> = std::fs::read_dir(root)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|case| case.join("project/script.play.yaml").is_file())
+        .collect();
+    out.sort();
+    out
+}
+
+/// The stream's serialization: through `serde_json::Value`, whose maps sort
+/// their keys.
+fn canonical(output: &lute_runtime::runtime::Output) -> String {
+    serde_json::to_value(output).unwrap().to_string()
+}
+
+fn lines(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
 #[test]
 fn session_event_streams_and_runtime_replay_match() {
- for case in cases() {
-  let expected_path=case.join("expected.jsonl"); let expected=std::fs::read_to_string(&expected_path).unwrap();
-  let got=Command::new(env!("CARGO_BIN_EXE_lute")).args(["play",case.join("project").to_str().unwrap(),"--script",case.join("project/script.play.yaml").to_str().unwrap(),"--events"]).output().unwrap();
-  assert!(got.status.success() || got.status.code()==Some(3),"{} failed: {}",case.display(),String::from_utf8_lossy(&got.stderr));
-  assert_eq!(String::from_utf8(got.stdout).unwrap(),expected,"{} CLI stream",case.display());
-  let ins=lines(&case.join("inputs.jsonl")); let outs=lines(&expected_path); let seed:Seed=serde_json::from_value(ins[0]["seed"].clone()).unwrap();
-  let runtime=build_runtime(&case.join("project")).unwrap(); let (mut state,output)=runtime.begin(seed).unwrap(); assert_eq!(serde_json::to_value(output).unwrap(),outs[0]["output"],"{} begin",case.display());
-  for (i,line) in ins.iter().skip(1).enumerate() { let input:Input=serde_json::from_value(line["input"].clone()).unwrap(); let (next,out)=match runtime.step(state,input) { Ok(v)=>v, Err((_s,e))=>panic!("{} step {} rejected {} {}",case.display(),i,e.code,e.message) }; state=next; assert_eq!(serde_json::to_value(out).unwrap(),outs[i+1]["output"],"{} step {}",case.display(),i); }
- }
+    let cases = cases();
+    assert!(cases.len() >= 10, "session cases missing");
+    for case in cases {
+        let (project, script) = (case.join("project"), case.join("project/script.play.yaml"));
+        let expected = std::fs::read_to_string(case.join("expected.jsonl")).unwrap();
+        let got = Command::new(env!("CARGO_BIN_EXE_lute"))
+            .arg("play")
+            .arg(&project)
+            .arg("--script")
+            .arg(&script)
+            .arg("--events")
+            .output()
+            .unwrap();
+        assert_eq!(
+            got.status.code(),
+            Some(0),
+            "{}: {}",
+            case.display(),
+            String::from_utf8_lossy(&got.stderr)
+        );
+        assert_eq!(
+            String::from_utf8(got.stdout).unwrap(),
+            expected,
+            "{}: CLI stream",
+            case.display()
+        );
+
+        let runtime = events::script_run(&project, &script, false)
+            .unwrap()
+            .runtime;
+        let inputs = lines(&case.join("inputs.jsonl"));
+        let outputs: Vec<String> = lines(&case.join("expected.jsonl"))
+            .iter()
+            .map(|line| serde_json::to_string(&line["output"]).unwrap())
+            .collect();
+        assert_eq!(
+            inputs.len(),
+            outputs.len(),
+            "{}: inputs.jsonl and expected.jsonl lengths",
+            case.display()
+        );
+        let seed: Seed = serde_json::from_value(inputs[0]["seed"].clone()).unwrap();
+        let (mut state, output) = runtime.begin(seed).unwrap();
+        assert_eq!(canonical(&output), outputs[0], "{}: begin", case.display());
+        for (k, line) in inputs.iter().enumerate().skip(1) {
+            let input: Input = serde_json::from_value(line["input"].clone()).unwrap();
+            let (next, output) = runtime.step(state, input).unwrap_or_else(|(_, r)| {
+                panic!("{} input {k}: {} {}", case.display(), r.code, r.message)
+            });
+            assert_eq!(
+                canonical(&output),
+                outputs[k],
+                "{}: input {k}",
+                case.display()
+            );
+            state = next;
+        }
+    }
 }

@@ -71,11 +71,11 @@
       "oneOf": [
         { "enum": ["slot", "day"] },
         { "type": "integer", "minimum": 0 },
-        { "type": "object", "additionalProperties": false, "required": ["to"], "properties": { "to": { "$ref": "#/$defs/ClockPosition" } } }
+        { "type": "object", "additionalProperties": false, "required": ["to"], "properties": { "to": { "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/ClockPosition" }] } } }
       ]
     },
     "ClockPosition": {
-      "type": "object", "additionalProperties": false, "required": ["weekday", "slot"],
+      "type": "object", "additionalProperties": false, "minProperties": 1,
       "properties": { "weekday": { "type": "string" }, "slot": { "type": "string" } }
     },
     "AdvanceClock": {

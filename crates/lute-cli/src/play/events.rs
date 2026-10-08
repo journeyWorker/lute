@@ -1,48 +1,408 @@
+//! `lute play --events` (spec 0.38.0 §10.2): a play script driven through
+//! the public runtime's `begin` / `step`.
+//!
+//! The script is parsed and planned once, by the same code as `lute play`.
+//! Its steps become runtime inputs; its awaits are answered with the
+//! decisions and bridge answers `lute play`'s driver took for that script
+//! (the `ScriptedChoices` cursor rules, `include:` scopes and per-tag bridge
+//! queues apply in one place: [`PlayDriverState`]).
+
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
 
-use lute_runtime::runtime::{AdvanceBy, Await, Input, PickInput, Seed, StateWrite, WritesInput};
-use lute_runtime::Runtime;
+use lute_runtime::runtime::{
+    AdvanceBy, Await, ClockPosition, Input, Output, PickInput, Rejected, SaveInput, Seed, State,
+    StateWrite, WritesInput,
+};
+use lute_runtime::session::{
+    render_fact, value_to_json, ExecProject, Session, World, Write, Writes,
+};
+use lute_runtime::{BridgeAnswer, Runtime};
 use serde_json::Value;
 
-#[derive(Clone)]
-pub struct ScriptStep { pub input: Input, pub choose: BTreeMap<String, Vec<String>>, pub bridges: BTreeMap<String, Vec<BTreeMap<String, Value>>> }
+use super::driver::PlayDriverState;
+use super::plan::Action;
+use super::script::PlayScript;
 
-fn json_yaml(text: &str) -> Result<Value, String> { serde_json::to_value(serde_yaml::from_str::<serde_yaml::Value>(text).map_err(|e| e.to_string())?).map_err(|e| e.to_string()) }
-fn scalar(v: &Value) -> Result<Value, String> { match v { Value::Null|Value::Bool(_)|Value::Number(_)|Value::String(_) => Ok(v.clone()), _ => Err(format!("non-scalar value {v}")) } }
-fn writes(value: Option<&Value>) -> Result<WritesInput, String> {
-    let Some(Value::Object(map)) = value else { return Ok(WritesInput::default()) };
-    let mut out = WritesInput::default();
-    if let Some(Value::Object(state)) = map.get("state") { for (path, value) in state { if let Value::Object(m)=value { if let Some(add)=m.get("add") { out.state.push(StateWrite{path:path.clone(),value:None,add:add.as_f64()}); } else { out.state.push(StateWrite{path:path.clone(),value:Some(scalar(value)?),add:None}); } } else { out.state.push(StateWrite{path:path.clone(),value:Some(scalar(value)?),add:None}); } } }
-    for (key,dest) in [("facts",&mut out.facts),("retract",&mut out.retract),("accept",&mut out.accept)] { if let Some(Value::Array(a))=map.get(key) { dest.extend(a.iter().filter_map(Value::as_str).map(str::to_owned)); } }
-    Ok(out)
-}
-fn pick(value: Option<&Value>) -> Result<Option<PickInput>, String> { let Some(v)=value else{return Ok(None)}; if v.as_str()==Some("none"){return Ok(Some(PickInput::Pass("pass".into())))}; Ok(Some(PickInput::Beat{beat:v.as_str().ok_or_else(||format!("invalid pick {v}"))?.into()})) }
-fn choose_map(value: Option<&Value>) -> BTreeMap<String,Vec<String>> { let Some(Value::Object(m))=value else{return BTreeMap::new()}; m.iter().filter_map(|(id,v)| { let x=match v {Value::Array(a)=>a.iter().filter_map(Value::as_str).map(str::to_owned).collect(),Value::String(s)=>vec![s.clone()], _=>return None}; Some((id.clone(),x)) }).collect() }
-fn bridges(value: Option<&Value>) -> BTreeMap<String,Vec<BTreeMap<String,Value>>> { let Some(Value::Object(m))=value else{return BTreeMap::new()}; m.iter().map(|(tag,v)| { let x=match v {Value::Array(a)=>a.iter().filter_map(|i|i.as_object().cloned().map(|o|o.into_iter().collect())).collect(),Value::Object(o)=>vec![o.clone().into_iter().collect()], _=>Vec::new()}; (tag.clone(),x) }).collect() }
-fn advance(v:&Value)->Result<AdvanceBy,String>{match v {Value::String(s)=>Ok(AdvanceBy::Named(s.clone())),Value::Number(n)=>Ok(AdvanceBy::Slots(n.as_u64().ok_or_else(||format!("invalid advance {v}"))? as u32)),Value::Object(m)=>{let to=m.get("to").ok_or_else(||format!("invalid advance {v}"))?;if let Some(s)=to.as_str(){Ok(AdvanceBy::Named(s.into()))}else{let o=to.as_object().ok_or_else(||format!("invalid advance {v}"))?;Ok(AdvanceBy::To{to:lute_runtime::runtime::ClockPosition{weekday:o.get("weekday").and_then(Value::as_str).ok_or("missing weekday")?.into(),slot:o.get("slot").and_then(Value::as_str).ok_or("missing slot")?.into()}})}},_=>Err(format!("invalid advance {v}"))}}
-
-pub fn parse_script(text:&str, base:Option<&Path>)->Result<(Seed,Vec<ScriptStep>,BTreeMap<String,Vec<String>>,BTreeMap<String,Vec<BTreeMap<String,Value>>>),String>{
- let root=json_yaml(text)?.as_object().cloned().ok_or("script is not a map")?;
- let state=root.get("state").and_then(Value::as_object).map(|m|m.iter().map(|(p,v)|Ok(StateWrite{path:p.clone(),value:Some(scalar(v)?),add:None})).collect::<Result<Vec<_>,String>>()).transpose()?.unwrap_or_default();
- let mut seed=Seed{state,facts:root.get("facts").and_then(Value::as_array).map(|a|a.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default(),derive:root.get("derive").and_then(Value::as_bool).unwrap_or(true),save:Default::default()};
- seed.save.visited=root.get("visited").and_then(Value::as_array).map(|a|a.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default();
- seed.save.presented=root.get("presented").and_then(Value::as_object).map(|m|m.iter().map(|(k,v)|(k.clone(),v.as_array().map(|a|a.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default())).collect()).unwrap_or_default();
- seed.save.quests=root.get("quests").and_then(Value::as_object).map(|m|m.iter().filter_map(|(k,v)|v.as_str().map(|s|(k.clone(),s.into()))).collect()).unwrap_or_default();
- seed.save.quest_instances=root.get("questInstances").and_then(Value::as_object).map(|m|m.iter().filter_map(|(k,v)|v.as_u64().map(|n|(k.clone(),n))).collect()).unwrap_or_default();
- seed.save.entries_read=root.get("entriesRead").and_then(Value::as_object).map(|m|m.iter().map(|(k,v)|(k.clone(),v.as_array().map(|a|a.iter().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default())).collect()).unwrap_or_default();
- let top_choose=choose_map(root.get("choose")); let top_bridges=bridges(root.get("bridges")); let arr=root.get("steps").and_then(Value::as_array).ok_or("script has no steps")?; let mut raw=Vec::new();
- for step in arr { let m=step.as_object().ok_or("step is not a map")?; if let Some(include)=m.get("include").and_then(Value::as_str) { let b=base.ok_or("include is not representable")?; let iv=json_yaml(&fs::read_to_string(b.join(include)).map_err(|e|e.to_string())?)?; for item in iv.get("steps").and_then(Value::as_array).ok_or("included file has no steps")? { let mut x=item.as_object().cloned().ok_or("included step is not a map")?; for key in ["choose","bridges"] {if let Some(v)=m.get(key){x.entry(key).or_insert_with(||v.clone());}} raw.push(Value::Object(x)); } } else {raw.push(step.clone())} }
- let mut steps=Vec::new(); for step in raw { let m=step.as_object().ok_or("step is not a map")?; let choose=choose_map(m.get("choose")); let br=bridges(m.get("bridges")); let input=if let Some(o)=m.get("occasion").and_then(Value::as_str){Input::RaiseOccasion{occasion:o.into(),target:m.get("target").and_then(Value::as_str).map(str::to_owned),payload:m.get("payload").and_then(Value::as_object).cloned().unwrap_or_default().into_iter().collect(),pick:pick(m.get("pick"))?,writes:writes(m.get("engine"))?}}else if let Some(by)=m.get("advance"){Input::AdvanceClock{by:advance(by)?,writes:writes(m.get("engine"))?,pick:pick(m.get("pick"))?}}else if m.contains_key("engine"){Input::HostWrite{writes:writes(m.get("engine"))?}}else if let Some(n)=m.get("event").and_then(Value::as_str){Input::WorldEvent{name:n.into()}}else if m.contains_key("newRun"){Input::NewRun{writes:if m.get("newRun").and_then(Value::as_bool)==Some(true){WritesInput::default()}else{writes(m.get("newRun"))?}}}else{return Err("unsupported step".into())}; let count=m.get("repeat").and_then(Value::as_u64).unwrap_or(1); for _ in 0..count{steps.push(ScriptStep{input:input.clone(),choose:choose.clone(),bridges:br.clone()});} }
- Ok((seed,steps,top_choose,top_bridges))
+/// One answer `lute play`'s driver gave while it played the script, in the
+/// order it gave them.
+#[derive(Clone, Debug)]
+pub enum ScriptAnswer {
+    /// A branch or hub decision: menu `menu`, option `option`.
+    Choice { menu: String, option: String },
+    /// A plugin call's bridge answer for `tag`.
+    Bridge { tag: String, fields: BridgeAnswer },
 }
 
-pub fn run_events(runtime:&Runtime, seed:Seed, steps:&[ScriptStep], top_choose:&BTreeMap<String,Vec<String>>, top_bridges:&BTreeMap<String,Vec<BTreeMap<String,Value>>>) -> Result<(String,u8),String> {
- let (mut state,mut output)=runtime.begin(seed.clone()).map_err(|e|format!("{e:?}"))?; let mut lines=vec![serde_json::to_string(&serde_json::json!({"seed":seed,"output":output})).map_err(|e|e.to_string())?]; let mut choices=BTreeMap::new(); let mut bridge_cursors=BTreeMap::new();
- for step in steps { let mut input=Some(step.input.clone()); loop { let inp=input.take().unwrap(); let result=runtime.step(state,inp.clone()); match result { Ok((s,o))=>{state=s; lines.push(serde_json::to_string(&serde_json::json!({"input":inp,"output":o})).map_err(|e|e.to_string())?); output=o;}, Err((_s,r))=>{lines.push(serde_json::to_string(&serde_json::json!({"input":inp,"rejected":r})).map_err(|e|e.to_string())?);return Ok((lines.join("\n")+"\n",1));} }
-  input=match &output.await_ { Await::Choice{request,menu}=>{let q=step.choose.get(&menu.id).or_else(||top_choose.get(&menu.id)).cloned().unwrap_or_default(); let option=if menu.construct=="hub"{q.get(menu.presentation).cloned()}else if q.len()==1{q.first().cloned()}else{let c=choices.entry(menu.id.clone()).or_insert(0);let v=q.get(*c).cloned();if v.is_some(){*c+=1;}v}; Some(Input::Choose{request:*request,option:option.ok_or_else(||"incomplete: missing scripted choice".to_string())?})}, Await::Bridge{request,tag,..}=>{let q=step.bridges.get(tag).or_else(||top_bridges.get(tag)).ok_or_else(||"incomplete: missing scripted bridge".to_string())?;let c=bridge_cursors.entry(tag.clone()).or_insert(0);let fields=q.get(*c).cloned().ok_or_else(||"incomplete: bridge queue exhausted".to_string())?;*c+=1;Some(Input::BridgeResult{request:*request,fields})}, Await::Idle=>None, Await::Ended{..}|Await::Halted{..}=>None}; if input.is_none(){break;} }
-  if !matches!(output.await_,Await::Idle){let code=if matches!(output.await_,Await::Ended{..}){0}else if matches!(output.await_,Await::Halted{..}){1}else{3};return Ok((lines.join("\n")+"\n",code));}
- }
- Ok((lines.join("\n")+"\n",0))
+/// What `lute play`'s report path produced for the script: its machine
+/// records, in order, and the final world.
+pub struct Reference {
+    pub records: Vec<(String, Value)>,
+    pub world: World,
+}
+
+/// A play script ready for the public runtime.
+pub struct ScriptRun {
+    pub runtime: Runtime,
+    pub seed: Seed,
+    /// One input per planned step repetition, up to an `end: true` step.
+    pub inputs: Vec<Input>,
+    /// The answers `lute play` gave, for the runtime's awaits.
+    pub answers: Vec<ScriptAnswer>,
+    pub reference: Reference,
+}
+
+/// Compile the project at `dir`, parse and plan the play script at
+/// `script_path` exactly as `lute play` does, and play it once through
+/// `lute play`'s driver to learn its answers. `Err` is `lute play`'s usage
+/// or compile message.
+pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<ScriptRun, String> {
+    let script = super::load_script(script_path).map_err(|(_, message)| message)?;
+    let (project, needles) = super::project::compile_play_project(
+        &lute_model::ModelMemo::default(),
+        dir,
+        super::project::PLAY,
+        &crate::EngineMatrix::reference(),
+    )
+    .map_err(|(_, message)| {
+        if message.is_empty() {
+            format!("{} does not compile", dir.display())
+        } else {
+            message
+        }
+    })?;
+    let (plan, world) =
+        super::plan::plan_script(&project, &needles, &script, script_path, no_derive)
+            .map_err(|(_, message)| message)?;
+    let mut driver: PlayDriverState = super::driver_for(&project, &script, None);
+    let played = super::run::execute(
+        &script,
+        &plan,
+        Session::resume(&project, world, &mut driver),
+    );
+    let mut inputs = Vec::new();
+    for step in &plan {
+        let Some(input) = step_input(&step.action, &project) else {
+            break;
+        };
+        inputs.extend(std::iter::repeat_n(input, step.repeat));
+    }
+    let seed = seed(&script, no_derive);
+    Ok(ScriptRun {
+        runtime: Runtime::from_project(project),
+        seed,
+        inputs,
+        answers: driver.answers,
+        reference: Reference {
+            records: driver.records,
+            world: played.world,
+        },
+    })
+}
+
+/// How [`drive_events`] stopped.
+pub enum DriveEnd {
+    /// Every input ran.
+    Done,
+    /// The runtime rejected `input`; the state is the one before it.
+    Rejected { input: Input, rejected: Rejected },
+    /// The runtime awaits an answer `lute play` never gave — the script
+    /// has no decision or bridge answer for it.
+    Unanswered(String),
+    /// The runtime awaits something other than what `lute play` answered
+    /// next: the two paths disagree, a runtime defect.
+    Diverged(String),
+}
+
+/// The state and last output a driven script left, and why it stopped.
+pub struct Driven {
+    pub state: State,
+    pub output: Output,
+    pub end: DriveEnd,
+}
+
+/// Drive `run` through its runtime: `begin` with the seed, then each input,
+/// answering every `awaitChoice` / `awaitBridge` with the next of the
+/// script's answers. `observe` sees the first output with no input, then
+/// every accepted input with the state and output it produced. `Err` when
+/// `begin` rejects the seed.
+pub fn drive_events(
+    run: &ScriptRun,
+    mut observe: impl FnMut(Option<&Input>, &State, &Output),
+) -> Result<Driven, Rejected> {
+    let runtime = &run.runtime;
+    let (mut state, mut output) = runtime.begin(run.seed.clone())?;
+    observe(None, &state, &output);
+    let mut answers = run.answers.iter();
+    for input in &run.inputs {
+        let mut input = input.clone();
+        loop {
+            (state, output) = match runtime.step(state, input.clone()) {
+                Ok(next) => next,
+                Err((state, rejected)) => {
+                    let end = DriveEnd::Rejected { input, rejected };
+                    return Ok(Driven { state, output, end });
+                }
+            };
+            observe(Some(&input), &state, &output);
+            let answer = match &output.await_ {
+                Await::Idle | Await::Ended { .. } | Await::Halted { .. } => break,
+                Await::Choice { request, menu } => match answers.next() {
+                    Some(ScriptAnswer::Choice { menu: id, option }) if *id == menu.id => {
+                        Ok(Input::Choose {
+                            request: *request,
+                            option: option.clone(),
+                        })
+                    }
+                    None => Err(DriveEnd::Unanswered(format!(
+                        "{} `{}` has no scripted `choose:` decision",
+                        menu.construct, menu.id
+                    ))),
+                    Some(other) => Err(DriveEnd::Diverged(format!(
+                        "the runtime awaits a choice at {} `{}`; `lute play` answered {other:?}",
+                        menu.construct, menu.id
+                    ))),
+                },
+                Await::Bridge {
+                    request,
+                    tag,
+                    fields: shape,
+                    ..
+                } => match answers.next() {
+                    Some(ScriptAnswer::Bridge {
+                        tag: answered,
+                        fields,
+                    }) if answered == tag => Ok(Input::BridgeResult {
+                        request: *request,
+                        fields: bridge_fields(fields, shape),
+                    }),
+                    None => Err(DriveEnd::Unanswered(format!(
+                        "plugin call `{tag}` has no scripted `bridges:` answer"
+                    ))),
+                    Some(other) => Err(DriveEnd::Diverged(format!(
+                        "the runtime awaits a bridge answer for `{tag}`; `lute play` answered \
+                         {other:?}"
+                    ))),
+                },
+            };
+            match answer {
+                Ok(answer) => input = answer,
+                Err(end) => return Ok(Driven { state, output, end }),
+            }
+        }
+    }
+    Ok(Driven {
+        state,
+        output,
+        end: DriveEnd::Done,
+    })
+}
+
+/// `lute play --events`: the JSON Lines stream of a driven script, its exit
+/// code — 0 when it completes, 3 when the runtime halts incomplete or awaits
+/// an answer the script lacks, 1 on a rejected input, an error halt or a
+/// divergence — and a message for stderr.
+pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
+    let line =
+        |value: Value| serde_json::to_string(&value).expect("runtime JSON serializes") + "\n";
+    let mut out = String::new();
+    let seed = &run.seed;
+    let driven = drive_events(run, |input, _, output| {
+        out.push_str(&line(match input {
+            Some(input) => serde_json::json!({ "input": input, "output": output }),
+            None => serde_json::json!({ "seed": seed, "output": output }),
+        }));
+    });
+    let (code, message) = match driven {
+        Err(rejected) => {
+            out.push_str(&line(
+                serde_json::json!({ "seed": seed, "rejected": rejected }),
+            ));
+            (1, None)
+        }
+        Ok(Driven { end, output, .. }) => match end {
+            DriveEnd::Rejected { input, rejected } => {
+                out.push_str(&line(
+                    serde_json::json!({ "input": input, "rejected": rejected }),
+                ));
+                (1, None)
+            }
+            DriveEnd::Unanswered(what) => (3, Some(what)),
+            DriveEnd::Diverged(what) => (1, Some(what)),
+            DriveEnd::Done => match output.await_ {
+                Await::Halted { kind, .. } if kind == "incomplete" => (3, None),
+                Await::Halted { .. } => (1, None),
+                _ => (0, None),
+            },
+        },
+    };
+    (out, code, message)
+}
+
+/// A planned step as a runtime input; `None` for `end: true`.
+fn step_input(action: &Action, project: &ExecProject) -> Option<Input> {
+    Some(match action {
+        Action::Occasion {
+            occasion,
+            target,
+            pick,
+            payload,
+            writes,
+            ..
+        } => Input::RaiseOccasion {
+            occasion: occasion.clone(),
+            target: target.clone(),
+            payload: payload
+                .iter()
+                .map(|(path, value)| {
+                    let field = path.strip_prefix("occasion.payload.").unwrap_or(path);
+                    (field.to_string(), value_to_json(value))
+                })
+                .collect(),
+            pick: pick.as_ref().map(pick_input),
+            writes: writes.as_ref().map(writes_input).unwrap_or_default(),
+        },
+        Action::Advance {
+            by, writes, pick, ..
+        } => Input::AdvanceClock {
+            by: advance_by(by, project),
+            writes: writes_input(writes),
+            pick: pick.as_ref().map(pick_input),
+        },
+        Action::Engine(writes) => Input::HostWrite {
+            writes: writes_input(writes),
+        },
+        Action::Event(name) => Input::WorldEvent { name: name.clone() },
+        Action::NewRun(writes) => Input::NewRun {
+            writes: writes_input(writes),
+        },
+        Action::End => return None,
+    })
+}
+
+fn pick_input(pick: &lute_runtime::session::Pick) -> PickInput {
+    match pick {
+        lute_runtime::session::Pick::Pass => PickInput::Pass("pass".into()),
+        lute_runtime::session::Pick::Beat(beat) => PickInput::Beat { beat: beat.clone() },
+    }
+}
+
+fn writes_input(writes: &Writes) -> WritesInput {
+    WritesInput {
+        state: writes
+            .state
+            .iter()
+            .map(|(path, write)| match write {
+                Write::Set(value) => StateWrite {
+                    path: path.clone(),
+                    value: Some(value_to_json(value)),
+                    add: None,
+                },
+                Write::Add(add) => StateWrite {
+                    path: path.clone(),
+                    value: None,
+                    add: Some(*add),
+                },
+            })
+            .collect(),
+        facts: writes.facts.iter().map(render_fact).collect(),
+        retract: writes.retract.iter().map(render_fact).collect(),
+        accept: writes.accept.clone(),
+    }
+}
+
+/// A resolved `advance:` in the wire form (spec 0.38.0 §5.4): slots and
+/// weekdays by name where the clock names them.
+fn advance_by(by: &lute_manifest::clock::Advance, project: &ExecProject) -> AdvanceBy {
+    use lute_manifest::clock::Advance;
+    let clock = project.index.clock.as_ref();
+    match *by {
+        Advance::Slots(1) => AdvanceBy::Named("slot".into()),
+        Advance::Slots(n) => AdvanceBy::Slots(n),
+        Advance::Day => AdvanceBy::Named("day".into()),
+        Advance::To { weekday, slot } => {
+            let slot = slot.map(|i| {
+                clock
+                    .and_then(|c| c.slots.get(i))
+                    .cloned()
+                    .expect("the planner resolved the slot against this clock")
+            });
+            let weekday = weekday.map(|i| {
+                clock
+                    .and_then(|c| c.week.as_ref())
+                    .and_then(|w| usize::try_from(i).ok().and_then(|i| w.labels.get(i)))
+                    .cloned()
+                    .unwrap_or_else(|| i.to_string())
+            });
+            match (weekday, slot) {
+                (None, Some(to)) => AdvanceBy::ToSlot { to },
+                (weekday, slot) => AdvanceBy::To {
+                    to: ClockPosition { weekday, slot },
+                },
+            }
+        }
+    }
+}
+
+/// The script's seed: its `state:` / `facts:` surfaces and save, as written.
+fn seed(script: &PlayScript, no_derive: bool) -> Seed {
+    let save = &script.save;
+    let scoped = |run: &[String], user: &[String]| {
+        [("run", run), ("user", user)]
+            .into_iter()
+            .filter(|(_, ids)| !ids.is_empty())
+            .map(|(scope, ids)| (scope.to_string(), ids.to_vec()))
+            .collect()
+    };
+    Seed {
+        state: script
+            .surfaces
+            .state
+            .iter()
+            .map(|(path, text, _)| StateWrite {
+                path: path.clone(),
+                value: Some(scalar(text)),
+                add: None,
+            })
+            .collect(),
+        facts: script.surfaces.facts.clone(),
+        derive: !no_derive && script.derive != Some(false),
+        save: SaveInput {
+            visited: save.visited.clone(),
+            presented: scoped(&save.presented_run, &save.presented_user),
+            quests: save.quests.iter().cloned().collect(),
+            quest_instances: save.quest_instances.iter().cloned().collect(),
+            entries_read: scoped(&save.entries_run, &save.entries_user),
+        },
+    }
+}
+
+/// A literal as written, as a JSON scalar: a number or boolean when its
+/// JSON form reads back as the same text, else a string.
+fn scalar(text: &str) -> Value {
+    match serde_json::from_str::<Value>(text) {
+        Ok(v @ (Value::Bool(_) | Value::Number(_))) if v.to_string() == text => v,
+        _ => Value::String(text.to_string()),
+    }
+}
+
+/// A bridge answer as `bridgeResult` fields, each typed by the await's
+/// field shape (`bool`, `number`, else string).
+fn bridge_fields(
+    answer: &BridgeAnswer,
+    shape: &BTreeMap<String, String>,
+) -> BTreeMap<String, Value> {
+    answer
+        .iter()
+        .map(|(field, text)| {
+            let value = match shape.get(field).map(String::as_str) {
+                Some("bool" | "number") => match scalar(text) {
+                    Value::String(_) => Value::String(text.clone()),
+                    v => v,
+                },
+                _ => Value::String(text.clone()),
+            };
+            (field.clone(), value)
+        })
+        .collect()
 }

@@ -88,7 +88,9 @@ optional: `state` mutations, ground `facts`, `retract` patterns (including
 ```
 
 `pick` may instead be `"pass"` (play's `pick: none`). `advanceClock.by` is
-`"slot"`, `"day"`, an integer slot count, or a named clock destination.
+`"slot"`, `"day"`, an integer slot count, or a destination `{"to": …}`
+holding a `weekday` and/or a `slot` (a slot alone may be written as a
+string, `{"to": "dusk"}`), resolved like play's `advance: { to: … }`.
 Each of the following examples is an `Input`:
 
 ```json

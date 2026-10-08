@@ -11,6 +11,7 @@ use lute_runtime::{
 };
 use serde_json::Value as Json;
 
+use super::events::ScriptAnswer;
 use super::producers::{decisions_of, Decision, Premises, Producers};
 
 /// The CLI-owned state used to drive and resume play walks.
@@ -28,6 +29,9 @@ pub(crate) struct PlayDriverState {
     pub(crate) step: usize,
     pub(crate) document: String,
     pub(crate) records: Vec<(String, Json)>,
+    /// Every decision and bridge answer the walks gave, in order — what
+    /// `lute play --events` answers the runtime's awaits with.
+    pub(crate) answers: Vec<ScriptAnswer>,
     override_cursors: Vec<Vec<(String, Option<usize>)>>,
     observer: Option<SessionEvalObserver>,
     producers: Option<Arc<Producers>>,
@@ -90,6 +94,8 @@ pub(crate) struct PlayDriver {
     pub(crate) bridges: BridgeQueues,
     pub(crate) transcript: Vec<Json>,
     pub(crate) premises: Premises,
+    /// The decisions and bridge answers this walk gave, in order.
+    pub(crate) answers: Vec<ScriptAnswer>,
 }
 
 impl PlayDriver {
@@ -109,12 +115,19 @@ impl PlayDriver {
                 document: document.to_string(),
                 step: state.step,
             },
+            answers: Vec::new(),
         }
     }
 }
 
 impl Driver for PlayDriver {
-    fn choose(&mut self, menu: &Menu<'_>) -> Pick { self.choices.pick(menu) }
+    fn choose(&mut self, menu: &Menu<'_>) -> Pick {
+        let pick = self.choices.pick(menu);
+        if let Pick::Option(option) = &pick {
+            self.answers.push(ScriptAnswer::Choice { menu: menu.id.to_string(), option: option.clone() });
+        }
+        pick
+    }
 
     fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &Verdict) -> Forced {
         match verdict {
@@ -125,7 +138,10 @@ impl Driver for PlayDriver {
 
     fn bridge(&mut self, call: &BridgeCall<'_>) -> lute_runtime::BridgeReply {
         match self.bridges.next(call.tag) {
-            Some(answer) => lute_runtime::BridgeReply::Answer(answer),
+            Some(answer) => {
+                self.answers.push(ScriptAnswer::Bridge { tag: call.tag.to_string(), fields: answer.clone() });
+                lute_runtime::BridgeReply::Answer(answer)
+            }
             None => lute_runtime::BridgeReply::Unanswered,
         }
     }
@@ -184,6 +200,7 @@ impl WalkDriver for PlayDriverState {
             &driver.transcript,
         ));
         self.records.extend(driver.transcript.iter().cloned().map(|record| (driver.premises.document.clone(), record)));
+        self.answers.extend(driver.answers);
         Walked {
             carry,
             transcript: driver.transcript,
