@@ -64,7 +64,8 @@ pub(super) fn start_world(
             .collect::<Vec<_>>()
             .join("\n")
     })?;
-    let play = execute(save, &plan, Session::resume(p, w));
+    let mut driver = super::super::driver_for(p, save, None);
+    let play = execute(save, &plan, Session::resume(p, w, &mut driver));
     match play.outcome {
         Ok(_) => Ok((play.world, origin)),
         Err(h) => Err(at(format!(

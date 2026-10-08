@@ -118,7 +118,7 @@ pub(super) fn columns(
 /// One column at one cell, recording every candidate's verdict in `seen`
 /// (keyed by its `ProjectIndex.beats` row).
 pub(super) fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
-    let cands = eligible_at(p, w, &col.occasion, col.target.as_deref());
+    let cands = eligible_at(p, w, &col.occasion, col.target.as_deref(), None);
     // A `for` beat is judged (and presented) once per member: its cell
     // names the member, as play's transcript does.
     let label = |c: &Candidate| match &c.for_member {
@@ -197,7 +197,7 @@ pub(super) fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTre
         }
     }
     let gated = matches!(
-        lute_runtime::seam::closed(p, w, &col.occasion, col.target.as_deref()),
+        lute_runtime::seam::closed(p, w, &col.occasion, col.target.as_deref(), None),
         Some(lute_runtime::seam::Closed::Gate { .. })
     );
     Outcome {

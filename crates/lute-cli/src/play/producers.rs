@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as Json;
 
-use super::project::ExecProject;
-use crate::store::json_arg_to_string;
-use crate::driver::GuardRead;
+use lute_runtime::session::parse_ground_fact;
+use lute_runtime::store::json_arg_to_string;
+use lute_runtime::GuardRead;
 
 /// One asserting command of the compiled project.
 #[derive(Clone, Debug)]
@@ -167,7 +167,7 @@ impl Producers {
     /// "nothing in the project asserts it". `decisions` are the play's
     /// decisions so far, in order.
     fn of_fact(&self, f: &str, decisions: &[Decision]) -> String {
-        let Some((rel, args)) = super::world::parse_ground_fact(f) else {
+        let Some((rel, args)) = parse_ground_fact(f) else {
             return String::new();
         };
         if self.reserved.contains(&rel) {
@@ -263,14 +263,3 @@ pub struct Premises {
     pub step: usize,
 }
 
-impl Premises {
-    /// For a walk of `document` at the world's current step.
-    pub fn of(p: &ExecProject, w: &super::world::World, document: &str) -> Self {
-        Premises {
-            producers: Some(p.producers.clone()),
-            decisions: w.decisions.clone(),
-            document: document.to_string(),
-            step: w.step,
-        }
-    }
-}

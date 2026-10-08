@@ -72,16 +72,19 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
 
+use serde_json::{json, Value as Json};
 use lute_runtime::session::{
     domain_members, entry_flag, is_candidate, json_to_value, kind_label, resolve_fact,
     resolve_state, value_to_json, ExecProject, PlayHalt, Played, Presented, Session,
     SessionEvalObserver, StepBody, Verdict, World,
 };
-use serde_json::{json, Value as Json};
+use lute_runtime::BridgeQueues;
 
 use crate::play_expect::ExpectMiss;
 
 pub(crate) mod calendar;
+mod driver;
+mod producers;
 mod human;
 mod json;
 mod outcome;
@@ -90,7 +93,7 @@ mod project;
 mod provenance;
 mod run;
 mod script;
-
+use driver::PlayDriverState;
 use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
@@ -203,6 +206,19 @@ struct Loaded {
     plan: Vec<Step>,
     world: World,
 }
+fn driver_for(
+    project: &ExecProject,
+    script: &PlayScript,
+    observer: Option<SessionEvalObserver>,
+) -> PlayDriverState {
+    let bridges = BridgeQueues {
+        step: Default::default(),
+        top: BridgeQueues::queue(&script.surfaces.bridges),
+    };
+    PlayDriverState::for_project(project, script.surfaces.choose.clone(), bridges)
+        .with_observer(observer)
+}
+
 
 /// Load a play. `Err((code, message))`: exit 2 with the usage error, or the
 /// compile gate's exit code (its diagnostics already printed, `message`
@@ -239,7 +255,7 @@ fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
 
 fn install_condition_dump(
     project: &ExecProject,
-    world: &mut World,
+    driver: &mut PlayDriverState,
     path: &Path,
 ) -> Result<(), String> {
     let file = std::fs::File::create(path)
@@ -336,7 +352,7 @@ fn install_condition_dump(
             let _ = f.write_all(&bytes);
         }
     });
-    world.eval_observer = Some(observer);
+    driver.set_observer(Some(observer));
     Ok(())
 }
 
@@ -360,7 +376,7 @@ pub fn run_play(
         script,
         project,
         plan,
-        mut world,
+        world,
     } = match load(dir, script_path, no_derive, &matrix) {
         Ok(l) => l,
         Err((code, msg)) => {
@@ -370,8 +386,9 @@ pub fn run_play(
             return code;
         }
     };
+    let mut driver = driver_for(&project, &script, None);
     if let Some(path) = dump_conditions {
-        if let Err(msg) = install_condition_dump(&project, &mut world, path) {
+        if let Err(msg) = install_condition_dump(&project, &mut driver, path) {
             eprintln!("lute play: {msg}");
             return ExitCode::from(2);
         }
@@ -381,7 +398,7 @@ pub fn run_play(
     } else {
         world.facts.clone()
     };
-    let play = execute(&script, &plan, Session::resume(&project, world));
+    let play = execute(&script, &plan, Session::resume(&project, world, &mut driver));
     // Expectations judge the presented content (`said`); `--ir` changes
     // only what is printed.
     let explained = if explain.is_empty() {
@@ -528,7 +545,8 @@ pub(crate) fn run_play_for_test(
     let script = load_script(script_path).map_err(|(_, msg)| msg)?;
     let p = project.0.as_ref().map_err(String::clone)?;
     let (plan, world) = plan_script(p, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
-    let play = execute(&script, &plan, Session::resume(p, world));
+    let mut driver = driver_for(p, &script, None);
+    let play = execute(&script, &plan, Session::resume(p, world, &mut driver));
     let outcome = play_outcome(&p, &play);
     let misses = judge(&script, &outcome);
     // A presented beat — an `occasion:` step's, or one the occasion an
@@ -673,7 +691,8 @@ pub(crate) fn presentations_for_diff(
     }
     let (plan, world) =
         plan_script(project, &script, script_path, false).map_err(|(_, msg)| msg)?;
-    let play = execute(&script, &plan, Session::resume(project, world));
+    let mut driver = driver_for(project, &script, None);
+    let play = execute(&script, &plan, Session::resume(project, world, &mut driver));
     let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);
     let mut out: Vec<PlayedBeat> = Vec::new();
     let steps = play.steps.len();

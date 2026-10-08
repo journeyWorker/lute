@@ -676,7 +676,7 @@ fn seed_facts(art: &Json, derive: bool) -> BTreeSet<Fact> {
 }
 
 /// A fact-arg JSON scalar → its ground string (bools as `"true"`/`"false"`).
-pub(crate) fn json_arg_to_string(j: &Json) -> String {
+pub fn json_arg_to_string(j: &Json) -> String {
     match j {
         Json::String(s) => s.clone(),
         Json::Bool(b) => b.to_string(),

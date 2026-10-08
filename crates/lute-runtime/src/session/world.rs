@@ -10,11 +10,12 @@ use serde_json::{json, Value as Json};
 
 use super::present::{share_of, spend_shared};
 use super::project::ExecProject;
-use super::resolve::{ever_read_path, resolve_bridges, resolve_fact, resolve_state};
-use super::walk::PlayDriver;
+use super::resolve::{ever_read_path, resolve_fact, resolve_state};
 use crate::datalog::Fact;
-use crate::{BridgeQueues, Carry, EvalSnapshot, Machine, Seed};
-use crate::{MockSet, UnresolvedAtom, Value};
+use crate::{
+    BridgeCall, BridgeReply, Carry, Driver, EvalSnapshot, Forced, Machine, Menu, MockSet, OnUnknown,
+    Pick, Seed, UnknownSite, UnresolvedAtom, Value,
+};
 
 /// A shared observer for every CEL evaluation made during a play.
 ///
@@ -22,6 +23,25 @@ use crate::{MockSet, UnresolvedAtom, Value};
 /// evaluation snapshot; callers must not retain the snapshot references.
 pub type SessionEvalObserver =
     Rc<dyn for<'a> Fn(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
+/// A driver used only by evaluator machines; it cannot make a play decision.
+#[derive(Default)]
+pub struct NoDecisionDriver;
+
+impl Driver for NoDecisionDriver {
+    fn choose(&mut self, _menu: &Menu<'_>) -> Pick {
+        Pick::Unscripted { scripted: 0 }
+    }
+    fn forced(&mut self, _menu: &Menu<'_>, _option: &str, _verdict: &crate::Verdict) -> Forced {
+        Forced::Refuse
+    }
+    fn bridge(&mut self, _call: &BridgeCall<'_>) -> BridgeReply {
+        BridgeReply::Unanswered
+    }
+    fn unknown(&mut self, _site: &UnknownSite<'_>) -> OnUnknown {
+        OnUnknown::Halt
+    }
+    fn emit(&mut self, _rec: Json) {}
+}
 
 /// Everything that carries from one step to the next.
 #[derive(Clone, Default)]
@@ -60,24 +80,12 @@ pub struct World {
     /// dsl 0.24.0 §2: quest ids `::accept{… at="nextRun"}` queued — handed
     /// to `accepts` right after the next `newRun` reset.
     pub next_run_accepts: Vec<String>,
-    /// Per `<branch>` id: the decisions of a multi-decision `choose:` list
-    /// earlier presentations consumed ([`ScriptedChoices::cursor`]).
-    ///
-    /// [`ScriptedChoices::cursor`]: crate::driver::ScriptedChoices::cursor
-    pub choice_cursor: BTreeMap<String, usize>,
-    /// The script-wide `choose:` every presentation is scripted by (a
-    /// step's own `choose:` replaces it key by key, dsl 0.22.0 §2).
-    pub choose: BTreeMap<String, Vec<String>>,
     /// `Some(false)` under `--no-derive` / `derive: false` (dsl 0.22.0 §6):
     /// handed to every runner's mock.
     pub derive: Option<bool>,
     /// dsl 0.23.0 §2: `<quest>.<objective>` ids a `by` deadline failed —
     /// carried to every quest advance so a failed objective stays failed.
     pub failed_objectives: BTreeSet<String>,
-    /// dsl 0.24.0 §5: the bridge answers not yet consumed — the running
-    /// step's own, then the script's top-level ones; every presentation and
-    /// quest advance hands them to its [`PlayDriver`] and takes back the rest.
-    pub bridges: BridgeQueues,
     /// dsl 0.24.0 §2.1: the raise (`name` / `name@target`) the running step
     /// makes, until it is made — the settles before it defer the `by` of
     /// the `on=` objectives it judges ([`Machine::with_deferred_by`]).
@@ -99,13 +107,6 @@ pub struct World {
     /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
     /// the season-scoped spends.
     pub cadence: crate::cadence::Cadence,
-    /// The script step running now (`Session::occasion` / `advance` set
-    /// it) and every decision the playthrough made so far — what a refused
-    /// pick names beside a premise's producers.
-    pub step: usize,
-    pub decisions: Vec<super::producers::Decision>,
-    /// Optional observer shared by every machine this play constructs.
-    pub eval_observer: Option<SessionEvalObserver>,
 }
 
 impl World {
@@ -128,35 +129,30 @@ impl World {
     /// A Machine over `art` resumed from this world that only evaluates
     /// (a `when`, the fact closure) — it never walks, so its driver has no
     /// script.
-    pub fn evaluator(&self, art: &Json) -> Machine<PlayDriver> {
-        let machine = Machine::resume(
+    pub fn evaluator(&self, art: &Json) -> Machine<NoDecisionDriver> {
+        Machine::resume(
             art,
             Seed::from(&self.mock()),
             self.carry(),
-            PlayDriver::default(),
-        );
-        self.observe_machine(machine)
+            NoDecisionDriver,
+        )
     }
     /// Project evaluator using the schema decoded once by `ExecProject`.
     pub(crate) fn evaluator_with_schema(
         &self,
         art: &Json,
         schema: std::sync::Arc<crate::store::StoreSchema>,
-    ) -> Machine<PlayDriver> {
+        observer: Option<SessionEvalObserver>,
+    ) -> Machine<NoDecisionDriver> {
         let machine = Machine::resume_with_project_schema(
             art,
             std::sync::Arc::new(crate::machine::Code::of(art)),
             Seed::from(&self.mock()),
             self.carry(),
-            PlayDriver::default(),
+            NoDecisionDriver,
             schema,
         );
-        self.observe_machine(machine)
-    }
-
-    /// Attach this world's observer to a machine, if one was configured.
-    pub fn observe_machine(&self, machine: Machine<PlayDriver>) -> Machine<PlayDriver> {
-        let Some(observer) = self.eval_observer.clone() else {
+        let Some(observer) = observer else {
             return machine;
         };
         machine.with_eval_observer(move |raw, value, atoms, snapshot| {
@@ -344,10 +340,6 @@ pub fn seed_world<B, C>(
     seed: &WorldSeed<'_, B, C>,
 ) -> Result<World, Vec<SeedError>> {
     let mut errs: Vec<SeedError> = Vec::new();
-    let top_bridges = resolve_bridges(p, "top level", &seed.surfaces.bridges).unwrap_or_else(|e| {
-        errs.push(SeedError::at(&["bridges"], e));
-        BTreeMap::new()
-    });
     let mut w = World {
         state: BTreeMap::new(),
         facts: p.seed_facts.clone(),
@@ -360,23 +352,14 @@ pub fn seed_world<B, C>(
         share_spent_by: BTreeMap::new(),
         accepts: Vec::new(),
         next_run_accepts: Vec::new(),
-        choice_cursor: BTreeMap::new(),
-        choose: seed.surfaces.choose.clone(),
         derive: None,
         failed_objectives: BTreeSet::new(),
-        bridges: BridgeQueues {
-            top: top_bridges,
-            step: BTreeMap::new(),
-        },
         defer_by: None,
         defer_handlers: false,
         deferred_handlers: Vec::new(),
         clock_advanced_by_beat: false,
         advance_cascade_depth: 0,
         cadence: Default::default(),
-        step: 0,
-        decisions: Vec::new(),
-        eval_observer: None,
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {
@@ -580,6 +563,7 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
     let evaluator = w.evaluator_with_schema(
         &p.eval_json,
         p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+        None,
     );
     let facts = evaluator.all_facts();
     let mut out = Vec::new();
@@ -639,6 +623,7 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
         w.evaluator_with_schema(
             &p.eval_json,
             p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            None,
         )
         .all_facts()
         .iter()

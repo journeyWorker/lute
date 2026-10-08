@@ -1,116 +1,22 @@
-//! One walk through the [`Machine`]: the session's [`PlayDriver`], the
-//! finished [`Walked`] and its fold back into the world, and the honesty
-//! gate every walk passes ([`PlayHalt`]).
+//! One walk through the [`Machine`], its folded carry and the runtime halt
+//! kinds.  A caller-owned [`WalkDriver`] supplies the walk driver and builds
+//! any play/report messages.
 
 use std::collections::{BTreeMap, VecDeque};
 
 use serde_json::Value as Json;
 
-use super::project::{decision_options, state_entry_type, ExecProject};
+use super::project::ExecProject;
 use super::world::World;
-use crate::{BridgeCall, BridgeQueues, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown,
-Pick as MenuPick, ScriptedChoices, Seed, UnknownSite, Verdict as OptionVerdict,};
+use crate::{BridgeQueues, Carry, Machine, Seed};
 use crate::UnresolvedAtom;
 
-/// The session's [`Driver`] (`lute play`, `lute calendar`, the play files of
-/// `lute test`): the script's `choose:` over the playthrough's cursor, the
-/// playthrough's bridge answers (the running step's, then the top level's),
-/// every scripted pick of an option that is not offered refused
-/// (`E-TRACE-CHOICE`, as `lute trace` refuses it — a silent skip would let
-/// the script drift out of step with what the player was really offered),
-/// and a halt AT every site whose value the walk cannot decide (§6 R4: a
-/// play knows every value). Records are collected verbatim for the
-/// renderers.
-#[derive(Default)]
-pub struct PlayDriver {
-    pub choices: ScriptedChoices,
-    pub bridges: BridgeQueues,
-    pub transcript: Vec<Json>,
-    /// What a refused pick's closed guard names ([`Driver::premise_hint`]):
-    /// the project's producers and the play's decisions.
-    pub premises: super::producers::Premises,
-}
-
-impl PlayDriver {
-    /// A walk scripted by `choose`, resuming `w`'s choice cursor and bridge
-    /// queues.
-    pub fn new(choose: &BTreeMap<String, Vec<String>>, w: &World) -> Self {
-        PlayDriver {
-            choices: ScriptedChoices::new(choose.clone(), w.choice_cursor.clone()),
-            bridges: w.bridges.clone(),
-            transcript: Vec::new(),
-            premises: Default::default(),
-        }
-    }
-}
-
-impl Driver for PlayDriver {
-    fn choose(&mut self, menu: &Menu<'_>) -> MenuPick {
-        self.choices.pick(menu)
-    }
-
-    fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &OptionVerdict) -> Forced {
-        match verdict {
-            OptionVerdict::Spent | OptionVerdict::Closed(_) => Forced::Refuse,
-            OptionVerdict::Open | OptionVerdict::Unknown(_) => Forced::Take,
-        }
-    }
-
-    fn bridge(&mut self, call: &BridgeCall<'_>) -> BridgeReply {
-        match self.bridges.next(call.tag) {
-            Some(a) => BridgeReply::Answer(a),
-            None => BridgeReply::Unanswered,
-        }
-    }
-
-    fn unknown(&mut self, _site: &UnknownSite<'_>) -> OnUnknown {
-        // The walk halts where the value is needed; the post-walk honesty
-        // gate ([`outcome_halt`] over [`Carry::unresolved`]) names it.
-        OnUnknown::Halt
-    }
-
-    fn emit(&mut self, rec: Json) {
-        self.transcript.push(rec);
-    }
-
-    /// A play has no mocks: a fact the guard misses names what in the
-    /// project asserts it and what the play chose there so far — this
-    /// walk's own decisions included.
-    fn premise_hint(&self, read: &crate::GuardRead) -> String {
-        let pr = &self.premises;
-        let Some(producers) = &pr.producers else {
-            return String::new();
-        };
-        let mut decisions = pr.decisions.clone();
-        decisions.extend(super::producers::decisions_of(
-            &pr.document,
-            pr.step,
-            &self.transcript,
-        ));
-        producers.hint(read, &decisions)
-    }
-}
-
-/// A finished walk: the machine's carry plus what its [`PlayDriver`]
-/// collected — the transcript play's renderer reuses verbatim, and the
-/// choice cursor and bridge answers the next walk resumes from.
+/// A finished walk: its carry and host-collected transcript.
 pub struct Walked {
     pub carry: Carry,
     pub transcript: Vec<Json>,
-    pub choice_cursor: BTreeMap<String, usize>,
-    pub bridges: BridgeQueues,
-}
-
-impl Walked {
-    pub fn of(m: Machine<PlayDriver>) -> Self {
-        let (carry, d) = m.into_carry();
-        Walked {
-            carry,
-            transcript: d.transcript,
-            choice_cursor: d.choices.cursor,
-            bridges: d.bridges,
-        }
-    }
+    /// Bridge answers consumed by this walk, grouped by plugin tag.
+    pub bridges: BTreeMap<String, Vec<crate::BridgeAnswer>>,
 }
 
 /// Fold a finished walk back into the world: persistent tiers only
@@ -138,10 +44,8 @@ pub fn absorb(w: &mut World, outcome: &Walked) {
             w.next_run_accepts.push(id.clone());
         }
     }
-    w.choice_cursor = outcome.choice_cursor.clone();
     w.failed_objectives
         .extend(carry.failed_objectives.iter().cloned());
-    w.bridges = outcome.bridges.clone();
 }
 
 /// Why the playthrough stopped short of its last step.
@@ -205,140 +109,47 @@ pub fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
     }
 }
 
-/// The honesty gate every finished walk passes (`what` names the
-/// presentation or quest document): an unscripted decision, a plugin call
-/// with no bridge answer (dsl 0.24.0 §5 — the walk halted AT the call),
-/// an undecidable quest objective, `now()`/`validAt(...)`.
-pub fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<PlayHalt> {
-    if outcome.carry.incomplete {
-        if let Some(rec) =
-            outcome.transcript.iter().rev().find(|c| {
-                c.get("note").and_then(Json::as_str) == Some(crate::NOTE_NO_DECISION)
-            })
-        {
-            let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("choice");
-            let id = rec
-                .get("branch")
-                .or_else(|| rec.get("hub"))
-                .and_then(Json::as_str)
-                .unwrap_or("?");
-            let options = decision_options(doc_json, id);
-            let used_up = match (kind, rec.get("scripted").and_then(Json::as_u64)) {
-                ("hub", Some(n)) => format!(
-                    " — the hub is still open after the {n} scripted pick(s) of its `choose:` list"
-                ),
-                (_, Some(n)) => format!(
-                    " — all {n} decisions of its `choose:` list were used by earlier presentations"
-                ),
-                (_, None) => String::new(),
-            };
-            return Some(PlayHalt::Incomplete(format!(
-                "{what} reached {kind} `{id}` with no scripted `choose:` decision{used_up} (options: {})",
-                if options.is_empty() {
-                    "none".to_string()
-                } else {
-                    options.join(", ")
-                }
-            )));
-        }
-        if let Some(rec) = outcome.transcript.iter().rev().find(|c| {
-            c.get("kind").and_then(Json::as_str) == Some("plugin") && c.get("unanswered").is_some()
-        }) {
-            let tag = rec.get("tag").and_then(Json::as_str).unwrap_or("?");
-            let strs = |key: &str| -> Vec<&str> {
-                let list = rec.get(key).and_then(Json::as_array).into_iter().flatten();
-                list.filter_map(Json::as_str).collect()
-            };
-            // `unanswered` and `unresolvedEffects` pair each field with the
-            // result slot it writes; the slot's declared type is the
-            // placeholder, as in `lute trace`'s hint.
-            let types: Vec<Option<lute_manifest::types::Type>> = strs("unresolvedEffects")
-                .into_iter()
-                .map(|p| state_entry_type(doc_json, p))
-                .collect();
-            let shape = crate::bridge_answer_shape(
-                strs("unanswered")
-                    .into_iter()
-                    .zip(types.iter().map(Option::as_ref)),
-            );
-            return Some(PlayHalt::Incomplete(format!(
-                "{what}: plugin call `{tag}` reads a bridge result and has no answer — give one \
-                 with `bridges: {{ {tag}: [ {shape} ] }}` (top level or on the step)"
-            )));
-        }
-        if let Some(rec) = outcome.transcript.iter().find(|c| {
-            c.get("kind").and_then(Json::as_str) == Some("objective")
-                && (c.get("done").is_some_and(Json::is_null)
-                    || c.get("failed").is_some_and(Json::is_null))
-        }) {
-            let slot = if rec.get("failed").is_some_and(Json::is_null) {
-                "`by` condition"
-            } else {
-                "`done` condition"
-            };
-            return Some(PlayHalt::Incomplete(format!(
-                "{what}: required objective `{}.{}` has a {slot} that evaluates unknown",
-                rec.get("quest").and_then(Json::as_str).unwrap_or("?"),
-                rec.get("objective").and_then(Json::as_str).unwrap_or("?"),
-            )));
-        }
-        return Some(PlayHalt::Incomplete(format!("{what} is incomplete")));
-    }
-    if outcome
-        .carry
-        .unresolved
-        .iter()
-        .any(|a| matches!(a, UnresolvedAtom::Time))
-    {
-        return Some(PlayHalt::Incomplete(format!(
-            "{what} depends on now()/validAt(...), which the reference runner cannot resolve"
-        )));
-    }
-    None
-}
-
-/// How a finished runner walk halts the playthrough, if it does: a refused
-/// scripted decision (`E-TRACE-CHOICE`) is an error like an ineligible
-/// `pick:` (exit 1); any other runner failure is fatal (exit 2); then the
-/// honesty gate. A `::end` is not a halt: it ends the walk it ran in (one
-/// presentation, or one quest document's advance) and the playthrough
-/// goes on with the next step (0.23.1) — only a script `end: true` ends it.
-pub fn walk_stop(
+/// How a finished runner walk halts the playthrough, if it does.
+pub fn walk_stop<F: super::WalkDriver>(
+    factory: &F,
     result: Result<(), String>,
     outcome: &Walked,
     what: &str,
     doc_json: &Json,
 ) -> Option<PlayHalt> {
     match result {
-        Err(msg) if outcome.carry.refused => Some(PlayHalt::Error(format!("{what}: {msg}"))),
-        Err(msg) => Some(PlayHalt::Fatal(format!("{what}: {msg}"))),
-        Ok(()) => outcome_halt(outcome, what, doc_json),
+        Err(msg) => factory.halt(Err(msg), outcome, what, doc_json),
+        Ok(()) => factory.halt(Ok(()), outcome, what, doc_json),
     }
 }
 
-/// A presentation or quest walk of the project document `doc`, resumed from
-/// `carry`, scripted by `choose` over `w`'s choice cursor and bridge
-/// answers, reading `w`'s presented scenes and the project's bridge-result
-/// readers.
-pub fn play_machine(
+
+/// Build one walk from a caller-owned driver factory.
+pub fn play_machine<F: super::WalkDriver>(
     p: &ExecProject,
     w: &World,
     doc: &str,
     seed: Seed,
     carry: Carry,
     choose: &BTreeMap<String, Vec<String>>,
-) -> Machine<PlayDriver> {
+    factory: &mut F,
+) -> Machine<F::Driver> {
     let machine = Machine::resume_with_project_schema(
         &p.artifacts[doc],
         std::sync::Arc::clone(&p.codes[doc]),
         seed.clone(),
         carry,
-        PlayDriver::new(choose, w),
+        factory.new_driver(doc, choose, w),
         p.store_schemas[seed.derive as usize].clone(),
     )
     .with_visited(&w.visited)
     .with_bridge_reads(p.bridge_reads.clone());
-    w.observe_machine(machine)
+    let Some(observer) = factory.observer() else {
+        return machine;
+    };
+    machine.with_eval_observer(move |raw, value, atoms, snapshot| {
+        observer(raw, value, atoms, snapshot);
+    })
 }
 
 /// The bridge answers a walk consumed: per tag, the head of `before`'s step

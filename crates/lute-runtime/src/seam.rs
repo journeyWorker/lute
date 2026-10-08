@@ -10,7 +10,7 @@
 //! holds the playthrough ends (`end: terminal`) and a later `advance:` or
 //! `occasion:` step is a usage error.
 
-use super::session::{ExecProject, PlayHalt, World};
+use super::session::{ExecProject, PlayHalt, SessionEvalObserver, World};
 use crate::{Driver, GuardRead, Machine, Slot};
 
 use lute_check::gates::E_OCCASION_GATE;
@@ -55,12 +55,20 @@ fn decide<D: Driver>(eval: &mut Machine<D>, cond: &Slot) -> Result<bool, String>
 
 /// Whether the project's `terminal:` holds in `w` (`Ok(false)` without
 /// one); `Err` names what was unknown.
-pub fn terminal_holds(p: &ExecProject, w: &World) -> Result<bool, String> {
+pub fn terminal_holds(
+    p: &ExecProject,
+    w: &World,
+    observer: Option<SessionEvalObserver>,
+) -> Result<bool, String> {
     match &p.conds.terminal {
         None => Ok(false),
         Some(t) => decide(
             &mut w
-                .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+                .evaluator_with_schema(
+                    &p.eval_json,
+                    p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+                    observer,
+                )
                 .with_visited(&w.visited),
             t,
         ),
@@ -80,9 +88,19 @@ fn member<'t>(p: &ExecProject, occasion: &str, target: &'t str) -> std::borrow::
 /// Why the engine would not raise `occasion` (for `target`) in `w` — the
 /// terminal condition holds, or the occasion's gate is false — or `None`
 /// when it would.
-pub fn closed(p: &ExecProject, w: &World, occasion: &str, target: Option<&str>) -> Option<Closed> {
+pub fn closed(
+    p: &ExecProject,
+    w: &World,
+    occasion: &str,
+    target: Option<&str>,
+    observer: Option<SessionEvalObserver>,
+) -> Option<Closed> {
     let mut eval = w
-        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
         .with_visited(&w.visited);
     closed_in(p, &mut eval, occasion, target)
 }
@@ -257,8 +275,9 @@ pub fn clock_raise_open(
     occasion: &str,
     at: impl FnOnce() -> String,
     closed: &mut Vec<ClosedRaise>,
+    observer: Option<SessionEvalObserver>,
 ) -> bool {
-    match self::closed(p, w, occasion, None) {
+    match self::closed(p, w, occasion, None, observer) {
         None => true,
         Some(why) => {
             closed.push(ClosedRaise {

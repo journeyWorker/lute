@@ -12,7 +12,7 @@ use serde_json::Value as Json;
 
 use super::project::ExecProject;
 use super::walk::describe_atoms;
-use super::world::World;
+use super::world::{SessionEvalObserver, World};
 use crate::{Driver, Machine, Slot};
 use crate::{UnresolvedAtom, Value};
 
@@ -300,8 +300,9 @@ pub fn eligible_at(
     w: &World,
     occasion: &str,
     target: Option<&str>,
+    observer: Option<SessionEvalObserver>,
 ) -> Vec<Candidate> {
-    candidates(p, w, occasion, target, None)
+    candidates(p, w, occasion, target, None, observer)
 }
 
 /// [`eligible_at`], the seam taken from `seam` (decided when the occasion
@@ -312,9 +313,14 @@ pub(super) fn candidates(
     occasion: &str,
     target: Option<&str>,
     seam: Option<&RaiseSeam>,
+    observer: Option<SessionEvalObserver>,
 ) -> Vec<Candidate> {
     let mut eval = w
-        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
         .with_visited(&w.visited);
     let out: Vec<(usize, Candidate)> = answering(p, occasion, target)
         .into_iter()
@@ -350,12 +356,21 @@ pub(super) fn candidates(
 /// earlier beat of a `select: sequence` raise, that makes `terminal:` hold
 /// does not close the beats of the raise already made.
 pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::seam::Closed>>);
-
 impl RaiseSeam {
-    /// Decide the seam of every candidate of `occasion` / `target` in `w`.
-    pub fn decide(p: &ExecProject, w: &World, occasion: &str, target: Option<&str>) -> Self {
+
+    pub fn decide(
+        p: &ExecProject,
+        w: &World,
+        occasion: &str,
+        target: Option<&str>,
+        observer: Option<SessionEvalObserver>,
+    ) -> Self {
         let mut eval = w
-            .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+            .evaluator_with_schema(
+                &p.eval_json,
+                p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+                observer,
+            )
             .with_visited(&w.visited);
         RaiseSeam(
             answering(p, occasion, target)
@@ -391,6 +406,7 @@ pub(super) fn rejudge(
     target: Option<&str>,
     c: &Candidate,
     seam: &RaiseSeam,
+    observer: Option<SessionEvalObserver>,
 ) -> Verdict {
     let Some((idx, beat)) = p
         .index
@@ -406,7 +422,11 @@ pub(super) fn rejudge(
         None => beat.answers(occasion, target).flatten(),
     };
     let mut eval = w
-        .evaluator_with_schema(&p.eval_json, p.store_schemas[w.derive.unwrap_or(true) as usize].clone())
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
         .with_visited(&w.visited);
     let decided = Some(seam.of(idx, member));
     judge_with(p, w, &mut eval, beat, member, target, decided).verdict

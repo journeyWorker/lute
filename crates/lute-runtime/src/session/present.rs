@@ -10,7 +10,7 @@ use serde_json::Value as Json;
 use super::eligibility::kind_label;
 use super::project::ExecProject;
 use super::resolve::ever_read_path;
-use super::walk::{absorb, consumed_bridges, play_machine, walk_stop, PlayHalt, Walked};
+use super::walk::{absorb, play_machine, walk_stop, PlayHalt};
 use super::world::{json_to_value, World};
 use super::step::StepBody;
 use crate::datalog::Fact;
@@ -148,41 +148,43 @@ pub fn spend_shared(p: &ExecProject, w: &mut World, id: &str, member: Option<&st
 /// through its entry path (first-read effects, `entry.<id>.read`), a bundle
 /// beat through its `beat` record's body (dsl 0.23.0 §4). `member` is the
 /// raised member a kind beat reads as `occasion.target` (dsl 0.26.0 §5).
-pub fn present<B, C>(
+pub fn present<B, C, F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     beat: &IndexBeat,
     member: Option<&str>,
     mock: &MockSet<B, C>,
+    factory: &mut F,
 ) -> (Presented, Option<PlayHalt>) {
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
-    let (facts_before, visited_before, quests_before, bridges_before) = (
-        w.facts.clone(),
-        w.visited.clone(),
-        w.quests.clone(),
-        w.bridges.clone(),
-    );
+    let (facts_before, visited_before, quests_before) =
+        (w.facts.clone(), w.visited.clone(), w.quests.clone());
     let mut carry = Carry::world(
         scene_initial_state(doc_json, &w.state),
         w.facts.clone(),
         w.quests.clone(),
     );
     carry.quest_instances = w.quest_instances.clone();
-    let mut m = play_machine(p, w, &beat.document, Seed::from(mock), carry, &mock.choose)
-        .with_display_names(&p.display_names);
+    let mut m = play_machine(
+        p,
+        w,
+        &beat.document,
+        Seed::from(mock),
+        carry,
+        &mock.choose,
+        factory,
+    )
+    .with_display_names(&p.display_names);
     m.bind_occasion_target(member);
     let mut m = match beat.kind {
         BeatKind::Entry => m.with_entry(&beat.id),
         BeatKind::Scene => m,
         BeatKind::Bundle => m.with_bundle_beat(&beat.id),
     };
-    m.driver_mut().premises = super::producers::Premises::of(p, w, &beat.document);
     let result = m.run();
-    let outcome = Walked::of(m);
+    let outcome = factory.finish(m);
     absorb(w, &outcome);
-    let made = super::producers::decisions_of(&beat.document, w.step, &outcome.transcript);
-    w.decisions.extend(made);
     match beat.kind {
         BeatKind::Scene | BeatKind::Bundle => {
             w.visited.insert(beat.id.clone());
@@ -212,7 +214,7 @@ pub fn present<B, C>(
         beat.id,
         beat.document
     );
-    let mut stop = walk_stop(result, &outcome, &what, doc_json);
+    let mut stop = walk_stop(factory, result, &outcome, &what, doc_json);
     let state_after_body = w.state.clone();
     let facts_after_body = w.facts.clone();
     let mut raised = Vec::new();
@@ -241,12 +243,13 @@ pub fn present<B, C>(
                 let (advance_body, _, raised_stop) = super::advance::run_advance(
                     p,
                     w,
-                    w.step + 1,
+                    0,
                     by,
                     &Default::default(),
                     &raise,
                     &None,
                     &BTreeMap::new(),
+                    factory,
                 );
                 w.advance_cascade_depth -= 1;
                 if let StepBody::Advance { raised: Some(occasion), .. } = advance_body {
@@ -274,7 +277,7 @@ pub fn present<B, C>(
         raised,
         visited_before,
         quests_before,
-        bridges: consumed_bridges(&bridges_before, &w.bridges),
+        bridges: outcome.bridges,
     };
     (presented, stop)
 }
@@ -283,27 +286,15 @@ pub fn present<B, C>(
 /// replacing it key by key (dsl 0.22.0 §2). A step-local decision list is
 /// consumed from its start and leaves the script-wide list's consumption
 /// where it was.
-pub fn present_with_choose(
+pub fn present_with_choose<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
     beat: &IndexBeat,
     member: Option<&str>,
     step_choose: &BTreeMap<String, Vec<String>>,
+    factory: &mut F,
 ) -> (Presented, Option<PlayHalt>) {
     let mut mock = w.mock();
-    mock.choose = w.choose.clone();
-    mock.choose
-        .extend(step_choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-    let saved: Vec<(String, Option<usize>)> = step_choose
-        .keys()
-        .map(|k| (k.clone(), w.choice_cursor.remove(k)))
-        .collect();
-    let out = present(p, w, beat, member, &mock);
-    for (k, cursor) in saved {
-        match cursor {
-            Some(c) => w.choice_cursor.insert(k, c),
-            None => w.choice_cursor.remove(&k),
-        };
-    }
-    out
+    mock.choose = step_choose.clone();
+    present(p, w, beat, member, &mock, factory)
 }

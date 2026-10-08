@@ -13,6 +13,7 @@ use lute_runtime::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, W
 
 use super::plan::{Action, Scope, Step};
 use super::script::PlayScript;
+use super::driver::PlayDriverState;
 use crate::play_expect::WorldView;
 
 pub(super) struct StepRecord {
@@ -69,7 +70,11 @@ impl Playthrough {
     }
 }
 
-pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) -> Playthrough {
+pub(super) fn execute(
+    script: &PlayScript,
+    plan: &[Step],
+    mut s: Session<'_, '_, PlayDriverState>,
+) -> Playthrough {
     // dsl 0.25.0 §1 (LH N16): the script's seeded world (`state:` /
     // `facts:`, the project's seeds, and what the rules derive) must not
     // already hold exclusive relations together.
@@ -118,10 +123,10 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
     // choice names.
     let mut ended: Vec<(String, String)> = Vec::new();
     for (i, step) in plan.iter().enumerate() {
-        let closed = enter_scopes(&mut s.world, &mut open, &step.segments, &mut ended);
+        let closed = enter_scopes(&mut s.driver, &mut open, &step.segments, &mut ended);
         note_on_last(&mut steps, closed);
         if matches!(step.action, Action::End) {
-            let closed = enter_scopes(&mut s.world, &mut open, &[], &mut ended);
+            let closed = enter_scopes(&mut s.driver, &mut open, &[], &mut ended);
             note_on_last(&mut steps, closed);
             steps.push(StepRecord {
                 n: step.n,
@@ -164,8 +169,8 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
         let first = steps.len();
         for k in 1..=step.repeat {
             // dsl 0.24.0 §5: the step's own answers ride before the top
-            // level's for exactly this run of the step.
-            s.world.bridges.step = step.bridges.clone();
+            s.driver.step = step.n;
+            s.driver.bridges.step = step.bridges.clone();
             // dsl 0.27.0 §4: an `occasion:` step's `engine:` writes land
             // first (their own record, then the settle), so the raise — its
             // `raisedWhen` gate included — sees them.
@@ -194,7 +199,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             let previous_beat_advanced = std::mem::take(&mut s.world.clock_advanced_by_beat);
             let was_terminal = s.terminal();
             let (body, quests, halt) = run_step(&mut s, step);
-            let leftover = std::mem::take(&mut s.world.bridges.step);
+            let leftover = std::mem::take(&mut s.driver.bridges.step);
             let halt = halt.or_else(|| unconsumed_step_bridges(step.n, &leftover));
             // A halted step (a write-time exclusive refusal included, whose
             // `✗ exclusive` already sits in the transcript) is not checked again.
@@ -277,7 +282,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
             note_on_last(&mut steps, vec![note]);
         }
     }
-    let closed = enter_scopes(&mut s.world, &mut open, &[], &mut ended);
+    let closed = enter_scopes(&mut s.driver, &mut open, &[], &mut ended);
     note_on_last(&mut steps, closed);
     // dsl 0.27.0 §4: a playthrough whose last step left the game over ends
     // in the terminal state (a later raising step was refused above).
@@ -307,7 +312,7 @@ pub(super) fn execute(script: &PlayScript, plan: &[Step], mut s: Session<'_>) ->
 }
 
 /// The project's `terminal:` condition as written.
-fn terminal_text<'s>(s: &'s Session<'_>) -> &'s str {
+fn terminal_text<'s>(s: &'s Session<'_, '_, PlayDriverState>) -> &'s str {
     s.project()
         .index
         .terminal
@@ -318,7 +323,7 @@ fn terminal_text<'s>(s: &'s Session<'_>) -> &'s str {
 /// dsl 0.27.0 §4: the note on the step after which `terminal:` holds. A new
 /// run plays on — unless the ending persists (`persists: true`, over for
 /// good), or the condition reads state a new run keeps.
-fn terminal_note(s: &Session<'_>) -> String {
+fn terminal_note(s: &Session<'_, '_, PlayDriverState>) -> String {
     let terminal = terminal_text(s);
     if s.project().index.terminal_persists {
         return format!(
@@ -368,7 +373,7 @@ fn closed_raise_notes(body: &StepBody) -> Vec<String> {
 /// clock's slot occasion (raised once, where the clock stops), naming them
 /// by day — a run of days passed whole as one range — when some beat
 /// answers that occasion.
-fn passed_raise_note(s: &Session<'_>, body: &StepBody) -> Option<String> {
+fn passed_raise_note(s: &Session<'_, '_, PlayDriverState>, body: &StepBody) -> Option<String> {
     let StepBody::Advance {
         passed: Some(pr), ..
     } = body
@@ -469,7 +474,7 @@ struct Used {
 /// the notes are returned, and each such key is pushed onto `ended` with
 /// its include (T3-56: a later halt at that choice names it).
 fn enter_scopes(
-    w: &mut World,
+    state: &mut PlayDriverState,
     open: &mut Vec<OpenScope>,
     want: &[Arc<Scope>],
     ended: &mut Vec<(String, String)>,
@@ -483,24 +488,24 @@ fn enter_scopes(
     while open.len() > keep {
         let Some(mut o) = open.pop() else { break };
         for (tag, answers) in &o.scope.bridges {
-            if w.bridges.top.get(tag).map_or(0, VecDeque::len) < answers.len() {
+            if state.bridges.top.get(tag).map_or(0, VecDeque::len) < answers.len() {
                 o.used.bridged.insert(tag.clone());
             }
         }
         for (k, list, cursor) in o.choose.into_iter().rev() {
             match list {
-                Some(list) => w.choose.insert(k.clone(), list),
-                None => w.choose.remove(&k),
+                Some(list) => state.choose.insert(k.clone(), list),
+                None => state.choose.remove(&k),
             };
             match cursor {
-                Some(c) => w.choice_cursor.insert(k, c),
-                None => w.choice_cursor.remove(&k),
+                Some(c) => state.choice_cursor.insert(k, c),
+                None => state.choice_cursor.remove(&k),
             };
         }
         for (tag, queue) in o.bridges.into_iter().rev() {
             match queue {
-                Some(q) => w.bridges.top.insert(tag, q),
-                None => w.bridges.top.remove(&tag),
+                Some(q) => state.bridges.top.insert(tag, q),
+                None => state.bridges.top.remove(&tag),
             };
         }
         closed.push((open.len(), o.scope, o.used));
@@ -516,14 +521,14 @@ fn enter_scopes(
             .choose
             .iter()
             .map(|(k, list)| {
-                let prev = w.choose.insert(k.clone(), list.clone());
-                (k.clone(), prev, w.choice_cursor.remove(k))
+                let prev = state.choose.insert(k.clone(), list.clone());
+                (k.clone(), prev, state.choice_cursor.remove(k))
             })
             .collect();
         let bridges = scope
             .bridges
             .iter()
-            .map(|(tag, q)| (tag.clone(), w.bridges.top.insert(tag.clone(), q.clone())))
+            .map(|(tag, q)| (tag.clone(), state.bridges.top.insert(tag.clone(), q.clone())))
             .collect();
         open.push(OpenScope {
             scope: scope.clone(),
@@ -693,7 +698,7 @@ fn menus_presented(r: &StepRecord, into: &mut Used) {
 /// occasion nor `dayStart`: a step raising one there plays what only the
 /// engine may raise, noted unless the clock declares `raiseAtStart: true`.
 fn clock_raised_note(
-    s: &Session<'_>,
+    s: &Session<'_, '_, PlayDriverState>,
     action: &Action,
     later: &[Step],
     run_start: Option<lute_manifest::clock::ClockAt>,
@@ -812,7 +817,7 @@ fn unconsumed_step_bridges(
 /// changes the world settles the quest lifecycle after it — a presentation,
 /// an `engine:` write, a new run (dsl 0.22.0 §1.1) — and a raised occasion
 /// or event is then answered by the quests.
-fn run_step(s: &mut Session<'_>, step: &Step) -> lute_runtime::session::StepOutcome {
+fn run_step(s: &mut Session<'_, '_, PlayDriverState>, step: &Step) -> lute_runtime::session::StepOutcome {
     let n = step.n;
     match &step.action {
         Action::Occasion {
@@ -824,7 +829,9 @@ fn run_step(s: &mut Session<'_>, step: &Step) -> lute_runtime::session::StepOutc
             ..
         } => {
             s.bind_payload(payload);
-            s.occasion(n, occasion, target, pick, choose)
+            let mut merged = s.driver.choose.clone();
+            merged.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
+            s.occasion(n, occasion, target, pick, &merged)
         }
         Action::NewRun(seed) => s.new_run(n, seed),
         Action::Engine(writes) => s.engine(n, writes),
@@ -835,7 +842,11 @@ fn run_step(s: &mut Session<'_>, step: &Step) -> lute_runtime::session::StepOutc
             raise,
             pick,
             choose,
-        } => s.advance(n, *by, writes, raise, pick, choose),
+        } => {
+            let mut merged = s.driver.choose.clone();
+            merged.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
+            s.advance(n, *by, writes, raise, pick, &merged)
+        }
         Action::End => unreachable!("`execute` ends the playthrough at an `end` step"),
     }
 }
