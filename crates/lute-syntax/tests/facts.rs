@@ -1,7 +1,7 @@
 //! `::assert{…}`/`::retract{…}` leaf node parsing (dsl 0.3.0 §5, Appendix C).
 
 use lute_syntax::ast::Node;
-use lute_syntax::datalog::FactTerm;
+use lute_manifest::fact::FactTerm;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 

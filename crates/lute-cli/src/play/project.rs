@@ -190,7 +190,7 @@ pub(crate) fn assemble_project_from_model(
             return Err(ExitCode::from(2));
         };
         let input = &source.input;
-        needles.union(NeedleVocab::of(input, &source.folded.typed));
+        needles.union(lute_trace::exec::record::needle_vocab(input, &source.folded.typed));
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,

@@ -2,7 +2,7 @@
 use lute_semantic::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
 use crate::ProjectModel;
 use lute_core_span::{Evidence, Span};
-use lute_syntax::datalog::parse_fact;
+use lute_manifest::fact::parse_fact;
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
@@ -34,11 +34,11 @@ impl ImpactTarget {
                         .args
                         .into_iter()
                         .map(|a| match a.term {
-                            lute_syntax::datalog::FactTerm::Ident(s) => s,
-                            lute_syntax::datalog::FactTerm::Bool(v) => v.to_string(),
-                            lute_syntax::datalog::FactTerm::Wildcard => "_".into(),
-                            lute_syntax::datalog::FactTerm::Param(s) => format!("@{s}"),
-                            lute_syntax::datalog::FactTerm::Target => "occasion.target".into(),
+                            lute_manifest::fact::FactTerm::Ident(s) => s,
+                            lute_manifest::fact::FactTerm::Bool(v) => v.to_string(),
+                            lute_manifest::fact::FactTerm::Wildcard => "_".into(),
+                            lute_manifest::fact::FactTerm::Param(s) => format!("@{s}"),
+                            lute_manifest::fact::FactTerm::Target => "occasion.target".into(),
                         })
                         .collect(),
                 ),

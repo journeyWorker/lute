@@ -777,6 +777,7 @@ name = "lute-semantic"
 version = "0.38.0"
 dependencies = [
  "lute-core-span",
+ "lute-manifest",
  "lute-syntax",
  "serde",
 ]

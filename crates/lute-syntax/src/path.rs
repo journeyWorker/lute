@@ -6,23 +6,7 @@
 //! in JavaScript. Every reader returns the segments with the quotes removed,
 //! so `run.visits["lab-b2"]` and `run.visits.labB2` differ only in the name.
 
-/// A quoted name at the start of `text` — `"…"` or `'…'`, `\` escaping the
-/// next character — and the bytes it spans, quotes included. `None` when
-/// `text` does not open with a quote or the quote is never closed.
-pub fn read_quoted(text: &str) -> Option<(String, usize)> {
-    let b = text.as_bytes();
-    let quote = *b.first().filter(|&&q| q == b'"' || q == b'\'')?;
-    let mut out = String::new();
-    let mut chars = text[1..].char_indices();
-    while let Some((i, c)) = chars.next() {
-        match c {
-            '\\' => out.push(chars.next()?.1),
-            c if c as u32 == quote as u32 => return Some((out, i + 2)),
-            c => out.push(c),
-        }
-    }
-    None
-}
+use lute_manifest::text::{bracket_spelling, read_quoted};
 
 /// A `["name"]` / `['name']` index at the start of `text`: the name and the
 /// bytes the index spans, brackets included. Whitespace inside the brackets
@@ -80,44 +64,6 @@ pub fn parse_path(text: &str) -> Option<Vec<String>> {
     let text = text.trim();
     let (segs, len) = scan_path(text);
     (!segs.is_empty() && len == text.len()).then_some(segs)
-}
-
-/// The canonical dotted form of a path: its segments joined by `.`.
-pub fn render_path<S: AsRef<str>>(segs: &[S]) -> String {
-    let mut out = String::new();
-    for (i, seg) in segs.iter().enumerate() {
-        if i > 0 {
-            out.push('.');
-        }
-        out.push_str(seg.as_ref());
-    }
-    out
-}
-
-/// How an author writes the path in a condition: the root bare, then each
-/// segment after a `.` when it is an identifier, else as a double-quoted
-/// index (`quest["zero-coke-001"].state`).
-pub fn bracket_spelling<S: AsRef<str>>(segs: &[S]) -> String {
-    let mut out = String::new();
-    for (i, seg) in segs.iter().enumerate() {
-        let seg = seg.as_ref();
-        if i == 0 {
-            out.push_str(seg);
-        } else if lute_manifest::ident::is_ident(seg) {
-            out.push('.');
-            out.push_str(seg);
-        } else {
-            out.push_str("[\"");
-            out.push_str(seg);
-            out.push_str("\"]");
-        }
-    }
-    out
-}
-
-/// [`bracket_spelling`] of a canonical dotted path.
-pub fn bracket_spelling_of(path: &str) -> String {
-    bracket_spelling(&path.split('.').collect::<Vec<_>>())
 }
 
 /// The one message for a name that is not an identifier written after a

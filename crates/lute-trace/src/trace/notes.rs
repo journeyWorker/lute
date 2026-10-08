@@ -37,7 +37,7 @@ pub(super) fn fmt_fact(rel: &str, args: &[String]) -> String {
 /// the schema's own seed `facts:` entries and the CLI's `--fact` mocks so
 /// their declared/supplied tuples compare STRUCTURALLY, never by raw
 /// source text (whitespace, quoting).
-pub(super) fn fact_pattern_key(pat: &lute_syntax::datalog::FactPattern) -> String {
+pub(super) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
     fmt_fact(&pat.relation, &args)
 }
@@ -106,7 +106,7 @@ pub(super) fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::F
     let supplied: std::collections::HashSet<String> = mocks
         .facts
         .iter()
-        .filter_map(|raw| lute_syntax::datalog::parse_fact(raw).ok())
+        .filter_map(|raw| lute_manifest::fact::parse_fact(raw).ok())
         .map(|pat| fact_pattern_key(&pat))
         .collect();
     // "None were supplied" (§3.1) holds iff the intersection of declared
@@ -393,7 +393,7 @@ pub(super) fn mock_unproducible_notes(
     let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
     let mut unproducible: BTreeSet<String> = BTreeSet::new();
     for raw in &mocks.facts {
-        let Ok(pat) = lute_syntax::datalog::parse_fact(raw) else {
+        let Ok(pat) = lute_manifest::fact::parse_fact(raw) else {
             continue;
         };
         if producible.get(&pat.relation) == Some(&false) {

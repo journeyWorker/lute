@@ -40,7 +40,8 @@ use cel_parser::ast::CallExpr;
 use lute_core_span::Span;
 use lute_manifest::relations::{KindShape, RelationDecl};
 use lute_manifest::snapshot::Domain;
-use lute_syntax::datalog::{BodyLiteral, FactPattern, FactTerm, Rule, RuleAtom, RuleTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
+use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 
 use crate::ProjectDoc;
 use crate::rel_schema::RelVocab;

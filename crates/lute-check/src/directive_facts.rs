@@ -17,7 +17,7 @@ use lute_manifest::schema::{DirectiveDecl, FactEffect, FactEffectArg};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{Attr, Directive, Node};
-use lute_syntax::datalog::{FactArg, FactPattern, FactTerm};
+use lute_manifest::fact::{FactArg, FactPattern, FactTerm};
 
 use crate::rel_schema::RelVocab;
 use crate::Ctx;

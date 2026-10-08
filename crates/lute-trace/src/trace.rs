@@ -29,7 +29,7 @@ use lute_compile::source_map::{ArmSource, SourceInfo, SourceMarker};
 use lute_compile::SourceMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
-use lute_syntax::datalog::FactTerm;
+use lute_manifest::fact::FactTerm;
 use serde_json::Value as Json;
 
 use lute_runtime::session::{

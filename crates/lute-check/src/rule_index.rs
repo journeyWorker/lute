@@ -88,7 +88,7 @@ fn rewrite(cel: &str, uses: &[IndexUse], member_of: &dyn Fn(&str) -> String) -> 
     let mut at = 0;
     for u in uses {
         out.push_str(&cel[at..u.range.0]);
-        out.push_str(&lute_cel::path::bracket_spelling(&["", &member_of(&u.var)]));
+        out.push_str(&lute_manifest::text::bracket_spelling(&["", &member_of(&u.var)]));
         at = u.range.1;
     }
     out.push_str(&cel[at..]);

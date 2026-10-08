@@ -57,7 +57,7 @@ fn rewrite(cel: &str, member: &str, values: bool) -> String {
             Position::PatternArg => {
                 format!("'{}'", member.replace('\\', "\\\\").replace('\'', "\\'"))
             }
-            Position::Index => lute_cel::path::bracket_spelling(&["", member]),
+            Position::Index => lute_manifest::text::bracket_spelling(&["", member]),
             Position::Value if values => format!("'{member}'"),
             Position::Value => continue,
         };

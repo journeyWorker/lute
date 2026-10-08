@@ -149,7 +149,7 @@ impl GuardRead {
         use crate::datalog::fact_spelling as f_;
         match self {
             GuardRead::Path(p, v) => {
-                let p = lute_cel::path::bracket_spelling_of(p);
+                let p = lute_manifest::text::bracket_spelling_of(p);
                 match crate::value_text(v) {
                     Some(t) => format!("`{p}` is {t}"),
                     None => format!("`{p}` is unset"),

@@ -1200,7 +1200,7 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                     let shown = s.trim();
                     let formatted = interp.format.as_deref().and_then(|f| {
                         match shown.parse::<f64>() {
-                            Ok(n) => lute_syntax::ast::format_number(
+                            Ok(n) => lute_manifest::text::format_number(
                                 f,
                                 interp.forms.as_deref(),
                                 n,
@@ -1208,7 +1208,7 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                             ),
                             Err(_) => None,
                         }
-                        .or_else(|| lute_syntax::ast::format_text(f, &s, None, None))
+                        .or_else(|| lute_manifest::text::format_text(f, &s, None, None))
                     });
                     // dsl 0.37.0 §3.6: an argument is literal text — its
                     // inline punctuation is escaped so it can never become

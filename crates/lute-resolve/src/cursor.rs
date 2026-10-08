@@ -1383,7 +1383,7 @@ fn collect_line_interps(nodes: &[Node], matches: &impl Fn(&Interp) -> bool, out:
 pub fn interp_path(raw: &str) -> String {
     lute_cel::path::parse_path_text(raw).map_or_else(
         || raw.trim().to_string(),
-        |segs| lute_cel::path::render_path(&segs),
+        |segs| lute_manifest::text::render_path(&segs),
     )
 }
 
@@ -1404,7 +1404,7 @@ pub fn path_tokens(raw: &str) -> Vec<(String, (usize, usize))> {
     while i < b.len() {
         if (b[i].is_ascii_alphabetic() || b[i] == b'_') && !mask[i] {
             let (segs, len) = lute_cel::path::scan_path(&raw[i..]);
-            out.push((lute_cel::path::render_path(&segs), (i, i + len)));
+            out.push((lute_manifest::text::render_path(&segs), (i, i + len)));
             i += len;
         } else if is_name_byte(b[i]) && !mask[i] {
             // The rest of a number or a `-`-joined word: no path starts here.

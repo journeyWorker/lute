@@ -29,7 +29,7 @@ use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// Why a component argument cannot be used as a ground fact term.
@@ -207,7 +207,7 @@ pub fn bind_slot_raw(
         if let (true, Ok(FactTerm::Ident(member))) = (indexed, fact_arg_constant(arg)) {
             slot.raw.replace_range(
                 s - 1..e + 1,
-                &lute_cel::path::bracket_spelling(&["", &member]),
+                &lute_manifest::text::bracket_spelling(&["", &member]),
             );
             continue;
         }

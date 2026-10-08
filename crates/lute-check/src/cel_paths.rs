@@ -55,7 +55,7 @@ pub fn text_state_path(text: &str) -> Option<String> {
     let segs = lute_cel::path::parse_path_text(text)?;
     (segs.iter().all(|s| lute_manifest::ident::is_name(s))
         && STATE_ROOTS.contains(&segs[0].as_str()))
-    .then(|| lute_cel::path::render_path(&segs))
+    .then(|| lute_manifest::text::render_path(&segs))
 }
 
 /// How a state path appears in an expression.

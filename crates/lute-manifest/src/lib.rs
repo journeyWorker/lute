@@ -4,6 +4,7 @@ pub mod clock;
 pub mod constraints;
 pub mod core;
 pub mod entities;
+pub mod fact;
 pub mod ident;
 pub mod lint;
 pub mod loader;

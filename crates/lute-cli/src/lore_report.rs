@@ -43,7 +43,7 @@ use std::process::ExitCode;
 
 use lute_core_span::Severity;
 use lute_syntax::ast::{Arm, Document, Node};
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 use serde::Serialize;
 
 /// One lore entry, or one beat, as the report lists it.

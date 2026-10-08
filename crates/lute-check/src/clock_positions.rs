@@ -202,7 +202,8 @@ fn schedule(
     ctx: &DecideCtx<'_>,
     clock: &ClockDecl,
 ) -> Option<Formula> {
-    use lute_syntax::datalog::{BodyLiteral, FactTerm, RuleTerm};
+    use lute_manifest::fact::FactTerm;
+    use lute_syntax::datalog::{BodyLiteral, RuleTerm};
     let query = crate::fact_env::QueryPattern::from_call(query)?;
     let consts = query.args.iter().cloned().collect::<Option<Vec<String>>>()?;
     let rel = query.relation.as_str();

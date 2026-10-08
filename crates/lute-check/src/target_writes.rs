@@ -12,7 +12,7 @@
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::AttrValue;
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 
 use lute_manifest::semantics::beats::OCCASION_TARGET;
 use lute_manifest::semantics::target_writes::TARGET_INDEX;

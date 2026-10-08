@@ -78,7 +78,7 @@ pub enum Lit {
     },
 }
 
-pub use lute_syntax::datalog::CountOp;
+use lute_manifest::fact::CountOp;
 
 /// A parsed rule `head :- body`, with its source text.
 #[derive(Clone, Debug, PartialEq)]
@@ -213,7 +213,7 @@ impl Program {
     }
     /// Whether a rule guard text mentions the canonical state path.
     pub fn reads_state_path(&self, path: &str) -> bool {
-        let bracket = lute_cel::path::bracket_spelling_of(path);
+        let bracket = lute_manifest::text::bracket_spelling_of(path);
         self.rules.iter().any(|r| {
             r.body.iter().any(|lit| match lit {
                 Lit::Guard { slot } => slot.raw.contains(path) || slot.raw.contains(&bracket),
@@ -587,8 +587,8 @@ pub fn fact_spelling(f: &str) -> String {
 /// a `_` wildcard or a leading-uppercase rule variable (`prime(X)`) is not
 /// ground.
 pub fn parse_ground(s: &str) -> Option<Fact> {
-    use lute_syntax::datalog::FactTerm;
-    let pat = lute_syntax::datalog::parse_fact(s).ok()?;
+    use lute_manifest::fact::FactTerm;
+    let pat = lute_manifest::fact::parse_fact(s).ok()?;
     let mut args = Vec::with_capacity(pat.args.len());
     for a in &pat.args {
         match &a.term {
@@ -1018,7 +1018,7 @@ fn render_term(t: &Term, b: &Binding) -> String {
     match t {
         Term::Const(c) => c.clone(),
         Term::Var(v) => b.get(v).cloned().unwrap_or_else(|| {
-            if lute_syntax::datalog::is_anonymous_var(v) {
+            if lute_manifest::fact::is_anonymous_var(v) {
                 "_".to_string()
             } else {
                 v.clone()

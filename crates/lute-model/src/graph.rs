@@ -3,7 +3,7 @@ use crate::{ModelDocument, ProjectModel};
 use lute_core_span::{Evidence, Span};
 use lute_semantic::{fact_node, IdentityMetadata, NodeKey, NodeKind, SemanticGraph};
 use lute_syntax::ast::{Arm, Node};
-use lute_syntax::datalog::FactTerm;
+use lute_manifest::fact::FactTerm;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Build the deterministic graph for one project model.

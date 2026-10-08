@@ -1020,7 +1020,7 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         // `{{run.visits["lab-b2"]}}` ships its canonical dotted path.
         InterpKind::Path => Placeholder::Path {
             path: lute_cel::path::parse_path_text(&i.raw)
-                .map_or_else(|| i.raw.clone(), |segs| lute_cel::path::render_path(&segs)),
+                .map_or_else(|| i.raw.clone(), |segs| lute_manifest::text::render_path(&segs)),
             format: i.format.clone(),
             forms: i.forms.clone(),
         },

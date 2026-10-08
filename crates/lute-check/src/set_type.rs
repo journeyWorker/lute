@@ -421,7 +421,7 @@ fn operand_subject(expr: &Expr) -> String {
     if let Some(p) = select_path(expr) {
         return format!(
             "`{}`",
-            lute_cel::path::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@")
+            lute_manifest::text::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@")
         );
     }
     match expr {

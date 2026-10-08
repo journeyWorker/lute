@@ -73,7 +73,7 @@ use lute_core_span::Span;
 use lute_syntax::ast::{
     Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
 };
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 use crate::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};

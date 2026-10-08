@@ -67,43 +67,6 @@ const HEAD_FLAGS: [&str; 3] = ["mono", "os", "vo"];
 const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
 
 impl NeedleVocab {
-    /// Build a vocabulary from one checked document.
-    pub fn of(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta) -> Self {
-        let nowhere = Span {
-            byte_start: 0,
-            byte_end: 0,
-            line: 0,
-            column: 0,
-            utf16_range: (0, 0),
-        };
-        let (domains, _) = lute_check::schema_import::merge_domains(
-            &input.snapshot,
-            &input.imports,
-            meta,
-            nowhere,
-        );
-        let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &meta.cast);
-        NeedleVocab {
-            members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
-                .iter()
-                .map(|slot| {
-                    let members = domains
-                        .get(*slot)
-                        .filter(|domain| !domain.open)
-                        .map(|domain| domain.members.iter().cloned().collect());
-                    (slot.to_string(), members)
-                })
-                .collect(),
-            stamps: input.snapshot.stamp_attrs.keys().cloned().collect(),
-            speakers: (!cast.is_empty()).then(|| {
-                cast.into_keys()
-                    .chain(std::iter::once("narrator".to_string()))
-                    .collect()
-            }),
-            seen: true,
-        }
-    }
-
     /// Union another document's vocabulary into this project vocabulary.
     pub fn union(&mut self, other: NeedleVocab) {
         for (slot, theirs) in other.members {

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Assert, Node};
-use lute_syntax::datalog::FactPattern;
+use lute_manifest::fact::FactPattern;
 use crate::check::CheckResult;
 use crate::meta::{resolve_doc_kind, DocKind};
 use crate::prereq::{atoms, PrereqFormula};

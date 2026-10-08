@@ -197,7 +197,8 @@ fn schedule_conjuncts(
     vocab: &crate::rel_schema::RelVocab,
     ctx: &ConjunctCtx<'_>,
 ) -> Vec<(String, SolutionSet)> {
-    use lute_syntax::datalog::{BodyLiteral, FactTerm, RuleTerm};
+    use lute_manifest::fact::FactTerm;
+    use lute_syntax::datalog::{BodyLiteral, RuleTerm};
     let Expr::Call(c) = expr else {
         return Vec::new();
     };

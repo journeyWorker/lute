@@ -1003,8 +1003,8 @@ fn rel_entries(
 /// `Bool` as `"true"`/`"false"`. `Wildcard` never occurs in a seed fact
 /// (D12/`E-RETRACT-WILDCARD-ASSERT` — check-gated) but lowers to `"_"`
 /// rather than panic, matching every other node here's total discipline.
-fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
-    use lute_syntax::datalog::FactTerm;
+fn fact_term_string(t: &lute_manifest::fact::FactTerm) -> String {
+    use lute_manifest::fact::FactTerm;
     match t {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),

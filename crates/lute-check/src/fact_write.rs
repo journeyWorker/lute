@@ -35,7 +35,7 @@ use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::{Assert, Retract};
-use lute_syntax::datalog::FactPattern;
+use lute_manifest::fact::FactPattern;
 
 use crate::rel_schema::{check_atom, RelVocab, E_RELATION_RESERVED_WRITE};
 use crate::Ctx;

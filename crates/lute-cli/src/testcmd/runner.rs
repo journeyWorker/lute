@@ -807,7 +807,7 @@ fn run_one_test(
             .enumerate()
             .filter_map(move |(i, v)| Some((key, i, v.as_str()?)))
     };
-    let needles = lute_runtime::NeedleVocab::of(&input, &meta);
+    let needles = lute_trace::exec::record::needle_vocab(&input, &meta);
     let needle_problems: Vec<String> = expect_items("transcriptContains")
         .chain(expect_items("transcriptLacks"))
         .filter_map(|(key, i, n)| {
@@ -840,7 +840,7 @@ fn run_one_test(
         let problems: Vec<String> = expect_atoms
             .iter()
             .flat_map(|&(key, i, atom)| {
-                let whys: Vec<String> = match lute_syntax::datalog::parse_fact(
+                let whys: Vec<String> = match lute_manifest::fact::parse_fact(
                     &crate::play_expect::canonical_atom(atom),
                 ) {
                     Err(_) => Vec::new(),
