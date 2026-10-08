@@ -1,7 +1,14 @@
 # Runtime session conformance cases
 
-Each case is a minimal project under `<case>/project/`, played by its
-`project/script.play.yaml` with `lute play`.
+Each case contains:
+
+- `project/`: the complete project and `script.play.yaml` input;
+- `expected.jsonl`: generated compact `lute play --events` output;
+- `inputs.jsonl`: generated seed/input envelopes extracted from that stream.
+
+Use `conformance/regenerate.sh` to regenerate both JSONL files; never edit
+them by hand. The conformance test validates the CLI stream and replays the
+inputs through the public runtime API.
 
 - `occasion-first` — first selection and priority tie ordering.
 - `occasion-sequence` — sequence selection consumes ordered candidates.
