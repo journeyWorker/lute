@@ -1,21 +1,18 @@
 //! Three-valued (Kleene/K3) trace value (dsl 0.4.0 §4.3) and why a value
 //! went unknown.
 
-/// Three-valued trace value (§4.3). `Unknown` is a VALUE, not an error — it
-/// is produced, compared, and propagated through K3 logic exactly like
-/// `Bool`/`Num`/`Str` propagate through ordinary CEL evaluation
-/// ([`crate::eval::eval`]).
-#[derive(Clone, Debug, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+/// Three-valued trace value (§4.3). The explicit tag preserves CEL integer
+/// versus double values in JSON.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum Value {
     Bool(bool),
     Int(i64),
     Double(f64),
     Str(String),
     Unknown,
-    /// A CEL evaluation error (overflow, division by zero, or type mismatch).
-    /// Trace keeps [`Unknown`] for unresolved state/time; run/play distinguish
-    /// this variant so an erroneous condition is simply false and an erroneous
-    /// set can halt the walk.
     Error(String),
 }
 
