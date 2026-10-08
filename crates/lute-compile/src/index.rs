@@ -178,9 +178,7 @@ impl IndexBeat {
 pub struct ProjectIndex {
     pub ir_version: String,
     pub capability_snapshot: String,
-    /// Sorted union of the compiler-derived capabilities of every artifact.
     pub required_semantics: Vec<String>,
-    /// Resolved project identity migrations, unioned and sorted by source key.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
     pub documents: Vec<IndexDocument>,
@@ -192,43 +190,74 @@ pub struct ProjectIndex {
     pub rules: Vec<RuleEntry>,
     #[serde(rename = "prereqEdges")]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
-    /// dsl 0.19.0 §7: every `<entry>` in the project, document order. Unlike
-    /// the vocabulary arrays above this is OMITTED when empty, so an index
-    /// over a project without lore stays byte-identical to 0.18.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<IndexEntry>,
-    /// dsl 0.21.0 §8: every beat in the project — documents in `documents`
-    /// (path) order, declaration order within each — the selection
-    /// tiebreak after priority. OMITTED when empty, so an index over a
-    /// project without beats stays byte-identical to 0.20.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub beats: Vec<IndexBeat>,
-    /// dsl 0.24.0 §1: the project's declared clock (the artifacts' `clock`,
-    /// one per project). OMITTED without one, so an index over a project
-    /// without a clock stays byte-identical to 0.23.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clock: Option<lute_manifest::clock::ClockDecl>,
-    /// dsl 0.27.0 §4: every occasion's `raisedWhen` gate (the artifacts'
-    /// `gates`, one per occasion), occasion-sorted. OMITTED when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub gates: Vec<crate::ir::GateEntry>,
-    /// dsl 0.27.0 §4: the project's `terminal:` condition (the artifacts'
-    /// `terminal`, one per project). OMITTED without one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<crate::ir::CelPair>,
-    /// The artifacts' `terminalPersists`: the ending outlives runs on
-    /// purpose. OMITTED when false.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub terminal_persists: bool,
-    /// dsl 0.27.0 §5: the project's declared seasons (the artifacts'
-    /// `seasons`, one declaration per name), name-sorted. OMITTED when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub seasons: Vec<crate::ir::SeasonEntry>,
-    /// dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true` (the
-    /// artifacts' `outsideRun`, unioned), name-sorted — raised even after
-    /// `terminal` holds. OMITTED when none.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub outside_run: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub occasions: BTreeMap<String, IndexOccasion>,
+    #[serde(rename = "worldEvents", skip_serializing_if = "Vec::is_empty")]
+    pub world_events: Vec<String>,
+    #[serde(rename = "bridgeResults", skip_serializing_if = "BTreeMap::is_empty")]
+    pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub cast: BTreeMap<String, String>,
+    #[serde(rename = "stateDomains", skip_serializing_if = "BTreeMap::is_empty")]
+    pub state_domains: BTreeMap<String, StateDomain>,
+}
+
+/// The serializable subset of a capability-declared occasion carried by the
+/// project index. The human description and raisedWhen gate are document
+/// metadata, not part of the engine's occasion shape.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexOccasion {
+    pub select: lute_manifest::schema::OccasionSelect,
+    pub target: lute_manifest::schema::OccasionTarget,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge: Option<lute_manifest::schema::OccasionJudge>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub payload: BTreeMap<String, lute_manifest::types::Type>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub outside_run: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Default)]
+pub struct StateDomain {
+    pub kind: String,
+    pub members: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct IndexUnions {
+    pub occasions: BTreeMap<String, IndexOccasion>,
+    pub world_events: Vec<String>,
+    pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
+    pub cast: BTreeMap<String, String>,
+}
+
+impl From<&lute_manifest::schema::OccasionDecl> for IndexOccasion {
+    fn from(decl: &lute_manifest::schema::OccasionDecl) -> Self {
+        Self {
+            select: decl.select,
+            target: decl.target.clone(),
+            judge: (!decl.judge.is_after()).then_some(decl.judge),
+            payload: decl.payload.clone(),
+            outside_run: decl.outside_run,
+        }
+    }
 }
 
 impl ProjectIndex {
@@ -359,6 +388,14 @@ pub fn build_index(
     ir_version: &str,
     docs: &[IndexInput<'_>],
 ) -> Result<ProjectIndex, Vec<IndexError>> {
+    build_index_with_unions(ir_version, docs, &IndexUnions::default())
+}
+
+pub fn build_index_with_unions(
+    ir_version: &str,
+    docs: &[IndexInput<'_>],
+    unions: &IndexUnions,
+) -> Result<ProjectIndex, Vec<IndexError>> {
     let mut errors = Vec::new();
 
     let capability: Option<(&str, &str)> = docs
@@ -389,6 +426,19 @@ pub fn build_index(
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
     let mut identity_renames: BTreeMap<String, lute_manifest::project::IdentityRename> = BTreeMap::new();
     let mut required_semantics: BTreeSet<String> = BTreeSet::new();
+    let mut state_domains: BTreeMap<String, StateDomain> = BTreeMap::new();
+    let mut state_docs: Vec<&IndexInput<'_>> = docs.iter().collect();
+    state_docs.sort_by(|a, b| a.path.cmp(&b.path));
+    for d in state_docs {
+        for entry in &d.artifact.state {
+            if let Some((kind, members)) = &entry.member_domain {
+                state_domains.entry(entry.path.clone()).or_insert_with(|| StateDomain {
+                    kind: kind.clone(),
+                    members: members.clone(),
+                });
+            }
+        }
+    }
 
     for d in docs {
         let a = d.artifact;
@@ -567,6 +617,11 @@ pub fn build_index(
         terminal_persists,
         seasons: seasons.finish(),
         outside_run: outside_run.into_iter().collect(),
+        occasions: unions.occasions.clone(),
+        world_events: unions.world_events.clone(),
+        bridge_results: unions.bridge_results.clone(),
+        cast: unions.cast.clone(),
+        state_domains,
     })
 }
 
