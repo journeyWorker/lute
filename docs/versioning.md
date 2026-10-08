@@ -13,6 +13,7 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 | **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.38.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
 | **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.38.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
 | **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.38.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.38.schema.json`](../schemas/lute-ir-0.38.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.38.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.38.schema.json`](../schemas/lute-events-0.38.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -1020,3 +1021,14 @@ The schema file renames to `lute-ir-0.37.schema.json`; engines gate on the
 exact minor, so a `0.36` engine refuses `0.37` artifacts. The core capability
 version does not move; only its IR key is renamed. The tree-sitter grammar is
 regenerated, but its package version stays independent.
+
+**`0.38.0` aligns toolchain, language, IR and the new Event axis at `0.38.0`;
+the language is a no-op for authors.** Runtime R1 introduces the pure resumable
+step function and its input, output and snapshot contract
+([`0.38.0.md`](proposals/scenario-dsl/0.38.0.md)). The IR adds runtime unions to
+`project.index.json`; document artifacts are unchanged apart from stamps.
+The schema file advances to `lute-ir-0.38.schema.json`, and
+`lute-events-0.38.schema.json` publishes the first event contract. Engines
+and hosts gate on the exact minor line: `0.37` artifacts require a widened
+IR gate, while the Event axis begins at `0.38`. Existing CLI outputs remain
+byte-identical apart from stamps; `lute play --events` is new.

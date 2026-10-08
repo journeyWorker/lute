@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.38.schema.json",
+  "title": "Lute runtime events (eventVersion 0.38.x)",
+  "description": "Wire schema for the Lute 0.38 runtime input, output, event, await and rejection contract. Hosts gate on exact major.minor before 1.0. Normative source: docs/proposals/scenario-dsl/0.38.0.md §§3, 5–9, 11.",
+  "oneOf": [
+    { "$ref": "#/$defs/Input" },
+    { "$ref": "#/$defs/Seed" },
+    { "$ref": "#/$defs/Output" },
+    { "$ref": "#/$defs/Rejected" }
+  ],
+  "$defs": {
+    "Scalar": { "type": ["boolean", "number", "string"] },
+    "StateWrite": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "value": { "$ref": "#/$defs/Scalar" },
+        "add": { "type": "number" }
+      },
+      "anyOf": [{ "required": ["value"] }, { "required": ["add"] }]
+    },
+    "Writes": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "state": { "type": "array", "items": { "$ref": "#/$defs/StateWrite" } },
+        "facts": { "type": "array", "items": { "type": "string" } },
+        "retract": { "type": "array", "items": { "type": "string" } },
+        "accept": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Pick": {
+      "oneOf": [
+        { "const": "pass" },
+        { "type": "object", "additionalProperties": false, "required": ["beat"], "properties": { "beat": { "type": "string" } } }
+      ]
+    },
+    "Input": {
+      "title": "Input",
+      "oneOf": [
+        { "$ref": "#/$defs/RaiseOccasion" },
+        { "$ref": "#/$defs/Choose" },
+        { "$ref": "#/$defs/BridgeResult" },
+        { "$ref": "#/$defs/AdvanceClock" },
+        { "$ref": "#/$defs/HostWrite" },
+        { "$ref": "#/$defs/WorldEvent" },
+        { "$ref": "#/$defs/NewRun" }
+      ]
+    },
+    "RaiseOccasion": {
+      "type": "object", "additionalProperties": false, "required": ["type", "occasion"],
+      "properties": {
+        "type": { "const": "raiseOccasion" }, "occasion": { "type": "string" },
+        "target": { "type": ["string", "null"] }, "payload": { "type": "object" },
+        "pick": { "$ref": "#/$defs/Pick" }, "writes": { "$ref": "#/$defs/Writes" }
+      }
+    },
+    "Choose": {
+      "type": "object", "additionalProperties": false, "required": ["type", "request", "option"],
+      "properties": { "type": { "const": "choose" }, "request": { "type": "integer", "minimum": 0 }, "option": { "type": "string" } }
+    },
+    "BridgeResult": {
+      "type": "object", "additionalProperties": false, "required": ["type", "request", "fields"],
+      "properties": { "type": { "const": "bridgeResult" }, "request": { "type": "integer", "minimum": 0 }, "fields": { "type": "object" } }
+    },
+    "AdvanceBy": {
+      "oneOf": [
+        { "enum": ["slot", "day"] },
+        { "type": "integer", "minimum": 0 },
+        { "type": "object", "additionalProperties": false, "required": ["to"], "properties": { "to": { "$ref": "#/$defs/ClockPosition" } } }
+      ]
+    },
+    "ClockPosition": {
+      "type": "object", "additionalProperties": false, "required": ["weekday", "slot"],
+      "properties": { "weekday": { "type": "string" }, "slot": { "type": "string" } }
+    },
+    "AdvanceClock": {
+      "type": "object", "additionalProperties": false, "required": ["type", "by"],
+      "properties": { "type": { "const": "advanceClock" }, "by": { "$ref": "#/$defs/AdvanceBy" }, "writes": { "$ref": "#/$defs/Writes" }, "pick": { "$ref": "#/$defs/Pick" } }
+    },
+    "HostWrite": {
+      "type": "object", "additionalProperties": false, "required": ["type", "writes"],
+      "properties": { "type": { "const": "hostWrite" }, "writes": { "$ref": "#/$defs/Writes" } }
+    },
+    "WorldEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "name"],
+      "properties": { "type": { "const": "worldEvent" }, "name": { "type": "string" } }
+    },
+    "NewRun": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": { "type": { "const": "newRun" }, "writes": { "$ref": "#/$defs/Writes" } }
+    },
+    "Seed": {
+      "title": "Seed", "type": "object", "additionalProperties": false,
+      "properties": {
+        "state": { "type": "array", "items": { "$ref": "#/$defs/StateWrite" } },
+        "facts": { "type": "array", "items": { "type": "string" } },
+        "derive": { "type": "boolean", "default": true },
+        "save": { "$ref": "#/$defs/Save" }
+      }
+    },
+    "Save": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "visited": { "type": "array", "items": { "type": "string" } },
+        "presented": { "$ref": "#/$defs/ScopedStrings" },
+        "quests": { "type": "object", "additionalProperties": { "type": "string" } },
+        "questInstances": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "entriesRead": { "$ref": "#/$defs/ScopedStrings" }
+      }
+    },
+    "ScopedStrings": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
+    "Output": {
+      "title": "Output", "type": "object", "additionalProperties": false, "required": ["eventVersion", "events", "await"],
+      "properties": { "eventVersion": { "const": "0.38.0" }, "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } }, "await": { "$ref": "#/$defs/Await" } }
+    },
+    "Event": {
+      "title": "Event", "oneOf": [
+        { "$ref": "#/$defs/RecordEvent" }, { "$ref": "#/$defs/PresentationEvent" }, { "$ref": "#/$defs/PresentationEndEvent" }, { "$ref": "#/$defs/QuestEvent" }, { "$ref": "#/$defs/ClockEvent" }
+      ]
+    },
+    "RecordEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "document", "record"],
+      "properties": { "type": { "const": "record" }, "document": { "type": "string" }, "record": { "type": "object", "additionalProperties": true } }
+    },
+    "PresentationEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "beat", "document", "kind"],
+      "properties": { "type": { "const": "presentation" }, "occasion": { "type": "string" }, "target": { "type": "string" }, "beat": { "type": "string" }, "document": { "type": "string" }, "kind": { "type": "string" } }
+    },
+    "PresentationEndEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "beat", "document"],
+      "properties": { "type": { "const": "presentationEnd" }, "beat": { "type": "string" }, "document": { "type": "string" }, "reason": { "type": "string" } }
+    },
+    "QuestEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "document", "commands"],
+      "properties": { "type": { "const": "quest" }, "document": { "type": "string" }, "commands": { "type": "array" }, "quest": { "type": "string" }, "instance": { "type": ["integer", "string"] }, "objective": { "type": "string" }, "state": { "type": "string" }, "status": { "type": "string" }, "index": { "type": "integer" }, "reward": {} }
+    },
+    "ClockEvent": {
+      "type": "object", "additionalProperties": false, "required": ["type", "from", "to"],
+      "properties": { "type": { "const": "clock" }, "from": {}, "to": {}, "passed": {} }
+    },
+    "Await": {
+      "title": "Await", "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["type", "request", "menu"], "properties": { "type": { "const": "awaitChoice" }, "request": { "type": "integer", "minimum": 0 }, "menu": { "$ref": "#/$defs/Menu" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "request", "tag", "document", "position", "fields"], "properties": { "type": { "const": "awaitBridge" }, "request": { "type": "integer", "minimum": 0 }, "tag": { "type": "string" }, "document": { "type": "string" }, "position": { "type": "string" }, "fields": { "type": "object", "additionalProperties": { "enum": ["bool", "number", "string"] } } } },
+        { "type": "object", "additionalProperties": false, "required": ["type"], "properties": { "type": { "const": "idle" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "reason"], "properties": { "type": { "const": "ended" }, "reason": { "const": "terminal" } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "kind", "message"], "properties": { "type": { "const": "halted" }, "kind": { "enum": ["incomplete", "error"] }, "message": { "type": "string" }, "site": { "type": "string" } } }
+      ]
+    },
+    "Menu": {
+      "type": "object", "additionalProperties": false, "required": ["construct", "id", "document", "position", "presentation", "options"],
+      "properties": { "construct": { "enum": ["branch", "hub"] }, "id": { "type": "string" }, "document": { "type": "string" }, "position": { "type": "string" }, "presentation": { "type": "integer", "minimum": 0 }, "prompt": { "type": "string" }, "timeout": { "type": "number" }, "options": { "type": "array", "items": { "$ref": "#/$defs/MenuOption" } } }
+    },
+    "MenuOption": {
+      "type": "object", "additionalProperties": false, "required": ["id", "verdict", "exit", "once"],
+      "properties": { "id": { "type": "string" }, "verdict": { "enum": ["open", "closed", "spent"] }, "exit": { "type": "boolean" }, "once": { "type": "boolean" } }
+    },
+    "Rejected": {
+      "title": "Rejected", "type": "object", "additionalProperties": false, "required": ["code", "message"],
+      "properties": { "code": { "type": "string" }, "message": { "type": "string" } }
+    }
+  }
+}
