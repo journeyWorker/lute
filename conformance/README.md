@@ -26,6 +26,16 @@ Each fixture directory contains:
 | `beat.txt` | bundle-beat fixtures only (dsl 0.23.0 §4): the one beat id the run presents, passed as `--beat <id>`; the Rust harness appends it the same way |
 | `loc/<locale>.json`, `locales.json` | translated fixtures only: authored `lute loc export`-shaped translations, and the bundle `lute loc import` builds from them, merged by `lute compile --locales locales.json` |
 
+
+## Session cases
+
+`session/<case>/project/` is a complete project and play script. Generated
+`expected.jsonl` is the compact `lute play --events` stream; `inputs.jsonl`
+contains the corresponding `seed` and every `input` envelope. Regenerate all
+session streams with `cargo build -p lute-cli && conformance/regenerate.sh`.
+The session test compares the CLI stream byte-for-byte and replays
+`inputs.jsonl` through `Runtime::begin`/`step`, comparing each serialized
+output with the stream.
 ## Replaying
 
 From the repository root:

@@ -1,0 +1,2 @@
+{"seed":{"derive":true}}
+{"input":{"type":"hostWrite","writes":{"state":[{"path":"run.trigger","value":true}]}}}

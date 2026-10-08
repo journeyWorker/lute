@@ -40,6 +40,7 @@
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
 pub use play::{build_runtime, run_runtime_reference, RuntimePlayReference};
+pub use play::events::{parse_script, run_events, ScriptStep};
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -388,6 +389,7 @@ pub fn run() -> ExitCode {
             dir,
             script,
             engine,
+            events,
             json,
             no_derive,
             explain,
@@ -398,6 +400,7 @@ pub fn run() -> ExitCode {
             &dir,
             &script,
             engine.as_deref(),
+            events,
             json,
             no_derive,
             &explain,

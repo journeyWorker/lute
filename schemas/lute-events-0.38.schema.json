@@ -7,7 +7,10 @@
     { "$ref": "#/$defs/Input" },
     { "$ref": "#/$defs/Seed" },
     { "$ref": "#/$defs/Output" },
-    { "$ref": "#/$defs/Rejected" }
+    { "$ref": "#/$defs/Rejected" },
+    { "$ref": "#/$defs/StreamSeed" },
+    { "$ref": "#/$defs/StreamStep" },
+    { "$ref": "#/$defs/StreamRejected" }
   ],
   "$defs": {
     "Scalar": { "type": ["boolean", "number", "string"] },
@@ -160,6 +163,18 @@
     "Rejected": {
       "title": "Rejected", "type": "object", "additionalProperties": false, "required": ["code", "message"],
       "properties": { "code": { "type": "string" }, "message": { "type": "string" } }
+    },
+    "StreamSeed": {
+      "type": "object", "additionalProperties": false, "required": ["seed"],
+      "properties": { "seed": { "$ref": "#/$defs/Seed" }, "output": { "$ref": "#/$defs/Output" } }
+    },
+    "StreamStep": {
+      "type": "object", "additionalProperties": false, "required": ["input"],
+      "properties": { "input": { "$ref": "#/$defs/Input" }, "output": { "$ref": "#/$defs/Output" } }
+    },
+    "StreamRejected": {
+      "type": "object", "additionalProperties": false, "required": ["input", "rejected"],
+      "properties": { "input": { "$ref": "#/$defs/Input" }, "rejected": { "$ref": "#/$defs/Rejected" } }
     }
   }
 }

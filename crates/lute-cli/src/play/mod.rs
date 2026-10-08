@@ -68,6 +68,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::io::Write;
+use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -84,6 +85,7 @@ use crate::play_expect::ExpectMiss;
 
 pub(crate) mod calendar;
 mod driver;
+pub mod events;
 mod producers;
 mod human;
 mod json;
@@ -362,6 +364,7 @@ pub fn run_play(
     dir: &Path,
     script_path: &Path,
     engine: Option<&Path>,
+    events: bool,
     json: bool,
     no_derive: bool,
     explain: &[String],
@@ -369,6 +372,17 @@ pub fn run_play(
     quiet: bool,
     dump_conditions: Option<&Path>,
 ) -> ExitCode {
+    if events {
+        if json { eprintln!("lute play: --events cannot be combined with --json"); return ExitCode::from(2); }
+        let _ = (engine, no_derive, explain, ir, quiet, dump_conditions);
+        let text = match fs::read_to_string(script_path) { Ok(t) => t, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
+        let (seed, steps, choose, bridges) = match events::parse_script(&text, script_path.parent()) { Ok(v) => v, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
+        let runtime = match build_runtime(dir) { Ok(r) => r, Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); } };
+        return match events::run_events(&runtime, seed, &steps, &choose, &bridges) {
+            Ok((out, code)) => { if crate::write_stdout(&out).is_err() { ExitCode::from(2) } else { ExitCode::from(code) } }
+            Err(e) => { eprintln!("lute play: {e}"); ExitCode::from(3) }
+        };
+    }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
         Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); }
