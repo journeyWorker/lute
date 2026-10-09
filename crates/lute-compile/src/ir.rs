@@ -6,7 +6,67 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::expr::ExprNode;
+use lute_ir::*;
+
+/// Compiler-side resolution of a [`TargetKind`]: it needs the checker.
+pub trait TargetKindExt {
+    /// Resolve a beat's authored `target` on occasion `on`: `Some` only for
+    /// a well-formed `kind:<kind>` target the checker accepted
+    /// ([`lute_check::beats::kind_target_members`]).
+    fn resolve(
+        on: &str,
+        target: Option<&str>,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<TargetKind>;
+}
+
+impl TargetKindExt for TargetKind {
+    fn resolve(
+        on: &str,
+        target: Option<&str>,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<TargetKind> {
+        let kind = lute_check::kind_target(target?)?;
+        let (prefix, members) =
+            lute_check::beats::kind_target_members(occasions.get(on)?, kind, kinds).ok()?;
+        Some(TargetKind {
+            kind: kind.to_string(),
+            prefix,
+            members,
+        })
+    }
+}
+
+/// Compiler-side resolution of a [`ForKind`]: it needs the checker.
+pub trait ForKindExt {
+    /// Resolve a beat's authored `for` on occasion `on`: `Some` only for a
+    /// value the checker accepted ([`lute_check::occasion_bind::for_kind_members`]).
+    fn resolve(
+        on: &str,
+        for_kind: Option<&str>,
+        has_target: bool,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<ForKind>;
+}
+
+impl ForKindExt for ForKind {
+    fn resolve(
+        on: &str,
+        for_kind: Option<&str>,
+        has_target: bool,
+        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    ) -> Option<ForKind> {
+        let (kind, members) = lute_check::occasion_bind::for_kind_members(
+            on, for_kind?, has_target, occasions, kinds,
+        )
+        .ok()?;
+        Some(ForKind { kind, members })
+    }
+}
 
 /// Envelope (§4.1 + A9): language-version pin + IR schema version + capability
 /// snapshot stamp + meta + folded state schema + flat command array. Field
@@ -144,22 +204,6 @@ pub struct CelOverload {
     pub result: &'static str,
 }
 
-/// dsl 0.27.0 §4: one occasion's `raisedWhen` gate.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GateEntry {
-    pub occasion: String,
-    pub raised_when: CelPair,
-}
-
-/// dsl 0.27.0 §5: one declared season.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SeasonEntry {
-    pub name: String,
-    pub live: CelPair,
-}
-
 /// One authored document section (dsl 0.37.0 §5.3): the 1-based document-
 /// position section number, its verbatim `## ` heading text (the `{#id}`
 /// suffix excluded), and the optional stable section id. Purely descriptive —
@@ -171,191 +215,6 @@ pub struct SectionEntry {
     pub heading: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-}
-
-/// One advisory prerequisite edge (connectivity spec §2.6, T13): a single
-/// node's raw declared edge formula text, verbatim and unvalidated.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrereqEdgeEntry {
-    /// The contributing node's canonical key: a scene's own
-    /// `{character}.{episodeId}` ([`lute_check::meta::canonical_episode_key`])
-    /// or a quest's `<quest id>`.
-    pub node: String,
-    /// The RAW declared formula, keyed by what it means on the wire.
-    #[serde(flatten)]
-    pub edge: PrereqEdge,
-    /// The parsed `after` formula ([`lute_check::parse_prereq`]), so the
-    /// runtime never parses `after` text. `None` for `follows` edges and for
-    /// an `after` outside the prerequisite profile.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub formula: Option<lute_manifest::semantics::prereq::PrereqFormula>,
-}
-
-/// The two kinds of graph edge a node declares, serialized as the single
-/// key `after` or `follows` of its [`PrereqEdgeEntry`].
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum PrereqEdge {
-    /// A scene's `after:` / a bundle beat's `after=`: an eligibility gate.
-    After(String),
-    /// A quest's `follows=`: graph metadata only — it never gates the quest.
-    Follows(String),
-}
-
-/// One merged entity kind (dsl 0.3.0 §3.1).
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EntityKindEntry {
-    pub name: String,
-    /// `None` for `open: engine` kinds (§3.1) — the engine mints members.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub members: Option<Vec<String>>,
-    pub open: bool,
-    /// dsl 0.27.0 §7: member → display text (`labels:`, sub-kind labels
-    /// implied), what a `{{…}}` of a value of this kind renders — an
-    /// `occasionTarget` placeholder of `entityKind` this kind renders
-    /// `labels[member]` (over a cast member's `name:`). Omitted when empty.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub labels: BTreeMap<String, String>,
-    /// The declared label forms (`labels: { cut: { text, start, indefinite
-    /// } }`) per member that declares one — what a `:start` / `:indefinite`
-    /// placeholder of a value of this kind renders. Omitted when empty.
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub label_forms: BTreeMap<String, LabelForms>,
-}
-
-/// One member's declared label forms beside its `labels` text: `start` is
-/// the sentence-start form (`:start`), `indefinite` the form with its
-/// article (`:indefinite`). An absent form falls back: `start` to the text
-/// with its first letter capitalized, `indefinite` to `a` / `an` (by the
-/// text's first letter, `an` before a vowel) and the text.
-#[derive(Clone, Debug, Default, Serialize)]
-pub struct LabelForms {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub indefinite: Option<String>,
-}
-
-impl LabelForms {
-    /// The forms `labels` declares, per member that declares one.
-    pub fn of(
-        labels: &BTreeMap<String, lute_manifest::relations::KindLabel>,
-    ) -> BTreeMap<String, LabelForms> {
-        labels
-            .iter()
-            .filter(|(_, l)| l.has_forms())
-            .map(|(m, l)| {
-                (
-                    m.clone(),
-                    LabelForms {
-                        start: l.start.clone(),
-                        indefinite: l.indefinite.clone(),
-                    },
-                )
-            })
-            .collect()
-    }
-}
-
-/// One merged `enums:` entry (dsl 0.3.0 §3).
-#[derive(Clone, Debug, Serialize)]
-pub struct EnumEntry {
-    pub name: String,
-    pub members: Vec<String>,
-}
-
-/// One merged relation declaration (dsl 0.3.0 §4).
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RelationEntry {
-    pub name: String,
-    pub args: Vec<String>,
-    /// Effective tier for base relations (default `run` applied); ABSENT
-    /// for `derive: true` (§4 — a derived relation has no write tier).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tier: Option<String>,
-    pub derive: bool,
-    pub reserved: bool,
-    /// 0-based functional-key arg indices (§4); empty when undeclared.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub key: Vec<usize>,
-    /// dsl 0.25.0 §1: the relations this one can never hold together with on
-    /// the same arguments — the symmetric closure of `excludes:`, sorted;
-    /// empty (absent) when none.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub excludes: Vec<String>,
-}
-
-/// One seed `facts:` ground tuple (dsl 0.3.0 §4).
-#[derive(Clone, Debug, Serialize)]
-pub struct SeedFactEntry {
-    pub relation: String,
-    /// Ground literals as strings; bools serialize as `"true"`/`"false"`
-    /// (§4 — seed facts are ground, never `_`).
-    pub args: Vec<String>,
-}
-
-/// One Datalog rule (dsl 0.3.0 §7.1), emitted as STRUCTURED data — head +
-/// body — for the engine's least-fixpoint evaluator. Lute performs NO
-/// evaluation (D1); this is the declared rule set, verbatim.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RuleEntry {
-    pub head: AtomEntry,
-    pub body: Vec<BodyEntry>,
-    /// The rule's original source text (`rules:` entry), for engine
-    /// diagnostics/tooling.
-    pub raw: String,
-}
-
-/// One rule atom: a relation name applied to terms (dsl 0.3.0 §7.1).
-#[derive(Clone, Debug, Serialize)]
-pub struct AtomEntry {
-    pub relation: String,
-    pub terms: Vec<TermEntry>,
-}
-
-/// One rule term: a variable (leading-uppercase ident) or a ground constant
-/// (dsl 0.3.0 §7.1). Bools lower to `Const` with a `"true"`/`"false"` value.
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum TermEntry {
-    Var { name: String },
-    Const { value: String },
-}
-
-/// One rule body literal (dsl 0.3.0 §7.1): a positive/negated atom, a CEL
-/// guard, a term comparison, or (dsl 0.26.0 §6) a count.
-#[derive(Clone, Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum BodyEntry {
-    Atom {
-        atom: AtomEntry,
-        negated: bool,
-    },
-    Guard {
-        cel: CelPair,
-    },
-    Cmp {
-        lhs: TermEntry,
-        rhs: TermEntry,
-        negated: bool,
-    },
-    /// `count(atom) op n` — the number of facts matching `atom` — or, with
-    /// `distinct`, `countDistinct(atom, V…) op n`: the number of distinct
-    /// values of those variables among them. A variable of `atom` bound by
-    /// another literal is read; any other ranges over the facts. `op` is
-    /// one of `==`, `!=`, `<`, `<=`, `>`, `>=`. `atom`'s relation sits in a
-    /// strictly lower stratum than the rule's head.
-    Count {
-        atom: AtomEntry,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        distinct: Vec<String>,
-        op: &'static str,
-        n: u64,
-    },
 }
 
 /// Kind-polymorphic envelope `meta` (dsl 0.2.0, IR addendum §1; dsl 0.15.0
@@ -471,156 +330,7 @@ pub struct BeatIr {
     pub spent_by: Option<CelPair>,
     /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub advances: Option<lute_check::AdvanceSpec>,
-}
-
-/// dsl 0.26.0 §5: a `target="kind:<kind>"` beat, resolved against the
-/// occasion's `{ prefix, entity }` target domain. It answers a raise for
-/// `<prefix>.<member>` of every listed member (a sub-kind's members already
-/// counted in its parent); while it runs, `occasion.target` is the raised
-/// member's id (`<member>`, the prefix stripped), typed by the kind.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct TargetKind {
-    pub kind: String,
-    pub prefix: String,
-    pub members: Vec<String>,
-}
-
-impl TargetKind {
-    /// The member a raise for `target` binds, when this kind answers it.
-    pub fn member_of<'t>(&self, target: &'t str) -> Option<&'t str> {
-        let member = target
-            .strip_prefix(self.prefix.as_str())?
-            .strip_prefix('.')?;
-        self.members.iter().any(|m| m == member).then_some(member)
-    }
-
-    /// Resolve a beat's authored `target` on occasion `on`: `Some` only for
-    /// a well-formed `kind:<kind>` target the checker accepted
-    /// ([`lute_check::beats::kind_target_members`]).
-    pub fn resolve(
-        on: &str,
-        target: Option<&str>,
-        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
-        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
-    ) -> Option<Self> {
-        let kind = lute_check::kind_target(target?)?;
-        let (prefix, members) =
-            lute_check::beats::kind_target_members(occasions.get(on)?, kind, kinds).ok()?;
-        Some(TargetKind {
-            kind: kind.to_string(),
-            prefix,
-            members,
-        })
-    }
-}
-
-/// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat on an untargeted
-/// `select: sequence` occasion. Each raise presents it once per listed
-/// member whose `when` holds, in member order; while one presentation
-/// runs, `occasion.target` is that member's id.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct ForKind {
-    pub kind: String,
-    pub members: Vec<String>,
-}
-
-impl ForKind {
-    /// Resolve a beat's authored `for` on occasion `on`: `Some` only for a
-    /// value the checker accepted ([`lute_check::occasion_bind::for_kind_members`]).
-    pub fn resolve(
-        on: &str,
-        for_kind: Option<&str>,
-        has_target: bool,
-        occasions: &std::collections::BTreeMap<String, lute_manifest::schema::OccasionDecl>,
-        kinds: &std::collections::BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
-    ) -> Option<Self> {
-        let (kind, members) = lute_check::occasion_bind::for_kind_members(
-            on, for_kind?, has_target, occasions, kinds,
-        )
-        .ok()?;
-        Some(ForKind { kind, members })
-    }
-}
-
-/// A scene beat's repetition policy (dsl 0.21.0 §3.1, 0.24.0 §1, 0.27.0
-/// §5): `"run"` (once per run), `"user"` (once ever), `"none"` (repeatable;
-/// source `once: false`), `"day"` / `"slot"` /
-/// `"week"` (once per clock day / slot / week), `"season:<name>"` (once per
-/// window of that season). A compile-local mirror of
-/// `lute_check::BeatOnce`, kept separate for the same reason as
-/// [`DocKind`]; it serializes as its spelling.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BeatOnce {
-    Run,
-    User,
-    None,
-    Day,
-    Slot,
-    Week,
-    Season(String),
-}
-
-impl BeatOnce {
-    /// The IR spelling.
-    pub fn as_str(&self) -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed(match self {
-            BeatOnce::Run => "run",
-            BeatOnce::User => "user",
-            BeatOnce::None => "none",
-            BeatOnce::Day => "day",
-            BeatOnce::Slot => "slot",
-            BeatOnce::Week => "week",
-            BeatOnce::Season(name) => {
-                return std::borrow::Cow::Owned(format!(
-                    "{}{name}",
-                    lute_manifest::season::SEASON_PREFIX
-                ))
-            }
-        })
-    }
-
-    /// The season a `once: season:<name>` names.
-    pub fn season(&self) -> Option<&str> {
-        match self {
-            BeatOnce::Season(name) => Some(name),
-            _ => None,
-        }
-    }
-}
-
-impl Serialize for BeatOnce {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.as_str())
-    }
-}
-
-impl From<lute_check::BeatOnce> for BeatOnce {
-    fn from(o: lute_check::BeatOnce) -> Self {
-        match o {
-            lute_check::BeatOnce::Run => BeatOnce::Run,
-            lute_check::BeatOnce::User => BeatOnce::User,
-            lute_check::BeatOnce::None => BeatOnce::None,
-            lute_check::BeatOnce::Day => BeatOnce::Day,
-            lute_check::BeatOnce::Slot => BeatOnce::Slot,
-            lute_check::BeatOnce::Week => BeatOnce::Week,
-            lute_check::BeatOnce::Season(name) => BeatOnce::Season(name),
-        }
-    }
-}
-
-impl From<BeatOnce> for lute_check::BeatOnce {
-    fn from(o: BeatOnce) -> Self {
-        match o {
-            BeatOnce::Run => lute_check::BeatOnce::Run,
-            BeatOnce::User => lute_check::BeatOnce::User,
-            BeatOnce::None => lute_check::BeatOnce::None,
-            BeatOnce::Day => lute_check::BeatOnce::Day,
-            BeatOnce::Slot => lute_check::BeatOnce::Slot,
-            BeatOnce::Week => lute_check::BeatOnce::Week,
-            BeatOnce::Season(name) => lute_check::BeatOnce::Season(name),
-        }
-    }
+    pub advances: Option<AdvanceSpec>,
 }
 
 /// Quest-kind envelope meta (dsl 0.2.0 §6.1, IR addendum §1; dsl 0.15.0 §3
@@ -793,29 +503,6 @@ pub enum Role {
     Mono,
     Os,
     Vo,
-}
-
-/// Document kind (dsl 0.2.0 §2/§3.1, dsl 0.19.0 §2): `"scene"` | `"quest"` |
-/// `"lore"`, mirrors
-/// `lute_check::meta::DocKind` — kept as a SEPARATE compile-local serde enum
-/// so `Serialize` never leaks onto lute-check's public type (serialization
-/// concerns stay in the crate that owns the wire format). Mapped once, here.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum DocKind {
-    Scene,
-    Quest,
-    Lore,
-}
-
-impl From<lute_check::DocKind> for DocKind {
-    fn from(k: lute_check::DocKind) -> Self {
-        match k {
-            lute_check::DocKind::Scene => DocKind::Scene,
-            lute_check::DocKind::Quest => DocKind::Quest,
-            lute_check::DocKind::Lore => DocKind::Lore,
-        }
-    }
 }
 
 /// One record (dsl 0.37.0 §5.3). Serialized as `kind`, then `family`
@@ -1767,7 +1454,7 @@ pub struct EntryCmd {
     pub spent_by: Option<CelPair>,
     /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub advances: Option<lute_check::AdvanceSpec>,
+    pub advances: Option<AdvanceSpec>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
@@ -1820,27 +1507,25 @@ pub struct BeatCmd {
     pub spent_by: Option<CelPair>,
     /// dsl 0.31.0 §1: clock movement performed when the beat is presented.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub advances: Option<lute_check::AdvanceSpec>,
+    pub advances: Option<AdvanceSpec>,
     pub body: String,
     #[serde(flatten)]
     pub stamp: Stamp,
 }
 
-/// A CEL slot's standard text (`cel`) plus its portable lowered form.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CelPair {
-    #[serde(rename = "cel")]
-    pub raw: String,
-    pub expr: ExprNode,
-    /// A seam condition as the author wrote it when expansion changed it.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authored: Option<String>,
+
+/// Compiler-side constructors of a [`CelPair`]: they lower CEL.
+pub trait CelPairExt {
+    /// Build a pair from a checked, possibly expanded syntax slot.
+    fn from_slot(slot: &lute_syntax::ast::CelSlot) -> Self;
+    /// Build a pair from a raw CEL fragment used by synthetic/test helpers.
+    fn from_raw(raw: &str) -> Self;
+    /// Build a pair for a compiler-synthesized condition.
+    fn from_expr(expr: ExprNode, authored: Option<String>) -> Self;
 }
 
-impl CelPair {
-    /// Build a pair from a checked, possibly expanded syntax slot.
-    pub fn from_slot(slot: &lute_syntax::ast::CelSlot) -> Self {
+impl CelPairExt for CelPair {
+    fn from_slot(slot: &lute_syntax::ast::CelSlot) -> Self {
         let cel = slot.raw.clone();
         Self {
             raw: cel,
@@ -1850,18 +1535,7 @@ impl CelPair {
         }
     }
 
-    /// Build a pair for a compiler-synthesized condition.
-    pub fn from_expr(expr: ExprNode, authored: Option<String>) -> Self {
-        let raw = expr_to_cel(&expr);
-        Self {
-            raw,
-            expr,
-            authored,
-        }
-    }
-
-    /// Build a pair from a raw CEL fragment used by synthetic/test helpers.
-    pub fn from_raw(raw: &str) -> Self {
+    fn from_raw(raw: &str) -> Self {
         CelPair {
             raw: raw.to_string(),
             expr: crate::expr::lower_expr(raw)
@@ -1870,19 +1544,21 @@ impl CelPair {
         }
     }
 
-    /// The condition as its author wrote it: [`CelPair::authored`], else
-    /// `raw`.
-    pub fn shown(&self) -> &str {
-        self.authored.as_deref().unwrap_or(&self.raw)
+    fn from_expr(expr: ExprNode, authored: Option<String>) -> Self {
+        let raw = expr_to_cel(&expr);
+        Self {
+            raw,
+            expr,
+            authored,
+        }
     }
 }
-
 
 fn expr_to_cel(expr: &ExprNode) -> String {
     match expr {
         ExprNode::Lit { lit } => match lit {
-            crate::expr::LitVal::Int(v) => v.to_string(),
-            crate::expr::LitVal::Num(v) => {
+            LitVal::Int(v) => v.to_string(),
+            LitVal::Num(v) => {
                 let text = v.to_string();
                 if v.is_finite() && v.fract() == 0.0 && !text.contains('.') {
                     format!("{text}.0")
@@ -1890,8 +1566,8 @@ fn expr_to_cel(expr: &ExprNode) -> String {
                     text
                 }
             }
-            crate::expr::LitVal::Bool(v) => v.to_string(),
-            crate::expr::LitVal::Str(v) => cel_quote(v),
+            LitVal::Bool(v) => v.to_string(),
+            LitVal::Str(v) => cel_quote(v),
         },
         ExprNode::Path { path } => path.clone(),
         ExprNode::Unary { op, l } => format!("({op}{})", expr_to_cel(l)),

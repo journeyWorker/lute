@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
-use crate::index::{BeatKind, BeatOnce, IndexBeat};
+use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 use lute_manifest::schema::OccasionSelect;
 use serde_json::Value as Json;
 

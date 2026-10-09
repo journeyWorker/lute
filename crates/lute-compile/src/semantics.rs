@@ -1,8 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::expr::ExprNode;
+use lute_ir::*;
 use crate::ir::*;
-
 /// A stable semantic capability identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticId(&'static str);

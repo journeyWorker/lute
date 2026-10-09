@@ -1,4 +1,5 @@
 use super::*;
+use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 /// The traced document as a one-document [`ExecProject`] — what the
 /// session's eligibility rule judges a presented beat over. `None` only if
 /// the artifact does not assemble (it always does once compiled).
@@ -17,9 +18,6 @@ pub(super) fn judging_project(
         ..Default::default()
     };
     let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
-    // The compiler's index as the runtime decodes it — through its JSON
-    // text, the bundle format, without a `serde_json::Value` tree.
-    let index = serde_json::from_slice(&serde_json::to_vec(&index).ok()?).ok()?;
     let artifacts = BTreeMap::from([(format!("{uri}.json"), serde_json::to_value(artifact).ok()?)]);
     ExecProject::from_index(index, artifacts).ok()
 }
@@ -34,7 +32,7 @@ pub(super) fn judge(
     p: &ExecProject,
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
-    row: &lute_runtime::index::IndexBeat,
+    row: &IndexBeat,
 ) -> (exec::session::Candidate, SessionWorld) {
     let mut w = SessionWorld {
         visited: mocks.visited.iter().cloned().collect(),
@@ -123,7 +121,7 @@ pub(super) fn premise_text(
             }
         }
         Premise::Spent {
-            once: Some(lute_runtime::index::BeatOnce::User),
+            once: Some(BeatOnce::User),
             ..
         } if kind == BeatKind::Scene => {
             "it is `once: user` and the mocked `visited:` already lists it".to_string()

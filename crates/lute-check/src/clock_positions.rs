@@ -1411,7 +1411,7 @@ pub fn check_project_advance_cascades(
         }
         let repeats = match pb.once {
             crate::beats::BeatOnce::None | crate::beats::BeatOnce::Slot => true,
-            crate::beats::BeatOnce::Day => matches!(spec, crate::beats::AdvanceSpec::Day),
+            crate::beats::BeatOnce::Day => matches!(spec, lute_ir::AdvanceSpec::Day),
             _ => false,
         };
         if !repeats {
@@ -1422,9 +1422,9 @@ pub fn check_project_advance_cascades(
             Some(raw) => match RaiseModel::new(raw, None, pb.on, pb.folded) {
                 Some((model, _)) => {
                     let by = match spec {
-                        crate::beats::AdvanceSpec::Slot => Advance::Slots(1),
-                        crate::beats::AdvanceSpec::Day => Advance::Day,
-                        crate::beats::AdvanceSpec::Slots(n) => Advance::Slots(n),
+                        lute_ir::AdvanceSpec::Slot => Advance::Slots(1),
+                        lute_ir::AdvanceSpec::Day => Advance::Day,
+                        lute_ir::AdvanceSpec::Slots(n) => Advance::Slots(n),
                     };
                     model.all.iter().any(|at| {
                         model.open(*at)
@@ -1446,9 +1446,9 @@ pub fn check_project_advance_cascades(
             continue;
         }
         let amount = match spec {
-            crate::beats::AdvanceSpec::Slot => "one slot".to_string(),
-            crate::beats::AdvanceSpec::Day => "one day".to_string(),
-            crate::beats::AdvanceSpec::Slots(n) => format!("{n} slots"),
+            lute_ir::AdvanceSpec::Slot => "one slot".to_string(),
+            lute_ir::AdvanceSpec::Day => "one day".to_string(),
+            lute_ir::AdvanceSpec::Slots(n) => format!("{n} slots"),
         };
         out.push((
             pb.path.to_path_buf(),

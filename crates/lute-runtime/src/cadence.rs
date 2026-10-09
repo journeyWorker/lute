@@ -38,7 +38,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use std::sync::Arc;
 
-use crate::index::{BeatKind, BeatOnce, IndexBeat, ProjectIndex};
+use lute_ir::{BeatKind, BeatOnce, IndexBeat, ProjectIndex};
 use serde_json::{json, Value as Json};
 
 use crate::session::{

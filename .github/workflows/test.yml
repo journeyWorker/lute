@@ -121,7 +121,7 @@ jobs:
       - name: lute-runtime dependency boundary
         run: |
           deps=$(cargo tree -p lute-runtime -e normal --depth 1 --prefix none | tail -n +2 | awk '{print $1}' | sort -u | tr '\n' ' ')
-          allowed="lute-core-span lute-manifest serde serde_json "
+          allowed="lute-core-span lute-ir lute-manifest serde serde_json "
           [ "$deps" = "$allowed" ] || { echo "lute-runtime deps: '$deps' (allowed: '$allowed')"; exit 1; }
 
       - name: lute-runtime builds for wasm32

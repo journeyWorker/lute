@@ -1286,9 +1286,9 @@ fn presentation_cases(
         }
         mock.bridges = pr.bridges.clone();
         let present = match pr.kind {
-            lute_runtime::index::BeatKind::Scene => Present::Document,
-            lute_runtime::index::BeatKind::Entry => Present::Entries(vec![pr.id.clone()]),
-            lute_runtime::index::BeatKind::Bundle => Present::Beat(pr.id.clone()),
+            lute_ir::BeatKind::Scene => Present::Document,
+            lute_ir::BeatKind::Entry => Present::Entries(vec![pr.id.clone()]),
+            lute_ir::BeatKind::Bundle => Present::Beat(pr.id.clone()),
         };
 
         // What the play observed.

@@ -97,31 +97,31 @@ impl BeatOnce {
 pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once ever), \
      `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
      window of a declared season), or `false` (repeatable)";
-/// How a presented beat moves the engine clock (dsl 0.31.0 §1). This is a
-/// declaration only; the engine performs the move when the beat is presented.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AdvanceSpec {
-    Slot,
-    Day,
-    Slots(u32),
-}
 
-impl AdvanceSpec {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Slot => "slot",
-            Self::Day => "day",
-            Self::Slots(_) => "n",
+impl From<BeatOnce> for lute_ir::BeatOnce {
+    fn from(o: BeatOnce) -> Self {
+        match o {
+            BeatOnce::Run => lute_ir::BeatOnce::Run,
+            BeatOnce::User => lute_ir::BeatOnce::User,
+            BeatOnce::None => lute_ir::BeatOnce::None,
+            BeatOnce::Day => lute_ir::BeatOnce::Day,
+            BeatOnce::Slot => lute_ir::BeatOnce::Slot,
+            BeatOnce::Week => lute_ir::BeatOnce::Week,
+            BeatOnce::Season(name) => lute_ir::BeatOnce::Season(name),
         }
     }
 }
 
-impl serde::Serialize for AdvanceSpec {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Slot => serializer.serialize_str("slot"),
-            Self::Day => serializer.serialize_str("day"),
-            Self::Slots(n) => serializer.serialize_u32(*n),
+impl From<lute_ir::BeatOnce> for BeatOnce {
+    fn from(o: lute_ir::BeatOnce) -> Self {
+        match o {
+            lute_ir::BeatOnce::Run => BeatOnce::Run,
+            lute_ir::BeatOnce::User => BeatOnce::User,
+            lute_ir::BeatOnce::None => BeatOnce::None,
+            lute_ir::BeatOnce::Day => BeatOnce::Day,
+            lute_ir::BeatOnce::Slot => BeatOnce::Slot,
+            lute_ir::BeatOnce::Week => BeatOnce::Week,
+            lute_ir::BeatOnce::Season(name) => BeatOnce::Season(name),
         }
     }
 }

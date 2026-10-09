@@ -20,38 +20,31 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
 
+use lute_ir::LabelForms;
+
 use super::expr::{self, Expr};
 use crate::datalog::{Fact, Program};
 use crate::eval::{Read, ReservedReadKind};
 use crate::schema::{RelVocab, StateSchema};
 use crate::{EffectiveState, EvalEnv, FactStore, UnresolvedAtom, Value};
 
-/// One member's declared label forms (the artifact's `labelForms` entry).
-#[derive(Clone, Debug, Default)]
-pub(crate) struct LabelForms {
-    pub(crate) start: Option<String>,
-    pub(crate) indefinite: Option<String>,
-}
-
-impl LabelForms {
-    /// An artifact `labelForms` object: member → `{ start?, indefinite? }`.
-    fn map_of(forms: &Json) -> BTreeMap<String, LabelForms> {
-        let form = |f: &Json, key: &str| f.get(key).and_then(Json::as_str).map(str::to_string);
-        forms
-            .as_object()
-            .into_iter()
-            .flatten()
-            .map(|(m, f)| {
-                (
-                    m.clone(),
-                    LabelForms {
-                        start: form(f, "start"),
-                        indefinite: form(f, "indefinite"),
-                    },
-                )
-            })
-            .collect()
-    }
+/// An artifact `labelForms` object: member → `{ start?, indefinite? }`.
+fn label_forms_map(forms: &Json) -> BTreeMap<String, LabelForms> {
+    let form = |f: &Json, key: &str| f.get(key).and_then(Json::as_str).map(str::to_string);
+    forms
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(m, f)| {
+            (
+                m.clone(),
+                LabelForms {
+                    start: form(f, "start"),
+                    indefinite: form(f, "indefinite"),
+                },
+            )
+        })
+        .collect()
 }
 
 /// Immutable, project-invariant evaluator data decoded from an artifact's
@@ -155,7 +148,7 @@ impl Store {
                 );
             }
             if let Some(forms) = e.get("labelForms") {
-                label_forms.insert(path.to_string(), LabelForms::map_of(forms));
+                label_forms.insert(path.to_string(), label_forms_map(forms));
             }
             if let Some(v) = e.get("default").and_then(|j| typed_json_to_value(j, ty)) {
                 defaults.insert(path.to_string(), v);
@@ -214,7 +207,7 @@ impl Store {
                     .flatten()
                     .filter_map(|k| {
                         let name = k.get("name")?.as_str()?;
-                        Some((name.to_string(), LabelForms::map_of(k.get("labelForms")?)))
+                        Some((name.to_string(), label_forms_map(k.get("labelForms")?)))
                     })
                     .collect(),
             ),

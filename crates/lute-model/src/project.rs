@@ -10,8 +10,9 @@ fn annotate_diagnostic(diagnostic: &mut Diagnostic) {
 }
 
 use lute_check::{fold_env, CheckInput, CheckResult, FoldedEnv, Mode};
-use lute_compile::index::{build_index, IndexInput, ProjectIndex};
+use lute_compile::index::{build_index, IndexInput};
 use lute_compile::{compile_mapped_parsed, ExecutionIr, SourceMap};
+use lute_ir::ProjectIndex;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use rayon::prelude::*;
 

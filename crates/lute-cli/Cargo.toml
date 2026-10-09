@@ -10,6 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
+lute-ir = { path = "../lute-ir" }
 lute-manifest = { path = "../lute-manifest" }
 lute-check = { path = "../lute-check" }
 lute-syntax = { path = "../lute-syntax" }

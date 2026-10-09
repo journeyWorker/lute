@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::index::{AdvanceSpec, BeatKind, IndexBeat};
+use lute_ir::{AdvanceSpec, BeatKind, IndexBeat};
 use lute_manifest::clock::Advance;
 use serde_json::Value as Json;
 

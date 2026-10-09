@@ -12,6 +12,7 @@ use lute_syntax::ast::{
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
+use lute_ir::*;
 use crate::lower::{
     attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
     lower_set,
@@ -1093,7 +1094,7 @@ pub fn walk_entry(
         },
         share: text(&entry.share),
         target_kind: entry.on.as_ref().and_then(|(on, _)| {
-            crate::ir::TargetKind::resolve(
+            TargetKind::resolve(
                 on,
                 entry.target.as_ref().map(|(t, _)| t.as_str()),
                 &cx.snapshot.occasions,
@@ -1101,7 +1102,7 @@ pub fn walk_entry(
             )
         }),
         for_kind: entry.on.as_ref().and_then(|(on, _)| {
-            crate::ir::ForKind::resolve(
+            ForKind::resolve(
                 on,
                 entry.for_kind.as_ref().map(|(f, _)| f.as_str()),
                 entry.target.is_some(),
@@ -1157,7 +1158,7 @@ pub fn walk_bundle_beat(
         share: beat.share.as_ref().map(|(k, _)| k.clone()),
         after: beat.after.as_ref().map(|(a, _)| a.clone()),
         target_kind: beat.on.as_ref().and_then(|(on, _)| {
-            crate::ir::TargetKind::resolve(
+            TargetKind::resolve(
                 on,
                 beat.target.as_ref().map(|(t, _)| t.as_str()),
                 &cx.snapshot.occasions,
@@ -1165,7 +1166,7 @@ pub fn walk_bundle_beat(
             )
         }),
         for_kind: beat.on.as_ref().and_then(|(on, _)| {
-            crate::ir::ForKind::resolve(
+            ForKind::resolve(
                 on,
                 beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
                 beat.target.is_some(),

@@ -159,7 +159,7 @@ pub use accept::{
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
     advances_from_attr, check_project_beats, occasion_target_ok,
-    parse_beat_priority, project_beats, AdvanceSpec, BeatMeta, BeatOnce, ProjectBeat,
+    parse_beat_priority, project_beats, BeatMeta, BeatOnce, ProjectBeat,
     ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN,
     W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
 };

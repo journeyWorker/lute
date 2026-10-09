@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
-use lute_compile::index::{IndexOccasion, IndexUnions};
+use lute_ir::IndexOccasion;
+use lute_compile::index::IndexUnions;
 use lute_manifest::schema::WriteValue;
 use lute_manifest::types::Type;
 use lute_model::ProjectModel;

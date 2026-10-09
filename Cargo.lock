@@ -601,6 +601,7 @@ dependencies = [
  "insta",
  "lute-cel",
  "lute-core-span",
+ "lute-ir",
  "lute-manifest",
  "lute-syntax",
  "lute-test-vocab",
@@ -620,6 +621,7 @@ dependencies = [
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-ir",
  "lute-lint",
  "lute-load",
  "lute-manifest",
@@ -644,6 +646,7 @@ dependencies = [
  "lute-cel",
  "lute-check",
  "lute-core-span",
+ "lute-ir",
  "lute-manifest",
  "lute-syntax",
  "lute-test-vocab",
@@ -657,6 +660,15 @@ dependencies = [
 name = "lute-core-span"
 version = "0.38.0"
 dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "lute-ir"
+version = "0.38.0"
+dependencies = [
+ "lute-manifest",
  "serde",
  "serde_json",
 ]
@@ -731,6 +743,7 @@ dependencies = [
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-ir",
  "lute-load",
  "lute-manifest",
  "lute-semantic",
@@ -762,6 +775,7 @@ version = "0.38.0"
 dependencies = [
  "lute-compile",
  "lute-core-span",
+ "lute-ir",
  "lute-manifest",
  "serde",
  "serde_json",
@@ -802,6 +816,7 @@ dependencies = [
  "lute-check",
  "lute-compile",
  "lute-core-span",
+ "lute-ir",
  "lute-manifest",
  "lute-runtime",
  "lute-syntax",

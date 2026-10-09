@@ -13,7 +13,8 @@ use lute_check::meta::StateSchema;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, Node};
 
-use crate::ir::{CelPair, Command, Placeholder};
+use crate::ir::{CelPairExt, Command, Placeholder};
+use lute_ir::CelPair;
 
 /// Expand every CEL slot in the document in place. Returns diagnostics for
 /// expander failures (`E-COMPILE-EXPAND`: cycle / unknown def / arity — the

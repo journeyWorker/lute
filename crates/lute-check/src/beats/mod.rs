@@ -22,6 +22,7 @@ use crate::check::FoldedEnv;
 use crate::decide::{decide_slot, DecideCtx, Decided};
 use crate::fact_env::{FactEnv, FactScope};
 use crate::lore::{is_beat_target, is_entry_target, kind_target};
+use lute_ir::AdvanceSpec;
 
 use collection::*;
 use diagnostics::*;
@@ -29,9 +30,8 @@ use helpers::*;
 use ordering::*;
 
 pub use collection::{
-    advances_from_attr, parse_beat_priority, AdvanceSpec, BeatMeta, BeatOnce, BEAT_KEYS,
-    E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, ENTRY_ONCE_VALUES, ONCE_VALUES,
-    W_BEAT_SHADOWED,
+    advances_from_attr, parse_beat_priority, BeatMeta, BeatOnce, BEAT_KEYS, E_BEAT_ATTR,
+    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, ENTRY_ONCE_VALUES, ONCE_VALUES, W_BEAT_SHADOWED,
 };
 pub use diagnostics::{always_eligible, presence_ladder, shadowers_at};
 pub use helpers::{coverers, SPENDING_ONCE};

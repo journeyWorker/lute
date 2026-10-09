@@ -5,7 +5,7 @@ use serde_json::{json, Value as Json};
 
 use super::Machine;
 use crate::driver::Driver;
-use crate::store::LabelForms;
+use lute_ir::LabelForms;
 use crate::Value;
 
 impl<D: Driver> Machine<D> {

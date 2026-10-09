@@ -6,7 +6,8 @@
 use std::collections::BTreeMap;
 
 use lute_compile::*;
-use lute_compile::expr::{ExprNode, LitVal};
+use lute_compile::ir::CelPairExt;
+use lute_ir::*;
 fn j(cmd: &Command) -> String {
     serde_json::to_string(cmd).unwrap()
 }

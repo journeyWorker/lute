@@ -11,6 +11,7 @@ use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
 use crate::ir::*;
+use lute_ir::CelPair;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 
 /// Bare-ident delivery flag (dsl 0.2.2 §D7: `mono`/`os`/`vo`, `AttrValue::
@@ -124,7 +125,7 @@ pub fn lower_set(set: &Set) -> Command {
         position: String::new(),
         path: set.path.clone(),
         op: set.op.clone(),
-        value: crate::ir::CelPair::from_slot(&set.expr),
+        value: CelPair::from_slot(&set.expr),
         stamp: Stamp::default(),
     })
 }

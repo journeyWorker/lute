@@ -6,7 +6,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::index::{occasions as index_occasions, BeatKind, BeatOnce, Bundle, IndexBeat, ProjectIndex};
+use crate::index::{occasions as index_occasions, Bundle};
+use lute_ir::{BeatKind, BeatOnce, CelPair, IndexBeat, ProjectIndex};
 use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
@@ -123,7 +124,7 @@ pub(crate) struct BeatConds {
 
 impl Conds {
     fn of(index: &ProjectIndex, artifacts: &BTreeMap<String, Json>) -> Self {
-        let typed = |pair: &crate::index::CelPair| {
+        let typed = |pair: &CelPair| {
             serde_json::to_value(pair).ok().and_then(|j| Slot::of(&j))
         };
         let beat = |head: &Json| BeatConds {
@@ -289,7 +290,7 @@ impl ExecProject {
             once: cmd
                 .get("once")
                 .and_then(Json::as_str)
-                .and_then(BeatOnce::parse),
+                .and_then(BeatOnce::from_ir),
             when: None,
             title: None,
             share: text("share"),

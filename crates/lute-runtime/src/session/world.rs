@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::index::BeatKind;
+use lute_ir::BeatKind;
 use serde_json::{json, Value as Json};
 
 use super::present::{share_of, spend_shared};

@@ -86,12 +86,18 @@ None. A plugin call that reads a bridge result suspends the runtime with an
 - `lute play` (human and `--json`), `lute test`, `lute trace`, `lute run`,
   `lute beats` and `lute calendar` are unchanged.
 - New crate `lute-runtime` (deps: `serde`, `serde_json`, `lute-manifest`,
-  `lute-core-span`; builds for `wasm32-unknown-unknown`): `Runtime::load`
-  over `lute compile --all` output, `begin`, `step`, `snapshot` / `restore`
-  and the read-only queries `candidates`, `eligibility`, `clock`, `terminal`,
-  `view`. A suspended choice or bridge resumes by deterministic replay of
-  its input. `lute-trace` keeps mocks, traces and reports; the session's
-  moved types are not re-exported.
+  `lute-core-span`, `lute-ir`; builds for `wasm32-unknown-unknown`):
+  `Runtime::load` over `lute compile --all` output, `begin`, `step`,
+  `snapshot` / `restore` and the read-only queries `candidates`,
+  `eligibility`, `clock`, `terminal`, `view`. A suspended choice or bridge
+  resumes by deterministic replay of its input. `lute-trace` keeps mocks,
+  traces and reports; the session's moved types are not re-exported.
+- New crate `lute-ir` (deps: `serde`, `serde_json`, `lute-manifest`): the
+  project-index rows, the IR rows they embed and the `expr` AST, serialized
+  by the compiler and deserialized by the runtime from one definition.
+  `AdvanceSpec` moves there from `lute-check`; `ProjectIndex`, `IndexBeat`,
+  `CelPair`, `ExprNode` and the other moved types are imported from
+  `lute_ir` (not re-exported by `lute-compile`).
 
 ### Diagnostics
 
