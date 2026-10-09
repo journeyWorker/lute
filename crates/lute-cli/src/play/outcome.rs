@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_trace::exec::session::{world_view, Candidate, ExecProject, Played, StepBody, Verdict};
+use lute_runtime::session::{world_view, Candidate, ExecProject, Played, StepBody, Verdict};
 use serde_json::Value as Json;
 
 use super::human::{said, str_of, DocCmds};
@@ -157,11 +157,11 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
 /// play outcome, after its advancing beat (dsl 0.31.0 §1).
 fn append_raised(
     p: &ExecProject,
-    beat: &lute_trace::exec::session::Presented,
+    beat: &lute_runtime::session::Presented,
     presented: &mut Vec<String>,
     options: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
-    let mut pending: Vec<&lute_trace::exec::session::Presented> =
+    let mut pending: Vec<&lute_runtime::session::Presented> =
         beat.raised.iter().rev().collect();
     while let Some(raised) = pending.pop() {
         presented.push(raised.id.clone());

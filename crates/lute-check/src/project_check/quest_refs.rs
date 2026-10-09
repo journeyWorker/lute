@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Document, Node};
 use crate::ProjectDoc;
-use crate::cel_paths::is_reserved_quest_path;
+use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 use super::paths::referenced_paths;
 use super::quest_tree::E_QUEST_REF_UNKNOWN;
 

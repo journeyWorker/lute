@@ -169,7 +169,7 @@ pub(super) fn raised_member(
         mocks
             .occasions
             .iter()
-            .find_map(|r| match crate::split_occasion(r) {
+            .find_map(|r| match lute_runtime::split_occasion(r) {
                 (name, Some(t)) if name == on => Some((r, t)),
                 _ => None,
             })
@@ -178,7 +178,7 @@ pub(super) fn raised_member(
     };
     let member = occasions
         .get(on)
-        .and_then(|d| lute_check::gates::target_member(d, target))
+        .and_then(|d| lute_manifest::semantics::gates::target_member(d, target))
         .unwrap_or_else(|| target.to_string());
     if members.contains(&member) {
         return Ok(Some(member));

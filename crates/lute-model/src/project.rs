@@ -10,8 +10,9 @@ fn annotate_diagnostic(diagnostic: &mut Diagnostic) {
 }
 
 use lute_check::{fold_env, CheckInput, CheckResult, FoldedEnv, Mode};
-use lute_compile::index::{build_index, IndexInput, ProjectIndex};
+use lute_compile::index::{build_index, IndexInput};
 use lute_compile::{compile_mapped_parsed, ExecutionIr, SourceMap};
+use lute_ir::ProjectIndex;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use rayon::prelude::*;
 
@@ -267,7 +268,7 @@ impl ProjectModel {
             if inputs.is_empty() {
                 None
             } else {
-                match build_index(lute_compile::LUTE_IR_VERSION, &inputs) {
+                match build_index(lute_compile::LUTE_IR_VERSION, &inputs, &Default::default()) {
                     Ok(index) => Some(index),
                     Err(errors) => {
                         for error in errors {
@@ -359,7 +360,7 @@ impl ProjectModel {
                                 })
                             })
                             .collect();
-                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs).ok();
+                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs, &Default::default()).ok();
                     }
                 }
                 Err(errors) => {

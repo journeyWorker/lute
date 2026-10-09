@@ -1,0 +1,10 @@
+choose:
+  desk: [take, leave]
+  answer: yes
+steps:
+  - occasion: visit
+    expect: { winner: hub, state: { run.count: 1, run.answer: true } }
+expect:
+  end: complete
+  state: { run.count: 1, run.answer: true }
+  transcriptContains: ["Returned to the hub.", "After the hub."]

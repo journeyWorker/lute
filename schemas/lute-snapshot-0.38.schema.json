@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.38.schema.json",
+  "title": "Lute runtime snapshot (snapshotVersion 0.38.x)",
+  "description": "A Runtime::snapshot of a runtime State. Normative source: docs/proposals/scenario-dsl/0.38.0.md §7. Input and Await shapes are the event contract's (lute-events-0.38.schema.json).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["snapshotVersion", "project", "await", "request", "world"],
+  "properties": {
+    "snapshotVersion": { "type": "string", "pattern": "^0\\.38\\.[0-9]+$" },
+    "project": {
+      "description": "Bundle fingerprint: irVersion:capabilitySnapshot:sha256(index, artifacts in path order).",
+      "type": "string",
+      "pattern": "^[^:]+:[^:]*:[0-9a-f]{64}$"
+    },
+    "await": { "$ref": "lute-events-0.38.schema.json#/$defs/Await" },
+    "request": { "type": "integer", "minimum": 0 },
+    "world": { "$ref": "#/$defs/World" },
+    "continuation": { "$ref": "#/$defs/Continuation" }
+  },
+  "$defs": {
+    "Value": {
+      "description": "A state value; the tag keeps int and double apart.",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "bool" }, "value": { "type": "boolean" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "int" }, "value": { "type": "integer" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "double" }, "value": { "type": "number" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "str" }, "value": { "type": "string" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind"], "properties": { "kind": { "const": "unknown" } } },
+        { "type": "object", "additionalProperties": false, "required": ["kind", "value"], "properties": { "kind": { "const": "error" }, "value": { "type": "string" } } }
+      ]
+    },
+    "Fact": {
+      "description": "[relation, [argument, …]]",
+      "type": "array",
+      "prefixItems": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "ClockAt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["day", "slot"],
+      "properties": { "day": { "type": "integer" }, "slot": { "type": "integer", "minimum": 0 } }
+    },
+    "Strings": { "type": "array", "items": { "type": "string" } },
+    "Cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "live": { "type": "object", "additionalProperties": { "type": "boolean" } },
+        "rearm": { "type": "object", "additionalProperties": { "type": "boolean" } },
+        "spentSeason": { "$ref": "#/$defs/Strings" },
+        "windows": { "$ref": "#/$defs/Strings" },
+        "latched": { "type": "object", "additionalProperties": { "oneOf": [{ "$ref": "#/$defs/ClockAt" }, { "type": "null" }] } }
+      }
+    },
+    "World": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state", "facts", "quests", "questInstances", "visited", "spentRun", "spentUser", "spentAt",
+        "shareSpentBy", "accepts", "nextRunAccepts", "derive", "failedObjectives", "deferBy",
+        "deferHandlers", "deferredHandlers", "clockAdvancedByBeat", "advanceCascadeDepth", "cadence"
+      ],
+      "properties": {
+        "state": { "type": "object", "additionalProperties": { "$ref": "#/$defs/Value" } },
+        "facts": { "type": "array", "items": { "$ref": "#/$defs/Fact" } },
+        "quests": { "type": "object", "additionalProperties": { "type": "string" } },
+        "questInstances": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "visited": { "$ref": "#/$defs/Strings" },
+        "spentRun": { "$ref": "#/$defs/Strings" },
+        "spentUser": { "$ref": "#/$defs/Strings" },
+        "spentAt": { "type": "object", "additionalProperties": { "$ref": "#/$defs/ClockAt" } },
+        "shareSpentBy": { "type": "object", "additionalProperties": { "type": "string" } },
+        "accepts": { "$ref": "#/$defs/Strings" },
+        "nextRunAccepts": { "$ref": "#/$defs/Strings" },
+        "derive": { "type": ["boolean", "null"] },
+        "failedObjectives": { "$ref": "#/$defs/Strings" },
+        "deferBy": { "type": ["string", "null"] },
+        "deferHandlers": { "type": "boolean" },
+        "deferredHandlers": {
+          "type": "array",
+          "items": { "type": "array", "prefixItems": [{ "type": "string" }, { "type": "string" }], "minItems": 2, "maxItems": 2 }
+        },
+        "clockAdvancedByBeat": { "type": "boolean" },
+        "advanceCascadeDepth": { "type": "integer", "minimum": 0 },
+        "cadence": { "$ref": "#/$defs/Cadence" }
+      }
+    },
+    "Answer": {
+      "description": "An answer already given to an await of the suspended input, in order.",
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["choice"], "properties": { "choice": { "type": "object", "additionalProperties": false, "required": ["id", "option"], "properties": { "id": { "type": "string" }, "option": { "type": "string" } } } } },
+        { "type": "object", "additionalProperties": false, "required": ["bridge"], "properties": { "bridge": { "type": "object", "additionalProperties": false, "required": ["tag", "fields"], "properties": { "tag": { "type": "string" }, "fields": { "type": "object", "additionalProperties": { "$ref": "lute-events-0.38.schema.json#/$defs/Scalar" } } } } } }
+      ]
+    },
+    "Continuation": {
+      "description": "A suspended input (spec §8): the world before it, the input, the answers so far, the pending await and how many of its events were delivered.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "input", "answers", "pending", "delivered"],
+      "properties": {
+        "before": { "$ref": "#/$defs/World" },
+        "input": { "$ref": "lute-events-0.38.schema.json#/$defs/Input" },
+        "answers": { "type": "array", "items": { "$ref": "#/$defs/Answer" } },
+        "pending": { "$ref": "lute-events-0.38.schema.json#/$defs/Await" },
+        "delivered": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

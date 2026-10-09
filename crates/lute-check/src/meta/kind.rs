@@ -286,6 +286,17 @@ pub enum DocKind {
     Lore,
 }
 
+/// The IR's `kind` discriminator ([`lute_ir::DocKind`]): mapped once, here.
+impl From<DocKind> for lute_ir::DocKind {
+    fn from(k: DocKind) -> Self {
+        match k {
+            DocKind::Scene => lute_ir::DocKind::Scene,
+            DocKind::Quest => lute_ir::DocKind::Quest,
+            DocKind::Lore => lute_ir::DocKind::Lore,
+        }
+    }
+}
+
 /// `<quest>`/`kind:`/etc. diagnostic codes owned by [`resolve_doc_kind`] (dsl
 /// 0.2.0 Appendix B).
 pub const E_KIND_MISSING: &str = "E-KIND-MISSING";

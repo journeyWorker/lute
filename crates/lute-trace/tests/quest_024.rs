@@ -7,7 +7,8 @@
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::{trace_document, Decision, MockSet, Step, TraceExit, TraceReport};
+use lute_trace::{trace_document, Decision, Step, TraceExit, TraceReport};
+use lute_trace::mock::MockSet;
 
 fn input_for(text: &str) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);

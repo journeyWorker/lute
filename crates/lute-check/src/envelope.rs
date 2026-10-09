@@ -31,7 +31,7 @@ use lute_syntax::ast::{
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::defassign::{check_definite_assignment, Assigned};
 use crate::meta::{Namespace, StateSchema};
-use crate::prereq::PrereqFormula;
+use lute_manifest::semantics::prereq::PrereqFormula;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
 /// monotonic namespaces the envelope lattice tracks (dsl §4.3). Every other

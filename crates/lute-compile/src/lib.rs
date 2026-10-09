@@ -42,6 +42,7 @@ use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, Type};
+use lute_ir::*;
 use lute_syntax::ast::{Arm, Document, Node};
 /// Attach the expanded project identity ledger to one artifact and refresh its
 /// derived semantic capability list. Every artifact-producing path uses this
@@ -213,13 +214,13 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// so no engine gate widens.
 ///
 /// IR `0.19.0` is ADDITIVE over `0.18.0` (dsl 0.19.0 §7, lore entries):
-/// [`ir::DocKind`] gains `"lore"` with its own [`ir::LoreMeta`] envelope
+/// [`lute_ir::DocKind`] gains `"lore"` with its own [`ir::LoreMeta`] envelope
 /// (`id?`, `title?`, `series?`, `contentLang?`, `extra?`, `plugin?`);
 /// [`ir::Command`] gains the `entry` record ([`ir::EntryCmd`]: `addr`, `id`,
 /// `target?`, `category?`, `title?`, `titleLineId?`, the RESOLVED `series?` /
 /// `order?`, `when?`, and `body`, the address of its body segment — the
 /// `OnCmd.body` convention); [`ir::QuestMeta`] gains the optional authored
-/// document `id` (dsl 0.19.0 §2.1); and [`index::ProjectIndex`] gains `entries`,
+/// document `id` (dsl 0.19.0 §2.1); and [`lute_ir::ProjectIndex`] gains `entries`,
 /// keying a quest or lore document by its authored `id:` when present. Every
 /// new field is skipped when absent, so scene and quest artifacts without
 /// `id:` compile byte-identically apart from the version strings.
@@ -247,7 +248,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// occasions): [`ir::SceneMeta`] gains the optional `beat` (`on`, `target?`,
 /// `when?`, the RESOLVED `priority`, and `once` — `"run"`, `"user"`, or
 /// `"none"`); [`ir::EntryCmd`] gains the optional `on` / `priority`; and
-/// [`index::ProjectIndex`] gains `beats`, every scene and entry beat in
+/// [`lute_ir::ProjectIndex`] gains `beats`, every scene and entry beat in
 /// selection-tiebreak order. Every new field is skipped when absent, so scene
 /// and lore artifacts without beats compile byte-identically apart from the
 /// version strings. `schemas/lute-ir-0.20.schema.json` is renamed to
@@ -395,7 +396,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.37.0";
+pub const LUTE_IR_VERSION: &str = "0.38.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -747,7 +748,7 @@ fn compile_inner(
         gates: seam_gates(&folded, &table),
         terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
         terminal_persists: folded.env.terminal_persists,
-        seasons: folded.env.seasons.iter().map(|(name, decl)| ir::SeasonEntry {
+        seasons: folded.env.seasons.iter().map(|(name, decl)| SeasonEntry {
             name: name.clone(), live: seam_cel(&decl.live, &table),
         }).collect(),
         outside_run: folded.occasions.iter().filter(|(_, d)| d.outside_run)
@@ -762,13 +763,13 @@ fn compile_inner(
 /// dsl 0.27.0 §4: every declared occasion gate, occasion-sorted, `@def`s
 /// expanded exactly as a beat `when` is ([`expand::expand_beat_when`]);
 /// expansion problems are the checker's to report.
-fn seam_gates(folded: &FoldedEnv, defs: &DefTable<'_>) -> Vec<ir::GateEntry> {
+fn seam_gates(folded: &FoldedEnv, defs: &DefTable<'_>) -> Vec<GateEntry> {
     folded
         .occasions
         .iter()
         .filter_map(|(name, decl)| {
             let gate = decl.raised_when.as_deref()?.trim();
-            (!gate.is_empty()).then(|| ir::GateEntry {
+            (!gate.is_empty()).then(|| GateEntry {
                 occasion: name.clone(),
                 raised_when: seam_cel(gate, defs),
             })
@@ -778,7 +779,7 @@ fn seam_gates(folded: &FoldedEnv, defs: &DefTable<'_>) -> Vec<ir::GateEntry> {
 
 /// A seam condition (a gate, `terminal:`) as the IR's `{cel, expr}` pair,
 /// `@def`s expanded — with the author's text beside it when that changed.
-fn seam_cel(raw: &str, defs: &DefTable<'_>) -> ir::CelPair {
+fn seam_cel(raw: &str, defs: &DefTable<'_>) -> CelPair {
     let mut slot = lute_syntax::ast::CelSlot::raw(
         lute_syntax::ast::CelKind::Condition,
         raw.to_string(),
@@ -791,7 +792,7 @@ fn seam_cel(raw: &str, defs: &DefTable<'_>) -> ir::CelPair {
         },
     );
     let _ = expand::expand_beat_when(&mut slot, defs);
-    ir::CelPair::from_slot(&slot)
+    CelPair::from_slot(&slot)
 }
 
 /// The [`SourceMap`] tables keyed by construct id rather than `addr`: every
@@ -932,7 +933,7 @@ fn rel_entries(
                     .iter()
                     .map(|(m, l)| (m.clone(), l.text.clone()))
                     .collect(),
-                label_forms: ir::LabelForms::of(&decl.labels),
+                label_forms: lute_ir::LabelForms::of(&decl.labels),
             },
             KindShape::Open => EntityKindEntry {
                 name: name.clone(),
@@ -1003,14 +1004,14 @@ fn rel_entries(
 /// `Bool` as `"true"`/`"false"`. `Wildcard` never occurs in a seed fact
 /// (D12/`E-RETRACT-WILDCARD-ASSERT` — check-gated) but lowers to `"_"`
 /// rather than panic, matching every other node here's total discipline.
-fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
-    use lute_syntax::datalog::FactTerm;
+fn fact_term_string(t: &lute_manifest::fact::FactTerm) -> String {
+    use lute_manifest::fact::FactTerm;
     match t {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -1063,7 +1064,7 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
                 },
             );
             BodyEntry::Guard {
-                cel: ir::CelPair::from_slot(&slot),
+                cel: CelPair::from_slot(&slot),
             }
         }
         BodyLiteral::Cmp {
@@ -1082,7 +1083,7 @@ fn body_entry(l: &lute_syntax::datalog::BodyLiteral) -> BodyEntry {
         } => BodyEntry::Count {
             atom: atom_entry(atom),
             distinct: distinct.clone(),
-            op: op.as_str(),
+            op: op.as_str().into(),
             n: *n,
         },
     }
@@ -1212,13 +1213,13 @@ fn scene_beat(
         once: beat.once.clone().into(),
         also: beat.also,
         share: beat.share.clone(),
-        target_kind: ir::TargetKind::resolve(
+        target_kind: TargetKind::resolve(
             &beat.on,
             beat.target.as_deref(),
             &folded.occasions,
             &folded.env.rel_vocab.kinds,
         ),
-        for_kind: ir::ForKind::resolve(
+        for_kind: ForKind::resolve(
             &beat.on,
             beat.for_kind.as_ref().map(|(f, _)| f.as_str()),
             beat.target.is_some(),
@@ -1313,9 +1314,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                 // guard, not a real branch — the same string
                 // `artifact_meta` stamps as `SceneMeta.id`.
                 let node = canonical_scene_key(&folded.typed).unwrap_or_default();
+                let span = lute_check::meta::meta_key_span(&doc.meta, "after");
                 out.push(PrereqEdgeEntry {
                     node,
                     edge: PrereqEdge::After(after.to_string()),
+                    formula: lute_check::parse_prereq(after, span).0,
                 });
             }
         }
@@ -1325,6 +1328,7 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
                     out.push(PrereqEdgeEntry {
                         node: quest.id.clone(),
                         edge: PrereqEdge::Follows(follows.to_string()),
+                        formula: None,
                     });
                 }
             }
@@ -1334,10 +1338,11 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
         lute_check::DocKind::Lore => {
             if let Some(doc_id) = folded.typed.id.as_deref() {
                 for beat in &doc.beats {
-                    if let Some((after, _)) = &beat.after {
+                    if let Some((after, span)) = &beat.after {
                         out.push(PrereqEdgeEntry {
                             node: lute_check::bundle_beat_key(doc_id, &beat.id),
                             edge: PrereqEdge::After(after.clone()),
+                            formula: lute_check::parse_prereq(after, *span).0,
                         });
                     }
                 }
@@ -1448,7 +1453,7 @@ fn state_entries(
         // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
         // table carries only what content declares or quests reserve.
         .filter(|(path, _)| {
-            !lute_check::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
+            !lute_manifest::semantics::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
         })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
@@ -1505,7 +1510,7 @@ fn state_entries(
                 label_forms: match &decl.ty {
                     Type::Domain(name) | Type::Entity(name) => kinds
                         .get(name)
-                        .map(|k| ir::LabelForms::of(&k.labels))
+                        .map(|k| lute_ir::LabelForms::of(&k.labels))
                         .unwrap_or_default(),
                     _ => BTreeMap::new(),
                 },
@@ -1691,9 +1696,9 @@ mod tests {
 
     #[test]
     fn lang_and_ir_version_stamps() {
-        // 0.37.0 axis alignment (docs/versioning.md): a breaking minor that
+        // 0.38.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.37.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.38.0");
     }
 
     #[test]
@@ -1702,8 +1707,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.37.0");
-        assert_eq!(v["irVersion"], "0.37.0");
+        assert_eq!(v["lute"], "0.38.0");
+        assert_eq!(v["irVersion"], "0.38.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -1,4 +1,3 @@
-//! `lute` — the headless CLI wrapper around the `check()` core (Phase 5).
 //! The binary (`src/main.rs`) only calls [`run`]; the library exists so the
 //! in-process benchmark (`lute-bench`) can drive the play runner ([`bench`]).
 //!
@@ -40,6 +39,7 @@
 //!   never depends on a live/remote catalog — refresh only canonicalizes and
 //!   re-stamps the already-pinned artifacts, so `refresh` then `load` round-trips.
 
+pub use play::events;
 use std::process::ExitCode;
 
 use clap::Parser;
@@ -59,6 +59,7 @@ macro_rules! outln {
 }
 
 mod beats_cmd;
+mod bundle;
 pub mod bench;
 mod cli;
 mod cmd_catalog;
@@ -387,6 +388,7 @@ pub fn run() -> ExitCode {
             dir,
             script,
             engine,
+            events,
             json,
             no_derive,
             explain,
@@ -397,6 +399,7 @@ pub fn run() -> ExitCode {
             &dir,
             &script,
             engine.as_deref(),
+            events,
             json,
             no_derive,
             &explain,

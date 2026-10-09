@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use lute_manifest::schema::OccasionSelect;
-use lute_trace::exec::session::{
+use lute_runtime::session::{
     atom_problem, entry_flag, is_candidate, project_decisions, resolve_bridges, resolve_fact,
     resolve_state, seed_world, ExecProject, Pick, SeedError, World, WorldSeed, Write, Writes,
 };
@@ -28,7 +28,7 @@ pub(super) enum Action {
         choose: BTreeMap<String, Vec<String>>,
         /// dsl 0.27.0 §3: the raise's payload, typed, by
         /// `occasion.payload.<field>` path.
-        payload: BTreeMap<String, lute_trace::Value>,
+        payload: BTreeMap<String, lute_runtime::Value>,
         /// dsl 0.27.0 §4: the step's `engine:` writes, applied first.
         writes: Option<Writes>,
     },
@@ -58,7 +58,7 @@ pub(super) struct Step {
     pub(super) action: Action,
     /// The step's own `bridges:` (dsl 0.24.0 §5), resolved against the
     /// project's plugin calls — every run of the step gets them afresh.
-    pub(super) bridges: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
     /// dsl 0.27.0 (T3-22): the `include:` segments around the step,
     /// outermost first — one `Arc` per segment, shared by its steps.
     pub(super) segments: Vec<Arc<Scope>>,
@@ -70,7 +70,7 @@ pub(super) struct Scope {
     /// `include: <file>` at `file:line:col`, for messages.
     pub(super) include: String,
     pub(super) choose: BTreeMap<String, Vec<String>>,
-    pub(super) bridges: BTreeMap<String, VecDeque<lute_trace::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
 }
 
 /// Resolve an `engine:` step's / `newRun` seed's writes. A `quest.*` path is
@@ -232,7 +232,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                     plan_occasion(p, &answered, n, occasion, target.as_deref(), pick.as_ref())
                         .map_err(|e| errs.push(e))
                         .ok();
-                let payload = lute_trace::exec::session::typed_payload(p, occasion, payload)
+                let payload = lute_runtime::session::typed_payload(p, occasion, payload)
                     .map_err(|e| errs.push(format!("step {n}: {e}")))
                     .ok();
                 let writes = writes
@@ -968,6 +968,7 @@ pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String
 /// were written ([`in_file_order`]).
 pub(super) fn plan_script(
     project: &ExecProject,
+    needles: &lute_trace::exec::record::NeedleVocab,
     script: &PlayScript,
     script_path: &Path,
     no_derive: bool,
@@ -982,9 +983,12 @@ pub(super) fn plan_script(
         }
     };
     check_expect_names(project, script, &mut errs);
-    check_needles(project, script, &mut errs);
-    check_expect_state_values(project, script, &mut errs);
+    check_needles(needles, script, &mut errs);
     check_expect_facts(project, script, &mut errs);
+    check_expect_state_values(project, script, &mut errs);
+    if let Err(e) = resolve_bridges(project, "top level", &script.surfaces.bridges) {
+        errs.push(e);
+    }
     let world = seed_world(
         project,
         &WorldSeed {
@@ -1016,7 +1020,7 @@ pub(super) fn plan_script(
 /// ([`lute_trace::exec::record::needle_problem`]) — otherwise the needle can
 /// never match, and a `transcriptLacks` holds although the line was said. A
 /// usage error (exit 2) before anything plays, located at the needle.
-fn check_needles(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
+fn check_needles(vocab: &lute_trace::exec::record::NeedleVocab, script: &PlayScript, errs: &mut Vec<String>) {
     let Some(expect) = &script.expect else {
         return;
     };
@@ -1028,7 +1032,7 @@ fn check_needles(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
             let Some(needle) = needle.as_str() else {
                 continue;
             };
-            if let Some(why) = lute_trace::exec::record::needle_problem(needle, &p.needles) {
+            if let Some(why) = lute_trace::exec::record::needle_problem(needle, vocab) {
                 errs.push(top_error(
                     script,
                     &["expect", key],
@@ -1043,9 +1047,10 @@ fn check_needles(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
 /// Every `facts:` / `notFacts:` atom of a step or end-of-play `expect:`
 /// names a fact the project can hold — a declared relation (derived ones
 /// too) at its arity whose closed-domain arguments are members
-/// ([`lute_trace::exec::session::atom_problem`]). A misspelt `notFacts` atom
+/// ([`lute_runtime::session::atom_problem`]). A misspelt `notFacts` atom
 /// would hold vacuously, a `facts` one could only miss: a usage error (exit
 /// 2) with a did-you-mean, located at the atom.
+#[allow(dead_code)]
 fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let problems = |expect: &serde_yaml::Value| -> Vec<(&'static str, usize, String)> {
         let mut out = Vec::new();
@@ -1084,9 +1089,10 @@ fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
 
 /// A step or end-of-play `expect.state` value of a path typed over a closed
 /// domain — `{ domain: K }` / `{ entity: K }`, an enum — is one of its
-/// members ([`lute_trace::exec::session::member_of`]): a typo can never
+/// ([`lute_runtime::session::member_of`]): a typo can never
 /// hold, so it is a usage error (exit 2) with the members and the nearest
 /// one, not a miss after the play ran.
+#[allow(dead_code)]
 fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let domain_of = |path: &str| -> Option<(String, Vec<String>)> {
         if let Some(d) = p.state_domains.get(path) {
@@ -1111,7 +1117,7 @@ fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Ve
             .filter_map(|(path, want)| {
                 let (path, want) = (path.as_str()?, want.as_str()?);
                 let (domain, members) = domain_of(&lute_trace::state_key(path))?;
-                let why = lute_trace::exec::session::member_of(&domain, &members, want).err()?;
+                let why = lute_runtime::session::member_of(&domain, &members, want).err()?;
                 Some((
                     path.to_string(),
                     format!("`expect.state.{path}: {want}` can never hold: {why}"),

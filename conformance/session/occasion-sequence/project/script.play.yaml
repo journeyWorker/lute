@@ -1,0 +1,5 @@
+steps:
+  - occasion: visit
+    expect: { presented: [a, b, c], state: { run.order: 123 } }
+expect:
+  end: complete

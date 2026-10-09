@@ -1,0 +1,3 @@
+state:
+  run.value: { type: int, default: 0 }
+  user.value: { type: int, default: 0 }

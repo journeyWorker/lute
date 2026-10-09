@@ -1344,6 +1344,60 @@ A rule's `cel("...")` guard cannot expand its `@def`/`@def(args)` references —
 
 Spec: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
 
+### E-RUNTIME-BRIDGE-SHAPE
+
+A runtime bridge result omits a field read by the pending bridge call or gives that field a value of the wrong type.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-BUSY
+
+A runtime input is not accepted while another input is suspended, or an answer is supplied without a matching await.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-HALTED
+
+An input was supplied after the runtime state entered a halted lineage.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-INPUT
+
+A runtime seed or input names an unknown project item or contains a value that cannot resolve to its declared type.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-IR-VERSION
+
+A runtime bundle declares an execution IR major or minor version the runtime does not support.
+
+Spec: [dsl 0.38.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-OPTION
+
+A runtime choice names an option absent from the pending menu or an option whose verdict is not open.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-REQUEST
+
+A runtime choice or bridge result carries a request id different from the pending await.
+
+Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-SNAPSHOT-PROJECT
+
+A runtime snapshot belongs to a different project bundle.
+
+Spec: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-SNAPSHOT-VERSION
+
+A runtime snapshot major or minor version is incompatible.
+
+Spec: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
 ### E-SEASON-DECL
 
 A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead.

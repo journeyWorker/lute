@@ -1,0 +1,11 @@
+---
+kind: scene
+id: c
+luteVersion: "0.38.0"
+title: c
+on: visit
+priority: 0
+---
+## C
+::set{run.order = run.order * 10 + 3}
+@narrator{code="0010"}: Beat c.

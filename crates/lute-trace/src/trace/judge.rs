@@ -1,4 +1,5 @@
 use super::*;
+use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 /// The traced document as a one-document [`ExecProject`] — what the
 /// session's eligibility rule judges a presented beat over. `None` only if
 /// the artifact does not assemble (it always does once compiled).
@@ -7,15 +8,18 @@ pub(super) fn judging_project(
     artifact: lute_compile::ExecutionIr,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
 ) -> Option<ExecProject> {
-    let docs = BTreeMap::from([(uri.to_string(), artifact)]);
-    ExecProject::assemble(
-        &docs,
-        occasions.clone(),
-        BTreeSet::new(),
-        Default::default(),
-        BTreeMap::new(),
-    )
-    .ok()
+    let inputs = [lute_compile::index::IndexInput {
+        path: uri.to_string(),
+        artifact_path: format!("{uri}.json"),
+        artifact: &artifact,
+    }];
+    let unions = lute_compile::index::IndexUnions {
+        occasions: occasions.iter().map(|(name, decl)| (name.clone(), decl.into())).collect(),
+        ..Default::default()
+    };
+    let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
+    let artifacts = BTreeMap::from([(format!("{uri}.json"), serde_json::to_value(artifact).ok()?)]);
+    ExecProject::from_index(index, artifacts).ok()
 }
 
 /// Judge `row` by the session's ONE eligibility rule
@@ -28,7 +32,7 @@ pub(super) fn judge(
     p: &ExecProject,
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
-    row: &lute_compile::index::IndexBeat,
+    row: &IndexBeat,
 ) -> (exec::session::Candidate, SessionWorld) {
     let mut w = SessionWorld {
         visited: mocks.visited.iter().cloned().collect(),
@@ -49,15 +53,17 @@ pub(super) fn judge(
         .artifacts
         .get(&row.document)
         .and_then(|d| exec::session::beat_prereq(d, &row.id));
-    for atom in prereq.iter().flat_map(lute_check::prereq::atoms) {
-        if let lute_check::prereq::Atom::Completed(q) | lute_check::prereq::Atom::Active(q) = atom {
-            if let crate::eval::Read::Value(Value::Str(s)) = m.read(&format!("quest.{q}.state")) {
+    for atom in prereq.iter().flat_map(lute_manifest::semantics::prereq::atoms) {
+        if let lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) = atom {
+            if let lute_runtime::eval::Read::Value(Value::Str(s)) =
+                m.read(&format!("quest.{q}.state"))
+            {
                 w.quests.insert(q, s);
             }
         }
     }
-    let member = match m.read(lute_check::beats::OCCASION_TARGET) {
-        crate::eval::Read::Value(Value::Str(s)) => Some(s),
+    let member = match m.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
+        lute_runtime::eval::Read::Value(Value::Str(s)) => Some(s),
         _ => None,
     };
     let cand = exec::session::judge_beat(p, &w, m, row, member.as_deref(), member.as_deref());
@@ -84,7 +90,7 @@ pub(super) fn premise_text(
     kind: BeatKind,
     when: Option<&str>,
 ) -> String {
-    use lute_check::prereq::Atom;
+    use lute_manifest::semantics::prereq::Atom;
     match prem {
         Premise::When { raw } => when_text(m, mocks, raw, when.unwrap_or(raw.as_str())),
         Premise::After {
@@ -109,13 +115,13 @@ pub(super) fn premise_text(
                 BeatKind::Bundle => format!("its `after=\"{raw}\"` is false{hint}"),
                 BeatKind::Scene | BeatKind::Entry if *chapters => format!(
                     "its `after: {raw}`{} is false{hint}",
-                    lute_check::chapters::PROVENANCE
+                    lute_manifest::semantics::chapters::PROVENANCE
                 ),
                 BeatKind::Scene | BeatKind::Entry => format!("its `after: {raw}` is false{hint}"),
             }
         }
         Premise::Spent {
-            once: Some(lute_compile::BeatOnce::User),
+            once: Some(BeatOnce::User),
             ..
         } if kind == BeatKind::Scene => {
             "it is `once: user` and the mocked `visited:` already lists it".to_string()
@@ -157,7 +163,9 @@ pub(super) fn when_text(
         let bare = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
         mocks.facts.iter().any(|s| bare(s) == bare(f))
     };
-    let conjuncts = m.false_conjuncts(raw);
+    let conjuncts = lowered(raw)
+        .map(|cond| m.false_conjuncts(&cond))
+        .unwrap_or_default();
     let authored = authored.trim();
     // What one false conjunct read, ` (…)`, or nothing.
     let found = |reads: &[GuardRead]| {
@@ -175,7 +183,7 @@ pub(super) fn when_text(
     };
     match conjuncts.as_slice() {
         [] => format!("its `when` ({authored}) is false"),
-        [(c, reads)] if c == lute_check::templates::unparen(raw) => {
+        [(c, reads)] if c == lute_manifest::semantics::templates::unparen(raw) => {
             format!("its `when` ({authored}) is false{}", found(reads))
         }
         _ => {

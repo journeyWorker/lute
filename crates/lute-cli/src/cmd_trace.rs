@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use lute_check::check;
-use lute_trace::{merge, parse_mock_yaml, MockSet, TraceExit, TraceReport};
+use lute_runtime::MockSet;
+use lute_trace::{merge, parse_mock_yaml, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use lute_load::{build_input, BuiltInput};
@@ -304,7 +305,7 @@ pub(crate) fn run_trace(
                 // anything else came from the `check` gate itself (§4.3:
                 // "MUST refuse a document with check errors ... run `check`
                 // first").
-                let gate = lute_check::gates::E_OCCASION_GATE;
+                let gate = lute_manifest::semantics::gates::E_OCCASION_GATE;
                 if exclusive {
                     println!(
                         "trace refused: {} — exclusive relations hold together",

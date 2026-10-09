@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.37.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.38.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.
@@ -71,7 +71,9 @@ struct (`ir.rs`):
   per `## ` section, in document order (see
   [Addressing](#addressing));
 - an advisory **`prereqEdges`** graph (this document's raw `after` / quest `follows` formulas;
-  connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
+  an `after` row also carries its parsed `formula` — `{"visited":"id"}`,
+  `{"completed":"q"}`, `{"active":"q"}`, `{"and":[l,r]}`, `{"or":[l,r]}` — so an
+  engine never parses `after` text; connectivity T13 — see [quest-lifecycle.md](./quest-lifecycle.md) for how
   cross-document reachability is out of scope for a single artifact).
 
 A project's engine **unions** the per-document `relations` / `rules` /
@@ -123,7 +125,8 @@ gate.
 
 Every CEL slot is `{ "cel": "<standard CEL>", "expr": <exprNode>,
 "authored"?: "<source when expanded>" }`; `expr` is present on every slot.
-`cel` is authoritative for evaluation, while `expr` is a portable walker view.
+The R1 runtime evaluates `expr`, including host-function calls; it never parses
+`cel`. The CEL text remains available to other execution-IR consumers.
 The IR also carries `celEnv`, declaring exactly the roots and host functions
 used by its expressions.
 
@@ -591,16 +594,16 @@ A minimal engine is a program counter over `commands`, dispatching on `family`
 and then `kind`. The kinds below are exactly the `Command` variants (`ir.rs`);
 an unknown `kind` must halt with an error.
 
+This loop describes artifact dispatch. The resumable runtime hands resolved
+records to a host as events rather than rendering or calling services itself;
+see the [event contract](./event-contract.md) for the step and await boundary.
+
 ```ts
 type Position = string;
 
-// Every CEL slot carries its verbatim source under its own key — `option.when`,
-// `arm.test`, `set.value` — and the lowered portable `expr` AST (IR A7) ONLY
-// when that CEL is inside the closed §8.4 profile. A relational fact query
-// (`holds()`/`count()`) or a `visited()` read is outside it and carries CEL
-// text alone, so this two-way read is mandatory, not an optimisation.
-const evalSlot = (cel, expr, state, facts) =>
-  expr !== undefined ? evalExpr(expr, state) : evalCel(cel, state, facts);
+// Every CEL slot carries `expr`, including relational queries and visited().
+// Evaluate the tree with live state, facts and the declared host functions.
+const evalSlot = (expr, state, facts) => evalExpr(expr, state, facts);
 
 function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
   assertExactMinorCompatible(artifact.irVersion); // pre-1.0 exact-minor gate
@@ -639,7 +642,7 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
 
       case "state":
         switch (cmd.kind) {
-          case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.value, cmd.expr, state, facts)); break;
+          case "set":     writeState(state, cmd.path, cmd.op, evalSlot(cmd.expr, state, facts)); break;
           case "assert":  facts.assert(cmd.relation, cmd.args); break;   // positive delta
           case "retract": facts.retract(cmd.relation, cmd.args); break;  // negative delta (args may be "_")
           default: throw new UnknownCommandKind(cmd.kind);
@@ -650,13 +653,13 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
         switch (cmd.kind) {
           case "choice":
           case "hub": {
-            // per option: evalSlot(o.when, o.expr, …); record the pick under cmd.selectionKey
+            // per option: evalSlot(o.expr, …); record the pick under cmd.selectionKey
             const opt = pickOption(cmd, state);
             next = opt ? opt.target : cmd.converge;
             break;
           }
           case "match": {
-            const arm = cmd.arms.find(a => truthy(evalSlot(a.test, a.expr, state, facts)));
+            const arm = cmd.arms.find(a => truthy(evalSlot(a.expr, state, facts)));
             next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
             break;
           }
@@ -690,7 +693,7 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
   }
 }
 ```
-`evalSlot` evaluates the slot's `cel` with the declared `celEnv`; an engine
-may additionally use the typed `expr` walker for inspection or evaluation.
+`evalSlot` evaluates the slot's `expr` with the declared `celEnv`, including
+the host functions; every slot has a tree, so no CEL-text fallback is needed.
 Facts remain the Datalog store and bridge commands remain host operations.
 The execution IR is inert data; behavior begins in this dispatcher.

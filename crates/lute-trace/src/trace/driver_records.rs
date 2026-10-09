@@ -161,7 +161,10 @@ impl<'a> TraceDriver<'a> {
                 let delivery = span
                     .and_then(|s| self.cx.ast.deliveries.get(&key(&s)).cloned())
                     .flatten();
-                self.said.push(exec::said_line(&rec, self.cmds.get(&addr)));
+                self.said.push(crate::exec::record::said_line(
+                    &rec,
+                    self.cmds.get(&addr),
+                ));
                 self.steps.push(Step::Line {
                     speaker: str_of("speaker"),
                     text: str_of("text"),

@@ -1,6 +1,6 @@
 # Lute current-rules handbook
 
-This is the normative, current-rules view of Lute as of 0.37.0. It includes
+This is the normative, current-rules view of Lute as of 0.38.0. It includes
 the phase-2 domain-module and semantic-negotiation contract; the 0.32
 execution-IR rules remain the base contract and are linked where relevant.
 The 0.34 project-model, evidence, impact, and constraints documentation remains

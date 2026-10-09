@@ -12,9 +12,10 @@
 use cel_parser::ast::{operators, Expr};
 use cel_parser::reference::Val;
 
+use lute_manifest::text::{bracket_spelling, render_path};
+
 pub use lute_syntax::path::{
-    bracket_spelling, bracket_spelling_of, glued_message, parse_path as parse_path_text,
-    read_index, read_quoted, render_path, scan_path,
+    glued_message, parse_path as parse_path_text, read_index, scan_path,
 };
 
 /// The segments of a static path expression: an `Ident`, then `.field`
@@ -91,7 +92,7 @@ impl GluedPath {
 /// (`run.hp-1`, `run.a-scene.b` are subtractions); a segment after a `.`
 /// that opens with a digit is always a glued name.
 pub fn glued_paths(raw: &str, is_root: impl Fn(&str) -> bool) -> Vec<GluedPath> {
-    let mask = crate::cel_string_mask(raw);
+    let mask = lute_manifest::text::cel_string_mask(raw);
     let b = raw.as_bytes();
     let continues =
         |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'@' | b'$' | b'-');
@@ -206,21 +207,6 @@ mod tests {
         }
         for raw in ["run.visits[run.k]", "run.xs[0]", "f(x).y", "'a'"] {
             assert_eq!(static_path(&parse(raw)), None, "{raw}");
-        }
-    }
-
-    #[test]
-    fn bracket_spelling_quotes_only_non_identifiers() {
-        for (path, want) in [
-            (
-                "quest.zero-coke-001.state",
-                "quest[\"zero-coke-001\"].state",
-            ),
-            ("run.visits.labB2", "run.visits.labB2"),
-            ("run.visits.001", "run.visits[\"001\"]"),
-            ("run._x", "run._x"),
-        ] {
-            assert_eq!(bracket_spelling_of(path), want);
         }
     }
 

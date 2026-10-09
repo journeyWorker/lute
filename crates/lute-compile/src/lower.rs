@@ -11,6 +11,7 @@ use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
 use crate::ir::*;
+use lute_ir::CelPair;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 
 /// Bare-ident delivery flag (dsl 0.2.2 §D7: `mono`/`os`/`vo`, `AttrValue::
@@ -124,7 +125,7 @@ pub fn lower_set(set: &Set) -> Command {
         position: String::new(),
         path: set.path.clone(),
         op: set.op.clone(),
-        value: crate::ir::CelPair::from_slot(&set.expr),
+        value: CelPair::from_slot(&set.expr),
         stamp: Stamp::default(),
     })
 }
@@ -134,19 +135,19 @@ pub fn lower_set(set: &Set) -> Command {
 /// never emitted from an `::assert`, checker-enforced `E-RETRACT-WILDCARD-
 /// ASSERT`). dsl 0.28.0 §3: `occasion.target` as written — the engine binds
 /// the member the beat runs for when it applies the write.
-fn fact_term_string(t: &lute_syntax::datalog::FactTerm) -> String {
-    use lute_syntax::datalog::FactTerm;
+fn fact_term_string(t: &lute_manifest::fact::FactTerm) -> String {
+    use lute_manifest::fact::FactTerm;
     match t {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
 /// A fact pattern as authored text: `rel(a, b)` (`lute trace`'s form).
-pub(crate) fn fact_text(pattern: &lute_syntax::datalog::FactPattern) -> String {
+pub(crate) fn fact_text(pattern: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pattern
         .args
         .iter()
@@ -426,12 +427,12 @@ pub fn lower_directive(
             let facts = decl
                 .map(|d| lute_check::directive_facts::call_facts(d, dir))
                 .unwrap_or_default();
-            let records = |ps: &[lute_syntax::datalog::FactPattern]| -> Vec<FactRecord> {
+            let records = |ps: &[lute_manifest::fact::FactPattern]| -> Vec<FactRecord> {
                 ps.iter()
                     .filter(|p| {
                         !p.args
                             .iter()
-                            .any(|a| matches!(a.term, lute_syntax::datalog::FactTerm::Param(_)))
+                            .any(|a| matches!(a.term, lute_manifest::fact::FactTerm::Param(_)))
                     })
                     .map(|p| FactRecord {
                         relation: p.relation.clone(),
@@ -469,7 +470,7 @@ pub(crate) fn authored_directive(dir: &Directive, decl: Option<&DirectiveDecl>) 
         .filter(|a| !a.key.starts_with("__"))
         .map(|a| match &a.value {
             AttrValue::Str(s)
-                if s == lute_check::beats::OCCASION_TARGET
+                if s == lute_manifest::semantics::beats::OCCASION_TARGET
                     || (decl.is_some() && !attr_json(a, decl).is_string()) =>
             {
                 format!("{}={s}", a.key)

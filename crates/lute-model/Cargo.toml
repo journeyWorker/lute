@@ -6,6 +6,7 @@ rust-version.workspace = true
 
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
+lute-ir = { path = "../lute-ir" }
 lute-manifest = { path = "../lute-manifest" }
 lute-check = { path = "../lute-check" }
 lute-compile = { path = "../lute-compile" }

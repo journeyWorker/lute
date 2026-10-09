@@ -24,9 +24,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use lute_compile::locale::LocaleBundle;
 
 use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
-use lute_compile::locale::LocaleBundle;
 use lute_compile::ExecutionIr;
 
 use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
@@ -289,7 +289,8 @@ pub fn run(
         );
         return ExitCode::FAILURE;
     }
-    let index = match build_index(lute_compile::LUTE_IR_VERSION, &inputs) {
+    let unions = crate::bundle::collect_index_unions(&model);
+    let index = match build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions) {
         Ok(index) => index,
         Err(errors) => {
             for e in &errors {

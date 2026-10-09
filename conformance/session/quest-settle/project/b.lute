@@ -1,0 +1,12 @@
+---
+kind: quest
+id: later
+luteVersion: "0.38.0"
+title: Later
+---
+<quest id="later" title="Later" tier="run" start="run.ready">
+  <objective id="ready" title="Ready" done="run.ready"/>
+  <on event="questComplete">
+    ::set{run.order = run.order * 10 + 2}
+  </on>
+</quest>

@@ -49,7 +49,7 @@
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
 //!   the SAME `beats` rows (and tiebreak order), rules, seed facts and
 //!   relation tiers `compile --all` writes to `project.index.json`.
-//! - Execution: [`lute_trace::exec::Machine`] — the walker `lute run` uses
+//! - Execution: [`lute_runtime::machine::Machine`] — the walker `lute run` uses
 //!   — driven by [`PlayDriver`], runs every scene beat, every entry beat
 //!   (its `--entry` path: first-read effects, `entry.<id>.read`), every
 //!   quest-lifecycle advance ([`Machine::advance_quests`]) and every `when`
@@ -72,16 +72,20 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use lute_trace::exec::session::{
+use serde_json::{json, Value as Json};
+use lute_runtime::session::{
     domain_members, entry_flag, is_candidate, json_to_value, kind_label, resolve_fact,
     resolve_state, value_to_json, ExecProject, PlayHalt, Played, Presented, Session,
     SessionEvalObserver, StepBody, Verdict, World,
 };
-use serde_json::{json, Value as Json};
+use lute_runtime::BridgeQueues;
 
 use crate::play_expect::ExpectMiss;
 
 pub(crate) mod calendar;
+mod driver;
+pub mod events;
+mod producers;
 mod human;
 mod json;
 mod outcome;
@@ -90,7 +94,7 @@ mod project;
 mod provenance;
 mod run;
 mod script;
-
+use driver::PlayDriverState;
 use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
@@ -203,6 +207,19 @@ struct Loaded {
     plan: Vec<Step>,
     world: World,
 }
+fn driver_for(
+    project: &ExecProject,
+    script: &PlayScript,
+    observer: Option<SessionEvalObserver>,
+) -> PlayDriverState {
+    let bridges = BridgeQueues {
+        step: Default::default(),
+        top: BridgeQueues::queue(&script.surfaces.bridges),
+    };
+    PlayDriverState::for_project(project, script.surfaces.choose.clone(), bridges)
+        .with_observer(observer)
+}
+
 
 /// Load a play. `Err((code, message))`: exit 2 with the usage error, or the
 /// compile gate's exit code (its diagnostics already printed, `message`
@@ -214,8 +231,9 @@ fn load(
     matrix: &crate::EngineMatrix,
 ) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let project = compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
-    let (plan, world) = plan_script(&project, &script, script_path, no_derive)?;
+    let (project, needles) =
+        compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
+    let (plan, world) = plan_script(&project, &needles, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
         project,
@@ -239,7 +257,7 @@ fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
 
 fn install_condition_dump(
     project: &ExecProject,
-    world: &mut World,
+    driver: &mut PlayDriverState,
     path: &Path,
 ) -> Result<(), String> {
     let file = std::fs::File::create(path)
@@ -273,7 +291,7 @@ fn install_condition_dump(
         use std::io::Write;
         writeln!(f).map_err(|e| format!("cannot write condition dump header: {e}"))?;
     }
-    let defaults: std::collections::BTreeMap<String, lute_trace::Value> = project
+    let defaults: std::collections::BTreeMap<String, lute_runtime::Value> = project
         .state_table
         .iter()
         .filter_map(|(path, entry)| {
@@ -291,27 +309,27 @@ fn install_condition_dump(
         // Only paths `activation_json_paths` can emit: cloning the whole state
         // and every default per evaluation dominated large dumps.
         let wanted = |path: &str| crate::runner::path_wanted(&paths, path);
-        let mut dump_state: std::collections::BTreeMap<String, lute_trace::Value> = snapshot
+        let mut dump_state: std::collections::BTreeMap<String, lute_runtime::Value> = snapshot
             .state
             .iter()
             .filter(|(path, _)| wanted(path))
             .map(|(path, value)| (path.clone(), value.clone()))
             .collect();
         for (path, read) in snapshot.reads {
-            if let lute_trace::Read::Value(value) = read {
+            if let lute_runtime::Read::Value(value) = read {
                 dump_state.insert(path.clone(), value.clone());
             }
         }
         for (id, status) in snapshot.quest_status {
             let path = format!("quest.{id}.state");
             if wanted(&path) {
-                dump_state.insert(path, lute_trace::Value::Str(status.clone()));
+                dump_state.insert(path, lute_runtime::Value::Str(status.clone()));
             }
         }
         if let Some(target) = snapshot.occasion_target {
             dump_state.insert(
                 "occasion.target".to_string(),
-                lute_trace::Value::Str(target.to_string()),
+                lute_runtime::Value::Str(target.to_string()),
             );
         }
         for (path, default) in &defaults {
@@ -336,8 +354,28 @@ fn install_condition_dump(
             let _ = f.write_all(&bytes);
         }
     });
-    world.eval_observer = Some(observer);
+    driver.set_observer(Some(observer));
     Ok(())
+}
+
+/// `lute play --events` (spec 0.38.0 §10.2): the script through the public
+/// runtime, as JSON Lines on stdout.
+fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode {
+    let run = match events::script_run(dir, script_path, no_derive) {
+        Ok(run) => run,
+        Err(e) => {
+            eprintln!("lute play: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let (out, code, message) = events::run_events(&run);
+    if crate::write_stdout(&out).is_err() {
+        return ExitCode::from(2);
+    }
+    if let Some(message) = message {
+        eprintln!("lute play: {message}");
+    }
+    ExitCode::from(code)
 }
 
 /// See [`crate::Command::Play`].
@@ -345,6 +383,7 @@ pub fn run_play(
     dir: &Path,
     script_path: &Path,
     engine: Option<&Path>,
+    events: bool,
     json: bool,
     no_derive: bool,
     explain: &[String],
@@ -352,6 +391,16 @@ pub fn run_play(
     quiet: bool,
     dump_conditions: Option<&Path>,
 ) -> ExitCode {
+    if events {
+        if json || ir || !explain.is_empty() || dump_conditions.is_some() {
+            eprintln!(
+                "lute play: --events prints the runtime stream; it cannot be combined with \
+                 --json, --ir, --explain or --dump-conditions"
+            );
+            return ExitCode::from(2);
+        }
+        return run_play_events(dir, script_path, no_derive);
+    }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
         Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); }
@@ -360,7 +409,7 @@ pub fn run_play(
         script,
         project,
         plan,
-        mut world,
+        world,
     } = match load(dir, script_path, no_derive, &matrix) {
         Ok(l) => l,
         Err((code, msg)) => {
@@ -370,8 +419,9 @@ pub fn run_play(
             return code;
         }
     };
+    let mut driver = driver_for(&project, &script, None);
     if let Some(path) = dump_conditions {
-        if let Err(msg) = install_condition_dump(&project, &mut world, path) {
+        if let Err(msg) = install_condition_dump(&project, &mut driver, path) {
             eprintln!("lute play: {msg}");
             return ExitCode::from(2);
         }
@@ -381,14 +431,14 @@ pub fn run_play(
     } else {
         world.facts.clone()
     };
-    let play = execute(&script, &plan, Session::resume(&project, world));
+    let play = execute(&script, &plan, Session::resume(&project, world, &mut driver));
     // Expectations judge the presented content (`said`); `--ir` changes
     // only what is printed.
     let explained = if explain.is_empty() {
         None
     } else {
         let w = &play.world;
-        let kinds = lute_trace::datalog::closed_kinds(&project.kinds);
+        let kinds = lute_runtime::datalog::closed_kinds(&project.kinds);
         let origins = fact_origins(&play, &initial_facts);
         match crate::explain::render(
             &project.rules,
@@ -490,7 +540,7 @@ pub(crate) struct PlayTestRun {
 /// A project compiled once for every play of one `lute test` run (T2-1):
 /// `Err` is why no play can run over it — the usage error, or that it does
 /// not compile (the compile gate's diagnostics are already printed).
-pub(crate) struct PlayProject(Result<ExecProject, String>);
+pub(crate) struct PlayProject(Result<(ExecProject, lute_trace::exec::record::NeedleVocab), String>);
 
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
@@ -526,9 +576,11 @@ pub(crate) fn run_play_for_test(
 ) -> Result<PlayTestRun, String> {
     let script_path = script;
     let script = load_script(script_path).map_err(|(_, msg)| msg)?;
-    let p = project.0.as_ref().map_err(String::clone)?;
-    let (plan, world) = plan_script(p, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
-    let play = execute(&script, &plan, Session::resume(p, world));
+    let (p, needles) = project.0.as_ref().map_err(String::clone)?;
+    let (plan, world) =
+        plan_script(p, needles, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
+    let mut driver = driver_for(p, &script, None);
+    let play = execute(&script, &plan, Session::resume(p, world, &mut driver));
     let outcome = play_outcome(&p, &play);
     let misses = judge(&script, &outcome);
     // A presented beat — an `occasion:` step's, or one the occasion an
@@ -615,6 +667,8 @@ pub(crate) fn run_play_for_test(
     })
 }
 
+
+
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
     fn walk(value: &Json, out: &mut BTreeSet<String>) {
         match value {
@@ -663,6 +717,7 @@ pub(crate) struct PlayedBeat {
 #[cfg(test)]
 pub(crate) fn presentations_for_diff(
     project: &ExecProject,
+    needles: &lute_trace::exec::record::NeedleVocab,
     script_path: &Path,
 ) -> Result<Vec<PlayedBeat>, String> {
     let text = std::fs::read_to_string(script_path)
@@ -672,8 +727,9 @@ pub(crate) fn presentations_for_diff(
         return Ok(Vec::new());
     }
     let (plan, world) =
-        plan_script(project, &script, script_path, false).map_err(|(_, msg)| msg)?;
-    let play = execute(&script, &plan, Session::resume(project, world));
+        plan_script(project, needles, &script, script_path, false).map_err(|(_, msg)| msg)?;
+    let mut driver = driver_for(project, &script, None);
+    let play = execute(&script, &plan, Session::resume(project, world, &mut driver));
     let halt = play.outcome.as_ref().err().map(PlayHalt::exit_label);
     let mut out: Vec<PlayedBeat> = Vec::new();
     let steps = play.steps.len();

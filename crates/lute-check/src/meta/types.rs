@@ -124,7 +124,7 @@ impl StateSchema {
 /// (checked as for `::assert` — no `_` wildcard, decision D12).
 #[derive(Clone, Debug)]
 pub struct FactDecl {
-    pub fact: lute_syntax::datalog::FactPattern,
+    pub fact: lute_manifest::fact::FactPattern,
     pub raw: String,
     pub span: Span,
 }
@@ -260,7 +260,7 @@ pub struct TypedMeta {
     /// `lute_manifest::relations::parse_relations`.
     pub rel_relations: lute_manifest::relations::ParsedRelations,
     /// Project-authored `facts:` seeds (0.3.0 draft §4), each string parsed
-    /// via `lute_syntax::datalog::parse_fact`. A malformed entry is diagnosed
+    /// via `lute_manifest::fact::parse_fact`. A malformed entry is diagnosed
     /// here at lift (`E-DATALOG-PARSE`/`E-DATALOG-FUNCTION`) and simply
     /// omitted from this list.
     pub rel_facts: Vec<FactDecl>,

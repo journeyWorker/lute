@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: save-collision
-luteVersion: "0.37.0"
+luteVersion: "0.38.0"
 ---
 
 <quest id="newQuest" tier="run" title="Migrated quest" start="true">

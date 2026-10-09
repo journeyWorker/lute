@@ -64,7 +64,8 @@ pub(super) fn start_world(
             .collect::<Vec<_>>()
             .join("\n")
     })?;
-    let play = execute(save, &plan, Session::resume(p, w));
+    let mut driver = super::super::driver_for(p, save, None);
+    let play = execute(save, &plan, Session::resume(p, w, &mut driver));
     match play.outcome {
         Ok(_) => Ok((play.world, origin)),
         Err(h) => Err(at(format!(
@@ -77,7 +78,10 @@ pub(super) fn start_world(
 /// `--where`: whether `cel` holds over the cell's world. Unknown is an
 /// error — a cell is never dropped (or kept) on a guess.
 pub(super) fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
+    let Some(cond) = lute_trace::lowered(cel) else {
+        return Err(describe_atoms(&[]));
+    };
     let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
-    eval.eval_guard(cel).map_err(|atoms| describe_atoms(&atoms))
+    eval.eval_guard(&cond).map_err(|atoms| describe_atoms(&atoms))
 }
 

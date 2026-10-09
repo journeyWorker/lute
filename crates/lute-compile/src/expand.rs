@@ -13,7 +13,8 @@ use lute_check::meta::StateSchema;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, Node};
 
-use crate::ir::{CelPair, Command, Placeholder};
+use crate::ir::{CelPairExt, Command, Placeholder};
+use lute_ir::CelPair;
 
 /// Expand every CEL slot in the document in place. Returns diagnostics for
 /// expander failures (`E-COMPILE-EXPAND`: cycle / unknown def / arity — the
@@ -508,7 +509,7 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
         let Some(kind) = kind else { return };
         for ph in phs {
             if let Placeholder::Path { path, format, .. } = ph {
-                if path == lute_check::beats::OCCASION_TARGET {
+                if path == lute_manifest::semantics::beats::OCCASION_TARGET {
                     *ph = Placeholder::OccasionTarget {
                         entity_kind: kind.clone(),
                         format: format.take(),

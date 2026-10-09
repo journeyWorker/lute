@@ -1,0 +1,7 @@
+steps:
+  - occasion: chapter
+    bridges: { check: [{ passed: true }] }
+    expect: { winner: game }
+expect:
+  end: complete
+  transcriptContains: ["Persuasion succeeded."]

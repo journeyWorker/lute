@@ -7,8 +7,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use lute_trace::exec::session::{Pick, SaveSeed, QUEST_STATES};
-use lute_trace::MockSet;
+use lute_runtime::session::{Pick, SaveSeed, QUEST_STATES};
+use lute_runtime::BridgeAnswer;
+use lute_trace::mock::MockSet;
 
 /// The complete legal top-level key set of a play script.
 pub(crate) const SCRIPT_KEYS: &[&str] = &[
@@ -154,7 +155,7 @@ pub(super) struct ScriptStep {
     pub(super) action: StepAction,
     /// `bridges:` (dsl 0.24.0 §5): answers for the plugin calls this step
     /// makes, consumed before the top-level ones.
-    pub(super) bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, Vec<BridgeAnswer>>,
     /// Where the step was written (round-5 T3-13).
     pub(super) at: StepSource,
     /// dsl 0.27.0 (T3-22): the `include:` segments the step was spliced in
@@ -270,6 +271,7 @@ impl StepSource {
 
     /// `msg` located at the value of the key `keys` names inside the step
     /// (else at the key, as [`Self::locate_keys`]).
+    #[allow(dead_code)]
     pub(super) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
         use lute_trace::YamlStep::{Item, Key, Value};
         let mut path = Vec::with_capacity(keys.len() + 3);
@@ -301,7 +303,7 @@ pub(super) struct Segment {
     /// usage errors are located there.
     pub(super) at: StepSource,
     pub(super) choose: BTreeMap<String, Vec<String>>,
-    pub(super) bridges: BTreeMap<String, Vec<lute_trace::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, Vec<BridgeAnswer>>,
 }
 
 /// Where a play script was written: its top-level keys (`choose:`, …) are
@@ -350,6 +352,7 @@ impl ScriptSource {
 
     /// `file:line:col` of the value of the top-level key `keys` names, else
     /// [`Self::at`] of the key.
+    #[allow(dead_code)]
     pub(super) fn at_value(&self, keys: &[&str]) -> String {
         use lute_trace::YamlStep::{Key, Value};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();

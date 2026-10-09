@@ -49,14 +49,14 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::process::ExitCode;
 
-use lute_compile::index::IndexBeat;
+use lute_ir::IndexBeat;
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::OccasionSelect;
-use lute_trace::datalog::Fact;
-use lute_trace::Value;
+use lute_runtime::datalog::Fact;
+use lute_runtime::{BridgeQueues, Value};
 use serde_json::{json, Value as Json};
 
-use lute_trace::exec::session::{
+use lute_runtime::session::{
     advance_quests, clock_at, deciding_unknown, describe_atoms, eligible_at, presented,
     quest_state_id, refresh_clock, render_fact, seed_quest, seed_world, unknown_id, Candidate,
     Session, WorldSeed, QUEST_STATES,
@@ -209,8 +209,8 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     };
     let save = match args.script {
         None => PlayScript {
-            surfaces: lute_trace::MockSet::default(),
-            save: lute_trace::exec::session::SaveSeed::default(),
+            surfaces: lute_runtime::MockSet::default(),
+            save: lute_runtime::session::SaveSeed::default(),
             steps: Vec::new(),
             source: super::script::ScriptSource::default(),
             step_expects: Vec::new(),
@@ -252,7 +252,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         super::project::CALENDAR,
         &crate::EngineMatrix::reference(),
     ) {
-        Ok(p) => p,
+        Ok((p, _)) => p,
         Err(code) => return code,
     };
     let mut resolved = Vec::with_capacity(args.axes.len());
@@ -428,7 +428,12 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                 _ => at.push((axis.path.clone(), text.clone(), value_to_json(value))),
             }
         }
-        if let Some(h) = advance_quests(&p, &mut w).1 {
+        let mut eval_driver = super::driver::PlayDriverState::for_project(
+            &p,
+            BTreeMap::new(),
+            BridgeQueues::default(),
+        );
+        if let Some(h) = advance_quests(&p, &mut w, &mut eval_driver).1 {
             notes.push(format!("quest settle halted — {}", h.message()));
         }
         for (axis, &i) in resolved.iter().zip(&picks) {
@@ -485,14 +490,19 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                     // when the game is over by then.
                     let ending = rule.rule.ending(clock, here).then(|| {
                         let mut ended = w.clone();
-                        lute_trace::clock::set_ended(clock, &mut ended.state, true);
-                        advance_quests(&p, &mut ended);
+                        lute_runtime::clock::set_ended(clock, &mut ended.state, true);
+                        let mut eval_driver = super::driver::PlayDriverState::for_project(
+                            &p,
+                            BTreeMap::new(),
+                            BridgeQueues::default(),
+                        );
+                        advance_quests(&p, &mut ended, &mut eval_driver);
                         ended
                     });
                     let judged = ending.as_ref().unwrap_or(&w);
                     let over = ending.as_ref().and_then(|e| {
-                        match lute_trace::exec::seam::closed(&p, e, &col.occasion, None) {
-                            Some(lute_trace::exec::seam::Closed::Terminal(t)) => Some(t),
+                        match lute_runtime::seam::closed(&p, e, &col.occasion, None, None) {
+                            Some(lute_runtime::seam::Closed::Terminal(t)) => Some(t),
                             _ => None,
                         }
                     });

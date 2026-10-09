@@ -1,0 +1,4 @@
+state:
+  run.trigger: { type: bool, default: false, owner: engine }
+  run.ready: { type: bool, default: false }
+  run.order: { type: int, default: 0 }

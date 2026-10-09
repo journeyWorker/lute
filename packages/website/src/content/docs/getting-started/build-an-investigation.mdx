@@ -113,7 +113,7 @@ Create `scenes/crime-scene.lute`:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.37.0"
+luteVersion: "0.38.0"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -160,7 +160,7 @@ Create `scenes/interview.lute`:
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.37.0"
+luteVersion: "0.38.0"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -226,7 +226,7 @@ Create `quests/identify-killer.lute`:
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.37.0"
+luteVersion: "0.38.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -259,7 +259,7 @@ Create `scenes/confrontation.lute`:
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.37.0"
+luteVersion: "0.38.0"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
@@ -577,8 +577,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.37.0"` /
-`"irVersion": "0.37.0"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.38.0"` /
+`"irVersion": "0.38.0"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 

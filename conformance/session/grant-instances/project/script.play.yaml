@@ -1,0 +1,12 @@
+steps:
+  - engine: { state: { run.done: true } }
+    expect: { quests: { repeat: complete }, state: { user.count: 1 } }
+  - engine: { state: { run.done: true } }
+    expect: { state: { user.count: 1 } }
+  - newRun: true
+    expect: { quests: { repeat: active }, state: { run.done: false, user.count: 1 } }
+  - engine: { state: { run.done: true } }
+    expect: { quests: { repeat: complete }, state: { user.count: 2 } }
+expect:
+  end: complete
+  state: { user.count: 2 }

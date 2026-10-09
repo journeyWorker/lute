@@ -7,7 +7,7 @@ pub(super) fn render_atom(a: &UnresolvedAtom) -> String {
     match a {
         UnresolvedAtom::Path(p) => format!("--state {p}=<value>"),
         UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
-            let f = crate::datalog::fact_spelling(f);
+            let f = lute_runtime::datalog::fact_spelling(f);
             // A quoted argument keeps the shell's quotes apart from CEL's.
             if f.contains('"') {
                 format!("--fact '{f}'")
@@ -25,7 +25,7 @@ pub(super) fn fact_term_text(t: &FactTerm) -> String {
         FactTerm::Bool(b) => b.to_string(),
         FactTerm::Wildcard => "_".to_string(),
         FactTerm::Param(p) => format!("@{p}"),
-        FactTerm::Target => lute_check::beats::OCCASION_TARGET.to_string(),
+        FactTerm::Target => lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
     }
 }
 
@@ -37,7 +37,7 @@ pub(super) fn fmt_fact(rel: &str, args: &[String]) -> String {
 /// the schema's own seed `facts:` entries and the CLI's `--fact` mocks so
 /// their declared/supplied tuples compare STRUCTURALLY, never by raw
 /// source text (whitespace, quoting).
-pub(super) fn fact_pattern_key(pat: &lute_syntax::datalog::FactPattern) -> String {
+pub(super) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
     fmt_fact(&pat.relation, &args)
 }
@@ -61,8 +61,8 @@ pub(super) fn line_delivery(l: &Line) -> Option<String> {
 
 /// A prerequisite formula as the CEL condition it stands for: `visited(K)`
 /// reads the visited set, `completed(Q)` / `active(Q)` the quest's state.
-pub(super) fn prereq_condition(f: &lute_check::PrereqFormula) -> String {
-    use lute_check::PrereqFormula as F;
+pub(super) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
+    use lute_manifest::semantics::prereq::PrereqFormula as F;
     match f {
         F::Visited(k) => format!("visited('{k}')"),
         F::Completed(q) => format!("quest.{q}.state == 'complete'"),
@@ -106,7 +106,7 @@ pub(super) fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::F
     let supplied: std::collections::HashSet<String> = mocks
         .facts
         .iter()
-        .filter_map(|raw| lute_syntax::datalog::parse_fact(raw).ok())
+        .filter_map(|raw| lute_manifest::fact::parse_fact(raw).ok())
         .map(|pat| fact_pattern_key(&pat))
         .collect();
     // "None were supplied" (§3.1) holds iff the intersection of declared
@@ -154,7 +154,7 @@ pub(super) fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
 /// text) holds even when the mocked path sits inside a branch/event arm
 /// the walk never takes — or (b) had a reserved path actually resolve to
 /// its DEFAULT during the walk (§1.2, sourced from `reserved_reads`,
-/// [`crate::eval::EffectiveState::reserved_reads`] — a default is
+/// [`lute_runtime::eval::EffectiveState::reserved_reads`] — a default is
 /// necessarily read-time, there is no "admitted but unread" analog for
 /// it). Grouped by quest id (one note per id, never per path);
 /// informational only, never an error, never a reachability claim, exit
@@ -177,7 +177,7 @@ pub(super) fn reserved_quest_notes(
     }
     let mut ids: BTreeSet<&str> = defaulted_by_id.keys().copied().collect();
     for (path, _, _) in &mocks.state {
-        if !crate::eval::is_reserved_quest_path(path) {
+        if !lute_runtime::eval::is_reserved_quest_path(path) {
             continue;
         }
         let id = reserved_quest_id(path);
@@ -227,7 +227,7 @@ pub(super) fn reserved_quest_id(path: &str) -> &str {
 }
 
 pub(super) fn reserved_default_text(path: &str) -> &'static str {
-    if crate::eval::is_reserved_quest_objective_done_path(path) {
+    if lute_runtime::eval::is_reserved_quest_objective_done_path(path) {
         "false"
     } else {
         "unset"
@@ -288,7 +288,7 @@ pub(super) fn occasion_notes(
         .collect();
     let mut seen = BTreeSet::new();
     for name in occasions {
-        let (bare, _) = crate::mock::split_occasion(name);
+        let (bare, _) = lute_runtime::split_occasion(name);
         if answered.contains(bare) || binding.contains(bare) || !seen.insert(name.as_str()) {
             continue;
         }
@@ -318,7 +318,7 @@ pub(super) fn occasion_notes(
             if settled
                 || occasions
                     .iter()
-                    .any(|r| crate::mock::raise_judges(r, on, target))
+                    .any(|r| lute_runtime::raise_judges(r, on, target))
             {
                 continue;
             }
@@ -393,7 +393,7 @@ pub(super) fn mock_unproducible_notes(
     let producible = lute_check::producible::producible(&folded.env.rel_vocab, &live_assert);
     let mut unproducible: BTreeSet<String> = BTreeSet::new();
     for raw in &mocks.facts {
-        let Ok(pat) = lute_syntax::datalog::parse_fact(raw) else {
+        let Ok(pat) = lute_manifest::fact::parse_fact(raw) else {
             continue;
         };
         if producible.get(&pat.relation) == Some(&false) {
@@ -529,7 +529,10 @@ pub(super) fn beat_when_note(
     let beat = folded.typed.beat.as_ref()?;
     let mut slot = beat.when.clone()?;
     let _ = lute_compile::expand::expand_beat_when(&mut slot, table);
-    let v = m.eval_guard(&slot.raw);
+    let v = match lowered(&slot.raw) {
+        Some(cond) => m.eval_guard(&cond),
+        None => Err(Vec::new()),
+    };
     let raw = beat.when.as_ref().map(|s| s.raw.trim()).unwrap_or_default();
     match v {
         Ok(false) => Some(format!(

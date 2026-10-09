@@ -42,8 +42,8 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.37.0",
-  "irVersion": "0.37.0",
+  "lute": "0.38.0",
+  "irVersion": "0.38.0",
   "requiredSemantics": ["lute.core/1", "lute.lore/1", "lute.occasions.selection/1", "lute.time.cadence/1"],
   "meta": { "id": "interviews" },
   "state": [
@@ -55,7 +55,7 @@ const ARTIFACT: &str = r#"{
     { "kind": "entry", "family": "declaration", "position": "001-0100", "id": "porterNote", "target": "item.porter_note", "body": "001-0200" },
     { "kind": "line", "family": "content", "position": "001-0200", "role": "narration", "speaker": "narrator", "text": "A note about the porter." },
     { "kind": "beat", "family": "declaration", "position": "002-0100", "id": "interviews.porter", "on": "talk", "target": "npc.porter",
-      "when": { "cel": "run.porterTrust >= 0" }, "priority": 0, "once": "run", "body": "002-0200" },
+      "when": { "cel": "run.porterTrust >= 0", "expr": { "op": ">=", "l": { "path": "run.porterTrust" }, "r": { "int": 0 } } }, "priority": 0, "once": "run", "body": "002-0200" },
     { "kind": "line", "family": "content", "position": "002-0200", "role": "dialogue", "speaker": "porter", "text": "You again." },
     { "kind": "choice", "family": "control", "position": "002-0300", "branchId": "porterTalk", "selectionKey": "scene.choices.porterTalk",
       "options": [

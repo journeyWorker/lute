@@ -1,0 +1,10 @@
+[package]
+name = "lute-ir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lute-manifest = { path = "../lute-manifest" }
+serde = { workspace = true }
+serde_json = { workspace = true }

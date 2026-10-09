@@ -40,205 +40,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use crate::ir::{
-    ExecutionIr, ArtifactMeta, BeatOnce, Command, DocKind, EntityKindEntry, EnumEntry,
-    PrereqEdgeEntry, RelationEntry, RuleEntry, SeedFactEntry,
-};
+use lute_ir::*;
 
-/// One document's row in the index. Paths are FORWARD-SLASH relative to the
-/// project root, never absolute — an index is a build output that must survive
-/// being copied to another machine or shipped inside a game package.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IndexDocument {
-    /// Source document, relative to the project root (`quests/a.lute`).
-    pub path: String,
-    /// Its compiled artifact, relative to the output directory
-    /// (`quests/a.lute.json`).
-    pub artifact: String,
-    pub kind: DocKind,
-    /// The document's canonical node key: a scene's `{character}.{episodeId}`
-    /// ([`canonical_episode_key`]); a quest or lore document's authored `id:`
-    /// (dsl 0.19.0 §2.1), else its first declared `<quest id>` / `<entry
-    /// id>` (document order = addressing order). A quest PACK's / lore
-    /// document's ids stay recoverable from its own artifact's `quest` /
-    /// `entry` records (and, for entries, [`ProjectIndex::entries`]) — the
-    /// index names the document, it does not replace it.
-    pub key: String,
-}
+use crate::ir::{ArtifactMeta, Command, ExecutionIr};
 
-/// One `<entry>` row of [`ProjectIndex::entries`] (dsl 0.19.0 §7): enough for
-/// an engine to build its `target → entries` / `series → entries` tables
-/// without loading every lore artifact. `document` is the SAME string as the
-/// owning [`IndexDocument::path`].
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IndexEntry {
-    pub id: String,
-    pub document: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub series: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub order: Option<u32>,
-}
-
-/// What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat
-/// (`SceneMeta.beat`), an entry beat (`EntryCmd.on`), or a bundle beat (a
-/// lore document's `beat` record, dsl 0.23.0 §4).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BeatKind {
-    Scene,
-    Entry,
-    Bundle,
-}
-
-/// One row of [`ProjectIndex::beats`] (dsl 0.21.0 §4/§8): every beat in the
-/// project, so an engine can build its `occasion → candidates` table without
-/// loading every artifact. Row order IS the selection tiebreak after
-/// priority. `id` is the scene's canonical id ([`SceneMeta::id`]), the
-/// entry id, or a bundle beat's canonical `<document id>.<beat id>`;
-/// `document` is the owning [`IndexDocument::path`]; `priority` is
-/// resolved (unauthored → `0`); `once` is the scene's / bundle beat's policy,
-/// or an entry's authored `once` (dsl 0.22.0 §7) — absent on an entry row =
-/// repeatable.
-/// `when` is the beat's condition after `@def` expansion (a scene's
-/// `meta.beat.when`, an entry's own `when`) and `title` the scene's / entry's
-/// title — enough to list the beats and label a `select: all` menu without
-/// loading every artifact (dsl 0.23.0 §1, §11). Both are omitted when absent.
-///
-/// [`SceneMeta::id`]: crate::ir::SceneMeta::id
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IndexBeat {
-    pub id: String,
-    pub kind: BeatKind,
-    pub document: String,
-    pub on: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-    pub priority: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub once: Option<BeatOnce>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub when: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// dsl 0.25.0 §2: the beat's `share` key — every row of one key is
-    /// spent when any of them is presented. Omitted when not authored.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub share: Option<String>,
-    /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's members, as the
-    /// artifact's `targetKind`. Omitted for any other target.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_kind: Option<crate::ir::TargetKind>,
-    /// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat's members, as the
-    /// artifact's `forKind`. Omitted when not authored.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub for_kind: Option<crate::ir::ForKind>,
-    /// dsl 0.27.0 §5, 0.28.0 §6: the beat's `spentBy` condition (raw,
-    /// `@def`-expanded) — once it has held the beat is spent for its `once`
-    /// period. Omitted when not authored.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub spent_by: Option<String>,
-    /// dsl 0.31.0 §1: clock movement performed when this beat is presented.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub advances: Option<lute_check::AdvanceSpec>,
-}
-
-impl IndexBeat {
-    /// dsl 0.26.0 §5: whether the beat answers a raise of `occasion` for
-    /// `target` — untargeted, the same target, or a kind listing it — and
-    /// the member it binds to `occasion.target` (a kind beat's).
-    pub fn answers<'t>(&self, occasion: &str, target: Option<&'t str>) -> Option<Option<&'t str>> {
-        if self.on != occasion {
-            return None;
-        }
-        match (&self.target_kind, self.target.as_deref()) {
-            (Some(k), _) => target.and_then(|t| k.member_of(t)).map(Some),
-            (None, None) => Some(None),
-            (None, Some(t)) => (Some(t) == target).then_some(None),
-        }
-    }
-}
-
-/// The `project.index.json` envelope. Field DECLARATION ORDER is the serialized
-/// order, exactly as [`ExecutionIr`] does it — a `serde_json::Map` would sort
-/// keys alphabetically instead.
-///
-/// The six vocabulary arrays are ALWAYS emitted, empty included: an engine
-/// unions them unconditionally, and an absent key would force it to distinguish
-/// "no relations" from "index too old to carry them".
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectIndex {
-    pub ir_version: String,
-    pub capability_snapshot: String,
-    /// Sorted union of the compiler-derived capabilities of every artifact.
-    pub required_semantics: Vec<String>,
-    /// Resolved project identity migrations, unioned and sorted by source key.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
-    pub documents: Vec<IndexDocument>,
-    pub entities: Vec<EntityKindEntry>,
-    pub enums: Vec<EnumEntry>,
-    pub relations: Vec<RelationEntry>,
-    #[serde(rename = "seedFacts")]
-    pub seed_facts: Vec<SeedFactEntry>,
-    pub rules: Vec<RuleEntry>,
-    #[serde(rename = "prereqEdges")]
-    pub prereq_edges: Vec<PrereqEdgeEntry>,
-    /// dsl 0.19.0 §7: every `<entry>` in the project, document order. Unlike
-    /// the vocabulary arrays above this is OMITTED when empty, so an index
-    /// over a project without lore stays byte-identical to 0.18.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub entries: Vec<IndexEntry>,
-    /// dsl 0.21.0 §8: every beat in the project — documents in `documents`
-    /// (path) order, declaration order within each — the selection
-    /// tiebreak after priority. OMITTED when empty, so an index over a
-    /// project without beats stays byte-identical to 0.20.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub beats: Vec<IndexBeat>,
-    /// dsl 0.24.0 §1: the project's declared clock (the artifacts' `clock`,
-    /// one per project). OMITTED without one, so an index over a project
-    /// without a clock stays byte-identical to 0.23.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clock: Option<lute_manifest::clock::ClockDecl>,
-    /// dsl 0.27.0 §4: every occasion's `raisedWhen` gate (the artifacts'
-    /// `gates`, one per occasion), occasion-sorted. OMITTED when none.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub gates: Vec<crate::ir::GateEntry>,
-    /// dsl 0.27.0 §4: the project's `terminal:` condition (the artifacts'
-    /// `terminal`, one per project). OMITTED without one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub terminal: Option<crate::ir::CelPair>,
-    /// The artifacts' `terminalPersists`: the ending outlives runs on
-    /// purpose. OMITTED when false.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub terminal_persists: bool,
-    /// dsl 0.27.0 §5: the project's declared seasons (the artifacts'
-    /// `seasons`, one declaration per name), name-sorted. OMITTED when none.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub seasons: Vec<crate::ir::SeasonEntry>,
-    /// dsl 0.28.0 (T2-9): the occasions declared `outsideRun: true` (the
-    /// artifacts' `outsideRun`, unioned), name-sorted — raised even after
-    /// `terminal` holds. OMITTED when none.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub outside_run: Vec<String>,
-}
-
-impl ProjectIndex {
-    /// Pretty-printed + newline terminated, like every other artifact this
-    /// toolchain writes.
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        let mut s = serde_json::to_string_pretty(self)?;
-        s.push('\n');
-        Ok(s)
-    }
+#[derive(Clone, Debug, Default)]
+pub struct IndexUnions {
+    pub occasions: BTreeMap<String, IndexOccasion>,
+    pub world_events: Vec<String>,
+    pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
+    pub cast: BTreeMap<String, String>,
 }
 
 /// One document's contribution to the index.
@@ -358,6 +169,7 @@ impl<T: Clone + Serialize> Axis<T> {
 pub fn build_index(
     ir_version: &str,
     docs: &[IndexInput<'_>],
+    unions: &IndexUnions,
 ) -> Result<ProjectIndex, Vec<IndexError>> {
     let mut errors = Vec::new();
 
@@ -389,6 +201,19 @@ pub fn build_index(
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
     let mut identity_renames: BTreeMap<String, lute_manifest::project::IdentityRename> = BTreeMap::new();
     let mut required_semantics: BTreeSet<String> = BTreeSet::new();
+    let mut state_domains: BTreeMap<String, StateDomain> = BTreeMap::new();
+    let mut state_docs: Vec<&IndexInput<'_>> = docs.iter().collect();
+    state_docs.sort_by(|a, b| a.path.cmp(&b.path));
+    for d in state_docs {
+        for entry in &d.artifact.state {
+            if let Some((kind, members)) = &entry.member_domain {
+                state_domains.entry(entry.path.clone()).or_insert_with(|| StateDomain {
+                    kind: kind.clone(),
+                    members: members.clone(),
+                });
+            }
+        }
+    }
 
     for d in docs {
         let a = d.artifact;
@@ -567,6 +392,11 @@ pub fn build_index(
         terminal_persists,
         seasons: seasons.finish(),
         outside_run: outside_run.into_iter().collect(),
+        occasions: unions.occasions.clone(),
+        world_events: unions.world_events.clone(),
+        bridge_results: unions.bridge_results.clone(),
+        cast: unions.cast.clone(),
+        state_domains,
     })
 }
 
@@ -697,7 +527,8 @@ pub fn document_key(artifact: &ExecutionIr) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{AtomEntry, BeatIr, PrereqEdge, SceneMeta};
+    use crate::ir::{BeatIr, CelPairExt, SceneMeta};
+    use lute_ir::{AtomEntry, PrereqEdge};
 
     fn scene(character: &str, capability: &str) -> ExecutionIr {
         ExecutionIr {
@@ -787,6 +618,7 @@ mod tests {
         a.prereq_edges = vec![PrereqEdgeEntry {
             node: "marina.s01ep02".to_string(),
             edge: PrereqEdge::After("visited(\"a.b\")".to_string()),
+            formula: None,
         }];
         let mut b = scene("kai", "cap-1");
         b.required_semantics = vec!["lute.core/1".into(), "lute.quest.lifecycle/1".into()];
@@ -797,7 +629,7 @@ mod tests {
 
         // Deliberately UNSORTED input: `documents` must still come out sorted.
         let docs = [("z/b.lute", b), ("a/a.lute", a)];
-        let index = build_index("0.9.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
 
         assert_eq!(
             index
@@ -840,7 +672,7 @@ mod tests {
         let mut b = scene("kai", "cap-1");
         b.relations = vec![relation("knows", &["npc", "item"])];
         let docs = [("a.lute", a), ("b.lute", b)];
-        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("arity differs");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("arity differs");
         assert_eq!(
             errors,
             vec![IndexError::Conflict {
@@ -863,7 +695,7 @@ mod tests {
             ("a.lute", scene("marina", "cap-1")),
             ("b.lute", scene("kai", "cap-2")),
         ];
-        let errors = build_index("0.9.0", &inputs(&docs)).expect_err("two profiles");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("two profiles");
         assert!(
             matches!(errors[0], IndexError::CapabilityMismatch { .. }),
             "{errors:?}"
@@ -873,7 +705,7 @@ mod tests {
     #[test]
     fn empty_vocabulary_arrays_are_still_emitted() {
         let docs = [("a.lute", scene("marina", "cap-1"))];
-        let index = build_index("0.9.0", &inputs(&docs)).unwrap();
+        let index = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).unwrap();
         let json = index.to_json().unwrap();
         for key in [
             "entities",
@@ -965,7 +797,7 @@ mod tests {
                 ),
             ),
         ];
-        let index = build_index("0.19.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.19.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, &str)> = index
             .entries
             .iter()
@@ -1081,7 +913,7 @@ mod tests {
                 beat_scene("dawn", beat("dayStart", None, 0, BeatOnce::None)),
             ),
         ];
-        let index = build_index("0.21.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.21.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, BeatKind, &str)> = index
             .beats
             .iter()
@@ -1143,7 +975,7 @@ mod tests {
     fn beats_rows_carry_when_and_title() {
         let mut scene_beat = beat("dayStart", None, 5, BeatOnce::Run);
         if let Some(b) = &mut scene_beat {
-            b.when = Some(crate::ir::CelPair::from_raw(
+            b.when = Some(CelPair::from_raw(
                 "run.day == 3 && run.slot == \"night\"",
             ));
         }
@@ -1154,7 +986,7 @@ mod tests {
         let mut barks = beat_lore(&[("shopBark", Some("placeVisit"), None)]);
         if let Some(Command::Entry(e)) = barks.commands.first_mut() {
             e.title = Some("At the shop".to_string());
-            e.when = Some(crate::ir::CelPair::from_raw("run.slot != \"night\""));
+            e.when = Some(CelPair::from_raw("run.slot != \"night\""));
         }
         let docs = [
             ("scenes/wed.lute", titled),
@@ -1164,7 +996,7 @@ mod tests {
                 beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run)),
             ),
         ];
-        let index = build_index("0.23.0", &inputs(&docs)).expect("no conflicts");
+        let index = build_index("0.23.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
         assert_eq!(v["beats"][0]["when"], "run.slot != \"night\"");
         assert_eq!(v["beats"][0]["title"], "At the shop");

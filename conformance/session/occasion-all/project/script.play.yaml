@@ -1,0 +1,12 @@
+steps:
+  - occasion: visit
+    pick: b
+    expect: { winner: b, presented: [b], state: { run.order: 2 } }
+  - occasion: visit
+    pick: a
+    expect: { winner: a, presented: [a], state: { run.order: 21 } }
+  - occasion: visit
+    pick: none
+    expect: { winner: none, state: { run.order: 21 } }
+expect:
+  end: complete

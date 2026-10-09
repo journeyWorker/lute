@@ -1,6 +1,6 @@
 use super::*;
 pub(super) fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
-    m.read(path) == crate::eval::Read::Value(Value::Bool(true))
+    m.read(path) == lute_runtime::eval::Read::Value(Value::Bool(true))
 }
 
 /// The world a walk left, for the report's final state and facts.
@@ -15,10 +15,13 @@ pub(super) struct World {
     pub(super) terminal: Option<bool>,
 }
 
-/// Whether the project's `terminal:` condition `raw` holds in the walk's
-/// world — `None` without one, or when the mocks leave it undecided.
-pub(super) fn terminal_at(m: &mut Machine<&mut TraceDriver<'_>>, raw: Option<&str>) -> Option<bool> {
-    m.eval_guard(raw?).ok()
+/// Whether the project's `terminal:` condition holds in the walk's world —
+/// `None` without one, or when the mocks leave it undecided.
+pub(super) fn terminal_at(
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    terminal: Option<&exec::Slot>,
+) -> Option<bool> {
+    m.eval_guard(terminal?).ok()
 }
 
 impl World {

@@ -1,0 +1,13 @@
+---
+kind: quest
+id: earlier
+luteVersion: "0.38.0"
+title: Earlier
+---
+<quest id="earlier" title="Earlier" tier="run" start="true">
+  <objective id="trigger" title="Trigger" done="run.trigger"/>
+  <on event="questComplete">
+    ::set{run.ready = true}
+    ::set{run.order = run.order * 10 + 1}
+  </on>
+</quest>

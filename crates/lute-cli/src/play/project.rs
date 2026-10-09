@@ -6,12 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_compile::ExecutionIr;
-use lute_manifest::schema::OccasionDecl;
+use lute_runtime::session::ExecProject;
 use lute_trace::exec::record::NeedleVocab;
 use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_load::nearest_manifest_dir;
-use lute_trace::exec::session::ExecProject;
-use lute_trace::exec::BridgeReads;
+
 /// `path` relative to `root`, forward-slash joined — the project-relative
 /// artifact identity `compile_all.rs`'s private `rel_slash` uses.
 fn project_rel(path: &Path, root: &Path) -> Option<String> {
@@ -58,7 +57,17 @@ pub(super) fn compile_project(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
-) -> Result<ExecProject, ExitCode> {
+) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+    compile_bundle(memo, project_dir, gate, matrix)?.load()
+}
+
+/// [`compile_project`] stopped at the bundle.
+fn compile_bundle(
+    memo: &ModelMemo,
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+) -> Result<PlayBundle, ExitCode> {
     let project_dir = nearest_manifest_dir(project_dir)
         .unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
@@ -66,7 +75,7 @@ pub(super) fn compile_project(
         eprintln!("{}: cannot build {}: {error}", gate.cmd, project_dir.display());
         ExitCode::from(1)
     })?;
-    assemble_project_from_model(&project_dir, gate, matrix, &source_model)
+    assemble_bundle_from_model(&project_dir, gate, matrix, &source_model)
 }
 
 /// Refuse a project whose manifests are invalid or whose chapters do not
@@ -116,12 +125,24 @@ fn model_options() -> ModelOptions {
     }
 }
 
+/// The project of `source_model`, for the differential oracle.
+#[cfg(test)]
 pub(crate) fn assemble_project_from_model(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
     source_model: &ProjectModel,
-) -> Result<ExecProject, ExitCode> {
+) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+    assemble_bundle_from_model(project_dir, gate, matrix, source_model)?.load()
+}
+
+/// [`assemble_project_from_model`] stopped at the bundle.
+fn assemble_bundle_from_model(
+    project_dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+    source_model: &ProjectModel,
+) -> Result<PlayBundle, ExitCode> {
     let Gate { cmd, refuses } = gate;
     let policy = crate::DenyPolicy::default();
     if source_model.has_resolution_errors() {
@@ -173,12 +194,8 @@ pub(crate) fn assemble_project_from_model(
         );
         return Err(ExitCode::from(1));
     }
-    let mut occasions: BTreeMap<String, OccasionDecl> = BTreeMap::new();
     let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
-    let mut world_events: BTreeSet<String> = BTreeSet::new();
-    let mut bridge_types = BridgeReads::default();
-    let mut display_names: BTreeMap<String, String> = BTreeMap::new();
     let mut needles = NeedleVocab::default();
     let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
@@ -196,17 +213,7 @@ pub(crate) fn assemble_project_from_model(
             return Err(ExitCode::from(2));
         };
         let input = &source.input;
-        for (name, decl) in &input.snapshot.occasions {
-            occasions.entry(name.clone()).or_insert_with(|| decl.clone());
-        }
-        world_events.extend(input.snapshot.events.keys().cloned());
-        for (id, m) in lute_check::cast::declared_cast(&input.snapshot, &input.imports, &[]) {
-            if let Some(name) = m.name {
-                display_names.entry(id).or_insert(name);
-            }
-        }
-        bridge_types = bridge_types.with_result_types(&input.snapshot);
-        needles.union(NeedleVocab::of(input, &source.folded.typed));
+        needles.union(lute_trace::exec::record::needle_vocab(input, &source.folded.typed));
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,
@@ -246,22 +253,45 @@ pub(crate) fn assemble_project_from_model(
         return Err(ExitCode::from(1));
     }
 
-    let mut project = ExecProject::assemble(
-        &compiled,
-        occasions,
-        world_events,
-        bridge_types,
-        display_names,
-    )
-    .map_err(|(code, lines)| {
-        for line in &lines {
-            eprintln!("{line}");
-        }
+    let unions = crate::bundle::collect_index_unions(source_model);
+    let bundle = crate::bundle::build_bundle(&compiled, &unions).map_err(|(code, lines)| {
+        for line in &lines { eprintln!("{line}"); }
         ExitCode::from(code)
     })?;
-    project.needles = needles;
-    project.chapter_afters = chapter_afters;
-    Ok(project)
+    let authored = compiled.iter().filter_map(|(path, artifact)| {
+        let authored = artifact.commands.iter().filter_map(|command| command.authored())
+            .map(|(position, text)| (position.to_string(), text.to_string()))
+            .collect::<BTreeMap<_, _>>();
+        (!authored.is_empty()).then(|| (path.clone(), authored))
+    }).collect();
+    Ok(PlayBundle { bundle, authored, chapter_afters, needles })
+}
+
+/// A compiled project as the runtime loads it (spec 0.38.0 §4.1), plus what
+/// `lute play` reports beside the runtime's events: authored directive
+/// text, chapter-derived `after:` provenance and the transcript needle
+/// vocabulary.
+pub(crate) struct PlayBundle {
+    pub(crate) bundle: lute_runtime::index::Bundle,
+    authored: BTreeMap<String, BTreeMap<String, String>>,
+    chapter_afters: BTreeSet<String>,
+    needles: NeedleVocab,
+}
+
+impl PlayBundle {
+    /// The project a command walks: the bundle loaded, with the report
+    /// data. `Err` carries the exit code after the messages.
+    pub(crate) fn load(self) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+        let mut project = ExecProject::load(self.bundle).map_err(|(code, lines)| {
+            for line in &lines {
+                eprintln!("{line}");
+            }
+            ExitCode::from(code)
+        })?;
+        project.authored = self.authored;
+        project.chapter_afters = self.chapter_afters;
+        Ok((project, self.needles))
+    }
 }
 
 /// Compile the project `gate`'s command runs over ([`compile_project`]);
@@ -271,12 +301,24 @@ pub(super) fn compile_play_project(
     dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
-) -> Result<ExecProject, (ExitCode, String)> {
+) -> Result<(ExecProject, NeedleVocab), (ExitCode, String)> {
+    compile_play_bundle(memo, dir, gate, matrix)?
+        .load()
+        .map_err(|code| (code, String::new()))
+}
+
+/// [`compile_play_project`] stopped at the bundle.
+pub(super) fn compile_play_bundle(
+    memo: &ModelMemo,
+    dir: &Path,
+    gate: Gate,
+    matrix: &crate::EngineMatrix,
+) -> Result<PlayBundle, (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
             ExitCode::from(2),
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_project(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
+    compile_bundle(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
 }

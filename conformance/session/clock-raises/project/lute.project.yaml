@@ -1,0 +1,6 @@
+defaultProfile: session
+profiles:
+  session:
+    plugins: { session.cases: true }
+defaults:
+  uses: [world.schema.yaml]

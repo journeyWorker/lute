@@ -1,0 +1,12 @@
+---
+kind: scene
+id: tick
+luteVersion: "0.38.0"
+title: tick
+on: tick
+priority: 0
+once: false
+---
+## Tick
+::set{run.slots += 1}
+@narrator{code="0010"}: Slot raised.

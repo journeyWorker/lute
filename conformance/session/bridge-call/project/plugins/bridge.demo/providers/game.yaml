@@ -1,0 +1,4 @@
+providers:
+  - name: demoId
+    idShape: "Ident"
+    snapshot: demo-id

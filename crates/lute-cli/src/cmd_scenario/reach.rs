@@ -10,24 +10,24 @@ use crate::cmd_scenario::{
 };
 use crate::project::ByRoot;
 
-/// Render a [`lute_check::PrereqFormula`] back to CEL-like text, fully
+/// Render a [`lute_manifest::semantics::prereq::PrereqFormula`] back to CEL-like text, fully
 /// parenthesized so the `&&`/`||` nesting is always visible — a
 /// `visited(A) || visited(B)` node is reachable via A OR B, never rendered
 /// as a flat list that could blur that into "requires A and B" (Main
 /// review: routes must never be flattened away).
-pub(crate) fn format_prereq(f: &lute_check::PrereqFormula) -> String {
+pub(crate) fn format_prereq(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
     match f {
-        lute_check::PrereqFormula::Visited(key) => format!("visited({})", quote_cel_string(key)),
-        lute_check::PrereqFormula::Completed(id) => {
+        lute_manifest::semantics::prereq::PrereqFormula::Visited(key) => format!("visited({})", quote_cel_string(key)),
+        lute_manifest::semantics::prereq::PrereqFormula::Completed(id) => {
             format!("completed({})", quote_cel_string(id))
         }
-        lute_check::PrereqFormula::Active(id) => {
+        lute_manifest::semantics::prereq::PrereqFormula::Active(id) => {
             format!("active({})", quote_cel_string(id))
         }
-        lute_check::PrereqFormula::And(l, r) => {
+        lute_manifest::semantics::prereq::PrereqFormula::And(l, r) => {
             format!("({} && {})", format_prereq(l), format_prereq(r))
         }
-        lute_check::PrereqFormula::Or(l, r) => {
+        lute_manifest::semantics::prereq::PrereqFormula::Or(l, r) => {
             format!("({} || {})", format_prereq(l), format_prereq(r))
         }
     }

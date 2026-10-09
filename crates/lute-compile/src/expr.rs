@@ -34,66 +34,8 @@ use cel_parser::ast::{CallExpr, Expr};
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, NumRange};
-use serde::Serialize;
+use lute_ir::{ExprNode, LitVal};
 
-/// One node of the portable expression AST (dsl §8.4 profile). See the module
-/// docs for the exact serialized JSON shape of each variant.
-#[derive(Clone, Debug, Serialize)]
-#[serde(untagged)]
-pub enum ExprNode {
-    /// Typed scalar literal, flattened to `{int}`, `{double}`, `{bool}` or `{string}`.
-    Lit { #[serde(flatten)] lit: LitVal },
-    /// Static state/subject path: `{"path": "a.b.c"}`.
-    Path { path: String },
-    /// Unary operator (`!`/`-`): `{"op": "<sym>", "l": <node>}`.
-    Unary { op: &'static str, l: Box<ExprNode> },
-    /// Binary operator: `{"op": "<sym>", "l": <node>, "r": <node>}`.
-    Binary {
-        op: &'static str,
-        l: Box<ExprNode>,
-        r: Box<ExprNode>,
-    },
-    /// Ternary conditional: `{"cond": <node>, "then": <node>, "else": <node>}`.
-    Cond {
-        cond: Box<ExprNode>,
-        then: Box<ExprNode>,
-        #[serde(rename = "else")]
-        otherwise: Box<ExprNode>,
-    },
-    /// List literal.
-    List { list: Vec<ExprNode> },
-    /// Computed map/list index.
-    Index { index: Box<ExprNode>, key: Box<ExprNode> },
-    /// Numeric conversion or engine host function.
-    Call { call: String, args: Vec<ExprNode> },
-    /// Presence test over a canonical path.
-    Has { has: String },
-}
-
-/// A scalar literal value. Serialized untagged, so it emits a bare JSON number,
-/// bool, or string as the value of the `lit` field. All numeric CEL literals
-/// (`Int`/`UInt`/`Double`) collapse to an f64 double.
-#[derive(Clone, Debug)]
-pub enum LitVal {
-    Int(i64),
-    Num(f64),
-    Bool(bool),
-    Str(String),
-}
-
-impl serde::Serialize for LitVal {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut out = serializer.serialize_struct("LitVal", 1)?;
-        match self {
-            LitVal::Int(v) => out.serialize_field("int", v)?,
-            LitVal::Num(v) => out.serialize_field("double", v)?,
-            LitVal::Bool(v) => out.serialize_field("bool", v)?,
-            LitVal::Str(v) => out.serialize_field("string", v)?,
-        }
-        out.end()
-    }
-}
 
 /// Parse a raw CEL fragment and lower it to a portable [`ExprNode`].
 ///

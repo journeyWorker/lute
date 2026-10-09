@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: demo
+profiles:
+  demo:
+    plugins: { bridge.demo: true }
+defaults:
+  uses: [world.schema.yaml]

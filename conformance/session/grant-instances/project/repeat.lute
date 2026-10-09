@@ -1,0 +1,14 @@
+---
+kind: quest
+id: repeat
+luteVersion: "0.38.0"
+title: Repeat
+---
+<quest id="repeat" title="Repeat" tier="run" start="true">
+  <reward kind="XP" amount="10"/>
+  <reward kind="GOLD" amount="2"/>
+  <objective id="finish" title="Finish" done="run.done"/>
+  <on event="questComplete">
+    ::set{user.count += 1}
+  </on>
+</quest>

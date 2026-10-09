@@ -1,0 +1,5 @@
+{"seed":{"derive":true}}
+{"input":{"type":"hostWrite","writes":{"state":[{"path":"run.done","value":true}]}}}
+{"input":{"type":"hostWrite","writes":{"state":[{"path":"run.done","value":true}]}}}
+{"input":{"type":"newRun"}}
+{"input":{"type":"hostWrite","writes":{"state":[{"path":"run.done","value":true}]}}}

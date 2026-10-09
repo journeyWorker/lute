@@ -459,8 +459,8 @@ pub(super) fn check_use(
             _ => &[],
         };
         let problem = match &constant {
-            Ok(lute_syntax::datalog::FactTerm::Ident(m)) if members.contains(m) => continue,
-            Ok(lute_syntax::datalog::FactTerm::Ident(m)) => {
+            Ok(lute_manifest::fact::FactTerm::Ident(m)) if members.contains(m) => continue,
+            Ok(lute_manifest::fact::FactTerm::Ident(m)) => {
                 let hint =
                     lute_manifest::suggest::nearest(m, members.iter().map(String::as_str), 2)
                         .map(|n| format!(" — did you mean `{n}`?"))
@@ -511,7 +511,7 @@ fn component_bound_params(
                 Node::Assert(lute_syntax::ast::Assert { pattern, raw, .. })
                 | Node::Retract(lute_syntax::ast::Retract { pattern, raw, .. }) => {
                     for a in &pattern.args {
-                        if let lute_syntax::datalog::FactTerm::Param(p) = &a.term {
+                        if let lute_manifest::fact::FactTerm::Param(p) = &a.term {
                             facts.entry(p.clone()).or_insert_with(|| raw.clone());
                         }
                     }

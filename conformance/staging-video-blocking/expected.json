@@ -57,7 +57,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.37",
+  "irVersion": "0.38",
   "kind": "scene",
   "quests": {},
   "state": {}

@@ -432,7 +432,7 @@ impl PermissionChecker<'_> {
         // like any `F.<member>` write.
         if !self
             .permissions
-            .allows_state_write(&crate::target_writes::member_path(path, "_"))
+            .allows_state_write(&lute_manifest::semantics::target_writes::member_path(path, "_"))
         {
             self.diagnostics.push(permission_diag(
                 E_PERMISSION_STATE,

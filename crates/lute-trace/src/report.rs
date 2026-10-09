@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_core_span::{Diagnostic, Span};
 use serde::Serialize;
 
-use crate::value::Value;
+use lute_runtime::value::Value;
 
 /// Exit-code contract (§4.5): `Complete` -> 0, `Refused` -> 1 (check errors,
 /// invalid mocks, or a walk-time forced-guard-false `E-TRACE-CHOICE`),
@@ -331,7 +331,7 @@ pub struct UnresolvedEntry {
     pub span: Span,
     pub expression: String,
     /// Rendered "supply it as a mock" hints (§4.6), one per
-    /// [`crate::value::UnresolvedAtom`] the guard's evaluation recorded.
+    /// [`lute_runtime::value::UnresolvedAtom`] the guard's evaluation recorded.
     pub atoms: Vec<String>,
 }
 
@@ -541,7 +541,7 @@ pub struct TraceReport {
     pub not_raised: BTreeMap<String, NotRaised>,
     /// dsl 0.28.0 (T1-25): every presented scene / entry / bundle beat
     /// judged ineligible → which premise failed
-    /// ([`crate::exec::session::Premise::kind`]) — what `lute test`'s
+    /// ([`lute_runtime::session::Premise::kind`]) — what `lute test`'s
     /// `eligible: { <id>: { false: <reason> } }` judges. Never serialized.
     #[serde(skip)]
     pub ineligible_by: BTreeMap<String, &'static str>,

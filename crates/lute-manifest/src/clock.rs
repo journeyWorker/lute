@@ -141,7 +141,8 @@ pub struct WeekDecl {
 
 /// A position on the clock: a day and the index of a slot in `slots`.
 /// Ordered by time.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClockAt {
     pub day: i64,
     pub slot: usize,

@@ -28,15 +28,17 @@ use std::sync::Arc;
 
 use lute_check::{CheckInput, CheckResult};
 use lute_core_span::Severity;
-use lute_trace::{MockSet, Step, TraceExit, TraceReport, Value};
+use lute_trace::{Step, TraceExit, TraceReport};
+use lute_trace::mock::MockSet;
+use lute_runtime::{
+    BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
+    UnknownSite, Value, Verdict,
+};
+use lute_runtime::datalog::Fact;
 use rayon::prelude::*;
 use lute_load::build_input;
 use serde_json::Value as Json;
-use lute_trace::datalog::Fact;
-use lute_trace::exec::{
-    BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
-    UnknownSite, Verdict,
-};
+use lute_runtime::session::json_to_value;
 use crate::runner::{bind_direct_occasion_target, RunDriver};
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
 const COMPARED_FLOOR: usize = 201;
@@ -236,13 +238,17 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
         }
     }
     obs.quests.extend(quests);
-    obs.state.remove(lute_check::beats::OCCASION_TARGET);
+    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
 /// `lute run`'s walk of `art` (the `run_machine` construction) with the
 /// IR oracle's probe on.
-fn probed(art: &Json, mock: &MockSet, names: &BTreeMap<String, String>) -> Machine<Oracle> {
+fn probed<B, C>(
+    art: &Json,
+    mock: &lute_runtime::MockSet<B, C>,
+    names: &BTreeMap<String, String>,
+) -> Machine<Oracle> {
     Machine::new(
         art,
         Seed::from(mock),
@@ -394,7 +400,7 @@ impl Driver for Oracle {
 /// it has no model for is `Unknown`, never a guess.
 fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value {
     if let Some(lit) = node.get("lit") {
-        return lute_trace::exec::session::json_to_value(lit).unwrap_or(Value::Unknown);
+        return json_to_value(lit).unwrap_or(Value::Unknown);
     }
     if let Some(i) = node.get("int").and_then(Json::as_i64) {
         return Value::Int(i);
@@ -411,7 +417,7 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
     if let Some(path) = node.get("path").and_then(Json::as_str) {
         return reads
             .get(path)
-            .and_then(lute_trace::exec::session::json_to_value)
+            .and_then(json_to_value)
             .unwrap_or(Value::Unknown);
     }
     if let Some(path) = node
@@ -538,7 +544,7 @@ fn trace_observation((report, exit): &(TraceReport, TraceExit)) -> Observation {
             }
         }
     }
-    obs.state.remove(lute_check::beats::OCCASION_TARGET);
+    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
@@ -821,7 +827,7 @@ struct ProjectData {
     model: lute_model::ProjectModel,
     /// Canonical document path -> index into `model.documents()`.
     documents: HashMap<PathBuf, usize>,
-    exec: Option<lute_trace::exec::session::ExecProject>,
+    exec: Option<(lute_runtime::session::ExecProject, lute_trace::exec::record::NeedleVocab)>,
     gate: crate::ReconciledProject,
 }
 
@@ -1148,8 +1154,8 @@ fn presentation_cases(
     let project = project_root(play, &root.dir).ok_or("no lute.project.yaml above the play")?;
     // A root `lute play` refuses refuses every play under it, with
     // `compile_play_project`'s empty message.
-    let exec = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
-    let played = crate::play::presentations_for_diff(exec, play)?;
+    let (exec, needles) = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
+    let played = crate::play::presentations_for_diff(exec, needles, play)?;
     let stem = play
         .file_name()
         .and_then(|n| n.to_str())
@@ -1233,7 +1239,7 @@ fn presentation_cases(
         }
         if let Some(m) = &pr.member {
             mock.state.push((
-                lute_check::beats::OCCASION_TARGET.to_string(),
+                lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 m.clone(),
                 None,
             ));
@@ -1280,9 +1286,9 @@ fn presentation_cases(
         }
         mock.bridges = pr.bridges.clone();
         let present = match pr.kind {
-            lute_compile::index::BeatKind::Scene => Present::Document,
-            lute_compile::index::BeatKind::Entry => Present::Entries(vec![pr.id.clone()]),
-            lute_compile::index::BeatKind::Bundle => Present::Beat(pr.id.clone()),
+            lute_ir::BeatKind::Scene => Present::Document,
+            lute_ir::BeatKind::Entry => Present::Entries(vec![pr.id.clone()]),
+            lute_ir::BeatKind::Bundle => Present::Beat(pr.id.clone()),
         };
 
         // What the play observed.

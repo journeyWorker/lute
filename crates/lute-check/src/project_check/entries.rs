@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_syntax::ast::Document;
 use crate::ProjectDoc;
-use crate::cel_paths::reserved_entry_id;
+use lute_manifest::semantics::cel_paths::reserved_entry_id;
 use crate::lore::{document_series, resolve_entry_series, series_order_message, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN};
 use super::paths::{did_you_mean, referenced_paths};
 

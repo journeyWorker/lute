@@ -73,7 +73,7 @@ use lute_core_span::Span;
 use lute_syntax::ast::{
     Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
 };
-use lute_syntax::datalog::{FactPattern, FactTerm};
+use lute_manifest::fact::{FactPattern, FactTerm};
 use crate::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
@@ -82,7 +82,7 @@ use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::meta::StateSchema;
-use crate::prereq::PrereqFormula;
+use lute_manifest::semantics::prereq::PrereqFormula;
 use crate::rel_schema::RelVocab;
 
 /// Guaranteed facts, each with where it is established.
@@ -1196,6 +1196,6 @@ fn entry_read(e: &Expr) -> Option<(String, bool)> {
         other => other,
     };
     let path = crate::cel_paths::select_path(e)?;
-    let id = crate::cel_paths::reserved_entry_id(&path)?.to_string();
+    let id = lute_manifest::semantics::cel_paths::reserved_entry_id(&path)?.to_string();
     Some((id, crate::cel_paths::is_entry_ever_read(&path)))
 }

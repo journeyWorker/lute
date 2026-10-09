@@ -6,8 +6,8 @@
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::{trace_document, MockSet, TraceExit, TraceReport};
-
+use lute_trace::{trace_document, TraceExit, TraceReport};
+use lute_trace::mock::MockSet;
 fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
     assert!(
@@ -400,8 +400,8 @@ fn derive_key_parses_and_the_flag_wins_over_the_file() {
 mod explain {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use lute_trace::datalog::{Explanation, Fact, Premise, Program, Proof};
-    use lute_trace::EffectiveState;
+    use lute_runtime::datalog::{Explanation, Fact, Premise, Program, Proof};
+    use lute_runtime::eval::EffectiveState;
 
     fn fact(rel: &str, args: &[&str]) -> Fact {
         (
@@ -421,7 +421,7 @@ mod explain {
 
     fn explain(base: &[Fact]) -> Explanation {
         let p = program();
-        let schema = lute_check::StateSchema::default();
+        let schema = lute_runtime::schema::StateSchema::default();
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let base: BTreeSet<Fact> = base.iter().cloned().collect();
         let closure = p.fixpoint(&base, &state);

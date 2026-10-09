@@ -14,7 +14,7 @@
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
 use crate::ast::*;
-use crate::datalog::{parse_fact, DatalogError, FactPattern};
+use lute_manifest::fact::{parse_fact, DatalogError, FactPattern};
 use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
     unclosed_frontmatter_end, CommentError,
@@ -1200,7 +1200,7 @@ impl Parser<'_> {
 
     /// `Assert ::= "::assert{" FactPattern "}"` / `Retract ::= "::retract{"
     /// FactPattern "}"` (dsl 0.3.0 §5, Appendix C). Layer = Logic. The payload
-    /// is parsed by the ONE shared Datalog grammar (`crate::datalog::parse_fact`,
+    /// is parsed by the ONE shared Datalog grammar (`lute_manifest::fact::parse_fact`,
     /// 0.3.0 T1) — NOT the `key="value"` attr form `::set`/`::directive` use.
     /// A parse failure still produces a node carrying the D13 empty-relation
     /// sentinel (`pattern.relation == ""`) so every downstream consumer skips

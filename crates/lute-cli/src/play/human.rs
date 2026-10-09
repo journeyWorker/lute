@@ -6,11 +6,12 @@
 use std::collections::BTreeMap;
 
 use lute_manifest::schema::OccasionSelect;
-use lute_trace::exec::session::{
+use lute_runtime::session::{
     kind_label, value_to_json, Candidate, ExecProject, Pick, Played, Presented, StepBody, Verdict,
 };
 use serde_json::Value as Json;
-use lute_trace::exec::{line_head, render_attrs};
+use lute_trace::exec::record::{line_head, render_attrs, said_line};
+pub(super) use lute_runtime::str_of;
 
 use super::run::Playthrough;
 
@@ -38,10 +39,6 @@ fn render_options(opts: &[Json], rec: &Json) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
-}
-
-pub(super) fn str_of<'a>(rec: &'a Json, key: &str) -> &'a str {
-    rec.get(key).and_then(Json::as_str).unwrap_or("")
 }
 
 /// One document's commands, by address and in stream order, and how its
@@ -230,7 +227,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             .cloned()
     };
     Some(match kind {
-        "line" => lute_trace::exec::said_line(rec, orig),
+        "line" => said_line(rec, orig),
         "bg" | "music" | "sfx" | "vfx" | "actor" | "camera" | "cg" | "video" | "sequence" => {
             if !cmds.ir && orig.is_some_and(is_injected) {
                 return authored();
@@ -624,7 +621,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                     .index
                     .clock
                     .as_ref()
-                    .filter(|c| !lute_trace::clock::restarts_each_run(c))
+                    .filter(|c| !lute_runtime::clock::restarts_each_run(c))
                 {
                     out.push_str(&format!(
                         "  the clock is kept: its day `{}` outlives the run, so its position, \
@@ -930,7 +927,7 @@ fn render_raised(out: &mut String, p: &ExecProject, view: View, beat: &Presented
 
 
 /// The play's presented content, one canonical `@speaker{delivery}: text`
-/// line ([`lute_trace::exec::said_line`], the head the human transcript
+/// line ([`lute_trace::exec::record::said_line`], the head the human transcript
 /// prints) per content line that actually played, in order — what
 /// `transcriptContains` / `transcriptLacks` match (dsl 0.24.0 T1-2, 0.27
 /// T1-11). The canonical form `lute test` matches a scene test's walk
@@ -944,7 +941,7 @@ pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) 
     let push = |acc: &mut (String, usize), document: &str, records: &[Json]| {
         let cmds = DocCmds::new(p, document, false);
         for rec in records.iter().filter(|r| str_of(r, "kind") == "line") {
-            acc.0.push_str(&lute_trace::exec::said_line(
+            acc.0.push_str(&said_line(
                 rec,
                 cmds.get(str_of(rec, "position")),
             ));
@@ -988,7 +985,7 @@ fn said_raised(p: &ExecProject, acc: &mut (String, usize), beat: &Presented) {
             .iter()
             .filter(|r| str_of(r, "kind") == "line")
         {
-            acc.0.push_str(&lute_trace::exec::said_line(
+            acc.0.push_str(&said_line(
                 rec,
                 cmds.get(str_of(rec, "position")),
             ));

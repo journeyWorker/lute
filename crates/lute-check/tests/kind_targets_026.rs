@@ -167,7 +167,7 @@ fn a_sub_kind_beat_outranks_its_parent_kind_beat_at_equal_priority() {
         ms(&["hornbeetle", "bladebug"]),
         ms(&["hornbeetle"]),
     );
-    let order = lute_check::beats::selection_order(&[
+    let order = lute_manifest::semantics::beats::selection_order(&[
         ("caught", 0, Some(&species)),
         ("caught", 0, Some(&bug)),
         ("caught", 0, None),
@@ -175,7 +175,7 @@ fn a_sub_kind_beat_outranks_its_parent_kind_beat_at_equal_priority() {
     ]);
     assert_eq!(order, [2, 3, 1, 0]);
     // A higher priority still wins over specificity.
-    let order = lute_check::beats::selection_order(&[
+    let order = lute_manifest::semantics::beats::selection_order(&[
         ("caught", 1, Some(&species)),
         ("caught", 0, Some(&bug)),
     ]);
@@ -203,7 +203,7 @@ fn overlapping_unrelated_kinds_keep_file_order_and_tie() {
         ms(&["bladebug", "slumbear"]),
         ms(&["hornbeetle", "bladebug"]),
     );
-    let order = lute_check::beats::selection_order(&[
+    let order = lute_manifest::semantics::beats::selection_order(&[
         ("caught", 0, Some(&heavy)),
         ("caught", 0, Some(&bug)),
     ]);

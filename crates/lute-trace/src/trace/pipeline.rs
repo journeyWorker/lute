@@ -303,7 +303,7 @@ pub(super) fn trace_pipeline(
         .occasions
         .iter()
         .filter_map(|raw| {
-            let (on, Some(target)) = crate::split_occasion(raw) else {
+            let (on, Some(target)) = lute_runtime::split_occasion(raw) else {
                 return None;
             };
             let decl = input.snapshot.occasions.get(on)?;
@@ -330,7 +330,7 @@ pub(super) fn trace_pipeline(
     if !mocks
         .state
         .iter()
-        .any(|(p, _, _)| p == lute_check::beats::OCCASION_TARGET)
+        .any(|(p, _, _)| p == lute_manifest::semantics::beats::OCCASION_TARGET)
     {
         fn text(v: &Option<(String, Span)>) -> Option<&str> {
             v.as_ref().map(|(s, _)| s.as_str())
@@ -398,12 +398,12 @@ pub(super) fn trace_pipeline(
                     let raises: Vec<(&String, &str)> = mocks
                         .occasions
                         .iter()
-                        .filter_map(|r| match crate::split_occasion(r) {
+                        .filter_map(|r| match lute_runtime::split_occasion(r) {
                             (name, Some(t)) if name == on => Some((r, t)),
                             _ => None,
                         })
                         .collect();
-                    let bare = lute_check::gates::target_member(decl, fixed);
+                    let bare = lute_manifest::semantics::gates::target_member(decl, fixed);
                     if let (false, Some((raw, other))) = (
                         raises
                             .iter()
@@ -514,7 +514,7 @@ pub(super) fn trace_pipeline(
     let mut gate_refusals: Vec<Diagnostic> = Vec::new();
     if let Some(p) = judging.as_ref().filter(|_| quest_raises) {
         for raised in &mocks.occasions {
-            let (name, target) = crate::split_occasion(raised);
+            let (name, target) = lute_runtime::split_occasion(raised);
             let closed = exec::seam::closed_in(p, &mut m, name, target);
             m.bind_occasion_target(None);
             let why = match closed {
@@ -537,7 +537,7 @@ pub(super) fn trace_pipeline(
             // A mocked raise from a test's `occasions:` or a `--occasion`
             // flag: named as raised, located by the caller that knows which.
             gate_refusals.push(logic_diag(
-                lute_check::gates::E_OCCASION_GATE,
+                lute_manifest::semantics::gates::E_OCCASION_GATE,
                 format!("the engine would not raise `{raised}` here: {why}"),
                 mock::synthetic_span(),
             ));
@@ -546,11 +546,7 @@ pub(super) fn trace_pipeline(
 
     // How the walk ended, in play's words: the project's `terminal:` (the
     // artifact carries it) holding in the world it left is `end: terminal`.
-    let terminal = art
-        .get("terminal")
-        .and_then(|t| t.get("cel"))
-        .and_then(Json::as_str)
-        .map(str::to_string);
+    let terminal = art.get("terminal").and_then(exec::Slot::of);
     let terminal = terminal.as_deref();
     // dsl 0.25.0 §1 (LH N16): the seeded world — the mock's `facts:` /
     // `--fact`, the project's seeds, and what the rules derive over them —

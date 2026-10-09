@@ -198,10 +198,10 @@ fn gates(
 /// single member (untargeted, or a whole kind).
 fn occasion_gate(folded: &FoldedEnv, on: &str, target: Option<&str>) -> Option<String> {
     let gate = crate::gates::gate_of(&folded.occasions, on)?;
-    if !crate::occasion_bind::mentions_target(gate) {
+    if !lute_manifest::semantics::occasion_bind::mentions_target(gate) {
         return Some(gate.to_string());
     }
-    let member = crate::gates::target_member(folded.occasions.get(on)?, target?)?;
+    let member = lute_manifest::semantics::gates::target_member(folded.occasions.get(on)?, target?)?;
     Some(crate::occasion_bind::instantiate(gate, &member))
 }
 

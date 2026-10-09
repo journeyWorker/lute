@@ -27,86 +27,12 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::types::{type_accepts, Literal, Type};
 pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
-use lute_syntax::datalog::{parse_fact, DatalogError};
+use lute_manifest::fact::{parse_fact, DatalogError};
 
-/// The merged `--mock` surface (dsl 0.4.0 §4.3): a scalar state seed, ground
-/// facts, menu selections, and quest events — the same four surfaces a
-/// `--mock <file.yaml>` document carries ([`parse_mock_yaml`]) and the CLI's
-/// per-flag repeats compose with ([`merge`]).
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct MockSet {
-    /// `(state path, literal TEXT, where it is written)`. The literal arrives
-    /// as raw text from either origin (a YAML scalar rendered back to text,
-    /// or a CLI `path=literal` flag) — [`validate`] is the ONE place it is
-    /// coerced against the path's declared [`Type`]. The span is the seed's
-    /// key in the mock's own text (a `state:` / `quests:` key, an
-    /// `entriesRead:` id) — a [`validate`] diagnostic about it is
-    /// [`MOCK_TEXT`] there — and `None` for a flag, which has no text.
-    pub state: Vec<(String, String, Option<Span>)>,
-    /// Raw `"rel(a, b)"` fact-pattern text, one per `--fact`/`facts:` entry,
-    /// in the order supplied.
-    pub facts: Vec<String>,
-    /// branch/hub id -> the ordered choice id(s) forced at that presentation
-    /// point (a hub's `--choose` may force a whole visit sequence, §4.4).
-    pub choose: BTreeMap<String, Vec<String>>,
-    /// `--event`/`events:` names, in the order they fire (Task 20's quest
-    /// walk consumes this; T18 does not validate event names — no
-    /// declaredness surface applies to a lifecycle/capability event kind).
-    /// A lifecycle name (`questActive`/`questComplete`/`questFailed`) here
-    /// is [`E_TRACE_EVENT`] (dsl 0.4.0 §4.3/§4.4): those are engine-derived
-    /// transitions, never user-fired via `--event`.
-    pub events: Vec<String>,
-    /// `--accept`/`accepts:` quest ids, in the order supplied —
-    /// simulates the player/engine accepting a `start`-less (accept-driven)
-    /// quest (§4.4). An id absent from the document, or naming a quest that
-    /// carries a `start` predicate (declarative — needs no accept), is
-    /// [`E_TRACE_ACCEPT`].
-    pub accepts: Vec<String>,
-    /// `visited:` scene ids (dsl 0.21.0 §7a.1): the scenes already presented
-    /// in this save, which `visited('<id>')` reads — closed-world, like
-    /// `facts:`. Scene ids are project-level, so a per-document validator
-    /// cannot check them; an id nothing reads is simply inert.
-    pub visited: Vec<String>,
-    /// `--occasion`/`occasions:` names, in the order they are raised (dsl
-    /// 0.21.0 §7a.2): after a quest walk settles, each raise evaluates the
-    /// `<objective on="<occasion>">` objectives of every active quest. A raise
-    /// FOR a target is written `<occasion>@<target>` (dsl 0.23.0 §2, e.g.
-    /// `talk@npc.maud`): an objective with `target=` is judged only by a
-    /// raise for that target. Read one with [`split_occasion`].
-    pub occasions: Vec<String>,
-    /// `derive:` (dsl 0.22.0 §6): `None`/`Some(true)` applies the project's
-    /// seed facts and Datalog rules over the mocked and asserted facts (the
-    /// default); `Some(false)` (`--no-derive`) restores the 0.21 model, in
-    /// which an unmocked derived atom is unknown. Read it through
-    /// [`MockSet::derives`].
-    pub derive: Option<bool>,
-    /// `bridges:` (dsl 0.24.0 §5): plugin directive tag -> its answers, one
-    /// per call of that tag, consumed in call order. Each answer names the
-    /// `bridgeResult` fields the call's effects read, as literal TEXT (the
-    /// `state:` idiom); [`validate_bridges`] types them.
-    pub bridges: BTreeMap<String, Vec<BridgeAnswer>>,
-    /// Where each `bridges:` entry sits in the mock's own text — what a
-    /// [`validate_bridges`] diagnostic about it is anchored at.
-    pub bridge_spans: BridgeSpans,
-    /// Where each `choose:` entry sits in the mock's own text (round-5
-    /// T3-13) — what a [`validate_choose`] diagnostic about it is anchored
-    /// at. Empty for `--choose` flags.
-    pub choose_spans: ChooseSpans,
-    /// dsl 0.26.0 §7 (T1-7): set by a harness (`lute test`), never parsed —
-    /// an entry, bundle beat or scene whose eligibility decides `false` is
-    /// shown on its head and its body is NOT walked, as the engine would
-    /// never present it. `false` (the default, `lute trace`) walks it anyway.
-    pub gate_eligibility: bool,
-    /// dsl 0.26.0 §7 (T3-5): set by a harness that resolved a project, never
-    /// parsed — every quest id a quest document of the project declares.
-    /// `accepts:` of a quest another document declares is then legal (the
-    /// walk records nothing for it: this document does not hold the quest).
-    pub project_quests: Option<BTreeSet<String>>,
-}
 
-/// One bridge answer (dsl 0.24.0 §5): `(bridgeResult field, literal TEXT)`,
-/// in the order written.
-pub type BridgeAnswer = Vec<(String, String)>;
+/// Runtime mock data with trace-local YAML source metadata.
+pub type MockSet = lute_runtime::MockSet<BridgeSpans, ChooseSpans>;
+type BridgeAnswer = lute_runtime::BridgeAnswer;
 
 /// Where each `bridges:` entry of a mock document sits in its text (dsl
 /// 0.24.0 §5): per tag, the tag key and, per answer, the answer itself and
@@ -191,34 +117,6 @@ impl ChooseSpans {
 }
 
 
-/// The placeholder a bridge-answer hint writes for a result slot of type
-/// `ty` (dsl 0.24.0 §5): `<bool>`, `<number>`, `<string>`, an enum's
-/// members as `<one of: a|b>`, and `<value>` for anything else or an
-/// unknown type.
-pub fn type_placeholder(ty: Option<&Type>) -> String {
-    match ty {
-        Some(Type::Bool) => "<bool>".to_string(),
-        Some(Type::Int | Type::Double) => "<number>".to_string(),
-        Some(Type::Str) => "<string>".to_string(),
-        Some(Type::Enum(members)) => format!("<one of: {}>", members.join("|")),
-        _ => "<value>".to_string(),
-    }
-}
-
-/// A whole bridge answer as a hint: every field the call reads, once each
-/// in the order given, with its [`type_placeholder`] — `{ passed: <bool>,
-/// margin: <number> }`, exactly the set [`validate_bridges`] demands.
-pub fn bridge_answer_shape<'t>(
-    fields: impl IntoIterator<Item = (&'t str, Option<&'t Type>)>,
-) -> String {
-    let mut seen = BTreeSet::new();
-    let parts: Vec<String> = fields
-        .into_iter()
-        .filter(|(f, _)| seen.insert(*f))
-        .map(|(f, ty)| format!("{f}: {}", type_placeholder(ty)))
-        .collect();
-    format!("{{ {} }}", parts.join(", "))
-}
 
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
 /// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
@@ -261,12 +159,6 @@ pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<Bridg
     Ok(out)
 }
 
-impl MockSet {
-    /// Whether derivation applies (dsl 0.22.0 §6: default `true`).
-    pub fn derives(&self) -> bool {
-        self.derive.unwrap_or(true)
-    }
-}
 
 /// A state path as a seed or expectation writes it — bare
 /// (`run.visits.lab2`) or quoted (`run.visits["lab-b2"]`) — in its canonical
@@ -275,27 +167,10 @@ impl MockSet {
 /// name.
 pub fn state_key(raw: &str) -> String {
     lute_cel::path::parse_path_text(raw)
-        .map(|segs| lute_cel::path::render_path(&segs))
+        .map(|segs| lute_manifest::text::render_path(&segs))
         .unwrap_or_else(|| raw.to_string())
 }
 
-/// An occasion raise as written in `occasions:` / `--occasion` (dsl 0.23.0
-/// §2): `talk` → `("talk", None)`, `talk@npc.maud` → `("talk",
-/// Some("npc.maud"))`.
-pub fn split_occasion(raw: &str) -> (&str, Option<&str>) {
-    match raw.split_once('@') {
-        Some((name, target)) => (name, Some(target)),
-        None => (raw, None),
-    }
-}
-
-/// dsl 0.23.0 §2: whether an objective `on=on target=target` is judged by
-/// the raise `raw` — the beat target rule: the occasion matches, and the
-/// objective's target is absent or equal to the raise's.
-pub fn raise_judges(raw: &str, on: &str, target: Option<&str>) -> bool {
-    let (name, raised) = split_occasion(raw);
-    name == on && target.is_none_or(|t| raised == Some(t))
-}
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
 /// text — every diagnostic [`validate`]/[`parse_mock_yaml`] produces is
@@ -734,7 +609,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 return Err(diag(E_TRACE_MOCK_PARSE, message, span));
             };
             if key == "occasions" {
-                let (name, target) = split_occasion(s);
+                let (name, target) = lute_runtime::split_occasion(s);
                 if name.is_empty() || target.is_some_and(str::is_empty) {
                     return Err(diag(
                         E_TRACE_MOCK_PARSE,
@@ -1064,7 +939,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             out.push(mock_diag(E_TRACE_MOCK_UNDECLARED, message, *at));
             continue;
         }
-        if crate::eval::is_reserved_quest_path(path) {
+        if lute_runtime::eval::is_reserved_quest_path(path) {
             let referenced = referenced_reserved.get_or_insert_with(|| {
                 let mut set = crate::quest_refs::collect_referenced_reserved_quest_paths(doc);
                 // A scene beat's frontmatter `when:` is a read too: trace
@@ -1072,7 +947,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                 if let Some(when) = folded.typed.beat.as_ref().and_then(|b| b.when.as_ref()) {
                     crate::quest_refs::collect_referenced_in_raw(
                         &when.raw,
-                        crate::eval::is_reserved_quest_path,
+                        lute_runtime::eval::is_reserved_quest_path,
                         &mut set,
                     );
                 }
@@ -1125,14 +1000,14 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         // flag of it from any CEL slot — the reserved-quest-path rule above,
         // checked against the reserved `bool` domain. A save that read the
         // entry is one fact with two tiers, so both flags go together.
-        if let Some(id) = lute_check::reserved_entry_id(path) {
+        if let Some(id) = lute_manifest::semantics::cel_paths::reserved_entry_id(path) {
             let referenced = folded.env.state.decls.contains_key(path)
                 || doc.entries.iter().any(|e| e.id == id)
                 || referenced_entry_reads
                     .get_or_insert_with(|| {
                         crate::quest_refs::collect_referenced_entry_read_paths(doc)
                             .iter()
-                            .filter_map(|p| lute_check::reserved_entry_id(p).map(str::to_string))
+                            .filter_map(|p| lute_manifest::semantics::cel_paths::reserved_entry_id(p).map(str::to_string))
                             .collect()
                     })
                     .contains(id);
@@ -1189,7 +1064,7 @@ pub fn state_member_problem(
         // An inline `{ enum: […] }` has no name of its own: its path is it.
         None => (path, schema.string_members(path)?),
     };
-    crate::exec::session::member_of(domain, members, literal).err()
+    lute_runtime::session::member_of(domain, members, literal).err()
 }
 
 /// `E-TRACE-MOCK-UNDECLARED` for `path` (dsl 0.4.0 §4.3, 0.1 §11.1.1) —
@@ -1226,9 +1101,9 @@ fn reserved_quest_unreferenced_diag(path: &str, at: Option<Span>) -> Diagnostic 
 /// `quest.<id>.objectives.<oid>.done` (and dsl 0.24.0 §2's `.failed`), the
 /// failure reasons for `quest.<id>.failedBy`.
 fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
-    if crate::eval::is_reserved_quest_objective_done_path(path) {
+    if lute_runtime::eval::is_reserved_quest_objective_done_path(path) {
         matches!(literal, "true" | "false")
-    } else if crate::eval::is_reserved_quest_failed_by_path(path) {
+    } else if lute_runtime::eval::is_reserved_quest_failed_by_path(path) {
         matches!(
             literal,
             "unset" | "fail" | "by" | "until" | "subquest" | "cascade" | "superseded"
@@ -1239,9 +1114,9 @@ fn reserved_quest_literal_valid(path: &str, literal: &str) -> bool {
 }
 
 fn reserved_quest_domain_text(path: &str) -> &'static str {
-    if crate::eval::is_reserved_quest_objective_done_path(path) {
+    if lute_runtime::eval::is_reserved_quest_objective_done_path(path) {
         "true, false"
-    } else if crate::eval::is_reserved_quest_failed_by_path(path) {
+    } else if lute_runtime::eval::is_reserved_quest_failed_by_path(path) {
         "unset, fail, by, until, subquest, cascade, superseded"
     } else {
         "active, complete, failed, unset"
@@ -1257,7 +1132,7 @@ fn describe_datalog_error(e: &DatalogError) -> String {
     }
 }
 
-/// `--fact` validation (§4.3): parse via [`lute_syntax::datalog::parse_fact`],
+/// `--fact` validation (§4.3): parse via [`lute_manifest::fact::parse_fact`],
 /// then D18's [`lute_check::check_atom`] reuse for unknown-relation/arity/
 /// foreign-arg — every hit re-coded [`E_TRACE_MOCK_FACT`]. `check_atom`
 /// alone (never the write-policy layer `::assert`/`::retract` go through)
@@ -1661,23 +1536,6 @@ pub fn validate(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diag
     diags
 }
 
-/// The `bridgeResult` writes of a directive declaration (dsl 0.24.0 §5):
-/// `(field, write)` in declared order — what one call of the tag reads off
-/// its bridge result. Empty for a directive with no such effect.
-pub fn bridge_result_writes(
-    decl: &lute_manifest::schema::DirectiveDecl,
-) -> Vec<(&str, &lute_manifest::schema::WriteDecl)> {
-    decl.effects
-        .iter()
-        .flat_map(|e| &e.writes)
-        .filter_map(|w| match &w.value {
-            lute_manifest::schema::WriteValue::FromBridgeResult { from_bridge_result } => {
-                Some((from_bridge_result.as_str(), w))
-            }
-            _ => None,
-        })
-        .collect()
-}
 
 /// dsl 0.25.0 §7: the state paths a document's content may read — every
 /// dotted identifier chain (`scene.check.guards.margin`) in its source
@@ -1721,7 +1579,7 @@ pub fn content_read_paths(text: &str, def_bodies: &BTreeMap<String, String>) -> 
     paths
 }
 
-/// dsl 0.25.0 §7: the fields of `writes` ([`bridge_result_writes`] of one
+/// dsl 0.25.0 §7: the fields of `writes` ([`lute_runtime::bridge_result_writes`] of one
 /// directive) content reads — those some path in `reads`
 /// ([`content_read_paths`]) is a slot of. Per tag, not per call: answers
 /// queue per tag, so a field one call's result is read at is required of
@@ -1776,13 +1634,13 @@ pub fn validate_bridges(
         let reads_of = snapshot
             .directives
             .get(tag)
-            .map(bridge_result_writes)
+            .map(lute_runtime::bridge_result_writes)
             .unwrap_or_default();
         if reads_of.is_empty() {
             let bridged = snapshot
                 .directives
                 .values()
-                .filter(|d| !bridge_result_writes(d).is_empty())
+                .filter(|d| !lute_runtime::bridge_result_writes(d).is_empty())
                 .map(|d| d.name.as_str());
             let sugg = lute_manifest::suggest::nearest(tag, bridged, 2)
                 .map(|k| format!(" — did you mean `{k}`?"))
@@ -1806,7 +1664,7 @@ pub fn validate_bridges(
                 .map(|(_, d)| &d.ty)
         };
         let required = bridge_fields_read(&reads_of, reads);
-        let shape = bridge_answer_shape(
+        let shape = lute_runtime::bridge_answer_shape(
             reads_of
                 .iter()
                 .filter(|(f, _)| required.contains(f))

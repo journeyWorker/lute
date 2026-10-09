@@ -8,8 +8,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::datalog::{ir_kinds, Explanation, Fact, Premise, Program, Proof};
-use lute_trace::{trace_document, EffectiveState, MockSet, TraceExit, Value};
+use lute_runtime::{
+    datalog::{ir_kinds, Explanation, Fact, Premise, Program, Proof},
+    eval::EffectiveState,
+    value::Value,
+};
+use lute_trace::{trace_document, TraceExit};
+use lute_trace::mock::MockSet;
 
 const PARTY: &str = r#"---
 kind: scene
@@ -124,7 +129,7 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
     }
 
     let program = Program::from_ir(json.get("rules")).with_kinds(ir_kinds(json.get("entities")));
-    let schema = lute_check::StateSchema::default();
+    let schema = lute_runtime::schema::StateSchema::default();
     let state = BTreeMap::from([
         ("run.approval.isolde".to_string(), Value::Int(3)),
         ("run.approval.corvin".to_string(), Value::Int(1)),
@@ -184,7 +189,7 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
 fn a_kind_atom_needs_the_kinds_to_bind() {
     let art = lute_compile::compile(&input()).expect("compiles");
     let json = serde_json::to_value(&art).unwrap();
-    let schema = lute_check::StateSchema::default();
+    let schema = lute_runtime::schema::StateSchema::default();
     let eff = EffectiveState::new(&schema, BTreeMap::new());
     let base: BTreeSet<Fact> = BTreeSet::from([fact("recruited", "isolde")]);
     let bare = Program::from_ir(json.get("rules")).fixpoint(&base, &eff);

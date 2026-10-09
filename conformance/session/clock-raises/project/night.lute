@@ -1,0 +1,12 @@
+---
+kind: scene
+id: night
+luteVersion: "0.38.0"
+title: night
+on: night
+priority: 0
+once: false
+---
+## Night
+::set{run.days += 1}
+@narrator{code="0010"}: Day raised.

@@ -5,9 +5,11 @@ use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
-use lute_syntax::datalog::{BodyLiteral, FactArg, FactTerm};
+use lute_manifest::fact::{FactArg, FactTerm};
+use lute_syntax::datalog::BodyLiteral;
 
-use crate::cel_paths::{collect_path_uses, is_reserved_entry_read, is_reserved_quest_path};
+use crate::cel_paths::collect_path_uses;
+use lute_manifest::semantics::cel_paths::{is_reserved_entry_read, is_reserved_quest_path};
 use crate::ctx::ExpectedType;
 use crate::rel_schema::{check_atom, RelVocab};
 use crate::Ctx;

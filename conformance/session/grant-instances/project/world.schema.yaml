@@ -1,0 +1,3 @@
+state:
+  run.done: { type: bool, default: false, owner: engine }
+  user.count: { type: int, default: 0 }

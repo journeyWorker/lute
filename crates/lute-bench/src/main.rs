@@ -119,7 +119,7 @@ struct TestCase {
 struct PreparedTest {
     path: PathBuf,
     document_index: usize,
-    mocks: lute_trace::MockSet,
+    mocks: lute_trace::mock::MockSet,
     presentation: TestPresentation,
 }
 enum TestPresentation {

@@ -183,7 +183,24 @@ For `select: sequence`, the candidates are listed when the occasion is raised, a
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--explain <ATOM>]…
+$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--explain <ATOM>]…
+```
+
+### Runtime event stream (`--events`)
+
+`--events` writes a resumable runtime stream as compact JSON Lines. The first
+line contains the seed and its output; every following line pairs the input
+the player took with its output, including `choose` and `bridgeResult`
+answers. Each output is stamped with `eventVersion: "0.38.0"`. The stream is
+exclusive with `--json`, `--ir`, `--explain`, and `--dump-conditions`.
+
+A short real stream from the hub conformance project looks like this (the
+first choice opens a second await):
+
+```json
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.38.0","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.38.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.38.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
 - `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.

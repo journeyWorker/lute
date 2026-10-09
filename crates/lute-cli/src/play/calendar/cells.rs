@@ -6,7 +6,7 @@ use super::*;
 /// Per `--facts` relation, the facts of it that hold over the settled
 /// cell: the runner's fixpoint, as [`world_view`] derives them.
 ///
-/// [`world_view`]: lute_trace::exec::session::world_view
+/// [`world_view`]: lute_runtime::session::world_view
 pub(super) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
     if rels.is_empty() {
         return Vec::new();
@@ -118,7 +118,7 @@ pub(super) fn columns(
 /// One column at one cell, recording every candidate's verdict in `seen`
 /// (keyed by its `ProjectIndex.beats` row).
 pub(super) fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTreeMap<usize, Seen>) -> Outcome {
-    let cands = eligible_at(p, w, &col.occasion, col.target.as_deref());
+    let cands = eligible_at(p, w, &col.occasion, col.target.as_deref(), None);
     // A `for` beat is judged (and presented) once per member: its cell
     // names the member, as play's transcript does.
     let label = |c: &Candidate| match &c.for_member {
@@ -197,8 +197,8 @@ pub(super) fn evaluate(p: &ExecProject, w: &World, col: &Column, seen: &mut BTre
         }
     }
     let gated = matches!(
-        lute_trace::exec::seam::closed(p, w, &col.occasion, col.target.as_deref()),
-        Some(lute_trace::exec::seam::Closed::Gate { .. })
+        lute_runtime::seam::closed(p, w, &col.occasion, col.target.as_deref(), None),
+        Some(lute_runtime::seam::Closed::Gate { .. })
     );
     Outcome {
         winner,

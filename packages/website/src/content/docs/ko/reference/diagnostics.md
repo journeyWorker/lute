@@ -1343,6 +1343,59 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.32.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md)
 
+### E-RUNTIME-BRIDGE-SHAPE
+
+런타임 `bridgeResult`가 대기 중인 bridge 호출이 읽는 필드를 빠뜨렸거나, 그 필드에 선언과 다른 타입의 값을 주었습니다.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-BUSY
+
+런타임이 다른 입력의 응답을 기다리는 동안 다른 입력이 들어왔거나, 대기 중인 요청이 없는데 응답이 들어왔습니다.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-HALTED
+
+런타임 상태가 halted가 된 뒤에 입력이 들어왔습니다. 이전 스냅샷을 복원해서 이어가세요.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-INPUT
+
+런타임 seed나 입력이 프로젝트에 없는 항목을 가리키거나, 선언된 타입으로 해석할 수 없는 값을 담고 있습니다.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-IR-VERSION
+
+런타임 bundle의 실행 IR 버전(major.minor)을 이 런타임이 지원하지 않습니다.
+
+명세: [dsl 0.38.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-OPTION
+
+런타임 `choose`가 대기 중인 메뉴에 없는 선택지, 또는 열려 있지 않은 선택지를 골랐습니다.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-REQUEST
+
+런타임 `choose`나 `bridgeResult`의 request id가 대기 중인 요청과 다릅니다.
+
+명세: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+### E-RUNTIME-SNAPSHOT-PROJECT
+
+런타임 스냅샷이 다른 프로젝트 bundle에 속합니다.
+
+명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
+### E-RUNTIME-SNAPSHOT-VERSION
+
+런타임 스냅샷의 major 또는 minor 버전이 호환되지 않습니다.
+
+명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
+
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)

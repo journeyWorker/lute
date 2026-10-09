@@ -1,8 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::expr::ExprNode;
+use lute_ir::*;
 use crate::ir::*;
-
 /// A stable semantic capability identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticId(&'static str);
@@ -56,19 +55,19 @@ pub const REGISTRY: &[SemanticEntry] = &[
 /// (`extra`, plugin `fields`, labels, and locale text) are intentionally
 /// traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
-    "accept","action","activate","advances","after","also","amount","amountMax","amountMin",
-    "anchor","applies","args","arms","as","asserts","assetId","at","atom","authored","beat","body",
+    "accept","action","activate","active","advances","after","also","amount","amountMax","amountMin",
+    "anchor","and","applies","args","arms","as","asserts","assetId","at","atom","authored","beat","body",
     "bool","branchId","bridgeResult","by","call","capabilitySnapshot","category","cel","celEnv",
-    "character","clock","commands","complete","component","cond","contentLang","converge","costume",
+    "character","clock","commands","complete","completed","component","cond","contentLang","converge","costume",
     "credits","day","dayEnd","dayStart","days","default","delay","derive","dialogMotion","display",
     "distinct","document","domain","done","double","duration","effects","else","emotion","entities",
     "entityKind","enums","episode","episodeId","event","excludes","exit","explanation","expr",
-    "extra","fail","family","fields","first","focus","follows","forKind","format","forms","framing",
+    "extra","fail","family","fields","first","focus","follows","forKind","format","forms","formula","framing",
     "from","functions","gates","has","head","heading","id","identityRenames","indefinite","index",
     "int","irVersion","is","key","kind","l","label","labelForms","labels","last","layout","length",
     "lhs","lineId","list","live","localeSegments","location","lute","members","meta","mood","move",
     "n","name","negated","node","objectives","occasion","on","once","op","open","optional",
-    "options","order","otherwise","outcome","outsideRun","overloads","owner","params","path",
+    "options","or","order","otherwise","outcome","outsideRun","overloads","owner","params","path",
     "pause","placeholders","playback","plugin","posReset","position","prefix","preload",
     "prereqEdges","priority","prompt","provenance","quest","r","raise","raiseAtStart","raisedWhen",
     "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
@@ -77,7 +76,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "source","speaker","spentBy","start","state","string","styles","subject","tag","target",
     "targetKind","terminal","terminalPersists","terms","test","text","texts","then","tier","time",
     "timeline","timeout","timing","title","titleLineId","to","token","transition","type","until","value",
-    "variables","variant","visibleWhen","voiceKey","volume","wait","week","when",
+    "variables","variant","visibleWhen","visited","voiceKey","volume","wait","week","when",
 ];
 
 pub fn field_is_registered(field: &str) -> bool {
@@ -361,7 +360,7 @@ mod tests {
     #[test]
     fn follows_is_not_selection() {
         let mut ir = test_ir();
-        ir.prereq_edges.push(PrereqEdgeEntry { node: "q".into(), edge: PrereqEdge::Follows("p".into()) });
+        ir.prereq_edges.push(PrereqEdgeEntry { node: "q".into(), edge: PrereqEdge::Follows("p".into()), formula: None });
         assert!(!collect(&ir).ids.contains(SELECTION.as_str()));
     }
 
@@ -433,7 +432,7 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.37.0".into(), ir_version: "0.37.0".into(),
+            kind: DocKind::Scene, lute: "0.38.0".into(), ir_version: "0.38.0".into(),
             capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),

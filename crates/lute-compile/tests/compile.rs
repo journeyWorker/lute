@@ -275,8 +275,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.37.0");
-    assert_eq!(artifact.ir_version, "0.37.0");
+    assert_eq!(artifact.lute, "0.38.0");
+    assert_eq!(artifact.ir_version, "0.38.0");
     assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
     assert!(
         !artifact.capability_snapshot.is_empty(),
@@ -1803,6 +1803,7 @@ fn lore_document_series_resolves_positions_everywhere() {
             artifact_path: "lore/log.lute.json".to_string(),
             artifact: &art,
         }],
+        &Default::default(),
     )
     .expect("index builds");
     assert_eq!(index.documents[0].key, "haven.captainsLog");
@@ -1893,8 +1894,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.37.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.37.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.38.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.38.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`

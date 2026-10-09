@@ -29,23 +29,24 @@ use lute_compile::source_map::{ArmSource, SourceInfo, SourceMarker};
 use lute_compile::SourceMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
-use lute_syntax::datalog::FactTerm;
+use lute_manifest::fact::FactTerm;
 use serde_json::Value as Json;
 
-use crate::exec::session::{
+use lute_runtime::session::{
     ExecProject, Premise, Verdict as SessionVerdict, World as SessionWorld,
 };
-use crate::exec::{
-    self, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine, Menu,
-    MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
+use lute_runtime::{
+    self as exec, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine,
+    Menu, MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
 };
-use crate::mock::{self, BridgeAnswer, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
+use lute_runtime::BridgeAnswer;
+use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
     self, ComponentBoundary, ComponentSite, Coverage, CoverageCount, Decision, GrantCredit,
     GrantReward, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
-use crate::value::{UnresolvedAtom, Value};
-use lute_compile::index::BeatKind;
+use lute_runtime::value::{UnresolvedAtom, Value};
+use lute_ir::BeatKind;
 
 mod ast;
 mod driver_core;
@@ -77,3 +78,13 @@ pub use pipeline::{
     trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check, trace_entry,
     trace_entry_with_check, trace_with_check,
 };
+
+/// A condition held as source text (a document's beat `when`, a `--where`
+/// filter), lowered to the IR's `expr` exactly as `lute compile` lowers it:
+/// the executor evaluates `expr` only and never parses CEL (spec 0.38.0
+/// §13). `None` for text outside the profile — what the checker already
+/// refused.
+pub fn lowered(raw: &str) -> Option<std::sync::Arc<exec::Slot>> {
+    let expr = serde_json::to_value(lute_compile::expr::lower_expr(raw)?).ok()?;
+    exec::Slot::of(&serde_json::json!({ "cel": raw, "expr": expr }))
+}

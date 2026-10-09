@@ -14,7 +14,8 @@ use lute_syntax::incremental::{ContinuationUnit, IncrementalContinuationParser};
 
 pub use lute_syntax::incremental::NeedMoreInput;
 
-use crate::{compile_with_check, stamp_identity_renames, ExecutionIr, Command, DocKind};
+use crate::{compile_with_check, stamp_identity_renames, ExecutionIr, Command};
+use lute_ir::DocKind;
 
 pub const E_STREAM_TEMPLATE: &str = "E-STREAM-TEMPLATE";
 pub const E_STREAM_BODY: &str = "E-STREAM-BODY";
