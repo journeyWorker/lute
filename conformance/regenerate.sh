@@ -66,6 +66,10 @@ for project in session/*/project; do
   jq -c 'if has("seed") then {seed:.seed} else {input:.input} end' "$case_dir/expected.jsonl" > "$case_dir/inputs.jsonl"
   echo "recorded $case_dir session"
 done
+runtime_fixture="$root/crates/lute-runtime-wasm/tests/fixtures/hub-once"
+"$lute" compile --all "$root/conformance/session/hub-once/project" -o "$runtime_fixture"
+jq -n --argjson hub "$(cat "$runtime_fixture/hub.lute.json")" \
+  '{"hub.lute.json":$hub}' > "$runtime_fixture/artifacts.json"
 
 # Diagnostic fixtures: run from the fixture directory so reported paths are
 # fixture-relative, then strip the absolute prefix some messages carry.
