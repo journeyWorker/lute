@@ -1,9 +1,9 @@
 {
   "name": "@lute-lang/runtime",
   "version": "0.39.0",
-  "type": "module",
-  "private": false,
+  "description": "The Lute runtime for TypeScript hosts, in Effect: load a compiled Lute bundle, drive the resumable step function, replay input logs (Bun and browsers).",
   "license": "MIT",
+  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/journeyWorker/lute.git",
@@ -23,15 +23,31 @@
       "import": "./dist/browser.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "wasm:build": "bun scripts/wasm-build.ts",
+    "wasm:build:release": "bun scripts/wasm-build.ts --release",
+    "wasm:build:test-panic": "bun scripts/wasm-build.ts --test-panic",
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bunx --bun vitest run",
+    "contract:gen": "bun scripts/contract-codegen.ts",
+    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
+  },
   "peerDependencies": {
     "effect": "4.0.2",
     "@effect/platform-bun": "4.0.2",
     "@effect/platform-browser": "4.0.2"
   },
   "peerDependenciesMeta": {
-    "@effect/platform-bun": { "optional": true },
-    "@effect/platform-browser": { "optional": true }
+    "@effect/platform-bun": {
+      "optional": true
+    },
+    "@effect/platform-browser": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "effect": "4.0.2",
@@ -42,10 +58,5 @@
     "typescript": "7.0.2",
     "@types/bun": "1.4.2"
   },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "bunx --bun vitest run",
-    "contract:gen": "bun scripts/contract-codegen.ts",
-    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
-  }
+  "private": false
 }
