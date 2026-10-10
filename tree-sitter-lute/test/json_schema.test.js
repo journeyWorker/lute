@@ -9,7 +9,8 @@
 // never asserted here.
 import { test, expect, describe } from "bun:test";
 import Ajv from "ajv";
-import { existsSync, readFileSync } from "node:fs";
+import Ajv2020 from "ajv/dist/2020.js";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const ROOT = `${import.meta.dir}/../..`;
@@ -580,5 +581,45 @@ options:
     const doc = Bun.YAML.parse("stampAttrs:\n  - { name: bonusId }\n");
     const { ok } = validateAgainst(ajv, pluginSchema.$id, doc);
     expect(ok).toBe(false);
+  });
+});
+
+describe("generated runtime contract schemas", () => {
+  test("every conformance and contract-fixture line validates", () => {
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.39.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.39.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    const eventValidate = ajv.compile(events);
+    const snapshotValidate = ajv.compile(snapshots);
+    const files = [];
+    for (const entry of readdirSync(`${ROOT}/conformance/session`, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      for (const name of ["expected.jsonl", "inputs.jsonl"]) {
+        const path = `${ROOT}/conformance/session/${entry.name}/${name}`;
+        if (existsSync(path)) files.push(path);
+      }
+    }
+    files.push(`${ROOT}/conformance/session/contract-fixtures.jsonl`);
+    let count = 0;
+    for (const path of files) {
+      for (const line of readFileSync(path, "utf8").split("\n").filter(Boolean)) {
+        let value = JSON.parse(line);
+        let validate = eventValidate;
+        if (Object.hasOwn(value, "snapshotVersion")) {
+          validate = snapshotValidate;
+        } else if (Object.hasOwn(value, "seed") && !Object.hasOwn(value, "output")) {
+          value = value.seed;
+        } else if (Object.hasOwn(value, "input") && !Object.hasOwn(value, "output")) {
+          value = value.input;
+        } else if (Object.hasOwn(value, "verdict")) {
+          validate = ajv.compile({ $ref: `${events.$id}#/$defs/Verdict` });
+        } else if (Object.hasOwn(value, "premise")) {
+          validate = ajv.compile({ $ref: `${events.$id}#/$defs/Premise` });
+        }
+        expect(validate(value), `${path}: ${JSON.stringify(validate.errors)}`).toBe(true);
+        count += 1;
+      }
+    }
+    expect(count).toBeGreaterThan(0);
   });
 });

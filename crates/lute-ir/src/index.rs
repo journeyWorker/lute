@@ -55,6 +55,7 @@ pub struct IndexEntry {
 /// What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat
 /// (`SceneMeta.beat`), an entry beat (`EntryCmd.on`), or a bundle beat (a
 /// lore document's `beat` record, dsl 0.23.0 §4).
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BeatKind {

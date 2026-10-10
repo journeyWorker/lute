@@ -108,6 +108,19 @@ impl<'de> Deserialize<'de> for BeatOnce {
             .ok_or_else(|| serde::de::Error::custom(format!("invalid once policy {s:?}")))
     }
 }
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for BeatOnce {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "BeatOnce".into()
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": "^(run|user|none|day|slot|week|season:.+)$"
+        })
+    }
+}
 
 /// How a presented beat moves the engine clock (dsl 0.31.0 §1). This is a
 /// declaration only; the engine performs the move when the beat is presented.

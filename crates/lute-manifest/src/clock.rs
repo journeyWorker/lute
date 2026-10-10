@@ -140,7 +140,7 @@ pub struct WeekDecl {
 }
 
 /// A position on the clock: a day and the index of a slot in `slots`.
-/// Ordered by time.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClockAt {

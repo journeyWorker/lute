@@ -4,12 +4,22 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+json-schema = ["dep:schemars", "lute-ir/json-schema", "lute-manifest/json-schema"]
+
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
 lute-ir = { path = "../lute-ir" }
 lute-manifest = { path = "../lute-manifest" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+schemars = { workspace = true, optional = true }
+
+[[bin]]
+name = "lute-contract-schema"
+path = "src/bin/lute-contract-schema.rs"
+required-features = ["json-schema"]
 
 [dev-dependencies]
 lute-compile = { path = "../lute-compile" }

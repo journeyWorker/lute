@@ -30,4 +30,4 @@ pub use machine::{
 pub use expr::Slot;
 pub use value::{value_text, UnresolvedAtom, Value};
 pub use driver::{guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict};
-pub use runtime::{AdvanceBy, Await, ClockPosition, Continuation, Event, Input, MenuAwait, MenuOptionAwait, Output, Phase, PickInput, Rejected, Runtime, SaveInput, Seed as RuntimeSeed, State, StateWrite, WritesInput};
+pub use runtime::{AdvanceBy, Await, ClockPosition, Continuation, Event, Input, MenuAwait, MenuOptionAwait, Output, Phase, PickInput, Rejected, Runtime, SaveInput, Seed as RuntimeSeed, Snapshot, SnapshotJsonInput, State, StateWrite, StreamLine, WritesInput};

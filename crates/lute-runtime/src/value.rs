@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Three-valued trace value (§4.3). The explicit tag preserves CEL integer
 /// versus double values in JSON.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum Value {

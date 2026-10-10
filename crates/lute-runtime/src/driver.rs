@@ -5,8 +5,8 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
-
 use crate::input::BridgeAnswer;
 use crate::value::UnresolvedAtom;
 
@@ -118,7 +118,9 @@ pub enum Verdict {
 /// (round-5 T3-12): a state path (with the value it held), a fact pattern
 /// that does not hold, a scene `visited(…)` has not seen — or, under a
 /// negation (OT-F-10), a fact that holds, a scene that is visited.
-#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
 pub enum GuardRead {
     Path(String, crate::Value),
     Fact(String),

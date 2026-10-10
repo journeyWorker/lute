@@ -127,6 +127,9 @@ jobs:
       - name: lute-runtime builds for wasm32
         run: cargo check -p lute-runtime --target wasm32-unknown-unknown
 
+      - name: Generated runtime contract schemas are current
+        run: cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && git diff --exit-code schemas/
+
   gates:
     name: JS harnesses + doc gates (offline)
     runs-on: ubuntu-latest

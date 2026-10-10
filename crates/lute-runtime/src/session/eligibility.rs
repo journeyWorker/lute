@@ -5,6 +5,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::ser::SerializeStruct;
 use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
 use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 use lute_manifest::schema::OccasionSelect;
@@ -63,6 +65,142 @@ pub enum Premise {
     Terminal { occasion: String, raw: String },
 }
 
+// Named-field wire mirrors keep the original tuple-variant Rust API while
+// giving serde and schemars a single tagged contract definition.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "Verdict"))]
+#[derive(Deserialize)]
+#[serde(tag = "verdict", rename_all = "camelCase")]
+enum VerdictWire {
+    Eligible,
+    Ineligible { premise: Premise },
+    Unknown { why: String },
+}
+
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "Premise"))]
+#[derive(Deserialize)]
+#[serde(tag = "premise", rename_all = "camelCase")]
+enum PremiseWire {
+    Spent {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        once: Option<BeatOnce>,
+        reason: String,
+    },
+    After { raw: String, unmet: Vec<Atom>, chapters: bool },
+    SpentBy { raw: String },
+    When { raw: String },
+    Gate { occasion: String, raw: String, reads: Vec<crate::GuardRead> },
+    Terminal { occasion: String, raw: String },
+}
+
+impl Serialize for Verdict {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut wire = serializer.serialize_struct("Verdict", match self {
+            Self::Eligible => 1,
+            Self::Ineligible(_) | Self::Unknown(_) => 2,
+        })?;
+        match self {
+            Self::Eligible => wire.serialize_field("verdict", "eligible")?,
+            Self::Ineligible(premise) => {
+                wire.serialize_field("verdict", "ineligible")?;
+                wire.serialize_field("premise", premise)?;
+            }
+            Self::Unknown(why) => {
+                wire.serialize_field("verdict", "unknown")?;
+                wire.serialize_field("why", why)?;
+            }
+        }
+        wire.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Verdict {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match VerdictWire::deserialize(deserializer)? {
+            VerdictWire::Eligible => Self::Eligible,
+            VerdictWire::Ineligible { premise } => Self::Ineligible(premise),
+            VerdictWire::Unknown { why } => Self::Unknown(why),
+        })
+    }
+}
+
+impl Serialize for Premise {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let len = match self {
+            Self::Spent { once, .. } => 2 + usize::from(once.is_some()),
+            Self::After { .. } | Self::Gate { .. } => 4,
+            Self::SpentBy(_) | Self::When { .. } => 2,
+            Self::Terminal { .. } => 3,
+        };
+        let mut wire = serializer.serialize_struct("Premise", len)?;
+        match self {
+            Self::Spent { once, reason } => {
+                wire.serialize_field("premise", "spent")?;
+                if let Some(once) = once {
+                    wire.serialize_field("once", once)?;
+                }
+                wire.serialize_field("reason", reason)?;
+            }
+            Self::After { raw, unmet, chapters } => {
+                wire.serialize_field("premise", "after")?;
+                wire.serialize_field("raw", raw)?;
+                wire.serialize_field("unmet", unmet)?;
+                wire.serialize_field("chapters", chapters)?;
+            }
+            Self::SpentBy(raw) => {
+                wire.serialize_field("premise", "spentBy")?;
+                wire.serialize_field("raw", raw)?;
+            }
+            Self::When { raw } => {
+                wire.serialize_field("premise", "when")?;
+                wire.serialize_field("raw", raw)?;
+            }
+            Self::Gate { occasion, raw, reads } => {
+                wire.serialize_field("premise", "gate")?;
+                wire.serialize_field("occasion", occasion)?;
+                wire.serialize_field("raw", raw)?;
+                wire.serialize_field("reads", reads)?;
+            }
+            Self::Terminal { occasion, raw } => {
+                wire.serialize_field("premise", "terminal")?;
+                wire.serialize_field("occasion", occasion)?;
+                wire.serialize_field("raw", raw)?;
+            }
+        }
+        wire.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Premise {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match PremiseWire::deserialize(deserializer)? {
+            PremiseWire::Spent { once, reason } => Self::Spent { once, reason },
+            PremiseWire::After { raw, unmet, chapters } => Self::After { raw, unmet, chapters },
+            PremiseWire::SpentBy { raw } => Self::SpentBy(raw),
+            PremiseWire::When { raw } => Self::When { raw },
+            PremiseWire::Gate { occasion, raw, reads } => Self::Gate { occasion, raw, reads },
+            PremiseWire::Terminal { occasion, raw } => Self::Terminal { occasion, raw },
+        })
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for Premise {
+    fn schema_name() -> std::borrow::Cow<'static, str> { "Premise".into() }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        PremiseWire::json_schema(generator)
+    }
+}
+
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for Verdict {
+    fn schema_name() -> std::borrow::Cow<'static, str> { "Verdict".into() }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        VerdictWire::json_schema(generator)
+    }
+}
+
 impl std::fmt::Display for Premise {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -109,7 +247,9 @@ impl Premise {
 
 /// Every [`Premise::kind`], in the order a beat's eligibility judges them.
 pub const PREMISE_KINDS: [&str; 6] = ["terminal", "gate", "once", "after", "spentBy", "when"];
-
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Candidate {
     pub id: String,
     pub kind: BeatKind,
@@ -124,6 +264,7 @@ pub struct Candidate {
     pub also: bool,
     /// dsl 0.27.0 §3 (T2-10): the member a `for="kind:<kind>"` beat's
     /// candidate is judged (and presented) for; `None` for any other beat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub for_member: Option<String>,
     /// dsl 0.28.0 (T2-10): the verdict was judged again at the beat's turn
     /// in a `select: sequence` raise, after an earlier beat of the raise
@@ -599,5 +740,96 @@ pub fn presented(select: OccasionSelect, cands: &[Candidate]) -> Vec<usize> {
         OccasionSelect::All | OccasionSelect::Sequence => {
             (0..cands.len()).filter(|&i| eligible(&cands[i])).collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    fn example<T>(value: T, expected: &str)
+    where
+        T: Serialize + for<'de> Deserialize<'de> + PartialEq + std::fmt::Debug,
+    {
+        assert_eq!(serde_json::to_string(&value).unwrap(), expected);
+        assert_eq!(serde_json::from_str::<T>(expected).unwrap(), value);
+    }
+
+    #[test]
+    fn verdict_json_examples() {
+        example(Verdict::Eligible, r#"{"verdict":"eligible"}"#);
+        example(
+            Verdict::Ineligible(Premise::When { raw: "run.ready".into() }),
+            r#"{"verdict":"ineligible","premise":{"premise":"when","raw":"run.ready"}}"#,
+        );
+        example(
+            Verdict::Unknown("run.ready is unset".into()),
+            r#"{"verdict":"unknown","why":"run.ready is unset"}"#,
+        );
+    }
+
+    #[test]
+    fn premise_json_examples() {
+        example(
+            Premise::Spent { once: Some(BeatOnce::Run), reason: "already presented this run".into() },
+            r#"{"premise":"spent","once":"run","reason":"already presented this run"}"#,
+        );
+        example(
+            Premise::Spent { once: None, reason: "already read".into() },
+            r#"{"premise":"spent","reason":"already read"}"#,
+        );
+        example(
+            Premise::After {
+                raw: "visited(\"intro\") && completed(\"main\") && active(\"side\")".into(),
+                unmet: vec![Atom::Visited("intro".into()), Atom::Completed("main".into()), Atom::Active("side".into())],
+                chapters: true,
+            },
+            r#"{"premise":"after","raw":"visited(\"intro\") && completed(\"main\") && active(\"side\")","unmet":[{"visited":"intro"},{"completed":"main"},{"active":"side"}],"chapters":true}"#,
+        );
+        example(
+            Premise::SpentBy("run.finished".into()),
+            r#"{"premise":"spentBy","raw":"run.finished"}"#,
+        );
+        example(
+            Premise::When { raw: "run.ready".into() },
+            r#"{"premise":"when","raw":"run.ready"}"#,
+        );
+        example(
+            Premise::Gate {
+                occasion: "visit".into(),
+                raw: "run.ready".into(),
+                reads: vec![crate::GuardRead::Path("run.ready".into(), Value::Bool(false))],
+            },
+            r#"{"premise":"gate","occasion":"visit","raw":"run.ready","reads":[{"kind":"path","value":["run.ready",{"kind":"bool","value":false}]}]}"#,
+        );
+        example(
+            Premise::Terminal { occasion: "visit".into(), raw: "run.finished".into() },
+            r#"{"premise":"terminal","occasion":"visit","raw":"run.finished"}"#,
+        );
+    }
+
+    #[test]
+    fn candidate_json_examples() {
+        let mut candidate = Candidate {
+            id: "intro".into(),
+            kind: BeatKind::Scene,
+            document: "scenes/intro.lute".into(),
+            priority: 2,
+            verdict: Verdict::Eligible,
+            read: false,
+            also: false,
+            for_member: None,
+            rejudged: false,
+        };
+        example(
+            candidate.clone(),
+            r#"{"id":"intro","kind":"scene","document":"scenes/intro.lute","priority":2,"verdict":{"verdict":"eligible"},"read":false,"also":false,"rejudged":false}"#,
+        );
+        candidate.for_member = Some("alice".into());
+        candidate.rejudged = true;
+        example(
+            candidate,
+            r#"{"id":"intro","kind":"scene","document":"scenes/intro.lute","priority":2,"verdict":{"verdict":"eligible"},"read":false,"also":false,"forMember":"alice","rejudged":true}"#,
+        );
     }
 }

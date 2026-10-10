@@ -211,6 +211,7 @@ pub struct LatchPlan {
 }
 
 /// The cadence memory a playthrough carries between steps.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cadence {
