@@ -1,8 +1,8 @@
 name: Publish
 run-name: "release ${{ github.ref_name }}"
 
-# Simplified to lute's two-level package chain and to S0's two-row
-# platform matrix (macOS arm64 + Linux x64 gnu). Naming: the launcher
+# Publishes the platform binaries, the platform-free @lute-lang/runtime
+# package, and lute's launcher. Naming: the launcher
 # publishes as the SCOPED `@lute-lang/lute` shipping `bin: { lute: "./bin.js" }`,
 # so `bunx @lute-lang/lute` is the friendly invocation while the installed
 # bin stays `lute`; platform binaries are `@lute-lang/lute-core-<platform>`.
@@ -165,7 +165,7 @@ jobs:
       # the BOOTSTRAP path: a brand-new package has no settings page yet, so
       # a trusted publisher cannot be configured until it exists. Set the
       # NPM_TOKEN repo secret for the first release; once trusted publishing
-      # is configured on all three package pages, OIDC is used and the token
+      # is configured on all package pages, OIDC is used and the token
       # (and this secret) can be removed.
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
@@ -199,7 +199,7 @@ jobs:
           VERSION: ${{ needs.read-version.outputs.version }}
         run: |
           set -euo pipefail
-          for pkg in packages/cli packages/core-darwin-arm64 packages/core-linux-x64 packages/core-win32-x64; do
+          for pkg in packages/runtime packages/cli packages/core-darwin-arm64 packages/core-linux-x64 packages/core-win32-x64; do
             jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
             mv "$pkg/package.json.tmp" "$pkg/package.json"
           done
@@ -211,6 +211,51 @@ jobs:
             packages/cli/package.json > packages/cli/package.json.tmp
           mv packages/cli/package.json.tmp packages/cli/package.json
           echo "Publishing all packages at $VERSION"
+
+      - name: Install Rust wasm toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust and wasm build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/
+            target/
+          key: lute-runtime-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install pinned wasm-bindgen CLI
+        run: |
+          set -euo pipefail
+          cargo install --locked wasm-bindgen-cli --version 0.2.126
+          test "$(wasm-bindgen --version)" = "wasm-bindgen 0.2.126"
+
+      - name: Install pinned Binaryen
+        env:
+          BINARYEN_VERSION: version_133
+          BINARYEN_SHA256: 2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$BINARYEN_SHA256" "$archive" | sha256sum --check
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+          echo "WASM_OPT=$RUNNER_TEMP/binaryen-${BINARYEN_VERSION}/bin/wasm-opt" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/binaryen-${BINARYEN_VERSION}/bin/wasm-opt" --version
+
+      - name: Build @lute-lang/runtime
+        working-directory: packages/runtime
+        run: |
+          bun install --frozen-lockfile
+          bun run wasm:build:release
+          bun run build
 
       - name: Build @lute-lang/lute launcher
         working-directory: packages/cli
@@ -248,7 +293,7 @@ jobs:
             exit 1
           }
           ALREADY=""
-          for pkg_dir in core-darwin-arm64 core-linux-x64 core-win32-x64 cli; do
+          for pkg_dir in runtime core-darwin-arm64 core-linux-x64 core-win32-x64 cli; do
             PKG=$(jq -r .name "packages/$pkg_dir/package.json")
             if is_published "$PKG"; then
               ALREADY="$ALREADY $PKG"
@@ -266,10 +311,24 @@ jobs:
             echo "fresh release: no package is published at $VERSION yet."
           fi
 
-      # Platform packages first, then the @lute-lang/lute wrapper LAST (its
-      # optionalDependencies point at the platform packages, which must
-      # already resolve on npm). Each step is idempotent: a re-run / a
-      # recovery pass skips whatever already shipped at $VERSION.
+      # The @lute-lang/runtime package is published before the launcher; the
+      # platform packages are also published first so the launcher's
+      # optionalDependencies already resolve on npm. Each step is idempotent:
+      # a re-run / a recovery pass skips whatever already shipped at $VERSION.
+      - name: Publish @lute-lang/runtime (idempotent)
+        working-directory: packages/runtime
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
       - name: Publish @lute-lang/lute-core-darwin-arm64 (idempotent)
         working-directory: packages/core-darwin-arm64
         env:
