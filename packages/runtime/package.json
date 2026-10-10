@@ -33,6 +33,7 @@
     "build": "bun scripts/build.ts",
     "typecheck": "tsc --noEmit",
     "test": "bunx --bun vitest run",
+    "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
     "contract:gen": "bun scripts/contract-codegen.ts",
     "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
   },
@@ -50,13 +51,15 @@
     }
   },
   "devDependencies": {
-    "effect": "4.0.2",
-    "@effect/platform-bun": "4.0.2",
     "@effect/platform-browser": "4.0.2",
+    "@effect/platform-bun": "4.0.2",
     "@effect/vitest": "4.0.2",
-    "vitest": "5.0.3",
+    "@types/bun": "1.4.2",
+    "@vitest/browser-playwright": "5.0.3",
+    "effect": "4.0.2",
+    "playwright": "1.64.0",
     "typescript": "7.0.2",
-    "@types/bun": "1.4.2"
+    "vitest": "5.0.3"
   },
   "private": false
 }
