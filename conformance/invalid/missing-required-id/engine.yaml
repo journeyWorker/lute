@@ -1,4 +1,4 @@
 engine: minimal
-irVersion: "0.38.0"
+irVersion: "0.39.0"
 supportedIds:
   - lute.core/1

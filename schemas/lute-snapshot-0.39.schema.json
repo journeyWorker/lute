@@ -1,19 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.38.schema.json",
-  "title": "Lute runtime snapshot (snapshotVersion 0.38.x)",
-  "description": "A Runtime::snapshot of a runtime State. Normative source: docs/proposals/scenario-dsl/0.38.0.md §7. Input and Await shapes are the event contract's (lute-events-0.38.schema.json).",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.39.schema.json",
+  "title": "Lute runtime snapshot (snapshotVersion 0.39.x)",
+  "description": "A Runtime::snapshot of a runtime State. Normative source: docs/proposals/scenario-dsl/0.38.0.md §7. Input and Await shapes are the event contract's (lute-events-0.39.schema.json).",
   "type": "object",
   "additionalProperties": false,
   "required": ["snapshotVersion", "project", "await", "request", "world"],
   "properties": {
-    "snapshotVersion": { "type": "string", "pattern": "^0\\.38\\.[0-9]+$" },
+    "snapshotVersion": { "type": "string", "pattern": "^0\\.39\\.[0-9]+$" },
     "project": {
       "description": "Bundle fingerprint: irVersion:capabilitySnapshot:sha256(index, artifacts in path order).",
       "type": "string",
       "pattern": "^[^:]+:[^:]*:[0-9a-f]{64}$"
     },
-    "await": { "$ref": "lute-events-0.38.schema.json#/$defs/Await" },
+    "await": { "$ref": "lute-events-0.39.schema.json#/$defs/Await" },
     "request": { "type": "integer", "minimum": 0 },
     "world": { "$ref": "#/$defs/World" },
     "continuation": { "$ref": "#/$defs/Continuation" }
@@ -92,7 +92,7 @@
       "description": "An answer already given to an await of the suspended input, in order.",
       "oneOf": [
         { "type": "object", "additionalProperties": false, "required": ["choice"], "properties": { "choice": { "type": "object", "additionalProperties": false, "required": ["id", "option"], "properties": { "id": { "type": "string" }, "option": { "type": "string" } } } } },
-        { "type": "object", "additionalProperties": false, "required": ["bridge"], "properties": { "bridge": { "type": "object", "additionalProperties": false, "required": ["tag", "fields"], "properties": { "tag": { "type": "string" }, "fields": { "type": "object", "additionalProperties": { "$ref": "lute-events-0.38.schema.json#/$defs/Scalar" } } } } } }
+        { "type": "object", "additionalProperties": false, "required": ["bridge"], "properties": { "bridge": { "type": "object", "additionalProperties": false, "required": ["tag", "fields"], "properties": { "tag": { "type": "string" }, "fields": { "type": "object", "additionalProperties": { "$ref": "lute-events-0.39.schema.json#/$defs/Scalar" } } } } } }
       ]
     },
     "Continuation": {
@@ -102,9 +102,9 @@
       "required": ["before", "input", "answers", "pending", "delivered"],
       "properties": {
         "before": { "$ref": "#/$defs/World" },
-        "input": { "$ref": "lute-events-0.38.schema.json#/$defs/Input" },
+        "input": { "$ref": "lute-events-0.39.schema.json#/$defs/Input" },
         "answers": { "type": "array", "items": { "$ref": "#/$defs/Answer" } },
-        "pending": { "$ref": "lute-events-0.38.schema.json#/$defs/Await" },
+        "pending": { "$ref": "lute-events-0.39.schema.json#/$defs/Await" },
         "delivered": { "type": "integer", "minimum": 0 }
       }
     }

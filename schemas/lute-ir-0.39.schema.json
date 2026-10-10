@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.38.schema.json",
-  "title": "Lute compiled execution IR (irVersion 0.38.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.38.x accepts only 0.38.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.38.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.39.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.39.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.39.x accepts only 0.39.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.39.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -31,7 +31,7 @@
     },
     "irVersion": {
       "type": "string",
-      "description": "IR schema version the engine gates on: the exact MAJOR.MINOR line before 1.0, MAJOR only from 1.0, e.g. \"0.38.0\"."
+      "description": "IR schema version the engine gates on: the exact MAJOR.MINOR line before 1.0, MAJOR only from 1.0, e.g. \"0.39.0\"."
     },
     "capabilitySnapshot": {
       "type": "string",

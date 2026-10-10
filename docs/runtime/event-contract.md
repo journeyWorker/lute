@@ -1,13 +1,13 @@
 # Runtime event contract
 
-**Status: 0.38.0 runtime contract.**
+**Status: 0.39.0 runtime contract.**
 
 Runtime R1 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
 and grant settlement. The runtime never calls those services itself.
 
 The normative source is [Lute 0.38.0 §§3–12](../proposals/scenario-dsl/0.38.0.md#3-the-step-function).
-The [events schema](../../schemas/lute-events-0.38.schema.json) defines the
+The [events schema](../../schemas/lute-events-0.39.schema.json) defines the
 wire fields; its `$defs` expose `Input`, `Seed`, `Output`, `Event`, `Await`
 and `Rejected`. This guide explains how a host uses them. Artifact dispatch
 is described in [execution-model.md](./execution-model.md).
@@ -130,7 +130,7 @@ with the option that policy selects.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.38.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.39.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -228,7 +228,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.38.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.39.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

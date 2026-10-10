@@ -282,7 +282,7 @@ diagnostics, the compiled JSON IR, and a mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.38.0**.
+compiles, traces, and inspects them. The current language version is **0.39.0**.
 
 ## Quick start with `bunx`
 
@@ -338,9 +338,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.38.0
-language      0.38.0
-IR schema     0.38.0
+lute toolchain 0.39.0
+language      0.39.0
+IR schema     0.39.0
 ```
 
 The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
@@ -353,10 +353,10 @@ For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.38.0","language":"0.38.0","ir":"0.38.0"}
+{"toolchain":"0.39.0","language":"0.39.0","ir":"0.39.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.38.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.39.0` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
 prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
@@ -385,7 +385,7 @@ Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.38.0**.
+**0.39.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -698,8 +698,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.38.0",
-  "irVersion": "0.38.0",
+  "lute": "0.39.0",
+  "irVersion": "0.39.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
@@ -1747,7 +1747,7 @@ Create `scenes/crime-scene.lute`:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -1794,7 +1794,7 @@ Create `scenes/interview.lute`:
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -1860,7 +1860,7 @@ Create `quests/identify-killer.lute`:
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -1893,7 +1893,7 @@ Create `scenes/confrontation.lute`:
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
@@ -2211,8 +2211,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.38.0"` /
-`"irVersion": "0.38.0"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.39.0"` /
+`"irVersion": "0.39.0"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 
@@ -12833,7 +12833,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.38.0 and the AI edit-loop
+contract; the repository's current release is 0.39.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -16956,7 +16956,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.38.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.38.schema.json)
+[`schemas/lute-ir-0.39.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.39.schema.json)
 (JSON Schema draft 2020-12).
 
 :::caution[Permissions stop at the artifact boundary]
@@ -17153,8 +17153,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.37` engine accepts only `0.37.*` artifacts and refuses `0.36.*`
-   and `0.38.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.39` engine accepts only `0.39.*` artifacts and refuses `0.38.*`
+   and `0.40.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -17166,7 +17166,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.38.0"
+irVersion: "0.39.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -17182,7 +17182,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.37.*` artifact against the `0.38.0`
+the matrix's exact major.minor line (a `0.38.*` artifact against the `0.39.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
@@ -20256,7 +20256,7 @@ lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.38.0**:
+the consolidated **index** of what is *current* at language version **0.39.0**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -20266,7 +20266,7 @@ full cumulative history (including the pre-implementation `0.0.1` draft and the
 capability proposals), see the [specification index](/spec/).
 :::
 
-## What is current at 0.38.0
+## What is current at 0.39.0
 
 | Language area | Introduced | Last changed | Normative source |
 |---|---|---|---|
@@ -20287,10 +20287,10 @@ capability proposals), see the [specification index](/spec/).
 | Timeline & property tracks | 0.1.0 | 0.37.0 (a record's timing is one `timing` object — `wait`, and `duration` / `delay` / `at` in finite non-negative seconds, plus the `timeline` ordinal on a record emitted from a timeline; a `barrier` keeps its own direct `timeline` and `at`) | [0.37.0.md §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#52-timing-and-trace); [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
 | Connectivity & `after:` sequencing | 0.2.0 (`after:` scene sequencing) | 0.29.0 (`W-CHAPTER-STALL` stays specific to `chapters:` — a hand-written `after:` outside a chain is itself the statement "wait for that scene" and never warns; `lute new scene --occasion O` always writes `on: O` and, when `O` carries a chain, says how to make the scene a chapter instead; `0.28.0`: the manifest's `sequence: { occasion, scenes }` is `chapters: [{ on, scenes }]`, one chain per occasion (`E-CHAPTERS`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL` — which fires only on a `when:` that can stay false for good); a chain on a targeted occasion requires every listed scene to declare `target:`; a quest's `follows=` draws a scenario edge without gating; `0.27.0`: the manifest's `chapters:` chains the scenes each chain lists with `after: visited("<previous>")`; `0.25.0`: a bundle `<beat after=…>` is a scenario edge like a scene's `after:`; nested quests draw `[subquest]` edges and a quest's top-level `start` reads draw `[start]` anchors, so a `start`-driven quest needs no copied `after=`; `lute scenario` lists a unit whose `when` reads `visited()` without an `after` as unanchored, with the `after` to write; `0.8.0`: `active("questId")` — the third prerequisite primitive) | [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
 | Identity & localization (`lineId` / `voiceKey`, locale texts) | 0.1.0 | 0.37.0 (every line carries a `voiceKey`, narration and `{mono}` included, and `E-DUP-VOICEKEY` compares the modifier-stripped text of every line; `lute loc export` keeps modifier markup, and a translation whose modifiers differ from the source's is `E-L10N-MODIFIERS` and is not merged; every translated locale has a plain `texts[locale]`, and a modified line adds `localeSegments[locale]`; `0.23.1`: an untagged component line takes the code `lute tag` would write into the component file before a param-scoped `<match>` folds, so a line in a non-first arm gets a new `lineId` / `voiceKey` once — the one `lute tag` persists; `0.22.0`: **breaking for compiled ids** — the default `voiceKey` becomes `{prefix}.{speaker}-{code}`, pin `identity.voiceKey: "{speaker}-{code}"` to keep audio recorded against the old keys; a component line is addressed `{prefix}.{component}#{n}.{speaker}_{code}`; `0.21.1` added `E-DUP-VOICEKEY` — `check-project` and `compile --all` refuse a `voiceKey` carried by lines with different text; `0.8.0` introduced `identity:` templates and the `loc import` → `compile --locales` round trip) | [0.37.0.md §3.4, §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#6-localization-contract); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md); [CHANGELOG `0.21.1` / `0.23.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
-| Compiled artifact shape (`position` addressing, IR carriers) | 0.1.0 | 0.37.0 (every command carries `kind`, `family` (`content`, `staging`, `state`, `control`, `declaration`, `plugin`) and `position`, with optional `timing`, `provenance` and `source`; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence`; line roles are `dialogue`, `narration`, `mono`, `os` and `vo`; the envelope carries `capabilitySnapshot` and a `sections` table; selection records carry `selectionKey`; a supplied IR holding a removed field is `E-IR-REMOVED-FIELD`; the schema is `schemas/lute-ir-0.38.schema.json`; `0.32.0`: execution IR naming, `{cel, expr, authored?}` condition slots, `celEnv`, and `owner` metadata; 0.30.0 (no field added: path fields — `set` targets, `state` entries, an `expr` node's `path` / `isSet` / `has`, a placeholder's `path` — carry the canonical dotted path, whose segments may contain `-` or start with a digit and never contain `.`; a condition's `raw` ships as written, quoted indexes included, and fact arguments are the bare names; `0.29.0`: additive: the optional `terminalPersists` on the artifact and `ProjectIndex`, `true` when every `terminal:` declaration is the long form with `persists: true`, serialized after `terminal`; `0.28.0`: three quest-layer fields renamed with their attributes — `ObjectiveEntry.visibleWhen` (was `when`), `RewardEntry.outcome` (was `on`), a quest's `prereqEdges` row `follows` (was `after`) — and otherwise additive: optional `outsideRun` on the artifact and `ProjectIndex`, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` on `entities[]` / `state[]` entries, `authored` on a seam condition, the placeholder formats `"cardinalWord"`, `"capitalize"`, `"start"` and `"indefinite"`, and the relation tier `"season:<name>"`; a `spentBy` beat's `once` is its period, not `"none"`; an `occasion.target` write keeps `F[occasion.target]` / `occasion.target` for the engine to bind; `0.27.0`: additive: optional `gates` (occasion `raisedWhen:`), `terminal` and `seasons` on the artifact and `ProjectIndex`, `clock.last` / `clock.days`, `forKind` and `spentBy` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the `once` values `"week"` / `"season:<name>"`, `QuestCmd.rearm` and the quest tier `"season:<name>"`, a `plugin` record's resolved `asserts` / `retracts`, `labels` on `entities[]` and `state[]` entries, and the placeholder format `"plural"` with its `forms`; a `<match>` arm's `test` carries the whole arm condition as CEL; `0.26.0`: additive: an optional `targetKind` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the placeholder kind `"occasionTarget"` with its `entityKind`, and the rule-body literal `"count"`; a directive's `when=` lowers to a one-arm match and a param `default:` to its value, so neither adds a field; `0.25.0`: additive: optional `RelationEntry.excludes`, `share` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, a bundle `BeatCmd.after` with its `prereqEdges` row, `QuestCmd.accept` (`"external"`), and the placeholder format `"ordinalWord"`; `0.24.0`: additive: an optional `clock` on the artifact and `ProjectIndex`, beat and entry `once` `day` / `slot`, `ObjectiveEntry.until`, `QuestCmd.activate` / `complete`, `OnCmd.target`, `AcceptCmd.applies`, placeholder `format`, `StateEntry.labels`, and the CEL binary op `%`; a rule reading entity-indexed state compiles to one grounded rule per member; `0.23.0`: additive: the `beat` command heads each bundle beat's addressing unit in a lore artifact; optional `BeatIr.also`, `ObjectiveEntry.by` / `target`, `HubCmd.prompt`, `RewardEntry.credits`; `ProjectIndex.beats` rows gain kind `bundle`, `when`, and `title`; `0.22.0`: additive: optional `QuestCmd.tier` — `"run"`, omitted for the default `user` — and `EntryCmd.once`, also on the `ProjectIndex.beats` entry rows; content moves for documents on the default `voiceKey` or with `::use` components; `0.21.1` gave a `ref` placeholder optional `expr`, the referenced def body inlined as a `{raw, expr}` CEL pair so an engine renders `{{@def}}` without a defs table; `0.21.0` added optional `SceneMeta.beat` — `on`, `target?`, `when?`, the resolved `priority`, and `once` as `"run"` / `"user"` / `"none"` — optional `EntryCmd.on` / `priority`, and `ProjectIndex.beats` in selection-tiebreak order; optional `ObjectiveEntry.on` and the new `accept` record for `::accept{quest}`; a `visited()` condition carries `raw` only, like `holds()`; artifacts using none of it are byte-identical apart from the version strings) | [0.37.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#5-lowering-and-runtime-consequences); [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md); [CHANGELOG `0.21.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
+| Compiled artifact shape (`position` addressing, IR carriers) | 0.1.0 | 0.37.0 (every command carries `kind`, `family` (`content`, `staging`, `state`, `control`, `declaration`, `plugin`) and `position`, with optional `timing`, `provenance` and `source`; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence`; line roles are `dialogue`, `narration`, `mono`, `os` and `vo`; the envelope carries `capabilitySnapshot` and a `sections` table; selection records carry `selectionKey`; a supplied IR holding a removed field is `E-IR-REMOVED-FIELD`; the schema is `schemas/lute-ir-0.39.schema.json`; `0.32.0`: execution IR naming, `{cel, expr, authored?}` condition slots, `celEnv`, and `owner` metadata; 0.30.0 (no field added: path fields — `set` targets, `state` entries, an `expr` node's `path` / `isSet` / `has`, a placeholder's `path` — carry the canonical dotted path, whose segments may contain `-` or start with a digit and never contain `.`; a condition's `raw` ships as written, quoted indexes included, and fact arguments are the bare names; `0.29.0`: additive: the optional `terminalPersists` on the artifact and `ProjectIndex`, `true` when every `terminal:` declaration is the long form with `persists: true`, serialized after `terminal`; `0.28.0`: three quest-layer fields renamed with their attributes — `ObjectiveEntry.visibleWhen` (was `when`), `RewardEntry.outcome` (was `on`), a quest's `prereqEdges` row `follows` (was `after`) — and otherwise additive: optional `outsideRun` on the artifact and `ProjectIndex`, `HubCmd.return`, `clock.raiseAtStart`, `labelForms` on `entities[]` / `state[]` entries, `authored` on a seam condition, the placeholder formats `"cardinalWord"`, `"capitalize"`, `"start"` and `"indefinite"`, and the relation tier `"season:<name>"`; a `spentBy` beat's `once` is its period, not `"none"`; an `occasion.target` write keeps `F[occasion.target]` / `occasion.target` for the engine to bind; `0.27.0`: additive: optional `gates` (occasion `raisedWhen:`), `terminal` and `seasons` on the artifact and `ProjectIndex`, `clock.last` / `clock.days`, `forKind` and `spentBy` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the `once` values `"week"` / `"season:<name>"`, `QuestCmd.rearm` and the quest tier `"season:<name>"`, a `plugin` record's resolved `asserts` / `retracts`, `labels` on `entities[]` and `state[]` entries, and the placeholder format `"plural"` with its `forms`; a `<match>` arm's `test` carries the whole arm condition as CEL; `0.26.0`: additive: an optional `targetKind` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, the placeholder kind `"occasionTarget"` with its `entityKind`, and the rule-body literal `"count"`; a directive's `when=` lowers to a one-arm match and a param `default:` to its value, so neither adds a field; `0.25.0`: additive: optional `RelationEntry.excludes`, `share` on `BeatIr` / `EntryCmd` / `BeatCmd` / index beat rows, a bundle `BeatCmd.after` with its `prereqEdges` row, `QuestCmd.accept` (`"external"`), and the placeholder format `"ordinalWord"`; `0.24.0`: additive: an optional `clock` on the artifact and `ProjectIndex`, beat and entry `once` `day` / `slot`, `ObjectiveEntry.by` / `target`, `HubCmd.prompt`, `RewardEntry.credits`; `ProjectIndex.beats` rows gain kind `bundle`, `when`, and `title`; `0.22.0`: additive: optional `QuestCmd.tier` — `"run"`, omitted for the default `user` — and `EntryCmd.once`, also on the `ProjectIndex.beats` entry rows; content moves for documents on the default `voiceKey` or with `::use` components; `0.21.1` gave a `ref` placeholder optional `expr`, the referenced def body inlined as a `{raw, expr}` CEL pair so an engine renders `{{@def}}` without a defs table; `0.21.0` added optional `SceneMeta.beat` — `on`, `target?`, `when?`, the resolved `priority`, and `once` as `"run"` / `"user"` / `"none"` — optional `EntryCmd.on` / `priority`, and `ProjectIndex.beats` in selection-tiebreak order; optional `ObjectiveEntry.on` and the new `accept` record for `::accept{quest}`; a `visited()` condition carries `raw` only, like `holds()`; artifacts using none of it are byte-identical apart from the version strings) | [0.37.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#5-lowering-and-runtime-consequences); [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md); [CHANGELOG `0.21.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
 | Warning-severity diagnostics (`W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`, `W-FACT-GUARANTEED`, `W-BEAT-SHADOWED`, `W-QUEST-STATE-ISSET`, `W-TEXT-LOOKS-LIKE-REF`, `W-QUEST-HANDLER-DEAD`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`, `W-REWARD-DOUBLE-CREDIT`, `W-CAST-ABSENT`, `W-DEADLINE-BEFORE-DONE`, `W-QUEST-NEVER-ACCEPTED`, `W-RELATION-UNREAD`, `W-DEF-UNUSED`, `W-DISPLAY-NAME-DUP`, `W-ENTRY-WRITE-REREAD`, `W-QUEST-TIER-IMPLICIT`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`, `W-DEADLINE-NEVER`, `W-TEXT-SINGLE-BRACE`, `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`, `W-TEXT-GLUE`, `W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`, `W-BRANCH-ID-SHARED`, `W-QUEST-REARM-CONSTANT`, `W-SPENT-BY-REVERSIBLE`, `W-TERMINAL-PERSISTENT`, `W-BEAT-UNRAISED`, `W-DEADLINE-BEFORE-WINDOW`, `W-TEMPLATE-OVERRIDE`, `W-TEMPLATE-DOT-PARAM`, `W-WIP`) | 0.6.1 | 0.32.0 (`W-QUEST-STATE-HAS` replaces `W-QUEST-STATE-ISSET`; new `E-FACT-QUERY` and `E-RUN-OWNED-WRITE`; no new code; a warning that can describe an intended design has a spelling that states the intent — `W-TERMINAL-PERSISTENT` is silent on a `terminal:` long form with `persists: true`, and `W-CHAPTER-STALL` warns only on a `chapters:` chain; `0.28.0`: `W-TEXT-SINGLE-BRACE`, `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL` and `W-TEXT-GLUE` (another language's markup in text), `W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`, `W-BRANCH-ID-SHARED`, `W-QUEST-REARM-CONSTANT`, `W-SPENT-BY-REVERSIBLE`, `W-TERMINAL-PERSISTENT`, `W-BEAT-UNRAISED`, `W-DEADLINE-BEFORE-WINDOW`, `W-TEMPLATE-OVERRIDE`, `W-TEMPLATE-DOT-PARAM`, and `W-WIP` for the dead guards `check-project --wip` spares (was the error code at warning severity); `W-LABEL-CAST-SHADOWED` is retired; `0.27.0`: `W-QUEST-TIER-IMPLICIT`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`, `W-LABEL-CAST-SHADOWED` and `W-DEADLINE-NEVER`; every message drops its spec citations — the sections move to the `--json` `spec` array and `lute --explain <CODE>`; `0.26.0`: `W-DISPLAY-NAME-DUP` — two cast entries or speaker display names exactly equal; `W-ENTRY-WRITE-REREAD` — a repeatable entry beat whose body sets state or retracts a fact; `W-BEAT-PRIORITY-TIE` normalizes negations and says why two `when`s are not exclusive; `0.25.0`: `W-LUTE-VERSION-STALE` for a stamp inherited from the manifest's `defaults:` is reported once, at the manifest; `W-QUEST-NEVER-ACCEPTED` no longer counts a mock's `accepts:`; a negation that a declared exclusion implies is `W-FACT-GUARANTEED`; `0.24.0`: `W-CAST-ABSENT` — a line whose guards do not imply its speaker's cast `present:`; `W-DEADLINE-BEFORE-DONE` — an `on=` objective whose `done` implies its `by`; `W-QUEST-NEVER-ACCEPTED` — an accept-driven quest nothing accepts; `W-RELATION-UNREAD` / `W-DEF-UNUSED` — a relation nothing queries, a def nothing references; `0.23.0`: `W-REWARD-DOUBLE-CREDIT` — a reward whose kind `credits` a state path beside a handler `::set` of that same path pays twice; `0.22.0`: `W-QUEST-HANDLER-DEAD` — a `questFailed` handler on a quest with no way to fail; `W-BEAT-PRIORITY-TIE` — equal-priority beats on one `select: first` occasion whose `when`s are not provably exclusive, so file order picks; `W-BEAT-ONCE-RUN-USER` — a `once: run` beat gated only on user-tier state replays every run; `W-STAGE-ABSENT` follows paths, forking at each arm and joining at convergence; `0.21.1` added `W-QUEST-STATE-ISSET` — `has(quest.<id>.state)` is always true, compare with `== 'unset'`; `W-TEXT-LOOKS-LIKE-REF` — a line whose whole text is `@name` for a def or param ships that literal text; `0.21.0` added `W-BEAT-SHADOWED` — `check-project` warns when a `select: first` beat can never win because an earlier-ordered beat on the same occasion and target is always eligible and never spent; `0.20.0` added `W-FACT-GUARANTEED` and removed `W-UNPROVEN-RELATIONAL`, one of the three original 0.6.1 coverage warnings — naming it in `--deny` is a usage error) | [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.38.0 (every visible axis — toolchain, `luteVersion:`, `irVersion`, CLI / LSP / npm / Cargo stamps — reads `0.38.0`, the schema file is `schemas/lute-ir-0.38.schema.json`, and an engine refuses an unknown command `kind` or envelope contract rather than inferring a renamed field; `0.32.0`: pre-1.0 minors MAY break the execution-IR shape under D6; engines MUST pin the exact `irVersion` minor until 1.0. After 1.0, compatibility follows the released major's policy.) | [0.37.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#1-scope-and-version-contract); [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.39.0 (every visible axis — toolchain, `luteVersion:`, `irVersion`, CLI / LSP / npm / Cargo stamps — reads `0.39.0`, the schema file is `schemas/lute-ir-0.39.schema.json`, and an engine refuses an unknown command `kind` or envelope contract rather than inferring a renamed field; `0.32.0`: pre-1.0 minors MAY break the execution-IR shape under D6; engines MUST pin the exact `irVersion` minor until 1.0. After 1.0, compatibility follows the released major's policy.) | [0.37.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#1-scope-and-version-contract); [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
 | Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.30.0 (one name rule: each segment of a document id — like every scene, beat, entry, quest, objective, branch, hub, choice and mark id, `share` key, season, relation, kind and member, plugin occasion and event, target and category — is letters, digits, `_` or `-`, not starting with `-`; only a name read bare as `@name` (a def, a def's param, a component or template param) stays an identifier; `0.29.0`: one identifier rule: each segment of a document id — like every scene, beat, entry, quest, objective, branch, hub, choice and mark id, `share` key, season, relation, def, kind, member and component param — is a letter, then letters, digits or `_`; a `-` or any other character, which 0.28 accepted outside CEL, is an error at the name under the slot's code (`E-META-ID` here) naming the camelCase spelling; `0.19.0`: quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Descriptive `extra:` block | 0.15.0 (open mapping of scalars or flat scalar-lists on scene and quest roots; carried verbatim into `meta.extra` and read by no language rule — `E-META-VALUE` on a nested mapping or non-scalar list entry) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
@@ -20605,7 +20605,7 @@ capability proposals), see the [specification index](/spec/).
 Lute is specified as a **stack of versioned proposals** under [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals). Each revision is a compatible refinement or extension of the one before, so the stack reads cumulatively: `0.1.0` is the scene kind + shared kernel, and every later revision cites it.
 
 :::note
-The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language and IR version is **0.38.0**.
+The **repository files are the normative source of truth.** This site is the readable companion — where the two differ, the proposal in the repo wins. The current language and IR version is **0.39.0**.
 :::
 
 ## Scenario DSL (the language)

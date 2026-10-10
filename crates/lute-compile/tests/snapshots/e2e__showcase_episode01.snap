@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "scene",
-  "lute": "0.38.0",
-  "irVersion": "0.38.0",
+  "lute": "0.39.0",
+  "irVersion": "0.39.0",
   "capabilitySnapshot": "11d39f42612b95230ef20f0bee5a37093e0b3e8313ff41cb3c7c323db5b2e3b9",
   "requiredSemantics": [
     "lute.core/1",

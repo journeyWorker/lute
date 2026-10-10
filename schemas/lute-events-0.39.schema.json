@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.38.schema.json",
-  "title": "Lute runtime events (eventVersion 0.38.x)",
-  "description": "Wire schema for the Lute 0.38 runtime input, output, event, await and rejection contract. Hosts gate on exact major.minor before 1.0. Normative source: docs/proposals/scenario-dsl/0.38.0.md §§3, 5–9, 11.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.39.schema.json",
+  "title": "Lute runtime events (eventVersion 0.39.x)",
+  "description": "Wire schema for the Lute 0.39 runtime input, output, event, await and rejection contract. Hosts gate on exact major.minor before 1.0. Normative source: docs/proposals/scenario-dsl/0.38.0.md §§3, 5–9, 11.",
   "oneOf": [
     { "$ref": "#/$defs/Input" },
     { "$ref": "#/$defs/Seed" },
@@ -116,7 +116,7 @@
     "ScopedStrings": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } },
     "Output": {
       "title": "Output", "type": "object", "additionalProperties": false, "required": ["eventVersion", "events", "await"],
-      "properties": { "eventVersion": { "const": "0.38.0" }, "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } }, "await": { "$ref": "#/$defs/Await" } }
+      "properties": { "eventVersion": { "const": "0.39.0" }, "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } }, "await": { "$ref": "#/$defs/Await" } }
     },
     "Event": {
       "title": "Event", "oneOf": [
