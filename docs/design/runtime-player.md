@@ -163,13 +163,11 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    snapshot test over every example play rather than a session case.
 2. **R2:** game-facing bindings (wasm + C ABI) and a thin TS shell
    (`packages/runtime`, Effect) with a replay test from a recorded input log.
-   **Owner answers 2026-10-09** (spec `docs/proposals/scenario-dsl/0.39.0.md`,
-   Appendix A): 0.39 ships the wasm binding only — C ABI later; the TS
-   runtime is Effect 4, written the Effect way (services, layers, scoped
-   resources, typed errors, Schema), published as `@lute-lang/runtime`;
-   contract types are generated from the Rust types (one definition); Bun
-   first plus browser, no Node layer; tests with `@effect/vitest` on Bun;
-   concurrent presentations stay in R3.
+   **Done in 0.39.0** (spec `docs/proposals/scenario-dsl/0.39.0.md`,
+   implemented): 0.39 ships the wasm binding and Effect 4
+   `@lute-lang/runtime` for Bun and browsers; contract types are generated
+   from the Rust types, with scoped sessions, typed errors, and replay.
+   C ABI remains later, and concurrent presentations remain R3.
 3. **R3:** `packages/player` — player-core statecharts, cue scheduler,
    bindings, 2D web reference presenter; driven by recorded runtime outputs.
 

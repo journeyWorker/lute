@@ -1034,3 +1034,14 @@ to `lute-ir-0.38.schema.json`, and `lute-events-0.38.schema.json` and
 and hosts gate on the exact minor line: `0.37` artifacts require a widened
 IR gate, while the Event axis begins at `0.38`. Existing CLI outputs remain
 byte-identical apart from stamps; `lute play --events` is new.
+
+**`0.39.0` aligns every visible axis at `0.39.0`; the toolchain and Event
+contract earn the release, while language and IR are no-ops for authors and
+artifact consumers.** The runtime keeps the 0.38 wire shapes, but the Event
+and snapshot schemas are now generated from the Rust contract types, and the
+read-only query result shapes become contract surface. The IR schema is
+restamped and renamed only; no execution-IR field or meaning changes. The new
+`@lute-lang/runtime` npm package (Effect 4, Bun and browser layers) is
+published in lockstep with the toolchain. See the
+[`0.39.0` runtime proposal](proposals/scenario-dsl/0.39.0.md) and
+[`docs/runtime/typescript-runtime.md`](runtime/typescript-runtime.md).

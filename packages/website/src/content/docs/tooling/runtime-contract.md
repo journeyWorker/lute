@@ -25,6 +25,10 @@ advance it with `step`, and use `snapshot`/`restore` plus the read-only
 queries for host inspection. Hosts own rendering, pacing, bridge calls, and
 grant settlement; the runtime returns those effects as data.
 
+## TypeScript runtime
+
+TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
+
 :::caution[Permissions stop at the artifact boundary]
 [Capability permissions](/tooling/capability-permissions/) reject forbidden
 authored effects before compilation. They are not a runtime sandbox and do not

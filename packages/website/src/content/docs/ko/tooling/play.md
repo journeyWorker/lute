@@ -317,6 +317,10 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 모든 출력에는 `eventVersion: "0.39.0"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
 함께 사용할 수 없습니다.
 
+### TypeScript 런타임
+
+TypeScript 호스트는 Effect 4 기반의 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun과 브라우저 레이어가 `lute compile --all` 번들을 불러오고, 스코프가 관리하는 세션·이벤트 스트림·타입이 지정된 거부·스냅숏·리플레이를 제공합니다. 설치, Bun 세션 전체 예제, 브라우저 설정과 생성된 계약 스키마는 [TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
+
 허브 적합성 프로젝트에서 얻은 짧은 실제 스트림은 다음과 같습니다(첫 선택 뒤에 두 번째 대기가 열립니다).
 
 ```json
