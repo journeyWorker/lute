@@ -314,8 +314,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.38.0",
-  "irVersion": "0.38.0",
+  "lute": "0.39.0",
+  "irVersion": "0.39.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": ["lute.core/1"],
   "meta": {

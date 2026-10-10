@@ -10,10 +10,10 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.38.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.38.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.38.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.38.schema.json`](../schemas/lute-ir-0.38.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
-| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.38.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.38.schema.json`](../schemas/lute-events-0.38.schema.json)). Before 1.0, hosts gate on exact major.minor. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.39.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.39.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.39.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.39.schema.json`](../schemas/lute-ir-0.39.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.39.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.39.schema.json`](../schemas/lute-events-0.39.schema.json), [`schemas/lute-snapshot-0.39.schema.json`](../schemas/lute-snapshot-0.39.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
 
@@ -1034,3 +1034,14 @@ to `lute-ir-0.38.schema.json`, and `lute-events-0.38.schema.json` and
 and hosts gate on the exact minor line: `0.37` artifacts require a widened
 IR gate, while the Event axis begins at `0.38`. Existing CLI outputs remain
 byte-identical apart from stamps; `lute play --events` is new.
+
+**`0.39.0` aligns every visible axis at `0.39.0`; the toolchain and Event
+contract earn the release, while language and IR are no-ops for authors and
+artifact consumers.** The runtime keeps the 0.38 wire shapes, but the Event
+and snapshot schemas are now generated from the Rust contract types, and the
+read-only query result shapes become contract surface. The IR schema is
+restamped and renamed only; no execution-IR field or meaning changes. The new
+`@lute-lang/runtime` npm package (Effect 4, Bun and browser layers) is
+published in lockstep with the toolchain. See the
+[`0.39.0` runtime proposal](proposals/scenario-dsl/0.39.0.md) and
+[`docs/runtime/typescript-runtime.md`](runtime/typescript-runtime.md).

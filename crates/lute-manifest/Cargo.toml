@@ -4,11 +4,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+json-schema = ["dep:schemars"]
+
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = "0.10"
+schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

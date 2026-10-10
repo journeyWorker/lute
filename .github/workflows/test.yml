@@ -24,6 +24,11 @@ name: Test
 # (packages/cli) under `tsc --noEmit` so a type regression in the
 # platform-detection / binary-resolution logic is caught without a native
 # build.
+# `runtime-ts` builds the runtime binding (`crates/lute-runtime-wasm`) and
+# runs the `@lute-lang/runtime` suite on Bun — contract drift check, replay
+# conformance over every `conformance/session` case — then one replay in
+# headless Chromium. Its inputs are the runtime crates (under `crates/**`),
+# `packages/runtime/**`, the generated `schemas/**` and the session cases.
 #
 # `gates` also owns the CRATES-SIDE half of the documentation contract. The
 # docs quote real CLI output — capability hashes, `lute context` transcripts,
@@ -58,7 +63,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "packages/cli/**"
+      - "packages/runtime/**"
       - "schemas/**"
+      - "conformance/session/**"
       - "tree-sitter-lute/queries/**"
       - "editors/nvim/queries/**"
       - "tree-sitter-lute/test/json_schema.test.js"
@@ -126,6 +133,12 @@ jobs:
 
       - name: lute-runtime builds for wasm32
         run: cargo check -p lute-runtime --target wasm32-unknown-unknown
+
+      - name: lute-runtime-wasm builds for wasm32
+        run: cargo check -p lute-runtime-wasm --target wasm32-unknown-unknown
+
+      - name: Generated runtime contract schemas are current
+        run: cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && git diff --exit-code schemas/
 
   gates:
     name: JS harnesses + doc gates (offline)
@@ -293,3 +306,63 @@ jobs:
       - name: Typecheck launcher
         working-directory: packages/cli
         run: bunx tsc --noEmit
+
+  runtime-ts:
+    name: TypeScript runtime (Bun + browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo and wasm-bindgen
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/
+            target/
+          key: lute-runtime-ts-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install --locked wasm-bindgen-cli --version 0.2.126
+
+      - name: Build lute CLI
+        run: cargo build -q -p lute-cli
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build runtime wasm
+        working-directory: packages/runtime
+        run: bun run wasm:build
+
+      - name: Typecheck runtime
+        working-directory: packages/runtime
+        run: bun run typecheck
+
+      - name: Check runtime contract
+        working-directory: packages/runtime
+        run: bun run contract:check
+
+      - name: Test runtime
+        working-directory: packages/runtime
+        run: bun run test
+
+      - name: Install Chromium
+        working-directory: packages/runtime
+        run: bunx playwright install --with-deps chromium
+
+      - name: Test runtime in Chromium
+        working-directory: packages/runtime
+        run: bun run test:browser

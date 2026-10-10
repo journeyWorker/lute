@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: celNumbers
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 title: CEL Numbers
 uses: ./schema.yaml
 ---

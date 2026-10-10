@@ -9,7 +9,7 @@
 - **CEL conditions.** Every condition/value slot is standard CEL in the closed 0.32 profile; `@def` and match `$` expand at compile time. `has()` tests presence. Errors make guards false; erroneous sets abort without a partial write. See [DSL §1–4](../proposals/scenario-dsl/0.32.0.md#1-conditions-are-standard-cel).
 - **Execution IR and capabilities.** The compiler emits `cel` plus typed `expr`, `celEnv`, and sorted `requiredSemantics`; engines check capabilities before playback. The envelope, project index and `lute context --json` carry the resolved `capabilitySnapshot`. Unknown required ids refuse loading, while plugin records are `kind: "plugin"` with `family: "plugin"`.
 - **Identity and positions.** Command `position` is positional (one-based section number, then command order); author ids, section `{#id}`, `lineId`, and `voiceKey` are stable joins. Source maps survive lowering. Duplicate or colliding ids are checker errors.
-## Identity table (0.38.0)
+## Identity table (0.39.0)
 
 Command `position` is build-local and never a save, localization, patch, or
 identity key. Stability columns are **sibling insert / file move / parent

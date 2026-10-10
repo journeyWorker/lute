@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 id: cadence
 uses: ./schema.yaml
 ---

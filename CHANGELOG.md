@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.38.0`, the grammar and semantics the checker
+- **Language** — currently `0.39.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.38.0`) and gated on by consuming engines.
+  artifact (currently `0.39.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,57 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.39.0]
+
+**Runtime R2: wasm binding and the Effect TypeScript runtime** (spec
+[`0.39.0.md`](docs/proposals/scenario-dsl/0.39.0.md); plan
+[`2026-10-09-lute-0.39.0-runtime-r2.md`](docs/superpowers/plans/2026-10-09-lute-0.39.0-runtime-r2.md);
+guide [`docs/runtime/typescript-runtime.md`](docs/runtime/typescript-runtime.md)).
+Authors and existing CLI consumers see no language or execution-IR behavior
+change beyond the aligned version stamps.
+
+### Syntax
+
+None.
+
+### Semantics
+
+None.
+
+### IR
+
+None beyond version stamps and the schema rename to
+`schemas/lute-ir-0.39.schema.json`; the execution IR is otherwise unchanged.
+
+### Plugin
+
+None.
+
+### CLI
+
+None for users: CLI output is byte-identical to 0.38.0 apart from stamps.
+`lute play --events` uses the typed runtime stream lines, with the same wire
+shape.
+
+### Diagnostics
+
+None. Runtime rejections and their codes are unchanged.
+
+### Identity
+
+None.
+
+### Tooling
+
+- New crate `lute-runtime-wasm`, the wasm-bindgen binding over `lute-runtime`.
+- New npm package `@lute-lang/runtime`, written in Effect 4, with Bun and
+  browser layers and replay support.
+- Event and snapshot JSON Schemas are generated from the Rust contract types
+  by `lute-contract-schema` with the `json-schema` feature:
+  `lute-events-0.39.schema.json` and `lute-snapshot-0.39.schema.json`.
+- Read-only runtime query results are part of the contract, with generated
+  schemas and TypeScript `Contract` definitions.
 
 ## [0.38.0] - 2026-10-08
 

@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.38.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.38.schema.json)
+[`schemas/lute-ir-0.39.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.39.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -24,6 +24,10 @@ The `lute-runtime` crate exposes the pure integration surface: load a
 advance it with `step`, and use `snapshot`/`restore` plus the read-only
 queries for host inspection. Hosts own rendering, pacing, bridge calls, and
 grant settlement; the runtime returns those effects as data.
+
+## TypeScript runtime
+
+TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
 
 :::caution[Permissions stop at the artifact boundary]
 [Capability permissions](/tooling/capability-permissions/) reject forbidden
@@ -219,8 +223,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.38` engine accepts only `0.38.*` artifacts and refuses `0.37.*`
-   and `0.39.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.39` engine accepts only `0.39.*` artifacts and refuses `0.38.*`
+   and `0.40.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -232,7 +236,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.38.0"
+irVersion: "0.39.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -248,7 +252,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.37.*` artifact against the `0.38.0`
+the matrix's exact major.minor line (a `0.38.*` artifact against the `0.39.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.

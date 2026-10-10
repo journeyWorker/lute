@@ -9,7 +9,6 @@ use lute_cli::events::{self, DriveEnd, ScriptRun};
 use lute_runtime::runtime::{Await, Event, Input, Output, Seed, State};
 use lute_runtime::Runtime;
 use serde_json::Value;
-
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
@@ -177,12 +176,12 @@ fn snapshot_and_restore_at_input_points() {
             if example && !waiting && k % 3 != 0 {
                 continue;
             }
-            let text = runtime.snapshot(state).to_string();
+            let text = serde_json::to_string(&runtime.snapshot(state)).unwrap();
             let restored = runtime
-                .restore(serde_json::from_str(&text).unwrap())
+                .restore(lute_runtime::runtime::Snapshot::from_json(text.as_str()).unwrap())
                 .unwrap_or_else(|r| panic!("{} @{k}: {} {}", script.display(), r.code, r.message));
             assert_eq!(
-                runtime.snapshot(&restored).to_string(),
+                serde_json::to_string(&runtime.snapshot(&restored)).unwrap(),
                 text,
                 "{} @{k}: re-snapshot",
                 script.display()
@@ -271,13 +270,13 @@ fn rejected_inputs_leave_the_state_unchanged() {
         ),
     ];
     for (state, input, code) in cases {
-        let before = runtime.snapshot(state).to_string();
+        let before = serde_json::to_string(&runtime.snapshot(state)).unwrap();
         let Err((returned, rejected)) = runtime.step(state.clone(), input.clone()) else {
             panic!("{input:?} was accepted");
         };
         assert_eq!(rejected.code, code, "{input:?}: {}", rejected.message);
         assert_eq!(
-            runtime.snapshot(&returned).to_string(),
+            serde_json::to_string(&runtime.snapshot(&returned)).unwrap(),
             before,
             "{input:?} changed the state"
         );
@@ -299,7 +298,7 @@ fn a_snapshot_from_another_project_or_minor_is_refused() {
         .expect("another project restored it");
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-PROJECT");
     let mut older = snapshot;
-    older["snapshotVersion"] = Value::String("0.37.0".into());
+    older.snapshot_version = "0.37.0".into();
     let r = hub
         .runtime
         .restore(older)
@@ -307,3 +306,4 @@ fn a_snapshot_from_another_project_or_minor_is_refused() {
         .expect("another minor restored it");
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-VERSION");
 }
+

@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: earlier
-luteVersion: "0.38.0"
+luteVersion: "0.39.0"
 title: Earlier
 ---
 <quest id="earlier" title="Earlier" tier="run" start="true">

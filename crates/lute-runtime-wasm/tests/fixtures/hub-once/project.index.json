@@ -1,0 +1,40 @@
+{
+  "irVersion": "0.39.0",
+  "capabilitySnapshot": "65c68bcdbade1e659c7c657ead3d8158234a5d0686587fe2fac6237468eb15da",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.occasions.selection/1",
+    "lute.time.cadence/1"
+  ],
+  "documents": [
+    {
+      "path": "hub.lute",
+      "artifact": "hub.lute.json",
+      "kind": "scene",
+      "key": "hub"
+    }
+  ],
+  "entities": [],
+  "enums": [],
+  "relations": [],
+  "seedFacts": [],
+  "rules": [],
+  "prereqEdges": [],
+  "beats": [
+    {
+      "id": "hub",
+      "kind": "scene",
+      "document": "hub.lute",
+      "on": "visit",
+      "priority": 0,
+      "once": "run",
+      "title": "hub"
+    }
+  ],
+  "occasions": {
+    "visit": {
+      "select": "first",
+      "target": false
+    }
+  }
+}

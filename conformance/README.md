@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.38.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.39.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -163,7 +163,7 @@ fixtures. `command-staging` covers `bg`, `music`, `sfx`, `vfx`, `actor`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. Every recorded command
 carries its `family` (`content`, `staging`, `state`, `control`, `declaration`,
 `plugin`) and `position`. No requested kind is unsupported by the reference
-runner. The staging fixture uses a live `luteVersion: "0.38.0"` header, as do
+runner. The staging fixture uses a live `luteVersion: "0.39.0"` header, as do
 the lifecycle and plugin sources.
 
 ### Diagnostic fixtures
@@ -270,7 +270,7 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 
 ## Edit-task suite
 
-The 0.38.0 AI edit-loop conformance suite is in
+The 0.39.0 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
 

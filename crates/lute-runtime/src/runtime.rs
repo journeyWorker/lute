@@ -35,11 +35,11 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.38.0";
+pub const EVENT_VERSION: &str = "0.39.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.38.0";
+pub const IR_VERSION: &str = "0.39.0";
 
-/// One scalar state write in the wire format.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StateWrite {
@@ -50,7 +50,7 @@ pub struct StateWrite {
     pub add: Option<f64>,
 }
 
-/// The write block accepted by engine-like inputs.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WritesInput {
@@ -72,6 +72,7 @@ impl WritesInput {
     }
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum PickInput {
@@ -90,6 +91,7 @@ impl PickInput {
 }
 
 /// The seven inputs in §5.1.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Input {
@@ -131,6 +133,7 @@ pub enum Input {
     },
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AdvanceBy {
@@ -140,6 +143,7 @@ pub enum AdvanceBy {
     To { to: ClockPosition },
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClockPosition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -149,6 +153,7 @@ pub struct ClockPosition {
 }
 
 /// The initial world seed (§5.1).
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Seed {
@@ -176,6 +181,7 @@ fn default_true() -> bool {
     true
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SaveInput {
@@ -203,6 +209,7 @@ impl SaveInput {
 }
 
 /// An execution record or session-level notification.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Event {
@@ -239,6 +246,7 @@ pub enum Event {
     },
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum Await {
@@ -265,6 +273,7 @@ pub enum Await {
     },
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MenuAwait {
@@ -280,6 +289,7 @@ pub struct MenuAwait {
     pub options: Vec<MenuOptionAwait>,
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MenuOptionAwait {
@@ -289,6 +299,7 @@ pub struct MenuOptionAwait {
     pub once: bool,
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Output {
@@ -297,6 +308,78 @@ pub struct Output {
     pub events: Vec<Event>,
     #[serde(rename = "await")]
     pub await_: Await,
+}
+
+/// A serialized, resumable runtime state.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Snapshot {
+    #[serde(rename = "snapshotVersion")]
+    pub snapshot_version: String,
+    pub project: String,
+    #[serde(rename = "await")]
+    pub await_: Await,
+    pub request: u64,
+    #[serde(with = "arc_world")]
+    #[cfg_attr(feature = "json-schema", schemars(with = "crate::session::World"))]
+    pub world: Arc<World>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<Continuation>,
+}
+
+/// A typed JSON input accepted by [`Snapshot::from_json`].
+pub trait SnapshotJsonInput {
+    fn into_json(self) -> Result<Json, Rejected>;
+}
+
+impl SnapshotJsonInput for Json {
+    fn into_json(self) -> Result<Json, Rejected> {
+        Ok(self)
+    }
+}
+
+impl SnapshotJsonInput for &str {
+    fn into_json(self) -> Result<Json, Rejected> {
+        serde_json::from_str(self).map_err(|e| reject("E-RUNTIME-SNAPSHOT-VERSION", e.to_string()))
+    }
+}
+
+impl SnapshotJsonInput for String {
+    fn into_json(self) -> Result<Json, Rejected> {
+        self.as_str().into_json()
+    }
+}
+
+impl Snapshot {
+    /// Decode a snapshot while preserving the version rejection semantics.
+    pub fn from_json<T: SnapshotJsonInput>(value: T) -> Result<Self, Rejected> {
+        let value = value.into_json()?;
+        let version = value
+            .get("snapshotVersion")
+            .and_then(Json::as_str)
+            .ok_or_else(|| reject("E-RUNTIME-SNAPSHOT-VERSION", "snapshotVersion is missing"))?;
+        let major_minor = |s: &str| s.split('.').take(2).collect::<Vec<_>>().join(".");
+        if major_minor(version) != major_minor(EVENT_VERSION) {
+            return Err(reject(
+                "E-RUNTIME-SNAPSHOT-VERSION",
+                format!("snapshot version {version} is not {EVENT_VERSION}'s major.minor"),
+            ));
+        }
+        serde_json::from_value(value)
+            .map_err(|e| reject("E-RUNTIME-SNAPSHOT-VERSION", format!("invalid snapshot: {e}")))
+    }
+}
+
+/// One line of the `--events` JSONL stream.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StreamLine {
+    Seed { seed: Seed, output: Output },
+    Input { input: Input, output: Output },
+    InputRejected { input: Input, rejected: Rejected },
+    SeedRejected { seed: Seed, rejected: Rejected },
 }
 
 impl Output {
@@ -309,6 +392,7 @@ impl Output {
     }
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Rejected {
@@ -317,9 +401,11 @@ pub struct Rejected {
 }
 
 /// A resumable runtime state.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct State {
+    #[cfg_attr(feature = "json-schema", schemars(with = "crate::session::World"))]
     #[serde(with = "arc_world")]
     pub world: Arc<World>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -349,9 +435,11 @@ impl State {
     }
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Continuation {
+    #[cfg_attr(feature = "json-schema", schemars(with = "crate::session::World"))]
     #[serde(with = "arc_world")]
     pub before: Arc<World>,
     pub input: Input,
@@ -360,6 +448,7 @@ pub struct Continuation {
     pub(crate) delivered: usize,
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
@@ -368,6 +457,7 @@ pub enum Phase {
     Halted { kind: String, message: String },
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum Answer {
@@ -389,6 +479,11 @@ pub struct Runtime {
 }
 
 impl Runtime {
+    /// The stable identity of the loaded executable bundle.
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
     pub fn project(&self) -> &ExecProject {
         &self.project
     }
@@ -438,57 +533,36 @@ impl Runtime {
 
     /// The snapshot of `state` (spec §7.2): `await` is the state's current
     /// await — the pending choice or bridge, or `idle` / `ended` / `halted`.
-    pub fn snapshot(&self, state: &State) -> Json {
-        let mut snapshot = serde_json::json!({
-            "snapshotVersion": EVENT_VERSION,
-            "project": self.fingerprint,
-            "await": state.current_await(),
-            "request": state.request,
-            "world": state.world.as_ref(),
-        });
-        if let Some(c) = &state.continuation {
-            snapshot["continuation"] = serde_json::to_value(c).expect("a continuation serializes");
+    pub fn snapshot(&self, state: &State) -> Snapshot {
+        Snapshot {
+            snapshot_version: EVENT_VERSION.into(),
+            project: self.fingerprint.clone(),
+            await_: state.current_await(),
+            request: state.request,
+            world: state.world.clone(),
+            continuation: state.continuation.clone(),
         }
-        snapshot
     }
 
-    /// The state a snapshot holds; `E-RUNTIME-SNAPSHOT-VERSION` /
-    /// `-PROJECT` when it was taken by another event-contract minor or
-    /// another bundle.
-    pub fn restore(&self, value: Json) -> Result<State, Rejected> {
-        let version = value
-            .get("snapshotVersion")
-            .and_then(Json::as_str)
-            .ok_or_else(|| reject("E-RUNTIME-SNAPSHOT-VERSION", "snapshotVersion is missing"))?;
+    /// Restore a typed snapshot taken by this bundle and contract minor.
+    pub fn restore(&self, snapshot: Snapshot) -> Result<State, Rejected> {
         let major_minor = |s: &str| s.split('.').take(2).collect::<Vec<_>>().join(".");
-        if major_minor(version) != major_minor(EVENT_VERSION) {
+        if major_minor(&snapshot.snapshot_version) != major_minor(EVENT_VERSION) {
             return Err(reject(
                 "E-RUNTIME-SNAPSHOT-VERSION",
-                format!("snapshot version {version} is not {EVENT_VERSION}'s major.minor"),
+                format!(
+                    "snapshot version {} is not {EVENT_VERSION}'s major.minor",
+                    snapshot.snapshot_version
+                ),
             ));
         }
-        if value.get("project").and_then(Json::as_str) != Some(self.fingerprint.as_str()) {
+        if snapshot.project != self.fingerprint {
             return Err(reject(
                 "E-RUNTIME-SNAPSHOT-PROJECT",
                 "snapshot belongs to a different project bundle",
             ));
         }
-        #[derive(Deserialize)]
-        #[serde(rename = "Snapshot")]
-        struct Wire {
-            #[serde(rename = "await")]
-            await_: Await,
-            world: World,
-            continuation: Option<Continuation>,
-            request: u64,
-        }
-        let wire: Wire = serde_json::from_value(value).map_err(|e| {
-            reject(
-                "E-RUNTIME-SNAPSHOT-VERSION",
-                format!("invalid snapshot: {e}"),
-            )
-        })?;
-        let phase = match &wire.await_ {
+        let phase = match &snapshot.await_ {
             Await::Ended { .. } => Phase::Ended,
             Await::Halted { kind, message, .. } => Phase::Halted {
                 kind: kind.clone(),
@@ -497,9 +571,9 @@ impl Runtime {
             Await::Idle | Await::Choice { .. } | Await::Bridge { .. } => Phase::Idle,
         };
         Ok(State {
-            world: Arc::new(wire.world),
-            continuation: wire.continuation,
-            request: wire.request,
+            world: snapshot.world,
+            continuation: snapshot.continuation,
+            request: snapshot.request,
             phase,
         })
     }

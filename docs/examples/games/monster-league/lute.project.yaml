@@ -12,7 +12,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.38.0"
+  luteVersion: "0.39.0"
   # world contract, split by concern (a name may be declared in only one)
   uses:
     - schema/world.schema.yaml

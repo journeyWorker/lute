@@ -12,7 +12,7 @@ use std::path::Path;
 
 use lute_runtime::runtime::{
     AdvanceBy, Await, ClockPosition, Input, Output, PickInput, Rejected, SaveInput, Seed, State,
-    StateWrite, WritesInput,
+    StateWrite, StreamLine, WritesInput,
 };
 use lute_runtime::session::{
     render_fact, value_to_json, ExecProject, Session, World, Write, Writes,
@@ -208,29 +208,32 @@ pub fn drive_events(
 /// code — 0 when it completes, 3 when the runtime halts incomplete or awaits
 /// an answer the script lacks, 1 on a rejected input, an error halt or a
 /// divergence — and a message for stderr.
+fn json_line<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value).expect("runtime JSON serializes").to_string() + "\n"
+}
+
+/// `lute play --events`: the JSON Lines stream, exit code and stderr message.
 pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
-    let line =
-        |value: Value| serde_json::to_string(&value).expect("runtime JSON serializes") + "\n";
     let mut out = String::new();
     let seed = &run.seed;
     let driven = drive_events(run, |input, _, output| {
-        out.push_str(&line(match input {
-            Some(input) => serde_json::json!({ "input": input, "output": output }),
-            None => serde_json::json!({ "seed": seed, "output": output }),
-        }));
+        let stream = match input {
+            Some(input) => StreamLine::Input { input: input.clone(), output: output.clone() },
+            None => StreamLine::Seed { seed: seed.clone(), output: output.clone() },
+        };
+        out.push_str(&json_line(&stream));
     });
     let (code, message) = match driven {
         Err(rejected) => {
-            out.push_str(&line(
-                serde_json::json!({ "seed": seed, "rejected": rejected }),
-            ));
+            out.push_str(&json_line(&StreamLine::SeedRejected {
+                seed: seed.clone(),
+                rejected,
+            }));
             (1, None)
         }
         Ok(Driven { end, output, .. }) => match end {
             DriveEnd::Rejected { input, rejected } => {
-                out.push_str(&line(
-                    serde_json::json!({ "input": input, "rejected": rejected }),
-                ));
+                out.push_str(&json_line(&StreamLine::InputRejected { input, rejected }));
                 (1, None)
             }
             DriveEnd::Unanswered(what) => (3, Some(what)),

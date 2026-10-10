@@ -6,7 +6,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 이 문서는 Lute를 한 번도 다뤄본 적 없는 시나리오 작가를 위한 "여기서 시작" 안내입니다 —
 컴파일러 배경지식은 필요 없습니다. 빈 파일에서 **작지만 실제로 동작하는 장면 하나**를 단계별로
 만들며, 매 단계마다 실제 `lute` 도구를 실행해 도구가 정확히 뭐라고 말하는지 확인합니다. 언어
-버전 **0.38.0**를 대상으로 합니다.
+버전 **0.39.0**를 대상으로 합니다.
 
 일반 텍스트 편집기, 터미널, 그리고 `lute` 명령
 ([먼저 설치하세요](/ko/getting-started/installation/))이 필요합니다. 여기서 작성하는 모든
@@ -320,8 +320,8 @@ lute: applied 1 fix(es)
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.38.0",
-  "irVersion": "0.38.0",
+  "lute": "0.39.0",
+  "irVersion": "0.39.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"

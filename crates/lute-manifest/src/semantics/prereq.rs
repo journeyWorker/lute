@@ -27,7 +27,9 @@ pub enum PrereqFormula {
 
 /// A single leaf condition flattened out of a [`PrereqFormula`] by [`atoms`]
 /// (edge-extraction helper for later connectivity tasks).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Atom {
     Visited(String),
     Completed(String),

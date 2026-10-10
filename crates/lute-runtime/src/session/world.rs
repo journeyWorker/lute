@@ -45,6 +45,7 @@ impl Driver for NoDecisionDriver {
     fn emit(&mut self, _rec: Json) {}
 }
 
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct World {
@@ -586,19 +587,25 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
 /// The world at one moment of a play: the effective state, every fact that
 /// holds after derivation (rendered `rel(a, b)`), every declared quest's
 /// status, and the declared clock's position.
-#[derive(Clone, Debug, Default)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorldView {
     pub state: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub facts: BTreeSet<String>,
     pub quests: BTreeMap<String, String>,
     /// `None` without a declared clock, or while its day/slot paths name no
     /// position on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock: Option<ClockView>,
 }
 
 /// Where the declared clock stands (dsl 0.26.0 §7, T2-5: step
 /// `expect.clock`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ClockView {
     pub day: i64,
     /// The slot's name — `None` on a day-granular clock.
@@ -668,5 +675,50 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
         facts,
         quests,
         clock,
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+
+    #[test]
+    fn world_view_json_examples() {
+        let mut view = WorldView {
+            state: BTreeMap::from([("run.ready".into(), Value::Bool(true))]),
+            facts: BTreeSet::new(),
+            quests: BTreeMap::from([("main".into(), "active".into())]),
+            clock: None,
+        };
+        let expected = r#"{"state":{"run.ready":{"kind":"bool","value":true}},"quests":{"main":"active"}}"#;
+        assert_eq!(serde_json::to_string(&view).unwrap(), expected);
+        let decoded: WorldView = serde_json::from_str(expected).unwrap();
+        assert_eq!(decoded.state, view.state);
+        assert_eq!(decoded.quests, view.quests);
+        assert!(decoded.facts.is_empty());
+        assert!(decoded.clock.is_none());
+
+        view.facts.insert("knows(alice, bob)".into());
+        view.clock = Some(ClockView {
+            day: 2,
+            slot: Some("morning".into()),
+            weekday: Some(1),
+            weekday_label: Some("tuesday".into()),
+            ended: Some(false),
+            last: None,
+        });
+        let expected = r#"{"state":{"run.ready":{"kind":"bool","value":true}},"facts":["knows(alice, bob)"],"quests":{"main":"active"},"clock":{"day":2,"slot":"morning","weekday":1,"weekdayLabel":"tuesday","ended":false,"last":null}}"#;
+        assert_eq!(serde_json::to_string(&view).unwrap(), expected);
+        let decoded: WorldView = serde_json::from_str(expected).unwrap();
+        assert_eq!(decoded.facts, view.facts);
+        assert_eq!(decoded.clock, view.clock);
+    }
+
+    #[test]
+    fn day_granular_clock_view_json_example() {
+        let clock = ClockView { day: 3, ..ClockView::default() };
+        let expected = r#"{"day":3,"slot":null,"weekday":null,"weekdayLabel":null,"ended":null,"last":null}"#;
+        assert_eq!(serde_json::to_string(&clock).unwrap(), expected);
+        assert_eq!(serde_json::from_str::<ClockView>(expected).unwrap(), clock);
     }
 }
