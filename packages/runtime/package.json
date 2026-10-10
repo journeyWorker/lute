@@ -1,0 +1,51 @@
+{
+  "name": "@lute-lang/runtime",
+  "version": "0.39.0",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/lute.git",
+    "directory": "packages/runtime"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js"
+    }
+  },
+  "files": ["dist"],
+  "peerDependencies": {
+    "effect": "4.0.2",
+    "@effect/platform-bun": "4.0.2",
+    "@effect/platform-browser": "4.0.2"
+  },
+  "peerDependenciesMeta": {
+    "@effect/platform-bun": { "optional": true },
+    "@effect/platform-browser": { "optional": true }
+  },
+  "devDependencies": {
+    "effect": "4.0.2",
+    "@effect/platform-bun": "4.0.2",
+    "@effect/platform-browser": "4.0.2",
+    "@effect/vitest": "4.0.2",
+    "vitest": "5.0.3",
+    "typescript": "7.0.2",
+    "@types/bun": "1.4.2"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bunx --bun vitest run",
+    "contract:gen": "bun scripts/contract-codegen.ts",
+    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
+  }
+}
