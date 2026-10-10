@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use lute_runtime::index::Bundle;
-use lute_runtime::runtime::{Input, Output, Rejected, Runtime, Seed, State as RuntimeState};
+use lute_runtime::runtime::{Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
@@ -108,31 +108,44 @@ impl Program {
         }
     }
 
-    /// Serialize a state to its versioned snapshot JSON.
+    /// Serialize a state to its versioned snapshot JSON (keys sorted, the
+    /// contract's canonical form).
     pub fn snapshot(&self, state: &State) -> String {
-        self.runtime.snapshot(&state.inner).to_string()
+        canonical(&self.runtime.snapshot(&state.inner))
     }
 
     /// Restore a state from a versioned snapshot JSON.
     pub fn restore(&self, snapshot: &str) -> RestoreResult {
-        let snapshot = match serde_json::from_str::<Value>(snapshot) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                return RestoreResult::failure(rejection(
-                    "E-RUNTIME-SNAPSHOT-VERSION",
-                    format!("invalid snapshot: {error}"),
-                ))
-            }
-        };
-        match self.runtime.restore(snapshot) {
+        match Snapshot::from_json(snapshot).and_then(|snapshot| self.runtime.restore(snapshot)) {
             Ok(state) => RestoreResult::success(state),
             Err(rejected) => RestoreResult::failure(rejected),
         }
     }
 
+    /// The candidates of `occasion` (for `target`) in selection order, as a
+    /// JSON array of `Candidate`.
+    pub fn candidates(&self, state: &State, occasion: &str, target: Option<String>) -> String {
+        canonical(&self.runtime.candidates(&state.inner, occasion, target.as_deref()))
+    }
+
+    /// The verdict of `beat` (for `member`), as `Candidate` JSON or `null`.
+    pub fn eligibility(&self, state: &State, beat: &str, member: Option<String>) -> String {
+        canonical(&self.runtime.eligibility(&state.inner, beat, member.as_deref()))
+    }
+
+    /// The clock position, as `ClockAt` JSON or `null` without a clock.
+    pub fn clock(&self, state: &State) -> String {
+        canonical(&self.runtime.clock(&state.inner))
+    }
+
     /// Whether this state is terminal.
     pub fn terminal(&self, state: &State) -> bool {
         self.runtime.terminal(&state.inner)
+    }
+
+    /// The world view, as `WorldView` JSON (facts only when `with_facts`).
+    pub fn view(&self, state: &State, with_facts: bool) -> String {
+        canonical(&self.runtime.view(&state.inner, with_facts))
     }
 
     #[wasm_bindgen(getter)]
@@ -217,7 +230,7 @@ impl StepResult {
         Self {
             ok: true,
             state: Some(State::from_runtime(state)),
-            output: Some(output_json(&output)),
+            output: Some(canonical(&output)),
             rejected: None,
         }
     }
@@ -227,7 +240,7 @@ impl StepResult {
             ok: false,
             state: None,
             output: None,
-            rejected: Some(rejected_json(&rejected)),
+            rejected: Some(canonical(&rejected)),
         }
     }
 
@@ -236,7 +249,7 @@ impl StepResult {
             ok: false,
             state: Some(state),
             output: None,
-            rejected: Some(rejected_json(&rejected)),
+            rejected: Some(canonical(&rejected)),
         }
     }
 }
@@ -254,7 +267,7 @@ impl RestoreResult {
         Self {
             ok: false,
             state: None,
-            rejected: Some(rejected_json(&rejected)),
+            rejected: Some(canonical(&rejected)),
         }
     }
 }
@@ -272,7 +285,7 @@ impl LoadResult {
         Self {
             ok: false,
             program: None,
-            rejected: Some(rejected_json(&rejected)),
+            rejected: Some(canonical(&rejected)),
         }
     }
 }
@@ -288,21 +301,13 @@ fn rejection(code: &str, message: impl Into<String>) -> Rejected {
     }
 }
 
-fn output_json(value: &Output) -> String {
-    serialize_json(serde_json::to_string(value))
-}
-
-fn rejected_json(value: &Rejected) -> String {
-    serialize_json(serde_json::to_string(value))
-}
-
-fn serialize_json(value: Result<String, serde_json::Error>) -> String {
-    value.unwrap_or_else(|error| {
-        format!(
-            "{{\"code\":\"E-RUNTIME-OUTPUT\",\"message\":{}}}",
-            Value::String(error.to_string())
-        )
-    })
+/// Contract JSON in its canonical form: through `serde_json::Value`, whose
+/// maps sort their keys (spec 0.38.0 §9.3). Contract types always
+/// serialize; a failure is a defect (a panic, so a trap in wasm).
+fn canonical<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .expect("runtime contract types serialize")
+        .to_string()
 }
 
 #[cfg(test)]
