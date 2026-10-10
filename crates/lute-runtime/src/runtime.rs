@@ -487,9 +487,6 @@ impl Runtime {
     pub fn project(&self) -> &ExecProject {
         &self.project
     }
-    pub fn fingerprint(&self) -> &str {
-        &self.fingerprint
-    }
 
     /// Load a `lute compile --all` bundle (spec 0.38.0 §4.1). Rejected with
     /// `E-RUNTIME-IR-VERSION` when the index or an artifact is stamped with

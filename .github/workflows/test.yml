@@ -126,6 +126,7 @@ jobs:
 
       - name: lute-runtime builds for wasm32
         run: cargo check -p lute-runtime --target wasm32-unknown-unknown
+
       - name: lute-runtime-wasm builds for wasm32
         run: cargo check -p lute-runtime-wasm --target wasm32-unknown-unknown
 
