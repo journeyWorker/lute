@@ -1,0 +1,216 @@
+{
+  "hub.lute.json": {
+    "kind": "scene",
+    "lute": "0.39.0",
+    "irVersion": "0.39.0",
+    "capabilitySnapshot": "65c68bcdbade1e659c7c657ead3d8158234a5d0686587fe2fac6237468eb15da",
+    "requiredSemantics": [
+      "lute.core/1",
+      "lute.occasions.selection/1",
+      "lute.time.cadence/1"
+    ],
+    "meta": {
+      "id": "hub",
+      "title": "hub",
+      "beat": {
+        "on": "visit",
+        "priority": 0,
+        "once": "run"
+      }
+    },
+    "state": [
+      {
+        "path": "run.answer",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "path": "run.count",
+        "type": "int",
+        "default": 0
+      },
+      {
+        "path": "scene.choices.answer",
+        "type": "enum",
+        "domain": [
+          "yes",
+          "no",
+          "unset"
+        ],
+        "default": "unset",
+        "provenance": "branch:answer"
+      },
+      {
+        "path": "scene.choices.desk",
+        "type": "enum",
+        "domain": [
+          "take",
+          "leave",
+          "unset"
+        ],
+        "default": "unset",
+        "provenance": "branch:desk"
+      },
+      {
+        "path": "scene.visited.desk.leave",
+        "type": "bool",
+        "default": false
+      },
+      {
+        "path": "scene.visited.desk.take",
+        "type": "bool",
+        "default": false
+      }
+    ],
+    "commands": [
+      {
+        "kind": "line",
+        "family": "content",
+        "position": "001-0100",
+        "role": "narration",
+        "speaker": "narrator",
+        "text": "Before the hub.",
+        "lineId": "hub.narrator_0010",
+        "voiceKey": "hub.narrator-0010"
+      },
+      {
+        "kind": "hub",
+        "family": "control",
+        "position": "001-0200",
+        "id": "desk",
+        "selectionKey": "scene.choices.desk",
+        "options": [
+          {
+            "id": "take",
+            "text": "Take it",
+            "lineId": "hub.desk.take",
+            "once": true,
+            "exit": false,
+            "target": "001-0300"
+          },
+          {
+            "id": "leave",
+            "text": "Leave",
+            "lineId": "hub.desk.leave",
+            "once": false,
+            "exit": true,
+            "target": "001-0900"
+          }
+        ],
+        "converge": "001-1200",
+        "return": "001-1100"
+      },
+      {
+        "kind": "set",
+        "family": "state",
+        "position": "001-0300",
+        "path": "run.count",
+        "op": "+=",
+        "value": {
+          "cel": "1",
+          "expr": {
+            "int": 1
+          }
+        }
+      },
+      {
+        "kind": "choice",
+        "family": "control",
+        "position": "001-0400",
+        "branchId": "answer",
+        "selectionKey": "scene.choices.answer",
+        "options": [
+          {
+            "id": "yes",
+            "text": "Yes",
+            "lineId": "hub.answer.yes",
+            "target": "001-0500"
+          },
+          {
+            "id": "no",
+            "text": "No",
+            "lineId": "hub.answer.no",
+            "target": "001-0700"
+          }
+        ],
+        "converge": "001-0900",
+        "prompt": "Confirm?"
+      },
+      {
+        "kind": "set",
+        "family": "state",
+        "position": "001-0500",
+        "path": "run.answer",
+        "op": "=",
+        "value": {
+          "cel": "true",
+          "expr": {
+            "bool": true
+          }
+        }
+      },
+      {
+        "kind": "jump",
+        "family": "control",
+        "position": "001-0600",
+        "target": "001-0900"
+      },
+      {
+        "kind": "set",
+        "family": "state",
+        "position": "001-0700",
+        "path": "run.answer",
+        "op": "=",
+        "value": {
+          "cel": "false",
+          "expr": {
+            "bool": false
+          }
+        }
+      },
+      {
+        "kind": "jump",
+        "family": "control",
+        "position": "001-0800",
+        "target": "001-0900"
+      },
+      {
+        "kind": "line",
+        "family": "content",
+        "position": "001-0900",
+        "role": "narration",
+        "speaker": "narrator",
+        "text": "After the hub.",
+        "lineId": "hub.narrator_0030",
+        "voiceKey": "hub.narrator-0030"
+      },
+      {
+        "kind": "jump",
+        "family": "control",
+        "position": "001-1000",
+        "target": "001-1200"
+      },
+      {
+        "kind": "line",
+        "family": "content",
+        "position": "001-1100",
+        "role": "narration",
+        "speaker": "narrator",
+        "text": "Returned to the hub.",
+        "lineId": "hub.narrator_0020",
+        "voiceKey": "hub.narrator-0020"
+      }
+    ],
+    "sections": [
+      {
+        "section": 1,
+        "heading": "Hub"
+      }
+    ],
+    "outsideRun": [],
+    "celEnv": {
+      "variables": [],
+      "functions": []
+    }
+  }
+}

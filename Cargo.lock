@@ -791,6 +791,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lute-runtime-wasm"
+version = "0.39.0"
+dependencies = [
+ "lute-runtime",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "lute-semantic"
 version = "0.39.0"
 dependencies = [
