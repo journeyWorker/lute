@@ -123,7 +123,7 @@ fn share_without_once_names_every_spending_period() {
     for period in lute_check::beats::SPENDING_ONCE {
         let raw = period.replace("<name>", "fair");
         assert!(
-            lute_check::BeatOnce::parse(&raw).is_some(),
+            lute_ir::BeatOnce::parse(&raw).is_some(),
             "`{period}` is listed but not accepted"
         );
     }
