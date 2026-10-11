@@ -15,6 +15,17 @@ describe("choice navigation", () => {
     else throw new Error("expected navigation state")
   })
 
+  it("wraps focus upward and downward across enabled options", () => {
+    const down = navigateChoice(state, "down")
+    if (typeof down !== "object" || down === undefined) throw new Error("expected navigation state")
+    const wrapped = navigateChoice(down, "down")
+    if (typeof wrapped !== "object" || wrapped === undefined) throw new Error("expected navigation state")
+    expect(wrapped.focused).toBe(0)
+    const up = navigateChoice(state, "up")
+    if (typeof up !== "object" || up === undefined) throw new Error("expected navigation state")
+    expect(up.focused).toBe(2)
+  })
+
   it("selects focused and digit options, but never disabled ones", () => {
     expect(navigateChoice(state, "enter")).toBe("a")
     expect(navigateChoice(state, "2")).toBeUndefined()

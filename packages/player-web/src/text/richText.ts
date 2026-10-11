@@ -34,6 +34,12 @@ const noStart = new Set(["、", "。", "！", "？", "」", "』", "）", "】",
 const noEnd = new Set(["「", "『", "（", "【", "〈", "《", "〔", "［", "｛"])
 const cjk = /[\u2e80-\u2fff\u3000-\u30ff\u31a0-\u31bf\u3400-\u9fff\uf900-\ufaff]/u
 
+/** True when a grapheme is forbidden at the beginning of a line. */
+export const isForbiddenLineStart = (value: string): boolean => noStart.has(value)
+
+/** True when a grapheme is forbidden at the end of a line. */
+export const isForbiddenLineEnd = (value: string): boolean => noEnd.has(value)
+
 /** Maps one named binding to Pixi's TextStyle options. */
 export const mapTextStyle = (
   names: ReadonlyArray<string>,
@@ -114,14 +120,14 @@ export const layoutStyledRuns = (
         currentStyles = segment.styles
         currentBinding = binding
       }
-      if (noStart.has(unit) && current.length === 0 && result.length > 0) {
+      if (isForbiddenLineStart(unit) && current.length === 0 && result.length > 0) {
         const previous = result[result.length - 1]
         if (previous !== undefined && previous.line === line - 1 && previous.text.length > 0) {
           result[result.length - 1] = { ...previous, text: previous.text + unit }
           continue
         }
       }
-      if (noEnd.has(unit) && widthOf(current + unit, currentBinding, fallback) >= width && current.length > 0) {
+      if (isForbiddenLineEnd(unit) && widthOf(current + unit, currentBinding, fallback) >= width && current.length > 0) {
         flush()
         line += 1
         currentStyles = segment.styles
