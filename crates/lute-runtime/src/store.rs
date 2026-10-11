@@ -15,7 +15,6 @@
 //!   clock's `day` / `slot` (D14). Exclusivity after a write is the
 //!   Machine's (it records and refuses).
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value as Json;
@@ -65,6 +64,8 @@ pub(crate) struct StoreSchema {
     pub(crate) defaults: BTreeMap<String, Value>,
     pub(crate) excludes: Vec<(String, String)>,
     pub(crate) clock: Option<lute_manifest::clock::ClockDecl>,
+    /// The memo of [`Store::derive`] over this schema ([`LastClosure`]).
+    last_closure: std::sync::Mutex<Option<LastClosure>>,
 }
 
 pub(crate) struct Store {
@@ -243,6 +244,7 @@ impl Store {
             clock: art
                 .get("clock")
                 .and_then(|c| serde_json::from_value(c.clone()).ok()),
+            last_closure: std::sync::Mutex::new(None),
         })
     }
 
@@ -576,33 +578,25 @@ pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
     }
 }
 
-/// The last closure [`Store::derive`] computed on this thread, with the exact
-/// inputs it was computed from.
+/// The last closure [`Store::derive`] computed over one [`StoreSchema`], with
+/// the exact inputs it was computed from.
 ///
-/// A playthrough builds a fresh [`Store`] per walk, and most are built over
-/// the same world as the walk before: on the largest dogfood project ~75% of
-/// closures repeat the previous one's schema, base facts and state exactly.
-/// The closure is a function of those three alone (the rules, the declared
-/// state types, `base`, and the state values the rule guards read), so an
-/// exact match returns the same closure the fixpoint would.
+/// A playthrough builds a fresh [`Store`] per walk over its project's shared
+/// schema, and most are built over the same world as the walk before: on the
+/// largest dogfood project ~75% of closures repeat the previous one's base
+/// facts and state exactly. Over one schema the closure is a function of
+/// those two alone (the rules and declared state types are the schema's), so
+/// an exact match returns the same closure the fixpoint would.
 struct LastClosure {
-    /// Held, not just compared by address, so a freed schema's address
-    /// cannot be reused by another.
-    schema: std::sync::Arc<StoreSchema>,
     base: BTreeSet<Fact>,
     values: BTreeMap<String, Value>,
     all: std::sync::Arc<BTreeSet<Fact>>,
     undecided: BTreeMap<String, Vec<UnresolvedAtom>>,
 }
 
-thread_local! {
-    static LAST_CLOSURE: RefCell<Option<LastClosure>> = const { RefCell::new(None) };
-}
-
 impl LastClosure {
     fn matches(&self, store: &Store) -> bool {
-        std::sync::Arc::ptr_eq(&self.schema, &store.store_schema)
-            && self.base == store.base
+        self.base == store.base
             && self.values.len() == store.values.len()
             && self
                 .values
@@ -611,27 +605,29 @@ impl LastClosure {
                 .all(|((ka, va), (kb, vb))| ka == kb && same_value(va, vb))
     }
 
-    /// `store`'s closure: the last one when its inputs are `store`'s, else a
-    /// fresh fixpoint (which becomes the last one).
+    /// `store`'s closure: its schema's last one when the inputs are
+    /// `store`'s, else a fresh fixpoint (which becomes the last one). The
+    /// memo's lock is never held across the fixpoint, so stores of one schema
+    /// on other threads (`lute test` runs plays in parallel) do not wait on it.
     fn get_or_derive(
         store: &Store,
     ) -> (std::sync::Arc<BTreeSet<Fact>>, BTreeMap<String, Vec<UnresolvedAtom>>) {
-        LAST_CLOSURE.with_borrow_mut(|last| {
-            if let Some(hit) = last.as_ref().filter(|l| l.matches(store)) {
-                return (std::sync::Arc::clone(&hit.all), hit.undecided.clone());
-            }
-            let eff = EffectiveState::over(&store.store_schema.state, &store.values);
-            let closure = store.program.fixpoint(&store.base, &eff);
-            let all = std::sync::Arc::new(closure.facts);
-            *last = Some(LastClosure {
-                schema: std::sync::Arc::clone(&store.store_schema),
-                base: store.base.clone(),
-                values: store.values.clone(),
-                all: std::sync::Arc::clone(&all),
-                undecided: closure.undecided.clone(),
-            });
-            (all, closure.undecided)
-        })
+        let memo = &store.store_schema.last_closure;
+        let last = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(hit) = last.as_ref().filter(|l| l.matches(store)) {
+            return (std::sync::Arc::clone(&hit.all), hit.undecided.clone());
+        }
+        drop(last);
+        let eff = EffectiveState::over(&store.store_schema.state, &store.values);
+        let closure = store.program.fixpoint(&store.base, &eff);
+        let all = std::sync::Arc::new(closure.facts);
+        *memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(LastClosure {
+            base: store.base.clone(),
+            values: store.values.clone(),
+            all: std::sync::Arc::clone(&all),
+            undecided: closure.undecided.clone(),
+        });
+        (all, closure.undecided)
     }
 }
 
