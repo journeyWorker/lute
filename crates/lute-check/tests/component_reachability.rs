@@ -32,26 +32,6 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_creach_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
@@ -94,7 +74,7 @@ fn standalone_diags(body: &str) -> Vec<Diagnostic> {
 /// The SAME `body` in a paramless component body, reached through a `::use`
 /// from a scene — i.e. the imported-component path, the one that leaked.
 fn component_diags(body: &str) -> Vec<Diagnostic> {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("c.lute"), component_file(body)).unwrap();
     let text = USE_SCENE.to_string();
     let (doc, _) = lute_syntax::parse(&text);
@@ -254,7 +234,7 @@ fn live_guard_and_terminal_end_in_component_body_stay_clean() {
 /// the pass is reached at all.
 #[test]
 fn dead_line_guard_inside_match_arm_in_component_body() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n\
@@ -288,7 +268,7 @@ fn dead_line_guard_inside_match_arm_in_component_body() {
 /// exactly once — never twice.
 #[test]
 fn dead_arm_guard_in_component_match_reported_once() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  tier: { enum: [cold, warm] }\n---\n\
@@ -320,7 +300,7 @@ fn dead_arm_guard_in_component_match_reported_once() {
 /// scoping `W-CODE-AFTER-END` has within one document, reachability.rs).
 #[test]
 fn each_component_body_is_its_own_end_scope() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("a.lute"),
         "---\ncomponent: a\n---\n## Scene 1.\n@marina: bye\n::end\n",

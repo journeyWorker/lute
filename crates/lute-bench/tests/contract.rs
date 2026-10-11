@@ -2,13 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-fn temporary(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("lute-bench-{name}-{}", std::process::id()))
-}
-
 #[test]
 fn binary_emits_schema_and_200ms_sample() {
-    let output = temporary("report.json");
+    let scratch = lute_scratch::ScratchDir::named("bench");
+    let output = scratch.join("report.json");
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let status = Command::new(env!("CARGO_BIN_EXE_lute-bench"))
         .args([
@@ -32,7 +29,6 @@ fn binary_emits_schema_and_200ms_sample() {
     assert_eq!(sample["exit"], "ok");
     assert!(sample["iterations"].as_u64().unwrap() > 0);
     assert!(sample["elapsedMs"].as_f64().unwrap() >= 200.0);
-    fs::remove_file(output).unwrap();
 }
 
 fn fixture(path: &PathBuf, value: f64) {
@@ -51,8 +47,9 @@ fn fixture(path: &PathBuf, value: f64) {
 
 #[test]
 fn comparator_accepts_110_and_rejects_111() {
-    let base = temporary("base.json");
-    let head = temporary("head.json");
+    let scratch = lute_scratch::ScratchDir::named("bench");
+    let base = scratch.join("base.json");
+    let head = scratch.join("head.json");
     fixture(&base, 100.0);
     fixture(&head, 110.0);
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/compare-bench.py");
@@ -67,6 +64,4 @@ fn comparator_accepts_110_and_rejects_111() {
         .status()
         .unwrap();
     assert_eq!(rejected.code(), Some(1));
-    fs::remove_file(base).unwrap();
-    fs::remove_file(head).unwrap();
 }

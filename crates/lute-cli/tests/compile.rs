@@ -38,7 +38,8 @@ fn compile_marina_exits_zero_with_artifact_json() {
 #[test]
 fn compile_error_doc_exits_one_and_emits_no_artifact() {
     // A loose scene (no manifest above it) writing an undeclared path.
-    let dir = std::env::temp_dir().join(format!("lute-compile-error-{}", std::process::id()));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-compile-error");
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("bad.lute");
     std::fs::write(
@@ -70,7 +71,8 @@ fn compile_missing_file_exits_two() {
 
 #[test]
 fn compile_writes_out_file() {
-    let tmp = std::env::temp_dir().join("lute-compile-cli-test.json");
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute-compile-cli-test.json");
     let _ = std::fs::remove_file(&tmp);
     let out = Command::new(BIN)
         .args(["compile", "../../docs/examples/marina-s01ep02.lute", "-o"])
@@ -93,9 +95,8 @@ fn compile_out_to_unwritable_path_exits_two() {
     // A `-o` target whose parent directory does not exist makes the file write
     // fail; the CLI maps that I/O error to exit 2 (never panics) — the same
     // contract `run_compile`'s stdout artifact write now follows on EPIPE.
-    let bad = std::env::temp_dir()
-        .join("lute-no-such-dir-xyzzy")
-        .join("out.json");
+    let scratch = lute_scratch::ScratchDir::named("unwritable");
+    let bad = scratch.join("no-such-dir").join("out.json");
     let out = Command::new(BIN)
         .args(["compile", "../../docs/examples/marina-s01ep02.lute", "-o"])
         .arg(&bad)

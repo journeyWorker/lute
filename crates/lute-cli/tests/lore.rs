@@ -3,20 +3,10 @@
 //! the world-narrative map (entries by target / series, and which facts lore
 //! entries reveal versus scenes and quests) as text and as JSON.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-lore-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let path = dir.join(rel);
@@ -34,7 +24,7 @@ fn stdout(out: &std::process::Output) -> String {
 
 #[test]
 fn new_lore_scaffolds_a_document_that_checks_clean() {
-    let dir = temp_dir("new");
+    let dir = lute_scratch::ScratchDir::named("new");
     let out = run(&[
         "new",
         "lore",
@@ -82,7 +72,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
 /// content `::accept`s it, and this test pins "no diagnostics at all".
 #[test]
 fn new_quest_and_lore_scaffolds_check_clean_together() {
-    let dir = temp_dir("new-quest");
+    let dir = lute_scratch::ScratchDir::named("new-quest");
     write(
         &dir,
         "lute.project.yaml",
@@ -126,7 +116,7 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
 /// position is `E-ENTRY-SERIES-ORDER`.
 #[test]
 fn check_project_reports_bundle_id_and_resolved_series_collisions() {
-    let dir = temp_dir("bundle");
+    let dir = lute_scratch::ScratchDir::named("bundle");
     write(
         &dir,
         "lute.project.yaml",
@@ -206,7 +196,7 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
 /// `lute lore` groups a document-level series by resolved position.
 #[test]
 fn lore_report_uses_resolved_series() {
-    let dir = temp_dir("resolved");
+    let dir = lute_scratch::ScratchDir::named("resolved");
     write(
         &dir,
         "log.lute",
@@ -282,8 +272,8 @@ uses: ../world.schema.yaml
 ::assert{ met(vesna, orin) }
 ";
 
-fn fixture() -> PathBuf {
-    let dir = temp_dir("report");
+fn fixture() -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named("report");
     write(
         &dir,
         "lute.project.yaml",
@@ -440,7 +430,7 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
 /// reported. A missing directory is an I/O failure (exit 2).
 #[test]
 fn lore_report_reports_unchecked_documents_and_fails_on_io() {
-    let dir = temp_dir("unchecked");
+    let dir = lute_scratch::ScratchDir::named("unchecked");
     write(
         &dir,
         "a.lute",
@@ -465,7 +455,7 @@ fn lore_report_reports_unchecked_documents_and_fails_on_io() {
 /// component asserts at each `::use` of it (params bound), never on its own.
 #[test]
 fn lore_report_binds_rules_components_and_labels_beats() {
-    let dir = temp_dir("lore-bind");
+    let dir = lute_scratch::ScratchDir::named("lore-bind");
     write(
         &dir,
         "lute.project.yaml",

@@ -15,17 +15,6 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bridge-check")
 }
 
-/// One fresh directory per call: tests run in parallel inside one process,
-/// so a `tag` + pid name alone let two `trace` mocks overwrite each other.
-fn temp_dir(tag: &str) -> PathBuf {
-    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-bridges-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -42,7 +31,8 @@ fn out(o: &Output) -> String {
 }
 
 fn play(tag: &str, script: &str) -> Output {
-    let script = write(&temp_dir(tag), "s.play.yaml", script);
+    let script_scratch = lute_scratch::ScratchDir::named(tag);
+    let script = write(&script_scratch, "s.play.yaml", script);
     Command::new(BIN)
         .args([
             "play",
@@ -55,6 +45,7 @@ fn play(tag: &str, script: &str) -> Output {
 }
 
 fn trace(mock: Option<&str>) -> Output {
+    let scratch = lute_scratch::ScratchDir::named("trace-mock");
     let mut args = vec![
         "trace".to_string(),
         fixture().join("scenes/probe/c.lute").display().to_string(),
@@ -62,7 +53,7 @@ fn trace(mock: Option<&str>) -> Output {
         fixture().display().to_string(),
     ];
     if let Some(m) = mock {
-        let m = write(&temp_dir("trace-mock"), "m.yaml", m);
+        let m = write(&scratch, "m.yaml", m);
         args.push("--mock".to_string());
         args.push(m.display().to_string());
     }
@@ -157,8 +148,9 @@ fn play_fails_a_step_that_leaves_its_own_answers_unconsumed() {
 #[test]
 fn play_include_answers_are_local_to_each_repetition() {
     // `probe.c` is `once: run`: each visit starts a new run.
+    let steps_scratch = lute_scratch::ScratchDir::named("include-steps");
     let steps = write(
-        &temp_dir("include-steps"),
+        &steps_scratch,
         "v.steps.yaml",
         "- newRun: true\n- occasion: townVisit\n",
     );
@@ -386,8 +378,9 @@ fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
     assert_anchored(&out(&o), &t.display().to_string());
 
     let doc = fixture().join("scenes/probe/c.lute");
+    let mock_scratch = lute_scratch::ScratchDir::named("trace-anchored");
     let mock = write(
-        &temp_dir("trace-anchored"),
+        &mock_scratch,
         "m.yaml",
         &format!("file: {}\n{BAD_BRIDGES}", doc.display()),
     );
@@ -404,7 +397,7 @@ fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
     assert_anchored(&out(&o), &mock.display().to_string());
 
-    let project = temp_dir("check-project-anchored");
+    let project = lute_scratch::ScratchDir::named("check-project-anchored");
     copy_dir(&fixture(), &project);
     let mock = write(
         &project,
@@ -433,8 +426,8 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// The fixture copied to a temp project with the gated line over `margin`
 /// removed: no content reads `margin` any more.
-fn margin_unread(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn margin_unread(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     copy_dir(&fixture(), &dir);
     let c = dir.join("scenes/probe/c.lute");
     let text = std::fs::read_to_string(&c).unwrap();
@@ -518,7 +511,8 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         }
         c.output().unwrap()
     };
-    let mock = write(&temp_dir("unread-mock"), "m.yaml", answers);
+    let mock_scratch = lute_scratch::ScratchDir::named("unread-mock");
+    let mock = write(&mock_scratch, "m.yaml", answers);
     let o = trace(Some(&mock));
     assert_eq!(o.status.code(), Some(0), "{}", out(&o));
     assert!(
@@ -566,7 +560,7 @@ fn an_unread_bridge_result_field_may_be_left_out() {
 #[test]
 fn a_bridge_field_read_only_in_a_comment_may_be_left_out() {
     for (tag, open, close) in [("line", "// ", ""), ("block", "/* ", " */")] {
-        let dir = temp_dir(&format!("comment-{tag}"));
+        let dir = lute_scratch::ScratchDir::named(&format!("comment-{tag}"));
         copy_dir(&fixture(), &dir);
         let c = dir.join("scenes/probe/c.lute");
         let text = std::fs::read_to_string(&c).unwrap();

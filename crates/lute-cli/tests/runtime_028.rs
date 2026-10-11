@@ -6,21 +6,10 @@
 //! (T2-13), and `lute test` reading an unwritten objective's reserved
 //! default (T3-65).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("lute-runtime028-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -38,8 +27,8 @@ fn text(o: &Output) -> String {
 
 /// A project with one plugin declaring `occasions` (the body of its
 /// `occasions:` map), the schema `schema`, and `docs` (path, text).
-fn project(tag: &str, occasions: &str, schema: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, occasions: &str, schema: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

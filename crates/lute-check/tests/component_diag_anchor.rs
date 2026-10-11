@@ -20,21 +20,7 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lute_cda_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
+use std::path::Path;
 
 fn check_text(text: &str, components: ComponentSet) -> Vec<Diagnostic> {
     let input = CheckInput {
@@ -62,8 +48,8 @@ fn check_scene(scene_dir: &Path, scene: &str) -> Vec<Diagnostic> {
 /// A project: `lute.project.yaml` at the root, the component under
 /// `components/`, the scene under `scenes/` importing it by relative path.
 /// The `::use` sits on scene line 10.
-fn project_with_component(component_body: &str, params: &str) -> (PathBuf, String) {
-    let root = unique_dir();
+fn project_with_component(component_body: &str, params: &str) -> (lute_scratch::ScratchDir, String) {
+    let root = lute_scratch::ScratchDir::new();
     std::fs::create_dir_all(root.join("components")).unwrap();
     std::fs::create_dir_all(root.join("scenes")).unwrap();
     std::fs::write(

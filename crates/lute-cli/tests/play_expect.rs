@@ -15,17 +15,6 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub")
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("lute-play-expect-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -76,7 +65,7 @@ steps:
 ";
 
 fn play(tag: &str, script: &str) -> Output {
-    let dir = temp_dir(tag);
+    let dir = lute_scratch::ScratchDir::named(tag);
     let script = write(&dir, "s.play.yaml", script);
     lute(&[
         "play",
@@ -140,7 +129,7 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
 
 #[test]
 fn lute_test_runs_every_play_that_carries_an_expect() {
-    let dir = temp_dir("test-plays");
+    let dir = lute_scratch::ScratchDir::named("test-plays");
     write(&dir, "plays/pass.play.yaml", PASSING);
     write(&dir, "plays/fail.play.yaml", FAILING);
     // No `expect:` anywhere: `lute play` material, not a test.
@@ -194,7 +183,7 @@ fn lute_test_runs_every_play_that_carries_an_expect() {
 
 #[test]
 fn a_halted_play_fails_in_lute_test_unless_its_end_is_declared() {
-    let dir = temp_dir("halted");
+    let dir = lute_scratch::ScratchDir::named("halted");
     // `oracle.vision`'s `when` reads `now()`: the reference runner cannot
     // decide it, so the play halts incomplete there.
     let halting = "steps:\n  - occasion: hubVisit\n    expect: { winner: hub.firstEver }\n  \
@@ -224,7 +213,7 @@ fn a_halted_play_fails_in_lute_test_unless_its_end_is_declared() {
 
 #[test]
 fn coverage_counts_the_documents_a_play_presented() {
-    let dir = temp_dir("play-coverage");
+    let dir = lute_scratch::ScratchDir::named("play-coverage");
     write(&dir, "plays/pass.play.yaml", PASSING);
     let project = fixture();
     let out = lute(&[
@@ -266,7 +255,7 @@ fn coverage_counts_the_documents_a_play_presented() {
 /// documents only (the branch/arm rows are the traced paths').
 #[test]
 fn coverage_counts_the_documents_an_advance_step_presented() {
-    let dir = temp_dir("advance-coverage");
+    let dir = lute_scratch::ScratchDir::named("advance-coverage");
     write(
         &dir,
         "lute.project.yaml",
@@ -321,7 +310,7 @@ fn coverage_counts_the_documents_an_advance_step_presented() {
 /// scene test traces them.
 #[test]
 fn coverage_counts_play_picks_and_lists_beats_no_play_presented() {
-    let dir = temp_dir("play-picks");
+    let dir = lute_scratch::ScratchDir::named("play-picks");
     write(
         &dir,
         "lute.project.yaml",
@@ -389,7 +378,7 @@ const ASK: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 
 #[test]
 fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
-    let dir = temp_dir("options");
+    let dir = lute_scratch::ScratchDir::named("options");
     write(&dir, "s.lute", ASK);
     write(
         &dir,
@@ -420,7 +409,7 @@ fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
 
 #[test]
 fn quests_seed_the_status_a_scene_reads() {
-    let dir = temp_dir("quest-seed");
+    let dir = lute_scratch::ScratchDir::named("quest-seed");
     write(
         &dir,
         "s.lute",
@@ -442,7 +431,7 @@ fn quests_seed_the_status_a_scene_reads() {
 fn a_lore_test_presents_the_named_entries_in_order() {
     let project = fixture();
     let lore = project.join("lore/inbox.lute");
-    let dir = temp_dir("lore-entries");
+    let dir = lute_scratch::ScratchDir::named("lore-entries");
     let test = |body: &str| {
         write(
             &dir,
@@ -531,7 +520,7 @@ fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
 
 #[test]
 fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
-    let dir = temp_dir("test-facts");
+    let dir = lute_scratch::ScratchDir::named("test-facts");
     write(
         &dir,
         "s.lute",
@@ -592,7 +581,7 @@ fn copy_tree(from: &Path, to: &Path) {
 
 #[test]
 fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
-    let project = temp_dir("said");
+    let project = lute_scratch::ScratchDir::named("said");
     copy_tree(&fixture(), &project);
     // A guarded line the first visit never presents (`run.hubVisits` is 0).
     write(
@@ -638,7 +627,7 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 
     // A scene test over the same document matches the same canonical form.
-    let tests = temp_dir("said-test");
+    let tests = lute_scratch::ScratchDir::named("said-test");
     write(
         &tests,
         "t.test.yaml",
@@ -661,7 +650,7 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
 /// (unioned), as a branch's is — it used to read `[]` for every hub.
 #[test]
 fn options_judges_a_hub_like_a_branch() {
-    let dir = temp_dir("hub-options");
+    let dir = lute_scratch::ScratchDir::named("hub-options");
     write(
         &dir,
         "s.lute",
@@ -694,7 +683,7 @@ fn options_judges_a_hub_like_a_branch() {
 /// key that belongs to the other file says which file owns it.
 #[test]
 fn test_and_play_keys_name_the_spelling_and_the_file_they_belong_to() {
-    let dir = temp_dir("key-renames");
+    let dir = lute_scratch::ScratchDir::named("key-renames");
     write(&dir, "s.lute", ASK);
     write(
         &dir,
@@ -782,7 +771,7 @@ fn a_documents_spelling_of_a_step_key_names_the_step_key() {
 fn eligible_answers_its_note_and_judges_unpresented_entries() {
     let project = fixture();
     let lore = project.join("lore/inbox.lute");
-    let dir = temp_dir("eligible-all");
+    let dir = lute_scratch::ScratchDir::named("eligible-all");
     let test = |body: &str| {
         write(
             &dir,
@@ -824,7 +813,7 @@ fn eligible_answers_its_note_and_judges_unpresented_entries() {
 /// prints the `prev.run.*` values; an unquoted atom gets a quoting hint.
 #[test]
 fn play_harness_details() {
-    let project = temp_dir("harness");
+    let project = lute_scratch::ScratchDir::named("harness");
     copy_tree(&fixture(), &project);
     write(
         &project,
@@ -886,7 +875,7 @@ fn play_harness_details() {
 /// quest defines is an error with the same did-you-mean.
 #[test]
 fn trace_with_project_verifies_quest_existence() {
-    let project = temp_dir("trace-quests");
+    let project = lute_scratch::ScratchDir::named("trace-quests");
     copy_tree(&fixture(), &project);
     let scene = write(
         &project,
@@ -918,7 +907,7 @@ fn trace_with_project_verifies_quest_existence() {
 /// completed does not run — and the play says so.
 #[test]
 fn play_prints_the_skipped_handler_of_a_settled_quest() {
-    let project = temp_dir("handler-skip");
+    let project = lute_scratch::ScratchDir::named("handler-skip");
     copy_tree(&fixture(), &project);
     // `hubVisit` is also a world event here, so a quest may handle it.
     write(
@@ -963,8 +952,8 @@ fn play_prints_the_skipped_handler_of_a_settled_quest() {
 /// A temp copy of the `bridge-check` fixture (a `::check` bridge directive,
 /// the accept-driven quest `lampOut`, the lore document `lore.tomas`) plus
 /// every `(path, text)` document.
-fn bridge_project(tag: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let project = temp_dir(tag);
+fn bridge_project(tag: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let project = lute_scratch::ScratchDir::named(tag);
     copy_tree(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bridge-check"),
         &project,
@@ -1364,8 +1353,8 @@ fn a_misspelt_needle_speaker_or_expected_fact_is_refused_not_vacuous() {
 /// A one-scene project: `run.route` over the enum `route`, and a `festival`
 /// scene (`once: user`, answering `evening`) whose branch `pick` offers
 /// `ren` / `mika`.
-fn festival_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn festival_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

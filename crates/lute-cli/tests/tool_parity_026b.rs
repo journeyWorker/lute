@@ -6,20 +6,10 @@
 //! unspoken `W-DISPLAY-NAME-DUP` sits at the cast entry, and a plugin
 //! directive attribute named `when` is refused at load.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-tp026b-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -81,7 +71,7 @@ fn plugin(dir: &Path, directive: &str) {
 /// complete }`; that mock is legal and makes the scene eligible.
 #[test]
 fn the_after_premise_quest_mock_is_accepted() {
-    let dir = temp_dir("after");
+    let dir = lute_scratch::ScratchDir::named("after");
     write(
         &dir,
         "wed.lute",
@@ -111,7 +101,7 @@ fn the_after_premise_quest_mock_is_accepted() {
 /// (as a play save), and the failure names that mock.
 #[test]
 fn a_spent_once_user_entry_is_mocked_by_entries_read() {
-    let dir = temp_dir("once-user");
+    let dir = lute_scratch::ScratchDir::named("once-user");
     write(
         &dir,
         "gate.lute",
@@ -147,7 +137,7 @@ fn a_spent_once_user_entry_is_mocked_by_entries_read() {
 /// its importers (round-5 T3-4), and in a standalone `lute check <schema>.yaml`.
 #[test]
 fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
-    let dir = temp_dir("agg");
+    let dir = lute_scratch::ScratchDir::named("agg");
     write(
         &dir,
         "lute.project.yaml",
@@ -190,7 +180,7 @@ fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
 /// `lute play` does; an unspoken display-name clash sits at the cast entry.
 #[test]
 fn occasion_target_renders_the_cast_name_and_unspoken_dups_sit_at_the_cast() {
-    let dir = temp_dir("target");
+    let dir = lute_scratch::ScratchDir::named("target");
     plugin(&dir, "level");
     write(
         &dir,
@@ -218,7 +208,7 @@ fn occasion_target_renders_the_cast_name_and_unspoken_dups_sit_at_the_cast() {
 
 #[test]
 fn a_plugin_directive_attribute_named_when_is_refused_at_load() {
-    let dir = temp_dir("when-attr");
+    let dir = lute_scratch::ScratchDir::named("when-attr");
     plugin(&dir, "when");
     write(
         &dir,

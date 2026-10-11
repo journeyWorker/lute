@@ -16,4 +16,5 @@ sha2 = "0.10"
 schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
+lute-scratch = { path = "../lute-scratch" }
 serde_json = { workspace = true }

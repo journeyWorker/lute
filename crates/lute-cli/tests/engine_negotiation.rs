@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_json::Value as Json;
 
@@ -22,14 +21,6 @@ const ALL_IDS: &[&str] = &[
     "lute.lore/1",
 ];
 
-fn temp_dir(tag: &str) -> PathBuf {
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-engine-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
@@ -52,8 +43,8 @@ fn scene_source() -> &'static str {
     "---\nkind: scene\nluteVersion: \"0.8.0\"\ncharacter: hero\nseason: 1\nepisode: 1\ntitle: T\n---\n\n## Shot 1.\n\n::bg{location=\"room\" time=\"day\"}\n@narrator{code=\"0010\"}: Presented.\n"
 }
 
-fn compile_scene(tag: &str) -> (PathBuf, Json) {
-    let dir = temp_dir(tag);
+fn compile_scene(tag: &str) -> (lute_scratch::ScratchDir, PathBuf, Json) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let source = write(&dir, "scene.lute", scene_source());
     let artifact = dir.join("scene.json");
     let out = run(&[
@@ -64,7 +55,7 @@ fn compile_scene(tag: &str) -> (PathBuf, Json) {
     ]);
     assert!(out.status.success(), "compile failed: {}", String::from_utf8_lossy(&out.stderr));
     let json: Json = serde_json::from_str(&std::fs::read_to_string(&artifact).unwrap()).unwrap();
-    (artifact, json)
+    (dir, artifact, json)
 }
 
 fn ir_version(artifact: &Json) -> &str {
@@ -95,7 +86,7 @@ fn required_ids(artifact: &Json) -> Vec<&str> {
 
 #[test]
 fn run_engine_refuses_before_playback_and_accepts_all_required_ids() {
-    let (artifact, json) = compile_scene("run-semantics");
+    let (_dir, artifact, json) = compile_scene("run-semantics");
     let dir = artifact.parent().unwrap();
     let ir = ir_version(&json);
     let missing = matrix_file(dir, "missing.yaml", "text-engine", ir, &["lute.core/1"], "");
@@ -128,7 +119,7 @@ fn run_engine_refuses_before_playback_and_accepts_all_required_ids() {
 
 #[test]
 fn engine_ir_version_accepts_patch_but_rejects_different_minor() {
-    let (artifact, json) = compile_scene("ir-version");
+    let (_dir, artifact, json) = compile_scene("ir-version");
     let dir = artifact.parent().unwrap();
     let ir = ir_version(&json);
     let parts: Vec<&str> = ir.split('.').collect();
@@ -161,7 +152,7 @@ fn engine_ir_version_accepts_patch_but_rejects_different_minor() {
 
 #[test]
 fn malformed_engine_matrices_exit_two() {
-    let (artifact, json) = compile_scene("matrix-errors");
+    let (_dir, artifact, json) = compile_scene("matrix-errors");
     let dir = artifact.parent().unwrap();
     let ir = ir_version(&json);
     let cases = [
@@ -185,7 +176,7 @@ fn malformed_engine_matrices_exit_two() {
 
 #[test]
 fn check_engine_reports_staging_at_the_directive_line() {
-    let (artifact, json) = compile_scene("check-span");
+    let (_dir, artifact, json) = compile_scene("check-span");
     let source = artifact.parent().unwrap().join("scene.lute");
     let engine = matrix_file(artifact.parent().unwrap(), "core.yaml", "checker", ir_version(&json), &["lute.core/1"], "");
     let out = run(&[
@@ -205,10 +196,10 @@ fn check_engine_reports_staging_at_the_directive_line() {
 
 #[test]
 fn check_project_reports_each_contributing_document_and_clean_supports_all() {
-    let dir = temp_dir("check-project");
+    let dir = lute_scratch::ScratchDir::named("check-project");
     let a = write(&dir, "a.lute", scene_source());
     let b = write(&dir, "nested/b.lute", &scene_source().replace("character: hero", "character: villain"));
-    let (_, artifact) = compile_scene("check-project-ir");
+    let (_dir, _, artifact) = compile_scene("check-project-ir");
     let ir = ir_version(&artifact);
     let core = matrix_file(&dir, "core.yaml", "project-checker", ir, &["lute.core/1"], "");
     let out = run_str(&["check-project", dir.to_str().unwrap(), "--engine", core.to_str().unwrap(), "--json"]);
@@ -232,7 +223,7 @@ fn check_project_reports_each_contributing_document_and_clean_supports_all() {
 
 #[test]
 fn check_engine_anchors_frontmatter_semantics_at_the_declaring_key() {
-    let dir = temp_dir("check-frontmatter-span");
+    let dir = lute_scratch::ScratchDir::named("check-frontmatter-span");
     let source_text = scene_source().replace(
         "title: T\n",
         "title: T\nentities:\n  person: { members: [hero] }\nrelations:\n  knows: { args: [person], tier: run }\n",
@@ -268,7 +259,7 @@ fn check_engine_anchors_frontmatter_semantics_at_the_declaring_key() {
 #[test]
 fn built_in_reference_plays_a_staging_corpus_game() {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/command-staging/source.lute");
-    let dir = temp_dir("reference-corpus");
+    let dir = lute_scratch::ScratchDir::named("reference-corpus");
     let artifact = dir.join("artifact.json");
     let out = run(&["compile".into(), source.display().to_string(), "-o".into(), artifact.display().to_string()]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
@@ -281,12 +272,12 @@ fn built_in_reference_plays_a_staging_corpus_game() {
 #[test]
 fn play_engine_refuses_staging_before_presenting_and_full_matrix_plays() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub");
-    let dir = temp_dir("play-project");
+    let dir = lute_scratch::ScratchDir::named("play-project");
     copy_tree(&fixture, &dir);
     let scene = dir.join("scenes/hub/staging.lute");
     write(&dir, "scenes/hub/staging.lute", "---\nkind: scene\nid: hub.staging\nuses: ../../world.schema.yaml\non: hubVisit\npriority: 30\n---\n\n## Staged\n\n::bg{location=\"room\" time=\"day\"}\n@narrator: Staged line.\n");
     let script = write(&dir, "staging.play.yaml", "steps:\n  - occasion: hubVisit\n");
-    let ir = compile_scene("play-ir").1["irVersion"].as_str().unwrap().to_string();
+    let ir = compile_scene("play-ir").2["irVersion"].as_str().unwrap().to_string();
     let matrix = matrix_file(&dir, "core.yaml", "play-checker", &ir, &["lute.core/1"], "");
     let failed = run_str(&["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap(), "--engine", matrix.to_str().unwrap()]);
     assert_eq!(failed.status.code(), Some(2), "{}", String::from_utf8_lossy(&failed.stderr));

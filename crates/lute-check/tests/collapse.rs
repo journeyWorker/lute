@@ -18,8 +18,7 @@ use lute_check::{check, resolve_components, resolve_imports, CheckInput, Mode, S
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
@@ -35,25 +34,6 @@ fn diagnose(text: &str) -> Vec<Diagnostic> {
         defaults: Default::default(),
     };
     check(&input).diagnostics
-}
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-/// A fresh temp dir per call; import/component files are written into it.
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_collapse_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
 }
 
 fn write_lute(dir: &Path, name: &str, body: &str) {
@@ -177,7 +157,7 @@ fn maybe_unset_is_exempt() {
 // suppressed.
 #[test]
 fn missing_uses_suppresses_dependents() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let imports = resolve_imports(&dir, &["nonexistent.yaml".to_string()], &[], zero_span());
     let t = format!("{HDR}---\n## Shot 1.\n@marina: {{{{run.x}}}}\n");
     let input = CheckInput {
@@ -209,7 +189,7 @@ fn missing_uses_suppresses_dependents() {
 // claim depends on the table the parse failure never built) is suppressed.
 #[test]
 fn component_parse_suppresses_undeclared_component() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // No `component:` name declared -> E-COMPONENT-PARSE; never enters the table.
     write_lute(
         &dir,

@@ -10,8 +10,6 @@ use lute_check::{check, fold_env, resolve_imports, CheckInput, Mode, SchemaImpor
 use lute_core_span::{Diagnostic, Span};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::types::Type;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 state:\n  scene.flag: { type: bool, default: false }\n  scene.n: { type: int, default: 0 }\n";
@@ -53,16 +51,6 @@ fn def_decl(def: &str) -> Diagnostic {
         .find(|d| d.code == "E-DEF-DECL")
         .cloned()
         .unwrap_or_else(|| panic!("E-DEF-DECL for `{def}`: {ds:#?}"))
-}
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_def_decl_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
 }
 
 fn zero_span() -> Span {
@@ -227,7 +215,7 @@ fn params_require_an_explicit_type() {
 
 #[test]
 fn an_imported_shorthand_def_has_a_body_and_an_inferred_type() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("world.schema.yaml"),
         "state:\n  run.x: { type: int, default: 0 }\n\
@@ -260,7 +248,7 @@ fn an_imported_shorthand_def_has_a_body_and_an_inferred_type() {
 /// `compile` — carrying the schema's own `E-DEF-DECL` beneath `E-USES-PARSE`.
 #[test]
 fn a_malformed_imported_def_fails_check() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("world.schema.yaml"), "defs:\n  ready: [holds]\n").unwrap();
     let imports = resolve_imports(&dir, &["world.schema.yaml".to_string()], &[], zero_span());
     let res = check(&input(&scene("local: \"scene.flag\"", "ready"), imports));
@@ -286,7 +274,7 @@ fn a_malformed_imported_def_fails_check() {
 
 #[test]
 fn an_undecidable_imported_shorthand_is_named_in_the_importer() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("world.schema.yaml"),
         "state:\n  run.x: { type: int, default: 0 }\n\

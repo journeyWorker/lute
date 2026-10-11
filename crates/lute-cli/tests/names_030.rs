@@ -5,17 +5,13 @@
 //! refused. A name read bare as `@name` (a def, a component param) is an
 //! identifier.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn project(files: &[(&str, &str)]) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-names-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+fn project(files: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named("names");
     for (rel, text) in files {
         let path = dir.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -50,7 +46,7 @@ const RULE: &str = "letters, digits, `_` or `-`, not starting with `-`";
 
 /// One project writing every slot's name as `{name}`-shaped text: the slot
 /// table below substitutes a good or a bad spelling per slot.
-fn slot_project(names: &[&str; 18]) -> PathBuf {
+fn slot_project(names: &[&str; 18]) -> lute_scratch::ScratchDir {
     let [scene, doc, share, entry_share, beat, entry, quest, objective, branch, choice, hub, mark, enum_name, member, kind, entity, relation, season] =
         names;
     project(&[
@@ -152,14 +148,16 @@ const SLOTS: [(&str, &str, &str, &str); 18] = [
 #[test]
 fn every_name_slot_accepts_a_hyphen_and_a_leading_digit() {
     let good = SLOTS.map(|(_, _, good, _)| good);
-    let out = check_project(&slot_project(&good));
+    let out_scratch = slot_project(&good);
+    let out = check_project(&out_scratch);
     assert_eq!(errors(&out), Vec::<&str>::new(), "{out}");
 }
 
 #[test]
 fn every_name_slot_refuses_other_characters_under_its_own_code() {
     let bad = SLOTS.map(|(_, _, _, bad)| bad);
-    let out = check_project(&slot_project(&bad));
+    let out_scratch = slot_project(&bad);
+    let out = check_project(&out_scratch);
     for (what, code, _, bad) in SLOTS {
         let row = if what.ends_with("`id:`") {
             format!(

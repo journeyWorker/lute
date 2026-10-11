@@ -187,11 +187,7 @@ fn negation_cycle_spanning_two_files_is_caught_post_merge() {
             utf16_range: (0, 0),
         }
     }
-    let dir = {
-        let d = std::env::temp_dir().join(format!("lute_strat_{}", std::process::id()));
-        std::fs::create_dir_all(&d).unwrap();
-        d
-    };
+    let dir = lute_scratch::ScratchDir::named("strat");
     std::fs::write(dir.join("a.yaml"), "entities:\n  f: { members: [a] }\nrelations:\n  p: { args: [f], derive: true }\n  q: { args: [f], derive: true }\nrules:\n  - \"p(X) :- f(X), not q(X)\"\n").unwrap();
     std::fs::write(
         dir.join("b.yaml"),

@@ -2,17 +2,10 @@
 //! must set (T3-2), `lute beats`' `covered by` verdict (T3-3), `lute scenario
 //! --facts` (T3-11) and `lute doctor --strict` (T3-12).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-tools026-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let path = dir.join(rel);
@@ -44,8 +37,8 @@ fn scene(id: &str, fm: &str, body: &str) -> String {
 }
 
 /// `intro` asserts `met(maud)` on every route; `hall` follows it.
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -179,7 +172,7 @@ fn scenario_facts_draws_producer_edges_and_layers_over_them() {
 #[test]
 fn doctor_strict_fails_on_any_failed_check() {
     // No `.lute` file and no manifest: `✗` checks.
-    let dir = temp_dir("doctor");
+    let dir = lute_scratch::ScratchDir::named("doctor");
     let lax = run(&["doctor", dir.to_str().unwrap()]);
     assert!(text(&lax).contains('✗'), "{}", text(&lax));
     assert_eq!(lax.status.code(), Some(0));

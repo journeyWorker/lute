@@ -5,20 +5,10 @@
 //! `tier: season:<name>` resets when the season opens; a component param
 //! typed `{ domain: clock.weekdayLabel }` is checked against the clock.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-clock028-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -53,8 +43,8 @@ fn play(dir: &Path, script: &str) -> Output {
 
 /// A project whose schema is `schema` and whose plugin `p` declares
 /// `occasions` (a YAML mapping body), plus `docs`.
-fn project(tag: &str, schema: &str, occasions: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, schema: &str, occasions: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -210,7 +200,7 @@ fn a_one_day_clock_narrows_its_slot_path_to_the_slots_it_reaches() {
 
 const DIVE_OCCASIONS: &str = "  hub: { select: first }\n";
 
-fn dive(tag: &str, day: &str) -> PathBuf {
+fn dive(tag: &str, day: &str) -> lute_scratch::ScratchDir {
     let schema = format!(
         "state:\n  {day}: {{ type: int, default: 1, owner: engine }}\n\
          clock:\n  day: {day}\n  week: {{ length: 7, first: 0, labels: [Mon, Tue, Wed, Thu, Fri, Sat, Sun] }}\n"

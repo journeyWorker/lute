@@ -2,20 +2,10 @@
 //! — through the built `lute` binary, over a copy of hollow-ward's one-night
 //! clock (`h23` … `h05`, `raise: { slot: hourStrikes, dayEnd: dawn }`).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-finite-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -40,8 +30,8 @@ const DAWN: &str = "---\nkind: scene\nid: ward.dawn\nuses: ../world.schema.yaml\
 
 /// hollow-ward's clock, with `bound` (`last:` / `days:` lines, or `""` for
 /// an unbounded clock), plus the strike and dawn scenes and `docs`.
-fn ward(tag: &str, bound: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn ward(tag: &str, bound: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

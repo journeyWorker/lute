@@ -12,20 +12,6 @@ use std::path::{Path, PathBuf};
 mod support;
 use support::BIN;
 
-/// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
-/// integration test binary is compiled separately, so this is intentionally
-/// duplicated rather than shared).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("lute-compile-all-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
     if let Some(parent) = path.parent() {
@@ -99,8 +85,8 @@ rules:
 
 /// A two-document project, plus a component FRAGMENT that `--all` must skip
 /// (it is inlined into its importers, never an artifact of its own).
-fn two_doc_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn two_doc_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     write(&dir, "a.lute", SCENE);
     write(&dir, "quests/q.lute", QUEST);
@@ -128,7 +114,7 @@ fn names(index: &serde_json::Value, key: &str) -> Vec<String> {
 #[test]
 fn all_writes_every_artifact_and_a_unioned_index() {
     let dir = two_doc_project("happy");
-    let out = temp_dir("happy-out");
+    let out = lute_scratch::ScratchDir::named("happy-out");
     let result = run(&[
         "compile",
         "--all",
@@ -215,7 +201,7 @@ fn all_is_byte_deterministic_across_runs() {
     let dir = two_doc_project("determinism");
     let mut rendered = Vec::new();
     for i in 0..2 {
-        let out = temp_dir(&format!("determinism-out{i}"));
+        let out = lute_scratch::ScratchDir::named(&format!("determinism-out{i}"));
         let result = run(&[
             "compile",
             "--all",
@@ -247,7 +233,7 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
         "---\nkind: scene\ncharacter: broken\nseason: 1\nepisode: 9\n---\n\n\
          ## Bad.\n\n@x: {{ run.nope }}\n",
     );
-    let out = temp_dir("failing-out");
+    let out = lute_scratch::ScratchDir::named("failing-out");
     // The output directory must stay EMPTY — not "mostly written".
     let result = run(&[
         "compile",
@@ -278,7 +264,7 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
 
 #[test]
 fn all_without_project_is_a_usage_error() {
-    let out = temp_dir("usage-noproject");
+    let out = lute_scratch::ScratchDir::named("usage-noproject");
     let result = run(&["compile", "--all", "-o", out.to_str().unwrap()]);
     assert_eq!(result.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&result.stderr);
@@ -304,7 +290,7 @@ fn all_without_out_is_a_usage_error() {
 #[test]
 fn all_with_a_file_argument_is_a_usage_error() {
     let dir = two_doc_project("usage-file");
-    let out = temp_dir("usage-file-out");
+    let out = lute_scratch::ScratchDir::named("usage-file-out");
     let result = run(&[
         "compile",
         "--all",
@@ -324,7 +310,7 @@ fn all_with_a_file_argument_is_a_usage_error() {
 
 #[test]
 fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
-    let dir = temp_dir("conflict");
+    let dir = lute_scratch::ScratchDir::named("conflict");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     write(&dir, "a.lute", SCENE);
     // Same relation NAME, different arity. Neither document is wrong on its
@@ -340,7 +326,7 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
             )
             .replace("\"knows(kai)\"", "\"knows(kai, mira)\""),
     );
-    let out = temp_dir("conflict-out");
+    let out = lute_scratch::ScratchDir::named("conflict-out");
     let result = run(&[
         "compile",
         "--all",
@@ -371,7 +357,7 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
 /// would have resolved identically. Both disjuncts, in one fixture.
 #[test]
 fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
-    let dir = temp_dir("project-inert");
+    let dir = lute_scratch::ScratchDir::named("project-inert");
     for sub in ["scenes", "same/scenes", "differs/scenes"] {
         std::fs::create_dir_all(dir.join(sub)).unwrap();
     }
@@ -432,7 +418,7 @@ fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
 /// unreachable. Same fixture, different command, zero warnings.
 #[test]
 fn check_project_never_reports_project_inert() {
-    let dir = temp_dir("project-inert-check");
+    let dir = lute_scratch::ScratchDir::named("project-inert-check");
     std::fs::create_dir_all(dir.join("differs/scenes")).unwrap();
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
@@ -479,7 +465,7 @@ fn check_project_never_reports_project_inert() {
 /// subtree changes and both commands stay at exit 0.
 #[test]
 fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
-    let dir = temp_dir("project-inert-defaults");
+    let dir = lute_scratch::ScratchDir::named("project-inert-defaults");
     for sub in ["scenes", "same/scenes", "differs/scenes"] {
         std::fs::create_dir_all(dir.join(sub)).unwrap();
     }
@@ -550,7 +536,7 @@ fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
 fn all_indexes_capability_unions_from_starfall_example() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/examples/games/starfall-gacha");
-    let out = temp_dir("starfall-unions-out");
+    let out = lute_scratch::ScratchDir::named("starfall-unions-out");
     let result = support::run_cli([
         "compile",
         "--all",

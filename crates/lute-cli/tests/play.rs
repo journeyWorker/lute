@@ -20,16 +20,6 @@ fn advancing_choice_fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-advance-choice")
 }
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-play-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -47,7 +37,7 @@ fn stderr(o: &Output) -> String {
 
 /// Play `script` over `project`, human transcript.
 fn play_in(project: &Path, tag: &str, script: &str, json: bool) -> Output {
-    let dir = temp_dir(tag);
+    let dir = lute_scratch::ScratchDir::named(tag);
     let script = write(&dir, "s.play.yaml", script);
     let mut args = vec![
         "play".to_string(),
@@ -63,7 +53,7 @@ fn play_in(project: &Path, tag: &str, script: &str, json: bool) -> Output {
 
 #[test]
 fn a_project_with_an_invalid_plugin_configuration_refuses_to_play() {
-    let dir = temp_dir("invalid-plugin-config");
+    let dir = lute_scratch::ScratchDir::named("invalid-plugin-config");
     write(
         &dir,
         "lute.project.yaml",
@@ -523,7 +513,7 @@ fn a_malformed_script_is_a_usage_error_before_anything_plays() {
 fn without_declared_occasions_the_beats_on_values_are_the_vocabulary() {
     // No plugin declares occasions: `on:` is shape-only, every occasion is
     // `select: first`, and an occasion no beat answers is a usage error.
-    let dir = temp_dir("shape-only");
+    let dir = lute_scratch::ScratchDir::named("shape-only");
     write(
         &dir,
         "lute.project.yaml",
@@ -634,8 +624,8 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
 /// `seen` completes on `visited('haven.shed')` alone; `holdLine` also needs
 /// `calm`, judged only at `runEnd` (true whenever judged: `run.pressure`
 /// defaults to 0). No beat answers `runEnd`.
-fn quest_occasion_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn quest_occasion_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -893,8 +883,8 @@ fn a_quest_state_seed_registers_the_quest_instead_of_being_overwritten() {
 /// close`) sets `run.flag` then `::end`s. Quest `acc` completes on its
 /// `on="close"` objective, `plain` on its ordinary one — both need
 /// `run.flag`, which only the ending scene sets.
-fn stage_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn stage_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -1042,7 +1032,8 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
         "{text}"
     );
 
-    let s = write(&temp_dir("staging-ir"), "s.play.yaml", script);
+    let s_scratch = lute_scratch::ScratchDir::named("staging-ir");
+    let s = write(&s_scratch, "s.play.yaml", script);
     let out = Command::new(BIN)
         .args([
             "play",
@@ -1074,8 +1065,8 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
 
 /// 0.23.1: an occasion and a world event of the same name — the engine
 /// raises both at once.
-fn boss_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn boss_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -1311,8 +1302,8 @@ fn the_transcript_shows_the_source_not_the_lowered_ir() {
 /// `notes` only at `board` (`on=` objective). Both `climb` and `ever`
 /// handle `storm`. Lore: `notice` (`once="user"`), `memo` (`once="run"`),
 /// `old` (eligible once `notice` was ever read).
-fn harness_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn harness_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -1395,7 +1386,8 @@ fn harness_project(tag: &str) -> PathBuf {
 
 /// `harness_project` played with `--json`, asserting the exit code.
 fn harness_json(tag: &str, script: &str, exit: i32) -> Json {
-    let out = play_in(&harness_project(tag), tag, script, true);
+    let out_scratch = harness_project(tag);
+    let out = play_in(&out_scratch, tag, script, true);
     assert_eq!(
         out.status.code(),
         Some(exit),
@@ -1408,7 +1400,8 @@ fn harness_json(tag: &str, script: &str, exit: i32) -> Json {
 
 /// `harness_project` played for its human transcript, asserting the exit.
 fn harness_text(tag: &str, script: &str, exit: i32) -> String {
-    let out = play_in(&harness_project(tag), tag, script, false);
+    let out_scratch = harness_project(tag);
+    let out = play_in(&out_scratch, tag, script, false);
     assert_eq!(
         out.status.code(),
         Some(exit),
@@ -1716,8 +1709,9 @@ fn pick_none_closes_the_list_without_spending_and_still_judges_on_objectives() {
     assert_eq!(presented(&v, 2)[0]["firstRead"], true);
 
     // `pick: none` on a `select: first` occasion is a usage error.
+    let out_scratch = harness_project("pick-none-first");
     let out = play_in(
-        &harness_project("pick-none-first"),
+        &out_scratch,
         "pick-none-first",
         "steps:\n  - occasion: hubVisit\n    pick: none\n",
         false,
@@ -1973,8 +1967,8 @@ fn derive_false_leaves_derived_facts_out_of_the_end_of_play() {
 /// `eve.letter` (`once: run`, eligible from day 2). Quest `deadline` needs
 /// `letter` (`by` day 3) and `sealed` (never); `errand` completes when `talk`
 /// is raised for `npc.maud`.
-fn compose_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn compose_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -2287,7 +2281,7 @@ fn integer_modulo_in_a_match_arm_is_evaluated_by_the_runner() {
 /// desugar's `match ->` plumbing, never a phantom `set`).
 #[test]
 fn a_guarded_set_writes_only_while_its_guard_holds() {
-    let dir = temp_dir("set-when");
+    let dir = lute_scratch::ScratchDir::named("set-when");
     write(
         &dir,
         "lute.project.yaml",
@@ -2348,8 +2342,8 @@ fn a_guarded_set_writes_only_while_its_guard_holds() {
 /// dsl 0.24.0 §4: one `visit` scene that stages two characters, interpolates
 /// `user.deaths` with and without `:ordinal` (and a fractional def with it)
 /// and with `:ordinalWord` (dsl 0.25.0 §8), then `::clear`s the stage.
-fn hall_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn hall_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -2418,8 +2412,9 @@ fn an_ordinal_word_placeholder_renders_a_word_up_to_twenty() {
             .collect();
         assert_eq!(texts, [want], "{}", step(&v, 1));
 
+        let mock_scratch = lute_scratch::ScratchDir::named("ordinal-word-trace");
         let mock = write(
-            &temp_dir("ordinal-word-trace"),
+            &mock_scratch,
             "m.yaml",
             &format!("state:\n  user.deaths: {deaths}\n"),
         );
@@ -2477,7 +2472,8 @@ fn a_clear_prints_once_as_authored_and_lowers_to_an_exit_per_character() {
     );
     assert!(!text.contains("::sprite"), "{text}");
 
-    let s = write(&temp_dir("clear-ir"), "s.play.yaml", script);
+    let s_scratch = lute_scratch::ScratchDir::named("clear-ir");
+    let s = write(&s_scratch, "s.play.yaml", script);
     let out = Command::new(BIN)
         .args([
             "play",
@@ -2512,7 +2508,7 @@ fn a_clear_prints_once_as_authored_and_lowers_to_an_exit_per_character() {
 /// `target=` is metadata — the entry answers an untargeted raise.
 #[test]
 fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
-    let dir = temp_dir("entry-meta-target");
+    let dir = lute_scratch::ScratchDir::named("entry-meta-target");
     let hub = fixture();
     for rel in [
         "lute.project.yaml",
@@ -2540,7 +2536,7 @@ fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
 /// file, printed walk-relative like every other check-project diagnostic.
 #[test]
 fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
-    let dir = temp_dir("relation-unread");
+    let dir = lute_scratch::ScratchDir::named("relation-unread");
     write(
         &dir,
         "lute.project.yaml",
@@ -2574,7 +2570,7 @@ fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
 /// include line that brought it in.
 #[test]
 fn a_typo_in_an_included_step_is_located_in_the_included_file() {
-    let dir = temp_dir("include-typo");
+    let dir = lute_scratch::ScratchDir::named("include-typo");
     write(
         &dir,
         "steps/day.steps.yaml",
@@ -2620,7 +2616,7 @@ fn an_expected_winner_no_beat_has_is_a_located_usage_error() {
 /// not take names the ones it does.
 #[test]
 fn an_include_takes_repeat_and_label_and_names_its_keys() {
-    let dir = temp_dir("include-repeat");
+    let dir = lute_scratch::ScratchDir::named("include-repeat");
     let steps = write(&dir, "v.steps.yaml", "- occasion: hubVisit\n");
     let v = play_json(
         "include-repeat-play",
@@ -2651,8 +2647,8 @@ fn an_include_takes_repeat_and_label_and_names_its_keys() {
 /// A shape-only project for roster-scale output: `host` (priority 10, `once:
 /// run`) and `fallback` answer `visit` unconditionally; `roster` more
 /// scenes `r1`…`rN` answer it `when: run.flag`, which stays false.
-fn roster_project(tag: &str, roster: usize) -> PathBuf {
-    let dir = temp_dir(tag);
+fn roster_project(tag: &str, roster: usize) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -2695,7 +2691,8 @@ fn roster_project(tag: &str, roster: usize) -> PathBuf {
 
 /// `lute play` over `project` with `args` after the script.
 fn play_with(project: &Path, tag: &str, script: &str, args: &[&str]) -> Output {
-    let script = write(&temp_dir(tag), "s.play.yaml", script);
+    let script_scratch = lute_scratch::ScratchDir::named(tag);
+    let script = write(&script_scratch, "s.play.yaml", script);
     Command::new(BIN)
         .args(["play", &project.display().to_string(), "--script"])
         .arg(&script)
@@ -2772,8 +2769,9 @@ fn quiet_leaves_out_the_candidates_that_were_not_eligible() {
 #[test]
 fn an_include_choose_is_local_to_each_repetition() {
     let dir = stage_project("include-choose");
+    let steps_scratch = lute_scratch::ScratchDir::named("include-choose-steps");
     let steps = write(
-        &temp_dir("include-choose-steps"),
+        &steps_scratch,
         "t.steps.yaml",
         "- occasion: talk\n",
     );
@@ -2805,8 +2803,9 @@ fn an_include_choose_is_local_to_each_repetition() {
 #[test]
 fn an_include_choose_its_steps_never_present_is_noted() {
     let dir = stage_project("include-leftover");
+    let steps_scratch = lute_scratch::ScratchDir::named("include-leftover-steps");
     let steps = write(
-        &temp_dir("include-leftover-steps"),
+        &steps_scratch,
         "v.steps.yaml",
         "- occasion: visit\n",
     );
@@ -2838,8 +2837,9 @@ fn an_include_choose_its_steps_never_present_is_noted() {
 #[test]
 fn a_halt_names_the_include_that_scripted_its_choice_and_a_step_choose_is_noted() {
     let dir = stage_project("include-halt");
+    let steps_scratch = lute_scratch::ScratchDir::named("include-halt-steps");
     let steps = write(
-        &temp_dir("include-halt-steps"),
+        &steps_scratch,
         "v.steps.yaml",
         "- occasion: visit\n",
     );
@@ -2876,7 +2876,7 @@ fn a_halt_names_the_include_that_scripted_its_choice_and_a_step_choose_is_noted(
 /// never suggests one.
 #[test]
 fn a_refused_pick_names_the_producer_of_its_missing_fact() {
-    let dir = temp_dir("producer");
+    let dir = lute_scratch::ScratchDir::named("producer");
     write(
         &dir,
         "lute.project.yaml",
@@ -2940,7 +2940,7 @@ fn a_refused_pick_names_the_producer_of_its_missing_fact() {
 
 #[test]
 fn declared_advance_cascade_has_a_runtime_bound() {
-    let dir = temp_dir("advance-cascade-runtime");
+    let dir = lute_scratch::ScratchDir::named("advance-cascade-runtime");
     write(
         &dir,
         "lute.project.yaml",

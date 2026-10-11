@@ -2,14 +2,9 @@ use lute_load::{assemble_input, InputCache};
 use lute_model::{ModelOptions, ProjectModel};
 use lute_semantic::{IdentityMetadata, NodeKind};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-static NEXT: AtomicU64 = AtomicU64::new(0);
-
-fn temp_project(manifest: &str) -> (PathBuf, PathBuf) {
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_model_identity_gate_{}_{}", std::process::id(), n));
-    std::fs::create_dir_all(&dir).unwrap();
+fn temp_project(manifest: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named("identity-gate");
     std::fs::write(dir.join("lute.project.yaml"), manifest).unwrap();
     let file = dir.join("scene.lute");
     std::fs::write(
@@ -24,9 +19,7 @@ fn stable_for(manifest: Option<&str>) -> bool {
     let (dir, file) = match manifest {
         Some(manifest) => temp_project(manifest),
         None => {
-            let n = NEXT.fetch_add(1, Ordering::Relaxed);
-            let dir = std::env::temp_dir().join(format!("lute_model_identity_loose_{}_{}", std::process::id(), n));
-            std::fs::create_dir_all(&dir).unwrap();
+            let dir = lute_scratch::ScratchDir::named("identity-loose");
             let file = dir.join("scene.lute");
             std::fs::write(&file, "---\nkind: scene\n---\n## Shot 1.\n@n: line\n").unwrap();
             (dir, file)
@@ -37,7 +30,7 @@ fn stable_for(manifest: Option<&str>) -> bool {
         &file,
         std::fs::read_to_string(&file).unwrap(),
         None,
-        manifest.map(|_| dir.as_path()),
+        manifest.map(|_| &*dir),
         None,
     );
     built.input.snapshot.identity_require_stable
@@ -55,13 +48,7 @@ fn stable_identity_policy_follows_project_manifest_and_defaults_off() {
 }
 
 fn graph_line_identity(code: Option<&str>) -> IdentityMetadata {
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_model_graph_identity_{}_{}",
-        std::process::id(),
-        n
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::named("graph-identity");
     let line = match code {
         Some(code) => format!("@n{{code=\"{code}\"}}: line\n"),
         None => "@n: line\n".to_string(),

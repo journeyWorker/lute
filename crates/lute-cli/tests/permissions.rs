@@ -5,14 +5,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 static NEXT: AtomicU32 = AtomicU32::new(0);
 
-fn temp_project(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "lute-permissions-{tag}-{}-{}",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+fn temp_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(
         dir.join("lute.project.yaml"),
         "defaultProfile: authored\nprofiles:\n  authored:\n    plugins: {}\n  restricted:\n    plugins: {}\n    permissions:\n      directives: [camera]\n      bridges: []\n      rewards: false\n      quests: false\n",
@@ -66,7 +60,6 @@ fn trusted_profile_ceiling_defeats_source_profile_for_check_and_compile() {
             String::from_utf8_lossy(&result.stdout)
         );
     }
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -91,7 +84,6 @@ fn compile_all_applies_ceiling_to_every_document_and_writes_nothing() {
         !out_dir.exists() || std::fs::read_dir(&out_dir).unwrap().next().is_none(),
         "the all-or-nothing gate must not emit any denied artifact"
     );
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -139,7 +131,6 @@ fn context_reports_the_same_effective_ceiling_and_filters_authoring_surface() {
         "restricted",
     ]);
     assert!(String::from_utf8_lossy(&checked.stdout).contains("E-PERMISSION-DIRECTIVE"));
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -159,12 +150,12 @@ fn invalid_or_projectless_permission_profile_is_an_explicit_error() {
 
     // Truly projectless: a copy outside every `lute.project.yaml` (inside
     // `dir`, `lute check` would discover the manifest — 0.21.1 T3-9).
-    let loose_dir = std::env::temp_dir().join(format!(
+    let loose_dir_scratch = lute_scratch::ScratchDir::new();
+    let loose_dir = loose_dir_scratch.join(format!(
         "lute-permissions-loose-{}-{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    let _ = std::fs::remove_dir_all(&loose_dir);
     let loose = write_scene(&loose_dir, "scene.lute", 1, "::end\n");
     let projectless = output(&[
         "check",
@@ -174,8 +165,6 @@ fn invalid_or_projectless_permission_profile_is_an_explicit_error() {
     ]);
     assert_eq!(projectless.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&projectless.stderr).contains("E-PERMISSION-PROFILE"));
-    let _ = std::fs::remove_dir_all(dir);
-    let _ = std::fs::remove_dir_all(loose_dir);
 }
 
 #[test]
@@ -210,7 +199,6 @@ fn omitting_permission_profile_preserves_existing_behavior_and_surface() {
         .unwrap()
         .iter()
         .any(|value| value["name"] == "end"));
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -248,5 +236,4 @@ fn compile_stream_freezes_ceiling_for_appended_body() {
         .iter()
         .any(|diagnostic| diagnostic["code"] == "E-PERMISSION-DIRECTIVE"));
     assert!(!events.iter().any(|event| event["kind"] == "finish"));
-    let _ = std::fs::remove_dir_all(dir);
 }

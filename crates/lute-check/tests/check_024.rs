@@ -30,8 +30,7 @@ fn with_code<'a>(ds: &'a [Diagnostic], code: &str) -> Vec<&'a Diagnostic> {
 
 /// Imports resolving a schema whose `cast:` declares `mara` and `tomas`.
 fn cast_imports(tag: &str) -> SchemaImports {
-    let dir = std::env::temp_dir().join(format!("lute_c024_{tag}_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(
         dir.join("cast.schema.yaml"),
         "cast:\n  mara: { name: Mara }\n  tomas: { name: Tomas }\n",
@@ -46,7 +45,6 @@ fn cast_imports(tag: &str) -> SchemaImports {
     };
     let imports = lute_check::resolve_imports(&dir, &["cast.schema.yaml".into()], &[], zero);
     assert!(imports.diags.is_empty(), "{:?}", imports.diags);
-    let _ = std::fs::remove_dir_all(&dir);
     imports
 }
 

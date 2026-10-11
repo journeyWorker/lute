@@ -3,8 +3,7 @@
 //! sentence as plain line text (no placeholder, no ref to a param that no
 //! longer exists), under that call site's component-scoped `lineId`/`voiceKey`
 //! (0.22.0 §11) — so each sentence is its own translation unit.
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use lute_check::{check, parse_meta, resolve_components, resolve_imports, CheckInput, Mode};
 use lute_compile::compile;
@@ -12,20 +11,6 @@ use lute_compile::locale::{merge_locales, LocaleBundle};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_cstr_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
     let (doc, _) = lute_syntax::parse(scene_text);
@@ -56,7 +41,7 @@ components: [lamps-out.component.lute]\n---\n## Shot 1.\n\
 
 #[test]
 fn each_use_site_ships_its_own_sentence_under_its_own_line_id() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("lamps-out.component.lute"), LAMPS_OUT).unwrap();
     let input = input_for(&dir, SCENE);
     let res = check(&input);
@@ -127,7 +112,7 @@ components: [said.component.lute]\n---\n## Shot 1.\n\
 /// span), while a modifier authored in the component body still lowers.
 #[test]
 fn a_string_argument_never_becomes_inline_modifier_syntax() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("said.component.lute"), SAID).unwrap();
     let input = input_for(&dir, SAID_SCENE);
     let artifact = compile(&input).unwrap_or_else(|e| panic!("{e:#?}"));

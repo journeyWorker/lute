@@ -8,29 +8,19 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-/// A fresh unique temp dir (no `tempfile` dev-dep needed for these small tests).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// `date-minigame.lute` copied OUT of `arcia-project/`: with no
 /// `lute.project.yaml` above it, `lute check` resolves core-only, where its
 /// plugin directive is `E-UNKNOWN-DIRECTIVE`. In place, `lute check` finds
 /// the arcia project (0.21.1 T3-9) and the file is clean.
-fn loose_date_minigame(tag: &str) -> PathBuf {
-    let file = temp_dir(tag).join("date-minigame.lute");
+fn loose_date_minigame(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let file = dir.join("date-minigame.lute");
     std::fs::copy(
         "../../docs/examples/arcia-project/date-minigame.lute",
         &file,
     )
     .unwrap();
-    file
+    (dir, file)
 }
 
 #[test]
@@ -71,7 +61,7 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
 
 #[test]
 fn check_file_with_errors_exits_one() {
-    let file = loose_date_minigame("errors-exit-one");
+    let (_dir, file) = loose_date_minigame("errors-exit-one");
     let out = Command::new(BIN)
         .args(["check", file.to_str().unwrap(), "--json"])
         .output()
@@ -87,7 +77,7 @@ fn check_file_with_errors_exits_one() {
 
 #[test]
 fn check_human_output_lists_diagnostics() {
-    let file = loose_date_minigame("human-output");
+    let (_dir, file) = loose_date_minigame("human-output");
     let out = Command::new(BIN)
         .args(["check", file.to_str().unwrap()])
         .output()
@@ -121,7 +111,7 @@ fn check_missing_file_exits_two() {
 fn check_with_empty_providers_dir_is_permissive() {
     // `--providers` on an empty dir yields an empty set → no provider-id errors;
     // the example uses no `providerRef` attrs, so it stays clean either way.
-    let dir = temp_dir("empty-providers");
+    let dir = lute_scratch::ScratchDir::named("empty-providers");
     let out = Command::new(BIN)
         .args([
             "check",
@@ -144,7 +134,7 @@ fn check_with_empty_providers_dir_is_permissive() {
 
 #[test]
 fn catalog_refresh_then_load_round_trips() {
-    let dir = temp_dir("refresh");
+    let dir = lute_scratch::ScratchDir::named("refresh");
     // A stale snapshot with an old manifest stamp.
     std::fs::write(
         dir.join("core.yaml"),
@@ -185,7 +175,7 @@ fn catalog_refresh_then_load_round_trips() {
 
 #[test]
 fn catalog_refresh_missing_dir_is_created() {
-    let base = temp_dir("refresh-missing");
+    let base = lute_scratch::ScratchDir::named("refresh-missing");
     let target = base.join("brand/new");
     let out = Command::new(BIN)
         .arg("catalog")
@@ -287,7 +277,7 @@ fn hub_prompt_checks_clean_and_runs_with_its_prompt() {
         String::from_utf8_lossy(&check.stderr)
     );
 
-    let dir = temp_dir("hub-prompt");
+    let dir = lute_scratch::ScratchDir::named("hub-prompt");
     let art = dir.join("artifact.json");
     let mock = dir.join("mock.yaml");
     std::fs::write(&mock, "choose:\n  look: [shore, leave]\n").unwrap();
@@ -610,7 +600,7 @@ fn context_json_surfaces_relational_vocabulary() {
     // arity + argument domains + `derive`), seed facts, rules, and the
     // project-level `enums:` (kept under its OWN `projectEnums` key so it
     // never clobbers the plugin/core `enums` map).
-    let dir = temp_dir("context-rel-vocab");
+    let dir = lute_scratch::ScratchDir::named("context-rel-vocab");
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
@@ -731,7 +721,7 @@ fn context_human_output_shows_enum_members_and_relational_vocabulary() {
     // just names) and the relational vocabulary (entity kinds, relations with
     // arity, seed facts, rules) — an author should not need `--json` for
     // either.
-    let dir = temp_dir("context-rel-vocab-human");
+    let dir = lute_scratch::ScratchDir::named("context-rel-vocab-human");
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
@@ -803,7 +793,7 @@ fn context_json_lists_referenced_reserved_quest_paths() {
     // `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` paths the
     // document actually REFERENCES (via a CEL slot), alongside the ordinary
     // `stateSchema`, with their domain — like other stateSchema entries.
-    let dir = temp_dir("context-reserved-quest-refs");
+    let dir = lute_scratch::ScratchDir::named("context-reserved-quest-refs");
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
@@ -906,7 +896,7 @@ fn context_json_lists_reserved_paths_of_declared_quests_only() {
 
 #[test]
 fn context_human_shows_referenced_reserved_quest_paths() {
-    let dir = temp_dir("context-reserved-quest-refs-human");
+    let dir = lute_scratch::ScratchDir::named("context-reserved-quest-refs-human");
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
@@ -998,7 +988,7 @@ fn context_human_lists_delivery_flags() {
 
 #[test]
 fn fix_migrates_line_and_choice_as_in_place_idempotent() {
-    let dir = temp_dir("fix");
+    let dir = lute_scratch::ScratchDir::named("fix");
     let f = dir.join("scene.lute");
     let before = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n:line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n";
     std::fs::write(&f, before).unwrap();
@@ -1041,7 +1031,7 @@ fn fix_migrates_line_and_choice_as_in_place_idempotent() {
 /// (un-`uses:`-ed) declaration fails this with `E-DOMAIN-UNKNOWN`.
 #[test]
 fn init_scaffolds_a_checkable_vocabulary() {
-    let dir = temp_dir("init-vocab");
+    let dir = lute_scratch::ScratchDir::named("init-vocab");
     let proj = dir.join("proj");
     let out = Command::new(BIN)
         .args(["init", proj.to_str().unwrap()])
@@ -1083,7 +1073,7 @@ fn init_scaffolds_a_checkable_vocabulary() {
 #[test]
 fn init_readme_names_no_document_that_can_rot() {
     for template in ["minimal", "investigation", "beats"] {
-        let dir = temp_dir(&format!("init-readme-{template}"));
+        let dir = lute_scratch::ScratchDir::named(&format!("init-readme-{template}"));
         let proj = dir.join("proj");
         let out = Command::new(BIN)
             .args(["init", proj.to_str().unwrap(), "--template", template])
@@ -1154,7 +1144,7 @@ fn doctor_reports_which_vocabulary_slots_resolve() {
         "musicPlayback",
         "vfxType",
     ];
-    let dir = temp_dir("doctor-vocab");
+    let dir = lute_scratch::ScratchDir::named("doctor-vocab");
     let proj = dir.join("proj");
     assert!(Command::new(BIN)
         .args(["init", proj.to_str().unwrap()])
@@ -1235,7 +1225,7 @@ fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
 /// activation flows through `lute.project.yaml`.
 #[test]
 fn doctor_and_check_project_agree_on_the_project_root_boundary() {
-    let dir = temp_dir("doctor-root-boundary");
+    let dir = lute_scratch::ScratchDir::named("doctor-root-boundary");
     let proj = dir.join("proj");
     write_at(
         &proj,
@@ -1308,7 +1298,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
 /// reserved for an unreadable target.
 #[test]
 fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
-    let dir = temp_dir("doctor-broken-project");
+    let dir = lute_scratch::ScratchDir::named("doctor-broken-project");
     let proj = dir.join("proj");
     write_at(
         &proj,
@@ -1376,7 +1366,7 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
 /// strings, then discarded them.
 #[test]
 fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
-    let dir = temp_dir("test-refusal-vector");
+    let dir = lute_scratch::ScratchDir::named("test-refusal-vector");
     write_at(
         &dir,
         "s.lute",
@@ -1425,7 +1415,7 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
 /// were checked against the arm it excluded.
 #[test]
 fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
-    let dir = temp_dir("test-closed-keys-top");
+    let dir = lute_scratch::ScratchDir::named("test-closed-keys-top");
     write_at(
         &dir,
         "s.lute",
@@ -1458,7 +1448,7 @@ fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
 /// proves the typo was the only reason it was green.
 #[test]
 fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails() {
-    let dir = temp_dir("test-closed-keys-expect");
+    let dir = lute_scratch::ScratchDir::named("test-closed-keys-expect");
     write_at(
         &dir,
         "s.lute",
@@ -1478,7 +1468,7 @@ fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails()
     assert!(text.contains("E-TEST-KEY"), "{text}");
     assert!(text.contains("did you mean `transcriptContains`"), "{text}");
 
-    let dir2 = temp_dir("test-closed-keys-expect-fixed");
+    let dir2 = lute_scratch::ScratchDir::named("test-closed-keys-expect-fixed");
     write_at(
         &dir2,
         "s.lute",
@@ -1507,7 +1497,7 @@ fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails()
 /// because the verdict is `all()` over an empty vector.
 #[test]
 fn test_with_zero_expectations_is_an_error_not_a_pass() {
-    let dir = temp_dir("test-no-expect");
+    let dir = lute_scratch::ScratchDir::named("test-no-expect");
     write_at(
         &dir,
         "s.lute",
@@ -1534,7 +1524,7 @@ fn test_with_zero_expectations_is_an_error_not_a_pass() {
 /// into a green run against the wrong arm. Report it.
 #[test]
 fn autopicked_branch_is_reported_not_silent() {
-    let dir = temp_dir("test-autopick");
+    let dir = lute_scratch::ScratchDir::named("test-autopick");
     write_at(
         &dir,
         "s.lute",
@@ -1577,7 +1567,7 @@ fn autopicked_branch_is_reported_not_silent() {
 /// value is a path with no write, no seed and no default.
 #[test]
 fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
-    let dir = temp_dir("test-never-written");
+    let dir = lute_scratch::ScratchDir::named("test-never-written");
     write_at(
         &dir,
         "s.lute",
@@ -1586,7 +1576,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
          ---\n\n## One\n\n::set{ run.written = 2 }\n@narrator: a.\n",
     );
     let run = |name: &str, body: &str| {
-        let d = temp_dir(name);
+        let d = lute_scratch::ScratchDir::named(name);
         write_at(
             &d,
             "s.lute",
@@ -1658,7 +1648,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
     // Control 2 — a path written to the sentinel's literal TEXT matches an
     // expectation spelling that text. The sentinel is not equal to an absent
     // value, and it is not specially unequal to a written one either.
-    let d = temp_dir("never-written-control-literal");
+    let d = lute_scratch::ScratchDir::named("never-written-control-literal");
     write_at(
         &d,
         "s.lute",
@@ -1689,7 +1679,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
 /// into two once plan 02's mock work lands.
 #[test]
 fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
-    let dir = temp_dir("test-file-base");
+    let dir = lute_scratch::ScratchDir::named("test-file-base");
     write_at(
         &dir,
         "scenes/s.lute",
@@ -1715,7 +1705,7 @@ fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
 /// reassuring one.
 #[test]
 fn coverage_keys_on_the_construct_not_on_the_guard_text() {
-    let dir = temp_dir("coverage-per-site");
+    let dir = lute_scratch::ScratchDir::named("coverage-per-site");
     write_at(
         &dir,
         "s.lute",
@@ -1763,7 +1753,7 @@ fn coverage_keys_on_the_construct_not_on_the_guard_text() {
 /// the denominator was already in hand.
 #[test]
 fn coverage_reports_documents_with_no_test_at_all() {
-    let dir = temp_dir("coverage-denominator");
+    let dir = lute_scratch::ScratchDir::named("coverage-denominator");
     write_at(
         &dir,
         "tested.lute",
@@ -1794,7 +1784,7 @@ fn coverage_reports_documents_with_no_test_at_all() {
 /// file "named", so deleting every proof of the other went unseen.
 #[test]
 fn coverage_names_each_bundle_beat_as_its_own_unit() {
-    let dir = temp_dir("coverage-beat-units");
+    let dir = lute_scratch::ScratchDir::named("coverage-beat-units");
     write_at(
         &dir,
         "ren.lute",
@@ -1838,7 +1828,7 @@ fn coverage_names_each_bundle_beat_as_its_own_unit() {
 /// case is already covered, honestly, by `W-COMPONENT-UNVERIFIED`.
 #[test]
 fn untested_denominator_excludes_component_documents() {
-    let dir = temp_dir("coverage-denominator-components");
+    let dir = lute_scratch::ScratchDir::named("coverage-denominator-components");
     write_at(
         &dir,
         "tested.lute",
@@ -1887,7 +1877,7 @@ fn untested_denominator_excludes_component_documents() {
 /// `--coverage` (as `lute trace` prints it), not by the def's expansion.
 #[test]
 fn coverage_names_a_def_match_as_authored() {
-    let dir = temp_dir("coverage-def-match");
+    let dir = lute_scratch::ScratchDir::named("coverage-def-match");
     write_at(
         &dir,
         "s.lute",
@@ -1938,7 +1928,7 @@ fn context_human_mode_keeps_the_semantics_flags_json_already_carries() {
 /// scene`, which destroys it. A VALID schema must check clean.
 #[test]
 fn check_on_a_yaml_schema_checks_it_as_a_schema_not_as_a_scene() {
-    let dir = temp_dir("check-schema-kind");
+    let dir = lute_scratch::ScratchDir::named("check-schema-kind");
     std::fs::write(
         dir.join("world.schema.yaml"),
         "state:\n  run.trust: { type: int, default: 0 }\n",

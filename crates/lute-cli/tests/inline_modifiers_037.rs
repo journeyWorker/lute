@@ -34,8 +34,7 @@ fn loc_export_keeps_the_authored_markup() {
 }
 
 fn compile_with(tag: &str, translation: &str) -> Output {
-    let dir = std::env::temp_dir().join(format!("lute-mod037-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::named(tag);
     let bundle = dir.join("bundle.json");
     let body = json!({
         "schemaVersion": 1,
@@ -137,8 +136,8 @@ fn write(dir: &Path, rel: &str, body: &str) {
 /// included, and each segment's text renders like the line text.
 #[test]
 fn play_json_segments_render_each_marker_by_its_global_index() {
-    let dir = std::env::temp_dir().join(format!("lute-mod037-interp-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-mod037-interp");
     write(
         &dir,
         "lute.project.yaml",

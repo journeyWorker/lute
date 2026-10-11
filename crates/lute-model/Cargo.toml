@@ -19,3 +19,6 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = "0.10"
 rayon = "1.12"
+
+[dev-dependencies]
+lute-scratch = { path = "../lute-scratch" }

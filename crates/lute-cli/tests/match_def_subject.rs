@@ -4,20 +4,10 @@
 //! executes the IR — takes the arm the author meant instead of falling to
 //! `<otherwise>` on an empty, unknown guard.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-matchdef-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -43,8 +33,8 @@ fn run(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
 
 /// `found` presents `find`; `poke` presents `m`, whose `<match>` reads
 /// `visited('find')` through a def — true once `found` was raised.
-fn project(tag: &str, arms: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, arms: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

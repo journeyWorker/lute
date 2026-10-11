@@ -5,20 +5,10 @@
 //! tree printed once; `lute play --explain` provenance; `lute lore`'s entry
 //! `when` and Derived section; `lute scenario envelope`'s producer wording.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-knowledge-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -48,8 +38,8 @@ fn ok(args: &[&str]) -> String {
 
 /// A small inquiry: Hollis saw Tobias, Maren saw Ada but lied. An alibi
 /// holds unless its witness is a liar; only a recorded lie makes a liar.
-fn inquiry(tag: &str) -> PathBuf {
-    let d = temp_dir(tag);
+fn inquiry(tag: &str) -> lute_scratch::ScratchDir {
+    let d = lute_scratch::ScratchDir::named(tag);
     write(
         &d,
         "lute.project.yaml",
@@ -374,7 +364,7 @@ fn envelope_names_producers_in_the_knowledge_words() {
 /// rule's `cel()` premise is listed with the member it reads.
 #[test]
 fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises() {
-    let d = temp_dir("kinds");
+    let d = lute_scratch::ScratchDir::named("kinds");
     write(
         &d,
         "lute.project.yaml",
@@ -468,7 +458,7 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
 /// asserted `locked(ren)` defeats it, and `lute lore` lists the derivation.
 #[test]
 fn a_kind_bound_negated_premise_names_its_defeater() {
-    let d = temp_dir("kind-neg");
+    let d = lute_scratch::ScratchDir::named("kind-neg");
     write(
         &d,
         "lute.project.yaml",

@@ -3,30 +3,24 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::ops::Deref;
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_lute");
-static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 /// A unique temporary project directory removed when the test finishes.
 pub struct TempProject {
-    path: PathBuf,
+    dir: lute_scratch::ScratchDir,
 }
 
 impl TempProject {
     pub fn new(tag: &str) -> Self {
-        let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        std::fs::create_dir_all(&path).expect("create temporary project directory");
-        Self { path }
+        Self { dir: lute_scratch::ScratchDir::named(tag) }
     }
 
-    pub fn path(&self) -> &Path { &self.path }
+    pub fn path(&self) -> &Path { &self.dir }
 
     pub fn write(&self, relative: impl AsRef<Path>, text: &str) -> PathBuf {
-        let path = self.path.join(relative);
+        let path = self.dir.join(relative);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("create temporary project parent");
         }
@@ -42,10 +36,6 @@ impl Deref for TempProject {
 
 impl AsRef<Path> for TempProject {
     fn as_ref(&self) -> &Path { self.path() }
-}
-
-impl Drop for TempProject {
-    fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.path); }
 }
 
 pub fn run_cli<I, S>(args: I) -> Output

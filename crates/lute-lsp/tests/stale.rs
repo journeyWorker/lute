@@ -41,8 +41,8 @@ fn diagnostics(out: &mut BufReader<ChildStdout>) -> Vec<serde_json::Value> {
 
 #[test]
 fn a_replaced_binary_publishes_one_stale_diagnostic() {
-    let dir = std::env::temp_dir().join(format!("lute-lsp-stale-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-lsp-stale");
     std::fs::create_dir_all(&dir).unwrap();
     let bin = dir.join("lute-lsp");
     std::fs::copy(env!("CARGO_BIN_EXE_lute-lsp"), &bin).unwrap();
@@ -105,8 +105,8 @@ fn a_replaced_binary_publishes_one_stale_diagnostic() {
 /// does not repeat the message.
 #[test]
 fn a_project_stamp_newer_than_the_server_names_lute_doctor_once() {
-    let dir = std::env::temp_dir().join(format!("lute-lsp-newer-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-lsp-newer");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("lute.project.yaml"),

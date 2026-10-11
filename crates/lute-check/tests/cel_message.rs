@@ -262,7 +262,8 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lute_cel_message_component_{nanos}"));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join(format!("lute_cel_message_component_{nanos}"));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("reaction.lute"),

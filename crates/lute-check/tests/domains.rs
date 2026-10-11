@@ -25,8 +25,7 @@ use lute_manifest::snapshot::{capability_version, CapabilitySnapshot, Domain};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Attr, AttrValue, Directive};
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 fn zero_span() -> Span {
     Span {
@@ -36,26 +35,6 @@ fn zero_span() -> Span {
         column: 1,
         utf16_range: (0, 0),
     }
-}
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-/// A fresh temp dir per call; schema `.lute` files are written into it.
-/// Mirrors `uses_import.rs`'s helper of the same shape.
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_domains_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
 }
 
 fn write_lute(dir: &Path, name: &str, body: &str) {
@@ -87,7 +66,7 @@ const ACTION_SCHEMA: &str =
 /// the lift carries that declared semantics through untouched.
 #[test]
 fn project_enum_domain_is_visible_in_schema_imports() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let res = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
@@ -108,7 +87,7 @@ fn project_enum_domain_is_visible_in_schema_imports() {
 /// `entities: { <kind>: { members: [...] } }` lifts as a closed domain too.
 #[test]
 fn project_entities_closed_members_domain_is_visible() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -132,7 +111,7 @@ fn project_entities_closed_members_domain_is_visible() {
 /// treats as always-accept.
 #[test]
 fn project_entities_open_engine_domain_is_open() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -150,7 +129,7 @@ fn project_entities_open_engine_domain_is_open() {
 /// `entities:` peer-collision variant is `E-KIND-NAME-CLASH`, next test).
 #[test]
 fn enum_declared_by_two_peers_is_e_uses_dup_relation() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "x.lute", "---\nenums:\n  mood: [calm]\n---\n");
     write_lute(&dir, "y.lute", "---\nenums:\n  mood: [tense]\n---\n");
     write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
@@ -167,7 +146,7 @@ fn enum_declared_by_two_peers_is_e_uses_dup_relation() {
 /// entity-KIND name is `E-KIND-NAME-CLASH`, NOT `E-DOMAIN-DUP` (0.3.0 T6, D2).
 #[test]
 fn entity_kind_declared_by_two_peers_is_e_kind_name_clash() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "x.lute",
@@ -194,7 +173,7 @@ fn entity_kind_declared_by_two_peers_is_e_kind_name_clash() {
 /// names are distinct.
 #[test]
 fn merge_domains_unions_project_with_core() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     // A baseline carrying exactly ONE domain, `emotion` (reusing
@@ -228,7 +207,7 @@ fn merge_domains_unions_project_with_core() {
 /// snapshot wins (never a silent shadow of the vocabulary already in place).
 #[test]
 fn merge_domains_flags_clash_with_snapshot_domain() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -259,7 +238,7 @@ fn merge_domains_flags_clash_with_snapshot_domain() {
 /// `merge_domains`, exposes `action` in the merged vocabulary.
 #[test]
 fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: schema.lute\n---\n## Shot 1.\n@x: hi\n";
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
@@ -393,7 +372,7 @@ fn project_declared_domain_validates() {
     // attr { domain: action } accepts "wave" and errors "zzz" -- proving the
     // PROJECT domain (lifted by A3's `merge_domains`, absent from core) is
     // what `check_attr_value`'s `Type::Domain` arm actually resolved against.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(
@@ -424,7 +403,7 @@ fn project_declared_domain_validates() {
 /// any string is accepted, unlike a closed `enums:`/`entities.members` domain.
 #[test]
 fn open_domain_accepts_any_string() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -474,7 +453,7 @@ fn open_domain_accepts_any_string() {
 /// cleanly distinguishable, so this proves which one actually ran.
 #[test]
 fn closed_domain_membership_wins_over_same_named_provider() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "schema.lute", ACTION_SCHEMA);
     let imports = resolve_imports(&dir, &["schema.lute".to_string()], &[], zero_span());
     assert!(
@@ -544,7 +523,7 @@ fn missing_semantics_messages(body: &str) -> Vec<String> {
 /// mixed-provenance case, where the SAME domain name must arrive from two
 /// DIFFERENT imported files (one `entities:`, one `enums:`).
 fn missing_semantics_messages_files(files: &[(&str, &str)], roots: &[&str]) -> Vec<String> {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     for (name, body) in files {
         write_lute(&dir, name, body);
     }
@@ -763,7 +742,7 @@ const INLINE_FIXTURE: &str = "---\nkind: scene\ncharacter: demo\nseason: 1\nepis
 ///    diagnostic pointed the author at the declaration they had already written.
 #[test]
 fn inline_enum_declaration_satisfies_a_content_line() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let codes = scene_codes(&dir, INLINE_FIXTURE, load_core_snapshot());
     assert!(
         codes.is_empty(),
@@ -780,7 +759,7 @@ fn inline_enum_declaration_satisfies_a_content_line() {
 ///    this for the imported route.
 #[test]
 fn inline_long_form_enum_carries_the_slot_member_semantics() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let long_action = "enums:\n  action:\n    members: [wave, bow]\n    exits: [bow]\n";
     let ok = scene_codes(
         &dir,
@@ -843,7 +822,7 @@ fn inline_long_form_enum_carries_the_slot_member_semantics() {
 /// > alone: one owner, one diagnostic.
 #[test]
 fn inline_and_imported_enum_is_a_d5_refinement_never_domain_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "vocab.lute",
@@ -898,7 +877,7 @@ fn inline_and_imported_enum_is_a_d5_refinement_never_domain_dup() {
 ///    the same drop-and-report semantics — never a silent shadow.
 #[test]
 fn inline_enum_clashing_with_a_plugin_domain_is_domain_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let snapshot = lute_test_vocab::vocab_snapshot();
     assert!(
         !snapshot.domains["emotion"]
@@ -962,9 +941,9 @@ fn inline_and_imported_declarations_check_identically() {
         };
         for value in ["gleeful", "zzz"] {
             let body = format!("@marina{{{slot}=\"{value}\"}}: line.");
-            let dir = unique_dir();
+            let dir = lute_scratch::ScratchDir::new();
             let inline = scene_codes(&dir, &scene(inline_front, &body), load_core_snapshot());
-            let dir2 = unique_dir();
+            let dir2 = lute_scratch::ScratchDir::new();
             write_lute(&dir2, "vocab.lute", schema);
             let imported = scene_codes(
                 &dir2,
@@ -990,7 +969,7 @@ fn enum_labels_must_name_members_and_be_strings() {
     };
     let codes = |front: &str| {
         scene_codes(
-            &unique_dir(),
+            &lute_scratch::ScratchDir::new(),
             &scene(front, "@marina: line."),
             load_core_snapshot(),
         )
@@ -1005,7 +984,7 @@ fn enum_labels_must_name_members_and_be_strings() {
     let number = codes(&labelled("{ sun: 7 }"));
     assert!(number.contains(&"E-META-VALUE".to_string()), "{number:?}");
 
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "week.lute",
@@ -1026,7 +1005,7 @@ fn enum_labels_must_name_members_and_be_strings() {
 /// (with a did-you-mean), not at the enum's line.
 #[test]
 fn an_imported_enum_label_for_a_non_member_is_reported_at_the_label() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "w.schema.yaml",

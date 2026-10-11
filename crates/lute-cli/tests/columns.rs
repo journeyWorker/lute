@@ -7,13 +7,11 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_file(tag: &str, text: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-columns-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+fn temp_file(tag: &str, text: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let path = dir.join("doc.lute");
     std::fs::write(&path, text).unwrap();
-    path
+    (dir, path)
 }
 
 fn check(path: &Path, json: bool) -> String {
@@ -71,7 +69,7 @@ fn json_spans(path: &Path) -> Vec<(String, u64, u64)> {
 fn a_column_after_korean_text_counts_characters() {
     let text =
         "---\nkind: scene\nid: ko\n---\n## 장면\n\n@narrator: 안녕 — 반가워 {{run.nope}} 끝.\n";
-    let path = temp_file("korean", text);
+    let (_dir, path) = temp_file("korean", text);
     let col = char_column(text, 7, "{{run.nope}}");
     assert_eq!(col, 21);
     let human = check(&path, false);
@@ -92,7 +90,7 @@ fn a_foreign_literal_in_a_condition_points_at_the_literal() {
                 run.route: { type: { enum: [ren, mika] }, default: ren }\n  \
                 run.aff: { type: int, default: 0 }\n---\n## 장면\n\n\
                 @narrator{when=\"run.aff >= 1 && run.route == 'rne'\"}: 안녕.\n";
-    let path = temp_file("literal", text);
+    let (_dir, path) = temp_file("literal", text);
     let col = char_column(text, 10, "'rne'");
     let human = check(&path, false);
     assert!(

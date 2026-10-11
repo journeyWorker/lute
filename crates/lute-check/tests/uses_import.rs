@@ -8,8 +8,7 @@ use lute_check::{check, CheckInput, Mode};
 use lute_core_span::Span;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::types::{Literal, Type};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
     let input = CheckInput {
@@ -126,21 +125,6 @@ fn zero_span() -> Span {
     }
 }
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-/// A fresh temp dir per call; schema `.lute` files are written into it.
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_uses_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -151,7 +135,7 @@ fn resolve_codes(res: &SchemaImports) -> Vec<&str> {
 
 #[test]
 fn resolves_single_import() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -172,7 +156,7 @@ fn resolves_single_import() {
 
 #[test]
 fn resolves_single_yaml_import() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.yaml",
@@ -200,7 +184,7 @@ fn resolves_single_yaml_import() {
 
 #[test]
 fn yaml_import_lifts_enums_and_entities_domains() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.yml",
@@ -229,7 +213,7 @@ fn yaml_import_lifts_enums_and_entities_domains() {
 fn schema_lute_import_still_resolves_alongside_yaml_support() {
     // Regression guard: `.schema.lute` targets keep working unchanged (B2 is
     // strictly additive) after the resolver learns `.yaml`/`.yml`.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "schema.lute",
@@ -246,7 +230,7 @@ fn schema_lute_import_still_resolves_alongside_yaml_support() {
 
 #[test]
 fn cycle_is_e_uses_cycle() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "a.lute", "---\nuses: b.lute\n---\n");
     write_lute(&dir, "b.lute", "---\nuses: a.lute\n---\n");
     let res = resolve_imports(&dir, &["a.lute".to_string()], &[], zero_span());
@@ -259,7 +243,7 @@ fn cycle_is_e_uses_cycle() {
 
 #[test]
 fn dup_def_across_imports_errors() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "x.lute", "---\ndefs:\n  foo: 1\n---\n");
     write_lute(&dir, "y.lute", "---\ndefs:\n  foo: 2\n---\n");
     write_lute(&dir, "a.lute", "---\nuses: [x.lute, y.lute]\n---\n");
@@ -273,7 +257,7 @@ fn dup_def_across_imports_errors() {
 
 #[test]
 fn missing_file_is_not_found() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let res = resolve_imports(&dir, &["nope.lute".to_string()], &[], zero_span());
     let codes = resolve_codes(&res);
     assert!(
@@ -284,7 +268,7 @@ fn missing_file_is_not_found() {
 
 #[test]
 fn diamond_is_one_identity_no_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "d.lute", "---\ndefs:\n  x: 1\n---\n");
     write_lute(&dir, "b.lute", "---\nuses: d.lute\n---\n");
     write_lute(&dir, "c.lute", "---\nuses: d.lute\n---\n");
@@ -310,7 +294,7 @@ fn diamond_is_one_identity_no_dup() {
 
 #[test]
 fn malformed_schema_is_e_uses_parse() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // Valid frontmatter, but the BODY has an unterminated `/* … */` block
     // comment -> `lute_syntax::parse` emits E-COMMENT-UNTERMINATED in its parse
     // diagnostics (pdiags). Before the fix those were dropped, so the malformed
@@ -332,7 +316,7 @@ fn malformed_schema_is_e_uses_parse() {
 
 #[test]
 fn extends_overrides_base_def() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "base.lute",
@@ -361,7 +345,7 @@ fn extends_overrides_base_def() {
 
 #[test]
 fn extends_state_default_override_ok() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "base.lute",
@@ -388,7 +372,7 @@ fn extends_state_default_override_ok() {
 
 #[test]
 fn extends_state_type_change_errors() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "base.lute",
@@ -416,7 +400,7 @@ fn extends_state_type_change_errors() {
 
 #[test]
 fn uses_peer_dup_still_errors() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "x.lute", "---\ndefs:\n  foo: 1\n---\n");
     write_lute(&dir, "y.lute", "---\ndefs:\n  foo: 2\n---\n");
     // Both peers via `uses:` at the same level -> peer dup, unchanged.
@@ -435,7 +419,7 @@ fn uses_peer_dup_still_errors() {
 
 #[test]
 fn extends_cycle_errors() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "a.lute", "---\nextends: b.lute\n---\n");
     write_lute(&dir, "b.lute", "---\nextends: a.lute\n---\n");
     let res = resolve_imports(&dir, &[], &["a.lute".to_string()], zero_span());
@@ -455,7 +439,7 @@ fn extends_dup_detection_is_order_independent() {
     // the same def/state as x. So `c` (depth 0) vs `x` (depth 0) is a same-depth
     // peer dup that MUST be reported identically for [a,b,c] and [c,b,a].
     let run = |order: &[&str]| -> Vec<String> {
-        let dir = unique_dir();
+        let dir = lute_scratch::ScratchDir::new();
         write_lute(
             &dir,
             "x.lute",
@@ -492,7 +476,7 @@ fn base_base_dup_not_hidden_by_override() {
     // `child` (depth 0) overrides run.gold / bar AND extends TWO unrelated bases
     // A and B, both declaring run.gold / bar at depth 1. The A-vs-B same-depth
     // collision MUST still error even though the child's override wins.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "A.lute",
@@ -527,7 +511,7 @@ fn base_base_dup_not_hidden_by_override() {
 fn scene_inline_refines_extends_base_default() {
     // A SCENE that `extends: base` and inline-refines an extends-imported state
     // path: the inline decl OVERRIDES the base (dsl §9.2) — NOT E-STATE-REDECLARE.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "base.lute",
@@ -568,7 +552,7 @@ fn scene_inline_refines_extends_base_default() {
     // "Inline wins / merged default" is observable: with a NO-DEFAULT extends
     // base, an inline decl carrying a default REPLACES it, so a later read is no
     // longer maybe-unset (it would be if the imported no-default decl had won).
-    let dir2 = unique_dir();
+    let dir2 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir2,
         "base.lute",
@@ -604,7 +588,7 @@ fn sibling_imports_declaring_same_quest_id_errors() {
     // Two DIFFERENT `uses` peers declaring the same `<quest id>` collide even
     // though NEITHER is the importing document itself — quest ids are unique
     // project-wide (§6.3), not merely per document.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "x.lute",
@@ -635,7 +619,7 @@ fn sibling_imports_declaring_same_quest_id_errors() {
 
 #[test]
 fn single_imported_quest_id_is_recorded_without_a_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "x.lute",
@@ -675,7 +659,7 @@ fn check_diags(text: &str) -> Vec<lute_core_span::Diagnostic> {
 /// walks them.
 #[test]
 fn uses_parse_carries_the_imports_own_diagnostics_not_only_a_count() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("world.schema.yaml"),
         // state-model.md:26 verbatim — #10 row c's bug, tested together with
@@ -811,7 +795,7 @@ fn state_decl_advice_matches_the_shape_the_author_wrote() {
 /// "anchored at the offending key" claim was only true for `.lute`.
 #[test]
 fn a_bare_yaml_schemas_key_span_is_not_shifted_by_a_missing_opener() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("w.yaml"),
         "state:\n  app.rating: { type: enum, values: [teen, adult], default: teen }\n",

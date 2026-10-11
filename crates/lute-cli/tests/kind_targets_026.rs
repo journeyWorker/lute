@@ -12,16 +12,6 @@ use serde_json::{json, Value as Json};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-kt026-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -44,8 +34,8 @@ fn text(o: &Output) -> String {
 /// `caught` is raised for `mon.<species>`; `bug` is a sub-kind of
 /// `species`. `dex.bug` answers every bug and scores by the member; `dex.bee`
 /// names one bug at the same priority.
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -273,8 +263,8 @@ fn lute_beats_lists_the_kind_ladder_and_each_named_member() {
 
 /// `summon` is raised for `hero.<member>`; `ssr` is a sub-kind of `hero`,
 /// `limited` of `ssr`. `beats` is the lore body.
-fn gacha(tag: &str, beats: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn gacha(tag: &str, beats: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

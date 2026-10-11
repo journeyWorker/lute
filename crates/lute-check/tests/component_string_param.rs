@@ -9,21 +9,7 @@ use lute_core_span::Diagnostic;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lute_csp_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
+use std::path::Path;
 
 fn check_with(text: &str, components: ComponentSet) -> Vec<Diagnostic> {
     check(&CheckInput {
@@ -71,8 +57,8 @@ fn scene(defs: &str, body: &str) -> String {
     )
 }
 
-fn project() -> PathBuf {
-    let dir = unique_dir();
+fn project() -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("lamps-out.component.lute"), LAMPS_OUT).unwrap();
     std::fs::write(dir.join("wrapper.component.lute"), WRAPPER).unwrap();
     dir
@@ -154,7 +140,7 @@ fn string_def_bound_to_an_interpolated_param_is_ref_type_at_the_arg() {
 
 #[test]
 fn string_def_bound_to_a_param_the_body_does_not_interpolate_is_clean() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("lamps-out.component.lute"),
         "---\ncomponent: lampsOut\nparams:\n  memory: string\n---\n## L\n\

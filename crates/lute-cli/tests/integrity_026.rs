@@ -6,17 +6,10 @@
 //! display-name collisions (§2.8, T3-13) and the member / clash hints (§8,
 //! T3-7/T3-8).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-integrity026-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let path = dir.join(rel);
@@ -50,8 +43,8 @@ fn top_lines<'a>(out: &'a str, code: &str) -> Vec<&'a str> {
 
 /// A project whose plugin `p` exports the given `(export, file, body)`s,
 /// with `defaults` appended under `defaults:`.
-fn project(tag: &str, exports: &[(&str, &str, &str)], defaults: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, exports: &[(&str, &str, &str)], defaults: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let mut manifest =
         "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n"
             .to_string();
@@ -508,7 +501,7 @@ fn collect_quest_tiers(v: &serde_json::Value, out: &mut Vec<(String, String)>) {
 
 const ITEMS: &str = "entities:\n  bagItem: { members: [goodRod, oldRod, potion] }\n";
 
-fn content_project(tag: &str) -> PathBuf {
+fn content_project(tag: &str) -> lute_scratch::ScratchDir {
     let dir = project(
         tag,
         &[
@@ -592,7 +585,7 @@ fn reward_targets_are_checked_against_the_kind_contract() {
     );
 }
 
-fn refs_project(tag: &str) -> PathBuf {
+fn refs_project(tag: &str) -> lute_scratch::ScratchDir {
     let dir = content_project(tag);
     write(
         &dir,
@@ -664,7 +657,7 @@ fn refs_needs_a_well_formed_query() {
 
 // ── §2.8 (T3-13): display names ─────────────────────────────────────────────
 
-fn names_project(tag: &str) -> PathBuf {
+fn names_project(tag: &str) -> lute_scratch::ScratchDir {
     let dir = project(
         tag,
         &[(
@@ -791,7 +784,7 @@ fn an_extends_refinement_is_not_a_conflict() {
 /// unbound `@badge` — no area `::use`s it yet — gated by a required
 /// objective (under a parent's `quest=` objective) and a scene beat.
 /// `ribbon` is produced, but only as `ribbon(stone)`.
-fn spine(tag: &str, ribbon_tide: bool) -> PathBuf {
+fn spine(tag: &str, ribbon_tide: bool) -> lute_scratch::ScratchDir {
     let dir = project(tag, &[], "  uses: [world.schema.yaml]\n");
     write(
         &dir,
@@ -904,8 +897,8 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
 
 /// A demo project: plugin `demo` exporting `directives`/`occasions`/`cast`
 /// files as given, `uses` as `defaults.uses`.
-fn demo(tag: &str, files: &[(&str, &str)], uses: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn demo(tag: &str, files: &[(&str, &str)], uses: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "plugins/demo/plugin.yaml",
@@ -934,7 +927,7 @@ fn demo(tag: &str, files: &[(&str, &str)], uses: &str) -> PathBuf {
     dir
 }
 
-fn gift_project(tag: &str) -> PathBuf {
+fn gift_project(tag: &str) -> lute_scratch::ScratchDir {
     demo(
         tag,
         &[

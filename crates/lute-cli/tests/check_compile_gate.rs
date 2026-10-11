@@ -18,19 +18,6 @@ use std::path::PathBuf;
 
 mod support;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "lute-gate-{tag}-{}-{:?}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn run(args: &[&str]) -> std::process::Output {
     support::run_cli(args)
 }
@@ -52,8 +39,8 @@ fn diag_lines(out: &std::process::Output) -> Vec<String> {
 /// reference rather than erroring — correctly, for its own purposes. The
 /// compile expander must not decline: its output has to be `@`-free, so the
 /// cycle is `E-COMPILE-EXPAND`. Nothing here is a component.
-fn scene_with_a_def_cycle(tag: &str, cycle: bool) -> PathBuf {
-    let dir = temp_dir(tag);
+fn scene_with_a_def_cycle(tag: &str, cycle: bool) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let file = dir.join("s.lute");
     let b = if cycle { "@a + 1" } else { "1" };
     std::fs::write(
@@ -67,7 +54,7 @@ fn scene_with_a_def_cycle(tag: &str, cycle: bool) -> PathBuf {
         ),
     )
     .unwrap();
-    file
+    (dir, file)
 }
 
 /// The general defect, on a scene: `check` reported `ok` while `trace` refused
@@ -78,7 +65,7 @@ fn scene_with_a_def_cycle(tag: &str, cycle: bool) -> PathBuf {
 /// still leaves the author holding two different stories about one file.
 #[test]
 fn check_and_trace_report_the_same_compile_gate_fault() {
-    let file = scene_with_a_def_cycle("cycle", true);
+    let (_dir, file) = scene_with_a_def_cycle("cycle", true);
     let path = file.to_str().unwrap();
 
     let checked = run(&["check", path]);
@@ -112,7 +99,7 @@ fn check_and_trace_report_the_same_compile_gate_fault() {
 /// it touches.
 #[test]
 fn a_document_with_no_compile_fault_stays_clean_in_both() {
-    let file = scene_with_a_def_cycle("nocycle", false);
+    let (_dir, file) = scene_with_a_def_cycle("nocycle", false);
     let path = file.to_str().unwrap();
 
     let checked = run(&["check", path]);
@@ -140,7 +127,7 @@ fn a_document_with_no_compile_fault_stays_clean_in_both() {
 /// compile fault must therefore report only the check error, in both legs.
 #[test]
 fn the_compile_gate_runs_only_past_the_check_gate() {
-    let dir = temp_dir("order");
+    let dir = lute_scratch::ScratchDir::named("order");
     let file = dir.join("s.lute");
     // `run.n` is never declared (a check error) AND the defs cycle.
     std::fs::write(
@@ -178,8 +165,8 @@ fn the_compile_gate_runs_only_past_the_check_gate() {
 /// 0.4.0 §6.2) and `@code` in a content-line attribute — both unbound only
 /// because a standalone file has no call site. When `broken` is set, the
 /// attribute reads `@a` instead, one of a genuinely broken `defs:` pair.
-fn component(tag: &str, broken: bool) -> PathBuf {
-    let dir = temp_dir(tag);
+fn component(tag: &str, broken: bool) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let file = dir.join("c.component.lute");
     let (defs, code) = if broken {
         (
@@ -201,7 +188,7 @@ fn component(tag: &str, broken: bool) -> PathBuf {
         ),
     )
     .unwrap();
-    file
+    (dir, file)
 }
 
 /// A component is not a root document: `trace` and `compile` refuse it, and
@@ -214,7 +201,7 @@ fn component(tag: &str, broken: bool) -> PathBuf {
 /// tool that contradicts it.
 #[test]
 fn a_component_is_refused_as_a_root_for_the_true_reason() {
-    let file = component("root", false);
+    let (_dir, file) = component("root", false);
     let path = file.to_str().unwrap();
 
     for command in ["trace", "compile"] {
@@ -266,7 +253,7 @@ fn a_component_is_refused_as_a_root_for_the_true_reason() {
 /// body.
 #[test]
 fn a_components_own_fault_is_reported_but_its_unbound_params_are_not() {
-    let broken = run(&["check", component("broken", true).to_str().unwrap()]);
+    let broken = run(&["check", component("broken", true).1.to_str().unwrap()]);
     let lines = diag_lines(&broken);
     assert_eq!(
         broken.status.code(),
@@ -292,7 +279,7 @@ fn a_components_own_fault_is_reported_but_its_unbound_params_are_not() {
     // clean, so its unbound params are not reported by any leg — the gate
     // included — and the assertion above is not passing on an implementation
     // that reports every `@` read.
-    let clean = run(&["check", component("clean", false).to_str().unwrap()]);
+    let clean = run(&["check", component("clean", false).1.to_str().unwrap()]);
     assert_eq!(
         clean.status.code(),
         Some(0),
@@ -303,8 +290,8 @@ fn a_components_own_fault_is_reported_but_its_unbound_params_are_not() {
 
 /// dsl 0.21.0 §7b: a scene whose `@ready` comes from an imported schema,
 /// declared as `ready_decl`.
-fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn scene_with_imported_def(tag: &str, ready_decl: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(
         dir.join("world.schema.yaml"),
         format!("state:\n  run.n: {{ type: int, default: 0 }}\ndefs:\n  ready: {ready_decl}\n"),
@@ -318,7 +305,7 @@ fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
          <otherwise>\n@x: no\n</otherwise>\n</match>\n",
     )
     .unwrap();
-    file
+    (dir, file)
 }
 
 /// The filed defect: a def written as a bare string in an imported schema
@@ -327,7 +314,7 @@ fn scene_with_imported_def(tag: &str, ready_decl: &str) -> PathBuf {
 /// legal shorthand, and both legs walk it.
 #[test]
 fn an_imported_shorthand_def_is_walked_by_check_and_trace() {
-    let file = scene_with_imported_def("shorthand", "\"run.n >= 1\"");
+    let (_dir, file) = scene_with_imported_def("shorthand", "\"run.n >= 1\"");
     let path = file.to_str().unwrap();
     for command in ["check", "trace"] {
         let out = run(&[command, path]);
@@ -341,7 +328,7 @@ fn an_imported_shorthand_def_is_walked_by_check_and_trace() {
 /// never meets a declared def without a body.
 #[test]
 fn a_malformed_imported_def_is_caught_by_check_not_compile() {
-    let file = scene_with_imported_def("malformed", "5");
+    let (_dir, file) = scene_with_imported_def("malformed", "5");
     let path = file.to_str().unwrap();
     let checked = run(&["check", path]);
     let traced = run(&["trace", path]);

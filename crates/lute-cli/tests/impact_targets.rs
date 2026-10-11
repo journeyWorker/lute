@@ -1,18 +1,8 @@
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-    let id = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-impact-{tag}-{}-{id}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, relative: &str, text: &str) {
     let path = dir.join(relative);
@@ -27,8 +17,8 @@ fn run(dir: &Path, target: &str) -> Output {
         .unwrap()
 }
 
-fn fixture(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn fixture(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

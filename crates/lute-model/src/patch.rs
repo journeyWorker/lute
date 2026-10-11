@@ -1302,9 +1302,8 @@ mod tests {
 
     #[test]
     fn create_file_refuses_existing_destination() {
-        let root =
-            std::env::temp_dir().join(format!("lute-patch-create-existing-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-patch-create-existing");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(
             root.join("scene.lute"),
@@ -1332,11 +1331,11 @@ mod tests {
             std::fs::read_to_string(root.join("existing.lute")).unwrap(),
             "original\n"
         );
-        let _ = std::fs::remove_dir_all(root);
     }
     #[test]
     fn preserve_kinds_report_their_semantic_fields() {
-        let root = std::env::temp_dir().join(format!("lute-patch-preserve-{}", std::process::id()));
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-patch-preserve");
         let _ = std::fs::create_dir_all(&root);
         std::fs::write(
             root.join("scene.lute"),
@@ -1429,11 +1428,11 @@ mod tests {
         for (item, change) in cases {
             assert!(!preserve_violations(&[item], &make_diff(change), &model, &model).is_empty());
         }
-        let _ = std::fs::remove_dir_all(root);
     }
     #[test]
     fn preserve_host_contracts_catches_required_semantics_and_engine_path() {
-        let root = std::env::temp_dir().join(format!("lute-patch-host-{}", std::process::id()));
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-patch-host");
         let _ = std::fs::create_dir_all(&root);
         std::fs::write(
             root.join("scene.lute"),
@@ -1470,15 +1469,14 @@ mod tests {
                 "{name}"
             );
         }
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn preserve_reachability_reports_a_node_that_becomes_unreachable() {
-        let before_root =
-            std::env::temp_dir().join(format!("lute-patch-reach-before-{}", std::process::id()));
-        let after_root =
-            std::env::temp_dir().join(format!("lute-patch-reach-after-{}", std::process::id()));
+        let before_root_scratch = lute_scratch::ScratchDir::new();
+        let before_root = before_root_scratch.join("lute-patch-reach-before");
+        let after_root_scratch = lute_scratch::ScratchDir::new();
+        let after_root = after_root_scratch.join("lute-patch-reach-after");
         let _ = std::fs::create_dir_all(&before_root);
         let _ = std::fs::create_dir_all(&after_root);
         let before_text =
@@ -1515,19 +1513,13 @@ mod tests {
             &after
         )
         .is_empty());
-        let _ = std::fs::remove_dir_all(before_root);
-        let _ = std::fs::remove_dir_all(after_root);
     }
     #[test]
     fn preserve_constraints_reports_a_verdict_that_gets_worse() {
-        let before_root = std::env::temp_dir().join(format!(
-            "lute-patch-constraints-before-{}",
-            std::process::id()
-        ));
-        let after_root = std::env::temp_dir().join(format!(
-            "lute-patch-constraints-after-{}",
-            std::process::id()
-        ));
+        let before_root_scratch = lute_scratch::ScratchDir::new();
+        let before_root = before_root_scratch.join("lute-patch-constraints-before");
+        let after_root_scratch = lute_scratch::ScratchDir::new();
+        let after_root = after_root_scratch.join("lute-patch-constraints-after");
         let _ = std::fs::create_dir_all(&before_root);
         let _ = std::fs::create_dir_all(&after_root);
         std::fs::write(
@@ -1559,12 +1551,11 @@ mod tests {
             changes: vec![],
         };
         assert!(!preserve_violations(&[Preserve::Constraints], &diff, &before, &after).is_empty());
-        let _ = std::fs::remove_dir_all(before_root);
-        let _ = std::fs::remove_dir_all(after_root);
     }
     #[test]
     fn markdown_path_mentions_do_not_block_moves() {
-        let root = std::env::temp_dir().join(format!("lute-patch-move-ref-{}", std::process::id()));
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-patch-move-ref");
         let _ = std::fs::create_dir_all(&root);
         std::fs::write(
             root.join("lute.project.yaml"),
@@ -1594,6 +1585,5 @@ mod tests {
             stale_move_reference(&root, Path::new("scene.lute")).unwrap(),
             Some(PathBuf::from("lute.project.yaml"))
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 }

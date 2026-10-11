@@ -13,6 +13,7 @@ serde_json = "1"
 serde_yaml = "0.9"
 schemars = "1"
 insta = { version = "1", features = ["yaml"] }
+tempfile = "3.27"
 
 # Tests, CI gates and the conformance harness run the dev binary over every
 # dogfood game; at opt-level 0 their runtime dwarfs the compile. Level 1 keeps

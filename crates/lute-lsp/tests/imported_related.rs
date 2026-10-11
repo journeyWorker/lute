@@ -66,8 +66,8 @@ fn covered(text: &str, range: &serde_json::Value) -> String {
 
 #[test]
 fn a_schema_fault_carries_the_schema_location() {
-    let dir = std::env::temp_dir().join(format!("lute-lsp-related-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-lsp-related");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::create_dir_all(dir.join("plugins/game.occasions/occasions")).unwrap();
     std::fs::write(

@@ -15,16 +15,6 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &std::path::Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
     if let Some(parent) = path.parent() {
@@ -90,7 +80,7 @@ fn scene_passthrough_after(character: &str, after_key: &str) -> String {
 
 #[test]
 fn compile_gate_guaranteed_read_fails_standalone_succeeds_under_project() {
-    let dir = temp_dir("gate-compile-guaranteed");
+    let dir = lute_scratch::ScratchDir::named("gate-compile-guaranteed");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
     let x = write(
         &dir,
@@ -136,7 +126,7 @@ fn compile_gate_guaranteed_read_fails_standalone_succeeds_under_project() {
 
 #[test]
 fn trace_gate_guaranteed_read_refused_standalone_runs_under_project() {
-    let dir = temp_dir("gate-trace-guaranteed");
+    let dir = lute_scratch::ScratchDir::named("gate-trace-guaranteed");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
     let x = write(
         &dir,
@@ -179,7 +169,7 @@ fn trace_gate_guaranteed_read_refused_standalone_runs_under_project() {
 
 #[test]
 fn compile_gate_never_possible_read_blocks_under_project() {
-    let dir = temp_dir("gate-compile-never");
+    let dir = lute_scratch::ScratchDir::named("gate-compile-never");
     // `y` is the ONLY route and NEVER sets `run.z` -> `run.z ∉ Possible(x)`.
     write(&dir, "y.lute", &scene_silent("y"));
     let x = write(
@@ -213,7 +203,7 @@ fn compile_gate_never_possible_read_blocks_under_project() {
 
 #[test]
 fn trace_gate_never_possible_read_blocks_under_project() {
-    let dir = temp_dir("gate-trace-never");
+    let dir = lute_scratch::ScratchDir::named("gate-trace-never");
     write(&dir, "y.lute", &scene_silent("y"));
     let x = write(
         &dir,
@@ -244,10 +234,10 @@ fn trace_gate_never_possible_read_blocks_under_project() {
 
 #[test]
 fn compile_gate_out_of_tree_target_errors_explicitly() {
-    let dir = temp_dir("gate-out-of-tree-proj");
+    let dir = lute_scratch::ScratchDir::named("gate-out-of-tree-proj");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
     // The target lives OUTSIDE `dir` entirely.
-    let other = temp_dir("gate-out-of-tree-target");
+    let other = lute_scratch::ScratchDir::named("gate-out-of-tree-target");
     let outside = write(&other, "outside.lute", &scene_silent("outside"));
 
     let out = run(&[
@@ -281,9 +271,9 @@ fn compile_gate_out_of_tree_target_errors_explicitly() {
 
 #[test]
 fn trace_gate_out_of_tree_target_errors_explicitly() {
-    let dir = temp_dir("gate-trace-out-of-tree-proj");
+    let dir = lute_scratch::ScratchDir::named("gate-trace-out-of-tree-proj");
     write(&dir, "y.lute", &scene_setting_run_z("y"));
-    let other = temp_dir("gate-trace-out-of-tree-target");
+    let other = lute_scratch::ScratchDir::named("gate-trace-out-of-tree-target");
     let outside = write(&other, "outside.lute", &scene_silent("outside"));
 
     let out = run(&[
@@ -304,7 +294,7 @@ fn trace_gate_out_of_tree_target_errors_explicitly() {
 
 #[test]
 fn compile_gate_sibling_project_fault_does_not_block_target() {
-    let dir = temp_dir("gate-sibling-fault");
+    let dir = lute_scratch::ScratchDir::named("gate-sibling-fault");
     // A clean, standalone-compilable target with no `after`/reads of its own.
     let x = write(&dir, "x.lute", &scene_silent("x"));
     // A SIBLING whose `after` names a node that does not exist anywhere in the
@@ -369,7 +359,7 @@ fn compile_gate_sibling_project_fault_does_not_block_target() {
 /// `project_gate_result` cycle-member block removed, `q` compiled at exit 0.)
 #[test]
 fn compile_gate_non_anchor_cycle_member_blocks() {
-    let dir = temp_dir("gate-cycle-nonanchor-compile");
+    let dir = lute_scratch::ScratchDir::named("gate-cycle-nonanchor-compile");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
     let q = write(&dir, "q.lute", &scene_after_only("q", "p.s01ep01"));
 
@@ -414,7 +404,7 @@ fn compile_gate_non_anchor_cycle_member_blocks() {
 
 #[test]
 fn trace_gate_non_anchor_cycle_member_blocks() {
-    let dir = temp_dir("gate-cycle-nonanchor-trace");
+    let dir = lute_scratch::ScratchDir::named("gate-cycle-nonanchor-trace");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
     let q = write(&dir, "q.lute", &scene_after_only("q", "p.s01ep01"));
 
@@ -444,7 +434,7 @@ fn trace_gate_non_anchor_cycle_member_blocks() {
 /// hop: `term` blocks standalone (E-MAYBE-UNSET) but compiles under --project.
 #[test]
 fn compile_gate_multi_hop_guaranteed_read_compiles_under_project() {
-    let dir = temp_dir("gate-multi-hop");
+    let dir = lute_scratch::ScratchDir::named("gate-multi-hop");
     write(&dir, "up.lute", &scene_setting_run_z("up"));
     write(
         &dir,
@@ -515,7 +505,7 @@ fn scene_after_two(character: &str, k1: &str, k2: &str) -> String {
 /// 0 because `r` is missing from `cycle_members`.)
 #[test]
 fn compile_gate_overlapping_cycle_member_blocks() {
-    let dir = temp_dir("gate-overlap-cycle-compile");
+    let dir = lute_scratch::ScratchDir::named("gate-overlap-cycle-compile");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
     write(
         &dir,
@@ -548,7 +538,7 @@ fn compile_gate_overlapping_cycle_member_blocks() {
 
 #[test]
 fn trace_gate_overlapping_cycle_member_blocks() {
-    let dir = temp_dir("gate-overlap-cycle-trace");
+    let dir = lute_scratch::ScratchDir::named("gate-overlap-cycle-trace");
     write(&dir, "p.lute", &scene_after_only("p", "q.s01ep01"));
     write(
         &dir,
@@ -583,7 +573,7 @@ fn trace_gate_overlapping_cycle_member_blocks() {
 /// is not a cycle MEMBER (the old membership-only gate let it through).
 #[test]
 fn compile_gate_downstream_of_cycle_blocks() {
-    let dir = temp_dir("gate-downstream-cycle");
+    let dir = lute_scratch::ScratchDir::named("gate-downstream-cycle");
     write(&dir, "a.lute", &scene_after_only("a", "b.s01ep01"));
     write(&dir, "b.lute", &scene_after_only("b", "a.s01ep01"));
     let d = write(&dir, "d.lute", &scene_after_only("d", "a.s01ep01"));

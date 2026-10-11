@@ -3,25 +3,13 @@
 //! untagged `:line` AND that a second run is a byte-identical no-op (idempotent,
 //! never partial-writes). Pins the Task L2 acceptance contract.
 
-use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-/// A fresh unique temp dir (no `tempfile` dev-dep needed for these small tests).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 #[test]
 fn tag_backfills_code_and_is_idempotent() {
-    let dir = temp_dir("tag");
+    let dir = lute_scratch::ScratchDir::named("tag");
     let f = dir.join("scene.lute");
     std::fs::write(
         &f,
@@ -69,7 +57,7 @@ fn tag_backfills_code_and_is_idempotent() {
 /// and leaving already-tagged files untouched; non-`.lute` files are ignored.
 #[test]
 fn tag_walks_a_directory_recursively_in_sorted_order() {
-    let dir = temp_dir("tag-dir");
+    let dir = lute_scratch::ScratchDir::named("tag-dir");
     let scene = |line: &str| format!("---\nkind: scene\nid: s\n---\n## Shot 1.\n{line}\n");
     std::fs::create_dir_all(dir.join("scenes/talk")).unwrap();
     std::fs::write(dir.join("scenes/talk/b.lute"), scene("@ann: b")).unwrap();
@@ -115,7 +103,7 @@ fn tag_walks_a_directory_recursively_in_sorted_order() {
 /// refusal.
 #[test]
 fn tag_force_over_a_directory_continues_past_a_refusal() {
-    let dir = temp_dir("tag-dir-force");
+    let dir = lute_scratch::ScratchDir::named("tag-dir-force");
     let draft = "---\nkind: scene\nid: d\n---\n## Shot 1.\n@ann{code=\"0050\"}: one\n";
     let locked =
         "---\nkind: scene\nid: l\ncodesLocked: true\n---\n## Shot 1.\n@ann{code=\"0050\"}: one\n";
@@ -146,7 +134,7 @@ fn tag_force_over_a_directory_continues_past_a_refusal() {
 /// `lute fix <dir>` migrates every `.lute` file under the directory.
 #[test]
 fn fix_walks_a_directory_recursively() {
-    let dir = temp_dir("fix-dir");
+    let dir = lute_scratch::ScratchDir::named("fix-dir");
     std::fs::create_dir_all(dir.join("nested")).unwrap();
     let legacy = "---\nkind: scene\nid: s\n---\n## Shot 1.\n:line[ann]: hi\n";
     std::fs::write(dir.join("nested/old.lute"), legacy).unwrap();

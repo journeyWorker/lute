@@ -189,8 +189,7 @@ fn codes(text: &str, imports: SchemaImports) -> Vec<String> {
 
 /// `world.schema.yaml` written to a fresh directory, resolved as `uses:`.
 fn schema_imports(tag: &str, schema: &str) -> SchemaImports {
-    let dir = std::env::temp_dir().join(format!("lute_d028_{tag}_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(dir.join("world.schema.yaml"), schema).unwrap();
     let zero = lute_core_span::Span {
         byte_start: 0,
@@ -199,9 +198,7 @@ fn schema_imports(tag: &str, schema: &str) -> SchemaImports {
         column: 1,
         utf16_range: (0, 0),
     };
-    let imports = lute_check::resolve_imports(&dir, &["world.schema.yaml".into()], &[], zero);
-    let _ = std::fs::remove_dir_all(&dir);
-    imports
+    lute_check::resolve_imports(&dir, &["world.schema.yaml".into()], &[], zero)
 }
 
 const NIGHT: &str = "---\nkind: lore\nid: night\n---\n\

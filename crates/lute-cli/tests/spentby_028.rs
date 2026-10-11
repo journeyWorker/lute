@@ -4,20 +4,10 @@
 //! `W-SPENT-BY-REVERSIBLE` names a latch whose condition can turn false
 //! again. Checked and played through the built `lute` binary.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-spentby-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -45,8 +35,8 @@ const SCHEMA: &str = "state:\n  run.done: { type: bool, default: false }\n  \
 /// A project with `world.schema.yaml` ([`SCHEMA`]) and plugin `p`: the
 /// occasions `visit` and `storm`, and `::sell{fish}`, whose declared effect
 /// retracts `caught(@fish)`; plus every `(path, text)` document.
-fn project(tag: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

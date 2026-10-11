@@ -5,7 +5,7 @@
 //! interleaves `entry` and `beat` records, so an entry's body segment stops
 //! at the next record of either kind.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 mod support;
@@ -73,17 +73,6 @@ const ARTIFACT: &str = r#"{
   ]
 }"#;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("lute-bundle-beat-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> String {
     let p = dir.join(rel);
     std::fs::write(&p, text).unwrap();
@@ -110,7 +99,7 @@ fn kinds(v: &serde_json::Value) -> Vec<String> {
 
 #[test]
 fn trace_bundle_beat_walks_the_chosen_arm() {
-    let dir = temp_dir("trace");
+    let dir = lute_scratch::ScratchDir::named("trace");
     let file = write(&dir, "interviews.lute", SOURCE);
     let (code, stdout, stderr) = lute(&[
         "trace",
@@ -148,7 +137,7 @@ fn trace_bundle_beat_walks_the_chosen_arm() {
 
 #[test]
 fn trace_bundle_beat_usage_and_refusals() {
-    let dir = temp_dir("trace-usage");
+    let dir = lute_scratch::ScratchDir::named("trace-usage");
     let file = write(&dir, "interviews.lute", SOURCE);
 
     // A lore document without `--entry`/`--beat`: usage error naming both.
@@ -172,7 +161,7 @@ fn trace_bundle_beat_usage_and_refusals() {
 
 #[test]
 fn run_bundle_beat_runs_its_segment_like_a_scene() {
-    let dir = temp_dir("run");
+    let dir = lute_scratch::ScratchDir::named("run");
     let art = write(&dir, "interviews.json", ARTIFACT);
     let mock = write(&dir, "ask.yaml", "choose:\n  porterTalk: [ask]\n");
     let (code, stdout, stderr) = lute(&[
@@ -222,7 +211,7 @@ fn run_bundle_beat_runs_its_segment_like_a_scene() {
 
 #[test]
 fn run_entry_segment_stops_at_the_next_bundle_beat() {
-    let dir = temp_dir("run-entry");
+    let dir = lute_scratch::ScratchDir::named("run-entry");
     let art = write(&dir, "interviews.json", ARTIFACT);
     let (code, stdout, stderr) = lute(&["run", &art, "--entry", "porterNote", "--json"]);
     assert_eq!(code, Some(0), "stderr: {stderr}");
@@ -233,7 +222,7 @@ fn run_entry_segment_stops_at_the_next_bundle_beat() {
 
 #[test]
 fn compiled_bundle_beat_runs_by_canonical_id() {
-    let dir = temp_dir("compiled");
+    let dir = lute_scratch::ScratchDir::named("compiled");
     let file = write(&dir, "interviews.lute", SOURCE);
     let art = dir.join("interviews.json");
     let art = art.to_str().unwrap();
@@ -267,7 +256,7 @@ fn compiled_bundle_beat_runs_by_canonical_id() {
 
 #[test]
 fn run_bundle_beat_usage_errors() {
-    let dir = temp_dir("run-usage");
+    let dir = lute_scratch::ScratchDir::named("run-usage");
     let art = write(&dir, "interviews.json", ARTIFACT);
 
     let (code, stdout, stderr) = lute(&["run", &art]);
@@ -297,7 +286,7 @@ fn run_bundle_beat_usage_errors() {
 /// its canonical id afterwards.
 #[test]
 fn play_presents_a_bundle_beat_and_spends_it() {
-    let dir = temp_dir("play");
+    let dir = lute_scratch::ScratchDir::named("play");
     write(
         &dir,
         "lute.project.yaml",

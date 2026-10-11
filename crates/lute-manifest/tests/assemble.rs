@@ -736,8 +736,8 @@ fn assemble_rejects_core_names_as_plugin_directive_names() {
 /// beats answering it are not unknown besides).
 #[test]
 fn reserved_plugin_names_point_at_their_file_and_line() {
-    let root = std::env::temp_dir().join(format!("lute_reserved_site_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_reserved_site");
     let pkg = root.join("p");
     std::fs::create_dir_all(pkg.join("directives")).unwrap();
     std::fs::create_dir_all(pkg.join("occasions")).unwrap();
@@ -782,15 +782,14 @@ fn reserved_plugin_names_point_at_their_file_and_line() {
     );
     assert!(snap.directive("give").is_some() && snap.directive("use").is_none());
     assert!(snap.occasions.contains_key("questComplete"));
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// A cast id two plugins declare names both files and lines, anchored at the
 /// later plugin's declaration; the first plugin's member is kept.
 #[test]
 fn cross_plugin_duplicate_names_both_files() {
-    let root = std::env::temp_dir().join(format!("lute_dup_across_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_dup_across");
     for (id, name) in [("east", "Captain Orla"), ("isles", "Orla Again")] {
         let pkg = root.join(id);
         std::fs::create_dir_all(pkg.join("cast")).unwrap();
@@ -827,7 +826,6 @@ fn cross_plugin_duplicate_names_both_files() {
         "{msg}"
     );
     assert_eq!(snap.cast["orla"].name.as_deref(), Some("Captain Orla"));
-    std::fs::remove_dir_all(&root).ok();
 }
 
 /// A plugin directive whose lone attr is named `attr_name` (instead of the

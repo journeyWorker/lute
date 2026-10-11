@@ -28,8 +28,8 @@ fn write_project(root: &std::path::Path) {
 
 #[test]
 fn resolves_project_snapshot_with_active_plugin() {
-    let root = std::env::temp_dir().join(format!("lute_proj_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_proj");
     write_project(&root);
     let proj = load_project(&root)
         .expect("valid project loads")
@@ -44,7 +44,6 @@ fn resolves_project_snapshot_with_active_plugin() {
         snap.directive("minigame").is_some(),
         "active plugin directive present"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 #[test]
@@ -57,20 +56,19 @@ fn no_project_is_core_only() {
 
 #[test]
 fn missing_project_is_ok_none() {
-    let dir = std::env::temp_dir().join(format!("lute_noproj_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute_noproj");
     std::fs::create_dir_all(&dir).unwrap();
     assert!(
         matches!(load_project(&dir), Ok(None)),
         "absent lute.project.yaml -> Ok(None)"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn malformed_project_is_err() {
-    let dir = std::env::temp_dir().join(format!("lute_badproj_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute_badproj");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("lute.project.yaml"),
@@ -81,14 +79,13 @@ fn malformed_project_is_err() {
         load_project(&dir).is_err(),
         "malformed lute.project.yaml -> Err"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn resolve_diag_carries_stable_code() {
     // temp project with two mutually-depending plugins (a.x->a.dep->a.x DependsCycle)
-    let root = std::env::temp_dir().join(format!("lute_rdcode_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_rdcode");
     for (id, dep) in [("a.x", "a.dep"), ("a.dep", "a.x")] {
         let d = root.join(format!("plugins/{id}/directives"));
         std::fs::create_dir_all(&d).unwrap();
@@ -114,7 +111,6 @@ fn resolve_diag_carries_stable_code() {
         "expected E-DEPENDS-CYCLE code, got {:?}",
         diags.iter().map(|d| &d.code).collect::<Vec<_>>()
     );
-    std::fs::remove_dir_all(&root).ok();
 }
 
 #[test]
@@ -137,10 +133,8 @@ fn project_providers_loads_catalog() {
 
 /// Write a minimal (plugin-free) project whose `lute.project.yaml` carries the
 /// given `identity:` YAML body, returning its root.
-fn identity_project(tag: &str, identity_yaml: &str) -> std::path::PathBuf {
-    let root = std::env::temp_dir().join(format!("lute_ident_{}_{tag}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(&root).unwrap();
+fn identity_project(tag: &str, identity_yaml: &str) -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named(tag);
     fs::write(
         root.join("lute.project.yaml"),
         format!("defaultProfile: base\nprofiles:\n  base:\n    plugins: {{}}\n{identity_yaml}"),
@@ -164,7 +158,6 @@ fn absent_identity_block_defaults_to_prefixed_templates() {
         "ann.s01ep01.ann-0010"
     );
     assert!(proj.identity_diags.is_empty());
-    fs::remove_dir_all(&root).ok();
 }
 
 /// Each key is authored and resolved independently: retemplating `lineId`
@@ -184,7 +177,6 @@ fn authored_identity_templates_resolve_per_key() {
             .render_line_id("npc_koyuki_ep05", "koyuki", "0010"),
         "npc_koyuki_ep05/koyuki#0010"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// An unknown `{token}` is `E-IDENTITY-TEMPLATE` at load. The project still
@@ -212,7 +204,6 @@ fn unknown_identity_token_is_reported_at_project_load() {
         "the shared resolver replays it: {:?}",
         diags.iter().map(|d| &d.code).collect::<Vec<_>>()
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// A template that resolves to an empty string is rejected too — an empty
@@ -227,7 +218,6 @@ fn empty_identity_template_is_reported_at_project_load() {
         "identity template `voiceKey` resolves to an empty string"
     );
     assert_eq!(proj.identity.voice_key, "{prefix}.{speaker}-{code}");
-    fs::remove_dir_all(&root).ok();
 }
 
 /// The renderer is total: repeated tokens substitute every time, an
@@ -263,9 +253,8 @@ fn identity_renderer_is_total() {
 
 // ── 0.10.0 §6: `defaults:` (backlog #34, D-F/D-P/D-Q) ──────────────────
 
-fn write_manifest(tag: &str, body: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-defaults-{tag}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+fn write_manifest(tag: &str, body: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(dir.join("lute.project.yaml"), body).unwrap();
     dir
 }
@@ -618,10 +607,8 @@ fn defaults_id_is_e_defaults_key() {
     );
 }
 
-fn permission_project(tag: &str, body: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-permissions-{tag}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
+fn permission_project(tag: &str, body: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     fs::write(dir.join("lute.project.yaml"), body).unwrap();
     dir
 }
@@ -642,7 +629,6 @@ fn absent_permissions_are_unrestricted_and_preserve_snapshot_hash() {
     let (resolved, diags) = resolve_document_snapshot(Some(&project), None, &BTreeMap::new());
     assert!(diags.is_empty(), "{diags:?}");
     assert_eq!(resolved.version, baseline.version);
-    fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -693,7 +679,6 @@ profiles:
         snapshot.version,
         lute_manifest::core::load_core_snapshot().version
     );
-    fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -705,7 +690,6 @@ fn global_permission_layer_is_applied_exactly_once() {
     let project = load_project(&dir).unwrap().unwrap();
     let permissions = lute_manifest::project::resolve_permissions(&project, "child").unwrap();
     assert_eq!(permissions.layers.len(), 1, "{permissions:?}");
-    fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -727,8 +711,6 @@ fn permission_list_order_and_duplicates_have_deterministic_layers_and_hash() {
     let (sb, db) = resolve_document_snapshot(Some(&pb), None, &BTreeMap::new());
     assert!(da.is_empty() && db.is_empty(), "{da:?} {db:?}");
     assert_eq!(sa.version, sb.version);
-    fs::remove_dir_all(&a).ok();
-    fs::remove_dir_all(&b).ok();
 }
 
 #[test]
@@ -756,7 +738,6 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
         "defaultProfile: p\nprofiles:\n  p:\n    plugins: {}\n    permissions: null\n",
     );
     assert!(load_project(&profile_null).is_err());
-    fs::remove_dir_all(profile_null).ok();
 }
 
 // ── 0.26.0 §2.4: `defaults.uses` globs and `defaults.questTier` ───────────
@@ -955,7 +936,6 @@ fn manifest_unknown_keys_are_located_and_name_what_was_meant() {
     assert!(m.contains("did you mean `lineId`?"), "{m}");
     // The rest still loaded.
     assert_eq!(proj.graph.default_profile, "core");
-    fs::remove_dir_all(&dir).ok();
 }
 
 /// A manifest that cannot be read as one fails the load with a single

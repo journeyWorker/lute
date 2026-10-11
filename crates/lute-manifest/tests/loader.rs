@@ -19,20 +19,19 @@ fn write_pkg(root: &std::path::Path, dup: bool) {
 
 #[test]
 fn loads_a_valid_package() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_ok_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_ok");
     write_pkg(&tmp, false);
     let p = load_plugin_dir(&tmp).expect("valid package loads");
     assert_eq!(p.manifest.id, "t.plug");
     assert_eq!(p.directives.len(), 1);
     assert_eq!(p.directives[0].name, "foo");
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn rejects_duplicate_directive_id() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_dup_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_dup");
     write_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).unwrap_err();
     // Located at the SECOND entry of the one file, naming the first.
@@ -44,13 +43,12 @@ fn rejects_duplicate_directive_id() {
         )),
         "{errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn rejects_missing_export_dir() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_miss_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_miss");
     fs::create_dir_all(&tmp).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -61,14 +59,13 @@ fn rejects_missing_export_dir() {
     assert!(errs
         .iter()
         .any(|e| matches!(e, LoadError::MissingExportDir { .. })));
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn unreadable_declaration_file_is_error() {
     use std::io::Write;
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_badenc_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_badenc");
     fs::create_dir_all(tmp.join("directives")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -84,18 +81,16 @@ fn unreadable_declaration_file_is_error() {
         errs.iter().any(|e| matches!(e, LoadError::Io { .. })),
         "unreadable file must surface LoadError::Io, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn scans_a_plugins_directory() {
-    let root = std::env::temp_dir().join(format!("lute_plugins_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_plugins");
     write_pkg(&root.join("t.plug"), false); // reuse the helper; nested dir = plugin id
     let (reg, errs) = lute_manifest::loader::load_plugins_dir(&root);
     assert!(errs.is_empty(), "{errs:?}");
     assert!(reg.get("t.plug").is_some());
-    std::fs::remove_dir_all(&root).ok();
 }
 
 #[test]
@@ -108,8 +103,8 @@ fn missing_plugins_dir_is_empty() {
 
 #[test]
 fn rejects_unknown_export_key() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_badexport_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_badexport");
     fs::create_dir_all(tmp.join("directivez")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -123,7 +118,6 @@ fn rejects_unknown_export_key() {
             .any(|e| matches!(e, LoadError::UnknownExport { .. })),
         "unknown export key must be a LoadError, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Build a plugin package that exports `assetkinds/`; when `dup`, the file
@@ -145,19 +139,18 @@ fn write_asset_pkg(root: &std::path::Path, dup: bool) {
 
 #[test]
 fn loads_asset_kinds() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_ak_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_ak");
     write_asset_pkg(&tmp, false);
     let p = load_plugin_dir(&tmp).expect("asset-kind package loads");
     assert_eq!(p.asset_kinds.len(), 1);
     assert_eq!(p.asset_kinds[0].kind, "CH");
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn loads_asset_kinds_rejects_dup() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_akdup_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_akdup");
     write_asset_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).unwrap_err();
     assert!(
@@ -167,7 +160,6 @@ fn loads_asset_kinds_rejects_dup() {
         )),
         "dup asset kind must be DuplicateId{{kind:\"assetKind\"}}, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Build a plugin package that exports `events/`.
@@ -183,13 +175,12 @@ fn write_events_pkg(root: &std::path::Path) {
 
 #[test]
 fn loads_events_export() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_ev_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_ev");
     write_events_pkg(&tmp);
     let loaded = load_plugin_dir(&tmp).expect("loads");
     assert_eq!(loaded.events.len(), 1);
     assert_eq!(loaded.events[0].name, "combatEnd");
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// plugin §14.1: the `stampattrs` export loads off disk exactly like its
@@ -215,8 +206,8 @@ fn write_stamp_attrs_pkg(root: &std::path::Path, dup: bool) {
 
 #[test]
 fn loads_stamp_attrs_export() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_sa_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_sa");
     write_stamp_attrs_pkg(&tmp, false);
     let loaded = load_plugin_dir(&tmp).expect("loads");
     assert_eq!(loaded.stamp_attrs.len(), 2);
@@ -229,13 +220,12 @@ fn loads_stamp_attrs_export() {
         loaded.stamp_attrs[1].ty,
         lute_manifest::types::Type::Int
     ));
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn loads_stamp_attrs_rejects_dup() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_sadup_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_sadup");
     write_stamp_attrs_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).expect_err("dup stampAttr name");
     assert!(
@@ -246,7 +236,6 @@ fn loads_stamp_attrs_rejects_dup() {
         )),
         "{errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Build a plugin package exporting `assetkinds/` whose single kind `CH` has
@@ -269,11 +258,7 @@ fn write_asset_pkg_with_segment_type(root: &std::path::Path, type_yaml: &str) {
 /// with `LoadError::AssetSegmentType { kind: "CH", segment: "variant", .. }`,
 /// whose `found` contains `found_fragment` (the `type_str` rendering).
 fn assert_segment_type_rejected(dir_suffix: &str, type_yaml: &str, found_fragment: &str) {
-    let tmp = std::env::temp_dir().join(format!(
-        "lute_pkg_segty_{dir_suffix}_{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp = lute_scratch::ScratchDir::named(dir_suffix);
     write_asset_pkg_with_segment_type(&tmp, type_yaml);
     let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
     assert!(
@@ -284,7 +269,6 @@ fn assert_segment_type_rejected(dir_suffix: &str, type_yaml: &str, found_fragmen
         )),
         "type {type_yaml} must reject as AssetSegmentType(found~{found_fragment}), got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// The reported defect: `{ domain: slotDomain }` parses as a segment type
@@ -368,8 +352,8 @@ fn rejects_narrative_time_segment() {
 /// surface without disturbing legitimate segment declarations.
 #[test]
 fn admits_enum_int_string_provider_ref_segments() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_admit_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_segty_admit");
     fs::create_dir_all(tmp.join("assetkinds")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -390,7 +374,6 @@ fn admits_enum_int_string_provider_ref_segments() {
     .unwrap();
     let p = load_plugin_dir(&tmp).expect("providerRef/enum/int/string segments must load");
     assert_eq!(p.asset_kinds[0].segments.len(), 5);
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Second symptom, same cause (`crates/lute-check/src/project_check.rs:400-447`,
@@ -417,8 +400,8 @@ fn admits_enum_int_string_provider_ref_segments() {
 /// load AT ALL, and is absent from the registry entirely.
 #[test]
 fn domain_segment_plugin_never_reaches_installed_registry() {
-    let root = std::env::temp_dir().join(format!("lute_plugins_domseg_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_plugins_domseg");
     let pkg = root.join("t.plug");
     fs::create_dir_all(pkg.join("assetkinds")).unwrap();
     fs::write(
@@ -450,7 +433,6 @@ fn domain_segment_plugin_never_reaches_installed_registry() {
         )),
         "{errs:?}"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// Defect 1: `AssetSegmentType`'s rendered message must be prose — the kind,
@@ -460,8 +442,8 @@ fn domain_segment_plugin_never_reaches_installed_registry() {
 /// convention.
 #[test]
 fn asset_segment_type_message_is_prose() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_msg_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_segty_msg");
     write_asset_pkg_with_segment_type(&tmp, "{ domain: slotDomain }");
     let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
     let err = errs
@@ -485,7 +467,6 @@ fn asset_segment_type_message_is_prose() {
             "must list admitted type `{admitted}`: {msg}"
         );
     }
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Defect 2: `AssetSegmentType.file` must name the `.yaml` that declared the
@@ -494,8 +475,8 @@ fn asset_segment_type_message_is_prose() {
 /// suffix assertion keeps this host-independent (no absolute-path compare).
 #[test]
 fn asset_segment_type_file_names_the_yaml() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_segty_file_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_segty_file");
     write_asset_pkg_with_segment_type(&tmp, "{ domain: slotDomain }");
     let errs = load_plugin_dir(&tmp).expect_err("inadmissible segment type must fail to load");
     let file = errs
@@ -509,7 +490,6 @@ fn asset_segment_type_file_names_the_yaml() {
         file.ends_with("ch.yaml"),
         "file must name the source .yaml, not its directory, got {file:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Pins the `Display` rendering of a PRE-EXISTING variant (`Parse`), so the
@@ -518,8 +498,8 @@ fn asset_segment_type_file_names_the_yaml() {
 /// shape mismatch) so `serde_yaml::from_str` fails before `merge` ever runs.
 #[test]
 fn parse_error_message_is_prose() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_parsemsg_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_parsemsg");
     fs::create_dir_all(tmp.join("directives")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -542,7 +522,6 @@ fn parse_error_message_is_prose() {
         msg.contains("a.yaml"),
         "must name the offending file: {msg}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// lint-system design §6: the `lints` export loads off disk like every
@@ -573,8 +552,8 @@ fn write_lints_pkg(root: &std::path::Path, dup: bool) {
 #[test]
 fn loads_lints_export_round_trip() {
     use lute_manifest::lint::{LintLevel, LintTarget};
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_lints_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_lints");
     write_lints_pkg(&tmp, false);
     let loaded = load_plugin_dir(&tmp).expect("lints package loads");
     assert_eq!(loaded.lints.len(), 2);
@@ -594,13 +573,12 @@ fn loads_lints_export_round_trip() {
     // level absent -> None (plugin declines to declare a default)
     assert_eq!(loaded.lints[1].level, None);
     assert_eq!(loaded.lints[1].target, LintTarget::Line);
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn loads_lints_rejects_dup_id() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_lintsdup_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_lintsdup");
     write_lints_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).expect_err("dup lint id");
     assert!(
@@ -611,7 +589,6 @@ fn loads_lints_rejects_dup_id() {
         )),
         "duplicate rule id must surface DuplicateId{{kind:\"lint\"}}, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// A malformed `lints/*.yaml` file (bad YAML structure) surfaces through
@@ -620,8 +597,8 @@ fn loads_lints_rejects_dup_id() {
 /// other export uses (see `parse_error_message_is_prose` above).
 #[test]
 fn malformed_lint_file_is_parse_error() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_lintsbad_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_lintsbad");
     fs::create_dir_all(tmp.join("lints")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -642,7 +619,6 @@ fn malformed_lint_file_is_parse_error() {
         )),
         "malformed rule must surface as LoadError::Parse anchored at the file, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// Lints must NEVER perturb `CapabilitySnapshot` / `capabilitySnapshot`
@@ -657,8 +633,8 @@ fn lints_do_not_participate_in_capability_version() {
     use lute_manifest::resolve::ActivePlugin;
 
     // Package A: no lints export.
-    let root_a = std::env::temp_dir().join(format!("lute_lints_hashA_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root_a);
+    let root_a_scratch = lute_scratch::ScratchDir::new();
+    let root_a = root_a_scratch.join("lute_lints_hashA");
     fs::create_dir_all(root_a.join("t.plug/directives")).unwrap();
     fs::write(
         root_a.join("t.plug/plugin.yaml"),
@@ -672,8 +648,8 @@ fn lints_do_not_participate_in_capability_version() {
     .unwrap();
 
     // Package B: same, PLUS a lints export.
-    let root_b = std::env::temp_dir().join(format!("lute_lints_hashB_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root_b);
+    let root_b_scratch = lute_scratch::ScratchDir::new();
+    let root_b = root_b_scratch.join("lute_lints_hashB");
     fs::create_dir_all(root_b.join("t.plug/directives")).unwrap();
     fs::create_dir_all(root_b.join("t.plug/lints")).unwrap();
     fs::write(
@@ -716,8 +692,6 @@ fn lints_do_not_participate_in_capability_version() {
         "capabilitySnapshot must be byte-identical whether a plugin ships lints or not"
     );
 
-    fs::remove_dir_all(&root_a).ok();
-    fs::remove_dir_all(&root_b).ok();
 }
 
 /// [`lute_manifest::lint::namespace_active_lints`] pairs an activation
@@ -732,8 +706,8 @@ fn namespace_active_lints_pairs_activation_with_registry() {
     use lute_manifest::loader::load_plugins_dir;
     use lute_manifest::resolve::ActivePlugin;
 
-    let root = std::env::temp_dir().join(format!("lute_lints_ns_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lints_ns");
 
     for id in ["a.plug", "b.plug", "inactive.plug"] {
         let pkg = root.join(id);
@@ -772,7 +746,6 @@ fn namespace_active_lints_pairs_activation_with_registry() {
     // Activation order preserved; inactive.plug is not emitted; ghost.plug is skipped.
     assert_eq!(keys, vec!["b.plug/r1", "a.plug/r1"]);
 
-    fs::remove_dir_all(&root).ok();
 }
 
 /// dsl 0.16.0 §4: the `rewardkinds` export loads off disk exactly like its
@@ -805,8 +778,8 @@ fn write_reward_kinds_pkg(root: &std::path::Path, dup_across_files: bool) {
 
 #[test]
 fn loads_reward_kinds_export() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_rk_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_rk");
     write_reward_kinds_pkg(&tmp, false);
     let loaded = load_plugin_dir(&tmp).expect("valid rewardKinds package loads");
     assert_eq!(loaded.reward_kinds.len(), 2);
@@ -834,13 +807,12 @@ fn loads_reward_kinds_export() {
         shard.attrs.is_empty(),
         "bare {{}} kind must have no game-specific attrs"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
 fn loads_reward_kinds_rejects_dup() {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_rkdup_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_rkdup");
     write_reward_kinds_pkg(&tmp, true);
     let errs = load_plugin_dir(&tmp).expect_err("per-package dup rewardKind must fail load");
     assert!(
@@ -851,7 +823,6 @@ fn loads_reward_kinds_rejects_dup() {
         )),
         "per-package duplicate must surface as DuplicateId {{ kind: \"rewardKind\" }}, got {errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// dsl 0.26.0 §2.5: `target:` also takes `{ entity: <kind> }` and
@@ -859,8 +830,7 @@ fn loads_reward_kinds_rejects_dup() {
 #[test]
 fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
     let pkg = |tag: &str, body: &str| {
-        let tmp = std::env::temp_dir().join(format!("lute_pkg_rkt_{tag}_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&tmp);
+        let tmp = lute_scratch::ScratchDir::named(tag);
         fs::create_dir_all(tmp.join("rewardkinds")).unwrap();
         fs::write(
             tmp.join("plugin.yaml"),
@@ -895,8 +865,6 @@ fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
     let errs = load_plugin_dir(&both).expect_err("provider + entity must fail the load");
     let msg = format!("{errs:?}");
     assert!(msg.contains("not both"), "{msg}");
-    fs::remove_dir_all(&ok).ok();
-    fs::remove_dir_all(&both).ok();
 }
 
 /// dsl 0.28.0 §6: the export keys are camelCase (`rewardKinds`, `assetKinds`,
@@ -918,9 +886,8 @@ fn old_export_spelling_names_the_new_one() {
             "export `Occasions` is not an export kind — did you mean `occasions`?",
         ),
     ] {
-        let tmp =
-            std::env::temp_dir().join(format!("lute_pkg_oldexp_{key}_{}", std::process::id()));
-        let _ = fs::remove_dir_all(&tmp);
+        let tmp_scratch = lute_scratch::ScratchDir::new();
+        let tmp = tmp_scratch.join(format!("lute_pkg_oldexp_{key}_{}", std::process::id()));
         fs::create_dir_all(tmp.join("x")).unwrap();
         fs::write(
             tmp.join("plugin.yaml"),
@@ -943,8 +910,8 @@ fn old_export_spelling_names_the_new_one() {
 #[test]
 fn loads_occasions_export() {
     use lute_manifest::schema::{OccasionSelect, OccasionTarget};
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_oc_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_pkg_oc");
     fs::create_dir_all(tmp.join("occasions")).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -1064,14 +1031,12 @@ fn loads_occasions_export() {
             "{list}: {errs:?}"
         );
     }
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// A one-export package at a fresh temp dir: `plugin.yaml` exporting
 /// `<export>: <export>/` plus `<export>/a.yaml` = `body`.
-fn one_export_pkg(tag: &str, export: &str, body: &str) -> std::path::PathBuf {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_{tag}_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+fn one_export_pkg(tag: &str, export: &str, body: &str) -> lute_scratch::ScratchDir {
+    let tmp = lute_scratch::ScratchDir::named(tag);
     fs::create_dir_all(tmp.join(export)).unwrap();
     fs::write(
         tmp.join("plugin.yaml"),
@@ -1111,7 +1076,6 @@ fn unknown_occasion_key_is_rejected_with_did_you_mean() {
         msg.contains("a.yaml:2:13: `occasions.report` has no key `selct` — did you mean `select`?"),
         "{msg}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
@@ -1172,7 +1136,6 @@ fn null_valued_key_hints_to_quote_the_description() {
         "{msg}"
     );
     assert!(!msg.contains("did you mean"), "{msg}");
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// dsl 0.24.0 T3-7: `lower:` is optional; absent means the passthrough.
@@ -1185,7 +1148,6 @@ fn directive_without_lower_loads_as_passthrough() {
     );
     let loaded = load_plugin_dir(&tmp).expect("a directive without `lower:` loads");
     assert!(loaded.directives[0].lower.is_passthrough());
-    fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]
@@ -1205,7 +1167,6 @@ fn unregistered_builtin_hook_is_a_parse_error() {
         msg.contains(&lute_manifest::schema::BUILTIN_LOWERING_HOOKS.join(", ")),
         "{msg}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// A package whose manifest parsed but whose export failed is reported by
@@ -1215,8 +1176,8 @@ fn unregistered_builtin_hook_is_a_parse_error() {
 fn failed_export_plugin_is_reported_as_failed_not_missing() {
     use lute_manifest::assemble::assemble_snapshot;
     use lute_manifest::resolve::ActivePlugin;
-    let root = std::env::temp_dir().join(format!("lute_plugins_failed_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_plugins_failed");
     fs::create_dir_all(&root).unwrap();
     let pkg = one_export_pkg(
         "failed_member",
@@ -1252,7 +1213,6 @@ fn failed_export_plugin_is_reported_as_failed_not_missing() {
         aerrs[0].to_string().contains("is not installed"),
         "{aerrs:?}"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// A cast id two files of one package declare is reported at the later
@@ -1263,8 +1223,8 @@ fn failed_export_plugin_is_reported_as_failed_not_missing() {
 fn duplicate_cast_id_is_located_and_the_package_still_loads() {
     use lute_manifest::assemble::assemble_snapshot;
     use lute_manifest::resolve::ActivePlugin;
-    let root = std::env::temp_dir().join(format!("lute_plugins_dupcast_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_plugins_dupcast");
     fs::create_dir_all(&root).unwrap();
     let pkg = one_export_pkg(
         "dup_cast",
@@ -1314,7 +1274,6 @@ fn duplicate_cast_id_is_located_and_the_package_still_loads() {
     let (snap, aerrs) = assemble_snapshot(&active, &reg);
     assert!(aerrs.is_empty(), "{aerrs:?}");
     assert!(snap.cast.contains_key("wren"));
-    fs::remove_dir_all(&root).ok();
 }
 
 /// dsl 0.24.0 §4: a plugin cast entry carries `present:` and `emotions:`
@@ -1353,14 +1312,12 @@ fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
         msg.contains("has no key `presnt` — did you mean `present`?"),
         "{msg}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// A package whose `plugin.yaml` is `manifest` and exports nothing but an
 /// empty `occasions/`.
-fn manifest_pkg(tag: &str, manifest: &str) -> std::path::PathBuf {
-    let tmp = std::env::temp_dir().join(format!("lute_pkg_man_{tag}_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&tmp);
+fn manifest_pkg(tag: &str, manifest: &str) -> lute_scratch::ScratchDir {
+    let tmp = lute_scratch::ScratchDir::named(tag);
     fs::create_dir_all(tmp.join("occasions")).unwrap();
     fs::write(tmp.join("plugin.yaml"), manifest).unwrap();
     fs::write(tmp.join("occasions/a.yaml"), "occasions:\n  talk: {}\n").unwrap();
@@ -1415,7 +1372,6 @@ fn plugin_manifest_rejects_unknown_keys_and_a_non_capability_kind() {
             .contains("`plugin.yaml` names no `id:` — add `id: <plugin id>`"),
         "{errs:?}"
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// dsl 0.28.0 T3-20: an occasion `target:` typo named serde's "did not match
@@ -1484,7 +1440,6 @@ fn a_directive_without_attrs_loads() {
         "{:?}",
         loaded.sites
     );
-    fs::remove_dir_all(&tmp).ok();
 }
 
 /// dsl 0.28.0 T3-20 (audit#22): a top-level key of the wrong shape says what
@@ -1622,5 +1577,4 @@ fn occasion_payload_types_are_named_in_plain_words() {
     );
     assert_eq!(payload["to"], Type::Domain("route".into()));
     assert_eq!(payload["who"], Type::Entity("hero".into()));
-    fs::remove_dir_all(&tmp).ok();
 }

@@ -10,22 +10,7 @@ use lute_manifest::schema::{AttrDecl, DirectiveDecl, DirectiveState, Lowering, S
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{PathSegment, Type};
 use lute_test_vocab::vocab_snapshot;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_match_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
+use std::path::Path;
 
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
@@ -95,7 +80,7 @@ const REACTION: &str = "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold
 
 #[test]
 fn param_match_is_admitted() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "reaction.lute", REACTION);
     let s = scene(
         "reaction.lute",
@@ -114,7 +99,7 @@ fn param_match_is_admitted() {
 
 #[test]
 fn ambient_test_is_component_state() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -138,7 +123,7 @@ fn ambient_test_is_component_state() {
 
 #[test]
 fn state_subject_is_component_state() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "logic.lute",
@@ -162,7 +147,7 @@ fn state_subject_is_component_state() {
 
 #[test]
 fn literal_subject_is_component_body() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "logic.lute",
@@ -186,7 +171,7 @@ fn literal_subject_is_component_body() {
 
 #[test]
 fn fact_query_and_now_flag() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -211,7 +196,7 @@ fn fact_query_and_now_flag() {
 
 #[test]
 fn ambient_interp_is_component_state() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -239,7 +224,7 @@ fn ambient_interp_is_component_state() {
 
 #[test]
 fn writing_directive_is_component_state() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "c.lute",
@@ -280,7 +265,7 @@ fn writing_directive_is_component_state() {
 
 #[test]
 fn effectless_directive_stays_admitted() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // `sfx` (lute.core staging.yaml) declares no `state:`/`effects:` — a plain
     // presentational staging directive.
     write_lute(
@@ -298,7 +283,7 @@ fn effectless_directive_stays_admitted() {
 
 #[test]
 fn set_branch_hub_stay_component_body() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "c.lute",
@@ -322,7 +307,7 @@ fn set_branch_hub_stay_component_body() {
 #[test]
 fn param_forwarding_use_is_clean() {
     // (a) A forwarded declared param inside an admitted match arm is clean.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "inner.lute",
@@ -350,7 +335,7 @@ fn param_forwarding_use_is_clean() {
     );
 
     // (b) The SAME nested-`::use`-inside-a-match shape still detects a cycle.
-    let dir2 = unique_dir();
+    let dir2 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir2,
         "a.lute",
@@ -377,7 +362,7 @@ fn param_forwarding_use_is_clean() {
 
 #[test]
 fn caller_side_state_binding_is_legal() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "reaction.lute", REACTION);
     // The CALLER scene owns its own state; binding a state-derived def to the
     // param is exactly the §6.2 invocation surface (the component body itself
@@ -409,7 +394,7 @@ fn enum_param_covered_is_clean() {
     // fully clean: no `E-NONEXHAUSTIVE` AND no `E-UNSET-UNCOVERED` (the
     // latter is structurally unreachable for a param domain — this test is
     // the assertion of that invariant).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "reaction.lute", REACTION);
     let s = scene(
         "reaction.lute",
@@ -426,7 +411,7 @@ fn enum_param_covered_is_clean() {
 fn missing_member_is_nonexhaustive() {
     // Drop the `cold` arm from the §6.5 example: `E-NONEXHAUSTIVE` (the same
     // reused code, §6.3's table).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -453,7 +438,7 @@ fn number_param_requires_otherwise() {
     // `int`/`string` params have an INFINITE domain (§6.3's table):
     // `is`-arms alone can never prove coverage, so `<otherwise>` is
     // REQUIRED even though every listed `is` value is itself in-range.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "gauge.lute",
@@ -477,7 +462,7 @@ fn number_param_requires_otherwise() {
 fn unset_on_param_is_literal_domain() {
     // A param is NEVER `unset` (§6.3): `is="unset"` on a param subject is
     // `E-WHEN-LITERAL-DOMAIN`, not coverage.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -504,7 +489,7 @@ fn unset_on_param_is_literal_domain() {
 fn foreign_member_on_param_flags() {
     // `is="blazing"` is not a member of `tier`'s declared enum
     // `[cold, warm, fond]` — a foreign literal, `E-WHEN-LITERAL-DOMAIN`.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -531,7 +516,7 @@ fn subsumed_param_arm_is_dead() {
     // `is="fond|warm"` already covers `warm`; the later `is="warm"` arm can
     // never fire (first-match-wins) — `E-ARM-DEAD` (Task 4's reachability
     // engine, reused inside the component body, §6.3).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -562,7 +547,7 @@ fn dup_otherwise_and_overlap_apply() {
     // (`W-OVERLAP-ARMS`) — both codes are exhaustiveness-engine output
     // (`check_param_match`), applying inside a component body exactly as
     // at scene level (§6.3).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -609,7 +594,7 @@ fn param_guard_test_decides() {
         )
     };
 
-    let dir_clean = unique_dir();
+    let dir_clean = lute_scratch::ScratchDir::new();
     write_lute(&dir_clean, "gauge.lute", &gauge("@budget > 5"));
     let s_clean = scene("gauge.lute", "::use{component=\"gauge\" budget=1}");
     let cs_clean = codes(&dir_clean, &s_clean);
@@ -619,7 +604,7 @@ fn param_guard_test_decides() {
          got {cs_clean:?}"
     );
 
-    let dir_dead = unique_dir();
+    let dir_dead = lute_scratch::ScratchDir::new();
     write_lute(&dir_dead, "gauge.lute", &gauge("1 > 2"));
     let s_dead = scene("gauge.lute", "::use{component=\"gauge\" budget=1}");
     let cs_dead = codes(&dir_dead, &s_dead);

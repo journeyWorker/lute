@@ -31,8 +31,8 @@ fn lute() -> Command {
 /// back as a host reads it: `project.index.json` plus every artifact by its
 /// index path.
 fn compiled_bundle(project: &Path, scratch: &str) -> Bundle {
-    let out = std::env::temp_dir().join(format!("lute-session-{}-{scratch}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&out);
+    let scratch = lute_scratch::ScratchDir::named(scratch);
+    let out = scratch.join("bundle");
     let status = lute()
         .args(["compile", "--all"])
         .arg(project)

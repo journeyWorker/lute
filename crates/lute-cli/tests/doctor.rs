@@ -3,20 +3,10 @@
 //! them, play scripts, scenario tests — and warns when the `lute-lsp` an
 //! editor would launch from `PATH` is not this toolchain's version.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-doctor-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write_at(dir: &Path, rel: &str, content: &str) {
     let path = dir.join(rel);
@@ -26,8 +16,8 @@ fn write_at(dir: &Path, rel: &str, content: &str) {
 
 /// A project activating one occasions plugin: `hubVisit` answered by a scene
 /// beat and a lore entry beat, `talk` answered by nothing.
-fn occasions_project(tag: &str) -> PathBuf {
-    let proj = temp_dir(tag);
+fn occasions_project(tag: &str) -> lute_scratch::ScratchDir {
+    let proj = lute_scratch::ScratchDir::named(tag);
     write_at(
         &proj,
         "lute.project.yaml",
@@ -87,7 +77,7 @@ fn line<'a>(text: &'a str, label: &str) -> &'a str {
 #[test]
 fn doctor_reports_plugins_occasions_plays_and_tests() {
     let proj = occasions_project("occasions");
-    let empty_path = temp_dir("occasions-path");
+    let empty_path = lute_scratch::ScratchDir::named("occasions-path");
     let text = doctor(&proj, &empty_path);
 
     assert_eq!(
@@ -126,7 +116,8 @@ fn doctor_counts_bundle_beats_answering_an_occasion() {
         "lore/talks.lute",
         "---\nkind: lore\nid: lore.talks\n---\n\n<beat id=\"greet\" on=\"talk\" target=\"npc.mara\">\n  @mara: Hi.\n</beat>\n",
     );
-    let text = doctor(&proj, &temp_dir("bundle-path"));
+    let text_scratch = lute_scratch::ScratchDir::named("bundle-path");
+    let text = doctor(&proj, &text_scratch);
     assert_eq!(
         line(&text, "occasions (beats answering)").trim(),
         "• occasions (beats answering): 2 declared, 3 beat(s) — hubVisit (2), talk (1)",
@@ -152,7 +143,8 @@ fn doctor_counts_scenes_a_chain_puts_on_an_occasion() {
             &format!("---\nkind: scene\nid: ch.{id}\n---\n\n## One\n\n@narrator: {id}.\n"),
         );
     }
-    let text = doctor(&proj, &temp_dir("chapters-path"));
+    let text_scratch = lute_scratch::ScratchDir::named("chapters-path");
+    let text = doctor(&proj, &text_scratch);
     assert_eq!(
         line(&text, "occasions (beats answering)").trim(),
         "• occasions (beats answering): 2 declared, 4 beat(s) — hubVisit (4), talk (0)",
@@ -163,8 +155,8 @@ fn doctor_counts_scenes_a_chain_puts_on_an_occasion() {
 /// Write an executable `lute-lsp` into a fresh directory that prints `stdout`
 /// — standing in for whatever build an editor would find on `PATH`.
 #[cfg(unix)]
-fn fake_lsp(tag: &str, stdout: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn fake_lsp(tag: &str, stdout: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write_exe(
         &dir.join("lute-lsp"),
         &format!("#!/bin/sh\nprintf '{stdout}'\n"),
@@ -230,7 +222,7 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
     use std::os::unix::fs::PermissionsExt;
     let proj = occasions_project("running");
     let ours = env!("CARGO_PKG_VERSION");
-    let dir = temp_dir("running-lsp");
+    let dir = lute_scratch::ScratchDir::named("running-lsp");
     let exe = dir.join("lute-lsp");
     let script = |version: &str| {
         format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'lute-lsp {version}'; exit 0; fi\nsleep 30\n")
@@ -248,7 +240,8 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
             .map(str::to_string)
             .unwrap_or_else(|| panic!("{pid} not listed:\n{text}"))
     };
-    let text = doctor(&proj, &temp_dir("running-path"));
+    let text_scratch = lute_scratch::ScratchDir::named("running-path");
+    let text = doctor(&proj, &text_scratch);
     assert_eq!(
         running(&text).rsplit(": ").next().unwrap(),
         format!("{pid} {ours}"),
@@ -258,7 +251,8 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
     // Reinstalled over the running server: the file on disk is newer.
     std::thread::sleep(std::time::Duration::from_millis(2500));
     std::fs::write(&exe, script(ours)).unwrap();
-    let text = doctor(&proj, &temp_dir("running-path2"));
+    let text_scratch2 = lute_scratch::ScratchDir::named("running-path2");
+    let text = doctor(&proj, &text_scratch2);
     let l = line(&text, "running lute-lsp");
     assert!(l.contains('✗'), "{text}");
     assert!(
@@ -280,7 +274,7 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
 fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
     let proj = occasions_project("sibling");
     let ours = env!("CARGO_PKG_VERSION");
-    let bin = temp_dir("sibling-bin");
+    let bin = lute_scratch::ScratchDir::named("sibling-bin");
     let lute = bin.join("lute");
     std::fs::copy(BIN, &lute).unwrap();
     let sibling = bin.join("lute-lsp");
@@ -324,7 +318,7 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
 fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
     let proj = occasions_project("launcher");
     let ours = env!("CARGO_PKG_VERSION");
-    let native = temp_dir("launcher-native");
+    let native = lute_scratch::ScratchDir::named("launcher-native");
     let lute = native.join("lute");
     std::fs::copy(BIN, &lute).unwrap();
     let sibling = native.join("lute-lsp");
@@ -333,7 +327,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         &format!("#!/bin/sh\nprintf 'lute-lsp {ours}\\n'\n"),
     );
     let launcher_at = |tag: &str, version: &str, starts: Option<&[u8]>| {
-        let root = temp_dir(tag);
+        let root = lute_scratch::ScratchDir::named(tag);
         let pkg = root.join("node_modules/@lute-lang/lute");
         std::fs::create_dir_all(&pkg).unwrap();
         let script = pkg.join("lsp-bin.js");
@@ -348,7 +342,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         std::os::unix::fs::symlink(&script, bin.join("lute-lsp")).unwrap();
-        bin
+        (root, bin)
     };
     let run = |path: &Path| {
         let out = Command::new(&lute)
@@ -361,7 +355,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         String::from_utf8_lossy(&out.stdout).to_string()
     };
 
-    let text = run(&launcher_at("launcher-current", ours, None));
+    let text = run(&launcher_at("launcher-current", ours, None).1);
     let l = line(&text, "lute-lsp beside lute");
     assert!(
         l.contains('✓')
@@ -370,7 +364,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
         "{text}"
     );
 
-    let text = run(&launcher_at("launcher-stale", "0.17.1", None));
+    let text = run(&launcher_at("launcher-stale", "0.17.1", None).1);
     let l = line(&text, "lute-lsp beside lute");
     assert!(
         l.contains('✗') && l.contains("0.17.1") && l.contains(&format!("differs from lute {ours}")),
@@ -378,7 +372,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
     );
 
     let same = std::fs::read(&sibling).unwrap();
-    let text = run(&launcher_at("launcher-same", ours, Some(&same)));
+    let text = run(&launcher_at("launcher-same", ours, Some(&same)).1);
     let l = line(&text, "lute-lsp beside lute");
     assert!(
         l.contains('✓') && l.contains("starts the same build"),
@@ -387,7 +381,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
 
     // Another build that reports this very version: only the bytes tell.
     let other = format!("#!/bin/sh\n# another build\nprintf 'lute-lsp {ours}\\n'\n");
-    let text = run(&launcher_at("launcher-other", ours, Some(other.as_bytes())));
+    let text = run(&launcher_at("launcher-other", ours, Some(other.as_bytes())).1);
     let l = line(&text, "lute-lsp beside lute");
     assert!(
         l.contains('✗')

@@ -265,8 +265,8 @@ async fn analyze_publishes_project_resolver_diagnostics() {
     use tower_lsp_server::LspService;
 
     // Temp project with a plugin dependency cycle: a.x -> a.dep -> a.x.
-    let root = std::env::temp_dir().join(format!("lute_lsp_cycle_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_cycle");
     for (id, dep) in [("a.x", "a.dep"), ("a.dep", "a.x")] {
         let pdir = root.join("plugins").join(id);
         fs::create_dir_all(&pdir).unwrap();
@@ -340,5 +340,4 @@ async fn analyze_publishes_project_resolver_diagnostics() {
         .expect("range.start present");
     assert_eq!(start.get("line").and_then(|l| l.as_u64()), Some(0));
     assert_eq!(start.get("character").and_then(|c| c.as_u64()), Some(0));
-    fs::remove_dir_all(&root).ok();
 }

@@ -13,19 +13,6 @@ use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-/// A fresh unique temp dir (matches every other `lute-cli` integration test's
-/// own helper — each integration test binary is compiled separately, so
-/// this is intentionally duplicated rather than shared).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &std::path::Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
     if let Some(parent) = path.parent() {
@@ -114,7 +101,7 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
     // `run.a` is B's ONLY route's unconditional write, so `run.a ∈
     // Guaranteed(B)` — the envelope table must print it under a header
     // carrying the §2.6 "under your declared routes" qualifier.
-    let dir = temp_dir("scenario-envelope-guaranteed");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-guaranteed");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
@@ -130,7 +117,7 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
 
 #[test]
 fn scenario_envelope_quest_without_follows_shows_defaults_note() {
-    let dir = temp_dir("scenario-envelope-quest-defaults");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-quest-defaults");
     write(&dir, "q.lute", &quest_no_after("someQuest"));
 
     let out = run(&[
@@ -152,7 +139,7 @@ fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs(
     // for `p` (or `q`) into `envs`. `scenario envelope p.s01ep01` must fall
     // back to the D/D schema-default floor (mirrors T12's quest fallback),
     // never empty tables.
-    let dir = temp_dir("scenario-envelope-cycle-floor");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-cycle-floor");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
              after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: int, default: 0 }\n\
              ---\n## Shot 1.\n@narrator: hi\n";
@@ -191,7 +178,7 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
     // from a genuinely-empty envelope. `envelope` must now announce the
     // cycle-degraded state explicitly, mirroring `reach`'s wording, and
     // (like `reach`'s cyclic case) still exit 0.
-    let dir = temp_dir("scenario-envelope-cycle-announce");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-cycle-announce");
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
              after: 'visited(\"q.s01ep01\")'\nstate:\n  run.known: { type: int, default: 0 }\n\
              ---\n## Shot 1.\n@narrator: hi\n";
@@ -235,7 +222,7 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
     // cycle note must therefore be gated on the quest being graph-positioned
     // (`after.is_some()`); the cyclic SCENE case still announces the note
     // (sibling test `scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded`).
-    let dir = temp_dir("scenario-envelope-plain-quest-cyclic-root");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-plain-quest-cyclic-root");
     // p <-> q form a prerequisite cycle in this same resolved root.
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
              after: 'visited(\"q.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n";
@@ -276,7 +263,7 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
     // This is the observable contract the whole-root blanking used to break:
     // before the fix, `ind` went dark (Unknown, cycle note) purely because a
     // SIBLING pair was cyclic.
-    let dir = temp_dir("scenario-cycle-independent");
+    let dir = lute_scratch::ScratchDir::named("scenario-cycle-independent");
     let ind = "---\nkind: scene\ncharacter: ind\nseason: 1\nepisode: 1\n\
                state:\n  run.known: { type: int, default: 0 }\n---\n## Shot 1.\n@narrator: hi\n";
     let p = "---\nkind: scene\ncharacter: p\nseason: 1\nepisode: 1\n\
@@ -350,7 +337,7 @@ fn scenario_envelope_header_carries_pre_entry_label() {
     // state available when control REACHES the node, BEFORE the node's own
     // writes -- both personas misread it as the node's own effects. The
     // header must carry an explicit pre-entry label.
-    let dir = temp_dir("scenario-envelope-pre-entry");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-pre-entry");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
@@ -417,7 +404,7 @@ fn connectivity_t15_corpus_example_envelope_shows_guaranteed_cross_scene_read() 
 
 #[test]
 fn bare_scenario_prints_nonempty_topological_graph() {
-    let dir = temp_dir("scenario-bare-graph");
+    let dir = lute_scratch::ScratchDir::named("scenario-bare-graph");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
@@ -442,7 +429,7 @@ fn bare_scenario_prints_nonempty_topological_graph() {
 
 #[test]
 fn scenario_reach_prints_reachability_verdict() {
-    let dir = temp_dir("scenario-reach");
+    let dir = lute_scratch::ScratchDir::named("scenario-reach");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
@@ -467,7 +454,7 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
     // two sets and expect a diff. `a` unconditionally sets `run.z`, `b`
     // never does; `x after: visited(a) || visited(b)` reads `run.z`, so
     // `run.z ∈ Possible(x) \ Guaranteed(x)` — a concrete warning READ.
-    let dir = temp_dir("scenario-envelope-warning-read");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-warning-read");
     write(&dir, "a.lute", &scene_sets_run_z("a"));
     write(
         &dir,
@@ -502,7 +489,7 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
 
 #[test]
 fn check_project_unknown_node_exits_nonzero_with_e_conn_unknown_node() {
-    let dir = temp_dir("scenario-check-project-unknown-node");
+    let dir = lute_scratch::ScratchDir::named("scenario-check-project-unknown-node");
     write(&dir, "x.lute", &scene_after("x", "doesNotExist.s01ep01"));
 
     let out = run(&["check-project", dir.to_str().unwrap()]);
@@ -524,7 +511,7 @@ fn scenario_reach_on_cross_root_duplicate_node_id_is_ambiguous_not_silently_pick
     // `c.s01ep01` in both. A scene/quest id is only unique WITHIN one
     // resolved root (dsl §2.3/§6.3); `lute scenario` must reject this as
     // ambiguous rather than silently reporting only the first root.
-    let dir = temp_dir("scenario-cross-root-dup");
+    let dir = lute_scratch::ScratchDir::named("scenario-cross-root-dup");
     write(&dir, "lute.project.yaml", &core_only_project_yaml());
     write(&dir, "subA/lute.project.yaml", &core_only_project_yaml());
     write(&dir, "subA/scene.lute", &scene_sets_run_a("c"));
@@ -574,7 +561,7 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
     // "plain quest, reachable" and an undeclared scene as evidence of an
     // `E-CONN-CYCLE`. Both must instead read Unknown, consistent with
     // `E-CONN-UNKNOWN-NODE`.
-    let dir = temp_dir("scenario-undeclared-reference");
+    let dir = lute_scratch::ScratchDir::named("scenario-undeclared-reference");
     write(
         &dir,
         "x.lute",
@@ -634,7 +621,7 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     // scene-only, so there is no read-site data for a quest at all). The
     // two sections must NOT share the same "suppressed... warning-grade
     // reads" wording.
-    let dir = temp_dir("scenario-envelope-label-scene");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-label-scene");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
     let out_scene = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
@@ -642,7 +629,7 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     assert!(out_scene.status.success(), "{text_scene}");
     assert!(text_scene.contains("warning-grade reads"), "{text_scene}");
 
-    let qdir = temp_dir("scenario-envelope-label-quest");
+    let qdir = lute_scratch::ScratchDir::named("scenario-envelope-label-quest");
     write(&qdir, "q.lute", &quest_no_after("labelQuest"));
     let out_quest = run(&[
         "scenario",
@@ -673,7 +660,7 @@ fn scenario_envelope_ambiguous_quest_id_prints_ambiguity_note_not_arbitrary_pick
     // files, no import edge -- already an `E-QUEST-ID-DUP` case elsewhere).
     // `envelope quest:dup` must not silently report either declaration's
     // envelope as if it were unambiguous.
-    let dir = temp_dir("scenario-ambiguous-quest-envelope");
+    let dir = lute_scratch::ScratchDir::named("scenario-ambiguous-quest-envelope");
     write(
         &dir,
         "q1.lute",
@@ -712,7 +699,7 @@ fn scenario_reach_and_envelope_on_duplicate_scene_key_prints_ambiguity_note_not_
     // scenario` must never surface that internal pick to the user as if it
     // were the single authoritative answer; both `reach` and `envelope`
     // must refuse with an explicit ambiguity note instead.
-    let dir = temp_dir("scenario-ambiguous-scene-key");
+    let dir = lute_scratch::ScratchDir::named("scenario-ambiguous-scene-key");
     write(
         &dir,
         "a1.lute",
@@ -766,7 +753,7 @@ fn scenario_reach_formula_rendering_escapes_embedded_quote_and_backslash() {
     // (`\"` -> `"`, `\\` -> `\`), so `parse_prereq` resolves the atom id to
     // the literal Rust string `has"quote\slash` — the rendered output must
     // re-escape it the same way, not leak it raw.
-    let dir = temp_dir("scenario-formula-escaping");
+    let dir = lute_scratch::ScratchDir::named("scenario-formula-escaping");
     write(
         &dir,
         "x.lute",
@@ -797,7 +784,7 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
     // lookup (never silently re-tried as a scene), so such a scene must
     // be reachable via the symmetric explicit `scene:<key>` prefix
     // instead -- never permanently unselectable.
-    let dir = temp_dir("scenario-quest-prefix-scene-key");
+    let dir = lute_scratch::ScratchDir::named("scenario-quest-prefix-scene-key");
     write(
         &dir,
         "x.lute",
@@ -855,7 +842,7 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
     // and a declared quest id in the same root is genuinely ambiguous --
     // neither kind is silently preferred; the user must disambiguate with
     // an explicit `scene:`/`quest:` prefix.
-    let dir = temp_dir("scenario-bare-both-match");
+    let dir = lute_scratch::ScratchDir::named("scenario-bare-both-match");
     write(
         &dir,
         "s.lute",
@@ -879,7 +866,7 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
 /// `reach`/`unreachable_quests` data with.
 #[test]
 fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
-    let dir = temp_dir("scenario-reach-dead-required-objective");
+    let dir = lute_scratch::ScratchDir::named("scenario-reach-dead-required-objective");
     write(
         &dir,
         "deadquest.lute",
@@ -927,8 +914,8 @@ fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
 /// to `quest(viaActive)` via `active("gate")` and `quest(viaCompleted)` via
 /// `completed("gate")`. The two lifecycle edges are structurally identical, so
 /// only the reported KIND can tell them apart.
-fn both_edge_kinds_fixture() -> (PathBuf, String) {
-    let dir = temp_dir("scenario-edge-kinds");
+fn both_edge_kinds_fixture() -> (lute_scratch::ScratchDir, String) {
+    let dir = lute_scratch::ScratchDir::named("scenario-edge-kinds");
     write(
         &dir,
         "a.lute",
@@ -1059,7 +1046,7 @@ fn scenario_reach_accepts_an_active_prerequisite() {
 /// `unreachable_quest_ids` matches on exactly that.
 #[test]
 fn dead_relation_start_reads_unreachable() {
-    let dir = temp_dir("reach_dead_start");
+    let dir = lute_scratch::ScratchDir::named("reach_dead_start");
     write(&dir, "lute.project.yaml", &core_only_project_yaml());
     write(
         &dir,
@@ -1095,7 +1082,7 @@ fn haven() -> PathBuf {
 /// PerDocEffects, which `assemble_root_scenario` builds and drops.
 #[test]
 fn scene_envelope_names_the_writers_of_each_path() {
-    let dir = temp_dir("envelope-writers");
+    let dir = lute_scratch::ScratchDir::named("envelope-writers");
     write(&dir, "lute.project.yaml", &core_only_project_yaml());
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
@@ -1249,7 +1236,7 @@ fn envelope_at_the_root_and_at_the_leaf_are_no_longer_identical() {
 fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
     let vocab = "entities:\n  crew: { members: [vesna] }\n  topic: { members: [manifest] }\n\
                  relations:\n  knows: { args: [crew, topic], tier: run }\n";
-    let dir = temp_dir("scenario-envelope-facts");
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-facts");
     write(
         &dir,
         "a.lute",
@@ -1306,20 +1293,21 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
 
 /// One scene and one bare quest (`quest_no_after`): the quest is in no layer
 /// and on no edge.
-fn unanchored_fixture(tag: &str) -> String {
-    let dir = temp_dir(tag);
+fn unanchored_fixture(tag: &str) -> (lute_scratch::ScratchDir, String) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "a.lute",
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n",
     );
     write(&dir, "q.lute", &quest_no_after("loose"));
-    dir.to_str().unwrap().to_string()
+    let path = dir.to_str().unwrap().to_string();
+    (dir, path)
 }
 
 #[test]
 fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
-    let path = unanchored_fixture("scenario-unanchored");
+    let (_dir, path) = unanchored_fixture("scenario-unanchored");
 
     let text = stdout(&run(&["scenario", &path]));
     let tail = text
@@ -1370,7 +1358,7 @@ fn scenario_json_omits_unanchored_when_every_quest_is_anchored() {
 
 #[test]
 fn scenario_reach_reports_a_bare_quest_as_unanchored() {
-    let path = unanchored_fixture("scenario-reach-unanchored");
+    let (_dir, path) = unanchored_fixture("scenario-reach-unanchored");
 
     let out = run(&["scenario", &path, "reach", "quest:loose"]);
     let text = stdout(&out);
@@ -1411,7 +1399,7 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
 /// as unanchored; `reach` names the anchors.
 #[test]
 fn scenario_draws_subquest_and_start_edges_without_after() {
-    let dir = temp_dir("scenario-quest-tree");
+    let dir = lute_scratch::ScratchDir::named("scenario-quest-tree");
     write(
         &dir,
         "depart.lute",
@@ -1462,7 +1450,7 @@ fn scenario_draws_subquest_and_start_edges_without_after() {
 /// into a bundle no longer erases it from the only structural view.
 #[test]
 fn scenario_draws_and_reaches_bundle_beats() {
-    let dir = temp_dir("scenario-bundle-beat");
+    let dir = lute_scratch::ScratchDir::named("scenario-bundle-beat");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(
         &dir,
@@ -1511,7 +1499,7 @@ fn scenario_draws_and_reaches_bundle_beats() {
 /// `after`".
 #[test]
 fn scenario_reach_prints_a_bundle_beats_after() {
-    let dir = temp_dir("scenario-bundle-after");
+    let dir = lute_scratch::ScratchDir::named("scenario-bundle-after");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(
         &dir,
@@ -1535,7 +1523,7 @@ fn scenario_reach_prints_a_bundle_beats_after() {
 /// reads; bare `--endings` keeps the beats whose content can run `::end`.
 #[test]
 fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
-    let dir = temp_dir("reach-endings");
+    let dir = lute_scratch::ScratchDir::named("reach-endings");
     write(&dir, "lute.project.yaml", &core_only_project_yaml());
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(

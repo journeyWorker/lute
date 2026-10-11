@@ -1779,7 +1779,8 @@ mod tests {
     }
     #[test]
     fn identity_rename_mapping_is_loaded_with_source_location() {
-        let root = std::env::temp_dir().join(format!(
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join(format!(
             "lute-identity-renames-{}-{}",
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
@@ -1795,6 +1796,5 @@ mod tests {
         assert_eq!(config.identity_renames.len(), 1);
         assert_eq!(config.identity_renames[0].rename.from, "quest:old");
         assert!(config.identity_renames[0].span.is_some());
-        let _ = std::fs::remove_dir_all(root);
     }
 }

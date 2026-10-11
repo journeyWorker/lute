@@ -12,25 +12,13 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_tpl028_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const LORE_HEAD: &str = "---\nkind: lore\nid: bonds\ncomponents: [t.lute]\n\
 state:\n  user.bond: { type: int, default: 0 }\n---\n\n";
 
 /// `lore` checked against the template `component` (written to `t.lute`).
 fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("t.lute"), component).unwrap();
     let (doc, _) = lute_syntax::parse(lore);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
@@ -264,7 +252,7 @@ beat:\n  on: evening\n  also: true\n---\n";
     );
 
     let beat_attr = |lore: &str| {
-        let dir = unique_dir();
+        let dir = lute_scratch::ScratchDir::new();
         std::fs::write(dir.join("t.lute"), src).unwrap();
         let (doc, _) = lute_syntax::parse(lore);
         let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
@@ -374,7 +362,7 @@ fn a_beat_template_body_needs_no_heading_and_an_ordinary_component_does() {
 
 #[test]
 fn a_speaker_param_passes_through_a_nested_component() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("inner.lute"),
         "---\ncomponent: inner\neffects: true\nparams:\n  who: speaker\n---\n\n## Inner\n\n\
@@ -414,7 +402,7 @@ state:\n  run.aff: {{ type: int, default: 0, per: suitor }}\nentities:\n  suitor
 
 #[test]
 fn a_component_body_reading_a_def_is_one_report_naming_the_param() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let comp = "---\ncomponent: lit\nstate:\n  run.hour: { type: int, default: 8 }\n\
 defs:\n  late: \"run.hour >= 20\"\n---\n\n## Lit\n\n@narrator{when=\"@late\"}: It is late.\n";
     std::fs::write(dir.join("lit.lute"), comp).unwrap();

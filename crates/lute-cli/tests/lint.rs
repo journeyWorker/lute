@@ -7,20 +7,10 @@
 //! and a plugin's `lints/` export fires when its plugin is active in the
 //! project's default profile.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-lint-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn run(args: &[&str]) -> std::process::Output {
     Command::new(BIN).args(args).output().unwrap()
@@ -51,7 +41,7 @@ const CLEAN_SCENE: &str = "---\nkind: scene\n---\n## Shot 1.\n::bg{location=\"a\
 /// (it is warn-level).
 #[test]
 fn default_run_reports_dialogue_length() {
-    let dir = temp_dir("default");
+    let dir = lute_scratch::ScratchDir::named("default");
     write(&dir.join("scene.lute"), &scene_with_long_line());
 
     let out = run(&["lint", dir.to_str().unwrap()]);
@@ -69,7 +59,7 @@ fn default_run_reports_dialogue_length() {
 /// finding.
 #[test]
 fn level_off_silences_rule() {
-    let dir = temp_dir("off");
+    let dir = lute_scratch::ScratchDir::named("off");
     write(&dir.join("scene.lute"), &scene_with_long_line());
     write(
         &dir.join("lute.lint.yaml"),
@@ -89,7 +79,7 @@ fn level_off_silences_rule() {
 /// flips the exit code to 1.
 #[test]
 fn level_error_flips_exit_code() {
-    let dir = temp_dir("error-level");
+    let dir = lute_scratch::ScratchDir::named("error-level");
     write(&dir.join("scene.lute"), &scene_with_long_line());
     write(
         &dir.join("lute.lint.yaml"),
@@ -111,7 +101,7 @@ fn level_error_flips_exit_code() {
 /// the id becomes `L-<UPPER-KEBAB>` and the CEL predicate resolves.
 #[test]
 fn custom_rule_fires_from_config() {
-    let dir = temp_dir("custom");
+    let dir = lute_scratch::ScratchDir::named("custom");
     write(&dir.join("scene.lute"), CLEAN_SCENE);
     write(
         &dir.join("lute.lint.yaml"),
@@ -136,7 +126,7 @@ fn custom_rule_fires_from_config() {
 /// non-excluded file still fires.
 #[test]
 fn ignore_glob_excludes_matching_docs() {
-    let dir = temp_dir("ignore");
+    let dir = lute_scratch::ScratchDir::named("ignore");
     write(&dir.join("drafts/skip.lute"), &scene_with_long_line());
     write(&dir.join("keep.lute"), &scene_with_long_line());
     write(&dir.join("lute.lint.yaml"), "ignore: [\"drafts/**\"]\n");
@@ -154,7 +144,7 @@ fn ignore_glob_excludes_matching_docs() {
 /// (with `path`), and `configDiagnostics` — even when empty.
 #[test]
 fn json_shape_is_stable() {
-    let dir = temp_dir("json");
+    let dir = lute_scratch::ScratchDir::named("json");
     write(&dir.join("scene.lute"), &scene_with_long_line());
 
     let out = run(&["lint", dir.to_str().unwrap(), "--json"]);
@@ -178,7 +168,7 @@ fn json_shape_is_stable() {
 /// `severity: error`, `denied: true`.
 #[test]
 fn deny_promotes_lint_code() {
-    let dir = temp_dir("deny");
+    let dir = lute_scratch::ScratchDir::named("deny");
     write(&dir.join("scene.lute"), &scene_with_long_line());
 
     let out = run(&[
@@ -210,7 +200,7 @@ fn deny_promotes_lint_code() {
 /// `check`'s registry, over the `L-*` / `E-LINT-*` shape.
 #[test]
 fn unknown_deny_code_is_usage_error() {
-    let dir = temp_dir("bad-deny");
+    let dir = lute_scratch::ScratchDir::named("bad-deny");
     write(&dir.join("scene.lute"), CLEAN_SCENE);
 
     let out = run(&["lint", dir.to_str().unwrap(), "--deny", "L-lowercase"]);
@@ -223,7 +213,7 @@ fn unknown_deny_code_is_usage_error() {
 /// diagnostic.
 #[test]
 fn malformed_yaml_is_exit_2() {
-    let dir = temp_dir("malformed");
+    let dir = lute_scratch::ScratchDir::named("malformed");
     write(&dir.join("scene.lute"), CLEAN_SCENE);
     write(&dir.join("lute.lint.yaml"), "rules: [\n  not: a: mapping\n");
 
@@ -244,7 +234,7 @@ fn malformed_yaml_is_exit_2() {
 /// and asserts the resulting `L-<PLUGIN>-…` diagnostic.
 #[test]
 fn plugin_lint_export_fires_end_to_end() {
-    let dir = temp_dir("plugin");
+    let dir = lute_scratch::ScratchDir::named("plugin");
     write(&dir.join("scene.lute"), CLEAN_SCENE);
     write(
         &dir.join("lute.project.yaml"),
@@ -301,7 +291,7 @@ fn plugin_lint_export_fires_end_to_end() {
 /// draws no background finding; a scene no chain lists still does.
 #[test]
 fn chapters_listed_scene_lints_as_a_beat() {
-    let dir = temp_dir("chapters");
+    let dir = lute_scratch::ScratchDir::named("chapters");
     write(
         &dir.join("lute.project.yaml"),
         "defaultProfile: core\nprofiles: { core: { plugins: {} } }\n\

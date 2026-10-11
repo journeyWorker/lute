@@ -1,23 +1,12 @@
 use lute_check::{check, resolve_components, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static NEXT: AtomicU64 = AtomicU64::new(0);
-
-fn temp_project() -> PathBuf {
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_identity_gate_{}_{}", std::process::id(), n));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const COMPONENT: &str = "---\ncomponent: c\n---\n## Scene 1.\n";
 const SCENE: &str = "---\nkind: scene\ncharacter: n\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n## Shot 1.\n::use{component=\"c\"}\n@n: uncoded\n";
 
 fn diagnostics(require_stable: bool) -> Vec<lute_core_span::Diagnostic> {
-    let dir = temp_project();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("c.lute"), COMPONENT).unwrap();
     let (doc, _) = lute_syntax::parse(SCENE);
     let typed = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default()).0;

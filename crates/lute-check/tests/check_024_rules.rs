@@ -7,8 +7,6 @@ use lute_check::{check, fold_env, resolve_imports, CheckInput, Mode, SchemaImpor
 use lute_core_span::{Diagnostic, Span};
 use lute_manifest::provider::ProviderSet;
 use lute_syntax::datalog::BodyLiteral;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 state:\n  scene.n: { type: int, default: 0 }\n\
@@ -39,16 +37,6 @@ fn diags(text: &str) -> Vec<Diagnostic> {
 
 fn codes(ds: &[Diagnostic]) -> Vec<&str> {
     ds.iter().map(|d| d.code.as_str()).collect()
-}
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_check_024_rules_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
 }
 
 fn zero_span() -> Span {
@@ -167,7 +155,7 @@ fn count_distinct_is_in_profile_and_its_column_is_an_index() {
 /// one); a relation whose only rule failed to parse draws none at all.
 #[test]
 fn imported_schema_problems_point_at_the_schema_and_do_not_cascade() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("world.schema.yaml"),
         "entities:\n  npc: { members: [mara] }\nrelations:\n  empty: { args: [npc], derive: true }\n  \

@@ -2,12 +2,6 @@ use std::path::{Path, PathBuf};
 
 use lute_model::{diff_models, project_revision, ModelOptions, ProjectModel};
 use lute_semantic::NodeKind;
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-s2-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn scene(text: &str) -> String {
     format!(
@@ -42,14 +36,15 @@ fn revisions_are_length_delimited_and_traversal_order_independent() {
 
 #[test]
 fn revisions_include_external_import_bytes() {
-    let root = temp_dir("external-revision-root");
-    let shared = temp_dir("external-revision-shared");
+    let parent = lute_scratch::ScratchDir::named("external-revision");
+    let root = parent.join("root");
+    let shared = parent.join("external-revision-shared");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&shared).unwrap();
     std::fs::write(shared.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
     std::fs::write(
         root.join("scene.lute"),
-        "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: ../lute-s2-external-revision-shared-".to_string()
-            + &std::process::id().to_string()
-            + "/world.schema.yaml\n---\n\n## Opening\n\n@hero{when=\"run.flag == true\"}: Hello\n",
+        "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: ../external-revision-shared/world.schema.yaml\n---\n\n## Opening\n\n@hero{when=\"run.flag == true\"}: Hello\n",
     )
     .unwrap();
     let first = model(&root);
@@ -64,26 +59,22 @@ fn revisions_include_external_import_bytes() {
     let second = model(&root);
     assert_ne!(first.revisions().sha256, second.revisions().sha256);
     assert_ne!(first.revisions().files[&key].sha256, second.revisions().files[&key].sha256);
-    let _ = std::fs::remove_dir_all(root);
-    let _ = std::fs::remove_dir_all(shared);
 }
 
 #[test]
 fn trailing_whitespace_and_final_newline_are_semantically_empty() {
-    let before = temp_dir("trivia-before");
-    let after = temp_dir("trivia-after");
+    let before = lute_scratch::ScratchDir::named("trivia-before");
+    let after = lute_scratch::ScratchDir::named("trivia-after");
     std::fs::write(before.join("scene.lute"), scene("Hello")).unwrap();
     std::fs::write(after.join("scene.lute"), scene("Hello  \n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.is_empty(), "unexpected changes: {:?}", diff.changes);
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
 }
 
 #[test]
 fn line_text_change_is_one_line_change_and_is_deterministic() {
-    let before = temp_dir("line-before");
-    let after = temp_dir("line-after");
+    let before = lute_scratch::ScratchDir::named("line-before");
+    let after = lute_scratch::ScratchDir::named("line-after");
     std::fs::write(before.join("scene.lute"), scene("Hello")).unwrap();
     std::fs::write(after.join("scene.lute"), scene("Goodbye")).unwrap();
     let b = model(&before);
@@ -95,14 +86,12 @@ fn line_text_change_is_one_line_change_and_is_deterministic() {
     assert_eq!(first.changes.len(), 1, "unexpected changes: {:?}", first.changes);
     assert!(matches!(&first.changes[0].kind, lute_model::ChangeKind::Field(name) if name == "lineText"));
     assert_eq!(first.changes[0].locations.len(), 2);
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
 }
  
 #[test]
 fn cel_whitespace_and_parentheses_are_semantically_empty() {
-    let before = temp_dir("cel-before");
-    let after = temp_dir("cel-after");
+    let before = lute_scratch::ScratchDir::named("cel-before");
+    let after = lute_scratch::ScratchDir::named("cel-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n";
     std::fs::write(before.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
     std::fs::write(after.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
@@ -110,14 +99,12 @@ fn cel_whitespace_and_parentheses_are_semantically_empty() {
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{when=\"( run.flag == true )\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.is_empty(), "unexpected changes: {:?}", diff.changes);
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
 }
 
 #[test]
 fn unparsable_condition_is_reported_without_text_fallback() {
-    let before = temp_dir("bad-cel-before");
-    let after = temp_dir("bad-cel-after");
+    let before = lute_scratch::ScratchDir::named("bad-cel-before");
+    let after = lute_scratch::ScratchDir::named("bad-cel-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n";
     let schema = "state:\n  run.flag: { type: bool, default: false }\n";
     std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
@@ -126,28 +113,24 @@ fn unparsable_condition_is_reported_without_text_fallback() {
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{when=\"run.flag ==\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::ConditionUnparsable)), "unexpected changes: {:?}", diff.changes);
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
 }
 
 #[test]
 fn path_move_with_same_identity_is_moved() {
-    let before = temp_dir("move-before");
-    let after = temp_dir("move-after");
+    let before = lute_scratch::ScratchDir::named("move-before");
+    let after = lute_scratch::ScratchDir::named("move-after");
     std::fs::write(before.join("scene.lute"), scene("Hello")).unwrap();
     std::fs::create_dir_all(after.join("nested")).unwrap();
     std::fs::write(after.join("nested/scene.lute"), scene("Hello")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Moved)));
     assert!(!diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added | lute_model::ChangeKind::Removed)));
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
 }
 
 #[test]
 fn guard_change_is_one_guard_change() {
-    let before = temp_dir("guard-before");
-    let after = temp_dir("guard-after");
+    let before = lute_scratch::ScratchDir::named("guard-before");
+    let after = lute_scratch::ScratchDir::named("guard-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n";
     let schema = "state:\n  run.flag: { type: bool, default: false }\n";
     std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
@@ -156,34 +139,31 @@ fn guard_change_is_one_guard_change() {
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{when=\"run.flag == false\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_one(&diff, "guard", "line:hall.hero_0010");
-    cleanup(before, after);
 }
 
 #[test]
 fn speaker_and_line_id_changes_are_removed_and_added() {
-    let before = temp_dir("identity-before");
-    let after = temp_dir("identity-after");
+    let before = lute_scratch::ScratchDir::named("identity-before");
+    let after = lute_scratch::ScratchDir::named("identity-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n";
     std::fs::write(before.join("scene.lute"), format!("{prefix}@hero{{code=\"0010\"}}: Hello\n")).unwrap();
     std::fs::write(after.join("scene.lute"), format!("{prefix}@villain{{code=\"0020\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_eq!(diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Removed)).count(), 1);
     assert_eq!(diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Added)).count(), 1);
-    cleanup(before, after);
 }
 
 
 #[test]
 fn authored_line_id_change_is_removed_and_added() {
-    let before = temp_dir("line-id-before");
-    let after = temp_dir("line-id-after");
+    let before = lute_scratch::ScratchDir::named("line-id-before");
+    let after = lute_scratch::ScratchDir::named("line-id-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n";
     std::fs::write(before.join("scene.lute"), format!("{prefix}@hero{{code=\"0010\"}}: Hello\n")).unwrap();
     std::fs::write(after.join("scene.lute"), format!("{prefix}@hero{{code=\"0020\"}}: Hello\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed) && c.node.canonical() == "line:hall.hero_0010" && c.unmapped_identity));
     assert!(diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Added) && c.node.canonical() == "line:hall.hero_0020" && c.unmapped_identity));
-    cleanup(before, after);
 }
 
 fn assert_one(diff: &lute_model::SemanticDiff, kind: &str, node: &str) {
@@ -193,15 +173,10 @@ fn assert_one(diff: &lute_model::SemanticDiff, kind: &str, node: &str) {
     assert_eq!(diff.changes[0].locations.len(), 2);
 }
 
-fn cleanup(before: PathBuf, after: PathBuf) {
-    let _ = std::fs::remove_dir_all(before);
-    let _ = std::fs::remove_dir_all(after);
-}
-
 #[test]
 fn choice_effect_change_is_one_choice_effect_change() {
-    let before = temp_dir("choice-before");
-    let after = temp_dir("choice-after");
+    let before = lute_scratch::ScratchDir::named("choice-before");
+    let after = lute_scratch::ScratchDir::named("choice-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n<branch id=\"pick\">\n<choice id=\"go\" text=\"Go\">\n";
     let schema = "state:\n  run.flag: { type: bool, default: false }\n";
     std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
@@ -210,25 +185,23 @@ fn choice_effect_change_is_one_choice_effect_change() {
     std::fs::write(after.join("scene.lute"), format!("{prefix}::set{{ run.flag = false }}\n</choice>\n</branch>\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_eq!(diff.changes.iter().filter(|change| matches!(&change.kind, lute_model::ChangeKind::Field(name) if name == "choiceEffects")).count(), 1, "unexpected changes: {:?}", diff.changes);
-    cleanup(before, after);
 }
 
 #[test]
 fn objective_schedule_change_is_one_scheduling_change() {
-    let before = temp_dir("schedule-before");
-    let after = temp_dir("schedule-after");
+    let before = lute_scratch::ScratchDir::named("schedule-before");
+    let after = lute_scratch::ScratchDir::named("schedule-after");
     let prefix = "---\nkind: quest\nid: q\nstate:\n  run.done: { type: bool, default: false }\n---\n\n<quest id=\"q\" start=\"true\">\n";
     std::fs::write(before.join("quest.lute"), format!("{prefix}<objective id=\"o\" done=\"run.done\" by=\"run.done\"/>\n</quest>\n")).unwrap();
     std::fs::write(after.join("quest.lute"), format!("{prefix}<objective id=\"o\" done=\"run.done\" by=\"!run.done\"/>\n</quest>\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_eq!(diff.changes.iter().filter(|change| matches!(&change.kind, lute_model::ChangeKind::Field(name) if name == "scheduling")).count(), 1, "unexpected changes: {:?}", diff.changes);
-    cleanup(before, after);
 }
 
 #[test]
 fn reward_change_is_one_reward_change() {
-    let before = temp_dir("reward-before");
-    let after = temp_dir("reward-after");
+    let before = lute_scratch::ScratchDir::named("reward-before");
+    let after = lute_scratch::ScratchDir::named("reward-after");
     let prefix = "---\nkind: quest\nid: q\n---\n\n<quest id=\"q\" start=\"true\">\n";
     std::fs::write(before.join("quest.lute"), format!("{prefix}<reward kind=\"gold\" amount=\"1\"/>\n</quest>\n")).unwrap();
     std::fs::write(after.join("quest.lute"), format!("{prefix}<reward kind=\"gold\" amount=\"2\"/>\n</quest>\n")).unwrap();
@@ -237,26 +210,24 @@ fn reward_change_is_one_reward_change() {
     assert!(matches!(&diff.changes[0].kind, lute_model::ChangeKind::Field(name) if name == "reward"));
     assert_eq!(diff.changes[0].node.kind, NodeKind::Reward);
     assert_eq!(diff.changes[0].locations.len(), 2);
-    cleanup(before, after);
 }
 
 #[test]
 fn identical_reward_insert_reports_ambiguity_instead_of_guessing() {
-    let before = temp_dir("reward-ambiguous-before");
-    let after = temp_dir("reward-ambiguous-after");
+    let before = lute_scratch::ScratchDir::named("reward-ambiguous-before");
+    let after = lute_scratch::ScratchDir::named("reward-ambiguous-after");
     let prefix = "---\nkind: quest\nid: q\n---\n\n<quest id=\"q\" start=\"true\">\n";
     std::fs::write(before.join("quest.lute"), format!("{prefix}<reward kind=\"gold\" amount=\"1\"/>\n</quest>\n")).unwrap();
     std::fs::write(after.join("quest.lute"), format!("{prefix}<reward kind=\"gold\" amount=\"1\"/>\n<reward kind=\"gold\" amount=\"1\"/>\n</quest>\n")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert_eq!(diff.changes.len(), 1, "unexpected changes: {:?}", diff.changes);
     assert!(matches!(&diff.changes[0].kind, lute_model::ChangeKind::Field(name) if name == "rewardAmbiguous"), "{:?}", diff.changes);
-    cleanup(before, after);
 }
 
 #[test]
 fn inserting_choice_before_existing_choice_does_not_change_existing_node() {
-    let before = temp_dir("choice-insert-before");
-    let after = temp_dir("choice-insert-after");
+    let before = lute_scratch::ScratchDir::named("choice-insert-before");
+    let after = lute_scratch::ScratchDir::named("choice-insert-after");
     let prefix = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n<branch id=\"pick\">\n";
     let suffix = "</branch>\n";
     std::fs::write(before.join("scene.lute"), format!("{prefix}<choice id=\"b\" text=\"B\">\n@hero{{code=\"0010\"}}: B\n</choice>\n{suffix}")).unwrap();
@@ -264,7 +235,6 @@ fn inserting_choice_before_existing_choice_does_not_change_existing_node() {
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().all(|change| change.node.canonical() != "choice:hall:pick.b"), "{:?}", diff.changes);
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added)));
-    cleanup(before, after);
 }
 
 #[test]
@@ -285,20 +255,19 @@ fn revisions_include_manifest_schema_and_plugin_bytes() {
 
 #[test]
 fn document_id_change_is_removed_and_added() {
-    let before = temp_dir("id-before");
-    let after = temp_dir("id-after");
+    let before = lute_scratch::ScratchDir::named("id-before");
+    let after = lute_scratch::ScratchDir::named("id-after");
     std::fs::write(before.join("scene.lute"), scene("Hello")).unwrap();
     std::fs::write(after.join("scene.lute"), scene("Hello").replace("id: hall", "id: other")).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Removed)));
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Added)));
-    cleanup(before, after);
 }
 
 #[test]
 fn authored_quest_rename_is_one_renamed_row_per_mapped_node() {
-    let before = temp_dir("quest-rename-before");
-    let after = temp_dir("quest-rename-after");
+    let before = lute_scratch::ScratchDir::named("quest-rename-before");
+    let after = lute_scratch::ScratchDir::named("quest-rename-after");
     let old = "---\nkind: quest\nid: q\n---\n\n<quest id=\"oldQuest\" start=\"true\">\n\
                 <objective id=\"reach\" title=\"Reach\" done=\"quest.oldQuest.state == 'complete'\"/>\n</quest>\n";
     let new = old.replace("oldQuest", "newQuest");
@@ -310,13 +279,12 @@ fn authored_quest_rename_is_one_renamed_row_per_mapped_node() {
     let renamed = diff.changes.iter().filter(|c| matches!(c.kind, lute_model::ChangeKind::Renamed { .. })).count();
     assert_eq!(renamed, 3, "{:?}", diff.changes);
     assert!(!diff.changes.iter().any(|c| matches!(c.kind, lute_model::ChangeKind::Removed | lute_model::ChangeKind::Added)));
-    cleanup(before, after);
 }
 
 #[test]
 fn identical_project_copies_with_schema_inputs_have_no_moves() {
-    let before = temp_dir("copy-before");
-    let after = temp_dir("copy-after");
+    let before = lute_scratch::ScratchDir::named("copy-before");
+    let after = lute_scratch::ScratchDir::named("copy-after");
     let schema = "state:\n  run.flag: { type: bool, default: false }\ndefs:\n  helped: { cel: \"run.flag\", type: bool }\n";
     let text = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n@hero: Hello\n";
     std::fs::write(before.join("world.schema.yaml"), schema).unwrap();
@@ -325,13 +293,12 @@ fn identical_project_copies_with_schema_inputs_have_no_moves() {
     std::fs::write(after.join("scene.lute"), text).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.is_empty(), "unexpected changes: {:?}", diff.changes);
-    cleanup(before, after);
 }
 
 #[test]
 fn moved_schema_file_with_same_identity_is_moved() {
-    let before = temp_dir("schema-move-before");
-    let after = temp_dir("schema-move-after");
+    let before = lute_scratch::ScratchDir::named("schema-move-before");
+    let after = lute_scratch::ScratchDir::named("schema-move-after");
     let schema = "state:\n  run.flag: { type: bool, default: false }\ndefs:\n  helped: { cel: \"run.flag\", type: bool }\n";
     let scene_before = "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n## Opening\n\n@hero: Hello\n";
     let scene_after = scene_before.replace("uses: world.schema.yaml", "uses: nested/world.schema.yaml");
@@ -342,5 +309,4 @@ fn moved_schema_file_with_same_identity_is_moved() {
     std::fs::write(after.join("scene.lute"), scene_after).unwrap();
     let diff = diff_models(&model(&before), &model(&after)).unwrap();
     assert!(diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Moved)));
-    cleanup(before, after);
 }

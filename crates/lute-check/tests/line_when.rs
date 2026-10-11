@@ -10,8 +10,7 @@
 
 use lute_check::{check, parse_meta, resolve_components, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
@@ -109,24 +108,6 @@ fn decided_false_guard_is_arm_dead() {
 
 // -- component_line_when_params_only harness (mirrors component_match.rs) ---
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_line_when_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -166,7 +147,7 @@ fn component_codes(dir: &Path, scene: &str) -> Vec<String> {
 #[test]
 fn component_line_when_params_only() {
     // A bare-param guard stays clean.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "reaction.lute",
@@ -185,7 +166,7 @@ fn component_line_when_params_only() {
     );
 
     // An ambient-state guard is E-COMPONENT-STATE.
-    let dir2 = unique_dir();
+    let dir2 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir2,
         "leaky.lute",
@@ -205,7 +186,7 @@ fn component_line_when_also_runs_ordinary_cel_validation() {
     // validation (`check_cel_slot`) as every other component-body slot —
     // not just the positive `E-COMPONENT-STATE` ambient-state scan. An
     // undeclared `@ref` is E-UNDECLARED-REF (neither dedup'd code, dsl §13).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "undeclared_ref.lute",
@@ -221,7 +202,7 @@ fn component_line_when_also_runs_ordinary_cel_validation() {
 
     // D9: `$` is out of scope in a content-line when=, even inside a
     // component body — check_cel_slot must run under a no-dollar ctx.
-    let dir2 = unique_dir();
+    let dir2 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir2,
         "dollar_leak.lute",
@@ -241,7 +222,7 @@ fn component_line_when_also_runs_ordinary_cel_validation() {
 
     // A declared-param guard stays clean under the new validation, exactly
     // as it did before (no regression on the params-only happy path).
-    let dir3 = unique_dir();
+    let dir3 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir3,
         "clean_param.lute",

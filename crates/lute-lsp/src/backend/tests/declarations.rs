@@ -10,8 +10,8 @@ use super::*;
 fn claimed_declaration_yaml_claims_schema_and_catalog_dirs_only() {
     use std::fs;
 
-    let root = std::env::temp_dir().join(format!("lute_lsp_claim_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_claim");
     fs::create_dir_all(root.join("schema")).unwrap();
     fs::create_dir_all(root.join("catalog")).unwrap();
     fs::write(root.join("lute.project.yaml"), "defaultProfile: default\n").unwrap();
@@ -51,7 +51,6 @@ fn claimed_declaration_yaml_claims_schema_and_catalog_dirs_only() {
         None,
         "a play script must NOT be claimed"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// B3: opening a project declaration `.yaml` (under `schema/`) whose
@@ -69,8 +68,8 @@ async fn analyze_declaration_yaml_flags_undeclared_cel_path() {
     use tower_lsp_server::jsonrpc::Request as RpcRequest;
     use tower_lsp_server::LspService;
 
-    let root = std::env::temp_dir().join(format!("lute_lsp_decl_dirty_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_decl_dirty");
     fs::create_dir_all(root.join("schema")).unwrap();
     fs::write(
         root.join("lute.project.yaml"),
@@ -128,7 +127,6 @@ async fn analyze_declaration_yaml_flags_undeclared_cel_path() {
         undeclared.unwrap().get("source").and_then(|s| s.as_str()),
         Some("lute")
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// B3: a clean declaration `.yaml` (every `defs:` CEL path declared)
@@ -141,8 +139,8 @@ async fn analyze_declaration_yaml_clean_publishes_no_diagnostics() {
     use tower_lsp_server::jsonrpc::Request as RpcRequest;
     use tower_lsp_server::LspService;
 
-    let root = std::env::temp_dir().join(format!("lute_lsp_decl_clean_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_decl_clean");
     fs::create_dir_all(root.join("schema")).unwrap();
     fs::write(
         root.join("lute.project.yaml"),
@@ -183,7 +181,6 @@ async fn analyze_declaration_yaml_clean_publishes_no_diagnostics() {
         diags.is_empty(),
         "a clean declaration .yaml must publish no diagnostics, got {diags:?}"
     );
-    fs::remove_dir_all(&root).ok();
 }
 
 /// LF28-9: a `.yaml` that is no declaration (a play script) is never
@@ -198,8 +195,8 @@ async fn a_yaml_is_never_walked_as_a_lute_document() {
     use tower_lsp_server::jsonrpc::Request as RpcRequest;
     use tower_lsp_server::LspService;
 
-    let root = std::env::temp_dir().join(format!("lute_lsp_yaml_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_yaml");
     fs::create_dir_all(root.join("plays")).unwrap();
     fs::write(
         root.join("lute.project.yaml"),
@@ -247,7 +244,6 @@ async fn a_yaml_is_never_walked_as_a_lute_document() {
             "{rel}"
         );
     }
-    fs::remove_dir_all(&root).ok();
 }
 
 /// Declaration-path CEL-parse fixture helper (B3 + this locator's own
@@ -255,20 +251,14 @@ async fn a_yaml_is_never_walked_as_a_lute_document() {
 /// published `E-CEL-PARSE` diagnostic in PUBLISH order — the SAME order
 /// `analyze_declaration` pushed them (`typed.defs`'s `BTreeMap` iterates
 /// by name, ascending — never source-text order).
-async fn open_cel_parse_fixture(text: &str) -> (Vec<serde_json::Value>, std::path::PathBuf) {
+async fn open_cel_parse_fixture(text: &str) -> (Vec<serde_json::Value>, lute_scratch::ScratchDir) {
     use futures::StreamExt;
     use std::fs;
     use tower::{Service, ServiceExt};
     use tower_lsp_server::jsonrpc::Request as RpcRequest;
     use tower_lsp_server::LspService;
 
-    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!(
-        "lute_lsp_decl_cel_parse_{}_{n}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = lute_scratch::ScratchDir::named("lsp-decl-cel-parse");
     fs::create_dir_all(root.join("schema")).unwrap();
     fs::write(
         root.join("lute.project.yaml"),
@@ -472,11 +462,8 @@ async fn analyze_declaration_cel_parse_error_escaped_scalar_whole_span_no_fixit(
         "sanity: fixture must contain the escaped scalar literally: {text}"
     );
 
-    let root = std::env::temp_dir().join(format!(
-        "lute_lsp_decl_cel_parse_escaped_{}",
-        std::process::id()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_decl_cel_parse_escaped");
     fs::create_dir_all(root.join("schema")).unwrap();
     fs::write(
         root.join("lute.project.yaml"),
@@ -569,7 +556,6 @@ async fn analyze_declaration_cel_parse_error_escaped_scalar_whole_span_no_fixit(
         "an E-CEL-PARSE diagnostic must carry no fixit-derived code action: {actions:?}"
     );
 
-    fs::remove_dir_all(&root).ok();
 }
 
 /// A `cel: |` literal block scalar resolves to its OWN content-lines
