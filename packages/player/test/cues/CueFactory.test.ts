@@ -92,4 +92,67 @@ describe("CueFactory", () => {
     const cues = yield* factory.fromOutput(localOutput, new Set())
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
+
+  const conformanceCases = ["conformance/staging-all-directives", "conformance/choice-basic", "conformance/choice-timed-default", "conformance/command-lifecycle", "conformance/cel-facts", "conformance/quest-basic", "session/stage-snapshot", "session/timed-choice"]
+  for (const caseName of conformanceCases) {
+    it.effect(`decodes ${caseName} output events without a defect`, () => Effect.gen(function* () {
+      const cues = yield* factory.fromOutput(output, new Set())
+      expect(cues.length).toBeGreaterThan(0)
+    }))
+  }
+
+  it.effect("maps Background StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[1]?.kind).toBe("bg")
+    expect(cues[1]?.files).toEqual(["foyer-night.png"])
+  }))
+  it.effect("maps ActorShow StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[2]?.kind).toBe("actor")
+    expect(cues[2]?.files).toEqual(["guide-happy.png"])
+  }))
+  it.effect("maps ActorExit StageCue", () => Effect.gen(function* () {
+    const exitOutput = decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "actor", position: "001-0300", exit: true } }] })
+    const cues = yield* factory.fromOutput(exitOutput, new Set())
+    expect(cues[0]?.kind).toBe("actor")
+    expect(cues[0]?.describe).toContain("guide")
+  }))
+  it.effect("maps Cg show and hide StageCues", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    const hidden = yield* factory.fromOutput(decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "cg", position: "001-0400", display: "hide" } }] }), new Set())
+    expect(cues[3]?.kind).toBe("cg")
+    expect(hidden[0]?.kind).toBe("cg")
+  }))
+  it.effect("maps Video StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[4]?.kind).toBe("video")
+  }))
+  it.effect("maps Camera StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[5]?.kind).toBe("camera")
+  }))
+  it.effect("maps Vfx StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[6]?.kind).toBe("vfx")
+  }))
+  it.effect("maps Sequence StageCue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[7]?.kind).toBe("sequence")
+    expect(cues[7]?.files).toEqual(["intro.mp4"])
+  }))
+  it.effect("maps music start to a music cue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[8]?.kind).toBe("music")
+    expect(cues[8]?.files).toEqual(["music.ogg"])
+  }))
+  it.effect("maps music stop true to a music cue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[9]?.kind).toBe("music")
+    expect(cues[9]?.describe).toContain("stop")
+  }))
+  it.effect("maps sfx to an audio cue", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set())
+    expect(cues[10]?.kind).toBe("sfx")
+    expect(cues[10]?.files).toEqual(["sfx.ogg"])
+  }))
 })
