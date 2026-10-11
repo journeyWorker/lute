@@ -170,6 +170,25 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    C ABI remains later, and concurrent presentations remain R3.
 3. **R3:** `packages/player` — player-core statecharts, cue scheduler,
    bindings, 2D web reference presenter; driven by recorded runtime outputs.
+   **Owner answers 2026-10-11** (release 0.40.0):
+   - **Stage state is the runtime's.** The runtime applies staging records to a
+     stage (background, actors on stage with emotion/costume/anchor, music,
+     shown CG/video) carried in the snapshot; loading a save restores the
+     stage exactly. An Event-contract change.
+   - **Timed choice is a language/runtime rule.** The author names the option
+     a timeout takes; the runtime accepts a `timeout` input and picks it. It
+     is part of replay and saves, not a player setting.
+   - **Concurrent presentations stay deferred** past R3.
+   - **The web player is a real player, not a thin presenter:** Effect 4 +
+     XState v6 (exact alpha pin) + PixiJS 8 (WebGL) + Web Audio, with proper
+     state management and game patterns (commands for cues, behaviours for
+     on-stage objects, scheduler, asset loading, input mapping). Audio (music,
+     sfx, voice by `voiceKey`) is in scope.
+   - **Bindings** (project vocabulary → assets) live in a project YAML file
+     (`player.bindings.yaml`) with a generated schema, validated by
+     `lute check` against the declared domains.
+   - **Distribution:** `@lute-lang/player` (core) and `@lute-lang/player-web`
+     (PixiJS presenter) published in the 0.40 lockstep.
 
 Work the way 0.32–0.37 were run: spec + plan under
 `docs/proposals/scenario-dsl/` and `docs/superpowers/plans/`, reviewer pass per
