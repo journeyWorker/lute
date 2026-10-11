@@ -73,7 +73,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
     "result","retracts","return","rewards","rhs","role","rules","season","seasons","section",
     "sections","seedFacts","segments","selectionKey","series","share","slot","slots","sound",
-    "source","speaker","spentBy","start","state","string","styles","subject","tag","target",
+    "source","speaker","spentBy","start","state","stop","string","styles","subject","tag","target",
     "targetKind","terminal","terminalPersists","terms","test","text","texts","then","tier","time",
     "timeline","timeout","timing","title","titleLineId","to","token","transition","type","until","value",
     "variables","variant","visibleWhen","visited","voiceKey","volume","wait","week","when",
