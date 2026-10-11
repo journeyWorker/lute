@@ -1,0 +1,21 @@
+---
+kind: scene
+id: door
+luteVersion: "0.40.0"
+title: door
+on: visit
+priority: 0
+---
+## Door
+@narrator{code="0010"}: Someone knocks.
+<branch id="knock" prompt="Open the door?" timeout="5" default="wait">
+  <choice id="open" text="Open it">
+    ::set{run.answered = "open"}
+    @narrator{code="0020"}: You open the door.
+  </choice>
+  <choice id="wait" text="Wait">
+    ::set{run.answered = "wait"}
+    @narrator{code="0030"}: The knocking stops.
+  </choice>
+</branch>
+@narrator{code="0040"}: The hall is quiet.

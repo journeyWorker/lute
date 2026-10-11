@@ -1,0 +1,9 @@
+choose:
+  knock: { timeout: true }
+steps:
+  - occasion: visit
+    expect: { winner: door, state: { run.answered: "wait" } }
+expect:
+  end: complete
+  state: { run.answered: "wait" }
+  transcriptContains: ["The knocking stops.", "The hall is quiet."]

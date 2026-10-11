@@ -924,9 +924,28 @@ fn expand_includes(
 }
 
 /// A step's (or an include's) `choose:`, parsed by the trace-mock grammar.
+/// Timed branches accept `{ timeout: true }` as a scripted expiry; the
+/// private marker is consumed by the play driver before it reaches the
+/// runtime machine.
 fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let mut value = v.clone();
+    if let serde_yaml::Value::Mapping(entries) = &mut value {
+        for choice in entries.values_mut() {
+            if let serde_yaml::Value::Mapping(fields) = choice {
+                let timeout = fields
+                    .get(serde_yaml::Value::String("timeout".into()))
+                    .and_then(serde_yaml::Value::as_bool)
+                    .unwrap_or(false);
+                if timeout {
+                    *choice = serde_yaml::Value::Sequence(vec![
+                        serde_yaml::Value::String("__lute_timeout__".into()),
+                    ]);
+                }
+            }
+        }
+    }
     let mut doc = serde_yaml::Mapping::new();
-    doc.insert("choose".into(), v.clone());
+    doc.insert("choose".into(), value);
     let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(doc))
         .map_err(|e| format!("cannot re-read `choose:`: {e}"))?;
     lute_trace::parse_mock_yaml(&text)
