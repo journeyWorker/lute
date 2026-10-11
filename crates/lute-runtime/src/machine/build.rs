@@ -66,6 +66,7 @@ impl<D: Driver> Machine<D> {
             code,
             display_names: BTreeMap::new(),
             occasion_target: None,
+            stage: crate::Stage::default(),
             store,
             seed,
             quest_status: BTreeMap::new(),
@@ -157,8 +158,10 @@ impl<D: Driver> Machine<D> {
         // The carried world replaces the artifact's defaults and seed facts
         // outright, so the Store is built over it (never over a copy of the
         // defaults it would drop).
+        let stage = carry.stage;
         let world = Some((carry.state, carry.base_facts));
         let mut m = Self::blank_over(art, code, seed, driver, source, world);
+        m.stage = stage;
         m.quest_status = carry.quest_status;
         m.quest_instances = carry.quest_instances;
         m.apply_seeds();
@@ -290,6 +293,7 @@ impl<D: Driver> Machine<D> {
             base_facts,
             quest_status,
             quest_instances,
+            stage: self.stage,
             incomplete: self.incomplete,
             unresolved: self.unresolved,
             accepted: self.accepted,

@@ -61,6 +61,7 @@ export interface Program {
   ) => Effect.Effect<Option.Option<Contract.Candidate>>
   readonly clock: (state: RuntimeState) => Effect.Effect<Option.Option<Contract.ClockAt>>
   readonly terminal: (state: RuntimeState) => Effect.Effect<boolean>
+  readonly stage: (state: RuntimeState) => Effect.Effect<Contract.Stage>
   readonly view: (state: RuntimeState, options?: { readonly facts?: boolean }) => Effect.Effect<Contract.WorldView>
 }
 
@@ -81,6 +82,7 @@ const decodeRejected = fromBinding(Contract.Rejected)
 const decodeSnapshot = fromBinding(Contract.Snapshot)
 const decodeCandidates = fromBinding(Schema.Array(Contract.Candidate))
 const decodeCandidate = fromBinding(Schema.NullOr(Contract.Candidate))
+const decodeStage = fromBinding(Contract.Stage)
 const decodeClock = fromBinding(Schema.NullOr(Contract.ClockAt))
 const decodeView = fromBinding(Contract.WorldView)
 const encodeSeed = toBinding(Contract.Seed)
@@ -173,6 +175,10 @@ export const make = (raw: Glue.Program): Program & { readonly free: Effect.Effec
   terminal: Effect.fn("Lute.Program.terminal")(function* (state: RuntimeState) {
     const handle = yield* handleOf(state)
     return raw.terminal(handle)
+  }),
+  stage: Effect.fn("Lute.Program.stage")(function* (state: RuntimeState) {
+    const handle = yield* handleOf(state)
+    return yield* decodeStage(raw.stage(handle))
   }),
 
   view: Effect.fn("Lute.Program.view")(function* (

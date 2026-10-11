@@ -147,6 +147,10 @@ impl Program {
     pub fn view(&self, state: &State, with_facts: bool) -> String {
         canonical(&self.runtime.view(&state.inner, with_facts))
     }
+    /// The persistent presentation stage as canonical JSON.
+    pub fn stage(&self, state: &State) -> String {
+        canonical(&self.runtime.stage(&state.inner))
+    }
 
     #[wasm_bindgen(getter)]
     pub fn fingerprint(&self) -> String {

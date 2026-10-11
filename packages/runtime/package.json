@@ -35,7 +35,7 @@
     "test": "bunx --bun vitest run",
     "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
     "contract:gen": "bun scripts/contract-codegen.ts",
-    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
+    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated ../player/src/bindings/schema.ts"
   },
   "peerDependencies": {
     "effect": "4.0.2",

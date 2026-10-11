@@ -16,6 +16,7 @@ pub mod schema;
 pub mod session;
 pub mod store;
 pub mod value;
+pub mod stage;
 
 pub use eval::{EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use input::{
@@ -29,5 +30,6 @@ pub use machine::{
 };
 pub use expr::Slot;
 pub use value::{value_text, UnresolvedAtom, Value};
+pub use stage::{Stage, StageActor, StageBackground, StageCg, StageMusic, StageVideo};
 pub use driver::{guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict};
 pub use runtime::{AdvanceBy, Await, ClockPosition, Continuation, Event, Input, MenuAwait, MenuOptionAwait, Output, Phase, PickInput, Rejected, Runtime, SaveInput, Seed as RuntimeSeed, Snapshot, SnapshotJsonInput, State, StateWrite, StreamLine, WritesInput};

@@ -167,11 +167,13 @@ pub fn present<B, C, F: super::WalkDriver>(
     let state_before = w.state.clone();
     let (facts_before, visited_before, quests_before) =
         (w.facts.clone(), w.visited.clone(), w.quests.clone());
+    w.stage = crate::Stage::default();
     let mut carry = Carry::world(
         scene_initial_state(doc_json, &w.state),
         w.facts.clone(),
         w.quests.clone(),
     );
+    carry.stage = w.stage.clone();
     carry.quest_instances = w.quest_instances.clone();
     let mut m = play_machine(
         p,

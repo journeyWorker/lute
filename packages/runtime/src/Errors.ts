@@ -13,6 +13,11 @@ export class RuntimeBusy extends Schema.TaggedError<RuntimeBusy>()("RuntimeBusy"
   code: Schema.Literal("E-RUNTIME-BUSY"),
   message: Schema.String
 }) {}
+/** `E-RUNTIME-TIMEOUT`: the pending await is not a timed choice. */
+export class TimeoutUnavailable extends Schema.TaggedError<TimeoutUnavailable>()("TimeoutUnavailable", {
+  code: Schema.Literal("E-RUNTIME-TIMEOUT"),
+  message: Schema.String
+}) {}
 
 /** `E-RUNTIME-REQUEST`: an answer names another request than the pending await. */
 export class RequestMismatch extends Schema.TaggedError<RequestMismatch>()("RequestMismatch", {
@@ -69,6 +74,7 @@ export type RuntimeRejection =
   | OptionUnavailable
   | BridgeShapeMismatch
   | InvalidInput
+  | TimeoutUnavailable
   | RuntimeHalted
   | IrVersionMismatch
   | SnapshotProjectMismatch
@@ -80,6 +86,8 @@ const byCode: Readonly<Record<string, (message: string) => RuntimeRejection>> = 
   "E-RUNTIME-OPTION": (message) => new OptionUnavailable({ code: "E-RUNTIME-OPTION", message }),
   "E-RUNTIME-BRIDGE-SHAPE": (message) =>
     new BridgeShapeMismatch({ code: "E-RUNTIME-BRIDGE-SHAPE", message }),
+  "E-RUNTIME-TIMEOUT": (message) =>
+    new TimeoutUnavailable({ code: "E-RUNTIME-TIMEOUT", message }),
   "E-RUNTIME-INPUT": (message) => new InvalidInput({ code: "E-RUNTIME-INPUT", message }),
   "E-RUNTIME-HALTED": (message) => new RuntimeHalted({ code: "E-RUNTIME-HALTED", message }),
   "E-RUNTIME-IR-VERSION": (message) => new IrVersionMismatch({ code: "E-RUNTIME-IR-VERSION", message }),

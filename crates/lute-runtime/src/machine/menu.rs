@@ -378,6 +378,8 @@ impl<D: Driver> Machine<D> {
             addr: addr(cmd),
             presentation: 0,
             options: &judged,
+            timeout: cmd.get("timeout").and_then(Json::as_u64).and_then(|n| u32::try_from(n).ok()),
+            default: cmd.get("default").and_then(Json::as_str),
         };
         let pick = self.driver.choose(&menu);
         let auto = matches!(pick, Pick::AutoFirst | Pick::HubAutoPass);
@@ -595,6 +597,8 @@ impl<D: Driver> Machine<D> {
                 addr: addr(cmd),
                 presentation,
                 options: &judged,
+                timeout: None,
+                default: None,
             };
             presentation += 1;
             let first_open =

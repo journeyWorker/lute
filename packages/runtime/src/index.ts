@@ -6,6 +6,7 @@
 export * as Bundle from "./Bundle.js"
 export * as BundleSource from "./BundleSource.js"
 export * as Contract from "./generated/Contract.js"
+export * as Ir from "./generated/Ir.js"
 export * as Errors from "./Errors.js"
 export * as InputLog from "./InputLog.js"
 export * as LuteRuntime from "./LuteRuntime.js"

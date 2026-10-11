@@ -2,14 +2,30 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 type JsonSchema = any;
-
 const root = resolve(import.meta.dir, "../../..");
-const schemaPaths = [
-  resolve(root, "schemas/lute-events-0.40.schema.json"),
-  resolve(root, "schemas/lute-snapshot-0.40.schema.json")
-];
-const outputPath = resolve(import.meta.dir, "../src/generated/Contract.ts");
 
+const generationTable = [
+  {
+    inputPaths: [
+      resolve(root, "schemas/lute-events-0.40.schema.json"),
+      resolve(root, "schemas/lute-snapshot-0.40.schema.json")
+    ],
+    outputPath: resolve(import.meta.dir, "../src/generated/Contract.ts"),
+    rootNames: ["Snapshot"]
+  },
+  {
+    inputPaths: [resolve(root, "schemas/lute-ir-0.40.schema.json")],
+    outputPath: resolve(import.meta.dir, "../src/generated/Ir.ts"),
+    rootNames: ["Command"]
+  },
+  {
+    inputPaths: [resolve(root, "schemas/lute-player-bindings-0.40.schema.json")],
+    outputPath: resolve(root, "packages/player/src/bindings/schema.ts"),
+    rootNames: ["Bindings"]
+  }
+] as const;
+const schemaPaths = generationTable[0].inputPaths;
+const outputPath = generationTable[0].outputPath;
 const schemas = await Promise.all(schemaPaths.map(async (path) => JSON.parse(await readFile(path, "utf8")) as JsonSchema));
 const defs = new Map<string, JsonSchema>();
 const canonical = (value: unknown): unknown => {
@@ -43,7 +59,10 @@ const refName = (ref: string, path: string): string => {
   if (!match) return pointer(`${path}/$ref`);
   return match[1]!;
 };
-const refExpr = (ref: string, path: string): string => `Schema.suspend(() => ${refName(ref, path)})`;
+const refExpr = (ref: string, _path?: string): string => {
+  const match = /^#\/\$defs\/([^/]+)$/.exec(ref);
+  return match ? `Schema.suspend(() => ${match[1]!})` : "Schema.Json";
+};
 function formatExpression(source: string): string[] {
   const lines: string[] = [];
   const stack: Array<{ close: string; multiline: boolean }> = [];
@@ -166,7 +185,10 @@ function expression(schema: JsonSchema, path: string): string {
     if (types.length === 0 && schema.type.includes("null")) return "Schema.Null";
     return `Schema.Union([${types.map((type: string) => expression({ ...schema, type }, path)).join(", ")}])`;
   }
-
+  if (schema.type === undefined) {
+    if (Array.isArray(schema.required)) return expression({ ...schema, type: "object" }, path);
+    return "Schema.Json";
+  }
   switch (schema.type) {
     case "null": return "Schema.Null";
     case "string": {
@@ -193,16 +215,37 @@ function expression(schema: JsonSchema, path: string): string {
     }
     case "object": {
       const properties = schema.properties as Record<string, JsonSchema> | undefined;
+      if (properties === undefined && schema.additionalProperties === undefined) {
+        const required = (schema.required ?? []) as string[];
+        return required.length === 0
+          ? "Schema.Json"
+          : `Schema.Struct({${required.map((name) => `${quote(name)}: Schema.Json`).join(", ")}})`;
+      }
       const propertyEntries = Object.entries(properties ?? {});
       const additional = schema.additionalProperties;
+      const required = new Set<string>((schema.required ?? []) as string[]);
       if (propertyEntries.length === 0 && additional === true) return "Schema.Record(Schema.String, Schema.Json)";
       if (propertyEntries.length === 0 && additional && typeof additional === "object") {
         return `Schema.Record(Schema.String, ${expression(additional, `${path}/additionalProperties`)})`;
       }
-      if (additional === true && propertyEntries.length > 0) return pointer(`${path}/additionalProperties`);
-      if (additional && typeof additional === "object" && propertyEntries.length > 0) return pointer(`${path}/additionalProperties`);
-      if (properties === undefined && additional === undefined) return pointer(path);
-      const required = new Set<string>((schema.required ?? []) as string[]);
+      if (additional === true && propertyEntries.length > 0) {
+        const struct = `Schema.Struct({${propertyEntries.map(([name, property]) => {
+          const value = nullable(property);
+          const inner = expression(value.base, `${path}/properties/${name}`);
+          const field = value.isNullable ? `Schema.NullOr(${inner})` : inner;
+          return `${quote(name)}: ${required.has(name) ? field : `Schema.optionalKey(${field})`}`;
+        }).join(", ")}})`;
+        return `Schema.Intersect([${struct}, Schema.Record(Schema.String, Schema.Json)])`;
+      }
+      if (additional && typeof additional === "object" && propertyEntries.length > 0) {
+        const struct = `Schema.Struct({${propertyEntries.map(([name, property]) => {
+          const value = nullable(property);
+          const inner = expression(value.base, `${path}/properties/${name}`);
+          const field = value.isNullable ? `Schema.NullOr(${inner})` : inner;
+          return `${quote(name)}: ${required.has(name) ? field : `Schema.optionalKey(${field})`}`;
+        }).join(", ")}})`;
+        return `Schema.Intersect([${struct}, Schema.Record(Schema.String, ${expression(additional, `${path}/additionalProperties`)})])`;
+      }
       const fields = propertyEntries.map(([name, property]) => {
         const value = nullable(property);
         const inner = expression(value.base, `${path}/properties/${name}`);
@@ -251,4 +294,74 @@ for (const [name, definition] of defs) {
 const snapshot = schemas[1]!;
 lines.push(...jsdoc(snapshot.description));
 pushExport("Snapshot", snapshot, "#");
-await writeFile(outputPath, `${lines.join("\n")}\n`, "utf8");
+await writeFile(generationTable[0].outputPath, `${lines.join("\n")}\n`, "utf8");
+const irSchema = JSON.parse(
+  await readFile(generationTable[1].inputPaths[0], "utf8")
+) as JsonSchema;
+const irDefs = new Map<string, JsonSchema>(
+  Object.entries(irSchema.$defs as Record<string, JsonSchema>)
+);
+const irLines: string[] = [
+  "// THIS FILE IS GENERATED — DO NOT EDIT.",
+  "// Generator: packages/runtime/scripts/contract-codegen.ts",
+  "// Source: schemas/lute-ir-0.40.schema.json",
+  "",
+  'import * as Schema from "effect/Schema";',
+  ""
+];
+for (const [name, definition] of irDefs) {
+  if (name === "command") continue;
+  irLines.push(...jsdoc(definition.description));
+  const formatted = formatExpression(expression(definition, `#/$defs/${name}`));
+  const exportName = name;
+  irLines.push(`export const ${exportName} = ${formatted[0]!}`);
+  irLines.push(...formatted.slice(1));
+  irLines[irLines.length - 1] += ";";
+  irLines.push(`export type ${exportName} = typeof ${exportName}.Type;`, "");
+}
+const command = irDefs.get("command");
+if (command === undefined || !Array.isArray(command.oneOf)) {
+  throw new Error("IR schema does not define command union");
+}
+irLines.push(...jsdoc(command.description));
+const commandExpression = `Schema.Union([${command.oneOf
+  .map((branch: JsonSchema, index: number) => `Schema.suspend(() => ${refName(branch.$ref, `#/$defs/command/oneOf/${index}`)})`)
+  .join(", ")}]).pipe(Schema.toTaggedUnion("kind"))`;
+const commandFormatted = formatExpression(commandExpression);
+irLines.push(`export const Command = ${commandFormatted[0]!}`);
+irLines.push(...commandFormatted.slice(1));
+irLines[irLines.length - 1] += ";";
+irLines.push("export type Command = typeof Command.Type;", "");
+await writeFile(generationTable[1].outputPath, `${irLines.join("\n")}\n`, "utf8");
+const bindingsSchema = JSON.parse(
+  await readFile(generationTable[2].inputPaths[0], "utf8")
+) as JsonSchema;
+const bindingDefs = new Map<string, JsonSchema>(
+  Object.entries(bindingsSchema.$defs as Record<string, JsonSchema>)
+);
+const bindingLines: string[] = [
+  "// THIS FILE IS GENERATED — DO NOT EDIT.",
+  "// Generator: packages/runtime/scripts/contract-codegen.ts",
+  "// Source: schemas/lute-player-bindings-0.40.schema.json",
+  "",
+  'import * as Schema from "effect/Schema";',
+  'import type * as SchemaAST from "effect/SchemaAST";',
+  "",
+  'export const parseOptions = { onExcessProperty: "error" } as const satisfies SchemaAST.ParseOptions;',
+  ""
+];
+for (const [name, definition] of bindingDefs) {
+  bindingLines.push(...jsdoc(definition.description));
+  const formatted = formatExpression(expression(definition, `#/$defs/${name}`));
+  bindingLines.push(`export const ${name} = ${formatted[0]!}`);
+  bindingLines.push(...formatted.slice(1));
+  bindingLines[bindingLines.length - 1] += ";";
+  bindingLines.push(`export type ${name} = typeof ${name}.Type;`, "");
+}
+bindingLines.push(...jsdoc(bindingsSchema.description));
+const bindingsFormatted = formatExpression(expression(bindingsSchema, "#"));
+bindingLines.push(`export const Bindings = ${bindingsFormatted[0]!}`);
+bindingLines.push(...bindingsFormatted.slice(1));
+bindingLines[bindingLines.length - 1] += ";";
+bindingLines.push("export type Bindings = typeof Bindings.Type;", "");
+await writeFile(generationTable[2].outputPath, `${bindingLines.join("\n")}\n`, "utf8");
