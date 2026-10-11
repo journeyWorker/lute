@@ -1,6 +1,5 @@
-import { Assets, Texture } from "pixi.js"
+import { Texture } from "pixi.js"
 import { Effect, Fiber, Scope, Stream, SubscriptionRef } from "effect"
-import { sound } from "@pixi/sound"
 import { AssetMissing, type AssetLoader } from "@lute-lang/player"
 
 /** Backend seam for PixiAssets; tests can use an in-memory loader. */
@@ -14,7 +13,7 @@ export interface AssetBackend {
 /** Constructor options for {@link PixiAssets}. */
 export interface PixiAssetsOptions {
   readonly assetsBase?: string
-  readonly backend?: AssetBackend
+  readonly backend: AssetBackend
   readonly concurrency?: number
   readonly graceSeconds?: number
 }
@@ -30,28 +29,6 @@ interface AssetRecord {
 const AUDIO_EXTENSIONS = /\.(?:aac|flac|m4a|mp3|ogg|wav|webm)(?:[?#].*)?$/i
 const VIDEO_EXTENSIONS = /\.(?:avi|m4v|mov|mp4|webm)(?:[?#].*)?$/i
 
-const defaultBackend: AssetBackend = {
-  loadTexture: (url) => Effect.tryPromise(() => Assets.load<Texture>(url)),
-  unloadTexture: (url) => Effect.tryPromise(() => Assets.unload(url)).pipe(Effect.orDie),
-  loadAudio: (url) => Effect.callback<void, unknown>((resume) => {
-    if (sound.exists(url)) {
-      resume(Effect.succeed(undefined))
-      return
-    }
-    try {
-      sound.add(url, {
-        url,
-        preload: true,
-        loaded: (error) => resume(error === undefined ? Effect.succeed(undefined) : Effect.fail(error))
-      })
-    } catch (error) {
-      resume(Effect.fail(error))
-    }
-  }),
-  unloadAudio: (url) => Effect.sync(() => {
-    if (sound.exists(url, false)) sound.remove(url)
-  })
-}
 
 const uniqueFiles = (files: ReadonlyArray<string>): ReadonlyArray<string> => {
   const result: Array<string> = []
@@ -95,10 +72,10 @@ export class PixiAssets implements AssetLoader {
   private readonly records = new Map<string, AssetRecord>()
   private readonly unloadFibers = new Map<string, Fiber.Fiber<void, never>>()
 
-  constructor(options: PixiAssetsOptions = {}) {
+  constructor(options: PixiAssetsOptions) {
     const base = options.assetsBase ?? "assets/"
     this.base = base
-    this.backend = options.backend ?? defaultBackend
+    this.backend = options.backend
     this.maxConcurrency = Math.max(1, Math.floor(options.concurrency ?? 4))
     this.graceSeconds = Math.max(0, options.graceSeconds ?? 0.25)
     this.progressRef = Effect.runSync(SubscriptionRef.make(0))
