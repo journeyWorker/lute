@@ -29,13 +29,13 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 연령 게이트가 적용된 `<match subject="app.rating">`가 `teen` 분기도 `<otherwise>`도 포함하지 않아, 릴리스 빌드에서 어느 경우에도 매치되지 않을 수 있습니다.
 
-명세: [dsl §11.2](/spec/)
+명세: [dsl §11.2](/ko/spec/)
 
 ### E-APP-READONLY
 
 `::set` 지시어가 `app.*` 네임스페이스에 씁니다. 이 네임스페이스는 엔진/설정 계층만 소유하므로 콘텐츠가 쓸 수 없습니다.
 
-명세: [dsl §9.5](/spec/)
+명세: [dsl §9.5](/ko/spec/)
 
 ### E-ARM-DEAD
 
@@ -53,37 +53,37 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 에셋 id 문자열의 세그먼트 개수가 선언된 종류에 맞지 않거나, 고정(`const`) 세그먼트 값이 해당 종류가 요구하는 값과 일치하지 않습니다.
 
-명세: [dsl §7.2](/spec/)
+명세: [dsl §7.2](/ko/spec/)
 
 ### E-ASSET-SEGMENT
 
 에셋 id의 한 세그먼트가 선언된 열거형의 구성원이 아니거나, 숫자가 필요한 자리에 숫자가 아니거나, 공급자 카탈로그에 알려진 id가 아닙니다.
 
-명세: [dsl §7.2](/spec/)
+명세: [dsl §7.2](/ko/spec/)
 
 ### E-ASSET-UNKNOWN-ID
 
 순수 조회형 에셋 종류의 id 문자열이 선언된 공급자 카탈로그에 알려진 id가 아닙니다.
 
-명세: [dsl §7.2](/spec/)
+명세: [dsl §7.2](/ko/spec/)
 
 ### E-AT-CONTEXT
 
 지시어(일반 `::directive` 또는 `::use`)가 `<track>` 클립 밖에서 타임라인 위치 속성 `at`을 사용했습니다. `at`은 그 위치에서 유효하지 않습니다.
 
-명세: [dsl §7.5](/spec/)
+명세: [dsl §7.5](/ko/spec/)
 
 ### E-ATTR-DEF-DYNAMIC
 
 지시어 속성 값으로 쓰인 `@def`나 컴포넌트 본문 속성에 대응되는 `::use` 인자가 상태에 의존해 컴파일 타임 상수로 축약되지 않습니다.
 
-명세: [dsl §5.1](/spec/)
+명세: [dsl §5.1](/ko/spec/)
 
 ### E-ATTR-QUOTE
 
 속성 값이 필수인 곧은 겹따옴표 `"` 대신 홑따옴표나 굽은(워드프로세서) 따옴표로 구분되어 있습니다.
 
-명세: [dsl §4.4](/spec/), [dsl §4.5](/spec/)
+명세: [dsl §4.4](/ko/spec/), [dsl §4.5](/ko/spec/)
 
 ### E-ATTR-TYPE
 
@@ -123,13 +123,13 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
 
-명세: [dsl §11.1](/spec/)
+명세: [dsl §11.1](/ko/spec/)
 
 ### E-BRANCH-EMPTY
 
 `<branch>` 또는 `<hub>`에 `<choice>`가 하나도 없어, 라우팅할 수 없는 선택지로 축약됩니다.
 
-명세: [dsl §7.3](/spec/)
+명세: [dsl §7.3](/ko/spec/)
 
 ### E-BRANCH-PROMPT
 
@@ -159,7 +159,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 같은 프로젝트의 두 문서가 서로 다른 기능(capability) 스냅샷으로 해석되어, 프로젝트가 색인할 단일 `capabilityVersion`을 가지지 못합니다.
 
-명세: [dsl §13](/spec/)
+명세: [dsl §13](/ko/spec/)
 
 ### E-CAST-UNKNOWN
 
@@ -177,7 +177,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허용되지 않는 함수 호출, 컴프리헨션 매크로, 맵/구조체 리터럴, 상태 경로나 def가 아닌 맨 식별자, 예약된 내부 토큰, 또는 조건 슬롯 밖에서 쓰인 `visited(…)`가 해당합니다.
 
-명세: [dsl §8.4](/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
+명세: [dsl §8.4](/ko/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
 
 ### E-CEL-TYPE
 
@@ -207,25 +207,25 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 `<branch>` 또는 `<hub>`가 같은 `id`를 가진 `<choice>`를 두 번 선언했습니다. 선택지 id는 같은 branch/hub 안에서 유일해야 합니다.
 
-명세: [dsl §11.1](/spec/)
+명세: [dsl §11.1](/ko/spec/)
 
 ### E-CHOICELOG-READ
 
 가드나 조건이 예약된 선택 기록(choice-log) 경로를 읽습니다. 이 경로는 가드나 조건에서 읽을 수 없습니다.
 
-명세: [dsl §9.6](/spec/)
+명세: [dsl §9.6](/ko/spec/)
 
 ### E-CLIP-OVERLAP
 
 같은 `<track>` 안의 두 클립이 겹치는 `[at, at+duration)` 구간을 가집니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ### E-CLIP-TIMING
 
 하나의 `<track>` 클립이 절대 위치인 `at`과 상대적 지연인 `delay`를 동시에 가지고 있습니다. 이 둘은 한 클립에서 함께 쓸 수 없습니다.
 
-명세: [dsl §7.5](/spec/), [dsl §11.4](/spec/)
+명세: [dsl §7.5](/ko/spec/), [dsl §11.4](/ko/spec/)
 
 ### E-CLOCK-DECL
 
@@ -243,7 +243,7 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 `/* … */` 블록 주석이 닫는 `*/` 없이 파일 끝까지 이어졌습니다.
 
-명세: [dsl §4.2](/spec/)
+명세: [dsl §4.2](/ko/spec/)
 
 ### E-COMPILE-COMPONENT
 
@@ -261,7 +261,7 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 `::use` 호출의 인자가 지정한 컴포넌트의 선언된 파라미터와 맞지 않습니다. 알 수 없는 인자, 필수 파라미터 누락, 타입이 맞지 않는 값, 호환되지 않는 기본값, 또는 `speaker` 파라미터에 리터럴 캐스트 id가 아닌 인자가 그 예입니다.
 
-명세: [dsl §13](/spec/), [dsl 0.24.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.26.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+명세: [dsl §13](/ko/spec/), [dsl 0.24.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.26.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
 
 ### E-COMPONENT-BODY
 
@@ -273,7 +273,7 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 `::use` 호출들의 연쇄가 컴포넌트들 사이의 순환으로 확장됩니다.
 
-명세: [dsl §13](/spec/)
+명세: [dsl §13](/ko/spec/)
 
 ### E-COMPONENT-DUP
 
@@ -305,13 +305,13 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 `::use`의 `component` 속성이 해석된 `components:` 테이블에 없는 컴포넌트를 지정합니다.
 
-명세: [dsl §13](/spec/)
+명세: [dsl §13](/ko/spec/)
 
 ### E-CONN-CYCLE
 
 프로젝트의 `after` 선행조건 그래프에 순환이 있어, 모든 `after` 조건을 동시에 만족하는 평가 순서가 존재하지 않습니다.
 
-명세: [dsl §4.1](/spec/)
+명세: [dsl §4.1](/ko/spec/)
 
 ### E-CONN-EPISODE-ID-DUP
 
@@ -323,25 +323,25 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 `after` 선행조건 수식의 원자(atom) 개수가 방어적 상한을 초과했습니다. 이는 사람이 직접 작성했다기보다 병적이거나 기계적으로 생성된 수식의 특징입니다.
 
-명세: [dsl §4.1](/spec/)
+명세: [dsl §4.1](/ko/spec/)
 
 ### E-CONN-PROFILE
 
 `after` 선행조건 수식이 제한된 선행조건 프로파일 밖의 구문을 사용합니다. `&&`/`||`와 괄호로 결합된 `visited(…)`/`completed(…)`/`active(…)` 원자 외의 것이 해당합니다.
 
-명세: [dsl §4.1](/spec/)
+명세: [dsl §4.1](/ko/spec/)
 
 ### E-CONN-UNKNOWN-NODE
 
 `after` 선행조건 수식의 `visited(K)`/`completed(Q)`/`active(Q)` 원자가 프로젝트 어디에도 존재하지 않는 노드를 가리킵니다.
 
-명세: [dsl §2.3](/spec/), [dsl §4.1](/spec/)
+명세: [dsl §2.3](/ko/spec/), [dsl §4.1](/ko/spec/)
 
 ### E-CONN-UNREACHABLE
 
 씬, 퀘스트, 또는 비트가 도달할 수 없음이 증명됩니다. 어떤 평가 순서로도 해당 `after` 선행조건을 만족시킬 수 없습니다.
 
-명세: [dsl §4.1](/spec/), [dsl §4.2](/spec/)
+명세: [dsl §4.1](/ko/spec/), [dsl §4.2](/ko/spec/)
 
 ### E-CONSTRAINT-DECL
 
@@ -359,7 +359,7 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 콘텐츠 라인의 속성이 필수인 `{…}` 대신 `[…]`로 작성되었습니다. (`::directive{…}`와 같은 구분자를 써야 합니다.)
 
-명세: [dsl §2.1](/spec/)
+명세: [dsl §2.1](/ko/spec/)
 
 ### E-CONTENT-OUTSIDE-SECTION
 
@@ -407,7 +407,7 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 규칙의 부정 간선이 술어 의존 그래프에서 순환(`p :- not p` 포함)을 닫아, 규칙 집합을 계층화할 수 없습니다.
 
-명세: [dsl §7.2](/spec/)
+명세: [dsl §7.2](/ko/spec/)
 
 ### E-DEF-DECL
 
@@ -425,13 +425,13 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 콘텐츠 줄이 상호 배타적인 전달 플래그 `mono`, `os`, `vo` 중 둘 이상을 지정했습니다.
 
-명세: [dsl 0.2.2 D7](/spec/)
+명세: [dsl 0.2.2 D7](/ko/spec/)
 
 ### E-DELIVERY-FLAG-VALUE
 
 전달 플래그(`mono`/`os`/`vo`)에 값이 지정되었지만, 전달 플래그는 값 없이 단독으로 씁니다.
 
-명세: [dsl 0.2.2 D7](/spec/)
+명세: [dsl 0.2.2 D7](/ko/spec/)
 
 ### E-DELIVERY-NARRATOR
 
@@ -485,7 +485,7 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 매치 대상을 가리키는 `$`가 `<match>` 블록 밖에서 사용되었지만, 그 위치에서는 유효하지 않습니다.
 
-명세: [dsl §8.2](/spec/)
+명세: [dsl §8.2](/ko/spec/)
 
 ### E-DOMAIN-DUP
 
@@ -507,13 +507,13 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 `<branch id>` 또는 `<hub id>`가 같은 에피소드 안에서 다른 브랜치나 허브가 이미 사용한 id를 반복했습니다. 브랜치와 허브 id는 하나의 고유성 영역을 공유합니다.
 
-명세: [dsl §11.1](/spec/), [dsl §7.3.2](/spec/)
+명세: [dsl §11.1](/ko/spec/), [dsl §7.3.2](/ko/spec/)
 
 ### E-DUP-LINE-CODE
 
 같은 화자의 콘텐츠 줄 두 개가 동일한 `:line` `code=`를 공유했지만, (화자, 코드) 쌍은 고유해야 합니다 — 이는 voiceKey/번역 식별 조인 키입니다.
 
-명세: [dsl §12](/spec/)
+명세: [dsl §12](/ko/spec/)
 
 ### E-DUP-TRACK
 
@@ -625,7 +625,7 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 가져온 스키마의 상태 경로가 더 깊은 `extends` 기반이나 씬의 인라인 `state:`에서 다른 `type`으로 재선언되었지만, 영속 상태는 안정적인 타입을 유지해야 합니다.
 
-명세: [dsl §9.2](/spec/)
+명세: [dsl §9.2](/ko/spec/)
 
 ### E-FACT-DOMAIN
 
@@ -683,7 +683,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 `<hub>`가 결코 빠져나갈 수 없습니다 — 가드 없는(`when` 없는) `exit` 선택지도 없고, 자격 있는 집합이 확실히 비도록 모든 선택지가 `once`인 것도 아닙니다.
 
-명세: [dsl §7.3.2](/spec/), [dsl §11.1.3](/spec/)
+명세: [dsl §7.3.2](/ko/spec/), [dsl §11.1.3](/ko/spec/)
 
 ### E-IDENTITY-TEMPLATE
 
@@ -705,7 +705,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 `{{…}}` 보간이 줄 끝 전에 닫히지 않았습니다.
 
-명세: [dsl §7.6](/spec/)
+명세: [dsl §7.6](/ko/spec/)
 
 ### E-INTO-TARGET
 
@@ -771,7 +771,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 콘텐츠 줄이 `@`로 대체된 예전 `:` 화자 기호를 사용합니다 — `@speaker{…}: text` 형식으로 쓰십시오.
 
-명세: [dsl §7.1](/spec/)
+명세: [dsl §7.1](/ko/spec/)
 
 ### E-LINT-CONFIG
 
@@ -793,7 +793,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 로직 블록에 허용되지 않는 자식이 있거나(`<branch>`와 `<hub>`는 `<choice>`만, `<match>`는 `<when>`과 `<otherwise>`만 받습니다), `<choice>`·`<when>`·`<otherwise>`·`<track>`·`<reward>`가 속해야 할 블록 밖에 있거나, `<reward>`가 자체 종료 형식이 아닙니다.
 
-명세: [dsl §7.3](/spec/), [dsl §7.3.2](/spec/), [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
+명세: [dsl §7.3](/ko/spec/), [dsl §7.3.2](/ko/spec/), [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
 
 ### E-LOWER-RECORD-FIELD
 
@@ -819,7 +819,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 `<match>`에 `<otherwise>` 분기가 두 개 이상 있지만, 최대 하나만 허용됩니다.
 
-명세: [dsl §11.2](/spec/)
+명세: [dsl §11.2](/ko/spec/)
 
 ### E-MATCH-NO-SUBJECT
 
@@ -835,7 +835,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 상태 경로가 아직 설정되지 않았을 수 있는 지점에서 읽혔습니다 — 기본값도, 지배하는 `::set`도, 이를 증명하는 가드도 없습니다.
 
-명세: [dsl §9.4](/spec/)
+명세: [dsl §9.4](/ko/spec/)
 
 ### E-META-ID
 
@@ -889,7 +889,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 `<match>`에 `<otherwise>`가 없고 주어의 도메인이 `<when>` 분기들로 완전히 덮이지 않았습니다 — 메시지에 빠진 값이나 처음 덮이지 않은 구간이 표시됩니다.
 
-명세: [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md), [dsl §11.2](/spec/)
+명세: [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md), [dsl §11.2](/ko/spec/)
 
 ### E-OBJECTIVE-CONTRADICTION
 
@@ -971,7 +971,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 이름에 이름 규칙(글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지 않음) 밖의 문자가 있습니다: 상태 경로 세그먼트, quest·objective·entry·branch·hub·choice·mark id, relation·enum·엔티티 종류 이름, enum·엔티티 멤버. def와 def 파라미터는 `@name`이나 def 본문에서 그대로 읽히므로 식별자(글자나 `_`로 시작하고 글자, 숫자, `_`로 이어지는 이름)여야 합니다. 또는 조건식에서 식별자가 아닌 이름을 `.` 뒤에 썼습니다(`quest.zero-coke-001.state`). CEL은 이를 뺄셈으로 읽으므로, 메시지가 대괄호 표기(`quest["zero-coke-001"].state`)를 알려 줍니다.
 
-명세: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl 0.30.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl §8.4](/spec/)
+명세: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl 0.30.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl §8.4](/ko/spec/)
 
 ### E-PERMISSION-BRIDGE
 
@@ -1041,25 +1041,25 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 프로필이 활성화한 플러그인 `id`가 plugins 디렉터리에 설치되어 있지 않거나, 해당 패키지 로드에 실패했습니다.
 
-명세: [dsl §11](/spec/)
+명세: [dsl §11](/ko/spec/)
 
 ### E-PLUGIN-MISSING-EXPORT
 
 플러그인 매니페스트의 `exports:` 항목이 디스크에 존재하지 않는 경로를 가리킵니다.
 
-명세: [dsl §4](/spec/), [dsl §11](/spec/)
+명세: [dsl §4](/ko/spec/), [dsl §11](/ko/spec/)
 
 ### E-PLUGIN-OPTION-TYPE
 
 플러그인 활성화 시 지정한 옵션 값이 매니페스트가 해당 옵션에 선언한 타입과 일치하지 않습니다.
 
-명세: [plugin Appendix C1](/spec/)
+명세: [plugin Appendix C1](/ko/spec/)
 
 ### E-PLUGIN-OPTION-UNKNOWN
 
 플러그인 활성화가 해당 플러그인 매니페스트에 없는 옵션 이름을 설정했습니다.
 
-명세: [plugin Appendix C1](/spec/)
+명세: [plugin Appendix C1](/ko/spec/)
 
 ### E-PLUGIN-PARSE
 
@@ -1073,25 +1073,25 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 예약된 이름 전체와 각 이름을 거부하는 자리, 대신 쓸 이름: [예약된 이름](/ko/reference/reserved-names/).
 
-명세: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl §10](/ko/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
 코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다.
 
-명세: [plugin §14](/spec/)
+명세: [plugin §14](/ko/spec/)
 
 ### E-PLUGIN-UNKNOWN-ASSETKIND
 
 디렉티브가 활성 플러그인 어디에도 선언되지 않은 asset kind에 속성을 바인딩했습니다.
 
-명세: [plugin §7](/spec/)
+명세: [plugin §7](/ko/spec/)
 
 ### E-PLUGIN-UNKNOWN-EXPORT
 
 플러그인 매니페스트의 `exports:` 키가 export 종류가 아닙니다(did-you-mean을 붙입니다). 예전 철자 `rewardkinds`/`assetkinds`/`stampattrs`에는 새 이름 `rewardKinds`/`assetKinds`/`stampAttrs`를 알려 줍니다.
 
-명세: [plugin §4](/spec/), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [plugin §4](/ko/spec/), [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
 
 ### E-PLUGIN-UNKNOWN-REWARD-TARGET
 
@@ -1109,13 +1109,13 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 프로필의 `extends` 체인이 자기 자신으로 순환합니다.
 
-명세: [dsl §11](/spec/)
+명세: [dsl §11](/ko/spec/)
 
 ### E-PROFILE-UNKNOWN
 
 프로젝트가 `lute.project.yaml`에 선언되지 않은 프로필 이름을 선택했습니다.
 
-명세: [dsl §11](/spec/)
+명세: [dsl §11](/ko/spec/)
 
 ### E-PROJECT-CONFIG
 
@@ -1173,19 +1173,19 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞지 않는 정적 타입의 인자를 전달했습니다.
 
-명세: [dsl §8.1](/spec/)
+명세: [dsl §8.1](/ko/spec/)
 
 ### E-REF-ARITY
 
 `@name(args)` 호출이 def가 선언한 매개변수 개수와 다른 개수의 인자를 전달했습니다.
 
-명세: [dsl §8.1](/spec/)
+명세: [dsl §8.1](/ko/spec/)
 
 ### E-REF-TYPE
 
 `@ref`가 채우는 CEL 슬롯·컴포넌트 인자·`{{…}}` 보간 위치와 맞지 않는 타입을 산출합니다 — 렌더링 불가능한 산출 타입이거나, `int`/`double`이 아닌 값에 숫자 형식 힌트를 붙인 경우를 포함합니다.
 
-명세: [dsl §8](/spec/), [dsl §7.6](/spec/), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+명세: [dsl §8](/ko/spec/), [dsl §7.6](/ko/spec/), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
 ### E-RELATION-ARITY
 
@@ -1325,7 +1325,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 규칙의 `count(...)`/`countDistinct(...)` 집계가 그 규칙의 헤드 자신에 의존하는 관계를 읽지만, 집계는 자기 헤드의 순환 밖에 있는 관계만 읽을 수 있습니다.
 
-명세: [dsl §9](/spec/)
+명세: [dsl §9](/ko/spec/)
 
 ### E-RULE-EXCLUSIVE
 
@@ -1410,7 +1410,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 섹션 제목의 끝에 있는 `{#id}` 식별자 접미사가 형식에 맞지 않습니다.
 
-명세: [dsl §3.1](/spec/)
+명세: [dsl §3.1](/ko/spec/)
 
 ### E-SEMANTICS-UNKNOWN
 
@@ -1422,7 +1422,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 `::set`의 복합 연산자(`+=`/`-=`/`*=`)가 선언된 타입이 `int`나 `double`이 아닌 경로를 대상으로 합니다.
 
-명세: [dsl §7.3.4](/spec/)
+명세: [dsl §7.3.4](/ko/spec/)
 
 ### E-SET-SHAPE
 
@@ -1452,13 +1452,13 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 같은 경로에 대한 두 `state:` 선언이 `type`, `default`, `per`, `owner` 중 하나에서 서로 다르며, 어느 쪽도 `extends:`로 다른 쪽을 재정의하지 않습니다.
 
-명세: [dsl §2](/spec/)
+명세: [dsl §2](/ko/spec/)
 
 ### E-STATE-MAYBE-UNAVAILABLE
 
 state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로도 그 값을 설정함을 보장하지 않거나(오류 등급), 일부 경로에서만 설정됩니다(경고 등급).
 
-명세: [dsl §4.3](/spec/)
+명세: [dsl §4.3](/ko/spec/)
 
 ### E-STATE-NAMESPACE
 
@@ -1468,7 +1468,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 씬의 인라인 `state:`가 임포트된(`uses:`) 스키마가 이미 선언한 상태 경로를 선언하거나 재정의했으며, 씬은 이를 재선언해서는 안 됩니다.
 
-명세: [dsl §9.2](/spec/)
+명세: [dsl §9.2](/ko/spec/)
 
 ### E-STATE-SHAPE-CYCLE
 
@@ -1494,7 +1494,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 따옴표로 묶인 속성 값이 정의된 네 가지 이스케이프(`\"`, `\\`, `\n`, `\t`) 외의 백슬래시 이스케이프를 사용합니다.
 
-명세: [dsl §4.4](/spec/)
+명세: [dsl §4.4](/ko/spec/)
 
 ### E-SUBQUEST-REARM
 
@@ -1506,13 +1506,13 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 블록의 본문(그리고 흔히 닫는 태그까지)이 여는 태그와 같은 줄에 쓰였습니다. 여는 태그, 본문의 각 줄, `</tag>` 닫는 태그는 각각 자기 줄에 있어야 합니다.
 
-명세: [dsl §2.3](/spec/)
+명세: [dsl §2.3](/ko/spec/)
 
 ### E-TAG-NOT-ONE-LINE
 
 `<tag …>` 여는 태그의 속성들이 문법이 요구하는 한 줄에 머무르지 않고 다음 물리적 줄로 넘어갑니다.
 
-명세: [dsl §2.3](/spec/)
+명세: [dsl §2.3](/ko/spec/)
 
 ### E-TASK-TRAP
 
@@ -1558,13 +1558,13 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 인라인 텍스트 수식에서 정의되지 않은 백슬래시 이스케이프를 사용했습니다.
 
-명세: [dsl §3.6](/spec/)
+명세: [dsl §3.6](/ko/spec/)
 
 ### E-TEXT-MODIFIER
 
 인라인 텍스트 수식의 중첩이 잘못되었거나 스팬 또는 속성 본문이 닫히지 않았습니다.
 
-명세: [dsl §3.6](/spec/)
+명세: [dsl §3.6](/ko/spec/)
 
 ### E-TIME-RESOLUTION
 
@@ -1576,13 +1576,13 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 `<timeline>` 또는 `<track>` 본문에 클립·스테이징 요소가 아닌 콘텐츠가 포함되어 있습니다.
 
-명세: [dsl §7.4](/spec/)
+명세: [dsl §7.4](/ko/spec/)
 
 ### E-TIMELINE-DURATION
 
 `<timeline duration>`이 클립들의 최대 해석된 끝 시점보다 낮게 명시적으로 설정되어, 타임라인 자체의 내용을 잘라내게 됩니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ### E-TRACE-ACCEPT
 
@@ -1642,7 +1642,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 `<track>`이 `subject`, `channel`, `subject`+`property` 쌍 중 어느 것도 선언하지 않아 식별 키가 없습니다.
 
-명세: [dsl §7.4](/spec/)
+명세: [dsl §7.4](/ko/spec/)
 
 ### E-UNCLASSIFIED
 
@@ -1654,19 +1654,19 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 블록이 닫히지 않았습니다 — 자기 `</tag>`보다 먼저 파일 끝, `## ` 제목, 또는 바깥 블록의 닫는 태그에 이르렀습니다 — 또는 `</tag>`가 열려 있는 어떤 블록도 닫지 않습니다.
 
-명세: [dsl §5](/spec/), [dsl §7.3](/spec/)
+명세: [dsl §5](/ko/spec/), [dsl §7.3](/ko/spec/)
 
 ### E-UNDECLARED
 
 CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선언되지 않은 상태 경로를 읽거나 씁니다.
 
-명세: [dsl §7.3.4](/spec/), [dsl §9.4](/spec/)
+명세: [dsl §7.3.4](/ko/spec/), [dsl §9.4](/ko/spec/)
 
 ### E-UNDECLARED-REF
 
 `@name` 보간 또는 가드 참조가 어떤 스키마에도 선언되지 않은 `def`를 지정합니다.
 
-명세: [dsl §8.1](/spec/)
+명세: [dsl §8.1](/ko/spec/)
 
 ### E-UNKNOWN-ATTR
 
@@ -1704,7 +1704,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `<match>` 주체가 unset일 수 있는데(스키마 `default`가 없는 `run.`/`user.`/`app.` 경로. 분기의 `scene.choices.*` 기록을 포함한 `scene.*` 경로는 경로마다 `E-MAYBE-UNSET`으로 판정합니다) `unset`을 매칭하는 분기나 `<otherwise>`로 커버되지 않았습니다.
 
-명세: [dsl §11.2](/spec/)
+명세: [dsl §11.2](/ko/spec/)
 
 ### E-USES-CYCLE
 
@@ -1734,19 +1734,19 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `validAt`이 파생 관계에 대해 사용되었으며, 그 규칙 클로저는 CEL 가드를 포함하고 있어 단일한 잘 정의된 타임스탬프를 유지하지 않습니다.
 
-명세: [dsl §8](/spec/)
+명세: [dsl §8](/ko/spec/)
 
 ### E-WHEN-LITERAL-DOMAIN
 
 `<when is="…">` 리터럴이 주체의 결정된 유한 도메인 밖에 있습니다 — 다른 열거형 멤버(오타), 도메인과 맞지 않는 숫자/불리언 리터럴, 또는 결코 unset이 될 수 없는 주체에 대한 `unset`입니다.
 
-명세: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl §6.3](/spec/)
+명세: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl §6.3](/ko/spec/)
 
 ### E-WHEN-PATTERN
 
 `<when>` 항목에 `is` 리터럴 패턴도 `test` 가드도 없지만, 둘 중 하나는 반드시 있어야 합니다.
 
-명세: [dsl §7.3.1](/spec/)
+명세: [dsl §7.3.1](/ko/spec/)
 
 ### E-WHEN-RANGE
 
@@ -1758,13 +1758,13 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `<when is="unset">` 분기는 `<match>` 주어가 단순한 상태 경로여야 하는데, 이 주어는 표현식입니다.
 
-명세: [dsl §7.3.1](/spec/)
+명세: [dsl §7.3.1](/ko/spec/)
 
 ### E-WRITE-CONFLICT
 
 `<timeline>`의 서로 다른 `<track>`에 있는 두 `<clip>`이 겹치는 시간에 겹치는 상태 대상을 씁니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ## 경고
 
@@ -1776,7 +1776,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 장면 비트의 `once`가 기본값 `run`이지만 `when`이 사용자 계층 상태만 읽어서 `once`를 명시적으로 쓰지 않으면 매 실행마다 다시 나타납니다.
 
-명세: [dsl 0.22.0 §13](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.23.1](/spec/)
+명세: [dsl 0.22.0 §13](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.23.1](/ko/spec/)
 
 ### W-BEAT-PRIORITY-TIE
 
@@ -1818,7 +1818,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `providerRef` id가 고정된 프로바이더 카탈로그에서 찾을 수 없으며, 이는 id 자체의 오류라기보다 스냅샷이 오래되었거나 오프라인이기 때문일 수 있습니다.
 
-명세: [dsl §7.2](/spec/)
+명세: [dsl §7.2](/ko/spec/)
 
 ### W-CHAPTER-ORDER
 
@@ -1974,7 +1974,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 두 `<when>` 항목이 같은 값에 대해 모두 일치함이 증명되어, 먼저 일치하는 항목이 우선하는 규칙상 나중 항목은 결코 도달할 수 없습니다.
 
-명세: [dsl §11.2](/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
+명세: [dsl §11.2](/ko/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
 
 ### W-PROJECT-INERT
 
@@ -2094,7 +2094,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 대사 줄 전체 텍스트가 선언된 def나 컴포넌트 매개변수의 `@이름`과 정확히 같아서, 값으로 해석되지 않고 리터럴 문자열 `"@이름"`으로 출력됩니다.
 
-명세: [dsl §7.6](/spec/)
+명세: [dsl §7.6](/ko/spec/)
 
 ### W-TEXT-SINGLE-BRACE
 
@@ -2106,19 +2106,19 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `<timeline>`의 한 트랙에 클립이 12개를 초과하여 있어, 검사기가 분리를 권장합니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ### W-TIMELINE-TOTAL
 
 `<timeline>`의 전체 트랙을 합친 클립 수가 40개를 초과하여, 검사기가 분리를 권장합니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ### W-TIMELINE-TRACKS
 
 `<timeline>`에 트랙이 8개를 초과하여 있어, 검사기가 분리를 권장합니다.
 
-명세: [dsl §11.4](/spec/)
+명세: [dsl §11.4](/ko/spec/)
 
 ### W-TRACE-MOCK-UNPRODUCIBLE
 
@@ -2130,7 +2130,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 `<when test="…">` 항목이 CEL 리터럴 비교로 작성되어 있는데, 같은 의미를 `is=` 패턴 형태로 더 명확히 표현할 수 있고 검사기도 이를 직접 분석할 수 있습니다.
 
-명세: [dsl 0.18.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md), [dsl §7.3.1](/spec/)
+명세: [dsl 0.18.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md), [dsl §7.3.1](/ko/spec/)
 
 ### W-WIP
 

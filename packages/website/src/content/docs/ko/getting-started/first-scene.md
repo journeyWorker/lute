@@ -291,7 +291,7 @@ failed: my-scene.lute (1 error(s), 0 warning(s))
 
 **진단 읽기:** `file:line:col: error [CODE] message`. 정확한 줄, 정확한 문제, 그리고 대신 무엇을
 써야 하는지를 정확히 알려줍니다. 메시지만으로 부족하면 `lute --explain <CODE>`가 그 코드의 뜻을
-보여 주고, 모든 코드를 모아 둔 [진단 레퍼런스](/reference/diagnostics/)의 항목을 링크합니다:
+보여 주고, 모든 코드를 모아 둔 [진단 레퍼런스](/ko/reference/diagnostics/)의 항목을 링크합니다:
 
 ```
 $ lute --explain E-LEGACY-CONTENT-SIGIL
@@ -773,7 +773,7 @@ Part 5의 `run.metMira`), 뒤따르는 구성이 플레이어가 어느 선택�
 디렉티브 이름, 속성, 유효한 `emotion` 값을 추측하는 대신 다시 확인하고 싶을 때 언제든 실행하세요.
 여기서부터는 각 구성을 깊이 다루는 **Language** 섹션을 따라가거나, 쓰는 동안
 [치트시트](/ko/reference/cheatsheet/)를 열어 두거나, 실제 프로젝트를 기능별로 둘러보는
-[전체 스펙 쇼케이스](/examples/showcase/)를 읽어보세요. 게임 한 편 전체가 궁금하다면 — 코지
+[전체 스펙 쇼케이스](/ko/examples/showcase/)를 읽어보세요. 게임 한 편 전체가 궁금하다면 — 코지
 미스터리, Ink 이식작, 로그라이크, 비주얼 노벨 — 테스트와 플레이까지 갖춰 검사를 통과하는
 [예제 게임](/ko/examples/games/)을 보세요.
 
@@ -790,4 +790,4 @@ $ lute init --template beats my-game
 
 계기(occasion) 플러그인, 그 순간에 응답하는 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오
 테스트를 만들어 주며 — 만든 그대로 `lute check-project`, `lute test`, `lute play`가 모두
-통과합니다. [비트](/language/beats/)와 [스토리 플레이](/ko/tooling/play/)에서 모델을 설명합니다.
+통과합니다. [비트](/ko/language/beats/)와 [스토리 플레이](/ko/tooling/play/)에서 모델을 설명합니다.

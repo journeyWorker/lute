@@ -326,7 +326,7 @@ match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이
 - **`entry.<id>.everRead`**는 항목마다 새로 추가되는 예약 사용자 계층 `bool`이며 기본값은 `false`입니다. 첫 읽기 후 `entry.<id>.read`를 설정할 때마다 함께 설정하고, 런 시작 시 재설정하지 않습니다. 아티팩트의 `state` 표에는 나열되지 않지만(`entry.<id>.read`는 `entry:<id>` provenance와 함께 나열됨), 콘텐츠는 raw CEL과 `expr` AST(`{ "path": "entry.<id>.everRead" }`)에서 어떤 경로처럼 읽습니다. 로드하는 각 항목에 대해 하나를 유지하세요.
 - **계기 대상 도메인**: capability snapshot에서 계기의 `target`은 `false`, `true`, 또는 `{ "prefix", "entity" }`입니다. 도메인의 경우 검사기는 해당 계기의 모든 비트 대상이 프로젝트 엔티티 종류 `entity`의 `<prefix>.<member>`임을 보장하므로, 그 형태의 대상으로 계기를 발생시키세요. 계기 선언은 아티팩트에 포함되지 않습니다. 도메인은 `capabilitySnapshot`을 변경하며 `true`와 `false`는 0.21 스탬프를 유지합니다.
 - **`owner: engine`**: `state:` 선언은 해당 경로의 작성자로 엔진을 지정할 수 있습니다. 검사기는 그 경로 또는 그 아래 필드에 대한 콘텐츠 `::set`을 거부하므로(`E-ENGINE-OWNED-WRITE`), 정상 아티팩트의 `set` 레코드는 이를 대상으로 하지 않습니다. 엔진이 씁니다. 해당 경로의 아티팩트 `state` 항목은 변하지 않습니다(path, type, default). `lute context --json`은 소유자를 `"owner": "engine"`으로 보고합니다.
-- **Identity 값이 이동합니다.** 기본 `voiceKey` 템플릿은 `{prefix}.{speaker}-{code}`입니다(이전에는 `{speaker}-{code}`). 컴포넌트에서 확장된 줄은 `{prefix}.{component}#{n}` 아래에서 생성되며, `n`은 호스트가 해당 컴포넌트에 `::use`한 횟수를 1부터 셉니다. 따라서 기본 템플릿에서 `lineId`는 `{prefix}.{component}#{n}.{speaker}_{code}`, `voiceKey`는 `{prefix}.{component}#{n}.{speaker}-{code}`이고 중첩된 `::use`는 세그먼트를 하나 더 추가합니다. 필드 형태는 변하지 않았지만 값이 달라지므로 0.21 id를 키로 한 음성 및 현지화 표를 다시 만드세요. 이전 키로 녹음한 오디오가 있는 프로젝트는 `identity: { voiceKey: "{speaker}-{code}" }`를 고정합니다([Frontmatter & profiles](/language/frontmatter-and-profiles/) 참조).
+- **Identity 값이 이동합니다.** 기본 `voiceKey` 템플릿은 `{prefix}.{speaker}-{code}`입니다(이전에는 `{speaker}-{code}`). 컴포넌트에서 확장된 줄은 `{prefix}.{component}#{n}` 아래에서 생성되며, `n`은 호스트가 해당 컴포넌트에 `::use`한 횟수를 1부터 셉니다. 따라서 기본 템플릿에서 `lineId`는 `{prefix}.{component}#{n}.{speaker}_{code}`, `voiceKey`는 `{prefix}.{component}#{n}.{speaker}-{code}`이고 중첩된 `::use`는 세그먼트를 하나 더 추가합니다. 필드 형태는 변하지 않았지만 값이 달라지므로 0.21 id를 키로 한 음성 및 현지화 표를 다시 만드세요. 이전 키로 녹음한 오디오가 있는 프로젝트는 `identity: { voiceKey: "{speaker}-{code}" }`를 고정합니다([Frontmatter & profiles](/ko/language/frontmatter-and-profiles/) 참조).
 
 ### IR 0.10.2에서 변경된 내용
 
@@ -456,9 +456,9 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-전체 장면 및 퀘스트 명령 집합은 스물세 가지 종류입니다: `line`, `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `accept`, `plugin`. 로어 아티팩트에는 `entry`와 `beat` 선언 헤드도 추가되며, 엔진은 이를 재생하지 않고 조회합니다([로어 엔트리](/language/lore-entries/)).
+전체 장면 및 퀘스트 명령 집합은 스물세 가지 종류입니다: `line`, `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `accept`, `plugin`. 로어 아티팩트에는 `entry`와 `beat` 선언 헤드도 추가되며, 엔진은 이를 재생하지 않고 조회합니다([로어 엔트리](/ko/language/lore-entries/)).
 
-`accept` (dsl 0.21.0)는 씬 쪽의 `::accept{quest}`입니다. 엔진은 해당 accept 방식 퀘스트의 상태가 여전히 `unset`이면 활성화하고, 그렇지 않으면 레코드를 무시합니다([퀘스트와 씬](/language/quests-and-scenes/#quests-meet-scenes-and-occasions)).
+`accept` (dsl 0.21.0)는 씬 쪽의 `::accept{quest}`입니다. 엔진은 해당 accept 방식 퀘스트의 상태가 여전히 `unset`이면 활성화하고, 그렇지 않으면 레코드를 무시합니다([퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)).
 
 `end`에는 선택적인 자유 형식 `reason`이 있습니다. 저자가 지정하는 문자열(`"completed"`, 결말 id)이며, Lute는 여기에 의미를 부여하지 않고 호스트가 표시할 수 있습니다. 이를 만나 종료하는 동작은 `commands`의 끝까지 실행한 것과 같지만, reason을 사용할 수 있습니다.
 
