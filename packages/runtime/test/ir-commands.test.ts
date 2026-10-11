@@ -12,7 +12,7 @@ const filesUnder = (root: string): string[] => {
     for (const entry of readdirSync(path)) {
       const child = join(path, entry)
       if (statSync(child).isDirectory()) visit(child)
-      else if (entry === "artifact.json") out.push(child)
+      else if (entry === "artifact.json" && !child.includes("/conformance/invalid/")) out.push(child)
     }
   }
   visit(root)
