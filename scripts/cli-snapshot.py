@@ -65,12 +65,15 @@ class Snapshot:
         self.output = output
         self.commands: list[dict[str, object]] = []
         self.output_files: list[str] = []
-        self._next = 1
+        self._names: dict[str, int] = {}
 
     def run(self, command: Command) -> None:
-        number = self._next
-        self._next += 1
-        record_name = f"{number:05d}-{slug(command.label)}"
+        record_name = slug(command.label)
+        if record_name in self._names:
+            self._names[record_name] += 1
+            record_name = f"{record_name}--{self._names[record_name]}"
+        else:
+            self._names[record_name] = 1
         record = self.output / record_name
         record.mkdir(parents=True)
         try:
@@ -316,24 +319,31 @@ def compare(current: Path, baseline: Path) -> int:
     except ValueError as error:
         print(f"cli-snapshot: ERROR: {error}", file=sys.stderr)
         return 2
-    if current_manifest.get("commands") != baseline_manifest.get("commands"):
-        print("command corpus differs:", file=sys.stderr)
-        print(
-            "".join(
-                difflib.unified_diff(
-                    json.dumps(baseline_manifest.get("commands"), indent=2).splitlines(True),
-                    json.dumps(current_manifest.get("commands"), indent=2).splitlines(True),
-                    fromfile="baseline commands",
-                    tofile="current commands",
-                )
-            ),
-            file=sys.stderr,
-        )
-        return 1
+    # Outputs are keyed by command label, so a command added to the corpus (a new
+    # diagnostic code, a new example) shows up as an addition and leaves every
+    # other output comparable. A command whose arguments changed, or one that
+    # disappeared, is a difference.
+    def by_record(m: dict[str, object]) -> dict[str, object]:
+        return {str(c["record"]): c.get("args") for c in m.get("commands", []) if isinstance(c, dict)}
 
+    baseline_commands = by_record(baseline_manifest)
+    current_commands = by_record(current_manifest)
+    added = sorted(set(current_commands) - set(baseline_commands))
+    removed = sorted(set(baseline_commands) - set(current_commands))
+    changed_args = sorted(
+        r for r in set(current_commands) & set(baseline_commands) if current_commands[r] != baseline_commands[r]
+    )
+    for record in added:
+        print(f"added command: {record}", file=sys.stderr)
+    differences = bool(removed or changed_args)
+    for record in removed:
+        print(f"removed command: {record}", file=sys.stderr)
+    for record in changed_args:
+        print(f"command arguments changed: {record}", file=sys.stderr)
+
+    added_records = set(added)
     baseline_files = set(files(baseline))
-    current_files = set(files(current))
-    differences = False
+    current_files = {f for f in files(current) if f.split("/", 1)[0] not in added_records}
     for name in sorted(baseline_files | current_files):
         before = baseline / name
         after = current / name
@@ -366,7 +376,8 @@ def compare(current: Path, baseline: Path) -> int:
         )
     if differences:
         return 1
-    print(f"byte-identical: {len(current_files)} outputs")
+    suffix = f" ({len(added)} added command(s) not compared)" if added else ""
+    print(f"byte-identical: {len(current_files)} outputs{suffix}")
     return 0
 
 
