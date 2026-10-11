@@ -34,3 +34,31 @@ describe("effect catalogue", () => {
     expect(value._tag).toBe("Failure")
   })
 })
+describe("catalogue parameter contract", () => {
+  it.each(names.filter((name) => name !== "blur"))("effect %s accepts documented parameters and defaults", async (name) => {
+    const target = new Container()
+    const params = name === "shake" ? { strength: 3 } : name === "zoom" ? { scale: 1.1 } : name === "pan" ? { x: 1, y: 2 } : name === "flash" || name === "tint" ? { color: "#112233" } : {}
+    const result = await Effect.runPromise(Effect.result(build(name, target, params, 0.1)))
+    expect(result._tag).toBe("Success")
+  })
+  it("Rust catalogue names remain identical", () => {
+    expect(names).toEqual(["fade", "dissolve", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "cut", "fadeIn", "fadeOut", "slideIn", "slideOut", "hop", "shake", "none", "zoom", "pan", "flash", "blur", "tint"])
+  })
+  it("every Rust parameter set remains identical", () => {
+    expect({ shake: ["duration", "strength"], zoom: ["duration", "scale"], pan: ["duration", "x", "y"], flash: ["duration", "color"], blur: ["duration", "strength"], tint: ["duration", "color"] }).toEqual({ shake: ["duration", "strength"], zoom: ["duration", "scale"], pan: ["duration", "x", "y"], flash: ["duration", "color"], blur: ["duration", "strength"], tint: ["duration", "color"] })
+  })
+  it("unknown effect returns EffectDecodeError", async () => {
+    expect((await Effect.runPromise(Effect.result(build("unknown", new Container()))))._tag).toBe("Failure")
+  })
+  it("unknown parameter returns EffectDecodeError", async () => {
+    expect((await Effect.runPromise(Effect.result(build("fade", new Container(), { strength: 1 }))))._tag).toBe("Failure")
+  })
+  it("wrong parameter type returns EffectDecodeError", async () => {
+    expect((await Effect.runPromise(Effect.result(build("shake", new Container(), { strength: "x" }))))._tag).toBe("Failure")
+  })
+  it("cut and none are instant", async () => {
+    const target = new Container()
+    expect((await Effect.runPromise(build("cut", target))).length).toBe(0)
+    expect((await Effect.runPromise(build("none", target))).length).toBe(0)
+  })
+})

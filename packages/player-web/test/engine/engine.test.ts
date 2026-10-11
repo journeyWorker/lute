@@ -140,3 +140,49 @@ describe("world", () => {
     await Effect.runPromise(Effect.provideService(program, PixiApp, fake))
   })
 })
+
+describe("named easing functions", () => {
+  it("linear endpoints and midpoint", () => { expect(linear(0)).toBe(0); expect(linear(0.5)).toBe(0.5); expect(linear(1)).toBe(1) })
+  it("quadIn endpoints and midpoint", () => { expect(quadIn(0)).toBe(0); expect(quadIn(0.5)).toBe(0.25); expect(quadIn(1)).toBe(1) })
+  it("quadOut endpoints and midpoint", () => { expect(quadOut(0)).toBe(0); expect(quadOut(0.5)).toBe(0.75); expect(quadOut(1)).toBe(1) })
+  it("quadInOut endpoints and midpoint", () => { expect(quadInOut(0)).toBe(0); expect(quadInOut(0.5)).toBe(0.5); expect(quadInOut(1)).toBe(1) })
+  it("cubicIn endpoints and midpoint", () => { expect(cubicIn(0)).toBe(0); expect(cubicIn(0.5)).toBe(0.125); expect(cubicIn(1)).toBe(1) })
+  it("cubicOut endpoints and midpoint", () => { expect(cubicOut(0)).toBe(0); expect(cubicOut(0.5)).toBe(0.875); expect(cubicOut(1)).toBe(1) })
+  it("cubicInOut endpoints and midpoint", () => { expect(cubicInOut(0)).toBe(0); expect(cubicInOut(0.5)).toBe(0.5); expect(cubicInOut(1)).toBe(1) })
+  it("sineInOut endpoints and midpoint", () => { expect(sineInOut(0)).toBe(0); expect(sineInOut(0.5)).toBeCloseTo(0.5); expect(sineInOut(1)).toBe(1) })
+  it("backOut endpoints and midpoint", () => { expect(backOut(0)).toBe(0); expect(backOut(1)).toBe(1); expect(backOut(0.5)).toBeGreaterThan(0.5) })
+  it("elasticOut endpoints and midpoint", () => { expect(elasticOut(0)).toBe(0); expect(elasticOut(1)).toBe(1); expect(elasticOut(0.5)).toBeGreaterThan(0.9) })
+})
+
+describe("tween properties", () => {
+  it.each([
+    ["x", "x", 10, 30], ["y", "y", 20, 40], ["alpha", "alpha", 0.2, 0.8],
+    ["scaleX", "scaleX", 1, 2], ["scaleY", "scaleY", 1, 3], ["rotation", "rotation", 0.1, 1.1],
+    ["tint", "tint", 0x000000, 0xffffff]
+  ])("%s interpolation and exact finish", (_label, property, start, end) => {
+    const target = new Container()
+    if (property === "scaleX" || property === "scaleY") target.scale.set(1)
+    else target[property as "x"] = start
+    const behaviour = tween(target, { [property]: start }, { [property]: end }, 1)
+    behaviour.update(0.5)
+    behaviour.finish()
+    if (property === "scaleX") expect(target.scale.x).toBe(end)
+    else if (property === "scaleY") expect(target.scale.y).toBe(end)
+    else expect(target[property as "x"]).toBe(end)
+    behaviour.dispose()
+  })
+})
+
+describe("individual behaviour timing", () => {
+  it("fade has fixed-dt update and exact finish", () => { const t = new Container(); const b = fade(t, 0, 1); expect(b.update(0.25)).toBe("running"); b.finish(); expect(t.alpha).toBe(0); b.dispose() })
+  it("crossfade has fixed-dt update and exact finish", () => { const a = new Container(); const b = new Container(); const c = crossfade(a, b, 1); expect(c.update(0.25)).toBe("running"); c.finish(); expect(a.alpha).toBe(0); expect(b.alpha).toBe(1); c.dispose() })
+  it("shake restores origin on finish", () => { const t = new Container(); t.x = 3; const b = shake(t, 4, 1, 10); expect(b.update(0.1)).toBe("running"); b.finish(); expect(t.x).toBe(3); b.dispose() })
+  it("hop restores baseline on finish", () => { const t = new Container(); t.y = 4; const b = hop(t, 10, 1); expect(b.update(0.25)).toBe("running"); b.finish(); expect(t.y).toBe(4); b.dispose() })
+  it("slide starts at from and finishes at to", () => { const t = new Container(); const b = slide(t, -10, 20, 1); expect(t.x).toBe(-10); expect(b.update(0.5)).toBe("running"); b.finish(); expect(t.x).toBe(20); b.dispose() })
+  it.each(["left", "right", "up", "down"] as const)("wipe %s reveal finishes masked target and disposes mask", (direction) => { const t = new Container(); t.addChild(new Graphics().rect(0, 0, 40, 40).fill(0xffffff)); const b = wipe(t, direction, 1, true); expect(b.update(0.25)).toBe("running"); b.finish(); expect(t.mask).toBeTruthy(); b.dispose(); expect(t.mask).toBeFalsy() })
+  it.each(["left", "right", "up", "down"] as const)("wipe %s hide reaches exact hidden state", (direction) => { const t = new Container(); t.addChild(new Graphics().rect(0, 0, 40, 40).fill(0xffffff)); const b = wipe(t, direction, 1, false); b.update(0.5); b.finish(); expect(t.mask).toBeTruthy(); b.dispose(); expect(t.mask).toBeFalsy() })
+  it("flash reaches transparent overlay", () => { const t = new Container(); const b = flash(t, 0xabcdef, 1); expect(b.update(0.25)).toBe("running"); b.finish(); expect(t.alpha).toBe(0); b.dispose() })
+  it("pulse loops and finish restores scale", () => { const t = new Container(); const b = pulse(t, 1.1, 1); expect(b.update(0.25)).toBe("running"); b.finish(); expect(t.scale.x).toBe(1); b.dispose() })
+  it("delay reports running then done", () => { const b = delay(0.5); expect(b.update(0.25)).toBe("running"); expect(b.update(0.25)).toBe("done"); b.finish(); b.dispose() })
+  it("dispose releases a wipe mask", () => { const t = new Container(); const b = wipe(t, "left", 1, true); expect(t.mask).toBeTruthy(); b.dispose(); expect(t.mask).toBeFalsy() })
+})
