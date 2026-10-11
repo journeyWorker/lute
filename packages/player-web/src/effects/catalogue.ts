@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { BlurFilter, Container } from "pixi.js"
 import { fade, flash, hop, shake, slide, tween, wipe } from "../engine/behaviours.js"
 import type { WipeDirection } from "../engine/behaviours.js"
@@ -7,27 +7,9 @@ import { linear } from "../engine/easing.js"
 
 /** Names accepted by the 0.40 player effect catalogue. */
 export type EffectName =
-  | "fade"
-  | "dissolve"
-  | "wipeLeft"
-  | "wipeRight"
-  | "wipeUp"
-  | "wipeDown"
-  | "slideLeft"
-  | "slideRight"
-  | "cut"
-  | "fadeIn"
-  | "fadeOut"
-  | "slideIn"
-  | "slideOut"
-  | "hop"
-  | "shake"
-  | "none"
-  | "zoom"
-  | "pan"
-  | "flash"
-  | "blur"
-  | "tint"
+  | "fade" | "dissolve" | "wipeLeft" | "wipeRight" | "wipeUp" | "wipeDown" | "slideLeft" | "slideRight"
+  | "cut" | "fadeIn" | "fadeOut" | "slideIn" | "slideOut" | "hop" | "shake" | "none" | "zoom" | "pan"
+  | "flash" | "blur" | "tint"
 
 /** Values accepted in a binding effect parameter object. */
 export type EffectParams = Readonly<Record<string, number | string | boolean>>
@@ -39,21 +21,27 @@ export interface EffectContext {
   readonly camera?: Container
 }
 
-/** An unknown catalogue effect. */
-export class UnknownEffect extends Schema.TaggedError<UnknownEffect>()("UnknownEffect", {
-  name: Schema.String
+/** Typed decoding failure for an effect name, parameter name, or parameter value. */
+export class EffectDecodeError extends Schema.TaggedError<EffectDecodeError>()("EffectDecodeError", {
+  effect: Schema.String,
+  parameter: Schema.String,
+  message: Schema.String
 }) {}
-/** A parameter not accepted by a catalogue effect. */
+
+/** Compatibility error for callers that distinguish unknown names. */
+export class UnknownEffect extends Schema.TaggedError<UnknownEffect>()("UnknownEffect", { name: Schema.String }) {}
+/** Compatibility error for callers that distinguish unknown parameters. */
 export class UnknownEffectParameter extends Schema.TaggedError<UnknownEffectParameter>()("UnknownEffectParameter", {
   effect: Schema.String,
   parameter: Schema.String
 }) {}
-/** A parameter value with the wrong schema type. */
+/** Compatibility error for callers that distinguish malformed parameter values. */
 export class InvalidEffectParameter extends Schema.TaggedError<InvalidEffectParameter>()("InvalidEffectParameter", {
   effect: Schema.String,
   parameter: Schema.String,
   message: Schema.String
 }) {}
+
 const accepted: Readonly<Record<EffectName, ReadonlyArray<string>>> = {
   fade: ["duration"], dissolve: ["duration"], wipeLeft: ["duration"], wipeRight: ["duration"],
   wipeUp: ["duration"], wipeDown: ["duration"], slideLeft: ["duration"], slideRight: ["duration"], cut: [],
@@ -64,56 +52,65 @@ const accepted: Readonly<Record<EffectName, ReadonlyArray<string>>> = {
 
 const numberSchema = Schema.Number
 const stringSchema = Schema.String
-const validNumber = (effect: EffectName, parameter: string, value: unknown): number => {
-  if (typeof value !== "number") {
-    throw new InvalidEffectParameter({ effect, parameter, message: "expected a number" })
-  }
-  return Schema.decodeUnknownSync(numberSchema)(value)
-}
-const validString = (effect: EffectName, parameter: string, value: unknown): string => {
-  if (typeof value !== "string") {
-    throw new InvalidEffectParameter({ effect, parameter, message: "expected a string" })
-  }
-  return Schema.decodeUnknownSync(stringSchema)(value)
-}
-const parse = (name: EffectName, params: EffectParams): void => {
-  const allowed = accepted[name]
-  for (const parameter of Object.keys(params)) {
-    if (!allowed.includes(parameter)) throw new UnknownEffectParameter({ effect: name, parameter })
-  }
-  for (const [parameter, value] of Object.entries(params)) {
-    if (parameter === "duration" || parameter === "strength" || parameter === "scale" || parameter === "x" || parameter === "y") {
-      validNumber(name, parameter, value)
-    } else if (parameter === "color") {
-      validString(name, parameter, value)
+const decodeNumber = (effect: EffectName, parameter: string, value: unknown): Effect.Effect<number, EffectDecodeError> =>
+  typeof value !== "number"
+    ? Effect.fail(new EffectDecodeError({ effect, parameter, message: "expected a number" }))
+    : Schema.decodeUnknownEffect(numberSchema)(value).pipe(
+        Effect.mapError(() => new EffectDecodeError({ effect, parameter, message: "expected a number" }))
+      )
+const decodeString = (effect: EffectName, parameter: string, value: unknown): Effect.Effect<string, EffectDecodeError> =>
+  typeof value !== "string"
+    ? Effect.fail(new EffectDecodeError({ effect, parameter, message: "expected a string" }))
+    : Schema.decodeUnknownEffect(stringSchema)(value).pipe(
+        Effect.mapError(() => new EffectDecodeError({ effect, parameter, message: "expected a string" }))
+      )
+const parse = (name: EffectName, params: EffectParams): Effect.Effect<void, EffectDecodeError> =>
+  Effect.gen(function* () {
+    const allowed = accepted[name]
+    for (const parameter of Object.keys(params)) {
+      if (!allowed.includes(parameter)) {
+        return yield* Effect.fail(new EffectDecodeError({ effect: name, parameter, message: "unknown parameter" }))
+      }
     }
-  }
-}
-const number = (effect: EffectName, params: EffectParams, parameter: string, fallback: number): number => {
+    for (const [parameter, value] of Object.entries(params)) {
+      if (parameter === "duration" || parameter === "strength" || parameter === "scale" || parameter === "x" || parameter === "y") {
+        yield* decodeNumber(name, parameter, value)
+      } else if (parameter === "color") {
+        yield* decodeString(name, parameter, value)
+      }
+    }
+  })
+const valueNumber = (
+  effect: EffectName,
+  params: EffectParams,
+  parameter: string,
+  fallback: number
+): Effect.Effect<number, EffectDecodeError> => {
   const value = params[parameter]
-  return value === undefined ? fallback : validNumber(effect, parameter, value)
+  return value === undefined ? Effect.succeed(fallback) : decodeNumber(effect, parameter, value)
 }
-const colour = (effect: EffectName, params: EffectParams): number => {
-  const source = validString(effect, "color", params.color ?? "#ffffff").trim()
-  const text = source.startsWith("#") ? source.slice(1) : source.startsWith("0x") ? source.slice(2) : source
-  if (!/^[0-9a-fA-F]{6}$/.test(text)) {
-    throw new InvalidEffectParameter({ effect, parameter: "color", message: "expected #RRGGBB" })
-  }
-  return Number.parseInt(text, 16)
-}
-const dimension = (target: Container, ctx: EffectContext): number => Math.max(1, ctx.design?.width ?? target.width, ctx.design?.height ?? target.height)
+const colour = (effect: EffectName, params: EffectParams): Effect.Effect<number, EffectDecodeError> =>
+  decodeString(effect, "color", params.color ?? "#ffffff").pipe(
+    Effect.flatMap((source) => {
+      const trimmed = source.trim()
+      const text = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed
+      return /^[0-9a-fA-F]{6}$/.test(text)
+        ? Effect.succeed(Number.parseInt(text, 16))
+        : Effect.fail(new EffectDecodeError({ effect, parameter: "color", message: "expected #RRGGBB" }))
+    })
+  )
+const dimension = (target: Container, ctx: EffectContext): number =>
+  Math.max(1, ctx.design?.width ?? target.width, ctx.design?.height ?? target.height)
 
 class BlurBehaviour implements Behaviour {
   readonly filter: BlurFilter
   target: Container
-  start = 0
   end = 0
   duration = 0
   elapsed = 0
   constructor(target: Container, strength: number, duration: number) {
     this.target = target
     this.filter = new BlurFilter({ strength: 0 })
-    this.start = 0
     this.end = strength
     this.duration = Math.max(0, duration)
     this.target.filters = [this.filter]
@@ -121,7 +118,7 @@ class BlurBehaviour implements Behaviour {
   update(dt: number): "running" | "done" {
     this.elapsed = Math.min(this.duration, this.elapsed + Math.max(0, dt))
     const progress = this.duration <= 0 ? 1 : this.elapsed / this.duration
-    this.filter.strength = this.start + (this.end - this.start) * progress
+    this.filter.strength = this.end * progress
     return this.elapsed >= this.duration ? "done" : "running"
   }
   finish(): void {
@@ -132,35 +129,17 @@ class BlurBehaviour implements Behaviour {
     this.filter.strength = this.end
   }
 }
-const parseName = (name: string): EffectName => {
+const parseName = (name: string): Effect.Effect<EffectName, EffectDecodeError> => {
   switch (name) {
-    case "fade":
-    case "dissolve":
-    case "wipeLeft":
-    case "wipeRight":
-    case "wipeUp":
-    case "wipeDown":
-    case "slideLeft":
-    case "slideRight":
-    case "cut":
-    case "fadeIn":
-    case "fadeOut":
-    case "slideIn":
-    case "slideOut":
-    case "hop":
-    case "shake":
-    case "none":
-    case "zoom":
-    case "pan":
-    case "flash":
-    case "blur":
-    case "tint":
-      return name
+    case "fade": case "dissolve": case "wipeLeft": case "wipeRight": case "wipeUp": case "wipeDown":
+    case "slideLeft": case "slideRight": case "cut": case "fadeIn": case "fadeOut": case "slideIn":
+    case "slideOut": case "hop": case "shake": case "none": case "zoom": case "pan": case "flash":
+    case "blur": case "tint":
+      return Effect.succeed(name)
     default:
-      throw new UnknownEffect({ name })
+      return Effect.fail(new EffectDecodeError({ effect: name, parameter: "", message: "unknown effect" }))
   }
 }
-
 const wipeDirection = (name: EffectName): WipeDirection => {
   switch (name) {
     case "wipeLeft": return "left"
@@ -170,62 +149,46 @@ const wipeDirection = (name: EffectName): WipeDirection => {
     default: return "left"
   }
 }
-/** Build the behaviours for one catalogue effect. Invalid names and parameters throw tagged errors. */
+
+/** Build behaviours for one catalogue effect, returning typed decoding failures. */
 export const build = (
   name: string,
   target: Container,
   params: EffectParams = {},
   duration = 0,
   ctx: EffectContext = {}
-): ReadonlyArray<Behaviour> => {
-  const effect = parseName(name)
-  parse(effect, params)
-  const seconds = Math.max(0, duration)
-  switch (effect) {
-    case "fade":
-    case "dissolve":
-      return [fade(target, 0, seconds)]
-    case "wipeLeft":
-    case "wipeRight":
-    case "wipeUp":
-    case "wipeDown":
-      return [wipe(target, wipeDirection(effect), seconds, true)]
-    case "slideLeft":
-      return [slide(target, target.x + dimension(target, ctx), target.x, seconds)]
-    case "slideRight":
-      return [slide(target, target.x - dimension(target, ctx), target.x, seconds)]
-    case "cut":
-    case "none":
-      return []
-    case "fadeIn":
-      return [fade(target, 1, seconds)]
-    case "fadeOut":
-      return [fade(target, 0, seconds)]
-    case "slideIn":
-      return [slide(target, target.x + dimension(target, ctx), target.x, seconds)]
-    case "slideOut":
-      return [slide(target, target.x, target.x - dimension(target, ctx), seconds)]
-    case "hop":
-      return [hop(target, dimension(target, ctx) * 0.08, seconds)]
-    case "shake":
-      return [shake(target, number(effect, params, "strength", 12), seconds)]
-    case "zoom": {
-      const scale = number(effect, params, "scale", 1)
-      return [tween(target, { scaleX: target.scale.x, scaleY: target.scale.y }, { scaleX: scale, scaleY: scale }, seconds, linear)]
+): Effect.Effect<ReadonlyArray<Behaviour>, EffectDecodeError> =>
+  Effect.gen(function* () {
+    const effect = yield* parseName(name)
+    yield* parse(effect, params)
+    const seconds = Math.max(0, duration)
+    switch (effect) {
+      case "fade": case "dissolve": return [fade(target, 0, seconds)]
+      case "wipeLeft": case "wipeRight": case "wipeUp": case "wipeDown":
+        return [wipe(target, wipeDirection(effect), seconds, true)]
+      case "slideLeft": return [slide(target, target.x + dimension(target, ctx), target.x, seconds)]
+      case "slideRight": return [slide(target, target.x - dimension(target, ctx), target.x, seconds)]
+      case "cut": case "none": return []
+      case "fadeIn": return [fade(target, 1, seconds)]
+      case "fadeOut": return [fade(target, 0, seconds)]
+      case "slideIn": return [slide(target, target.x + dimension(target, ctx), target.x, seconds)]
+      case "slideOut": return [slide(target, target.x, target.x - dimension(target, ctx), seconds)]
+      case "hop": return [hop(target, dimension(target, ctx) * 0.08, seconds)]
+      case "shake": return [shake(target, yield* valueNumber(effect, params, "strength", 12), seconds)]
+      case "zoom": {
+        const scale = yield* valueNumber(effect, params, "scale", 1)
+        return [tween(target, { scaleX: target.scale.x, scaleY: target.scale.y }, { scaleX: scale, scaleY: scale }, seconds, linear)]
+      }
+      case "pan": {
+        const toX = yield* valueNumber(effect, params, "x", target.x)
+        const toY = yield* valueNumber(effect, params, "y", target.y)
+        return [tween(target, { x: target.x, y: target.y }, { x: toX, y: toY }, seconds, linear)]
+      }
+      case "flash": return [flash(ctx.overlay ?? target, yield* colour(effect, params), seconds)]
+      case "blur": return [new BlurBehaviour(target, yield* valueNumber(effect, params, "strength", 8), seconds)]
+      case "tint": return [tween(target, { tint: target.tint }, { tint: yield* colour(effect, params) }, seconds, linear)]
     }
-    case "pan": {
-      const toX = number(effect, params, "x", target.x)
-      const toY = number(effect, params, "y", target.y)
-      return [tween(target, { x: target.x, y: target.y }, { x: toX, y: toY }, seconds, linear)]
-    }
-    case "flash":
-      return [flash(ctx.overlay ?? target, colour(effect, params), seconds)]
-    case "blur":
-      return [new BlurBehaviour(target, number(effect, params, "strength", 8), seconds)]
-    case "tint":
-      return [tween(target, { tint: target.tint }, { tint: colour(effect, params) }, seconds, linear)]
-  }
-}
+  })
 
-/** Catalogue facade for callers that prefer an object service. */
+/** Catalogue facade for callers that prefer an object. */
 export const EffectCatalogue = { build }
