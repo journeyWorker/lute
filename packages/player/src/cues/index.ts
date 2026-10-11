@@ -1,8 +1,8 @@
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import * as Runtime from "@lute-lang/runtime"
 import type { Bindings } from "../bindings/schema.js"
-import type { Cue, CueContext, CueFactoryShape, CueTiming, Event, Output } from "../model.js"
-import type { AudioPlay, EffectSpec, LineView, Segment, StageCue } from "../ports/index.js"
+import type { Cue, CueContext, CueFactoryShape, CueTiming, Event, Output, Stage, ChoiceAwait } from "../model.js"
+import type { AudioPlay, ChoiceView, EffectSpec, LineView, Segment, StageCue } from "../ports/index.js"
 
 type Bundle = Runtime.Bundle.Bundle
 type JsonRecord = { readonly [key: string]: unknown }
@@ -61,6 +61,26 @@ const filesForAsset = (bindings: Bindings, assetId: unknown): ReadonlyArray<stri
   if (!string(assetId) || !bindings.assets) return []
   const file = bindings.assets[assetId]
   return file === undefined ? [] : [file]
+}
+
+/** Resolve every bound file referenced by a restored stage. */
+export const stageFiles = (bindings: Bindings, stage: Stage): ReadonlyArray<string> => {
+  const files: string[] = []
+  const background = fileForBackground(bindings, stage.bg ?? {})
+  if (background !== undefined) files.push(background)
+  for (const actor of stage.actors) {
+    const file = spriteFile(bindings, actor)
+    if (file !== undefined) files.push(file)
+  }
+  if (stage.cg?.assetId !== undefined) files.push(...filesForAsset(bindings, stage.cg.assetId))
+  if (stage.video?.assetId !== undefined) files.push(...filesForAsset(bindings, stage.video.assetId))
+  const music = stage.music
+  if (music?.assetId !== undefined && music.assetId !== null) files.push(...filesForAsset(bindings, music.assetId))
+  else if (music?.mood !== undefined && music.mood !== null) {
+    const file = bindings.music?.moods?.[music.mood]
+    if (file !== undefined) files.push(file)
+  }
+  return files
 }
 
 const optionalStage = <T extends StageCue>(cue: T, duration: number | undefined, transition: EffectSpec | undefined): T => ({
@@ -293,7 +313,35 @@ const makeEventCue = (event: Exclude<Event, { readonly type: "record" }>): Cue =
 const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFactoryShape => {
   const commands = commandIndexFrom(bundle)
   const castNames = castNamesFrom(bundle.artifacts)
+  const choiceView = (await_: ChoiceAwait, selectedLocale = locale): ChoiceView => {
+    const source = commands.get(await_.menu.document)?.get(await_.menu.position)
+    const authoredOptions = Array.isArray(source?.options) ? source.options : []
+    const authoredById: Record<string, JsonRecord> = {}
+    for (const option of authoredOptions) if (isRecord(option) && string(option.id)) authoredById[option.id] = option
+    const textOf = (value: JsonRecord | undefined, fallback: string): string => {
+      const texts = record(value, "texts")
+      return texts && string(texts[selectedLocale]) ? texts[selectedLocale] : string(value?.text) ? value.text : fallback
+    }
+    const sourcePrompt = field(source, "prompt")
+    const promptTexts = record(sourcePrompt, "texts")
+    const prompt = promptTexts && string(promptTexts[selectedLocale])
+      ? promptTexts[selectedLocale]
+      : string(sourcePrompt) ? sourcePrompt
+      : await_.menu.prompt ?? undefined
+    return {
+      id: await_.menu.id,
+      construct: await_.menu.construct === "hub" ? "hub" : "branch",
+      prompt,
+      timeout: await_.menu.timeout ?? undefined,
+      default: await_.menu.default ?? undefined,
+      options: await_.menu.options.map((option) => {
+        const authoredOption = authoredById[option.id]
+        return { id: option.id, text: textOf(authoredOption, option.id), verdict: option.verdict, once: option.once, exit: option.exit }
+      })
+    }
+  }
   return {
+    choiceView,
     fromOutput: Effect.fn("Lute.Player.CueFactory.fromOutput")(function* (output: Output, readLines: ReadonlySet<string>) {
       const cues: Cue[] = []
       for (const event of output.events) {

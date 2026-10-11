@@ -9,10 +9,11 @@ import type {
 } from "../model.js"
 import type { PlayerSessionShape } from "../session/index.js"
 import type { Bindings } from "../bindings/schema.js"
-import { resolveFile } from "../bindings/load.js"
 import type {
   AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, SlotId
 } from "../ports/index.js"
+import { stageFiles } from "../cues/index.js"
+import { resolveFile } from "../bindings/load.js"
 import { AssetMissing } from "../ports/index.js"
 import type { ProfileStoreShape, SaveStoreShape } from "../stores/index.js"
 
@@ -226,6 +227,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     const saved = yield* options.saves.load(slot)
     const point = yield* options.session.restore(saved.runtime)
     yield* options.presenter.hideScreen
+    yield* ensureAssets(stageFiles(options.bindings, point.stage))
     yield* options.presenter.restore(point.stage)
     yield* restartMusic(point.stage)
     yield* offerEvent({ type: "load.done", await: point.await })
@@ -312,7 +314,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "choice.show":
         return Effect.forkScoped(Effect.gen(function* () {
           const remaining = Stream.fromEffectRepeat(Effect.andThen(Effect.sleep(100), SubscriptionRef.get(countdownRef)))
-          const option = yield* options.presenter.showChoice(command.await.menu, remaining)
+          const option = yield* options.presenter.showChoice(factory.choiceView(command.await, currentSettings.locale), remaining)
           yield* offerEvent({ type: "choose", option })
         })).pipe(Effect.asVoid)
       case "choice.hide": return options.presenter.hideChoice
@@ -338,7 +340,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "load": return loadSlot(command.slot)
       case "delete": return options.saves.delete(command.slot).pipe(Effect.andThen(offerEvent({ type: "slot.occupied", slot: command.slot, occupied: false })))
       case "rollback":
-        return Effect.gen(function* () { yield* interruptBatch(); const point = yield* options.session.rollback(1); yield* options.presenter.restore(point.stage); yield* restartMusic(point.stage); yield* offerEvent({ type: "load.done", await: point.await }) })
+        return Effect.gen(function* () { yield* interruptBatch(); const point = yield* options.session.rollback(1); yield* ensureAssets(stageFiles(options.bindings, point.stage)); yield* options.presenter.restore(point.stage); yield* restartMusic(point.stage); yield* offerEvent({ type: "load.done", await: point.await }) })
       case "screen.show": return options.presenter.showScreen(command.screen)
       case "screen.hide": return options.presenter.hideScreen
       case "overlay.show":

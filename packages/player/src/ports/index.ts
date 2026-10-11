@@ -47,6 +47,22 @@ export interface EffectSpec {
   readonly params: Readonly<Record<string, number | string | boolean>>
 }
 
+/** Authored and runtime-resolved choice data for presenters. */
+export interface ChoiceView {
+  readonly id: string
+  readonly construct: "branch" | "hub"
+  readonly prompt: string | undefined
+  readonly timeout: number | undefined
+  readonly default: string | undefined
+  readonly options: ReadonlyArray<{
+    readonly id: string
+    readonly text: string
+    readonly verdict: string
+    readonly once: boolean
+    readonly exit: boolean
+  }>
+}
+
 /** Rendering and interaction seam. */
 export interface Presenter {
   /** Play a staging cue; completes when its visual effect finished (at once in skip mode). */
@@ -60,7 +76,7 @@ export interface Presenter {
   /** Rebuild the whole stage at once (load, rollback, presentation start). */
   readonly restore: (stage: Stage) => Effect.Effect<void>
   /** Show a choice menu; `remaining` streams seconds left for a timed choice. Resolves with the chosen option id. */
-  readonly showChoice: (menu: MenuAwait, remaining: Stream.Stream<number>) => Effect.Effect<string>
+  readonly showChoice: (choice: ChoiceView | MenuAwait, remaining: Stream.Stream<number>) => Effect.Effect<string>
   readonly hideChoice: Effect.Effect<void>
   /** Render a screen/overlay model (title, backlog, save/load, settings, confirm, loading, halted, idle menu). */
   readonly showScreen: (screen: ScreenModel) => Effect.Effect<void>

@@ -6,7 +6,7 @@ import type { Effect, Scope, Stream, SubscriptionRef } from "effect"
 import type { Contract, Program } from "@lute-lang/runtime"
 import type { Bindings } from "./bindings/schema.js"
 import type {
-  AudioPort, BacklogEntry, LineView, PlayerAction, PlayMode, Presenter, ScreenModel, Settings, SlotId
+  AudioPort, BacklogEntry, ChoiceView, LineView, PlayerAction, PlayMode, Presenter, ScreenModel, Settings, SlotId
 } from "./ports/index.js"
 
 // ── Runtime contract (generated in @lute-lang/runtime) ──────────────────────
@@ -206,6 +206,8 @@ export type LogEntry = { readonly seed: Contract.Seed } | { readonly snapshot: S
 export interface CueFactoryShape {
   /** One runtime output → cues, in order. A record kind the factory does not know is a defect. */
   readonly fromOutput: (output: Output, readLines: ReadonlySet<string>) => Effect.Effect<ReadonlyArray<Cue>>
+  /** Resolve authored choice text for a runtime await. */
+  readonly choiceView: (await_: ChoiceAwait, locale?: string) => ChoiceView
 }
 
 export interface CueSchedulerShape {

@@ -1,14 +1,18 @@
 import { Deferred, Effect, Stream } from "effect"
 import { Container, Graphics, Text, TextStyle } from "pixi.js"
-import type { Contract } from "@lute-lang/runtime"
+import type { ChoiceView, MenuAwait } from "@lute-lang/player"
 import type { Theme } from "../engine/types.js"
 
-/** A menu option with the runtime's visibility verdict and optional display label. */
+/** A menu option with the runtime's visibility verdict and authored display text. */
 export interface ChoiceOption {
   readonly id: string
   readonly verdict: string
-  readonly label?: string
+  readonly text?: string
+  readonly once?: boolean
+  readonly exit?: boolean
 }
+
+type ChoiceInput = ChoiceView | MenuAwait
 
 /** Whether a runtime verdict leaves an option selectable. */
 export const isChoiceEnabled = (verdict: string): boolean => verdict === "open"
@@ -53,8 +57,8 @@ interface RenderedOption {
   readonly label: Text
 }
 
-const hasLabel = (option: ChoiceOption): option is ChoiceOption & { readonly label: string } =>
-  typeof option.label === "string"
+const hasLabel = (option: ChoiceOption): option is ChoiceOption & { readonly text: string } =>
+  typeof option.text === "string"
 
 /** A vertical, keyboard and pointer accessible choice menu. */
 export class ChoiceMenu {
@@ -100,21 +104,17 @@ export class ChoiceMenu {
   }
 
   /** Shows a menu and resolves with the selected option id. */
-  show = (
-    menu: Contract.MenuAwait,
-    remaining: Stream.Stream<number>
-  ): Effect.Effect<string> =>
+  show = (choice: ChoiceInput, remaining: Stream.Stream<number>): Effect.Effect<string> =>
     (() => {
       const self = this
       return Effect.gen(function* () {
         yield* self.hide
         self.target.visible = true
-        // A spent `once` option is gone from the menu; a closed one shows disabled.
-        const options: ChoiceOption[] = menu.options
+        const options: ChoiceOption[] = choice.options
           .filter((option) => option.verdict !== "spent")
-          .map((option) => ({ id: option.id, verdict: option.verdict }))
+          .map((option) => ({ ...option, text: "text" in option && typeof option.text === "string" ? option.text : option.id }))
         self.navigation = choiceNavigation(options)
-        self.prompt.text = menu.prompt ?? ""
+        self.prompt.text = choice.prompt ?? ""
         self.renderOptions(options)
         self.deferred = yield* Deferred.make<string>()
         const deferred = self.deferred
@@ -190,7 +190,7 @@ export class ChoiceMenu {
     options.forEach((option, index) => {
       const button = new Graphics()
       const label = new Text({
-        text: hasLabel(option) ? option.label : option.id,
+        text: hasLabel(option) ? option.text : option.id,
         style: new TextStyle({ fontFamily: this.theme.font, fontSize: 22, fill: this.theme.text })
       })
       button.y = 70 + index * 48

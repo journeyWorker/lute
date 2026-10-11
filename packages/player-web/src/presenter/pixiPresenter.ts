@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, PubSub, Stream } from "effect"
-import type { TextStyleBinding } from "../text/richText.js"
-import type { Bindings, EffectSpec, LineView, MenuAwait, PlayMode, PlayerAction, Presenter, ScreenModel, Settings, Stage, StageCue } from "@lute-lang/player"
+import type { Bindings, ChoiceView, EffectSpec, LineView, PlayMode, PlayerAction, Presenter, ScreenModel, Settings, Stage, StageCue } from "@lute-lang/player"
+import type { MenuAwait } from "@lute-lang/player"
 import type { PixiAppShape } from "../engine/types.js"
 import type { WorldShape } from "../engine/types.js"
 import { PixiApp } from "../engine/app.js"
@@ -114,7 +114,7 @@ export class PixiPresenter implements Presenter {
     this.revealLine = this.dialogue.reveal
     this.clearLine = this.dialogue.clear
     this.restore = (stage) => this.restoreStage(stage)
-    this.showChoice = (menu, remaining) => this.showChoiceInternal(menu, remaining)
+    this.showChoice = (choice, remaining) => this.showChoiceInternal(choice, remaining)
     this.hideChoice = this.choice.hide
     this.showScreen = (screen) => {
       const modal = ["Menu", "Backlog", "SaveLoad", "Settings", "Confirm"].includes(screen._tag)
@@ -195,8 +195,8 @@ export class PixiPresenter implements Presenter {
     Effect.flatMap(() => this.video.show(stage.video, false, true))
   )
 
-  private readonly showChoiceInternal = (menu: MenuAwait, remaining: Stream.Stream<number>): Effect.Effect<string> =>
-    this.choice.show(menu, remaining).pipe(
+  private readonly showChoiceInternal = (choice: ChoiceView | MenuAwait, remaining: Stream.Stream<number>): Effect.Effect<string> =>
+    this.choice.show(choice, remaining).pipe(
       Effect.catch(() => Effect.succeed("")),
       Effect.tap((option) => Effect.sync(() => { Effect.runSync(PubSub.publish(this.choiceActions, { type: "choose", option })) }))
     )
