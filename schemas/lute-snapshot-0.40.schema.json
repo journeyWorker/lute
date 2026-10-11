@@ -317,6 +317,10 @@
         },
         "pending": {
           "$ref": "#/$defs/Await"
+        },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The stage at the pending await; the `world` of a suspended state is\nthe world before its input (dsl 0.40.0 §4.2)."
         }
       },
       "required": [
@@ -324,7 +328,8 @@
         "input",
         "answers",
         "pending",
-        "delivered"
+        "delivered",
+        "stage"
       ],
       "type": "object"
     },

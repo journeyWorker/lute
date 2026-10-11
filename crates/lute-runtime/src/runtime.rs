@@ -450,6 +450,9 @@ pub struct Continuation {
     pub(crate) answers: Vec<Answer>,
     pub pending: Await,
     pub(crate) delivered: usize,
+    /// The stage at the pending await; the `world` of a suspended state is
+    /// the world before its input (dsl 0.40.0 §4.2).
+    pub stage: crate::Stage,
 }
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -766,9 +769,13 @@ impl Runtime {
     pub fn clock(&self, state: &State) -> Option<lute_manifest::clock::ClockAt> {
         clock_at(&self.project, &state.world)
     }
-    /// Return the current persistent presentation stage.
+    /// The persistent presentation stage of a state: at a pending await,
+    /// the stage at that await; otherwise the world's.
     pub fn stage(&self, state: &State) -> crate::Stage {
-        state.world.stage.clone()
+        match &state.continuation {
+            Some(continuation) => continuation.stage.clone(),
+            None => state.world.stage.clone(),
+        }
     }
     pub fn terminal(&self, state: &State) -> bool {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
@@ -881,6 +888,7 @@ impl Runtime {
                     answers,
                     pending: await_.clone(),
                     delivered: cut,
+                    stage: factory.pending_stage.take().unwrap_or_default(),
                 }),
                 request: request + 1,
                 phase: Phase::Idle,
@@ -1144,6 +1152,8 @@ struct ReplayFactory {
     events: Vec<Event>,
     pending: Option<Await>,
     pending_cut: Option<usize>,
+    /// The stage at the suspension point, taken from the suspended walk.
+    pending_stage: Option<crate::Stage>,
     document: String,
 }
 impl ReplayFactory {
@@ -1155,6 +1165,7 @@ impl ReplayFactory {
             events: Vec::new(),
             pending: None,
             pending_cut: None,
+            pending_stage: None,
             document: String::new(),
         }
     }
@@ -1320,6 +1331,11 @@ impl WalkDriver for ReplayFactory {
         let event_base = self.events.len();
         self.events.extend(driver.events);
         self.pending_cut = driver.pending_cut.map(|cut| event_base + cut);
+        if driver.pending.is_some() {
+            // The walk stops at the unanswered pick, so its carry holds the
+            // stage at the await (dsl 0.40.0 §4.2).
+            self.pending_stage = Some(carry.stage.clone());
+        }
         self.pending = driver.pending;
         Walked {
             carry,

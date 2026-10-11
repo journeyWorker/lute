@@ -54,9 +54,9 @@
 //!   (its `--entry` path: first-read effects, `entry.<id>.read`), every
 //!   quest-lifecycle advance ([`Machine::advance_quests`]) and every `when`
 //!   ([`Machine::eval_guard`]).
-//! - Script surfaces: `state:` / `facts:` / `choose:` are parsed by the
-//!   trace-mock grammar ([`lute_trace::parse_mock_yaml`]); only `steps:` is
-//!   this module's own.
+//! - Script surfaces: `state:` / `facts:` use the trace-mock grammar, while
+//!   `choose:` is parsed here so scripted timeout answers remain typed; only
+//!   `steps:` is otherwise this module's own.
 //!
 //! ## Honesty
 //! Nothing the reference runner cannot decide is decided silently: a `when`
@@ -116,6 +116,7 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
     let script = parse_script(&text, path)?;
     let script::PlayScript {
         surfaces,
+        choose: _,
         save,
         steps,
         step_expects,
@@ -216,7 +217,7 @@ fn driver_for(
         step: Default::default(),
         top: BridgeQueues::queue(&script.surfaces.bridges),
     };
-    PlayDriverState::for_project(project, script.surfaces.choose.clone(), bridges)
+    PlayDriverState::for_project(project, script.choose.clone(), bridges)
         .with_observer(observer)
 }
 
