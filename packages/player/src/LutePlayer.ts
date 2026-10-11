@@ -9,7 +9,7 @@ import * as Runtime from "@lute-lang/runtime"
 import type { Contract } from "@lute-lang/runtime"
 import { decode } from "./bindings/load.js"
 import type { Bindings } from "./bindings/schema.js"
-import { make as makeCues } from "./cues/index.js"
+import { castNamesFrom, make as makeCues } from "./cues/index.js"
 import { make as makeDirector } from "./director/index.js"
 import type { DirectorHandle } from "./director/index.js"
 import type { AssetLoader, AudioPort, PlayerHost, Presenter } from "./ports/index.js"
@@ -50,7 +50,7 @@ export const make = Effect.fn("Lute.Player.make")(function* (options: LutePlayer
   const bundle = yield* (yield* Runtime.BundleSource.BundleSource).load
   const runtimeSession = Runtime.Session.layer({ seed })
   const playerSession = Context.get(
-    yield* Layer.build(sessionLayer({ bindings, seed }).pipe(Layer.provide(runtimeSession))),
+    yield* Layer.build(sessionLayer({ bindings, seed, castNames: castNamesFrom(bundle.artifacts) }).pipe(Layer.provide(runtimeSession))),
     PlayerSession
   )
   const project = playerSession.fingerprint

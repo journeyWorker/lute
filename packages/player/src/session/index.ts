@@ -78,9 +78,15 @@ export interface SessionOptions {
   readonly bindings: Bindings
   readonly seed?: Contract.Seed
   readonly settings?: Pick<Settings, "rollbackDepth" | "locale">
+  /** Cast id → display name for backlog entries (narration has none). */
+  readonly castNames?: ReadonlyMap<string, string>
 }
 
-const linesFromOutput = (output: Output, locale: string): ReadonlyArray<BacklogEntry> => {
+const linesFromOutput = (
+  output: Output,
+  locale: string,
+  castNames: ReadonlyMap<string, string>
+): ReadonlyArray<BacklogEntry> => {
   const result: BacklogEntry[] = []
   for (const event of output.events) {
     if (event.type !== "record" || typeof event.record !== "object" || event.record === null) continue
@@ -98,7 +104,10 @@ const linesFromOutput = (output: Output, locale: string): ReadonlyArray<BacklogE
     }
     const speaker = value("speaker")
     const voice = value("voiceKey")
-    const speakerName = typeof speaker === "string" ? speaker : ""
+    const role = value("role")
+    const speakerName = typeof speaker !== "string" || role === "narration" || speaker === "narrator"
+      ? ""
+      : castNames.get(speaker) ?? speaker
     const voiceKey = typeof voice === "string" ? voice : ""
     result.push({ lineId: lineIdValue, voiceKey, speakerName, text, hasVoice: voiceKey.length > 0 })
   }
@@ -120,6 +129,7 @@ export const layer = (
     const runtime = yield* RuntimeSession.Session
     const seed = options.seed ?? {}
     const locale = options.settings?.locale ?? "en"
+    const castNames = options.castNames ?? new Map<string, string>()
     const depth = Math.max(0, options.settings?.rollbackDepth ?? 100)
     const backlog = yield* SubscriptionRef.make<ReadonlyArray<BacklogEntry>>([])
     let log: ReadonlyArray<LogEntry> = [{ seed }]
@@ -140,7 +150,7 @@ export const layer = (
       history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
       const output = yield* runtime.send(input)
       log = [...beforeLog, { input }]
-      const added = linesFromOutput(output, locale)
+      const added = linesFromOutput(output, locale, castNames)
       yield* SubscriptionRef.set(backlog, [...beforeBacklog, ...added])
       return output
     })

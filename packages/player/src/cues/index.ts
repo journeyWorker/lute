@@ -101,7 +101,8 @@ const lineView = (value: JsonRecord, locale: string, readLines: ReadonlySet<stri
   }
 }
 
-const castNamesFrom = (artifacts: Readonly<Record<string, unknown>>): Map<string, string> => {
+/** Cast id → display name, from the compiled artifacts' cast tables. */
+export const castNamesFrom = (artifacts: Readonly<Record<string, unknown>>): Map<string, string> => {
   const names = new Map<string, string>()
   const visit = (value: unknown): void => {
     if (!isRecord(value)) return
