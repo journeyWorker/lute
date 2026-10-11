@@ -1247,11 +1247,6 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.38.0 §5.3"],
     },
     Code {
-        code: "E-RUNTIME-TIMEOUT",
-        summary: "A timeout input was supplied while the pending await is not a timed choice.",
-        spec: &["dsl 0.40.0 §4.3"],
-    },
-    Code {
         code: "E-RUNTIME-SNAPSHOT-PROJECT",
         summary: "A runtime snapshot belongs to a different project bundle.",
         spec: &["dsl 0.38.0 §7.2"],
@@ -1260,6 +1255,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-RUNTIME-SNAPSHOT-VERSION",
         summary: "A runtime snapshot major or minor version is incompatible.",
         spec: &["dsl 0.38.0 §7.2"],
+    },
+    Code {
+        code: "E-RUNTIME-TIMEOUT",
+        summary: "A timeout input was supplied while the pending await is not a timed choice.",
+        spec: &["dsl 0.40.0 §4.3"],
     },
     Code {
         code: "E-SEASON-DECL",
