@@ -402,7 +402,12 @@ export const playerMachine = initial.createMachine({
             },
             toggleSkip: ({ context }, enq) => {
               if (context.uiHidden) return
+              const hasCurrentLine = context.line !== undefined
+              if (context.skipMode === "read" && hasCurrentLine && !context.lastLineRead) {
+                return { target: "#playerModeNormal", context: { mode: "normal" } }
+              }
               emit(enq, { type: "mode.changed", mode: "skip" })
+              if (hasCurrentLine) emit(enq, { type: "line.release" })
               return {
                 target: context.skipMode === "all" ? "#playerModeSkipAll" : "#playerModeSkipRead",
                 context: { mode: "skip" },
@@ -427,7 +432,13 @@ export const playerMachine = initial.createMachine({
             toggleSkip: ({ context }, enq) => {
               if (context.uiHidden) return
               emit(enq, { type: "auto.cancel" })
+              const hasCurrentLine = context.line !== undefined
+              if (context.skipMode === "read" && hasCurrentLine && !context.lastLineRead) {
+                emit(enq, { type: "mode.changed", mode: "normal" })
+                return { target: "#playerModeNormal", context: { mode: "normal", autoPending: false } }
+              }
               emit(enq, { type: "mode.changed", mode: "skip" })
+              if (hasCurrentLine) emit(enq, { type: "line.release" })
               return { target: context.skipMode === "all" ? "#playerModeSkipAll" : "#playerModeSkipRead", context: { mode: "skip", autoPending: false } }
             },
             "line.shown": ({ context, event }, enq) => {
@@ -618,6 +629,13 @@ type PlayerStateValue = {
 
 const leaf = (value: unknown): string | undefined => typeof value === "string" ? value : undefined
 
+const storyLeaf = (value: unknown): string | undefined => {
+  const direct = leaf(value)
+  if (direct !== undefined) return direct
+  if (typeof value === "object" && value !== null && "choice" in value) return "choice"
+  return undefined
+}
+
 const modeLeaf = (value: unknown): string | undefined => {
   const direct = leaf(value)
   if (direct !== undefined) return direct
@@ -643,7 +661,7 @@ export const derivePlayerView = (snapshot: {
     ? value
     : { flow: undefined, story: undefined, mode: undefined, overlay: undefined }
   const flowValue = leaf(regions.flow)
-  const storyValue = leaf(regions.story)
+  const storyValue = storyLeaf(regions.story)
   const modeValue = modeLeaf(regions.mode)
   const overlayValue = overlayLeaf(regions.overlay)
   return {

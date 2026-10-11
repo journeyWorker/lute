@@ -117,16 +117,48 @@ const castNamesFrom = (artifacts: Readonly<Record<string, unknown>>): Map<string
   return names
 }
 
-const commandIndexFrom = (bundle: Bundle): Map<string, JsonRecord> => {
-  const result = new Map<string, JsonRecord>()
-  const visit = (value: unknown): void => {
-    if (isRecord(value)) {
-      const position = positionOf(value)
-      if (position && kindOf(value)) result.set(position, value)
-      for (const child of Object.values(value)) visit(child)
-    } else if (Array.isArray(value)) for (const child of value) visit(child)
+const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> => {
+  const result = new Map<string, Map<string, JsonRecord>>()
+  const index = isRecord(bundle.index) ? bundle.index : undefined
+  const documents = Array.isArray(index?.documents) ? index.documents : []
+  const artifactKeys = new Map<string, Set<string>>()
+  const addKey = (artifact: string, key: unknown): void => {
+    if (!string(key) || key.length === 0) return
+    const keys = artifactKeys.get(artifact) ?? new Set<string>()
+    keys.add(key)
+    artifactKeys.set(artifact, keys)
   }
-  for (const artifact of Object.values(bundle.artifacts)) visit(artifact)
+  for (const document of documents) {
+    if (!isRecord(document) || !string(document.artifact)) continue
+    addKey(document.artifact, document.key)
+    addKey(document.artifact, document.path)
+  }
+  const withoutJson = (value: string): string => value.endsWith(".json") ? value.slice(0, -5) : value
+  const basename = (value: string): string => {
+    const normalized = value.replaceAll("\\", "/")
+    const slash = normalized.lastIndexOf("/")
+    return slash < 0 ? normalized : normalized.slice(slash + 1)
+  }
+  for (const [artifactPath, artifact] of Object.entries(bundle.artifacts)) {
+    const keys = artifactKeys.get(artifactPath) ?? new Set<string>()
+    const metadata = record(artifact, "meta")
+    addKey(artifactPath, field(metadata, "id"))
+    addKey(artifactPath, field(artifact, "document"))
+    addKey(artifactPath, withoutJson(artifactPath))
+    addKey(artifactPath, withoutJson(basename(artifactPath)))
+    for (const documentKey of keys) {
+      const commands = result.get(documentKey) ?? new Map<string, JsonRecord>()
+      const visit = (value: unknown): void => {
+        if (isRecord(value)) {
+          const position = positionOf(value)
+          if (position && kindOf(value)) commands.set(position, value)
+          for (const child of Object.values(value)) visit(child)
+        } else if (Array.isArray(value)) for (const child of value) visit(child)
+      }
+      visit(artifact)
+      result.set(documentKey, commands)
+    }
+  }
   return result
 }
 
@@ -261,7 +293,8 @@ const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFac
         const runtimeRecord = isRecord(event.record) ? event.record : {}
         const position = positionOf(runtimeRecord)
         if (!position) return yield* Effect.die(new Error("runtime record has no position"))
-        const source = commands.get(position)
+        const documentCommands = commands.get(event.document)
+        const source = documentCommands?.get(position)
         if (!source) return yield* Effect.die(new Error(`runtime record position not found: ${event.document}:${position}`))
         const command = decodeRecord({ ...source, ...runtimeRecord })
         const cue = makeRecordCue(command, bindings, locale, readLines, castNames)
