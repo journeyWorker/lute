@@ -97,6 +97,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §11.1"],
     },
     Code {
+        code: "E-BRANCH-DEFAULT",
+        summary: "A timed `<branch>` has no valid always-eligible direct option named by `default=`.",
+        spec: &["dsl 0.40.0 §2.1"],
+    },
+    Code {
         code: "E-BRANCH-EMPTY",
         summary: "A `<branch>` or `<hub>` contains no `<choice>` at all, which would flatten to an unroutable choice.",
         spec: &["dsl §7.3"],
@@ -110,11 +115,6 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-BRANCH-TIMEOUT",
         summary: "A `<branch timeout>` value does not parse as a positive whole number of seconds.",
         spec: &["dsl 0.11.1 §4"],
-    },
-    Code {
-        code: "E-BRANCH-DEFAULT",
-        summary: "A timed `<branch>` has no valid always-eligible direct option named by `default=`.",
-        spec: &["dsl 0.40.0 §2.1"],
     },
     Code {
         code: "E-CAMERA-EMPTY",
@@ -512,11 +512,6 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.9.0 D-D"],
     },
     Code {
-        code: "E-ENUM-STOPS-NOT-MEMBER",
-        summary: "A `musicPlayback` domain's `stops:` list names a value that is not one of its own declared members.",
-        spec: &["dsl 0.40.0 §2.2"],
-    },
-    Code {
         code: "E-ENUM-LABEL-NOT-MEMBER",
         summary: "A domain's `labels:` key names a value that is not one of its own declared members.",
         spec: &["dsl 0.24.0 §1"],
@@ -525,6 +520,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-ENUM-MISSING-SEMANTICS",
         summary: "A domain occupies a slot (such as `anchor`) that requires `default:` or `exits:` semantics, but the domain (or an `entities:` kind standing in for it) declares neither.",
         spec: &["dsl 0.9.0 D-D"],
+    },
+    Code {
+        code: "E-ENUM-STOPS-NOT-MEMBER",
+        summary: "A `musicPlayback` domain's `stops:` list names a value that is not one of its own declared members.",
+        spec: &["dsl 0.40.0 §2.2"],
     },
     Code {
         code: "E-ENUM-UNEXPECTED-SEMANTICS",
