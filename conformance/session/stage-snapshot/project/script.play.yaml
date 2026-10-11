@@ -1,0 +1,9 @@
+choose:
+  greet: yes
+steps:
+  - occasion: visit
+    expect: { winner: room, state: { run.met: true } }
+expect:
+  end: complete
+  state: { run.met: true }
+  transcriptContains: ["Good evening.", "The parlor empties."]
