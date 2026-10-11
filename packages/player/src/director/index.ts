@@ -7,7 +7,6 @@ import type {
   ConfirmAction, CueContext, CueFactoryShape, CueSchedulerShape, DirectorCommand, Input, LineGate,
   MachineEvent, Output, Overlay, PlayerView, Stage
 } from "../model.js"
-import type { PlayerMachineSnapshot } from "../machine/playerMachine.js"
 import type { PlayerSessionShape } from "../session/index.js"
 import type { Bindings } from "../bindings/schema.js"
 import { resolveFile } from "../bindings/load.js"
@@ -83,9 +82,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   let closed = false
   const commandBuffer: DirectorCommand[] = []
 
-  const snapshot = (): PlayerMachineSnapshot => actor.getSnapshot() as unknown as PlayerMachineSnapshot
   const updateView = Effect.gen(function* () {
-    yield* SubscriptionRef.set(view, derivePlayerView(snapshot()))
+    yield* SubscriptionRef.set(view, derivePlayerView(actor.getSnapshot()))
   })
   const offerEvent = (event: MachineEvent): Effect.Effect<void> => Queue.offer(work, { _tag: "event", event })
   const markVoiceEnded = (lineId: string): Effect.Effect<void> => Effect.gen(function* () {
@@ -129,11 +127,11 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     started: (line) => Effect.gen(function* () {
       currentLine = line
       lineReleased = yield* Deferred.make<void>()
-      yield* offerEvent({ type: "line.typing", read: line.read, hasVoice: line.voiceKey.length > 0 })
+      yield* offerEvent({ type: "line.typing", read: line.read, hasVoice: line.voiceKey.length > 0 && typeof options.bindings.voice?.pattern === "string" })
     }),
     release: (line) => Effect.gen(function* () {
       const released = lineReleased
-      yield* offerEvent({ type: "line.shown", read: line.read, hasVoice: line.voiceKey.length > 0 })
+      yield* offerEvent({ type: "line.shown", read: line.read, hasVoice: line.voiceKey.length > 0 && typeof options.bindings.voice?.pattern === "string" })
       if (released !== undefined) yield* Deferred.await(released)
       lineReleased = undefined
     })
@@ -284,8 +282,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
           // A line released while it types (skip) is first shown in full.
           yield* options.presenter.revealLine
           yield* options.presenter.clearLine
-          yield* finishLine()
           yield* offerEvent({ type: "line.released" })
+          yield* finishLine()
         })
       case "auto.start":
         return Effect.gen(function* () {
@@ -293,8 +291,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
           const lineId = currentLine?.lineId
           autoFiber = yield* Effect.forkScoped(Effect.gen(function* () {
             if (command.waitVoice && lineId !== undefined) yield* awaitVoice(lineId)
-            yield* Effect.sleep(seconds(currentSettings.autoDelay))
+            yield* Effect.sleep(seconds(currentSettings.autoDelay) * 1000)
             yield* offerEvent({ type: "auto.elapsed" })
+            yield* Effect.yieldNow
           }))
         })
       case "auto.cancel": return autoFiber === undefined ? Effect.void : Fiber.interrupt(autoFiber).pipe(Effect.andThen(Effect.sync(() => { autoFiber = undefined })))

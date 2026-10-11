@@ -53,7 +53,7 @@ const cue = (kind: Cue["kind"], events: string[], options: Partial<Cue> = {}): C
   describe: kind,
   ...options
 })
-const gate = { release: (shown: LineView) => Effect.sync(() => shown.lineId === line.lineId) }
+const gate = { started: (_line: LineView) => Effect.void, release: (shown: LineView) => Effect.sync(() => shown.lineId === line.lineId) }
 
 const install = Effect.gen(function* () {
   const scheduler = yield* Scheduler.make()
@@ -129,12 +129,15 @@ describe("CueScheduler", () => {
   }))
   it.effect("releases lines in order", () => Effect.gen(function* () {
     const { scheduler, mode } = yield* install
-    const shown: string[] = []
-    const lineGate = { release: (shownLine: LineView) => Effect.sync(() => shown.push(shownLine.lineId)) }
+    const order: string[] = []
+    const lineGate = {
+      started: (startedLine: LineView) => Effect.sync(() => order.push(`started:${startedLine.lineId}`)),
+      release: (shownLine: LineView) => Effect.sync(() => { order.push(`release:${shownLine.lineId}`); return true })
+    }
     const first = cue("line", [], { line })
     const second = cue("line", [], { line: { ...line, lineId: "second" } })
     yield* scheduler.play([first, second], ctx, mode, lineGate)
-    expect(shown).toEqual(["line", "second"])
+    expect(order).toEqual(["started:line", "release:line", "started:second", "release:second"])
   }))
   it.effect("skip completes cues without advancing Clock", () => Effect.gen(function* () {
     const { scheduler, mode } = yield* install

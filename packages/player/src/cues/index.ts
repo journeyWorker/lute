@@ -302,7 +302,13 @@ const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFac
         }
         const runtimeRecord = isRecord(event.record) ? event.record : {}
         const position = positionOf(runtimeRecord)
-        if (!position) return yield* Effect.die(new Error("runtime record has no position"))
+        if (!position) {
+          // Session bookkeeping (quest state, objective settlement) carries no
+          // source position: nothing to present, kept for order.
+          const kind = string(runtimeRecord.kind) ? runtimeRecord.kind : "record"
+          cues.push(cueBase("bookkeeping", timingOf(runtimeRecord, kind), false, [], `bookkeeping ${kind}`, noop, noop))
+          continue
+        }
         const documentCommands = commands.get(event.document)
         const source = documentCommands?.get(position)
         if (!source) return yield* Effect.die(new Error(`runtime record position not found: ${event.document}:${position}`))

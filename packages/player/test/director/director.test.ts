@@ -126,6 +126,7 @@ describe("Director", () => {
     yield* h.action({ type: "choose", option: "take" }); yield* drain(h)
     expect((yield* h.session.current).await).not.toEqual(point.await)
     yield* h.action({ type: "quickLoad" })
+    yield* h.action({ type: "confirm", yes: true })
     expect(h.restores.at(-1)).toEqual(point.stage)
     expect((yield* h.session.current).await).toEqual(point.await)
     expect(yield* SubscriptionRef.get(h.session.backlog)).toEqual(backlog)
@@ -144,7 +145,7 @@ describe("Director", () => {
     const volumes = { master: 0.7, music: 0.4, sfx: 0.2, voice: 0.9 }
     yield* h.action({ type: "setSettings", settings: { volumes } }); yield* h.tick(1)
     expect(h.volumes.at(-1)).toEqual(volumes)
-    const persisted = yield* h.kv.get("profile")
+    const persisted = yield* h.kv.get(`profile:${h.session.fingerprint}`)
     expect(persisted).toBeDefined()
     expect(record(record(JSON.parse(persisted ?? "{}")).settings).volumes).toEqual(volumes)
   })))

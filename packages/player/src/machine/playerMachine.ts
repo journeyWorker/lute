@@ -376,6 +376,7 @@ export const playerMachine = initial.createMachine({
         idle: {
           id: "playerStoryIdle",
           on: {
+            "batch.settled": settled,
             rollback: ({ context }, enq) => {
               if (context.overlayStack.length !== 0 || context.uiHidden) return
               emit(enq, { type: "rollback" })
@@ -386,9 +387,8 @@ export const playerMachine = initial.createMachine({
         halted: { id: "playerStoryHalted", on: { toTitle: { target: "#playerStoryRunning" }, confirm: { target: "#playerStoryRunning" } } },
       },
       on: {
-        // A new batch starts from any settled state: an idle raise, a bridge
-        // answer, a new run from ended.
         "batch.started": { target: "#playerStoryRunning" },
+        "batch.settled": settled,
         "load.done": ({ event }, enq) => {
           const target = awaitStoryTarget(event.await)
           if (event.await.type === "awaitChoice") {
@@ -413,7 +413,8 @@ export const playerMachine = initial.createMachine({
             toggleAuto: ({ context }, enq) => {
               if (context.uiHidden) return
               emit(enq, { type: "mode.changed", mode: "auto" })
-              return { target: "#playerModeAuto", context: { mode: "auto" } }
+              if (context.line === "shown") emit(enq, { type: "auto.start", waitVoice: context.hasVoice })
+              return { target: "#playerModeAuto", context: { mode: "auto", autoPending: context.line === "shown" } }
             },
             toggleSkip: ({ context }, enq) => {
               if (context.uiHidden) return

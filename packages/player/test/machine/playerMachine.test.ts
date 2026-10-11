@@ -220,7 +220,12 @@ describe("playerMachine", () => {
     run.actor.send({ type: "batch.settled", await: choiceAwait(3) })
     run.actor.send({ type: "openMenu" })
     run.actor.send({ type: "close" })
-    expect(commandTypes(run.commands).slice(-2)).toEqual(["countdown.pause", "countdown.resume"])
+    expect(run.commands.slice(-4)).toEqual([
+      { type: "countdown.pause" },
+      { type: "overlay.show", overlay: "menu", confirm: undefined },
+      { type: "overlay.hide" },
+      { type: "countdown.resume" },
+    ])
   })
 
   it("cancels pending auto when an overlay opens", () => {
