@@ -168,7 +168,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
 
       # tree-sitter-lute is NOT part of the root bun workspace (root
       # `workspaces` is `packages/*`), so its own lockfile must be installed
@@ -286,7 +286,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
 
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
@@ -338,7 +338,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
 
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
