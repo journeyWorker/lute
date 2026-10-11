@@ -9,6 +9,9 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.ts"],
-    exclude: ["test/browser/**"]
+    exclude: ["test/browser/**"],
+    // Session and director suites compile conformance projects with the lute
+    // CLI and boot the wasm runtime; on a loaded CI runner that exceeds 5 s.
+    testTimeout: 30_000
   }
 })
