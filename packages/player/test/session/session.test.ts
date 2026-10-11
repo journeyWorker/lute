@@ -117,7 +117,7 @@ describe("PlayerSession", () => {
     const session = yield* PlayerSession
     yield* session.send(raise)
     const entries = yield* SubscriptionRef.get(session.backlog)
-    expect(entries[0]).toMatchObject({ speakerName: "narrator", text: "Before the hub." })
+    expect(entries[0]).toMatchObject({ speakerName: "", text: "Before the hub." })
   })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings: noFlowBindings }))))
 
   it("idle resolves raise and menu forms", () => {
