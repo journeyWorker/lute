@@ -26,7 +26,21 @@ const audio: AudioPort = {
   stop: () => Effect.void,
   setVolumes: () => Effect.void
 }
-const ctx = { presenter, audio, bindings: { bindingsVersion: "0.40", canvas: { width: 1, height: 1 } }, settings: { textSpeed: 1, autoDelay: 0, skip: "all", volumes: { master: 1, music: 1, sfx: 1, voice: 1 }, locale: "en", windowOpacity: 1, rollbackDepth: 10, backlogLimit: 10 } } as CueContext
+const ctx: CueContext = {
+  presenter,
+  audio,
+  bindings: { bindingsVersion: "0.40", canvas: { width: 1, height: 1 } },
+  settings: {
+    textSpeed: 1,
+    autoDelay: 0,
+    skipMode: "all",
+    volumes: { master: 1, music: 1, sfx: 1, voice: 1 },
+    locale: "en",
+    windowOpacity: 1,
+    readColour: true,
+    rollbackDepth: 10
+  }
+}
 
 const cue = (kind: Cue["kind"], events: string[], options: Partial<Cue> = {}): Cue => ({
   kind,
