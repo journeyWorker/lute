@@ -1,6 +1,6 @@
 import { Deferred, Effect, Stream } from "effect"
 import { Container, Graphics, Text, TextStyle } from "pixi.js"
-import type { ChoiceView, MenuAwait } from "@lute-lang/player"
+import type { ChoiceView } from "@lute-lang/player"
 import type { Theme } from "../engine/types.js"
 
 /** A menu option with the runtime's visibility verdict and authored display text. */
@@ -12,7 +12,7 @@ export interface ChoiceOption {
   readonly exit?: boolean
 }
 
-type ChoiceInput = ChoiceView | MenuAwait
+type ChoiceInput = ChoiceView
 
 /** Whether a runtime verdict leaves an option selectable. */
 export const isChoiceEnabled = (verdict: string): boolean => verdict === "open"

@@ -76,7 +76,7 @@ export interface Presenter {
   /** Rebuild the whole stage at once (load, rollback, presentation start). */
   readonly restore: (stage: Stage) => Effect.Effect<void>
   /** Show a choice menu; `remaining` streams seconds left for a timed choice. Resolves with the chosen option id. */
-  readonly showChoice: (choice: ChoiceView | MenuAwait, remaining: Stream.Stream<number>) => Effect.Effect<string>
+  readonly showChoice: (choice: ChoiceView, remaining: Stream.Stream<number>) => Effect.Effect<string>
   readonly hideChoice: Effect.Effect<void>
   /** Render a screen/overlay model (title, backlog, save/load, settings, confirm, loading, halted, idle menu). */
   readonly showScreen: (screen: ScreenModel) => Effect.Effect<void>

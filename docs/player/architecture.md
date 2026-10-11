@@ -198,4 +198,13 @@ Effect<void>`, `view: SubscriptionRef<PlayerView>` (what screens render), and
 - `director/`: end-to-end with fake ports: play `conformance/session/*`
   cases from their `inputs.jsonl` (answers by choose/bridge/timeout) and
   assert the presenter saw every record in order and the final await equals
+
+### Choices and restored stages
+
+`CueFactory.choiceView(await_, locale)` resolves authored branch/hub prompt and
+option text (with locale fallback) from the bundle index. Presenters receive a
+`ChoiceView`, including runtime verdicts, timeout, default, once, and exit
+metadata. Before `Presenter.restore(stage)` on load or rollback, the director
+ensures `stageFiles(bindings, stage)` so bound background, sprites, CG/video,
+and music assets are available.
   the runtime's; save → load reproduces stage/backlog/await; rollback.

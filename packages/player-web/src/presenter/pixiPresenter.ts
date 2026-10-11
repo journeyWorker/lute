@@ -1,9 +1,8 @@
 import { Context, Effect, Layer, PubSub, Stream } from "effect"
 import type { Bindings, ChoiceView, EffectSpec, LineView, PlayMode, PlayerAction, Presenter, ScreenModel, Settings, Stage, StageCue } from "@lute-lang/player"
-import type { MenuAwait } from "@lute-lang/player"
+import type { TextStyleBinding } from "../text/richText.js"
 import type { PixiAppShape } from "../engine/types.js"
 import type { WorldShape } from "../engine/types.js"
-import { PixiApp } from "../engine/app.js"
 import { World } from "../engine/world.js"
 import { UiTag, type UiShape } from "../ui/ui.js"
 import { ChoiceMenu } from "../choice/choiceMenu.js"
@@ -195,7 +194,7 @@ export class PixiPresenter implements Presenter {
     Effect.flatMap(() => this.video.show(stage.video, false, true))
   )
 
-  private readonly showChoiceInternal = (choice: ChoiceView | MenuAwait, remaining: Stream.Stream<number>): Effect.Effect<string> =>
+  private readonly showChoiceInternal = (choice: ChoiceView, remaining: Stream.Stream<number>): Effect.Effect<string> =>
     this.choice.show(choice, remaining).pipe(
       Effect.catch(() => Effect.succeed("")),
       Effect.tap((option) => Effect.sync(() => { Effect.runSync(PubSub.publish(this.choiceActions, { type: "choose", option })) }))

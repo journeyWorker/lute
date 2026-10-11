@@ -88,3 +88,10 @@ The session retains the last `settings.rollbackDepth` input points (default 100)
 Each line has a stable `lineId`. The profile's `readLines` set marks lines after they are shown. `LineView.read` controls read-aware skip behavior; the default read-only skip stops on unread lines, choices, bridges, and idle. Backlog entries retain line id, voice key, speaker name, text, and whether voice is available. Hosts can render the `Backlog` screen and replay voice with `replayVoice`.
 
 For a complete architecture contract, see [`docs/player/architecture.md`](https://github.com/journeyWorker/lute/blob/main/docs/player/architecture.md). For browser implementations, see [the web architecture](/player/overview/).
+
+## Choice views and restored assets
+
+`Presenter.showChoice` receives a `ChoiceView` with the authored prompt and
+localized option text, plus runtime verdict, timeout, default, once, and exit
+metadata. On load and rollback, the director ensures the restored stage's
+bound files before calling `Presenter.restore`.

@@ -84,3 +84,10 @@ const host = {
 ## 읽기 기록과 백로그
 
 각 line에는 안정적인 `lineId`가 있습니다. profile의 `readLines` set은 line 표시 뒤 해당 id를 기록합니다. `LineView.read`가 읽기 인식 skip을 제어하며 기본 read-only skip은 읽지 않은 line, choice, bridge, idle에서 멈춥니다. backlog는 line id, voice key, speaker name, text, `hasVoice`를 보관합니다.
+
+## ChoiceView와 복원된 자산
+
+`Presenter.showChoice`는 작성된 prompt와 locale별 option text, runtime
+verdict, timeout, default, once, exit 정보를 담은 `ChoiceView`를 받습니다.
+load와 rollback에서는 director가 `Presenter.restore`를 호출하기 전에 복원된
+stage의 바인딩 파일을 먼저 보장합니다.
