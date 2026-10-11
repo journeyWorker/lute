@@ -24,7 +24,7 @@ export default defineConfig({
       provider: playwright({
         launchOptions: {
           headless: true,
-          args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader"]
+          args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required"]
         }
       }),
       instances: [{ browser: "chromium" }]

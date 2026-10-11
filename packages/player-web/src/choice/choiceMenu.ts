@@ -211,6 +211,7 @@ export class ChoiceMenu {
   private drawCountdown = (): void => {
     const ratio = this.maxRemaining <= 0 ? 0 : Math.min(1, this.remainingValue / this.maxRemaining)
     const pulse = this.remainingValue < 3 ? 0.7 + Math.sin(this.pulsePhase * 8) * 0.3 : 1
+    this.countdown.alpha = pulse
     this.countdown.clear().rect(20, 450, 640 * ratio, 6).fill({ color: this.theme.accent, alpha: pulse })
   }
 }

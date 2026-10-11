@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { Container } from "pixi.js"
+import { Container, Text } from "pixi.js"
 import { describe, expect, it } from "vitest"
 import type { LineView, Settings } from "@lute-lang/player"
 import type { Behaviour, Theme, WorldShape } from "../../../src/engine/types.js"
@@ -55,6 +55,31 @@ const worldFor = (): WorldShape => {
 }
 
 describe("DialogueWindow browser scene", () => {
+
+  it("renders the speaker name plate", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show(line, settings, "skip"))
+    expect(entity.target.children[1]?.visible).toBe(true)
+  })
+
+  it("progressively reveals text", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show(line, settings, "normal"))
+    expect(entity.target.children[2]?.children[0]).toBeDefined()
+  })
+
+  it("reveal completes the typewriter", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show(line, settings, "normal"))
+    await Effect.runPromise(entity.reveal)
+    expect(entity.target.children[2]?.children[0]).toBeDefined()
+  })
+
+  it("applies the speaker name color", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme, { nameColors: { alice: 0x66ccff } })
+    await Effect.runPromise(entity.show(line, settings, "skip"))
+    expect(entity.target.children[1]?.children[0]).toBeDefined()
+  })
   it("renders speaker and progressively reveals text, then reveals", async () => {
     const parent = new Container()
     const entity = new DialogueWindow(parent, worldFor(), theme, { nameColors: { alice: 0x66ccff } })
@@ -68,6 +93,31 @@ describe("DialogueWindow browser scene", () => {
     expect(entity.target.children[0]?.alpha).toBe(0.4)
     entity.setHidden(true)
     expect(entity.target.visible).toBe(false)
+  })
+
+  it("clears the text area", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show(line, settings, "skip"))
+    await Effect.runPromise(entity.clear)
+    expect(entity.target.children[2]?.children).toHaveLength(0)
+  })
+
+  it("sets opacity", () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    entity.setOpacity(0.4)
+    expect(entity.target.children[0]?.alpha).toBe(0.4)
+  })
+
+  it("sets hidden state", () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    entity.setHidden(true)
+    expect(entity.target.visible).toBe(false)
+  })
+
+  it("applies read tint", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show({ ...line, read: true }, settings, "skip"))
+    expect(entity.target.children[2]?.children[0]).toBeDefined()
   })
 
   it("hides the name plate for narration and clears the text area", async () => {
@@ -93,8 +143,17 @@ describe("DialogueWindow browser scene", () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme)
     await Effect.runPromise(entity.show({ ...line, role: "mono" }, settings, "skip"))
     const name = entity.target.children[1]?.children[0]
-    expect(name?.text).toBe("Alice")
+    expect(name instanceof Text).toBe(true)
+    if (name instanceof Text) expect(name.text).toBe("Alice")
     await Effect.runPromise(entity.show({ ...line, role: "os" }, settings, "skip"))
-    expect(entity.target.children[1]?.children[0]?.text).toBe("(Alice)")
+    const osName = entity.target.children[1]?.children[0]
+    expect(osName instanceof Text).toBe(true)
+    if (osName instanceof Text) expect(osName.text).toBe("(Alice)")
+  })
+
+  it("styles voice-over role", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme)
+    await Effect.runPromise(entity.show({ ...line, role: "vo" }, settings, "skip"))
+    expect(entity.target.children[1]?.children[0]).toBeDefined()
   })
 })

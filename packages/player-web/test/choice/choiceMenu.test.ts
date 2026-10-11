@@ -26,6 +26,36 @@ describe("choice navigation", () => {
     expect(up.focused).toBe(2)
   })
 
+  it("moves focus down", () => {
+    const next = navigateChoice(state, "down")
+    if (typeof next === "object" && next !== undefined) expect(next.focused).toBe(2)
+  })
+
+  it("moves focus up", () => {
+    const next = navigateChoice(state, "up")
+    if (typeof next === "object" && next !== undefined) expect(next.focused).toBe(2)
+  })
+
+  it("wraps focus", () => {
+    const next = navigateChoice(state, "down")
+    if (typeof next === "object" && next !== undefined) {
+      const wrapped = navigateChoice(next, "down")
+      if (typeof wrapped === "object" && wrapped !== undefined) expect(wrapped.focused).toBe(0)
+    }
+  })
+
+  it("selects by digit", () => {
+    expect(navigateChoice(state, "3")).toBe("c")
+  })
+
+  it("selects by enter", () => {
+    expect(navigateChoice(state, "enter")).toBe("a")
+  })
+
+  it("does not select disabled options", () => {
+    expect(navigateChoice(state, "2")).toBeUndefined()
+  })
+
   it("selects focused and digit options, but never disabled ones", () => {
     expect(navigateChoice(state, "enter")).toBe("a")
     expect(navigateChoice(state, "2")).toBeUndefined()

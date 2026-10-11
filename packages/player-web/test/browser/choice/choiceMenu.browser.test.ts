@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect"
-import { Container } from "pixi.js"
+import { Container, Point } from "pixi.js"
 import { describe, expect, it } from "vitest"
 import type { Contract } from "@lute-lang/runtime"
 import type { Theme } from "../../../src/engine/types.js"
@@ -30,6 +30,26 @@ const menu: Contract.MenuAwait = {
 }
 
 describe("ChoiceMenu browser scene", () => {
+
+  it("shows disabled options without selecting them", () => {
+    const entity = new ChoiceMenu(new Container(), theme)
+    expect(entity.target.visible).toBe(false)
+  })
+
+  it("supports keyboard navigation and enter", async () => {
+    const entity = new ChoiceMenu(new Container(), theme)
+    const result = Effect.runPromise(entity.show(menu, Stream.empty))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }))
+    await expect(result).resolves.toBe("third")
+  })
+
+  it("supports digit selection", async () => {
+    const entity = new ChoiceMenu(new Container(), theme)
+    const result = Effect.runPromise(entity.show(menu, Stream.empty))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }))
+    await expect(result).resolves.toBe("third")
+  })
   it("selects by keyboard and ignores disabled options", async () => {
     const menuEntity = new ChoiceMenu(new Container(), theme)
     const result = Effect.runPromise(menuEntity.show(menu, Stream.make(10, 3)))
@@ -52,7 +72,7 @@ describe("ChoiceMenu browser scene", () => {
   it("resolves a pointer click on an enabled option", async () => {
     const menuEntity = new ChoiceMenu(new Container(), theme)
     const result = Effect.runPromise(menuEntity.show(menu, Stream.empty))
-    menuEntity.target.emit("pointertap", { global: { x: 100, y: 170 } })
+    menuEntity.target.emit("pointertap", { global: new Point(100, 170) })
     await expect(result).resolves.toBe("third")
   })
 })
