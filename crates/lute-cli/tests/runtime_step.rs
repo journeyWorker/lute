@@ -305,3 +305,133 @@ fn a_snapshot_from_another_project_or_minor_is_refused() {
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-VERSION");
 }
 
+
+/// A case's first raise, suspended at its first choice.
+fn first_choice(run: &ScriptRun) -> (State, u64, lute_runtime::runtime::MenuAwait) {
+    let (state, _) = run.runtime.begin(run.seed.clone()).unwrap();
+    let (state, output) = run
+        .runtime
+        .step(state, run.inputs[0].clone())
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    let Await::Choice { request, menu } = output.await_ else {
+        panic!("the first raise does not await a choice: {output:?}");
+    };
+    (state, request, menu)
+}
+
+/// dsl 0.40.0 §4.2: a timed menu carries its timeout and default, and the
+/// `timeout` input is the choice of the default.
+#[test]
+fn a_timeout_chooses_the_default() {
+    let run = session_run("timed-choice");
+    let (state, request, menu) = first_choice(&run);
+    assert_eq!(menu.timeout, Some(5));
+    assert_eq!(menu.default.as_deref(), Some("wait"));
+    let (timed_out, by_timeout) = run
+        .runtime
+        .step(state.clone(), Input::Timeout { request })
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    let (chosen, by_choice) = run
+        .runtime
+        .step(
+            state,
+            Input::Choose {
+                request,
+                option: "wait".into(),
+            },
+        )
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    assert_eq!(json(&by_timeout), json(&by_choice));
+    let world = |state: &State| serde_json::to_value(run.runtime.snapshot(state)).unwrap()["world"].clone();
+    assert_eq!(world(&timed_out), world(&chosen));
+}
+
+/// dsl 0.40.0 §4.2: `timeout` is refused on an untimed menu and on a stale
+/// request, and a refusal changes nothing.
+#[test]
+fn a_timeout_is_refused_off_a_timed_choice() {
+    let hub = session_run("snapshot-hub");
+    let (untimed, request, _) = suspended_hub(&hub);
+    let timed = session_run("timed-choice");
+    let (waiting, timed_request, _) = first_choice(&timed);
+    let cases = [
+        (&hub, &untimed, Input::Timeout { request }, "E-RUNTIME-TIMEOUT"),
+        (
+            &timed,
+            &waiting,
+            Input::Timeout {
+                request: timed_request + 1,
+            },
+            "E-RUNTIME-REQUEST",
+        ),
+    ];
+    for (run, state, input, code) in cases {
+        let before = serde_json::to_string(&run.runtime.snapshot(state)).unwrap();
+        let Err((returned, rejected)) = run.runtime.step(state.clone(), input.clone()) else {
+            panic!("{input:?} was accepted");
+        };
+        assert_eq!(rejected.code, code, "{input:?}: {}", rejected.message);
+        assert_eq!(
+            serde_json::to_string(&run.runtime.snapshot(&returned)).unwrap(),
+            before,
+            "{input:?} changed the state"
+        );
+    }
+}
+
+/// dsl 0.40.0 §4.1: the runtime stage reduces the staging records, survives
+/// a snapshot, and drops what `stops`, exits and `display="hide"` end.
+#[test]
+fn the_stage_follows_the_staging_records() {
+    let run = session_run("stage-snapshot");
+    let runtime = &run.runtime;
+    let (state, request, _) = first_choice(&run);
+    let stage = runtime.stage(&state);
+    let bg = stage.bg.as_ref().expect("a background");
+    assert_eq!(
+        (bg.location.as_deref(), bg.time.as_deref(), bg.asset_id.as_deref()),
+        (Some("parlor"), Some("evening"), Some("BG.parlor.evening"))
+    );
+    let music = stage.music.as_ref().expect("music");
+    assert_eq!(
+        (music.playback.as_deref(), music.mood.as_deref(), music.asset_id.as_deref()),
+        (Some("start"), Some("calm"), Some("BGM.parlor"))
+    );
+    let actors: Vec<_> = stage
+        .actors
+        .iter()
+        .map(|a| {
+            (
+                a.character.as_str(),
+                a.anchor.as_deref(),
+                a.emotion.as_deref(),
+                a.costume.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(actors, [("mira", Some("left"), Some("smile"), Some("casual"))]);
+    let cg = stage.cg.as_ref().expect("a CG");
+    assert_eq!((cg.asset_id.as_str(), cg.layout.as_deref()), ("CG.parlor", Some("full")));
+    assert!(stage.video.is_none());
+
+    let text = serde_json::to_string(&runtime.snapshot(&state)).unwrap();
+    let restored = runtime
+        .restore(lute_runtime::runtime::Snapshot::from_json(text.as_str()).unwrap())
+        .unwrap_or_else(|r| panic!("{} {}", r.code, r.message));
+    assert_eq!(runtime.stage(&restored), stage);
+
+    let (after, _) = runtime
+        .step(
+            restored,
+            Input::Choose {
+                request,
+                option: "yes".into(),
+            },
+        )
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    let end = runtime.stage(&after);
+    assert_eq!(end.bg, stage.bg, "the background stays");
+    assert!(end.music.is_none(), "a `stops` member ends the music");
+    assert!(end.actors.is_empty(), "an `exits` action takes the actor off");
+    assert!(end.cg.is_none(), "`display=\"hide\"` clears the CG");
+}
