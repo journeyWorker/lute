@@ -1,5 +1,5 @@
 /** Versioned save slots and profile persistence for the player. */
-import { Clock, Context, Effect, Layer, Schema, SubscriptionRef } from "effect"
+import { Clock, Context, Effect, Fiber, Layer, Ref, Schema, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { Contract } from "@lute-lang/runtime"
 import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
@@ -88,6 +88,11 @@ const slotKey = (slot: SlotId): string => `save:${slot === "quick" || slot === "
 const metadataKey = (slot: SlotId): string => `${slotKey(slot)}:metadata`
 const slots = (maxSlots: number): ReadonlyArray<SlotId> => ["quick", "auto", ...Array.from({ length: maxSlots }, (_, i) => i + 1)]
 
+const SaveHeader = Schema.Struct({
+  saveVersion: Schema.String,
+  project: Schema.String
+})
+
 const decode = <S extends Schema.Codec<unknown, unknown, never, never>>(
   schema: S,
   raw: string
@@ -150,6 +155,10 @@ export const layer = (
         return Effect.gen(function* () {
           const raw = yield* Effect.mapError(store.get(slotKey(slot)), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
           if (raw === undefined) return yield* Effect.fail(new SaveCorrupt({ slot: String(slot), message: "save slot is empty" }))
+          const header = yield* Effect.mapError(decode(SaveHeader, raw), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          if (header.saveVersion !== VERSION) {
+            return yield* Effect.fail(new SaveIncompatible({ slot: String(slot), message: "save format version does not match current version" }))
+          }
           const decoded = yield* Effect.mapError(decode(Save, raw), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
           if (decoded.project !== options.project || decoded.runtime.snapshot.project !== options.project) {
             return yield* Effect.fail(new SaveIncompatible({ slot: String(slot), message: "save project does not match current project" }))
@@ -208,7 +217,7 @@ export interface ProfileStoreShape {
   readonly readLines: SubscriptionRef.SubscriptionRef<ReadonlySet<string>>
   readonly markRead: (lineId: string) => Effect.Effect<void, ProfileCorrupt>
   readonly settings: SubscriptionRef.SubscriptionRef<Settings>
-  readonly updateSettings: (settings: Partial<Settings>) => Effect.Effect<void, ProfileCorrupt>
+  readonly updateSettings: (settings: SettingsChanges) => Effect.Effect<void, ProfileCorrupt>
 }
 
 /** Persisted read history and player preferences. */
@@ -217,9 +226,16 @@ export class ProfileStore extends Context.Service<ProfileStore, ProfileStoreShap
 ) {}
 
 /** Options for a profile store. */
-export interface ProfileStoreOptions { readonly project: string; readonly key?: string; readonly defaults?: Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> } }
+export interface ProfileStoreOptions {
+  readonly project: string
+  readonly key?: string
+  readonly defaults?: Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> }
+  /** Delay before coalesced settings changes are written. */
+  readonly debounceMs?: number
+}
 
-type SettingsChanges = Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> }
+
+export type SettingsChanges = Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> }
 const mergeSettings = (defaults: Settings, changes: SettingsChanges): Settings => ({
   ...defaults,
   ...changes,
@@ -251,6 +267,17 @@ export const profileLayer = (
         Effect.mapError((error) => new ProfileCorrupt({ message: error.message }))
       )
     }
+    const pending = yield* Ref.make<Fiber.Fiber<void, ProfileCorrupt> | undefined>(undefined)
+    const debounceMs = options.debounceMs ?? 250
+    const schedulePersist = Effect.fn("Lute.Profile.schedulePersist")(function* () {
+      const current = yield* Ref.get(pending)
+      if (current !== undefined) yield* Fiber.interrupt(current)
+      const fiber = yield* Effect.forkDetach(Effect.gen(function* () {
+        yield* Effect.sleep(debounceMs)
+        yield* persist(yield* SubscriptionRef.get(readRef), yield* SubscriptionRef.get(settingsRef))
+      }))
+      yield* Ref.set(pending, fiber)
+    })
     return {
       readLines: readRef,
       markRead: (lineId: string) => Effect.gen(function* () {
@@ -260,10 +287,10 @@ export const profileLayer = (
         yield* persist(next, yield* SubscriptionRef.get(settingsRef))
       }),
       settings: settingsRef,
-      updateSettings: (changes: Partial<Settings>) => Effect.gen(function* () {
+      updateSettings: (changes: SettingsChanges) => Effect.gen(function* () {
         const next = mergeSettings(yield* SubscriptionRef.get(settingsRef), changes)
         yield* SubscriptionRef.set(settingsRef, next)
-        yield* persist(yield* SubscriptionRef.get(readRef), next)
+        yield* schedulePersist
       })
     }
   }))
