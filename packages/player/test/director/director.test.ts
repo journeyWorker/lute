@@ -51,11 +51,13 @@ describe("Director", () => {
   it.effect("advance while typing reveals, then releases", () => withHarness(hubFixtureRoot, { typing: true }, (h) => Effect.gen(function* () {
     yield* h.action({ type: "newGame" })
     expect(h.lines).toHaveLength(1)
+    // The presentation start cleared the window once before the line.
+    const cleared = h.clears()
     yield* h.action({ type: "advance" })
     expect(h.reveals()).toBe(1)
-    expect(h.clears()).toBe(0)
+    expect(h.clears()).toBe(cleared)
     yield* h.action({ type: "advance" })
-    expect(h.clears()).toBe(1)
+    expect(h.clears()).toBe(cleared + 1)
     expect((yield* h.view).story).toBe("choice")
   })))
 
@@ -63,24 +65,31 @@ describe("Director", () => {
     for (const voice of [false, true]) yield* withHarness(hubFixtureRoot, { bindings: { ...noFlow, flow: { newGame: { occasion: "visit" } }, ...(voice ? { voice: { pattern: "voice/{voiceKey}.ogg" } } : {}) } }, (h) => Effect.gen(function* () {
       yield* h.action({ type: "setSettings", settings: { autoDelay: 1 } })
       yield* h.action({ type: "newGame" })
+      const cleared = h.clears()
       yield* h.action({ type: "toggleAuto" })
       yield* h.tick(voice ? 1999 : 999)
-      expect(h.clears()).toBe(0)
+      expect(h.clears()).toBe(cleared)
       yield* h.tick(1)
-      if (voice) { expect(h.clears()).toBe(0); yield* h.tick(999); expect(h.clears()).toBe(0); yield* h.tick(1) }
-      expect(h.clears()).toBe(1)
+      if (voice) {
+        expect(h.clears()).toBe(cleared)
+        yield* h.tick(999)
+        expect(h.clears()).toBe(cleared)
+        yield* h.tick(1)
+      }
+      expect(h.clears()).toBe(cleared + 1)
       expect((yield* h.view).story).toBe("choice")
     }))
   }))
 
   it.effect("skip read-only stops at the first unread line and skip all passes it", () => withHarness(hubFixtureRoot, {}, (h) => Effect.gen(function* () {
     yield* h.action({ type: "newGame" })
+    const cleared = h.clears()
     yield* h.action({ type: "toggleSkip" })
-    expect(h.clears()).toBe(0)
+    expect(h.clears()).toBe(cleared)
     expect((yield* h.view).mode).toBe("normal")
     yield* h.action({ type: "setSettings", settings: { skipMode: "all" } })
     yield* h.action({ type: "toggleSkip" })
-    expect(h.clears()).toBe(1)
+    expect(h.clears()).toBe(cleared + 1)
     expect((yield* h.view).story).toBe("choice")
   })))
 

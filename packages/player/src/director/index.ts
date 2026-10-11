@@ -311,14 +311,14 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       if (item._tag === "event") {
         if (item.event.type === "pickIdle") {
           const selected = idleOptions[item.event.index]
-          if (selected !== undefined) yield* handleCommand({ type: "session.send", input: selected.input }).pipe(Effect.catchCause(() => offerEvent({ type: "failed", message: "idle input failed" })))
+          if (selected !== undefined) yield* handleCommand({ type: "session.send", input: selected.input }).pipe(Effect.catchCause((cause) => Effect.logError("idle input failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "idle input failed" })))))
         } else {
           actor.send(item.event)
         }
-      } else yield* handleCommand(item.command).pipe(Effect.catchCause(() => offerEvent({ type: "failed", message: "director command failed" })))
+      } else yield* handleCommand(item.command).pipe(Effect.catchCause((cause) => Effect.logError("director command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "director command failed" })))))
       while (commandBuffer.length > 0) {
         const command = commandBuffer.shift()
-        if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause(() => offerEvent({ type: "failed", message: "director command failed" })))
+        if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause((cause) => Effect.logError("director command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "director command failed" })))))
       }
       yield* updateView
     }
@@ -333,7 +333,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   yield* updateView
   while (commandBuffer.length > 0) {
     const command = commandBuffer.shift()
-    if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause(() => offerEvent({ type: "failed", message: "boot command failed" })))
+    if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause((cause) => Effect.logError("boot command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "boot command failed" })))))
   }
 
   const shutdown = Effect.gen(function* () {

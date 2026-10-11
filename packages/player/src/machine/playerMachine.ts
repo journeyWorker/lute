@@ -374,6 +374,9 @@ export const playerMachine = initial.createMachine({
         halted: { id: "playerStoryHalted", on: { toTitle: { target: "#playerStoryRunning" }, confirm: { target: "#playerStoryRunning" } } },
       },
       on: {
+        // A new batch starts from any settled state: an idle raise, a bridge
+        // answer, a new run from ended.
+        "batch.started": { target: "#playerStoryRunning" },
         "load.done": ({ event }, enq) => {
           const target = awaitStoryTarget(event.await)
           if (event.await.type === "awaitChoice") {

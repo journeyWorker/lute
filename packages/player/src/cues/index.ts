@@ -168,6 +168,10 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
   return result
 }
 
+const LINE_RUNTIME_FIELDS = ["lineId", "role", "speaker", "text", "voiceKey"] as const
+const lineRuntimeFields = (value: JsonRecord): JsonRecord =>
+  Object.fromEntries(LINE_RUNTIME_FIELDS.flatMap((key) => (key in value ? [[key, value[key]]] : [])))
+
 const decodeRecord = (value: JsonRecord): JsonRecord => {
   const decoded = decodeCommand(value)
   if (Option.isSome(decoded) && isRecord(decoded.value)) {
@@ -302,7 +306,12 @@ const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFac
         const documentCommands = commands.get(event.document)
         const source = documentCommands?.get(position)
         if (!source) return yield* Effect.die(new Error(`runtime record position not found: ${event.document}:${position}`))
-        const command = decodeRecord({ ...source, ...runtimeRecord })
+        // The IR command is the record's full shape; the runtime record adds
+        // only run-time values (a line's resolved text and identities).
+        // Other kinds' record fields (e.g. a `set`'s evaluated value) are
+        // not command fields and must not overwrite the command.
+        const decoded = decodeRecord(source)
+        const command = decoded.kind === "line" ? { ...decoded, ...lineRuntimeFields(runtimeRecord) } : decoded
         const cue = makeRecordCue(command, bindings, locale, readLines, castNames)
         if (cue === undefined) return yield* Effect.die(new Error(`unknown runtime record kind: ${String(command.kind)}`))
         cues.push(cue)
