@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bunx --bun vitest run",
     "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
+    "test:e2e": "bunx --bun playwright test --config playwright.config.ts",
     "demo": "bun scripts/demo.ts"
   },
   "dependencies": {

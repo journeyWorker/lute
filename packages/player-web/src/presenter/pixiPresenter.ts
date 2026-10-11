@@ -24,6 +24,7 @@ export interface PresenterOptions {
   readonly assets: TextureAssets
   readonly bindings: Bindings
   readonly theme: Theme
+  readonly titleBackground?: string
   readonly logger?: (message: string, error?: unknown) => void
 }
 
@@ -114,7 +115,12 @@ export class PixiPresenter implements Presenter {
     this.restore = (stage) => this.restoreStage(stage)
     this.showChoice = (menu, remaining) => this.showChoiceInternal(menu, remaining)
     this.hideChoice = this.choice.hide
-    this.showScreen = (screen) => this.ui.show(screen)
+    this.showScreen = (screen) => {
+      if (screen._tag === "Title" && options.titleBackground !== undefined) {
+        return this.ui.show({ ...screen, background: options.titleBackground })
+      }
+      return this.ui.show(screen)
+    }
     this.hideScreen = this.ui.hide
     this.setUiHidden = (hidden) => Effect.sync(() => this.dialogue.setHidden(hidden))
     this.applySettings = (settings) => Effect.sync(() => {

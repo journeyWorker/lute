@@ -20,6 +20,9 @@
       "@lute-lang/runtime": [
         "../runtime/src/index.ts"
       ],
+      "@lute-lang/runtime/browser": [
+        "../runtime/src/browser.ts"
+      ],
       "@lute-lang/player": [
         "../player/src/index.ts"
       ]
