@@ -80,8 +80,12 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
   const pixiLayer = PixiApp.layer(element, bindings.canvas)
   const worldLayer = World.layer.pipe(Layer.provideMerge(pixiLayer))
   return Effect.gen(function* () {
-    const pixi = yield* PixiApp
-    const world = yield* World
+    // Built in the caller's scope: the app, its canvas and the ticker live
+    // until the player is unmounted (`Effect.provide(layer)` would close them
+    // as soon as this effect returned).
+    const services = yield* Layer.build(worldLayer)
+    const pixi = Context.get(services, PixiApp)
+    const world = Context.get(services, World)
     const ui = new Ui(pixi.layers.overlay, theme, world)
     ui.setDesign(bindings.canvas)
     const assetsOptions: PixiAssetsOptions = { assetsBase, backend: pixiAssetsBackend }
@@ -120,7 +124,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
       yield* Effect.forkScoped(audio.play("music", { file, loop: true, volume: 1, fade: 0 }).pipe(Effect.catch(() => Effect.void)))
     }
     return player
-  }).pipe(Effect.provide(worldLayer))
+  })
 }
 
 /** Mount a web player in the current Effect scope. */
