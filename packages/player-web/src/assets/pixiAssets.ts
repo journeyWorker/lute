@@ -29,7 +29,6 @@ interface AssetRecord {
 const AUDIO_EXTENSIONS = /\.(?:aac|flac|m4a|mp3|ogg|wav|webm)(?:[?#].*)?$/i
 const VIDEO_EXTENSIONS = /\.(?:avi|m4v|mov|mp4|webm)(?:[?#].*)?$/i
 
-
 const uniqueFiles = (files: ReadonlyArray<string>): ReadonlyArray<string> => {
   const result: Array<string> = []
   const seen = new Set<string>()
@@ -47,6 +46,7 @@ const pathKind = (file: string): AssetRecord["kind"] => {
   if (AUDIO_EXTENSIONS.test(file)) return "audio"
   return "texture"
 }
+
 /** Resolve a binding-relative file against the configured assets base URL. */
 const resolveAssetUrl = (file: string, base: string): string => {
   try {
@@ -87,6 +87,9 @@ export class PixiAssets implements AssetLoader {
     const requested = uniqueFiles(files)
     return Effect.gen({ self: this }, function* () {
       const self = this
+      // Register before acquisition so a failed ensure releases files acquired before
+      // the failing request as well as a successful ensure does on scope close.
+      yield* Effect.addFinalizer(() => self.release(requested))
       yield* SubscriptionRef.set(self.progressRef, requested.length === 0 ? 1 : 0)
       let completed = 0
       yield* Effect.forEach(
@@ -97,7 +100,6 @@ export class PixiAssets implements AssetLoader {
         ),
         { concurrency: self.maxConcurrency, discard: true }
       )
-      yield* Effect.addFinalizer(() => self.release(requested))
       yield* SubscriptionRef.set(self.progressRef, 1)
     })
   }
@@ -148,7 +150,7 @@ export class PixiAssets implements AssetLoader {
       self.records.set(file, { file, url, kind, value, refs: 1 })
     })
 
-  private readonly release = (files: ReadonlyArray<string>): Effect.Effect<void> =>
+  private readonly release = (files: ReadonlyArray<string>): Effect.Effect<void, never> =>
     Effect.gen({ self: this }, function* () {
       const self = this
       for (const file of files) {
@@ -185,6 +187,7 @@ export class PixiAssets implements AssetLoader {
 /**
  * Collect binding-referenced files in stable insertion order. Dynamic keys such
  * as effect names, colours, labels and flow occasions are intentionally ignored.
+ * Voice patterns are deliberately excluded because they are generated per line.
  */
 export const assetsFromBindings = (bindings: unknown): ReadonlyArray<string> => {
   const files: Array<string> = []
@@ -197,10 +200,8 @@ export const assetsFromBindings = (bindings: unknown): ReadonlyArray<string> => 
   }
   const isRecord = (value: unknown): value is Record<string, unknown> =>
     value !== null && typeof value === "object" && !Array.isArray(value)
-  const values = (value: unknown): ReadonlyArray<unknown> =>
-    isRecord(value) ? Object.values(value) : []
-  const object = (value: unknown): Record<string, unknown> | undefined =>
-    isRecord(value) ? value : undefined
+  const values = (value: unknown): ReadonlyArray<unknown> => isRecord(value) ? Object.values(value) : []
+  const object = (value: unknown): Record<string, unknown> | undefined => isRecord(value) ? value : undefined
 
   const root = object(bindings)
   if (root === undefined) return files
@@ -240,10 +241,7 @@ export const assetsFromBindings = (bindings: unknown): ReadonlyArray<string> => 
   const sfx = object(root.sfx)
   if (sfx !== undefined) for (const value of values(sfx)) add(value)
   const sequences = object(root.sequences)
-  if (sequences !== undefined) {
-    for (const sequence of values(sequences)) add(object(sequence)?.video)
-  }
-  add(object(root.voice)?.pattern)
+  if (sequences !== undefined) for (const sequence of values(sequences)) add(object(sequence)?.video)
   const title = object(object(root.ui)?.title)
   if (title !== undefined) add(title.background)
   return files

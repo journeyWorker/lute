@@ -26,7 +26,7 @@ export const pixiSoundBackend: AudioBackend = {
       sound.add(file, {
         url: file,
         preload: true,
-        loaded: (error) => resume(error === undefined ? Effect.succeed(undefined) : Effect.fail(new AudioDecodeError(file, error)))
+        loaded: (error) => resume(error == null ? Effect.succeed(undefined) : Effect.fail(new AudioDecodeError(file, error)))
       })
     } catch (error) {
       resume(Effect.fail(new AudioDecodeError(file, error)))

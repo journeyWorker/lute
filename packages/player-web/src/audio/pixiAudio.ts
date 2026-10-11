@@ -95,6 +95,7 @@ export class PixiAudio implements AudioPort {
       )
       if (Option.isNone(loaded)) return
       const inputVolume = clamp(soundToPlay.volume)
+      if (channel === "voice") yield* self.stopVoiceImmediately()
       const playback = yield* self.backend.play(soundToPlay.file, {
         loop: soundToPlay.loop,
         volume: self.effectiveVolume(channel, inputVolume)
@@ -106,7 +107,6 @@ export class PixiAudio implements AudioPort {
         Effect.option
       )
       if (Option.isNone(playback)) return
-      if (channel === "voice") yield* self.stopVoiceImmediately()
       if (channel === "music") yield* self.replaceMusic(soundToPlay.fade)
       const record: ActivePlayback = {
         channel,

@@ -16,7 +16,7 @@ export const pixiAssetsBackend: AssetBackend = {
       sound.add(url, {
         url,
         preload: true,
-        loaded: (error) => resume(error === undefined ? Effect.succeed(undefined) : Effect.fail(error))
+        loaded: (error) => resume(error == null ? Effect.succeed(undefined) : Effect.fail(error))
       })
     } catch (error) {
       resume(Effect.fail(error))
