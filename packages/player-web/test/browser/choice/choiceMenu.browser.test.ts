@@ -1,5 +1,5 @@
 import { Effect, Stream } from "effect"
-import { Container, Point } from "pixi.js"
+import { Container, EventBoundary, FederatedPointerEvent, Point } from "pixi.js"
 import { describe, expect, it } from "vitest"
 import type { Contract } from "@lute-lang/runtime"
 import type { Theme } from "../../../src/engine/types.js"
@@ -72,7 +72,9 @@ describe("ChoiceMenu browser scene", () => {
   it("resolves a pointer click on an enabled option", async () => {
     const menuEntity = new ChoiceMenu(new Container(), theme)
     const result = Effect.runPromise(menuEntity.show(menu, Stream.empty))
-    menuEntity.target.emit("pointertap", { global: new Point(100, 170) })
+    const tap = new FederatedPointerEvent(new EventBoundary(menuEntity.target))
+    tap.global.copyFrom(new Point(100, 170))
+    menuEntity.target.emit("pointertap", tap)
     await expect(result).resolves.toBe("third")
   })
 })
