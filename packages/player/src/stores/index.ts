@@ -1,0 +1,275 @@
+/** Versioned save slots and profile persistence for the player. */
+import { Context, Effect, Layer, Schema, SubscriptionRef } from "effect"
+import * as KeyValueStore from "effect/persistence/KeyValueStore"
+import { Contract } from "@lute-lang/runtime"
+import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
+import type { SaveRuntime } from "../model.js"
+
+const VERSION: "0.40" = "0.40"
+
+/** A malformed or unreadable persisted save. */
+export class SaveCorrupt extends Schema.TaggedError<SaveCorrupt>()("SaveCorrupt", {
+  message: Schema.String,
+  slot: Schema.String
+}) {}
+
+/** A save was created by another project or format version. */
+export class SaveIncompatible extends Schema.TaggedError<SaveIncompatible>()("SaveIncompatible", {
+  message: Schema.String,
+  slot: Schema.String
+}) {}
+
+/** A malformed or unreadable persisted profile. */
+export class ProfileCorrupt extends Schema.TaggedError<ProfileCorrupt>()("ProfileCorrupt", {
+  message: Schema.String
+}) {}
+
+const Backlog = Schema.Struct({
+  lineId: Schema.String,
+  voiceKey: Schema.String,
+  speakerName: Schema.String,
+  text: Schema.String,
+  hasVoice: Schema.Boolean
+})
+const Log = Schema.Union([
+  Schema.Struct({ seed: Contract.Seed }),
+  Schema.Struct({ snapshot: Contract.Snapshot }),
+  Schema.Struct({ input: Contract.Input })
+])
+const Runtime = Schema.Struct({
+  snapshot: Contract.Snapshot,
+  log: Schema.Array(Log),
+  backlog: Schema.Array(Backlog)
+})
+const Save = Schema.Struct({
+  saveVersion: Schema.Literal(VERSION),
+  project: Schema.String,
+  savedAt: Schema.String,
+  label: Schema.String,
+  runtime: Runtime,
+  thumbnail: Schema.optionalKey(Schema.String)
+})
+const Metadata = Schema.Struct({
+  saveVersion: Schema.Literal(VERSION),
+  project: Schema.String,
+  savedAt: Schema.String,
+  label: Schema.String,
+  thumbnail: Schema.optionalKey(Schema.String)
+})
+
+/** Data stored in one player save slot. */
+export interface SaveData {
+  readonly project: string
+  readonly savedAt: string
+  readonly label: string
+  readonly runtime: SaveRuntime
+  readonly thumbnail?: string
+}
+
+/** The metadata visible in a slot list. */
+export type SaveMetadata = SlotInfo
+
+/** Save-slot service. */
+export interface SaveStoreShape {
+  readonly list: Effect.Effect<ReadonlyArray<SaveMetadata>, SaveCorrupt>
+  readonly save: (slot: SlotId, save: SaveData) => Effect.Effect<void, SaveCorrupt>
+  readonly load: (slot: SlotId) => Effect.Effect<SaveData, SaveCorrupt | SaveIncompatible>
+  readonly delete: (slot: SlotId) => Effect.Effect<void, SaveCorrupt>
+}
+
+/** Persisted saves, keyed by project fingerprint and slot. */
+export class SaveStore extends Context.Service<SaveStore, SaveStoreShape>()(
+  "@lute-lang/player/SaveStore"
+) {}
+export interface SaveStoreOptions {
+  readonly project: string
+  readonly maxSlots?: number
+}
+
+const validSlot = (slot: SlotId, maxSlots: number): boolean =>
+  slot === "quick" || slot === "auto" || (typeof slot === "number" && Number.isInteger(slot) && slot >= 1 && slot <= maxSlots)
+const slotKey = (slot: SlotId): string => `save:${slot === "quick" || slot === "auto" ? slot : String(slot)}`
+const metadataKey = (slot: SlotId): string => `${slotKey(slot)}:metadata`
+const slots = (maxSlots: number): ReadonlyArray<SlotId> => ["quick", "auto", ...Array.from({ length: maxSlots }, (_, i) => i + 1)]
+
+const decode = <S extends Schema.Codec<unknown, unknown, never, never>>(
+  schema: S,
+  raw: string
+): Effect.Effect<S["Type"], Error, never> =>
+  Effect.mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(raw), (error) => new Error(error.message))
+const encode = <S extends Schema.Codec<unknown, unknown, never, never>>(
+  schema: S,
+  value: S["Type"]
+): Effect.Effect<string, Error, never> =>
+  Effect.mapError(Schema.encodeEffect(Schema.fromJsonString(schema))(value), (error) => new Error(error.message))
+
+/** Layer backed by Effect's KeyValueStore (use `KeyValueStore.layerMemory` in tests). */
+export const layer = (
+  options: SaveStoreOptions
+): Layer.Layer<SaveStore, never, KeyValueStore.KeyValueStore> =>
+  Layer.effect(SaveStore, Effect.gen(function* () {
+    const store = yield* KeyValueStore.KeyValueStore
+    const maxSlots = options.maxSlots ?? 24
+    const list: SaveStoreShape["list"] = Effect.gen(function* () {
+      const values: SaveMetadata[] = []
+      for (const slot of slots(maxSlots)) {
+        const raw = yield* Effect.mapError(store.get(metadataKey(slot)), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+        if (raw === undefined) continue
+        const metadata = yield* Effect.mapError(decode(Metadata, raw), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+        if (metadata.project !== options.project) continue
+        values.push({ slot, label: metadata.label, savedAt: metadata.savedAt, thumbnail: metadata.thumbnail })
+      }
+      return values
+    })
+    return {
+      list,
+      save: (slot: SlotId, save: SaveData) => {
+        if (!validSlot(slot, maxSlots)) return Effect.fail(new SaveCorrupt({ slot: String(slot), message: "invalid save slot" }))
+        const payload = {
+          saveVersion: VERSION,
+          project: save.project,
+          savedAt: save.savedAt,
+          label: save.label,
+          runtime: save.runtime,
+          ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
+        }
+        const metadata = {
+          saveVersion: VERSION,
+          project: save.project,
+          savedAt: save.savedAt,
+          label: save.label,
+          ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
+        }
+        return Effect.gen(function* () {
+          if (save.project !== options.project) return yield* Effect.fail(new SaveCorrupt({ slot: String(slot), message: "save project does not match store" }))
+          const encoded = yield* Effect.mapError(encode(Save, payload), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          const encodedMetadata = yield* Effect.mapError(encode(Metadata, metadata), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          yield* Effect.mapError(store.set(slotKey(slot), encoded), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          yield* Effect.mapError(store.set(metadataKey(slot), encodedMetadata), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+        })
+      },
+      load: (slot: SlotId) => {
+        if (!validSlot(slot, maxSlots)) return Effect.fail(new SaveCorrupt({ slot: String(slot), message: "invalid save slot" }))
+        return Effect.gen(function* () {
+          const raw = yield* Effect.mapError(store.get(slotKey(slot)), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          if (raw === undefined) return yield* Effect.fail(new SaveCorrupt({ slot: String(slot), message: "save slot is empty" }))
+          const decoded = yield* Effect.mapError(decode(Save, raw), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          if (decoded.project !== options.project || decoded.runtime.snapshot.project !== options.project) {
+            return yield* Effect.fail(new SaveIncompatible({ slot: String(slot), message: "save project does not match current project" }))
+          }
+          const { runtime, project, savedAt, label, thumbnail } = decoded
+          return { project, savedAt, label, runtime, ...(thumbnail === undefined ? {} : { thumbnail }) }
+        })
+      },
+      delete: (slot: SlotId) => {
+        if (!validSlot(slot, maxSlots)) return Effect.fail(new SaveCorrupt({ slot: String(slot), message: "invalid save slot" }))
+        return Effect.gen(function* () {
+          yield* Effect.mapError(store.remove(slotKey(slot)), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+          yield* Effect.mapError(store.remove(metadataKey(slot)), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
+        })
+      }
+    }
+  }))
+
+/** Default player settings from §6.7. */
+export const defaultSettings: Settings = {
+  textSpeed: 40,
+  autoDelay: 1,
+  skipMode: "read",
+  volumes: { master: 1, music: 1, sfx: 1, voice: 1 },
+  locale: "en",
+  windowOpacity: 1,
+  readColour: true,
+  rollbackDepth: 100
+}
+
+const Volumes = Schema.Struct({
+  master: Schema.optionalKey(Schema.Number),
+  music: Schema.optionalKey(Schema.Number),
+  sfx: Schema.optionalKey(Schema.Number),
+  voice: Schema.optionalKey(Schema.Number)
+})
+const SettingsSchema = Schema.Struct({
+  textSpeed: Schema.optionalKey(Schema.Number),
+  autoDelay: Schema.optionalKey(Schema.Number),
+  skipMode: Schema.optionalKey(Schema.Literals(["read", "all"])),
+  volumes: Schema.optionalKey(Volumes),
+  locale: Schema.optionalKey(Schema.String),
+  windowOpacity: Schema.optionalKey(Schema.Number),
+  readColour: Schema.optionalKey(Schema.Boolean),
+  rollbackDepth: Schema.optionalKey(Schema.Int)
+})
+const Profile = Schema.Struct({
+  profileVersion: Schema.Literal(VERSION),
+  project: Schema.String,
+  readLines: Schema.Array(Schema.String),
+  settings: SettingsSchema
+})
+
+/** Profile service containing read history and mutable player settings. */
+export interface ProfileStoreShape {
+  readonly readLines: SubscriptionRef.SubscriptionRef<ReadonlySet<string>>
+  readonly markRead: (lineId: string) => Effect.Effect<void, ProfileCorrupt>
+  readonly settings: SubscriptionRef.SubscriptionRef<Settings>
+  readonly updateSettings: (settings: Partial<Settings>) => Effect.Effect<void, ProfileCorrupt>
+}
+
+/** Persisted read history and player preferences. */
+export class ProfileStore extends Context.Service<ProfileStore, ProfileStoreShape>()(
+  "@lute-lang/player/ProfileStore"
+) {}
+
+/** Options for a profile store. */
+export interface ProfileStoreOptions { readonly project: string; readonly key?: string; readonly defaults?: Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> } }
+
+type SettingsChanges = Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> }
+const mergeSettings = (defaults: Settings, changes: SettingsChanges): Settings => ({
+  ...defaults,
+  ...changes,
+  volumes: { ...defaults.volumes, ...(changes.volumes ?? {}) }
+})
+
+/** Profile layer backed by Effect's KeyValueStore. */
+export const profileLayer = (
+  options: ProfileStoreOptions
+): Layer.Layer<ProfileStore, ProfileCorrupt, KeyValueStore.KeyValueStore> =>
+  Layer.effect(ProfileStore, Effect.gen(function* () {
+    const store = yield* KeyValueStore.KeyValueStore
+    const key = options.key ?? `profile:${options.project}`
+    const defaults = mergeSettings(defaultSettings, options.defaults ?? {})
+    const raw = yield* Effect.mapError(store.get(key), (error) => new ProfileCorrupt({ message: error.message }))
+    let read = new Set<string>()
+    let settings = defaults
+    if (raw !== undefined) {
+      const decoded = yield* Effect.mapError(decode(Profile, raw), (error) => new ProfileCorrupt({ message: error.message }))
+      if (decoded.project !== options.project) return yield* Effect.fail(new ProfileCorrupt({ message: "profile project does not match" }))
+      read = new Set(decoded.readLines)
+      settings = mergeSettings(defaults, decoded.settings)
+    }
+    const readRef = yield* SubscriptionRef.make<ReadonlySet<string>>(read)
+    const settingsRef = yield* SubscriptionRef.make<Settings>(settings)
+    const persist = (nextRead: ReadonlySet<string>, nextSettings: Settings) => {
+      const profile: typeof Profile.Type = { profileVersion: VERSION, project: options.project, readLines: [...nextRead], settings: nextSettings }
+      return Effect.flatMap(encode(Profile, profile), (encoded) => store.set(key, encoded)).pipe(
+        Effect.mapError((error) => new ProfileCorrupt({ message: error.message }))
+      )
+    }
+    return {
+      readLines: readRef,
+      markRead: (lineId: string) => Effect.gen(function* () {
+        const next = new Set(yield* SubscriptionRef.get(readRef))
+        next.add(lineId)
+        yield* SubscriptionRef.set(readRef, next)
+        yield* persist(next, yield* SubscriptionRef.get(settingsRef))
+      }),
+      settings: settingsRef,
+      updateSettings: (changes: Partial<Settings>) => Effect.gen(function* () {
+        const next = mergeSettings(yield* SubscriptionRef.get(settingsRef), changes)
+        yield* SubscriptionRef.set(settingsRef, next)
+        yield* persist(yield* SubscriptionRef.get(readRef), next)
+      })
+    }
+  }))
+
+/** In-memory persistence layer useful for tests and embedded hosts. */
+export const memory = KeyValueStore.layerMemory
