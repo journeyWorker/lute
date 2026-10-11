@@ -6,21 +6,9 @@ use lute_check::{check, parse_meta, resolve_components, CheckInput, Mode};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
 
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lute_use_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
@@ -68,7 +56,7 @@ fn scene(components: &str, body: &str) -> String {
 
 #[test]
 fn valid_use_is_clean() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", GREET);
     let s = scene("greet.lute", "::use{component=\"greet\" who=\"marina\"}");
     let cs = codes(&dir, &s);
@@ -80,7 +68,7 @@ fn valid_use_is_clean() {
 
 #[test]
 fn unknown_component_is_undeclared() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", GREET);
     let s = scene("greet.lute", "::use{component=\"nope\" who=\"x\"}");
     let cs = codes(&dir, &s);
@@ -96,7 +84,7 @@ fn unknown_component_is_undeclared() {
 
 #[test]
 fn missing_required_arg_is_component_arg() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", GREET);
     let s = scene("greet.lute", "::use{component=\"greet\"}");
     let cs = codes(&dir, &s);
@@ -108,7 +96,7 @@ fn missing_required_arg_is_component_arg() {
 
 #[test]
 fn unknown_arg_is_component_arg() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", GREET);
     let s = scene(
         "greet.lute",
@@ -123,7 +111,7 @@ fn unknown_arg_is_component_arg() {
 
 #[test]
 fn component_instance_identity_diagnostics_are_strict() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
 
     let duplicate = scene(
@@ -159,7 +147,7 @@ fn component_instance_identity_diagnostics_are_strict() {
 
 #[test]
 fn component_instance_duplicate_in_exclusive_branches_still_conflicts() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
     let source = scene(
         "greet.lute",
@@ -176,7 +164,7 @@ fn component_instance_duplicate_in_exclusive_branches_still_conflicts() {
 }
 #[test]
 fn mistyped_arg_is_component_arg() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // An int-typed param, supplied a non-numeric string.
     write_lute(
         &dir,
@@ -196,7 +184,7 @@ fn mistyped_arg_is_component_arg() {
 
 #[test]
 fn numeric_arg_of_int_param_is_clean() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "badge.lute",
@@ -212,7 +200,7 @@ fn numeric_arg_of_int_param_is_clean() {
 
 #[test]
 fn use_ref_arg_type_mismatch_flags() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "c.lute",
@@ -230,7 +218,7 @@ fn use_ref_arg_type_mismatch_flags() {
 
 #[test]
 fn use_ref_arg_compatible_ok() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "c.lute",
@@ -247,7 +235,7 @@ fn use_ref_arg_compatible_ok() {
 
 #[test]
 fn recursive_components_is_cycle() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // No `components:` import cycle: the SCENE imports both a and b directly, but
     // a's body `::use`s b and b's body `::use`s a — a pure ::use EXPANSION cycle.
     write_lute(
@@ -270,7 +258,7 @@ fn recursive_components_is_cycle() {
 
 #[test]
 fn state_read_in_body_is_v1_error() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // A `<match>` reading scene state in a body is the purity-contract error
     // `E-COMPONENT-STATE` (dsl 0.4.0 §6.2) — the code narrowing this task
     // mandates: the subject reads ambient state, so `E-COMPONENT-BODY` (the
@@ -292,7 +280,7 @@ fn state_read_in_body_is_v1_error() {
 
 #[test]
 fn state_write_in_body_is_v1_error() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "writer.lute",
@@ -308,7 +296,7 @@ fn state_write_in_body_is_v1_error() {
 
 #[test]
 fn undeclared_ref_in_body_is_flagged() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // `@stranger` is not a declared param — only params are the body ref namespace.
     write_lute(
         &dir,
@@ -326,7 +314,7 @@ fn undeclared_ref_in_body_is_flagged() {
 
 #[test]
 fn interp_ref_in_body_is_resolved() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // A `{{@ref}}` interpolation in a component body is a referent too (dsl §7.6,
     // §13), resolved against the `@param` namespace: `{{@missing}}` (not a param)
     // is E-UNDECLARED-REF, while `{{@n}}` (a declared renderable param) is clean.
@@ -354,7 +342,7 @@ fn interp_ref_in_body_is_resolved() {
 /// member; a body the checker cannot enumerate is refused too.
 #[test]
 fn def_arg_to_enum_param_must_produce_members() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "comp.lute",
@@ -431,7 +419,7 @@ const WEATHER: &str = "---\ncomponent: weather\nparams:\n  \
 /// `::use`, and its message names both types.
 #[test]
 fn a_bad_literal_default_is_reported_at_the_params_line_once() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "weather.lute", WEATHER);
     let own = diagnostics(&dir, WEATHER);
     let bad: Vec<_> = own.iter().filter(|d| d.code == "E-COMPONENT-ARG").collect();

@@ -7,16 +7,6 @@ use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-excl-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -61,8 +51,8 @@ fn scene(id: &str, on: &str, body: &str) -> String {
 
 /// `setup` makes every base fact possible; `landing` asserts `lied(maren)`
 /// on one branch only, then `vouched(maren)` on every route.
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -150,7 +140,7 @@ fn check_project_reads_exclusive_relations() {
 
 #[test]
 fn an_excludes_entry_must_name_a_relation_of_the_same_kinds() {
-    let dir = temp_dir("decl");
+    let dir = lute_scratch::ScratchDir::named("decl");
     write(
         &dir,
         "lute.project.yaml",
@@ -387,7 +377,7 @@ fn play_halts_at_a_transient_overlap() {
 /// inside the region it guards, for exclusion like any other fact.
 #[test]
 fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
-    let dir = temp_dir("reserved");
+    let dir = lute_scratch::ScratchDir::named("reserved");
     write(
         &dir,
         "lute.project.yaml",
@@ -416,7 +406,7 @@ fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
 /// LH N17: a rule that derives one relation from its exclusive partner.
 #[test]
 fn a_rule_deriving_from_its_exclusive_partner_is_an_error() {
-    let dir = temp_dir("rule");
+    let dir = lute_scratch::ScratchDir::named("rule");
     write(
         &dir,
         "lute.project.yaml",
@@ -450,7 +440,7 @@ fn a_rule_deriving_from_its_exclusive_partner_is_an_error() {
 /// manifest's line.
 #[test]
 fn an_inherited_stale_stamp_is_reported_once_at_the_manifest() {
-    let dir = temp_dir("stale");
+    let dir = lute_scratch::ScratchDir::named("stale");
     write(
         &dir,
         "lute.project.yaml",

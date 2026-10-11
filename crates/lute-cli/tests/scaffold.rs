@@ -5,16 +5,6 @@ use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-scaffold-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn lute(args: &[&str]) -> Output {
     Command::new(BIN).args(args).output().unwrap()
 }
@@ -27,14 +17,15 @@ fn text(out: &Output) -> String {
     )
 }
 
-fn init_template(tag: &str, template: &str) -> PathBuf {
-    let proj = temp_dir(tag).join("proj");
+fn init_template(tag: &str, template: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let root = lute_scratch::ScratchDir::named(tag);
+    let proj = root.join("proj");
     let out = lute(&["init", proj.to_str().unwrap(), "--template", template]);
     assert!(out.status.success(), "{}", text(&out));
-    proj
+    (root, proj)
 }
 
-fn init_beats(tag: &str) -> PathBuf {
+fn init_beats(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     init_template(tag, "beats")
 }
 
@@ -70,7 +61,7 @@ fn assert_checks_tests_and_plays_clean(proj: &Path) {
 /// box — the three commands its README and play script promise.
 #[test]
 fn beats_template_checks_tests_and_plays_clean() {
-    let proj = init_beats("beats");
+    let (_root, proj) = init_beats("beats");
     for rel in [
         "plugins/game.occasions/plugin.yaml",
         "plays/first-day.play.yaml",
@@ -88,7 +79,7 @@ fn beats_template_checks_tests_and_plays_clean() {
 /// checks, tests and plays clean.
 #[test]
 fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
-    let proj = init_template("investigation", "investigation");
+    let (_root, proj) = init_template("investigation", "investigation");
     let read = |rel: &str| std::fs::read_to_string(proj.join(rel)).unwrap();
     assert!(read("lute.project.yaml").contains("defaults:"));
     let occasions = read("plugins/case.occasions/occasions/case.yaml");
@@ -130,7 +121,7 @@ fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
 /// path a test in `tests/` needs.
 #[test]
 fn minimal_template_uses_id_identity_and_ships_a_passing_test() {
-    let proj = init_template("minimal", "minimal");
+    let (_root, proj) = init_template("minimal", "minimal");
     let p = proj.to_str().unwrap();
     let opening = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
     assert!(opening.contains("\nid: opening\n"), "{opening}");
@@ -174,7 +165,7 @@ fn scene(proj: &Path, rel: &str) -> String {
 /// names the file after the id, and still checks clean.
 #[test]
 fn new_scene_on_writes_a_beat_that_respects_defaults() {
-    let proj = init_beats("new-on");
+    let (_root, proj) = init_beats("new-on");
     let out = lute(&[
         "new",
         "scene",
@@ -208,7 +199,7 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
 /// `chapters:` chain, and says how to make the scene a chapter instead.
 #[test]
 fn new_scene_on_a_chained_occasion_writes_on_and_names_the_chain() {
-    let proj = init_beats("new-on-chain");
+    let (_root, proj) = init_beats("new-on-chain");
     let manifest = proj.join("lute.project.yaml");
     let mut text_of = std::fs::read_to_string(&manifest).unwrap();
     text_of.push_str("chapters:\n  - on: townVisit\n    scenes: [town.welcome]\n");
@@ -257,7 +248,7 @@ fn new_scene_on_a_chained_occasion_writes_on_and_names_the_chain() {
 /// rank in creation order, never tie, and are never shadowed.
 #[test]
 fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
-    let proj = init_beats("new-on-priority");
+    let (_root, proj) = init_beats("new-on-priority");
     let d = proj.to_str().unwrap();
     let priority = |rel: &str| -> i64 {
         let s = scene(&proj, rel);
@@ -299,7 +290,7 @@ fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
 /// of silently writing `<root>/scenes/<name>.lute`.
 #[test]
 fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
-    let proj = init_beats("new-nested-dir");
+    let (_root, proj) = init_beats("new-nested-dir");
     let sub = proj.join("scenes/talk");
     let out = lute(&[
         "new",
@@ -350,7 +341,7 @@ fn new_with_a_non_root_dir_inside_a_project_is_refused_with_the_nested_name() {
 /// blames a `--dir` the author did not pass.
 #[test]
 fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
-    let proj = init_beats("new-subdir-cwd");
+    let (_root, proj) = init_beats("new-subdir-cwd");
     let sub = proj.join("scenes/talk");
     let out = Command::new(BIN)
         .args([
@@ -389,7 +380,7 @@ fn new_from_a_subdirectory_without_dir_names_the_current_directory() {
 /// checks clean.
 #[test]
 fn new_scene_with_a_dotted_name_keeps_the_dotted_id() {
-    let proj = init_beats("new-dotted");
+    let (_root, proj) = init_beats("new-dotted");
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "scene", "mara.night", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -420,7 +411,7 @@ fn new_scene_with_a_dotted_name_keeps_the_dotted_id() {
 /// stub, the project checks with no advisory at all.
 #[test]
 fn new_quest_is_accept_driven_unless_start() {
-    let proj = init_beats("new-quest-accept");
+    let (_root, proj) = init_beats("new-quest-accept");
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "quest", "oil-run", "--dir", d]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -469,7 +460,8 @@ fn new_quest_is_accept_driven_unless_start() {
 /// takes is refused, and nothing is written.
 #[test]
 fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
-    let proj = temp_dir("new-agree").join("proj");
+    let proj_scratch = lute_scratch::ScratchDir::named("new-agree");
+    let proj = proj_scratch.join("proj");
     let out = lute(&["init", proj.to_str().unwrap()]);
     assert!(out.status.success(), "{}", text(&out));
     let d = proj.to_str().unwrap();
@@ -530,7 +522,7 @@ fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
 /// refused (exit 2) and leave no file behind.
 #[test]
 fn new_scene_on_refuses_what_the_project_does_not_declare() {
-    let proj = init_beats("new-refuse");
+    let (_root, proj) = init_beats("new-refuse");
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "scene", "x", "--occasion", "tallk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
@@ -596,7 +588,7 @@ fn new_scene_on_refuses_what_the_project_does_not_declare() {
 /// nothing.
 #[test]
 fn new_scene_refuses_the_old_on_flag() {
-    let proj = init_beats("new-old-on");
+    let (_root, proj) = init_beats("new-old-on");
     let d = proj.to_str().unwrap();
     let out = lute(&["new", "scene", "x", "--on", "townVisit", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
@@ -613,7 +605,7 @@ fn new_scene_refuses_the_old_on_flag() {
 /// there and is refused.
 #[test]
 fn new_outside_a_project_says_so() {
-    let dir = temp_dir("new-outside");
+    let dir = lute_scratch::ScratchDir::named("new-outside");
     let d = dir.to_str().unwrap();
     let out = lute(&["new", "scene", "intro", "--occasion", "talk", "--dir", d]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));

@@ -26,14 +26,8 @@ const BIN: &str = env!("CARGO_BIN_EXE_lute");
 pub const COMPONENT_REL: &str = "components/interject.component.lute";
 
 /// A fresh unique temp dir (no `tempfile` dev-dep needed for these small tests).
-pub fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
+pub fn temp_dir(tag: &str) -> lute_scratch::ScratchDir {
+    lute_scratch::ScratchDir::named(tag)
 }
 
 /// The component body's fault: `emotion="smug"` on a content line. Its own
@@ -60,7 +54,7 @@ uses: [{vocab}]\ncomponents: [../{COMPONENT_REL}]\n---\n\
     )
 }
 
-fn write_project(tag: &str, vocabs: &[(&str, &str)], scenes: &[(&str, String)]) -> PathBuf {
+fn write_project(tag: &str, vocabs: &[(&str, &str)], scenes: &[(&str, String)]) -> lute_scratch::ScratchDir {
     let dir = temp_dir(tag);
     std::fs::create_dir_all(dir.join("components")).unwrap();
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
@@ -78,7 +72,7 @@ fn write_project(tag: &str, vocabs: &[(&str, &str)], scenes: &[(&str, String)]) 
 /// A project with one component carrying a body fault and THREE callers, every
 /// caller resolving the SAME vocabulary — so all three messages are
 /// byte-identical.
-pub fn write_three_callers(tag: &str) -> PathBuf {
+pub fn write_three_callers(tag: &str) -> lute_scratch::ScratchDir {
     write_project(
         tag,
         &[("vocab-a.yaml", VOCAB_A)],
@@ -93,7 +87,7 @@ pub fn write_three_callers(tag: &str) -> PathBuf {
 /// Two callers whose vocabularies DIFFER, so the same authored line produces two
 /// different messages. Rule 2 must not fold them, and rule 4's intersection over
 /// call sites must report neither.
-pub fn write_two_callers_one_specific(tag: &str) -> PathBuf {
+pub fn write_two_callers_one_specific(tag: &str) -> lute_scratch::ScratchDir {
     write_project(
         tag,
         &[("vocab-a.yaml", VOCAB_A), ("vocab-b.yaml", VOCAB_B)],
@@ -185,28 +179,30 @@ fn a_caller_specific_fault_is_not_rolled_up() {
 
 /// One caller whose vocabulary rejects the body's `emotion` — `/tmp/l9`'s shape,
 /// i.e. T6.3's: the component's own `uses:` admits `smug`, the caller's does not.
-fn write_component_bad_for_its_caller(tag: &str) -> (PathBuf, PathBuf) {
+fn write_component_bad_for_its_caller(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let dir = write_project(
         tag,
         &[("vocab-a.yaml", VOCAB_A)],
         &[("a.lute", scene(1, "../vocab-a.yaml"))],
     );
-    (dir.clone(), dir.join(COMPONENT_REL))
+    let component = dir.join(COMPONENT_REL);
+    (dir, component)
 }
 
 /// The same component with NO caller: the project's one scene does not `::use` it.
-fn write_component_with_no_caller(tag: &str) -> (PathBuf, PathBuf) {
+fn write_component_with_no_caller(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let dir = write_project(tag, &[("vocab-a.yaml", VOCAB_A)], &[]);
     std::fs::write(
         dir.join("scenes").join("a.lute"),
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@x: hi\n",
     )
     .unwrap();
-    (dir.clone(), dir.join(COMPONENT_REL))
+    let component = dir.join(COMPONENT_REL);
+    (dir, component)
 }
 
 /// Any minimal scene in its own project root.
-fn write_plain_scene(tag: &str) -> (PathBuf, PathBuf) {
+fn write_plain_scene(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let dir = temp_dir(tag);
     let scene = dir.join("plain.lute");
     std::fs::write(
@@ -516,7 +512,7 @@ fn a_scene_with_no_project_never_reports_component_unverified() {
 
 /// Every document gets both components through `defaults: components:`; only
 /// the scene `::use`s `bump`, whose line 10 guard reads `run.aff.@who`.
-fn write_defaults_components(tag: &str) -> PathBuf {
+fn write_defaults_components(tag: &str) -> lute_scratch::ScratchDir {
     let dir = temp_dir(tag);
     std::fs::create_dir_all(dir.join("components")).unwrap();
     std::fs::create_dir_all(dir.join("scenes")).unwrap();

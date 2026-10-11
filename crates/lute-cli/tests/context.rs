@@ -9,24 +9,14 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-context-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_at(dir: &Path, rel: &str, content: &str) {
     let path = dir.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, content).unwrap();
 }
 
-fn project() -> PathBuf {
-    let proj = temp_dir("surface");
+fn project() -> lute_scratch::ScratchDir {
+    let proj = lute_scratch::ScratchDir::named("surface");
     write_at(
         &proj,
         "lute.project.yaml",

@@ -88,15 +88,6 @@ fn json_at(path: &Path) -> serde_json::Value {
         .unwrap_or_else(|e| panic!("cannot parse {} as JSON: {e}", path.display()))
 }
 
-/// A scratch dir private to one fixture — no fixture shares mutable temp state
-/// with another, so the suite is order- and concurrency-independent.
-fn scratch(fixture: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("lute-conformance-{fixture}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 /// The README's exit-code table, plus numeric codes for invalid-fixture
 /// transcripts that intentionally exercise runner rejection.
@@ -291,7 +282,7 @@ fn every_fixture_carries_live_stamps() {
             continue;
         }
 
-        let scratch = scratch(name);
+        let scratch = lute_scratch::ScratchDir::named("conformance");
         let fresh_path = scratch.join("artifact.json");
         let out = Command::new(BIN)
             .args([
@@ -484,7 +475,7 @@ fn every_diagnostic_fixture_reproduces() {
 #[test]
 fn identity_rename_stamps_match_single_and_all_compile_paths() {
     let root = corpus_dir().join("identity/rename-ledger");
-    let out = scratch("identity-rename-stamps");
+    let out = lute_scratch::ScratchDir::named("conformance");
     let single = out.join("single.json");
     let single_result = Command::new(BIN)
         .args([

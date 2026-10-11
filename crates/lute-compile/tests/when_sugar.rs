@@ -13,8 +13,7 @@
 //! externally observable through the emitted artifact) plus its temp-dir
 //! component fixture idiom for the component-body regression below.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use lute_check::{parse_meta, resolve_components, resolve_imports, CheckInput, Mode};
 use lute_compile::compile;
@@ -239,24 +238,6 @@ fn sugared_line_survives_compilation() {
 
 // -- component-body gated-line `@param` binding (bind_params fix) ----------
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_when_sugar_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -280,7 +261,7 @@ fn component_gated_line_when_binds_param_before_fold() {
     // desugar (and T8's `fold_component_matches`, which runs immediately
     // after on the SAME bound clone) would operate on unresolved text
     // instead of the caller's actual argument.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greeting.lute", GREETING_COMPONENT);
 
     // tier="fond" binds `@tier == 'fond'` -> `'fond' == 'fond'` (decides

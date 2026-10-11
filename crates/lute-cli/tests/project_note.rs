@@ -6,16 +6,15 @@
 //! second, absolute-path `discover_project` in `lute-load`.
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
 /// `<tmp>/<unique>/proj/` holding a manifest and one scene; returns the
 /// parent `<tmp>/<unique>/`, the working directory the commands run from.
-fn fixture(tag: &str) -> PathBuf {
-    let parent = std::env::temp_dir().join(format!("lute-project-note-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&parent);
+fn fixture(tag: &str) -> lute_scratch::ScratchDir {
+    let parent = lute_scratch::ScratchDir::named(tag);
     let proj = parent.join("proj");
     std::fs::create_dir_all(&proj).unwrap();
     std::fs::write(proj.join("lute.project.yaml"), "defaultProfile: default\n").unwrap();
@@ -66,5 +65,4 @@ fn trace_context_and_compile_stream_name_the_project_relative_to_cwd() {
     }
     // Run from inside the project, the note names it `.`.
     assert_eq!(note_of(&parent.join("proj"), &["trace", "scene.lute"], None), HERE);
-    let _ = std::fs::remove_dir_all(&parent);
 }

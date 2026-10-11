@@ -276,7 +276,6 @@ fn copy_tree(from: &Path, to: &Path) {
 /// exit code — and requires the written tree to be exactly what the dry-run
 /// promised. Two bases keep it cheap: one dogfood game, one standalone root.
 fn write_matches_dry_run(task_name: &str) {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let task = root().join(task_name);
     let base_name = base_path(&task);
     let model = model(&base_name);
@@ -286,8 +285,7 @@ fn write_matches_dry_run(task_name: &str) {
     fill(&mut patch, &before.sha256, &files);
     let (dry_status, dry) = apply(model, patch.clone());
 
-    let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let scratch = std::env::temp_dir().join(format!("lute-edit-write-{}-{serial}", std::process::id()));
+    let scratch = lute_scratch::ScratchDir::named("edit-write");
     let copy = scratch.join("base");
     copy_tree(&workspace().join(&base_name), &copy);
     let patch_file = scratch.join("patch.json");
@@ -303,7 +301,6 @@ fn write_matches_dry_run(task_name: &str) {
     assert_eq!(kinds(&written), kinds(&dry), "{task_name}");
     let rebuilt = ProjectModel::build_single_root(&copy, &Default::default()).unwrap();
     assert_eq!(Value::String(rebuilt.revisions().sha256.clone()), written["after"]["sha256"], "{task_name}: report does not describe the tree on disk");
-    let _ = fs::remove_dir_all(scratch);
 }
 
 #[test]

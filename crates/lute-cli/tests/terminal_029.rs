@@ -5,17 +5,10 @@
 //! `terminalPersists`; on a condition over run state only it is
 //! `E-META-VALUE`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-term029-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -42,8 +35,8 @@ fn lute(dir: &Path, args: &[&str]) -> Output {
 /// A realm whose crown, once taken, ends the game: `knock` crowns the
 /// player (a user-tier write, or a run-tier one), `visit` is a later raise.
 /// `terminal` is the schema's `terminal:` line.
-fn realm(tag: &str, terminal: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn realm(tag: &str, terminal: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

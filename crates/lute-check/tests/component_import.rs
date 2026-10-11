@@ -8,8 +8,7 @@ use lute_check::resolve_components;
 use lute_check::ComponentSet;
 use lute_core_span::Span;
 use lute_manifest::types::Type;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 fn zero_span() -> Span {
     Span {
@@ -21,25 +20,6 @@ fn zero_span() -> Span {
     }
 }
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-/// A fresh temp dir per call; component `.lute` files are written into it.
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_components_{}_{}_{}",
-        std::process::id(),
-        n,
-        nanos
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -47,7 +27,7 @@ fn write_lute(dir: &Path, name: &str, body: &str) {
 #[test]
 fn number_component_params_are_not_silently_dropped() {
     for ty in ["number", "{ type: number }"] {
-        let dir = unique_dir();
+        let dir = lute_scratch::ScratchDir::new();
         write_lute(&dir, "depth.lute", &format!(
             "---\ncomponent: depth\nparams:\n  depth: {ty}\n---\n## Depth\n@narrator: Down.\n"
         ));
@@ -69,7 +49,7 @@ const GREET: &str = "---\ncomponent: greet\nparams:\n  who: string\n---\n## Scen
 
 #[test]
 fn resolves_single_component_with_params() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "greet.lute", GREET);
     let res = resolve_components(&dir, &["greet.lute".to_string()], zero_span());
     assert!(res.diags.is_empty(), "unexpected diags: {:?}", res.diags);
@@ -84,7 +64,7 @@ fn resolves_single_component_with_params() {
 
 #[test]
 fn missing_component_file_is_not_found() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     let res = resolve_components(&dir, &["nope.lute".to_string()], zero_span());
     assert!(
         res.table.is_empty(),
@@ -100,7 +80,7 @@ fn missing_component_file_is_not_found() {
 
 #[test]
 fn duplicate_component_name_across_files_errors() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "a.lute", GREET);
     // A second file declaring the SAME `component: greet` name.
     write_lute(
@@ -122,7 +102,7 @@ fn duplicate_component_name_across_files_errors() {
 
 #[test]
 fn malformed_component_is_parse_error() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // Valid frontmatter, but the BODY has an unterminated `/* … */` block comment
     // -> `lute_syntax::parse` surfaces E-COMMENT-UNTERMINATED in its parse diags.
     write_lute(
@@ -143,7 +123,7 @@ fn malformed_component_parse_error_carries_related_sub_diagnostics() {
     // dsl 0.5.0 §2.2: the component's OWN parse diagnostic (here
     // E-COMMENT-UNTERMINATED, spans relative to the component file) must be
     // carried on the importer's E-COMPONENT-PARSE via `.related`.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "bad.lute",
@@ -177,7 +157,7 @@ fn component_malformed_params_is_parse() {
     // A `params:` entry whose value is not a valid `Type` must NOT be silently
     // dropped (which would let the component be invoked without the param); it
     // must surface as E-COMPONENT-PARSE for that file (dsl §13).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "bad.lute",
@@ -191,7 +171,7 @@ fn component_malformed_params_is_parse() {
     );
 
     // A non-mapping `params:` is likewise malformed.
-    let dir2 = unique_dir();
+    let dir2 = lute_scratch::ScratchDir::new();
     write_lute(
         &dir2,
         "bad2.lute",
@@ -207,7 +187,7 @@ fn component_malformed_params_is_parse() {
 
 #[test]
 fn component_missing_name_is_parse_error() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     // No `component:` declaration — cannot enter the name table.
     write_lute(
         &dir,
@@ -228,7 +208,7 @@ fn component_missing_name_is_parse_error() {
 
 #[test]
 fn import_cycle_is_component_cycle() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(
         &dir,
         "a.lute",
@@ -249,7 +229,7 @@ fn import_cycle_is_component_cycle() {
 
 #[test]
 fn diamond_is_one_identity_no_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "shared.lute", GREET);
     write_lute(
         &dir,

@@ -30,6 +30,7 @@ serde_yaml = { workspace = true }
 
 serde_json = "1.0.150"
 [dev-dependencies]
+lute-scratch = { path = "../lute-scratch" }
 tower = "0.5.3"
 futures = "0.3.32"
 serde_json = "1.0.150"

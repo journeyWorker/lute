@@ -13,16 +13,6 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-locale-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let path = dir.join(rel);
     if let Some(parent) = path.parent() {
@@ -73,8 +63,8 @@ const LINE_IDS: [&str; 6] = [
     "marina.s01ep01.marina_0030",
 ];
 
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     write(&dir, "a.lute", SCENE);
     dir
@@ -136,7 +126,7 @@ fn locale_maps(artifact: &serde_json::Value) -> Vec<(String, serde_json::Value)>
 #[test]
 fn export_then_import_produces_a_stable_bundle() {
     let dir = project("roundtrip");
-    let work = temp_dir("roundtrip-work");
+    let work = lute_scratch::ScratchDir::named("roundtrip-work");
     translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
     translate(&dir, &work.join("en-US.json"), "[en] ", &[]);
 
@@ -198,7 +188,7 @@ fn export_then_import_produces_a_stable_bundle() {
 /// through `loc import` and back onto the compiled artifact's `texts`.
 #[test]
 fn lore_entry_lines_round_trip_under_the_entry_prefix() {
-    let dir = temp_dir("lore");
+    let dir = lute_scratch::ScratchDir::named("lore");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     let lore = write(
         &dir,
@@ -214,7 +204,7 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
          </match>\n\
          </entry>\n",
     );
-    let work = temp_dir("lore-work");
+    let work = lute_scratch::ScratchDir::named("lore-work");
     let file = translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
     let rows: Vec<serde_json::Value> = read_json(&file).as_array().unwrap().clone();
     let ids: Vec<&str> = rows.iter().map(|r| r["lineId"].as_str().unwrap()).collect();
@@ -287,7 +277,7 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
 /// stamps on the beat's records.
 #[test]
 fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
-    let dir = temp_dir("lore-beat");
+    let dir = lute_scratch::ScratchDir::named("lore-beat");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     let lore = write(
         &dir,
@@ -347,7 +337,7 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
 #[test]
 fn a_csv_export_round_trips_through_import_too() {
     let dir = project("csv");
-    let work = temp_dir("csv-work");
+    let work = lute_scratch::ScratchDir::named("csv-work");
     let csv = work.join("fr-FR.csv");
     let exported = run(&[
         "loc",
@@ -387,7 +377,7 @@ fn a_csv_export_round_trips_through_import_too() {
 #[test]
 fn a_duplicate_line_id_within_one_locale_is_e_locale_bundle() {
     let dir = project("dup");
-    let work = temp_dir("dup-work");
+    let work = lute_scratch::ScratchDir::named("dup-work");
     let file = translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
     // Re-append the first row: the same id twice in one locale.
     let mut rows: Vec<serde_json::Value> = read_json(&file).as_array().unwrap().clone();
@@ -411,7 +401,7 @@ fn a_duplicate_line_id_within_one_locale_is_e_locale_bundle() {
 
 #[test]
 fn an_unparseable_input_and_an_empty_locale_tag_are_e_locale_bundle() {
-    let work = temp_dir("malformed");
+    let work = lute_scratch::ScratchDir::named("malformed");
     let bad = write(&work, "ja-JP.json", "this is not json");
     let result = run(&["loc", "import", bad.to_str().unwrap()]);
     assert_eq!(result.status.code(), Some(1));
@@ -433,7 +423,7 @@ fn an_unparseable_input_and_an_empty_locale_tag_are_e_locale_bundle() {
 #[test]
 fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() {
     let dir = project("merge");
-    let work = temp_dir("merge-work");
+    let work = lute_scratch::ScratchDir::named("merge-work");
     translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
     let bundle = work.join("bundle.json");
     assert_eq!(
@@ -512,7 +502,7 @@ fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() 
 #[test]
 fn a_bundle_entry_matching_nothing_in_the_document_is_ignored() {
     let dir = project("stray");
-    let work = temp_dir("stray-work");
+    let work = lute_scratch::ScratchDir::named("stray-work");
     let bundle = write(
         &work,
         "bundle.json",
@@ -551,7 +541,7 @@ fn without_locales_the_artifact_is_byte_identical() {
 #[test]
 fn w_l10n_missing_fires_once_per_missing_line_id_locale_pair() {
     let dir = project("missing");
-    let work = temp_dir("missing-work");
+    let work = lute_scratch::ScratchDir::named("missing-work");
     // ja-JP is complete; en-US drops exactly two records.
     translate(&dir, &work.join("ja-JP.json"), "[ja] ", &[]);
     translate(
@@ -627,7 +617,7 @@ fn w_l10n_missing_fires_once_per_missing_line_id_locale_pair() {
 #[test]
 fn deny_promotes_w_l10n_missing_and_suppresses_the_artifact() {
     let dir = project("deny");
-    let work = temp_dir("deny-work");
+    let work = lute_scratch::ScratchDir::named("deny-work");
     translate(&dir, &work.join("en-US.json"), "[en] ", &[LINE_IDS[0]]);
     let bundle = work.join("bundle.json");
     assert_eq!(
@@ -763,7 +753,7 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
 fn every_content_line_the_compiler_emits_has_an_export_row() {
     let root = haven_root();
     let scene = root.join("scenes/cryobank.lute");
-    let dir = temp_dir("loc-completeness");
+    let dir = lute_scratch::ScratchDir::named("loc-completeness");
     let artifact = dir.join("cryo.json");
     let out = run(&[
         "compile",
@@ -815,7 +805,7 @@ fn every_content_line_the_compiler_emits_has_an_export_row() {
 /// stamped `null` (the triad was missing so `scene_prefix` gave up).
 #[test]
 fn loc_export_prefixes_line_ids_with_the_authored_scene_id() {
-    let dir = temp_dir("authored-id");
+    let dir = lute_scratch::ScratchDir::named("authored-id");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     write(
         &dir,
@@ -867,7 +857,7 @@ id: authored.myid
 /// snapshot so the derived-key path stays wire-stable under Task 4.
 #[test]
 fn loc_export_of_a_legacy_scene_is_byte_identical_to_the_pinned_snapshot() {
-    let dir = temp_dir("legacy-pin");
+    let dir = lute_scratch::ScratchDir::named("legacy-pin");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
     write(
         &dir,

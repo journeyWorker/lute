@@ -3,18 +3,14 @@
 //! `per:` / `subsetOf:` / rule-body kind reads and anchoring at the schema
 //! line (CR N1, ER N10), and component `@param`s in fact atoms (CR N5).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn project(tag: &str, schema: &str, docs: &[(&str, &str)]) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-sk-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+fn project(tag: &str, schema: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    
+    let dir = lute_scratch::ScratchDir::named(tag);
     let write = |rel: &str, text: &str| {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -188,9 +184,8 @@ fn unresolved_component_imports_suggest_the_project_file() {
 }
 
 /// A project from `(path, text)` files alone.
-fn raw_project(tag: &str, files: &[(&str, &str)]) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-sk-raw-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+fn raw_project(tag: &str, files: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     for (rel, text) in files {
         let p = dir.join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();

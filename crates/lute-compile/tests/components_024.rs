@@ -2,8 +2,6 @@
 //! into the host's command stream at the `::use` (only the arm a literal
 //! argument selects), and `{{@p}}` over a `speaker` param renders the cast
 //! member's name.
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use lute_check::{parse_meta, resolve_components, CheckInput, Mode};
 use lute_compile::compile;
@@ -12,24 +10,10 @@ use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
 
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_cc024_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// Compile `body` in a scene declaring `run.approval.{isolde,corvin}` with
 /// `REACTION` importable and the cast `isolde` ("Isolde Vane") / `corvin`.
 fn compile_body(body: &str) -> serde_json::Value {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("reaction.lute"), REACTION).unwrap();
     let text = format!(
         "---\nkind: scene\ncharacter: demo\nseason: 1\nepisode: 1\ncomponents: [reaction.lute]\n\

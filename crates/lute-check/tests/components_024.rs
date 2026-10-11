@@ -9,22 +9,6 @@ use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_c024_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn member(id: &str, name: &str) -> CastMember {
     CastMember {
@@ -37,7 +21,7 @@ fn member(id: &str, name: &str) -> CastMember {
 /// `check()` over `scene` with `component` written as `c.lute` next to it and
 /// `cast` as the snapshot's declared cast.
 fn run(component: &str, scene: &str, cast: &[(&str, &str)]) -> Vec<Diagnostic> {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("c.lute"), component).unwrap();
     let (doc, _) = lute_syntax::parse(scene);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
@@ -173,7 +157,7 @@ fn fact_writes_are_judged_against_the_host_vocabulary() {
 fn a_presentational_body_may_not_use_an_effects_component() {
     // `c.lute` holds both; the outer one is presentational.
     let comp = "---\ncomponent: outer\ncomponents: [inner.lute]\n---\n## Scene 1.\n::use{component=\"inner\"}\n";
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("inner.lute"),
         "---\ncomponent: inner\neffects: true\n---\n## Scene 1.\n::set{run.x = 1}\n",

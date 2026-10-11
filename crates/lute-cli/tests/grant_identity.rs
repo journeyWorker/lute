@@ -10,9 +10,7 @@ fn fixture() -> PathBuf {
 }
 
 fn play(tag: &str, script: &str) -> Json {
-    let dir = std::env::temp_dir().join(format!("lute-grant-{}-{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::named(tag);
     let script_path = dir.join("grant.play.yaml");
     std::fs::write(&script_path, script).unwrap();
     let out: Output = Command::new(BIN)

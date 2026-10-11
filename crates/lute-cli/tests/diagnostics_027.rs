@@ -7,16 +7,6 @@ use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-diag027-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -45,7 +35,7 @@ fn text(o: &Output) -> String {
 /// folded path (`lore/a.lute`, not `tests/sub/../../lore/a.lute`).
 #[test]
 fn a_refused_test_trace_keeps_each_diagnostics_severity() {
-    let dir = temp_dir("refused");
+    let dir = lute_scratch::ScratchDir::named("refused");
     write(
         &dir,
         "lute.project.yaml",
@@ -84,7 +74,7 @@ fn check_project(dir: &Path) -> String {
 /// with no `on` whose arms compare the count.
 #[test]
 fn a_fact_query_match_subject_shows_the_subjectless_form() {
-    let dir = temp_dir("relsubject");
+    let dir = lute_scratch::ScratchDir::named("relsubject");
     write(&dir, "lute.project.yaml", MANIFEST);
     write(
         &dir,
@@ -110,8 +100,8 @@ fn a_fact_query_match_subject_shows_the_subjectless_form() {
 }
 
 /// A small project with an `effects: true` component and a `run.route` enum.
-fn component_project(tag: &str, use_line: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn component_project(tag: &str, use_line: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -199,7 +189,7 @@ fn a_when_is_literal_gets_a_did_you_mean() {
 /// with them, and each warning names the tree that must change together.
 #[test]
 fn an_implicit_quest_tree_is_flagged_together() {
-    let dir = temp_dir("tier");
+    let dir = lute_scratch::ScratchDir::named("tier");
     write(&dir, "lute.project.yaml", MANIFEST);
     write(
         &dir,
@@ -232,7 +222,7 @@ fn an_implicit_quest_tree_is_flagged_together() {
 /// named in the tree that must change together.
 #[test]
 fn a_quest_reading_nothing_does_not_hide_its_run_looking_tree() {
-    let dir = temp_dir("tier-neutral");
+    let dir = lute_scratch::ScratchDir::named("tier-neutral");
     write(&dir, "lute.project.yaml", MANIFEST);
     write(
         &dir,
@@ -279,7 +269,7 @@ fn a_quest_reading_nothing_does_not_hide_its_run_looking_tree() {
 /// `reach --endings` row the literal makes never hold.
 #[test]
 fn columns_count_characters_after_multibyte_text() {
-    let dir = temp_dir("char-columns");
+    let dir = lute_scratch::ScratchDir::named("char-columns");
     write(&dir, "lute.project.yaml", MANIFEST);
     write(
         &dir,

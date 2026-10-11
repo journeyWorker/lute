@@ -1,20 +1,17 @@
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn artifact(tag: &str, ir: serde_json::Value) -> PathBuf {
-    static NEXT: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::temp_dir().join(format!("lute-run-owned-{tag}-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
-    std::fs::create_dir_all(&dir).unwrap();
+fn artifact(tag: &str, ir: serde_json::Value) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let path = dir.join("artifact.json");
     std::fs::write(&path, serde_json::to_vec(&ir).unwrap()).unwrap();
-    path
+    (dir, path)
 }
 
 fn run(ir: serde_json::Value) -> std::process::Output {
-    let path = artifact("test", ir);
+    let (_dir, path) = artifact("test", ir);
     Command::new(BIN).args(["run", path.to_str().unwrap()]).output().unwrap()
 }
 

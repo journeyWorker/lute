@@ -9,18 +9,6 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_s037_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn check_text(text: String, components: ComponentSet) -> Vec<Diagnostic> {
     check(&CheckInput {
@@ -87,7 +75,7 @@ fn mono_without_any_pov_is_mono_no_pov() {
 /// `::use`, naming the component, where it is not.
 #[test]
 fn component_mono_is_judged_per_caller() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\n---\n## Inner\n@mira{mono}: Not again.\n",
@@ -243,7 +231,7 @@ fn snake_case_key_in_a_timeline_clip_is_author_case() {
 /// speaker each `::use` passes: judged against the caller's POV.
 #[test]
 fn component_speaker_param_mono_inside_a_branch_is_bound() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         "---\ncomponent: c\nparams:\n  who: speaker\n---\n## Inner\n\

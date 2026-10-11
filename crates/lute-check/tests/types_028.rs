@@ -5,9 +5,6 @@
 use lute_check::{check, resolve_imports, CheckInput, Mode, SchemaImports};
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
 
 fn zero_span() -> Span {
     Span {
@@ -22,17 +19,12 @@ fn zero_span() -> Span {
 /// `files` written to a fresh directory and imported through the resolver
 /// `check-project` uses.
 fn imports(files: &[(&str, &str)]) -> SchemaImports {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_types_028_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let dir = lute_scratch::ScratchDir::new();
     for (name, text) in files {
         std::fs::write(dir.join(name), text).unwrap();
     }
     let names: Vec<String> = files.iter().map(|(n, _)| n.to_string()).collect();
-    let out = resolve_imports(&dir, &names, &[], zero_span());
-    let _ = std::fs::remove_dir_all(&dir);
-    out
+    resolve_imports(&dir, &names, &[], zero_span())
 }
 
 /// `text` checked with occasion `chime` (untargeted) and `explore` (one

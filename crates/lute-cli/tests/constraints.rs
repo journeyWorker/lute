@@ -1,17 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-static NEXT: AtomicUsize = AtomicUsize::new(0);
-
-fn temp(tag: &str) -> PathBuf {
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-constraints-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(root: &Path, rel: &str, text: &str) {
     let path = root.join(rel);
@@ -35,7 +25,7 @@ fn scene(id: &str, extra: &str) -> String {
 
 #[test]
 fn reachable_reports_holds_and_unknown_without_false_violation() {
-    let root = temp("reachable");
+    let root = lute_scratch::ScratchDir::named("reachable");
     write(&root, "lute.project.yaml", &manifest("  - id: r\n    kind: reachable\n    node: scene:open\n  - id: u\n    kind: reachable\n    node: scene:missing\n"));
     write(&root, "open.lute", &scene("open", ""));
     let (code, out) = run(&root, &["constraints"]);
@@ -48,7 +38,7 @@ fn reachable_reports_holds_and_unknown_without_false_violation() {
 
 #[test]
 fn completable_violation_and_run_witness_are_distinct() {
-    let root = temp("completable");
+    let root = lute_scratch::ScratchDir::named("completable");
     write(&root, "lute.project.yaml", &manifest("  - id: c\n    kind: completable\n    quest: q\n"));
     write(&root, "q.lute", "---\nkind: quest\nid: q\nstate:\n  run.done: { type: bool, default: false }\n---\n<quest id=\"q\" start=\"false\">\n  <objective id=\"o\" done=\"run.done\"/>\n</quest>\n");
     let (code, out) = run(&root, &["constraints"]);
@@ -85,7 +75,7 @@ fn completable_violation_and_run_witness_are_distinct() {
 
 #[test]
 fn speaks_only_when_uses_full_guard_context_and_voice_over_lines() {
-    let root = temp("speaks");
+    let root = lute_scratch::ScratchDir::named("speaks");
     write(&root, "lute.project.yaml", &manifest("  - id: h\n    kind: speaksOnlyWhen\n    speaker: brann\n    when: \"holds('ok', ['brann'])\"\n"));
     write(&root, "world.schema.yaml", "entities:\n  npc: { members: [brann] }\nrelations:\n  ok: { args: [npc], tier: run }\n");
     write(&root, "scene.lute", "---\nkind: scene\nid: test\nuses: [world.schema.yaml]\n---\n<beat id=\"b\" when=\"holds('ok', ['brann'])\">\n  <branch id=\"x\"><choice id=\"y\" when=\"holds('ok', ['brann'])\">\n    @brann{vo}: guarded\n  </choice></branch>\n</beat>\n");
@@ -109,7 +99,7 @@ fn speaks_only_when_uses_full_guard_context_and_voice_over_lines() {
 
 #[test]
 fn no_single_slot_progress_is_bounded_and_scoped() {
-    let root = temp("slots");
+    let root = lute_scratch::ScratchDir::named("slots");
     write(&root, "lute.project.yaml", &manifest("  - id: n\n    kind: noSingleSlotProgress\n    quest: '*'\n"));
     write(&root, "world.schema.yaml", "state:\n  run.day: { type: int, default: 1, owner: engine }\n  run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\nclock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n");
     write(&root, "q.lute", "---\nkind: quest\nid: q\nuses: [world.schema.yaml]\n---\n<quest id=\"q\" start=\"true\">\n  <objective id=\"o\" done=\"false\"/>\n</quest>\n");
@@ -121,7 +111,7 @@ fn no_single_slot_progress_is_bounded_and_scoped() {
 
 #[test]
 fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
-    let root = temp("decl");
+    let root = lute_scratch::ScratchDir::named("decl");
     write(&root, "lute.project.yaml", &manifest("  - id: bad\n    kind: nope\n    unknown: x\n"));
     write(&root, "scene.lute", "---\nkind: scene\nid: test\n---\n@narrator: hi\n");
     let (code, out) = run(&root, &["check-project"]);

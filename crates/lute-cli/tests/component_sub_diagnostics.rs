@@ -10,17 +10,6 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-/// A fresh unique temp dir (no `tempfile` dev-dep needed for these small tests).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 // A genuinely broken component body (a garbage line before any heading, no
 // sigil/tag shape at all) -> exactly one child E-UNCLASSIFIED parse
 // diagnostic, deterministic and independent of any other 0.5.0 §2.1 split.
@@ -40,7 +29,7 @@ fn write_fixture(dir: &Path) -> PathBuf {
 
 #[test]
 fn human_output_surfaces_component_child_diagnostic_detail() {
-    let dir = temp_dir("component-subdiag-human");
+    let dir = lute_scratch::ScratchDir::named("component-subdiag-human");
     let scene = write_fixture(&dir);
     let out = Command::new(BIN)
         .args(["check", scene.to_str().unwrap()])
@@ -71,7 +60,7 @@ fn human_output_surfaces_component_child_diagnostic_detail() {
 
 #[test]
 fn json_output_carries_structured_component_sub_diagnostics() {
-    let dir = temp_dir("component-subdiag-json");
+    let dir = lute_scratch::ScratchDir::named("component-subdiag-json");
     let scene = write_fixture(&dir);
     let out = Command::new(BIN)
         .args(["check", scene.to_str().unwrap(), "--json"])
@@ -140,7 +129,7 @@ fn write_two_issue_fixture(dir: &Path) -> PathBuf {
 
 #[test]
 fn issue_count_includes_a_reclassified_component_state_child() {
-    let dir = temp_dir("component-subdiag-count");
+    let dir = lute_scratch::ScratchDir::named("component-subdiag-count");
     let scene = write_two_issue_fixture(&dir);
     let out = Command::new(BIN)
         .args(["check", scene.to_str().unwrap(), "--json"])

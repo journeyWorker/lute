@@ -29,3 +29,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 rayon = "1.12"
+
+[dev-dependencies]
+lute-scratch = { path = "../lute-scratch" }

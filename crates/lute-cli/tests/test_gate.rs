@@ -2,20 +2,10 @@
 //! holes the dogfood runs found (T1-13, T1-14, T2-5, T3-11, T3-15). Every
 //! test here reproduces a verdict the tool used to get wrong in silence.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output, Stdio};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-gate-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write_at(dir: &Path, rel: &str, content: &str) {
     let path = dir.join(rel);
@@ -54,7 +44,7 @@ const DERIVED_MATCH: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode:
 /// one never said which guard stopped the walk.
 #[test]
 fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_supply() {
-    let dir = temp_dir("incomplete");
+    let dir = lute_scratch::ScratchDir::named("incomplete");
     write_at(&dir, "s.lute", DERIVED_MATCH);
     write_at(
         &dir,
@@ -121,7 +111,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
 /// completes past it.
 #[test]
 fn a_rule_derived_fact_decides_a_test_guard_without_mocking_it() {
-    let dir = temp_dir("derived-guard");
+    let dir = lute_scratch::ScratchDir::named("derived-guard");
     write_at(&dir, "s.lute", DERIVED_MATCH);
     write_at(
         &dir,
@@ -138,7 +128,7 @@ fn a_rule_derived_fact_decides_a_test_guard_without_mocking_it() {
 /// without one it is still refused, and the refusal says how to name them.
 #[test]
 fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
-    let dir = temp_dir("lore-subject");
+    let dir = lute_scratch::ScratchDir::named("lore-subject");
     write_at(
         &dir,
         "book.lute",
@@ -179,7 +169,7 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
 /// asserted is the seeded one; `facts:` alone makes a lookup test too.
 #[test]
 fn a_lore_test_without_an_entry_judges_facts_on_the_seeded_world() {
-    let dir = temp_dir("lore-facts");
+    let dir = lute_scratch::ScratchDir::named("lore-facts");
     write_at(&dir, "lute.project.yaml", MANIFEST);
     write_at(
         &dir,
@@ -225,7 +215,7 @@ fn a_lore_test_without_an_entry_judges_facts_on_the_seeded_world() {
 /// halted. Every tool now halts incomplete and names the longer list.
 #[test]
 fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
-    let dir = temp_dir("hub-exhausted");
+    let dir = lute_scratch::ScratchDir::named("hub-exhausted");
     write_at(&dir, "lute.project.yaml", MANIFEST);
     write_at(
         &dir,
@@ -272,7 +262,7 @@ fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
 /// testable document is named". The denominator is the project.
 #[test]
 fn coverage_is_measured_against_the_project_not_the_tests_directory() {
-    let dir = temp_dir("coverage-root");
+    let dir = lute_scratch::ScratchDir::named("coverage-root");
     write_at(&dir, "lute.project.yaml", MANIFEST);
     let scene = |ep: u32| {
         format!(
@@ -324,7 +314,7 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
 /// or the test's own seed read "the path was never written".
 #[test]
 fn expect_state_compares_the_effective_value_default_and_seed_included() {
-    let dir = temp_dir("effective-state");
+    let dir = lute_scratch::ScratchDir::named("effective-state");
     write_at(
         &dir,
         "s.lute",
@@ -368,7 +358,7 @@ const BEAT_DAY3: &str = "---\nkind: scene\nid: town.wed\non: arrive\nwhen: 'run.
 /// `complete` with no hint that it would never be presented.
 #[test]
 fn a_false_beat_when_is_named_by_trace_and_by_test() {
-    let dir = temp_dir("beat-when");
+    let dir = lute_scratch::ScratchDir::named("beat-when");
     write_at(&dir, "wed.lute", BEAT_DAY3);
     let file = dir.join("wed.lute");
 
@@ -410,7 +400,7 @@ fn a_false_beat_when_is_named_by_trace_and_by_test() {
 /// `(forced)` on the decision line, and the summary read `trace complete`.
 #[test]
 fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
-    let dir = temp_dir("forced-unknown");
+    let dir = lute_scratch::ScratchDir::named("forced-unknown");
     write_at(
         &dir,
         "s.lute",
@@ -493,7 +483,7 @@ fn two_scene_case(dir: &Path) {
 /// "not producible".
 #[test]
 fn mock_unproducible_consults_the_project_producers() {
-    let dir = temp_dir("unproducible-project");
+    let dir = lute_scratch::ScratchDir::named("unproducible-project");
     write_at(&dir, "lute.project.yaml", MANIFEST);
     two_scene_case(&dir);
     let b = dir.join("scenes/b.lute");
@@ -522,7 +512,7 @@ fn mock_unproducible_consults_the_project_producers() {
 /// fires but says what it judged.
 #[test]
 fn mock_unproducible_without_a_project_says_it_judged_one_document() {
-    let dir = temp_dir("unproducible-single");
+    let dir = lute_scratch::ScratchDir::named("unproducible-single");
     two_scene_case(&dir);
     let b = dir.join("scenes/b.lute");
     let out = lute(&["trace", b.to_str().unwrap(), "--fact", "clue(ann)"]);
@@ -540,7 +530,7 @@ fn mock_unproducible_without_a_project_says_it_judged_one_document() {
 /// every Guaranteed path appeared twice.
 #[test]
 fn envelope_possible_lists_only_what_is_not_guaranteed() {
-    let dir = temp_dir("envelope-diff");
+    let dir = lute_scratch::ScratchDir::named("envelope-diff");
     write_at(
         &dir,
         "a.lute",
@@ -574,7 +564,7 @@ fn envelope_possible_lists_only_what_is_not_guaranteed() {
 /// went away. Close the read end before the report is written.
 #[test]
 fn scenario_and_test_survive_a_closed_stdout() {
-    let dir = temp_dir("epipe");
+    let dir = lute_scratch::ScratchDir::named("epipe");
     write_at(
         &dir,
         "a.lute",

@@ -13,18 +13,6 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{AttrValue, Document, Node};
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute_tpl027_{}_{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const BOND: &str = "---\ncomponent: bondStory\n\
 params:\n  who: { type: string }\n  need: { type: int, default: 0 }\n  prev: { type: string, default: \"\" }\nbeat:\n  on: bond\n  once: user\n  when: \"user.bond >= @need\"\n  after: \"@prev\"\n  priority: 2\n---\n\
@@ -37,7 +25,7 @@ state:\n  user.bond: { type: int, default: 0 }\n---\n\n";
 /// `component` overrides it), components resolved from disk. Returns the
 /// input (for [`desugared`]) and the check's diagnostics.
 fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("bond.lute"), component).unwrap();
     let (doc, _) = lute_syntax::parse(lore);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());

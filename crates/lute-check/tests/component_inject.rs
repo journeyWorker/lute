@@ -48,22 +48,6 @@ use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
@@ -150,7 +134,7 @@ fn check_with_components_snap(
     files: &[(&str, String)],
     snapshot: CapabilitySnapshot,
 ) -> lute_check::CheckResult {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     for (name, text) in files {
         std::fs::write(dir.join(name), text).unwrap();
     }

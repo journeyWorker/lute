@@ -38,8 +38,8 @@ fn date_minigame_is_clean_with_plugin_project() {
 fn date_minigame_core_only_still_errors() {
     // REGRESSION GUARD: with no --project and no manifest above the file, the
     // core-only contract holds.
-    let dir = std::env::temp_dir().join(format!("lute-plugin-loaded-core-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-plugin-loaded-core");
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("date-minigame.lute");
     std::fs::copy(
@@ -78,8 +78,8 @@ fn refresh_stamps_resolved_version_under_project() {
         "fixture must make the resolved version differ from core-only, else the test can't distinguish"
     );
 
-    let tmp = std::env::temp_dir().join(format!("lute_cat_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_cat");
     std::fs::create_dir_all(&tmp).unwrap();
     std::fs::copy(
         "../../docs/examples/arcia-project/catalog/minigame.yaml",
@@ -107,7 +107,6 @@ fn refresh_stamps_resolved_version_under_project() {
         stamped, resolved_version,
         "refresh --project must stamp the RESOLVED capabilitySnapshot, not core-only"
     );
-    std::fs::remove_dir_all(&tmp).ok();
 }
 
 #[test]

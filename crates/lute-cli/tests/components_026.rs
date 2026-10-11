@@ -4,17 +4,10 @@
 //! the cast name (T1-6), param defaults and own-result reads (§3.3), `@@who:`
 //! (§3.2) and `when=` on directives (§4) in check, compile, play and test.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-comp026-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let path = dir.join(rel);
@@ -101,8 +94,8 @@ const DIRECTIVES: &str = r#"directives:
 
 /// A project with a `talk` occasion, `::give` (passthrough) and `::battle`
 /// (bridge) directives, a cast, a world schema and the given components.
-fn project(tag: &str, cast: &str, schema: &str, components: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str, cast: &str, schema: &str, components: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "plugins/p/plugin.yaml", PLUGIN);
     write(
         &dir,

@@ -3,17 +3,10 @@
 //! credited, what a rejected chain tells the scenes it lists, which `when:`
 //! can stall a chain, and what listing something that is not a scene says.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-ch028-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -74,7 +67,7 @@ const PULSE: &str = "entities:\n  npc: { members: [mara, tomas] }\nstate:\n  run
 /// its chain's occasion, in its chain's order.
 #[test]
 fn two_chains_each_order_their_own_occasion() {
-    let dir = temp_dir("two");
+    let dir = lute_scratch::ScratchDir::named("two");
     project(
         &dir,
         CHAPTER,
@@ -101,7 +94,7 @@ fn two_chains_each_order_their_own_occasion() {
 /// each is told once, however many beat keys it writes.
 #[test]
 fn the_removed_sequence_key_is_refused_and_never_read() {
-    let dir = temp_dir("oldkey");
+    let dir = lute_scratch::ScratchDir::named("oldkey");
     project(
         &dir,
         CHAPTER,
@@ -130,7 +123,7 @@ fn the_removed_sequence_key_is_refused_and_never_read() {
 /// comes from, and asks to move the scene that wrote its own.
 #[test]
 fn a_tie_with_a_chain_priority_names_the_chain() {
-    let dir = temp_dir("tie");
+    let dir = lute_scratch::ScratchDir::named("tie");
     project(
         &dir,
         CHAPTER,
@@ -173,7 +166,7 @@ fn a_tie_with_a_chain_priority_names_the_chain() {
 /// scene's `id:`. With `target:` the chain checks clean.
 #[test]
 fn a_chain_on_a_targeted_occasion_needs_every_scene_to_name_its_target() {
-    let dir = temp_dir("target");
+    let dir = lute_scratch::ScratchDir::named("target");
     project(
         &dir,
         CHAPTER,
@@ -200,7 +193,7 @@ fn a_chain_on_a_targeted_occasion_needs_every_scene_to_name_its_target() {
 /// play` credits `chapters:` only for an `after:` the chain derived.
 #[test]
 fn only_a_derived_after_is_credited_to_chapters() {
-    let dir = temp_dir("credit");
+    let dir = lute_scratch::ScratchDir::named("credit");
     project(
         &dir,
         CHAPTER,
@@ -251,7 +244,7 @@ fn only_a_derived_after_is_credited_to_chapters() {
 /// is; it is told the chain was not applied.
 #[test]
 fn a_rejected_chain_does_not_tell_its_scenes_to_join_it() {
-    let dir = temp_dir("rejected");
+    let dir = lute_scratch::ScratchDir::named("rejected");
     project(
         &dir,
         CHAPTER,
@@ -289,7 +282,7 @@ fn a_rejected_chain_does_not_tell_its_scenes_to_join_it() {
 /// scenes under the misspelt occasion.
 #[test]
 fn a_chain_on_an_undeclared_occasion_is_not_applied() {
-    let dir = temp_dir("undeclared");
+    let dir = lute_scratch::ScratchDir::named("undeclared");
     project(
         &dir,
         CHAPTER,
@@ -317,7 +310,7 @@ fn a_chain_on_an_undeclared_occasion_is_not_applied() {
 /// `owner: engine` path is the engine's to make true.
 #[test]
 fn a_clock_only_condition_does_not_stall_a_chain() {
-    let dir = temp_dir("clock");
+    let dir = lute_scratch::ScratchDir::named("clock");
     project(
         &dir,
         "occasions:\n  dayStart: { select: first, description: a new day }\n",
@@ -372,7 +365,7 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
 /// itself the statement "wait for that scene".
 #[test]
 fn a_hand_written_after_outside_a_chain_never_stalls() {
-    let dir = temp_dir("handafter");
+    let dir = lute_scratch::ScratchDir::named("handafter");
     let schema = "state:\n  run.day: { type: int, default: 1, owner: engine }\n  \
                   run.leg: { type: int, default: 0 }\n\
                   clock:\n  day: run.day\n  days: 7\n";
@@ -422,7 +415,7 @@ fn a_hand_written_after_outside_a_chain_never_stalls() {
 /// (`!= 'morning'`) does not.
 #[test]
 fn a_clock_window_that_closes_stalls_a_chain() {
-    let dir = temp_dir("window");
+    let dir = lute_scratch::ScratchDir::named("window");
     project(
         &dir,
         "occasions:\n  chapter: { select: first }\n",
@@ -460,7 +453,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
 
     // The clock raises `dayStart` on each day an advance enters — never on
     // the day the run starts.
-    let dir = temp_dir("daystart");
+    let dir = lute_scratch::ScratchDir::named("daystart");
     project(
         &dir,
         "occasions:\n  dayStart: { select: first }\n",
@@ -506,7 +499,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
 /// id.
 #[test]
 fn listing_what_is_not_a_scene_says_what_it_is() {
-    let dir = temp_dir("bare");
+    let dir = lute_scratch::ScratchDir::named("bare");
     project(
         &dir,
         CHAPTER,

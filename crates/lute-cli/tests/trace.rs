@@ -101,7 +101,8 @@ fn json_contract() {
 
 #[test]
 fn refused_on_check_errors() {
-    let dir = std::env::temp_dir().join(format!("lute-trace-refused-{}", std::process::id()));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-trace-refused");
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("date-minigame.lute");
     std::fs::copy(
@@ -331,26 +332,13 @@ fn component_expansion_transcript_has_no_sentinel_leak() {
 
 // ── 0.10.0 §8 / D-AC: the mock's subject key on a trace command line ───
 
-/// A fresh unique temp dir (matches `check_project.rs`'s own helper — each
-/// integration test binary is compiled separately, so this is intentionally
-/// duplicated rather than shared).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// D-AC's third rule: `lute trace <doc> --mock m.yaml` supplies the subject
 /// on the command line and THAT wins. A `file:` naming a different document
 /// is `E-MOCK-SUBJECT` — the two ways of saying what a mock is for must not
 /// be able to disagree in silence.
 #[test]
 fn trace_refuses_a_mock_whose_file_names_a_different_document() {
-    let dir = temp_dir("mock-subject-disagree");
+    let dir = lute_scratch::ScratchDir::named("mock-subject-disagree");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     let scene = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n";
     std::fs::write(dir.join("scenes/one.lute"), scene).unwrap();
@@ -382,7 +370,7 @@ fn trace_refuses_a_mock_whose_file_names_a_different_document() {
 /// The agreeing case, and the absent case, both run.
 #[test]
 fn trace_accepts_an_agreeing_or_absent_file_key() {
-    let dir = temp_dir("mock-subject-agree");
+    let dir = lute_scratch::ScratchDir::named("mock-subject-agree");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("scenes/one.lute"),
@@ -496,7 +484,7 @@ fn trace_prints_the_shot_heading_it_is_holding() {
 /// typo is now an input error and the excluded arm is never reached.
 #[test]
 fn trace_refuses_a_mock_that_mis_keys_a_surface() {
-    let dir = temp_dir("mock-closed-keys");
+    let dir = lute_scratch::ScratchDir::named("mock-closed-keys");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("scenes/one.lute"),
@@ -560,8 +548,8 @@ fn trace_refuses_a_mock_that_mis_keys_a_surface() {
 /// start-less `sideJob`, and quest `holdLine` whose `sawShed` objective reads
 /// `visited('haven.shed')` and whose `calm` objective is judged at `runEnd`
 /// (true whenever judged: `run.pressure` defaults to 0).
-fn quest_occasion_project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn quest_occasion_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let files = [
         (
             "lute.project.yaml",
@@ -808,7 +796,7 @@ fn run_raises_an_occasion_on_a_compiled_quest_artifact() {
 /// to be `E-CEL-PROFILE`, so trace and test refused the document.
 #[test]
 fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
-    let dir = temp_dir("modulo");
+    let dir = lute_scratch::ScratchDir::named("modulo");
     let scene = |test: &str| {
         format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
@@ -873,7 +861,7 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
 /// argument; `--json` keeps the expansion and adds the authored text.
 #[test]
 fn trace_prints_authored_def_refs_and_expands_on_request() {
-    let dir = temp_dir("authored-defs");
+    let dir = lute_scratch::ScratchDir::named("authored-defs");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("world.schema.yaml"),
@@ -943,7 +931,7 @@ fn trace_prints_authored_def_refs_and_expands_on_request() {
 /// as `delivery` (absent on a plain line).
 #[test]
 fn trace_shows_a_line_delivery_as_authored() {
-    let dir = temp_dir("line-delivery");
+    let dir = lute_scratch::ScratchDir::named("line-delivery");
     let scene = dir.join("s.lute");
     std::fs::write(
         &scene,
@@ -984,7 +972,7 @@ fn trace_shows_a_line_delivery_as_authored() {
 /// relative to the current directory, the way the traced file does.
 #[test]
 fn trace_names_a_component_site_relative_to_the_current_directory() {
-    let dir = temp_dir("component-site");
+    let dir = lute_scratch::ScratchDir::named("component-site");
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::create_dir_all(dir.join("components")).unwrap();
     std::fs::write(

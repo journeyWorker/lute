@@ -3,20 +3,10 @@
 //! (refused steps, skipped clock raises, `end: terminal`) and as `lute beats`
 //! marks them (a target whose gate can never hold).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-seam027-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -36,8 +26,8 @@ fn text(o: &Output) -> String {
 /// player into (`canEnter`, engine-written), the clock strikes the hour only
 /// while the player has strength left, and the game is over once the
 /// stalker has taken them. `relation` is `canEnter`'s declaration.
-fn ward(tag: &str, relation: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn ward(tag: &str, relation: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -106,7 +96,7 @@ fn ward(tag: &str, relation: &str) -> PathBuf {
 }
 
 /// The ward whose office the engine may open (`canEnter` reserved).
-fn open_ward(tag: &str) -> PathBuf {
+fn open_ward(tag: &str) -> lute_scratch::ScratchDir {
     ward(tag, "{ args: [room], tier: run, reserved: true }")
 }
 
@@ -949,8 +939,8 @@ fn a_play_usage_error_cites_no_spec_section() {
 
 /// Two villagers and one targeted `talk` occasion whose declaration (after
 /// the occasion name) is `talk`; `schema_extra` is appended to the schema.
-fn villagers(tag: &str, talk: &str, schema_extra: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn villagers(tag: &str, talk: &str, schema_extra: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

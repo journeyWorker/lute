@@ -153,19 +153,6 @@ mod tests {
         assert_eq!(set.contains("character", "ghost"), IdStatus::Stale);
     }
 
-    /// A unique temp dir under the OS temp root, created fresh. Avoids a dev-dep
-    /// on `tempfile` — this crate has none and the round-trip test is small.
-    fn temp_dir(tag: &str) -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU32, Ordering};
-        static N: AtomicU32 = AtomicU32::new(0);
-        let n = N.fetch_add(1, Ordering::Relaxed);
-        let pid = std::process::id();
-        let dir = std::env::temp_dir().join(format!("lute-provider-{tag}-{pid}-{n}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
     #[test]
     fn load_missing_dir_is_empty_not_panic() {
         let set = ProviderSet::load("/no/such/lute/catalog/dir");
@@ -175,7 +162,7 @@ mod tests {
 
     #[test]
     fn load_empty_dir_is_empty() {
-        let dir = temp_dir("empty");
+        let dir = lute_scratch::ScratchDir::named("empty");
         let set = ProviderSet::load(&dir);
         assert!(set.snapshots().is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
@@ -183,7 +170,7 @@ mod tests {
 
     #[test]
     fn write_then_load_round_trips_status() {
-        let dir = temp_dir("roundtrip");
+        let dir = lute_scratch::ScratchDir::named("roundtrip");
         let snap = ProviderSnapshot {
             manifest_version: "cap-v1".into(),
             provider_version: "7".into(),
@@ -213,7 +200,7 @@ mod tests {
 
     #[test]
     fn load_preserves_stale_semantics() {
-        let dir = temp_dir("stale");
+        let dir = lute_scratch::ScratchDir::named("stale");
         let snap = ProviderSnapshot {
             manifest_version: "cap-v1".into(),
             provider_version: "1".into(),
@@ -228,7 +215,7 @@ mod tests {
 
     #[test]
     fn load_skips_unparseable_files() {
-        let dir = temp_dir("corrupt");
+        let dir = lute_scratch::ScratchDir::named("corrupt");
         std::fs::write(dir.join("junk.yaml"), "this: [is: not: valid").unwrap();
         std::fs::write(dir.join("note.txt"), "ignored non-yaml").unwrap();
         let set = ProviderSet::load(&dir);

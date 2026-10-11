@@ -11,28 +11,13 @@
 //! running the full `compile()` pipeline — the fold is only externally
 //! observable through the emitted artifact).
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use lute_check::{parse_meta, resolve_components, resolve_imports, CheckInput, Mode};
 use lute_compile::compile;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_fold_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
@@ -111,7 +96,7 @@ const REACTION: &str = "---\ncomponent: reaction\nparams:\n  tier: { enum: [cold
 
 #[test]
 fn literal_arg_folds_to_selected_arm() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "reaction.lute", REACTION);
     let via_component = scene(
         "reaction.lute",
@@ -175,7 +160,7 @@ fn otherwise_selected_when_no_is_matches() {
 <when is=\"20\">\n@narrator: exactly twenty\n</when>\n\
 <otherwise>\n@narrator: something else\n</otherwise>\n\
 </match>\n";
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "leveled.lute", LEVELED);
     let s = scene("leveled.lute", "::use{component=\"leveled\" n=5}");
     let artifact = compile_scene(&dir, &s);
@@ -198,7 +183,7 @@ fn ref_bound_arg_stays_residual_match() {
     // §6.4 case 2, §6.5's dynamic-dispatch worked example: the CALLER owns
     // its own state; binding a state-derived def to the param cannot fold
     // (D3: an unexpanded ref is left intact -> undecided by construction).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "reaction.lute", REACTION);
     let s = scene_with(
         "reaction.lute",
@@ -266,7 +251,7 @@ fn nested_param_match_folds_recursively() {
 </when>\n\
 <when is=\"cold\">\n@marina: cold, no nested dispatch\n</when>\n\
 </match>\n";
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write_lute(&dir, "nested.lute", NESTED);
     let s = scene(
         "nested.lute",

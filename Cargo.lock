@@ -582,6 +582,7 @@ dependencies = [
  "lute-cli",
  "lute-model",
  "lute-runtime",
+ "lute-scratch",
  "lute-semantic",
  "lute-trace",
  "serde",
@@ -609,6 +610,7 @@ dependencies = [
  "lute-core-span",
  "lute-ir",
  "lute-manifest",
+ "lute-scratch",
  "lute-syntax",
  "lute-test-vocab",
  "proptest",
@@ -634,6 +636,7 @@ dependencies = [
  "lute-model",
  "lute-resolve",
  "lute-runtime",
+ "lute-scratch",
  "lute-semantic",
  "lute-syntax",
  "lute-trace",
@@ -654,6 +657,7 @@ dependencies = [
  "lute-core-span",
  "lute-ir",
  "lute-manifest",
+ "lute-scratch",
  "lute-syntax",
  "lute-test-vocab",
  "proptest",
@@ -721,6 +725,7 @@ dependencies = [
  "lute-load",
  "lute-manifest",
  "lute-resolve",
+ "lute-scratch",
  "lute-semantic",
  "lute-syntax",
  "lute-test-vocab",
@@ -736,6 +741,7 @@ name = "lute-manifest"
 version = "0.39.0"
 dependencies = [
  "lute-core-span",
+ "lute-scratch",
  "schemars",
  "serde",
  "serde_json",
@@ -754,6 +760,7 @@ dependencies = [
  "lute-ir",
  "lute-load",
  "lute-manifest",
+ "lute-scratch",
  "lute-semantic",
  "lute-syntax",
  "rayon",
@@ -798,6 +805,13 @@ dependencies = [
  "serde",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "lute-scratch"
+version = "0.39.0"
+dependencies = [
+ "tempfile",
 ]
 
 [[package]]

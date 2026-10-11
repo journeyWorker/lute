@@ -4,23 +4,10 @@
 //! ref_type.rs only exercises via a synthetic in-memory snapshot.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::path::Path;
 
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::project::{load_project, project_providers, resolve_document_snapshot};
-
-static N: AtomicU32 = AtomicU32::new(0);
-
-fn unique_dir() -> PathBuf {
-    let d = std::env::temp_dir().join(format!(
-        "lute-plugindefs-{}-{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::SeqCst)
-    ));
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
 
 fn write(path: &Path, body: &str) {
     if let Some(p) = path.parent() {
@@ -32,7 +19,7 @@ fn write(path: &Path, body: &str) {
 /// Build a temp project whose one plugin exports a bool def `warm` and a number
 /// def `tally`, then resolve+check `scene` (its text) sitting in the project root.
 fn codes_for_scene(scene: &str) -> Vec<String> {
-    let root = unique_dir();
+    let root = lute_scratch::ScratchDir::new();
     write(
         &root.join("lute.project.yaml"),
         "pluginsDir: plugins/\ndefaultProfile: demo\nprofiles:\n  demo:\n    plugins: { demo.defs: true }\n",

@@ -205,7 +205,8 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
             utf16_range: (0, 0),
         }
     }
-    let dir = std::env::temp_dir().join(format!("lute_rs_inline_{}", std::process::id()));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute_rs_inline");
     std::fs::create_dir_all(&dir).unwrap();
     write(
         &dir,
@@ -285,15 +286,8 @@ fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
 /// Every `code` diagnostic resolving `files` (all imported) reports, as
 /// (file name, line, column, message) at its place in the schema file.
 fn imported_at(files: &[(&str, &str)], code: &str) -> Vec<(String, u32, u32, String)> {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_rs_at_{}_{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    
+    let dir = lute_scratch::ScratchDir::new();
     for (name, body) in files {
         std::fs::write(dir.join(name), body).unwrap();
     }
@@ -306,7 +300,6 @@ fn imported_at(files: &[(&str, &str)], code: &str) -> Vec<(String, u32, u32, Str
         utf16_range: (0, 0),
     };
     let res = lute_check::resolve_imports(&dir, &names, &[], at);
-    let _ = std::fs::remove_dir_all(&dir);
     res.diags
         .iter()
         .flat_map(|d| d.related.iter())

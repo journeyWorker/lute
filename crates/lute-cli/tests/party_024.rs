@@ -3,20 +3,10 @@
 //! `run.approval[P]` — `check-project` is clean, `lute play` derives per
 //! member, and `--explain` names the grounded instance.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-party-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -55,8 +45,8 @@ const CAMP: &str =
                     ::set{run.approval.isolde += 3}\n\
                     @narrator{when=\"holds('loyal', ['isolde'])\"}: Isolde keeps watch.\n";
 
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

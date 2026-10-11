@@ -41,8 +41,8 @@ fn mgart_valid_is_clean() {
 fn mgart_bad_segment_flags() {
     // A temp scene identical to arcia-portrait.lute EXCEPT an absent minigameId
     // in the gameId segment. Per-segment validation must raise E-ASSET-SEGMENT.
-    let tmp = std::env::temp_dir().join(format!("lute_mgart_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
+    let tmp_scratch = lute_scratch::ScratchDir::new();
+    let tmp = tmp_scratch.join("lute_mgart");
     std::fs::create_dir_all(&tmp).unwrap();
     let scene = tmp.join("arcia-portrait-bad.lute");
     std::fs::write(
@@ -84,5 +84,4 @@ fn mgart_bad_segment_flags() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert_eq!(out.status.code(), Some(1), "exit 1 on asset segment error");
-    std::fs::remove_dir_all(&tmp).ok();
 }

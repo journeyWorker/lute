@@ -1000,8 +1000,8 @@ mod tests {
                 }
             }
         }
-        let root = std::env::temp_dir().join(format!("lute-component-owners-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-component-owners");
         copy_tree(
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/seven-days"),
             &root,

@@ -24,13 +24,10 @@ const DIALOGUE_LENGTH_SCENE: &str = "---\nkind: scene\n---\n## Shot 1.\n\
 /// Build a scratch project dir plus a scene file under it. Returns `(root
 /// dir, scene path)`. A `lute.project.yaml` is written so
 /// [`Backend::analyze`]'s `find_project_root` discovery seam locates the
-/// root; no plugin is activated. Follows the workspace convention (see
-/// `crates/lute-manifest/tests/loader.rs`): a per-test `std::env::temp_dir()`
-/// path uniqued by tag + PID, wiped up-front.
-fn scaffold(tag: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir().join(format!("lute_lsp_lint_{}_{}", tag, std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+/// root; no plugin is activated. The directory is removed when the returned
+/// [`lute_scratch::ScratchDir`] drops.
+fn scaffold(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     std::fs::write(
         dir.join("lute.project.yaml"),
         "defaultProfile: base\nprofiles:\n  base:\n    plugins: {}\n",

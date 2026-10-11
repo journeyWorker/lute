@@ -1,41 +1,27 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use lute_model::{apply_patch, apply_patch_to, ModelOptions, PatchBase, PatchEdit, PatchRequest, ProjectModel};
 use lute_semantic::{NodeKey, NodeKind};
 
-/// A fresh directory per fixture. Tests run in parallel, so the name carries
-/// the process id and a per-process counter, not only a timestamp.
-fn unique_root(prefix: &str) -> PathBuf {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("{prefix}-{}-{stamp}-{serial}", std::process::id()))
-}
 
-fn project() -> PathBuf {
-    let root = unique_root("lute-model-patch");
-    std::fs::create_dir_all(&root).unwrap();
+fn project() -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch");
     std::fs::write(root.join("scene.lute"), "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n@hero: Hello\n").unwrap();
     root
 }
-fn scene_project(body: &str) -> PathBuf {
-    let root = unique_root("lute-model-patch-fixture");
-    std::fs::create_dir_all(&root).unwrap();
+fn scene_project(body: &str) -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch-fixture");
     std::fs::write(root.join("scene.lute"), format!("---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n---\n\n{body}\n")).unwrap();
     std::fs::write(root.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
     root
 }
-fn quest_project(body: &str) -> PathBuf {
-    let root = unique_root("lute-model-patch-quest");
-    std::fs::create_dir_all(&root).unwrap();
+fn quest_project(body: &str) -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch-quest");
     std::fs::write(root.join("quest.lute"), format!("---\nkind: quest\nid: q\n---\n\n{body}\n")).unwrap();
     root
 }
-fn lore_project(body: &str) -> PathBuf {
-    let root = unique_root("lute-model-patch-lore");
-    std::fs::create_dir_all(&root).unwrap();
+fn lore_project(body: &str) -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch-lore");
     std::fs::write(root.join("lore.lute"), format!("---\nkind: lore\nid: lore\n---\n\n{body}\n")).unwrap();
     root
 }
@@ -89,7 +75,6 @@ fn dry_run_stages_diff_without_writing() {
     assert_eq!(std::fs::read_to_string(root.join("scene.lute")).unwrap(), original);
     assert_eq!(report.writes, vec![PathBuf::from("scene.lute")]);
     assert_eq!(report.diff.changes.len(), 1);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -99,7 +84,6 @@ fn prebuilt_model_is_accepted_as_patch_before_snapshot() {
     let report = apply_patch_to(&model, request(&root), true).unwrap();
     assert_eq!(report.before, *model.revisions());
     assert!(!std::fs::read_to_string(root.join("scene.lute")).unwrap().contains("Goodbye"));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -109,7 +93,6 @@ fn stale_project_revision_refuses_before_staging() {
     patch.base.project = "sha256:stale".into();
     let refusal = apply_patch(&root, patch, true).unwrap_err();
     assert_eq!(refusal.code(), "E-PATCH-STALE");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -126,7 +109,6 @@ fn target_and_edit_refusals_are_stable_and_atomic() {
     assert_eq!(apply_patch(&root, overlap, true).unwrap_err().code(), "E-PATCH-EDIT");
     assert_eq!(std::fs::read(root.join(&file)).unwrap(), original);
     assert!(std::fs::read_dir(&root).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().contains("lute-patch-")));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -146,7 +128,6 @@ fn every_node_operation_and_exact_replace_text_can_stage() {
         };
         let result = run_edit(&root, line, edit, vec![]);
         assert!(result.is_ok(), "{operation}: {:?}", result.err());
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 
@@ -162,7 +143,6 @@ fn create_and_move_preserve_identity_and_write_only_after_success() {
     let request = PatchRequest { base: PatchBase { project: model.revisions().sha256.clone(), files: Default::default() }, targets: vec![], edits: vec![PatchEdit::MoveFile { from: "scene.lute".into(), to: "moved.lute".into() }], preserve: vec![] };
     let report = apply_patch(&root, request, true).unwrap();
     assert!(report.diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Moved)));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -173,7 +153,6 @@ fn check_and_ids_preserve_refusals_are_reported() {
     assert_eq!(bad.code(), "E-PATCH-CHECK");
     let refused = run_edit(&root, line.clone(), PatchEdit::RemoveNode { node: line.clone() }, vec![lute_model::Preserve::Ids(vec![line])]).unwrap_err();
     assert_eq!(refused.code(), "E-PATCH-PRESERVE");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -203,7 +182,6 @@ fn mapped_preserve_id_accepts_renamed_quest_identity() {
         )])],
     );
     assert!(apply_patch(&root, request, true).is_ok());
-    let _ = std::fs::remove_dir_all(root);
 }
 #[test]
 fn acceptance_refusal_matrix_has_named_cases() {
@@ -221,31 +199,36 @@ fn acceptance_refusal_matrix_has_named_cases() {
     cases.push(("stale file rev in replaceText", root, stale_file, "E-PATCH-EDIT"));
 
     let root = project();
-    cases.push(("unknown target", root.clone(), patch(&root, vec![NodeKey::new(NodeKind::Line, "missing")], vec![], vec![]), "E-PATCH-TARGET"));
+    let request = patch(&root, vec![NodeKey::new(NodeKind::Line, "missing")], vec![], vec![]);
+    cases.push(("unknown target", root, request, "E-PATCH-TARGET"));
 
     let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" text=\"Go\">\n@hero: A\n</choice>\n<choice id=\"go\" text=\"Go again\">\n@hero: B\n</choice>\n</branch>");
     let ambiguous = node(&root, NodeKind::Choice, ".go");
-    cases.push(("ambiguous target", root.clone(), patch(&root, vec![ambiguous], vec![], vec![]), "E-PATCH-TARGET"));
+    let request = patch(&root, vec![ambiguous], vec![], vec![]);
+    cases.push(("ambiguous target", root, request, "E-PATCH-TARGET"));
 
     let root = scene_project("## Opening\n\n@hero: Hello\n::set{run.flag = true}");
     std::fs::write(root.join("world.schema.yaml"), "state:\n  run.flag: { type: bool, default: false }\n").unwrap();
     let dependency = node(&root, NodeKind::State, "run.flag");
-    cases.push(("dependency-only target (no source anchor)", root.clone(), patch(&root, vec![dependency], vec![], vec![]), "E-PATCH-TARGET"));
+    let request = patch(&root, vec![dependency], vec![], vec![]);
+    cases.push(("dependency-only target (no source anchor)", root, request, "E-PATCH-TARGET"));
 
     let root = project();
     let (line, _, file) = line_info(&root);
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
     let span = lute_core_span::Span { byte_start: 0, byte_end: 1, ..model.graph().nodes[&line].span.unwrap() };
-    cases.push(("edit outside target", root.clone(), patch(&root, vec![line], vec![PatchEdit::ReplaceText {
+    let request = patch(&root, vec![line], vec![PatchEdit::ReplaceText {
         file: file.into(), rev: model.revisions().files[Path::new("scene.lute")].sha256.clone(), span, text: "x".into(),
-    }], vec![]), "E-PATCH-EDIT"));
+    }], vec![]);
+    cases.push(("edit outside target", root, request, "E-PATCH-EDIT"));
 
     let root = project();
     let (line, _, _) = line_info(&root);
-    cases.push(("overlapping edits", root.clone(), patch(&root, vec![line.clone()], vec![
+    let request = patch(&root, vec![line.clone()], vec![
         PatchEdit::ReplaceNode { node: line.clone(), text: "@hero: A".into() },
         PatchEdit::ReplaceNode { node: line, text: "@hero: B".into() },
-    ], vec![]), "E-PATCH-EDIT"));
+    ], vec![]);
+    cases.push(("overlapping edits", root, request, "E-PATCH-EDIT"));
 
     let root = scene_project("## Opening\n@hero: Héllo");
     let (line, span, file) = line_info(&root);
@@ -253,21 +236,24 @@ fn acceptance_refusal_matrix_has_named_cases() {
     let at = source.find('é').unwrap();
     let bad_span = lute_core_span::Span { byte_start: at + 1, byte_end: at + 2, ..span };
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
-    cases.push(("non-UTF-8-boundary span", root.clone(), patch(&root, vec![line], vec![PatchEdit::ReplaceText {
+    let request = patch(&root, vec![line], vec![PatchEdit::ReplaceText {
         file: file.into(), rev: model.revisions().files[Path::new("scene.lute")].sha256.clone(), span: bad_span, text: "x".into(),
-    }], vec![]), "E-PATCH-EDIT"));
+    }], vec![]);
+    cases.push(("non-UTF-8-boundary span", root, request, "E-PATCH-EDIT"));
 
     let root = project();
     let (line, _, _) = line_info(&root);
-    cases.push(("new check error", root.clone(), patch(&root, vec![line.clone()], vec![PatchEdit::ReplaceNode {
+    let request = patch(&root, vec![line.clone()], vec![PatchEdit::ReplaceNode {
         node: line, text: "::bogus{}".into(),
-    }], vec![]), "E-PATCH-CHECK"));
+    }], vec![]);
+    cases.push(("new check error", root, request, "E-PATCH-CHECK"));
     let root = project();
     std::fs::write(root.join("bad.lute"), "---\nkind: scene\nid: bad\n---\n\n## Bad\n::bogus{}\n").unwrap();
     let (line, _, _) = line_info(&root);
-    cases.push(("edit only shifts a pre-existing error", root.clone(), patch(&root, vec![line.clone()], vec![PatchEdit::InsertBefore {
+    let request = patch(&root, vec![line.clone()], vec![PatchEdit::InsertBefore {
         node: line, text: "@hero: Added\n".into(),
-    }], vec![]), "ACCEPT"));
+    }], vec![]);
+    cases.push(("edit only shifts a pre-existing error", root, request, "ACCEPT"));
 
     for (name, root, request, expected) in cases {
         let result = apply_patch(&root, request, true);
@@ -276,7 +262,6 @@ fn acceptance_refusal_matrix_has_named_cases() {
         } else {
             assert_eq!(result.unwrap_err().code(), expected, "{name}");
         }
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 #[test]
@@ -323,7 +308,6 @@ fn acceptance_preserve_matrix_has_named_cases() {
     for (name, root, target, edit, preserve) in cases {
         let result = apply_patch(&root, patch(&root, vec![target.clone()], vec![edit], vec![preserve]), true);
         assert!(matches!(&result, Err(refusal) if refusal.code() == "E-PATCH-PRESERVE"), "{name} target={target:?}: {result:?}");
-        let _ = std::fs::remove_dir_all(root);
     }
 }
 #[test]
@@ -345,7 +329,6 @@ fn atomicity_refused_multi_file_patch_preserves_bytes_and_leaves_no_temps() {
     assert_eq!(std::fs::read(root.join("scene.lute")).unwrap(), before_scene);
     assert_eq!(std::fs::read(root.join("other.lute")).unwrap(), before_other);
     assert!(std::fs::read_dir(&root).unwrap().flatten().all(|entry| !entry.file_name().to_string_lossy().contains("lute-patch-")));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -362,7 +345,6 @@ fn formatting_only_touched_regions_changes_and_far_noncanonical_bytes_remain() {
     apply_patch(&root, request, false).unwrap();
     let after = std::fs::read_to_string(root.join("scene.lute")).unwrap();
     assert!(after.contains(&far), "far line was reformatted: {after:?}");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -384,7 +366,6 @@ fn acceptance_success_matrix_has_named_cases() {
             _ => unreachable!(),
         };
         assert!(apply_patch(&root, patch(&root, vec![line], vec![operation], vec![]), true).is_ok(), "{name}");
-        let _ = std::fs::remove_dir_all(root);
     }
 
     let root = scene_project("## Opening\n\n<branch id=\"b\">\n<choice id=\"go\" text=\"Go\">\n@hero: Hello\n</choice>\n</branch>");
@@ -392,21 +373,18 @@ fn acceptance_success_matrix_has_named_cases() {
     assert!(apply_patch(&root, patch(&root, vec![choice.clone()], vec![PatchEdit::ReplaceAttr {
         node: choice, attr: "text".into(), value: "Continue".into(),
     }], vec![]), true).is_ok(), "replaceAttr");
-    let _ = std::fs::remove_dir_all(root);
 
     let root = project();
     assert!(apply_patch(&root, patch(&root, vec![], vec![PatchEdit::CreateFile {
         path: "new.lute".into(), text: "---\nkind: scene\nid: new\n---\n\n## New\n\n@narrator: New\n".into(),
     }], vec![]), true).is_ok(), "createFile");
     assert!(!root.join("new.lute").exists(), "dry-run createFile wrote source");
-    let _ = std::fs::remove_dir_all(root);
 
     let root = project();
     let report = apply_patch(&root, patch(&root, vec![], vec![PatchEdit::MoveFile {
         from: "scene.lute".into(), to: "moved.lute".into(),
     }], vec![]), true).unwrap();
     assert!(report.diff.changes.iter().any(|change| matches!(change.kind, lute_model::ChangeKind::Moved)), "moveFile must report moved");
-    let _ = std::fs::remove_dir_all(root);
 
     let root = project();
     let (line, span, file) = line_info(&root);
@@ -415,7 +393,6 @@ fn acceptance_success_matrix_has_named_cases() {
     assert!(apply_patch(&root, patch(&root, vec![line], vec![PatchEdit::ReplaceText {
         file: file.into(), rev, span, text: "@hero: Text".into(),
     }], vec![]), true).is_ok(), "replaceText");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -427,7 +404,6 @@ fn move_file_with_stale_reference_is_check_refusal() {
     }], vec![]), true);
     assert_eq!(result.unwrap_err().code(), "E-PATCH-CHECK");
     assert!(root.join("scene.lute").exists() && !root.join("moved.lute").exists());
-    let _ = std::fs::remove_dir_all(root);
 }
 
 fn copy_tree_for_patch_test(src: &Path, dst: &Path) {
@@ -444,10 +420,9 @@ fn copy_tree_for_patch_test(src: &Path, dst: &Path) {
     }
 }
 
-fn plugin_scene_project() -> PathBuf {
-    let root = unique_root("lute-model-patch-plugin");
+fn plugin_scene_project() -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch-plugin");
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/monster-league");
-    std::fs::create_dir_all(&root).unwrap();
     std::fs::copy(fixture.join("lute.project.yaml"), root.join("lute.project.yaml")).unwrap();
     copy_tree_for_patch_test(&fixture.join("plugins"), &root.join("plugins"));
     copy_tree_for_patch_test(&fixture.join("schema"), &root.join("schema"));
@@ -473,7 +448,6 @@ fn replace_node_noop_preserves_plugin_context_and_bytes() {
     let report = apply_patch(&root, patch(&root, vec![shot.clone()], vec![PatchEdit::ReplaceNode { node: shot, text }], vec![]), true).unwrap();
     assert!(report.diff.changes.is_empty(), "no-op replacement changed semantics: {:?}", report.diff.changes);
     assert!(report.writes.is_empty(), "no-op replacement changed source: {:?}", report.writes);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -488,5 +462,4 @@ fn replace_node_adds_match_arm_with_plugin_directives() {
     assert_ne!(replacement, text);
     let report = apply_patch(&root, patch(&root, vec![shot.clone()], vec![PatchEdit::ReplaceNode { node: shot, text: replacement }], vec![]), true).unwrap();
     assert!(!report.diff.changes.is_empty(), "new match arm was lost from semantic diff");
-    let _ = std::fs::remove_dir_all(root);
 }

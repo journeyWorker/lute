@@ -9,19 +9,6 @@ use std::time::Duration;
 mod support;
 use support::BIN;
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute-compile-stream-{tag}-{}-{n}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_at(dir: &Path, rel: &str, content: &str) -> PathBuf {
     let path = dir.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -67,7 +54,7 @@ fn next_event(rx: &Receiver<String>, child: &mut Child) -> serde_json::Value {
 
 #[test]
 fn first_update_is_flushed_before_stdin_closes() {
-    let dir = temp_dir("flush");
+    let dir = lute_scratch::ScratchDir::named("flush");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let mut child = Command::new(BIN)
         .args(["compile-stream", prefix.to_str().unwrap()])
@@ -113,12 +100,11 @@ fn first_update_is_flushed_before_stdin_closes() {
     assert_eq!(finish["sequence"], 1);
     assert_eq!(child.wait().unwrap().code(), Some(0));
     reader.join().unwrap();
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn final_branch_snapshot_runs_through_the_existing_runner() {
-    let dir = temp_dir("runner");
+    let dir = lute_scratch::ScratchDir::named("runner");
     let prefix = write_at(
         &dir,
         "prefix.lute",
@@ -179,12 +165,11 @@ fn final_branch_snapshot_runs_through_the_existing_runner() {
             .any(|command| command["text"] == "chose left"),
         "{transcript}"
     );
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn incomplete_block_at_eof_emits_error_without_finish() {
-    let dir = temp_dir("incomplete");
+    let dir = lute_scratch::ScratchDir::named("incomplete");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let output = stream_to_end(
         &["compile-stream", prefix.to_str().unwrap()],
@@ -204,12 +189,11 @@ fn incomplete_block_at_eof_emits_error_without_finish() {
         wire.iter().all(|event| event["kind"] != "finish"),
         "a malformed EOF must never claim success: {wire:#?}"
     );
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn project_defaults_components_and_identity_match_ordinary_compile() {
-    let dir = temp_dir("project");
+    let dir = lute_scratch::ScratchDir::named("project");
     write_at(
         &dir,
         "lute.project.yaml",
@@ -311,12 +295,11 @@ defaults:\n  kind: scene\n  character: hero\n  season: 1\n  episode: 7\n  uses: 
         "project identity must govern expanded component lines: {streamed}"
     );
     assert_eq!(std::fs::read_to_string(&prefix).unwrap(), template);
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn invalid_utf8_exits_two_without_finish() {
-    let dir = temp_dir("utf8");
+    let dir = lute_scratch::ScratchDir::named("utf8");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let output = stream_to_end(
         &["compile-stream", prefix.to_str().unwrap()],
@@ -327,5 +310,4 @@ fn invalid_utf8_exits_two_without_finish() {
     assert!(wire.iter().any(|event| event["kind"] == "update"));
     assert!(wire.iter().all(|event| event["kind"] != "finish"));
     assert!(String::from_utf8_lossy(&output.stderr).contains("UTF-8"));
-    let _ = std::fs::remove_dir_all(dir);
 }

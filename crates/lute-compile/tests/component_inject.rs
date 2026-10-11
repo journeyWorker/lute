@@ -20,28 +20,13 @@
 //! emits none either, and the ARTIFACT stays correct — the author's explicit
 //! anchor is honoured and no second anchor is injected beside it.
 
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use lute_check::{check, parse_meta, resolve_components, resolve_imports, CheckInput, Mode};
 use lute_compile::compile;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir =
-        std::env::temp_dir().join(format!("lute_cinj_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 /// Assemble a `CheckInput` for `scene_text` against on-disk component fixtures
 /// in `dir`, exactly as the CLI does (mirrors `tests/component_fold.rs`).
@@ -90,7 +75,7 @@ fn sprite_records(artifact: &lute_compile::ExecutionIr) -> Vec<serde_json::Value
 /// only anchor in the artifact.
 #[test]
 fn compile_adds_no_diagnostics_of_its_own_for_an_explicit_anchor() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         format!("---\ncomponent: c\n---\n## Scene 1.\n{CONFLICT_BODY}"),
@@ -125,7 +110,7 @@ fn compile_adds_no_diagnostics_of_its_own_for_an_explicit_anchor() {
 /// command stream, so a divergence in what got injected fails here.
 #[test]
 fn use_and_inline_lower_to_the_same_command_stream() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("c.lute"),
         format!("---\ncomponent: c\n---\n## Scene 1.\n{CONFLICT_BODY}"),

@@ -7,7 +7,7 @@ use lute_check::{check, parse_meta, resolve_components, CheckInput, Mode};
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn codes_in(dir: Option<&Path>, scene: &str) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(scene);
@@ -83,14 +83,8 @@ fn def_interpolation_that_cannot_expand_is_rejected() {
 /// counter: two tests running in parallel can read the same clock value
 /// (macOS reports microseconds), and a shared directory lets one test's
 /// component body overwrite the other's.
-fn component_dir(body: &str) -> PathBuf {
-    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "lute_def_inline_{}_{}",
-        std::process::id(),
-        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
+fn component_dir(body: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(
         dir.join("shot.component.lute"),
         format!("---\ncomponent: shot\nparams:\n  z: int\n---\n\n## Shot\n\n{body}"),

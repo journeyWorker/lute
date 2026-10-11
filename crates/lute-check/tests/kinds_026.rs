@@ -1,20 +1,8 @@
 //! dsl 0.26.0 §2.3: a kind assembled across schema imports (`add:`), and a
 //! sub-kind's members implied in its parent.
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use lute_manifest::relations::KindShape;
-
-fn unique_dir() -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let d = std::env::temp_dir().join(format!(
-        "lute_kinds026_{}_{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
 
 fn write(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
@@ -31,7 +19,7 @@ fn span() -> lute_core_span::Span {
 }
 
 fn imports(files: &[(&str, &str)]) -> lute_check::SchemaImports {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     for (name, body) in files {
         write(&dir, name, body);
     }

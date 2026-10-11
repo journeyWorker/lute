@@ -220,8 +220,8 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
     use lute_manifest::project::{load_project, resolve_document_snapshot};
     use std::fs;
 
-    let root = std::env::temp_dir().join(format!("lute_c1c2_{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_c1c2");
     let pdir = root.join("plugins/arcia.vn/directives");
     fs::create_dir_all(&pdir).unwrap();
     fs::write(
@@ -277,5 +277,4 @@ fn resolver_surfaces_option_and_lowering_diagnostics_end_to_end() {
         snap.directive("backdrop").is_some(),
         "conforming decl merged"
     );
-    fs::remove_dir_all(&root).ok();
 }

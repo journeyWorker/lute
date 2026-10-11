@@ -11,25 +11,12 @@
 //!   then refused by `compile --all`/`play` (`E-CAPABILITY-MISMATCH`).
 //! * T3-9 (ashen F2): `lute check <file>` ignored the project the file sits in.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
 const MANIFEST: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute-project-identity-{tag}-{}-{n}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, content: &str) {
     let path = dir.join(rel);
@@ -57,8 +44,8 @@ fn p(path: &Path) -> &str {
 
 /// A project whose one scene `::use`s component `c` (a tagged `@ann` line)
 /// after `host` (the scene body before the uses).
-fn component_project(tag: &str, component_line: &str, host: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn component_project(tag: &str, component_line: &str, host: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "lute.project.yaml", MANIFEST);
     write(
         &dir,
@@ -217,8 +204,8 @@ fn nested_uses_nest_scopes_and_loc_export_agrees() {
 
 // ---- T1-9: project-wide voiceKey collisions --------------------------------
 
-fn voice_project(tag: &str, manifest: &str, second_text: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn voice_project(tag: &str, manifest: &str, second_text: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "lute.project.yaml", manifest);
     for (file, character, line) in [("a", "x", "Hello."), ("b", "y", second_text)] {
         write(
@@ -282,7 +269,7 @@ fn shared_text_or_the_default_prefixed_voice_key_is_clean() {
 
 #[test]
 fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
-    let dir = temp_dir("two-profiles");
+    let dir = lute_scratch::ScratchDir::named("two-profiles");
     write(
         &dir,
         "lute.project.yaml",
@@ -338,7 +325,7 @@ fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
 
 #[test]
 fn check_on_a_file_applies_the_nearest_project_and_says_so() {
-    let dir = temp_dir("discover");
+    let dir = lute_scratch::ScratchDir::named("discover");
     write(
         &dir,
         "lute.project.yaml",
@@ -364,7 +351,7 @@ fn check_on_a_file_applies_the_nearest_project_and_says_so() {
     );
 
     // Outside any project: no note, and the undeclared path is still an error.
-    let loose = temp_dir("loose");
+    let loose = lute_scratch::ScratchDir::named("loose");
     std::fs::copy(dir.join("scenes/a.lute"), loose.join("a.lute")).unwrap();
     let o = lute(&["check", p(&loose.join("a.lute"))]);
     assert_eq!(o.status.code(), Some(1), "{}", text(&o));
@@ -377,7 +364,7 @@ fn check_on_a_file_applies_the_nearest_project_and_says_so() {
 /// "run `lute check` first" while `check` said ok.
 #[test]
 fn every_single_file_command_applies_the_nearest_project_like_check() {
-    let dir = temp_dir("discover-all");
+    let dir = lute_scratch::ScratchDir::named("discover-all");
     write(
         &dir,
         "lute.project.yaml",

@@ -114,8 +114,8 @@ mod tests {
 
     #[test]
     fn check_exit_codes_and_write_only_when_changed() {
-        let root = std::env::temp_dir().join(format!("lute-fmt-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-fmt");
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("sample.lute");
         let original = "## S\n@narrator: hi  \n";
@@ -133,8 +133,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn collection_skips_symlink_loops() {
-        let root = std::env::temp_dir().join(format!("lute-fmt-loop-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-fmt-loop");
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("sample.lute");
         std::fs::write(&file, "## S\n@narrator: hi\n").unwrap();
@@ -147,8 +147,8 @@ mod tests {
 
     #[test]
     fn plugin_yaml_uses_manifest_plugins_dir() {
-        let root = std::env::temp_dir().join(format!("lute-fmt-plugin-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root_scratch = lute_scratch::ScratchDir::new();
+        let root = root_scratch.join("lute-fmt-plugin");
         std::fs::create_dir_all(root.join("extensions/pkg")).unwrap();
         std::fs::create_dir_all(root.join("plugins/pkg")).unwrap();
         std::fs::write(

@@ -33,21 +33,6 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static UNIQ: AtomicU64 = AtomicU64::new(0);
-
-fn unique_dir() -> PathBuf {
-    let n = UNIQ.fetch_add(1, Ordering::Relaxed);
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("lute_ctc_{}_{}_{}", std::process::id(), n, nanos));
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 /// A scene frontmatter whose `state:` DECLARES `run.gold`, so the scene-level
 /// leg of the parity tests below cannot be confounded by an `E-UNDECLARED` the
@@ -89,7 +74,7 @@ fn standalone_diags(component: &str) -> Vec<Diagnostic> {
 /// The SAME component file reached through a `::use` from a scene — i.e. the
 /// imported-component path this suite exists to close.
 fn component_diags(component: &str) -> Vec<Diagnostic> {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("c.lute"), component).unwrap();
     let text = USE_SCENE.to_string();
     let (doc, _) = lute_syntax::parse(&text);

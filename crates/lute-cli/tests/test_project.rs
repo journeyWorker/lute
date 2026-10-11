@@ -16,19 +16,6 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!(
-        "lute-test-project-{tag}-{}-{n}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
     let path = dir.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -89,7 +76,7 @@ fn write_manifest_dependent_project(dir: &std::path::Path) {
 /// `--project <dir>` is supplied.
 #[test]
 fn test_yaml_needing_manifest_passes_under_project() {
-    let dir = temp_dir("clean");
+    let dir = lute_scratch::ScratchDir::named("clean");
     write_manifest_dependent_project(&dir);
 
     let out = Command::new(BIN)
@@ -118,7 +105,7 @@ fn test_yaml_needing_manifest_passes_under_project() {
 /// `E-UNKNOWN-DIRECTIVE` / `E-UNDECLARED` that looked like content bugs.
 #[test]
 fn same_test_yaml_without_project_resolves_the_nearest_manifest() {
-    let dir = temp_dir("control");
+    let dir = lute_scratch::ScratchDir::named("control");
     write_manifest_dependent_project(&dir);
 
     let out = Command::new(BIN)
@@ -147,7 +134,7 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
     let arcia = std::fs::canonicalize("../../docs/examples/arcia-project").unwrap();
     let scene = arcia.join("date-minigame.lute");
 
-    let dir = temp_dir("providers-precedence");
+    let dir = lute_scratch::ScratchDir::named("providers-precedence");
     write_at(
         &dir,
         "tests/t.test.yaml",
@@ -159,7 +146,7 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
             scene.display()
         ),
     );
-    let empty_providers = temp_dir("providers-precedence-empty");
+    let empty_providers = lute_scratch::ScratchDir::named("providers-precedence-empty");
 
     let auto = Command::new(BIN)
         .args([
@@ -209,7 +196,7 @@ fn explicit_providers_flag_wins_over_the_projects_pinned_catalog() {
 /// would report the pipe's own status instead).
 #[test]
 fn project_resolution_error_gates_the_exit_code() {
-    let dir = temp_dir("resolve-error");
+    let dir = lute_scratch::ScratchDir::named("resolve-error");
     write_at(
         &dir,
         "lute.project.yaml",
@@ -256,7 +243,7 @@ fn project_resolution_error_gates_the_exit_code() {
 /// `test_yaml` and runs `lute test tests/ --project <dir>` (plus `extra`),
 /// returning `(exit code, stdout)`.
 fn run_quest_test(tag: &str, test_yaml: &str, extra: &[&str]) -> (Option<i32>, String) {
-    let dir = temp_dir(tag);
+    let dir = lute_scratch::ScratchDir::named(tag);
     write_at(
         &dir,
         "lute.project.yaml",
@@ -486,7 +473,7 @@ fn expect_accepts_is_the_set_of_quests_the_walk_accepted() {
 
 #[test]
 fn component_param_bound_to_a_longer_def_renders_in_trace_and_test() {
-    let dir = temp_dir("component-param-span");
+    let dir = lute_scratch::ScratchDir::named("component-param-span");
     write_at(
         &dir,
         "lute.project.yaml",

@@ -2,20 +2,10 @@
 //! `until=` at the raise), through the built `lute` binary over a small
 //! temp project whose schema declares the clock.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-clock-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -37,13 +27,13 @@ const CLOCK: &str =
 
 /// A project: `world.schema.yaml` with `state` and a clock, plus every
 /// `(path, text)` document.
-fn project(tag: &str, state_owner: &str, docs: &[(&str, &str)]) -> PathBuf {
+fn project(tag: &str, state_owner: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
     project_with(tag, state_owner, CLOCK, docs)
 }
 
 /// [`project`] with the schema's `clock:` text (`""` for none).
-fn project_with(tag: &str, state_owner: &str, clock: &str, docs: &[(&str, &str)]) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project_with(tag: &str, state_owner: &str, clock: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",
@@ -115,7 +105,7 @@ fn clock_paths_must_be_engine_owned() {
 
 #[test]
 fn once_day_needs_a_clock() {
-    let dir = temp_dir("noclock");
+    let dir = lute_scratch::ScratchDir::named("noclock");
     write(
         &dir,
         "lute.project.yaml",
@@ -828,7 +818,7 @@ fn advance_raises_day_end_and_day_start_at_every_midnight_it_crosses() {
 
 /// A `raise: { slot, dayStart, dayEnd }` project: a scene answering each
 /// raise, plus a `dayStart` scene only day 1 would take.
-fn day_raises_project(tag: &str) -> PathBuf {
+fn day_raises_project(tag: &str) -> lute_scratch::ScratchDir {
     let scene = |id: &str, on: &str, when: &str| {
         format!(
             "---\nkind: scene\nid: {id}\nuses: ../world.schema.yaml\non: {on}\nonce: false\n{when}---\n\n\
@@ -1233,7 +1223,7 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
 /// once, at the schema, counting the importers (round-5 T3-4).
 #[test]
 fn a_schema_checked_alone_reports_what_its_importers_would() {
-    let dir = temp_dir("schema-alone");
+    let dir = lute_scratch::ScratchDir::named("schema-alone");
     write(
         &dir,
         "lute.project.yaml",
@@ -1286,7 +1276,7 @@ fn a_schema_checked_alone_reports_what_its_importers_would() {
 /// no def is reported at the rule's line, not at 1:1.
 #[test]
 fn a_rule_guard_def_error_lands_on_the_rule() {
-    let dir = temp_dir("rule-guard-def");
+    let dir = lute_scratch::ScratchDir::named("rule-guard-def");
     let f = dir.join("s.lute");
     write(
         &dir,

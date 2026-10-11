@@ -3,20 +3,10 @@
 //! at `for` and is one report; `once` values and quoted frontmatter
 //! scalars name the fix; Yarn's `when: once` points at the `once` key.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-of028-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -36,7 +26,7 @@ fn text(o: &Output) -> String {
 /// (`select: sequence`), `morning` (`select: first`), both raised for no
 /// target, and `talk` (raised for a hero), plus every `(path, text)`.
 fn check(tag: &str, docs: &[(&str, &str)]) -> String {
-    let dir = temp_dir(tag);
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

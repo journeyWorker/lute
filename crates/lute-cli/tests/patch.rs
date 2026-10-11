@@ -1,19 +1,12 @@
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use lute_model::{ModelOptions, ProjectModel};
 use lute_semantic::NodeKind;
 
 /// A fresh project per test. Tests run in parallel, so the directory name
 /// carries the process id and a per-process counter, not only a timestamp.
-fn project() -> PathBuf {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
-    let root = std::env::temp_dir().join(format!("lute-cli-patch-{}-{stamp}-{serial}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
+fn project() -> lute_scratch::ScratchDir {
+    let root = lute_scratch::ScratchDir::new();
     std::fs::write(root.join("scene.lute"), "---\nkind: scene\nid: hall\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n@hero: Hello\n").unwrap();
     root
 }
@@ -38,7 +31,6 @@ fn dry_run_json_reports_diff_and_preserves_source() {
     assert_eq!(report["schemaVersion"], "0.36.0.patch");
     assert_eq!(report["writes"][0], "scene.lute");
     assert_eq!(std::fs::read(root.join("scene.lute")).unwrap(), original);
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -50,13 +42,14 @@ fn unknown_json_field_is_refused() {
     assert_eq!(output.status.code(), Some(2));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["code"], "E-PATCH-EDIT");
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
 fn model_io_failure_is_untyped_json_error() {
-    let root = std::env::temp_dir().join(format!("lute-cli-patch-missing-{}", std::process::id()));
-    let patch = std::env::temp_dir().join(format!("lute-cli-patch-request-{}.json", std::process::id()));
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute-cli-patch-missing");
+    let patch_scratch = lute_scratch::ScratchDir::new();
+    let patch = patch_scratch.join("lute-cli-patch-request.json");
     std::fs::write(&patch, br#"{"base":{"project":"sha256:x"},"edits":[]}"#).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_lute")).args(["patch", root.to_str().unwrap(), patch.to_str().unwrap(), "--json"]).output().unwrap();
     assert_eq!(output.status.code(), Some(2));
@@ -86,7 +79,6 @@ fn accepted_json_has_shape_and_exit_review() {
     assert!(report["after"]["sha256"].is_string());
     assert!(report["diff"]["changes"].is_array());
     assert!(std::fs::read_to_string(root.join("scene.lute")).unwrap().contains("Applied"));
-    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -101,5 +93,4 @@ fn stale_json_refusal_has_code_and_exit_two() {
     assert_eq!(report["ok"], false);
     assert_eq!(report["code"], "E-PATCH-STALE");
     assert!(report["message"].is_string());
-    let _ = std::fs::remove_dir_all(root);
 }

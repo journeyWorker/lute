@@ -417,7 +417,8 @@ fn divergence_holds_under_plugin_defs() {
     // one plugin `demo.defs` exporting a bool def `warm` and an int def `tally`,
     // activated by the default profile — the same on-disk layout + defs the
     // disk-path integration test (`lute-check/tests/plugin_defs_disk.rs`) builds.
-    let root = std::env::temp_dir().join(format!(
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join(format!(
         "lute-divergence-plugindefs-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
@@ -545,7 +546,6 @@ fn divergence_holds_under_plugin_defs() {
         "E-REF-TYPE projection diverged between surfaces under a plugin-exported def"
     );
 
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// No-divergence under a `uses:` schema import (dsl §9.2). Two cases: (a) the
@@ -764,7 +764,8 @@ fn divergence_holds_under_inline_enums() {
 /// §13 diagnostic codes' projection.
 #[test]
 fn divergence_holds_under_components() {
-    let dir = std::env::temp_dir().join(format!("lute_div_components_{}", std::process::id()));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute_div_components");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("greet.lute"),

@@ -2,7 +2,7 @@
 //! (§6) and a reward kind's `credits:` path receives the granted amount (§8).
 //! dsl 0.24.0 §1: an enum member's display label renders in `{{…}}`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -13,9 +13,8 @@ fn write(dir: &Path, rel: &str, text: &str) {
     std::fs::write(p, text).unwrap();
 }
 
-fn project() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-vocab-play-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+fn project() -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named("vocab-play");
     write(
         &dir,
         "lute.project.yaml",
@@ -88,7 +87,6 @@ fn new_run_snapshots_prev_run_and_a_grant_credits_its_path() {
     );
     // The guarded `prev.run.floor` line played in the new run.
     assert!(text.contains("High last time."), "{text}");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// dsl 0.24.0 §1: a state path typed against a named enum renders the
@@ -98,8 +96,8 @@ fn new_run_snapshots_prev_run_and_a_grant_credits_its_path() {
 /// renders its id. The typed path reads the domain, so it is not unread.
 #[test]
 fn an_enum_member_label_renders_in_play_trace_and_test() {
-    let dir = std::env::temp_dir().join(format!("lute-vocab-labels-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute-vocab-labels");
     write(
         &dir,
         "lute.project.yaml",
@@ -186,5 +184,4 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
     let (code, text) = lute(&["check-project", d]);
     assert_eq!(code, Some(0), "{text}");
     assert!(!text.contains("W-DOMAIN-UNREAD"), "{text}");
-    let _ = std::fs::remove_dir_all(&dir);
 }

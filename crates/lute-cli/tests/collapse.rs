@@ -3,20 +3,9 @@
 //! read 3x -> JSON carries `covered` on the primary; human output appends a
 //! trailing `(+2 more: …)`; the summary count is by primaries (1 error).
 
-use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
 @marina: I sense a {{run.metHelpfuly}}\n\
@@ -25,7 +14,7 @@ const SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\
 
 #[test]
 fn json_carries_covered_on_the_primary() {
-    let dir = temp_dir("collapse-json");
+    let dir = lute_scratch::ScratchDir::named("collapse-json");
     let file = dir.join("ep.lute");
     std::fs::write(&file, SCENE).unwrap();
     let out = Command::new(BIN)
@@ -52,7 +41,7 @@ fn json_carries_covered_on_the_primary() {
 
 #[test]
 fn human_output_appends_more_suffix_and_counts_by_primaries() {
-    let dir = temp_dir("collapse-human");
+    let dir = lute_scratch::ScratchDir::named("collapse-human");
     let file = dir.join("ep.lute");
     std::fs::write(&file, SCENE).unwrap();
     let out = Command::new(BIN)

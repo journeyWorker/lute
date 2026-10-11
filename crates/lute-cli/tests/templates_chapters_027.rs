@@ -4,17 +4,10 @@
 //! the template body around the use's body (`::body`), and chains the
 //! listed scenes without any `on:`/`after:`/`priority:` of their own.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("lute-tpl027-{tag}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -65,7 +58,7 @@ const BONDS: &str = "---\nkind: lore\nid: bonds\ncomponents: [../components/bond
 
 #[test]
 fn template_beats_check_list_and_play_in_order() {
-    let dir = temp_dir("bond");
+    let dir = lute_scratch::ScratchDir::named("bond");
     project(&dir, "");
     write(&dir, "components/bond.lute", BOND);
     write(&dir, "lore/bonds.lute", BONDS);
@@ -96,7 +89,7 @@ fn template_beats_check_list_and_play_in_order() {
 
 #[test]
 fn a_template_misuse_fails_check_project() {
-    let dir = temp_dir("misuse");
+    let dir = lute_scratch::ScratchDir::named("misuse");
     project(&dir, "");
     write(&dir, "components/bond.lute", BOND);
     write(
@@ -119,7 +112,7 @@ fn scene(id: &str) -> String {
 
 #[test]
 fn a_chain_orders_scenes_that_say_nothing_about_order() {
-    let dir = temp_dir("seq");
+    let dir = lute_scratch::ScratchDir::named("seq");
     project(
         &dir,
         "chapters:\n  - on: chapter\n    scenes: [one, two, three]\n",
@@ -146,7 +139,7 @@ fn a_chain_orders_scenes_that_say_nothing_about_order() {
 /// `on:` of its own that no play reaches is listed as unplayed.
 #[test]
 fn coverage_counts_chapter_derived_beats() {
-    let dir = temp_dir("seqcov");
+    let dir = lute_scratch::ScratchDir::named("seqcov");
     project(
         &dir,
         "chapters:\n  - on: chapter\n    scenes: [one, two, three]\n",
@@ -175,7 +168,7 @@ fn coverage_counts_chapter_derived_beats() {
 
 #[test]
 fn an_unknown_chapter_id_is_e_chapters_at_the_manifest() {
-    let dir = temp_dir("seqbad");
+    let dir = lute_scratch::ScratchDir::named("seqbad");
     project(&dir, "chapters:\n  - on: chapter\n    scenes: [one, tow]\n");
     for id in ["one", "two"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id));
@@ -196,7 +189,7 @@ fn an_unknown_chapter_id_is_e_chapters_at_the_manifest() {
 /// alone — both listed scenes play in the one raise.
 #[test]
 fn a_chain_on_a_select_sequence_occasion_plays_in_one_raise() {
-    let dir = temp_dir("seqsel");
+    let dir = lute_scratch::ScratchDir::named("seqsel");
     select_sequence_project(&dir, "[one, two]");
     for id in ["one", "two"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id));
@@ -239,7 +232,7 @@ fn select_sequence_project(dir: &Path, scenes: &str) {
 /// `W-CHAPTER-ORDER` at that key; one that keeps the order is silent.
 #[test]
 fn an_own_priority_that_reorders_a_select_sequence_warns() {
-    let dir = temp_dir("seqorder");
+    let dir = lute_scratch::ScratchDir::named("seqorder");
     select_sequence_project(&dir, "[one, two, three]");
     write(&dir, "scenes/one.lute", &scene("one"));
     write(
@@ -268,7 +261,7 @@ fn an_own_priority_that_reorders_a_select_sequence_warns() {
 /// documents from being checked.
 #[test]
 fn a_malformed_chain_is_located_and_not_fatal() {
-    let dir = temp_dir("seqshape");
+    let dir = lute_scratch::ScratchDir::named("seqshape");
     project(&dir, "chapters:\n  - on: chapter\n    scene: [one]\n");
     write(&dir, "scenes/one.lute", &scene("one"));
     let (code, out) = run(&dir, &["check-project", "."]);
@@ -291,7 +284,7 @@ fn a_malformed_chain_is_located_and_not_fatal() {
 /// guard reads as a guard, not the `<match>` it lowers to (T3-22).
 #[test]
 fn trace_frames_a_template_use_once_and_names_guards() {
-    let dir = temp_dir("trace-frames");
+    let dir = lute_scratch::ScratchDir::named("trace-frames");
     project(&dir, "");
     write(
         &dir,
@@ -348,7 +341,7 @@ fn trace_frames_a_template_use_once_and_names_guards() {
 /// and `notPresentedByPlay`.
 #[test]
 fn coverage_names_guards_attributes_component_matches_and_relative_paths() {
-    let dir = temp_dir("coverage-sites");
+    let dir = lute_scratch::ScratchDir::named("coverage-sites");
     write(
         &dir,
         "lute.project.yaml",
@@ -440,7 +433,7 @@ fn coverage_names_guards_attributes_component_matches_and_relative_paths() {
 
 #[test]
 fn a_headless_template_plays_and_beats_notes_the_when_a_use_replaces() {
-    let dir = temp_dir("headless");
+    let dir = lute_scratch::ScratchDir::named("headless");
     project(&dir, "");
     // A beat template's body needs no `## ` heading.
     write(&dir, "components/bond.lute", &BOND.replace("## Bond\n", ""));

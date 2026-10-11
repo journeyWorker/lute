@@ -4,19 +4,7 @@
 //! temp-dir fixture pattern; `imp(dir, uses, extends)` calls
 //! `lute_check::resolve_imports` directly, the SAME entrypoint `domains.rs`/
 //! `uses_import.rs` exercise.
-use std::path::{Path, PathBuf};
-
-fn unique_dir() -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let d = std::env::temp_dir().join(format!(
-        "lute_relcompose_{}_{}",
-        std::process::id(),
-        N.fetch_add(1, Ordering::Relaxed)
-    ));
-    std::fs::create_dir_all(&d).unwrap();
-    d
-}
+use std::path::Path;
 
 fn write(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
@@ -38,7 +26,7 @@ fn codes(imports: &lute_check::SchemaImports) -> Vec<&str> {
 
 #[test]
 fn peer_relation_dup_is_uses_dup_relation() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "a.yaml",
@@ -59,7 +47,7 @@ fn peer_relation_dup_is_uses_dup_relation() {
 
 #[test]
 fn peer_enum_dup_is_uses_dup_relation_not_domain_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(&dir, "a.yaml", "enums:\n  trust: [low]\n");
     write(&dir, "b.yaml", "enums:\n  trust: [high]\n");
     let imp = lute_check::resolve_imports(&dir, &["a.yaml".into(), "b.yaml".into()], &[], span());
@@ -74,7 +62,7 @@ fn peer_enum_dup_is_uses_dup_relation_not_domain_dup() {
 
 #[test]
 fn peer_kind_dup_is_kind_name_clash() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "a.yaml",
@@ -95,7 +83,7 @@ fn peer_kind_dup_is_kind_name_clash() {
 
 #[test]
 fn extends_child_may_grow_kind_but_not_shrink_or_flip() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "base.yaml",
@@ -145,7 +133,7 @@ fn extends_child_may_grow_kind_but_not_shrink_or_flip() {
 
 #[test]
 fn extends_child_may_grow_enum_but_not_shrink() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(&dir, "base.yaml", "enums:\n  trust: [low, high]\n");
     write(
         &dir,
@@ -181,7 +169,7 @@ fn extends_child_may_grow_enum_but_not_shrink() {
 
 #[test]
 fn extends_relation_signature_must_match_exactly() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "base.yaml",
@@ -217,7 +205,7 @@ fn extends_relation_signature_checks_key_too() {
     // D5: `key:` is included in the full-decl match even though the spec text
     // names only args/tier/derive/reserved — a differing functional key
     // silently changes engine auto-invalidation semantics.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "base.yaml",
@@ -242,7 +230,7 @@ fn extends_tier_default_run_matches_explicit_run() {
     // relation with `tier:` omitted and a child re-declaring it with the
     // explicit default (`tier: run`) have the SAME effective signature and
     // must NOT trip `E-EXTENDS-RELATION-SIG` — checked both orders.
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "base_omitted.yaml",
@@ -281,7 +269,7 @@ fn extends_tier_default_run_matches_explicit_run() {
 
 #[test]
 fn facts_and_rules_union_across_dag() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(
         &dir,
         "base.yaml",
@@ -306,7 +294,7 @@ fn facts_and_rules_union_is_deterministic_by_depth_then_file() {
     // Same DAG shape, opposite root ordering — the merged fact/rule order must
     // be depth-then-file-then-index, not import-list order (mirrors
     // `uses_import.rs`'s `extends_dup_detection_is_order_independent`).
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(&dir, "a.yaml", "facts:\n  - \"p(a)\"\n");
     write(&dir, "b.yaml", "facts:\n  - \"p(b)\"\n");
     let forward =
@@ -327,7 +315,7 @@ fn facts_and_rules_union_is_deterministic_by_depth_then_file() {
 
 #[test]
 fn d2_peer_enum_collision_never_e_domain_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(&dir, "x.yaml", "enums:\n  mood: [calm]\n");
     write(&dir, "y.yaml", "enums:\n  mood: [tense]\n");
     let imp = lute_check::resolve_imports(&dir, &["x.yaml".into(), "y.yaml".into()], &[], span());
@@ -338,7 +326,7 @@ fn d2_peer_enum_collision_never_e_domain_dup() {
 
 #[test]
 fn d2_peer_entity_collision_never_e_domain_dup() {
-    let dir = unique_dir();
+    let dir = lute_scratch::ScratchDir::new();
     write(&dir, "x.yaml", "entities:\n  npc: { members: [a] }\n");
     write(&dir, "y.yaml", "entities:\n  npc: { members: [b] }\n");
     let imp = lute_check::resolve_imports(&dir, &["x.yaml".into(), "y.yaml".into()], &[], span());

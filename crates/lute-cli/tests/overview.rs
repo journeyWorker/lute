@@ -12,16 +12,6 @@ use serde_json::Value as Json;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-overview-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn write(dir: &Path, rel: &str, text: &str) -> PathBuf {
     let p = dir.join(rel);
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -47,8 +37,8 @@ fn scene(id: &str, keys: &str, body: &str) -> String {
 
 /// A small day-clock town: two slots, two places, a routine and an event on
 /// `dayStart`, fact-gated place beats, a `select: all` notice board.
-fn town(tag: &str) -> PathBuf {
-    let d = temp_dir(tag);
+fn town(tag: &str) -> lute_scratch::ScratchDir {
+    let d = lute_scratch::ScratchDir::named(tag);
     write(
         &d,
         "lute.project.yaml",
@@ -1148,7 +1138,7 @@ fn scenario_note_never_suggests_after_for_an_objective_read() {
 #[test]
 fn play_marks_an_already_read_entry_candidate() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub");
-    let dir = temp_dir("read");
+    let dir = lute_scratch::ScratchDir::named("read");
     let script = write(
         &dir,
         "s.play.yaml",

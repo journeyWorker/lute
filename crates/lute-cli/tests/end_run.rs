@@ -6,25 +6,14 @@
 //! `tests/conformance.rs`, which replays EVERY fixture in the corpus instead
 //! of this one — a strict superset of the check it replaces.
 
-use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-end-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// Compile `source` in a scratch dir and run it (optionally under `mock`),
 /// returning the `--json` machine transcript.
 fn compile_and_run(tag: &str, source: &str, mock: Option<&str>) -> serde_json::Value {
-    let dir = temp_dir(tag);
+    let dir = lute_scratch::ScratchDir::named(tag);
     let src = dir.join("source.lute");
     let art = dir.join("artifact.json");
     std::fs::write(&src, source).unwrap();
@@ -77,7 +66,7 @@ fn kinds(v: &serde_json::Value) -> Vec<&str> {
 /// mismatch is also refused.
 #[test]
 fn run_gates_on_pre_one_exact_minor() {
-    let dir = temp_dir("gate");
+    let dir = lute_scratch::ScratchDir::named("gate");
     let src = dir.join("source.lute");
     let art = dir.join("artifact.json");
     std::fs::write(&src, format!("{HDR}@narrator: hi\n")).unwrap();
@@ -204,7 +193,7 @@ fn a_walk_without_end_is_untouched() {
 /// document; `run` played it in full at exit 0.
 #[test]
 fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
-    let dir = temp_dir("run-ineligible");
+    let dir = lute_scratch::ScratchDir::named("run-ineligible");
     let src = dir.join("s.lute");
     let art = dir.join("s.json");
     std::fs::write(
@@ -285,7 +274,7 @@ fn run_refuses_a_selection_whose_guard_is_false_and_plays_the_true_one() {
 /// replay. Only a DECIDED false refuses.
 #[test]
 fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
-    let dir = temp_dir("run-unknown-guard");
+    let dir = lute_scratch::ScratchDir::named("run-unknown-guard");
     let src = dir.join("s.lute");
     let art = dir.join("s.json");
     // `now() > 0` is E-TEMPORAL-ARG at check time, so the undecided guard is
@@ -340,7 +329,7 @@ fn run_does_not_refuse_a_selection_whose_guard_is_undecided() {
 /// hoisted out of the loop would look correct (#20, T8.5, D-C).
 #[test]
 fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
-    let dir = temp_dir("run-ineligible-hub");
+    let dir = lute_scratch::ScratchDir::named("run-ineligible-hub");
     let src = dir.join("h.lute");
     let art = dir.join("h.json");
     std::fs::write(
@@ -424,7 +413,7 @@ fn run_refuses_an_ineligible_hub_visit_but_not_one_an_earlier_visit_enabled() {
 /// `expr` surface.
 #[test]
 fn match_is_arm_selects_on_compiled_expr_not_raw_test() {
-    let dir = temp_dir("match-is");
+    let dir = lute_scratch::ScratchDir::named("match-is");
     let src = dir.join("source.lute");
     let art = dir.join("artifact.json");
     std::fs::write(

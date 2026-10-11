@@ -17,18 +17,8 @@ const BIN: &str = env!("CARGO_BIN_EXE_lute");
 const STALE_SCENE: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
     luteVersion: \"0.5.0\"\n---\n## Shot 1.\n@narrator: hi\n";
 
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn write_stale(tag: &str) -> (PathBuf, PathBuf) {
-    let dir = temp_dir(tag);
+fn write_stale(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
+    let dir = lute_scratch::ScratchDir::named(tag);
     let file = dir.join("stale.lute");
     std::fs::write(&file, STALE_SCENE).unwrap();
     (dir, file)

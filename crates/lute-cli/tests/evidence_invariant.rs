@@ -51,8 +51,8 @@ fn docs_examples_and_reconciliation_diagnostics_have_evidence_contract() {
         assert_model(model);
     }
 
-    let root = std::env::temp_dir().join(format!("lute-evidence-invariant-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute-evidence-invariant");
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(root.join("lute.project.yaml"), "{}\n").unwrap();
     std::fs::write(

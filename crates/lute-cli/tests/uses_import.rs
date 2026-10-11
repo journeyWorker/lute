@@ -3,21 +3,9 @@
 //! imported `run.*` path resolves (exit 0) and that a missing import surfaces
 //! `E-USES-NOT-FOUND` (exit 1). Mirrors the harness in `cli.rs`.
 
-use std::path::PathBuf;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-/// A fresh unique temp dir (no `tempfile` dev-dep needed for these small tests).
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-cli-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 const SCHEMA: &str = "---\nstate:\n  run.choseHelp: { type: bool, default: false }\n---\n";
 // Scene reads the imported run path; `run.choseHelp` is defaulted so it's clean.
@@ -30,7 +18,7 @@ const SCENE: &str =
 
 #[test]
 fn cli_resolves_uses_import_exits_zero() {
-    let dir = temp_dir("uses-ok");
+    let dir = lute_scratch::ScratchDir::named("uses-ok");
     std::fs::write(dir.join("schema.lute"), SCHEMA).unwrap();
     let scene = dir.join("scene.lute");
     std::fs::write(&scene, SCENE).unwrap();
@@ -47,7 +35,7 @@ fn cli_resolves_uses_import_exits_zero() {
 
 #[test]
 fn cli_missing_import_flags_not_found() {
-    let dir = temp_dir("uses-missing");
+    let dir = lute_scratch::ScratchDir::named("uses-missing");
     let scene = dir.join("scene.lute");
     std::fs::write(
         &scene,

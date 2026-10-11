@@ -4,20 +4,10 @@
 //! and known to the checker; a lore entry may call an effect-only directive
 //! (first read only). The project is modelled on round-5 hollow-ward.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
-
-fn temp_dir(tag: &str) -> PathBuf {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static N: AtomicU32 = AtomicU32::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("lute-facts027-{tag}-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, rel: &str, text: &str) {
     let p = dir.join(rel);
@@ -43,8 +33,8 @@ fn run(dir: &Path, args: &[&str]) -> (Option<i32>, String) {
 
 /// `holding` is content-asserted only through `::give` (not reserved), so
 /// the checker must see the directive as its producer.
-fn project(tag: &str) -> PathBuf {
-    let dir = temp_dir(tag);
+fn project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,
         "lute.project.yaml",

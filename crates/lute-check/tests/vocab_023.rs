@@ -128,7 +128,8 @@ fn a_plugin_cast_rejects_an_unknown_speaker_with_a_suggestion() {
 
 #[test]
 fn a_schema_cast_reaches_every_importer() {
-    let dir = std::env::temp_dir().join(format!("lute_cast_{}", std::process::id()));
+    let dir_scratch = lute_scratch::ScratchDir::new();
+    let dir = dir_scratch.join("lute_cast");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
         dir.join("cast.schema.yaml"),
@@ -154,7 +155,6 @@ fn a_schema_cast_reaches_every_importer() {
         "{}",
         hits[0].message
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
