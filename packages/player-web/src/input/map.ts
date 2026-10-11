@@ -87,18 +87,21 @@ export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiC
       const swipe = new SwipeRecognizer()
       let controlHeld = false
       const down = (event: PointerEvent): void => {
+        if (event.defaultPrevented) { longPress.cancel(); return }
         longPress.start(event.timeStamp)
         swipe.start(event.clientY)
         window.setTimeout(() => { if (longPress.check(performance.now())) emit({ type: "openMenu" }) }, 500)
       }
       const up = (event: PointerEvent): void => {
         if (event.button !== 0) return
+        if (event.defaultPrevented) { longPress.cancel(); return }
         const long = longPress.end(event.timeStamp)
         if (long) emit({ type: "openMenu" })
         else if (swipe.end(event.clientY) === "down") emit({ type: "openBacklog" })
         else emit(map.pointer.click ?? { type: "advance" })
       }
       const key = (event: KeyboardEvent): void => {
+        if (event.defaultPrevented) return
         if (uiConsumes?.() === true) {
           event.preventDefault()
           return
@@ -121,6 +124,7 @@ export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiC
       }
       const wheel = (event: WheelEvent): void => {
         if (event.deltaY < 0) { event.preventDefault(); emit({ type: "openBacklog" }) }
+        if (event.defaultPrevented) return
       }
       const pointer = (event: PointerEvent): void => {
         if (event.button === 1) { event.preventDefault(); emit(map.pointer.middle ?? { type: "hideUI" }) }

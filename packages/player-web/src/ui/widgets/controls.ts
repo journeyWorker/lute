@@ -19,15 +19,15 @@ export class Slider extends Widget {
     this.track = new Graphics()
     this.knob = new Graphics()
     this.addChild(this.track, this.knob)
-    this.hit.on("pointerdown", (event) => {
+    this.on("pointerdown", (event) => {
       this.dragging = true
       this.setFromPointer(event.global.x)
     })
-    this.hit.on("pointermove", (event) => {
+    this.on("globalpointermove", (event) => {
       if (this.dragging) this.setFromPointer(event.global.x)
     })
-    this.hit.on("pointerup", () => { this.dragging = false })
-    this.hit.on("pointerupoutside", () => { this.dragging = false })
+    this.on("pointerup", () => { this.dragging = false })
+    this.on("pointerupoutside", () => { this.dragging = false })
     this.draw()
   }
 
@@ -58,8 +58,7 @@ export class Slider extends Widget {
   }
 
   private setFromPointer(x: number): void {
-    const origin = this.getGlobalPosition().x
-    this.change((x - origin) / this.trackWidth)
+    this.change(this.toLocal({ x, y: this.getGlobalPosition().y }).x / this.trackWidth)
   }
 
   private change(value: number): void {
@@ -134,7 +133,7 @@ export class Segmented<T extends string> extends Widget {
       const text = new Text({ text: option, style: { fontFamily: theme.font, fontSize: 18, fill: theme.text } })
       text.position.set(index * 130 + 12, 10)
       text.eventMode = "static"
-      text.on("pointertap", () => this.select(option))
+      text.on("pointertap", (event) => { event.stopPropagation(); this.select(option) })
       this.addChild(text)
       return text
     })

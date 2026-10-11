@@ -132,8 +132,10 @@ export class ChoiceMenu {
     this.maxRemaining = 0
     this.remainingValue = 0
     for (const item of this.rendered) {
-      item.button.destroy()
-      item.label.destroy()
+      item.button.removeFromParent()
+      item.button.visible = false
+      item.label.removeFromParent()
+      item.label.visible = false
     }
     this.rendered.length = 0
     this.optionsLayer.removeChildren()
