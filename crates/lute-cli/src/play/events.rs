@@ -30,6 +30,8 @@ use super::script::PlayScript;
 pub enum ScriptAnswer {
     /// A branch or hub decision: menu `menu`, option `option`.
     Choice { menu: String, option: String },
+    /// A timed branch's default was selected by expiry.
+    Timeout { menu: String },
     /// A plugin call's bridge answer for `tag`.
     Bridge { tag: String, fields: BridgeAnswer },
 }
@@ -160,6 +162,9 @@ pub fn drive_events(
                             request: *request,
                             option: option.clone(),
                         })
+                    }
+                    Some(ScriptAnswer::Timeout { menu: id }) if *id == menu.id => {
+                        Ok(Input::Timeout { request: *request })
                     }
                     None => Err(DriveEnd::Unanswered(format!(
                         "{} `{}` has no scripted `choose:` decision",

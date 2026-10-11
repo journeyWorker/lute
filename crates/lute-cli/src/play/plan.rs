@@ -942,6 +942,9 @@ fn choose_entry(
     };
     let options: Vec<&str> = options.iter().map(String::as_str).collect();
     for pick in picks {
+        if pick == "__lute_timeout__" {
+            continue;
+        }
         if !options.contains(&pick.as_str()) {
             return Err(format!(
                 "`choose.{id}` picks `{pick}`, which is no option of `{id}`{}",
