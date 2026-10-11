@@ -1,0 +1,49 @@
+{
+  "name": "@lute-lang/player-web",
+  "version": "0.39.0",
+  "description": "The Lute web visual-novel player: PixiJS 8 renderer, Web Audio, screens and input over @lute-lang/player.",
+  "license": "MIT",
+  "type": "module",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/journeyWorker/lute.git",
+    "directory": "packages/player-web"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bunx --bun vitest run",
+    "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
+    "demo": "bun scripts/demo.ts"
+  },
+  "dependencies": {
+    "@lute-lang/player": "0.39.0",
+    "@lute-lang/runtime": "0.39.0",
+    "pixi.js": "8.22.0",
+    "@pixi/sound": "6.0.1"
+  },
+  "peerDependencies": {
+    "effect": "4.0.2",
+    "@effect/platform-browser": "4.0.2"
+  },
+  "devDependencies": {
+    "@effect/platform-browser": "4.0.2",
+    "@effect/vitest": "4.0.2",
+    "@types/bun": "1.4.2",
+    "@vitest/browser-playwright": "5.0.3",
+    "effect": "4.0.2",
+    "playwright": "1.64.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.3"
+  }
+}
