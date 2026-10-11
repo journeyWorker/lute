@@ -132,11 +132,12 @@ const commandIndexFrom = (bundle: Bundle): Map<string, JsonRecord> => {
 
 const decodeRecord = (value: JsonRecord): JsonRecord => {
   const decoded = decodeCommand(value)
-  if (Option.isSome(decoded) && isRecord(decoded.value)) return decoded.value
+  if (Option.isSome(decoded) && isRecord(decoded.value)) {
+    return { ...decoded.value, kind: value.kind, family: value.family, position: value.position }
+  }
   if (value.kind === "camera" && value.family === "staging" && string(value.position)) return value
   throw new Error(`invalid runtime command at ${string(value.position) ? value.position : "<unknown>"}`)
 }
-
 const noop = (_ctx: CueContext): Effect.Effect<void> => Effect.void
 const cueBase = (kind: Cue["kind"], timing: CueTiming, stage: boolean, files: ReadonlyArray<string>, describe: string, execute: Cue["execute"], complete: Cue["complete"], line?: LineView): Cue => ({
   kind, timing, stage, files, line, execute, complete, describe
