@@ -1,0 +1,7 @@
+---
+kind: scene
+id: start
+on: start
+---
+## Start
+@narrator: Hello.

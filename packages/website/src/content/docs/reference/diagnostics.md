@@ -120,6 +120,30 @@ A scene beat's `when` guard is provably always false, so the beat can never be s
 
 Spec: [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
 
+### E-BINDING-EFFECT
+
+A player binding names an unknown effect or supplies a parameter that the named effect does not accept.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.40.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-FILE
+
+A player binding references an asset file that does not exist relative to `assetsBase`.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-KEY
+
+A player binding key is not a declared domain member, cast id, occasion, target, or compiled staging value.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-SHAPE
+
+The player bindings YAML is malformed or contains an unknown key.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
 ### E-BRANCH-ALL-GUARDED
 
 A non-empty `<branch>` has every `<choice>` guarded by a `when`, so every guard could be false at once and present an empty menu; at least one unguarded choice is required.
@@ -1805,6 +1829,18 @@ Spec: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A beat answers an occasion the clock's `raise:` map raises, and its `when` can hold only where the clock does not raise it — a `dayEnd` beat for a slot other than the day's last, a `dayStart` beat for a later slot of the day the run starts — or only at the last `dayEnd`, which the advance that ends the clock raises after `clock.ended` turns true, when a `terminal:` that holds with `clock.ended` has already ended the game. So it never plays. Answer an occasion raised where it holds, or change its `when`; for the last `dayEnd`, raise it before the clock ends or write `terminal:` so it holds only once the beat has played. A beat whose `when` holds where the run starts — the slot occasion or `dayStart` there, which the clock does not raise because no `advance:` stops there — is warned too, but it plays if the engine raises the occasion when a run starts: then declare `raiseAtStart: true` on the clock, which silences it; otherwise answer an occasion raised where it holds.
 
 Spec: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+
+### W-BINDING-MISSING
+
+A declared or used project staging value, cast member, asset, or flow reference has no player binding.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### W-BINDING-UNUSED
+
+A player binding key is not used by any compiled project document.
+
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### W-BRANCH-ID-SHARED
 

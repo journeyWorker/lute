@@ -1,0 +1,1028 @@
+{
+  "$defs": {
+    "Anchor": {
+      "additionalProperties": false,
+      "properties": {
+        "scale": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "x"
+      ],
+      "type": "object"
+    },
+    "Background": {
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "string"
+        },
+        "times": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "image"
+      ],
+      "type": "object"
+    },
+    "Canvas": {
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "type": "object"
+    },
+    "CgLayout": {
+      "additionalProperties": false,
+      "properties": {
+        "fit": {
+          "$ref": "#/$defs/Fit"
+        },
+        "scale": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "x": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "y": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fit"
+      ],
+      "type": "object"
+    },
+    "Character": {
+      "additionalProperties": false,
+      "properties": {
+        "costumes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/Sprite"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "nameColor": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sprite": {
+          "$ref": "#/$defs/Sprite"
+        }
+      },
+      "required": [
+        "sprite"
+      ],
+      "type": "object"
+    },
+    "EffectSpec": {
+      "description": "A named player effect. The externally tagged `effect` field deliberately\nmakes each effect's parameter set closed in both serde and schemars.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "fade",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "dissolve",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "wipeLeft",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "wipeRight",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "wipeUp",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "wipeDown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "slideLeft",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "slideRight",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "effect": {
+              "const": "cut",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "fadeIn",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "fadeOut",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "slideIn",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "slideOut",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "hop",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "shake",
+              "type": "string"
+            },
+            "strength": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "effect": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "zoom",
+              "type": "string"
+            },
+            "scale": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "pan",
+              "type": "string"
+            },
+            "x": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "y": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "flash",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "blur",
+              "type": "string"
+            },
+            "strength": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "color": {
+              "default": null,
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "duration": {
+              "default": null,
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "effect": {
+              "const": "tint",
+              "type": "string"
+            }
+          },
+          "required": [
+            "effect"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Fit": {
+      "enum": [
+        "cover",
+        "contain"
+      ],
+      "type": "string"
+    },
+    "Flow": {
+      "additionalProperties": false,
+      "properties": {
+        "idle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Idle"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "newGame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NewGame"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "Framing": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "y": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "zoom": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "zoom"
+      ],
+      "type": "object"
+    },
+    "Idle": {
+      "anyOf": [
+        {
+          "properties": {
+            "menu": {
+              "items": {
+                "$ref": "#/$defs/MenuItem"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "menu"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "raise": {
+              "$ref": "#/$defs/Raise"
+            }
+          },
+          "required": [
+            "raise"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MenuItem": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "occasion": {
+          "type": "string"
+        },
+        "target": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "occasion"
+      ],
+      "type": "object"
+    },
+    "Music": {
+      "additionalProperties": false,
+      "properties": {
+        "moods": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "NewGame": {
+      "additionalProperties": false,
+      "properties": {
+        "occasion": {
+          "type": "string"
+        },
+        "target": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "occasion"
+      ],
+      "type": "object"
+    },
+    "Raise": {
+      "additionalProperties": false,
+      "properties": {
+        "occasion": {
+          "type": "string"
+        },
+        "target": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "occasion"
+      ],
+      "type": "object"
+    },
+    "Sequence": {
+      "additionalProperties": false,
+      "properties": {
+        "video": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "video"
+      ],
+      "type": "object"
+    },
+    "Sprite": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "string"
+        },
+        "emotions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "default"
+      ],
+      "type": "object"
+    },
+    "TextStyle": {
+      "additionalProperties": false,
+      "properties": {
+        "alpha": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "color": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fontStyle": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fontWeight": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "letterSpacing": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "scale": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Title": {
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "type": "string"
+        },
+        "music": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "background",
+        "music"
+      ],
+      "type": "object"
+    },
+    "Ui": {
+      "additionalProperties": false,
+      "properties": {
+        "font": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "theme": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Title"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "type": "object"
+    },
+    "Voice": {
+      "additionalProperties": false,
+      "properties": {
+        "pattern": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.40.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EffectSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "anchors": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Anchor"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "assets": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "assetsBase": {
+      "default": "assets",
+      "type": "string"
+    },
+    "backgrounds": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Background"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "bindingsVersion": {
+      "type": "string"
+    },
+    "cameraMove": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EffectSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "canvas": {
+      "$ref": "#/$defs/Canvas"
+    },
+    "cgLayouts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CgLayout"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "characters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Character"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "flow": {
+      "$ref": "#/$defs/Flow",
+      "default": {
+        "idle": null,
+        "newGame": null
+      }
+    },
+    "framing": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Framing"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "music": {
+      "$ref": "#/$defs/Music",
+      "default": {
+        "moods": {}
+      }
+    },
+    "sequences": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Sequence"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "sfx": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "textStyles": {
+      "additionalProperties": {
+        "$ref": "#/$defs/TextStyle"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "transitions": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EffectSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "ui": {
+      "$ref": "#/$defs/Ui",
+      "default": {
+        "font": null,
+        "theme": {},
+        "title": null
+      }
+    },
+    "vfx": {
+      "additionalProperties": {
+        "$ref": "#/$defs/EffectSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "voice": {
+      "$ref": "#/$defs/Voice",
+      "default": {
+        "pattern": null
+      }
+    }
+  },
+  "required": [
+    "bindingsVersion",
+    "canvas"
+  ],
+  "title": "Bindings",
+  "type": "object"
+}

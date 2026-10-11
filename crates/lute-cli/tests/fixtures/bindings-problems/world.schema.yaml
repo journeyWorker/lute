@@ -1,0 +1,16 @@
+enums:
+  anchor: {members: [left, right], default: left}
+  action: {members: [fadeIn, fadeOut], exits: [fadeOut]}
+  transition: [fade]
+  framing: [wide]
+  cameraMove: [shake]
+  cgLayout: [full]
+  textStyle: [emphasis]
+  sequence: [intro]
+  emotion: [happy]
+  costume: [coat]
+  musicPlayback: [start]
+  mood: [calm]
+  vfxType: [flash]
+cast:
+  guide: {name: Guide, emotions: [happy]}
