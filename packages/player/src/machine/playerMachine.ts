@@ -210,6 +210,11 @@ export const playerMachine = initial.createMachine({
         loading: {
           on: {
             "batch.started": { target: "playing" },
+            "load.done": ({ event }) => {
+              if (event.await.type === "ended") return { target: "ended" }
+              if (event.await.type === "halted") return { target: "error" }
+              return { target: "playing" }
+            },
             failed: ({ event }, enq) => {
               emit(enq, { type: "screen.show", screen: showHalted(event.message) })
               return { target: "error", context: { haltedMessage: event.message } }
