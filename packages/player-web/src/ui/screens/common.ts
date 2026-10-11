@@ -120,11 +120,16 @@ export class ConfirmScreen extends ScreenView {
 /** End-of-story screen. */
 export class EndedScreen extends ScreenView {
   constructor(model: Extract<ScreenModel, { _tag: "Ended" }>, theme: Theme, emit: EmitAction) {
-    super("Ended", theme, emit)
-    const text = new Text({ text: model.reason, style: { fontFamily: theme.font, fontSize: 24, fill: theme.text, wordWrap: true, wordWrapWidth: 820 } })
-    text.position.set(36, 110)
+    super("The End", theme, emit)
+    this.title.anchor.set(0.5)
+    this.title.position.set(this.panelWidth / 2, 72)
+    this.title.style = { ...this.title.style, fontSize: 56, fontWeight: "700", align: "center" }
+    const subtitle = model.reason === "terminal" ? "Thank you for playing" : model.reason
+    const text = new Text({ text: subtitle, style: { fontFamily: theme.font, fontSize: 26, fill: theme.text, align: "center", wordWrap: true, wordWrapWidth: 780 } })
+    text.anchor.set(0.5)
+    text.position.set(this.panelWidth / 2, 220)
     this.addChild(text)
-    this.button("Back to title", { type: "toTitle" }, 36, 510)
+    this.button("Back to title", { type: "toTitle" }, (this.panelWidth - 240) / 2, 510)
   }
 }
 
@@ -132,10 +137,14 @@ export class EndedScreen extends ScreenView {
 export class HaltedScreen extends ScreenView {
   constructor(model: Extract<ScreenModel, { _tag: "Halted" }>, theme: Theme, emit: EmitAction) {
     super("Playback halted", theme, emit)
-    const text = new Text({ text: model.message, style: { fontFamily: theme.font, fontSize: 24, fill: theme.text, wordWrap: true, wordWrapWidth: 820 } })
-    text.position.set(36, 110)
+    this.title.anchor.set(0.5)
+    this.title.position.set(this.panelWidth / 2, 72)
+    this.title.style = { ...this.title.style, fontSize: 48, fontWeight: "700", align: "center" }
+    const text = new Text({ text: model.message, style: { fontFamily: theme.font, fontSize: 24, fill: theme.text, align: "center", wordWrap: true, wordWrapWidth: 780 } })
+    text.anchor.set(0.5)
+    text.position.set(this.panelWidth / 2, 220)
     this.addChild(text)
-    this.button("Back to title", { type: "toTitle" }, 36, 510)
+    this.button("Back to title", { type: "toTitle" }, (this.panelWidth - 240) / 2, 510)
   }
 }
 

@@ -73,6 +73,7 @@ export class PixiPresenter implements Presenter {
   private readonly choice: ChoiceMenu
   private readonly choiceActions: PubSub.PubSub<PlayerAction>
   private readonly missing = new Set<string>()
+  private uiHidden = false
 
   constructor(options: PresenterOptions) {
     this.pixi = options.pixi
@@ -117,13 +118,22 @@ export class PixiPresenter implements Presenter {
     this.hideChoice = this.choice.hide
     this.showScreen = (screen) => {
       const modal = ["Menu", "Backlog", "SaveLoad", "Settings", "Confirm"].includes(screen._tag)
-      const hideDialogue = modal ? Effect.void : this.dialogue.clear
+      const hideDialogue = modal
+        ? Effect.void
+        : Effect.andThen(this.dialogue.clear, Effect.sync(() => {
+            this.dialogue.setHidden(true)
+          }))
       return Effect.andThen(hideDialogue, screen._tag === "Title" && options.titleBackground !== undefined
         ? this.ui.show({ ...screen, background: options.titleBackground })
         : this.ui.show(screen))
     }
-    this.hideScreen = this.ui.hide
-    this.setUiHidden = (hidden) => Effect.sync(() => this.dialogue.setHidden(hidden))
+    this.hideScreen = Effect.andThen(this.ui.hide, Effect.sync(() => {
+      this.dialogue.setHidden(this.uiHidden)
+    }))
+    this.setUiHidden = (hidden) => Effect.sync(() => {
+      this.uiHidden = hidden
+      this.dialogue.setHidden(hidden)
+    })
     this.applySettings = (settings) => Effect.sync(() => {
       this.defaultSettings = { ...this.defaultSettings, ...settings }
       this.dialogue.setOpacity(this.defaultSettings.windowOpacity)

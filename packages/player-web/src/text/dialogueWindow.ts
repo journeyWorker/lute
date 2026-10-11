@@ -109,7 +109,9 @@ export class DialogueWindow {
     const self = this
     return Effect.gen(function* () {
       yield* self.world.cancel(self.target)
-      self.target.visible = false
+      // Keep the dialogue chrome present between staged lines; full screens and
+      // the explicit Hide action control visibility separately.
+      self.target.visible = true
       self.currentLine = undefined
       self.timeline = { graphemes: [], pauses: [], duration: 0, locale: "" }
       self.clearTextChildren()
