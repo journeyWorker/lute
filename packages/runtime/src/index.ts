@@ -1,6 +1,6 @@
 /**
  * `@lute-lang/runtime` — the Lute runtime for TypeScript hosts, in Effect
- * (spec 0.39.0). Platform layers live in `@lute-lang/runtime/bun` and
+ * (spec 0.40.0). Platform layers live in `@lute-lang/runtime/bun` and
  * `@lute-lang/runtime/browser`.
  */
 export * as Bundle from "./Bundle.js"

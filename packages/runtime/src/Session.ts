@@ -1,5 +1,5 @@
 /**
- * One running playthrough (spec 0.39.0 §5.2): the host sends inputs, watches
+ * One running playthrough (spec 0.40.0 §5.2): the host sends inputs, watches
  * the state, and subscribes to events and awaits. The session adds no game
  * policy — it answers nothing and paces nothing.
  */

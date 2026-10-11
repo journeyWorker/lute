@@ -132,7 +132,7 @@ impl Func {
 }
 
 impl Expr {
-    /// Decode one `exprNode` (`schemas/lute-ir-0.39.schema.json`
+    /// Decode one `exprNode` (`schemas/lute-ir-0.40.schema.json`
     /// `$defs/exprNode`). A shape outside the schema decodes to
     /// [`Expr::Invalid`].
     pub(crate) fn decode(node: &Json) -> Expr {
