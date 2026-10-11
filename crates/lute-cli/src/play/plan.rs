@@ -15,8 +15,8 @@ use lute_runtime::session::{
 use serde_json::Value as Json;
 
 use super::script::{
-    in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptStep, Segment,
-    StepAction,
+    in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptedPick,
+    ScriptStep, Segment, StepAction,
 };
 
 /// What a planned step does.
@@ -25,8 +25,7 @@ pub(super) enum Action {
         occasion: String,
         target: Option<String>,
         pick: Option<Pick>,
-        choose: BTreeMap<String, Vec<String>>,
-        /// dsl 0.27.0 §3: the raise's payload, typed, by
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
         /// `occasion.payload.<field>` path.
         payload: BTreeMap<String, lute_runtime::Value>,
         /// dsl 0.27.0 §4: the step's `engine:` writes, applied first.
@@ -44,7 +43,7 @@ pub(super) enum Action {
         writes: Writes,
         raise: lute_manifest::clock::RaiseMoments,
         pick: Option<Pick>,
-        choose: BTreeMap<String, Vec<String>>,
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
     },
     /// `end: true` — the playthrough is over.
     End,
@@ -69,7 +68,7 @@ pub(super) struct Step {
 pub(super) struct Scope {
     /// `include: <file>` at `file:line:col`, for messages.
     pub(super) include: String,
-    pub(super) choose: BTreeMap<String, Vec<String>>,
+    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(super) bridges: BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
 }
 
@@ -873,8 +872,17 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
 /// error (exit 2), not a decision silently dropped; every one is reported.
 fn check_decisions(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let known = project_decisions(p);
-    for (id, picks) in &script.surfaces.choose {
-        if let Err(e) = choose_entry(&known, id, picks) {
+    let timed = p
+        .artifacts
+        .values()
+        .filter_map(|doc| doc.get("commands")?.as_array())
+        .flatten()
+        .filter(|command| command.get("kind").and_then(Json::as_str) == Some("choice"))
+        .filter(|command| command.get("timeout").is_some())
+        .filter_map(|command| command.get("branchId").and_then(Json::as_str))
+        .collect::<BTreeSet<_>>();
+    for (id, picks) in &script.choose {
+        if let Err(e) = choose_entry(&known, &timed, id, picks) {
             errs.push(top_error(script, &["choose", id], None, &e));
         }
     }
@@ -887,7 +895,7 @@ fn check_decisions(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>)
             _ => None,
         };
         for (id, picks) in own.into_iter().flatten() {
-            if let Err(e) = choose_entry(&known, id, picks) {
+            if let Err(e) = choose_entry(&known, &timed, id, picks) {
                 errs.push(
                     step.at
                         .locate_keys(&["choose", id], &format!("step {}: {e}", step.n)),
@@ -900,7 +908,7 @@ fn check_decisions(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>)
             }
             seen.push(seg);
             for (id, picks) in &seg.choose {
-                if let Err(e) = choose_entry(&known, id, picks) {
+                if let Err(e) = choose_entry(&known, &timed, id, picks) {
                     errs.push(seg.at.locate_keys(&["choose", id], &e));
                 }
             }
@@ -921,8 +929,9 @@ fn check_decisions(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>)
 /// hub, each pick one of its options.
 fn choose_entry(
     known: &BTreeMap<String, Vec<String>>,
+    timed: &BTreeSet<&str>,
     id: &str,
-    picks: &[String],
+    picks: &[ScriptedPick],
 ) -> Result<(), String> {
     let hint = |needle: &str, among: &[&str], what: &str| match lute_manifest::suggest::nearest(
         needle,
@@ -942,14 +951,20 @@ fn choose_entry(
     };
     let options: Vec<&str> = options.iter().map(String::as_str).collect();
     for pick in picks {
-        if pick == "__lute_timeout__" {
-            continue;
-        }
-        if !options.contains(&pick.as_str()) {
-            return Err(format!(
-                "`choose.{id}` picks `{pick}`, which is no option of `{id}`{}",
-                hint(pick, &options, "its options")
-            ));
+        match pick {
+            ScriptedPick::Timeout if !timed.contains(id) => {
+                return Err(format!(
+                    "`choose.{id}` scripts a timeout, but branch `{id}` has no `timeout`"
+                ));
+            }
+            ScriptedPick::Timeout => {}
+            ScriptedPick::Option(option) if !options.contains(&option.as_str()) => {
+                return Err(format!(
+                    "`choose.{id}` picks `{option}`, which is no option of `{id}`{}",
+                    hint(option, &options, "its options")
+                ));
+            }
+            ScriptedPick::Option(_) => {}
         }
     }
     Ok(())
