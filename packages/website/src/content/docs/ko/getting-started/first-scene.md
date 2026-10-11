@@ -608,7 +608,7 @@ FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 아직 어느 테스트도 고르지 않은 선택지와, 어느 테스트도 가리키지 않는 장면을 나열합니다 — 다음
 테스트를 위한 할 일 목록입니다.
 
-테스트 파일이 받는 모든 키는 [CLI 참조](/tooling/cli/#test)에 있습니다.
+테스트 파일이 받는 모든 키는 [CLI 참조](/ko/tooling/cli/#test)에 있습니다.
 
 ## Part 7 — 다음 갈 곳
 
