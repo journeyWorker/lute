@@ -454,6 +454,10 @@ jobs:
         working-directory: packages/player
         run: bun run test
 
+      - name: Build runtime (the player packages' declarations import its dist)
+        working-directory: packages/runtime
+        run: bun run build
+
       - name: Build player core
         working-directory: packages/player
         run: bun run build

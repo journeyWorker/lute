@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync } from "node:fs"
+import { existsSync, rmSync } from "node:fs"
 import { join, resolve } from "node:path"
 
 const pkg = resolve(import.meta.dir, "..")
@@ -17,8 +17,6 @@ if (!result.success) {
 }
 const tsc = Bun.spawnSync(["tsc", "-p", "tsconfig.build.json"], { cwd: pkg, stdout: "inherit", stderr: "inherit" })
 if (tsc.exitCode !== 0) process.exit(tsc.exitCode ?? 1)
-const declaration = join(dist, "packages/player/src/index.d.ts")
-if (existsSync(declaration)) cpSync(declaration, join(dist, "index.d.ts"))
 if (!existsSync(join(dist, "index.js"))) {
   console.error("player build did not produce dist/index.js")
   process.exit(1)
