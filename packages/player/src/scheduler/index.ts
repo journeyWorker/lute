@@ -42,16 +42,29 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
       }
       if (cue.timing.delay + timelineOffset > 0) yield* sleep(cue.timing.delay + timelineOffset)
       yield* publish({ _tag: "CueStarted", index, cue })
-      const normal = Effect.as(cue.execute(ctx), "normal")
-      const switched = Effect.as(
-        Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
-        "skip"
-      )
-      const outcome = yield* Effect.raceFirst(normal, switched)
-      if (outcome === "skip") yield* cue.complete(ctx)
       if (cue.kind === "line" && cue.line !== undefined) {
+        // Start the renderer before entering the line gate. Presenters commonly
+        // suspend showLine while text is typing; the machine must see
+        // line.shown so advance can reveal/release that line.
+        const execution = yield* Effect.forkScoped(cue.execute(ctx))
+        yield* Effect.yieldNow
         yield* publish({ _tag: "LineShown", line: cue.line })
         yield* gate.release(cue.line)
+        const currentMode = yield* SubscriptionRef.get(mode)
+        if (currentMode === "skip") {
+          yield* Fiber.interrupt(execution)
+          yield* cue.complete(ctx)
+        } else {
+          yield* Fiber.join(execution)
+        }
+      } else {
+        const normal = Effect.as(cue.execute(ctx), "normal")
+        const switched = Effect.as(
+          Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
+          "skip"
+        )
+        const outcome = yield* Effect.raceFirst(normal, switched)
+        if (outcome === "skip") yield* cue.complete(ctx)
       }
       yield* publish({ _tag: "CueDone", index, cue })
     })

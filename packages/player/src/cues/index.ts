@@ -128,10 +128,14 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
     keys.add(key)
     artifactKeys.set(artifact, keys)
   }
+  // Runtime record.document is the source document path (for example,
+  // `game.lute`), not the compiled artifact filename (`game.lute.json`).
+  // Keep the indexed path/key aliases and the artifact-derived aliases for
+  // synthetic bundles that do not carry an index.
   for (const document of documents) {
     if (!isRecord(document) || !string(document.artifact)) continue
-    addKey(document.artifact, document.key)
     addKey(document.artifact, document.path)
+    addKey(document.artifact, document.key)
   }
   const withoutJson = (value: string): string => value.endsWith(".json") ? value.slice(0, -5) : value
   const basename = (value: string): string => {
@@ -140,9 +144,11 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
     return slash < 0 ? normalized : normalized.slice(slash + 1)
   }
   for (const [artifactPath, artifact] of Object.entries(bundle.artifacts)) {
+    // Store the set before adding aliases so aliases are not lost when the
+    // artifact was absent from the bundle index.
     const keys = artifactKeys.get(artifactPath) ?? new Set<string>()
-    const metadata = record(artifact, "meta")
-    addKey(artifactPath, field(metadata, "id"))
+    artifactKeys.set(artifactPath, keys)
+    addKey(artifactPath, field(record(artifact, "meta"), "id"))
     addKey(artifactPath, field(artifact, "document"))
     addKey(artifactPath, withoutJson(artifactPath))
     addKey(artifactPath, withoutJson(basename(artifactPath)))
