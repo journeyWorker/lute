@@ -1,5 +1,5 @@
 /** Versioned save slots and profile persistence for the player. */
-import { Context, Effect, Layer, Schema, SubscriptionRef } from "effect"
+import { Clock, Context, Effect, Layer, Schema, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { Contract } from "@lute-lang/runtime"
 import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
@@ -56,20 +56,16 @@ const Metadata = Schema.Struct({
   label: Schema.String,
   thumbnail: Schema.optionalKey(Schema.String)
 })
+/** The metadata visible in a slot list. */
+export type SaveMetadata = SlotInfo
 
-/** Data stored in one player save slot. */
 export interface SaveData {
   readonly project: string
-  readonly savedAt: string
+  readonly savedAt?: string
   readonly label: string
   readonly runtime: SaveRuntime
   readonly thumbnail?: string
 }
-
-/** The metadata visible in a slot list. */
-export type SaveMetadata = SlotInfo
-
-/** Save-slot service. */
 export interface SaveStoreShape {
   readonly list: Effect.Effect<ReadonlyArray<SaveMetadata>, SaveCorrupt>
   readonly save: (slot: SlotId, save: SaveData) => Effect.Effect<void, SaveCorrupt>
@@ -125,23 +121,24 @@ export const layer = (
       list,
       save: (slot: SlotId, save: SaveData) => {
         if (!validSlot(slot, maxSlots)) return Effect.fail(new SaveCorrupt({ slot: String(slot), message: "invalid save slot" }))
-        const payload = {
-          saveVersion: VERSION,
-          project: save.project,
-          savedAt: save.savedAt,
-          label: save.label,
-          runtime: save.runtime,
-          ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
-        }
-        const metadata = {
-          saveVersion: VERSION,
-          project: save.project,
-          savedAt: save.savedAt,
-          label: save.label,
-          ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
-        }
         return Effect.gen(function* () {
           if (save.project !== options.project) return yield* Effect.fail(new SaveCorrupt({ slot: String(slot), message: "save project does not match store" }))
+          const savedAt = new Date(yield* Clock.currentTimeMillis).toISOString()
+          const payload = {
+            saveVersion: VERSION,
+            project: save.project,
+            savedAt,
+            label: save.label,
+            runtime: save.runtime,
+            ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
+          }
+          const metadata = {
+            saveVersion: VERSION,
+            project: save.project,
+            savedAt,
+            label: save.label,
+            ...(save.thumbnail === undefined ? {} : { thumbnail: save.thumbnail })
+          }
           const encoded = yield* Effect.mapError(encode(Save, payload), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
           const encodedMetadata = yield* Effect.mapError(encode(Metadata, metadata), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))
           yield* Effect.mapError(store.set(slotKey(slot), encoded), (error) => new SaveCorrupt({ slot: String(slot), message: error.message }))

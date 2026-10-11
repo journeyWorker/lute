@@ -1,9 +1,9 @@
 /** Loading and validation for `player.bindings.yaml` values. */
 import { Effect, Schema } from "effect"
+import { parseDocument } from "yaml"
 import * as HttpClient from "effect/http/HttpClient"
 import { Bindings as BindingsSchema } from "./schema.js"
 import type { Bindings } from "../model.js"
-
 /** A bindings document failed parsing or schema validation. */
 export class BindingsInvalid extends Schema.TaggedError<BindingsInvalid>()("BindingsInvalid", {
   path: Schema.String,
@@ -16,19 +16,17 @@ const decodeObject = (value: unknown): Effect.Effect<Bindings, BindingsInvalid> 
     (error) => new BindingsInvalid({ path: "bindings", message: error.message })
   )
 
-/** Decode a JSON value or an already parsed bindings object. */
+/** Decode YAML/JSON text or an already parsed bindings object. */
 export const decode = (value: unknown): Effect.Effect<Bindings, BindingsInvalid> => {
   if (typeof value !== "string") return decodeObject(value)
-  return Effect.try({
-    try: () => {
-      const parsed: unknown = JSON.parse(value)
-      return parsed
-    },
-    catch: (error) => new BindingsInvalid({
-      path: "bindings",
-      message: `YAML input requires a YAML parser dependency; JSON is supported (${error instanceof Error ? error.message : "invalid JSON"})`
-    })
-  }).pipe(Effect.flatMap(decodeObject))
+  const document = parseDocument(value)
+  const firstError = document.errors[0]
+  if (firstError !== undefined) {
+    const position = firstError.linePos?.[0]
+    const location = position === undefined ? "" : ` at line ${position.line}, column ${position.col}`
+    return Effect.fail(new BindingsInvalid({ path: "bindings", message: `${firstError.message}${location}` }))
+  }
+  return decodeObject(document.toJS())
 }
 
 /** Fetch and decode a bindings document through Effect's HTTP client. */
