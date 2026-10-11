@@ -21,7 +21,7 @@ describe("player bindings loading", () => {
     Effect.gen(function* () {
       const bindings = yield* decode(docsExample)
       expect(bindings.bindingsVersion).toBe("0.40")
-      expect(bindings.characters?.guide.sprite.default).toBe("char/guide.png")
+      expect(bindings.characters?.guide?.sprite.default).toBe("char/guide.png")
       expect(bindings.flow?.newGame?.occasion).toBe("start")
     }))
 

@@ -290,7 +290,7 @@ export const profileLayer = (
       updateSettings: (changes: SettingsChanges) => Effect.gen(function* () {
         const next = mergeSettings(yield* SubscriptionRef.get(settingsRef), changes)
         yield* SubscriptionRef.set(settingsRef, next)
-        yield* schedulePersist
+        yield* schedulePersist()
       })
     }
   }))

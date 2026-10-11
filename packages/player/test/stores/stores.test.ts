@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect"
+import { Effect, Layer, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "@effect/vitest"
@@ -85,33 +85,47 @@ describe("SaveStore", () => {
     yield* TestClock.setTime(1_700_000_000_000)
     yield* store.save("quick", saveData("clock"))
     expect((yield* store.load("quick")).savedAt).toBe(new Date(1_700_000_000_000).toISOString())
-  }).pipe(Effect.provide(storesLayer).pipe(Effect.provide(TestClock.layer()))))
+  }).pipe(Effect.provide(Layer.mergeAll(storesLayer, TestClock.layer()))))
 
-  it.effect("keeps runtime out of list metadata", () => Effect.gen(function* () {
+  it.effect("keeps runtime out of list metadata", () => {
     const { layer, values } = kvLayer()
-    const store = yield* SaveStore
-    yield* store.save("quick", saveData("metadata"))
-    const raw = values.get("save:quick:metadata")
-    expect(raw).toBeDefined()
-    expect(raw).not.toContain("snapshot")
-  }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer)))))
+    return Effect.gen(function* () {
+      const store = yield* SaveStore
+      yield* store.save("quick", saveData("metadata"))
+      const raw = values.get("save:quick:metadata")
+      expect(raw).toBeDefined()
+      expect(raw).not.toContain("snapshot")
+    }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer))))
+  })
 
-  it.effect("reports malformed JSON as SaveCorrupt", () => Effect.gen(function* () {
+  it.effect("reports malformed JSON as SaveCorrupt", () => {
     const { layer } = kvLayer(new Map([["save:quick", "not-json"]]))
-    const store = yield* SaveStore
-    expect((yield* Effect.either(store.load("quick"))).left).toBeInstanceOf(SaveCorrupt)
-  }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer)))))
+    return Effect.gen(function* () {
+      const store = yield* SaveStore
+      const result = yield* Effect.result(store.load("quick"))
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(SaveCorrupt)
+    }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer))))
+  })
 
-  it.effect("reports a wrong save version as SaveIncompatible", () => Effect.gen(function* () {
+  it.effect("reports a wrong save version as SaveIncompatible", () => {
     const { layer } = kvLayer(new Map([["save:quick", JSON.stringify({ saveVersion: "0.39", project })]]))
-    const store = yield* SaveStore
-    expect((yield* Effect.either(store.load("quick"))).left).toBeInstanceOf(SaveIncompatible)
-  }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer)))))
+    return Effect.gen(function* () {
+      const store = yield* SaveStore
+      const result = yield* Effect.result(store.load("quick"))
+      expect(result._tag).toBe("Failure")
+      if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(SaveIncompatible)
+    }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer))))
+  })
 
   it.effect("rejects slots outside the configured range", () => Effect.gen(function* () {
     const store = yield* SaveStore
-    expect((yield* Effect.either(store.save(0, saveData("bad")))).left).toBeInstanceOf(SaveCorrupt)
-    expect((yield* Effect.either(store.save(25, saveData("bad")))).left).toBeInstanceOf(SaveCorrupt)
+    const first = yield* Effect.result(store.save(0, saveData("bad")))
+    const second = yield* Effect.result(store.save(25, saveData("bad")))
+    expect(first._tag).toBe("Failure")
+    expect(second._tag).toBe("Failure")
+    if (first._tag === "Failure") expect(first.failure).toBeInstanceOf(SaveCorrupt)
+    if (second._tag === "Failure") expect(second.failure).toBeInstanceOf(SaveCorrupt)
   }).pipe(Effect.provide(saveLayer({ project, maxSlots: 24 }).pipe(Layer.provide(memory)))))
 })
 
@@ -126,26 +140,28 @@ describe("ProfileStore", () => {
       }).pipe(Effect.provide(profile))
       yield* Effect.gen(function* () {
         const second = yield* ProfileStore
-        expect(yield* second.readLines).toEqual(new Set(["line-1"]))
+        expect(yield* SubscriptionRef.get(second.readLines)).toEqual(new Set(["line-1"]))
       }).pipe(Effect.provide(profile))
     })
   })
 
   it.effect("provides defaults and merges partial settings including nested volumes", () => Effect.gen(function* () {
     const profile = yield* ProfileStore
-    expect(yield* profile.settings).toEqual({ ...defaultSettings, textSpeed: 20, volumes: { ...defaultSettings.volumes, music: 0.25 } })
+    expect(yield* SubscriptionRef.get(profile.settings)).toEqual({ ...defaultSettings, textSpeed: 20, volumes: { ...defaultSettings.volumes, music: 0.25 } })
     yield* profile.updateSettings({ volumes: { voice: 0.5 } })
-    expect(yield* profile.settings).toEqual({ ...defaultSettings, textSpeed: 20, volumes: { ...defaultSettings.volumes, music: 0.25, voice: 0.5 } })
+    expect(yield* SubscriptionRef.get(profile.settings)).toEqual({ ...defaultSettings, textSpeed: 20, volumes: { ...defaultSettings.volumes, music: 0.25, voice: 0.5 } })
   }).pipe(Effect.provide(profileLayer({ project, defaults: { textSpeed: 20, volumes: { music: 0.25 } } }).pipe(Layer.provide(memory)))))
 
-  it.effect("debounces settings writes until the TestClock delay", () => Effect.gen(function* () {
+  it.effect("debounces settings writes until the TestClock delay", () => {
     const { layer, values } = kvLayer()
-    const profile = yield* ProfileStore
-    yield* profile.updateSettings({ textSpeed: 10 })
-    expect(values.has("profile:" + project)).toBe(false)
-    yield* TestClock.adjust(250)
-    expect(values.has("profile:" + project)).toBe(true)
-  }).pipe(Effect.provide(profileLayer({ project }).pipe(Layer.provide(layer))).pipe(Effect.provide(TestClock.layer()))))
+    return Effect.gen(function* () {
+      const profile = yield* ProfileStore
+      yield* profile.updateSettings({ textSpeed: 10 })
+      expect(values.has("profile:" + project)).toBe(false)
+      yield* TestClock.adjust(250)
+      expect(values.has("profile:" + project)).toBe(true)
+    }).pipe(Effect.provide(Layer.mergeAll(profileLayer({ project }).pipe(Layer.provide(layer)), TestClock.layer())))
+  })
 })
 
 describe("autosave", () => {

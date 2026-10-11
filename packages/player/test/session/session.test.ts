@@ -10,6 +10,7 @@ import { join } from "node:path"
 
 const started: Contract.Seed = { derive: true }
 const bindings = { bindingsVersion: "0.40", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+const noFlowBindings = { bindingsVersion: "0.40", canvas: { width: 1920, height: 1080 } }
 const runtimeLayer = (bundle: string, seed = started) => RuntimeSession.layer({ seed }).pipe(
   Layer.provide(Layer.mergeAll(LuteBun.runtime, LuteBun.bundle(bundle))),
   Layer.provideMerge(InputLog.memory)
@@ -56,7 +57,7 @@ describe("PlayerSession", () => {
     yield* session.rollback(1)
     const error = yield* Effect.flip(session.rollback(1))
     expect(error).toBeInstanceOf(NothingToRollback)
-  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings, settings: { rollbackDepth: 2 } }))))
+  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings, settings: { locale: "en", rollbackDepth: 2 } }))))
 
   it.effect("rollback at the start fails with NothingToRollback", () => Effect.scoped(Effect.gen(function* () {
     const session = yield* PlayerSession
@@ -95,7 +96,7 @@ describe("PlayerSession", () => {
       const output = yield* session.send({ request: 1, type: "timeout" })
       expect(output.await.type).toBe("idle")
       expect(output.events.some((event) => event.type === "record" && typeof event.record === "object" && event.record !== null && "text" in event.record && event.record.text === "The knocking stops.")).toBe(true)
-    }).pipe(Effect.provide(sessionLayer(bundle, { bindings: { ...bindings, flow: undefined } }))))
+    }).pipe(Effect.provide(sessionLayer(bundle, { bindings: noFlowBindings }))))
   }))
 
   it.effect("stage snapshot inputs expose background actor and music at the choice point", () => Effect.gen(function* () {
@@ -103,13 +104,13 @@ describe("PlayerSession", () => {
     return yield* Effect.scoped(Effect.gen(function* () {
       const session = yield* PlayerSession
       yield* session.send(raise)
-      const output = yield* session.send(choose("yes", 1))
       const current = yield* session.current
       expect(current.stage.bg).toMatchObject({ location: "parlor" })
       expect(current.stage.actors.some((actor) => actor.character === "mira")).toBe(true)
       expect(current.stage.music).toMatchObject({ assetId: "BGM.parlor" })
+      const output = yield* session.send(choose("yes", 1))
       expect(output.await.type).toBe("idle")
-    }).pipe(Effect.provide(sessionLayer(bundle, { bindings: { ...bindings, flow: undefined } }))))
+    }).pipe(Effect.provide(sessionLayer(bundle, { bindings: noFlowBindings }))))
   }))
 
   it.effect("backlog entries include speaker name and text", () => Effect.scoped(Effect.gen(function* () {
@@ -117,7 +118,7 @@ describe("PlayerSession", () => {
     yield* session.send(raise)
     const entries = yield* SubscriptionRef.get(session.backlog)
     expect(entries[0]).toMatchObject({ speakerName: "narrator", text: "Before the hub." })
-  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings: { ...bindings, flow: undefined } }))))
+  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings: noFlowBindings }))))
 
   it("idle resolves raise and menu forms", () => {
     expect(idle({ bindingsVersion: "0.40", canvas: { width: 1, height: 1 }, flow: { idle: { raise: { occasion: "visit", target: "door" } } } })).toEqual({ _tag: "Input", input: { type: "raiseOccasion", occasion: "visit", target: "door" } })
