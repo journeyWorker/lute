@@ -62,7 +62,7 @@ state:
 - `on:`은 씬이 계기에 응답하게 합니다. 여기서는 `chapter`이며, 플러그인이 계기를 선언하기 전까지는 어떤
   이름이든 됩니다. `after:`는 다른 씬 뒤로 순서를 정하고, `priority:`는 같은 자리에서 이기며, `when:`은
   상태로 자격을 거릅니다. → [비트](#비트-계기에-응답하는-씬과-엔트리) ·
-  [씬을 이야기로 잇기](/getting-started/connect-scenes/)
+  [씬을 이야기로 잇기](/ko/getting-started/connect-scenes/)
 
 테스트는 씬 하나를 걷고, 플레이는 스텝마다 계기를 한 번씩 발생시키며 프로젝트 전체를 진행합니다:
 
@@ -95,7 +95,7 @@ $ lute test .                                       # every *.test.yaml, and eve
 $ lute play . --script plays/story.play.yaml        # the transcript of one playthrough
 ```
 
-→ [테스트와 플레이](#cli) · [스토리 플레이](/tooling/play/)
+→ [테스트와 플레이](#cli) · [스토리 플레이](/ko/tooling/play/)
 
 ## 프로젝트 구성
 
@@ -277,7 +277,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 않으면 `E-RULE-AGGREGATE-CYCLE`). 여러 문서의 프론트매터 `state:`가 같은 경로를 선언하면 `type`, `default`,
 `per`, `owner`가 모두 같아야 합니다(`E-STATE-DECL-CONFLICT`). 경로를 함께 쓰려면 두 문서가 모두 가져오는
 스키마에 한 번만 선언하세요. 같은 `name:`을 가진 캐스트 항목 둘은 둘 다 `sharedName: true`가 아니면
-`W-DISPLAY-NAME-DUP`입니다. [여러 작가, 한 프로젝트](/guides/multi-author/)를 보세요. `per: <kind>`는 닫힌 종류의 멤버마다 경로를 하나씩
+`W-DISPLAY-NAME-DUP`입니다. [여러 작가, 한 프로젝트](/ko/guides/multi-author/)를 보세요. `per: <kind>`는 닫힌 종류의 멤버마다 경로를 하나씩
 선언합니다(`run.trust.vesna`). 열린 종류나 모르는 종류는 `E-STATE-DECL`입니다. 맵 형태 `default:`는 멤버마다
 값을 주고 나머지는 `_`로 채웁니다. 멤버가 아닌 키, 값도 `_`도 없는 멤버, `per:` 없는 맵 기본값은
 `E-STATE-DECL`입니다. 긴 형태 enum의 `labels:`는
@@ -288,7 +288,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 `once: season:<name>` 소진을 지우고 `tier="season:<name>"` 퀘스트를 초기화합니다. 잘못되었거나 선언되지
 않은 시즌은 `E-SEASON-DECL`입니다.
 
-→ [상태 스키마](/state/schemas/) · [가져오기](/language/imports/) · [콘텐츠 어휘](/language/vocabulary/) · [팩트와 Datalog](/state/facts-and-datalog/) · [시계](/language/clock/)
+→ [상태 스키마](/ko/state/schemas/) · [가져오기](/ko/language/imports/) · [콘텐츠 어휘](/ko/language/vocabulary/) · [팩트와 Datalog](/ko/state/facts-and-datalog/) · [시계](/ko/language/clock/)
 
 ## kind별 프론트매터 키
 
@@ -306,7 +306,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 제목은 프론트매터 `title:` 하나뿐이며, 본문의 `# 제목`은 `E-INERT-TITLE`입니다. 퀘스트의 그래프 간선은
 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
-→ [프론트매터와 프로필](/language/frontmatter-and-profiles/)
+→ [프론트매터와 프로필](/ko/language/frontmatter-and-profiles/)
 
 ## 대사, 캐스트, 연출
 
@@ -388,7 +388,7 @@ state:
 | `::sequence` | `name`(필수, `sequence` 도메인). 인라인 연출이 아니라 프로젝트가 가진 시퀀스를 가리키는 참조이며, `wait`의 기본값은 `true`입니다. | `sequence` |
 | `::end` | `reason` | `end` |
 
-→ [대사와 캐스트](/language/dialogue-and-cast/) · [코어 디렉티브](/language/directives/)
+→ [대사와 캐스트](/ko/language/dialogue-and-cast/) · [코어 디렉티브](/ko/language/directives/)
 
 ## 선택지, 허브, 점프, 엔딩
 
@@ -449,7 +449,7 @@ defs:
 | `::end{reason}` | 씬을 끝냅니다. `lute play`에서는 자신이 실행된 제시(또는 퀘스트 핸들러)만 끝내고, 플레이는 계속됩니다. 같은 본문에서 그 뒤의 콘텐츠는 `W-CODE-AFTER-END`입니다. |
 | `::accept{quest}` | 수락형 퀘스트(`start`가 없는 퀘스트, 또는 `activate="accept"`인 자식)를 받아들입니다. `at="nextRun"`(0.24.0)은 다음 `newRun` 초기화 직후로 수락을 미루며, 그 밖의 `at`은 `E-ACCEPT-TARGET`입니다. [퀘스트](#퀘스트)를 보세요. `when=`을 받습니다(0.26.0). |
 
-→ [선택지와 허브](/language/choices-and-hubs/) · [branch, match, when](/language/branch-match-when/)
+→ [선택지와 허브](/ko/language/choices-and-hubs/) · [branch, match, when](/ko/language/branch-match-when/)
 
 ## match와 when
 
@@ -523,7 +523,7 @@ state:
 - 모든 태그는 한 물리적 줄에 혼자 놓입니다. 한 줄짜리 `<when …>text</when>`는 `E-TAG-INLINE-BODY`이고,
   여러 줄로 나눈 태그는 `E-TAG-NOT-ONE-LINE`입니다.
 
-→ [branch, match, when](/language/branch-match-when/)
+→ [branch, match, when](/ko/language/branch-match-when/)
 
 ## 상태 쓰기와 팩트
 
@@ -657,7 +657,7 @@ rules:
   캐스트의 `assume: true`를 좁힙니다([위의 스키마](#프로젝트-구성) 참고). `reserved`가 아닌 관계의 `changedOn`이나
   선언되지 않은 계기를 가리키는 `changedOn`은 `E-RELATION-DECL`입니다.
 
-→ [상태 모델](/state/state-model/) · [팩트와 Datalog](/state/facts-and-datalog/)
+→ [상태 모델](/ko/state/state-model/) · [팩트와 Datalog](/ko/state/facts-and-datalog/)
 
 ## CEL 요약
 
@@ -708,7 +708,7 @@ CEL이 들어가는 곳: `<match subject>`, `<when test>`, 줄이나 선택지�
 씁니다: `duration="@holdTime"`이 아니라 `::camera{framing="wide" duration=@holdTime}`입니다. 속성에는 def가 접히는 상수가 들어가므로, 위의 `pace`처럼 상태를 읽는
 def는 `E-ATTR-DEF-DYNAMIC`입니다. `<match>`로 나누고 갈래마다 리터럴을 쓰세요.
 
-→ [CEL 표현식](/state/cel/) · [정의와 파라미터](/language/params/)
+→ [CEL 표현식](/ko/state/cel/) · [정의와 파라미터](/ko/language/params/)
 
 ## 비트: 계기에 응답하는 씬과 엔트리
 
@@ -896,7 +896,7 @@ events:
   `when`은 모든 패스스루와 브리지 디렉티브에서 예약된 이름이므로([`when=` 가드](#상태-쓰기와-팩트))
   플러그인 속성 이름으로 쓸 수 없습니다.
 
-→ [비트](/language/beats/) · [스토리 플레이](/tooling/play/) · [플러그인 매니페스트](/plugins/manifests/)
+→ [비트](/ko/language/beats/) · [스토리 플레이](/ko/tooling/play/) · [플러그인 매니페스트](/ko/plugins/manifests/)
 
 ## 시계
 
@@ -993,7 +993,7 @@ enums:
 
 `lute trace --state run.visits=3`은 `Happy Friday! Your 3rd visit.`을 출력합니다.
 
-→ [시계](/language/clock/) · [스토리 플레이](/tooling/play/)
+→ [시계](/ko/language/clock/) · [스토리 플레이](/ko/tooling/play/)
 
 ## 퀘스트
 
@@ -1117,7 +1117,7 @@ rewardKinds:
 이름 제안, 낡은 공급자 스냅샷은 경고만), `required: true`는 대상 없는 보상을 거부합니다: `E-REWARD-TARGET`
 (0.26.0). 두 가지를 모두 적은 계약은 플러그인 적재에 실패합니다.
 
-→ [퀘스트와 씬](/language/quests-and-scenes/)
+→ [퀘스트와 씬](/ko/language/quests-and-scenes/)
 
 ## 로어 엔트리
 
@@ -1173,7 +1173,7 @@ state:
 - 로어 문서에는 씬 본문을 가진 `<beat>` 블록도 둘 수 있습니다(0.23.0). [비트](#비트-계기에-응답하는-씬과-엔트리)를
   보세요.
 
-→ [로어 엔트리](/language/lore-entries/)
+→ [로어 엔트리](/ko/language/lore-entries/)
 
 ## 컴포넌트, extends, 파라미터
 
@@ -1299,7 +1299,7 @@ params:
 선언하면 덮어씁니다. 상태 경로의 `type`을 바꾸면 `E-EXTENDS-STATE-TYPE`입니다. `uses:`는 동등한
 스키마들을 합치며, 같은 이름이 두 번 선언되면 오류입니다.
 
-→ [컴포넌트와 extends](/language/components-and-extends/) · [정의와 파라미터](/language/params/)
+→ [컴포넌트와 extends](/ko/language/components-and-extends/) · [정의와 파라미터](/ko/language/params/)
 
 ## 타임라인
 
@@ -1334,7 +1334,7 @@ enums:
 멈춤입니다. 산출물에서 클립은 `timing.at`(초)과 `timing.timeline`(타임라인 순번)을 싣고, 타임라인 끝은
 자기 `timeline`과 `at`을 직접 가진 `barrier` 레코드입니다.
 
-→ [타임라인과 속성 트랙](/language/timeline-and-property-tracks/)
+→ [타임라인과 속성 트랙](/ko/language/timeline-and-property-tracks/)
 
 ## 산출물
 
@@ -1584,7 +1584,7 @@ expect:                                 # judged at the end; a miss exits 1
 - `lute play . --script plays/first.play.yaml --explain "can_halt(vesna)"`는 어떤 규칙이 그 atom을
   결론 냈고 각 전제가 어디서 왔는지 보여 줍니다.
 
-→ [CLI 레퍼런스](/ko/tooling/cli/) · [트레이싱](/tooling/tracing/) · [스토리 플레이](/ko/tooling/play/)
+→ [CLI 레퍼런스](/ko/tooling/cli/) · [트레이싱](/ko/tooling/tracing/) · [스토리 플레이](/ko/tooling/play/)
 
 ## 자주 만나는 진단
 
@@ -1796,7 +1796,7 @@ id: choice.readback
 
 ## Ask
 
-<branch id="ask" timeout="10">
+<branch id="ask" timeout="10" default="no">
   <choice id="yes" text="Yes">
     @mira: Great.
   </choice>
@@ -1877,7 +1877,7 @@ trace와 test는 `lute play`, `lute run`처럼 label에서 이어 가고(트랜�
 
 **상태 경로는 두 프론트매터가 아니라 스키마로 나눠 쓰세요.** 두 문서가 각자 `state:`에 `run.tide`를 선언하면
 타입, 기본값, `per`, `owner`가 같아야 합니다(`E-STATE-DECL-CONFLICT`, 0.26.0). 두 문서가 모두 가져오는 스키마에
-한 번만 선언하세요. 여러 작가가 쓰는 프로젝트라면 [여러 작가, 한 프로젝트](/guides/multi-author/)를 보세요.
+한 번만 선언하세요. 여러 작가가 쓰는 프로젝트라면 [여러 작가, 한 프로젝트](/ko/guides/multi-author/)를 보세요.
 
 **`by=`는 시점이고 `until=`은 장소입니다(0.24.0).** `by=` 기한은 매 정산마다 판정하므로, 목표의 계기로
 돌아가지 않는 플레이어도 기한을 놓칩니다. 0.23.1은 `on=` 목표의 `by`를 그 계기가 발생할 때만 판정했습니다.

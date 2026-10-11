@@ -42,10 +42,10 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | `-> END` | 이야기의 끝 | `::set`이 참으로 만드는 스키마의 `terminal:` 조건([아래](#이야기-끝내기)) |
 | 터널 `-> knot ->` | — | 컴포넌트: `::use{component="…"}` |
 | `INCLUDE` | 여러 `.yarn` 파일 | 프로젝트: `lute.project.yaml` 아래의 모든 `.lute` 파일. 공유 상태는 `uses:`로 가져오는 스키마에 |
-| — | 노드 그룹(`when:` 헤더) | 한 계기에 응답하는 여러 장면, 각자 자기 `when:`. 자격 있는 장면 중 `priority:`가 가장 높은 것이 재생됩니다([Beats](/language/beats/)) |
+| — | 노드 그룹(`when:` 헤더) | 한 계기에 응답하는 여러 장면, 각자 자기 `when:`. 자격 있는 장면 중 `priority:`가 가장 높은 것이 재생됩니다([Beats](/ko/language/beats/)) |
 | — | `when: once`, `when: always` | `once:` 키: `once: run`(기본값), `once: user`, `once: false` |
 | `# tag` | `#tag` | 자유 형식 줄 태그는 없습니다([아래](#주석과-태그)) |
-| — | 현지화 줄 id `#line:…` | 콘텐츠 줄의 `code=`: `@narrator{code="0010"}: …`. `lute tag`가 채워 넣고, 컴파일된 `lineId`는 이것으로 만들어집니다([Dialogue & cast](/language/dialogue-and-cast/)) |
+| — | 현지화 줄 id `#line:…` | 콘텐츠 줄의 `code=`: `@narrator{code="0010"}: …`. `lute tag`가 채워 넣고, 컴파일된 `lineId`는 이것으로 만들어집니다([Dialogue & cast](/ko/language/dialogue-and-cast/)) |
 
 ## knot 하나를 옮기기
 
@@ -174,7 +174,7 @@ trace: lamp.lute  (seeds: 0 paths, 0 facts; 5 selections)
 trace complete: 10 decisions; choices 3/3 (lamp), arms 3/3 (scene.ledgerReads @19:5), guard `run.oil >= 3` @36:5: taken, guard `run.oil < 3` @37:5: skipped
 ```
 
-`stores`는 한 번 고른 뒤 메뉴에서 빠집니다. 나머지 허브 규칙은 [Choices & hubs](/language/choices-and-hubs/)에
+`stores`는 한 번 고른 뒤 메뉴에서 빠집니다. 나머지 허브 규칙은 [Choices & hubs](/ko/language/choices-and-hubs/)에
 있습니다. 검사기가 모든 허브에 요구하는 규칙도 거기 있습니다: 허브는 끝날 수 있어야 합니다(가드 없는
 `exit` 선택지, 또는 `once` 선택지만).
 
@@ -291,9 +291,9 @@ terminal: "run.fate == 'drowned'"
 Lute에는 자유 형식 태그가 없습니다. Ink나 Yarn 태그가 엔진에 알리던 것은 대신 검사되는 자리가 있습니다:
 
 - 줄을 어떻게 전달할지: 줄 속성, `@keeper{emotion="tired"}: …`
-  ([Dialogue & cast](/language/dialogue-and-cast/));
+  ([Dialogue & cast](/ko/language/dialogue-and-cast/));
 - 효과음, 음악, 카메라: 자기 줄에 쓰는 디렉티브, `::sfx{…}`, `::music{…}`
-  ([Core directives](/language/directives/));
+  ([Core directives](/ko/language/directives/));
 - 문서 자체의 태그(Yarn의 `tags:` 헤더): 프런트매터의 `extra: { tags: [...] }`.
 
 ## 검사기가 하는 말

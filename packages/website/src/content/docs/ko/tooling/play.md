@@ -26,10 +26,10 @@ description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 
 0.23.0부터 계기는 자격 있는 비트를 **모두** 차례로 제시할 수 있고(`select: sequence`), 비트는 승자 뒤에
 곁들여 나올 수 있으며(`also: true`), 목표는 기한(`by=`)을 갖거나 한 대상만 기다릴 수 있고(`target=`),
 로어 문서 하나가 씬 같은 **번들 비트**를 여럿 담을 수 있습니다. 플레이스루 하나를 걷는 대신 모든
-상태에서 어떤 비트가 재생될지 보려면 [스토리 개요](/tooling/overviews/)를 쓰세요 — `lute calendar`는 이
+상태에서 어떤 비트가 재생될지 보려면 [스토리 개요](/ko/tooling/overviews/)를 쓰세요 — `lute calendar`는 이
 페이지의 자격 판정을 상태 값 격자 전체에 대해 평가합니다.
 
-0.24.0부터 스크립트는 선언된 [시계](/language/clock/)를 앞으로 돌리고(`advance:`), 여러 경로가 일과 하나를
+0.24.0부터 스크립트는 선언된 [시계](/ko/language/clock/)를 앞으로 돌리고(`advance:`), 여러 경로가 일과 하나를
 나눠 쓰며(`include:`), 실제 엔진이라면 서비스에 넘겼을 플러그인 브리지 호출에 직접 답합니다(`bridges:`).
 트랜스크립트는 각 퀘스트가 왜 실패했는지 밝히고, `judge: before` 계기가 비트보다 먼저 퀘스트를 정착시키는
 모습을 보여 주며, `newRun`이 스냅숏한 값과 이전 런에서 넘겨받아 적용하는 것을 출력합니다.
@@ -85,7 +85,7 @@ occasions:
 
 해석된 플러그인 중 계기를 선언한 것이 없으면 계기 이름은 **모양만(shape-only)** 검사됩니다: 어떤
 이름이든 받아들이므로, 엔진 플러그인이 생기기 전에도 비트를 쓸 수 있습니다. 엔진 플러그인이 전혀 없는
-이야기도 이렇게 플레이합니다: [씬을 이야기로 잇기](/getting-started/connect-scenes/)는 모든 씬이 모양만
+이야기도 이렇게 플레이합니다: [씬을 이야기로 잇기](/ko/getting-started/connect-scenes/)는 모든 씬이 모양만
 검사되는 계기 하나에 응답하게 하고 `lute play`로 플레이합니다. 어느 플러그인이든 계기를
 선언하는 순간, 선언되지 않은 계기를 가리키는 비트는 `E-OCCASION-UNKNOWN`이 되고, 대상 없이 선언된
 계기에 `target`을 붙이면 `E-BEAT-ATTR`입니다. 대상 도메인이 있는 계기에서 그 밖의 비트 대상 —
@@ -123,21 +123,21 @@ once: user
 | `target` | 선택. 계기가 이 대상을 위해 발생했을 때만 씬이 후보가 됩니다(점으로 구분된 id, `<entry target>`과 같은 모양. 계기가 대상 도메인을 선언했다면 `<prefix>.<member>`). dsl 0.26.0부터 `kind:<kind>`는 한 종류의 모든 멤버에 응답합니다 — [종류 대상](#종류-대상) 참고. |
 | `when` | 선택. `run` / `user` / `app` 상태, `quest.*`, `entry.<id>.read` / `entry.<id>.everRead`, 팩트 질의에 대한 CEL 조건. 씬 자신의 `scene.*` 상태는 아직 존재하지 않으므로 거부됩니다. |
 | `priority` | 선택 정수, 기본값 `0`. 높을수록 이깁니다. |
-| `once` | `run`(기본값 — 런마다 한 번), `user`(평생 한 번), 또는 `false`(반복 가능). [시계](/language/clock/)가 선언되어 있으면 `day`나 `slot`(dsl 0.24.0 §1): 시계의 날이나 슬롯이 바뀔 때까지 소진됩니다. |
+| `once` | `run`(기본값 — 런마다 한 번), `user`(평생 한 번), 또는 `false`(반복 가능). [시계](/ko/language/clock/)가 선언되어 있으면 `day`나 `slot`(dsl 0.24.0 §1): 시계의 날이나 슬롯이 바뀔 때까지 소진됩니다. |
 | `also` | 선택 `true`(dsl 0.23.0): `select: first` 계기에서 이 비트는 이기지 않습니다 — 승자 **뒤에** 곁들이는 대사로 제시되며, 주 비트가 하나도 자격이 없을 때도 제시됩니다. [계기 조합하기](#계기-조합하기)를 보세요. |
 
-`after:`는 의미가 그대로입니다 — [연결성](/connectivity/scene-graph/) 분석이 다루는 `visited` /
+`after:`는 의미가 그대로입니다 — [연결성](/ko/connectivity/scene-graph/) 분석이 다루는 `visited` /
 `completed` / `active`에 대한 구조적 전제조건 — 그리고 비트는 `after:`와 `when`이 모두 성립할 때만
 자격이 있습니다. `on` 없이 `when`, `target`, `priority`, `once`, `also`를 쓰면 `E-BEAT-ATTR`입니다. 어떤
 계기에도 응답하지 않는 씬은 계기가 제시하지 않습니다: 엔진이 씬 id로 직접 시작하고, `lute trace`와
 `lute run`은 그 씬 하나를 따로 걸으며, `lute play`는 그 씬을 제시하지 않습니다. 씬들을 이어 `lute play`로
-플레이할 수 있는 이야기로 만들려면 [씬을 이야기로 잇기](/getting-started/connect-scenes/)를 보세요.
+플레이할 수 있는 이야기로 만들려면 [씬을 이야기로 잇기](/ko/getting-started/connect-scenes/)를 보세요.
 bool이 아닌 `also`, 그리고 자격 있는 비트가 이미 모두 제시되거나 제시 목록에 오르는 `select: all` /
 `select: sequence` 계기의 `also: true`도 `E-BEAT-ATTR`입니다.
 
 ### 엔트리 비트
 
-[로어 엔트리](/language/lore-entries/)는 기존의 `target`, `when` 옆에 `on=`과 `priority=`를, 그리고
+[로어 엔트리](/ko/language/lore-entries/)는 기존의 `target`, `when` 옆에 `on=`과 `priority=`를, 그리고
 0.22.0부터는 선택적인 `once=`를 적어 계기에 응답합니다:
 
 ```lute
@@ -157,12 +157,12 @@ bool이 아닌 `also`, 그리고 자격 있는 비트가 이미 모두 제시되
 ### 번들 비트
 
 씬은 파일 하나에 비트 하나입니다. 한 캐릭터에게 짧은 씬이 많을 때 — 방문할 때마다 하는 NPC의 말,
-심문 질문 한 벌 — [로어 문서](/language/lore-entries/#entries-and-beats-in-one-file)가 그것들을 **번들
+심문 질문 한 벌 — [로어 문서](/ko/language/lore-entries/#한-파일에-엔트리와-비트)가 그것들을 **번들
 비트**(dsl 0.23.0)로 담을 수 있습니다: 씬 본문 전체 — 대사, branch, hub, `<match>`, 지시문 — 를 가진
 `<beat>` 블록이며, 씬 비트가 프런트매터에 적는 것과 같은 속성(`on`, `target`, `when`, `priority`, `once`,
 `also`, dsl 0.25.0부터 `share`와 `after`, 그리고 `select: all` 메뉴용 `title`)을 받습니다. 비트 자신의
 `after="…"`는 씬의 것처럼 검사되며(`✗ keeper.greeting [beat, priority 0] — after: prerequisite not satisfied`),
-[`share`](/language/beats/#one-event-several-places-share) 키를 가진 비트는 같은 키의 다른 비트가 `once` 기간 안에
+[`share`](/ko/language/beats/#한-이벤트-여러-장소-share) 키를 가진 비트는 같은 키의 다른 비트가 `once` 기간 안에
 제시되었으면 함께 소진됩니다(``✗ talks.solRoof [beat, priority 0] — once: day — `share: solWarm` already spent today by talks.solRadio``). [아래 예제](#lute-play)가 오르는 탑에서
 `lore/oskar.lute`는 `id: oskar`를 선언하고 오스카에게 둘을 줍니다:
 
@@ -182,8 +182,8 @@ bool이 아닌 `also`, 그리고 자격 있는 비트가 이미 모두 제시되
 그 id가 방문한 것으로 기록되므로 어떤 조건에서든 `visited('oskar.hunt')`로 읽을 수 있습니다(`after:`는
 여전히 씬과 퀘스트만 가리킵니다). `check-project`는 다른 비트처럼 판정합니다(`E-BEAT-UNREACHABLE`,
 `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). 언어 규칙은
-[비트](/language/beats/#beat-bundles)에 있습니다. 트랜스크립트에서 번들 비트의 종류는 `beat`이며,
-`lute trace --beat`와 `lute run --beat`는 번들 비트 하나를 따로 제시합니다([트레이싱](/tooling/tracing/#bundle-beats)
+[비트](/ko/language/beats/#비트-번들)에 있습니다. 트랜스크립트에서 번들 비트의 종류는 `beat`이며,
+`lute trace --beat`와 `lute run --beat`는 번들 비트 하나를 따로 제시합니다([트레이싱](/ko/tooling/tracing/#번들-비트)
 참고).
 
 ### 종류 대상
@@ -231,9 +231,9 @@ placeholder는 `{"kind": "occasionTarget", "entityKind": "trainer"}`이므로 �
 ```
 
 `lute beats`는 종류 비트를, 어떤 비트가 이름으로 가리키는 멤버마다의 사다리와, 어떤 비트도 따로 가리키지 않는
-멤버를 위한 `kind:<kind>` 사다리에 나열합니다([스토리 개요](/tooling/overviews/#lute-beats) 참고). `lute trace`와
-`lute test`는 멤버를 `state: { occasion.target: r16Gus }` 시드에서 읽습니다([`lute test`](/tooling/cli/#test)
-참고). 언어 규칙은 [비트](/language/beats/)에 있습니다.
+멤버를 위한 `kind:<kind>` 사다리에 나열합니다([스토리 개요](/ko/tooling/overviews/#lute-beats) 참고). `lute trace`와
+`lute test`는 멤버를 `state: { occasion.target: r16Gus }` 시드에서 읽습니다([`lute test`](/ko/tooling/cli/#test)
+참고). 언어 규칙은 [비트](/ko/language/beats/)에 있습니다.
 
 대상 없는 `select: sequence` 계기에서 `for="kind:<kind>"`(dsl 0.27.0 §3, 씬 프론트매터에서는 `for:`)는 비트 하나를
 `when`이 성립하는 멤버마다 한 번씩, 멤버 순서대로 제시하고, 그때마다 `occasion.target`을 그 멤버로 묶습니다.
@@ -267,7 +267,7 @@ steps:
 `once`는 멤버마다 따로 소진되므로 Mara에게 재생된 `once: run` 비트도 Tomas에게는 재생될 수 있고, 같은 이유로
 소진된 멤버는 한 줄로 찍힙니다(`✗ greet.wave for mara, tomas [beat, priority 0] — once: run — already presented this run`).
 
-[멤버마다 한 번](/language/beats/#once-per-member-for)을 참고하세요.
+[멤버마다 한 번](/ko/language/beats/#멤버별-1회-for)을 참고하세요.
 
 ## 선택
 
@@ -293,7 +293,7 @@ steps:
 선택은 결정적입니다: 같은 상태, 팩트, 제시 이력이면 어느 엔진에서든 같은 비트를 고릅니다. 가중 무작위나
 쿨다운은 그 위에 얹는 엔진 정책이며, 참조 도구는 정확히 이 순서를 구현합니다. `select: first` 승자를
 파일 순서가 정하는 경우 — priority가 같고 `when`이 서로 배타적임을 증명할 수 없는 두 비트 —
-`check-project`는 `W-BEAT-PRIORITY-TIE`를 경고합니다. 이 경고와 다른 비트 권고는 [비트](/language/beats/)
+`check-project`는 `W-BEAT-PRIORITY-TIE`를 경고합니다. 이 경고와 다른 비트 권고는 [비트](/ko/language/beats/)
 문서를 보세요.
 
 `select: sequence`에서 후보는 계기가 발생할 때 정해지고, 그 발생의 비트 하나가 재생된 뒤로는 뒤의 비트마다
@@ -347,8 +347,8 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 플레이스루는 리뷰 가능한 파일 하나입니다.
 
 이 절의 예제는 작은 로그라이크 프로젝트를 플레이합니다: 플레이어가 런마다 오르는 탑입니다. 플러그인은
-계기 넷, 월드 이벤트 하나(`events` export — [매니페스트](/plugins/manifests/) 참고), 그리고 지급이
-[상태에 적립되는](/plugins/manifests/#rewards-that-credit-state) 보상 종류 하나(dsl 0.23.0)를 선언합니다:
+계기 넷, 월드 이벤트 하나(`events` export — [매니페스트](/ko/plugins/manifests/) 참고), 그리고 지급이
+[상태에 적립되는](/ko/plugins/manifests/#상태에-적립되는-보상) 보상 종류 하나(dsl 0.23.0)를 선언합니다:
 
 ```yaml
 occasions:
@@ -487,7 +487,7 @@ expect:                                   # assert the end of the play
 
 이 스크립트의 트랜스크립트는 [트랜스크립트](#트랜스크립트)의 예제입니다.
 
-`state:`, `facts:`, `choose:`, `bridges:`는 [`lute trace --mock`](/tooling/tracing/) 파일과 정확히 같은
+`state:`, `facts:`, `choose:`, `bridges:`는 [`lute trace --mock`](/ko/tooling/tracing/) 파일과 정확히 같은
 문법을 씁니다.
 
 - `state:` 시드는 선언된 경로 — `scene.*`는 안 됨 — 를 가리키며, 값은 선언된 타입에 맞아야
@@ -518,12 +518,12 @@ expect:                                   # assert the end of the play
   `payload: { copies: 2 }`. 이 발생의 비트들은 `occasion.payload.copies`로 읽고, 다음 발생은 그 값 없이
   시작합니다. 계기가 선언하지 않은 필드, 타입에 맞지 않는 값, `payload:`를 선언하지 않은 계기에 준 payload는
   사용법 오류입니다(`` step 1: `payload.copy` — occasion `summon` declares no payload field `copy` (declared: `copies`) ``).
-  [계기 페이로드](/language/beats/#occasion-payloads)를 참고하세요.
+  [계기 페이로드](/ko/language/beats/#계기-페이로드)를 참고하세요.
 - `engine` — 같은 순간의 엔진 쓰기입니다(dsl 0.27.0 §4). [엔진 스텝](#엔진-스텝)과 같은
   `{ state?, facts?, retract?, accept? }`이며, 먼저 스텝의 `· engine` 레코드로 적용되고 퀘스트가 정착한 뒤에
   계기가 발생하므로, 그 비트들과 계기의 관문이 이 쓰기를 봅니다. `target: room.office`와
   `engine: { facts: [canEnter(office)] }`를 가진 `- occasion: enter`는 한 스텝에 문을 열고 들어갑니다.
-- [`raisedWhen:` 관문](/plugins/manifests/)을 선언한 계기는 관문이 성립하는 동안에만 발생합니다(dsl 0.27.0 §4).
+- [`raisedWhen:` 관문](/ko/plugins/manifests/)을 선언한 계기는 관문이 성립하는 동안에만 발생합니다(dsl 0.27.0 §4).
   관문이 거짓일 때 그 계기를 발생시키는 스텝은 플레이를 멈춥니다(종료 코드 1):
   `` step 1: E-OCCASION-GATE: the engine raises `enter` for `room.office` only when `holds('canEnter', [occasion.target])` (its `raisedWhen`), which is false here since `canEnter(office)` does not hold — make it hold first (an `engine:` write, an earlier step), or drop the step ``.
   멈춤은 적힌 스텝 자리(`plays/locked.play.yaml:2:5: step 1: …`)에 위치가 잡히고, 관문을 거짓으로 만든 읽기를
@@ -593,7 +593,7 @@ steps:
 
 쓰기는 그 순서대로 — 상태, 팩트, 철회, 수락 — 적용됩니다. 이 스텝은 아무것도 제시하지 않고 계기도 발생시키지
 않으며, 바로 뒤에 퀘스트 라이프사이클이 정착하므로 쓰기 하나로 그 스텝에서 퀘스트가 완료되거나 실패할 수
-있습니다. [`owner: engine`](/state/state-model/#owner-engine) 상태가 바로 이 스텝을 위한 것입니다:
+있습니다. [`owner: engine`](/ko/state/state-model/#owner-engine) 상태가 바로 이 스텝을 위한 것입니다:
 콘텐츠는 그것을 `::set`할 수 없지만 `engine:` 스텝은 쓸 수 있습니다 — `scene.*`와 `quest.*`를 제외한
 다른 선언된 상태도 마찬가지입니다.
 
@@ -764,7 +764,7 @@ steps:
 ### 게임이 끝났을 때
 
 스키마는 게임이 끝나는 때를 선언할 수 있습니다: `terminal: "run.fate == 'taken'"`(dsl 0.27.0 §4,
-[스키마](/state/schemas/) 참고). 그것이 성립하면 엔진은 어떤 계기도 발생시키지 않고, `lute play`도 그렇게
+[스키마](/ko/state/schemas/) 참고). 그것이 성립하면 엔진은 어떤 계기도 발생시키지 않고, `lute play`도 그렇게
 합니다. 그것을 성립시킨 스텝이 그렇다고 알리고, 모든 스텝이 재생된 플레이스루는 그 상태로 끝납니다(종료 코드 0):
 
 ```
@@ -782,7 +782,7 @@ steps:
 `E-OCCASION-GATE`입니다(종료 코드 1:
 `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on, or, if the engine raises `enter` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ``).
 그 뒤의 `advance:`도 마찬가지이며 시계도 움직이지 않습니다. `engine:` 스텝은 엔진 자신의 쓰기이므로 여전히 받아들여집니다.
-[`outsideRun: true`](/plugins/manifests/)를 선언한 계기(타이틀 화면, 런 사이의 갤러리)는 그래도 발생합니다.
+[`outsideRun: true`](/ko/plugins/manifests/)를 선언한 계기(타이틀 화면, 런 사이의 갤러리)는 그래도 발생합니다.
 
 `newRun: true`는 새 런을 시작하지만, 플레이가 이어지는 것은 새 런이 `terminal:`을 거짓으로 만들 때뿐입니다.
 런 상태(`run.*`, 런 티어 퀘스트나 관계)를 읽는 `terminal:`은 초기화되고, 새 런이 유지하는 것(`user.*`,
@@ -791,7 +791,7 @@ steps:
 `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
 모든 런을 넘어 남도록 의도한 결말은 스키마에서 그렇다고 적습니다:
-`terminal: { when: "user.crowned", persists: true }`([스키마](/state/schemas/#an-ending-that-outlives-runs-persists-true)).
+`terminal: { when: "user.crowned", persists: true }`([스키마](/ko/state/schemas/#실행을-초월하는-종료-persists-true)).
 그러면 `check-project`는 경고하지 않고, `lute play`는 새 런을 권하는 대신 게임이 영영 끝났다고 말합니다:
 게임을 끝낸 스텝, 그 뒤의 `newRun: true`, 이후의 발생이 모두 그렇게 말하며 어느 것도 `newRun`을 권하지
 않습니다:
@@ -832,7 +832,7 @@ steps:
 
 ### 시계 앞으로 돌리기
 
-스키마가 [시계](/language/clock/)를 선언하면(dsl 0.24.0 §1), `advance: slot`, `advance: <n>`(그만큼의 슬롯),
+스키마가 [시계](/ko/language/clock/)를 선언하면(dsl 0.24.0 §1), `advance: slot`, `advance: <n>`(그만큼의 슬롯),
 `advance: day`(시계가 어느 슬롯에 있든 다음 날의 첫 슬롯)가 한 스텝에 시계를 앞으로 움직입니다. 이 스텝은
 시계의 `day`와 `slot` 경로를 쓰고 — 마지막 슬롯을 넘으면 다음 날로 넘어갑니다 — 모든 퀘스트를 정착시킨
 뒤(새 시각이 지나친 `by` 기한은 여기서, 아무것도 제시되기 전에 실패합니다), 시계가 `raise` 계기를
@@ -1338,7 +1338,7 @@ steps:
 `expect: { clock: … }`는 도착할 때 기대하는 시각을 밝히고(dsl 0.26.0 §7), 마지막 스텝의 `expect:`는
 인계입니다: 다음 파일이 기대는 팩트, 상태, 퀘스트 상태, 시계. 플러그인 호출에는 스텝 수준 `bridges:`를,
 결정에는 스텝 수준 `choose:`를 주어 그 응답이 다른 파일의 스텝에 소비되지 않게 하세요.
-[여러 작가 가이드](/guides/multi-author/)를 보세요. 하루만 앞으로 돌린 경로 뒤에 포함된, 수요일 아침을
+[여러 작가 가이드](/ko/guides/multi-author/)를 보세요. 하루만 앞으로 돌린 경로 뒤에 포함된, 수요일 아침을
 기대하는 시장:
 
 ```yaml
@@ -1504,7 +1504,7 @@ steps:
 `slew`는 run 등급 관계이므로 처치 기록은 새 런까지 살아남지 못하고 `town.victory`는 다시 닫힙니다.
 `climb`(`tier="run"`)은 처음부터 다시 시작하지만 `veteran`은 계속 셉니다.
 
-[`prev.run.<path>`](/state/state-model/#the-previous-run)는 읽기 전용이고 런이 한 번 끝나기 전까지
+[`prev.run.<path>`](/ko/state/state-model/#이전-런)는 읽기 전용이고 런이 한 번 끝나기 전까지
 `unset`이므로, 콘텐츠는 가드해야 합니다(`has(prev.run.floor)`). 탑의 `start.recap`이 그렇게 하며,
 [계기 조합하기](#계기-조합하기)가 `newRun` 뒤의 모습을 보여 줍니다. 세이브 중간에서 시작하는 스크립트는
 다른 경로처럼 시드합니다 — `state: { prev.run.floor: 5 }` — 그러면 첫 `runStart`가 회상을
@@ -1574,17 +1574,17 @@ steps:
 
 ### 시즌과 `rearm` 퀘스트
 
-런에 묶이지 않는 초기화가 두 가지 있습니다(dsl 0.27.0 §5). 스키마의 [시즌](/state/schemas/#seasons)은
+런에 묶이지 않는 초기화가 두 가지 있습니다(dsl 0.27.0 §5). 스키마의 [시즌](/ko/state/schemas/#시즌)은
 `live` 조건이 참이 될 때 열리고, 플레이는 그 순간을 원인이 된 스텝 아래에 출력합니다:
 `season harvest opens — season.harvest.* reset to defaults; last window: prev.season.harvest.tokens = 2`
 (다시 거짓이 되면 `season harvest closes`). 시즌이 열리면 `season.harvest.*`를 `prev.season.harvest.*`로 옮기고
 기본값으로 되돌리며, 그 시즌의 `once: season:harvest` 비트와 `tier="season:harvest"` 퀘스트를 다시 처음
-상태로 만듭니다(`quest missions -> unset (season:harvest opened; was complete)`). [`rearm=`](/language/quests-and-scenes/#quests-that-come-back-season-tiers-and-rearm)이 있는
+상태로 만듭니다(`quest missions -> unset (season:harvest opened; was complete)`). [`rearm=`](/ko/language/quests-and-scenes/#돌아오는-퀘스트-시즌-tier와-rearm)이 있는
 퀘스트는 첫 정산 뒤로 조건이 참이 될 때마다 `unset`으로 돌아가며 `quest festival -> unset (rearmed; was complete)`로
 출력되고, 성립하는 `start`가 있으면 같은 정산에서 다시 활성화됩니다.
 여러 날을 건너는 `advance:` 하나는 지나는 모든 위치에서 둘 다 살핍니다: 도중에 열리고 닫히는 시즌은 그 자리에서
 퀘스트를 시작하고 실패시키며, rearm은 조건이 참이 되는 날에 작동하고, 각각 그 위치로의 시계 이동 뒤에 출력됩니다.
-[`spentBy`](/language/beats/#until-it-is-solved-spentby) 조건으로 소진된 비트는 조건이 성립하는 동안 ``spentBy: `run.solved` holds``,
+[`spentBy`](/ko/language/beats/#해결될-때까지-spentby) 조건으로 소진된 비트는 조건이 성립하는 동안 ``spentBy: `run.solved` holds``,
 한 번 성립한 뒤에는 ``spentBy: `run.solved` held — spent this run``이라는 이유와 함께(조건이 다시 거짓이 되어도 `once` 기간
 동안 소진된 채로 남습니다), 소진된 `once: week` 비트는 `once: week — already presented this week`와 함께 나열됩니다.
 
@@ -1740,7 +1740,7 @@ expect:
 ### 기한과 대상 지정 목표
 
 두 목표 속성(dsl 0.23.0)은 목표가 **언제** 판정되는지를 바꿉니다 — 언어 쪽 설명은
-[퀘스트와 씬](/language/quests-and-scenes/#deadlines)에 있습니다:
+[퀘스트와 씬](/ko/language/quests-and-scenes/#기한)에 있습니다:
 
 - `by="<condition>"` — 기한. 목표가 완료되지 않은 동안 `by`가 처음 성립하면 목표는 **실패**하고 다시는
   판정되지 않습니다. 실패한 필수 목표는 퀘스트를 실패시킵니다: `failed` 보상, `questFailed` 핸들러, 부모
@@ -1757,7 +1757,7 @@ expect:
 `by`는 모든 정착에서, `on=` 목표의 `done`은 그 계기가 발생할 때만 판정되므로, `done`이 함의하는
 `by`(`done="run.v == 'fell'" by="run.v != 'undecided'"`)는 참이 되는 정착에서 — `done`이 판정되기도 전에 —
 목표를 실패시킵니다. `check`는 그런 `by=`에 `W-DEADLINE-BEFORE-DONE`을 경고하고 같은 조건의 `until=`을
-제안합니다. [퀘스트와 씬](/language/quests-and-scenes/)을 보세요.
+제안합니다. [퀘스트와 씬](/ko/language/quests-and-scenes/)을 보세요.
 
 위의 [`also` 예제](#계기-조합하기)에서 목걸이 목표는 엔진이 처치를 단언한 스텝 3 뒤의 정착에서
 완료됩니다. 스텝 4는 `npc.maud`를 위해 `talk`를 발생시키므로 보고 목표(`on="talk" target="npc.oskar"`)는
@@ -1802,7 +1802,7 @@ steps:
 방식으로 이름이 붙습니다. [퀘스트 구조](#퀘스트-구조)를 보세요.
 
 **상태에 적립되는 보상.** 탑의 `EMBERS` 보상 종류는
-[`credits: user.embers`](/plugins/manifests/#rewards-that-credit-state)를 선언하므로, 위 스텝 5가 퀘스트
+[`credits: user.embers`](/ko/plugins/manifests/#상태에-적립되는-보상)를 선언하므로, 위 스텝 5가 퀘스트
 보상을 지급할 때 스칼라 수량이 그 경로에 더해집니다 — `grant houndHunt EMBERS 50 (credits user.embers = 50)`,
 그리고 플레이 끝의 `state: { user.embers: 50 }`이 성립합니다. 정수는 소수점 없이 출력됩니다. `--json`에서
 `grant` 레코드는 `"credited": { "path": "user.embers", "value": 50 }`을 가집니다. 범위 수량은 엔진의 굴림이라 여기서는
@@ -1812,7 +1812,7 @@ steps:
 ### 퀘스트 구조
 
 퀘스트와 계기의 속성 네 가지(dsl 0.24.0 §2)가 라이프사이클이 움직이는 방식을 바꾸며, 트랜스크립트는 그
-하나하나를 보여 줍니다 — 언어 쪽 설명은 [퀘스트와 씬](/language/quests-and-scenes/)에 있습니다:
+하나하나를 보여 줍니다 — 언어 쪽 설명은 [퀘스트와 씬](/ko/language/quests-and-scenes/)에 있습니다:
 
 - 하위 퀘스트의 `<quest activate="accept">` — 부모와 함께 활성화되지 않습니다: `::accept`를 기다리고, 부모가
   `active`인 동안에만 활성화됩니다. 부모가 활성이 아닐 때의 수락은 아무 효과 없이 소비되며, 트랜스크립트는
@@ -2007,7 +2007,7 @@ expect:
 ### 브리지 호출에 답하기
 
 호스트 서비스를 부르는 플러그인 지시문 — 기술 판정, 미니게임 — 은 `bridgeResult` 효과를 통해 서비스의 응답을
-`scene.*` 결과 슬롯에 씁니다([매니페스트](/plugins/manifests/) 참고). 참조 플레이어는 서비스를 부르지
+`scene.*` 결과 슬롯에 씁니다([매니페스트](/ko/plugins/manifests/) 참고). 참조 플레이어는 서비스를 부르지
 않으므로 스크립트가 직접 호출에 답합니다(dsl 0.24.0 §5): `bridges: { <tag>: [ {<field>: value}, … ] }`이며,
 `<tag>`는 지시문의 이름이고 목록의 항목 하나가 그 태그의 호출 하나에 호출 순서대로 답합니다.
 
@@ -2106,7 +2106,7 @@ steps:
 ```
 
 `--json`에서 호출의 `plugin` 레코드에는 `"answered": [{ "field": "passed", "value": true }, …]`가, 워크가
-멈춘 곳에서는 `"unanswered": ["passed", "margin"]`이 담깁니다. [`lute trace`](/tooling/tracing/), `lute test`,
+멈춘 곳에서는 `"unanswered": ["passed", "margin"]`이 담깁니다. [`lute trace`](/ko/tooling/tracing/), `lute test`,
 `lute run --mock`도 같은 `bridges:` 키를 받습니다.
 
 ### 기대값
@@ -2217,7 +2217,7 @@ dsl 0.27.0부터 바늘의 속성 블록은 버리지 않고 판정합니다(0.2
 경로에서만 나옵니다. dsl 0.26.0부터 `lute test`는 플레이 프로젝트를 모든 플레이에 대해 한 번만 컴파일하고 —
 컴파일 진단도 플레이마다가 아니라 한 번 출력됩니다 — 플레이를 모든 논리 코어에서 병렬로 실행하며
 (`RAYON_NUM_THREADS`를 따름) 파일 순서대로 보고합니다.
-[`lute test`](/tooling/cli/#test)를 보세요.
+[`lute test`](/ko/tooling/cli/#test)를 보세요.
 
 ### 파생과 `--explain`
 
@@ -2312,7 +2312,7 @@ explain safe(warden): holds
 
 ### 배타 관계
 
-[`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes)로 선언한 관계(dsl 0.25.0 §1)는 같은 인자에서
+[`excludes:`](/ko/state/facts-and-datalog/#배타적-관계-excludes)로 선언한 관계(dsl 0.25.0 §1)는 같은 인자에서
 결코 함께 성립하지 않습니다. `check-project`가 증명할 수 있는 것은 증명하고, 둘 다 *가능하기만* 한 곳 — 한 씬의
 갈래가 `panicked(maren)`을 assert하고 뒤의 씬이 `calm(maren)`을 assert하는 경우 — 에서는 플레이가 모든 쓰기
 뒤에 파생된 것까지 포함한 실시간 팩트를 검사합니다. 둘 다 성립하면 그 쓰기 바로 아래에 위반을 출력하고 거기서
@@ -2335,7 +2335,7 @@ explain safe(warden): holds
 팩트를 함께 성립시키는 `engine:` 스텝은 그 스텝에서 멈추고(``── halted: <play>:<line>:<col>: step <n>: exclusive relations hold together — …``),
 스크립트 자신의 `facts:`(프로젝트의 시드와 규칙이 거기서 도출한 것 포함)가 이미 배타를 깨면 스텝 1 전에 멈춥니다:
 ``── halted: the script's seeded world holds exclusive relations together before step 1 — …; fix the script's `facts:` (or the `excludes:` declaration)``.
-[`lute trace`](/tooling/tracing/#exclusive-relations)와 `lute test`는 같은 쓰기에서 워크를 거부합니다.
+[`lute trace`](/ko/tooling/tracing/#배타-관계)와 `lute test`는 같은 쓰기에서 워크를 거부합니다.
 
 ### 사용법 오류
 

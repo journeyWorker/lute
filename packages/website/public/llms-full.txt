@@ -4073,7 +4073,7 @@ id: choice.readback
 
 ## Ask
 
-<branch id="ask" timeout="10">
+<branch id="ask" timeout="10" default="no">
   <choice id="yes" text="Yes">
     @mira: Great.
   </choice>
@@ -7099,7 +7099,9 @@ has already cleared:
 
 A `<branch>` compiles to one `choice` record. A `prompt="…"` is the line the host shows above the
 options, and `timeout="N"` is a countdown in whole seconds (a positive integer, else
-`E-BRANCH-TIMEOUT`):
+`E-BRANCH-TIMEOUT`). A timed branch MUST also name its timeout outcome with
+`default="<choice id>"`; the two attributes require each other, the id must be a direct option,
+and that option cannot carry `when` (`E-BRANCH-DEFAULT`).
 
 ```lute check
 ---
@@ -7110,7 +7112,7 @@ title: The number
 
 ## Counter
 
-<branch id="number" prompt="Ask for her number?" timeout="10">
+<branch id="number" prompt="Ask for her number?" timeout="10" default="soft">
   <choice id="blunt" text="Just ask, flatly">
     @fixer: Marina. Your number.
   </choice>
@@ -7133,7 +7135,8 @@ title: The number
   ],
   "converge": "001-0600",
   "prompt": "Ask for her number?",
-  "timeout": 10
+  "timeout": 10,
+  "default": "soft"
 }
 ```
 

@@ -48,7 +48,7 @@ a-story/
 있습니다.
 
 `lute.project.yaml`은 폴더를 프로젝트로 표시합니다. `defaults:` 블록은 모든 문서에 같은 `uses:`
-줄을 주므로 어느 장면도 그 줄을 반복할 필요가 없습니다([Project defaults](/language/imports/#project-defaults)).
+줄을 주므로 어느 장면도 그 줄을 반복할 필요가 없습니다([Project defaults](/ko/language/imports/#프로젝트-기본값)).
 `chapters:` 블록은 장들을 순서대로 잇습니다:
 
 ```yaml
@@ -375,4 +375,4 @@ when: "!visited('accusation')"
 이 페이지의 어느 것도 임시 대역이 아닙니다. 게임이 만들어지면 엔진이 플레이 스크립트가 하던
 자리에서 `chapter`를 발생시키고, 이기는 장면을 `lute play`가 보여 준 그대로 제시합니다. 엔진의
 플러그인이 계기를 선언하면 체커는 철자가 틀린 `on:`도 잡아냅니다.
-[계기](/ko/tooling/play/#계기)와 [비트](/language/beats/)를 보세요.
+[계기](/ko/tooling/play/#계기)와 [비트](/ko/language/beats/)를 보세요.
