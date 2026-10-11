@@ -60,6 +60,7 @@ pub(super) fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
             }
             ok
         }
+        Expr::Ident(_) | Expr::Literal(_) => true,
         _ => false,
     }
 }
