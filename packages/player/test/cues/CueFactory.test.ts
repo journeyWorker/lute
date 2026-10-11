@@ -1,6 +1,10 @@
 import { Effect, Schema } from "effect"
 import { describe, expect, it } from "@effect/vitest"
+import { join } from "node:path"
 import * as Runtime from "@lute-lang/runtime"
+import * as LuteBun from "../../../runtime/src/bun.js"
+import { BundleSource } from "../../../runtime/src/index.js"
+import { compileBundle, jsonLines, sessionRoot } from "../../../runtime/test/support.js"
 import * as Bindings from "../../src/bindings/schema.js"
 import * as CueFactory from "../../src/cues/index.js"
 
@@ -93,13 +97,21 @@ describe("CueFactory", () => {
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
 
-  const conformanceCases = ["conformance/staging-all-directives", "conformance/choice-basic", "conformance/choice-timed-default", "conformance/command-lifecycle", "conformance/cel-facts", "conformance/quest-basic", "session/stage-snapshot", "session/timed-choice"]
-  for (const caseName of conformanceCases) {
-    it.effect(`decodes ${caseName} output events without a defect`, () => Effect.gen(function* () {
-      const cues = yield* factory.fromOutput(output, new Set())
-      expect(cues.length).toBeGreaterThan(0)
-    }))
-  }
+  it.effect("resolves a timed branch's prompt, option text, timeout and default from the bundle", () => Effect.gen(function* () {
+    const project = join(sessionRoot, "timed-choice", "project")
+    const compiled = yield* compileBundle(project)
+    const source = yield* Effect.provide(
+      Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load),
+      LuteBun.bundle(compiled)
+    )
+    const first = jsonLines(join(sessionRoot, "timed-choice", "expected.jsonl"))
+      .map((line) => Schema.decodeUnknownSync(Runtime.Contract.Output)(Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(line).output))
+      .find((output) => output.await.type === "awaitChoice")
+    if (first === undefined || first.await.type !== "awaitChoice") throw new Error("timed-choice never awaits a choice")
+    const view = CueFactory.make({ bundle: source, bindings }).choiceView(first.await)
+    expect(view).toMatchObject({ id: "knock", construct: "branch", prompt: "Open the door?", timeout: 5, default: "wait" })
+    expect(view.options.map((option) => [option.id, option.text])).toEqual([["open", "Open it"], ["wait", "Wait"]])
+  }))
 
   it.effect("maps Background StageCue", () => Effect.gen(function* () {
     const cues = yield* factory.fromOutput(output, new Set())

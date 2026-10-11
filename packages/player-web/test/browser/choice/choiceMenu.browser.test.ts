@@ -1,7 +1,7 @@
 import { Effect, Stream } from "effect"
-import { Container, EventBoundary, FederatedPointerEvent, Point } from "pixi.js"
+import { Container, EventBoundary, FederatedPointerEvent, Point, Text } from "pixi.js"
 import { describe, expect, it } from "vitest"
-import type { Contract } from "@lute-lang/runtime"
+import type { ChoiceView } from "@lute-lang/player"
 import type { Theme } from "../../../src/engine/types.js"
 import { ChoiceMenu } from "../../../src/choice/choiceMenu.js"
 
@@ -14,19 +14,17 @@ const theme: Theme = {
   readText: 0x99aacc
 }
 
-const menu: Contract.MenuAwait = {
-  construct: "",
-  document: "",
+const menu: ChoiceView = {
   id: "menu-1",
-  options: [
-    { id: "first", exit: false, once: false, verdict: "open" },
-    { id: "closed", exit: false, once: false, verdict: "closed" },
-    { id: "third", exit: true, once: false, verdict: "open" }
-  ],
-  position: "",
-  presentation: 0,
+  construct: "branch",
   prompt: "Choose",
-  timeout: 10
+  timeout: 10,
+  default: "first",
+  options: [
+    { id: "first", text: "First way", exit: false, once: false, verdict: "open" },
+    { id: "closed", text: "Closed way", exit: false, once: false, verdict: "closed" },
+    { id: "third", text: "Third way", exit: true, once: false, verdict: "open" }
+  ]
 }
 
 describe("ChoiceMenu browser scene", () => {
@@ -34,6 +32,21 @@ describe("ChoiceMenu browser scene", () => {
   it("shows disabled options without selecting them", () => {
     const entity = new ChoiceMenu(new Container(), theme)
     expect(entity.target.visible).toBe(false)
+  })
+
+  it("renders the prompt and the authored option text, not option ids", async () => {
+    const entity = new ChoiceMenu(new Container(), theme)
+    const result = Effect.runPromise(entity.show(menu, Stream.empty))
+    const texts: string[] = []
+    const collect = (node: Container): void => {
+      if (node instanceof Text) texts.push(node.text)
+      for (const child of node.children) collect(child)
+    }
+    collect(entity.target)
+    expect(texts).toEqual(expect.arrayContaining(["Choose", "First way", "Closed way", "Third way"]))
+    expect(texts).not.toContain("first")
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "1" }))
+    await expect(result).resolves.toBe("first")
   })
 
   it("supports keyboard navigation and enter", async () => {

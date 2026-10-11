@@ -3,6 +3,7 @@ import type { Bindings, ChoiceView, EffectSpec, LineView, PlayMode, PlayerAction
 import type { TextStyleBinding } from "../text/richText.js"
 import type { PixiAppShape } from "../engine/types.js"
 import type { WorldShape } from "../engine/types.js"
+import { PixiApp } from "../engine/app.js"
 import { World } from "../engine/world.js"
 import { UiTag, type UiShape } from "../ui/ui.js"
 import { ChoiceMenu } from "../choice/choiceMenu.js"

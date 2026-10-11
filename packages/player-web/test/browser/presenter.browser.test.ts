@@ -1,7 +1,7 @@
 import { Effect, Layer, Stream } from "effect"
 import { Container, EventBoundary, FederatedPointerEvent, Point, Sprite, Texture, type Application } from "pixi.js"
 import { describe, expect, it } from "vitest"
-import type { Bindings, MenuAwait, Stage, StageCue } from "@lute-lang/player"
+import type { Bindings, ChoiceView, Stage, StageCue } from "@lute-lang/player"
 import type { Layers, Theme } from "../../src/engine/types.js"
 import { PixiApp } from "../../src/engine/app.js"
 import { World } from "../../src/engine/world.js"
@@ -149,7 +149,14 @@ describe("PixiPresenter scene cues", () => {
   }))
 
   it("resolves showChoice from a pointer click", async () => withPresenter(async (presenter, pixi) => {
-    const menu: MenuAwait = { construct: "", document: "", id: "menu", options: [{ id: "yes", exit: true, once: false, verdict: "open" }], position: "", presentation: 0, prompt: "Choose" }
+    const menu: ChoiceView = {
+      id: "menu",
+      construct: "branch",
+      prompt: "Choose",
+      timeout: undefined,
+      default: undefined,
+      options: [{ id: "yes", text: "Yes", exit: true, once: false, verdict: "open" }]
+    }
     const result = Effect.runPromise(presenter.showChoice(menu, Stream.empty))
     const target = pixi.layers.choice.children[0]
     const tap = new FederatedPointerEvent(new EventBoundary(target ?? new Container()))

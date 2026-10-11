@@ -5,7 +5,7 @@ import { chromium, expect, test, type Browser, type Page } from "playwright/test
 
 interface DemoWindow extends Window {
   luteDemo: {
-    view: () => Promise<{ flow: string; countdownRemaining?: number }>
+    view: () => Promise<{ flow: string; story: string; countdownRemaining?: number }>
     act: (action: unknown) => Promise<void>
   }
 }
