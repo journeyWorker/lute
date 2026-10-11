@@ -4,3 +4,11 @@
  */
 export * from "./ports/index.js"
 export type * from "./model.js"
+export * from "./LutePlayer.js"
+export * as Bindings from "./bindings/load.js"
+export * as Cues from "./cues/index.js"
+export * as Director from "./director/index.js"
+export * as Machine from "./machine/playerMachine.js"
+export * as Scheduler from "./scheduler/index.js"
+export * as Session from "./session/index.js"
+export * as Stores from "./stores/index.js"

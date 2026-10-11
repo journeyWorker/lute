@@ -44,7 +44,7 @@ const playingActor = () => {
 
 const lineActor = () => {
   const run = playingActor()
-  run.actor.send({ type: "line.shown", read: false, hasVoice: false })
+  run.actor.send({ type: "line.typing", read: false, hasVoice: false })
   return run
 }
 
@@ -123,6 +123,13 @@ describe("playerMachine", () => {
     expect(run.actor.getSnapshot().context.mode).toBe("normal")
   })
 
+  it("does not activate read-only skip on an unread current line", () => {
+    const run = lineActor()
+    const before = run.commands.length
+    run.actor.send({ type: "toggleSkip" })
+    expect(run.actor.getSnapshot().context.mode).toBe("normal")
+    expect(run.commands.slice(before)).toHaveLength(0)
+  })
   it("stops read skip at choices", () => {
     const run = playingActor()
     run.actor.send({ type: "toggleSkip" })
@@ -159,6 +166,13 @@ describe("playerMachine", () => {
     expect(run.commands.at(-1)?.type).toBe("line.release")
   })
 
+  it("skip all releases an unread current line on activation", () => {
+    const run = lineActor()
+    run.actor.send({ type: "setSettings", settings: { skipMode: "all" } })
+    run.actor.send({ type: "toggleSkip" })
+    expect(run.actor.getSnapshot().context.mode).toBe("skip")
+    expect(run.commands.at(-1)?.type).toBe("line.release")
+  })
   it("skipHold is active only while held", () => {
     const run = playingActor()
     run.actor.send({ type: "skipHold", held: true })
@@ -206,7 +220,12 @@ describe("playerMachine", () => {
     run.actor.send({ type: "batch.settled", await: choiceAwait(3) })
     run.actor.send({ type: "openMenu" })
     run.actor.send({ type: "close" })
-    expect(commandTypes(run.commands).slice(-2)).toEqual(["countdown.pause", "countdown.resume"])
+    expect(run.commands.slice(-4)).toEqual([
+      { type: "countdown.pause" },
+      { type: "overlay.show", overlay: "menu", confirm: undefined },
+      { type: "overlay.hide" },
+      { type: "countdown.resume" },
+    ])
   })
 
   it("cancels pending auto when an overlay opens", () => {
@@ -330,6 +349,14 @@ describe("playerMachine", () => {
     expect(run.commands.at(-1)?.type).toBe("rollback")
   })
 
+  it("rolls back from a later choice", () => {
+    const run = playingActor()
+    run.actor.send({ type: "batch.settled", await: choiceAwait() })
+    run.actor.send({ type: "choose", option: "first" })
+    run.actor.send({ type: "batch.settled", await: choiceAwait() })
+    run.actor.send({ type: "rollback" })
+    expect(run.commands.at(-1)?.type).toBe("rollback")
+  })
   it("rolls back from idle", () => {
     const run = playingActor()
     run.actor.send({ type: "batch.settled", await: { type: "idle" } })
@@ -407,6 +434,11 @@ describe("playerMachine", () => {
     expect(view).toEqual({ flow: "playing", story: "running", mode: "normal", overlay: "menu", countdownRemaining: undefined, uiHidden: false })
   })
 
+  it("derives choice from the nested story state", () => {
+    const run = playingActor()
+    run.actor.send({ type: "batch.settled", await: choiceAwait() })
+    expect(derivePlayerView(run.actor.getSnapshot()).story).toBe("choice")
+  })
   it("survives seeded random action sequences without sending runtime input through overlays", () => {
     let seed = 0x12345678
     const next = () => {

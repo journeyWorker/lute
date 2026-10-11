@@ -117,18 +117,60 @@ const castNamesFrom = (artifacts: Readonly<Record<string, unknown>>): Map<string
   return names
 }
 
-const commandIndexFrom = (bundle: Bundle): Map<string, JsonRecord> => {
-  const result = new Map<string, JsonRecord>()
-  const visit = (value: unknown): void => {
-    if (isRecord(value)) {
-      const position = positionOf(value)
-      if (position && kindOf(value)) result.set(position, value)
-      for (const child of Object.values(value)) visit(child)
-    } else if (Array.isArray(value)) for (const child of value) visit(child)
+const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> => {
+  const result = new Map<string, Map<string, JsonRecord>>()
+  const index = isRecord(bundle.index) ? bundle.index : undefined
+  const documents = Array.isArray(index?.documents) ? index.documents : []
+  const artifactKeys = new Map<string, Set<string>>()
+  const addKey = (artifact: string, key: unknown): void => {
+    if (!string(key) || key.length === 0) return
+    const keys = artifactKeys.get(artifact) ?? new Set<string>()
+    keys.add(key)
+    artifactKeys.set(artifact, keys)
   }
-  for (const artifact of Object.values(bundle.artifacts)) visit(artifact)
+  // Runtime record.document is the source document path (for example,
+  // `game.lute`), not the compiled artifact filename (`game.lute.json`).
+  // Keep the indexed path/key aliases and the artifact-derived aliases for
+  // synthetic bundles that do not carry an index.
+  for (const document of documents) {
+    if (!isRecord(document) || !string(document.artifact)) continue
+    addKey(document.artifact, document.path)
+    addKey(document.artifact, document.key)
+  }
+  const withoutJson = (value: string): string => value.endsWith(".json") ? value.slice(0, -5) : value
+  const basename = (value: string): string => {
+    const normalized = value.replaceAll("\\", "/")
+    const slash = normalized.lastIndexOf("/")
+    return slash < 0 ? normalized : normalized.slice(slash + 1)
+  }
+  for (const [artifactPath, artifact] of Object.entries(bundle.artifacts)) {
+    // Store the set before adding aliases so aliases are not lost when the
+    // artifact was absent from the bundle index.
+    const keys = artifactKeys.get(artifactPath) ?? new Set<string>()
+    artifactKeys.set(artifactPath, keys)
+    addKey(artifactPath, field(record(artifact, "meta"), "id"))
+    addKey(artifactPath, field(artifact, "document"))
+    addKey(artifactPath, withoutJson(artifactPath))
+    addKey(artifactPath, withoutJson(basename(artifactPath)))
+    for (const documentKey of keys) {
+      const commands = result.get(documentKey) ?? new Map<string, JsonRecord>()
+      const visit = (value: unknown): void => {
+        if (isRecord(value)) {
+          const position = positionOf(value)
+          if (position && kindOf(value)) commands.set(position, value)
+          for (const child of Object.values(value)) visit(child)
+        } else if (Array.isArray(value)) for (const child of value) visit(child)
+      }
+      visit(artifact)
+      result.set(documentKey, commands)
+    }
+  }
   return result
 }
+
+const LINE_RUNTIME_FIELDS = ["lineId", "role", "speaker", "text", "voiceKey"] as const
+const lineRuntimeFields = (value: JsonRecord): JsonRecord =>
+  Object.fromEntries(LINE_RUNTIME_FIELDS.flatMap((key) => (key in value ? [[key, value[key]]] : [])))
 
 const decodeRecord = (value: JsonRecord): JsonRecord => {
   const decoded = decodeCommand(value)
@@ -169,7 +211,10 @@ const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, re
       const pattern = bindings.voice?.pattern
       const voice = pattern && line.voiceKey ? pattern.replaceAll("{voiceKey}", line.voiceKey) : undefined
       return cueBase("line", timing, false, voice ? [voice] : [], `line ${line.lineId}`, (ctx) => Effect.gen(function* () {
-        if (voice) yield* Effect.forkDetach(ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0 }))
+        if (voice) {
+          const played = ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0 })
+          yield* Effect.forkDetach(ctx.voiceEnded === undefined ? played : played.pipe(Effect.ensuring(ctx.voiceEnded(line.lineId))))
+        }
         yield* ctx.presenter.showLine(line, "normal")
       }), (ctx) => ctx.presenter.showLine(line, "skip"), line)
     }
@@ -257,10 +302,22 @@ const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFac
         }
         const runtimeRecord = isRecord(event.record) ? event.record : {}
         const position = positionOf(runtimeRecord)
-        if (!position) return yield* Effect.die(new Error("runtime record has no position"))
-        const source = commands.get(position)
+        if (!position) {
+          // Session bookkeeping (quest state, objective settlement) carries no
+          // source position: nothing to present, kept for order.
+          const kind = string(runtimeRecord.kind) ? runtimeRecord.kind : "record"
+          cues.push(cueBase("bookkeeping", timingOf(runtimeRecord, kind), false, [], `bookkeeping ${kind}`, noop, noop))
+          continue
+        }
+        const documentCommands = commands.get(event.document)
+        const source = documentCommands?.get(position)
         if (!source) return yield* Effect.die(new Error(`runtime record position not found: ${event.document}:${position}`))
-        const command = decodeRecord({ ...source, ...runtimeRecord })
+        // The IR command is the record's full shape; the runtime record adds
+        // only run-time values (a line's resolved text and identities).
+        // Other kinds' record fields (e.g. a `set`'s evaluated value) are
+        // not command fields and must not overwrite the command.
+        const decoded = decodeRecord(source)
+        const command = decoded.kind === "line" ? { ...decoded, ...lineRuntimeFields(runtimeRecord) } : decoded
         const cue = makeRecordCue(command, bindings, locale, readLines, castNames)
         if (cue === undefined) return yield* Effect.die(new Error(`unknown runtime record kind: ${String(command.kind)}`))
         cues.push(cue)

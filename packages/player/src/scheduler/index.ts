@@ -42,16 +42,27 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
       }
       if (cue.timing.delay + timelineOffset > 0) yield* sleep(cue.timing.delay + timelineOffset)
       yield* publish({ _tag: "CueStarted", index, cue })
-      const normal = Effect.as(cue.execute(ctx), "normal")
-      const switched = Effect.as(
-        Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
-        "skip"
-      )
-      const outcome = yield* Effect.raceFirst(normal, switched)
-      if (outcome === "skip") yield* cue.complete(ctx)
       if (cue.kind === "line" && cue.line !== undefined) {
+        // The line types until it is fully shown (or revealed); switching to
+        // skip while it types completes it at once. Then the gate holds the
+        // batch until the line is released.
+        yield* gate.started(cue.line)
+        const typed = Effect.as(cue.execute(ctx), "normal")
+        const switched = Effect.as(
+          Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
+          "skip"
+        )
+        if ((yield* Effect.raceFirst(typed, switched)) === "skip") yield* cue.complete(ctx)
         yield* publish({ _tag: "LineShown", line: cue.line })
         yield* gate.release(cue.line)
+      } else {
+        const normal = Effect.as(cue.execute(ctx), "normal")
+        const switched = Effect.as(
+          Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
+          "skip"
+        )
+        const outcome = yield* Effect.raceFirst(normal, switched)
+        if (outcome === "skip") yield* cue.complete(ctx)
       }
       yield* publish({ _tag: "CueDone", index, cue })
     })
