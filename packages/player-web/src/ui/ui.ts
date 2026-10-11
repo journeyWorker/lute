@@ -26,6 +26,7 @@ export class Ui implements UiShape {
   private readonly world: WorldShape | undefined
   private theme: Theme
   private current: ScreenView | HudScreen | undefined
+  private design = { width: 900, height: 650 }
   private push: (action: PlayerAction) => void = () => {}
 
   constructor(root: Container, theme: Theme, world?: WorldShape) {
@@ -60,6 +61,18 @@ export class Ui implements UiShape {
 
   /** Replace theme for future screens. */
   setTheme(theme: Theme): void { this.theme = theme }
+
+  /** Set the design resolution used by responsive letterbox layout. */
+  setDesign(design: { readonly width: number; readonly height: number }): void {
+    this.design = { width: Math.max(1, design.width), height: Math.max(1, design.height) }
+  }
+
+  /** Resize and centre the UI root inside a responsive viewport. */
+  resize(viewWidth: number, viewHeight: number): void {
+    const scale = Math.min(viewWidth / this.design.width, viewHeight / this.design.height)
+    this.root.scale.set(Math.max(0, scale))
+    this.root.position.set((viewWidth - this.design.width * scale) / 2, (viewHeight - this.design.height * scale) / 2)
+  }
 
   /** Render a HUD model over the game scene. */
   showHud(state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }): void {
