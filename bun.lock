@@ -41,6 +41,7 @@
         "@lute-lang/runtime": "0.40.0",
         "@xstate/effect": "0.1.0-alpha.7",
         "xstate": "6.0.0-alpha.65",
+        "yaml": "2.9.1",
       },
       "devDependencies": {
         "@effect/vitest": "4.0.2",
@@ -1135,6 +1136,8 @@
     "xstate": ["xstate@6.0.0-alpha.65", "", { "bin": { "xstate": "./bin/xstate.js" } }, "sha512-fCRPjxUeefg4AFzEcnBv/Z6A1UoNLBVWeWaXQ7C3DQ3iuobV/A9OLneLDN0SosN2exYmwLxMP4N1Sy0G7oHpsg=="],
 
     "xxhash-wasm": ["xxhash-wasm@1.1.0", "", {}, "sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA=="],
+
+    "yaml": ["yaml@2.9.1", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw=="],
 
     "yargs-parser": ["yargs-parser@21.1.1", "", {}, "sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw=="],
 
