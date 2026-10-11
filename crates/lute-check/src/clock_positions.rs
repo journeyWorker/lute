@@ -24,7 +24,7 @@ use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
 use lute_syntax::ast::{Node, Objective};
-
+use lute_ir::BeatOnce;
 use crate::project_doc::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -1410,8 +1410,8 @@ pub fn check_project_advance_cascades(
             continue;
         }
         let repeats = match pb.once {
-            crate::beats::BeatOnce::None | crate::beats::BeatOnce::Slot => true,
-            crate::beats::BeatOnce::Day => matches!(spec, lute_ir::AdvanceSpec::Day),
+            BeatOnce::None | BeatOnce::Slot => true,
+            BeatOnce::Day => matches!(spec, lute_ir::AdvanceSpec::Day),
             _ => false,
         };
         if !repeats {

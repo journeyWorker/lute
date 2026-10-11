@@ -16,8 +16,9 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::OccasionDecl;
 use lute_syntax::ast::{AttrValue, BundleBeat};
 
-use crate::beats::{parse_beat_priority, BeatOnce, E_BEAT_ATTR};
+use crate::beats::{parse_beat_priority, E_BEAT_ATTR};
 use crate::lore::is_beat_target;
+use lute_ir::BeatOnce;
 use lute_manifest::ident::is_name;
 
 /// `<beat>`'s permitted attribute keys (dsl 0.23.0 §4). The parser extracts

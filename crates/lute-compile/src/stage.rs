@@ -1086,11 +1086,11 @@ pub fn walk_entry(
         // `spentBy` entry stays spent for its `once` period, `run` unless
         // written — recorded, as a bundle beat's is.
         once: match entry.once.as_ref() {
-            Some((o, _)) => lute_check::BeatOnce::parse(o).map(Into::into),
+            Some((o, _)) => lute_ir::BeatOnce::parse(o),
             None => entry
                 .spent_by
                 .as_ref()
-                .map(|_| lute_check::BeatOnce::Run.into()),
+                .map(|_| lute_ir::BeatOnce::Run),
         },
         share: text(&entry.share),
         target_kind: entry.on.as_ref().and_then(|(on, _)| {

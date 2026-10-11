@@ -12,9 +12,10 @@ use lute_check::connectivity::{
     scene_key_set, unreachable_quest_ids,
 };
 use lute_check::{
-    check, check_fact_guards, check_project_beats, compute_must, fold_env, BeatOnce, CheckInput,
-    FactEnv, FoldedEnv, MaySet, Mode, ProjectDoc, RootVocab, SchemaImports,
+    check, check_fact_guards, check_project_beats, compute_must, fold_env, CheckInput, FactEnv,
+    FoldedEnv, MaySet, Mode, ProjectDoc, RootVocab, SchemaImports,
 };
+use lute_ir::BeatOnce;
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_manifest::snapshot::CapabilitySnapshot;
