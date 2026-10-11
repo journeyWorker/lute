@@ -85,7 +85,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   const commandBuffer: DirectorCommand[] = []
 
   const snapshot = (): PlayerMachineSnapshot => actor.getSnapshot() as unknown as PlayerMachineSnapshot
-  const updateView = Effect.flatMap(SubscriptionRef.set(view, derivePlayerView(snapshot())), () => Effect.void)
+  const updateView = Effect.gen(function* () {
+    yield* SubscriptionRef.set(view, derivePlayerView(snapshot()))
+  })
   const offerEvent = (event: MachineEvent): Effect.Effect<void> => Queue.offer(work, { _tag: "event", event })
   const markVoiceEnded = (lineId: string): Effect.Effect<void> => Effect.gen(function* () {
     const waiter = voiceWaiters.get(lineId)
@@ -326,7 +328,13 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   actor.start()
   yield* options.presenter.applySettings(currentSettings)
   yield* options.audio.setVolumes(currentSettings.volumes)
-  yield* offerEvent({ type: "boot.ready", canContinue: (yield* options.saves.list).some(({ slot }) => slot === "quick" || slot === "auto") })
+  const canContinue = (yield* options.saves.list).some(({ slot }) => slot === "quick" || slot === "auto")
+  actor.send({ type: "boot.ready", canContinue })
+  yield* updateView
+  while (commandBuffer.length > 0) {
+    const command = commandBuffer.shift()
+    if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause(() => offerEvent({ type: "failed", message: "boot command failed" })))
+  }
 
   const shutdown = Effect.gen(function* () {
     if (closed) return
