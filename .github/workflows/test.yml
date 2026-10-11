@@ -402,3 +402,82 @@ jobs:
       - name: Test runtime in Chromium
         working-directory: packages/runtime
         run: bun run test:browser
+
+  player:
+    name: Player (core + web, Bun + Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo and wasm-bindgen
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/
+            target/
+          key: lute-player-cargo-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install --locked wasm-bindgen-cli --version 0.2.126
+
+      - name: Build lute CLI
+        run: cargo build -q -p lute-cli
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build runtime wasm
+        working-directory: packages/runtime
+        run: bun run wasm:build
+
+      - name: Check the player demo project and bindings
+        run: ./target/debug/lute check-project examples/player-demo && ./target/debug/lute test examples/player-demo
+
+      - name: Typecheck player core
+        working-directory: packages/player
+        run: bun run typecheck
+
+      - name: Test player core
+        working-directory: packages/player
+        run: bun run test
+
+      - name: Build player core
+        working-directory: packages/player
+        run: bun run build
+
+      - name: Typecheck web player
+        working-directory: packages/player-web
+        run: bun run typecheck
+
+      - name: Test web player
+        working-directory: packages/player-web
+        run: bun run test
+
+      - name: Install Chromium
+        working-directory: packages/player-web
+        run: bunx playwright install --with-deps chromium
+
+      - name: Test web player in Chromium
+        working-directory: packages/player-web
+        run: bun run test:browser
+
+      - name: Build web player
+        working-directory: packages/player-web
+        run: bun run build
+
+      - name: Play the demo end to end in Chromium
+        working-directory: packages/player-web
+        run: bun run test:e2e
