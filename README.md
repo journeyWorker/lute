@@ -23,8 +23,11 @@ bunx @lute-lang/lute check scene.lute   # no install
 
 Building from source instead: `cargo install --path crates/lute-cli --path crates/lute-lsp`.
 
-The website — landing, guides, language reference, CLI docs (en + 한국어) — lives in
-[`packages/website`](packages/website) (Astro Starlight, deployed via Vercel).
+The website — landing, guides, language reference, CLI and Player docs (en +
+한국어) — lives in [`packages/website`](packages/website) (Astro Starlight,
+deployed via Vercel). The published player libraries are
+[`@lute-lang/player`](packages/player) and
+[`@lute-lang/player-web`](packages/player-web).
 
 ## The CLI surface
 

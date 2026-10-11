@@ -28,6 +28,20 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 
 TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --all` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
+ 
+## 0.40 런타임 추가 사항
+
+0.40 계약은 persistent presentation `stage`(background, music, actor, CG,
+video)를 `world.stage` 스냅숏에 담고 읽기 전용 `stage()` 질의를 제공합니다.
+중단된 choice나 bridge도 await 시점의 stage를 `continuation.stage`에 담습니다.
+복원할 때 레코드를 다시 재생하지 말고 이 값으로 presenter를 재구성합니다.
+
+시간 제한 branch는 `awaitChoice.menu.timeout`과 `menu.default`를 채웁니다.
+호스트가 벽시계를 측정해 `{\"type\":\"timeout\",\"request\":N}`을 보냅니다.
+런타임은 일치하는 시간 제한 choice에서만 이를 받아 선언된 default option을
+적용합니다. 다른 await에서 보내면 `E-RUNTIME-TIMEOUT`으로 거부되며, 잘못된
+request는 계속 `E-RUNTIME-REQUEST`입니다. 시간 제한 branch는 `timeout`과
+`default`를 함께 선언해야 합니다.
 
 :::caution[권한은 아티팩트 경계에서 멈춥니다]
 [기능 권한](/ko/tooling/capability-permissions/)은 컴파일 전에 금지된 저작 효과를 거부합니다. 이것은 런타임 샌드박스가 아니며 엔진의 브리지, 영속성, 네트워크, 파일 시스템 또는 보상 효과를 허가하지도 않습니다. 엔진 호스트는 여전히 신뢰할 수 있는 아티팩트만 로드하고 모든 실제 효과를 허가해야 합니다. [런타임 보안 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md)를 참고하세요.

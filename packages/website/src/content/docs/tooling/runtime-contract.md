@@ -28,6 +28,21 @@ grant settlement; the runtime returns those effects as data.
 ## TypeScript runtime
 
 TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
+ 
+## 0.40 runtime additions
+
+The 0.40 contract carries the persistent presentation `stage` (background,
+music, actors, CG and video) in `world.stage` snapshots and exposes
+`stage()` as a read-only query. A suspended choice or bridge also carries its
+await-time stage in `continuation.stage`; restore a snapshot and use this
+value to rebuild the presenter rather than replaying records.
+
+Timed branches populate `awaitChoice.menu.timeout` and `menu.default`. The host
+measures wall-clock time and sends `{"type":"timeout","request":N}`. The runtime
+accepts that input only for the matching timed choice and applies the declared
+default option. A timeout on any other await is rejected as
+`E-RUNTIME-TIMEOUT`; a wrong request remains `E-RUNTIME-REQUEST`. Timed branches
+must declare `default` together with `timeout`.
 
 :::caution[Permissions stop at the artifact boundary]
 [Capability permissions](/tooling/capability-permissions/) reject forbidden

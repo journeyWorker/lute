@@ -20687,3 +20687,21 @@ routes and their precedence, and the `exits:`/`default:` long form — see
 | Character & cast 0.0.1 | The language contract for character identity, display label, costume, name-reveal, and voice-join — as a capability plugin (registry, `cast:` frontmatter, `scene.cast.*` state, resolution, `seal`/`reveal`/`wear`). | [character-cast/0.0.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/0.0.1.md) |
 
 The plugin system also carries a human-facing overview at [`docs/plugin-system.md`](https://github.com/journeyWorker/lute/blob/main/docs/plugin-system.md), and the character/cast capability its design rationale at [`character-cast/design.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/character-cast/design.md).
+
+## Player
+
+Lute 0.40 provides a renderer-free player core and a browser implementation.
+`@lute-lang/player@0.40.0` owns runtime sessions, cue scheduling, interaction
+state, saves, profile/read history, backlog, auto/skip, rollback, and host
+bridges. `@lute-lang/player-web@0.40.0` supplies PixiJS 8 rendering, Web Audio,
+screens, assets, and keyboard, pointer/touch and gamepad input.
+
+See the [player overview](/player/overview/), [getting started](/player/getting-started/),
+[bindings reference](/player/bindings/), [custom hosts](/player/custom-hosts/),
+and [controls](/player/controls/) pages. Compile with `lute compile --all`,
+validate `player.bindings.yaml` with `lute check-project`, serve every bundle
+artifact, runtime wasm and bound asset, then call `mountPlayer(element, options)`.
+The core ports are `Presenter`, `AudioPort`, and `AssetLoader`; `PlayerHost`
+handles bridge answers and idle flow. Runtime 0.40 carries `world.stage` and
+`continuation.stage` in snapshots, and timed choices use the `timeout` input
+with their declared `default`.

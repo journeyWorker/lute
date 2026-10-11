@@ -309,6 +309,18 @@ steps:
 ```console
 $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--explain <ATOM>]…
 ```
+ 
+시간 제한 branch에서는 `choose` 대신 `timeout: true`로 만료를 답할 수 있습니다.
+이 입력은 런타임에 `timeout`을 보내고 branch가 선언한 `default` option을 선택합니다.
+
+```yaml
+steps:
+  - occasion: crossing
+    timeout: true
+```
+
+`timeout: true`는 현재 await가 시간 제한 choice일 때만 유효합니다. branch는 양의
+`timeout`과 `default`를 함께 선언해야 하며 hub에는 시간을 지정할 수 없습니다.
 
 ### 런타임 이벤트 스트림(`--events`)
 

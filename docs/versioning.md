@@ -16,6 +16,7 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 | **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.40.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.40.schema.json`](../schemas/lute-events-0.40.schema.json), [`schemas/lute-snapshot-0.40.schema.json`](../schemas/lute-snapshot-0.40.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
+| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.40.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
 
 The axes are **independent in meaning**: a toolchain release need not advance
 the language (e.g. a new CLI subcommand or a bug fix), a language delta can
@@ -1045,3 +1046,15 @@ restamped and renamed only; no execution-IR field or meaning changes. The new
 published in lockstep with the toolchain. See the
 [`0.39.0` runtime proposal](proposals/scenario-dsl/0.39.0.md) and
 [`docs/runtime/typescript-runtime.md`](runtime/typescript-runtime.md).
+ 
+**`0.40.0` aligns every visible axis at `0.40.0`; language, IR, Event, and
+toolchain all earn the release.** Timed branches now carry an author-declared
+`default` and the runtime accepts an explicit `timeout` input. The runtime
+stage (background, music, actors, CG and video) is serialized in
+`world.stage`; suspended continuations preserve `continuation.stage`. The
+release adds checked `player.bindings.yaml` project data and the
+`@lute-lang/player` and `@lute-lang/player-web` packages. Engines consuming
+0.39 artifacts must widen their IR and Event/snapshot gates to 0.40, and
+timed branches need a `default` paired with every `timeout`. See
+[`docs/player/architecture.md`](player/architecture.md) and the
+[`0.40.0` proposal](proposals/scenario-dsl/0.40.0.md).

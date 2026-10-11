@@ -299,6 +299,20 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
+ 
+For a timed branch, a step may answer expiry with `timeout: true` instead of
+`choose`. This sends the runtime `timeout` input and selects the branch's
+declared `default` option:
+
+```yaml
+steps:
+  - occasion: crossing
+    timeout: true
+```
+
+`timeout: true` is valid only when the current await is a timed choice. The
+branch must declare both a positive `timeout` and a `default`; hubs cannot be
+timed. A malformed or premature timeout is a script error.
 
 Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); since dsl 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its own `choose:` / `bridges:`, which script every step it splices in over the script's own — key by key, tag by tag, consumed from their start in each repetition and dropped when the segment ends — so each term of a multi-term play states its own choices. A key the include overrides leaves the script's own list for that key where it was: with a top-level `choose: { firstLook: [soren, mika] }` and a first term that includes with `choose: { firstLook: ren }`, the second term still takes `soren`, the list's first entry, not `mika`. Convert a positional list to per-include `choose:` for every term at once, not one term at a time; a `label` or `expect:` beside it is a usage error. A usage error in a step names the file, line and column of the key it is about — in the included file when the step came from one, followed by `(included from <play>:<line>:<col>)` — with a did-you-mean for occasion names and keys. A tour of every shape, against the tower:
 

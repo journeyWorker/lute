@@ -118,3 +118,11 @@ witnessed execution.
 Lute 0.36 identity: authored `::use` instance keys, `identity.requireStable`,
 `lute tag` back-fill, `identity.renames`/`identityRenames`, and `lute diff`
 `renamed`/`unmappedIdentity` results are documented in the full reference.
+
+## Player (0.40.0)
+
+- [Player overview](https://lute-lang.vercel.app/player/overview/): The renderer-free `@lute-lang/player` core and PixiJS/Web Audio `@lute-lang/player-web` browser player, their architecture and package boundaries.
+- [Player getting started](https://lute-lang.vercel.app/player/getting-started/): Compile a project, validate `player.bindings.yaml` with `lute check-project`, serve bundle/wasm/assets, and mount with `mountPlayer`.
+- [Player bindings](https://lute-lang.vercel.app/player/bindings/): Every bindings section, effect and parameter, plus `E-BINDING-*` and `W-BINDING-*` diagnostics.
+- [Custom hosts](https://lute-lang.vercel.app/player/custom-hosts/): Implement `Presenter`, `AudioPort`, `AssetLoader`, and `PlayerHost`, including bridges, idle flow, saves, rollback, and read history.
+- [Controls](https://lute-lang.vercel.app/player/controls/): Default keyboard, pointer/touch, gamepad, auto/skip, backlog, and save controls.

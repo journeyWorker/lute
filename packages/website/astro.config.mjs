@@ -169,6 +169,17 @@ export default defineConfig({
           ],
         },
         {
+          label: "Player",
+          translations: { ko: "플레이어" },
+          items: [
+            { slug: "player/overview", translations: { ko: "개요" } },
+            { slug: "player/getting-started", translations: { ko: "시작하기" } },
+            { slug: "player/bindings", translations: { ko: "바인딩 레퍼런스" } },
+            { slug: "player/custom-hosts", translations: { ko: "커스텀 호스트" } },
+            { slug: "player/controls", translations: { ko: "컨트롤" } },
+          ],
+        },
+        {
           label: "Plugin System",
           translations: { ko: "플러그인 시스템" },
           items: [
