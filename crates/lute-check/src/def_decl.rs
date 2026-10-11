@@ -190,6 +190,7 @@ fn def_type(def: &Value) -> Option<Type> {
 /// (a reference cycle, or a body that is undecidable on its own) keeps the
 /// ordinary `E-DEF-DECL` message. Returns each def's message, imported
 /// first, in name order.
+#[expect(clippy::type_complexity, reason = "definition settling returns messages and inferred declarations separately")]
 pub(crate) fn settle_defs(
     imported: &mut std::collections::BTreeMap<String, Value>,
     inline: &mut std::collections::BTreeMap<String, Value>,

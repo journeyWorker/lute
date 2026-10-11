@@ -834,7 +834,6 @@ fn run_one_test(
         .chain(expect_items("notFacts"))
         .collect();
     if !expect_atoms.is_empty() {
-        let folded = folded;
         let problems: Vec<String> = expect_atoms
             .iter()
             .flat_map(|&(key, i, atom)| {
@@ -886,7 +885,6 @@ fn run_one_test(
     // nearest one, not reported as a miss. `unset` is the spelling of "no
     // value" (an implicit choice slot, a quest), never a typo.
     if !expect_state.is_empty() {
-        let folded = folded;
         let problems: Vec<String> = expect_state
             .iter()
             .filter(|(_, want, _)| want != "unset")

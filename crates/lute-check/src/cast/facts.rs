@@ -91,6 +91,7 @@ pub fn occasions_before(
 /// entry or bundle beat) and its arguments (`None` for anything but a
 /// constant — a component param, `_`).
 #[derive(Default)]
+#[expect(clippy::type_complexity, reason = "producer records retain document, unit, and optional arguments")]
 pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
 
 impl FactProducers {

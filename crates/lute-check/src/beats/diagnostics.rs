@@ -1,5 +1,6 @@
 use super::*;
 
+#[expect(clippy::type_complexity, reason = "tie grouping keeps member and pair indexes together")]
 pub(super) fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Diagnostic)> {
     let mut root: Vec<usize> = (0..beats.len()).collect();
     fn find(root: &mut [usize], mut x: usize) -> usize {

@@ -4,7 +4,7 @@ use lute_core_span::{Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
 use super::*;
-mod tests {
+mod test_cases {
     use super::*;
     use lute_syntax::ast::{Meta, Quest};
 

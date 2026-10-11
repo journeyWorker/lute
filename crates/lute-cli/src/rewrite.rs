@@ -513,9 +513,7 @@ fn rewrite_call(
             }
             let path = &call.args[0].expr;
             let source = args_text[0].as_str();
-            let Some(segments) = lute_cel::path::static_path(path) else {
-                return None;
-            };
+            let segments = lute_cel::path::static_path(path)?;
             if segments.len() < 2 {
                 return None;
             }

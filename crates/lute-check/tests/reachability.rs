@@ -1370,11 +1370,11 @@ fn an_options_own_visit_record_is_true_in_its_arm() {
     ));
     assert!(!one.contains(&"E-NONEXHAUSTIVE".to_string()), "{one:?}");
     // The other option's arm knows nothing about `ledger`'s record.
-    let other = codes(&"---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
+    let other = codes("---\nkind: scene\nid: h\n---\n## Room\n<hub id=\"lamp\">\n\
          <choice id=\"ledger\" text=\"Read\">\n@narrator: Read.\n</choice>\n\
          <choice id=\"leave\" text=\"Leave\" exit>\n<match subject=\"scene.visited.lamp.ledger\">\n\
          <when is=\"false\">\n@narrator: Unread.\n</when>\n<otherwise>\n@narrator: Read.\n</otherwise>\n\
-         </match>\n</choice>\n</hub>\n".to_string());
+         </match>\n</choice>\n</hub>\n");
     assert!(!other.contains(&"E-ARM-DEAD".to_string()), "{other:?}");
 }
 

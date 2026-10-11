@@ -263,10 +263,8 @@ pub fn format_source(source: &str, options: &FormatOptions) -> Result<FormatResu
                 blank_pending = true;
                 continue;
             }
-            if blank_pending {
-                if out.is_empty() || !out.ends_with("\n\n") {
-                    out.push('\n');
-                }
+            if blank_pending && (out.is_empty() || !out.ends_with("\n\n")) {
+                out.push('\n');
             }
             blank_pending = false;
             if is_closing(trimmed) { depth = depth.saturating_sub(1); }

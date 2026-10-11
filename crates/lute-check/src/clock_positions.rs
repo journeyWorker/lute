@@ -74,6 +74,7 @@ enum Settle {
 }
 
 /// How relational calls read while building a formula.
+#[expect(clippy::type_complexity, reason = "clock readers carry optional schedule and visitor callbacks")]
 struct Reads<'r> {
     /// A pure-schedule derived list-form `holds('rel', [c…])` reads as its
     /// rules' `cel()` guards.

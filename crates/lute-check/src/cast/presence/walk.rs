@@ -20,6 +20,7 @@ impl Presence<'_> {
     /// Alternative paths (a branch's choices, a match's arms): each starts
     /// from the guards as they are here, and an outer guard is still live
     /// after them only when it is live at the end of every one.
+    #[expect(clippy::type_complexity, reason = "branch arms carry each path's conditions and body")]
     fn fork(&mut self, arms: Vec<(Vec<(Expr, String)>, &[Node])>) {
         let saved: Vec<bool> = self.guards.iter().map(|g| g.live).collect();
         let mut joined = saved.clone();

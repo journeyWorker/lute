@@ -497,8 +497,8 @@ fn writing_an_entry_path_is_rejected() {
 
 #[test]
 fn entry_read_cannot_be_author_declared() {
-    let cs = codes(&"---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
-         entry.note.read: { type: bool, default: false }\n---\n## Shot 1.\n@x: hi\n".to_string());
+    let cs = codes("---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
+         entry.note.read: { type: bool, default: false }\n---\n## Shot 1.\n@x: hi\n");
     assert!(cs.contains(&"E-STATE-NAMESPACE".to_string()), "{cs:?}");
 }
 

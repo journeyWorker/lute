@@ -1,6 +1,6 @@
 use super::*;
 #[cfg(test)]
-mod tests {
+mod test_cases {
     use super::*;
     use crate::ctx::Env;
     use lute_syntax::ast::CelKind;

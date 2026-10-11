@@ -135,10 +135,10 @@ fn a_write_before_the_handler_ends_the_completion_assumption() {
     // So does an earlier `questComplete` handler; a later one does not count.
     let handlers = quest(
         "",
-        &"<objective id=\"find\" title=\"Find him\" done=\"@withToby\"/>\n\
+        "<objective id=\"find\" title=\"Find him\" done=\"@withToby\"/>\n\
              <on event=\"questComplete\">\n@tobias: First.\n</on>\n\
              <on event=\"questComplete\">\n::retract{following(tobias)}\n</on>\n\
-             <on event=\"questComplete\">\n@tobias: Third.\n</on>".to_string(),
+             <on event=\"questComplete\">\n@tobias: Third.\n</on>",
     );
     assert_eq!(absent_said(&handlers), ["Third."]);
 }

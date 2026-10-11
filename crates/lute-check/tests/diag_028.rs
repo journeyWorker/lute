@@ -66,11 +66,17 @@ fn a_beat_with_an_error_ties_with_nothing() {
     assert_eq!(tied.len(), 1, "the control ties: {tied:?}");
     // An error anywhere inside entry `two` (here its `when` value).
     let at = text.find("run.day >= 3").unwrap();
-    let errors = ReportedErrors::from([(PathBuf::from("0.lute"), vec![at..at + 12])]);
+    let errors = ReportedErrors::from([(
+        PathBuf::from("0.lute"),
+        std::iter::once(at..at + 12).collect(),
+    )]);
     let tied = project(&[&text], &errors, "W-BEAT-PRIORITY-TIE");
     assert!(tied.is_empty(), "{tied:?}");
     // An error in another document leaves this one's tie standing.
-    let errors = ReportedErrors::from([(PathBuf::from("1.lute"), vec![at..at + 12])]);
+    let errors = ReportedErrors::from([(
+        PathBuf::from("1.lute"),
+        std::iter::once(at..at + 12).collect(),
+    )]);
     assert_eq!(project(&[&text], &errors, "W-BEAT-PRIORITY-TIE").len(), 1);
 }
 
@@ -89,7 +95,10 @@ fn a_beat_with_an_error_shadows_nothing() {
         "the control is shadowed"
     );
     let at = text.find("id=\"always\"").unwrap();
-    let errors = ReportedErrors::from([(PathBuf::from("0.lute"), vec![at..at + 2])]);
+    let errors = ReportedErrors::from([(
+        PathBuf::from("0.lute"),
+        std::iter::once(at..at + 2).collect(),
+    )]);
     assert!(project(&[&text], &errors, "W-BEAT-SHADOWED").is_empty());
 }
 

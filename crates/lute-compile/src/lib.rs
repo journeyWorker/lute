@@ -1210,7 +1210,7 @@ fn scene_beat(
         target: beat.target.clone(),
         when,
         priority: beat.priority,
-        once: beat.once.clone().into(),
+        once: beat.once.clone(),
         also: beat.also,
         share: beat.share.clone(),
         target_kind: TargetKind::resolve(

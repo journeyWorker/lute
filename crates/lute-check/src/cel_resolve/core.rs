@@ -483,5 +483,5 @@ pub(crate) fn abstract_member(message: &str, member: &str) -> String {
 /// first and only parse. A guard whose CEL fails to parse is silently
 /// skipped — no evaluator, no cascade (matches `check_cel_slot`'s
 /// `slot.ast: None` skip); the rule's own shape was already validated by
-
+///
 const _: () = ();

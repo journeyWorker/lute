@@ -703,10 +703,10 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                                     v.insert("code".into(), json!(d.code));
                                     v.insert("severity".into(), json!(crate::severity_str(d.severity)));
                                     v.insert("message".into(), json!(d.text()));
-                                    if let Some(fields) = evidence_json(d.evidence.as_ref()) {
-                                        if let Json::Object(fields) = fields {
-                                            v.extend(fields);
-                                        }
+                                    if let Some(Json::Object(fields)) =
+                                        evidence_json(d.evidence.as_ref())
+                                    {
+                                        v.extend(fields);
                                     }
                                     Json::Object(v)
                                 })
