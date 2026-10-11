@@ -534,7 +534,8 @@ export const Continuation = Schema.Struct({
     Schema.check(Schema.isGreaterThanOrEqualTo(0))
   ),
   "input": Schema.suspend(() => Input),
-  "pending": Schema.suspend(() => Await)
+  "pending": Schema.suspend(() => Await),
+  "stage": Schema.suspend(() => Stage)
 });
 export type Continuation = typeof Continuation.Type;
 

@@ -195,7 +195,9 @@ than treating query JSON as untyped data.
 Staging records reduce this value in command order before emission. A new
 scene, entry or bundle presentation resets it to empty; quest objective and
 `<on>` bodies do not reset it. The stage is serialized in `world.stage` and
-survives snapshot/restore.
+survives snapshot/restore. A state suspended at `awaitChoice` or
+`awaitBridge` keeps the world from before its input, so the stage at that
+await is serialized as `continuation.stage`, and `stage()` returns it.
 
 | Await type | Fields | What the host can send next |
 |---|---|---|
