@@ -107,6 +107,8 @@ pub enum Input {
         #[serde(default, skip_serializing_if = "WritesInput::is_empty")]
         writes: WritesInput,
     },
+    #[serde(rename = "timeout")]
+    Timeout { request: u64 },
     #[serde(rename = "choose")]
     Choose { request: u64, option: String },
     #[serde(rename = "bridgeResult")]
@@ -285,7 +287,9 @@ pub struct MenuAwait {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<f64>,
+    pub timeout: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
     pub options: Vec<MenuOptionAwait>,
 }
 
@@ -622,10 +626,7 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject(
-                                "E-RUNTIME-REQUEST",
-                                "choose request does not match the pending await",
-                            ),
+                            reject("E-RUNTIME-REQUEST", "choose request does not match the pending await"),
                         ));
                     }
                     let Some(item) = menu.options.iter().find(|o| o.id == *option) else {
@@ -651,6 +652,44 @@ impl Runtime {
                     ((*c.before).clone(), c.input, a, c.delivered)
                 }
                 (
+                    Input::Timeout { request },
+                    Await::Choice {
+                        request: expected,
+                        menu,
+                    },
+                ) => {
+                    if request != expected {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-REQUEST", "timeout request does not match the pending await"),
+                        ));
+                    }
+                    let Some(default) = menu.default.clone() else {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        ));
+                    };
+                    if menu.timeout.is_none() {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        ));
+                    }
+                    let mut a = c.answers;
+                    a.push(Answer::Choice {
+                        id: menu.id.clone(),
+                        option: default,
+                    });
+                    ((*c.before).clone(), c.input, a, c.delivered)
+                }
+                (Input::Timeout { .. }, _) => {
+                    return Err((
+                        unchanged.clone(),
+                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                    ))
+                }
+                (
                     Input::BridgeResult { request, fields },
                     Await::Bridge {
                         request: expected,
@@ -662,10 +701,7 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject(
-                                "E-RUNTIME-REQUEST",
-                                "bridge request does not match the pending await",
-                            ),
+                            reject("E-RUNTIME-REQUEST", "bridge request does not match the pending await"),
                         ));
                     }
                     if let Err(m) = validate_bridge(shape, fields) {
@@ -690,6 +726,12 @@ impl Runtime {
                     return Err((
                         unchanged.clone(),
                         reject("E-RUNTIME-BUSY", "no choice or bridge await is pending"),
+                    ));
+                }
+                if matches!(input, Input::Timeout { .. }) {
+                    return Err((
+                        unchanged.clone(),
+                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
                     ));
                 }
                 ((*state.world).clone(), input.clone(), Vec::new(), 0)
@@ -723,6 +765,10 @@ impl Runtime {
     }
     pub fn clock(&self, state: &State) -> Option<lute_manifest::clock::ClockAt> {
         clock_at(&self.project, &state.world)
+    }
+    /// Return the current persistent presentation stage.
+    pub fn stage(&self, state: &State) -> crate::Stage {
+        state.world.stage.clone()
     }
     pub fn terminal(&self, state: &State) -> bool {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
@@ -1085,7 +1131,7 @@ fn execute_input<F: WalkDriver>(
             let w = resolve_writes(s.project(), writes)?;
             Ok(s.new_run(0, &w))
         }
-        Input::Choose { .. } | Input::BridgeResult { .. } => {
+        Input::Choose { .. } | Input::Timeout { .. } | Input::BridgeResult { .. } => {
             Err("answer input cannot execute without a continuation".into())
         }
     }
@@ -1156,7 +1202,8 @@ impl Driver for ReplayDriver {
                 position: menu.addr.into(),
                 presentation: menu.presentation,
                 prompt: None,
-                timeout: None,
+                timeout: menu.timeout,
+                default: menu.default.map(str::to_owned),
                 options: menu
                     .options
                     .iter()

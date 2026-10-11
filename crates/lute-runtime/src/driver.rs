@@ -88,6 +88,10 @@ pub struct Menu<'a> {
     /// new visit, and its scripted cursor lives in the driver.
     pub presentation: usize,
     pub options: &'a [MenuOption],
+    /// Branch timeout in seconds, when authored.
+    pub timeout: Option<u32>,
+    /// Branch default option id, when authored.
+    pub default: Option<&'a str>,
 }
 
 /// One option of a [`Menu`], judged at this presentation point.

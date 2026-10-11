@@ -284,6 +284,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-RUNTIME-IR-VERSION", DiagnosticClass::SourceError),
     ("E-RUNTIME-OPTION", DiagnosticClass::SourceError),
     ("E-RUNTIME-REQUEST", DiagnosticClass::SourceError),
+    ("E-RUNTIME-TIMEOUT", DiagnosticClass::SourceError),
     ("E-RUNTIME-SNAPSHOT-PROJECT", DiagnosticClass::SourceError),
     ("E-RUNTIME-SNAPSHOT-VERSION", DiagnosticClass::SourceError),
     ("E-SEASON-DECL", DiagnosticClass::SourceError),

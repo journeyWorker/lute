@@ -6,14 +6,15 @@
 import { Context, Effect, Layer, PubSub, Scope, Semaphore, Stream, SubscriptionRef } from "effect"
 import { BundleSource } from "./BundleSource.js"
 import type { BundleError, InputLogError, RuntimeRejection } from "./Errors.js"
-import type { Await, Event, Input, Output, Seed, Snapshot } from "./generated/Contract.js"
+import type { Await, Event, Input, Output, Seed, Snapshot, Stage } from "./generated/Contract.js"
 import { InputLog } from "./InputLog.js"
 import { LuteRuntime } from "./LuteRuntime.js"
 import type { RuntimeState } from "./Program.js"
 
-/** Where the session stands: its state and what it waits for. */
+/** Where the session stands: its state, stage, and what it waits for. */
 export interface SessionState {
   readonly state: RuntimeState
+  readonly stage: Stage
   readonly await: Await
 }
 
@@ -70,10 +71,12 @@ export const layer = (
               state: yield* program.restore(options.snapshot),
               output: { eventVersion: options.snapshot.snapshotVersion, events: [], await: options.snapshot.await }
             }
+      const stage = yield* program.stage(started.state)
       yield* log.reset(options)
 
       const current = yield* SubscriptionRef.make<SessionState>({
         state: started.state,
+        stage,
         await: started.output.await
       })
       const events = yield* PubSub.unbounded<Event>()
@@ -85,7 +88,8 @@ export const layer = (
         const { state } = yield* SubscriptionRef.get(current)
         const step = yield* program.step(state, input)
         yield* log.append({ input })
-        yield* SubscriptionRef.set(current, { state: step.state, await: step.output.await })
+        const stage = yield* program.stage(step.state)
+        yield* SubscriptionRef.set(current, { state: step.state, stage, await: step.output.await })
         yield* PubSub.publishAll(events, step.output.events)
         yield* PubSub.publish(awaits, step.output.await)
         return step.output
@@ -93,8 +97,9 @@ export const layer = (
 
       const restore = Effect.fn("Lute.Session.restore")(function* (snapshot: Snapshot) {
         const state = yield* program.restore(snapshot)
+        const stage = yield* program.stage(state)
         yield* log.reset({ snapshot })
-        yield* SubscriptionRef.set(current, { state, await: snapshot.await })
+        yield* SubscriptionRef.set(current, { state, stage, await: snapshot.await })
         yield* PubSub.publish(awaits, snapshot.await)
       })
 

@@ -124,6 +124,13 @@ impl Driver for PlayDriver {
     fn choose(&mut self, menu: &Menu<'_>) -> Pick {
         let pick = self.choices.pick(menu);
         if let Pick::Option(option) = &pick {
+            if option == "__lute_timeout__" {
+                let Some(default) = menu.default else {
+                    return Pick::Unscripted { scripted: 1 };
+                };
+                self.answers.push(ScriptAnswer::Timeout { menu: menu.id.to_string() });
+                return Pick::Option(default.to_string());
+            }
             self.answers.push(ScriptAnswer::Choice { menu: menu.id.to_string(), option: option.clone() });
         }
         pick

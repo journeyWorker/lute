@@ -46,6 +46,7 @@ pub fn absorb(w: &mut World, outcome: &Walked) {
     }
     w.failed_objectives
         .extend(carry.failed_objectives.iter().cloned());
+    w.stage = carry.stage.clone();
 }
 
 /// Why the playthrough stopped short of its last step.

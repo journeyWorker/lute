@@ -110,6 +110,9 @@ pub struct World {
     /// dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and
     /// the season-scoped spends.
     pub cadence: crate::cadence::Cadence,
+    /// The current presentation stage. Unlike scene state, this survives
+    /// presentations and is serialized in runtime snapshots.
+    pub stage: crate::Stage,
 }
 
 impl World {
@@ -126,6 +129,7 @@ impl World {
     pub fn carry(&self) -> Carry {
         let mut carry = Carry::world(self.state.clone(), self.facts.clone(), self.quests.clone());
         carry.quest_instances = self.quest_instances.clone();
+        carry.stage = self.stage.clone();
         carry
     }
 
@@ -363,6 +367,7 @@ pub fn seed_world<B, C>(
         clock_advanced_by_beat: false,
         advance_cascade_depth: 0,
         cadence: Default::default(),
+        stage: Default::default(),
     };
     for (path, e) in &p.state_table {
         if path.starts_with("scene.") {

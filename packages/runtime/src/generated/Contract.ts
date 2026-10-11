@@ -241,6 +241,13 @@ export const Input = Schema.Union([
     "writes": Schema.optionalKey(Schema.suspend(() => WritesInput))
   }),
   Schema.Struct({
+    "request": Schema.Int
+    .pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(0))
+    ),
+    "type": Schema.Literal("timeout")
+  }),
+  Schema.Struct({
     "option": Schema.String,
     "request": Schema.Int
     .pipe(
@@ -282,6 +289,7 @@ export type Input = typeof Input.Type;
 
 export const MenuAwait = Schema.Struct({
   "construct": Schema.String,
+  "default": Schema.optionalKey(Schema.NullOr(Schema.String)),
   "document": Schema.String,
   "id": Schema.String,
   "options": Schema.Array(Schema.suspend(() => MenuOptionAwait)),
@@ -291,7 +299,10 @@ export const MenuAwait = Schema.Struct({
     Schema.check(Schema.isGreaterThanOrEqualTo(0))
   ),
   "prompt": Schema.optionalKey(Schema.NullOr(Schema.String)),
-  "timeout": Schema.optionalKey(Schema.NullOr(Schema.Number))
+  "timeout": Schema.optionalKey(Schema.NullOr(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )))
 });
 export type MenuAwait = typeof MenuAwait.Type;
 
@@ -527,6 +538,49 @@ export const Continuation = Schema.Struct({
 });
 export type Continuation = typeof Continuation.Type;
 
+export const Stage = Schema.Struct({
+  "actors": Schema.Array(Schema.suspend(() => StageActor)),
+  "bg": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => StageBackground))),
+  "cg": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => StageCg))),
+  "music": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => StageMusic))),
+  "video": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => StageVideo)))
+});
+export type Stage = typeof Stage.Type;
+
+export const StageActor = Schema.Struct({
+  "anchor": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "character": Schema.String,
+  "costume": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "emotion": Schema.optionalKey(Schema.NullOr(Schema.String))
+});
+export type StageActor = typeof StageActor.Type;
+
+export const StageBackground = Schema.Struct({
+  "assetId": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "location": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "time": Schema.optionalKey(Schema.NullOr(Schema.String))
+});
+export type StageBackground = typeof StageBackground.Type;
+
+export const StageCg = Schema.Struct({
+  "assetId": Schema.String,
+  "layout": Schema.optionalKey(Schema.NullOr(Schema.String))
+});
+export type StageCg = typeof StageCg.Type;
+
+export const StageMusic = Schema.Struct({
+  "assetId": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "mood": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "playback": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "volume": Schema.optionalKey(Schema.NullOr(Schema.String))
+});
+export type StageMusic = typeof StageMusic.Type;
+
+export const StageVideo = Schema.Struct({
+  "assetId": Schema.String
+});
+export type StageVideo = typeof StageVideo.Type;
+
 export const World = Schema.Struct({
   "accepts": Schema.Array(Schema.String),
   "advanceCascadeDepth": Schema.Int
@@ -557,6 +611,7 @@ export const World = Schema.Struct({
   "spentAt": Schema.Record(Schema.String, Schema.suspend(() => ClockAt)),
   "spentRun": Schema.UniqueArray(Schema.String),
   "spentUser": Schema.UniqueArray(Schema.String),
+  "stage": Schema.suspend(() => Stage),
   "state": Schema.Record(Schema.String, Schema.suspend(() => Value)),
   "visited": Schema.UniqueArray(Schema.String)
 });

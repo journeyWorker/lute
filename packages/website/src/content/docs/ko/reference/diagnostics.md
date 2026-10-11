@@ -1431,6 +1431,12 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
 
+### E-RUNTIME-TIMEOUT
+
+타임아웃 입력이 시간 제한이 있는 선택지가 아닌 대기 중인 요청에 전달되었습니다.
+
+명세: [dsl 0.40.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)

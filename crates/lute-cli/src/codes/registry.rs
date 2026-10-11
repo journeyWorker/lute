@@ -1257,6 +1257,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.38.0 §7.2"],
     },
     Code {
+        code: "E-RUNTIME-TIMEOUT",
+        summary: "A timeout input was supplied while the pending await is not a timed choice.",
+        spec: &["dsl 0.40.0 §4.3"],
+    },
+    Code {
         code: "E-SEASON-DECL",
         summary: r#"A `seasons:` declaration is malformed (an entry that is not a map, a missing or empty `live`, an unknown key, a bad season name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season, or a scene's legacy `season:` key (the episode number) holds a declared season's name; a write to `prev.season.*` is `E-QUEST-RESERVED-WRITE` instead."#,
         spec: &["dsl 0.27.0 §5"],
