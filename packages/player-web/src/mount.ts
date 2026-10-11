@@ -90,7 +90,15 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     const assets = new PixiAssets(assetsOptions)
     const ui = new Ui(pixi.layers.overlay, theme, world, (file) => assets.texture(file))
     ui.setDesign(bindings.canvas, "Lute")
-    const audio = new PixiAudio({ backend: pixiSoundBackend })
+    // Cues name bound files; the backend loads them below the assets base.
+    const resolveSound = (file: string): string => resolveAsset(bindings, assetsBase, file)
+    const audio = new PixiAudio({
+      backend: {
+        load: (file) => pixiSoundBackend.load(resolveSound(file)),
+        play: (file, playOptions) => pixiSoundBackend.play(resolveSound(file), playOptions),
+        unlock: pixiSoundBackend.unlock
+      }
+    })
     const title = bindings.ui?.title
     const titleBackground = title === undefined || title === null
       ? undefined

@@ -388,6 +388,9 @@ export const playerMachine = initial.createMachine({
       },
       on: {
         "batch.started": { target: "#playerStoryRunning" },
+        // Acknowledgements the director sends in every state; only some states act on them.
+        "line.released": () => undefined,
+        "save.done": () => undefined,
         "batch.settled": settled,
         "load.done": ({ event }, enq) => {
           const target = awaitStoryTarget(event.await)

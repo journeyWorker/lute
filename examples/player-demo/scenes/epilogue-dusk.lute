@@ -33,3 +33,4 @@ when: "run.path == 'dusk'"
 ::actor{character="mara" action="fadeOut"}
 ::actor{character="elio" action="fadeOut"}
 @narrator{code="0050"}: Dusk ending.
+::set{run.finished = true}

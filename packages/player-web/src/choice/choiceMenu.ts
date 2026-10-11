@@ -11,13 +11,7 @@ export interface ChoiceOption {
 }
 
 /** Whether a runtime verdict leaves an option selectable. */
-export const isChoiceEnabled = (verdict: string): boolean =>
-  verdict !== "hidden" &&
-  verdict !== "invisible" &&
-  verdict !== "closed" &&
-  verdict !== "disabled" &&
-  verdict !== "false" &&
-  verdict !== "ineligible"
+export const isChoiceEnabled = (verdict: string): boolean => verdict === "open"
 
 /** Immutable keyboard/pointer navigation state. */
 export interface ChoiceNavigationState {
@@ -115,7 +109,10 @@ export class ChoiceMenu {
       return Effect.gen(function* () {
         yield* self.hide
         self.target.visible = true
-        const options: ChoiceOption[] = menu.options.map((option) => ({ id: option.id, verdict: option.verdict }))
+        // A spent `once` option is gone from the menu; a closed one shows disabled.
+        const options: ChoiceOption[] = menu.options
+          .filter((option) => option.verdict !== "spent")
+          .map((option) => ({ id: option.id, verdict: option.verdict }))
         self.navigation = choiceNavigation(options)
         self.prompt.text = menu.prompt ?? ""
         self.renderOptions(options)

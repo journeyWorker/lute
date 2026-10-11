@@ -3,8 +3,11 @@ state:
   run.path: { type: { enum: [unknown, dawn, dusk] }, default: unknown }
   run.chapter: { type: int, default: 0 }
   run.heardSignal: { type: bool, default: false }
+  run.finished: { type: bool, default: false }
   run.choice: { type: { enum: [none, tower, harbor] }, default: none }
 cast:
   mara: { name: Mara, emotions: [neutral, happy, worried, angry, hopeful, sad, surprised] }
   elio: { name: Elio, emotions: [neutral, happy, worried, angry, hopeful, sad, surprised] }
   liora: { name: Liora, emotions: [neutral, happy, worried, angry, hopeful, sad, surprised] }
+# The story is over once an epilogue has played.
+terminal: "run.finished"

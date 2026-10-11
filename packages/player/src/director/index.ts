@@ -272,8 +272,16 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "session.send":
         return Effect.gen(function* () {
           yield* interruptBatch()
-          const output = yield* options.session.send(command.input)
-          yield* playBatch(output)
+          const sent = yield* Effect.exit(options.session.send(command.input))
+          if (Exit.isSuccess(sent)) return yield* playBatch(sent.value)
+          // A refused answer (a closed option, a stale request) changes
+          // nothing in the runtime: present the same await again.
+          if (command.input.type === "choose" || command.input.type === "timeout") {
+            yield* Effect.logWarning("runtime refused the answer", sent.cause)
+            const point = yield* options.session.current
+            return yield* offerEvent({ type: "batch.settled", await: point.await })
+          }
+          return yield* Effect.failCause(sent.cause)
         })
       case "line.reveal": return options.presenter.revealLine
       case "line.release":
@@ -353,8 +361,14 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       const item = yield* Queue.take(work)
       if (item._tag === "event") {
         if (item.event.type === "pickIdle") {
+          // The idle menu answers once: a repeated pick (double click, held
+          // key) must not send a second input while the first one runs.
           const selected = idleOptions[item.event.index]
-          if (selected !== undefined) yield* handleCommand({ type: "session.send", input: selected.input }).pipe(Effect.catchCause((cause) => Effect.logError("idle input failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "idle input failed" })))))
+          if (selected !== undefined) {
+            idleOptions = []
+            yield* options.presenter.hideScreen
+            yield* handleCommand({ type: "session.send", input: selected.input }).pipe(Effect.catchCause((cause) => Effect.logError("idle input failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "idle input failed" })))))
+          }
         } else {
           actor.send(item.event)
         }
