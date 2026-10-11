@@ -1,5 +1,5 @@
 import { Container, Graphics, Sprite, Text, Texture } from "pixi.js"
-import type { PlayerAction, ScreenModel } from "../../../../player/src/ports/index.js"
+import type { PlayerAction, ScreenModel } from "@lute-lang/player"
 import type { Theme } from "../../engine/types.js"
 import { Button, FocusManager, Panel } from "../widgets/index.js"
 
@@ -35,14 +35,10 @@ export abstract class ScreenView extends Container {
   }
 
   /** Route key events to focusable controls. */
-  handleKey(key: string): boolean {
-    return this.focus.handleKey(key)
-  }
+  handleKey(key: string): boolean { return this.focus.handleKey(key) }
 
   /** Clear scene children and focus before rebuilding dynamic content. */
-  protected clearContent(): void {
-    while (this.children.length > 2) this.removeChildAt(2)
-  }
+  protected clearContent(): void { while (this.children.length > 2) this.removeChildAt(2) }
 }
 
 /** Title screen with continue gating and optional background data URL. */

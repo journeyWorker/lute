@@ -5,8 +5,8 @@ import { Widget } from "./base.js"
 /** Virtualized scroll model used by ScrollList and unit tests. */
 export function visibleRange(total: number, rowHeight: number, viewportHeight: number, offset: number): { start: number; end: number } {
   const safeHeight = Math.max(rowHeight, 1)
-  const start = Math.max(0, Math.floor(Math.max(0, offset) / safeHeight))
-  const end = Math.min(total, Math.ceil((Math.max(0, offset) + Math.max(0, viewportHeight)) / safeHeight) + 1)
+  const start = Math.min(Math.max(0, Math.floor(Math.max(0, offset) / safeHeight)), Math.max(0, total))
+  const end = Math.min(total, Math.max(start, Math.ceil((Math.max(0, offset) + Math.max(0, viewportHeight)) / safeHeight) + 1))
   return { start, end }
 }
 

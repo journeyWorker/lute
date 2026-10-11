@@ -1,5 +1,5 @@
 import { Effect, Queue, Stream } from "effect"
-import type { PlayerAction } from "../../../player/src/ports/index.js"
+import type { PlayerAction } from "@lute-lang/player"
 
 /** A keyboard binding with optional modifier requirements. */
 export interface KeyBinding {

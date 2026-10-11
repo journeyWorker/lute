@@ -1,5 +1,5 @@
 import { Container, Text } from "pixi.js"
-import type { BacklogEntry, PlayerAction, ScreenModel } from "../../../../player/src/ports/index.js"
+import type { BacklogEntry, PlayerAction, ScreenModel } from "@lute-lang/player"
 import type { Theme } from "../../engine/types.js"
 import { Button, Label, ScrollList } from "../widgets/index.js"
 import { ScreenView, type EmitAction } from "./common.js"
@@ -7,7 +7,6 @@ import { ScreenView, type EmitAction } from "./common.js"
 /** Backlog screen with virtualized entries and voice replay actions. */
 export class BacklogScreen extends ScreenView {
   private readonly list: ScrollList<BacklogEntry>
-
   constructor(model: Extract<ScreenModel, { _tag: "Backlog" }>, theme: Theme, emit: EmitAction) {
     super("Backlog", theme, emit, 1000, 700)
     this.list = new ScrollList(model.entries, theme, (entry) => this.row(entry, theme, emit), 72, 560, 900)
@@ -16,12 +15,7 @@ export class BacklogScreen extends ScreenView {
     this.list.setOffset(this.list.maxOffset)
     this.button("Close", { type: "close" }, 36, 635)
   }
-
-  override handleKey(key: string): boolean {
-    if (this.list.handleKey(key)) return true
-    return super.handleKey(key)
-  }
-
+  override handleKey(key: string): boolean { return this.list.handleKey(key) || super.handleKey(key) }
   private row(entry: BacklogEntry, theme: Theme, emit: EmitAction): Container {
     const row = new Container()
     const name = new Label(entry.speakerName, theme, 18)
@@ -42,15 +36,7 @@ export class HudScreen extends Container {
   constructor(theme: Theme, emit: EmitAction, state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }) {
     super()
     const actions: ReadonlyArray<{ label: string; action: PlayerAction }> = [
-      { label: state.auto ? "Auto: on" : "Auto", action: { type: "toggleAuto" } },
-      { label: state.skip ? "Skip: on" : "Skip", action: { type: "toggleSkip" } },
-      { label: "Backlog", action: { type: "openBacklog" } },
-      { label: "Save", action: { type: "openSave" } },
-      { label: "Load", action: { type: "openLoad" } },
-      { label: "Q.Save", action: { type: "quickSave" } },
-      { label: "Q.Load", action: { type: "quickLoad" } },
-      { label: "Settings", action: { type: "openSettings" } },
-      { label: state.hidden ? "Show" : "Hide", action: { type: "hideUI" } }
+      { label: state.auto ? "Auto: on" : "Auto", action: { type: "toggleAuto" } }, { label: state.skip ? "Skip: on" : "Skip", action: { type: "toggleSkip" } }, { label: "Backlog", action: { type: "openBacklog" } }, { label: "Save", action: { type: "openSave" } }, { label: "Load", action: { type: "openLoad" } }, { label: "Q.Save", action: { type: "quickSave" } }, { label: "Q.Load", action: { type: "quickLoad" } }, { label: "Settings", action: { type: "openSettings" } }, { label: state.hidden ? "Show" : "Hide", action: { type: "hideUI" } }
     ]
     actions.forEach((item, index) => {
       const button = new Button(item.label, theme, () => emit(item.action))

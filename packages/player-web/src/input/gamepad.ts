@@ -1,4 +1,4 @@
-import type { PlayerAction } from "../../../player/src/ports/index.js"
+import type { PlayerAction } from "@lute-lang/player"
 
 /** Logical gamepad buttons used by the visual-novel input layer. */
 export interface GamepadState {

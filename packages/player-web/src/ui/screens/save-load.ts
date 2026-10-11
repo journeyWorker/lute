@@ -1,18 +1,16 @@
 import { Sprite, Text, Texture } from "pixi.js"
-import type { PlayerAction, ScreenModel, SlotInfo } from "../../../../player/src/ports/index.js"
+import type { PlayerAction, ScreenModel, SlotInfo } from "@lute-lang/player"
 import type { Theme } from "../../engine/types.js"
 import { Button, Panel } from "../widgets/index.js"
 import { ScreenView, type EmitAction } from "./common.js"
 
 /** Number of normal slots displayed per page. */
 export const SLOTS_PER_PAGE = 6
-
 /** Return the six slots for a page, including empty placeholders. */
 export function pageSlots(slots: ReadonlyArray<SlotInfo>, page: number): ReadonlyArray<SlotInfo | undefined> {
   const offset = Math.max(0, page) * SLOTS_PER_PAGE
   return Array.from({ length: SLOTS_PER_PAGE }, (_, index) => slots[offset + index])
 }
-
 /** Save/load slot grid with thumbnails and paging. */
 export class SaveLoadScreen extends ScreenView {
   constructor(model: Extract<ScreenModel, { _tag: "SaveLoad" }>, theme: Theme, emit: EmitAction) {
@@ -26,7 +24,6 @@ export class SaveLoadScreen extends ScreenView {
     if ((model.page + 1) * SLOTS_PER_PAGE < model.slots.length) this.button("Next", { type: "choose", option: `page:${model.page + 1}` }, 210, 710)
     this.button("Close", { type: "close" }, 770, 710)
   }
-
   private slot(slot: SlotInfo | undefined, mode: "save" | "load", theme: Theme, emit: EmitAction, x: number, y: number, emptyIndex: number): void {
     const panel = new Panel(420, 130, theme, 8)
     panel.position.set(x, y)

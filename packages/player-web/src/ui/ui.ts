@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Queue, Stream } from "effect"
 import { Container } from "pixi.js"
-import type { PlayerAction, ScreenModel } from "../../../player/src/ports/index.js"
+import type { PlayerAction, ScreenModel } from "@lute-lang/player"
 import type { WorldShape, Theme } from "../engine/types.js"
 import { BacklogScreen, HudScreen } from "./screens/backlog.js"
 import { ConfirmScreen, EndedScreen, HaltedScreen, IdleScreen, LoadingScreen, MenuScreen, TitleScreen } from "./screens/common.js"
