@@ -435,7 +435,7 @@ pub(super) fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axi
                 .unwrap_or_default();
             values.push((
                 format!("{day}{label}{name}"),
-                Value::Int(clock.index(at) as i64),
+                Value::Int(clock.index(at)),
             ));
         }
     }
@@ -455,7 +455,7 @@ pub(super) fn clock_axis_at(
         unreachable!("a clock axis value is its index")
     };
     let len = clock.slot_count() as i64;
-    let index = *index as i64;
+    let index = *index;
     lute_manifest::clock::ClockAt {
         day: index.div_euclid(len) + 1,
         slot: index.rem_euclid(len) as usize,

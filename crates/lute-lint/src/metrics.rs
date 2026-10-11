@@ -229,7 +229,8 @@ pub fn compute_doc_tables(
     }
     // Lore bundle beat lines (dsl 0.23.0 §4) are translatable content like
     // entry lines.
-    let mut units = vec![0..linear_end];
+    let mut units = Vec::with_capacity(1 + doc.beats.len());
+    units.push(0..linear_end);
     for beat in &doc.beats {
         let start = walker.lines.len();
         walker.visit_nodes(&beat.body);

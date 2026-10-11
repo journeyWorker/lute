@@ -4,7 +4,7 @@ pub(super) fn parse_state(
     meta: &Meta,
     map: &serde_yaml::Mapping,
     typed: &mut TypedMeta,
-    mut diags: &mut Vec<Diagnostic>,
+    diags: &mut Vec<Diagnostic>,
 ) {
     let err = |code: &str, message: String| Diagnostic {
         code: code.to_string(),
@@ -194,7 +194,7 @@ pub(super) fn parse_state(
                                         other => {
                                             let authored = other.is_some();
                                             let value =
-                                                scalar_default(path, &decl.ty, other, &mut diags, key_span);
+                                                scalar_default(path, &decl.ty, other, diags, key_span);
                                             if authored && value.is_none() {
                                                 typed.state.faulty.insert(path.to_string());
                                             }
@@ -253,7 +253,7 @@ pub(super) fn parse_state(
                                             &members,
                                             &decl.ty,
                                             raw.default,
-                                            &mut diags,
+                                            diags,
                                             key_span,
                                         );
                                         for (m, default) in members.iter().zip(defaults) {

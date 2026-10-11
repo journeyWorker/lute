@@ -843,8 +843,6 @@ fn field_name(node: &NodeKey, before: &SemanticValue, after: &SemanticValue) -> 
                 "lineText"
             } else if changed("speaker") {
                 "speaker"
-            } else if guard_changed && effect_changed {
-                "guard"
             } else if guard_changed {
                 "guard"
             } else if effect_changed {
@@ -879,8 +877,8 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
     let after_graph = after.graph();
     let before_index = command_index(before);
     let after_index = command_index(after);
-    let before_values = model_values(before, &before_index, &before_graph);
-    let after_values = model_values(after, &after_index, &after_graph);
+    let before_values = model_values(before, &before_index, before_graph);
+    let after_values = model_values(after, &after_index, after_graph);
     let mut keys = BTreeSet::new();
     keys.extend(before_values.keys().cloned());
     keys.extend(after_values.keys().cloned());
@@ -899,8 +897,8 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
         let (Some(old), Some(new)) = (before_values.get(&from), after_values.get(&to)) else {
             continue;
         };
-        let mut locs = locations(before, &before_graph, &from);
-        locs.extend(locations(after, &after_graph, &to));
+        let mut locs = locations(before, before_graph, &from);
+        locs.extend(locations(after, after_graph, &to));
         changes.push(SemanticChange {
             kind: ChangeKind::Renamed {
                 from: from.clone(),
@@ -964,8 +962,8 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             }
         }
         if let Some(kind) = kind {
-            let before_loc = locations(before, &before_graph, &key);
-            let mut after_loc = locations(after, &after_graph, &key);
+            let before_loc = locations(before, before_graph, &key);
+            let mut after_loc = locations(after, after_graph, &key);
             after_loc.extend(parse_locs);
             let mut locs = before_loc;
             locs.extend(after_loc);
@@ -989,8 +987,8 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
                 .and_then(|node| node.file.as_ref())
                 .map(|path| relative_node_path(after.root(), path));
             if bl != al {
-                let mut locs = locations(before, &before_graph, &key);
-                locs.extend(locations(after, &after_graph, &key));
+                let mut locs = locations(before, before_graph, &key);
+                locs.extend(locations(after, after_graph, &key));
                 changes.push(SemanticChange {
                     kind: ChangeKind::Moved,
                     node: key,
@@ -1007,8 +1005,8 @@ pub fn diff_models(before: &ProjectModel, after: &ProjectModel) -> Result<Semant
             continue;
         };
         let before_value = before_values.get(key).map(SemanticValue::to_value);
-        let mut locs = locations(before, &before_graph, key);
-        locs.extend(locations(after, &after_graph, key));
+        let mut locs = locations(before, before_graph, key);
+        locs.extend(locations(after, after_graph, key));
         changes.push(SemanticChange {
             kind: ChangeKind::Field("rewardAmbiguous".into()),
             node: key.clone(),

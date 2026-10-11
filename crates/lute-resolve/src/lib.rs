@@ -112,7 +112,7 @@ pub fn resolve_position(
     })
 }
 
-fn find_slot<'a>(doc: &'a Document, off: usize) -> Option<&'a CelSlot> {
+fn find_slot(doc: &Document, off: usize) -> Option<&CelSlot> {
     let mut found = None;
     for_each_cel_slot(doc, &mut |slot| {
         if slot.span.byte_start <= off && off <= slot.span.byte_end {
@@ -189,7 +189,7 @@ fn path_type(raw: &str, decls: &BTreeMap<String, lute_check::meta::StateDecl>) -
     }
 }
 
-fn find_set_for_slot<'a>(doc: &'a Document, slot: &CelSlot) -> Option<(Span, String)> {
+fn find_set_for_slot(doc: &Document, slot: &CelSlot) -> Option<(Span, String)> {
     let mut answer = None;
     visit_nodes(doc, &mut |node| {
         if let Node::Set(set) = node {

@@ -719,11 +719,13 @@ mod tests {
                 ..Default::default()
             },
         );
-        let mut env = Env::default();
-        env.rel_vocab = Arc::new(RelVocab {
-            kinds,
+        let env = Env {
+            rel_vocab: Arc::new(RelVocab {
+                kinds,
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         let folded = FoldedEnv {
             typed: TypedMeta::default(),
             env,

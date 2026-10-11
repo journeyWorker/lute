@@ -13,7 +13,7 @@ use crate::match_check::{CoverItem, DomainValue};
 
 use super::context::{Assumption, Reach};
 use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
-
+#[expect(clippy::too_many_arguments, reason = "reachability verdicts need the complete checker context")]
 pub(crate) fn member_arm_verdicts(
     doc: &Document,
     body: &[Node],
@@ -260,7 +260,7 @@ fn pin_picks(e: &mut cel_parser::ast::IdedExpr, picks: &[Pick], used: &mut Vec<u
             if let Some(i) = at {
                 e.expr = Expr::Literal(match &picks[i].value {
                     DomainValue::Bool(b) => Val::Boolean(*b),
-                    DomainValue::Str(s) => Val::String(s.clone().into()),
+                    DomainValue::Str(s) => Val::String(s.clone()),
                 });
                 used.push(i);
                 return;

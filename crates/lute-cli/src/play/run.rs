@@ -123,10 +123,10 @@ pub(super) fn execute(
     // choice names.
     let mut ended: Vec<(String, String)> = Vec::new();
     for (i, step) in plan.iter().enumerate() {
-        let closed = enter_scopes(&mut s.driver, &mut open, &step.segments, &mut ended);
+        let closed = enter_scopes(s.driver, &mut open, &step.segments, &mut ended);
         note_on_last(&mut steps, closed);
         if matches!(step.action, Action::End) {
-            let closed = enter_scopes(&mut s.driver, &mut open, &[], &mut ended);
+            let closed = enter_scopes(s.driver, &mut open, &[], &mut ended);
             note_on_last(&mut steps, closed);
             steps.push(StepRecord {
                 n: step.n,
@@ -282,7 +282,7 @@ pub(super) fn execute(
             note_on_last(&mut steps, vec![note]);
         }
     }
-    let closed = enter_scopes(&mut s.driver, &mut open, &[], &mut ended);
+    let closed = enter_scopes(s.driver, &mut open, &[], &mut ended);
     note_on_last(&mut steps, closed);
     // dsl 0.27.0 §4: a playthrough whose last step left the game over ends
     // in the terminal state (a later raising step was refused above).

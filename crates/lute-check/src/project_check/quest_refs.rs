@@ -145,9 +145,7 @@ fn quest_doc_hint(docs: &[ProjectDoc<'_>], id: &str) -> Option<String> {
         if quests.is_empty() {
             return None;
         }
-        let Some(doc_id) = item.meta.id.as_deref() else {
-            return None;
-        };
+        let doc_id = item.meta.id.as_deref()?;
         let named = doc_id == id || doc_id.rsplit('.').next() == Some(id);
         named.then(|| {
             let list = quests

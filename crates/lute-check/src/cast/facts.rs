@@ -148,7 +148,7 @@ pub fn fact_producers(
                         ));
                     }
                     Node::Directive(d) => {
-                        for p in crate::directive_facts::lookup(effects, &d)
+                        for p in crate::directive_facts::lookup(effects, d)
                             .map(|f| f.asserts)
                             .unwrap_or_default()
                         {
@@ -223,7 +223,7 @@ pub(crate) fn fact_writes(
                         push(&r.pattern, false, written("retract", &r.pattern), r.span)
                     }
                     Node::Directive(d) => {
-                        let Some(facts) = crate::directive_facts::lookup(effects, &d) else {
+                        let Some(facts) = crate::directive_facts::lookup(effects, d) else {
                             return;
                         };
                         for (p, up) in facts.writes() {

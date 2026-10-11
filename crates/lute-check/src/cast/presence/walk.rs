@@ -139,7 +139,7 @@ impl Presence<'_> {
             self.kill_path(&format!("quest.{quest}"));
         } else if d.tag == "use" {
             self.use_lines(d);
-        } else if let Some(facts) = self.folded.env.rel_vocab.call_facts(&d) {
+        } else if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
             // dsl 0.27.0 §4: a call's declared fact effects.
             for (pattern, up) in facts.writes() {
                 self.kill_fact(pattern, up);
@@ -205,7 +205,7 @@ impl Presence<'_> {
                         Some(p) => is_condition(&p.raw, &s, path.as_deref()).map(Some),
                         None => Some(None),
                     };
-                    let test = (!test.raw.trim().is_empty()).then(|| test.raw.as_str());
+                    let test = (!test.raw.trim().is_empty()).then_some(test.raw.as_str());
                     match (is, test) {
                         (Some(Some(is)), Some(t)) => {
                             self.parse(&format!("({is}) && ({t})"), Some(&subject))
@@ -286,7 +286,7 @@ impl Presence<'_> {
                 if let Some((q, _)) = d.accept_quest() {
                     quests.push(format!("quest.{q}"));
                 }
-                if let Some(facts) = self.folded.env.rel_vocab.call_facts(&d) {
+                if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
                     calls.push(facts);
                 }
             }

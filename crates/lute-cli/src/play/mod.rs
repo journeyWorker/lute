@@ -341,7 +341,7 @@ fn install_condition_dump(
             "cel": raw,
             "expr": expr,
             "activation": crate::runner::activation_json_paths(&dump_state, snapshot.state_types, &paths),
-            "facts": crate::runner::condition_facts(&snapshot.facts, &relations),
+            "facts": crate::runner::condition_facts(snapshot.facts, relations),
             "result": crate::runner::typed_value(value),
         });
         if needs_visited {
@@ -379,6 +379,7 @@ fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode 
 }
 
 /// See [`crate::Command::Play`].
+#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
 pub fn run_play(
     dir: &Path,
     script_path: &Path,
@@ -581,7 +582,7 @@ pub(crate) fn run_play_for_test(
         plan_script(p, needles, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
     let mut driver = driver_for(p, &script, None);
     let play = execute(&script, &plan, Session::resume(p, world, &mut driver));
-    let outcome = play_outcome(&p, &play);
+    let outcome = play_outcome(p, &play);
     let misses = judge(&script, &outcome);
     // A presented beat — an `occasion:` step's, or one the occasion an
     // `advance:` step's clock raised — and a quest document whose lifecycle

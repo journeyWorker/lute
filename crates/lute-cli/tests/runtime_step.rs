@@ -294,16 +294,14 @@ fn a_snapshot_from_another_project_or_minor_is_refused() {
     let r = other
         .runtime
         .restore(snapshot.clone())
-        .err()
-        .expect("another project restored it");
+        .expect_err("another project restored it");
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-PROJECT");
     let mut older = snapshot;
     older.snapshot_version = "0.37.0".into();
     let r = hub
         .runtime
         .restore(older)
-        .err()
-        .expect("another minor restored it");
+        .expect_err("another minor restored it");
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-VERSION");
 }
 

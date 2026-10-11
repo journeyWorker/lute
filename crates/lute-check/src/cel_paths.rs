@@ -12,9 +12,9 @@
 //! A **guard** is a presence test that *tolerates* an unset path:
 //! - `has(p)` — the CEL macro expands to a test-only `Select` (`select.test`).
 //! - `isSet(p)` was the 0.31 DSL global; it was removed in 0.32.
-//! Per the cel-parser 0.10.1 carry-forward (T3.1/T4.3), per-node byte offsets are
-//! unavailable on a successfully parsed AST, so the caller assigns spans from the
-//! enclosing slot; this walk yields only the reconstructed path strings + roles.
+//!   Per the cel-parser 0.10.1 carry-forward (T3.1/T4.3), per-node byte offsets are
+//!   unavailable on a successfully parsed AST, so the caller assigns spans from the
+//!   enclosing slot; this walk yields only the reconstructed path strings + roles.
 
 use cel_parser::ast::{operators as op, CallExpr, EntryExpr, Expr};
 use lute_manifest::semantics::cel_paths::{

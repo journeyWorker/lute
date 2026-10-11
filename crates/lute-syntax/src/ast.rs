@@ -28,6 +28,7 @@ pub struct Section {
 }
 
 #[derive(Clone, Debug)]
+#[expect(clippy::large_enum_variant, reason = "AST nodes stay inline to preserve parser hot-path performance")]
 pub enum Node {
     Line(Line),
     Directive(Directive),

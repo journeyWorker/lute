@@ -48,13 +48,15 @@ pub(crate) enum ReservedReadKind {
 /// walk-GLOBAL observation log (dsl 0.5.1 §1.3), not per-snapshot state, so
 /// a reserved-path read made only inside an `<on>` guard still surfaces on
 /// the walk's live state.
+type ReadLog = Rc<RefCell<Vec<(String, Read)>>>;
+
 #[derive(Clone)]
 pub struct EffectiveState<'a> {
     schema: &'a StateSchema,
     seed: std::borrow::Cow<'a, BTreeMap<String, Value>>,
     writes: BTreeMap<String, Value>,
     reserved_reads: Rc<RefCell<BTreeMap<String, ReservedReadKind>>>,
-    read_log: Option<Rc<RefCell<Vec<(String, Read)>>>>,
+    read_log: Option<ReadLog>,
 }
 
 impl<'a> EffectiveState<'a> {

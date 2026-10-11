@@ -1677,6 +1677,60 @@ pub(crate) fn literal_json(l: &Literal) -> serde_json::Value {
     }
 }
 
+fn collect_cel_env(ir: &ExecutionIr) -> ir::CelEnv {
+    let value = serde_json::to_value(ir).unwrap_or_default();
+    let mut roots = BTreeSet::new();
+    let mut funcs = BTreeSet::new();
+    fn walk(
+        v: &serde_json::Value,
+        roots: &mut BTreeSet<String>,
+        funcs: &mut BTreeSet<String>,
+        in_expr: bool,
+    ) {
+        if let Some(obj) = v.as_object() {
+            if in_expr {
+                if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
+                    if let Some(root) = path.split('.').next() {
+                        roots.insert(root.to_string());
+                    }
+                }
+                if let Some(path) = obj.get("has").and_then(|v| v.as_str()) {
+                    if let Some(root) = path.split('.').next() {
+                        roots.insert(root.to_string());
+                    }
+                }
+                if let Some(name) = obj.get("call").and_then(|v| v.as_str()) {
+                    if !matches!(name, "int" | "double") {
+                        funcs.insert(name.to_string());
+                    }
+                }
+            }
+            for (key, child) in obj {
+                walk(child, roots, funcs, in_expr || key == "expr");
+            }
+        } else if let Some(items) = v.as_array() {
+            for child in items {
+                walk(child, roots, funcs, in_expr);
+            }
+        }
+    }
+    walk(&value, &mut roots, &mut funcs, false);
+    let variables = roots.into_iter().map(|name| ir::CelVariable { name, ty: "map(string, dyn)" }).collect();
+    let functions = funcs.into_iter().filter_map(|name| {
+        let (params, result) = match name.as_str() {
+            "holds" => (vec!["string", "list(dyn)"], "bool"),
+            "count" => (vec!["string", "list(dyn)"], "int"),
+            "countDistinct" => (vec!["string", "list(dyn)", "int"], "int"),
+            "validAt" => (vec!["string", "list(dyn)", "int"], "bool"),
+            "now" => (vec![], "int"),
+            "visited" => (vec!["string"], "bool"),
+            _ => return None,
+        };
+        Some(ir::CelFunction { name, overloads: vec![ir::CelOverload { params, result }] })
+    }).collect();
+    ir::CelEnv { variables, functions }
+}
+
 #[cfg(test)]
 mod tests {
     use lute_check::{CheckInput, Mode};
@@ -1953,58 +2007,4 @@ mod tests {
             v["meta"]
         );
     }
-}
-
-fn collect_cel_env(ir: &ExecutionIr) -> ir::CelEnv {
-    let value = serde_json::to_value(ir).unwrap_or_default();
-    let mut roots = BTreeSet::new();
-    let mut funcs = BTreeSet::new();
-    fn walk(
-        v: &serde_json::Value,
-        roots: &mut BTreeSet<String>,
-        funcs: &mut BTreeSet<String>,
-        in_expr: bool,
-    ) {
-        if let Some(obj) = v.as_object() {
-            if in_expr {
-                if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
-                    if let Some(root) = path.split('.').next() {
-                        roots.insert(root.to_string());
-                    }
-                }
-                if let Some(path) = obj.get("has").and_then(|v| v.as_str()) {
-                    if let Some(root) = path.split('.').next() {
-                        roots.insert(root.to_string());
-                    }
-                }
-                if let Some(name) = obj.get("call").and_then(|v| v.as_str()) {
-                    if !matches!(name, "int" | "double") {
-                        funcs.insert(name.to_string());
-                    }
-                }
-            }
-            for (key, child) in obj {
-                walk(child, roots, funcs, in_expr || key == "expr");
-            }
-        } else if let Some(items) = v.as_array() {
-            for child in items {
-                walk(child, roots, funcs, in_expr);
-            }
-        }
-    }
-    walk(&value, &mut roots, &mut funcs, false);
-    let variables = roots.into_iter().map(|name| ir::CelVariable { name, ty: "map(string, dyn)" }).collect();
-    let functions = funcs.into_iter().filter_map(|name| {
-        let (params, result) = match name.as_str() {
-            "holds" => (vec!["string", "list(dyn)"], "bool"),
-            "count" => (vec!["string", "list(dyn)"], "int"),
-            "countDistinct" => (vec!["string", "list(dyn)", "int"], "int"),
-            "validAt" => (vec!["string", "list(dyn)", "int"], "bool"),
-            "now" => (vec![], "int"),
-            "visited" => (vec!["string"], "bool"),
-            _ => return None,
-        };
-        Some(ir::CelFunction { name, overloads: vec![ir::CelOverload { params, result }] })
-    }).collect();
-    ir::CelEnv { variables, functions }
 }

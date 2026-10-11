@@ -84,6 +84,7 @@ fn impl_ir_line() -> (u64, u64) {
 /// required for `kind: "lore"`, either is refused for any other kind.
 /// `occasions` are the `--occasion` flags, raised after the mock's own
 /// `occasions:` (dsl 0.21.0 §7a.2).
+#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
 pub fn run_artifact(
     artifact: &Path,
     engine: Option<&Path>,
@@ -261,7 +262,7 @@ pub fn run_artifact(
                 cel: raw.to_owned(),
                 expr,
                 activation: activation_json_paths(&dump_state, snapshot.state_types, &paths),
-                facts: condition_facts(&snapshot.facts, &relations),
+                facts: condition_facts(snapshot.facts, relations),
                 result: typed_value(value),
                 visited: needs_visited.then(|| snapshot.visited.iter().cloned().collect()),
             };
@@ -382,13 +383,12 @@ pub(crate) fn activation_json_scoped_with_defaults(
         if allowed(path) {
             ensure_maps(&mut roots, &parts);
         }
-        if path.starts_with("run.") || path.starts_with("season.") {
-            if all || selected_roots.contains("prev") {
+        if (path.starts_with("run.") || path.starts_with("season."))
+            && (all || selected_roots.contains("prev")) {
                 let prev = format!("prev.{path}");
                 let prev_parts: Vec<_> = prev.split('.').collect();
                 ensure_maps(&mut roots, &prev_parts);
             }
-        }
         if state.contains_key(path) || defaults.contains_key(path) {
             continue;
         }
@@ -1049,9 +1049,7 @@ fn direct_occasion_member<B, C>(
                 .map(|k| format!("kind:{k}"))
         }
     };
-    members
-        .iter()
-        .any(|member| *member == candidate)
+    members.contains(&candidate)
         .then(|| candidate.to_string())
 }
 

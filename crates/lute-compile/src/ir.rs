@@ -228,6 +228,7 @@ pub struct SectionEntry {
 /// 0.15.0 §2 wire contract).
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
+#[expect(clippy::large_enum_variant, reason = "serialized IR metadata remains inline to preserve its wire shape")]
 pub enum ArtifactMeta {
     Scene(SceneMeta),
     Quest(QuestMeta),

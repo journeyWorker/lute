@@ -37,7 +37,7 @@ fn scene(frontmatter: &str, body: &str) -> String {
     format!("---\nkind: scene\nid: s\n{frontmatter}---\n## A\n{body}@narrator: a\n")
 }
 
-fn at<'d>(got: &'d [(usize, usize, String)], line: usize) -> &'d str {
+fn at(got: &[(usize, usize, String)], line: usize) -> &str {
     got.iter()
         .find(|(l, ..)| *l == line)
         .map(|(_, _, m)| m.as_str())

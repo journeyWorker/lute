@@ -305,12 +305,11 @@ fn chain_ranges(text: &str, body: usize, end: usize) -> Vec<(usize, usize)> {
     for line in block.split_inclusive('\n') {
         let trimmed = line.trim_start_matches([' ', '\t']);
         let lead = line.len() - trimmed.len();
-        if trimmed.starts_with("- ") || trimmed.trim_end() == "-" {
-            if indent.is_none_or(|i| i == lead) {
+        if (trimmed.starts_with("- ") || trimmed.trim_end() == "-")
+            && indent.is_none_or(|i| i == lead) {
                 indent = Some(lead);
                 starts.push(offset + lead);
             }
-        }
         offset += line.len();
     }
     if starts.is_empty() {
@@ -793,7 +792,7 @@ fn stall(
     let typed = scope.typed_of(path)?;
     let when = own(typed, "when").filter(|w| w != "true")?;
     let scenes = crate::connectivity::scene_key_set(scope.docs);
-    let next_path = scenes.get(next)?.iter().find_map(|(p, _)| Some(p))?;
+    let next_path = scenes.get(next)?.iter().map(|(p, _)| p).next()?;
     let next_doc = scope.doc(next_path)?;
     let next_typed = scope.typed_of(next_path)?;
     let after = effective(next_typed, "after")?;

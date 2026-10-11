@@ -675,8 +675,7 @@ impl Parser<'_> {
         let mut id = None;
         if let Some(open) = heading_source.rfind(" {#") {
             let candidate = &heading_source[open + 3..];
-            if candidate.ends_with('}') {
-                let token = &candidate[..candidate.len() - 1];
+            if let Some(token) = candidate.strip_suffix('}') {
                 let valid = !token.is_empty()
                     && token.len() <= 64
                     && token.as_bytes()[0].is_ascii_alphabetic()

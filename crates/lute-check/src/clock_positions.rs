@@ -159,7 +159,7 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                     if let (Some(resolve), Expr::Literal(Val::String(id))) =
                         (reads.visited, &a.expr)
                     {
-                        return match resolve(&id) {
+                        return match resolve(id) {
                             Some(at) => Formula::Visited(at),
                             None => Formula::Const(None),
                         };

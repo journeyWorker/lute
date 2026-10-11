@@ -662,7 +662,7 @@ pub fn observe_latches(
     }
     drop(eval);
     for key in held {
-        w.cadence.latched.insert(key, now.clone());
+        w.cadence.latched.insert(key, now);
     }
 }
 

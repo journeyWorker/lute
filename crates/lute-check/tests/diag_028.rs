@@ -311,11 +311,9 @@ fn on_one_position_the_cause_comes_first() {
         covered: Vec::new(),
         related: Vec::new(),
     };
-    let mut ds = vec![
-        at("E-ARM-DEAD"),
+    let mut ds = [at("E-ARM-DEAD"),
         at("E-BEAT-UNREACHABLE"),
-        at("E-WHEN-LITERAL-DOMAIN"),
-    ];
+        at("E-WHEN-LITERAL-DOMAIN")];
     ds.sort_by(lute_check::diagnostic_order);
     assert_eq!(ds[0].code, "E-WHEN-LITERAL-DOMAIN");
 }

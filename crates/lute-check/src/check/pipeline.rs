@@ -834,7 +834,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         domains,
         doc.meta.span,
         &component_use_sites(&doc, &input.components),
-        &cast,
+        cast,
         env,
         if folded.typed.component.is_some() {
             &folded.typed.params
@@ -852,7 +852,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(check_use_speaker_args(
         &doc,
         &input.components,
-        &cast,
+        cast,
         &folded.typed.speaker_params,
     ));
     diags.extend(state_merge_diags);

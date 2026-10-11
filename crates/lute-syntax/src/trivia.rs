@@ -103,8 +103,7 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
                 p += 1;
                 continue;
             }
-            if quote.is_none() && ((bytes[p] == b'/' && bytes[p + 1] == b'/') ||
-                (bytes[p] == b'/' && bytes[p + 1] == b'*')) {
+            if quote.is_none() && bytes[p] == b'/' && matches!(bytes[p + 1], b'/' | b'*') {
                 comment_at = Some(p);
                 break;
             }

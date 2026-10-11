@@ -538,7 +538,7 @@ fn cel_pair_preserves_apostrophes_inside_double_quoted_strings() {
 #[test]
 fn synthesized_double_cel_preserves_double_literals() {
     let expr = ExprNode::Binary {
-        op: ">=".into(),
+        op: ">=",
         l: Box::new(ExprNode::Path {
             path: "run.score".into(),
         }),
@@ -562,7 +562,7 @@ fn synthesized_double_cel_preserves_double_literals() {
 #[test]
 fn synthesized_int_cel_preserves_integer_literals() {
     let expr = ExprNode::Binary {
-        op: ">=".into(),
+        op: ">=",
         l: Box::new(ExprNode::Path {
             path: "run.score".into(),
         }),

@@ -85,7 +85,7 @@ fn accepted_json_has_shape_and_exit_review() {
     assert!(report["before"]["sha256"].is_string());
     assert!(report["after"]["sha256"].is_string());
     assert!(report["diff"]["changes"].is_array());
-    assert_eq!(std::fs::read_to_string(root.join("scene.lute")).unwrap().contains("Applied"), true);
+    assert!(std::fs::read_to_string(root.join("scene.lute")).unwrap().contains("Applied"));
     let _ = std::fs::remove_dir_all(root);
 }
 

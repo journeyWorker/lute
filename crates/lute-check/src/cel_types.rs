@@ -445,11 +445,9 @@ fn ordering_hint(
     let path = select_path(bad);
     match ty {
         Type::Bool => match path.as_deref() {
-            Some(p) if p.starts_with("scene.visited.") => format!(
-                " — `scene.visited.<hub>.<choice>` is whether that choice was ever taken, not \
+            Some(p) if p.starts_with("scene.visited.") => " — `scene.visited.<hub>.<choice>` is whether that choice was ever taken, not \
                  how often; count picks in an `int` path you `::set` (for example \
-                 `::set{{run.picks += 1}}`)"
-            ),
+                 `::set{run.picks += 1}`)".to_string(),
             Some(p) => {
                 let p = lute_manifest::text::bracket_spelling_of(p);
                 format!(" — a bool is `true` or `false`: test it directly (`{p}` or `!{p}`)")
