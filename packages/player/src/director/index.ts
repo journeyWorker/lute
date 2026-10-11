@@ -28,7 +28,6 @@ export interface DirectorOptions {
   readonly cueFactory: CueFactoryShape
   readonly scheduler: CueSchedulerShape
   readonly seed?: Contract.Seed
-  readonly titleBackground?: string
 }
 
 export interface DirectorHandle {
