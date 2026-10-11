@@ -39,6 +39,7 @@ type BridgeAnswer = lute_runtime::BridgeAnswer;
 /// each of its field keys. Empty for answers with no text behind them; a
 /// diagnostic about one then renders at [`synthetic_span`].
 #[derive(Clone, Debug, Default, PartialEq)]
+#[expect(clippy::type_complexity, reason = "bridge span storage mirrors the nested bridge/answer/field structure")]
 pub struct BridgeSpans(BTreeMap<String, (Span, Vec<(Span, BTreeMap<String, Span>)>)>);
 
 impl BridgeSpans {
@@ -1474,6 +1475,7 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
 /// canonical id `<document id>.<beat id>` is `id`. Returns the beat's index
 /// in `doc.beats` and its canonical id; [`E_TRACE_BEAT`] otherwise, naming
 /// the declared canonical ids so the fix is one copy away.
+#[expect(clippy::result_large_err, reason = "trace diagnostics are returned directly for source reporting")]
 pub(crate) fn resolve_beat(
     folded: &FoldedEnv,
     doc: &Document,

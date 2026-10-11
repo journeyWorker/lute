@@ -59,10 +59,9 @@ pub fn run_test(
         .filter_map(|p| project_dir_of(p, project))
         .collect();
     for root in play_roots {
-        if !shared.gates.contains_key(&root) {
-            let rec = lute_model::reconciled_project_results_in(&memo, &root, providers).ok();
-            shared.gates.insert(root, rec);
-        }
+        shared.gates.entry(root.clone()).or_insert_with(|| {
+            lute_model::reconciled_project_results_in(&memo, &root, providers).ok()
+        });
     }
     let faults: Vec<String> = shared
         .gates
@@ -368,10 +367,9 @@ impl Shared {
                 continue;
             }
             if let Some(dir) = project_dir_of(play_file, project) {
-                if !self.plays.contains_key(&dir) {
-                    let compiled = crate::play::PlayProject::compile_in(memo, &dir);
-                    self.plays.insert(dir, compiled);
-                }
+                self.plays.entry(dir.clone()).or_insert_with(|| {
+                    crate::play::PlayProject::compile_in(memo, &dir)
+                });
             }
         }
     }
@@ -807,7 +805,7 @@ fn run_one_test(
             .enumerate()
             .filter_map(move |(i, v)| Some((key, i, v.as_str()?)))
     };
-    let needles = lute_trace::exec::record::needle_vocab(&input, &meta);
+    let needles = lute_trace::exec::record::needle_vocab(input, meta);
     let needle_problems: Vec<String> = expect_items("transcriptContains")
         .chain(expect_items("transcriptLacks"))
         .filter_map(|(key, i, n)| {
@@ -836,7 +834,6 @@ fn run_one_test(
         .chain(expect_items("notFacts"))
         .collect();
     if !expect_atoms.is_empty() {
-        let folded = folded;
         let problems: Vec<String> = expect_atoms
             .iter()
             .flat_map(|&(key, i, atom)| {
@@ -888,7 +885,6 @@ fn run_one_test(
     // nearest one, not reported as a miss. `unset` is the spelling of "no
     // value" (an implicit choice slot, a quest), never a typo.
     if !expect_state.is_empty() {
-        let folded = folded;
         let problems: Vec<String> = expect_state
             .iter()
             .filter(|(_, want, _)| want != "unset")
@@ -927,7 +923,7 @@ fn run_one_test(
                         .map(|(k, v)| {
                             let k = match k.as_str() {
                                 Some(id) => serde_yaml::Value::String(
-                                    lute_trace::entry_local_id(&doc, doc_id.as_deref(), id)
+                                    lute_trace::entry_local_id(doc, doc_id.as_deref(), id)
                                         .to_string(),
                                 ),
                                 None => k.clone(),
@@ -1046,14 +1042,14 @@ fn run_one_test(
     };
     let eligibility_mocks = judges_eligibility_by_id.then(|| (mocks.clone(), checked.clone()));
     let (report, exit) = if let Some(beat) = &beat {
-        trace_beat_with_check(&input, checked, mocks, beat, project_asserts.as_ref())
+        trace_beat_with_check(input, checked, mocks, beat, project_asserts.as_ref())
     } else if lore_lookup_only {
-        trace_entries_with_check(&input, checked, mocks, &[], project_asserts.as_ref())
+        trace_entries_with_check(input, checked, mocks, &[], project_asserts.as_ref())
     } else if entries.is_empty() {
-        trace_with_check(&input, checked, mocks, project_asserts.as_ref())
+        trace_with_check(input, checked, mocks, project_asserts.as_ref())
     } else {
         let ids: Vec<&str> = entries.iter().map(String::as_str).collect();
-        trace_entries_with_check(&input, checked, mocks, &ids, project_asserts.as_ref())
+        trace_entries_with_check(input, checked, mocks, &ids, project_asserts.as_ref())
     };
 
     // A refused trace (document check errors or invalid mocks) cannot be
@@ -1235,7 +1231,7 @@ fn run_one_test(
                 let actual = final_state
                     .get(&key)
                     .cloned()
-                    .or_else(|| reserved_quest_default(&doc, &key).map(str::to_string));
+                    .or_else(|| reserved_quest_default(doc, &key).map(str::to_string));
                 expectations.push(ExpectResult {
                     not_raised: None,
                     why: None,

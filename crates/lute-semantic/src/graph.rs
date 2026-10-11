@@ -173,6 +173,7 @@ impl SemanticGraph {
     }
 
     /// Add a dependency edge and register both endpoint nodes.
+    #[expect(clippy::too_many_arguments, reason = "graph edges expose each provenance field explicitly")]
     pub fn edge(
         &mut self,
         source: NodeKey,

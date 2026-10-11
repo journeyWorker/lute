@@ -30,9 +30,11 @@ impl CelPair {
 /// §5): `"run"` (once per run), `"user"` (once ever), `"none"` (repeatable;
 /// source `once: false`), `"day"` / `"slot"` /
 /// `"week"` (once per clock day / slot / week), `"season:<name>"` (once per
-/// window of that season). A wire mirror of
-/// `lute_check::BeatOnce`, kept separate for the same reason as
-/// [`DocKind`]; it serializes as its spelling.
+/// window of that season).
+///
+/// `parse` validates authored spending values and intentionally rejects
+/// `none`; `from_ir` is the wire parser and accepts the serialized `none`
+/// spelling used for repeatable policies.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BeatOnce {
     Run,
@@ -63,7 +65,25 @@ impl BeatOnce {
         })
     }
 
-    /// The policy an IR spelling ([`BeatOnce::as_str`]) names.
+    /// An authored spending `once` value. `false` and `none` are not
+    /// authored spending values; the caller maps `false` to [`BeatOnce::None`].
+    pub fn parse(raw: &str) -> Option<Self> {
+        Some(match raw {
+            "run" => BeatOnce::Run,
+            "user" => BeatOnce::User,
+            "day" => BeatOnce::Day,
+            "slot" => BeatOnce::Slot,
+            "week" => BeatOnce::Week,
+            _ => BeatOnce::Season(
+                lute_manifest::season::season_ref(raw)
+                    .filter(|n| lute_manifest::ident::is_name(n))?
+                    .to_string(),
+            ),
+        })
+    }
+
+    /// Parses the serialized IR spelling, including `none`. Unlike [`Self::parse`],
+    /// this preserves the wire reader's permissive season spelling.
     pub fn from_ir(spelling: &str) -> Option<Self> {
         Some(match spelling {
             "run" => BeatOnce::Run,

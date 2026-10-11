@@ -64,6 +64,7 @@ pub(crate) struct Observation {
 }
 
 /// One comparison (§4.3).
+#[expect(clippy::large_enum_variant, reason = "comparison cases are test-only and preserve their concrete payloads")]
 pub(crate) enum Case {
     /// A document under one concrete input.
     Doc(DocCase),

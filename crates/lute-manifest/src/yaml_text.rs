@@ -672,7 +672,7 @@ fn unclosed_quote(line: &str) -> Option<(usize, String)> {
     let at = colon + 2 + (after.len() - after.trim_start().len());
     let value = &line[at..];
     let quote = value.chars().next().filter(|c| matches!(c, '"' | '\''))?;
-    let rest = value[1..].as_bytes();
+    let rest = &value.as_bytes()[1..];
     let closed = if quote == '"' {
         (0..rest.len()).any(|i| rest[i] == b'"' && (i == 0 || rest[i - 1] != b'\\'))
     } else {

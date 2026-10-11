@@ -968,6 +968,16 @@ fn component_use_sites(
     }
     sites
 }
+fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> NodeKey {
+    owners
+        .iter()
+        .filter(|(candidate, _)| {
+            candidate.byte_start <= span.byte_start && candidate.byte_end >= span.byte_end
+        })
+        .min_by_key(|(candidate, _)| candidate.byte_end - candidate.byte_start)
+        .map(|(_, key)| key.clone())
+        .unwrap_or_else(|| fallback.clone())
+}
  
 
 #[cfg(test)]
@@ -1118,14 +1128,4 @@ mod tests {
         graph.node(key.clone(), Some("scene.lute".into()), Some(span(9)));
         assert!(graph.ambiguous.contains(&key));
     }
-}
-fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> NodeKey {
-    owners
-        .iter()
-        .filter(|(candidate, _)| {
-            candidate.byte_start <= span.byte_start && candidate.byte_end >= span.byte_end
-        })
-        .min_by_key(|(candidate, _)| candidate.byte_end - candidate.byte_start)
-        .map(|(_, key)| key.clone())
-        .unwrap_or_else(|| fallback.clone())
 }

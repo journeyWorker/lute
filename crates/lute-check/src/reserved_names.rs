@@ -101,7 +101,7 @@ fn member_span(meta: &Meta, key: &[&str], written: &str) -> Span {
     let rest = &authored[range.end..];
     let bytes = rest.as_bytes();
     let boundary = |b: Option<&u8>| {
-        b.map_or(true, |b| {
+        b.is_none_or(|b| {
             !(b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.' || *b == b'-')
         })
     };

@@ -2,7 +2,7 @@
 //! or an em dash before the error on its line is one column per character,
 //! never its UTF-8 byte length. A literal-domain error points at the literal.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
@@ -16,7 +16,7 @@ fn temp_file(tag: &str, text: &str) -> PathBuf {
     path
 }
 
-fn check(path: &PathBuf, json: bool) -> String {
+fn check(path: &Path, json: bool) -> String {
     let mut args = vec!["check"];
     if json {
         args.push("--json");
@@ -55,7 +55,7 @@ fn char_column(text: &str, line: usize, needle: &str) -> u64 {
     l[..l.find(needle).unwrap()].chars().count() as u64 + 1
 }
 
-fn json_spans(path: &PathBuf) -> Vec<(String, u64, u64)> {
+fn json_spans(path: &Path) -> Vec<(String, u64, u64)> {
     let out = check(path, true);
     let start = out
         .find(['{', '['])

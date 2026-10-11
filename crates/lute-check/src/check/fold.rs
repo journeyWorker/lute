@@ -295,7 +295,7 @@ pub fn fold_env(
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
     // same-document half of `E-QUEST-TIER-MIX` (check-project owns the
     // cross-document edges).
-    fold_diags.extend(crate::project_check::check_doc_quest_tiers(&doc));
+    fold_diags.extend(crate::project_check::check_doc_quest_tiers(doc));
 
     // 4a'. Fold every `<entry>`'s implicit reserved `entry.<id>.read` decl
     //      (dsl 0.19.0 §5: `bool`, default `false`) and its attribute /

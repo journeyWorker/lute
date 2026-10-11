@@ -247,10 +247,7 @@ impl<D: Driver> Machine<D> {
             {
                 continue;
             }
-            let started = match &q.start {
-                None => None,
-                Some(cond) => Some(self.judge(cond, Site::quest(SiteKind::QuestStart, &q.id, &q.id))),
-            };
+            let started = q.start.as_ref().map(|cond| self.judge(cond, Site::quest(SiteKind::QuestStart, &q.id, &q.id)));
             if self.stopped() {
                 return;
             }

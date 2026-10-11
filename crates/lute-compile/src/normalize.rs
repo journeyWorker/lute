@@ -439,7 +439,7 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
             }
         }
         let any = quest.completes_on_any();
-        if required_children.is_empty() && !(any && !required_exhausted.is_empty()) {
+        if required_children.is_empty() && (!any || required_exhausted.is_empty()) {
             continue;
         }
         let disjunction = if any {

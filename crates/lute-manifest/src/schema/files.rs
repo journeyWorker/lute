@@ -110,7 +110,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                     .keys()
                     .find(|k| !k.as_str().is_some_and(|k| keys.contains(&k)))
                 {
-                    let key = serde_yaml::to_string(key).map_or_else(|_| String::new(), |s| s);
+                    let key = serde_yaml::to_string(key).unwrap_or_else(|_| String::new());
                     let key = key.trim();
                     return Err(SchemaError::Enum(format!(
                         "has no key `{key}`{}; {SHAPES}",

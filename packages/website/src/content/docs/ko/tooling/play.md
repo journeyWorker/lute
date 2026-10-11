@@ -13,7 +13,7 @@ description: "계기(occasion)와 비트(beat, dsl 0.21.0) — 어떤 스토리 
 0.22.0부터 플레이 스크립트는 엔진의 나머지 역할도 대신합니다. `engine:` 스텝은 엔진이 소유한 상태와
 팩트 — 넘어가는 하루, 런 카운터, 처치 기록 — 를 쓰고, 스크립트는 세이브에서 시작할 수 있으며, 결정은
 스텝마다 달라질 수 있고, 스텝이 월드 이벤트를 발생시킬 수 있으며, `expect:`는 플레이스루를
-[`lute test`](/tooling/cli/#test)가 시나리오 테스트와 나란히 실행하는 단언으로 바꿉니다. 이제 엔진을
+[`lute test`](/ko/tooling/cli/#test)가 시나리오 테스트와 나란히 실행하는 단언으로 바꿉니다. 이제 엔진을
 흉내 내기 위해서만 존재하는 씬, 계기, 플러그인은 필요 없습니다.
 
 0.34.0부터 프로젝트 명령은 가장 가까운 manifest 루트마다 하나의
@@ -317,15 +317,13 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 모든 출력에는 `eventVersion: "0.39.0"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
 함께 사용할 수 없습니다.
 
-### TypeScript 런타임
-
-TypeScript 호스트는 Effect 4 기반의 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun과 브라우저 레이어가 `lute compile --all` 번들을 불러오고, 스코프가 관리하는 세션·이벤트 스트림·타입이 지정된 거부·스냅숏·리플레이를 제공합니다. 설치, Bun 세션 전체 예제, 브라우저 설정과 생성된 계약 스키마는 [TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
-
 허브 적합성 프로젝트에서 얻은 짧은 실제 스트림은 다음과 같습니다(첫 선택 뒤에 두 번째 대기가 열립니다).
 
 ```json
 {"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.39.0","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.39.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
 {"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.39.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
+```
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를

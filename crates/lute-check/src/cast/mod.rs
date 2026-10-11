@@ -16,7 +16,7 @@ use lute_syntax::ast::{Arm, CelSlot, ClipNode, Directive, Document, Line, Match,
 use lute_manifest::fact::{is_anonymous_var, FactPattern, FactTerm};
 use lute_syntax::datalog::{BodyLiteral, RuleTerm};
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
-use crate::beats::BeatOnce;
+use lute_ir::BeatOnce;
 use crate::cel_expand::{expand_cel, subject_text, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, DecideCtx, Decided};

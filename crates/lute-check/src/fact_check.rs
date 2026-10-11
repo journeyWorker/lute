@@ -289,6 +289,7 @@ pub fn check_fact_guards(
 /// out may be: the match's `E-NONEXHAUSTIVE` in `diags` (the document's
 /// per-file report) is dropped once every member still uncovered is one of
 /// them, and names only the rest otherwise.
+#[expect(clippy::type_complexity, reason = "fact reconciliation keeps each beat's guard, span, and bodies together")]
 pub fn reconcile_member_matches(
     diags: &mut Vec<Diagnostic>,
     path: &Path,

@@ -31,6 +31,7 @@ use std::process::ExitCode;
 
 use crate::output::pretty_json;
 use lute_check::{ProjectBeat, ProjectBeatKind};
+use lute_ir::BeatOnce;
 use lute_core_span::Diagnostic;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
@@ -547,7 +548,7 @@ fn render_root(
             // A `spentBy` beat is spent once its condition has held, for its
             // `once` period (`run` unless written — then it is named).
             let mut once = match &b.spent_by {
-                Some(by) if b.once == lute_check::BeatOnce::Run => {
+                Some(by) if b.once == BeatOnce::Run => {
                     format!("spentBy: {}", one_line(by))
                 }
                 Some(by) => format!("spentBy: {}, {}", one_line(by), b.once.as_str()),
@@ -702,10 +703,10 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                                     v.insert("code".into(), json!(d.code));
                                     v.insert("severity".into(), json!(crate::severity_str(d.severity)));
                                     v.insert("message".into(), json!(d.text()));
-                                    if let Some(fields) = evidence_json(d.evidence.as_ref()) {
-                                        if let Json::Object(fields) = fields {
-                                            v.extend(fields);
-                                        }
+                                    if let Some(Json::Object(fields)) =
+                                        evidence_json(d.evidence.as_ref())
+                                    {
+                                        v.extend(fields);
                                     }
                                     Json::Object(v)
                                 })

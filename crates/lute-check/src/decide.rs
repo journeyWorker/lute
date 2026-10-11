@@ -889,7 +889,7 @@ fn decide_fact_query(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         "count" | "countDistinct" => {
             let (q, column) = crate::fact_env::count_query(c)?;
             let iv = scope.count_in(&q, column)?;
-            (iv.hi == Some(iv.lo)).then(|| Decided::Num(iv.lo as f64))
+            (iv.hi == Some(iv.lo)).then_some(Decided::Num(iv.lo as f64))
         }
         _ => None,
     }

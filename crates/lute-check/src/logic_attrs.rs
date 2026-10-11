@@ -43,6 +43,7 @@
 //! that survives into the residual list must be permitted.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_ir::BeatOnce;
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, BundleBeat, Choice, Entry, Hub, Match, Objective, On, Quest,
     Reward,
@@ -409,6 +410,7 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
     );
 }
 
+#[expect(clippy::type_complexity, reason = "quest attribute validation keeps each declaration's legal values and evidence")]
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
     // Each enumerated `<quest>` attribute is a quoted string from a fixed
@@ -448,9 +450,9 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
         let bad = value
             .as_ref()
             .filter(|(v, _)| {
-                !legal.contains(&v.as_str())
+                !(legal.contains(&v.as_str())
                     // dsl 0.27.0 §5: `season:<name>` (declared: `E-SEASON-DECL`).
-                    && !(key == "tier"
+                    || key == "tier"
                         && lute_manifest::season::season_ref(v)
                             .is_some_and(lute_manifest::ident::is_name))
             })
@@ -576,7 +578,7 @@ pub(crate) fn check_flags(attrs: &[Attr], tag: &str, flags: &[&str], diags: &mut
         // A beat/entry repetition period on a choice (R-6): a choice's `once`
         // has one meaning, so the period is refused, not silently `false`.
         let period = matches!(&attr.value, AttrValue::Str(s)
-            if s.starts_with("season:") || crate::beats::BeatOnce::parse(s).is_some());
+            if s.starts_with("season:") || BeatOnce::parse(s).is_some());
         let message = if tag == "choice" && key == "once" && period {
             format!(
                 "`<choice {written}>`: a period (`run`, `user`, `day`, `week`, `slot`, \

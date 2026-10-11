@@ -13,18 +13,19 @@ use lute_check::{CheckInput, Mode};
 use lute_compile::compile;
 use serde_json::Value;
 
-const SEED: u64 = 0x0360_2026_10_05;
+const SEED: u64 = 0x0360_2026_1005;
 const MAX_INPUT: usize = 4 * 1024;
 const CASES: u32 = 128;
 
 fn config() -> Config {
-    let mut config = Config::default();
-    config.cases = CASES;
-    config.max_shrink_iters = 256;
-    config.rng_algorithm = RngAlgorithm::ChaCha;
-    config.rng_seed = RngSeed::Fixed(SEED);
-    config.failure_persistence = None;
-    config
+    Config {
+        cases: CASES,
+        max_shrink_iters: 256,
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(SEED),
+        failure_persistence: None,
+        ..Default::default()
+    }
 }
 
 fn input(text: String) -> CheckInput {

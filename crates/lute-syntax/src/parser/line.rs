@@ -298,7 +298,7 @@ impl Parser<'_> {
                         j += 1;
                     }
                 }
-                let value = decode_inline_text(&text[raw_start..j].trim_matches('"'));
+                let value = decode_inline_text(text[raw_start..j].trim_matches('"'));
                 let value_span = self.span(base + raw_start, base + j);
                 attrs.push(InlineAttr {
                     key,

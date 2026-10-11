@@ -91,7 +91,7 @@ pub fn spend_at_clock(p: &ExecProject, w: &mut World, id: &str, member: Option<&
         .and_then(|c| crate::clock::position(c, &w.state))
     {
         for key in spend_keys(p, id, member) {
-            w.spent_at.insert(key, at.clone());
+            w.spent_at.insert(key, at);
         }
     }
 }

@@ -281,8 +281,10 @@ pub fn parse_meta_kind_with_defaults(
         std::borrow::Cow::Owned(merged)
     };
     let map = map.as_ref();
-    let mut typed = TypedMeta::default();
-    typed.yaml = raw_yaml;
+    let mut typed = TypedMeta {
+        yaml: raw_yaml,
+        ..Default::default()
+    };
     // Required-key check (dsl §6.1). Only scenes carry the legacy required
     // core keys; Schema/Component/Quest do not. dsl 0.15.0 §4: authored (or
     // defaults-merged) `id:` IS the canonical scene key — the required-key

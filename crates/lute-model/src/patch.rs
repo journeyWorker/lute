@@ -464,7 +464,7 @@ pub fn apply_patch_to(
                 reason: "unknown target".into(),
             });
         };
-        if graph.ambiguous.contains(node) || duplicate_authored_target(&before_model, node) {
+        if graph.ambiguous.contains(node) || duplicate_authored_target(before_model, node) {
             return Err(PatchRefusal::Target {
                 node: node.clone(),
                 reason: "ambiguous target".into(),
@@ -510,7 +510,7 @@ pub fn apply_patch_to(
                     reason: "target has no editable source anchor".into(),
                 });
             };
-            if graph.ambiguous.contains(node) || duplicate_authored_target(&before_model, node) {
+            if graph.ambiguous.contains(node) || duplicate_authored_target(before_model, node) {
                 return Err(PatchRefusal::Target {
                     node: node.clone(),
                     reason: "ambiguous target".into(),
@@ -765,7 +765,7 @@ pub fn apply_patch_to(
         source = format_touched(
             &source,
             &regions,
-            !file.extension().is_some_and(|x| x == "lute"),
+            file.extension().is_none_or(|x| x != "lute"),
         )
         .map_err(|e| PatchRefusal::Edit {
             index: list[0].index,
@@ -808,7 +808,7 @@ pub fn apply_patch_to(
             path: stage.root.clone(),
             message: e.to_string(),
         })?;
-    let before_errors = errors(&before_model);
+    let before_errors = errors(before_model);
     let after_errors = errors(&after_model);
     let new_errors: Vec<_> = after_errors
         .into_iter()
@@ -821,7 +821,7 @@ pub fn apply_patch_to(
     if !new_errors.is_empty() {
         return Err(PatchRefusal::Check(new_errors));
     }
-    let diff = diff_models(&before_model, &after_model).map_err(|e| PatchRefusal::Io {
+    let diff = diff_models(before_model, &after_model).map_err(|e| PatchRefusal::Io {
         path: root.to_path_buf(),
         message: e.to_string(),
     })?;
@@ -833,7 +833,7 @@ pub fn apply_patch_to(
             preserve_violations(
                 std::slice::from_ref(item),
                 &diff,
-                &before_model,
+                before_model,
                 &after_model,
             )
             .into_iter()

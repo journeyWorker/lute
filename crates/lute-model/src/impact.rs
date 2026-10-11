@@ -165,18 +165,17 @@ pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -
         };
         for &idx in adj {
             let edge = &graph.edges[idx];
-            if edge.source.kind == NodeKind::Fact {
-                if fact_overlap(&edge.source.key, &node.key).is_none() {
+            if edge.source.kind == NodeKind::Fact
+                && fact_overlap(&edge.source.key, &node.key).is_none() {
                     continue;
                 }
-            }
             if edge.target == edge.source {
                 continue;
             }
             let next_ev = weaker(&ev, &edge.evidence);
             let mut ep = edges.clone();
             ep.push(idx);
-            let replace = best.get(&edge.target).map_or(true, |(old, n, oldp, _)| {
+            let replace = best.get(&edge.target).is_none_or(|(old, n, oldp, _)| {
                 rank(&next_ev) > rank(old)
                     || (rank(&next_ev) == rank(old)
                         && (ep.len() < *n || (ep.len() == *n && path_key(&path2) < path_key(oldp))))

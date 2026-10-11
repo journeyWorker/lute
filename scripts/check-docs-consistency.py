@@ -429,6 +429,39 @@ def check_stale_domain() -> None:
             )
 
 
+FENCE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
+
+
+def check_code_fences(pages: list[pathlib.Path]) -> None:
+    """Every fenced code block closes before the next one opens.
+
+    A fence line that carries an info string (```` ```yaml ````) never closes
+    an open block in CommonMark, so a block missing its closing fence swallows
+    the prose after it as code up to the next bare fence — and the site build
+    does not complain. That shipped twice (tooling/overviews.md in 0.24,
+    ko/tooling/play.md in 0.38).
+    """
+    for p in pages:
+        rel = p.relative_to(ROOT)
+        fence: tuple[str, int] | None = None
+        for n, line in enumerate(read(p).splitlines(), 1):
+            m = FENCE.match(line)
+            if not m:
+                continue
+            marker, info = m.group(1), m.group(2).strip()
+            if fence is None:
+                fence = (marker, n)
+            elif marker[0] == fence[0][0] and len(marker) >= len(fence[0]):
+                if info:
+                    ERRORS.append(
+                        f"{rel}:{fence[1]}: code block is not closed before the "
+                        f"fence `{info}` on line {n} (a closing fence carries no info string)"
+                    )
+                fence = None
+        if fence is not None:
+            ERRORS.append(f"{rel}:{fence[1]}: code block is never closed")
+
+
 def example_roots() -> list[str]:
     return [r for r in EXAMPLE_ROOT_CANDIDATES if (ROOT / r).is_dir()]
 
@@ -475,6 +508,9 @@ def main() -> int:
 
     # 2. No stale canonical domain under the docs/website trees or the root.
     check_stale_domain()
+    # 3. Fenced code blocks close (an unclosed one renders the prose after it
+    # as code without failing the site build).
+    check_code_fences(pages)
     status_count = check_doc_statuses()
     check_changelog_classes(lang_version)
 

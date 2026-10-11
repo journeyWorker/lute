@@ -24,7 +24,7 @@ use cel_parser::reference::Val;
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
 use lute_syntax::ast::{Node, Objective};
-
+use lute_ir::BeatOnce;
 use crate::project_doc::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
@@ -74,6 +74,7 @@ enum Settle {
 }
 
 /// How relational calls read while building a formula.
+#[expect(clippy::type_complexity, reason = "clock readers carry optional schedule and visitor callbacks")]
 struct Reads<'r> {
     /// A pure-schedule derived list-form `holds('rel', [c…])` reads as its
     /// rules' `cel()` guards.
@@ -159,7 +160,7 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                     if let (Some(resolve), Expr::Literal(Val::String(id))) =
                         (reads.visited, &a.expr)
                     {
-                        return match resolve(&id) {
+                        return match resolve(id) {
                             Some(at) => Formula::Visited(at),
                             None => Formula::Const(None),
                         };
@@ -1410,8 +1411,8 @@ pub fn check_project_advance_cascades(
             continue;
         }
         let repeats = match pb.once {
-            crate::beats::BeatOnce::None | crate::beats::BeatOnce::Slot => true,
-            crate::beats::BeatOnce::Day => matches!(spec, lute_ir::AdvanceSpec::Day),
+            BeatOnce::None | BeatOnce::Slot => true,
+            BeatOnce::Day => matches!(spec, lute_ir::AdvanceSpec::Day),
             _ => false,
         };
         if !repeats {

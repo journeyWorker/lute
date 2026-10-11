@@ -308,5 +308,5 @@ pub(crate) fn is_profile_ident_root(name: &str) -> bool {
 /// literal. The marker is injected by the profile re-parse only at genuine `@`
 /// sites; authored CEL must never contain it, else a hand-written
 /// `__lute_at_ref__foo(...)` would parse to a marker-named `Call` and masquerade
-
+///
 const _: () = ();

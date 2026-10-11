@@ -53,10 +53,13 @@ pub(super) fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
             }
             ok
         }
-        Expr::List(l) => l
-            .elements
-            .iter()
-            .fold(true, |ok, x| read_paths(&x.expr, out) && ok),
+        Expr::List(l) => {
+            let mut ok = true;
+            for x in &l.elements {
+                ok = read_paths(&x.expr, out) && ok;
+            }
+            ok
+        }
         Expr::Ident(_) | Expr::Literal(_) => true,
         _ => false,
     }

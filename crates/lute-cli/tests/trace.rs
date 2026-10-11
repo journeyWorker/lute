@@ -791,7 +791,7 @@ fn run_raises_an_occasion_on_a_compiled_quest_artifact() {
     let at = |pred: &dyn Fn(&serde_json::Value) -> bool| {
         records
             .iter()
-            .position(|r| pred(r))
+            .position(pred)
             .unwrap_or_else(|| panic!("{v}"))
     };
     let raised = at(&|r| r["kind"] == "occasion" && r["occasion"] == "runEnd");

@@ -291,6 +291,7 @@ never eligible in any cell: 4
 
 eligible but never presented in any cell: 1
   dockEmpty [entry, lore/places.lute] placeVisit@place.dock — lost to dock.storm; dockBo; dockGulls
+```
 
 Reading a cell:
 

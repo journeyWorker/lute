@@ -320,7 +320,7 @@ fn rewrite_cel_with_quote(raw: &str, quote: char) -> Rewrite {
     }
     let mut candidates = Vec::new();
     for (start, end) in call_spans(raw) {
-        let name_end = raw[start..].find(|c: char| c == '(').unwrap_or(0) + start;
+        let name_end = raw[start..].find('(').unwrap_or(0) + start;
         let name = raw[start..name_end].trim();
         if !matches!(name, "holds" | "count" | "countDistinct" | "validAt" | "isSet") {
             continue;
@@ -513,9 +513,7 @@ fn rewrite_call(
             }
             let path = &call.args[0].expr;
             let source = args_text[0].as_str();
-            let Some(segments) = lute_cel::path::static_path(path) else {
-                return None;
-            };
+            let segments = lute_cel::path::static_path(path)?;
             if segments.len() < 2 {
                 return None;
             }
@@ -869,7 +867,7 @@ fn yaml_key_value(line: &str) -> Option<(usize, usize, usize)> {
             (None, b'\'' | b'"') => quote = Some(b),
             (Some(q), b) if b == q => quote = None,
             (None, b':') => {
-                let key_start = line[..i].rfind(|c: char| c == ' ' || c == '\t').map_or(0, |x| x + 1);
+                let key_start = line[..i].rfind([' ', '\t']).map_or(0, |x| x + 1);
                 let key = line[key_start..i].trim();
                 let start = i + 1 + line[i + 1..].len() - line[i + 1..].trim_start().len();
                 return (!key.is_empty()).then_some((key_start, key_start + key.len(), start));
@@ -938,6 +936,26 @@ fn rewrite_yaml_scalar(raw: &str, cel_key: bool) -> Option<String> {
         Some(b'"') => format!("\"{}\"", rewritten.text.replace('\\', "\\\\").replace('"', "\\\"")),
         _ => format!("'{}'", rewritten.text.replace('\'', "''")),
     })
+}
+
+fn rewrite_rule_guards(text: &str, quote: char) -> Option<String> {
+    let mut out = text.to_string();
+    let mut at = 0;
+    let mut changed = false;
+    while let Some(rel) = out[at..].find("cel(\"") {
+        let start = at + rel + 5;
+        let end = out[start..].find('"')? + start;
+        let body = &out[start..end];
+        let next = rewrite_cel_with_quote(body, quote);
+        if next.text != body {
+            out.replace_range(start..end, &next.text);
+            changed = true;
+            at = start + next.text.len();
+        } else {
+            at = end + 1;
+        }
+    }
+    changed.then_some(out)
 }
 
 #[cfg(test)]
@@ -1047,24 +1065,4 @@ mod tests {
         assert!(lute_syntax::datalog::parse_rule(body).is_ok(), "{body}");
         assert_eq!(rewrite_yaml_cel(&out.text).text, out.text);
     }
-}
-
-fn rewrite_rule_guards(text: &str, quote: char) -> Option<String> {
-    let mut out = text.to_string();
-    let mut at = 0;
-    let mut changed = false;
-    while let Some(rel) = out[at..].find("cel(\"") {
-        let start = at + rel + 5;
-        let end = out[start..].find('"')? + start;
-        let body = &out[start..end];
-        let next = rewrite_cel_with_quote(body, quote);
-        if next.text != body {
-            out.replace_range(start..end, &next.text);
-            changed = true;
-            at = start + next.text.len();
-        } else {
-            at = end + 1;
-        }
-    }
-    changed.then_some(out)
 }

@@ -1271,9 +1271,7 @@ fn a_handler_accept_activates_its_quest() {
     let (report, _) = trace_document(&input, MockSet::default());
     let last = report
         .decisions
-        .iter()
-        .filter(|d| d.construct == "quest" && d.id == "second")
-        .next_back()
+        .iter().rfind(|d| d.construct == "quest" && d.id == "second")
         .map(|d| d.outcome.as_str());
     assert_eq!(last, Some("active"), "{:#?}", report.decisions);
 }

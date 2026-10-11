@@ -18,113 +18,10 @@ pub const BEAT_KEYS: &[&str] = &[
     "on", "target", "when", "priority", "once", "also", "share", "spentBy", "for", "advances",
 ];
 
-/// A scene beat's repetition policy (dsl 0.21.0 §3.1, D-F).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BeatOnce {
-    /// `once: run` (the default) — presented at most once per run.
-    Run,
-    /// `once: user` — presented at most once ever.
-    User,
-    /// `once: false` — repeatable; never spent.
-    None,
-    /// dsl 0.24.0 §1: `once: day` — spent until the clock's day changes.
-    Day,
-    /// dsl 0.24.0 §1: `once: slot` — spent until the clock's slot (or day)
-    /// changes.
-    Slot,
-    /// dsl 0.27.0 §5: `once: week` — spent until `clock.weekday` returns to
-    /// `week.first` (the next clock week). Needs a clock with a `week:`.
-    Week,
-    /// dsl 0.27.0 §5: `once: season:<name>` — spent until the season opens
-    /// again. Needs a declared season (`E-SEASON-DECL`).
-    Season(String),
-}
-
-impl BeatOnce {
-    /// The IR spelling (dsl 0.21.0 §8, 0.24.0 §1, 0.27.0 §5): `"run"`,
-    /// `"user"`, `"none"`, `"day"`, `"slot"`, `"week"` or `"season:<name>"`.
-    pub fn as_str(&self) -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed(match self {
-            BeatOnce::Run => "run",
-            BeatOnce::User => "user",
-            BeatOnce::None => "none",
-            BeatOnce::Day => "day",
-            BeatOnce::Slot => "slot",
-            BeatOnce::Week => "week",
-            BeatOnce::Season(name) => {
-                return std::borrow::Cow::Owned(format!(
-                    "{}{name}",
-                    lute_manifest::season::SEASON_PREFIX
-                ))
-            }
-        })
-    }
-
-    /// An authored spending `once` value — `run`, `user`, `day`, `slot`,
-    /// `week` or `season:<name>` (a well-formed name; whether the season
-    /// is declared is `E-SEASON-DECL`'s). `false` / `none` is not one.
-    pub fn parse(raw: &str) -> Option<BeatOnce> {
-        Some(match raw {
-            "run" => BeatOnce::Run,
-            "user" => BeatOnce::User,
-            "day" => BeatOnce::Day,
-            "slot" => BeatOnce::Slot,
-            "week" => BeatOnce::Week,
-            _ => BeatOnce::Season(
-                lute_manifest::season::season_ref(raw)
-                    .filter(|n| lute_manifest::ident::is_name(n))?
-                    .to_string(),
-            ),
-        })
-    }
-
-    /// Spent per clock period (`day` / `slot` / `week`) — needs a declared
-    /// clock.
-    pub fn is_clock(&self) -> bool {
-        matches!(self, BeatOnce::Day | BeatOnce::Slot | BeatOnce::Week)
-    }
-
-    /// The season a `once: season:<name>` names.
-    pub fn season(&self) -> Option<&str> {
-        match self {
-            BeatOnce::Season(name) => Some(name),
-            _ => None,
-        }
-    }
-}
-
 /// The accepted `once` values, for messages.
 pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once ever), \
      `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
      window of a declared season), or `false` (repeatable)";
-
-impl From<BeatOnce> for lute_ir::BeatOnce {
-    fn from(o: BeatOnce) -> Self {
-        match o {
-            BeatOnce::Run => lute_ir::BeatOnce::Run,
-            BeatOnce::User => lute_ir::BeatOnce::User,
-            BeatOnce::None => lute_ir::BeatOnce::None,
-            BeatOnce::Day => lute_ir::BeatOnce::Day,
-            BeatOnce::Slot => lute_ir::BeatOnce::Slot,
-            BeatOnce::Week => lute_ir::BeatOnce::Week,
-            BeatOnce::Season(name) => lute_ir::BeatOnce::Season(name),
-        }
-    }
-}
-
-impl From<lute_ir::BeatOnce> for BeatOnce {
-    fn from(o: lute_ir::BeatOnce) -> Self {
-        match o {
-            lute_ir::BeatOnce::Run => BeatOnce::Run,
-            lute_ir::BeatOnce::User => BeatOnce::User,
-            lute_ir::BeatOnce::None => BeatOnce::None,
-            lute_ir::BeatOnce::Day => BeatOnce::Day,
-            lute_ir::BeatOnce::Slot => BeatOnce::Slot,
-            lute_ir::BeatOnce::Week => BeatOnce::Week,
-            lute_ir::BeatOnce::Season(name) => BeatOnce::Season(name),
-        }
-    }
-}
 
 pub(super) fn parse_advances(v: &serde_yaml::Value) -> Option<AdvanceSpec> {
     match v {
@@ -144,9 +41,7 @@ pub(crate) fn advances_from_yaml(
     get_span: impl Fn(&str) -> Span,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<AdvanceSpec> {
-    let Some(v) = map.get(serde_yaml::Value::String("advances".to_string())) else {
-        return None;
-    };
+    let v = map.get(serde_yaml::Value::String("advances".to_string()))?;
     if let Some(spec) = parse_advances(v) {
         return Some(spec);
     }
@@ -167,7 +62,7 @@ pub fn advances_from_attr(
     raw: Option<&(String, Span)>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<AdvanceSpec> {
-    let Some((raw, span)) = raw else { return None };
+    let (raw, span) = raw?;
     let v = match raw.as_str() {
         "slot" => AdvanceSpec::Slot,
         "day" => AdvanceSpec::Day,

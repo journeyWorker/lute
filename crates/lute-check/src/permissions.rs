@@ -326,17 +326,17 @@ impl PermissionChecker<'_> {
                             );
                         }
                     }
-                    None if state_writes_restricted(self.permissions) => {
+                    None if state_writes_restricted(self.permissions)
                         // A state shape may contain defaults. If the invocation
                         // cannot resolve its base, authorization must fail closed.
-                        if self
+                        && self
                             .snapshot
                             .state_shapes
                             .get(&slot.shape)
                             .is_some_and(|shape| {
                                 shape_has_defaults(shape, self.snapshot, &mut BTreeSet::new())
                             })
-                        {
+                        => {
                             self.diagnostics.push(permission_diag(
                                 E_PERMISSION_STATE,
                                 format!(
@@ -346,7 +346,6 @@ impl PermissionChecker<'_> {
                                 directive.span,
                             ));
                         }
-                    }
                     None => {}
                 }
             }

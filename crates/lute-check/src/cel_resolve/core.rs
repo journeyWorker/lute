@@ -86,7 +86,7 @@ pub fn check_cel_slot(
             // not also a stray subject.
             let sigil = slot.raw[r.span.byte_end..]
                 .starts_with(|c: char| c.is_ascii_alphabetic() || c == '_');
-            if !ctx.in_match && !(sigil && slot.ast.is_some()) {
+            if !(ctx.in_match || sigil && slot.ast.is_some()) {
                 diags.push(diag(
                     "E-DOLLAR-OUTSIDE-MATCH",
                     "`$` (match subject) is only valid inside a `<match>` block".to_string(),
@@ -483,5 +483,5 @@ pub(crate) fn abstract_member(message: &str, member: &str) -> String {
 /// first and only parse. A guard whose CEL fails to parse is silently
 /// skipped — no evaluator, no cascade (matches `check_cel_slot`'s
 /// `slot.ast: None` skip); the rule's own shape was already validated by
-
+///
 const _: () = ();

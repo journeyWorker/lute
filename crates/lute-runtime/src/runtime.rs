@@ -583,6 +583,7 @@ impl Runtime {
         self.run_input(world, seed_input(), Vec::new(), 0, 0)
     }
 
+    #[expect(clippy::result_large_err, reason = "rejection returns the pre-step state required for deterministic recovery")]
     pub fn step(
         &self,
         mut state: State,

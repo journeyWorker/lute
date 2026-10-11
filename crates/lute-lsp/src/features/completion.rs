@@ -945,7 +945,7 @@ fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionI
     ];
     let before = &raw[..local.min(raw.len())];
     let open = before.rfind('(')?;
-    let name = before[..open].split(|c: char| !c.is_ascii_alphanumeric()).last()?;
+    let name = before[..open].split(|c: char| !c.is_ascii_alphanumeric()).next_back()?;
     if !HOSTS.iter().any(|(n, _)| *n == name) {
         return None;
     }

@@ -835,7 +835,7 @@ fn a_scene_accept_activates_an_accept_driven_quest_after_the_presentation() {
         .unwrap_or_else(|| panic!("{text}"));
     assert_eq!(lines[at + 1], "  quest sideJob -> active", "{text}");
     assert!(
-        lines[..at].iter().any(|l| *l == "@guard: Deal."),
+        lines[..at].contains(&"@guard: Deal."),
         "the accept lands after the presentation: {text}"
     );
 }
@@ -2442,7 +2442,7 @@ fn an_ordinal_word_placeholder_renders_a_word_up_to_twenty() {
         .args(["--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
-    let ir: serde_json::Value = serde_json::from_slice(&out.stdout).expect(&stderr(&out));
+    let ir: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", stderr(&out)));
     let line = ir["commands"]
         .as_array()
         .unwrap()

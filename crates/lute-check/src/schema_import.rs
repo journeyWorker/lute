@@ -1641,12 +1641,12 @@ fn read_and_parse(
 
 /// Report `E-USES-DUP-*`/`E-KIND-NAME-CLASH` for every depth level at which
 /// >= 2 DISTINCT files declare `name`, and return those levels. The two named
-/// files are the first pair in import `order` ([`import_order`]); dsl 0.26
-/// §2.7: reported at the later one's declaration line
-/// ([`crate::rel_schema::at_origin`]), naming the earlier by its
-/// project-relative path and line ([`crate::rel_schema::origin_display`]),
-/// so the project roll-up folds every importer's copy into one report;
-/// `origin_of` locates `name` in a file (`None` keeps the importer anchor).
+/// > files are the first pair in import `order` ([`import_order`]); dsl 0.26
+/// > §2.7: reported at the later one's declaration line
+/// > ([`crate::rel_schema::at_origin`]), naming the earlier by its
+/// > project-relative path and line ([`crate::rel_schema::origin_display`]),
+/// > so the project roll-up folds every importer's copy into one report;
+/// > `origin_of` locates `name` in a file (`None` keeps the importer anchor).
 #[allow(clippy::too_many_arguments)]
 fn emit_level_dups<T>(
     code: &str,
