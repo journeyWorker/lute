@@ -41,3 +41,31 @@ after: 'visited("chapter-two")'
     @narrator{code="0050"}: Dusk ending — some doors close to keep us safe.
   </choice>
 </branch>
+::actor{character="mara" anchor="left" action="fadeIn" emotion="sad" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
+@mara{code="0040" emotion="sad"}: I remember the first time Liora showed me the lantern.
+@elio{code="0020" emotion="worried"}: What did she say?
+@mara{code="0050" emotion="happy"}: That every light is a question pretending to be an answer.
+@narrator{code="0060"}: The lantern's blue flame bends toward the sea.
+@mara{code="0060" emotion="hopeful"}: Liora, if you can hear me, we came back.
+@elio{code="0030" emotion="neutral"}: We brought the ribbon.
+@mara{code="0070" emotion="worried"}: And the compass.
+@narrator{code="0070"}: Inside the brass lid, a tiny journal page unfolds.
+@mara{code="0080" emotion="surprised"}: Her handwriting.
+@mara{code="0090" emotion="sad"}: She wrote that the lighthouse keeps what people cannot release.
+@elio{code="0040" emotion="hopeful"}: Then release it.
+@mara{code="0100" emotion="angry"}: It is not that easy.
+@elio{code="0050" emotion="happy"}: It never is. That is why we brought snacks.
+@narrator{code="0080"}: For one breath, even the ghost laughs.
+@mara{code="0110" emotion="hopeful"}: I am ready to hear the answer now.
+@elio{code="0060" emotion="worried"}: Whatever it is, I am beside you.
+@mara{code="0120" emotion="neutral"}: Then let the last light choose its shore.
+<hub id="journal" prompt="Liora's journal waits beside the lantern.">
+  <choice id="read" text="Read the final page" once>
+    ::set{run.heardSignal = true}
+    @mara{code="0130" emotion="hopeful"}: She left us a way home.
+  </choice>
+  <choice id="close" text="Close the journal" exit>
+    @elio{code="0070" emotion="sad"}: We can read it when the tide is kind.
+  </choice>
+</hub>

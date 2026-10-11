@@ -18,7 +18,7 @@ def bg(name,base,accent):
     png(os.path.join(A,'bg',name+'.png'),1280,720,f)
 def sprite(name,color,emotion):
     def f(x,y):
-        cx=300; head=120; body=280
+        cx=300
         if y<120 or y>570:return (0,0,0,0)
         if (y<220 and (x-cx)**2+(y-170)**2<95**2) or (y>=220 and abs(x-cx)<110):
             if y<220 and emotion in ('worried','sad') and 180<y<195 and (x-cx)**2<45**2:return (30,20,40,255)
@@ -33,7 +33,7 @@ def wav(path,notes,seconds=12):
         for i in range(n):
             t=i/rate; s=sum(math.sin(2*math.pi*f*t) for f in notes)/len(notes); w.writeframes(struct.pack('<h',int(7000*s)))
 def main():
-    for n,b,c in [('harbor-dawn',(35,75,105),(190,165,120)),('lighthouse-noon',(115,145,170),(235,220,170)),('lighthouse-night',(18,28,62),(90,70,125)),('title',(20,24,55),(100,70,130))]: bg(n,b,c)
+    for n,b,c in [('harbor-dawn',(35,75,105),(190,165,120)),('harbor-noon',(55,110,145),(230,210,155)),('harbor-night',(12,30,58),(65,90,140)),('lighthouse-dawn',(95,125,155),(220,185,135)),('lighthouse-noon',(115,145,170),(235,220,170)),('lighthouse-night',(18,28,62),(90,70,125)),('title',(20,24,55),(100,70,130))]: bg(n,b,c)
     for who,col in [('mara',(170,75,85)),('elio',(60,120,180)),('liora',(165,130,210))]:
         for e in ['neutral','happy','worried','angry','hopeful','sad','surprised']:
             sprite(who+'-'+e,col,e)

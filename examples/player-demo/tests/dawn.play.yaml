@@ -1,5 +1,8 @@
 choose:
   signal: tower
+  harborPromise: promise
+  doorMemory: remember
+  journal: [read, close]
   questions: leave
   crossing: { timeout: true }
   lastLight: release

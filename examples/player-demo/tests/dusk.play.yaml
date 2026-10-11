@@ -1,5 +1,8 @@
 choose:
   signal: harbor
+  harborPromise: promise
+  doorMemory: remember
+  journal: [read, close]
   questions: leave
   crossing: rush
   lastLight: hold
