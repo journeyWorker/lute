@@ -1363,7 +1363,7 @@ enums:
 | `sections` | 산출물의 섹션 표: `{"section": 1, "heading": "Counter", "id": "counter"}`. `id`는 `{#…}`를 쓴 섹션에만 있습니다. |
 | `capabilitySnapshot` | 산출물, 프로젝트 색인, `lute context --json`이 싣는 기능 스냅샷 해시입니다. |
 
-→ [런타임 계약](/tooling/runtime-contract/)
+→ [런타임 계약](/ko/tooling/runtime-contract/)
 
 ## CLI
 
@@ -1584,7 +1584,7 @@ expect:                                 # judged at the end; a miss exits 1
 - `lute play . --script plays/first.play.yaml --explain "can_halt(vesna)"`는 어떤 규칙이 그 atom을
   결론 냈고 각 전제가 어디서 왔는지 보여 줍니다.
 
-→ [CLI 레퍼런스](/tooling/cli/) · [트레이싱](/tooling/tracing/) · [스토리 플레이](/tooling/play/)
+→ [CLI 레퍼런스](/ko/tooling/cli/) · [트레이싱](/tooling/tracing/) · [스토리 플레이](/ko/tooling/play/)
 
 ## 자주 만나는 진단
 

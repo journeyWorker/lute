@@ -345,7 +345,7 @@ PASS  ./plays/caught.play.yaml  (play of .)
 2 passed, 0 failed
 ```
 
-테스트 파일 형식은 [CLI 참조](/tooling/cli/#test)에, 플레이 스크립트의 모든 키는
+테스트 파일 형식은 [CLI 참조](/ko/tooling/cli/#test)에, 플레이 스크립트의 모든 키는
 [스토리 플레이](/ko/tooling/play/)에 있습니다.
 
 ## 장면 추가하기
