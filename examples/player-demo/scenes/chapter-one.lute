@@ -1,0 +1,50 @@
+---
+kind: scene
+id: chapter-one
+title: The Signal at Low Tide
+on: chapter
+---
+
+## The Signal at Low Tide
+
+::bg{location="harbor" time="dawn"}
+::music{playback="start" mood="calm" volume="normal" assetId="music.calm"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="worried" costume="coat"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="neutral" costume="plain"}
+::camera{framing="wide" transition="fade"}
+@narrator{code="0010"}: At six in the morning, the harbor keeps its secrets under a skin of silver water.
+@mara{code="0010" emotion="worried"}: The lighthouse blinked three times. That is not a weather signal.
+@elio{code="0010" emotion="neutral"}: Or it is a very dramatic gull.
+@mara{code="0020" emotion="angry" action="shake"}: Elio.
+::sfx{sound="bell" assetId="sfx.bell"}
+::vfx{type="flash" transition="dissolve"}
+@narrator{code="0020"}: The bell answers from the fog. Once. Twice. Then silence.
+<timeline duration="1.0">
+  <track subject="camera">
+    ::camera{focus="mara" framing="close" move="pushIn" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.6"}
+  </track>
+</timeline>
+<branch id="signal" prompt="The tide is turning beneath the lighthouse.">
+  <choice id="tower" text="Follow the signal to the lighthouse">
+    ::set{run.choice = "tower"}
+    ::set{run.trust += 1}
+    @mara{code="0030" emotion="hopeful"}: Then we climb before the tide hides the path.
+  </choice>
+  <choice id="harbor" text="Stay and search the harbor">
+    ::set{run.choice = "harbor"}
+    @elio{code="0020" emotion="happy"}: Sensible. Also warmer.
+  </choice>
+</branch>
+<hub id="questions" prompt="The fog waits. What do you ask before leaving?">
+  <choice id="past" text="Ask Mara why she knows the signal" once>
+    @mara{code="0040" emotion="sad"}: My sister sent it the night she vanished.
+    ::set{run.heardSignal = true}
+  </choice>
+  <choice id="weather" text="Ask Elio about the weather" once>
+    @elio{code="0030" emotion="happy"}: Wind from the east. Rain by noon. I brought one umbrella.
+  </choice>
+  <choice id="leave" text="Leave at once" exit>
+    @narrator{code="0030"}: The three of you step into the fog.
+  </choice>
+</hub>

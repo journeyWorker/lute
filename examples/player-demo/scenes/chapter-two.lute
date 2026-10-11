@@ -1,0 +1,46 @@
+---
+kind: scene
+id: chapter-two
+title: The Glass Stair
+on: chapter
+after: 'visited("chapter-one")'
+---
+
+## The Glass Stair
+
+::bg{location="lighthouse" time="noon"}
+::music{playback="change" mood="tense" volume="up" assetId="music.tense"}
+::actor{character="mara" anchor="center" action="fadeIn" emotion="worried" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="surprised" costume="coat"}
+::camera{focus="mara" framing="close" transition="wipeLeft"}
+@narrator{code="0010"}: The lighthouse door opens onto a stair made of glass. Below it, the sea is much too near.
+@elio{code="0010" emotion="surprised"}: The stairs are humming.
+@mara{code="0010" emotion="worried"}: They remember every footstep.
+<match subject="run.choice">
+  <when is="tower">
+    @mara{code="0020" emotion="hopeful"}: We chose the high road. Now we finish it.
+  </when>
+  <when is="harbor">
+    @elio{code="0020" emotion="happy"}: You chose the long way around, and somehow it led here.
+  </when>
+  <otherwise>
+    @narrator{code="0020"}: You cannot remember choosing a road, only that it is behind you.
+  </otherwise>
+</match>
+<branch id="crossing" prompt="A bell rings above the stair. The next step is already fading." timeout="8" default="steady">
+  <choice id="steady" text="Cross together">
+    ::set{run.trust += 1}
+    @mara{code="0030" emotion="hopeful"}: Hand in hand. No vanishing alone.
+  </choice>
+  <choice id="rush" text="Run for the lantern">
+    ::set{run.trust -= 1}
+    @elio{code="0030" emotion="worried"}: Mara, wait!
+  </choice>
+</branch>
+::cg{assetId="cg.lighthouse" display="show" layout="full"}
+@narrator{code="0030"}: Behind the lantern, a figure turns toward you. It has Mara's eyes.
+::cg{assetId="cg.lighthouse" display="hide"}
+::sfx{sound="glass" assetId="sfx.glass"}
+::vfx{type="shake" transition="wipeLeft"}
+::actor{character="mara" emotion="angry" action="shake"}
+@mara{code="0040" emotion="angry"}: My sister. She is still here.

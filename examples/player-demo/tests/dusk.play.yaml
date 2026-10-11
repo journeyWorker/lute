@@ -1,0 +1,14 @@
+choose:
+  signal: harbor
+  questions: leave
+  crossing: rush
+  lastLight: hold
+steps:
+  - occasion: chapter
+    expect: { winner: chapter-one }
+  - occasion: chapter
+    expect: { winner: chapter-two }
+  - occasion: chapter
+    expect: { winner: chapter-three, state: { run.path: dusk } }
+expect:
+  state: { run.path: dusk }

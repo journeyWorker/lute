@@ -1,0 +1,14 @@
+choose:
+  signal: tower
+  questions: leave
+  crossing: { timeout: true }
+  lastLight: release
+steps:
+  - occasion: chapter
+    expect: { winner: chapter-one }
+  - occasion: chapter
+    expect: { winner: chapter-two, state: { run.trust: 2 } }
+  - occasion: chapter
+    expect: { winner: chapter-three, state: { run.path: dawn } }
+expect:
+  state: { run.path: dawn }

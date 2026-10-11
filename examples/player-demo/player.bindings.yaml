@@ -1,0 +1,54 @@
+bindingsVersion: "0.40"
+canvas: { width: 1280, height: 720 }
+assetsBase: assets/
+assets:
+  music.calm: audio/calm.wav
+  music.tense: audio/tense.wav
+  music.hopeful: audio/hopeful.wav
+  sfx.bell: sfx/bell.wav
+  sfx.glass: sfx/glass.wav
+  cg.lighthouse: cg/lighthouse.png
+  cg.reunion: cg/reunion.png
+backgrounds:
+  harbor: { image: bg/harbor-dawn.png, times: { dawn: bg/harbor-dawn.png } }
+  lighthouse: { image: bg/lighthouse-noon.png, times: { noon: bg/lighthouse-noon.png, night: bg/lighthouse-night.png } }
+characters:
+  mara:
+    sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png, happy: char/mara-happy.png, worried: char/mara-worried.png, angry: char/mara-angry.png, hopeful: char/mara-hopeful.png, sad: char/mara-sad.png, surprised: char/mara-surprised.png } }
+    costumes: { plain: { default: char/mara-neutral.png }, coat: { default: char/mara-neutral.png }, raincloak: { default: char/mara-worried.png }, uniform: { default: char/mara-neutral.png } }
+    nameColor: "#e88b9a"
+  elio:
+    sprite: { default: char/elio-neutral.png, emotions: { neutral: char/elio-neutral.png, happy: char/elio-happy.png, worried: char/elio-worried.png, angry: char/elio-angry.png, hopeful: char/elio-hopeful.png, sad: char/elio-sad.png, surprised: char/elio-surprised.png } }
+    costumes: { plain: { default: char/elio-neutral.png }, coat: { default: char/elio-neutral.png }, raincloak: { default: char/elio-worried.png }, uniform: { default: char/elio-neutral.png } }
+    nameColor: "#78b5e8"
+  liora:
+    sprite: { default: char/liora-neutral.png, emotions: { neutral: char/liora-neutral.png, happy: char/liora-happy.png, worried: char/liora-worried.png, angry: char/liora-angry.png, hopeful: char/liora-hopeful.png, sad: char/liora-sad.png, surprised: char/liora-surprised.png } }
+    costumes: { plain: { default: char/liora-neutral.png }, coat: { default: char/liora-neutral.png }, raincloak: { default: char/liora-worried.png }, uniform: { default: char/liora-neutral.png } }
+    nameColor: "#c69fe8"
+anchors: { left: { x: 0.25 }, center: { x: 0.5 }, right: { x: 0.75 } }
+actions:
+  fadeIn: { effect: fadeIn, duration: 0.4 }
+  fadeOut: { effect: fadeOut, duration: 0.4 }
+  hop: { effect: hop, duration: 0.3 }
+  shake: { effect: shake, duration: 0.3, strength: 8 }
+transitions:
+  fade: { effect: fade, duration: 0.6 }
+  dissolve: { effect: dissolve, duration: 0.6 }
+  wipeLeft: { effect: wipeLeft, duration: 0.6 }
+framing: { wide: { zoom: 1.0 }, close: { zoom: 1.3 } }
+cameraMove: { shake: { effect: shake, duration: 0.4, strength: 10 }, pushIn: { effect: zoom, duration: 0.6, scale: 1.2 } }
+cgLayouts: { full: { fit: cover }, inset: { fit: contain, scale: 0.65, x: 0.5, y: 0.5 } }
+textStyles: { emphasis: { fontWeight: bold, color: "#ffe39b" }, whisper: { alpha: 0.6, scale: 0.9, fontStyle: italic } }
+music:
+  moods: { calm: audio/calm.wav, tense: audio/tense.wav, hopeful: audio/hopeful.wav, sad: audio/hopeful.wav, triumphant: audio/hopeful.wav }
+sfx: { bell: sfx/bell.wav, glass: sfx/glass.wav }
+vfx:
+  flash: { effect: flash, color: "#ffffff", duration: 0.3 }
+  shake: { effect: shake, duration: 0.4, strength: 10 }
+ui:
+  font: system-ui
+  title: { background: bg/title.png, music: music.calm }
+  theme: { text: "#ffffff", accent: "#e88b9a", panel: "#141a35" }
+flow:
+  newGame: { occasion: start }
+  idle: { menu: [{ label: "Begin the Signal", occasion: chapter }] }

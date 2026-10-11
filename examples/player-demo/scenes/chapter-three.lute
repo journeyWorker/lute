@@ -1,0 +1,43 @@
+---
+kind: scene
+id: chapter-three
+title: The Last Light
+on: chapter
+after: 'visited("chapter-two")'
+---
+
+## The Last Light
+
+::bg{location="lighthouse" time="night"}
+::music{playback="change" mood="hopeful" volume="normal" assetId="music.hopeful"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="worried" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
+::camera{framing="wide" transition="dissolve"}
+@narrator{code="0010"}: At midnight, the lantern opens like an eye. The lost sister stands inside its light.
+@mara{code="0010" emotion="sad"}: Liora. Come home.
+@elio{code="0010" emotion="worried"}: The tide is climbing the stairs.
+<branch id="lastLight" prompt="The lantern offers one final choice.">
+  <choice id="release" text="Release the light to the sea" when="run.trust >= 1">
+    ::set{run.path = "dawn"}
+    ::cg{assetId="cg.reunion" display="show" layout="inset"}
+    @mara{code="0020" emotion="hopeful"}: We do not have to keep ghosts to prove we loved them.
+    @narrator{code="0020"}: The light spills over the water. Liora smiles, and the harbor wakes.
+    ::cg{assetId="cg.reunion" display="hide"}
+    ::music{mood="triumphant"}
+    ::music{playback="stop"}
+    ::actor{character="mara" action="fadeOut"}
+    ::actor{character="elio" action="fadeOut"}
+    @narrator{code="0030"}: Dawn ending — the signal becomes a promise.
+  </choice>
+  <choice id="hold" text="Hold the lantern closed">
+    ::set{run.path = "dusk"}
+    ::vfx{type="flash" transition="fade"}
+    @mara{code="0030" emotion="angry"}: No more taking from us.
+    @narrator{code="0040"}: The lantern dims. The sea retreats, carrying the secret with it.
+    ::music{mood="sad"}
+    ::music{playback="stop"}
+    ::actor{character="mara" action="fadeOut"}
+    ::actor{character="elio" action="fadeOut"}
+    @narrator{code="0050"}: Dusk ending — some doors close to keep us safe.
+  </choice>
+</branch>
