@@ -38,13 +38,15 @@ CONFORMANCE = ROOT / "conformance"
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
-    r'(?P<prefix>"?(?:luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
+    r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
     r"0\.(?:39|40)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
     r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:39|40)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
+# The engine gate names the toolchain's own IR version in its refusal.
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:39|40)\.\d+(?=`)")
 VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:39|40)(?:\.\d+)?(?![A-Za-z0-9])")
 
 
@@ -275,6 +277,7 @@ def normalize_for_compare(data: bytes, label: str) -> bytes:
         return data
     text = STAMP_FIELD_RE.sub(lambda match: match.group("prefix") + "0.X", text)
     text = SCHEMA_ID_RE.sub(lambda match: match.group("prefix") + "0.X", text)
+    text = ENGINE_ACCEPTS_RE.sub(lambda match: match.group("prefix") + "0.X", text)
     if label == "version":
         text = VERSION_RE.sub("0.X", text)
     return text.encode("utf-8")
