@@ -102,7 +102,43 @@ export type MachineEvent =
   | { readonly type: "load.done"; readonly await: Await }
   | { readonly type: "save.done" }
   | { readonly type: "slots.listed"; readonly mode: "save" | "load" }
+  | { readonly type: "slot.occupied"; readonly slot: SlotId; readonly occupied: boolean }
   | { readonly type: "failed"; readonly message: string }
+
+/** The interaction state kept by the progression statechart. */
+export interface PlayerMachineContext {
+  readonly await: Await | undefined
+  readonly line: "typing" | "shown" | undefined
+  readonly mode: "normal" | "auto" | "skip"
+  readonly skipMode: "read" | "all"
+  readonly overlayStack: ReadonlyArray<"menu" | "backlog" | "save" | "load" | "settings" | "confirm">
+  readonly countdownRemaining: number | undefined
+  readonly uiHidden: boolean
+  readonly lastLineRead: boolean
+  readonly hasVoice: boolean
+  readonly autoPending: boolean
+  readonly canContinue: boolean
+  readonly occupiedSlots: ReadonlyArray<SlotId>
+  readonly pendingConfirm: ConfirmAction | undefined
+  readonly haltedMessage: string | undefined
+}
+
+/** An operation that is waiting for confirmation in an overlay. */
+export type ConfirmAction =
+  | { readonly type: "overwrite"; readonly slot: SlotId }
+  | { readonly type: "load"; readonly slot: SlotId }
+  | { readonly type: "delete"; readonly slot: SlotId }
+  | { readonly type: "toTitle" }
+
+/** A renderer-facing summary derived from a player machine snapshot. */
+export interface PlayerView {
+  readonly flow: "boot" | "title" | "loading" | "playing" | "ended" | "error"
+  readonly story: string
+  readonly mode: "normal" | "auto" | "skip"
+  readonly overlay: "none" | "menu" | "backlog" | "saveLoad" | "settings" | "confirm" | "hidden"
+  readonly countdownRemaining: number | undefined
+  readonly uiHidden: boolean
+}
 
 export type DirectorCommand =
   | { readonly type: "session.newGame" }
