@@ -64,12 +64,16 @@ export class PixiApp extends Context.Service<PixiApp, PixiAppShape>()("Lute.Web.
         layers.camera.pivot.set(design.width / 2, design.height / 2)
         layers.camera.position.set(design.width / 2, design.height / 2)
         app.stage.addChild(root)
-        const resize = (): void => {
-          const scale = Math.min(app.screen.width / design.width, app.screen.height / design.height)
+        const resize = (width?: number, height?: number): void => {
+          // Renderer resize events carry CSS dimensions. Initial layout uses
+          // the mount element's CSS size.
+          const viewWidth = (width ?? element.clientWidth) || app.screen.width / app.renderer.resolution
+          const viewHeight = (height ?? element.clientHeight) || app.screen.height / app.renderer.resolution
+          const scale = Math.min(viewWidth / design.width, viewHeight / design.height)
           root.scale.set(scale)
           root.position.set(
-            (app.screen.width - design.width * scale) / 2,
-            (app.screen.height - design.height * scale) / 2
+            (viewWidth - design.width * scale) / 2,
+            (viewHeight - design.height * scale) / 2
           )
         }
         app.renderer.on("resize", resize)

@@ -58,6 +58,7 @@ export class DialogueWindow {
     this.namePlate.addChild(this.nameText)
     this.target.addChild(this.panel, this.namePlate, this.textArea, this.indicator)
     parent.addChild(this.target)
+    this.target.visible = false
     this.relayout({ width: 1280, height: 720 })
   }
 
@@ -66,6 +67,7 @@ export class DialogueWindow {
     const self = this
     return Effect.gen(function* () {
       yield* self.world.cancel(self.target)
+      self.target.visible = true
       self.currentLine = line
       self.timeline = buildRevealTimeline(line.segments, settings.textSpeed, settings.locale)
       self.revealed = mode === "skip" || self.timeline.duration === 0
@@ -107,6 +109,7 @@ export class DialogueWindow {
     const self = this
     return Effect.gen(function* () {
       yield* self.world.cancel(self.target)
+      self.target.visible = false
       self.currentLine = undefined
       self.timeline = { graphemes: [], pauses: [], duration: 0, locale: "" }
       self.clearTextChildren()
@@ -144,7 +147,7 @@ export class DialogueWindow {
   }
 
   private clearTextChildren = (): void => {
-    for (const child of this.textArea.removeChildren()) child.destroy()
+    for (const child of this.textArea.removeChildren()) child.visible = false
     this.graphemeTexts.length = 0
   }
 
@@ -177,7 +180,6 @@ export class DialogueWindow {
   }
 
   private tintText = (colour: number): void => {
-    this.nameText.style.fill = colour
     for (const text of this.textArea.children) {
       if (text instanceof Text) text.style.fill = colour
     }

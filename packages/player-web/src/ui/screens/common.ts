@@ -13,15 +13,29 @@ export abstract class ScreenView extends Container {
   protected readonly emitAction: EmitAction
   protected readonly panel: Panel
   protected readonly title: Text
+  protected readonly panelWidth: number
+  protected readonly panelHeight: number
 
   constructor(heading: string, theme: Theme, emit: EmitAction, width = 900, height = 650) {
     super()
     this.theme = theme
     this.emitAction = emit
+    this.panelWidth = width
+    this.panelHeight = height
     this.panel = new Panel(width, height, theme)
     this.title = new Text({ text: heading, style: { fontFamily: theme.font, fontSize: 34, fill: theme.text } })
     this.title.position.set(32, 24)
     this.addChild(this.panel, this.title)
+  }
+
+  /** Centre this screen inside the configured design coordinates. */
+  layout(design: { readonly width: number; readonly height: number }, full = false): void {
+    if (full) {
+      this.panel.clear().rect(0, 0, design.width, design.height).fill({ color: this.theme.panel, alpha: this.theme.panelAlpha })
+      this.position.set(0, 0)
+      return
+    }
+    this.position.set((design.width - this.panelWidth) / 2, (design.height - this.panelHeight) / 2)
   }
 
   /** Add a button and register it in keyboard focus order. */
@@ -43,21 +57,24 @@ export abstract class ScreenView extends Container {
 
 /** Title screen with continue gating and optional background data URL. */
 export class TitleScreen extends ScreenView {
-  constructor(model: Extract<ScreenModel, { _tag: "Title" }>, theme: Theme, emit: EmitAction) {
-    super("Lute", theme, emit)
+  constructor(model: Extract<ScreenModel, { _tag: "Title" }>, theme: Theme, emit: EmitAction, gameTitle = "Lute") {
+    super(gameTitle, theme, emit, 1280, 720)
     if (model.background !== undefined) {
       const background = new Sprite(Texture.from(model.background))
-      background.width = 900
-      background.height = 650
+      background.width = 1280
+      background.height = 720
       background.alpha = 0.65
       this.addChildAt(background, 1)
     }
-    this.button("New game", { type: "newGame" }, 70, 160)
-    this.button("Continue", { type: "continue" }, 70, 230, !model.canContinue)
-    this.button("Load", { type: "openLoad" }, 70, 300)
-    this.button("Settings", { type: "openSettings" }, 70, 370)
+    this.title.position.set(72, 90)
+    this.title.style = { ...this.title.style, fontSize: 64 }
+    this.button("New game", { type: "newGame" }, 72, 160)
+    this.button("Continue", { type: "continue" }, 72, 230, !model.canContinue)
+    this.button("Load", { type: "openLoad" }, 72, 300)
+    this.button("Settings", { type: "openSettings" }, 72, 370)
   }
 }
+
 
 /** Pause menu screen. */
 export class MenuScreen extends ScreenView {
@@ -118,11 +135,11 @@ export class LoadingScreen extends ScreenView {
 /** Idle flow menu. */
 export class IdleScreen extends ScreenView {
   constructor(model: Extract<ScreenModel, { _tag: "Idle" }>, theme: Theme, emit: EmitAction) {
-    super("Continue", theme, emit)
+    super("Continue", theme, emit, 620, 420)
     model.options.forEach((option, index) => {
-      const button = this.button(option.label, { type: "pickIdle", index }, 50, 100 + index * 60)
-      button.position.x = 50 + (index % 2) * 270
-      button.position.y = 100 + Math.floor(index / 2) * 60
+      const x = 190 + (index % 2) * 270
+      const y = 130 + Math.floor(index / 2) * 60
+      this.button(option.label, { type: "pickIdle", index }, x, y)
     })
   }
 }

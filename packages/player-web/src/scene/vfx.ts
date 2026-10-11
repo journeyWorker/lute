@@ -21,11 +21,11 @@ export class Vfx {
     this.target.alpha = 1
     this.target.addChild(target)
     const seconds = duration ?? (typeof effect.params.duration === "number" ? effect.params.duration : 0)
-    if (instant) return Effect.sync(() => { target.alpha = 0; target.removeFromParent(); target.destroy({ children: true }); this.target.alpha = 0 })
+    if (instant) return Effect.sync(() => { target.alpha = 0; target.removeFromParent(); target.visible = false; this.target.alpha = 0 })
     return EffectCatalogue.build(effect.effect, target, effect.params, seconds, { design: this.design, overlay: target }).pipe(
       Effect.catch(() => Effect.succeed([])),
       Effect.flatMap((behaviours) => Effect.forEach(behaviours, (behaviour) => this.world.run(target, behaviour), { discard: true })),
-      Effect.tap(() => Effect.sync(() => { target.alpha = 0; target.removeFromParent(); target.destroy({ children: true }); this.target.alpha = 0 }))
+      Effect.tap(() => Effect.sync(() => { target.alpha = 0; target.removeFromParent(); target.visible = false; this.target.alpha = 0 }))
     )
   }
 }

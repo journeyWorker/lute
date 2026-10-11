@@ -116,10 +116,11 @@ export class PixiPresenter implements Presenter {
     this.showChoice = (menu, remaining) => this.showChoiceInternal(menu, remaining)
     this.hideChoice = this.choice.hide
     this.showScreen = (screen) => {
-      if (screen._tag === "Title" && options.titleBackground !== undefined) {
-        return this.ui.show({ ...screen, background: options.titleBackground })
-      }
-      return this.ui.show(screen)
+      const modal = ["Menu", "Backlog", "SaveLoad", "Settings", "Confirm"].includes(screen._tag)
+      const hideDialogue = modal ? Effect.void : this.dialogue.clear
+      return Effect.andThen(hideDialogue, screen._tag === "Title" && options.titleBackground !== undefined
+        ? this.ui.show({ ...screen, background: options.titleBackground })
+        : this.ui.show(screen))
     }
     this.hideScreen = this.ui.hide
     this.setUiHidden = (hidden) => Effect.sync(() => this.dialogue.setHidden(hidden))

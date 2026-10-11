@@ -6,7 +6,9 @@ import type { AssetBackend } from "./pixiAssets.js"
 /** Real Pixi/@pixi-sound asset backend used by the browser player. */
 export const pixiAssetsBackend: AssetBackend = {
   loadTexture: (url) => Effect.tryPromise(() => Assets.load<Texture>(url)),
-  unloadTexture: (url) => Effect.tryPromise(() => Assets.unload(url)).pipe(Effect.orDie),
+  // Scene sprites retain textures after a cue scope ends; Pixi's global cache
+  // must outlive those display objects for the duration of the player.
+  unloadTexture: (_url, _texture) => Effect.void,
   loadAudio: (url) => Effect.callback<void, unknown>((resume) => {
     if (sound.exists(url)) {
       resume(Effect.succeed(undefined))

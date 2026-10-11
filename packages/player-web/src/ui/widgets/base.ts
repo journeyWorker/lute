@@ -1,4 +1,4 @@
-import { Container, Graphics, Text } from "pixi.js"
+import { Container, Graphics, Rectangle, Text } from "pixi.js"
 import type { Theme } from "../../engine/types.js"
 
 /** A callback-free focusable scene node used by FocusManager. */
@@ -19,7 +19,7 @@ export class FocusManager {
   /** Register a focusable widget in tab order. */
   register(item: Focusable): void {
     if (!this.items.includes(item)) this.items.push(item)
-    if (this.index < 0 && item.focusable) this.focus(0)
+    if (this.index < 0 && item.focusable) this.focus(this.items.indexOf(item))
   }
 
   /** Remove a widget from traversal. */
@@ -91,7 +91,7 @@ export class FocusManager {
     this.ring?.removeFromParent()
     const bounds = item.focusNode.getLocalBounds()
     const ring = new Graphics()
-      .roundRect(bounds.x - 3, bounds.y - 3, bounds.width + 6, bounds.height + 6, 5)
+      .roundRect(item.focusNode.x + bounds.x * item.focusNode.scale.x - 3, item.focusNode.y + bounds.y * item.focusNode.scale.y - 3, bounds.width * item.focusNode.scale.x + 6, bounds.height * item.focusNode.scale.y + 6, 5)
       .stroke({ color: 0xffffff, width: 2, alpha: 0.9 })
     parent.addChild(ring)
     this.ring = ring
@@ -101,7 +101,7 @@ export class FocusManager {
 /** Base class for interactive Pixi widgets. */
 export abstract class Widget extends Container implements Focusable {
   readonly focusable = true
-  focused = false
+  private hasFocus = false
   protected readonly hit: Graphics
   protected theme: Theme
   private enabled = true
@@ -109,6 +109,18 @@ export abstract class Widget extends Container implements Focusable {
   constructor(theme: Theme, width: number, height: number) {
     super()
     this.theme = theme
+    this.eventMode = "static"
+    this.hitArea = new Rectangle(0, 0, width, height)
+    this.cursor = "pointer"
+    // Mark the native gesture before it bubbles to the gameplay input layer.
+    this.on("pointerdown", (event) => {
+      if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+      event.stopPropagation()
+    })
+    this.on("pointerup", (event) => {
+      if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+      event.stopPropagation()
+    })
     this.hit = new Graphics().rect(0, 0, width, height).fill({ color: 0xffffff, alpha: 0.001 })
     this.hit.eventMode = "static"
     this.hit.cursor = "pointer"
@@ -118,6 +130,8 @@ export abstract class Widget extends Container implements Focusable {
     this.on("pointerout", () => this.setHover(false))
   }
 
+  get focused(): boolean { return this.hasFocus }
+  set focused(value: boolean) { this.hasFocus = value; this.setHover(value) }
   get focusNode(): Container {
     return this
   }
@@ -126,6 +140,7 @@ export abstract class Widget extends Container implements Focusable {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
     this.alpha = enabled ? 1 : 0.45
+    this.eventMode = enabled ? "static" : "none"
     this.hit.eventMode = enabled ? "static" : "none"
   }
 

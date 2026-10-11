@@ -1,12 +1,11 @@
 import { Context, Effect, Layer, Queue, Stream } from "effect"
-import { Container } from "pixi.js"
+import { Container, Graphics } from "pixi.js"
 import type { PlayerAction, ScreenModel } from "@lute-lang/player"
 import type { WorldShape, Theme } from "../engine/types.js"
 import { BacklogScreen, HudScreen } from "./screens/backlog.js"
-import { ConfirmScreen, EndedScreen, HaltedScreen, IdleScreen, LoadingScreen, MenuScreen, TitleScreen } from "./screens/common.js"
+import { ConfirmScreen, EndedScreen, HaltedScreen, IdleScreen, LoadingScreen, MenuScreen, TitleScreen, ScreenView, type EmitAction } from "./screens/common.js"
 import { SaveLoadScreen } from "./screens/save-load.js"
 import { SettingsScreen } from "./screens/settings.js"
-import { ScreenView, type EmitAction } from "./screens/common.js"
 
 /** UI renderer service contract. */
 export interface UiShape {
@@ -19,76 +18,137 @@ export interface UiShape {
 /** UI context service key. */
 export const UiTag = Context.Service<UiShape>("Lute.Web.Ui")
 
-/** Screen renderer that owns no game state and emits only player actions. */
+/** Design-space screens, overlays and HUD; the application owns viewport scaling. */
 export class Ui implements UiShape {
   readonly actions: Stream.Stream<PlayerAction>
   private readonly root: Container
-  private readonly world: WorldShape | undefined
   private theme: Theme
-  private current: ScreenView | HudScreen | undefined
-  private design = { width: 900, height: 650 }
+  private current: ScreenView | undefined
+  private base: ScreenView | undefined
+  private overlay: Container | undefined
+  private hud: HudScreen | undefined
+  private hudState = ""
+  private design = { width: 1280, height: 720 }
+  private titleName = "Lute"
   private push: (action: PlayerAction) => void = () => {}
 
-  constructor(root: Container, theme: Theme, world?: WorldShape) {
+  constructor(root: Container, theme: Theme, _world?: WorldShape) {
     this.root = root
     this.theme = theme
-    this.world = world
     this.actions = Stream.callback<PlayerAction>((queue) => Effect.sync(() => {
       this.push = (action) => { Queue.offerUnsafe(queue, action) }
     }))
   }
 
-  /** Render a new screen model, replacing the previous screen. */
+  /** Replace a screen or the topmost modal without leaving old scene children. */
   show(screen: ScreenModel): Effect.Effect<void> {
-    const self = this
-    return Effect.gen(function* () {
-      const next = self.build(screen)
-      const previous = self.current
-      if (previous !== undefined) previous.removeFromParent()
-      self.current = next
-      next.alpha = 0
-      self.root.addChild(next)
-      if (self.world !== undefined) yield* self.world.run(next, fadeBehaviour(next))
-      else next.alpha = 1
+    return Effect.sync(() => {
+      const modal = ["Menu", "Backlog", "SaveLoad", "Settings", "Confirm"].includes(screen._tag)
+      if (this.overlay) this.disposeLater(this.overlay)
+      this.overlay = undefined
+      const next = this.build(screen)
+      if (modal) {
+        const overlay = new Container()
+        const dim = new Graphics().rect(0, 0, this.design.width, this.design.height).fill({ color: 0x000000, alpha: 0.65 })
+        dim.eventMode = "static"
+        overlay.eventMode = "static"
+        overlay.on("pointerdown", (event) => {
+          if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+          event.stopPropagation()
+        })
+        overlay.on("pointerup", (event) => {
+          if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+          event.stopPropagation()
+          if (event.button === 2) this.push({ type: "close" })
+        })
+        next.layout(this.design, false)
+        overlay.addChild(dim, next)
+        this.root.addChild(overlay)
+        this.overlay = overlay
+      } else {
+        if (this.base) this.disposeLater(this.base)
+        next.layout(this.design, screen._tag !== "Idle")
+        this.root.addChild(next)
+        this.base = next
+      }
+      this.current = next
+      if (this.hud) this.hud.visible = !this.current
     })
   }
 
-  /** Hide the currently rendered screen. */
+  /** Close a modal back to its base screen, or remove the full screen for gameplay. */
   readonly hide: Effect.Effect<void> = Effect.sync(() => {
-    this.current?.removeFromParent()
-    this.current = undefined
+    if (this.overlay) {
+      this.disposeLater(this.overlay)
+      this.overlay = undefined
+      this.current = this.base
+    } else {
+      if (this.base) this.disposeLater(this.base)
+      this.base = undefined
+      this.current = undefined
+    }
+    if (this.hud) this.hud.visible = !this.current
   })
 
   /** Replace theme for future screens. */
   setTheme(theme: Theme): void { this.theme = theme }
 
-  /** Set the design resolution used by responsive letterbox layout. */
-  setDesign(design: { readonly width: number; readonly height: number }): void {
+  /** Configure the game's design coordinates and binding-supplied title. */
+  setDesign(design: { readonly width: number; readonly height: number }, title = "Lute"): void {
     this.design = { width: Math.max(1, design.width), height: Math.max(1, design.height) }
+    this.titleName = title
   }
 
-  /** Resize and centre the UI root inside a responsive viewport. */
+  /** Standalone viewport layout; mounted UI inherits the application's letterbox. */
   resize(viewWidth: number, viewHeight: number): void {
     const scale = Math.min(viewWidth / this.design.width, viewHeight / this.design.height)
     this.root.scale.set(Math.max(0, scale))
     this.root.position.set((viewWidth - this.design.width * scale) / 2, (viewHeight - this.design.height * scale) / 2)
   }
 
-  /** Render a HUD model over the game scene. */
+  /** Render the quick menu independently from modal screen ownership. */
   showHud(state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }): void {
-    this.current?.removeFromParent()
-    const hud = new HudScreen(this.theme, this.push, state)
-    this.current = hud
-    this.root.addChild(hud)
+    if (this.hud) this.disposeLater(this.hud)
+    this.hud = new HudScreen(this.theme, this.push, state)
+    this.hud.position.set(20, this.design.height - 32)
+    this.root.addChildAt(this.hud, 0)
   }
 
-  /** Handle keyboard focus in the current screen. */
-  handleKey(key: string): boolean { return this.current instanceof ScreenView && this.current.handleKey(key) }
+  /** Synchronize gameplay chrome without rebuilding controls on every frame. */
+  setPlaying(playing: boolean, state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }): void {
+    if (playing && this.base) {
+      this.disposeLater(this.base)
+      if (this.current === this.base) this.current = undefined
+      this.base = undefined
+    }
+    const key = `${state.auto}:${state.skip}:${state.hidden}`
+    if (playing && key !== this.hudState) { this.showHud(state); this.hudState = key }
+    if (this.hud) this.hud.visible = playing && !state.hidden && !this.current
+  }
+
+  /** Whether a screen, rather than the story, owns keyboard focus. */
+  get hasScreen(): boolean { return this.current !== undefined }
+
+  /** Route modal closing and focus keys before gameplay input. */
+  handleKey(key: string): boolean {
+    if (this.overlay && key === "Escape") { this.push({ type: "close" }); return true }
+    return this.current?.handleKey(key) ?? false
+  }
+
+  /** Detach display objects without invalidating Pixi's active render batch. */
+  private disposeLater(node: Container): void {
+    const detach = (): void => {
+      node.removeFromParent()
+      node.visible = false
+    }
+    if (typeof globalThis.requestAnimationFrame === "function") globalThis.requestAnimationFrame(detach)
+    else globalThis.setTimeout(detach, 0)
+  }
 
   private build(screen: ScreenModel): ScreenView {
     const emit: EmitAction = (action) => this.push(action)
     switch (screen._tag) {
-      case "Title": return new TitleScreen(screen, this.theme, emit)
+      case "Title": return new TitleScreen(screen, this.theme, emit, this.titleName)
       case "Backlog": return new BacklogScreen(screen, this.theme, emit)
       case "SaveLoad": return new SaveLoadScreen(screen, this.theme, emit)
       case "Settings": return new SettingsScreen(screen, this.theme, emit)
@@ -102,20 +162,7 @@ export class Ui implements UiShape {
   }
 }
 
-/** Construct a UI layer rooted in a Pixi container. */
+/** Construct a renderer service on an existing design-space root. */
 export function uiLayer(root: Container, theme: Theme, world?: WorldShape): Layer.Layer<UiShape> {
   return Layer.succeed(UiTag, new Ui(root, theme, world))
-}
-
-function fadeBehaviour(target: Container): { readonly update: (dt: number) => "running" | "done"; readonly finish: () => void; readonly dispose: () => void } {
-  let elapsed = 0
-  return {
-    update: (dt) => {
-      elapsed += dt
-      target.alpha = Math.min(1, elapsed / 0.2)
-      return elapsed >= 0.2 ? "done" : "running"
-    },
-    finish: () => { target.alpha = 1 },
-    dispose: () => {}
-  }
 }
