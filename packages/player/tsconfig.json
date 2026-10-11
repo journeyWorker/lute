@@ -15,7 +15,12 @@
     "types": [
       "bun"
     ],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@lute-lang/runtime": [
+        "../runtime/src/index.ts"
+      ]
+    }
   },
   "include": [
     "src",
