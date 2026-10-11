@@ -21,8 +21,12 @@ describe("Pixi engine browser", () => {
       if (root === undefined) return
       expect(pixi.layers.camera.children[0]).toBe(pixi.layers.actors)
       expect(root.scale.x).toBeCloseTo(0.5)
-      pixi.app.renderer.resize(1600, 900)
-      expect(root.scale.x).toBeCloseTo(0.833333)
+      pixi.app.renderer.resize(800, 600)
+      expect(root.scale.x).toBeCloseTo(0.416667)
+      expect(root.children).toEqual([
+        pixi.layers.background, pixi.layers.cg, pixi.layers.camera, pixi.layers.video,
+        pixi.layers.dialogue, pixi.layers.choice, pixi.layers.overlay, pixi.layers.transition
+      ])
     }).pipe(Effect.provide(layer))))
     expect(element.querySelector("canvas")).toBeNull()
     element.remove()

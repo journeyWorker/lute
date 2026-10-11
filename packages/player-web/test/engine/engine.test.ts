@@ -139,6 +139,35 @@ describe("world", () => {
     )
     await Effect.runPromise(Effect.provideService(program, PixiApp, fake))
   })
+  it("finishAll(target) preserves other targets and repeated cycles keep stable size", async () => {
+    const queue = await Effect.runPromise(Queue.unbounded<number>())
+    const layers: Layers = {
+      background: new Container(), cg: new Container(), camera: new Container(), actors: new Container(),
+      video: new Container(), dialogue: new Container(), choice: new Container(), overlay: new Container(),
+      transition: new Container()
+    }
+    const fake = { app: new Application(), layers, design: { width: 100, height: 100 }, frames: Stream.fromQueue(queue) }
+    const first = new Container()
+    const second = new Container()
+    const program = Effect.provide(Effect.scoped(Effect.gen(function* () {
+      const world = yield* World
+      const one = yield* Effect.forkChild(world.run(first, delay(5)))
+      const two = yield* Effect.forkChild(world.run(second, delay(5)))
+      expect(yield* world.size).toBe(2)
+      yield* world.finishAll(first)
+      yield* Fiber.join(one)
+      expect(yield* world.size).toBe(1)
+      yield* world.finishAll()
+      yield* Fiber.join(two)
+      for (let index = 0; index < 10; index += 1) {
+        const cycle = yield* Effect.forkChild(world.run(first, delay(1)))
+        yield* world.finishAll(first)
+        yield* Fiber.join(cycle)
+        expect(yield* world.size).toBe(0)
+      }
+    })), World.layer)
+    await Effect.runPromise(Effect.provideService(program, PixiApp, fake))
+  })
 })
 
 describe("named easing functions", () => {
