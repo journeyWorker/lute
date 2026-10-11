@@ -63,50 +63,71 @@ test.describe.serial("player demo", () => {
     expect(variance).toBeGreaterThan(1)
   }
 
-  test("starts on title screen", async () => {
-    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "title")
-    await screenshot("title")
-    await page.mouse.click(100, 190)
-    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "playing")
-  })
-
-  test("plays through the story with real keyboard input", async () => {
+  type View = { flow: string; story: string; countdownRemaining?: number }
+  const current = (): Promise<View> => page.evaluate(() => (window as unknown as DemoWindow).luteDemo.view()) as Promise<View>
+  const freshGame = async (): Promise<void> => {
+    await page.evaluate(() => localStorage.clear())
     await page.reload({ waitUntil: "networkidle" })
     await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "title")
-    await page.mouse.click(100, 190)
-    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "playing")
-    await page.locator("#player").focus()
-    let saved = false
-    let timedWaited = false
-    const mid = true
-    await screenshot("mid-chapter")
-    await page.keyboard.press("F5")
-    await page.waitForTimeout(150)
-    const savedView = await view()
+    // New game has the initial focus.
     await page.keyboard.press("Enter")
-    await page.waitForTimeout(100)
-    await page.keyboard.press("F9")
-    await page.waitForTimeout(250)
-    expect((await view()).flow).toBe(savedView.flow)
-    saved = true
-    for (let step = 0; step < 600; step += 1) {
-      const current = await view()
-      if (current.flow === "ended") break
-      if (current.countdownRemaining !== undefined && current.countdownRemaining > 0 && !timedWaited) {
-        timedWaited = true
-        await page.waitForTimeout((current.countdownRemaining + 1) * 1000)
-      } else {
-        await page.keyboard.press(current.countdownRemaining !== undefined ? "1" : "Enter")
-        await page.mouse.click(100, 180)
-        await page.mouse.click(1100, 650)
+    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "playing")
+  }
+  /** One reader step: answer a choice with its first option, else advance. */
+  const step = async (now: View): Promise<void> => {
+    await page.keyboard.press(now.story === "choice" ? "1" : "Enter")
+    await page.waitForTimeout(90)
+  }
+
+  test("starts on the title screen and New game starts playing", async () => {
+    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "title")
+    await screenshot("title")
+    await freshGame()
+    expect((await current()).flow).toBe("playing")
+  })
+
+  test("plays to an ending with real keyboard input; the timed choice expires", async () => {
+    await freshGame()
+    let timedExpired = false
+    let shotMid = false
+    for (let i = 0; i < 1200; i++) {
+      const now = await current()
+      if (now.flow === "ended" || now.flow === "error" || now.story === "halted") break
+      if (!shotMid && (now.story === "shown" || now.story === "typing") && i > 30) {
+        await screenshot("mid-game")
+        shotMid = true
       }
-      await page.waitForTimeout(120)
+      if (now.story === "choice" && now.countdownRemaining !== undefined) {
+        // Let the countdown run out: the runtime takes the branch default.
+        await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).story !== "choice", undefined, { timeout: 15_000 })
+        timedExpired = true
+        continue
+      }
+      await step(now)
     }
-    expect(mid).toBe(true)
-    expect(saved).toBe(true)
-    expect(timedWaited).toBe(true)
-    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).flow === "ended", undefined, { timeout: 30000 })
+    expect((await current()).flow).toBe("ended")
+    expect(timedExpired).toBe(true)
+    expect(shotMid).toBe(true)
     await screenshot("ending")
+  })
+
+  test("quick save then quick load returns to the saved choice point", async () => {
+    await freshGame()
+    for (let i = 0; i < 300 && (await current()).story !== "choice"; i++) await step(await current())
+    expect((await current()).story).toBe("choice")
+    await page.keyboard.press("F5")
+    await page.waitForTimeout(300)
+    await page.keyboard.press("1")
+    for (let i = 0; i < 20; i++) await step(await current())
+    await page.keyboard.press("F9")
+    // Loading while playing asks for confirmation; Yes has the focus.
+    await page.waitForTimeout(200)
+    await page.keyboard.press("Enter")
+    await page.waitForFunction(async () => (await (window as unknown as DemoWindow).luteDemo.view()).story === "choice", undefined, { timeout: 10_000 })
+    await screenshot("after-load")
+  })
+
+  test("logs no console errors", () => {
     expect(errors).toEqual([])
   })
 })
