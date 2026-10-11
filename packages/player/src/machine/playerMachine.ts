@@ -39,6 +39,7 @@ const eventSchemas = {
   "boot.ready": types<Extract<MachineEvent, { readonly type: "boot.ready" }>>(),
   "batch.started": types<Extract<MachineEvent, { readonly type: "batch.started" }>>(),
   "batch.settled": types<Extract<MachineEvent, { readonly type: "batch.settled" }>>(),
+  "line.typing": types<Extract<MachineEvent, { readonly type: "line.typing" }>>(),
   "line.shown": types<Extract<MachineEvent, { readonly type: "line.shown" }>>(),
   "line.released": types<Extract<MachineEvent, { readonly type: "line.released" }>>(),
   "voice.ended": types<Extract<MachineEvent, { readonly type: "voice.ended" }>>(),
@@ -94,6 +95,7 @@ const overlayOpen = (
 ): Transition => ({ context }, enq) => {
   const stack = [...context.overlayStack, name]
   if (context.countdownRemaining !== undefined) emit(enq, { type: "countdown.pause" })
+  emit(enq, { type: "overlay.show", overlay: name, confirm: undefined })
   return {
     target: overlayTarget(stack),
     context: { overlayStack: stack, uiHidden: false },
@@ -102,6 +104,8 @@ const overlayOpen = (
 
 const overlayClose: Transition = ({ context }, enq) => {
   const stack = context.overlayStack.slice(0, -1)
+  const top = stack.at(-1)
+  emit(enq, top === undefined ? { type: "overlay.hide" } : { type: "overlay.show", overlay: top, confirm: undefined })
   if (stack.length === 0 && context.countdownRemaining !== undefined) emit(enq, { type: "countdown.resume" })
   return {
     target: overlayTarget(stack),
@@ -160,6 +164,8 @@ const settled: Transition = ({ event }, enq) => {
 
 const confirmFor = (action: ConfirmAction): Transition => ({ context }, enq) => {
   if (context.autoPending) emit(enq, { type: "auto.cancel" })
+  if (context.countdownRemaining !== undefined && context.overlayStack.length === 0) emit(enq, { type: "countdown.pause" })
+  emit(enq, { type: "overlay.show", overlay: "confirm", confirm: action })
   return {
     target: "#playerOverlayConfirm",
     context: { overlayStack: [...context.overlayStack, "confirm"], pendingConfirm: action, autoPending: false },
@@ -223,6 +229,8 @@ export const playerMachine = initial.createMachine({
         },
         playing: {
           on: {
+            confirm: ({ context, event }) =>
+              event.yes && context.pendingConfirm?.type === "toTitle" ? { target: "title" } : undefined,
             "batch.settled": ({ event }: { readonly event: MachineEvent }) => {
               if (event.type !== "batch.settled") return
               if (event.await.type === "ended") return { target: "ended" }
@@ -272,9 +280,13 @@ export const playerMachine = initial.createMachine({
           id: "playerStoryRunning",
           on: {
             "batch.started": { target: "#playerStoryRunning" },
-            "line.shown": ({ event }, enq) => ({
+            "line.typing": ({ event }) => ({
               target: "#playerStoryTyping",
               context: { line: "typing", lastLineRead: event.read, hasVoice: event.hasVoice },
+            }),
+            "line.shown": ({ event }) => ({
+              target: "#playerStoryShown",
+              context: { line: "shown", lastLineRead: event.read, hasVoice: event.hasVoice },
             }),
             "batch.settled": settled,
           },
@@ -554,7 +566,6 @@ export const playerMachine = initial.createMachine({
               if (context.overlayStack.length !== 0) return
               return confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
             },
-            "slot.occupied": ({ context, event }) => ({ context: { occupiedSlots: event.occupied ? [...context.occupiedSlots, event.slot] : context.occupiedSlots.filter((slot) => slot !== event.slot) } }),
           },
         },
         menu: {
@@ -592,10 +603,14 @@ export const playerMachine = initial.createMachine({
             confirm: ({ context, event }, enq) => {
               const action = context.pendingConfirm
               if (!event.yes || action === undefined) return overlayClose({ context, event }, enq)
+              emit(enq, { type: "overlay.hide" })
               if (action.type === "overwrite") emit(enq, { type: "save", slot: action.slot })
               if (action.type === "load") emit(enq, { type: "load", slot: action.slot })
               if (action.type === "delete") emit(enq, { type: "delete", slot: action.slot })
-              if (action.type === "toTitle") emit(enq, { type: "toTitle" })
+              if (action.type === "toTitle") {
+                emit(enq, { type: "toTitle" })
+                emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
+              }
               return { target: "#playerOverlayNone", context: { overlayStack: [], pendingConfirm: undefined } }
             },
           },
@@ -606,13 +621,14 @@ export const playerMachine = initial.createMachine({
         },
       },
       on: {
-        "slot.occupied": ({ context, event }) => ({
-          context: {
-            occupiedSlots: event.occupied
-              ? context.occupiedSlots.includes(event.slot) ? context.occupiedSlots : [...context.occupiedSlots, event.slot]
-              : context.occupiedSlots.filter((slot) => slot !== event.slot),
-          },
-        }),
+        "slot.occupied": ({ context, event }) => {
+          const occupiedSlots = event.occupied
+            ? context.occupiedSlots.includes(event.slot) ? context.occupiedSlots : [...context.occupiedSlots, event.slot]
+            : context.occupiedSlots.filter((slot) => slot !== event.slot)
+          // Continue resumes the quick or auto slot.
+          const resumable = occupiedSlots.some((slot) => slot === "quick" || slot === "auto")
+          return { context: { occupiedSlots, canContinue: context.canContinue || resumable } }
+        },
         "load.done": ({ event }) => ({
           target: "#playerOverlayNone",
           context: { await: event.await, mode: "normal", overlayStack: [], uiHidden: false, line: undefined, countdownRemaining: event.await.type === "awaitChoice" ? event.await.menu.timeout ?? undefined : undefined, autoPending: false },

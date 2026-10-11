@@ -43,20 +43,18 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
       if (cue.timing.delay + timelineOffset > 0) yield* sleep(cue.timing.delay + timelineOffset)
       yield* publish({ _tag: "CueStarted", index, cue })
       if (cue.kind === "line" && cue.line !== undefined) {
-        // Start the renderer before entering the line gate. Presenters commonly
-        // suspend showLine while text is typing; the machine must see
-        // line.shown so advance can reveal/release that line.
-        const execution = yield* Effect.forkScoped(cue.execute(ctx))
-        yield* Effect.yieldNow
+        // The line types until it is fully shown (or revealed); switching to
+        // skip while it types completes it at once. Then the gate holds the
+        // batch until the line is released.
+        yield* gate.started(cue.line)
+        const typed = Effect.as(cue.execute(ctx), "normal")
+        const switched = Effect.as(
+          Stream.runHead(Stream.filter(SubscriptionRef.changes(mode), (value) => value === "skip")),
+          "skip"
+        )
+        if ((yield* Effect.raceFirst(typed, switched)) === "skip") yield* cue.complete(ctx)
         yield* publish({ _tag: "LineShown", line: cue.line })
         yield* gate.release(cue.line)
-        const currentMode = yield* SubscriptionRef.get(mode)
-        if (currentMode === "skip") {
-          yield* Fiber.interrupt(execution)
-          yield* cue.complete(ctx)
-        } else {
-          yield* Fiber.join(execution)
-        }
       } else {
         const normal = Effect.as(cue.execute(ctx), "normal")
         const switched = Effect.as(

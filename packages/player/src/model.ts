@@ -76,6 +76,8 @@ export interface Cue {
 
 /** The director's hook into line pacing. */
 export interface LineGate {
+  /** Called when a line starts typing. */
+  readonly started: (line: LineView) => Effect.Effect<void>
   /** Called after a line is fully shown; resolves when the reader, auto or skip releases it. */
   readonly release: (line: LineView) => Effect.Effect<void>
 }
@@ -92,6 +94,9 @@ export type MachineEvent =
   | { readonly type: "boot.ready"; readonly canContinue: boolean }
   | { readonly type: "batch.started" }
   | { readonly type: "batch.settled"; readonly await: Await }
+  /** A line started typing. */
+  | { readonly type: "line.typing"; readonly read: boolean; readonly hasVoice: boolean }
+  /** A line is fully shown. */
   | { readonly type: "line.shown"; readonly read: boolean; readonly hasVoice: boolean }
   | { readonly type: "line.released" }
   | { readonly type: "voice.ended" }
@@ -112,7 +117,7 @@ export interface PlayerMachineContext {
   readonly line: "typing" | "shown" | undefined
   readonly mode: "normal" | "auto" | "skip"
   readonly skipMode: "read" | "all"
-  readonly overlayStack: ReadonlyArray<"menu" | "backlog" | "save" | "load" | "settings" | "confirm">
+  readonly overlayStack: ReadonlyArray<Overlay>
   readonly countdownRemaining: number | undefined
   readonly uiHidden: boolean
   readonly lastLineRead: boolean
@@ -123,6 +128,9 @@ export interface PlayerMachineContext {
   readonly pendingConfirm: ConfirmAction | undefined
   readonly haltedMessage: string | undefined
 }
+
+/** An overlay screen on top of the game. */
+export type Overlay = "menu" | "backlog" | "save" | "load" | "settings" | "confirm"
 
 /** An operation that is waiting for confirmation in an overlay. */
 export type ConfirmAction =
@@ -164,6 +172,9 @@ export type DirectorCommand =
   | { readonly type: "rollback" }
   | { readonly type: "screen.show"; readonly screen: ScreenModel }
   | { readonly type: "screen.hide" }
+  /** Show the top overlay; the director builds its screen model from the stores. */
+  | { readonly type: "overlay.show"; readonly overlay: Overlay; readonly confirm: ConfirmAction | undefined }
+  | { readonly type: "overlay.hide" }
   | { readonly type: "ui.hidden"; readonly hidden: boolean }
   | { readonly type: "settings.apply"; readonly settings: Partial<Settings> }
   | { readonly type: "voice.replay"; readonly lineId: string }

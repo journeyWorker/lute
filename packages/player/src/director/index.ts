@@ -4,15 +4,15 @@ import { createActor } from "xstate"
 import type { Contract } from "@lute-lang/runtime"
 import { derivePlayerView, playerMachine } from "../machine/playerMachine.js"
 import type {
-  CueContext, CueFactoryShape, CueSchedulerShape, DirectorCommand, Input, LineGate,
-  MachineEvent, Output, PlayerView, Stage
+  ConfirmAction, CueContext, CueFactoryShape, CueSchedulerShape, DirectorCommand, Input, LineGate,
+  MachineEvent, Output, Overlay, PlayerView, Stage
 } from "../model.js"
 import type { PlayerMachineSnapshot } from "../machine/playerMachine.js"
 import type { PlayerSessionShape } from "../session/index.js"
 import type { Bindings } from "../bindings/schema.js"
 import { resolveFile } from "../bindings/load.js"
 import type {
-  AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, SlotId
+  AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, SlotId
 } from "../ports/index.js"
 import { AssetMissing } from "../ports/index.js"
 import type { ProfileStoreShape, SaveStoreShape } from "../stores/index.js"
@@ -75,7 +75,6 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   let autoFiber: Fiber.Fiber<void, never> | undefined
   let countdownRef = yield* SubscriptionRef.make<number>(0)
   let countdownPaused = false
-  let lineWait: Deferred.Deferred<void> | undefined
   let currentLine: LineView | undefined
   const voiceWaiters = new Map<string, Deferred.Deferred<void>>()
   const voiceEnded = new Set<string>()
@@ -116,20 +115,27 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     }
   })
 
+  // The release of the current line. Created when the line starts typing, so
+  // a release that arrives while it still types (skip, auto) is kept.
+  let lineReleased: Deferred.Deferred<void> | undefined
+
   const finishLine = Effect.fn("Lute.Player.Director.finishLine")(function* () {
-    const waiter = lineWait
-    lineWait = undefined
+    const released = lineReleased
     currentLine = undefined
-    if (waiter !== undefined) yield* Deferred.succeed(waiter, undefined)
+    if (released !== undefined) yield* Deferred.succeed(released, undefined)
   })
 
   const lineGate: LineGate = {
-    release: (line) => Effect.gen(function* () {
+    started: (line) => Effect.gen(function* () {
       currentLine = line
-      lineWait = yield* Deferred.make<void>()
+      lineReleased = yield* Deferred.make<void>()
+      yield* offerEvent({ type: "line.typing", read: line.read, hasVoice: line.voiceKey.length > 0 })
+    }),
+    release: (line) => Effect.gen(function* () {
+      const released = lineReleased
       yield* offerEvent({ type: "line.shown", read: line.read, hasVoice: line.voiceKey.length > 0 })
-      const waiter = lineWait
-      if (waiter !== undefined) yield* Deferred.await(waiter)
+      if (released !== undefined) yield* Deferred.await(released)
+      lineReleased = undefined
     })
   }
 
@@ -228,6 +234,35 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     yield* offerEvent({ type: "load.done", await: point.await })
   })
 
+  const confirmMessage = (action: ConfirmAction | undefined): string => {
+    switch (action?.type) {
+      case "overwrite": return "Overwrite this save?"
+      case "load": return "Load this save? Unsaved progress will be lost."
+      case "delete": return "Delete this save?"
+      case "toTitle": return "Return to the title screen? Unsaved progress will be lost."
+      case undefined: return "Are you sure?"
+    }
+  }
+
+  /** The screen model of an overlay, built from the current stores. */
+  const overlayScreen = (overlay: Overlay, confirm: ConfirmAction | undefined): Effect.Effect<ScreenModel> => {
+    switch (overlay) {
+      case "menu": return Effect.succeed({ _tag: "Menu" })
+      case "backlog":
+        return Effect.map(SubscriptionRef.get(options.session.backlog), (entries): ScreenModel => ({ _tag: "Backlog", entries }))
+      case "save":
+      case "load":
+        return options.saves.list.pipe(
+          // A corrupt index must not block the screen; the slots read as empty.
+          Effect.catchTag("SaveCorrupt", (error) => Effect.as(Effect.logWarning("save index unreadable", error), [])),
+          Effect.map((slots): ScreenModel => ({ _tag: "SaveLoad", mode: overlay, slots, page: 0 }))
+        )
+      case "settings":
+        return Effect.succeed({ _tag: "Settings", settings: currentSettings, locales: [currentSettings.locale] })
+      case "confirm": return Effect.succeed({ _tag: "Confirm", message: confirmMessage(confirm) })
+    }
+  }
+
   const handleCommand = (command: DirectorCommand): Effect.Effect<void, unknown, Scope.Scope> => {
     switch (command.type) {
       case "session.newGame":
@@ -244,7 +279,14 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
           yield* playBatch(output)
         })
       case "line.reveal": return options.presenter.revealLine
-      case "line.release": return Effect.gen(function* () { yield* options.presenter.clearLine; yield* finishLine(); yield* offerEvent({ type: "line.released" }) })
+      case "line.release":
+        return Effect.gen(function* () {
+          // A line released while it types (skip) is first shown in full.
+          yield* options.presenter.revealLine
+          yield* options.presenter.clearLine
+          yield* finishLine()
+          yield* offerEvent({ type: "line.released" })
+        })
       case "auto.start":
         return Effect.gen(function* () {
           if (autoFiber !== undefined) yield* Fiber.interrupt(autoFiber)
@@ -293,6 +335,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
         return Effect.gen(function* () { yield* interruptBatch(); const point = yield* options.session.rollback(1); yield* options.presenter.restore(point.stage); yield* restartMusic(point.stage); yield* offerEvent({ type: "load.done", await: point.await }) })
       case "screen.show": return options.presenter.showScreen(command.screen)
       case "screen.hide": return options.presenter.hideScreen
+      case "overlay.show":
+        return Effect.flatMap(overlayScreen(command.overlay, command.confirm), options.presenter.showScreen)
+      case "overlay.hide": return options.presenter.hideScreen
       case "ui.hidden": return options.presenter.setUiHidden(command.hidden)
       case "settings.apply":
         return Effect.gen(function* () { yield* options.profile.updateSettings(command.settings); currentSettings = yield* SubscriptionRef.get(options.profile.settings); yield* options.presenter.applySettings(currentSettings); yield* options.audio.setVolumes(currentSettings.volumes) })
@@ -301,7 +346,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
         const file = typeof pattern !== "string" ? undefined : resolveFile(options.bindings, pattern.replaceAll("{voiceKey}", command.lineId))
         return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0 })
       }
-      case "toTitle": return Effect.gen(function* () { yield* interruptBatch(); yield* stopTimers(); yield* options.presenter.showScreen({ _tag: "Title", canContinue: true, background: options.titleBackground }) })
+      case "toTitle": return Effect.gen(function* () { yield* interruptBatch(); yield* stopTimers() })
     }
   }
 

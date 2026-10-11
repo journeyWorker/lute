@@ -44,7 +44,7 @@ const playingActor = () => {
 
 const lineActor = () => {
   const run = playingActor()
-  run.actor.send({ type: "line.shown", read: false, hasVoice: false })
+  run.actor.send({ type: "line.typing", read: false, hasVoice: false })
   return run
 }
 
@@ -125,9 +125,10 @@ describe("playerMachine", () => {
 
   it("does not activate read-only skip on an unread current line", () => {
     const run = lineActor()
+    const before = run.commands.length
     run.actor.send({ type: "toggleSkip" })
     expect(run.actor.getSnapshot().context.mode).toBe("normal")
-    expect(run.commands).toHaveLength(0)
+    expect(run.commands.slice(before)).toHaveLength(0)
   })
   it("stops read skip at choices", () => {
     const run = playingActor()
