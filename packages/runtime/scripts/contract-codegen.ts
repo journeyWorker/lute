@@ -61,7 +61,8 @@ const refName = (ref: string, path: string): string => {
 };
 const refExpr = (ref: string, _path?: string): string => {
   const match = /^#\/\$defs\/([^/]+)$/.exec(ref);
-  return match ? `Schema.suspend(() => ${match[1]!})` : "Schema.Json";
+  if (!match || match[1] === "exprNode" || match[1] === "prereqFormula") return "Schema.Json";
+  return `Schema.suspend(() => ${match[1]!})`;
 };
 function formatExpression(source: string): string[] {
   const lines: string[] = [];
@@ -235,7 +236,7 @@ function expression(schema: JsonSchema, path: string): string {
           const field = value.isNullable ? `Schema.NullOr(${inner})` : inner;
           return `${quote(name)}: ${required.has(name) ? field : `Schema.optionalKey(${field})`}`;
         }).join(", ")}})`;
-        return `Schema.Intersect([${struct}, Schema.Record(Schema.String, Schema.Json)])`;
+        return struct;
       }
       if (additional && typeof additional === "object" && propertyEntries.length > 0) {
         const struct = `Schema.Struct({${propertyEntries.map(([name, property]) => {
@@ -244,7 +245,7 @@ function expression(schema: JsonSchema, path: string): string {
           const field = value.isNullable ? `Schema.NullOr(${inner})` : inner;
           return `${quote(name)}: ${required.has(name) ? field : `Schema.optionalKey(${field})`}`;
         }).join(", ")}})`;
-        return `Schema.Intersect([${struct}, Schema.Record(Schema.String, ${expression(additional, `${path}/additionalProperties`)})])`;
+        return struct;
       }
       const fields = propertyEntries.map(([name, property]) => {
         const value = nullable(property);
@@ -326,7 +327,7 @@ if (command === undefined || !Array.isArray(command.oneOf)) {
 irLines.push(...jsdoc(command.description));
 const commandExpression = `Schema.Union([${command.oneOf
   .map((branch: JsonSchema, index: number) => `Schema.suspend(() => ${refName(branch.$ref, `#/$defs/command/oneOf/${index}`)})`)
-  .join(", ")}]).pipe(Schema.toTaggedUnion("kind"))`;
+  .join(", ")}])`;
 const commandFormatted = formatExpression(commandExpression);
 irLines.push(`export const Command = ${commandFormatted[0]!}`);
 irLines.push(...commandFormatted.slice(1));

@@ -7,24 +7,18 @@ import * as Schema from "effect/Schema";
 /**
  * §4.3 injection provenance (lute_check::inject::Provenance): why a compiler-injected record exists. Present only on injected records; its presence is the injection marker (IR 0.37.0 drops the constant `injected` flag).
  */
-export const provenance = Schema.Intersect([
-  Schema.Struct({
-    "by": Schema.String,
-    "explanation": Schema.String
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const provenance = Schema.Struct({
+  "by": Schema.String,
+  "explanation": Schema.String
+});
 export type provenance = typeof provenance.Type;
 
 /**
  * §4.3 component source stamp on component-expanded records (D8).
  */
-export const source = Schema.Intersect([
-  Schema.Struct({
-    "component": Schema.String
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const source = Schema.Struct({
+  "component": Schema.String
+});
 export type source = typeof source.Type;
 
 /**
@@ -49,28 +43,25 @@ export type family = typeof family.Type;
 /**
  * dsl 0.37.0 §5.2: a record's resolved timing, replacing the flattened 0.36 stamp fields. Omitted when every member is absent; each member is omitted when absent. A runtime reads timing only from here.
  */
-export const timing = Schema.Intersect([
-  Schema.Struct({
-    "wait": Schema.optionalKey(Schema.Boolean),
-    "duration": Schema.optionalKey(Schema.Number
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    )),
-    "delay": Schema.optionalKey(Schema.Number
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    )),
-    "at": Schema.optionalKey(Schema.Number
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    )),
-    "timeline": Schema.optionalKey(Schema.Int
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    ))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const timing = Schema.Struct({
+  "wait": Schema.optionalKey(Schema.Boolean),
+  "duration": Schema.optionalKey(Schema.Number
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )),
+  "delay": Schema.optionalKey(Schema.Number
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )),
+  "at": Schema.optionalKey(Schema.Number
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )),
+  "timeline": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  ))
+});
 export type timing = typeof timing.Type;
 
 /**
@@ -114,14 +105,14 @@ export const exprNode = Schema.Union([
     "string": Schema.String
   }),
   Schema.Struct({
-    "list": Schema.Array(Schema.suspend(() => exprNode))
+    "list": Schema.Array(Schema.Json)
   }),
   Schema.Struct({
     "path": Schema.String
   }),
   Schema.Struct({
-    "index": Schema.suspend(() => exprNode),
-    "key": Schema.suspend(() => exprNode)
+    "index": Schema.Json,
+    "key": Schema.Json
   }),
   Schema.Struct({
     "has": Schema.String
@@ -131,7 +122,7 @@ export const exprNode = Schema.Union([
       "!",
       "-"
     ]),
-    "l": Schema.suspend(() => exprNode)
+    "l": Schema.Json
   }),
   Schema.Struct({
     "op": Schema.Literals([
@@ -150,17 +141,17 @@ export const exprNode = Schema.Union([
       "%",
       "in"
     ]),
-    "l": Schema.suspend(() => exprNode),
-    "r": Schema.suspend(() => exprNode)
+    "l": Schema.Json,
+    "r": Schema.Json
   }),
   Schema.Struct({
-    "cond": Schema.suspend(() => exprNode),
-    "then": Schema.suspend(() => exprNode),
-    "else": Schema.suspend(() => exprNode)
+    "cond": Schema.Json,
+    "then": Schema.Json,
+    "else": Schema.Json
   }),
   Schema.Struct({
     "call": Schema.String,
-    "args": Schema.Array(Schema.suspend(() => exprNode))
+    "args": Schema.Array(Schema.Json)
   })
 ]);
 export type exprNode = typeof exprNode.Type;
@@ -170,7 +161,7 @@ export type exprNode = typeof exprNode.Type;
  */
 export const celSlot = Schema.Struct({
   "cel": Schema.String,
-  "expr": Schema.suspend(() => exprNode),
+  "expr": Schema.Json,
   "authored": Schema.optionalKey(Schema.String)
 });
 export type celSlot = typeof celSlot.Type;
@@ -197,41 +188,29 @@ export type celEnv = typeof celEnv.Type;
  * One {{…}} interpolation placeholder (IR A3), internally tagged on `kind` (lowercase). The runtime substitutes it against live state; the enclosing `text` keeps the verbatim {{…}} marker.
  */
 export const placeholder = Schema.Union([
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("path"),
-      "path": Schema.String,
-      "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat)),
-      "forms": Schema.optionalKey(Schema.suspend(() => placeholderForms))
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("ref"),
-      "ref": Schema.String,
-      "expr": Schema.optionalKey(Schema.suspend(() => celSlot)),
-      "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat)),
-      "forms": Schema.optionalKey(Schema.suspend(() => placeholderForms))
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("reserved"),
-      "token": Schema.String,
-      "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat))
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("occasionTarget"),
-      "entityKind": Schema.String,
-      "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat))
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ])
+  Schema.Struct({
+    "kind": Schema.Literal("path"),
+    "path": Schema.String,
+    "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat)),
+    "forms": Schema.optionalKey(Schema.suspend(() => placeholderForms))
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("ref"),
+    "ref": Schema.String,
+    "expr": Schema.optionalKey(Schema.suspend(() => celSlot)),
+    "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat)),
+    "forms": Schema.optionalKey(Schema.suspend(() => placeholderForms))
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("reserved"),
+    "token": Schema.String,
+    "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat))
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("occasionTarget"),
+    "entityKind": Schema.String,
+    "format": Schema.optionalKey(Schema.suspend(() => placeholderFormat))
+  })
 ])
 .pipe(
   Schema.toTaggedUnion("kind")
@@ -282,80 +261,62 @@ export type role = typeof role.Type;
 /**
  * One merged relational entity kind (dsl 0.3.0 §3.1).
  */
-export const entityKindEntry = Schema.Intersect([
-  Schema.Struct({
-    "name": Schema.String,
-    "members": Schema.optionalKey(Schema.Array(Schema.String)),
-    "open": Schema.Boolean,
-    "labels": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    "labelForms": Schema.optionalKey(Schema.suspend(() => labelForms))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const entityKindEntry = Schema.Struct({
+  "name": Schema.String,
+  "members": Schema.optionalKey(Schema.Array(Schema.String)),
+  "open": Schema.Boolean,
+  "labels": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "labelForms": Schema.optionalKey(Schema.suspend(() => labelForms))
+});
 export type entityKindEntry = typeof entityKindEntry.Type;
 
 /**
  * One merged relational `enums:` entry (dsl 0.3.0 §3).
  */
-export const enumEntry = Schema.Intersect([
-  Schema.Struct({
-    "name": Schema.String,
-    "members": Schema.Array(Schema.String)
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const enumEntry = Schema.Struct({
+  "name": Schema.String,
+  "members": Schema.Array(Schema.String)
+});
 export type enumEntry = typeof enumEntry.Type;
 
 /**
  * One merged relation declaration (dsl 0.3.0 §4).
  */
-export const relationEntry = Schema.Intersect([
-  Schema.Struct({
-    "name": Schema.String,
-    "args": Schema.Array(Schema.String),
-    "tier": Schema.optionalKey(Schema.String),
-    "derive": Schema.Boolean,
-    "reserved": Schema.Boolean,
-    "key": Schema.optionalKey(Schema.Array(Schema.Int
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    ))),
-    "excludes": Schema.optionalKey(Schema.Array(Schema.String))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const relationEntry = Schema.Struct({
+  "name": Schema.String,
+  "args": Schema.Array(Schema.String),
+  "tier": Schema.optionalKey(Schema.String),
+  "derive": Schema.Boolean,
+  "reserved": Schema.Boolean,
+  "key": Schema.optionalKey(Schema.Array(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  ))),
+  "excludes": Schema.optionalKey(Schema.Array(Schema.String))
+});
 export type relationEntry = typeof relationEntry.Type;
 
 /**
  * One seed `facts:` ground tuple (dsl 0.3.0 §4).
  */
-export const seedFactEntry = Schema.Intersect([
-  Schema.Struct({
-    "relation": Schema.String,
-    "args": Schema.Array(Schema.String)
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const seedFactEntry = Schema.Struct({
+  "relation": Schema.String,
+  "args": Schema.Array(Schema.String)
+});
 export type seedFactEntry = typeof seedFactEntry.Type;
 
 /**
  * One rule term (dsl 0.3.0 §7.1), tagged on `kind`. Bools lower to a Const with value "true"/"false".
  */
 export const termEntry = Schema.Union([
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("var"),
-      "name": Schema.String
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("const"),
-      "value": Schema.String
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ])
+  Schema.Struct({
+    "kind": Schema.Literal("var"),
+    "name": Schema.String
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("const"),
+    "value": Schema.String
+  })
 ])
 .pipe(
   Schema.toTaggedUnion("kind")
@@ -365,63 +326,48 @@ export type termEntry = typeof termEntry.Type;
 /**
  * One rule atom: a relation applied to terms (dsl 0.3.0 §7.1).
  */
-export const atomEntry = Schema.Intersect([
-  Schema.Struct({
-    "relation": Schema.String,
-    "terms": Schema.Array(Schema.suspend(() => termEntry))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const atomEntry = Schema.Struct({
+  "relation": Schema.String,
+  "terms": Schema.Array(Schema.suspend(() => termEntry))
+});
 export type atomEntry = typeof atomEntry.Type;
 
 /**
  * One rule body literal (dsl 0.3.0 §7.1), tagged on `kind`: a positive/negated atom, a CEL guard, or a term comparison.
  */
 export const bodyEntry = Schema.Union([
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("atom"),
-      "atom": Schema.suspend(() => atomEntry),
-      "negated": Schema.Boolean
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("guard"),
-      "cel": Schema.suspend(() => celSlot)
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("cmp"),
-      "lhs": Schema.suspend(() => termEntry),
-      "rhs": Schema.suspend(() => termEntry),
-      "negated": Schema.Boolean
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ]),
-  Schema.Intersect([
-    Schema.Struct({
-      "kind": Schema.Literal("count"),
-      "atom": Schema.suspend(() => atomEntry),
-      "distinct": Schema.optionalKey(Schema.Array(Schema.String)),
-      "op": Schema.Literals([
-        "==",
-        "!=",
-        "<",
-        "<=",
-        ">",
-        ">="
-      ]),
-      "n": Schema.Int
-      .pipe(
-        Schema.check(Schema.isGreaterThanOrEqualTo(0))
-      )
-    }),
-    Schema.Record(Schema.String, Schema.Json)
-  ])
+  Schema.Struct({
+    "kind": Schema.Literal("atom"),
+    "atom": Schema.suspend(() => atomEntry),
+    "negated": Schema.Boolean
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("guard"),
+    "cel": Schema.suspend(() => celSlot)
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("cmp"),
+    "lhs": Schema.suspend(() => termEntry),
+    "rhs": Schema.suspend(() => termEntry),
+    "negated": Schema.Boolean
+  }),
+  Schema.Struct({
+    "kind": Schema.Literal("count"),
+    "atom": Schema.suspend(() => atomEntry),
+    "distinct": Schema.optionalKey(Schema.Array(Schema.String)),
+    "op": Schema.Literals([
+      "==",
+      "!=",
+      "<",
+      "<=",
+      ">",
+      ">="
+    ]),
+    "n": Schema.Int
+    .pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(0))
+    )
+  })
 ])
 .pipe(
   Schema.toTaggedUnion("kind")
@@ -431,14 +377,11 @@ export type bodyEntry = typeof bodyEntry.Type;
 /**
  * One Datalog rule (dsl 0.3.0 §7.1), emitted as STRUCTURED data. Lute performs NO evaluation (D1); the engine runs the least-fixpoint over this rule set.
  */
-export const ruleEntry = Schema.Intersect([
-  Schema.Struct({
-    "head": Schema.suspend(() => atomEntry),
-    "body": Schema.Array(Schema.suspend(() => bodyEntry)),
-    "raw": Schema.String
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const ruleEntry = Schema.Struct({
+  "head": Schema.suspend(() => atomEntry),
+  "body": Schema.Array(Schema.suspend(() => bodyEntry)),
+  "raw": Schema.String
+});
 export type ruleEntry = typeof ruleEntry.Type;
 
 /**
@@ -469,14 +412,14 @@ export const prereqFormula = Schema.Union([
   }),
   Schema.Struct({
     "and": Schema.Tuple([
-      Schema.suspend(() => prereqFormula),
-      Schema.suspend(() => prereqFormula)
+      Schema.Json,
+      Schema.Json
     ])
   }),
   Schema.Struct({
     "or": Schema.Tuple([
-      Schema.suspend(() => prereqFormula),
-      Schema.suspend(() => prereqFormula)
+      Schema.Json,
+      Schema.Json
     ])
   })
 ]);
@@ -603,21 +546,18 @@ export type questMeta = typeof questMeta.Type;
 /**
  * One folded state slot (§4.1): the engine's init/type table entry.
  */
-export const stateEntry = Schema.Intersect([
-  Schema.Struct({
-    "path": Schema.String,
-    "type": Schema.String,
-    "domain": Schema.optionalKey(Schema.Array(Schema.String)),
-    "default": Schema.optionalKey(Schema.Json),
-    "owner": Schema.optionalKey(Schema.Literals([
-      "engine"
-    ])),
-    "provenance": Schema.optionalKey(Schema.String),
-    "labels": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    "labelForms": Schema.optionalKey(Schema.suspend(() => labelForms))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const stateEntry = Schema.Struct({
+  "path": Schema.String,
+  "type": Schema.String,
+  "domain": Schema.optionalKey(Schema.Array(Schema.String)),
+  "default": Schema.optionalKey(Schema.Json),
+  "owner": Schema.optionalKey(Schema.Literals([
+    "engine"
+  ])),
+  "provenance": Schema.optionalKey(Schema.String),
+  "labels": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "labelForms": Schema.optionalKey(Schema.suspend(() => labelForms))
+});
 export type stateEntry = typeof stateEntry.Type;
 
 /**
@@ -642,13 +582,10 @@ export type effectSource = typeof effectSource.Type;
 /**
  * A resolved plugin state-write binding (IR A12): where a bridge result / increment / literal lands. The runtime applies it after the bridge call — no manifest lookup, no per-plugin knowledge.
  */
-export const effect = Schema.Intersect([
-  Schema.Struct({
-    "path": Schema.String,
-    "from": Schema.suspend(() => effectSource)
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const effect = Schema.Struct({
+  "path": Schema.String,
+  "from": Schema.suspend(() => effectSource)
+});
 export type effect = typeof effect.Type;
 
 /**
@@ -694,182 +631,158 @@ export type matchArm = typeof matchArm.Type;
 /**
  * One `<reward id= kind= target= amount= when= outcome=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`).
  */
-export const rewardEntry = Schema.Intersect([
-  Schema.Struct({
-    "id": Schema.optionalKey(Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z][A-Za-z0-9_-]{0,63}$")))
-    )),
-    "kind": Schema.String,
-    "target": Schema.optionalKey(Schema.String),
-    "amount": Schema.optionalKey(Schema.Int),
-    "amountMin": Schema.optionalKey(Schema.Int),
-    "amountMax": Schema.optionalKey(Schema.Int),
-    "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "outcome": Schema.optionalKey(Schema.Literals([
-      "failed"
-    ])),
-    "credits": Schema.optionalKey(Schema.String)
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const rewardEntry = Schema.Struct({
+  "id": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z][A-Za-z0-9_-]{0,63}$")))
+  )),
+  "kind": Schema.String,
+  "target": Schema.optionalKey(Schema.String),
+  "amount": Schema.optionalKey(Schema.Int),
+  "amountMin": Schema.optionalKey(Schema.Int),
+  "amountMax": Schema.optionalKey(Schema.Int),
+  "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "outcome": Schema.optionalKey(Schema.Literals([
+    "failed"
+  ])),
+  "credits": Schema.optionalKey(Schema.String)
+});
 export type rewardEntry = typeof rewardEntry.Type;
 
 /**
  * One objective inlined in QuestCmd.objectives (dsl 0.2.0 §6.4). Declaration data only; the engine derives completion (all non-optional objectives done ⇒ quest complete).
  */
-export const objectiveEntry = Schema.Intersect([
-  Schema.Struct({
-    "id": Schema.String,
-    "title": Schema.optionalKey(Schema.String),
-    "titleLineId": Schema.optionalKey(Schema.String),
-    "done": Schema.suspend(() => celSlot),
-    "visibleWhen": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "optional": Schema.Boolean,
-    "body": Schema.NullOr(Schema.suspend(() => position)),
-    "quest": Schema.optionalKey(Schema.String),
-    "rewards": Schema.optionalKey(Schema.Array(Schema.suspend(() => rewardEntry))),
-    "on": Schema.optionalKey(Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    )),
-    "by": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "target": Schema.optionalKey(Schema.String),
-    "until": Schema.optionalKey(Schema.suspend(() => celSlot))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const objectiveEntry = Schema.Struct({
+  "id": Schema.String,
+  "title": Schema.optionalKey(Schema.String),
+  "titleLineId": Schema.optionalKey(Schema.String),
+  "done": Schema.suspend(() => celSlot),
+  "visibleWhen": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "optional": Schema.Boolean,
+  "body": Schema.NullOr(Schema.suspend(() => position)),
+  "quest": Schema.optionalKey(Schema.String),
+  "rewards": Schema.optionalKey(Schema.Array(Schema.suspend(() => rewardEntry))),
+  "on": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+  )),
+  "by": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "target": Schema.optionalKey(Schema.String),
+  "until": Schema.optionalKey(Schema.suspend(() => celSlot))
+});
 export type objectiveEntry = typeof objectiveEntry.Type;
 
 /**
  * A spoken or narrated content line (dsl 0.37.0 §5.3).
  */
-export const cmdLine = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("line"),
-    "family": Schema.Literal("content"),
-    "position": Schema.suspend(() => position),
-    "role": Schema.suspend(() => role),
-    "speaker": Schema.String,
-    "text": Schema.String,
-    "emotion": Schema.optionalKey(Schema.String),
-    "variant": Schema.optionalKey(Schema.Int),
-    "action": Schema.optionalKey(Schema.String),
-    "dialogMotion": Schema.optionalKey(Schema.String),
-    "as": Schema.optionalKey(Schema.String),
-    "lineId": Schema.String,
-    "voiceKey": Schema.String,
-    "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
-    "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    "segments": Schema.optionalKey(Schema.suspend(() => segments)),
-    "localeSegments": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => segments))),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdLine = Schema.Struct({
+  "kind": Schema.Literal("line"),
+  "family": Schema.Literal("content"),
+  "position": Schema.suspend(() => position),
+  "role": Schema.suspend(() => role),
+  "speaker": Schema.String,
+  "text": Schema.String,
+  "emotion": Schema.optionalKey(Schema.String),
+  "variant": Schema.optionalKey(Schema.Int),
+  "action": Schema.optionalKey(Schema.String),
+  "dialogMotion": Schema.optionalKey(Schema.String),
+  "as": Schema.optionalKey(Schema.String),
+  "lineId": Schema.String,
+  "voiceKey": Schema.String,
+  "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "segments": Schema.optionalKey(Schema.suspend(() => segments)),
+  "localeSegments": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => segments))),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdLine = typeof cmdLine.Type;
 
 /**
  * `::bg` (dsl 0.37.0 §5.3): sets the stage backdrop. Every field optional.
  */
-export const cmdBg = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("bg"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "location": Schema.optionalKey(Schema.String),
-    "time": Schema.optionalKey(Schema.String),
-    "assetId": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdBg = Schema.Struct({
+  "kind": Schema.Literal("bg"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "location": Schema.optionalKey(Schema.String),
+  "time": Schema.optionalKey(Schema.String),
+  "assetId": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdBg = typeof cmdBg.Type;
 
 /**
  * `::music` (dsl 0.37.0 §5.3). `playback` is a project `musicPlayback` member.
  */
-export const cmdMusic = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("music"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "playback": Schema.optionalKey(Schema.String),
-    "stop": Schema.optionalKey(Schema.Literal(true)),
-    "mood": Schema.optionalKey(Schema.String),
-    "volume": Schema.optionalKey(Schema.String),
-    "assetId": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdMusic = Schema.Struct({
+  "kind": Schema.Literal("music"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "playback": Schema.optionalKey(Schema.String),
+  "stop": Schema.optionalKey(Schema.Literal(true)),
+  "mood": Schema.optionalKey(Schema.String),
+  "volume": Schema.optionalKey(Schema.String),
+  "assetId": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdMusic = typeof cmdMusic.Type;
 
 /**
  * `::sfx` (dsl 0.37.0 §5.3).
  */
-export const cmdSfx = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("sfx"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "sound": Schema.optionalKey(Schema.String),
-    "assetId": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdSfx = Schema.Struct({
+  "kind": Schema.Literal("sfx"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "sound": Schema.optionalKey(Schema.String),
+  "assetId": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdSfx = typeof cmdSfx.Type;
 
 /**
  * `::vfx` (dsl 0.37.0 §5.3).
  */
-export const cmdVfx = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("vfx"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "type": Schema.String,
-    "label": Schema.optionalKey(Schema.String),
-    "transition": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdVfx = Schema.Struct({
+  "kind": Schema.Literal("vfx"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "type": Schema.String,
+  "label": Schema.optionalKey(Schema.String),
+  "transition": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdVfx = typeof cmdVfx.Type;
 
 /**
  * `::actor` (dsl 0.37.0 §5.1/§5.3): an authored actor record or a compiler-injected one (anchor, preload, position reset, hide — §7.4). Injected records carry `provenance`; `posReset` and `preload` appear only on injected records.
  */
-export const cmdActor = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("actor"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "character": Schema.String,
-    "anchor": Schema.optionalKey(Schema.String),
-    "action": Schema.optionalKey(Schema.String),
-    "exit": Schema.optionalKey(Schema.Boolean),
-    "emotion": Schema.optionalKey(Schema.String),
-    "costume": Schema.optionalKey(Schema.String),
-    "posReset": Schema.optionalKey(Schema.Boolean),
-    "preload": Schema.optionalKey(Schema.Boolean),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdActor = Schema.Struct({
+  "kind": Schema.Literal("actor"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "character": Schema.String,
+  "anchor": Schema.optionalKey(Schema.String),
+  "action": Schema.optionalKey(Schema.String),
+  "exit": Schema.optionalKey(Schema.Boolean),
+  "emotion": Schema.optionalKey(Schema.String),
+  "costume": Schema.optionalKey(Schema.String),
+  "posReset": Schema.optionalKey(Schema.Boolean),
+  "preload": Schema.optionalKey(Schema.Boolean),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdActor = typeof cmdActor.Type;
 
 /**
@@ -894,463 +807,409 @@ export type cmdCamera = typeof cmdCamera.Type;
 /**
  * `::cg` (dsl 0.37.0 D2, §5.3): a CG image.
  */
-export const cmdCg = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("cg"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "assetId": Schema.String,
-    "display": Schema.String,
-    "layout": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdCg = Schema.Struct({
+  "kind": Schema.Literal("cg"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "assetId": Schema.String,
+  "display": Schema.String,
+  "layout": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdCg = typeof cmdCg.Type;
 
 /**
  * `::video` (dsl 0.37.0 D2, §5.3).
  */
-export const cmdVideo = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("video"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "assetId": Schema.String,
-    "display": Schema.String,
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdVideo = Schema.Struct({
+  "kind": Schema.Literal("video"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "assetId": Schema.String,
+  "display": Schema.String,
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdVideo = typeof cmdVideo.Type;
 
 /**
  * `::sequence{name}` (dsl 0.37.0 D3, §5.3): a reference to a project-declared external cinematic. Carries only its name and resolved `timing` (`wait` defaults to true); no bound characters. The reference runner records it without simulating the sequence.
  */
-export const cmdSequence = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("sequence"),
-    "family": Schema.Literal("staging"),
-    "position": Schema.suspend(() => position),
-    "name": Schema.String,
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdSequence = Schema.Struct({
+  "kind": Schema.Literal("sequence"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "name": Schema.String,
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdSequence = typeof cmdSequence.Type;
 
 /**
  * A state write (§4.4).
  */
-export const cmdSet = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("set"),
-    "family": Schema.Literal("state"),
-    "position": Schema.suspend(() => position),
-    "path": Schema.String,
-    "op": Schema.String,
-    "value": Schema.suspend(() => celSlot),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdSet = Schema.Struct({
+  "kind": Schema.Literal("set"),
+  "family": Schema.Literal("state"),
+  "position": Schema.suspend(() => position),
+  "path": Schema.String,
+  "op": Schema.String,
+  "value": Schema.suspend(() => celSlot),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdSet = typeof cmdSet.Type;
 
 /**
  * One asserted fact delta (dsl 0.3.0 §5). DATA only — the engine applies it as a positive write to the relation's fact set.
  */
-export const cmdAssert = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("assert"),
-    "family": Schema.Literal("state"),
-    "position": Schema.suspend(() => position),
-    "relation": Schema.String,
-    "args": Schema.Array(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdAssert = Schema.Struct({
+  "kind": Schema.Literal("assert"),
+  "family": Schema.Literal("state"),
+  "position": Schema.suspend(() => position),
+  "relation": Schema.String,
+  "args": Schema.Array(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdAssert = typeof cmdAssert.Type;
 
 /**
  * One retracted fact delta (dsl 0.3.0 §5). The engine applies it as a negative write; "_" positions are a bulk wildcard the engine resolves.
  */
-export const cmdRetract = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("retract"),
-    "family": Schema.Literal("state"),
-    "position": Schema.suspend(() => position),
-    "relation": Schema.String,
-    "args": Schema.Array(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdRetract = Schema.Struct({
+  "kind": Schema.Literal("retract"),
+  "family": Schema.Literal("state"),
+  "position": Schema.suspend(() => position),
+  "relation": Schema.String,
+  "args": Schema.Array(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdRetract = typeof cmdRetract.Type;
 
 /**
  * `<choice>` (dsl 0.37.0 §5.3): a player selection; each option's segment is followed by `converge`.
  */
-export const cmdChoice = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("choice"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "branchId": Schema.String,
-    "selectionKey": Schema.String,
-    "options": Schema.Array(Schema.suspend(() => choiceOption)),
-    "converge": Schema.suspend(() => position),
-    "prompt": Schema.optionalKey(Schema.String),
-    "timeout": Schema.optionalKey(Schema.Int
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(1))
-    )),
-    "default": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdChoice = Schema.Struct({
+  "kind": Schema.Literal("choice"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "branchId": Schema.String,
+  "selectionKey": Schema.String,
+  "options": Schema.Array(Schema.suspend(() => choiceOption)),
+  "converge": Schema.suspend(() => position),
+  "prompt": Schema.optionalKey(Schema.String),
+  "timeout": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1))
+  )),
+  "default": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdChoice = typeof cmdChoice.Type;
 
 /**
  * `<match>` (dsl 0.37.0 §5.3): the first arm whose test holds runs; otherwise `otherwise`, then `converge`.
  */
-export const cmdMatch = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("match"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "subject": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "arms": Schema.Array(Schema.suspend(() => matchArm)),
-    "otherwise": Schema.optionalKey(Schema.suspend(() => position)),
-    "converge": Schema.suspend(() => position),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdMatch = Schema.Struct({
+  "kind": Schema.Literal("match"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "subject": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "arms": Schema.Array(Schema.suspend(() => matchArm)),
+  "otherwise": Schema.optionalKey(Schema.suspend(() => position)),
+  "converge": Schema.suspend(() => position),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdMatch = typeof cmdMatch.Type;
 
 /**
  * <hub> (§7.3.2): a choice plus revisit semantics; re-presentation is a runtime property of the hub kind (no backward jump emitted).
  */
-export const cmdHub = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("hub"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "id": Schema.String,
-    "selectionKey": Schema.String,
-    "options": Schema.Array(Schema.suspend(() => hubOption)),
-    "converge": Schema.suspend(() => position),
-    "prompt": Schema.optionalKey(Schema.String),
-    "return": Schema.optionalKey(Schema.suspend(() => position)),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdHub = Schema.Struct({
+  "kind": Schema.Literal("hub"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "id": Schema.String,
+  "selectionKey": Schema.String,
+  "options": Schema.Array(Schema.suspend(() => hubOption)),
+  "converge": Schema.suspend(() => position),
+  "prompt": Schema.optionalKey(Schema.String),
+  "return": Schema.optionalKey(Schema.suspend(() => position)),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdHub = typeof cmdHub.Type;
 
 /**
  * Unconditional control-flow jump. Carries no `timing`, `provenance`, or `source`.
  */
-export const cmdJump = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("jump"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "target": Schema.suspend(() => position)
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdJump = Schema.Struct({
+  "kind": Schema.Literal("jump"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "target": Schema.suspend(() => position)
+});
 export type cmdJump = typeof cmdJump.Type;
 
 /**
  * dsl 0.8.0 §3: terminate the walk at this record. Equivalent to falling off the end of `commands`, except `reason` is carried.
  */
-export const cmdEnd = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("end"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "reason": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdEnd = Schema.Struct({
+  "kind": Schema.Literal("end"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "reason": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdEnd = typeof cmdEnd.Type;
 
 /**
  * A timeline join point (dsl 0.37.0 §5.2). Carries no `timing`: its join fields are direct, so they cannot collide with a record's timing. The reference runner records it as a join and simulates no elapsed time.
  */
-export const cmdBarrier = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("barrier"),
-    "family": Schema.Literal("control"),
-    "position": Schema.suspend(() => position),
-    "timeline": Schema.Int
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    ),
-    "at": Schema.Number
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    )
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdBarrier = Schema.Struct({
+  "kind": Schema.Literal("barrier"),
+  "family": Schema.Literal("control"),
+  "position": Schema.suspend(() => position),
+  "timeline": Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  ),
+  "at": Schema.Number
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )
+});
 export type cmdBarrier = typeof cmdBarrier.Type;
 
 /**
  * <quest> declaration head (dsl 0.2.0 §6.3). Objective completion bodies and <on> arms follow as their own positioned records.
  */
-export const cmdQuest = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("quest"),
-    "family": Schema.Literal("declaration"),
-    "position": Schema.suspend(() => position),
-    "id": Schema.String,
-    "title": Schema.optionalKey(Schema.String),
-    "titleLineId": Schema.optionalKey(Schema.String),
-    "start": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "fail": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "objectives": Schema.Array(Schema.suspend(() => objectiveEntry)),
-    "rewards": Schema.optionalKey(Schema.Array(Schema.suspend(() => rewardEntry))),
-    "rearm": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "tier": Schema.optionalKey(Schema.Union([
-      Schema.Literals([
-        "run"
-      ]),
-      Schema.String
-      .pipe(
-        Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-      )
-    ])),
-    "activate": Schema.optionalKey(Schema.Literals([
-      "accept"
-    ])),
-    "complete": Schema.optionalKey(Schema.Literals([
-      "any"
-    ])),
-    "accept": Schema.optionalKey(Schema.Literals([
-      "external"
-    ])),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdQuest = Schema.Struct({
+  "kind": Schema.Literal("quest"),
+  "family": Schema.Literal("declaration"),
+  "position": Schema.suspend(() => position),
+  "id": Schema.String,
+  "title": Schema.optionalKey(Schema.String),
+  "titleLineId": Schema.optionalKey(Schema.String),
+  "start": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "fail": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "objectives": Schema.Array(Schema.suspend(() => objectiveEntry)),
+  "rewards": Schema.optionalKey(Schema.Array(Schema.suspend(() => rewardEntry))),
+  "rearm": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "tier": Schema.optionalKey(Schema.Union([
+    Schema.Literals([
+      "run"
+    ]),
+    Schema.String
+    .pipe(
+      Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+    )
+  ])),
+  "activate": Schema.optionalKey(Schema.Literals([
+    "accept"
+  ])),
+  "complete": Schema.optionalKey(Schema.Literals([
+    "any"
+  ])),
+  "accept": Schema.optionalKey(Schema.Literals([
+    "external"
+  ])),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdQuest = typeof cmdQuest.Type;
 
 /**
  * <on> event-condition-action record (dsl 0.2.0 §4, §6.6): an independent event rule.
  */
-export const cmdOn = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("on"),
-    "family": Schema.Literal("declaration"),
-    "position": Schema.suspend(() => position),
-    "event": Schema.String,
-    "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "body": Schema.suspend(() => position),
-    "target": Schema.optionalKey(Schema.String),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdOn = Schema.Struct({
+  "kind": Schema.Literal("on"),
+  "family": Schema.Literal("declaration"),
+  "position": Schema.suspend(() => position),
+  "event": Schema.String,
+  "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "body": Schema.suspend(() => position),
+  "target": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdOn = typeof cmdOn.Type;
 
 /**
  * <entry> declaration head of a lore artifact (dsl 0.19.0 §7, docs/runtime/lore-entries.md): content the engine looks up rather than plays.
  */
-export const cmdEntry = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("entry"),
-    "family": Schema.Literal("declaration"),
-    "position": Schema.suspend(() => position),
-    "id": Schema.String,
-    "target": Schema.optionalKey(Schema.String),
-    "category": Schema.optionalKey(Schema.String),
-    "title": Schema.optionalKey(Schema.String),
-    "titleLineId": Schema.optionalKey(Schema.String),
-    "series": Schema.optionalKey(Schema.String),
-    "order": Schema.optionalKey(Schema.Int
+export const cmdEntry = Schema.Struct({
+  "kind": Schema.Literal("entry"),
+  "family": Schema.Literal("declaration"),
+  "position": Schema.suspend(() => position),
+  "id": Schema.String,
+  "target": Schema.optionalKey(Schema.String),
+  "category": Schema.optionalKey(Schema.String),
+  "title": Schema.optionalKey(Schema.String),
+  "titleLineId": Schema.optionalKey(Schema.String),
+  "series": Schema.optionalKey(Schema.String),
+  "order": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(0))
+  )),
+  "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "body": Schema.suspend(() => position),
+  "on": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+  )),
+  "priority": Schema.optionalKey(Schema.Int),
+  "once": Schema.optionalKey(Schema.Union([
+    Schema.Literals([
+      "run",
+      "user",
+      "day",
+      "slot",
+      "week"
+    ]),
+    Schema.String
     .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(0))
-    )),
-    "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "body": Schema.suspend(() => position),
-    "on": Schema.optionalKey(Schema.String
+      Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+    )
+  ])),
+  "share": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+  )),
+  "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
+  "forKind": Schema.optionalKey(Schema.suspend(() => forKind)),
+  "spentBy": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "advances": Schema.optionalKey(Schema.Union([
+    Schema.Literals([
+      "slot",
+      "day"
+    ]),
+    Schema.Int
     .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    )),
-    "priority": Schema.optionalKey(Schema.Int),
-    "once": Schema.optionalKey(Schema.Union([
-      Schema.Literals([
-        "run",
-        "user",
-        "day",
-        "slot",
-        "week"
-      ]),
-      Schema.String
-      .pipe(
-        Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-      )
-    ])),
-    "share": Schema.optionalKey(Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    )),
-    "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
-    "forKind": Schema.optionalKey(Schema.suspend(() => forKind)),
-    "spentBy": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "advances": Schema.optionalKey(Schema.Union([
-      Schema.Literals([
-        "slot",
-        "day"
-      ]),
-      Schema.Int
-      .pipe(
-        Schema.check(Schema.isGreaterThanOrEqualTo(1))
-      )
-    ])),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+      Schema.check(Schema.isGreaterThanOrEqualTo(1))
+    )
+  ])),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdEntry = typeof cmdEntry.Type;
 
 /**
  * `::accept{quest}` (dsl 0.21.0 §7a.3): the player accepts an accept-driven quest at this point — the scene-side form of the engine's accept action. The engine activates the quest if its state is `unset` (stamping `activatedAt` as for any activation) and ignores the record otherwise (docs/runtime/quest-lifecycle.md).
  */
-export const cmdAccept = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("accept"),
-    "family": Schema.Literal("declaration"),
-    "position": Schema.suspend(() => position),
-    "quest": Schema.String,
-    "applies": Schema.optionalKey(Schema.Literals([
-      "nextRun"
-    ])),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdAccept = Schema.Struct({
+  "kind": Schema.Literal("accept"),
+  "family": Schema.Literal("declaration"),
+  "position": Schema.suspend(() => position),
+  "quest": Schema.String,
+  "applies": Schema.optionalKey(Schema.Literals([
+    "nextRun"
+  ])),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdAccept = typeof cmdAccept.Type;
 
 /**
  * A bundle beat's declaration head in a lore artifact (dsl 0.23.0 §4, docs/runtime/beats-and-occasions.md): a scene-like beat written in a lore document. It is the first record of its own addressing unit; the engine presents its body like a scene when the beat wins its occasion.
  */
-export const cmdBeat = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("beat"),
-    "family": Schema.Literal("declaration"),
-    "position": Schema.suspend(() => position),
-    "id": Schema.String,
-    "on": Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    ),
-    "target": Schema.optionalKey(Schema.String),
-    "title": Schema.optionalKey(Schema.String),
-    "titleLineId": Schema.optionalKey(Schema.String),
-    "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "priority": Schema.Int,
-    "once": Schema.Union([
-      Schema.Literals([
-        "run",
-        "user",
-        "none",
-        "day",
-        "slot",
-        "week"
-      ]),
-      Schema.String
-      .pipe(
-        Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-      )
+export const cmdBeat = Schema.Struct({
+  "kind": Schema.Literal("beat"),
+  "family": Schema.Literal("declaration"),
+  "position": Schema.suspend(() => position),
+  "id": Schema.String,
+  "on": Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+  ),
+  "target": Schema.optionalKey(Schema.String),
+  "title": Schema.optionalKey(Schema.String),
+  "titleLineId": Schema.optionalKey(Schema.String),
+  "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "priority": Schema.Int,
+  "once": Schema.Union([
+    Schema.Literals([
+      "run",
+      "user",
+      "none",
+      "day",
+      "slot",
+      "week"
     ]),
-    "also": Schema.optionalKey(Schema.Literal(true)),
-    "share": Schema.optionalKey(Schema.String
+    Schema.String
     .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    )),
-    "after": Schema.optionalKey(Schema.String),
-    "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
-    "forKind": Schema.optionalKey(Schema.suspend(() => forKind)),
-    "spentBy": Schema.optionalKey(Schema.suspend(() => celSlot)),
-    "advances": Schema.optionalKey(Schema.Union([
-      Schema.Literals([
-        "slot",
-        "day"
-      ]),
-      Schema.Int
-      .pipe(
-        Schema.check(Schema.isGreaterThanOrEqualTo(1))
-      )
-    ])),
-    "body": Schema.suspend(() => position),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+      Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+    )
+  ]),
+  "also": Schema.optionalKey(Schema.Literal(true)),
+  "share": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
+  )),
+  "after": Schema.optionalKey(Schema.String),
+  "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
+  "forKind": Schema.optionalKey(Schema.suspend(() => forKind)),
+  "spentBy": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "advances": Schema.optionalKey(Schema.Union([
+    Schema.Literals([
+      "slot",
+      "day"
+    ]),
+    Schema.Int
+    .pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(1))
+    )
+  ])),
+  "body": Schema.suspend(() => position),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdBeat = typeof cmdBeat.Type;
 
 /**
  * Plugin-directive passthrough (Rust `Command::Plugin`), serialized as kind `plugin`. Declared fields and effects are opaque to core. Plugin `stampAttrs` cross-cutting attrs appear as further top-level keys beside `timing`.
  */
-export const cmdPlugin = Schema.Intersect([
-  Schema.Struct({
-    "kind": Schema.Literal("plugin"),
-    "family": Schema.Literal("plugin"),
-    "position": Schema.suspend(() => position),
-    "tag": Schema.String,
-    "plugin": Schema.optionalKey(Schema.String),
-    "fields": Schema.Json,
-    "effects": Schema.optionalKey(Schema.Array(Schema.suspend(() => effect))),
-    "retracts": Schema.optionalKey(Schema.Array(Schema.Struct({
-      "relation": Schema.String,
-      "args": Schema.Array(Schema.String)
-    }))),
-    "asserts": Schema.optionalKey(Schema.Array(Schema.Struct({
-      "relation": Schema.String,
-      "args": Schema.Array(Schema.String)
-    }))),
-    "timing": Schema.optionalKey(Schema.suspend(() => timing)),
-    "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-    "source": Schema.optionalKey(Schema.suspend(() => source))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const cmdPlugin = Schema.Struct({
+  "kind": Schema.Literal("plugin"),
+  "family": Schema.Literal("plugin"),
+  "position": Schema.suspend(() => position),
+  "tag": Schema.String,
+  "plugin": Schema.optionalKey(Schema.String),
+  "fields": Schema.Json,
+  "effects": Schema.optionalKey(Schema.Array(Schema.suspend(() => effect))),
+  "retracts": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "relation": Schema.String,
+    "args": Schema.Array(Schema.String)
+  }))),
+  "asserts": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "relation": Schema.String,
+    "args": Schema.Array(Schema.String)
+  }))),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+});
 export type cmdPlugin = typeof cmdPlugin.Type;
 
 /**
@@ -1444,20 +1303,17 @@ export type indexBeat = typeof indexBeat.Type;
 /**
  * dsl 0.37.0 §5.3: one authored document section. Purely descriptive — control flow never references it.
  */
-export const sectionEntry = Schema.Intersect([
-  Schema.Struct({
-    "section": Schema.Int
-    .pipe(
-      Schema.check(Schema.isGreaterThanOrEqualTo(1))
-    ),
-    "heading": Schema.String,
-    "id": Schema.optionalKey(Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^[A-Za-z][A-Za-z0-9_-]{0,63}$")))
-    ))
-  }),
-  Schema.Record(Schema.String, Schema.Json)
-]);
+export const sectionEntry = Schema.Struct({
+  "section": Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1))
+  ),
+  "heading": Schema.String,
+  "id": Schema.optionalKey(Schema.String
+  .pipe(
+    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z][A-Za-z0-9_-]{0,63}$")))
+  ))
+});
 export type sectionEntry = typeof sectionEntry.Type;
 
 /**
@@ -1562,9 +1418,6 @@ export const Command = Schema.Union([
   Schema.suspend(() => cmdAccept),
   Schema.suspend(() => cmdBeat),
   Schema.suspend(() => cmdPlugin)
-])
-.pipe(
-  Schema.toTaggedUnion("kind")
-);
+]);
 export type Command = typeof Command.Type;
 
