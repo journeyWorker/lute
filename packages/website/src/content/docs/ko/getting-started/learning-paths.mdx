@@ -1,0 +1,71 @@
+---
+title: 학습 경로
+description: Lute 문서를 역할에 따라 탐색하는 경로입니다. 시나리오를 작성하거나, 내러티브 로직을 프로그래밍하거나, 엔진을 통합하거나, 플러그인을 작성하거나, AI 도구를 구축하는 등 현재 하려는 일에 맞는 읽기 순서를 선택할 수 있습니다.
+---
+
+Lute 문서는 주제별로 구성되어 있지만, 여러분은 아마도 **역할**을 염두에 두고 찾아오셨을 것입니다. 하려는 일에 맞는 경로를 선택하세요. 각 경로는 이미 존재하는 페이지를 짧고 순서 있게 읽도록 구성되어 있습니다. 페이지에서 질문이 생기면 언제든 사이드바를 통해 다른 경로로 갈 수 있습니다.
+
+## 시나리오 작성자
+
+스토리, 즉 대화, 선택지, 퀘스트를 작성하며 플레이어가 실수하기 전에 도구가 실수를 찾아내기를 원합니다. 여기서 시작하고 산문 작성에 집중하세요. 로직 레이어는 나중에 살펴봐도 됩니다.
+
+1. [설치](/ko/getting-started/installation/) — `lute` 명령을 `PATH`에 추가합니다.
+2. [첫 씬 작성](/ko/getting-started/first-scene/) — 빈 파일에서 실제 씬 하나를 만들고 모든 단계에서 `lute`를 실행한 다음, `lute test`가 실행하는 `*.test.yaml`로 고정합니다.
+3. [씬을 스토리에 연결](/ko/getting-started/connect-scenes/) — 가상의 계기 하나와 `after:`, `priority:`를 사용해 씬을 연결하고, `when:`으로 결말을 분기한 다음, 엔진 없이 `lute play`로 전체 스토리를 플레이합니다.
+4. [조사 구축](/ko/getting-started/build-an-investigation/) — 팩트, 퀘스트, 심문 허브, 추적된 결말 두 개와 그 테스트가 포함된 완전한 예제 프로젝트입니다.
+5. [대화 및 캐스트](/ko/language/dialogue-and-cast/) — `@speaker` 줄, 전달 플래그 및 보간을 다룹니다.
+6. [분기, match 및 when](/ko/language/branch-match-when/) — 플레이어 메뉴와 상태 기반 콜백을 다룹니다.
+7. [선택지 및 허브](/ko/language/choices-and-hubs/) — 선택지 가드, `into=` 레코드 문법 및 재방문 허브를 다룹니다.
+8. [퀘스트 및 씬](/ko/language/quests-and-scenes/) — 목표, `after:` 시퀀싱 및 수명 주기 이벤트를 다룹니다.
+9. [추적 가이드](/ko/tooling/tracing/) 및 [`lute test`](/ko/tooling/cli/#test) — 선택한 경로를 따라 씬을 미리 보고, 관심 있는 모든 경로를 테스트로 유지합니다.
+10. [비트](/ko/language/beats/) 및 [스토리 플레이](/ko/tooling/play/) — 엔진이 고정된 에피소드 순서가 아니라 순간에 따라 다음 스토리 조각을 선택할 때 사용하는 기능입니다. 시작점으로 삼을 수 있도록 `lute init --template beats`가 통과하는 예제를 뼈대부터 생성합니다.
+
+작성하는 동안 [치트시트](/ko/reference/cheatsheet/)를 열어 두세요. 편집기와 터미널이 파일에 대해 서로 다른 내용을 표시한다면 항상 터미널을 신뢰하고 `lute doctor .`를 실행하세요. 오래된 편집기 언어 서버인지, 도구 체인이 일치하지 않는지 알려줍니다.
+
+## 내러티브 프로그래머
+
+상태, 가드 및 도달 가능성을 중심으로 생각합니다. 이 경로는 로직 및 분석 레이어를 먼저 다룹니다. 컴파일러 엔지니어라면 익숙하게 느낄 Lute의 부분입니다.
+
+1. [프론트매터 및 프로필](/ko/language/frontmatter-and-profiles/) — 모든 문서가 여는 기능 선택 헤더입니다.
+2. [상태 모델](/ko/state/state-model/) — 계층화된 스칼라 네임스페이스와 명확한 할당 규칙을 다룹니다.
+3. [CEL 표현식](/ko/state/cel/) — 모든 조건과 할당의 기반이 되는 제한된 표현식 프로필입니다.
+4. [팩트 및 Datalog](/ko/state/facts-and-datalog/) — 관계형 팩트 레이어와 그 전체 파생 규칙을 다룹니다.
+5. [타임라인 및 속성 트랙](/ko/language/timeline-and-property-tracks/) — 트랙당 하나의 작성자 규칙에 따른 동시 안무를 다룹니다.
+6. [씬 그래프와 after:](/ko/connectivity/scene-graph/) — 프로젝트 전반의 전제 조건 그래프입니다.
+7. [도달 가능성](/ko/connectivity/reachability/) — Reachable / Unreachable / Unknown 판정과 그 정직성 경계를 다룹니다.
+8. [Guaranteed / Possible 엔벨로프](/ko/connectivity/envelopes/) — 노드별 사용 가능한 상태 분석입니다.
+
+## 엔진 통합자
+
+Lute가 컴파일한 내용을 플레이하도록 게임 엔진을 연결합니다. Lute는 게임을 직접 실행하지 않습니다. 버전이 지정된 JSON IR과 CEL을 넘겨주며, 런타임 계약을 구현하는 것은 여러분의 몫입니다. 이 경로는 계약 우선으로 구성되어 있습니다.
+
+1. [런타임 계약](/ko/tooling/runtime-contract/) — Lute가 출력하는 것과 어댑터가 구현해야 하는 것을 다룹니다. 명령 루프, CEL, 팩트, 퀘스트 및 타입이 지정된 브리지가 포함됩니다.
+2. [기능 권한](/ko/tooling/capability-permissions/) — 컴파일 시점의 저작 기능 상한이 끝나고 호스트/런타임 권한 부여가 시작되는 지점을 다룹니다.
+3. [스트리밍 연속성 컴파일러](/ko/tooling/continuation-compiler/) — 숫자 커서, 상태, 팩트 및 제어 흐름 상태는 유지하면서 전체 프로그램 스냅샷을 교체합니다.
+4. [GitHub의 `docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) — 규범적인 런타임 사양입니다. [스트리밍 연속성](https://github.com/journeyWorker/lute/blob/main/docs/runtime/incremental-continuations.md), [기능 권한/보안](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md), [실행 모델](https://github.com/journeyWorker/lute/blob/main/docs/runtime/execution-model.md), [상태 수명 주기](https://github.com/journeyWorker/lute/blob/main/docs/runtime/state-lifecycle.md), [CEL 및 팩트](https://github.com/journeyWorker/lute/blob/main/docs/runtime/cel-and-facts.md), [퀘스트 수명 주기](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md), [타임라인 의미론](https://github.com/journeyWorker/lute/blob/main/docs/runtime/timeline-semantics.md), [브리지 프로토콜](https://github.com/journeyWorker/lute/blob/main/docs/runtime/bridge-protocol.md)을 다룹니다.
+5. [GitHub의 `conformance/`](https://github.com/journeyWorker/lute/tree/main/conformance) — Lute를 올바르게 플레이하는지 입증하기 위해 어댑터가 재생해야 하는 아티팩트 및 기대값 픽스처입니다.
+6. [CLI 레퍼런스 → `run`](/ko/tooling/cli/) — `lute run`은 참조 소비자입니다. 컴파일된 아티팩트를 모의 플레이스루에 적용해 실행하므로, 그 트랜스크립트가 어댑터가 일치시켜야 하는 동작입니다.
+7. [CEL 표현식](/ko/state/cel/) — 평가기가 재현해야 하는 정확한 표현식 의미론입니다.
+
+## 플러그인 작성자
+
+고정된 문법이나 컴파일러를 건드리지 않고 Lute의 어휘를 확장합니다. 새로운 디렉티브, 기능 표면 및 타입이 지정된 브리지를 추가할 수 있습니다. 이 경로는 기능 모델을 처음부터 끝까지 안내합니다.
+
+1. [플러그인 개념](/ko/plugins/concepts/) — 문법을 변경하지 않고 플러그인이 어휘와 기능을 추가하는 방법을 다룹니다.
+2. [매니페스트 및 해석](/ko/plugins/manifests/) — 패키지 레이아웃, export 종류, 의존성 그래프 및 기능 스냅샷을 다룹니다.
+3. [프로필 및 활성화](/ko/plugins/profiles/) — 결정론적인 옵션 레이어링과 활성화 및 권한 상한의 차이를 다룹니다.
+4. [기능 권한](/ko/tooling/capability-permissions/) — 신뢰된 프로젝트/호스트가 이미 해석된 플러그인 디렉티브, 이펙트 및 브리지를 제한하는 방법을 다룹니다.
+5. [타입이 지정된 브리지 디렉티브](/ko/plugins/bridge/) — 타입이 지정된 런타임 브리지와 해당 브리지가 기록하는 상태를 선언하는 방법을 다룹니다.
+6. [프로바이더 및 카탈로그](/ko/tooling/providers-and-catalog/) — 스냅샷 우선 프로바이더 해석과 `capabilitySnapshot`을 다룹니다.
+
+## AI 도구 개발자
+
+모델이 Lute를 작성하고 검사기가 이를 올바르게 유지하는 작성 파이프라인을 구축합니다. 이 경로는 기계 판독이 가능한 표면을 중심으로 구성됩니다.
+
+1. [AI 하네스 가이드](/ko/tooling/ai-harness/) — 신뢰된 `--permission-profile`, 필터링된 `lute context`, `lute check --json`, `--deny`, 종료 코드 및 픽스잇을 루프에 연결하는 방법을 다룹니다.
+2. [기능 권한](/ko/tooling/capability-permissions/) — 생성된 소스가 자신의 권한을 선택하게 해서는 안 됩니다. context, check, compile 및 스트리밍 전체에서 하나의 호스트 상한을 사용합니다.
+3. [스트리밍 연속성 컴파일러](/ko/tooling/continuation-compiler/) — 모델별 문법을 새로 만들지 않고 `compile-stream`을 통해 일반적인 검사 완료 Lute 본문 단위를 스트리밍합니다.
+4. [CLI 레퍼런스](/ko/tooling/cli/) — 모든 하위 명령 표면, `--json` 형태 및 모든 단계가 기준으로 삼는 종료 코드 계약을 다룹니다.
+5. [현재 사양](/ko/spec/current/) — 현재 언어가 실제로 강제하는 내용을 통합한 색인입니다.
+6. [상태 스키마](/ko/state/schemas/) — 생성기가 대상으로 삼아야 하는, 공유되고 임포트되는 단일 기준 원천입니다.
+7. [조사 구축](/ko/getting-started/build-an-investigation/) — 실제 프로젝트에서 하네스가 자동화하는 check → trace → compile 루프를 확인합니다. 여기에는 `check-project`가 관계형 팩트 가드에 대해 입증하는 내용도 포함됩니다.

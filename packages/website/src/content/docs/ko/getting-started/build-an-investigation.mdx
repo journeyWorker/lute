@@ -1,0 +1,578 @@
+---
+title: 조사 프로젝트 만들기
+description: 자신만의 폴더에서 작은 추리극을 파일별로 만들어 보는 첫 프로젝트 튜토리얼입니다. 프로젝트 매니페스트, 스키마, 팩트와 Datalog, 심문 허브가 있는 세 장면, 퀘스트, after 순서 지정, check-project와 관계형 가드 분석, 시나리오 도달 가능성, 두 개의 trace mock, 시나리오 테스트, 컴파일까지 다룹니다.
+---
+
+[첫 장면 작성하기](/ko/getting-started/first-scene/)에서는 파일 하나를 만들었습니다. 이
+튜토리얼에서는 **작은 프로젝트 전체**를 만듭니다. 관계형 팩트 세계 위에서 퀘스트로 진행을 제한하는
+세 장면짜리 추리극입니다. 실제 Lute 게임을 축소한 형태이며, 장면을 가로지르는 관계형 팩트 가드에
+대해 체커가 무엇을 증명하는지 보여 주므로, 체커가 정확히 무엇을 주장하고 무엇을 주장하지 않는지
+확인할 수 있습니다.
+
+필요한 것은 `lute` 명령([설치](/ko/getting-started/installation/))뿐입니다. Lute 저장소의 사본도
+Rust도 필요하지 않습니다. 프로젝트와 하위 폴더를 담을 빈 폴더를 만들고 그 안에서 작업합니다:
+
+```sh
+mkdir investigation && cd investigation
+mkdir scenes quests mocks tests
+```
+
+아래의 모든 명령은 `investigation/` 안에서 실행하며, 모든 경로는 그 폴더를 기준으로 합니다. 각
+단계에서는 파일 하나를 **전체**로 보여 줍니다. 단계에서 지정한 경로에 파일을 만들고 내용을 붙여
+넣거나 입력하면, 마지막에는 프로젝트 전체가 완성됩니다. 참고로 같은 파일이 저장소의
+[`docs/examples/investigation/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/investigation)에
+있습니다.
+
+이것은 `lute init --template investigation`이 만드는 프로젝트와는 다릅니다. 해당 템플릿은 계기로
+구동되는 비트, 플러그인, 로어, 플레이와 테스트를 포함한 더 크고 다른 추리극의 뼈대를 만듭니다.
+이 튜토리얼을 마친 뒤 살펴볼 만하지만, 아래 파일 중 어느 것도 그 템플릿의 파일은 아닙니다.
+
+## 1. 프로젝트 매니페스트
+
+루트에 `lute.project.yaml`이 있는 디렉터리는 모두 프로젝트입니다. 이 프로젝트는 **코어 전용**이며
+플러그인이 없으므로 모든 문서는 내장된 `lute.core` 기능을 기준으로 해석됩니다.
+`lute.project.yaml`을 만듭니다:
+
+```yaml
+# The project root. Core-only: no plugins, so every document resolves
+# against Lute's built-in `lute.core` capabilities.
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}
+```
+
+이 매니페스트가 폴더의 `.lute` 파일들을 `lute check-project`가 하나의 단위로 해석할 수 있는
+프로젝트로 바꿉니다.
+
+## 2. 공유 스키마
+
+모든 장면과 퀘스트는 `uses: ../world.schema.yaml`로 하나의 스키마를 가져옵니다. 이 스키마는 스칼라
+상태 계층 **및** 관계형 어휘를 선언하는 순수 선언 맵이며, `---`나 본문은 없습니다.
+`world.schema.yaml`을 만듭니다:
+
+```yaml
+# The shared world every scene and the quest import with
+# `uses: ../world.schema.yaml`. Declarations only: no `---`, no body.
+
+# --- Scalar state -----------------------------------------------------------
+# Every path has a `default:`, so every read has a value from the start.
+state:
+  run.cluesLogged:  { type: int, default: 0 }
+  run.leadStrength: { type: int, default: 0 }
+  run.suspectFocus: { type: { enum: [blake, cass, dana] }, default: blake }
+  run.accused:      { type: { enum: [none, blake, cass, dana] }, default: none }
+  run.trueKiller:   { type: { enum: [blake, cass, dana] }, default: blake }
+  user.solved:      { type: int, default: 0 }
+
+# --- Relational facts -------------------------------------------------------
+entities:
+  suspect: { members: [blake, cass, dana] }
+  clue:    { members: [ledger, letter, knife] }
+
+relations:
+  # `foundClue` is asserted by the crime scene as the detective logs evidence.
+  foundClue:  { args: [clue], tier: run }
+  # `implicates` is the fixed case map: which clue points at which suspect.
+  implicates: { args: [clue, suspect], tier: run, key: [0] }
+  # `points` is DERIVED: a suspect the found clues implicate (see `rules:`).
+  points:     { args: [suspect], derive: true }
+
+# Seed facts: true from the start of every playthrough.
+facts:
+  - "implicates(ledger, blake)"
+  - "implicates(letter, blake)"
+  - "implicates(knife, cass)"
+
+# One rule: a suspect is pointed at once a clue that implicates them is found.
+rules:
+  - "points(S) :- foundClue(C), implicates(C, S)"
+```
+
+앞부분은 스칼라 상태입니다. 모든 경로에 `default:`가 있으므로 독립적인 단일 파일 `check`에서도
+각 읽기가 확실히 할당됩니다. 계층 규칙은 [상태 스키마](/ko/state/schemas/)와
+[상태 모델](/ko/state/state-model/)을 참고하세요.
+
+## 3. 팩트, 관계, Datalog 규칙 하나
+
+같은 파일의 뒷부분은 **관계형 세계**를 선언합니다. 두 엔티티(용의자와 단서), 세 관계, 세 시드
+팩트, 그리고 도출 규칙입니다. `foundClue`는 범죄 현장 장면이 작성하고, `implicates`는 고정된
+사건 맵으로서 시드 `facts:` 때문에 시작부터 참이며, `points`는 저장되지 않고 *도출*됩니다.
+발견한 단서가 용의자를 가리키면 그 용의자가 지목됩니다. 전체 모델은 [팩트와 Datalog](/ko/state/facts-and-datalog/)을
+참고하세요.
+
+## 4. 진입 장면 — 단서 기록하기
+
+`scenes/crime-scene.lute`를 만듭니다:
+
+```lute check="docs/examples/investigation/scenes/crime-scene.lute"
+---
+kind: scene
+luteVersion: "0.39.0"
+id: detective.s01ep01
+title: The Study
+# No `after:`, so this scene is where the case starts.
+uses: ../world.schema.yaml
+pov: detective
+---
+
+## The Study
+
+@narrator: The victim's study, untouched since the coroner left.
+@detective{mono}: Two things in here don't belong. Log them.
+
+::assert{ foundClue(ledger) }
+::set{ run.cluesLogged += 1 }
+@detective: A ledger — the balances scratched out in red ink.
+
+::assert{ foundClue(letter) }
+::set{ run.cluesLogged += 1 }
+@detective: And a letter, signed once and then unsigned.
+
+// No `when=`: both clues above are logged on every playthrough, so the
+// derived fact `points(blake)` always holds here.
+@detective{mono}: Both threads pull toward one name.
+```
+
+프런트매터의 `id:`가 장면 이름을 정합니다. 다른 장면은 이 이름으로 장면을 참조합니다.
+`detective.s01ep01`은 단지 이름일 뿐이므로 점이 들어간 어떤 이름이든 사용할 수 있습니다. `pov:`는
+플레이어 캐릭터를 지정합니다. `{mono}`는 탐정이 사용하는 속마음이며, 해당 캐릭터와
+`monoSpeakers:`에 나열된 화자에게 예약되어 있습니다. 이 장면에는 **`after:`가 없으므로** 그래프의
+루트, 즉 사건이 시작되는 곳입니다. `::assert{ foundClue(...) }`로 관계형 팩트의 델타를 작성하고,
+퀘스트가 가드로 사용하는 스칼라 카운터를 증가시킵니다.
+
+마지막 줄인 *"Both threads pull toward one name"*에는 의도적으로 가드가 **없습니다**.
+`when="holds('points', ['blake'])"`를 붙이는 것은 중복입니다. 이 장면을 통과하는 유일한 경로에서
+두 단서가 모두 assert되고 `implicates(ledger, blake)`가 시드이므로, 규칙이 모든 플레이스루에서
+해당 줄 전에 `points(blake)`를 도출합니다. `check-project`는 바로 이런 주장을 증명합니다(8단계).
+
+## 5. 심문 허브
+
+`scenes/interview.lute`를 만듭니다:
+
+```lute check="docs/examples/investigation/scenes/interview.lute"
+---
+kind: scene
+luteVersion: "0.39.0"
+id: detective.s01ep02
+title: The Interview Room
+# Comes after the crime scene.
+after: 'visited("detective.s01ep01")'
+uses: ../world.schema.yaml
+pov: detective
+---
+
+## The Interview Room
+
+@narrator: Three chairs, one table, and the smell of cold coffee.
+
+<hub id="interrogate">
+  <choice id="pressLedger" text="Press them on the ledger">
+    @detective: These numbers were bled dry. Explain them.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="pressLetter" text="Press them on the letter">
+    @detective: You signed this, then you tried to unsign it.
+    ::set{ run.suspectFocus = "blake" }
+    ::set{ run.leadStrength += 1 }
+  </choice>
+  <choice id="askAlibi" text="Ask for an alibi" once>
+    @detective: Walk me through last night. Slowly.
+  </choice>
+  <choice id="leave" text="End the interview" exit>
+    @detective: We're done here. For now.
+  </choice>
+</hub>
+
+## Reading the Room
+
+<match subject="run.suspectFocus">
+  <when is="blake">
+    @detective{mono}: Blake keeps surfacing. A thread worth pulling.
+  </when>
+  <when is="cass">
+    @detective{mono}: Cass, then — the quiet ones keep the best books.
+  </when>
+  <when is="dana">
+    @detective{mono}: Dana. I'm not convinced, but I'll note it.
+  </when>
+</match>
+```
+
+심문 장면은 범죄 현장 뒤에 `after:`로 순서가 정해지며(7단계), 범죄 현장에서 기록한 단서를
+확인하는 첫 두 선택지가 있는 재방문용 `<hub>`를 사용합니다. `leave`는 가드가 없는 `exit`로,
+막다른 길이 없어야 한다는 보장을 충족합니다. 모든 허브에는 빠져나갈 방법이 있어야 합니다.
+[선택지와 허브](/ko/language/choices-and-hubs/)를 참고하세요. 허브 다음의 `<match>`는 선택지가
+작성한 `run.suspectFocus`를 읽습니다. enum의 모든 멤버를 다루므로 `<otherwise>`가 필요하지
+않습니다.
+
+`pressLedger`와 `pressLetter`에는 `when="holds('foundClue', ['…'])"` 가드가 없습니다. 범죄 현장
+장면이 유일한 경로에서 두 단서를 assert하고 심문 장면은 그 장면의 `after:` 뒤에만 도달할 수
+있으므로, 이 허브가 실행될 때는 두 팩트가 이미 참이라는 점이 이유입니다.
+## 6. 퀘스트 — 목표 기계
+
+`quests/identify-killer.lute`를 만듭니다:
+
+```lute check="docs/examples/investigation/quests/identify-killer.lute"
+---
+kind: quest
+luteVersion: "0.39.0"
+uses: ../world.schema.yaml
+title: Identify the Killer
+---
+
+<quest id="identifyKiller" tier="run" title="Identify the Killer" start="true">
+  <objective id="gatherEvidence" title="Log at least two clues" done="run.cluesLogged >= 2"/>
+  <objective id="nameSuspect" title="Name a suspect at the confrontation" done="run.accused != 'none'"/>
+  <objective id="followClues" title="Let the clues point at a suspect" done="holds('points', ['blake'])" optional/>
+
+  <on event="questComplete">
+    ::set{ user.solved += 1 }
+    @narrator: The case file closes with a name on the cover.
+  </on>
+</quest>
+```
+
+`start="true"`는 퀘스트를 시작부터 활성화하고, `tier="run"`은 한 번의 플레이에
+속하는 퀘스트로 만들어 새 런마다 초기화합니다. (`tier=`가 없으면 퀘스트는 사용자 등급이
+되어 런을 넘어 유지되며, 그런 퀘스트가 런 상태만 읽을 때 `check-project`가
+`W-QUEST-TIER-IMPLICIT`를 경고합니다.) 완료는 파생됩니다. 즉 `optional`이 아닌 모든
+목표가 `done`이 되면 퀘스트가 완료됩니다.
+`gatherEvidence`와 `nameSuspect`는 씬이 쓰는 스칼라 런 상태를 기준으로 하므로 정적으로
+충족할 수 있습니다. 선택 사항인 `followClues`는 파생된 `points`에 대한 관계형 팩트 질의를
+기준으로 합니다 — 이 내용은 8단계에서 다시 살펴봅니다.
+
+## 7. 대치, 그리고 `after:`를 사용한 순서 지정
+
+`scenes/confrontation.lute`를 만듭니다:
+
+```lute check="docs/examples/investigation/scenes/confrontation.lute"
+---
+kind: scene
+luteVersion: "0.39.0"
+id: detective.s01ep03
+title: The Confrontation
+# Comes after the interview.
+after: 'visited("detective.s01ep02")'
+uses: ../world.schema.yaml
+pov: detective
+---
+
+## The Confrontation
+
+@narrator: Everyone in one room. The detective lays the file on the table.
+@detective{mono}: One name. I only get to say one.
+
+<branch id="accuse">
+  <choice id="accuseBlake" text="Accuse Blake" into="run.accused" value="blake">
+    @detective: Blake. The ledger and the letter were both yours.
+  </choice>
+  <choice id="accuseCass" text="Accuse Cass" into="run.accused" value="cass">
+    @detective: Cass. You balanced these books in blood.
+  </choice>
+  <choice id="accuseDana" text="Accuse Dana" into="run.accused" value="dana">
+    @detective: Dana. You were never as far away as you claimed.
+  </choice>
+</branch>
+
+## The Verdict
+
+@narrator{when="run.accused == run.trueKiller"}: The cuffs close on the right wrists. Case closed.
+@detective{mono when="run.accused == run.trueKiller"}: Booked. The file can finally rest.
+@narrator{when="run.accused != run.trueKiller"}: The wrong suspect walks free. Somewhere, the real one exhales.
+@detective{mono when="run.accused != run.trueKiller"}: I got it wrong. The file stays open.
+```
+
+세 씬은 하나의 사슬을 이룹니다. `interview.lute`는
+`after: 'visited("detective.s01ep01")'`를 선언하고, `confrontation.lute`는
+`after: 'visited("detective.s01ep02")'`를 선언합니다. 각각 이전 씬을 그 `id:`로
+지정합니다. 이것이 전체 선행 조건 그래프입니다: 범죄 현장 → 심문 → 대치.
+`after:`는 무엇이 먼저 와야 하는지를 나타내며, 플레이어를 한 씬에서 다음 씬으로
+이동시키지는 않습니다.
+
+대치 씬은 `<branch>`의 고발 선택지로 사슬을 마무리하며, 선택을 `run.accused`에
+`into=`/`value=` 레코드 문법으로 기록합니다. 이어지는 판결 줄은 고발이
+`run.trueKiller`와 일치하는지에 따라 분기합니다. 서로 보완하는 `when=` 가드 한 쌍이므로,
+성공 결말과 실패 결말 중 정확히 하나만 재생됩니다.
+
+이제 폴더에 이야기 전체가 들어 있습니다:
+
+```text
+investigation/
+├── lute.project.yaml
+├── world.schema.yaml
+├── quests/
+│   └── identify-killer.lute
+└── scenes/
+    ├── confrontation.lute
+    ├── crime-scene.lute
+    └── interview.lute
+```
+
+## 8. 프로젝트 전체 검사
+
+```sh
+lute check-project .
+```
+
+종료 코드는 `0`이고 보고할 내용이 없습니다 — 오류도 경고도 없습니다:
+
+```
+ok: ./quests/identify-killer.lute (0 warning(s))
+ok: ./scenes/confrontation.lute (0 warning(s))
+ok: ./scenes/crime-scene.lute (0 warning(s))
+ok: ./scenes/interview.lute (0 warning(s))
+ok: . (4 file(s), 0 project-wide warning(s))
+```
+
+이 침묵은 증명이 없는 것이 아니라 증명 그 자체입니다. `check-project`는 모든 가드에서
+모든 관계형 팩트 질의(`holds(…)`, `count(…)`)를 판정합니다. **불가능**(시드, assert,
+rule 또는 엔진 관계가 팩트를 만들 수 없음), **보장**(선언된 가드까지의 모든 경로에서
+성립함), 또는 **가능** — 가드에서는 정상적인 경우이며 조용히 넘어감 — 중 하나입니다.
+가드를 다시 넣어 확인해 보세요. `scenes/interview.lute`에서 `pressLedger`에 가드
+`when="holds('foundClue', ['ledger'])"`를 추가하고, `pressLetter`에는 아무도 기록하지 않는
+단서를 기준으로 한 가드 `when="holds('foundClue', ['knife'])"`를 추가합니다:
+
+```lute
+  <choice id="pressLedger" text="Press them on the ledger" when="holds('foundClue', ['ledger'])">
+```
+
+```lute
+  <choice id="pressLetter" text="Press them on the letter" when="holds('foundClue', ['knife'])">
+```
+
+다시 `lute check-project .`를 실행합니다. 이번에는 종료 코드가 `1`이 되며, 출력에는
+다음 두 프로젝트 전체 진단이 포함됩니다:
+
+{/* lute-diagnostics */}
+```
+./scenes/interview.lute:17:66: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `holds('foundClue', ['ledger'])` is asserted on every route to here (./scenes/crime-scene.lute:16)
+```
+
+{/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
+```
+./scenes/interview.lute:22:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `holds('foundClue', ['knife'])` under your declared routes
+```
+
+첫 번째 가드는 절대로 닫힐 수 없습니다. 범죄 현장이 유일한 경로에서 해당 팩트를
+assert하고, `after:` 때문에 심문 씬은 그 뒤에만 도달할 수 있으므로, 경고는 이를 결정하는
+assert를 표시합니다. 두 번째 가드는 절대로 열릴 수 없으므로 선택지는 데드 코드가 되고
+프로젝트가 실패합니다. 계속 진행하기 전에 두 가드를 다시 제거합니다.
+
+퀘스트의 `followClues` 목표도 같은 방식으로 판정됩니다. 범죄 현장의 assert와 시드 팩트에서
+`points(blake)`가 따라 나오므로 목표를 완료할 수 있습니다. 아무것도 생성하지 않는 팩트,
+예를 들어 `holds('foundClue', ['knife'])`를 지정하면 `E-OBJECTIVE-UNSATISFIABLE`이
+됩니다. (`done`은 가드가 아니라 술어이므로, 항상 참인 항목은 중복으로 표시되지 않습니다.)
+
+분석에는 모든 문서가 한꺼번에 필요합니다 — 자매 씬의 assert는 한 파일에서는 보이지
+않습니다 — 따라서 분석은 `check-project`에서만 실행되고, 단일 파일 `lute check`에서는
+관계형 질의가 미결정 상태로 남습니다. 전체 모델은
+[팩트와 Datalog](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법)을
+참고하세요.
+## 9. 도달 가능성과 씬 그래프
+
+`lute scenario`는 선언된 `after:` 경로에 대한 순수 그래프 구조를 보고합니다 —
+CEL도, Datalog도 사용하지 않습니다. 마지막 씬은 `id:`로 질문합니다:
+
+```sh
+lute scenario . reach detective.s01ep03
+```
+
+```
+project root: .
+reach scene(detective.s01ep03):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  after: visited("detective.s01ep02")
+  referenced node(s) (see `after` above for the && / || structure — this is NOT a flat requirement list):
+    - scene(detective.s01ep02): Reachable — a satisfiable route exists under your declared routes.
+```
+
+완곡한 표현에 주목하세요 — *"선언한 경로에 따라."* 도달 가능성은
+선언한 `after:` 그래프를 대상으로 추론하며, 특정 플레이스루가 실제로 그 그래프를
+따라가는지는 고려하지 않습니다. [도달 가능성](/ko/connectivity/reachability/)을
+참조하세요.
+
+## 10. 두 엔딩 추적하기
+
+`lute trace`는 하나의 문서를 하나의 결정론적이고 모의 구동되는 경로로
+탐색합니다 — 모든 경로의 증명이 아니라 미리 보기입니다. 모의 파일은 미리 볼
+문서(`file:`, 모의 파일을 기준으로 한 상대 경로)를 지정하고, 상태를 시드하며,
+선택을 강제하는 작은 YAML 파일입니다. 두 모의 파일은 대결 씬을 구동합니다.
+둘 다 진실을 시드하고 `accuse` 분기를 서로 다른 선택으로 강제합니다.
+
+`mocks/accuse-correctly.yaml`을 만듭니다:
+
+```yaml
+# Preview the confrontation: accuse the RIGHT suspect.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+```
+
+그리고 `mocks/accuse-wrongly.yaml`을 만듭니다:
+
+```yaml
+# Preview the confrontation: accuse the WRONG suspect.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseCass
+```
+
+**올바른** 용의자를 고발하면 → 성공 엔딩입니다:
+
+```sh
+lute trace scenes/confrontation.lute --mock mocks/accuse-correctly.yaml
+```
+
+```
+trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
+  ## The Confrontation
+    @narrator  Everyone in one room. The detective lays the file on the table.
+    @detective{mono}  One name. I only get to say one.
+  <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseBlake
+    @detective  Blake. The ledger and the letter were both yours.
+    ::set  run.accused = blake  (into sugar)
+  ## The Verdict
+  guard `run.accused == run.trueKiller`: taken
+    @narrator  The cuffs close on the right wrists. Case closed.
+  guard `run.accused == run.trueKiller`: taken
+    @detective{mono}  Booked. The file can finally rest.
+  guard `run.accused != run.trueKiller`: skipped
+  guard `run.accused != run.trueKiller`: skipped
+trace complete: 5 decisions; choices 1/3 (accuse), guard `run.accused == run.trueKiller` @31:1: taken, guard `run.accused == run.trueKiller` @32:1: taken, guard `run.accused != run.trueKiller` @33:1: skipped, guard `run.accused != run.trueKiller` @34:1: skipped
+```
+
+**잘못된** 용의자를 고발하면 → 실패 엔딩입니다. 같은 문서와 같은 시드 진실에
+선택 하나만 다르게 강제합니다:
+
+```sh
+lute trace scenes/confrontation.lute --mock mocks/accuse-wrongly.yaml
+```
+
+```
+trace: scenes/confrontation.lute  (seeds: 1 paths, 0 facts; 1 selection)
+  ## The Confrontation
+    @narrator  Everyone in one room. The detective lays the file on the table.
+    @detective{mono}  One name. I only get to say one.
+  <branch accuse>   eligible: accuseBlake, accuseCass, accuseDana   -> accuseCass
+    @detective  Cass. You balanced these books in blood.
+    ::set  run.accused = cass  (into sugar)
+  ## The Verdict
+  guard `run.accused == run.trueKiller`: skipped
+  guard `run.accused == run.trueKiller`: skipped
+  guard `run.accused != run.trueKiller`: taken
+    @narrator  The wrong suspect walks free. Somewhere, the real one exhales.
+  guard `run.accused != run.trueKiller`: taken
+    @detective{mono}  I got it wrong. The file stays open.
+trace complete: 5 decisions; choices 1/3 (accuse), guard `run.accused == run.trueKiller` @31:1: skipped, guard `run.accused == run.trueKiller` @32:1: skipped, guard `run.accused != run.trueKiller` @33:1: taken, guard `run.accused != run.trueKiller` @34:1: taken
+```
+
+`##` 줄은 씬의 섹션 제목입니다. 가드된 각 판정 줄은 `guard` 단계로
+나타납니다. `when=`이 참이어서 해당 줄이 재생되면 `taken`, 그렇지 않으면
+`skipped`입니다. 두 추적 모두 `0`으로 종료됩니다 — 완전한 탐색이며, 눈에
+띄게 서로 다른 엔딩에 도달합니다. 또한 trace는 스키마의 시드 팩트를 불러오고
+기본적으로 규칙을 적용하므로, 팩트로 제한된 줄도 추가 플래그 없이 결정됩니다.
+이 엔딩들은 run 상태만으로 결정됩니다. 모든 모의 표면은 [추적 가이드](/ko/tooling/tracing/)를, 파생은 [파생](/ko/tooling/tracing/#파생)을 참조하세요.
+
+## 11. 두 엔딩을 테스트로 고정하기
+
+추적은 읽는 것이고, 시나리오 테스트는 이를 검증합니다. `lute test`는 폴더
+아래의 모든 `*.test.yaml`을 실행합니다. 각 테스트는 문서(`file:`, 테스트를
+기준으로 한 상대 경로)를 지정하고, 모의 파일과 같은 시드와 강제 선택을
+사용하며, `expect:` 블록을 추가합니다. 테스트 세 개를 만듭니다.
+`tests/accuse-correctly.test.yaml`:
+
+```yaml
+# Accuse the RIGHT suspect: the success ending plays.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseBlake
+expect:
+  end: complete
+  transcriptContains:
+    - "The cuffs close on the right wrists. Case closed."
+    - "Booked. The file can finally rest."
+  state:
+    run.accused: blake
+```
+
+`tests/accuse-wrongly.test.yaml`:
+
+```yaml
+# Accuse the WRONG suspect: the failure ending plays.
+file: ../scenes/confrontation.lute
+state:
+  run.trueKiller: blake
+choose:
+  accuse: accuseCass
+expect:
+  end: complete
+  transcriptContains:
+    - "The wrong suspect walks free. Somewhere, the real one exhales."
+    - "I got it wrong. The file stays open."
+  state:
+    run.accused: cass
+```
+
+그리고 허브를 탐색하는 `tests/interview-press-ledger.test.yaml`을 만듭니다 —
+ledger를 누른 다음 나가며 `<match>`가 어디로 갔는지 확인합니다:
+
+```yaml
+# The interview: press the ledger, then leave.
+file: ../scenes/interview.lute
+choose:
+  interrogate: [pressLedger, leave]
+expect:
+  end: complete
+  transcriptContains:
+    - "These numbers were bled dry. Explain them."
+    - "Blake keeps surfacing. A thread worth pulling."
+  state:
+    run.suspectFocus: blake
+    run.leadStrength: 1
+```
+
+```sh
+lute test
+```
+
+```
+lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another
+PASS  ./tests/accuse-correctly.test.yaml  (./scenes/confrontation.lute)
+PASS  ./tests/accuse-wrongly.test.yaml  (./scenes/confrontation.lute)
+PASS  ./tests/interview-press-ledger.test.yaml  (./scenes/interview.lute)
+
+3 passed, 0 failed
+```
+
+모든 테스트가 통과하면 `0`, 예상이 하나라도 실패하면 `1`로 종료되며, 예상한
+내용과 탐색 결과를 명시합니다. note에는 테스트가 대상으로 확인한 프로젝트가
+표시됩니다. `lute test --project .`를 사용하면 프로젝트를 지정하고 note를
+표시하지 않습니다. 모든 예상 항목은 [`lute test`](/ko/tooling/cli/#test)를
+참조하세요.
+## 12. 컴파일
+
+문서가 검사에서 문제없이 통과하면 JSON 명령 레코드 아티팩트로 컴파일됩니다:
+
+```sh
+lute compile scenes/crime-scene.lute --project . -o crime-scene.json
+```
+
+종료 코드는 `0`이며, `crime-scene.json`에는 `"lute": "0.39.0"` /
+`"irVersion": "0.39.0"`이 기록됩니다. 프로젝트의 모든 문서가 컴파일됩니다. 엔진이
+플레이하는 것은 소스가 아니라 해당 아티팩트이며, [런타임 계약](/ko/tooling/runtime-contract/)을
+따릅니다.
+
+## 다음 단계
+
+- `lute play`로 여러 씬을 순서대로 하나의 스토리로 플레이합니다: [씬을 하나의 스토리로 연결하기](/ko/getting-started/connect-scenes/).
+- `lute init --template investigation`으로 더 큰 규모의 범인 찾기 게임을 스캐폴딩하고, 여기서 만든 결과와 비교합니다.
+- [AI 하네스 가이드](/ko/tooling/ai-harness/)에서 검사 → 수정의 기계 주도 버전을 추적합니다.
+- [학습 경로](/ko/getting-started/learning-paths/)에서 역할 우선 읽기 순서를 선택합니다.
