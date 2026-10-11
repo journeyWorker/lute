@@ -269,7 +269,7 @@ const TEST_SPELLING_OF_STEP_KEYS: &[(&str, &str)] = &[
 /// level so a top-level typo and an `expect:`-level typo are
 /// distinguishable. A renamed key names its new spelling; a key a play
 /// script reads at that level says so.
-
+///
 /// How this report DISPLAYS a state path the walk never wrote. It is a
 /// RENDERING of "there is no value here", not a member of the value space —
 /// which is exactly what T9.9 got wrong: the sentinel was substituted for the

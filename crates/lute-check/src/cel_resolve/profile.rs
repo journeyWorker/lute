@@ -574,5 +574,5 @@ pub(crate) fn count_distinct_column(c: &cel_parser::ast::CallExpr) -> Option<usi
 /// gate — called from `check_cel_slot` right after `check_cel_profile`, so a
 /// malformed (non-admitted) fact-query shape is already `E_CEL_PROFILE`-
 /// flagged there and is left alone here (an ordinary `Call` with no relation
-
+///
 const _: () = ();

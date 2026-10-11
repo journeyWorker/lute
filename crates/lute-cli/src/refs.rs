@@ -379,6 +379,7 @@ fn for_each_directive<'n>(nodes: &'n [Node], f: &mut dyn FnMut(&'n Directive)) {
     }
 }
 
+type RecordLiteral<'a> = dyn FnMut(Option<String>, u32, Option<&str>) + 'a;
 /// Every literal value of the queried attribute in `nodes`: a
 /// `::directive{attr="…"}` written in place, and a `::use` argument (or
 /// literal param `default:`) its component passes whole to that attribute,
@@ -387,7 +388,7 @@ fn for_each_directive<'n>(nodes: &'n [Node], f: &mut dyn FnMut(&'n Directive)) {
 fn attr_values(
     nodes: &[Node],
     sink: &Sink<'_>,
-    record: &mut dyn FnMut(Option<String>, u32, Option<&str>),
+    record: &mut RecordLiteral<'_>,
 ) {
     for_each_directive(nodes, &mut |d| {
         if d.tag == sink.directive {

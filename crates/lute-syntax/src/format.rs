@@ -83,10 +83,19 @@ fn quote_aware_attr_spacing(inner: &str) -> String {
         }
         if c.is_ascii_whitespace() {
             let start = i;
-            while i < bytes.len() && (bytes[i] as char).is_ascii_whitespace() { i += 1; }
-            let next = inner[i..].as_bytes();
-            let is_attr_boundary = next.first().is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
-                && inner[i..].find('=').is_some_and(|eq| eq == 1 || inner[i..].as_bytes().get(1).is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_'));
+            while i < bytes.len() && (bytes[i] as char).is_ascii_whitespace() {
+                i += 1;
+            }
+            let next = &inner.as_bytes()[i..];
+            let is_attr_boundary = next
+                .first()
+                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+                && inner[i..].find('=').is_some_and(|eq| {
+                    eq == 1
+                        || inner.as_bytes()[i..]
+                            .get(1)
+                            .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                });
             if is_attr_boundary {
                 out.push(' ');
             } else {
@@ -254,12 +263,8 @@ pub fn format_source(source: &str, options: &FormatOptions) -> Result<FormatResu
                 blank_pending = true;
                 continue;
             }
-            if blank_pending {
-                if out.is_empty() {
-                    out.push('\n');
-                } else if !out.ends_with("\n\n") {
-                    out.push('\n');
-                }
+            if blank_pending && (out.is_empty() || !out.ends_with("\n\n")) {
+                out.push('\n');
             }
             blank_pending = false;
             if is_closing(trimmed) { depth = depth.saturating_sub(1); }
@@ -375,7 +380,7 @@ mod tests {
         let mut rest = debug.as_str();
         while let Some(start) = rest.find(marker) {
             out.push_str(&rest[..start]);
-            let bytes = rest[start..].as_bytes();
+            let bytes = &rest.as_bytes()[start..];
             let mut depth = 0usize;
             let mut end = None;
             for (offset, byte) in bytes.iter().enumerate() {

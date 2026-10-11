@@ -1011,11 +1011,10 @@ fn title_case(name: &str) -> String {
     let mut word = String::new();
     let mut prev_lower = false;
     for ch in stem.chars() {
-        if matches!(ch, '-' | '_' | '.' | ' ') || (ch.is_uppercase() && prev_lower) {
-            if !word.is_empty() {
+        if (matches!(ch, '-' | '_' | '.' | ' ') || (ch.is_uppercase() && prev_lower))
+            && !word.is_empty() {
                 words.push(std::mem::take(&mut word));
             }
-        }
         if !matches!(ch, '-' | '_' | '.' | ' ') {
             if word.is_empty() {
                 word.extend(ch.to_uppercase());

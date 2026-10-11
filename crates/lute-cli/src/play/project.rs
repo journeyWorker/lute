@@ -165,7 +165,7 @@ fn assemble_bundle_from_model(
         .iter()
         .map(|source| (source.path.clone(), source.check.clone()))
         .collect();
-    relocate_imported_diags(&mut per_doc, &mut project_diagnostics, &project_dir);
+    relocate_imported_diags(&mut per_doc, &mut project_diagnostics, project_dir);
     for (path, diagnostic) in &mut project_diagnostics {
         if path.extension().and_then(|extension| extension.to_str()) == Some("lute") {
             continue;
@@ -204,7 +204,7 @@ fn assemble_bundle_from_model(
         if crate::compile_all::is_component_file(file) {
             continue;
         }
-        let Some(rel) = project_rel(file, &project_dir) else {
+        let Some(rel) = project_rel(file, project_dir) else {
             eprintln!(
                 "{cmd}: {} is not under {}",
                 file.display(),

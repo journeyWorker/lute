@@ -44,7 +44,7 @@ fn rewrite(cel: &str, member: &str, values: bool) -> String {
         let list_context = cel[..o.range.0]
             .rmatch_indices('[')
             .next()
-            .map_or(false, |(open, _)| {
+            .is_some_and(|(open, _)| {
                 cel[..o.range.0]
                     .rmatch_indices(']')
                     .next()

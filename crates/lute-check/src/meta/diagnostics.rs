@@ -504,6 +504,7 @@ pub struct PendingPer {
 /// declares over `kinds` (sub-kind members already implied — the merged
 /// vocabulary's), and an `E-STATE-DECL` at its key for one whose kind is
 /// still unknown, `open:` or malformed, or whose `default:` map is wrong.
+#[expect(clippy::type_complexity, reason = "pending metadata expansion returns declarations, indexes, and diagnostics")]
 pub(crate) fn expand_per_pending(
     pending: &[PendingPer],
     kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,

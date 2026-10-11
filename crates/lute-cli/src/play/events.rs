@@ -107,6 +107,7 @@ pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Scr
 }
 
 /// How [`drive_events`] stopped.
+#[expect(clippy::large_enum_variant, reason = "rejected input retains the full state needed for diagnostics")]
 pub enum DriveEnd {
     /// Every input ran.
     Done,
@@ -390,7 +391,7 @@ fn seed(script: &PlayScript, no_derive: bool) -> Seed {
 /// JSON form reads back as the same text, else a string.
 fn scalar(text: &str) -> Value {
     match serde_json::from_str::<Value>(text) {
-        Ok(v @ (Value::Bool(_) | Value::Number(_))) if v.to_string() == text => v,
+        Ok(v @ (Value::Bool(_) | Value::Number(_))) if v == text => v,
         _ => Value::String(text.to_string()),
     }
 }

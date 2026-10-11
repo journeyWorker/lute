@@ -709,7 +709,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                         render_records(&mut out, p, view, &q.document, &q.transcript);
                     }
                 }
-                if !days.is_empty() && !(writes.is_empty() && settled.is_empty()) {
+                if !(days.is_empty() || writes.is_empty() && settled.is_empty()) {
                     out.push_str(&format!("{head} · {to} {RULE}\n"));
                 }
                 for rec in writes {

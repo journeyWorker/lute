@@ -373,7 +373,7 @@ fn curly_quote_at(b: &[u8], j: usize) -> Option<char> {
 /// Whether the byte at `k` ends an attribute value: whitespace, the list
 /// terminator `term`, a self-closing `/`, a line end, or the end of input.
 fn closes_value(b: &[u8], k: usize, term: u8) -> bool {
-    b.get(k).map_or(true, |&c| {
+    b.get(k).is_none_or(|&c| {
         matches!(c, b' ' | b'\t' | b'\n' | b'/') || c == term
     })
 }

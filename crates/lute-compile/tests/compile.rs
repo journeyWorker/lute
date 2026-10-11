@@ -2055,7 +2055,7 @@ defs:
   </otherwise>
 </match>
 "#;
-    let v = serde_json::to_value(&compile(&input(text)).expect("slot-shapes compiles")).unwrap();
+    let v = serde_json::to_value(compile(&input(text)).expect("slot-shapes compiles")).unwrap();
     let choice = v["commands"]
         .as_array()
         .unwrap()

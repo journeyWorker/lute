@@ -1153,7 +1153,7 @@ pub fn walk_bundle_beat(
         title,
         when: beat.when.as_ref().map(CelPair::from_slot),
         priority: lute_check::bundle_beat_priority(beat),
-        once: lute_check::bundle_beat_once(beat).into(),
+        once: lute_check::bundle_beat_once(beat),
         also: lute_check::bundle_beat_also(beat),
         share: beat.share.as_ref().map(|(k, _)| k.clone()),
         after: beat.after.as_ref().map(|(a, _)| a.clone()),

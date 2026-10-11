@@ -640,7 +640,7 @@ fn refs_lists_every_value_with_the_documents_using_it() {
     );
 
     let json = run(&dir, &["refs", ".", "--reward", "ITEM", "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&json.stdout).expect(&text(&json));
+    let v: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap_or_else(|_| panic!("{}", text(&json)));
     let q = &v["queries"][0];
     assert_eq!(
         (q["kind"].as_str(), q["name"].as_str()),

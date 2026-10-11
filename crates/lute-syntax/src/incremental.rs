@@ -178,12 +178,12 @@ impl IncrementalContinuationParser {
                         self.open_tags.push(name);
                     }
                 }
-                Some(TagShape::Close(name)) => {
-                    if self.open_tags.last().is_some_and(|open| open == &name) {
-                        self.open_tags.pop();
-                    }
+                Some(TagShape::Close(name))
+                    if self.open_tags.last().is_some_and(|open| open == &name) =>
+                {
+                    self.open_tags.pop();
                 }
-                None => {}
+                Some(TagShape::Close(_)) | None => {}
             }
         }
 
@@ -342,8 +342,8 @@ enum TagShape {
 
 fn tag_shape(line: &str) -> Option<TagShape> {
     let bytes = line.as_bytes();
-    if line.starts_with("</") {
-        let name = tag_name(&line[2..]);
+    if let Some(rest) = line.strip_prefix("</") {
+        let name = tag_name(rest);
         return (!name.is_empty()).then_some(TagShape::Close(name));
     }
     if !line.starts_with('<') {
@@ -393,8 +393,7 @@ fn contains_close(rest: &str, name: &str) -> bool {
     rest.match_indices("</").any(|(at, _)| {
         let candidate = &rest[at + 2..];
         candidate.starts_with(name)
-            && candidate[name.len()..]
-                .as_bytes()
+            && candidate.as_bytes()[name.len()..]
                 .first()
                 .is_some_and(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-')
     })

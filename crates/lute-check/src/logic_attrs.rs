@@ -410,6 +410,7 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
     );
 }
 
+#[expect(clippy::type_complexity, reason = "quest attribute validation keeps each declaration's legal values and evidence")]
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
     // Each enumerated `<quest>` attribute is a quoted string from a fixed
@@ -449,9 +450,9 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
         let bad = value
             .as_ref()
             .filter(|(v, _)| {
-                !legal.contains(&v.as_str())
+                !(legal.contains(&v.as_str())
                     // dsl 0.27.0 §5: `season:<name>` (declared: `E-SEASON-DECL`).
-                    && !(key == "tier"
+                    || key == "tier"
                         && lute_manifest::season::season_ref(v)
                             .is_some_and(lute_manifest::ident::is_name))
             })

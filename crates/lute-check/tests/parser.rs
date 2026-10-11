@@ -11,18 +11,19 @@ use std::path::Path;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
 
-const SEED: u64 = 0x0360_2026_10_05;
+const SEED: u64 = 0x0360_2026_1005;
 const MAX_INPUT: usize = 4 * 1024;
 const CASES: u32 = 256;
 
 fn config() -> Config {
-    let mut config = Config::default();
-    config.cases = CASES;
-    config.max_shrink_iters = 256;
-    config.rng_algorithm = RngAlgorithm::ChaCha;
-    config.rng_seed = RngSeed::Fixed(SEED);
-    config.failure_persistence = None;
-    config
+    Config {
+        cases: CASES,
+        max_shrink_iters: 256,
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(SEED),
+        failure_persistence: None,
+        ..Default::default()
+    }
 }
 
 fn bounded_lossy(bytes: &[u8]) -> String {

@@ -54,6 +54,7 @@ pub fn instantiate_pattern(pattern: &FactPattern, member: &str) -> FactPattern {
 
 /// The members `occasion.target` names at `span`, or the one `E-UNDECLARED`
 /// for a write outside every kind or `for=` beat.
+#[expect(clippy::result_large_err, reason = "diagnostics remain unboxed across the checker API")]
 pub(crate) fn scope_members<'c>(ctx: &'c Ctx<'_>, span: Span) -> Result<&'c [String], Diagnostic> {
     ctx.env
         .occasion_scopes

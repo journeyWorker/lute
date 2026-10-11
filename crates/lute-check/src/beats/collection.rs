@@ -41,9 +41,7 @@ pub(crate) fn advances_from_yaml(
     get_span: impl Fn(&str) -> Span,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<AdvanceSpec> {
-    let Some(v) = map.get(serde_yaml::Value::String("advances".to_string())) else {
-        return None;
-    };
+    let v = map.get(serde_yaml::Value::String("advances".to_string()))?;
     if let Some(spec) = parse_advances(v) {
         return Some(spec);
     }
@@ -64,7 +62,7 @@ pub fn advances_from_attr(
     raw: Option<&(String, Span)>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<AdvanceSpec> {
-    let Some((raw, span)) = raw else { return None };
+    let (raw, span) = raw?;
     let v = match raw.as_str() {
         "slot" => AdvanceSpec::Slot,
         "day" => AdvanceSpec::Day,

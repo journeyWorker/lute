@@ -112,6 +112,7 @@ pub(crate) fn dispatch_compile(
 /// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the execution IR —
 /// and, when `--deny` promotes it, flips the verdict to `1` with NO execution IR
 /// written.
+#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
 fn run_compile(
     file: &Path,
     json: bool,

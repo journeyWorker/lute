@@ -74,6 +74,7 @@ enum Settle {
 }
 
 /// How relational calls read while building a formula.
+#[expect(clippy::type_complexity, reason = "clock readers carry optional schedule and visitor callbacks")]
 struct Reads<'r> {
     /// A pure-schedule derived list-form `holds('rel', [c…])` reads as its
     /// rules' `cel()` guards.
@@ -159,7 +160,7 @@ fn build(expr: &Expr, ctx: &DecideCtx<'_>, clock: &ClockDecl, reads: &Reads<'_>)
                     if let (Some(resolve), Expr::Literal(Val::String(id))) =
                         (reads.visited, &a.expr)
                     {
-                        return match resolve(&id) {
+                        return match resolve(id) {
                             Some(at) => Formula::Visited(at),
                             None => Formula::Const(None),
                         };

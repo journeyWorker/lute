@@ -988,6 +988,7 @@ fn typed_param_sinks(
                 }
             }
         };
+    #[expect(clippy::type_complexity, reason = "recursive walker callback carries directive attributes and output")]
     fn walk(
         nodes: &[Node],
         f: &mut dyn FnMut(&Directive, &mut Vec<(String, lute_manifest::schema::AttrDecl)>),

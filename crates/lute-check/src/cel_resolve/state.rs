@@ -122,7 +122,7 @@ pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags:
     // A namespace root is a map in the membership form (`'k' in run`).
     // It is not itself a scalar state declaration, so do not report the
     // synthetic root as undeclared.
-    if crate::cel_paths::STATE_ROOTS.iter().any(|root| *root == path)
+    if crate::cel_paths::STATE_ROOTS.contains(&path)
         && slot.raw.contains(&format!("in {path}"))
     {
         return;

@@ -30,6 +30,7 @@ use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 /// capability QUERY, not validation: it emits the surface regardless of any
 /// document diagnostics (`fold_env` is pure/total). Exit `0` on success, `2` on
 /// an I/O failure (unreadable file), matching `run_check`.
+#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
 pub(crate) fn run_context(
     file: &Path,
     json: bool,
@@ -129,6 +130,7 @@ fn run_authoring_context(
     }
     ExitCode::SUCCESS
 }
+#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
 fn run_task_context(
     file: &Path,
     json: bool,
@@ -240,7 +242,7 @@ fn run_task_context(
         .collect::<Vec<_>>();
     sort_and_truncate(&mut affected, limit, "affected", &mut not_included);
     let scripts = related_scripts(&model, &key, limit, run, &mut not_included);
-    let vocabulary = vocabulary(&model, &graph, &key, limit, &mut not_included);
+    let vocabulary = vocabulary(&model, graph, &key, limit, &mut not_included);
     let excerpt = node
         .file
         .as_ref()

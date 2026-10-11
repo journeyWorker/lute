@@ -716,11 +716,10 @@ pub fn check_once_needs_clock(
     beat: Option<&crate::beats::BeatMeta>,
     clock: Option<&ClockDecl>,
 ) -> Vec<Diagnostic> {
-    if beat.is_some_and(|b| b.advances.is_some())
+    if (beat.is_some_and(|b| b.advances.is_some())
         || doc.entries.iter().any(|e| e.advances.is_some())
-        || doc.beats.iter().any(|b| b.advances.is_some())
-    {
-        if clock.is_none() {
+        || doc.beats.iter().any(|b| b.advances.is_some()))
+        && clock.is_none() {
             return vec![Diagnostic {
                 code: crate::beats::E_BEAT_ATTR.to_string(),
                 severity: Severity::Error,
@@ -736,7 +735,6 @@ pub fn check_once_needs_clock(
                 related: Vec::new(),
             }];
         }
-    }
     let has_week = clock.is_some_and(|c| c.week.is_some());
     if has_week {
         return Vec::new();

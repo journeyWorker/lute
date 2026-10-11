@@ -11,20 +11,21 @@ use std::path::Path;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
 
-const SEED: u64 = 0x0360_2026_10_05;
+const SEED: u64 = 0x0360_2026_1005;
 const MAX_INPUT: usize = 4 * 1024;
 const CASES: u32 = 256;
 
 fn config() -> Config {
-    let mut config = Config::default();
-    config.cases = CASES;
-    config.max_shrink_iters = 256;
-    config.rng_algorithm = RngAlgorithm::ChaCha;
-    config.rng_seed = RngSeed::Fixed(SEED);
-    // The release harness owns persistence so replay files have one stable,
-    // explicit format instead of relying on proptest's source-relative file.
-    config.failure_persistence = None;
-    config
+    Config {
+        cases: CASES,
+        max_shrink_iters: 256,
+        rng_algorithm: RngAlgorithm::ChaCha,
+        rng_seed: RngSeed::Fixed(SEED),
+        // The release harness owns persistence so replay files have one stable,
+        // explicit format instead of relying on proptest's source-relative file.
+        failure_persistence: None,
+        ..Default::default()
+    }
 }
 
 fn bounded_lossy(bytes: &[u8]) -> String {
@@ -54,7 +55,7 @@ fn generated_source(bytes: &[u8]) -> String {
             format!("{header}{}\n", if payload.is_empty() { "text" } else { &payload })
         }
         // This is intentionally malformed; formatter errors are accepted.
-        1 => bounded_lossy(&[b'<', b'm', b'a', b't', b'c', b'h', b'\n', b'>']),
+        1 => bounded_lossy(b"<match\n>"),
         // Arbitrary UTF-8-lossy editor input covers malformed delimiters and
         // non-ASCII text without exceeding the fixed input bound.
         _ => bounded_lossy(bytes),

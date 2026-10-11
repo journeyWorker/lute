@@ -507,7 +507,7 @@ fn expand_pattern(
         })
         .collect()
 }
-
+#[expect(clippy::too_many_arguments, reason = "edge construction keeps the rule provenance fields explicit")]
 fn add_atom_edge(
     graph: &mut SemanticGraph,
     seen: &mut BTreeSet<EdgeKey>,
@@ -534,9 +534,9 @@ fn add_atom_edge(
             format_fact(&pattern.relation, &terms)
         )
     };
-    let evidence = if rule_head_param_heuristic(&source.rule) {
-        Evidence::Heuristic
-    } else if terms.iter().any(|term| matches!(term, FactTerm::Param(_))) {
+    let evidence = if rule_head_param_heuristic(&source.rule)
+        || terms.iter().any(|term| matches!(term, FactTerm::Param(_)))
+    {
         Evidence::Heuristic
     } else {
         Evidence::Proven
@@ -652,6 +652,7 @@ struct EdgeKey {
     end: usize,
 }
 
+#[expect(clippy::too_many_arguments, reason = "edge construction keeps the graph provenance fields explicit")]
 fn add_edge(
     graph: &mut SemanticGraph,
     seen: &mut BTreeSet<EdgeKey>,

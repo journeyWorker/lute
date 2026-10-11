@@ -82,10 +82,10 @@ fn find_mocks(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
 /// Every subject is looked up in `by_root` — the documents `check-project`
 /// already parsed and folded — so no document is parsed twice and every mock
 /// is validated against exactly the schema its subject really resolves.
-pub fn check_mocks_under<'a>(
+pub fn check_mocks_under(
     dir: &Path,
     by_root: &crate::ByRoot,
-    inputs: &BTreeMap<PathBuf, (PathBuf, &'a lute_check::CheckInput)>,
+    inputs: &BTreeMap<PathBuf, (PathBuf, &lute_check::CheckInput)>,
 ) -> std::io::Result<Vec<(PathBuf, Diagnostic)>> {
     // Canonical path -> the already-parsed document, its folded env, and the
     // check input it resolved: its capability snapshot (the plugin calls
