@@ -1164,6 +1164,7 @@ mod tests {
                 open: false,
                 default: Some(default.to_string()),
                 exits: Vec::new(),
+                stops: Vec::new(),
                 labels: BTreeMap::new(),
             },
         );
@@ -1174,6 +1175,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: vec!["vanish".into()],
+                stops: Vec::new(),
                 labels: BTreeMap::new(),
             },
         );
@@ -1216,6 +1218,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: Vec::new(),
+                stops: Vec::new(),
                 labels: BTreeMap::new(),
             },
         );
@@ -1310,6 +1313,7 @@ mod tests {
                 open: false,
                 default: None,
                 exits: exits.iter().map(|s| (*s).to_string()).collect(),
+                stops: Vec::new(),
                 labels: BTreeMap::new(),
             },
         );

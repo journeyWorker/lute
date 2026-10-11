@@ -1,0 +1,4 @@
+enums:
+  musicPlayback:
+    members: [start, stop]
+    stops: [stop]

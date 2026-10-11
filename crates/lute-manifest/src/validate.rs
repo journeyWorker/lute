@@ -500,9 +500,12 @@ fn yaml_kind(v: &serde_yaml::Value) -> &'static str {
 /// members exit); the project owns the MEMBERS. A declaration of one of these
 /// names without its semantics key is an error, never a fallback — a silent
 /// fallback to a `fadeOut*` prefix rule is the hidden coupling 0.9.0 removes.
+/// dsl 0.9.0 D-D: slots that must declare the member semantics.
 pub const SLOT_REQUIRES_EXITS: &[&str] = &["action"];
 /// dsl 0.9.0 D-D: slots that must declare the member used when absent.
 pub const SLOT_REQUIRES_DEFAULT: &[&str] = &["anchor"];
+/// dsl 0.40.0 §2.2: `musicPlayback` may declare members that stop current music.
+pub const SLOT_ALLOWS_STOPS: &[&str] = &["musicPlayback"];
 
 /// A member-semantics defect in one domain declaration (dsl 0.9.0 D-D).
 /// Shape mirrors [`crate::asset::AssetIssue`]: a data-only finding the caller
@@ -516,6 +519,10 @@ pub enum DomainIssue {
         value: String,
     },
     ExitNotMember {
+        name: String,
+        value: String,
+    },
+    StopsNotMember {
         name: String,
         value: String,
     },
@@ -541,6 +548,7 @@ impl DomainIssue {
         match self {
             DomainIssue::DefaultNotMember { .. } => "E-ENUM-DEFAULT-NOT-MEMBER",
             DomainIssue::ExitNotMember { .. } => "E-ENUM-EXITS-NOT-MEMBER",
+            DomainIssue::StopsNotMember { .. } => "E-ENUM-STOPS-NOT-MEMBER",
             DomainIssue::MissingSemantics { .. } => "E-ENUM-MISSING-SEMANTICS",
             DomainIssue::UnexpectedSemantics { .. } => "E-ENUM-UNEXPECTED-SEMANTICS",
             DomainIssue::LabelNotMember { .. } => "E-ENUM-LABEL-NOT-MEMBER",
@@ -554,6 +562,9 @@ impl DomainIssue {
             ),
             DomainIssue::ExitNotMember { name, value } => format!(
                 "domain `{name}` lists `{value}` in `exits:`, which is not one of its members"
+            ),
+            DomainIssue::StopsNotMember { name, value } => format!(
+                "domain `{name}` lists `{value}` in `stops:`, which is not one of its members"
             ),
             DomainIssue::MissingSemantics { name, key } => format!(
                 "domain `{name}` must declare `{key}:` — the compiler reads it instead of \
@@ -623,6 +634,23 @@ pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIss
             key: "exits",
         });
     }
+    if !d.stops.is_empty() {
+        if !SLOT_ALLOWS_STOPS.contains(&name) {
+            out.push(DomainIssue::UnexpectedSemantics {
+                name: name.to_string(),
+                key: "stops",
+            });
+        } else {
+            for v in &d.stops {
+                if !d.members.contains(v) {
+                    out.push(DomainIssue::StopsNotMember {
+                        name: name.to_string(),
+                        value: v.clone(),
+                    });
+                }
+            }
+        }
+    }
     // dsl 0.24.0 §1: labels are display text for members, legal on any slot.
     for member in d.labels.keys() {
         if !d.members.contains(member) {
@@ -648,6 +676,7 @@ mod tests {
             open: false,
             default: default.map(str::to_string),
             exits: exits.iter().map(|s| s.to_string()).collect(),
+            stops: Vec::new(),
             labels: Default::default(),
         }
     }
@@ -683,6 +712,29 @@ mod tests {
                 .map(|i| i.code())
                 .collect::<Vec<_>>(),
             ["E-ENUM-DEFAULT-NOT-MEMBER"]
+        );
+    }
+    #[test]
+    fn music_playback_stops_are_optional_and_member_checked() {
+        let mut music = dom(&["start", "stop"], None, &[]);
+        assert!(validate_domain("musicPlayback", &music).is_empty());
+        music.stops = vec!["stop".into()];
+        assert!(validate_domain("musicPlayback", &music).is_empty());
+        music.stops.push("fadeOut".into());
+        assert_eq!(
+            validate_domain("musicPlayback", &music)
+                .iter()
+                .map(|issue| issue.code())
+                .collect::<Vec<_>>(),
+            ["E-ENUM-STOPS-NOT-MEMBER"]
+        );
+        music.stops = vec!["start".into()];
+        assert_eq!(
+            validate_domain("emotion", &music)
+                .iter()
+                .map(|issue| issue.code())
+                .collect::<Vec<_>>(),
+            ["E-ENUM-UNEXPECTED-SEMANTICS"]
         );
     }
 

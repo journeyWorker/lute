@@ -150,6 +150,12 @@ A non-empty `<branch>` has every `<choice>` guarded by a `when`, so every guard 
 
 Spec: [dsl §11.1](/spec/)
 
+### E-BRANCH-DEFAULT
+
+A timed `<branch>` has no valid always-eligible direct option named by `default=`.
+
+Spec: [dsl 0.40.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
 ### E-BRANCH-EMPTY
 
 A `<branch>` or `<hub>` contains no `<choice>` at all, which would flatten to an unroutable choice.
@@ -633,6 +639,12 @@ Spec: [dsl 0.24.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A domain occupies a slot (such as `anchor`) that requires `default:` or `exits:` semantics, but the domain (or an `entities:` kind standing in for it) declares neither.
 
 Spec: [dsl 0.9.0 D-D](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md)
+
+### E-ENUM-STOPS-NOT-MEMBER
+
+A `musicPlayback` domain's `stops:` list names a value that is not one of its own declared members.
+
+Spec: [dsl 0.40.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### E-ENUM-UNEXPECTED-SEMANTICS
 

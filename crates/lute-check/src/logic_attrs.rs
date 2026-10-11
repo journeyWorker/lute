@@ -55,7 +55,7 @@ use crate::content_line::E_UNKNOWN_ATTR;
 /// for the countdown UI, joining `id` in the permitted set. `close` only
 /// enforces that no OTHER key appears; their own VALUES are checked below
 /// by [`check_branch_value_attrs`], because the parser accepts any `Str`.
-const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout"];
+const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
 const MATCH_ATTRS: &[&str] = &["subject"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
@@ -291,8 +291,63 @@ pub(crate) fn check_branch_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
 /// from zero, a negative number, or a fraction of a second.
 const E_BRANCH_PROMPT: &str = "E-BRANCH-PROMPT";
 const E_BRANCH_TIMEOUT: &str = "E-BRANCH-TIMEOUT";
+const E_BRANCH_DEFAULT: &str = "E-BRANCH-DEFAULT";
 
 fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
+    let timeout = b.attrs.iter().find(|a| a.key == "timeout");
+    let default = b.attrs.iter().find(|a| a.key == "default");
+    match (timeout, default) {
+        (Some(timeout), None) => push_logic_error(
+            diags,
+            E_BRANCH_DEFAULT,
+            "`<branch timeout>` requires `default=` so timeout always names an outcome"
+                .to_string(),
+            timeout,
+        ),
+        (None, Some(default)) => push_logic_error(
+            diags,
+            E_BRANCH_DEFAULT,
+            "`<branch default>` requires `timeout=` because it only applies on timeout"
+                .to_string(),
+            default,
+        ),
+        (Some(_), Some(default)) => {
+            let value = match &default.value {
+                AttrValue::Str(value) => Some(value.as_str()),
+                _ => None,
+            };
+            match value.and_then(|value| b.choices.iter().find(|c| c.id == value)) {
+                Some(choice) if choice.when.is_some() => push_logic_error(
+                    diags,
+                    E_BRANCH_DEFAULT,
+                    format!(
+                        "`<branch default>` names choice `{}` which carries `when=`; the \
+                         timeout option must always be eligible",
+                        choice.id
+                    ),
+                    default,
+                ),
+                Some(_) => {}
+                None => {
+                    let value = value.unwrap_or("…");
+                    let hint = lute_manifest::suggest::did_you_mean(
+                        value,
+                        b.choices.iter().map(|c| c.id.as_str()),
+                    );
+                    push_logic_error(
+                        diags,
+                        E_BRANCH_DEFAULT,
+                        format!(
+                            "`<branch default>` names `{value}`, which is not a direct option \
+                             of this branch{hint}"
+                        ),
+                        default,
+                    );
+                }
+            }
+        }
+        (None, None) => {}
+    }
     for attr in &b.attrs {
         let bad = match attr.key.as_str() {
             "prompt" => check_prompt_attr(attr, "branch", "dsl 0.11.1 §4"),

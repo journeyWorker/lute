@@ -64,6 +64,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
             open: false,
             default: Some("center".into()),
             exits: Vec::new(),
+            stops: Vec::new(),
             labels: BTreeMap::new(),
         },
     );
@@ -95,6 +96,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            stops: Vec::new(),
             labels: BTreeMap::new(),
         },
     );

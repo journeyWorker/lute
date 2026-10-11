@@ -1121,6 +1121,7 @@ mod tests {
             open: false,
             default: None,
             exits: Vec::new(),
+            stops: Vec::new(),
             labels: BTreeMap::new(),
         };
         BTreeMap::from([

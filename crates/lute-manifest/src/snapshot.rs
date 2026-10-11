@@ -112,6 +112,9 @@ pub struct Domain {
     /// each carried their own copy of. Required for the `action` slot
     /// ([`crate::validate::SLOT_REQUIRES_EXITS`]), rejected elsewhere.
     pub exits: Vec<String>,
+    /// dsl 0.40.0 §2.2: the `musicPlayback` members that stop current music.
+    /// Declared, never inferred; optional for that slot and rejected elsewhere.
+    pub stops: Vec<String>,
     /// dsl 0.24.0 §1: display label per member (`labels: { sun: Sunday }`),
     /// which a `{{…}}` interpolation of a value of this domain renders instead
     /// of the member id. Partial: a member without a label renders its id.
@@ -119,10 +122,10 @@ pub struct Domain {
     pub labels: BTreeMap<String, String>,
 }
 
-/// Hand-written so a domain without `labels` prints exactly as it did before
-/// the field existed: `capabilitySnapshot` folds this `Debug`, and a
-/// vocabulary that declares no labels must keep its stamp. Declared labels
-/// DO fold in — they reach the IR (`StateEntry.labels`) and change rendering.
+/// Hand-written so a domain without `labels` or `stops` prints exactly as it
+/// did before those fields existed: `capabilitySnapshot` folds this `Debug`,
+/// and a vocabulary that declares neither keeps its stamp. Declared labels and
+/// stops DO fold in because they affect emitted output.
 impl std::fmt::Debug for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("Domain");
@@ -130,6 +133,9 @@ impl std::fmt::Debug for Domain {
             .field("open", &self.open)
             .field("default", &self.default)
             .field("exits", &self.exits);
+        if !self.stops.is_empty() {
+            s.field("stops", &self.stops);
+        }
         if !self.labels.is_empty() {
             s.field("labels", &self.labels);
         }
@@ -584,6 +590,7 @@ mod tests {
             open: false,
             default: default.map(str::to_string),
             exits: exits.iter().map(|s| s.to_string()).collect(),
+            stops: Vec::new(),
             labels: BTreeMap::new(),
         }
     }
@@ -626,12 +633,26 @@ mod tests {
             "action.exits drives sprite.exit; it must affect the stamp"
         );
     }
+    #[test]
+    fn domain_stops_change_capability_version_when_declared() {
+        let mut plain = dom(&["start", "stop"], None, &[]);
+        let base = capability_version(&CapabilitySnapshot {
+            domains: BTreeMap::from([("musicPlayback".into(), plain.clone())]),
+            ..CapabilitySnapshot::default()
+        });
+        plain.stops = vec!["stop".into()];
+        let marked = capability_version(&CapabilitySnapshot {
+            domains: BTreeMap::from([("musicPlayback".into(), plain)]),
+            ..CapabilitySnapshot::default()
+        });
+        assert_ne!(base, marked);
+    }
+
 
     #[test]
     fn domain_labels_fold_into_the_stamp_only_when_declared() {
-        // A label-less domain keeps the exact pre-labels `Debug` (so every
-        // existing artifact keeps its `capabilitySnapshot`); declared labels
-        // reach the IR and change rendering, so they restamp.
+        // A label-less, stop-less domain keeps the exact pre-existing `Debug`;
+        // declared labels or stops reach emitted output and restamp.
         let d = dom(&["mon", "sun"], None, &[]);
         assert_eq!(
             format!("{d:?}"),

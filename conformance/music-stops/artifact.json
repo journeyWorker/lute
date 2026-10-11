@@ -1,0 +1,54 @@
+{
+  "kind": "scene",
+  "lute": "0.40.0",
+  "irVersion": "0.40.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.staging/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep41",
+    "character": "hero",
+    "season": 1,
+    "episode": 41,
+    "episodeId": "s01ep41",
+    "title": "Music stops"
+  },
+  "state": [],
+  "enums": [
+    {
+      "name": "musicPlayback",
+      "members": [
+        "start",
+        "stop"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "kind": "music",
+      "family": "staging",
+      "position": "001-0100",
+      "playback": "start"
+    },
+    {
+      "kind": "music",
+      "family": "staging",
+      "position": "001-0200",
+      "playback": "stop",
+      "stop": true
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Music"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}
