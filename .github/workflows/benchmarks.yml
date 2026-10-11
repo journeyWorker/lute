@@ -104,6 +104,12 @@ jobs:
             --root . --tier all --phase all --samples 7 \
             --json "$report_dir/head.json"
 
+      # 15 samples per side (0.36.0 shipped 7). With 7, runner-wide slowdowns
+      # that hit a few samples of one side moved short phases' medians past
+      # the 1.10 gate on PRs that changed no measured code (serialization
+      # read 1.10-1.17 on 0.39.0, #37 and #38; their re-runs read <= 1.02).
+      # More samples keep the threshold, and so the gate's sensitivity, as is;
+      # the cost is a longer job (~20 minutes instead of ~10).
       - name: Collect interleaved base/head samples
         if: steps.base.outputs.available == 'true'
         run: |
@@ -113,7 +119,7 @@ jobs:
             --base-root "${{ steps.base.outputs.root }}" \
             --head "$RUNNER_TEMP/lute-bench-head-bin" \
             --head-root . \
-            --samples 7 \
+            --samples 15 \
             --out "$RUNNER_TEMP/lute-bench-reports"
 
       - name: Compare benchmark reports
