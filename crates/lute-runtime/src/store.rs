@@ -133,7 +133,7 @@ impl Store {
         let mut labels = BTreeMap::new();
         let mut label_forms = BTreeMap::new();
         let mut defaults = BTreeMap::new();
-        for e in state_entries.iter().copied() {
+        for &e in &state_entries {
             let path = e.get("path").and_then(Json::as_str).unwrap_or("");
             if path.is_empty() {
                 continue;

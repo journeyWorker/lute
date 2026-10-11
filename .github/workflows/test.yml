@@ -29,6 +29,8 @@ name: Test
 # conformance over every `conformance/session` case — then one replay in
 # headless Chromium. Its inputs are the runtime crates (under `crates/**`),
 # `packages/runtime/**`, the generated `schemas/**` and the session cases.
+# `clippy` runs `cargo clippy -D warnings` over the workspace (and the wasm
+# binding for wasm32) on a PINNED toolchain; see the job for how to bump it.
 #
 # `gates` also owns the CRATES-SIDE half of the documentation contract. The
 # docs quote real CLI output — capability hashes, `lute context` transcripts,
@@ -139,6 +141,40 @@ jobs:
 
       - name: Generated runtime contract schemas are current
         run: cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && git diff --exit-code schemas/
+
+  clippy:
+    name: cargo clippy -D warnings (pinned toolchain)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned, unlike the other jobs' `stable`: every Rust release adds lints,
+      # and a floating toolchain would fail this gate on a release day with no
+      # change in the repo. Bump it deliberately: set the new version here,
+      # run the two commands below locally with it, fix or `#[expect]` (with a
+      # reason) what it reports, and land both together.
+      - name: Install Rust 1.96.1 with clippy
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.1
+          components: clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: lute-test-clippy-1.96.1-${{ hashFiles('Cargo.lock') }}
+
+      - name: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo clippy lute-runtime-wasm (wasm32)
+        run: cargo clippy -p lute-runtime-wasm --target wasm32-unknown-unknown --locked -- -D warnings
 
   gates:
     name: JS harnesses + doc gates (offline)
