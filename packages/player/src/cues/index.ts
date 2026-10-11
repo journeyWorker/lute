@@ -169,7 +169,10 @@ const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, re
       const pattern = bindings.voice?.pattern
       const voice = pattern && line.voiceKey ? pattern.replaceAll("{voiceKey}", line.voiceKey) : undefined
       return cueBase("line", timing, false, voice ? [voice] : [], `line ${line.lineId}`, (ctx) => Effect.gen(function* () {
-        if (voice) yield* Effect.forkDetach(ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0 }))
+        if (voice) {
+          const played = ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0 })
+          yield* Effect.forkDetach(ctx.voiceEnded === undefined ? played : played.pipe(Effect.ensuring(ctx.voiceEnded(line.lineId))))
+        }
         yield* ctx.presenter.showLine(line, "normal")
       }), (ctx) => ctx.presenter.showLine(line, "skip"), line)
     }

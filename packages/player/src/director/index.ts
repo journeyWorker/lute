@@ -77,6 +77,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   let countdownPaused = false
   let lineWait: Deferred.Deferred<void> | undefined
   let currentLine: LineView | undefined
+  const voiceWaiters = new Map<string, Deferred.Deferred<void>>()
+  const voiceEnded = new Set<string>()
   let idleOptions: ReadonlyArray<{ readonly label: string; readonly input: Input }> = []
   let currentSettings = settings
   let closed = false
@@ -85,6 +87,20 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   const snapshot = (): PlayerMachineSnapshot => actor.getSnapshot() as unknown as PlayerMachineSnapshot
   const updateView = Effect.flatMap(SubscriptionRef.set(view, derivePlayerView(snapshot())), () => Effect.void)
   const offerEvent = (event: MachineEvent): Effect.Effect<void> => Queue.offer(work, { _tag: "event", event })
+  const markVoiceEnded = (lineId: string): Effect.Effect<void> => Effect.gen(function* () {
+    const waiter = voiceWaiters.get(lineId)
+    if (waiter === undefined) voiceEnded.add(lineId)
+    else {
+      voiceWaiters.delete(lineId)
+      yield* Deferred.succeed(waiter, undefined)
+    }
+  })
+  const awaitVoice = (lineId: string): Effect.Effect<void> => Effect.gen(function* () {
+    if (voiceEnded.has(lineId)) return
+    const waiter = yield* Deferred.make<void>()
+    voiceWaiters.set(lineId, waiter)
+    yield* Deferred.await(waiter)
+  })
   const offerCommand = (command: DirectorCommand): Effect.Effect<void> => Queue.offer(work, { _tag: "command", command })
 
   actor.on("*", (value) => {
@@ -145,7 +161,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     const read = yield* SubscriptionRef.get(options.profile.readLines)
     const cues = yield* factory.fromOutput(output, read)
     const files = cues.flatMap((cue) => cue.files)
-    const context: CueContext = { presenter: options.presenter, audio: options.audio, bindings: options.bindings, settings: currentSettings }
+    const context: CueContext = { presenter: options.presenter, audio: options.audio, bindings: options.bindings, settings: currentSettings, voiceEnded: markVoiceEnded }
     if (output.events.some((event) => event.type === "presentation")) yield* saveSlot("auto")
     yield* offerEvent({ type: "batch.started" })
     const running = Effect.scoped(Effect.gen(function* () {
@@ -230,10 +246,12 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "auto.start":
         return Effect.gen(function* () {
           if (autoFiber !== undefined) yield* Fiber.interrupt(autoFiber)
-          autoFiber = yield* Effect.forkScoped(
-            Effect.andThen(command.waitVoice ? Effect.sleep(0) : Effect.void, Effect.sleep(seconds(currentSettings.autoDelay)))
-              .pipe(Effect.andThen(offerEvent({ type: "auto.elapsed" })))
-          )
+          const lineId = currentLine?.lineId
+          autoFiber = yield* Effect.forkScoped(Effect.gen(function* () {
+            if (command.waitVoice && lineId !== undefined) yield* awaitVoice(lineId)
+            yield* Effect.sleep(seconds(currentSettings.autoDelay))
+            yield* offerEvent({ type: "auto.elapsed" })
+          }))
         })
       case "auto.cancel": return autoFiber === undefined ? Effect.void : Fiber.interrupt(autoFiber).pipe(Effect.andThen(Effect.sync(() => { autoFiber = undefined })))
       case "countdown.start":

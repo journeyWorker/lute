@@ -28,12 +28,13 @@ export type { Bindings }
 
 // ── Cues (command pattern) ───────────────────────────────────────────────────
 
-/** Everything a cue needs to play. */
 export interface CueContext {
   readonly presenter: Presenter
   readonly audio: AudioPort
   readonly bindings: Bindings
   readonly settings: Settings
+  /** Called when a voice clip ends; optional for standalone scheduler callers. */
+  readonly voiceEnded?: (lineId: string) => Effect.Effect<void>
 }
 
 /** Resolved timing of a cue (record `timing` with defaults applied). */
