@@ -124,6 +124,11 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
 
 명세: [dsl §11.1](/spec/)
+### E-BRANCH-DEFAULT
+
+시간 제한이 있는 `<branch>`에 `default=`로 지정한 유효한 직접 옵션이 없거나 항상 선택 가능하지 않습니다.
+
+명세: [dsl 0.40.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### E-BRANCH-EMPTY
 
@@ -608,6 +613,11 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 도메인이 `default:` 또는 `exits:` 의미를 요구하는 슬롯(예: `anchor`)을 차지했지만, 그 도메인(또는 이를 대신하는 `entities:` 종류)이 둘 다 선언하지 않았습니다.
 
 명세: [dsl 0.9.0 D-D](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md)
+### E-ENUM-STOPS-NOT-MEMBER
+
+`musicPlayback` 도메인의 `stops:` 목록이 도메인 자신이 선언한 멤버가 아닌 값을 지정했습니다.
+
+명세: [dsl 0.40.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### E-ENUM-UNEXPECTED-SEMANTICS
 

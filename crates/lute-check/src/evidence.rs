@@ -144,6 +144,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-ENUM-STOPS-NOT-MEMBER", DiagnosticClass::SourceError),
     ("E-ENUM-LABEL-NOT-MEMBER", DiagnosticClass::SourceError),
     ("E-ENUM-MISSING-SEMANTICS", DiagnosticClass::SourceError),
+    ("E-ENUM-UNEXPECTED-SEMANTICS", DiagnosticClass::SourceError),
     ("E-EXTENDS-RELATION-SIG", DiagnosticClass::SourceError),
     ("E-EXTENDS-STATE-TYPE", DiagnosticClass::SourceError),
     ("E-FACT-DOMAIN", DiagnosticClass::SourceError),
