@@ -10,6 +10,6 @@ defaults:
   uses: [world.schema.yaml, vocabulary.schema.yaml]
 chapters:
   - on: chapter
-    scenes: [chapter-one, chapter-two, chapter-three]
+    scenes: [chapter-one, chapter-two, chapter-three, epilogue-dawn, epilogue-dusk]
 identity:
   requireStable: true

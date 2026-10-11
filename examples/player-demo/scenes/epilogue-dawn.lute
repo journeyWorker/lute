@@ -1,0 +1,36 @@
+---
+kind: scene
+id: epilogue-dawn
+title: The Shore Remembers
+on: chapter
+after: 'visited("chapter-three")'
+when: "run.path == 'dawn'"
+---
+
+## The Shore Remembers
+
+::bg{location="harbor" time="morning"}
+::music{playback="change" mood="triumphant" volume="normal" assetId="music.hopeful"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="hopeful" costume="coat"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="happy" costume="plain"}
+@narrator{code="0010"}: Morning finds the harbor rinsed clean by the tide.
+@mara{code="0010" emotion="surprised"}: The lighthouse is dark.
+@elio{code="0010" emotion="happy"}: Then it has finally slept.
+@mara{code="0020" emotion="sad"}: I thought grief would feel like losing her again.
+@elio{code="0020" emotion="hopeful"}: It can feel like making room.
+@narrator{code="0020"}: A blue ribbon rests on the pier, dry despite the waves.
+@mara{code="0030" emotion="hopeful"}: She chose the shore.
+@elio{code="0030" emotion="happy"}: And left us breakfast.
+@mara{code="0040" emotion="happy"}: You call seaweed breakfast?
+@elio{code="0040" emotion="neutral"}: I call it a challenge.
+@narrator{code="0030"}: They laugh until the gulls complain.
+@mara{code="0050" emotion="hopeful"}: We will repair the lantern.
+@elio{code="0050" emotion="happy"}: Together?
+@mara{code="0060" emotion="hopeful"}: Together.
+::cg{assetId="cg.reunion" display="show" layout="inset"}
+@narrator{code="0040"}: The signal is gone, but the promise remains.
+::cg{assetId="cg.reunion" display="hide"}
+::music{playback="stop"}
+::actor{character="mara" action="fadeOut"}
+::actor{character="elio" action="fadeOut"}
+@narrator{code="0050"}: Dawn ending.

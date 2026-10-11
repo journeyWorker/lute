@@ -1,0 +1,35 @@
+---
+kind: scene
+id: epilogue-dusk
+title: The Door Below
+on: chapter
+after: 'visited("chapter-three")'
+when: "run.path == 'dusk'"
+---
+
+## The Door Below
+
+::bg{location="harbor" time="night"}
+::music{playback="change" mood="sad" volume="down" assetId="music.tense"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="sad" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
+@narrator{code="0010"}: The tide lowers, revealing a door beneath the pier.
+@mara{code="0010" emotion="sad"}: We closed the lantern, but not the story.
+@elio{code="0010" emotion="worried"}: We can come back when we are ready.
+@mara{code="0020" emotion="angry"}: I was ready three years ago.
+@elio{code="0020" emotion="hopeful"}: You are ready now. That is different.
+@narrator{code="0020"}: Mara places the compass on the threshold.
+@mara{code="0030" emotion="worried"}: If Liora is behind this door, she will know we came.
+@elio{code="0030" emotion="neutral"}: And if she is not?
+@mara{code="0040" emotion="sad"}: Then we learn to carry the question.
+@narrator{code="0030"}: The blue ribbon catches on a nail and points toward the dark.
+@mara{code="0050" emotion="hopeful"}: Tomorrow, we return.
+@elio{code="0040" emotion="happy"}: Tomorrow, I bring two umbrellas.
+@narrator{code="0040"}: The sea answers with a patient knock.
+::cg{assetId="cg.lighthouse" display="show" layout="inset"}
+@mara{code="0060" emotion="hopeful"}: Some doors close to keep us safe.
+::cg{assetId="cg.lighthouse" display="hide"}
+::music{playback="stop"}
+::actor{character="mara" action="fadeOut"}
+::actor{character="elio" action="fadeOut"}
+@narrator{code="0050"}: Dusk ending.

@@ -10,20 +10,20 @@ assets:
   cg.lighthouse: cg/lighthouse.png
   cg.reunion: cg/reunion.png
 backgrounds:
-  harbor: { image: bg/harbor-dawn.png, times: { dawn: bg/harbor-dawn.png } }
+  harbor: { image: bg/harbor-dawn.png, times: { dawn: bg/harbor-dawn.png, morning: bg/harbor-noon.png, noon: bg/harbor-noon.png, night: bg/harbor-night.png } }
   lighthouse: { image: bg/lighthouse-noon.png, times: { noon: bg/lighthouse-noon.png, night: bg/lighthouse-night.png } }
 characters:
   mara:
     sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png, happy: char/mara-happy.png, worried: char/mara-worried.png, angry: char/mara-angry.png, hopeful: char/mara-hopeful.png, sad: char/mara-sad.png, surprised: char/mara-surprised.png } }
-    costumes: { plain: { default: char/mara-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, coat: { default: char/mara-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, raincloak: { default: char/mara-worried.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, uniform: { default: char/mara-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } } }
+    costumes: { plain: { default: char/mara-plain-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, coat: { default: char/mara-coat-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, raincloak: { default: char/mara-raincloak-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } }, uniform: { default: char/mara-uniform-neutral.png, emotions: { happy: char/mara-happy.png, worried: char/mara-worried.png, sad: char/mara-sad.png } } }
     nameColor: "#e88b9a"
   elio:
     sprite: { default: char/elio-neutral.png, emotions: { neutral: char/elio-neutral.png, happy: char/elio-happy.png, worried: char/elio-worried.png, angry: char/elio-angry.png, hopeful: char/elio-hopeful.png, sad: char/elio-sad.png, surprised: char/elio-surprised.png } }
-    costumes: { plain: { default: char/elio-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, coat: { default: char/elio-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, raincloak: { default: char/elio-worried.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, uniform: { default: char/elio-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } } }
+    costumes: { plain: { default: char/elio-plain-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, coat: { default: char/elio-coat-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, raincloak: { default: char/elio-raincloak-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } }, uniform: { default: char/elio-uniform-neutral.png, emotions: { happy: char/elio-happy.png, worried: char/elio-worried.png, sad: char/elio-sad.png } } }
     nameColor: "#78b5e8"
   liora:
     sprite: { default: char/liora-neutral.png, emotions: { neutral: char/liora-neutral.png, happy: char/liora-happy.png, worried: char/liora-worried.png, angry: char/liora-angry.png, hopeful: char/liora-hopeful.png, sad: char/liora-sad.png, surprised: char/liora-surprised.png } }
-    costumes: { plain: { default: char/liora-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, coat: { default: char/liora-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, raincloak: { default: char/liora-worried.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, uniform: { default: char/liora-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } } }
+    costumes: { plain: { default: char/liora-plain-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, coat: { default: char/liora-coat-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, raincloak: { default: char/liora-raincloak-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } }, uniform: { default: char/liora-uniform-neutral.png, emotions: { happy: char/liora-happy.png, worried: char/liora-worried.png, sad: char/liora-sad.png } } }
     nameColor: "#c69fe8"
 anchors: { left: { x: 0.25 }, center: { x: 0.5 }, right: { x: 0.75 } }
 actions:
@@ -47,7 +47,7 @@ vfx:
   shake: { effect: shake, duration: 0.4, strength: 10 }
 ui:
   font: system-ui
-  title: { background: bg/title.png, music: music.calm }
+  title: { background: ui/title.png, music: ui/title.wav }
   theme: { text: "#ffffff", accent: "#e88b9a", panel: "#141a35" }
 flow:
   newGame: { occasion: start }

@@ -13,5 +13,7 @@ steps:
     expect: { winner: chapter-two }
   - occasion: chapter
     expect: { winner: chapter-three, state: { run.path: dusk } }
+  - occasion: chapter
+    expect: { winner: epilogue-dusk }
 expect:
   state: { run.path: dusk }

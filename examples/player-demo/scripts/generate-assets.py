@@ -37,8 +37,13 @@ def main():
     for who,col in [('mara',(170,75,85)),('elio',(60,120,180)),('liora',(165,130,210))]:
         for e in ['neutral','happy','worried','angry','hopeful','sad','surprised']:
             sprite(who+'-'+e,col,e)
-    png(os.path.join(A,'cg','lighthouse.png'),1280,720,lambda x,y:(90+int(60*y/720),100+int(40*y/720),170+int(50*y/720),255))
+    for who,col in [('mara',(170,75,85)),('elio',(60,120,180)),('liora',(165,130,210))]:
+        for costume,shift in [('plain',(0,0,0)),('coat',(20,20,20)),('raincloak',(-25,15,30)),('uniform',(25,-15,-20))]:
+            c=tuple(max(0,min(255,v+shift[i])) for i,v in enumerate(col))
+            sprite(who+'-'+costume+'-neutral',c,'neutral')
     png(os.path.join(A,'cg','reunion.png'),1280,720,lambda x,y:(210,170,115,255))
     for mood,notes in [('calm',[220,277]),('tense',[146,233]),('hopeful',[196,247])]: wav(os.path.join(A,'audio',mood+'.wav'),notes)
     wav(os.path.join(A,'sfx','bell.wav'),[880,1320],1); wav(os.path.join(A,'sfx','glass.wav'),[1200,1700],1)
+    png(os.path.join(A,'ui','title.png'),1280,720,lambda x,y:(20+int(80*y/720),24+int(50*y/720),55+int(90*y/720),255))
+    wav(os.path.join(A,'ui','title.wav'),[110,165],16)
 if __name__=='__main__': main()
