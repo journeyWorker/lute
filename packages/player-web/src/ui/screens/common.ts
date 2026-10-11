@@ -85,10 +85,10 @@ export class TitleScreen extends ScreenView {
     this.addChildAt(gradient, 3)
     this.title.position.set(84, 92)
     this.title.style = { ...this.title.style, fontSize: 68, fontWeight: "700", dropShadow: { color: 0x000000, alpha: 0.65, blur: 8, distance: 3 } }
-    this.button("New game", { type: "newGame" }, 84, 205)
-    this.button("Continue", { type: "continue" }, 84, 273, !model.canContinue)
-    this.button("Load", { type: "openLoad" }, 84, 341)
-    this.button("Settings", { type: "openSettings" }, 84, 409)
+    this.button("New game", { type: "newGame" }, 84, 185)
+    this.button("Continue", { type: "continue" }, 84, 253, !model.canContinue)
+    this.button("Load", { type: "openLoad" }, 84, 321)
+    this.button("Settings", { type: "openSettings" }, 84, 389)
   }
 }
 
