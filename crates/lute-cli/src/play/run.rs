@@ -448,7 +448,11 @@ fn passed_raise_note(s: &Session<'_, '_, PlayDriverState>, body: &StepBody) -> O
 /// and what its steps used of its own decisions and answers (OT-F-1).
 struct OpenScope {
     scope: Arc<Scope>,
-    choose: Vec<(String, Option<Vec<String>>, Option<usize>)>,
+    choose: Vec<(
+        String,
+        Option<Vec<super::script::ScriptedPick>>,
+        Option<usize>,
+    )>,
     bridges: Vec<(String, Option<VecDeque<lute_runtime::BridgeAnswer>>)>,
     used: Used,
 }
@@ -811,11 +815,28 @@ fn unconsumed_step_bridges(
         named.join("; ")
     )))
 }
+/// The runtime session still carries option ids for its generic walk API;
+/// timeout's typed meaning is retained in the driver's active script map.
+fn runtime_choose(
+    choose: &BTreeMap<String, Vec<super::script::ScriptedPick>>,
+) -> BTreeMap<String, Vec<String>> {
+    choose
+        .iter()
+        .map(|(id, picks)| {
+            (
+                id.clone(),
+                picks
+                    .iter()
+                    .filter_map(|pick| match pick {
+                        super::script::ScriptedPick::Option(option) => Some(option.clone()),
+                        super::script::ScriptedPick::Timeout => None,
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
+}
 
-/// Run one step (one repetition): its body record, the quest advances it
-/// made, and what ends the playthrough, if anything. Every step that
-/// changes the world settles the quest lifecycle after it — a presentation,
-/// an `engine:` write, a new run (dsl 0.22.0 §1.1) — and a raised occasion
 /// or event is then answered by the quests.
 fn run_step(s: &mut Session<'_, '_, PlayDriverState>, step: &Step) -> lute_runtime::session::StepOutcome {
     let n = step.n;
@@ -829,9 +850,14 @@ fn run_step(s: &mut Session<'_, '_, PlayDriverState>, step: &Step) -> lute_runti
             ..
         } => {
             s.bind_payload(payload);
-            let mut merged = s.driver.choose.clone();
+            let old = s.driver.choose.clone();
+            let mut merged = old.clone();
             merged.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-            s.occasion(n, occasion, target, pick, &merged)
+            let runtime = runtime_choose(&merged);
+            s.driver.choose = merged;
+            let out = s.occasion(n, occasion, target, pick, &runtime);
+            s.driver.choose = old;
+            out
         }
         Action::NewRun(seed) => s.new_run(n, seed),
         Action::Engine(writes) => s.engine(n, writes),
@@ -843,9 +869,14 @@ fn run_step(s: &mut Session<'_, '_, PlayDriverState>, step: &Step) -> lute_runti
             pick,
             choose,
         } => {
-            let mut merged = s.driver.choose.clone();
+            let old = s.driver.choose.clone();
+            let mut merged = old.clone();
             merged.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-            s.advance(n, *by, writes, raise, pick, &merged)
+            let runtime = runtime_choose(&merged);
+            s.driver.choose = merged;
+            let out = s.advance(n, *by, writes, raise, pick, &runtime);
+            s.driver.choose = old;
+            out
         }
         Action::End => unreachable!("`execute` ends the playthrough at an `end` step"),
     }
