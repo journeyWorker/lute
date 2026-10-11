@@ -77,10 +77,10 @@ export class TitleScreen extends ScreenView {
     }
     const wash = new Graphics()
       .rect(0, 0, 1280, 720)
-      .fill({ color: 0x050714, alpha: 0.52 })
+      .fill({ color: 0x050714, alpha: 0.36 })
     const gradient = new Graphics()
       .rect(0, 0, 1280, 720)
-      .fill({ color: 0x02030a, alpha: 0.32 })
+      .fill({ color: 0x02030a, alpha: 0.2 })
     this.addChildAt(wash, 2)
     this.addChildAt(gradient, 3)
     this.title.position.set(84, 92)

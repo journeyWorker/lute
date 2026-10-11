@@ -138,9 +138,9 @@ export class DialogueWindow {
     const x = (design.width - width) / 2
     const y = design.height - height - 30
     this.panel.clear().roundRect(x, y, width, height, 18).fill({ color: this.theme.panel, alpha: this.panelOpacity * this.theme.panelAlpha })
-    const existingPlate = this.namePlate.children[0]
+    const existingPlate = this.namePlate.children[1]
     const plate = existingPlate instanceof Graphics ? existingPlate : new Graphics()
-    if (!(existingPlate instanceof Graphics)) this.namePlate.addChildAt(plate, 0)
+    if (!(existingPlate instanceof Graphics)) this.namePlate.addChild(plate)
     plate.clear().roundRect(0, 0, 190, 38, 10).fill({ color: this.theme.panel, alpha: 0.92 })
     this.namePlate.x = x + 26
     this.namePlate.y = y - 40

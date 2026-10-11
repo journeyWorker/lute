@@ -88,7 +88,7 @@ export class ChoiceMenu {
     this.countdown = new Graphics()
     this.target.addChild(this.panel, this.prompt, this.optionsLayer, this.countdown)
     parent.addChild(this.target)
-    this.target.position.set(300, 120)
+    this.target.position.set(300, 0)
     this.target.eventMode = "static"
     this.target.on("pointerdown", (event) => {
       if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
@@ -100,7 +100,7 @@ export class ChoiceMenu {
       if ("stopImmediatePropagation" in event.nativeEvent) event.nativeEvent.stopImmediatePropagation()
       event.stopPropagation()
     })
-    this.target.on("pointertap", (event: { global: { x: number; y: number } }) => this.pointerAt(event.global.y - this.target.y))
+    this.target.on("pointertap", (event: { global: { x: number; y: number } }) => this.pointerAt(event.global.y))
     if (typeof window !== "undefined") window.addEventListener("keydown", this.keydown)
     this.target.visible = false
   }

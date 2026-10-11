@@ -46,7 +46,7 @@ vfx:
   flash: { effect: flash, color: "#ffffff", duration: 0.3 }
   shake: { effect: shake, duration: 0.4, strength: 10 }
 ui:
-  font: system-ui
+  font: "Georgia, 'Times New Roman', serif"
   title: { background: ui/title.png, music: ui/title.wav }
   theme: { text: "#ffffff", accent: "#e88b9a", panel: "#141a35" }
 flow:

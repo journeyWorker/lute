@@ -48,7 +48,7 @@ export class HudScreen extends Container {
     ]
     actions.forEach((item, index) => {
       const button = new Button(item.label, theme, () => emit(item.action))
-      button.scale.set(0.55)
+      button.scale.set(0.35)
       button.position.set(index * 140, 0)
       this.addChild(button)
     })
