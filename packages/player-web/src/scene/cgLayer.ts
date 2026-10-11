@@ -45,6 +45,7 @@ export class CgLayer {
       const config = cg.layout === null || cg.layout === undefined ? undefined : this.bindings.cgLayouts?.[cg.layout]
       const placement = cgPlacement(config?.fit ?? "contain", this.design, { width: texture.width, height: texture.height }, config?.scale ?? 1, config?.x, config?.y)
       const sprite = new Sprite(texture)
+      sprite.label = `Texture:${file}`
       sprite.position.set(placement.x, placement.y)
       sprite.scale.set(placement.scale)
       next.addChild(sprite)

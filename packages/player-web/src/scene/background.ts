@@ -50,6 +50,7 @@ export class Background {
     const next = new Container()
     next.label = `Background:${file}`
     const sprite = new Sprite(texture)
+    sprite.label = `Texture:${file}`
     sprite.width = this.design.width
     sprite.height = this.design.height
     next.addChild(sprite)
