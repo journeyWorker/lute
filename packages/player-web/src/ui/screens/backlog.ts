@@ -33,6 +33,10 @@ export class BacklogScreen extends ScreenView {
 
 /** In-game quick action bar. */
 export class HudScreen extends Container {
+  /** Scaled button width and gap in design coordinates. */
+  static readonly buttonWidth = 101
+  static readonly gap = 4
+  static readonly totalWidth = 9 * HudScreen.buttonWidth + 8 * HudScreen.gap
   constructor(theme: Theme, emit: EmitAction, state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }) {
     super()
     const actions: ReadonlyArray<{ label: string; action: PlayerAction }> = [
@@ -48,8 +52,8 @@ export class HudScreen extends Container {
     ]
     actions.forEach((item, index) => {
       const button = new Button(item.label, theme, () => emit(item.action))
-      button.scale.set(0.35)
-      button.position.set(index * 140, 0)
+      button.scale.set(HudScreen.buttonWidth / 240)
+      button.position.set(index * (HudScreen.buttonWidth + HudScreen.gap), 0)
       this.addChild(button)
     })
   }

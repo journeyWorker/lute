@@ -128,7 +128,7 @@ export class Ui implements UiShape {
       this.hud.visible = false
     }
     this.hud = new HudScreen(this.theme, this.push, state)
-    this.hud.position.set(Math.max(16, this.design.width - 9 * 132 - 20), this.design.height - 32)
+    this.hud.position.set(Math.max(16, this.design.width - HudScreen.totalWidth - 20), this.design.height - 32)
     this.root.addChild(this.hud)
   }
 
