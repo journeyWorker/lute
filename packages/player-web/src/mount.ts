@@ -86,10 +86,10 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     const services = yield* Layer.build(worldLayer)
     const pixi = Context.get(services, PixiApp)
     const world = Context.get(services, World)
-    const ui = new Ui(pixi.layers.overlay, theme, world)
-    ui.setDesign(bindings.canvas, "Lute")
     const assetsOptions: PixiAssetsOptions = { assetsBase, backend: pixiAssetsBackend }
     const assets = new PixiAssets(assetsOptions)
+    const ui = new Ui(pixi.layers.overlay, theme, world, (file) => assets.texture(file))
+    ui.setDesign(bindings.canvas, "Lute")
     const audio = new PixiAudio({ backend: pixiSoundBackend })
     const title = bindings.ui?.title
     const titleBackground = title === undefined || title === null
@@ -124,7 +124,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     }
     element.addEventListener("keydown", keys, true)
     yield* Effect.addFinalizer(() => Effect.sync(() => element.removeEventListener("keydown", keys, true)))
-    yield* Effect.forkScoped(Stream.runForEach(Input.layer(element, undefined, () => ui.hasScreen), dispatch))
+    yield* Effect.forkScoped(Stream.runForEach(Input.layer(element, undefined, () => ui.hasScreen, (event) => ui.pointerAction(event.clientX, event.clientY)), dispatch))
     yield* Effect.forkScoped(Stream.runForEach(SubscriptionRef.changes(player.view), (view) => Effect.sync(() => {
       ui.setPlaying(view.flow === "playing" && view.story !== "idle", { auto: view.mode === "auto", skip: view.mode === "skip", hidden: view.uiHidden })
     })))

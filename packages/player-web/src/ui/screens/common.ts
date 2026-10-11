@@ -31,7 +31,7 @@ export abstract class ScreenView extends Container {
   /** Centre this screen inside the configured design coordinates. */
   layout(design: { readonly width: number; readonly height: number }, full = false): void {
     if (full) {
-      this.panel.clear().rect(0, 0, design.width, design.height).fill({ color: this.theme.panel, alpha: this.theme.panelAlpha })
+      this.panel.clear().rect(0, 0, design.width, design.height).fill({ color: 0x080b18, alpha: 0.94 })
       this.position.set(0, 0)
       return
     }
@@ -55,23 +55,40 @@ export abstract class ScreenView extends Container {
   protected clearContent(): void { while (this.children.length > 2) this.removeChildAt(2) }
 }
 
-/** Title screen with continue gating and optional background data URL. */
+/** Title screen with continue gating and optional preloaded background texture. */
 export class TitleScreen extends ScreenView {
-  constructor(model: Extract<ScreenModel, { _tag: "Title" }>, theme: Theme, emit: EmitAction, gameTitle = "Lute") {
+  constructor(
+    model: Extract<ScreenModel, { _tag: "Title" }>,
+    theme: Theme,
+    emit: EmitAction,
+    gameTitle = "Lute",
+    textureFor?: (file: string) => Texture | undefined
+  ) {
     super(gameTitle, theme, emit, 1280, 720)
     if (model.background !== undefined) {
-      const background = new Sprite(Texture.from(model.background))
-      background.width = 1280
-      background.height = 720
-      background.alpha = 0.65
-      this.addChildAt(background, 1)
+      const texture = textureFor?.(model.background)
+      if (texture !== undefined) {
+        const background = new Sprite(texture)
+        background.width = 1280
+        background.height = 720
+        background.alpha = 0.95
+        this.addChildAt(background, 1)
+      }
     }
-    this.title.position.set(72, 90)
-    this.title.style = { ...this.title.style, fontSize: 64 }
-    this.button("New game", { type: "newGame" }, 72, 160)
-    this.button("Continue", { type: "continue" }, 72, 230, !model.canContinue)
-    this.button("Load", { type: "openLoad" }, 72, 300)
-    this.button("Settings", { type: "openSettings" }, 72, 370)
+    const wash = new Graphics()
+      .rect(0, 0, 1280, 720)
+      .fill({ color: 0x050714, alpha: 0.52 })
+    const gradient = new Graphics()
+      .rect(0, 0, 1280, 720)
+      .fill({ color: 0x02030a, alpha: 0.32 })
+    this.addChildAt(wash, 2)
+    this.addChildAt(gradient, 3)
+    this.title.position.set(84, 92)
+    this.title.style = { ...this.title.style, fontSize: 68, fontWeight: "700", dropShadow: { color: 0x000000, alpha: 0.65, blur: 8, distance: 3 } }
+    this.button("New game", { type: "newGame" }, 84, 205)
+    this.button("Continue", { type: "continue" }, 84, 273, !model.canContinue)
+    this.button("Load", { type: "openLoad" }, 84, 341)
+    this.button("Settings", { type: "openSettings" }, 84, 409)
   }
 }
 

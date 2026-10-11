@@ -43,12 +43,15 @@ export class ActorSprite {
       placeholder(this.target, key, this.theme, this.design.width / 3, this.design.height * 0.8)
     } else {
       const sprite = new Sprite(texture)
-      sprite.label = `Sprite:${file}`
       const anchor = actor.anchor === null || actor.anchor === undefined ? undefined : this.bindings.anchors?.[actor.anchor]
-      const placement = anchorPlacement(anchor, this.design, { width: texture.width, height: texture.height })
+      const heightScale = Math.min(1, this.design.height * 0.85 / Math.max(1, texture.height))
+      const placement = anchorPlacement(
+        anchor === undefined ? { x: 0.5, y: 1, scale: heightScale } : { ...anchor, scale: anchor.scale ?? heightScale },
+        this.design,
+        { width: texture.width, height: texture.height }
+      )
       sprite.position.set(placement.x, placement.y)
       sprite.scale.set(placement.scale)
-      this.target.addChild(sprite)
     }
   }
 

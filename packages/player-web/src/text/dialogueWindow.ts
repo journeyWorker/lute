@@ -133,17 +133,23 @@ export class DialogueWindow {
 
   /** Repositions and resizes the panel for a new design resolution. */
   relayout = (design: DialogueDesign): void => {
-    const width = this.options.boxWidth ?? design.width * 0.86
-    const height = this.options.boxHeight ?? design.height * 0.26
+    const width = this.options.boxWidth ?? Math.min(1180, design.width - 100)
+    const height = this.options.boxHeight ?? 190
     const x = (design.width - width) / 2
-    const y = design.height - height - design.height * 0.05
-    this.panel.clear().rect(x, y, width, height).fill({ color: this.theme.panel, alpha: this.panelOpacity * this.theme.panelAlpha })
-    this.namePlate.x = x + 24
-    this.namePlate.y = y + 14
-    this.textArea.x = x + 24
-    this.textArea.y = y + 54
-    this.indicator.x = x + width - 34
-    this.indicator.y = y + height - 34
+    const y = design.height - height - 30
+    this.panel.clear().roundRect(x, y, width, height, 18).fill({ color: this.theme.panel, alpha: this.panelOpacity * this.theme.panelAlpha })
+    const existingPlate = this.namePlate.children[0]
+    const plate = existingPlate instanceof Graphics ? existingPlate : new Graphics()
+    if (!(existingPlate instanceof Graphics)) this.namePlate.addChildAt(plate, 0)
+    plate.clear().roundRect(0, 0, 190, 38, 10).fill({ color: this.theme.panel, alpha: 0.92 })
+    this.namePlate.x = x + 26
+    this.namePlate.y = y - 40
+    this.nameText.x = 14
+    this.nameText.y = 5
+    this.textArea.x = x + 28
+    this.textArea.y = y + 52
+    this.indicator.x = x + width - 42
+    this.indicator.y = y + height - 36
   }
 
   private clearTextChildren = (): void => {
@@ -169,7 +175,12 @@ export class DialogueWindow {
       })
       const text = new Text({
         text: "",
-        style: textStyle(style.fontFamily ?? this.theme.font, typeof style.color === "number" ? style.color : this.theme.text, style.fontSize ?? fontSize, style.fontStyle === "italic")
+        style: {
+          ...textStyle(style.fontFamily ?? this.theme.font, typeof style.color === "number" ? style.color : this.theme.text, style.fontSize ?? fontSize, style.fontStyle === "italic"),
+          wordWrap: true,
+          wordWrapWidth: 1110,
+          breakWords: true
+        }
       })
       text.alpha = style.alpha ?? 1
       text.scale.set(style.scale ?? 1)

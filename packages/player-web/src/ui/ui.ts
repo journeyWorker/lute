@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Queue, Stream } from "effect"
-import { Container, Graphics } from "pixi.js"
+import { Container, Graphics, Texture } from "pixi.js"
+import { Button } from "./widgets/index.js"
 import type { PlayerAction, ScreenModel } from "@lute-lang/player"
 import type { WorldShape, Theme } from "../engine/types.js"
 import { BacklogScreen, HudScreen } from "./screens/backlog.js"
@@ -23,6 +24,7 @@ export class Ui implements UiShape {
   readonly actions: Stream.Stream<PlayerAction>
   private readonly root: Container
   private theme: Theme
+  private readonly textureFor: ((file: string) => Texture | undefined) | undefined
   private current: ScreenView | undefined
   private base: ScreenView | undefined
   private overlay: Container | undefined
@@ -32,9 +34,10 @@ export class Ui implements UiShape {
   private titleName = "Lute"
   private push: (action: PlayerAction) => void = () => {}
 
-  constructor(root: Container, theme: Theme, _world?: WorldShape) {
+  constructor(root: Container, theme: Theme, _world?: WorldShape, textureFor?: (file: string) => Texture | undefined) {
     this.root = root
     this.theme = theme
+    this.textureFor = textureFor
     this.actions = Stream.callback<PlayerAction>((queue) => Effect.sync(() => {
       this.push = (action) => { Queue.offerUnsafe(queue, action) }
     }))
@@ -44,20 +47,25 @@ export class Ui implements UiShape {
   show(screen: ScreenModel): Effect.Effect<void> {
     return Effect.sync(() => {
       const modal = ["Menu", "Backlog", "SaveLoad", "Settings", "Confirm"].includes(screen._tag)
-      if (this.overlay) this.disposeLater(this.overlay)
-      this.overlay = undefined
+      if (this.overlay) {
+        this.overlay.removeFromParent()
+        this.overlay.visible = false
+        this.overlay = undefined
+      }
       const next = this.build(screen)
       if (modal) {
         const overlay = new Container()
-        const dim = new Graphics().rect(0, 0, this.design.width, this.design.height).fill({ color: 0x000000, alpha: 0.65 })
+        const dim = new Graphics().rect(0, 0, this.design.width, this.design.height).fill({ color: 0x000000, alpha: 0.6 })
         dim.eventMode = "static"
         overlay.eventMode = "static"
         overlay.on("pointerdown", (event) => {
           if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+          if ("stopImmediatePropagation" in event.nativeEvent) event.nativeEvent.stopImmediatePropagation()
           event.stopPropagation()
         })
         overlay.on("pointerup", (event) => {
           if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+          if ("stopImmediatePropagation" in event.nativeEvent) event.nativeEvent.stopImmediatePropagation()
           event.stopPropagation()
           if (event.button === 2) this.push({ type: "close" })
         })
@@ -66,8 +74,11 @@ export class Ui implements UiShape {
         this.root.addChild(overlay)
         this.overlay = overlay
       } else {
-        if (this.base) this.disposeLater(this.base)
-        next.layout(this.design, screen._tag !== "Idle")
+        if (this.base) {
+          this.base.removeFromParent()
+          this.base.visible = false
+        }
+        next.layout(this.design, true)
         this.root.addChild(next)
         this.base = next
       }
@@ -79,11 +90,15 @@ export class Ui implements UiShape {
   /** Close a modal back to its base screen, or remove the full screen for gameplay. */
   readonly hide: Effect.Effect<void> = Effect.sync(() => {
     if (this.overlay) {
-      this.disposeLater(this.overlay)
+      this.overlay.removeFromParent()
+      this.overlay.visible = false
       this.overlay = undefined
       this.current = this.base
     } else {
-      if (this.base) this.disposeLater(this.base)
+      if (this.base) {
+        this.base.removeFromParent()
+        this.base.visible = false
+      }
       this.base = undefined
       this.current = undefined
     }
@@ -108,16 +123,20 @@ export class Ui implements UiShape {
 
   /** Render the quick menu independently from modal screen ownership. */
   showHud(state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }): void {
-    if (this.hud) this.disposeLater(this.hud)
+    if (this.hud) {
+      this.hud.removeFromParent()
+      this.hud.visible = false
+    }
     this.hud = new HudScreen(this.theme, this.push, state)
-    this.hud.position.set(20, this.design.height - 32)
-    this.root.addChildAt(this.hud, 0)
+    this.hud.position.set(Math.max(16, this.design.width - 9 * 132 - 20), this.design.height - 32)
+    this.root.addChild(this.hud)
   }
 
   /** Synchronize gameplay chrome without rebuilding controls on every frame. */
   setPlaying(playing: boolean, state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }): void {
     if (playing && this.base) {
-      this.disposeLater(this.base)
+      this.base.removeFromParent()
+      this.base.visible = false
       if (this.current === this.base) this.current = undefined
       this.base = undefined
     }
@@ -128,6 +147,19 @@ export class Ui implements UiShape {
 
   /** Whether a screen, rather than the story, owns keyboard focus. */
   get hasScreen(): boolean { return this.current !== undefined }
+  /** Activate a screen button at viewport CSS coordinates before gameplay input. */
+  pointerAction(clientX: number, clientY: number): boolean {
+    if (!this.current) return false
+    const visit = (node: Container): boolean => {
+      const bounds = node.getBounds()
+      if (node instanceof Button && node.isEnabled && clientX >= bounds.x && clientX <= bounds.x + bounds.width && clientY >= bounds.y && clientY <= bounds.y + bounds.height) {
+        node.activate()
+        return true
+      }
+      return node.children.some((child) => child instanceof Container && visit(child))
+    }
+    return visit(this.current)
+  }
 
   /** Route modal closing and focus keys before gameplay input. */
   handleKey(key: string): boolean {
@@ -135,20 +167,16 @@ export class Ui implements UiShape {
     return this.current?.handleKey(key) ?? false
   }
 
-  /** Detach display objects without invalidating Pixi's active render batch. */
+  /** Detach display objects without leaving a stale frame or screen remnant. */
   private disposeLater(node: Container): void {
-    const detach = (): void => {
-      node.removeFromParent()
-      node.visible = false
-    }
-    if (typeof globalThis.requestAnimationFrame === "function") globalThis.requestAnimationFrame(detach)
-    else globalThis.setTimeout(detach, 0)
+    node.removeFromParent()
+    node.visible = false
   }
 
   private build(screen: ScreenModel): ScreenView {
     const emit: EmitAction = (action) => this.push(action)
     switch (screen._tag) {
-      case "Title": return new TitleScreen(screen, this.theme, emit, this.titleName)
+      case "Title": return new TitleScreen(screen, this.theme, emit, this.titleName, this.textureFor)
       case "Backlog": return new BacklogScreen(screen, this.theme, emit)
       case "SaveLoad": return new SaveLoadScreen(screen, this.theme, emit)
       case "Settings": return new SettingsScreen(screen, this.theme, emit)

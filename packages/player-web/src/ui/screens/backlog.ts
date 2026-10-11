@@ -8,12 +8,12 @@ import { ScreenView, type EmitAction } from "./common.js"
 export class BacklogScreen extends ScreenView {
   private readonly list: ScrollList<BacklogEntry>
   constructor(model: Extract<ScreenModel, { _tag: "Backlog" }>, theme: Theme, emit: EmitAction) {
-    super("Backlog", theme, emit, 1000, 700)
-    this.list = new ScrollList(model.entries, theme, (entry) => this.row(entry, theme, emit), 72, 560, 900)
+    super("Backlog", theme, emit, 1000, 660)
+    this.list = new ScrollList(model.entries, theme, (entry) => this.row(entry, theme, emit), 72, 520, 900)
     this.list.position.set(36, 90)
     this.addChild(this.list)
     this.list.setOffset(this.list.maxOffset)
-    this.button("Close", { type: "close" }, 36, 635)
+    this.button("Close", { type: "close" }, 36, 600)
   }
   override handleKey(key: string): boolean { return this.list.handleKey(key) || super.handleKey(key) }
   private row(entry: BacklogEntry, theme: Theme, emit: EmitAction): Container {
@@ -36,7 +36,15 @@ export class HudScreen extends Container {
   constructor(theme: Theme, emit: EmitAction, state: { readonly auto: boolean; readonly skip: boolean; readonly hidden?: boolean }) {
     super()
     const actions: ReadonlyArray<{ label: string; action: PlayerAction }> = [
-      { label: state.auto ? "Auto: on" : "Auto", action: { type: "toggleAuto" } }, { label: state.skip ? "Skip: on" : "Skip", action: { type: "toggleSkip" } }, { label: "Backlog", action: { type: "openBacklog" } }, { label: "Save", action: { type: "openSave" } }, { label: "Load", action: { type: "openLoad" } }, { label: "Q.Save", action: { type: "quickSave" } }, { label: "Q.Load", action: { type: "quickLoad" } }, { label: "Settings", action: { type: "openSettings" } }, { label: state.hidden ? "Show" : "Hide", action: { type: "hideUI" } }
+      { label: state.auto ? "Auto: on" : "Auto", action: { type: "toggleAuto" } },
+      { label: state.skip ? "Skip: on" : "Skip", action: { type: "toggleSkip" } },
+      { label: "Log", action: { type: "openBacklog" } },
+      { label: "Save", action: { type: "openSave" } },
+      { label: "Load", action: { type: "openLoad" } },
+      { label: "Q.Save", action: { type: "quickSave" } },
+      { label: "Q.Load", action: { type: "quickLoad" } },
+      { label: "Config", action: { type: "openSettings" } },
+      { label: state.hidden ? "Show" : "Hide", action: { type: "hideUI" } }
     ]
     actions.forEach((item, index) => {
       const button = new Button(item.label, theme, () => emit(item.action))

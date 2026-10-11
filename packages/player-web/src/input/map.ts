@@ -78,7 +78,7 @@ export class SwipeRecognizer {
 }
 
 /** Attach DOM input listeners and expose their actions as a scoped stream. */
-export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiConsumes?: () => boolean): Stream.Stream<PlayerAction> {
+export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiConsumes?: () => boolean, uiPointer?: (event: PointerEvent) => boolean): Stream.Stream<PlayerAction> {
   let emit: (action: PlayerAction) => void = () => {}
   return Stream.callback<PlayerAction>((queue) => Effect.acquireRelease(
     Effect.sync(() => {
@@ -87,14 +87,18 @@ export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiC
       const swipe = new SwipeRecognizer()
       let controlHeld = false
       const down = (event: PointerEvent): void => {
-        if (event.defaultPrevented) { longPress.cancel(); return }
+        if (uiConsumes?.() === true || event.defaultPrevented) { longPress.cancel(); return }
         longPress.start(event.timeStamp)
         swipe.start(event.clientY)
         window.setTimeout(() => { if (longPress.check(performance.now())) emit({ type: "openMenu" }) }, 500)
       }
       const up = (event: PointerEvent): void => {
         if (event.button !== 0) return
-        if (event.defaultPrevented) { longPress.cancel(); return }
+        if (uiConsumes?.() === true) {
+          longPress.cancel()
+          uiPointer?.(event)
+          return
+        }
         const long = longPress.end(event.timeStamp)
         if (long) emit({ type: "openMenu" })
         else if (swipe.end(event.clientY) === "down") emit({ type: "openBacklog" })

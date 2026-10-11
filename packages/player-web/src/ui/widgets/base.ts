@@ -112,7 +112,6 @@ export abstract class Widget extends Container implements Focusable {
     this.eventMode = "static"
     this.hitArea = new Rectangle(0, 0, width, height)
     this.cursor = "pointer"
-    // Mark the native gesture before it bubbles to the gameplay input layer.
     this.on("pointerdown", (event) => {
       if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
       event.stopPropagation()
@@ -125,8 +124,7 @@ export abstract class Widget extends Container implements Focusable {
     this.hit.eventMode = "static"
     this.hit.cursor = "pointer"
     this.addChild(this.hit)
-    this.on("pointertap", () => this.activate())
-    this.on("pointerover", () => this.setHover(true))
+    this.hit.on("pointertap", () => this.activate())
     this.on("pointerout", () => this.setHover(false))
   }
 

@@ -83,13 +83,24 @@ export class ChoiceMenu {
     this.target = new Container()
     this.target.label = "ChoiceMenu"
     this.panel = new Graphics()
-    this.prompt = new Text({ text: "", style: new TextStyle({ fontFamily: theme.font, fontSize: 24, fill: theme.text }) })
+    this.prompt = new Text({ text: "", style: new TextStyle({ fontFamily: theme.font, fontSize: 24, fill: theme.text, wordWrap: true, wordWrapWidth: 632 }) })
     this.optionsLayer = new Container()
     this.countdown = new Graphics()
     this.target.addChild(this.panel, this.prompt, this.optionsLayer, this.countdown)
     parent.addChild(this.target)
+    this.target.position.set(300, 120)
     this.target.eventMode = "static"
-    this.target.on("pointertap", (event: { global: { x: number; y: number } }) => this.pointerAt(event.global.y))
+    this.target.on("pointerdown", (event) => {
+      if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+      if ("stopImmediatePropagation" in event.nativeEvent) event.nativeEvent.stopImmediatePropagation()
+      event.stopPropagation()
+    })
+    this.target.on("pointerup", (event) => {
+      if ("preventDefault" in event.nativeEvent) event.nativeEvent.preventDefault()
+      if ("stopImmediatePropagation" in event.nativeEvent) event.nativeEvent.stopImmediatePropagation()
+      event.stopPropagation()
+    })
+    this.target.on("pointertap", (event: { global: { x: number; y: number } }) => this.pointerAt(event.global.y - this.target.y))
     if (typeof window !== "undefined") window.addEventListener("keydown", this.keydown)
     this.target.visible = false
   }

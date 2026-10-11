@@ -14,15 +14,15 @@ export function pageSlots(slots: ReadonlyArray<SlotInfo>, page: number): Readonl
 /** Save/load slot grid with thumbnails and paging. */
 export class SaveLoadScreen extends ScreenView {
   constructor(model: Extract<ScreenModel, { _tag: "SaveLoad" }>, theme: Theme, emit: EmitAction) {
-    super(model.mode === "save" ? "Save game" : "Load game", theme, emit, 1000, 760)
+    super(model.mode === "save" ? "Save game" : "Load game", theme, emit, 1000, 650)
     pageSlots(model.slots, model.page).forEach((slot, index) => {
       const x = 36 + (index % 2) * 460
-      const y = 90 + Math.floor(index / 2) * 155
+      const y = 90 + Math.floor(index / 2) * 130
       this.slot(slot, model.mode, theme, emit, x, y, model.page * SLOTS_PER_PAGE + index)
     })
-    if (model.page > 0) this.button("Previous", { type: "choose", option: `page:${model.page - 1}` }, 36, 710)
-    if ((model.page + 1) * SLOTS_PER_PAGE < model.slots.length) this.button("Next", { type: "choose", option: `page:${model.page + 1}` }, 210, 710)
-    this.button("Close", { type: "close" }, 770, 710)
+    if (model.page > 0) this.button("Previous", { type: "choose", option: `page:${model.page - 1}` }, 36, 595)
+    if ((model.page + 1) * SLOTS_PER_PAGE < model.slots.length) this.button("Next", { type: "choose", option: `page:${model.page + 1}` }, 210, 595)
+    this.button("Close", { type: "close" }, 770, 595)
   }
   private slot(slot: SlotInfo | undefined, mode: "save" | "load", theme: Theme, emit: EmitAction, x: number, y: number, emptyIndex: number): void {
     const panel = new Panel(420, 130, theme, 8)
