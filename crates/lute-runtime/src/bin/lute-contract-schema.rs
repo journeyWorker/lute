@@ -5,6 +5,7 @@ use std::path::Path;
 use lute_runtime::runtime::{Await, Event, Input, Output, Rejected, Seed, Snapshot, StreamLine};
 use lute_runtime::session::{Candidate, ClockView, Premise, Verdict, WorldView};
 use lute_runtime::GuardRead;
+use lute_manifest::bindings::Bindings;
 use lute_manifest::clock::ClockAt;
 use lute_manifest::semantics::prereq::Atom;
 use lute_ir::BeatOnce;
@@ -44,6 +45,9 @@ fn main() {
     collect::<Atom>("Atom", &mut defs);
     collect::<BeatOnce>("BeatOnce", &mut defs);
     collect::<ClockAt>("ClockAt", &mut defs);
+    let mut bindings = schema::<Bindings>();
+    bindings.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
+    bindings.as_object_mut().unwrap().insert("$id".into(), json!("https://lute-lang.vercel.app/schemas/lute-player-bindings-0.40.schema.json"));
     let event = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.40.schema.json",
@@ -67,6 +71,7 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     write(root.join("lute-events-0.40.schema.json"), event);
     write(root.join("lute-snapshot-0.40.schema.json"), snap);
+    write(root.join("lute-player-bindings-0.40.schema.json"), bindings);
 }
 
 fn write(path: impl AsRef<Path>, mut value: Value) {

@@ -92,6 +92,26 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.21.0 §5"],
     },
     Code {
+        code: "E-BINDING-EFFECT",
+        summary: "A player binding names an unknown effect or supplies a parameter that the named effect does not accept.",
+        spec: &["dsl 0.40.0 §5", "dsl 0.40.0 §7.4"],
+    },
+    Code {
+        code: "E-BINDING-FILE",
+        summary: "A player binding references an asset file that does not exist relative to `assetsBase`.",
+        spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
+        code: "E-BINDING-KEY",
+        summary: "A player binding key is not a declared domain member, cast id, occasion, target, or compiled staging value.",
+        spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
+        code: "E-BINDING-SHAPE",
+        summary: "The player bindings YAML is malformed or contains an unknown key.",
+        spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
         code: "E-BRANCH-ALL-GUARDED",
         summary: "A non-empty `<branch>` has every `<choice>` guarded by a `when`, so every guard could be false at once and present an empty menu; at least one unguarded choice is required.",
         spec: &["dsl §11.1"],
@@ -1597,6 +1617,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.28.0"],
     },
     Code {
+        code: "W-BINDING-MISSING",
+        summary: "A declared or used project staging value, cast member, asset, or flow reference has no player binding.",
+        spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
+        code: "W-BINDING-UNUSED",
+        summary: "A player binding key is not used by any compiled project document.",
+        spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
         code: "W-BRANCH-ID-SHARED",
         summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).",
         spec: &["dsl 0.28.0 §7"],
@@ -1882,4 +1912,3 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.23.0 §10", "dsl 0.26.0 §2.6"],
     },
 ];
-
