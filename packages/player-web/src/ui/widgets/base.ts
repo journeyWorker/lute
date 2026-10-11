@@ -7,6 +7,7 @@ export interface Focusable {
   focused: boolean
   readonly activate: () => void
   readonly focusNode: Container
+  readonly handleKey?: (key: string) => boolean
 }
 
 /** Keyboard focus traversal shared by all UI screens. */
@@ -42,8 +43,9 @@ export class FocusManager {
     }
   }
 
-  /** Handle a keyboard event. Returns true when consumed. */
   handleKey(key: string): boolean {
+    const current = this.items[this.index]
+    if (current?.handleKey?.(key) === true) return true
     if (key === "Tab" || key === "ArrowDown" || key === "ArrowRight") {
       this.move(1)
       return true
@@ -53,7 +55,7 @@ export class FocusManager {
       return true
     }
     if (key === "Enter" || key === " ") {
-      this.items[this.index]?.activate()
+      current?.activate()
       return true
     }
     return false

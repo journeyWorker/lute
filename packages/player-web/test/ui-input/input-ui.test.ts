@@ -3,7 +3,7 @@ import { Container } from "pixi.js"
 import type { PlayerAction } from "@lute-lang/player"
 import { FocusManager } from "../../src/ui/widgets/focus-manager.js"
 import { pageSlots, SLOTS_PER_PAGE } from "../../src/ui/screens/save-load.js"
-import { visibleRange } from "../../src/ui/widgets/scroll-list.js"
+import { ScrollList, visibleRange } from "../../src/ui/widgets/scroll-list.js"
 import { GamepadEdgeDetector } from "../../src/input/gamepad.js"
 import { LongPressRecognizer, SwipeRecognizer, resolveKeyboardAction, defaultInputMap } from "../../src/input/map.js"
 
@@ -38,4 +38,32 @@ describe("focus and virtualization", () => {
 })
 describe("save slot paging", () => {
   it("keeps a stable 2 by 3 page shape", () => { const slots = Array.from({ length: 8 }, (_, slot) => ({ slot, label: String(slot), savedAt: "", thumbnail: undefined })); expect(SLOTS_PER_PAGE).toBe(6); expect(pageSlots(slots, 0)).toHaveLength(6); expect(pageSlots(slots, 1).map((slot) => slot?.slot)).toEqual([6, 7, undefined, undefined, undefined, undefined]) })
+})
+describe("complete mapping and focus behaviour", () => {
+  it("contains every default keyboard binding", () => {
+    expect(Object.keys(defaultInputMap.keyboard)).toEqual(expect.arrayContaining(["Enter", " ", "a", "s", "Escape", "PageUp", "F5", "F9", "h", "Backspace", "1", "9"]))
+  })
+
+  it("uses arrows for control values and wraps tab focus", () => {
+    const manager = new FocusManager()
+    const values: string[] = []
+    const items = ["one", "two"].map((name) => ({ focusable: true, focused: false, focusNode: new Container(), activate: () => values.push(name) }))
+    manager.register(items[0]!)
+    manager.register(items[1]!)
+    manager.focus(0)
+    manager.handleKey("ArrowLeft")
+    manager.handleKey("Enter")
+    expect(values).toEqual(["two"])
+    manager.handleKey("Tab")
+    manager.handleKey("Enter")
+    expect(values).toEqual(["two", "one"])
+  })
+
+  it("clamps list scrolling and handles page keys", () => {
+    const list = new ScrollList(Array.from({ length: 20 }, (_, index) => index), theme, (_value: number) => new Container(), 20, 100, 200)
+    list.setOffset(9999)
+    expect(list.scrollOffset).toBe(list.maxOffset)
+    list.handleKey("PageUp")
+    expect(list.scrollOffset).toBe(list.maxOffset - 100)
+  })
 })

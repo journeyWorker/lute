@@ -1,5 +1,5 @@
 export { defaultInputMap, resolveKeyboardAction, LongPressRecognizer, SwipeRecognizer, layer, type InputMap, type KeyBinding } from "./map.js"
-export { GamepadEdgeDetector, readGamepadState, type GamepadState } from "./gamepad.js"
+export { GamepadEdgeDetector, pollGamepad, readGamepadState, type GamepadState } from "./gamepad.js"
 
 import { layer } from "./map.js"
 

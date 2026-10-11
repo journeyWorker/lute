@@ -22,6 +22,16 @@ export function readGamepadState(gamepad: Gamepad): GamepadState {
   }
 }
 
+/** Poll the first connected gamepad and return edge-triggered actions. */
+export function pollGamepad(detector: GamepadEdgeDetector, gamepads: readonly (Gamepad | null)[]): ReadonlyArray<PlayerAction> {
+  const gamepad = gamepads.find((candidate) => candidate !== null)
+  if (gamepad === undefined || gamepad === null) {
+    detector.reset()
+    return []
+  }
+  return detector.poll(readGamepadState(gamepad))
+}
+
 /** Emits actions only on button press edges, while allowing RB hold state. */
 export class GamepadEdgeDetector {
   private previous: GamepadState = emptyState()

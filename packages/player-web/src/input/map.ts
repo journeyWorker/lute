@@ -99,7 +99,10 @@ export function layer(element: HTMLElement, map: InputMap = defaultInputMap, uiC
         else emit(map.pointer.click ?? { type: "advance" })
       }
       const key = (event: KeyboardEvent): void => {
-        if (uiConsumes?.() === true) return
+        if (uiConsumes?.() === true) {
+          event.preventDefault()
+          return
+        }
         if (event.key === "Control" && !controlHeld) {
           controlHeld = true
           emit({ type: "skipHold", held: true })
