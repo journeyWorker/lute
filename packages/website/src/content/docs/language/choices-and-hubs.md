@@ -66,7 +66,9 @@ has already cleared:
 
 A `<branch>` compiles to one `choice` record. A `prompt="…"` is the line the host shows above the
 options, and `timeout="N"` is a countdown in whole seconds (a positive integer, else
-`E-BRANCH-TIMEOUT`):
+`E-BRANCH-TIMEOUT`). A timed branch MUST also name its timeout outcome with
+`default="<choice id>"`; the two attributes require each other, the id must be a direct option,
+and that option cannot carry `when` (`E-BRANCH-DEFAULT`).
 
 ```lute check
 ---
@@ -77,7 +79,7 @@ title: The number
 
 ## Counter
 
-<branch id="number" prompt="Ask for her number?" timeout="10">
+<branch id="number" prompt="Ask for her number?" timeout="10" default="soft">
   <choice id="blunt" text="Just ask, flatly">
     @fixer: Marina. Your number.
   </choice>
@@ -100,16 +102,17 @@ title: The number
   ],
   "converge": "001-0600",
   "prompt": "Ask for her number?",
-  "timeout": 10
+  "timeout": 10,
+  "default": "soft"
 }
 ```
 
 - **`selectionKey`** is the path the pick is recorded into, `scene.choices.<branchId>`.
 - Each option carries its button **`text`**, a `lineId` of `{prefix}.{branch id}.{choice id}` for
   translation, and the `target` position its arm starts at. Every arm continues at `converge`.
-- **`prompt`** and **`timeout`** are present only when authored. A `timeout` can end the branch
-  without a pick, so a `<match>` on `scene.choices.number` after it needs an `is="unset"` arm or an
-  `<otherwise>`.
+- **`prompt`**, **`timeout`** and **`default`** are present only when authored. `timeout` and
+  `default` require each other, and expiry takes the named option exactly as if it had been
+  selected, so a timed branch always has an outcome.
 
 A `<hub>` compiles to a `hub` record of the same shape: `id`, `selectionKey`
 (`scene.choices.<hubId>`), `options` whose entries add the `once` and `exit` flags, `converge`, and

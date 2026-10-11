@@ -28,8 +28,8 @@ use crate::snapshot::Domain;
 
 /// Parse a schema doc's `enums:` block: `{ <name>: [<member>…] }` (0.3.0
 /// draft §3.1) or the dsl 0.9.0 D-D long form `{ <name>: { members: […],
-/// default: …, exits: […], labels: { <member>: <text> } } }` (`labels:` dsl
-/// 0.24.0 §1). Each entry becomes a closed, ordered
+/// default: …, exits: […], stops: […] and labels: { <member>: <text> } (`labels:`
+/// dsl 0.24.0 §1). Each entry becomes a closed, ordered
 /// enum-style [`Domain`] (`open: false`) — the identical shape
 /// `assemble.rs`/`core.rs` fold a plugin/core `enums` export into. `value` is
 /// the raw YAML node bound to the top-level `enums` key (pass `&Value::Null`
@@ -79,6 +79,7 @@ pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
                     .and_then(Value::as_str)
                     .map(str::to_string),
                 exits: strings("exits"),
+                stops: strings("stops"),
                 labels: long
                     .get(Value::from("labels"))
                     .and_then(Value::as_mapping)
@@ -101,7 +102,7 @@ pub fn parse_enums(value: &Value) -> BTreeMap<String, Domain> {
 
 /// The keys an `enums:` long form may carry (dsl 0.9.0 D-D, `labels:` dsl
 /// 0.24.0 §1).
-pub const ENUM_LONG_FORM_KEYS: [&str; 4] = ["members", "default", "exits", "labels"];
+pub const ENUM_LONG_FORM_KEYS: [&str; 5] = ["members", "default", "exits", "stops", "labels"];
 
 /// The shape mistakes in an `enums:` block that [`parse_enums`] (total,
 /// diagnostic-free) would otherwise drop silently: an unknown long-form key
@@ -129,7 +130,7 @@ pub fn enum_shape_errors(value: &Value) -> Vec<(String, Vec<String>)> {
             out.push((
                 format!(
                     "enum `{name}`: unknown key `{key}`{hint} — a long-form enum takes \
-                     `members:`, `default:`, `exits:` and `labels:`"
+                     `members:`, `default:`, `exits:`, `stops:` and `labels:`"
                 ),
                 at(key),
             ));
@@ -219,7 +220,8 @@ mod tests {
     fn parse_enums_reads_long_form() {
         let v: Value = serde_yaml::from_str(
             "anchor:\n  members: [left, center, right]\n  default: center\n\
-             action:\n  members: [sway, fadeOut, hide]\n  exits: [fadeOut, hide]\n",
+             action:\n  members: [sway, fadeOut, hide]\n  exits: [fadeOut, hide]\n\
+             musicPlayback:\n  members: [start, stop]\n  stops: [stop]\n",
         )
         .unwrap();
         let doms = parse_enums(&v);
@@ -227,6 +229,7 @@ mod tests {
         assert_eq!(doms["anchor"].default.as_deref(), Some("center"));
         assert!(doms["anchor"].exits.is_empty());
         assert_eq!(doms["action"].exits, vec!["fadeOut", "hide"]);
+        assert_eq!(doms["musicPlayback"].stops, vec!["stop"]);
         assert_eq!(doms["action"].default, None);
     }
 

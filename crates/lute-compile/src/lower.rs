@@ -243,14 +243,23 @@ pub fn lower_directive(
             asset_id: get("assetId"),
             stamp,
         }),
-        "music" => Command::Music(MusicCmd {
-            position: String::new(),
-            playback: get("playback"),
-            mood: get("mood"),
-            volume: get("volume"),
-            asset_id: get("assetId"),
-            stamp,
-        }),
+        "music" => {
+            let playback = get("playback");
+            Command::Music(MusicCmd {
+                position: String::new(),
+                stop: playback.as_deref().and_then(|value| {
+                    domains
+                        .get("musicPlayback")
+                        .filter(|domain| domain.stops.iter().any(|stop| stop == value))
+                        .map(|_| true)
+                }),
+                playback,
+                mood: get("mood"),
+                volume: get("volume"),
+                asset_id: get("assetId"),
+                stamp,
+            })
+        },
         "sfx" => Command::Sfx(SfxCmd {
             position: String::new(),
             sound: get("sound"),
@@ -388,7 +397,7 @@ pub fn lower_directive(
                     if stamp.timing.wait.is_none() {
                         stamp.timing.wait = record_wait_default(record);
                     }
-                    lower_record(record, fields, dir, &stamp)
+                    lower_record(record, fields, dir, &stamp, domains)
                 }
                 Lowering::Builtin { .. } | Lowering::Passthrough => None,
             }) {
@@ -514,6 +523,7 @@ fn lower_record(
     fields: &serde_yaml::Value,
     dir: &Directive,
     stamp: &Stamp,
+    domains: &BTreeMap<String, Domain>,
 ) -> Option<Command> {
     // Gate on the shared table so an unknown record kind is a passthrough, not
     // a silently-empty staging record.
@@ -564,14 +574,23 @@ fn lower_record(
             asset_id: s("assetId"),
             stamp,
         }),
-        "music" => Command::Music(MusicCmd {
-            position: String::new(),
-            playback: s("playback"),
-            mood: s("mood"),
-            volume: s("volume"),
-            asset_id: s("assetId"),
-            stamp,
-        }),
+        "music" => {
+            let playback = s("playback");
+            Command::Music(MusicCmd {
+                position: String::new(),
+                stop: playback.as_deref().and_then(|value| {
+                    domains
+                        .get("musicPlayback")
+                        .filter(|domain| domain.stops.iter().any(|stop| stop == value))
+                        .map(|_| true)
+                }),
+                playback,
+                mood: s("mood"),
+                volume: s("volume"),
+                asset_id: s("assetId"),
+                stamp,
+            })
+        },
         "sfx" => Command::Sfx(SfxCmd {
             position: String::new(),
             sound: s("sound"),

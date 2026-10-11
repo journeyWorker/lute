@@ -99,9 +99,14 @@ pub fn complete_at(
             ..
         } => attr_key_items(snapshot, dir, doc, off),
         Cursor::AttrValue {
-            directive: Some(dir),
-            ..
-        } if bare => attr_key_items(snapshot, dir, doc, off),
+            directive: None,
+            key,
+        } => match super::line_at(doc, off) {
+            Some(line) if bare => content_line_attr_key_items(line),
+            Some(_) if key == "default" => branch_default_items(doc, off),
+            Some(_) => content_line_attr_value_items(snapshot, imports, &meta, key),
+            None => Vec::new(),
+        },
         Cursor::AttrValue {
             directive: Some(dir),
             key,
@@ -149,14 +154,6 @@ pub fn complete_at(
         } => super::line_at(doc, off)
             .map(content_line_attr_key_items)
             .unwrap_or_default(),
-        Cursor::AttrValue {
-            directive: None,
-            key,
-        } => match super::line_at(doc, off) {
-            Some(line) if bare => content_line_attr_key_items(line),
-            Some(_) => content_line_attr_value_items(snapshot, imports, &meta, key),
-            None => Vec::new(),
-        },
         Cursor::SetPath { .. } => state_path_items(&meta),
         // Interp interiors (dsl §7.6) get hover/def/references (Task D1) but no
         // completion — a `{{…}}` referent is authored inline, matching the prior
@@ -213,6 +210,7 @@ impl OpenTag {
                 ("id", "string"),
                 ("prompt", "string"),
                 ("timeout", "positive integer seconds"),
+                ("default", "choice id used on timeout"),
             ],
             OpenTag::BranchChoice => CHOICE,
             OpenTag::HubChoice => HUB_CHOICE,
@@ -305,6 +303,82 @@ fn node_span(node: &Node) -> Span {
         Node::Retract(r) => r.span,
     }
 }
+/// Completion values for `<branch default="…">`: only direct option ids are
+/// valid, and the checker applies the same list to its did-you-mean hint.
+fn branch_default_items(doc: &Document, off: usize) -> Vec<CompletionItem> {
+    fn find(nodes: &[Node], off: usize) -> Option<Vec<String>> {
+        for node in nodes {
+            if !span_contains(node_span(node), off) {
+                continue;
+            }
+            match node {
+                Node::Branch(branch) => {
+                    for choice in &branch.choices {
+                        if span_contains(choice.span, off) {
+                            if let Some(ids) = find(&choice.body, off) {
+                                return Some(ids);
+                            }
+                        }
+                    }
+                    return Some(branch.choices.iter().map(|choice| choice.id.clone()).collect());
+                }
+                Node::Hub(hub) => {
+                    for choice in &hub.choices {
+                        if span_contains(choice.span, off) {
+                            if let Some(ids) = find(&choice.body, off) {
+                                return Some(ids);
+                            }
+                        }
+                    }
+                    if let Some(return_block) = &hub.on_return {
+                        if let Some(ids) = find(&return_block.body, off) {
+                            return Some(ids);
+                        }
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                        if let Some(ids) = find(body, off) {
+                            return Some(ids);
+                        }
+                    }
+                }
+                Node::On(on) => {
+                    if let Some(ids) = find(&on.body, off) {
+                        return Some(ids);
+                    }
+                }
+                Node::Objective(objective) => {
+                    if let Some(ids) = find(&objective.body, off) {
+                        return Some(ids);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+
+    let ids = doc
+        .sections
+        .iter()
+        .map(|section| section.body.as_slice())
+        .chain(doc.quests.iter().map(|quest| quest.body.as_slice()))
+        .chain(doc.entries.iter().map(|entry| entry.body.as_slice()))
+        .chain(doc.beats.iter().map(|beat| beat.body.as_slice()))
+        .find_map(|nodes| find(nodes, off))
+        .unwrap_or_default();
+    ids.into_iter()
+        .map(|label| CompletionItem {
+            label,
+            kind: Some(CompletionItemKind::ENUM_MEMBER),
+            detail: Some("branch choice id".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 
 /// The keys of `tag` not yet written in its open-tag `interior`, kind `FIELD`.
 fn open_tag_items(tag: OpenTag, interior: &str) -> Vec<CompletionItem> {

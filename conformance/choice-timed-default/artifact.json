@@ -1,0 +1,99 @@
+{
+  "kind": "scene",
+  "lute": "0.40.0",
+  "irVersion": "0.40.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep40",
+    "character": "hero",
+    "season": 1,
+    "episode": 40,
+    "episodeId": "s01ep40",
+    "title": "Timed choice default"
+  },
+  "state": [
+    {
+      "path": "scene.choices.door",
+      "type": "enum",
+      "domain": [
+        "open",
+        "wait",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:door"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "choice",
+      "family": "control",
+      "position": "001-0100",
+      "branchId": "door",
+      "selectionKey": "scene.choices.door",
+      "options": [
+        {
+          "id": "open",
+          "text": "Open",
+          "lineId": "hero.s01ep40.door.open",
+          "target": "001-0200"
+        },
+        {
+          "id": "wait",
+          "text": "Wait",
+          "lineId": "hero.s01ep40.door.wait",
+          "target": "001-0400"
+        }
+      ],
+      "converge": "001-0600",
+      "timeout": 5,
+      "default": "wait"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "The door opens.",
+      "lineId": "hero.s01ep40.hero_0010",
+      "voiceKey": "hero.s01ep40.hero-0010"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0300",
+      "target": "001-0600"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "You wait.",
+      "lineId": "hero.s01ep40.hero_0020",
+      "voiceKey": "hero.s01ep40.hero-0020"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0500",
+      "target": "001-0600"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Door"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

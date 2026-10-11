@@ -1,0 +1,24 @@
+{
+  "commands": [
+    {
+      "branch": "door",
+      "chose": "wait",
+      "kind": "choice",
+      "position": "001-0100"
+    },
+    {
+      "kind": "line",
+      "position": "001-0400",
+      "speaker": "hero",
+      "text": "You wait."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.40",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "scene.choices.door": "wait"
+  }
+}

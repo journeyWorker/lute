@@ -430,6 +430,7 @@ fn walk_branch(
             texts: Default::default(),
         })
         .collect();
+    let timeout = attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok());
     let mut cmd = Command::Choice(ChoiceCmd {
         position: String::new(),
         branch_id: b.id.clone(),
@@ -437,7 +438,8 @@ fn walk_branch(
         options,
         converge: conv.sym(),
         prompt: attr_string(&b.attrs, "prompt"),
-        timeout: attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok()),
+        timeout,
+        default: timeout.and_then(|_| attr_string(&b.attrs, "default")),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

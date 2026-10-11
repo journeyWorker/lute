@@ -62,8 +62,8 @@ pub struct FrontmatterDecl {
 /// One `enums:` entry. A bare sequence is shorthand for `{ members: […] }`
 /// (dsl 0.9.0 D-D), so every pre-0.9.0 `enums.yaml` keeps parsing byte-for-byte.
 /// The long form MAY carry `labels: { <member>: <display text> }` (dsl 0.24.0
-/// §1); a non-string label fails this deserialization. Deserialized through
-/// [`EnumDecl::try_from`], so a misshapen entry names its fault and the
+/// §1) and `stops: […]` for the reserved `musicPlayback` domain; a non-string
+/// label fails this deserialization. Deserialized through
 /// shapes an enum takes rather than serde's "did not match any variant".
 #[derive(Clone, Debug, Deserialize)]
 #[serde(try_from = "serde_yaml::Value")]
@@ -75,6 +75,8 @@ pub enum EnumDecl {
         default: Option<String>,
         #[serde(default)]
         exits: Vec<String>,
+        #[serde(default)]
+        stops: Vec<String>,
         #[serde(default)]
         labels: std::collections::BTreeMap<String, String>,
     },
@@ -94,10 +96,12 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
             #[serde(default)]
             exits: Vec<String>,
             #[serde(default)]
+            stops: Vec<String>,
+            #[serde(default)]
             labels: std::collections::BTreeMap<String, String>,
         }
         const SHAPES: &str = "an enum is a list of members `[calm, tense]` or \
-             `{ members: [calm, tense], default: calm, exits: [tense], labels: { calm: Calm } }`";
+             `{ members: [calm, tense], default: calm, exits: [tense], stops: [stop], labels: { calm: Calm } }`";
         match &v {
             Value::Sequence(_) => serde_yaml::from_value::<Vec<String>>(v)
                 .map(EnumDecl::Members)
@@ -122,7 +126,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                 }
                 let long = serde_yaml::from_value::<Long>(v).map_err(|_| {
                     SchemaError::Enum(format!(
-                        "is misshapen: `members:` and `exits:` list member names and `labels:` \
+                        "is misshapen: `members:` and `exits:`/`stops:` list member names and `labels:` \
                          maps each member to its text; {SHAPES}"
                     ))
                 })?;
@@ -130,6 +134,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                     members: long.members,
                     default: long.default,
                     exits: long.exits,
+                    stops: long.stops,
                     labels: long.labels,
                 })
             }
@@ -157,12 +162,14 @@ impl EnumDecl {
                 members,
                 default,
                 exits,
+                stops,
                 labels,
             } => crate::snapshot::Domain {
                 members,
                 open: false,
                 default,
                 exits,
+                stops,
                 labels,
             },
         }

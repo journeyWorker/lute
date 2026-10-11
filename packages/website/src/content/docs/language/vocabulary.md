@@ -1,6 +1,6 @@
 ---
 title: Content vocabulary
-description: "The compiler declares the content-vocabulary slots and ships no members — how a project declares its own emotions, actions, anchors, costumes, camera framings and moves, transitions, CG layouts, sequences, music playback, moods, VFX types and text styles, the three declaration routes and their precedence, and the exits:/default: member semantics."
+description: "The compiler declares the content-vocabulary slots and ships no members — how a project declares its own emotions, actions, anchors, costumes, camera framings and moves, transitions, CG layouts, sequences, music playback, moods, VFX types and text styles, the three declaration routes and their precedence, and the exits:/stops:/default: member semantics."
 ---
 
 Lute is a general authoring toolchain; your game is a consumer of it. So a concrete list of
@@ -39,7 +39,7 @@ the members are yours.
 | `sequence` | `::sequence{name}` |
 | `mood` | `::music{mood}` |
 | `volume` | `::music{volume}` |
-| `musicPlayback` | `::music{playback}` |
+| `musicPlayback` | `::music{playback}`; a long form may add optional `stops:` members that end current music |
 | `vfxType` | `::vfx{type}` |
 | `textStyle` | an [inline style span](/language/dialogue-and-cast/#inline-text-modifiers) `:name[…]` in line text |
 

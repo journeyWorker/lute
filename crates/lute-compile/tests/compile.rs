@@ -89,6 +89,51 @@ defs:
   </otherwise>
 </match>
 "#;
+#[test]
+fn timed_choice_default_and_music_stop_are_serialized() {
+    const DOC: &str = r#"---
+kind: scene
+character: fixer
+season: 1
+episode: 40
+---
+## Timed
+::music{playback="fadeOut"}
+<branch id="door" timeout="10" default="wait">
+  <choice id="open" text="Open">
+    @fixer: Open.
+  </choice>
+  <choice id="wait" text="Wait">
+    @fixer: Wait.
+  </choice>
+</branch>
+"#;
+    let mut input = input(DOC);
+    input
+        .snapshot
+        .domains
+        .get_mut("musicPlayback")
+        .expect("core musicPlayback")
+        .stops = vec!["fadeOut".into()];
+    let artifact = compile(&input).expect("timed choice and music stop compile");
+    let json = serde_json::to_value(&artifact).unwrap();
+    let music = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["kind"] == "music")
+        .expect("music command");
+    assert_eq!(music["playback"], "fadeOut");
+    assert_eq!(music["stop"], true);
+    let choice = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["kind"] == "choice")
+        .expect("choice command");
+    assert_eq!(choice["timeout"], 10);
+    assert_eq!(choice["default"], "wait");
+}
 
 #[test]
 fn error_doc_emits_no_artifact() {

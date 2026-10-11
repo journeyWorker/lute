@@ -206,10 +206,69 @@ fn the_corpus_vocabulary_is_permitted() {
 #[test]
 fn branch_prompt_and_timeout_are_permitted_and_valid() {
     let t = format!(
-        "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"10\">\n\
+        "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"10\" default=\"c\">\n\
          <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
     );
     assert_eq!(codes(&t), Vec::<String>::new(), "{:?}", codes(&t));
+}
+
+#[test]
+fn branch_timeout_requires_default() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" timeout=\"10\">\n\
+         <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    let ds = run(&t).diagnostics;
+    assert_eq!(
+        ds.iter().filter(|d| d.code == "E-BRANCH-DEFAULT").count(),
+        1,
+        "{ds:?}"
+    );
+    assert!(ds[0].message.contains("requires `default=`"), "{ds:?}");
+}
+
+#[test]
+fn branch_default_requires_timeout() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" default=\"c\">\n\
+         <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    let ds = run(&t).diagnostics;
+    assert_eq!(
+        ds.iter().filter(|d| d.code == "E-BRANCH-DEFAULT").count(),
+        1,
+        "{ds:?}"
+    );
+    assert!(ds[0].message.contains("requires `timeout=`"), "{ds:?}");
+}
+
+#[test]
+fn branch_default_must_name_direct_option_with_hint() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" timeout=\"10\" default=\"opne\">\n\
+         <choice id=\"open\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    let ds = run(&t).diagnostics;
+    let d = ds
+        .iter()
+        .find(|d| d.code == "E-BRANCH-DEFAULT")
+        .expect("expected E-BRANCH-DEFAULT");
+    assert!(d.message.contains("not a direct option"), "{d:?}");
+    assert!(d.message.contains("did you mean `open`"), "{d:?}");
+}
+
+#[test]
+fn branch_default_option_cannot_be_guarded() {
+    let t = format!(
+        "{HDR}<branch id=\"b\" timeout=\"10\" default=\"open\">\n\
+         <choice id=\"open\" text=\"L\" when=\"run.x\">\n@narrator: hi\n</choice>\n</branch>\n"
+    );
+    let ds = run(&t).diagnostics;
+    let d = ds
+        .iter()
+        .find(|d| d.code == "E-BRANCH-DEFAULT")
+        .expect("expected E-BRANCH-DEFAULT");
+    assert!(d.message.contains("carries `when=`"), "{d:?}");
 }
 
 /// `timeout="0"` and a non-numeric `timeout` both draw `E-BRANCH-TIMEOUT`:
@@ -220,7 +279,7 @@ fn branch_prompt_and_timeout_are_permitted_and_valid() {
 fn branch_timeout_zero_or_non_numeric_is_rejected() {
     for bad in ["0", "abc"] {
         let t = format!(
-            "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"{bad}\">\n\
+            "{HDR}<branch id=\"b\" prompt=\"What now?\" timeout=\"{bad}\" default=\"c\">\n\
              <choice id=\"c\" text=\"L\">\n@narrator: hi\n</choice>\n</branch>\n"
         );
         assert_eq!(
