@@ -46,8 +46,8 @@ fn main() {
     collect::<ClockAt>("ClockAt", &mut defs);
     let event = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.39.schema.json",
-        "title": "Lute runtime events (eventVersion 0.39.x)",
+        "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.40.schema.json",
+        "title": "Lute runtime events (eventVersion 0.40.x)",
         "oneOf": [
             {"$ref":"#/$defs/Input"}, {"$ref":"#/$defs/Seed"},
             {"$ref":"#/$defs/Output"}, {"$ref":"#/$defs/Rejected"},
@@ -61,12 +61,12 @@ fn main() {
         for (key, value) in std::mem::take(found) { snap_defs.insert(key, value); }
     }
     snap.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
-    snap.as_object_mut().unwrap().insert("$id".into(), json!("https://lute-lang.vercel.app/schemas/lute-snapshot-0.39.schema.json"));
+    snap.as_object_mut().unwrap().insert("$id".into(), json!("https://lute-lang.vercel.app/schemas/lute-snapshot-0.40.schema.json"));
     snap.as_object_mut().unwrap().insert("$defs".into(), serde_json::to_value(snap_defs).unwrap());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
     fs::create_dir_all(&root).unwrap();
-    write(root.join("lute-events-0.39.schema.json"), event);
-    write(root.join("lute-snapshot-0.39.schema.json"), snap);
+    write(root.join("lute-events-0.40.schema.json"), event);
+    write(root.join("lute-snapshot-0.40.schema.json"), snap);
 }
 
 fn write(path: impl AsRef<Path>, mut value: Value) {

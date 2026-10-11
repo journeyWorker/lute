@@ -1,5 +1,5 @@
 /**
- * The typed failures of the runtime (spec 0.39.0 §5.3).
+ * The typed failures of the runtime (spec 0.40.0 §5.3).
  *
  * A rejected input is an expected failure: each runtime code is its own
  * tagged error, carrying the runtime's `code` and `message`. A code this

@@ -5,8 +5,8 @@ type JsonSchema = any;
 
 const root = resolve(import.meta.dir, "../../..");
 const schemaPaths = [
-  resolve(root, "schemas/lute-events-0.39.schema.json"),
-  resolve(root, "schemas/lute-snapshot-0.39.schema.json")
+  resolve(root, "schemas/lute-events-0.40.schema.json"),
+  resolve(root, "schemas/lute-snapshot-0.40.schema.json")
 ];
 const outputPath = resolve(import.meta.dir, "../src/generated/Contract.ts");
 
@@ -236,7 +236,7 @@ function pushExport(name: string, schema: JsonSchema, path: string): void {
 const lines: string[] = [
   "// THIS FILE IS GENERATED — DO NOT EDIT.",
   "// Generator: packages/runtime/scripts/contract-codegen.ts",
-  "// Sources: schemas/lute-events-0.39.schema.json, schemas/lute-snapshot-0.39.schema.json",
+  "// Sources: schemas/lute-events-0.40.schema.json, schemas/lute-snapshot-0.40.schema.json",
   "",
   'import * as Schema from "effect/Schema";',
   'import type * as SchemaAST from "effect/SchemaAST";',

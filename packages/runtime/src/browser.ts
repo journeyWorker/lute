@@ -1,5 +1,5 @@
 /**
- * `@lute-lang/runtime/browser` — layers for browsers (spec 0.39.0 §6.1): the
+ * `@lute-lang/runtime/browser` — layers for browsers (spec 0.40.0 §6.1): the
  * binding fetched from a URL, bundles served over HTTP, and an input log in
  * `localStorage`.
  */

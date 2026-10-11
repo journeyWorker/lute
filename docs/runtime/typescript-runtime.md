@@ -244,8 +244,8 @@ const replay = (program: Program.Program, text: string) =>
 
 `Contract` is the generated Effect-schema namespace. Rust types in
 `crates/lute-runtime` are the single definition of the event and snapshot
-contract; `schemars` emits `schemas/lute-events-0.39.schema.json` and
-`schemas/lute-snapshot-0.39.schema.json`, and the package's code generator
+contract; `schemars` emits `schemas/lute-events-0.40.schema.json` and
+`schemas/lute-snapshot-0.40.schema.json`, and the package's code generator
 emits `packages/runtime/src/generated/Contract.ts` from those schemas. Do not
 hand-edit the generated TypeScript.
 
@@ -260,5 +260,5 @@ ordering.
 
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
-line), and its output carries `eventVersion: "0.39.0"`. Schema regeneration is
+line), and its output carries `eventVersion: "0.40.0"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.

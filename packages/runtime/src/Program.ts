@@ -1,5 +1,5 @@
 /**
- * A loaded bundle and the runtime's step function over it (spec 0.39.0 §5.1).
+ * A loaded bundle and the runtime's step function over it (spec 0.40.0 §5.1).
  *
  * Every value crossing the binding is encoded and decoded with the contract
  * schemas generated from the Rust types. JSON the binding returns that does

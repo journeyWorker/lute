@@ -6,7 +6,7 @@
 //
 // Tools: `wasm-bindgen` (exactly the crate's wasm-bindgen version) from
 // $WASM_BINDGEN or PATH; for --release, `wasm-opt` from $WASM_OPT or PATH.
-// Panics abort (spec 0.39.0 §4): the binding is built with
+// Panics abort (spec 0.40.0 §4): the binding is built with
 // RUSTFLAGS="-C panic=abort"; the workspace profiles are untouched.
 import { mkdirSync, renameSync, rmSync } from "node:fs"
 import { join, resolve } from "node:path"

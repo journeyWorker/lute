@@ -1,5 +1,5 @@
 /**
- * Replaying a recorded input log (spec 0.39.0 §5.4). Against the bundle
+ * Replaying a recorded input log (spec 0.40.0 §5.4). Against the bundle
  * that recorded it, a log reproduces every output.
  */
 import { Effect, Schema, Stream } from "effect"

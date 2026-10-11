@@ -1,5 +1,5 @@
 /**
- * Where a session's bundle comes from (spec 0.39.0 §5.1): a `lute compile
+ * Where a session's bundle comes from (spec 0.40.0 §5.1): a `lute compile
  * --all` output directory, the same layout served over HTTP, or a value the
  * host already holds.
  */
