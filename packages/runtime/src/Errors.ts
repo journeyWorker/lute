@@ -1,5 +1,5 @@
 /**
- * The typed failures of the runtime (spec 0.40.0 §5.3).
+ * The typed failures of the runtime (spec 0.40.0 §5.3, 0.41.0 §6.3).
  *
  * A rejected input is an expected failure: each runtime code is its own
  * tagged error, carrying the runtime's `code` and `message`. A code this
@@ -37,7 +37,7 @@ export class BridgeShapeMismatch extends Schema.TaggedError<BridgeShapeMismatch>
   message: Schema.String
 }) {}
 
-/** `E-RUNTIME-INPUT`: a seed or input names something the project lacks. */
+/** `E-RUNTIME-INPUT`: a seed, input or query names something the project lacks. */
 export class InvalidInput extends Schema.TaggedError<InvalidInput>()("InvalidInput", {
   code: Schema.Literal("E-RUNTIME-INPUT"),
   message: Schema.String
@@ -67,6 +67,17 @@ export class SnapshotVersionMismatch extends Schema.TaggedError<SnapshotVersionM
   { code: Schema.Literal("E-RUNTIME-SNAPSHOT-VERSION"), message: Schema.String }
 ) {}
 
+/**
+ * `E-OCCASION-GATE`: the engine would not make this raise — the occasion's
+ * `raisedWhen` is false, or the game is over and the occasion is not
+ * `outsideRun` (spec 0.41.0 §5.2). The state is unchanged, the input's own
+ * writes included; `Program.gate` answers the same rule beforehand.
+ */
+export class OccasionGateClosed extends Schema.TaggedError<OccasionGateClosed>()("OccasionGateClosed", {
+  code: Schema.Literal("E-OCCASION-GATE"),
+  message: Schema.String
+}) {}
+
 /** Every rejection the runtime returns. */
 export type RuntimeRejection =
   | RuntimeBusy
@@ -79,6 +90,7 @@ export type RuntimeRejection =
   | IrVersionMismatch
   | SnapshotProjectMismatch
   | SnapshotVersionMismatch
+  | OccasionGateClosed
 
 const byCode: Readonly<Record<string, (message: string) => RuntimeRejection>> = {
   "E-RUNTIME-BUSY": (message) => new RuntimeBusy({ code: "E-RUNTIME-BUSY", message }),
@@ -94,7 +106,8 @@ const byCode: Readonly<Record<string, (message: string) => RuntimeRejection>> = 
   "E-RUNTIME-SNAPSHOT-PROJECT": (message) =>
     new SnapshotProjectMismatch({ code: "E-RUNTIME-SNAPSHOT-PROJECT", message }),
   "E-RUNTIME-SNAPSHOT-VERSION": (message) =>
-    new SnapshotVersionMismatch({ code: "E-RUNTIME-SNAPSHOT-VERSION", message })
+    new SnapshotVersionMismatch({ code: "E-RUNTIME-SNAPSHOT-VERSION", message }),
+  "E-OCCASION-GATE": (message) => new OccasionGateClosed({ code: "E-OCCASION-GATE", message })
 }
 
 /**
@@ -116,7 +129,8 @@ export class EvaluationError extends Schema.TaggedError<EvaluationError>()("Eval
 
 /**
  * Every rejection a condition query (`Program.evaluate`, `Program.def`)
- * returns: a malformed expression or unknown def name, or an evaluation error.
+ * returns: a malformed expression, an unknown def name or a misfit argument,
+ * or an evaluation error.
  */
 export type QueryRejection = InvalidInput | EvaluationError
 
@@ -133,6 +147,15 @@ export const fromQueryRejected = (rejected: Rejected): Effect.Effect<never, Quer
       return Effect.die(new Error(`unknown query rejection ${rejected.code}: ${rejected.message}`))
   }
 }
+
+/**
+ * Fail with the typed error of a `Program.gate` rejection (an occasion the
+ * bundle does not declare); any other code dies.
+ */
+export const fromGateRejected = (rejected: Rejected): Effect.Effect<never, InvalidInput> =>
+  rejected.code === "E-RUNTIME-INPUT"
+    ? Effect.fail(new InvalidInput({ code: "E-RUNTIME-INPUT", message: rejected.message }))
+    : Effect.die(new Error(`unknown gate rejection ${rejected.code}: ${rejected.message}`))
 
 /** The bundle's `project.index.json` or an artifact it lists does not exist. */
 export class BundleNotFound extends Schema.TaggedError<BundleNotFound>()("BundleNotFound", {

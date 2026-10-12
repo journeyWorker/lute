@@ -8,6 +8,8 @@ const targetDir = process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "target")
 export const sessionRoot = join(repositoryRoot, "conformance", "session")
 export const hubFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm", "tests", "fixtures", "hub-once")
 export const evaluateFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm", "tests", "fixtures", "evaluate")
+/** dsl 0.41.0 §5.2: gated, terminal and `outsideRun` occasions (shared with the Rust gate tests). */
+export const gateFixtureRoot = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 
 let cliBuilt = false
 

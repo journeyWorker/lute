@@ -28,6 +28,22 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 
 TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --all` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
+
+0.41에서 `Program`에는 `gate(state, occasion, target?)`(`Effect<Gate, InvalidInput>`)와
+`def(state, name, args?)`가 추가됩니다. `args`는 선언된 매개변수마다 JSON 스칼라 하나입니다. 닫힌 관문의
+발생은 `Errors.OccasionGateClosed`(`E-OCCASION-GATE`)로 실패하며 상태를 바꾸지 않습니다.
+`Session.Session`(서비스 타입 `Session.SessionShape`)은 자신이 로드한 `Program`을 `program`으로 노출하므로,
+호스트는 번들을 두 번 로드하지 않고 `current`의 상태를 질의합니다. `RuntimeState`는 같은 번들
+fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로그램에 넘기면 결함(defect)입니다.
+`Bundle.index`의 타입은 `Ir.projectIndex`입니다.
+
+릴리스되지 않은 체크아웃을 호스트에서 시험하려면 Lute 저장소에서 `bash scripts/pack-local.sh
+[--web] [OUT_DIR]`를 실행하세요. 런타임과 player(`--web`이면 `player-web`도)를 `bun pm pack`으로 묶고,
+호스트의 `package.json`에 붙여 넣을 `dependencies`와 `overrides` 항목(`file:<tarball>`)을 출력합니다.
+호스트는 자신의 `effect` `4.0.2`를 유지합니다. `file:../lute/packages/*` 디렉터리 링크는 쓰지 마세요.
+Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스턴스가 두 개 생깁니다.
+[로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
+참고하세요.
  
 ## 0.41 런타임 추가 사항
 

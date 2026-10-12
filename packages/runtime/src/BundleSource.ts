@@ -5,9 +5,10 @@
  */
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
 import * as HttpClient from "effect/http/HttpClient"
-import { Bundle, IndexDocuments } from "./Bundle.js"
+import type { Bundle } from "./Bundle.js"
 import { BundleMalformed, BundleNotFound, BundleUnreadable } from "./Errors.js"
 import type { BundleError } from "./Errors.js"
+import * as Ir from "./generated/Ir.js"
 
 export class BundleSource extends Context.Service<
   BundleSource,
@@ -17,7 +18,8 @@ export class BundleSource extends Context.Service<
 const INDEX = "project.index.json"
 
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json))
-const decodeDocuments = Schema.decodeUnknownEffect(IndexDocuments)
+/** A key the generated index schema does not know is malformed, never dropped. */
+const decodeIndex = Schema.decodeUnknownEffect(Schema.fromJsonString(Ir.projectIndex), { onExcessProperty: "error" })
 
 /**
  * Assemble a bundle from a reader of its files: the index, then every
@@ -25,17 +27,13 @@ const decodeDocuments = Schema.decodeUnknownEffect(IndexDocuments)
  */
 const assemble = <E>(read: (path: string) => Effect.Effect<string, E>): Effect.Effect<Bundle, E | BundleMalformed> =>
   Effect.gen(function* () {
-    const readJson = (path: string) =>
-      Effect.flatMap(read(path), (text) =>
-        Effect.mapError(decodeJson(text), (error) => new BundleMalformed({ path, message: error.message }))
-      )
-    const index = yield* readJson(INDEX)
-    const { documents } = yield* Effect.mapError(
-      decodeDocuments(index),
-      (error) => new BundleMalformed({ path: INDEX, message: error.message })
+    const index = yield* Effect.flatMap(read(INDEX), (text) =>
+      Effect.mapError(decodeIndex(text), (error) => new BundleMalformed({ path: INDEX, message: error.message }))
     )
-    const artifacts = yield* Effect.forEach(documents, ({ artifact }) =>
-      Effect.map(readJson(artifact), (json) => [artifact, json] as const)
+    const artifacts = yield* Effect.forEach(index.documents, ({ artifact }) =>
+      Effect.flatMap(read(artifact), (text) =>
+        Effect.mapError(decodeJson(text), (error) => new BundleMalformed({ path: artifact, message: error.message }))
+      ).pipe(Effect.map((json) => [artifact, json] as const))
     )
     return { index, artifacts: Object.fromEntries(artifacts) }
   })

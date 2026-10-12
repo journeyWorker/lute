@@ -8,8 +8,8 @@ pace dialogue, settle grants, or apply other game policy: those remain the
 host's responsibility.
 
 The package's platform-free entry point exports the namespaces `Bundle`,
-`BundleSource`, `Contract`, `Errors`, `InputLog`, `LuteRuntime`, `LuteWasm`,
-`Program`, `Replay`, and `Session`. The platform entry points provide layers:
+`BundleSource`, `Contract`, `Errors`, `Ir`, `InputLog`, `LuteRuntime`,
+`LuteWasm`, `Program`, `Replay`, and `Session`. The platform entry points provide layers:
 `@lute-lang/runtime/bun` for Bun and `@lute-lang/runtime/browser` for a
 browser. The package uses services and layers, scoped resources, typed
 expected failures, and generated Effect `Schema` values rather than a promise
@@ -28,6 +28,8 @@ bun add @lute-lang/runtime effect@4.0.2 @effect/platform-browser@4.0.2
 `effect` is an exact peer dependency at `4.0.2`; the Bun and browser platform
 peers are optional, but the selected platform layer requires its matching
 package. `@lute-lang/runtime` is released in lockstep with the Lute toolchain.
+To run a host against an unreleased checkout, pack the packages as
+[Local dogfooding](#local-dogfooding) describes.
 
 ## Bun
 
@@ -154,10 +156,12 @@ has no direct promise API.
 ## Program API
 
 `LuteRuntime` loads a `Bundle` into a scoped `Program`. A `Bundle` consists of
-the parsed `project.index.json` and an object mapping every index `artifact`
-path to its parsed artifact. `BundleSource.directory(path)`,
-`BundleSource.url(base)`, and `BundleSource.value(bundle)` construct the
-source layer.
+the `project.index.json`, typed by the generated `Ir.projectIndex` (0.41), and
+an object mapping every index `artifact` path to its parsed artifact.
+`BundleSource.directory(path)`, `BundleSource.url(base)`, and
+`BundleSource.value(bundle)` construct the source layer; the first two decode
+the index with `Ir.projectIndex` and fail with `BundleMalformed` when it does
+not fit (a key the schema does not know included).
 
 A loaded `Program` has this platform-free interface:
 
@@ -172,16 +176,42 @@ A loaded `Program` has this platform-free interface:
 | `clock(state)` | `Effect<Option<ClockAt>>` | Read the current clock position, if the project has one. |
 | `terminal(state)` | `Effect<boolean>` | Test the state's terminal condition. |
 | `view(state, { facts? })` | `Effect<WorldView>` | Read effective state, quests, optional facts, and clock. |
-| `evaluate(state, expr)` | `Effect<Evaluation, QueryRejection>` | Evaluate an IR `exprNode` (the `expr` of a `{cel, expr}` pair, e.g. an objective's `visibleWhen.expr`) as a walk's guard reads it (0.40.1). |
-| `def(state, name)` | `Effect<Evaluation, QueryRejection>` | Evaluate a parameterless project def carried in the bundle's index (0.40.1). |
+| `evaluate(state, expr)` | `Effect<Evaluation, QueryRejection>` | Evaluate an IR `exprNode` (the `expr` of a `{cel, expr}` pair, e.g. an objective's `visibleWhen.expr`, or the output of `lute expr`) as a walk's guard reads it. |
+| `def(state, name, args?)` | `Effect<Evaluation, QueryRejection>` | Evaluate the index def `name`, its parameters bound to `args` (0.41). |
+| `gate(state, occasion, target?)` | `Effect<Gate, InvalidInput>` | Whether a `raiseOccasion` of `occasion` (for `target`) with no writes would pass the seam now (0.41). |
 
 `Evaluation` is `{ value: Value, unresolved?: string[] }`: `value` is `bool`,
 `int`, `double`, `str`, or `unknown` (with `unresolved` naming why), never
-`error`. `Errors.QueryRejection` is `InvalidInput` (a malformed `exprNode`, or
-a def the bundle does not carry) or `EvaluationError` (the condition
-evaluates to an error). A host that wants a boolean gate decides what
-`unknown` means for it; the runtime's own guards treat it as undecided. See
+`error`. `Errors.QueryRejection` is `InvalidInput` (`E-RUNTIME-INPUT`) or
+`EvaluationError` (`E-RUNTIME-EVAL`, the condition evaluates to an error).
+`InvalidInput` covers a malformed `exprNode` — including a `param` node, which
+only a def body carries — a def the index does not carry, and a `def`
+argument fault. A host that wants a boolean gate decides what `unknown` means
+for it; the runtime's own guards treat it as undecided. See
 `docs/runtime/event-contract.md` for the activation the queries read.
+
+`def` takes `args: ReadonlyArray<string | number | boolean>`, one JSON scalar
+per declared parameter in declaration order; omit it (or pass `[]`) for a
+parameterless def. The wrong number of arguments, or an argument that does
+not fit its parameter type, is `InvalidInput`: an `int` takes an integer
+within ±2^53, a `double` any number, a `bool` a boolean, a `string` a string,
+an `enum` one of its members, and a `domain` or `entity` a string, checked
+against the index's `enums` / `entities` members when the kind is closed.
+
+```ts
+// defs: { atLeast: { type: bool, params: { n: int }, cel: "run.count >= n" } }
+const ready = yield* program.def(state, "atLeast", [2])
+```
+
+`gate` answers `Gate` `{ open: boolean, unresolved?: string[] }` by the raise
+rule a `step` applies: `{ open: false }` is decided closed — the occasion's
+`raisedWhen` is false, or the game is over and the occasion is not
+`outsideRun`; `open: false` with `unresolved` is undecided, one reason per
+unresolved read (raising it would halt `incomplete`). `target` maps through
+the occasion's target domain as a raise maps it (`room.office` or `office`).
+An occasion the bundle does not declare is `InvalidInput`. A raise the gate
+closes is rejected with `Errors.OccasionGateClosed` and leaves the state
+unchanged, so a host may also just send it and handle the rejection.
 
 `RuntimeState` is an opaque branded handle. It is never serialized; the
 `Snapshot` is its serialized form. States are immutable values: stepping never
@@ -189,11 +219,27 @@ invalidates the input handle, so a host can retain states for undo or
 branching. A rejected step returns the unchanged state. The loaded program is
 scoped and must not be used after its scope closes.
 
-`Session.Session` is the host-facing driver built on `Program`. It exposes
-`fingerprint`, `started`, `current` (`SubscriptionRef<SessionState>`),
-`send`, scoped `events` and `awaits` streams, `save`, and `restore`.
+A `RuntimeState` is valid for every `Program` loaded from a bundle with the
+same fingerprint as the program that created it: a host may query the state of
+a session it does not drive (a player's, for example) with its own program of
+that bundle. Each handle records the fingerprint of the program that created
+it, and a `Program` operation given a state of another fingerprint dies — a
+defect, never a typed error, like using a closed program.
+
+`Session.Session` is the host-facing driver built on `Program`; its service
+type is `Session.SessionShape`. It exposes `fingerprint`, `program`,
+`started`, `current` (`SubscriptionRef<SessionState>`), `send`, scoped
+`events` and `awaits` streams, `save`, and `restore`. `program` is the
+`Program` the layer loaded, valid for the session's scope: query `current`'s
+state through it rather than loading the bundle a second time.
 `Session.layer({ seed })` begins a playthrough; `Session.layer({ snapshot })`
 restores one. The session does not answer awaits or pace events.
+
+```ts
+const session = yield* Session.Session
+const { state } = yield* SubscriptionRef.get(session.current)
+const talk = yield* session.program.gate(state, "talk", "npc.tilly")
+```
 
 ## Errors and contract drift
 
@@ -206,12 +252,15 @@ to their contract code:
 | `Errors.RequestMismatch` | `E-RUNTIME-REQUEST` | An answer names a different request. |
 | `Errors.OptionUnavailable` | `E-RUNTIME-OPTION` | The choice is absent or closed. |
 | `Errors.BridgeShapeMismatch` | `E-RUNTIME-BRIDGE-SHAPE` | A bridge field is missing or mistyped. |
-| `Errors.InvalidInput` | `E-RUNTIME-INPUT` | A seed or input names an unknown or incompatible value. |
+| `Errors.InvalidInput` | `E-RUNTIME-INPUT` | A seed, input, or query names an unknown or incompatible value. |
 | `Errors.RuntimeHalted` | `E-RUNTIME-HALTED` | The lineage halted; restore an earlier snapshot. |
 | `Errors.IrVersionMismatch` | `E-RUNTIME-IR-VERSION` | The bundle is not an IR version this runtime executes. |
 | `Errors.SnapshotProjectMismatch` | `E-RUNTIME-SNAPSHOT-PROJECT` | The snapshot belongs to another bundle fingerprint. |
 | `Errors.SnapshotVersionMismatch` | `E-RUNTIME-SNAPSHOT-VERSION` | The snapshot is from another Event minor. |
-| `Errors.EvaluationError` | `E-RUNTIME-EVAL` | An `evaluate`/`def` condition evaluates to an error (0.40.1; not a `RuntimeRejection`). |
+| `Errors.OccasionGateClosed` | `E-OCCASION-GATE` | The engine would not make this raise: its `raisedWhen` is false, or the game is over and the occasion is not `outsideRun` (0.41). The state is unchanged; the message is `lute play`'s refusal text. |
+| `Errors.EvaluationError` | `E-RUNTIME-EVAL` | An `evaluate`/`def` condition evaluates to an error (not a `RuntimeRejection`). |
+
+`Program.gate` fails only with `InvalidInput`.
 
 `Errors.BundleError` is the union of `BundleNotFound`, `BundleUnreadable`, and
 `BundleMalformed`, each identifying the path concerned. `Errors.WasmLoadError`
@@ -269,7 +318,57 @@ The generated schemas use tagged unions for `Input`, `Event`, `Await`,
 `Verdict`, and `Premise`, and preserve the Rust serde shapes and canonical JSON
 ordering.
 
+`Ir` is generated the same way from `schemas/lute-ir-*.schema.json`: the
+command and artifact shapes and, since 0.41, the `project.index.json` types
+(`Ir.projectIndex`, `Ir.indexBeat`, `Ir.indexOccasion`, `Ir.indexDef`,
+`Ir.fieldType`, …) that type `Bundle.index`.
+
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
 line), and its output carries `eventVersion: "0.40.0"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.
+
+## Local dogfooding
+
+To run a host against an unreleased checkout of this repository, pack the
+packages and depend on the tarballs. From the repository root:
+
+```console
+bash scripts/pack-local.sh [--web] [OUT_DIR]
+```
+
+The script builds `@lute-lang/runtime` (`bun run wasm:build`, then
+`bun run build`) and `@lute-lang/player` (`bun run build`), plus
+`@lute-lang/player-web` with `--web`, packs each with `bun pm pack` into
+`OUT_DIR` (default `dist/local`, git-ignored), and prints the
+`dependencies` and `overrides` blocks to paste into the host's
+`package.json`, each package pointing at its tarball by absolute path:
+
+```json
+  "dependencies": {
+    "@lute-lang/runtime": "file:/path/to/lute/dist/local/lute-lang-runtime-<version>.tgz",
+    "@lute-lang/player": "file:/path/to/lute/dist/local/lute-lang-player-<version>.tgz"
+  },
+  "overrides": {
+    "@lute-lang/runtime": "file:/path/to/lute/dist/local/lute-lang-runtime-<version>.tgz",
+    "@lute-lang/player": "file:/path/to/lute/dist/local/lute-lang-player-<version>.tgz"
+  }
+```
+
+Keep the host's own `effect` at `4.0.2` (an exact peer of every package) and
+its platform package (`@effect/platform-bun` or `@effect/platform-browser`),
+then `bun install`. The `overrides` make every transitive `@lute-lang/*`
+reference resolve to the same tarball, so the host loads one runtime and one
+`effect`. Re-run the script and `bun install` after each change in the
+repository. `wasm:build` needs `wasm-bindgen` 0.2.126; see
+[`packages/runtime/README.md`](../../packages/runtime/README.md) for how the
+script finds it. The CLI is not packed (its npm launcher needs a platform
+binary package): use a released `lute` or `cargo run -p lute-cli`.
+
+Do not link the package directories instead (`"file:../lute/packages/runtime"`
+and the like). Bun installs such a dependency with its `package.json` linked
+back into this repository, so `@lute-lang/runtime` imports this repository's
+own `effect`: the host's `Schema` and the runtime's generated schemas then come
+from two `effect` instances, and decoding with them dies (`TypeError: Cannot
+convert a symbol to a string`). Directory links also install each package's
+`devDependencies` and can create a second runtime entry.

@@ -28,6 +28,25 @@ grant settlement; the runtime returns those effects as data.
 ## TypeScript runtime
 
 TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
+
+In 0.41 a `Program` adds `gate(state, occasion, target?)` (`Effect<Gate, InvalidInput>`)
+and `def(state, name, args?)`, whose `args` are one JSON scalar per declared
+parameter; a closed raise fails with `Errors.OccasionGateClosed`
+(`E-OCCASION-GATE`) and leaves the state unchanged. `Session.Session` (service
+type `Session.SessionShape`) exposes `program`, the `Program` it loaded, so a
+host queries `current`'s state without loading the bundle twice. A
+`RuntimeState` is valid for every `Program` of the same bundle fingerprint;
+handing it to a program of another fingerprint is a defect. `Bundle.index` is
+typed `Ir.projectIndex`.
+
+To try an unreleased checkout in a host, run `bash scripts/pack-local.sh
+[--web] [OUT_DIR]` in the Lute repository: it packs the runtime and player
+(and `player-web` with `--web`) with `bun pm pack` and prints the
+`dependencies` and `overrides` entries (`file:<tarball>`) to paste into the
+host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
+`file:../lute/packages/*` directories: they resolve the Lute repository's own
+`effect`, giving the host two `effect` instances. See
+[Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
  
 ## 0.41 runtime additions
 

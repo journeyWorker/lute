@@ -1,8 +1,10 @@
 import { Context, Effect, Exit, Layer, Scope, Stream, SubscriptionRef } from "effect"
 import { describe, expect, it } from "@effect/vitest"
+import * as BundleSource from "../src/BundleSource.js"
 import * as Contract from "../src/generated/Contract.js"
 import * as InputLog from "../src/InputLog.js"
 import * as LuteBun from "../src/bun.js"
+import * as LuteRuntime from "../src/LuteRuntime.js"
 import * as Session from "../src/Session.js"
 import { canonical, decode, hubFixtureRoot } from "./support.js"
 
@@ -67,6 +69,23 @@ describe("Session", () => {
     const log = yield* InputLog.InputLog
     expect(yield* log.entries).toEqual([{ snapshot }])
     expect(canonical(yield* session.save)).toBe(canonical(snapshot))
+  }).pipe(Effect.provide(sessionLayer({ seed: started }))))
+
+  it.effect("exposes its program for queries over current (spec 0.41.0 §6.2)", () => Effect.gen(function* () {
+    const session: Session.SessionShape = yield* Session.Session
+    expect(session.program.fingerprint).toBe(session.fingerprint)
+    yield* session.send(raise)
+    const { state, stage } = yield* SubscriptionRef.get(session.current)
+    expect(yield* session.program.stage(state)).toEqual(stage)
+    expect(yield* session.program.gate(state, "visit")).toEqual({ open: true })
+    expect(canonical(yield* session.program.snapshot(state))).toBe(canonical(yield* session.save))
+
+    // A host program of the same bundle reads the session's state too.
+    const host = yield* Effect.flatMap(BundleSource.BundleSource, (source) =>
+      Effect.flatMap(source.load, (bundle) => Effect.flatMap(LuteRuntime.LuteRuntime, (runtime) => runtime.load(bundle)))
+    ).pipe(Effect.provide(Layer.mergeAll(LuteBun.runtime, LuteBun.bundle(hubFixtureRoot))))
+    expect(host.fingerprint).toBe(session.fingerprint)
+    expect(canonical(yield* host.view(state))).toBe(canonical(yield* session.program.view(state)))
   }).pipe(Effect.provide(sessionLayer({ seed: started }))))
 
   it.effect("ends event streams when its scope closes", () => Effect.gen(function* () {

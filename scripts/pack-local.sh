@@ -16,7 +16,8 @@
 # The CLI is not packed: its npm launcher needs a platform binary package;
 # use a released `lute` or `cargo run -p lute-cli`.
 #
-# wasm:build needs wasm-bindgen 0.2.126 on PATH or in $WASM_BINDGEN.
+# wasm:build needs wasm-bindgen 0.2.126 from $WASM_BINDGEN, PATH or the
+# wasm-pack cache (see packages/runtime/README.md).
 set -euo pipefail
 
 usage() {
