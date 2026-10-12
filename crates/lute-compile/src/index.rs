@@ -64,7 +64,10 @@ pub struct IndexUnions {
 /// a seam condition is, every identifier naming one of its parameters
 /// lowered to a `param` node. A def with a parameter of a non-scalar type (a
 /// host cannot pass a list, record or map argument), or one whose body does
-/// not expand or lower (the checker reports it), is left out.
+/// not expand or lower (the checker reports it), is left out. So is an
+/// invalid def (§3.2, a `type: number`; the loader already drops a plugin's)
+/// and every def that references one: its body is absent from the
+/// expansion table, so the dependant does not expand.
 pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDef> {
     let mut bodies = BTreeMap::new();
     let mut params = BTreeMap::new();
@@ -78,6 +81,12 @@ pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDe
         host.insert(name.clone(), d.host);
     }
     for (name, v) in &input.imports.defs {
+        if lute_check::def_decl::is_invalid(v) {
+            // It may shadow a plugin def of the same name: neither is
+            // the def this document sees.
+            bodies.remove(name);
+            continue;
+        }
         if let Some(body) = v.get("cel").and_then(serde_yaml::Value::as_str) {
             bodies.insert(name.clone(), body.to_string());
         }

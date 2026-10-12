@@ -45,8 +45,9 @@ pub(crate) fn mark_invalid(def: &mut Value) {
     }
 }
 
-/// Whether [`mark_invalid`] marked `def`.
-pub(crate) fn is_invalid(def: &Value) -> bool {
+/// Whether [`mark_invalid`] marked `def` (0.41.0 §3.2): such a def resolves
+/// by name but is never exported (the project index `defs`, `lute expr`).
+pub fn is_invalid(def: &Value) -> bool {
     def.get(INVALID_DEF).is_some()
 }
 

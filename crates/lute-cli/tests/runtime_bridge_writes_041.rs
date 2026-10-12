@@ -130,6 +130,11 @@ fn answers_are_validated_against_the_result_types() {
         json!({"outcome": "win", "hpFloor": 3.5}),
         json!({"outcome": "win", "hpFloor": "3"}),
         json!({"outcome": "win"}),
+        // Past ±2^53 — the bound of every host-passed `int` — even when it
+        // is a JSON integer: refused here, never a halt at the call.
+        json!({"outcome": "win", "hpFloor": 9_223_372_036_854_775_808_u64}),
+        json!({"outcome": "win", "hpFloor": 9_007_199_254_740_993_i64}),
+        json!({"outcome": "win", "hpFloor": -9_007_199_254_740_993_i64}),
     ] {
         let r = refused(
             &runtime,
@@ -202,6 +207,11 @@ fn unresolved_or_clock_answer_writes_are_refused() {
         json!({"facts": ["unknownRel(x)"]}),
         json!({"state": [{"path": "run.day", "value": 2}]}),
         json!({"state": [{"path": "run.slot", "value": "dusk"}]}),
+        // An `int` path takes an integer within ±2^53, as `value` or `add`.
+        json!({"state": [{"path": "run.score", "value": 9_007_199_254_740_993_i64}]}),
+        json!({"state": [{"path": "run.score", "value": "9007199254740993"}]}),
+        json!({"state": [{"path": "run.score", "add": 1.5}]}),
+        json!({"state": [{"path": "run.score", "add": 1e300}]}),
     ] {
         let r = refused(
             &runtime,
@@ -211,6 +221,30 @@ fn unresolved_or_clock_answer_writes_are_refused() {
         );
         assert_eq!(r.code, "E-RUNTIME-INPUT", "{writes}: {}", r.message);
     }
+    // `hostWrite` resolves its writes by the same rule.
+    let (start, _) = runtime.begin(Seed::default()).unwrap();
+    for state in [
+        json!([{"path": "run.score", "value": 9_007_199_254_740_993_i64}]),
+        json!([{"path": "run.score", "add": 1e300}]),
+        json!([{"path": "run.score", "add": -0.5}]),
+    ] {
+        let r = refused(
+            &runtime,
+            &start,
+            json!({"type": "hostWrite", "writes": {"state": state}}),
+        );
+        assert_eq!(r.code, "E-RUNTIME-INPUT", "{state}: {}", r.message);
+        assert!(r.message.contains("within ±2^53"), "{state}: {}", r.message);
+    }
+    // The bound itself is admitted.
+    step(
+        &runtime,
+        &start,
+        json!({"type": "hostWrite", "writes": {"state": [
+            {"path": "run.score", "value": 9_007_199_254_740_992_i64},
+            {"path": "run.score", "add": -9_007_199_254_740_992_i64},
+        ]}}),
+    );
 }
 
 /// A non-blocking plugin call records its `attrs` too: the omitted `wrapped`

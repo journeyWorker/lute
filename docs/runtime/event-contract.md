@@ -260,10 +260,11 @@ human refusal text. Codes distinguish:
 timed choice (a mismatched request remains `E-RUNTIME-REQUEST`).
 - `E-RUNTIME-OPTION`: a missing or non-open choice option.
 - `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or a value that does
-  not fit its `results` type (`int` an integer, `double` a number, `bool` a
-  boolean, `enum` a member string, otherwise a string).
+  not fit its `results` type (`int` an integer within ±2^53, `double` a
+  number, `bool` a boolean, `enum` a member string, otherwise a string).
 - `E-RUNTIME-INPUT`: malformed input/seed, unknown path, relation, quest,
-  occasion, event or beat, or a value incompatible with its declared type;
+  occasion, event or beat, or a value incompatible with its declared type
+  (an `int` state path takes, as `value` or `add`, an integer within ±2^53);
   for `evaluate`/`def`, a malformed `exprNode` (a `param` node included), a
   def the bundle lacks, or a `def` argument fault; `gate` of an undeclared
   occasion; `bridgeResult.writes` that do not resolve or write the clock's

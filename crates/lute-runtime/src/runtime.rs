@@ -1128,7 +1128,6 @@ fn def_args<'d>(
             args.len()
         ));
     }
-    const INT_BOUND: i64 = 1 << 53;
     let mut bound = BTreeMap::new();
     for (param, arg) in params.iter().zip(args) {
         let misfit = |what: &str| {
@@ -1148,9 +1147,7 @@ fn def_args<'d>(
             Ok(Value::Str(s.to_string()))
         };
         let value = match &param.ty {
-            Type::Int => arg
-                .as_i64()
-                .filter(|n| (-INT_BOUND..=INT_BOUND).contains(n))
+            Type::Int => crate::expr::host_int(arg)
                 .map(Value::Int)
                 .ok_or_else(|| misfit("a JSON integer within ±2^53"))?,
             Type::Double => arg
@@ -1211,17 +1208,50 @@ fn scalar_text(v: Option<&Json>) -> Option<String> {
     }
 }
 
+/// `hostWrite`'s (and `advanceClock` / `newRun` / `bridgeResult`'s) `writes`
+/// against the project. An `int` path takes, as `value` or `add`, an integer
+/// within `±2^53` — the bound every host-passed `int` has ([`def_args`],
+/// [`validate_bridge`]) — so no write is accepted that the walk then cannot
+/// apply.
 fn resolve_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
+    use crate::expr::INT_BOUND;
     let mut out = Writes::default();
     for w in &raw.state {
+        let out_of_bound = |n: &dyn std::fmt::Display| {
+            format!(
+                "state `{}` is an `int`: it takes an integer within ±2^53, not `{n}`",
+                w.path
+            )
+        };
         let write = match (&w.value, w.add) {
-            (Some(v), None) => Write::Set(resolve_state(
-                p,
-                &w.path,
-                &scalar_text(Some(v))
-                    .ok_or_else(|| format!("state `{}` must be a scalar", w.path))?,
-            )?),
-            (None, Some(n)) => Write::Add(n),
+            (Some(v), None) => {
+                let value = resolve_state(
+                    p,
+                    &w.path,
+                    &scalar_text(Some(v))
+                        .ok_or_else(|| format!("state `{}` must be a scalar", w.path))?,
+                )?;
+                if let crate::Value::Int(n) = value {
+                    if !(-INT_BOUND..=INT_BOUND).contains(&n) {
+                        return Err(out_of_bound(&n));
+                    }
+                }
+                Write::Set(value)
+            }
+            (None, Some(n)) => {
+                let int = p
+                    .state_table
+                    .get(&w.path)
+                    .and_then(|e| e.get("type"))
+                    .and_then(Json::as_str)
+                    == Some("int");
+                // Exact: every integer within ±2^53 is an `f64`.
+                let bound = INT_BOUND as f64;
+                if int && (n.fract() != 0.0 || !(-bound..=bound).contains(&n)) {
+                    return Err(out_of_bound(&n));
+                }
+                Write::Add(n)
+            }
             _ => {
                 return Err(format!(
                     "state write `{}` must have exactly one of value or add",
@@ -1648,7 +1678,8 @@ fn state_result_type(entry: &Json) -> lute_manifest::types::Type {
 }
 
 /// dsl 0.41.0 §5.5 rule 2: a `bridgeResult`'s `fields` against the await's
-/// `results` types — `int` an integer, `double` a number, `bool` a
+/// `results` types — `int` an integer within `±2^53` (the bound of every
+/// host-passed `int`, as [`def_args`]), `double` a number, `bool` a
 /// boolean, `string` a string, `enum` a member string, `domain` / `entity`
 /// a string.
 fn validate_bridge(
@@ -1662,7 +1693,10 @@ fn validate_bridge(
         };
         let (good, what) = match ty {
             Type::Bool => (v.is_boolean(), "a boolean".to_string()),
-            Type::Int => (v.is_i64() || v.is_u64(), "an integer".to_string()),
+            Type::Int => (
+                crate::expr::host_int(v).is_some(),
+                "an integer within ±2^53".to_string(),
+            ),
             Type::Double => (v.is_number(), "a number".to_string()),
             Type::Enum(members) => (
                 v.as_str().is_some_and(|s| members.iter().any(|m| m == s)),

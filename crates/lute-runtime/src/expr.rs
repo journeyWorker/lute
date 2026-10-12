@@ -245,7 +245,14 @@ impl Expr {
 }
 
 /// The JSON integers the IR admits, `±2^53` (`exprNode.int`).
-const INT_BOUND: i64 = 1 << 53;
+pub(crate) const INT_BOUND: i64 = 1 << 53;
+
+/// `v` as an `int` a host may pass: a JSON integer within `±2^53` — the
+/// bound of `exprNode.int`, a def argument (dsl 0.41.0 §5.1 rule 8), a
+/// `bridgeResult` field (§5.5 rule 2) and a host state write.
+pub(crate) fn host_int(v: &Json) -> Option<i64> {
+    v.as_i64().filter(|n| (-INT_BOUND..=INT_BOUND).contains(n))
+}
 
 /// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.41.schema.json`,
 /// recursively: one variant's key set and no other key, each field of its
@@ -266,9 +273,7 @@ fn is_expr_node(node: &Json) -> bool {
     };
     let op = || obj.get("op").and_then(Json::as_str);
     if keys(&["int"]) {
-        obj["int"]
-            .as_i64()
-            .is_some_and(|n| (-INT_BOUND..=INT_BOUND).contains(&n))
+        host_int(&obj["int"]).is_some()
     } else if keys(&["double"]) {
         obj["double"].is_number()
     } else if keys(&["bool"]) {
