@@ -1,0 +1,14 @@
+---
+kind: scene
+id: guild
+title: The guild
+uses: [../guild.schema.yaml]
+on: visit
+priority: 5
+when: "@respected"
+---
+
+## Guild
+
+@narrator: The guild hall is quiet.
+::set{run.reputation += 1}

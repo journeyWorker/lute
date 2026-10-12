@@ -71,6 +71,7 @@ mod cmd_compile;
 mod cmd_diff;
 mod cmd_fmt;
 mod cmd_patch;
+mod cmd_expr;
 mod cmd_context;
 mod cmd_scenario;
 mod cmd_trace;
@@ -237,6 +238,7 @@ pub fn run() -> ExitCode {
             project.as_deref(),
             permission_profile.as_deref(),
         ),
+        Command::Expr { cel, project, json } => cmd_expr::run_expr(&cel, &project, json),
         Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
         Command::Diff { before, after, json } => cmd_diff::run(&before, &after, json),
         Command::Patch {

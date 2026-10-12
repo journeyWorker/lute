@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, expr, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, every single-file command (`check`, `compile`, `compile-stream`, `trace`, `context`, `test`) applies the nearest `lute.project.yaml` above the file and says so on stderr (`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`); with no manifest above the file it resolves core-only (`lute.core`). Before 0.27.0 only `check` and `test` looked for the manifest, so `trace` could refuse with `E-UNDECLARED` a document `check` passed. On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
@@ -293,6 +293,38 @@ or performs remote/runtime effects. See the
 [streaming continuation compiler guide](/tooling/continuation-compiler/) for
 the record schema, cumulative cost, admitted body surface, permission freezing,
 and consumer cursor/state rules.
+
+## expr
+
+```console
+$ lute expr <CEL> [--project <DIR>] [--json]
+```
+
+Lower a host condition to an IR `exprNode` against a project, so a game can evaluate it over a run state with the runtime's `evaluate` query. The runtime ships no CEL parser: a host lowers its conditions at build time. `--project` defaults to the current directory, which must hold a `lute.project.yaml` (else exit **2**).
+
+The condition is checked as the `when:` of a scene at the project root that imports every schema file the project's documents import, under the project's plugin set, with the [project index `defs`](/tooling/runtime-contract/#projectindexjson-in-041) — parameterised defs included — as its def table: the vocabulary the bundle carries. Its expected type is `bool`. Diagnostics are the checker's own codes (`E-CEL-PARSE`, `E-CEL-PROFILE`, `E-CEL-TYPE`, `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-REF-ARITY`, `E-FACT-DOMAIN`, …) at `<expr>:<line>:<column>`, positions in the expression text. A condition that checks but does not lower is `E-CEL-PROFILE`.
+
+A project that does not resolve — a manifest or plugin error, or a schema import some document names that does not resolve (`E-USES-NOT-FOUND`) — is an error with no position (`<expr>: error [CODE] …`); the expression is not checked.
+
+On success stdout carries one line, the `exprNode` as JSON, and warnings go to stderr; exit **0**. On an error the diagnostics go to stderr, stdout stays empty, and the exit is **1**. In the `seven-days` example game:
+
+```console
+$ lute expr "run.day >= 3"
+{"op":">=","l":{"path":"run.day"},"r":{"int":3}}
+```
+
+<!-- lute-diagnostics -->
+```console
+$ lute expr "@at(3)"
+<expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
+```
+
+`--json` prints exactly one object. On success it carries the fields a compiled condition (`celSlot`) carries — `cel`, the `@def`-expanded text; `authored`, the input when expansion changed it (omitted otherwise); `expr` — and `diagnostics`, the `lute check --json` diagnostic objects (warnings only). On an error it is `{"ok": false, "diagnostics": [...]}`:
+
+```console
+$ lute expr "@at(3, 'night')" --json
+{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+```
 
 ## trace
 

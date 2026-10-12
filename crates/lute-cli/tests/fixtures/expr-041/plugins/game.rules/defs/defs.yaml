@@ -1,0 +1,3 @@
+# Read by the host only (0.41.0 §3.5).
+defs:
+  - { name: marketOpen, type: bool, cel: "run.slot != 'night'", host: true }

@@ -177,9 +177,9 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, check_parsed, diagnostic_order, fold_env, order_diagnostics, params_from_yaml,
-    CheckInput, CheckResult, DomainUse, FoldedEnv, Resolved, E_MONO_NO_POV, E_MONO_POV,
-    E_SECTION_DUP, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    check, check_host_condition, check_parsed, diagnostic_order, fold_env, order_diagnostics,
+    params_from_yaml, CheckInput, CheckResult, DomainUse, FoldedEnv, HostCondition, Resolved,
+    E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};

@@ -98,6 +98,7 @@ mod choice_record;
 mod component_body;
 mod fold;
 mod guard;
+mod host;
 mod injections;
 mod interp;
 mod literal_text;
@@ -120,6 +121,7 @@ use component_body::{
     walk_component_body, BodyScope,
 };
 pub use fold::{fold_env, params_from_yaml};
+pub use host::{check_host_condition, HostCondition};
 pub(crate) use fold::resolve_kinds;
 use fold::{attr_str, fold_directive_slots};
 pub(crate) use guard::directive_when_refused;

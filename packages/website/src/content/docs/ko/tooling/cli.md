@@ -1,6 +1,6 @@
 ---
 title: CLI 레퍼런스
-description: 모든 lute 하위 명령 — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — 의 개요, 주요 플래그, 종료 코드 계약입니다.
+description: 모든 lute 하위 명령 — init, new, check, check-project, compile, compile-stream, expr, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — 의 개요, 주요 플래그, 종료 코드 계약입니다.
 ---
 
 `lute`는 `.lute` 문서를 헤드리스로 검사하고 컴파일하는 도구입니다. 핵심 `check()`가 계약이며, CLI는 인자 파싱, 파일 I/O, 출력 형식만 추가하고 검증 로직은 소유하지 않습니다. 반복해서 쓰이는 해석 플래그는 두 가지입니다. `--providers <DIR>`는 id를 해석할 provider 스냅숏 디렉터리를 고정하고, `--project <DIR>`는 문서의 활성화된 capability 스냅숏을 해석할 `lute.project.yaml` + `plugins/`를 불러옵니다. 이를 지정하지 않으면 모든 단일 파일 명령(`check`, `compile`, `compile-stream`, `trace`, `context`, `test`)이 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고 stderr에 그 사실을 알립니다(`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`). 파일 위쪽에 매니페스트가 없으면 core만(`lute.core`) 해석합니다. 0.27.0 이전에는 `check`와 `test`만 매니페스트를 찾았기 때문에, `check`가 통과시킨 문서를 `trace`가 `E-UNDECLARED`로 거부할 수 있었습니다. 아래의 권한 인식 작성 명령에서 `--permission-profile <NAME>`은 프로젝트 해석을 요구하며, 해당 신뢰 프로필의 [권한](/ko/tooling/capability-permissions/)을 그 플러그인을 활성화하거나 원본 프로필을 바꾸지 않고 추가 상한으로 적용합니다.
@@ -242,6 +242,38 @@ $ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
 `--permission-profile <NAME>`은 프로젝트 snapshot과 함께 신뢰된 추가 상한 하나를 고정합니다. 고정 템플릿과 추가되는 모든 본문 단위에 적용되며, 스트림 중간에 전환할 수 없습니다. 금지된 단위는 거부된 IR을 담은 update가 나오기 전에 해당 `E-PERMISSION-*` 진단과 함께 종료됩니다.
 
 성공적인 EOF 최종화 뒤에만 종료 **0**이며, 문법/의미/권한/컴파일/스트리밍 거부 시 **1**, 사용법, I/O, 끊어진 stdout 또는 잘못된 UTF-8 시 **2**입니다. 작성된 `::end`는 일반 런타임 명령이며 EOF를 대신하거나 stdin을 닫지 않습니다. 이 명령은 템플릿을 수정하거나 원격/런타임 효과를 수행하지 않습니다. 레코드 스키마, 누적 비용, 허용되는 본문 표면, 권한 고정, 소비자 커서/상태 규칙은 [스트리밍 연속 컴파일러 가이드](/ko/tooling/continuation-compiler/)를 참고하세요.
+
+## expr
+
+```console
+$ lute expr <CEL> [--project <DIR>] [--json]
+```
+
+호스트 조건을 프로젝트에 대해 IR `exprNode`로 내려(lower), 게임이 런타임의 `evaluate` 질의로 실행 상태 위에서 평가할 수 있게 합니다. 런타임에는 CEL 파서가 없으므로 호스트는 빌드 시점에 조건을 내립니다. `--project`의 기본값은 현재 디렉터리이며, 그 디렉터리에 `lute.project.yaml`이 있어야 합니다(없으면 종료 **2**).
+
+조건은 프로젝트 루트에 있는 씬의 `when:`으로 검사됩니다. 이 씬은 프로젝트 문서들이 가져오는 모든 스키마 파일을 가져오고, 프로젝트의 플러그인 집합 아래에서, 매개변수가 있는 def까지 포함한 [프로젝트 인덱스 `defs`](/ko/tooling/runtime-contract/#041의-projectindexjson)를 def 표로 씁니다. 즉 번들이 담는 어휘입니다. 기대 타입은 `bool`입니다. 진단은 검사기 자신의 코드(`E-CEL-PARSE`, `E-CEL-PROFILE`, `E-CEL-TYPE`, `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-REF-ARITY`, `E-FACT-DOMAIN`, …)이며 `<expr>:<줄>:<열>`로 표시되고, 위치는 식 텍스트 안의 위치입니다. 검사는 통과하지만 내려지지 않는 조건은 `E-CEL-PROFILE`입니다.
+
+해석되지 않는 프로젝트 — 매니페스트나 플러그인 오류, 또는 어떤 문서가 가져오는데 해석되지 않는 스키마 import(`E-USES-NOT-FOUND`) — 는 위치 없는 오류(`<expr>: error [CODE] …`)이며, 식은 검사하지 않습니다.
+
+성공하면 stdout에 한 줄, 즉 JSON으로 된 `exprNode`가 나오고 경고는 stderr로 갑니다. 종료 **0**입니다. 오류가 있으면 진단은 stderr로 가고 stdout은 비며 종료 **1**입니다. `seven-days` 예제 게임에서:
+
+```console
+$ lute expr "run.day >= 3"
+{"op":">=","l":{"path":"run.day"},"r":{"int":3}}
+```
+
+<!-- lute-diagnostics -->
+```console
+$ lute expr "@at(3)"
+<expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
+```
+
+`--json`은 객체 하나만 출력합니다. 성공하면 컴파일된 조건(`celSlot`)이 담는 필드 — `@def`를 펼친 텍스트인 `cel`, 펼침으로 입력이 바뀌었을 때의 입력인 `authored`(바뀌지 않았으면 생략), `expr` — 와 `lute check --json`의 진단 객체인 `diagnostics`(경고만)를 담습니다. 오류가 있으면 `{"ok": false, "diagnostics": [...]}`입니다:
+
+```console
+$ lute expr "@at(3, 'night')" --json
+{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+```
 
 ## trace
 
