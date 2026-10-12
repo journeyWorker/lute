@@ -28,16 +28,41 @@ use crate::set_type::{decide_raw, Decision, DefTypes};
 
 pub const E_DEF_DECL: &str = "E-DEF-DECL";
 
-/// The keys a long-form def may carry (dsl 0.1.0 §8.1).
-const DEF_KEYS: [&str; 3] = ["type", "params", "cel"];
+/// The keys a long-form def may carry (dsl 0.1.0 §8.1); `host` (0.41.0 §3.5)
+/// only in a project schema file.
+const DEF_KEYS: [&str; 4] = ["type", "params", "cel", "host"];
+
+/// 0.41.0 §3.2: the key [`mark_invalid`] adds to a lifted def whose type or
+/// parameter is `number`. [`lift_def`] refuses it from an author (it is no
+/// def key), so only the checker writes it.
+const INVALID_DEF: &str = "invalid";
+
+/// Mark a lifted def invalid: kept by name (its references resolve and
+/// expand), but neither typed, settled, nor body-checked.
+pub(crate) fn mark_invalid(def: &mut Value) {
+    if let Some(m) = def.as_mapping_mut() {
+        m.insert(Value::String(INVALID_DEF.into()), Value::Bool(true));
+    }
+}
+
+/// Whether [`mark_invalid`] marked `def`.
+pub(crate) fn is_invalid(def: &Value) -> bool {
+    def.get(INVALID_DEF).is_some()
+}
+
+/// 0.41.0 §3.5: whether a lifted def declares `host: true`.
+pub fn is_host(def: &Value) -> bool {
+    def.get("host").and_then(Value::as_bool) == Some(true)
+}
 
 /// Lift one `defs:` value to its canonical long-form mapping, or return the
-/// `E-DEF-DECL` message naming what is wrong with it.
+/// `E-DEF-DECL` message naming what is wrong with it. `schema`: the def is
+/// declared in a project schema file, the one place `host:` is a def key.
 ///
 /// Each arm returns its message WHOLE as a single `format!` literal, the
 /// convention `state_decl_message` documents: `scripts/check-doc-snippets.py`
 /// pins quoted diagnostics against the scraped literals in `crates/*/src`.
-pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
+pub(crate) fn lift_def(name: &str, v: &Value, schema: bool) -> Result<Value, String> {
     let map = match v {
         Value::String(cel) => {
             let mut m = serde_yaml::Mapping::new();
@@ -56,15 +81,30 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
     };
     if let Some(key) = map
         .keys()
-        .find(|k| !k.as_str().is_some_and(|k| DEF_KEYS.contains(&k)))
+        .find(|k| !k.as_str().is_some_and(|k| DEF_KEYS.contains(&k) && (schema || k != "host")))
     {
         let key = key
             .as_str()
             .map_or_else(|| yaml_shape(key).to_string(), str::to_string);
+        if key == "host" {
+            return Err(format!(
+                "invalid def `{name}`: `host:` is not a def key; a def is \
+                 `{{ type: bool, cel: \"…\" }}` with an optional `params: {{ p: <type> }}`, or \
+                 the shorthand `{name}: \"<CEL>\"` — a frontmatter def is local to its \
+                 document; declare a host def in a project schema file (dsl 0.21.0 §7b, 0.41.0 §3.5)"
+            ));
+        }
         return Err(format!(
             "invalid def `{name}`: `{key}:` is not a def key; a def is \
              `{{ type: bool, cel: \"…\" }}` with an optional `params: {{ p: <type> }}`, or \
              the shorthand `{name}: \"<CEL>\"` (dsl 0.21.0 §7b)"
+        ));
+    }
+    if let Some(host) = map.get("host").filter(|h| !h.is_bool()) {
+        return Err(format!(
+            "invalid def `{name}`: `host:` must be `true` or `false`, but this is {} \
+             (0.41.0 §3.5)",
+            yaml_shape(host)
         ));
     }
     match v.get("cel") {
@@ -83,21 +123,6 @@ pub(crate) fn lift_def(name: &str, v: &Value) -> Result<Value, String> {
                 yaml_shape(other)
             ))
         }
-    }
-    if let Some(params) = v.get("params").and_then(|p| p.as_mapping()) {
-        for (param, value) in params {
-            let ty = value.get("type").unwrap_or(value);
-            if ty.as_str() == Some("number") {
-                return Err(format!(
-                    "invalid def `{name}` parameter `{}`: {}",
-                    param.as_str().unwrap_or("?"),
-                    lute_manifest::types::NUMBER_TYPE_REMOVED
-                ));
-            }
-        }
-    }
-    if v.get("type").and_then(|t| t.as_str()) == Some("number") {
-        return Err(format!("invalid def `{name}`: {}", lute_manifest::types::NUMBER_TYPE_REMOVED));
     }
     match v.get("type") {
         Some(t) if serde_yaml::from_value::<Type>(t.clone()).is_err() => Err(format!(
@@ -132,6 +157,9 @@ pub(crate) fn settle_def_type(
     schema: &StateSchema,
     defs: &DefTypes,
 ) -> Option<String> {
+    if is_invalid(def) {
+        return None;
+    }
     let cel = def.get("cel")?.as_str()?.to_string();
     let declared = match def.get("type") {
         Some(t) => Some(serde_yaml::from_value::<Type>(t.clone()).ok()?),
@@ -177,6 +205,9 @@ pub(crate) fn settle_def_type(
 
 /// The settled `type:` of a lifted def, when it has one.
 fn def_type(def: &Value) -> Option<Type> {
+    if is_invalid(def) {
+        return None;
+    }
     serde_yaml::from_value(def.get("type")?.clone()).ok()
 }
 

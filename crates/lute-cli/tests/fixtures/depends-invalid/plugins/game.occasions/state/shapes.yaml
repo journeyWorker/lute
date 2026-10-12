@@ -1,0 +1,6 @@
+# The result slot a skill check writes (`scene.check.<key>.*`).
+stateShapes:
+  - name: checkResult
+    fields:
+      - { name: passed, type: bool,   default: false }
+      - { name: margin, type: number, default: 0 }

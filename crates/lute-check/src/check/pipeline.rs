@@ -75,6 +75,9 @@ fn def_body_diagnostics(
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut check_one = |name: &str, def: &serde_yaml::Value, span: Span, prefix: &str| {
+        if crate::def_decl::is_invalid(def) {
+            return; // 0.41.0 §3.2: `E-TYPE-NUMBER` is its one report
+        }
         let Some(cel) = def.get("cel").and_then(|c| c.as_str()) else {
             return; // no body: `E-DEF-DECL` already names it
         };
@@ -1028,6 +1031,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // document's own `uses:` replaced that list: the error says so.
     let mut diags =
         crate::defaults_note::note_replaced_uses(&doc, &folded.typed, input, diags);
+    // 0.41.0 §3.2: a use of an invalid plugin declaration is one note per
+    // cause, not an "unknown" report per use.
+    crate::depends::attribute_unknown(&mut diags, &input.snapshot);
+    crate::depends::fold_dependants(&mut diags);
 
     // Some-vs-None policy for the resolved view.
     let structural_break = diags

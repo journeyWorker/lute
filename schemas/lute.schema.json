@@ -340,7 +340,7 @@
       }
     },
     "inlineDefDecl": {
-      "description": "dsl 0.21.0 §7b (def_decl.rs::lift_def): the shorthand `name: \"<CEL>\"`, or the long form `{ type?, params?, cel }`. `cel` is required; an absent `type` is inferred from the body; `params` requires `type`. Any other key is E-DEF-DECL.",
+      "description": "dsl 0.21.0 §7b (def_decl.rs::lift_def): the shorthand `name: \"<CEL>\"`, or the long form `{ type?, params?, cel, host? }`. `cel` is required; an absent `type` is inferred from the body; `params` requires `type`. Any other key is E-DEF-DECL.",
       "oneOf": [
         {
           "type": "string"
@@ -360,6 +360,10 @@
             },
             "params": {
               "$ref": "#/definitions/params"
+            },
+            "host": {
+              "description": "0.41.0 §3.5: the host reads this def (exempt from W-DEF-UNUSED; exported as `host: true` in the index `defs`). Only in a project schema file; a document's own frontmatter def refuses it.",
+              "type": "boolean"
             }
           },
           "dependencies": {

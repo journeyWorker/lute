@@ -610,10 +610,11 @@ fn check_project_prints_causes_before_documents() {
     assert!(order.windows(2).all(|w| w[0] < w[1]), "{order:?}\n{stdout}");
 }
 /// dsl 0.31.0 §3/§4: required objective clock-window diagnostics use the
-/// calendar position and distinguish a reset-per-run info from a contention
-/// warning. The deadline variant is the clean counterpart.
+/// calendar position; a run-tier quest's objectives are not stranded
+/// (0.41.0 §3.4) but still contend. The deadline variant is the clean
+/// counterpart.
 #[test]
-fn check_project_reports_sera_kato_contention_and_stranded_info() {
+fn check_project_reports_sera_kato_contention_without_stranded() {
     let dir = temp_dir("objective-clock-windows");
     write(
         &dir,
@@ -650,15 +651,9 @@ fn check_project_reports_sera_kato_contention_and_stranded_info() {
     let out = run(&["check-project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "{text}");
-    let stranded: Vec<_> = text
-        .lines()
-        .filter(|line| line.contains("[W-OBJECTIVE-STRANDED]"))
-        .collect();
-    assert_eq!(stranded.len(), 2, "{text}");
-    assert!(
-        stranded.iter().all(|line| line.contains("info")),
-        "{text}"
-    );
+    // 0.41.0 §3.4: a run-tier quest re-arms, and its completion beats live
+    // in other documents — neither objective is stranded.
+    assert!(!text.contains("[W-OBJECTIVE-STRANDED]"), "{text}");
     let contention: Vec<_> = text
         .lines()
         .filter(|line| line.contains("[W-SLOT-CONTENTION]"))

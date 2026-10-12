@@ -1696,6 +1696,12 @@ A `<track>` declares neither `subject`, `channel`, nor a `subject`+`property` pa
 
 Spec: [dsl §7.4](/spec/)
 
+### E-TYPE-NUMBER
+
+A declaration is typed `number`, which is no longer a numeric type — a state row, a def or its parameter, a component parameter, a directive attribute, a bridge result, an occasion payload or a plugin state-shape field must choose `int` or `double`.
+
+Spec: [dsl 0.41.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
+
 ### E-UNCLASSIFIED
 
 A body line is no Lute construct — not a content line, directive, `::set` or known block — or a block stands where it cannot, such as a `<quest>` inside a section.
@@ -1940,9 +1946,15 @@ Spec: [dsl 0.24.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### W-DEF-UNUSED
 
-A declared `@def` is never referenced by an `@name` use anywhere in the project's content, other defs, or rule guards.
+A declared `@def` is never referenced by an `@name` use anywhere in the project's content, other defs, or rule guards, and is not declared `host: true`.
 
 Spec: [dsl 0.24.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+
+### W-DEPENDS-ON-INVALID
+
+A use of a declaration that is invalid (or of a plugin that failed to load) is not checked until that declaration is fixed; one note per invalid declaration, at its first dependant, counts the rest.
+
+Spec: [dsl 0.41.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### W-DERIVE-NO-RULES
 
@@ -2024,9 +2036,9 @@ Spec: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### W-OBJECTIVE-STRANDED
 
-Within the declared clock windows, a required objective may be stranded because its candidate beats' windows can all close; no path search is performed.
+Within the declared clock windows of its own document's beats, a required objective may be stranded because those windows can all close and it has no `until=`/`by=`; a quest that re-arms (run or season tier, `rearm=`) or an objective another document's beat can complete is not reported. No path search is performed.
 
-Spec: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
+Spec: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md), [dsl 0.41.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### W-OTHERWISE-DEAD
 

@@ -216,6 +216,19 @@ pub fn fold_env(
     }
     schema.faulty.extend(typed.state.faulty.iter().cloned());
     schema.clock_rejected |= typed.state.clock_rejected;
+    {
+        let mut own = crate::meta::StateSchema {
+            invalid: typed.state.invalid.clone(),
+            ..Default::default()
+        };
+        let file = std::path::Path::new(input.uri.trim_start_matches("file://"))
+            .file_name()
+            .map_or_else(|| input.uri.clone(), |n| n.to_string_lossy().into_owned());
+        own.place_invalid(&file);
+        for (path, decl) in own.invalid {
+            schema.invalid.entry(path).or_insert(decl);
+        }
+    }
     // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
     let (per_decls, per_index, per_faults) =
         crate::meta::expand_per_pending(&typed.per_pending, &vocab.kinds);
@@ -400,6 +413,9 @@ pub fn fold_env(
     // clock is not judged against its absence.
     if clock.is_some() {
         schema.clock_rejected = false;
+    } else if !clocks.is_empty() {
+        // 0.41.0 §3.2: a clock over an invalid state row is not checked.
+        schema.clock_rejected = true;
     }
     if !schema.clock_rejected {
         fold_diags.extend(crate::clock::check_once_needs_clock(
@@ -678,6 +694,7 @@ pub fn fold_env(
     for (name, v) in &imported_defs {
         if let Some(t) = v
             .get("type")
+            .filter(|_| !crate::def_decl::is_invalid(v))
             .cloned()
             .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
         {
@@ -691,6 +708,7 @@ pub fn fold_env(
     for (name, v) in &typed.defs {
         if let Some(t) = v
             .get("type")
+            .filter(|_| !crate::def_decl::is_invalid(v))
             .cloned()
             .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
         {
@@ -916,6 +934,19 @@ pub fn fold_env(
             typed,
             env,
             def_bodies,
+            host_defs: input
+                .snapshot
+                .defs
+                .values()
+                .filter(|d| d.host)
+                .map(|d| d.name.clone())
+                .chain(
+                    imported_defs
+                        .iter()
+                        .filter(|(_, v)| crate::def_decl::is_host(v))
+                        .map(|(n, _)| n.clone()),
+                )
+                .collect(),
             doc_kind,
             domains,
             occasions: input.snapshot.occasions.clone(),

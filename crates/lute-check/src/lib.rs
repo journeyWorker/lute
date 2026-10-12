@@ -28,6 +28,7 @@ pub mod def_decl;
 pub mod def_inline;
 pub mod defassign;
 pub(crate) mod defaults_note;
+pub mod depends;
 pub mod directive_facts;
 pub mod directives;
 pub mod display_names;
@@ -252,7 +253,8 @@ pub use timeline::{
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };
 pub use usage::{
-    check_project_usage, document_read_view, schema_sources, yaml_read_view, UsageDoc,
+    check_project_usage, document_read_view, number_row_values, schema_sources, yaml_read_view,
+    UsageDoc,
     W_DEF_UNUSED, W_RELATION_UNREAD,
 };
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

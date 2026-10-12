@@ -23,7 +23,7 @@ $ lute check-project <dir> [--json] [--providers <DIR>] [--engine <FILE>]
 
 `<dir>` 아래의 모든 `*.lute` 파일을 결정적인 정렬 순서로 재귀적으로 `check`합니다(0.29.0: 보고서는 원인을 먼저 출력합니다 — `lute.project.yaml` 행, 플러그인, 스키마, 경로 순서의 각 문서, 프로젝트 전체 행 순서). 각 파일을 자신의 가장 가까운 상위 `lute.project.yaml` 루트에 대해 검사하고, **프로젝트 전체 `<quest id>` 고유성**, 연결성 패스(`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), [관계형 가드 분석](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법)(dsl 0.20.0)을 수행합니다. 가드의 모든 `holds(…)`/`count(…)`는 프로젝트 전체에서 불가능, 보장, 가능 중 하나로 판정되며, 절대 성립할 수 없는 가드는 슬롯의 데드 코드 오류(`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`)로, 중복 가드는 `W-FACT-GUARANTEED`로 보고됩니다. 프로젝트 전체 비트/퀘스트 권고도 실행합니다(dsl 0.22.0): `W-BEAT-PRIORITY-TIE`(같은 `select: first` 계기에서 같은 대상 또는 대상 없음이고 priority가 같으며 `when`들이 서로 배타적이라고 증명되지 않아 파일 순서가 승자를 정함), `W-BEAT-ONCE-RUN-USER`(`when`이 user 등급 상태만 읽으므로 매 런마다 반복되는 `once: run` 비트), `W-QUEST-HANDLER-DEAD`(`fail`도, 필수 하위 퀘스트 목표도, 부모 퀘스트도 없는 퀘스트의 `<on event="questFailed">`라서 절대 실패할 수 없음)입니다. 이어서 `identity:`에 따라 정상 검사된 모든 문서를 컴파일하므로 컴파일 단계 오류가 `compile` 때만이 아니라 여기서도 실패합니다: `E-DUP-VOICEKEY`(한 `voiceKey`에 서로 다른 텍스트의 줄 — 0.22.0부터 기본 `{prefix}.{speaker}-{code}`가 씬들을 분리하므로, 이전의 접두사 없는 `identity.voiceKey: "{speaker}-{code}"`를 고정하는 프로젝트가 겪는 위험) 및 `E-CAPABILITY-MISMATCH`(서로 다른 두 capability 스냅숏을 해석하는 문서로, `compile --all`과 `play`가 거부함)입니다. `--engine <FILE>`은 프로젝트의 정렬된 `requiredSemantics` 합집합도 협상하고 기여한 각 문서/범위를 `E-CHECK-ENGINE-SEMANTICS`로 보고하며, playback을 열지 않습니다. 종료 코드는 정상일 때 **0**, 파일에 오류나 프로젝트 전체 충돌이 하나라도 있을 때 **1**, I/O 또는 매트릭스/버전 실패일 때 **2**입니다. 동일한 `--deny <CODE>`/`--deny-warnings` 승격(`check` 참고)도 프로젝트 전체에 적용됩니다.
 
- dsl 0.24.0부터 `check-project`는 `W-QUEST-NEVER-ACCEPTED`(accept 중심 퀘스트 — `start`가 없고 root 또는 `activate="accept"` 자식이지만 프로젝트의 어떤 `::accept`도 이름 붙이지 않음), `W-RELATION-UNREAD`(assert/seed/derive되었지만 어떤 조건, rule body, def도 읽지 않는 relation), `W-DEF-UNUSED`(아무것도 참조하지 않는 `@def`)를 선언 위치에서 프로젝트마다 한 번씩 경고합니다. `mocks/*.yaml` 패스는 mock의 `bridges:` 응답을 mock이 지정한 문서의 플러그인 호출과 대조합니다(`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
+ dsl 0.24.0부터 `check-project`는 `W-QUEST-NEVER-ACCEPTED`(accept 중심 퀘스트 — `start`가 없고 root 또는 `activate="accept"` 자식이지만 프로젝트의 어떤 `::accept`도 이름 붙이지 않음), `W-RELATION-UNREAD`(assert/seed/derive되었지만 어떤 조건, rule body, def도 읽지 않는 relation), `W-DEF-UNUSED`(아무것도 참조하지 않는 `@def`. `host: true`로 선언한 스키마·플러그인 def는 호스트가 읽으므로 제외)를 선언 위치에서 프로젝트마다 한 번씩 경고합니다. `mocks/*.yaml` 패스는 mock의 `bridges:` 응답을 mock이 지정한 문서의 플러그인 호출과 대조합니다(`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
  
 0.40부터 프로젝트에 `player.bindings.yaml`이 있으면 이 명령은 컴파일 후 선택적인
 플레이어 바인딩도 검사합니다. 바인딩 스키마, `assetsBase` 아래의 asset 파일, domain과
@@ -64,6 +64,10 @@ $ lute check-project . --wip
 0.34.0부터 프로젝트 전체 명령은 가장 가까운 매니페스트 루트마다 하나의 `ProjectModel`을 불러옵니다. 따라서 `check-project`, `scenario`, `beats`, `impact`, `calendar`, `play`, `test`는 하나의 조정된 스냅숏을 공유합니다. 분석에서 파생된 결과에는 `evidence` 수준(`proven`, `witnessed`, `bounded`, `heuristic`, `unknown`)이 붙습니다. 사람용 출력은 `[bounded: <scope>]`, `[heuristic]`, `[unknown]`을 추가하며 `proven`이나 `witnessed`에는 접미사를 붙이지 않습니다. bounded 결과는 “이 범위 안에서”라는 뜻이지 “경로가 없다”는 뜻이 아닙니다.
 
 `lute.project.yaml`에 선언된 제약도 `check-project`가 검사합니다. 위반만 진단으로 표시하며, 성립과 미확정 결과는 아래 보고서에 나타납니다.
+
+요약 줄은 심각도별로 셉니다(0.41.0). `lute check`는 파일마다 `ok: <path> (W warning(s))` 또는 `failed: <path> (E error(s), W warning(s))`로, `check-project`는 `ok: <dir> (F file(s), W project-wide warning(s))` 또는 `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`로 끝납니다. `info` 진단은 경고로 세지 않습니다. 실행에 info가 있으면 개수를 뒤에 덧붙이고(`, I info` / `, I project-wide info`), 없으면 위 줄을 그대로 출력합니다. `hint` 진단은 세지 않으며, `--deny`로 승격된 진단은 오류로만 셉니다.
+
+파싱되지 않는 선언은 더 이상 연쇄 오류를 만들지 않습니다(0.41.0). 0.31에서 제거된 `type: number`는 `number` 위치에서 `E-TYPE-NUMBER`로 보고되며, `int`와 `double` 중 무엇을 고를지 알려 줍니다(그 선언이 받는 값이 모두 정수이면 `int`를 제안합니다). 선언은 이름으로 환경에 남습니다. 그런 선언이 든 export가 있는 플러그인도 나머지 항목은 그대로 불러오고, 그 선언에 기대는 곳은 선언을 고칠 때까지 검사하지 않습니다. `E-CLOCK-DECL`이나 사용처마다의 `E-UNKNOWN-DIRECTIVE` 대신, 잘못된 선언 하나당 첫 사용처에 `W-DEPENDS-ON-INVALID` 안내(info) 하나가 붙고 나머지는 개수로 셉니다.
 
 ## impact
 
@@ -400,6 +404,8 @@ $ lute fix <path>…
 | `<match on="…">` | `<match subject="…">` |
 | `<choice label="…">` | `<choice text="…">` |
 | `@speaker{id="x"}: …` | 앞 줄에 `::label{name="x"}`을 쓰고, `id=`가 없는 줄로 변경 |
+
+이름이 바뀐 도메인은 프로젝트·스키마·플러그인 YAML에서도 바꿉니다(0.41.0). 최상위 `enums:`·`entities:` 블록 바로 아래의 키와 모든 `domain:` 타입 참조의 값이 대상이며 — `musicAction` → `musicPlayback`(0.37.0에서 이름 변경) — 바꾼 곳마다 수정 하나로 셉니다. 같은 매핑에 새 이름이 이미 있으면 옛 키를 그대로 두고 stderr에 알립니다: `` lute fix: <file>:<line>: kept `musicAction:` — `musicPlayback:` is already declared ``. 그 전까지 새 이름에 대한 `E-DOMAIN-UNKNOWN`은 `` — this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix` ``로 끝납니다.
 
 작성자 key의 snake case는 재작성 방식이 명확한 경우에만 lowerCamelCase가 됩니다. 인라인 텍스트 수정자는 절대 새로 만들지 않으며, 기존 수정자는 바이트 단위로 그대로 보존합니다. 이전 migration도 계속 적용됩니다. `:line[speaker]{…}: text` → `@speaker{…}: text`, 선행 `:` sigil → `@`, choice `as="…"` → `into="…"`, 리터럴 비교 `<when test="$ == 'gold'">` → `<when is="gold">`(`W-WHEN-TEST-LITERAL`), 그리고 0.31 CEL 팩트 질의 및 presence 호출 → 표준 CEL 형식입니다.
 

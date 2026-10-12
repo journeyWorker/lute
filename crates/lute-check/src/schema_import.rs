@@ -197,6 +197,8 @@ struct ParsedDoc {
     faulty: BTreeSet<String>,
     /// T3-1: this doc wrote a `clock:` that was rejected.
     clock_rejected: bool,
+    /// 0.41.0 §3.2: this doc's invalid state rows, sited in this file.
+    invalid: BTreeMap<String, lute_manifest::snapshot::InvalidDecl>,
     defs: BTreeMap<String, serde_yaml::Value>,
     /// Project `enums:`/`entities:` domains, ALREADY fused the same way
     /// `TypedMeta::domains` fuses them (entities win a same-doc name
@@ -652,6 +654,11 @@ fn resolve_imports_in(
         .collect();
     state.faulty.extend(clashing);
     state.clock_rejected = parsed.values().any(|d| d.clock_rejected);
+    for d in parsed.values() {
+        for (path, decl) in &d.invalid {
+            state.invalid.entry(path.clone()).or_insert_with(|| decl.clone());
+        }
+    }
 
     let mut defs = BTreeMap::new();
     let mut def_origins = BTreeMap::new();
@@ -1307,6 +1314,7 @@ fn read_and_parse(
         state: BTreeMap::new(),
         faulty: BTreeSet::new(),
         clock_rejected: false,
+        invalid: BTreeMap::new(),
         defs: BTreeMap::new(),
         domains: BTreeMap::new(),
         quest_ids: BTreeSet::new(),
@@ -1573,6 +1581,15 @@ fn read_and_parse(
         .collect();
     let faulty = tm.state.faulty;
     let clock_rejected = tm.state.clock_rejected;
+    let mut invalid_rows = crate::meta::StateSchema {
+        invalid: tm.state.invalid,
+        ..Default::default()
+    };
+    invalid_rows.place_invalid(&canon.file_name().map_or_else(
+        || canon.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    ));
+    let invalid = invalid_rows.invalid;
     let state = tm.state.decls;
     let defs = tm.defs;
     let domains = tm.domains;
@@ -1616,6 +1633,7 @@ fn read_and_parse(
             state,
             faulty,
             clock_rejected,
+            invalid,
             defs,
             domains,
             quest_ids,

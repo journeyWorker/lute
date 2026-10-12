@@ -106,6 +106,23 @@ pub fn check_directive(
             diags.push(d);
             return diags;
         }
+        // 0.41.0 §3.2: a tag whose declaration is invalid — or, with an
+        // active plugin that failed to load, any tag no plugin declares — is
+        // attributed to that declaration, not reported unknown.
+        let cause = crate::depends::invalid(snapshot, "directive", &dir.tag).or_else(|| {
+            (!snapshot.inactive.contains_key(&dir.tag))
+                .then(|| crate::depends::directive_cause(snapshot, &dir.tag))
+                .flatten()
+        });
+        if let Some(cause) = cause {
+            diags.push(crate::depends::depends_diag(
+                &format!("::{}", dir.tag),
+                cause,
+                dir.span,
+                Layer::Staging,
+            ));
+            return diags;
+        }
         // plugin §11.2: an installed-but-inactive tag is a diagnostic WITH a
         // fix-it (naming the plugin to activate), never silently accepted; a
         // truly-unknown tag still yields the plain staging-layer error.
@@ -649,7 +666,7 @@ pub(crate) fn check_domain_member(
                  in this document's own frontmatter, in a project schema reached through \
                  `uses:`, or in a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
                 attr.key
-            ),
+            ) + &crate::renames::renamed_domain_hint(name, domains),
             attr.value_span,
         ));
     }
@@ -705,9 +722,10 @@ fn check_entity_member(
                 format!(
                     "attribute `{}` of `{owner}` is typed `{{ entity: {kind} }}`, but `{kind}` is \
                      not a declared entity kind — declare it under `entities:` in a project \
-                     schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}",
+                     schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}{}",
                     attr.key,
-                    crate::rel_schema::member_hint(kind, &names)
+                    crate::rel_schema::member_hint(kind, &names),
+                    crate::renames::renamed_domain_hint(kind, domains)
                 ),
                 attr.value_span,
             ));

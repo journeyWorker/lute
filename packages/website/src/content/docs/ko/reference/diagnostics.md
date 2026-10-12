@@ -1691,6 +1691,12 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 명세: [dsl §7.4](/ko/spec/)
 
+### E-TYPE-NUMBER
+
+선언의 타입이 `number`입니다. `number`는 더 이상 숫자 타입이 아닙니다 — 상태 행, def와 그 매개변수, 컴포넌트 매개변수, 디렉티브 속성, 브리지 결과, 오케이전 페이로드, 플러그인 상태 셰이프 필드는 `int`나 `double` 중 하나를 골라야 합니다.
+
+명세: [dsl 0.41.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
+
 ### E-UNCLASSIFIED
 
 본문 줄이 Lute 구문이 아닙니다 — 콘텐츠 줄, 디렉티브, `::set`, 알려진 블록 중 어느 것도 아니거나 — 블록이 올 수 없는 자리(예: 섹션 안의 `<quest>`)에 있습니다.
@@ -1935,9 +1941,15 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-DEF-UNUSED
 
-선언된 `@def`가 프로젝트의 콘텐츠, 다른 def, 규칙 가드 어디에서도 `@이름` 형태로 참조되지 않습니다.
+선언된 `@def`가 프로젝트의 콘텐츠, 다른 def, 규칙 가드 어디에서도 `@이름` 형태로 참조되지 않고, `host: true`로 선언되지도 않았습니다.
 
 명세: [dsl 0.24.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
+
+### W-DEPENDS-ON-INVALID
+
+잘못된 선언(또는 불러오지 못한 플러그인)을 쓰는 곳은 그 선언을 고칠 때까지 검사하지 않습니다. 잘못된 선언 하나당 첫 사용처에 안내 하나만 붙고, 나머지 사용처는 개수로 셉니다.
+
+명세: [dsl 0.41.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### W-DERIVE-NO-RULES
 
@@ -2019,9 +2031,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-OBJECTIVE-STRANDED
 
-필수 목표가 시계로 제한된 비트로만 완료될 수 있고 그 비트들의 시간 창이 모두 닫힐 수 있지만, 목표에 `until=`이나 `by=` 기한이 없습니다. 기한과 `failedBy` 처리기를 추가하거나 기한 실패를 처리하는 콘텐츠를 작성하세요. run 계층 퀘스트에서는 다음 실행에서 다시 시도하므로 정보성 진단입니다.
+필수 목표가 같은 문서 비트들의 선언된 시계 창 안에서만 완료될 수 있는데 그 창이 모두 닫힐 수 있고, 목표에 `until=`이나 `by=` 기한이 없어 방치될 수 있습니다. 다시 열리는 퀘스트(run·season 계층, `rearm=`)나 다른 문서의 비트가 완료할 수 있는 목표는 보고하지 않습니다. 경로 탐색은 하지 않습니다.
 
-명세: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md)
+명세: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md), [dsl 0.41.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### W-OTHERWISE-DEAD
 

@@ -283,6 +283,9 @@ pub struct FoldedEnv {
     pub env: Env,
     /// def name -> raw CEL body, merged plugin < imported < inline (D4 input).
     pub def_bodies: std::collections::BTreeMap<String, String>,
+    /// 0.41.0 §3.5: the defs this document sees that declare `host: true` —
+    /// a schema file's or a plugin's — read by the host, so never unused.
+    pub host_defs: std::collections::BTreeSet<String>,
     /// The resolved root document kind (dsl 0.2.0 §3.1): `Scene` when
     /// unresolved (missing/unknown `kind:`) so scene stays the degrade-safe
     /// path and downstream dispatch never panics.

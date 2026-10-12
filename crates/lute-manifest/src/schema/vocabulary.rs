@@ -95,7 +95,7 @@ pub struct DefParam {
     pub ty: Type,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DefDecl {
     pub name: String,
@@ -110,6 +110,29 @@ pub struct DefDecl {
     pub max: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub values: Option<Vec<String>>,
+    /// 0.41.0 §3.5: the host reads this def (`Program.def`), so it is never
+    /// unused; exported as `host: true` in the index `defs`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub host: bool,
+}
+
+/// The derived shape, with `host` only when it is `true`: `capabilitySnapshot`
+/// hashes this text, so a snapshot without host defs keeps its 0.40 identity.
+impl std::fmt::Debug for DefDecl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("DefDecl");
+        s.field("name", &self.name)
+            .field("ty", &self.ty)
+            .field("params", &self.params)
+            .field("cel", &self.cel)
+            .field("min", &self.min)
+            .field("max", &self.max)
+            .field("values", &self.values);
+        if self.host {
+            s.field("host", &self.host);
+        }
+        s.finish()
+    }
 }
 
 /// A capability-declared world event (dsl 0.2.0 §4.5): a named event kind an

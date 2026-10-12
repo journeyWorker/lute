@@ -284,13 +284,27 @@ fn fix_file(file: &Path, scope: Scope<'_>) -> (Outcome, usize) {
     };
     let legacy = lute_check::fix_document(&text);
     let (mut out, mut changed) = (legacy.text, legacy.changed);
-    let cel = if file.extension().is_some_and(|ext| ext == "yaml" || ext == "yml") {
+    let yaml = file.extension().is_some_and(|ext| ext == "yaml" || ext == "yml");
+    let cel = if yaml {
         rewrite_yaml_cel(&out)
     } else {
         rewrite_lute_cel(&out)
     };
     changed += cel.changed;
     out = cel.text;
+    if yaml {
+        let domains = rewrite_yaml_domains(&out);
+        for (line, renamed) in &domains.kept {
+            eprintln!(
+                "lute fix: {}:{line}: kept `{}:` — `{}:` is already declared",
+                file.display(),
+                renamed.old,
+                renamed.new
+            );
+        }
+        changed += domains.rewrite.changed;
+        out = domains.rewrite.text;
+    }
     if changed == 0 {
         scope.say_unchanged("nothing to fix");
         return (Outcome::Unchanged, 0);
@@ -804,6 +818,209 @@ fn rewrite_yaml_cel(text: &str) -> Rewrite {
         offset += line.len();
     }
     apply_edits(text, edits)
+}
+
+/// The YAML domain rename pass's result: the rewritten text and, per old
+/// domain key kept because its mapping already declares the new name, the
+/// key's 1-based line.
+struct DomainRewrite {
+    rewrite: Rewrite,
+    kept: Vec<(usize, &'static lute_check::renames::RenamedDomain)>,
+}
+
+/// Rename renamed domains (`lute_check::renames::RENAMED_DOMAINS`) in project,
+/// schema and plugin YAML (0.41.0 §3.1): a mapping key directly under a
+/// top-level `enums:` / `entities:` block, and the scalar of every `domain:`
+/// type reference. Spans are spliced in place like [`rewrite_yaml_cel`], so
+/// comments, key order, quoting and layout survive; a second run changes
+/// nothing. An old key whose mapping already declares the new name is kept
+/// and reported instead (renaming it would duplicate the key).
+fn rewrite_yaml_domains(text: &str) -> DomainRewrite {
+    use lute_check::renames::RENAMED_DOMAINS;
+    let lines: Vec<(usize, &str)> = text
+        .split_inclusive('\n')
+        .scan(0, |offset, line| {
+            let at = *offset;
+            *offset += line.len();
+            Some((at, line.strip_suffix('\n').unwrap_or(line)))
+        })
+        .collect();
+    let mut edits = Vec::new();
+    let mut kept = Vec::new();
+
+    // Keys of a top-level `enums:` / `entities:` mapping — a block at its
+    // first child indent, or a flow map `{ … }` at its first level:
+    // (1-based line, unquoted key, key byte offset in the text).
+    let mut rename_keys = |keys: &[(usize, &str, usize)]| {
+        for renamed in RENAMED_DOMAINS {
+            let declares_new = keys.iter().any(|(_, key, _)| *key == renamed.new);
+            for &(line, key, at) in keys {
+                if key != renamed.old {
+                    continue;
+                }
+                if declares_new {
+                    kept.push((line, renamed));
+                } else {
+                    edits.push((at, at + key.len(), renamed.new.to_string()));
+                }
+            }
+        }
+    };
+    let mut i = 0;
+    while i < lines.len() {
+        let (line_at, body) = lines[i];
+        i += 1;
+        let Some((start, end, value)) = yaml_key_value(body) else {
+            continue;
+        };
+        if start != 0 || !matches!(&body[start..end], "enums" | "entities") {
+            continue;
+        }
+        if body[value..].starts_with('{') {
+            let keys: Vec<(usize, &str, usize)> = flow_map_keys(text, line_at + value)
+                .into_iter()
+                .map(|(at, key)| (text[..at].matches('\n').count() + 1, key, at))
+                .collect();
+            rename_keys(&keys);
+            continue;
+        }
+        if yaml_value_end(body, value) != value {
+            continue;
+        }
+        let mut child_indent = None;
+        let mut keys = Vec::new();
+        while i < lines.len() {
+            let (offset, body) = lines[i];
+            let trimmed = body.trim_start();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                i += 1;
+                continue;
+            }
+            let indent = body.len() - trimmed.len();
+            if indent == 0 {
+                break;
+            }
+            i += 1;
+            if *child_indent.get_or_insert(indent) != indent {
+                continue;
+            }
+            if let Some((start, end, _)) = yaml_key_value(body) {
+                let raw = &body[start..end];
+                let (key, inner) = match raw.as_bytes()[0] {
+                    b'"' | b'\'' if raw.len() >= 2 => (&raw[1..raw.len() - 1], start + 1),
+                    _ => (raw, start),
+                };
+                keys.push((i, key, offset + inner));
+            }
+        }
+        rename_keys(&keys);
+    }
+
+    // `domain: <old>` scalars, block or flow style, outside quotes/comments.
+    for &(offset, body) in &lines {
+        let bytes = body.as_bytes();
+        let mut quote = None;
+        let mut j = 0;
+        while j < bytes.len() {
+            let b = bytes[j];
+            match quote {
+                Some(q) if b == q => quote = None,
+                Some(_) => {}
+                None if b == b'\'' || b == b'"' => quote = Some(b),
+                None if b == b'#' && (j == 0 || bytes[j - 1].is_ascii_whitespace()) => break,
+                None if body[j..].starts_with("domain:")
+                    && (j == 0 || !is_ident_continue(bytes[j - 1])) =>
+                {
+                    let mut v = j + "domain:".len();
+                    while v < bytes.len() && bytes[v] == b' ' {
+                        v += 1;
+                    }
+                    let quoted = bytes.get(v).copied().filter(|c| *c == b'"' || *c == b'\'');
+                    let start = v + usize::from(quoted.is_some());
+                    let mut end = start;
+                    while end < bytes.len() && is_ident_continue(bytes[end]) {
+                        end += 1;
+                    }
+                    let closes = match quoted {
+                        Some(q) => bytes.get(end) == Some(&q),
+                        None => bytes
+                            .get(end)
+                            .is_none_or(|c| matches!(c, b' ' | b'\t' | b',' | b'}' | b']' | b'#' | b'\r')),
+                    };
+                    if closes {
+                        if let Some(renamed) = RENAMED_DOMAINS.iter().find(|r| r.old == &body[start..end]) {
+                            edits.push((offset + start, offset + end, renamed.new.to_string()));
+                        }
+                    }
+                    j = end + usize::from(quoted.is_some() && closes);
+                    continue;
+                }
+                None => {}
+            }
+            j += 1;
+        }
+    }
+    DomainRewrite {
+        rewrite: apply_edits(text, edits),
+        kept,
+    }
+}
+
+/// The first-level keys of the YAML flow mapping opening at byte `open` of
+/// `text` (`{ a: [x], "b": { c: y } }` → `a`, `b`), each with its unquoted
+/// byte offset. Nested mappings and sequences, quoted scalars and comments
+/// are skipped, so a nested value is never taken for a key.
+fn flow_map_keys(text: &str, open: usize) -> Vec<(usize, &str)> {
+    let b = text.as_bytes();
+    let mut keys = Vec::new();
+    let mut depth = 0usize;
+    let mut expect_key = false;
+    let mut i = open;
+    while i < b.len() {
+        match b[i] {
+            q @ (b'"' | b'\'') => {
+                let start = i + 1;
+                i = start;
+                while i < b.len() && b[i] != q {
+                    i += if q == b'"' && b[i] == b'\\' { 2 } else { 1 };
+                }
+                if expect_key && depth == 1 {
+                    keys.push((start, &text[start..i.min(b.len())]));
+                    expect_key = false;
+                }
+            }
+            b'#' if b[i - 1].is_ascii_whitespace() => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            c @ (b'{' | b'[') => {
+                depth += 1;
+                expect_key = depth == 1 && c == b'{';
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    break;
+                }
+            }
+            b',' if depth == 1 => expect_key = true,
+            c if c.is_ascii_whitespace() => {}
+            _ if expect_key && depth == 1 => {
+                let start = i;
+                while i < b.len() && !matches!(b[i], b':' | b',' | b'}') && !b[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                keys.push((start, &text[start..i]));
+                expect_key = false;
+                continue;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    keys
 }
 
 fn rewrite_yaml_quoted_segments(line: &str) -> Option<String> {

@@ -82,6 +82,45 @@ pub struct CapabilitySnapshot {
     /// surface. It is deliberately excluded from [`capability_version`] and
     /// from serialized authoring-surface output.
     pub identity_require_stable: bool,
+    /// 0.41.0 §3.2: declarations of the active plugins that are declared but
+    /// invalid (a `type: number`, or a reference to such a declaration),
+    /// keyed by `(kind, name)` — `("directive", "check")`. Kept out of the
+    /// resolved surface above and out of [`capability_version`]: the checker
+    /// reads them only so a use is attributed to the invalid declaration
+    /// instead of reported unknown.
+    pub invalid: BTreeMap<(String, String), InvalidDecl>,
+    /// Active plugins that failed to load, by id, with their first error —
+    /// the cause a document's unknown directive tags are attributed to.
+    pub failed: BTreeMap<String, InvalidDecl>,
+}
+
+/// A declaration the toolchain keeps by name although it does not parse
+/// (0.41.0 §3.2): what its dependants name as the reason they are not
+/// checked.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InvalidDecl {
+    /// The invalid declaration a dependant names — itself, or the one it
+    /// references (`dice.check` for a directive calling an invalid bridge).
+    pub cause: String,
+    /// The code reported at the cause.
+    pub code: String,
+    /// `file:line` of the cause, the file relative to the plugins
+    /// directory (`game.occasions/bridge/dice.yaml:8`).
+    pub site: Option<String>,
+    /// The literal values the declaration itself gives (its `default:`),
+    /// which the `E-TYPE-NUMBER` `int` suggestion starts from.
+    pub seen: Vec<f64>,
+}
+
+impl InvalidDecl {
+    /// `` (<code> at <site>) `` — the parenthesis of a
+    /// `W-DEPENDS-ON-INVALID` naming this cause.
+    pub fn origin(&self) -> String {
+        match &self.site {
+            Some(site) => format!("{} at {site}", self.code),
+            None => self.code.clone(),
+        }
+    }
 }
 
 /// An enum-style named vocabulary: an ordered member list, same shape as an

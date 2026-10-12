@@ -950,3 +950,7 @@ kind 대상, `W-ENTRY-WRITE-REREAD`, 더 정교한 `W-BEAT-PRIORITY-TIE`, `cover
 범위가 `declared clock windows; no path search`인 `bounded`로 표시합니다. 제한된 범위의
 `W-OBJECTIVE-STRANDED` 및 `W-SLOT-CONTENTION` 메시지는 보편적인 불가능성이 아니라
 해당 범위만 설명합니다.
+
+0.41.0부터 `W-OBJECTIVE-STRANDED`는 메시지에 이 근거 수준을 직접 밝히며 항상 경고입니다.
+목표를 다시 시도하는 재무장 퀘스트(`tier="run"`, `tier="season:<name>"`, `rearm=`)와
+다른 문서의 비트가 완료할 수 있는 목표는 보고하지 않습니다.

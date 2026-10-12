@@ -296,6 +296,9 @@ pub fn assemble_snapshot(
             continue;
         }
         let Some(inst) = installed.get(&ap.id) else {
+            if let Some(cause) = installed.failed_causes.get(&ap.id) {
+                snap.failed.insert(ap.id.clone(), cause.clone());
+            }
             errs.push(AssembleError::MissingActivePlugin {
                 id: ap.id.clone(),
                 failed_with: installed.failed.get(&ap.id).cloned().unwrap_or_default(),
@@ -303,6 +306,11 @@ pub fn assemble_snapshot(
             continue;
         };
         let pkg = &inst.loaded;
+        for ((kind, name), decl) in &pkg.invalid {
+            snap.invalid
+                .entry((kind.to_string(), name.clone()))
+                .or_insert_with(|| decl.clone());
+        }
         let merging = Merging {
             plugin: &ap.id,
             pkg,

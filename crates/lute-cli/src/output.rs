@@ -249,16 +249,37 @@ pub(crate) fn print_human(file: &Path, result: &lute_check::CheckResult, policy:
         .iter()
         .filter(|d| d.severity == Severity::Error || policy.denied(d))
         .count();
-    let warnings = result
-        .diagnostics
-        .iter()
-        .filter(|d| d.severity == Severity::Warning && !policy.denied(d))
-        .count();
+    let warnings = count_severity(&result.diagnostics, Severity::Warning, policy);
+    let infos = info_tail(count_severity(&result.diagnostics, Severity::Info, policy), "info");
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
     if ok {
-        println!("ok: {path} ({warnings} warning(s))");
+        println!("ok: {path} ({warnings} warning(s){infos})");
     } else {
-        println!("failed: {path} ({errors} error(s), {warnings} warning(s))");
+        println!("failed: {path} ({errors} error(s), {warnings} warning(s){infos})");
+    }
+}
+
+/// How many of `diagnostics` are of `severity` and not `--deny`-promoted (a
+/// promoted one counts as an error only, spec §5). `hint` is never counted.
+pub(crate) fn count_severity<'a>(
+    diagnostics: impl IntoIterator<Item = &'a Diagnostic>,
+    severity: Severity,
+    policy: &DenyPolicy,
+) -> usize {
+    diagnostics
+        .into_iter()
+        .filter(|d| d.severity == severity && !policy.denied(d))
+        .count()
+}
+
+/// The `, I <noun>` tail of a summary line: empty when there is no info
+/// diagnostic, so a run without one prints the summary it always printed
+/// (0.41.0 §3.3).
+pub(crate) fn info_tail(infos: usize, noun: &str) -> String {
+    if infos == 0 {
+        String::new()
+    } else {
+        format!(", {infos} {noun}")
     }
 }
 

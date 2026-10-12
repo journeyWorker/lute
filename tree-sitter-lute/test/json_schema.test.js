@@ -255,6 +255,15 @@ entities:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  test("defs: `host` is a boolean def key (0.41.0 §3.5)", () => {
+    const { ajv, declSchema } = loadAjv();
+    const good = Bun.YAML.parse('defs:\n  open: { cel: "user.level > 1", host: true }\n');
+    const okGood = validateAgainst(ajv, declSchema.$id, good);
+    expect(okGood.ok, JSON.stringify(okGood.errors)).toBe(true);
+    const bad = Bun.YAML.parse('defs:\n  open: { cel: "user.level > 1", host: "yes" }\n');
+    expect(validateAgainst(ajv, declSchema.$id, bad).ok).toBe(false);
+  });
+
   test("broken def: no `cel`, an unknown key, or `params` without `type` (E-DEF-DECL)", () => {
     const { ajv, declSchema } = loadAjv();
     for (const def of [
