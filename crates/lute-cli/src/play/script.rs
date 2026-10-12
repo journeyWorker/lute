@@ -98,7 +98,7 @@ pub(super) enum StepAction {
         occasion: String,
         target: Option<String>,
         pick: Option<Pick>,
-        choose: BTreeMap<String, Vec<String>>,
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
         /// dsl 0.27.0 §3: the raise's typed payload, `field -> literal`.
         payload: Vec<(String, String)>,
         /// dsl 0.27.0 §4: the step's `engine:` writes, applied before the
@@ -122,12 +122,20 @@ pub(super) enum StepAction {
         /// applied before the clock moves; one settle follows both.
         writes: RawWrites,
         pick: Option<Pick>,
-        choose: BTreeMap<String, Vec<String>>,
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
         occasion_expect: Option<&'static str>,
     },
     /// `end: true` (0.23.1): the playthrough is over — later steps are
     /// skipped. A `::end` in a presentation ends only that presentation.
     End,
+}
+
+/// One scripted branch/hub answer. Timeout is kept typed all the way to the
+/// play driver; it is never encoded as an option id.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ScriptedPick {
+    Option(String),
+    Timeout,
 }
 
 /// How far an `advance:` step moves the clock, as written.
@@ -302,7 +310,7 @@ pub(super) struct Segment {
     /// Where the `include:` item was written — its `choose:` / `bridges:`
     /// usage errors are located there.
     pub(super) at: StepSource,
-    pub(super) choose: BTreeMap<String, Vec<String>>,
+    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(super) bridges: BTreeMap<String, Vec<BridgeAnswer>>,
 }
 
@@ -378,8 +386,10 @@ impl ScriptSource {
 
 /// A parsed play script.
 pub(super) struct PlayScript {
-    /// `state:` / `facts:` / `choose:`, exactly as a trace mock carries them.
+    /// `state:` / `facts:` surfaces parsed by the trace-mock grammar.
     pub(super) surfaces: MockSet,
+    /// Top-level scripted branch/hub answers, kept typed (not mock strings).
+    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(super) save: SaveSeed,
     pub(super) steps: Vec<ScriptStep>,
     /// Where the script was written.
@@ -461,6 +471,7 @@ pub(super) fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String
 /// The top-level keys of a play script other than `steps:`.
 struct ScriptTop<'v> {
     surfaces: MockSet,
+    choose: BTreeMap<String, Vec<ScriptedPick>>,
     save: SaveSeed,
     expect: Option<serde_yaml::Value>,
     derive: Option<bool>,
@@ -485,6 +496,7 @@ pub(super) fn parse_script_with(
     let (top, mut errs) = parse_top(&value, &source).map_err(|e| plain(&e))?;
     let ScriptTop {
         surfaces,
+        choose,
         save,
         expect,
         derive,
@@ -550,6 +562,7 @@ pub(super) fn parse_script_with(
     }
     Ok(PlayScript {
         surfaces,
+        choose,
         save,
         steps: parsed,
         source,
@@ -575,6 +588,7 @@ fn parse_top<'v>(
         errs.push(format!("{}: {msg}", source.at(keys)));
     };
     let mut surfaces = serde_yaml::Mapping::new();
+    let mut choose = BTreeMap::new();
     let mut steps = None;
     let mut save = SaveSeed::default();
     let (mut expect, mut derive) = (None, None);
@@ -588,6 +602,10 @@ fn parse_top<'v>(
         };
         match key {
             "steps" => steps = Some(v),
+            "choose" => match parse_choose(v) {
+                Ok(value) => choose = value,
+                Err(e) => refuse(&[key], e),
+            },
             _ if MOCK_SURFACES.contains(&key) => {
                 surfaces.insert(k.clone(), v.clone());
             }
@@ -685,7 +703,7 @@ fn parse_top<'v>(
         MockSet::default()
     } else {
         let parsed = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
-            .map_err(|e| format!("cannot re-read `state:`/`facts:`/`choose:`: {e}"))
+            .map_err(|e| format!("cannot re-read `state:`/`facts:`: {e}"))
             .and_then(|text| lute_trace::parse_mock_yaml(&text).map_err(|d| d.text().into_owned()));
         match parsed {
             Ok(mocks) => mocks,
@@ -698,6 +716,7 @@ fn parse_top<'v>(
     Ok((
         ScriptTop {
             surfaces,
+            choose,
             save,
             expect,
             derive,
@@ -923,15 +942,53 @@ fn expand_includes(
     Ok(())
 }
 
-/// A step's (or an include's) `choose:`, parsed by the trace-mock grammar.
-fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<String>>, String> {
-    let mut doc = serde_yaml::Mapping::new();
-    doc.insert("choose".into(), v.clone());
-    let text = serde_yaml::to_string(&serde_yaml::Value::Mapping(doc))
-        .map_err(|e| format!("cannot re-read `choose:`: {e}"))?;
-    lute_trace::parse_mock_yaml(&text)
-        .map(|m| m.choose)
-        .map_err(|d| d.text().into_owned())
+/// A step's, include's, or top-level `choose:`, parsed without the trace
+/// mock grammar so a timeout remains a typed scripted answer.
+fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<ScriptedPick>>, String> {
+    let serde_yaml::Value::Mapping(entries) = v else {
+        return Err("`choose:` must be a mapping of branch/hub id to choice id(s)".into());
+    };
+    let mut out = BTreeMap::new();
+    for (key, value) in entries {
+        let Some(id) = key.as_str() else {
+            return Err("`choose:` keys must be branch or hub ids".into());
+        };
+        let values = match value {
+            serde_yaml::Value::Sequence(items) => items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| parse_pick(id, item, Some(i + 1)))
+                .collect::<Result<Vec<_>, _>>()?,
+            _ => vec![parse_pick(id, value, None)?],
+        };
+        out.insert(id.to_string(), values);
+    }
+    Ok(out)
+}
+
+fn parse_pick(
+    id: &str,
+    value: &serde_yaml::Value,
+    item: Option<usize>,
+) -> Result<ScriptedPick, String> {
+    let where_ =
+        item.map_or_else(|| format!("`choose.{id}`"), |i| format!("`choose.{id}` list item {i}"));
+    match value {
+        serde_yaml::Value::String(option) if !option.trim().is_empty() => {
+            Ok(ScriptedPick::Option(option.trim().to_string()))
+        }
+        serde_yaml::Value::Mapping(fields) => {
+            let timeout = fields.get(serde_yaml::Value::String("timeout".into()));
+            if fields.len() != 1 || timeout.is_none() {
+                return Err(format!("{where_} mapping must be exactly `{{ timeout: true }}`"));
+            }
+            if timeout.and_then(serde_yaml::Value::as_bool) != Some(true) {
+                return Err(format!("{where_} timeout mapping must set `timeout` to `true`"));
+            }
+            Ok(ScriptedPick::Timeout)
+        }
+        _ => Err(format!("{where_} must be a choice id or `{{ timeout: true }}`")),
+    }
 }
 
 /// `engine:` / long-form `newRun:` writes. `retract` says whether
@@ -1329,4 +1386,48 @@ fn parse_step_keys(
         },
         expect,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_script, ScriptedPick, StepAction};
+    use std::path::Path;
+
+    #[test]
+    fn parses_timeout_as_a_typed_value() {
+        let script = parse_script(
+            "choose:\n  knock: { timeout: true }\nsteps:\n  - occasion: visit\n",
+            Path::new("script.play.yaml"),
+        )
+        .unwrap();
+        assert_eq!(script.choose["knock"], vec![ScriptedPick::Timeout]);
+    }
+
+    #[test]
+    fn parses_timeout_inside_a_pick_list() {
+        let script = parse_script(
+            "steps:\n  - occasion: visit\n    choose:\n      knock: [{ timeout: true }, wait]\n",
+            Path::new("script.play.yaml"),
+        )
+        .unwrap();
+        let StepAction::Occasion { choose, .. } = &script.steps[0].action else {
+            panic!("expected occasion step");
+        };
+        assert_eq!(
+            choose["knock"],
+            vec![ScriptedPick::Timeout, ScriptedPick::Option("wait".into())]
+        );
+    }
+
+    #[test]
+    fn rejects_non_true_timeout_mapping() {
+        let error = match parse_script(
+            "choose:\n  knock: { timeout: false }\nsteps:\n  - occasion: visit\n",
+            Path::new("script.play.yaml"),
+        ) {
+            Ok(_) => panic!("expected invalid timeout mapping"),
+            Err(error) => error,
+        };
+        assert!(error.contains("timeout mapping must set `timeout` to `true`"), "{error}");
+    }
 }

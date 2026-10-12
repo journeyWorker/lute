@@ -1,0 +1,15 @@
+pluginsDir: plugins/
+defaultProfile: demo
+profiles:
+  demo:
+    plugins: { demo.occasions: true }
+defaults:
+  luteVersion: "0.40.0"
+  contentLang: en-US
+  pov: narrator
+  uses: [world.schema.yaml, vocabulary.schema.yaml]
+chapters:
+  - on: chapter
+    scenes: [chapter-one, chapter-two, chapter-three, epilogue-dawn, epilogue-dusk]
+identity:
+  requireStable: true

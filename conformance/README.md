@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.39.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.40.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -137,6 +137,8 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `identity/save-collision` | the real rename ledger is paired with `save-before.json` and `migration-report.json`; engines MUST reproduce the report's refusal/coalescing outcomes before mutating saves |
 | `section-ids` | dsl 0.37.0 §3.1 sections: `## Heading {#id}` lands in `sections[]` as `{section, heading, id}`; the middle section has no id and keeps only its positional fallback; each command `position` starts with its one-based section number |
 | `staging-sequence-camera` | every 0.37 staging kind with `family: "staging"`: `bg`, `music` (`playback`), `sfx`, `vfx` (`type`), `sequence` (`wait` defaults to `true`; `wait="false"` emits `timing.wait: false`), authored `actor` with `emotion`/`costume`, an `actor` emotion update with no line, the injected anchor and pose-reset `actor` records (`provenance`), `camera` domain members `focus`/`framing`/`move`/`transition`, `cg` with its resolved default `display: "show"` and a `layout`, `video` with its resolved default `display`, an actor exit from `action.exits`, and a `<timeline>` whose clips carry nested `timing` (`at`, zero-based `timeline` ordinal) joined by a `barrier` with direct `timeline`/`at` |
+| `choice-timed-default` | a timed `<branch>` carries `timeout` and `default`; timeout input takes the named direct option |
+| `music-stops` | `musicPlayback.stops` marks only the listed playback member with `stop: true` in the music IR |
 | `line-roles-voicekey` | every line `role` — `narration`, `dialogue`, `mono` (the POV speaker and a `monoSpeakers` speaker), `os`, `vo` — and a `voiceKey` on every line, narration and mono included |
 | `inline-modifiers` | dsl 0.37.0 §3.6 inline modifiers: `pause`, `speed`, nested `textStyle` spans, escaped punctuation, and `{{…}}` interpolation inside a span; `text` is the plain derivation and `segments` the coalesced runs (innermost rate wins). `loc/ja-JP.json` is imported to `locales.json` and merged with `lute compile --locales`, so each line carries `texts["ja-JP"]` and modified lines `localeSegments["ja-JP"]` |
 | `jump-label` | `::label{name}` emits no record; a guarded forward `::jump{to}` is taken from the seeded `run.hasKey`; a branch option carries `text`; `<match subject=…>` reads the seeded subject |
@@ -163,7 +165,7 @@ fixtures. `command-staging` covers `bg`, `music`, `sfx`, `vfx`, `actor`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. Every recorded command
 carries its `family` (`content`, `staging`, `state`, `control`, `declaration`,
 `plugin`) and `position`. No requested kind is unsupported by the reference
-runner. The staging fixture uses a live `luteVersion: "0.39.0"` header, as do
+runner. The staging fixture uses a live `luteVersion: "0.40.0"` header, as do
 the lifecycle and plugin sources.
 
 ### Diagnostic fixtures
@@ -270,7 +272,7 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 
 ## Edit-task suite
 
-The 0.39.0 AI edit-loop conformance suite is in
+The 0.40.0 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
 

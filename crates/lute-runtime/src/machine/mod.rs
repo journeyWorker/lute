@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.39.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.40.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -187,6 +187,8 @@ pub struct Carry {
     pub failed_objectives: BTreeSet<String>,
     /// See [`Machine::deferred_handlers`] — empty unless deferring.
     pub deferred_handlers: Vec<String>,
+    /// The presentation stage reduced by the walk's staging records.
+    pub stage: crate::Stage,
 }
 
 impl Carry {
@@ -337,6 +339,8 @@ pub struct Machine<D: Driver> {
 
     /// State, facts, the closure and the visited set ([`Store`]).
     store: Store,
+    /// Persistent presentation stage, reduced before staging records emit.
+    pub(crate) stage: crate::Stage,
 
     seed: Seed,
 

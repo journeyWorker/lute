@@ -1,0 +1,15 @@
+---
+kind: scene
+id: start
+on: start
+---
+## Start
+::bg{location="foyer" time="night" assetId="door"}
+::actor{character="guide" anchor="left" emotion="happy" costume="coat" action="fadeIn"}
+::music{playback="start" mood="calm" assetId="theme"}
+::sfx{sound="door" assetId="door"}
+::vfx{type="flash"}
+::cg{assetId="door" layout="full"}
+::video{assetId="movie"}
+::sequence{name="intro"}
+@narrator: Hello.

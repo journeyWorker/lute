@@ -101,6 +101,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 명세: [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
+
 ### E-BEAT-ATTR
 
 비트의 `on`, `target`, `priority`, `once` 속성이 잘못되었습니다. 이름이 아닌 `on`, `target: true`로 선언되지 않은 occasion에 붙은 `target`, 정수가 아닌 `priority`, `run`/`user`/`false` 밖의 `once`, `on` 없는 비트 키, 아직 존재하지 않는 씬 자신의 `scene.*` 상태를 읽는 `when`, 또는 `once: false`나 `share` 키와 함께 쓴 `spentBy`가 해당합니다.
@@ -119,11 +120,40 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 명세: [dsl 0.21.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
 
+### E-BINDING-EFFECT
+
+플레이어 바인딩이 알 수 없는 효과를 지정하거나 해당 효과가 받지 않는 매개변수를 지정합니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.40.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-FILE
+
+플레이어 바인딩이 `assetsBase`에 상대적인 위치에서 존재하지 않는 에셋 파일을 가리킵니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-KEY
+
+플레이어 바인딩 키가 선언된 도메인 구성원, cast id, occasion, target 또는 컴파일된 스테이징 값이 아닙니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### E-BINDING-SHAPE
+
+플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함합니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 ### E-BRANCH-ALL-GUARDED
 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
 
 명세: [dsl §11.1](/ko/spec/)
+
+### E-BRANCH-DEFAULT
+
+시간 제한이 있는 `<branch>`에 `default=`로 지정한 유효한 직접 옵션이 없거나 항상 선택 가능하지 않습니다.
+
+명세: [dsl 0.40.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### E-BRANCH-EMPTY
 
@@ -608,6 +638,11 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 도메인이 `default:` 또는 `exits:` 의미를 요구하는 슬롯(예: `anchor`)을 차지했지만, 그 도메인(또는 이를 대신하는 `entities:` 종류)이 둘 다 선언하지 않았습니다.
 
 명세: [dsl 0.9.0 D-D](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md)
+### E-ENUM-STOPS-NOT-MEMBER
+
+`musicPlayback` 도메인의 `stops:` 목록이 도메인 자신이 선언한 멤버가 아닌 값을 지정했습니다.
+
+명세: [dsl 0.40.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### E-ENUM-UNEXPECTED-SEMANTICS
 
@@ -1396,6 +1431,12 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 명세: [dsl 0.38.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
 
+### E-RUNTIME-TIMEOUT
+
+타임아웃 입력이 시간 제한이 있는 선택지가 아닌 대기 중인 요청에 전달되었습니다.
+
+명세: [dsl 0.40.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
 ### E-SEASON-DECL
 
 명세: [dsl 0.27.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
@@ -1772,6 +1813,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 에셋 id가 출시 전에 확정해야 할 자리표시자(placeholder)처럼 보입니다.
 
+
 ### W-BEAT-ONCE-RUN-USER
 
 장면 비트의 `once`가 기본값 `run`이지만 `when`이 사용자 계층 상태만 읽어서 `once`를 명시적으로 쓰지 않으면 매 실행마다 다시 나타납니다.
@@ -1801,6 +1843,17 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 비트가 시계의 `raise:` 맵이 raise하는 계기에 응답하는데, 그 `when`은 시계가 그 계기를 raise하지 않는 곳에서만 참이 될 수 있습니다. 하루의 마지막 슬롯이 아닌 슬롯을 위한 `dayEnd` 비트나, 실행이 시작된 날의 뒤쪽 슬롯을 위한 `dayStart` 비트가 그렇습니다. 또는 마지막 `dayEnd`에서만 참이 될 수 있는데, 시계를 끝내는 advance는 `clock.ended`가 참이 된 뒤에 그것을 raise하므로, `clock.ended`와 함께 참이 되는 `terminal:`이 이미 게임을 끝낸 뒤입니다. 그래서 그 비트는 재생되지 않습니다. 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하거나 `when`을 바꾸세요. 마지막 `dayEnd`라면 시계가 끝나기 전에 raise하거나, 그 비트가 재생된 뒤에만 참이 되도록 `terminal:`을 쓰세요. 실행이 시작되는 위치에서 참이 되는 비트도 경고됩니다. 거기서는 어떤 `advance:`도 멈추지 않으므로 시계가 slot 계기도 `dayStart`도 raise하지 않지만, 엔진이 실행을 시작할 때 그 계기를 raise한다면 비트는 재생됩니다. 그렇다면 시계에 `raiseAtStart: true`를 선언하세요. 경고가 사라집니다. 그렇지 않다면 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하세요.
 
 명세: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+### W-BINDING-MISSING
+
+선언되었거나 사용된 프로젝트 스테이징 값, cast 구성원, 에셋 또는 flow 참조에 플레이어 바인딩이 없습니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### W-BINDING-UNUSED
+
+플레이어 바인딩 키를 컴파일된 프로젝트 문서가 사용하지 않습니다.
+
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
 ### W-BRANCH-ID-SHARED
 

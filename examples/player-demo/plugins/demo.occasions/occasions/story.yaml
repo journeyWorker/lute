@@ -1,0 +1,3 @@
+occasions:
+  start: { select: first, description: New game }
+  chapter: { select: first, description: Advance the story chapter }

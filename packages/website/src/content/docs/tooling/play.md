@@ -191,16 +191,16 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 `--events` writes a resumable runtime stream as compact JSON Lines. The first
 line contains the seed and its output; every following line pairs the input
 the player took with its output, including `choose` and `bridgeResult`
-answers. Each output is stamped with `eventVersion: "0.39.0"`. The stream is
+answers. Each output is stamped with `eventVersion: "0.40.0"`. The stream is
 exclusive with `--json`, `--ir`, `--explain`, and `--dump-conditions`.
 
 A short real stream from the hub conformance project looks like this (the
 first choice opens a second await):
 
 ```json
-{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.39.0","events":[]}}
-{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.39.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
-{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.39.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.40.0","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.40.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.40.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
 - `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
@@ -299,6 +299,20 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
+ 
+For a timed branch, a step may answer expiry with `timeout: true` instead of
+`choose`. This sends the runtime `timeout` input and selects the branch's
+declared `default` option:
+
+```yaml
+steps:
+  - occasion: crossing
+    timeout: true
+```
+
+`timeout: true` is valid only when the current await is a timed choice. The
+branch must declare both a positive `timeout` and a `default`; hubs cannot be
+timed. A malformed or premature timeout is a script error.
 
 Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); since dsl 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its own `choose:` / `bridges:`, which script every step it splices in over the script's own — key by key, tag by tag, consumed from their start in each repetition and dropped when the segment ends — so each term of a multi-term play states its own choices. A key the include overrides leaves the script's own list for that key where it was: with a top-level `choose: { firstLook: [soren, mika] }` and a first term that includes with `choose: { firstLook: ren }`, the second term still takes `soren`, the list's first entry, not `mika`. Convert a positional list to per-include `choose:` for every term at once, not one term at a time; a `label` or `expect:` beside it is a usage error. A usage error in a step names the file, line and column of the key it is about — in the included file when the step came from one, followed by `(included from <play>:<line>:<col>)` — with a did-you-mean for occasion names and keys. A tour of every shape, against the tower:
 

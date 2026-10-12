@@ -1,0 +1,13 @@
+---
+kind: lore
+id: liora-journal
+title: Liora's journal
+series: lioraJournal
+---
+
+<entry id="final-page" target="item.liora-journal" category="note" title="The final page">
+  @narrator{code="0010"}: Liora's final page smells of salt and lamp oil.
+  @narrator{code="0020"}: If Mara comes, tell her the light was never a prison. It was a way to leave a door open.
+  @narrator{code="0030"}: I followed the signal because someone had to learn where the lost things go.
+  @narrator{code="0040"}: When the tide turns, choose the shore together.
+</entry>

@@ -73,7 +73,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
     "result","retracts","return","rewards","rhs","role","rules","season","seasons","section",
     "sections","seedFacts","segments","selectionKey","series","share","slot","slots","sound",
-    "source","speaker","spentBy","start","state","string","styles","subject","tag","target",
+    "source","speaker","spentBy","start","state","stop","string","styles","subject","tag","target",
     "targetKind","terminal","terminalPersists","terms","test","text","texts","then","tier","time",
     "timeline","timeout","timing","title","titleLineId","to","token","transition","type","until","value",
     "variables","variant","visibleWhen","visited","voiceKey","volume","wait","week","when",
@@ -432,7 +432,7 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.39.0".into(), ir_version: "0.39.0".into(),
+            kind: DocKind::Scene, lute: "0.40.0".into(), ir_version: "0.40.0".into(),
             capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),

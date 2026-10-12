@@ -20,6 +20,8 @@ inputs through the public runtime API.
 - `snapshot-hub` — hub presentation suitable for snapshot/restore at its choice input point.
 - `bridge-call` — bridge await/result and typed effect.
 - `new-run` — run-tier reset and queued `nextRun` acceptance.
+- `timed-choice` — timed branch answered by timeout takes its default.
+- `stage-snapshot` — runtime stage across bg/music stop/actor emotion/CG and snapshot/restore.
 
 The `E-RUNTIME-BUSY` rejection cannot be expressed by a play script and is
 intentionally omitted. Generated event logs are added separately.

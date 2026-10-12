@@ -1,5 +1,5 @@
 /**
- * `@lute-lang/runtime/bun` — layers for the Bun runtime (spec 0.39.0 §6.1):
+ * `@lute-lang/runtime/bun` — layers for the Bun runtime (spec 0.40.0 §6.1):
  * the packaged binding read from disk, bundles from a `lute compile --all`
  * directory, and a session composed from them.
  */

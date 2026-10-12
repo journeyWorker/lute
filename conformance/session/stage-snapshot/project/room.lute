@@ -1,0 +1,27 @@
+---
+kind: scene
+id: room
+luteVersion: "0.40.0"
+title: room
+on: visit
+priority: 0
+---
+## Room
+::bg{location="parlor" time="evening" assetId="BG.parlor.evening"}
+::music{playback="start" mood="calm" volume="normal" assetId="BGM.parlor"}
+::actor{character="mira" anchor="left" emotion="neutral" costume="casual" action="fadeIn"}
+@mira{code="0010"}: Good evening.
+::actor{character="mira" emotion="smile"}
+::cg{assetId="CG.parlor" display="show" layout="full"}
+<branch id="greet" prompt="Greet her?">
+  <choice id="yes" text="Wave">
+    ::set{run.met = true}
+  </choice>
+  <choice id="no" text="Nod">
+    ::set{run.met = true}
+  </choice>
+</branch>
+::cg{assetId="CG.parlor" display="hide"}
+::music{playback="stop"}
+::actor{character="mira" action="fadeOut"}
+@narrator{code="0020"}: The parlor empties.

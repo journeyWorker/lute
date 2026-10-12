@@ -339,7 +339,8 @@ mod tests {
                 sections.push((code.to_string(), Vec::new()));
             } else if let Some(spec) = line.strip_prefix("명세: ") {
                 let (_, s) = sections.last_mut().expect("a spec line under a section");
-                *s = spec.split(", ").map(str::to_string).collect();
+                // The Korean twin links to Korean pages (`/ko/spec/`) where they exist.
+                *s = spec.split(", ").map(|link| link.replace("](/ko/", "](/")).collect();
             }
         }
         let want: Vec<(String, Vec<String>)> = ["error", "warning"]

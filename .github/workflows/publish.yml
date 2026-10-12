@@ -199,7 +199,7 @@ jobs:
           VERSION: ${{ needs.read-version.outputs.version }}
         run: |
           set -euo pipefail
-          for pkg in packages/runtime packages/cli packages/core-darwin-arm64 packages/core-linux-x64 packages/core-win32-x64; do
+          for pkg in packages/runtime packages/player packages/player-web packages/cli packages/core-darwin-arm64 packages/core-linux-x64 packages/core-win32-x64; do
             jq --arg v "$VERSION" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
             mv "$pkg/package.json.tmp" "$pkg/package.json"
           done
@@ -210,6 +210,14 @@ jobs:
             '.optionalDependencies = (.optionalDependencies | with_entries(.value = $v))' \
             packages/cli/package.json > packages/cli/package.json.tmp
           mv packages/cli/package.json.tmp packages/cli/package.json
+          # The player packages pin their @lute-lang/* dependencies to the
+          # release version (lockstep).
+          for pkg in packages/player packages/player-web; do
+            jq --arg v "$VERSION" \
+              '.dependencies = (.dependencies | with_entries(if (.key | startswith("@lute-lang/")) then .value = $v else . end))' \
+              "$pkg/package.json" > "$pkg/package.json.tmp"
+            mv "$pkg/package.json.tmp" "$pkg/package.json"
+          done
           echo "Publishing all packages at $VERSION"
 
       - name: Install Rust wasm toolchain
@@ -257,6 +265,14 @@ jobs:
           bun run wasm:build:release
           bun run build
 
+      - name: Build @lute-lang/player
+        working-directory: packages/player
+        run: bun run build
+
+      - name: Build @lute-lang/player-web
+        working-directory: packages/player-web
+        run: bun run build
+
       - name: Build @lute-lang/lute launcher
         working-directory: packages/cli
         run: bun run build
@@ -293,7 +309,7 @@ jobs:
             exit 1
           }
           ALREADY=""
-          for pkg_dir in runtime core-darwin-arm64 core-linux-x64 core-win32-x64 cli; do
+          for pkg_dir in runtime player player-web core-darwin-arm64 core-linux-x64 core-win32-x64 cli; do
             PKG=$(jq -r .name "packages/$pkg_dir/package.json")
             if is_published "$PKG"; then
               ALREADY="$ALREADY $PKG"
@@ -311,12 +327,41 @@ jobs:
             echo "fresh release: no package is published at $VERSION yet."
           fi
 
-      # The @lute-lang/runtime package is published before the launcher; the
+      # The @lute-lang/runtime package is published before the player packages
+      # (which depend on it) and before the launcher; the
       # platform packages are also published first so the launcher's
       # optionalDependencies already resolve on npm. Each step is idempotent:
       # a re-run / a recovery pass skips whatever already shipped at $VERSION.
       - name: Publish @lute-lang/runtime (idempotent)
         working-directory: packages/runtime
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Publish @lute-lang/player (idempotent)
+        working-directory: packages/player
+        env:
+          VERSION: ${{ needs.read-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .name package.json)
+          if npm view "$PKG@$VERSION" version >/dev/null 2>&1; then
+            echo "$PKG@$VERSION already on npm — skipping (idempotent)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Publish @lute-lang/player-web (idempotent)
+        working-directory: packages/player-web
         env:
           VERSION: ${{ needs.read-version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

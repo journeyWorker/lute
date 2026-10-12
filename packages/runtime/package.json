@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/runtime",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "description": "The Lute runtime for TypeScript hosts, in Effect: load a compiled Lute bundle, drive the resumable step function, replay input logs (Bun and browsers).",
   "license": "MIT",
   "type": "module",
@@ -35,7 +35,7 @@
     "test": "bunx --bun vitest run",
     "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
     "contract:gen": "bun scripts/contract-codegen.ts",
-    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated"
+    "contract:check": "cargo run -q -p lute-runtime --features json-schema --bin lute-contract-schema && bun scripts/contract-codegen.ts && git diff --exit-code -- ../../schemas src/generated ../player/src/bindings/schema.ts"
   },
   "peerDependencies": {
     "effect": "4.0.2",

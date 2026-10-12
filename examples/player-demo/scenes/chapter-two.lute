@@ -1,0 +1,74 @@
+---
+kind: scene
+id: chapter-two
+title: The Glass Stair
+on: chapter
+after: 'visited("chapter-one")'
+---
+
+## The Glass Stair
+
+::bg{location="lighthouse" time="noon"}
+::music{playback="change" mood="tense" volume="up" assetId="music.tense"}
+::actor{character="mara" anchor="center" action="fadeIn" emotion="worried" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="surprised" costume="coat"}
+::camera{focus="mara" framing="close" transition="wipeLeft"}
+@narrator{code="0010"}: The lighthouse door opens onto a stair made of glass. Below it, the sea is much too near.
+@elio{code="0010" emotion="surprised"}: The stairs are humming.
+@mara{code="0010" emotion="worried"}: They remember every footstep.
+<match subject="run.choice">
+  <when is="tower">
+    @mara{code="0020" emotion="hopeful"}: We chose the high road. Now we finish it.
+  </when>
+  <when is="harbor">
+    @elio{code="0020" emotion="happy"}: You chose the long way around, and somehow it led here.
+  </when>
+  <otherwise>
+    @narrator{code="0020"}: You cannot remember choosing a road, only that it is behind you.
+  </otherwise>
+</match>
+<branch id="crossing" prompt="A bell rings above the stair. The next step is already fading." timeout="8" default="steady">
+  <choice id="steady" text="Cross together">
+    ::set{run.trust += 1}
+    @mara{code="0030" emotion="hopeful"}: Hand in hand. No vanishing alone.
+  </choice>
+  <choice id="rush" text="Run for the lantern">
+    ::set{run.trust -= 1}
+    @elio{code="0030" emotion="worried"}: Mara, wait!
+  </choice>
+</branch>
+::cg{assetId="cg.lighthouse" display="show" layout="full"}
+@narrator{code="0030"}: Behind the lantern, a figure turns toward you. It has Mara's eyes.
+::cg{assetId="cg.lighthouse" display="hide"}
+::sfx{sound="glass" assetId="sfx.glass"}
+::vfx{type="shake" transition="wipeLeft"}
+::actor{character="mara" emotion="angry" action="shake"}
+@mara{code="0040" emotion="angry"}: My sister. She is still here.
+@mara{code="0050" emotion="worried"}: The glass was made from sand taken beneath the harbor.
+@elio{code="0040" emotion="neutral"}: So the lighthouse is standing on our secrets.
+@mara{code="0060" emotion="sad"}: Every town builds on something it refuses to remember.
+@elio{code="0050" emotion="happy"}: I refuse to remember the price of this umbrella.
+@mara{code="0070" emotion="happy"}: It has holes.
+@elio{code="0060" emotion="surprised"}: Character, not holes.
+@narrator{code="0040"}: Above, the lantern pulses with a patient blue light.
+@mara{code="0080" emotion="hopeful"}: Liora is calling through the lens.
+@elio{code="0070" emotion="worried"}: Then call back.
+@mara{code="0090" emotion="neutral"}: I am afraid she will answer.
+@elio{code="0080" emotion="hopeful"}: Fear is an answer too. It means we care where the road ends.
+@narrator{code="0050"}: Their footsteps ring out, each one a small promise.
+@mara{code="0100" emotion="sad"}: I should have followed her three years ago.
+@elio{code="0090" emotion="angry"}: You were sixteen.
+@mara{code="0110" emotion="worried"}: Old enough to say goodbye.
+@elio{code="0100" emotion="happy"}: Nobody says goodbye correctly the first time.
+@mara{code="0120" emotion="hopeful"}: You make that sound like experience.
+@elio{code="0110" emotion="sad"}: My brother left on a fishing boat. I kept the kettle warm for a month.
+@narrator{code="0060"}: The stair bends toward a locked door.
+@mara{code="0130" emotion="surprised"}: The blue ribbon is tied to the handle.
+@elio{code="0120" emotion="neutral"}: Then we open it together.
+@mara{code="0140" emotion="hopeful"}: Together.
+<branch id="doorMemory" prompt="The locked door shows three memories.">
+  <choice id="remember" text="Remember Liora's laugh">
+    ::set{run.heardSignal = true}
+    @mara{code="0150" emotion="happy"}: I can still hear her.
+  </choice>
+</branch>

@@ -6,14 +6,14 @@ use lute_runtime::session::{
     Walked, World,
 };
 use lute_runtime::{
-    BridgeAnswer, BridgeCall, BridgeQueues, Driver, Forced, GuardRead, Machine, Menu, OnUnknown,
-    Pick, ScriptedChoices, UnknownSite, Verdict,
+    BridgeAnswer, BridgeCall, BridgeQueues, Driver, Forced, GuardRead, Machine, Menu, MenuKind,
+    OnUnknown, Pick, UnknownSite, Verdict,
 };
 use serde_json::Value as Json;
 
 use super::events::ScriptAnswer;
 use super::producers::{decisions_of, Decision, Premises, Producers};
-
+use super::script::ScriptedPick;
 /// The CLI-owned state used to drive and resume play walks.
 ///
 /// Choices, bridge queues, and condition-dump observation are deliberately
@@ -22,7 +22,7 @@ use super::producers::{decisions_of, Decision, Premises, Producers};
 /// consumption back into this state.
 #[derive(Default)]
 pub(crate) struct PlayDriverState {
-    pub(crate) choose: BTreeMap<String, Vec<String>>,
+    pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(crate) choice_cursor: BTreeMap<String, usize>,
     pub(crate) bridges: BridgeQueues,
     pub(crate) decisions: Vec<Decision>,
@@ -40,7 +40,7 @@ pub(crate) struct PlayDriverState {
 #[allow(dead_code)]
 impl PlayDriverState {
     pub(crate) fn new(
-        choose: BTreeMap<String, Vec<String>>,
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
         bridges: BridgeQueues,
         producers: Option<Arc<Producers>>,
     ) -> Self {
@@ -48,7 +48,7 @@ impl PlayDriverState {
     }
     pub(crate) fn for_project(
         project: &ExecProject,
-        choose: BTreeMap<String, Vec<String>>,
+        choose: BTreeMap<String, Vec<ScriptedPick>>,
         bridges: BridgeQueues,
     ) -> Self {
         let reserved = project
@@ -74,13 +74,18 @@ impl PlayDriverState {
         self.observer = observer;
     }
 
-    pub(crate) fn set_step(&mut self, step: usize, choose: &BTreeMap<String, Vec<String>>, bridges: &BTreeMap<String, Vec<BridgeAnswer>>) {
+    pub(crate) fn set_step(
+        &mut self,
+        step: usize,
+        choose: &BTreeMap<String, Vec<ScriptedPick>>,
+        bridges: &BTreeMap<String, Vec<BridgeAnswer>>,
+    ) {
         self.step = step;
         self.choose.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
         self.bridges.step = BridgeQueues::queue(bridges);
     }
 
-    pub(crate) fn set_top_choose(&mut self, choose: BTreeMap<String, Vec<String>>) {
+    pub(crate) fn set_top_choose(&mut self, choose: BTreeMap<String, Vec<ScriptedPick>>) {
         self.choose = choose;
     }
 
@@ -89,8 +94,38 @@ impl PlayDriverState {
     }
 }
 
+pub(crate) struct PlayChoices {
+    choose: BTreeMap<String, Vec<ScriptedPick>>,
+    cursor: BTreeMap<String, usize>,
+}
+
+impl PlayChoices {
+    fn new(choose: &BTreeMap<String, Vec<ScriptedPick>>, cursor: &BTreeMap<String, usize>) -> Self {
+        Self { choose: choose.clone(), cursor: cursor.clone() }
+    }
+
+    fn pick(&mut self, menu: &Menu<'_>) -> Option<ScriptedPick> {
+        let list = self.choose.get(menu.id).map(Vec::as_slice).unwrap_or(&[]);
+        match menu.construct {
+            MenuKind::Hub => list.get(menu.presentation).cloned(),
+            MenuKind::Branch => match list {
+                [] => None,
+                [only] => Some(only.clone()),
+                list => {
+                    let used = self.cursor.entry(menu.id.to_string()).or_insert(0);
+                    let pick = list.get(*used).cloned();
+                    if pick.is_some() {
+                        *used += 1;
+                    }
+                    pick
+                }
+            },
+        }
+    }
+}
+
 pub(crate) struct PlayDriver {
-    pub(crate) choices: ScriptedChoices,
+    pub(crate) choices: PlayChoices,
     pub(crate) bridges: BridgeQueues,
     pub(crate) transcript: Vec<Json>,
     pub(crate) premises: Premises,
@@ -100,13 +135,13 @@ pub(crate) struct PlayDriver {
 
 impl PlayDriver {
     fn new(
-        choose: &BTreeMap<String, Vec<String>>,
+        choose: &BTreeMap<String, Vec<ScriptedPick>>,
         state: &PlayDriverState,
         document: &str,
         _world: &World,
     ) -> Self {
         Self {
-            choices: ScriptedChoices::new(choose.clone(), state.choice_cursor.clone()),
+            choices: PlayChoices::new(choose, &state.choice_cursor),
             bridges: state.bridges.clone(),
             transcript: Vec::new(),
             premises: Premises {
@@ -122,11 +157,25 @@ impl PlayDriver {
 
 impl Driver for PlayDriver {
     fn choose(&mut self, menu: &Menu<'_>) -> Pick {
-        let pick = self.choices.pick(menu);
-        if let Pick::Option(option) = &pick {
-            self.answers.push(ScriptAnswer::Choice { menu: menu.id.to_string(), option: option.clone() });
+        match self.choices.pick(menu) {
+            Some(ScriptedPick::Timeout) => {
+                let Some(default) = menu.default else {
+                    return Pick::Unscripted { scripted: 1 };
+                };
+                self.answers.push(ScriptAnswer::Timeout { menu: menu.id.to_string() });
+                Pick::Option(default.to_string())
+            }
+            Some(ScriptedPick::Option(option)) => {
+                self.answers.push(ScriptAnswer::Choice {
+                    menu: menu.id.to_string(),
+                    option: option.clone(),
+                });
+                Pick::Option(option)
+            }
+            None => Pick::Unscripted {
+                scripted: self.choices.choose.get(menu.id).map_or(0, Vec::len),
+            },
         }
-        pick
     }
 
     fn forced(&mut self, _menu: &Menu<'_>, _option: &str, verdict: &Verdict) -> Forced {
@@ -164,17 +213,12 @@ impl WalkDriver for PlayDriverState {
     fn new_driver(
         &mut self,
         document: &str,
-        choose: &BTreeMap<String, Vec<String>>,
+        _choose: &BTreeMap<String, Vec<String>>,
         world: &World,
     ) -> Self::Driver {
         self.document = document.to_string();
-        let overrides = choose
-            .iter()
-            .filter(|(key, value)| self.choose.get(*key) != Some(*value))
-            .map(|(key, _)| (key.clone(), self.choice_cursor.remove(key)))
-            .collect();
-        self.override_cursors.push(overrides);
-        PlayDriver::new(choose, self, document, world)
+        self.override_cursors.push(Vec::new());
+        PlayDriver::new(&self.choose, self, document, world)
     }
 
     fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked {

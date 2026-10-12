@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.39.0";
+pub const EVENT_VERSION: &str = "0.40.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.39.0";
+pub const IR_VERSION: &str = "0.40.0";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -107,6 +107,8 @@ pub enum Input {
         #[serde(default, skip_serializing_if = "WritesInput::is_empty")]
         writes: WritesInput,
     },
+    #[serde(rename = "timeout")]
+    Timeout { request: u64 },
     #[serde(rename = "choose")]
     Choose { request: u64, option: String },
     #[serde(rename = "bridgeResult")]
@@ -285,7 +287,9 @@ pub struct MenuAwait {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<f64>,
+    pub timeout: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
     pub options: Vec<MenuOptionAwait>,
 }
 
@@ -446,6 +450,9 @@ pub struct Continuation {
     pub(crate) answers: Vec<Answer>,
     pub pending: Await,
     pub(crate) delivered: usize,
+    /// The stage at the pending await; the `world` of a suspended state is
+    /// the world before its input (dsl 0.40.0 §4.2).
+    pub stage: crate::Stage,
 }
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -622,10 +629,7 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject(
-                                "E-RUNTIME-REQUEST",
-                                "choose request does not match the pending await",
-                            ),
+                            reject("E-RUNTIME-REQUEST", "choose request does not match the pending await"),
                         ));
                     }
                     let Some(item) = menu.options.iter().find(|o| o.id == *option) else {
@@ -651,6 +655,44 @@ impl Runtime {
                     ((*c.before).clone(), c.input, a, c.delivered)
                 }
                 (
+                    Input::Timeout { request },
+                    Await::Choice {
+                        request: expected,
+                        menu,
+                    },
+                ) => {
+                    if request != expected {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-REQUEST", "timeout request does not match the pending await"),
+                        ));
+                    }
+                    let Some(default) = menu.default.clone() else {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        ));
+                    };
+                    if menu.timeout.is_none() {
+                        return Err((
+                            unchanged.clone(),
+                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        ));
+                    }
+                    let mut a = c.answers;
+                    a.push(Answer::Choice {
+                        id: menu.id.clone(),
+                        option: default,
+                    });
+                    ((*c.before).clone(), c.input, a, c.delivered)
+                }
+                (Input::Timeout { .. }, _) => {
+                    return Err((
+                        unchanged.clone(),
+                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                    ))
+                }
+                (
                     Input::BridgeResult { request, fields },
                     Await::Bridge {
                         request: expected,
@@ -662,10 +704,7 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject(
-                                "E-RUNTIME-REQUEST",
-                                "bridge request does not match the pending await",
-                            ),
+                            reject("E-RUNTIME-REQUEST", "bridge request does not match the pending await"),
                         ));
                     }
                     if let Err(m) = validate_bridge(shape, fields) {
@@ -690,6 +729,12 @@ impl Runtime {
                     return Err((
                         unchanged.clone(),
                         reject("E-RUNTIME-BUSY", "no choice or bridge await is pending"),
+                    ));
+                }
+                if matches!(input, Input::Timeout { .. }) {
+                    return Err((
+                        unchanged.clone(),
+                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
                     ));
                 }
                 ((*state.world).clone(), input.clone(), Vec::new(), 0)
@@ -723,6 +768,14 @@ impl Runtime {
     }
     pub fn clock(&self, state: &State) -> Option<lute_manifest::clock::ClockAt> {
         clock_at(&self.project, &state.world)
+    }
+    /// The persistent presentation stage of a state: at a pending await,
+    /// the stage at that await; otherwise the world's.
+    pub fn stage(&self, state: &State) -> crate::Stage {
+        match &state.continuation {
+            Some(continuation) => continuation.stage.clone(),
+            None => state.world.stage.clone(),
+        }
     }
     pub fn terminal(&self, state: &State) -> bool {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
@@ -835,6 +888,7 @@ impl Runtime {
                     answers,
                     pending: await_.clone(),
                     delivered: cut,
+                    stage: factory.pending_stage.take().unwrap_or_default(),
                 }),
                 request: request + 1,
                 phase: Phase::Idle,
@@ -1085,7 +1139,7 @@ fn execute_input<F: WalkDriver>(
             let w = resolve_writes(s.project(), writes)?;
             Ok(s.new_run(0, &w))
         }
-        Input::Choose { .. } | Input::BridgeResult { .. } => {
+        Input::Choose { .. } | Input::Timeout { .. } | Input::BridgeResult { .. } => {
             Err("answer input cannot execute without a continuation".into())
         }
     }
@@ -1098,6 +1152,8 @@ struct ReplayFactory {
     events: Vec<Event>,
     pending: Option<Await>,
     pending_cut: Option<usize>,
+    /// The stage at the suspension point, taken from the suspended walk.
+    pending_stage: Option<crate::Stage>,
     document: String,
 }
 impl ReplayFactory {
@@ -1109,6 +1165,7 @@ impl ReplayFactory {
             events: Vec::new(),
             pending: None,
             pending_cut: None,
+            pending_stage: None,
             document: String::new(),
         }
     }
@@ -1156,7 +1213,8 @@ impl Driver for ReplayDriver {
                 position: menu.addr.into(),
                 presentation: menu.presentation,
                 prompt: None,
-                timeout: None,
+                timeout: menu.timeout,
+                default: menu.default.map(str::to_owned),
                 options: menu
                     .options
                     .iter()
@@ -1273,6 +1331,11 @@ impl WalkDriver for ReplayFactory {
         let event_base = self.events.len();
         self.events.extend(driver.events);
         self.pending_cut = driver.pending_cut.map(|cut| event_base + cut);
+        if driver.pending.is_some() {
+            // The walk stops at the unanswered pick, so its carry holds the
+            // stage at the await (dsl 0.40.0 §4.2).
+            self.pending_stage = Some(carry.stage.clone());
+        }
         self.pending = driver.pending;
         Walked {
             carry,

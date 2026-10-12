@@ -136,10 +136,12 @@ fn segments_with(segments: &Json, rendered: &[String]) -> Json {
 
 impl<D: Driver> Machine<D> {
     pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
-        self.driver.emit(json!({
-            "position": addr(cmd),
+        let record = serde_json::json!({
             "kind": kind,
-        }));
+            "position": addr(cmd),
+        });
+        self.stage.apply(kind, cmd);
+        self.driver.emit(record);
     }
 
     /// `::set` (state-lifecycle.md): `=` stores the value; a compound op

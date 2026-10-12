@@ -1,6 +1,6 @@
 ---
 title: 콘텐츠 어휘
-description: "컴파일러가 콘텐츠 어휘 슬롯을 선언하고 멤버는 제공하지 않는 방식 — 프로젝트가 감정, 행동, 앵커, 의상, 카메라 프레이밍과 이동, 전환, CG 레이아웃, 시퀀스, 음악 재생, 분위기, VFX 유형과 텍스트 스타일을 선언하는 방법, 세 선언 경로와 우선순위, exits:/default: 멤버 의미론입니다."
+description: "컴파일러가 콘텐츠 어휘 슬롯을 선언하고 멤버는 제공하지 않는 방식 — 프로젝트가 감정, 행동, 앵커, 의상, 카메라 프레이밍과 이동, 전환, CG 레이아웃, 시퀀스, 음악 재생, 분위기, VFX 유형과 텍스트 스타일을 선언하는 방법, 세 선언 경로와 우선순위, exits:/stops:/default: 멤버 의미론입니다."
 ---
 
 Lute는 범용 작성 도구체인이고, 여러분의 게임은 그것을 소비하는 쪽입니다. 따라서 구체적인 감정 목록은 컴파일러에 들어 있지 않습니다 — **컴파일러는 어휘 *슬롯*을 선언하고, 프로젝트가 *멤버*를 선언합니다.** 언어 `0.9.0`부터 내장 `lute.core` 플러그인은 비어 있는 `enums:`만 제공하며, 재정의하거나 반박하거나 우회할 기준 목록은 없습니다.
@@ -33,7 +33,7 @@ plugin's `enums` export before using `emotion`
 | `sequence` | `::sequence{name}` |
 | `mood` | `::music{mood}` |
 | `volume` | `::music{volume}` |
-| `musicPlayback` | `::music{playback}` |
+| `musicPlayback` | `::music{playback}`; 긴 형식은 현재 음악을 끝내는 멤버를 선택적 `stops:`로 지정할 수 있습니다 |
 | `vfxType` | `::vfx{type}` |
 | `textStyle` | 줄 텍스트의 [인라인 스타일 스팬](/ko/language/dialogue-and-cast/#인라인-텍스트-수식자) `:name[…]` |
 

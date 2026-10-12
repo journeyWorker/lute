@@ -159,6 +159,20 @@ pub(crate) fn run_check_project(
         }
     }
     fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
+    for model in &models {
+        for (path, diagnostic) in crate::bindings::check_model(model) {
+            let mut diagnostic = diagnostic;
+            if diagnostic.span.line == 0 {
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                diagnostic.span = normalize_span_from_text(&text, diagnostic.span);
+            }
+            let shown = canonical_path(dir)
+                .as_deref()
+                .and_then(|canonical| path.strip_prefix(canonical).ok())
+                .map_or(path.clone(), |relative| dir.join(relative));
+            project_diags.push((shown, diagnostic));
+        }
+    }
 
     // dsl 0.10.0 §11.1 (**D-V**): `W-DOMAIN-UNREAD` is project-wide only. The
     // per-document halves ride on each `CheckResult`; the union and the

@@ -667,6 +667,24 @@
         {
           "additionalProperties": false,
           "properties": {
+            "request": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "timeout",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "request"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
             "option": {
               "type": "string"
             },
@@ -797,6 +815,12 @@
         "construct": {
           "type": "string"
         },
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "document": {
           "type": "string"
         },
@@ -823,8 +847,9 @@
           ]
         },
         "timeout": {
+          "minimum": 0,
           "type": [
-            "number",
+            "integer",
             "null"
           ]
         }
@@ -1434,7 +1459,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.39.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.40.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {
@@ -1453,5 +1478,5 @@
       "$ref": "#/$defs/StreamLine"
     }
   ],
-  "title": "Lute runtime events (eventVersion 0.39.x)"
+  "title": "Lute runtime events (eventVersion 0.40.x)"
 }

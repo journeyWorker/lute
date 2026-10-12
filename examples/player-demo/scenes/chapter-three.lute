@@ -1,0 +1,71 @@
+---
+kind: scene
+id: chapter-three
+title: The Last Light
+on: chapter
+after: 'visited("chapter-two")'
+---
+
+## The Last Light
+
+::bg{location="lighthouse" time="night"}
+::music{playback="change" mood="hopeful" volume="normal" assetId="music.hopeful"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="worried" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
+::camera{framing="wide" transition="dissolve"}
+@narrator{code="0010"}: At midnight, the lantern opens like an eye. The lost sister stands inside its light.
+@mara{code="0010" emotion="sad"}: Liora. Come home.
+@elio{code="0010" emotion="worried"}: The tide is climbing the stairs.
+<branch id="lastLight" prompt="The lantern offers one final choice.">
+  <choice id="release" text="Release the light to the sea" when="run.trust >= 1">
+    ::set{run.path = "dawn"}
+    ::cg{assetId="cg.reunion" display="show" layout="inset"}
+    @mara{code="0020" emotion="hopeful"}: We do not have to keep ghosts to prove we loved them.
+    @narrator{code="0020"}: The light spills over the water. Liora smiles, and the harbor wakes.
+    ::cg{assetId="cg.reunion" display="hide"}
+    ::music{mood="triumphant"}
+    ::music{playback="stop"}
+    ::actor{character="mara" action="fadeOut"}
+    ::actor{character="elio" action="fadeOut"}
+    @narrator{code="0030"}: Dawn ending — the signal becomes a promise.
+  </choice>
+  <choice id="hold" text="Hold the lantern closed">
+    ::set{run.path = "dusk"}
+    ::vfx{type="flash" transition="fade"}
+    @mara{code="0030" emotion="angry"}: No more taking from us.
+    @narrator{code="0040"}: The lantern dims. The sea retreats, carrying the secret with it.
+    ::music{mood="sad"}
+    ::music{playback="stop"}
+    ::actor{character="mara" action="fadeOut"}
+    ::actor{character="elio" action="fadeOut"}
+    @narrator{code="0050"}: Dusk ending — some doors close to keep us safe.
+  </choice>
+</branch>
+::actor{character="mara" anchor="left" action="fadeIn" emotion="sad" costume="raincloak"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
+@mara{code="0040" emotion="sad"}: I remember the first time Liora showed me the lantern.
+@elio{code="0020" emotion="worried"}: What did she say?
+@mara{code="0050" emotion="happy"}: That every light is a question pretending to be an answer.
+@narrator{code="0060"}: The lantern's blue flame bends toward the sea.
+@mara{code="0060" emotion="hopeful"}: Liora, if you can hear me, we came back.
+@elio{code="0030" emotion="neutral"}: We brought the ribbon.
+@mara{code="0070" emotion="worried"}: And the compass.
+@narrator{code="0070"}: Inside the brass lid, a tiny journal page unfolds.
+@mara{code="0080" emotion="surprised"}: Her handwriting.
+@mara{code="0090" emotion="sad"}: She wrote that the lighthouse keeps what people cannot release.
+@elio{code="0040" emotion="hopeful"}: Then release it.
+@mara{code="0100" emotion="angry"}: It is not that easy.
+@elio{code="0050" emotion="happy"}: It never is. That is why we brought snacks.
+@narrator{code="0080"}: For one breath, even the ghost laughs.
+@mara{code="0110" emotion="hopeful"}: I am ready to hear the answer now.
+@elio{code="0060" emotion="worried"}: Whatever it is, I am beside you.
+@mara{code="0120" emotion="neutral"}: Then let the last light choose its shore.
+<hub id="journal" prompt="Liora's journal waits beside the lantern.">
+  <choice id="read" text="Read the final page" once>
+    ::set{run.heardSignal = true}
+    @mara{code="0130" emotion="hopeful"}: She left us a way home.
+  </choice>
+  <choice id="close" text="Close the journal" exit>
+    @elio{code="0070" emotion="sad"}: We can read it when the tide is kind.
+  </choice>
+</hub>

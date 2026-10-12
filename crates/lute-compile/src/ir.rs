@@ -821,6 +821,8 @@ pub struct MusicCmd {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playback: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mood: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub volume: Option<String>,
@@ -1020,6 +1022,10 @@ pub struct ChoiceCmd {
     /// `timeout`). Absent unless authored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
+    /// dsl 0.40.0 §2.1: the direct option selected when the countdown expires.
+    /// It is serialized only with `timeout`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
     #[serde(flatten)]
     pub stamp: Stamp,
 }

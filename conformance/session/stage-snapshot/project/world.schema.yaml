@@ -1,0 +1,17 @@
+state:
+  run.met: { type: bool, default: false }
+enums:
+  emotion: [neutral, smile]
+  costume: [casual, formal]
+  mood: [calm]
+  volume: [normal]
+  musicPlayback:
+    members: [start, stop]
+    stops: [stop]
+  anchor:
+    members: [left, center, right]
+    default: center
+  action:
+    members: [fadeIn, fadeOut]
+    exits: [fadeOut]
+  cgLayout: [full]

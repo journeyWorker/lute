@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.39.0`, the grammar and semantics the checker
+- **Language** — currently `0.40.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.39.0`) and gated on by consuming engines.
+  artifact (currently `0.40.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,90 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.40.0]
+
+**Runtime R3 and the web player** (spec
+[`0.40.0.md`](docs/proposals/scenario-dsl/0.40.0.md); runtime contract
+[`docs/runtime/event-contract.md`](docs/runtime/event-contract.md); player
+architecture [`docs/player/architecture.md`](docs/player/architecture.md)).
+The release adds runtime-owned stage, timed choices, checked player bindings,
+and the first Lute web player packages.
+
+### Syntax
+
+- Timed `<branch>` choices require `timeout` and `default` together. `default`
+  names an always-open direct choice and is the outcome of timeout.
+- `musicPlayback` domains accept optional `stops:` members; those members lower
+  to a music stop record.
+
+### Semantics
+
+- The runtime carries background, music, actors, CG, and video in persistent
+  `stage`; presentation starts reset it, and quest/on bodies update it in place.
+- Timed choice expiry is an explicit `timeout` input and is equivalent to
+  choosing the branch's declared `default`. Hubs remain untimed.
+
+### IR
+
+- `ChoiceCmd.default` is emitted when a branch has `timeout`.
+- `MusicCmd.stop` is emitted for `musicPlayback.stops` members.
+- `lute-ir-0.40` is the aligned execution-IR line; consuming engines widen
+  their IR gate to 0.40.
+
+### Plugin
+
+- No plugin manifest contract changes. Bridge calls remain host-owned and are
+  surfaced to players through the runtime event contract.
+
+### CLI
+
+- `lute play` scripts accept `timeout: true` for a timed branch.
+- `lute check-project` validates optional `player.bindings.yaml`, including
+  schema, assets, project vocabulary, effects, and flow.
+
+### Diagnostics
+
+- Added `E-BRANCH-DEFAULT`, `E-ENUM-STOPS-NOT-MEMBER`,
+  `E-BINDING-SHAPE`, `E-BINDING-FILE`, `E-BINDING-KEY`,
+  `E-BINDING-EFFECT`, `E-RUNTIME-TIMEOUT`, `W-BINDING-MISSING`, and
+  `W-BINDING-UNUSED`.
+
+### Identity
+
+- Snapshot schema is 0.40: `world.stage` is serialized, and suspended
+  continuations carry `continuation.stage`.
+
+### Added
+
+- `@lute-lang/player@0.40.0`: renderer-free Effect/XState core with cues,
+  scheduler, saves, profile/read history, backlog, auto/skip, rollback,
+  bridges, and custom host ports.
+- `@lute-lang/player-web@0.40.0`: PixiJS 8/Web Audio renderer, screens,
+  assets, and browser input, including `mountPlayer`.
+- `player.bindings.yaml` and its generated 0.40 schema.
+
+### Changed
+
+- Event and snapshot schemas, runtime wasm and TypeScript contracts are
+  regenerated for 0.40; runtime exposes `stage` and `timeout`.
+- Website documentation adds the Player section and the package READMEs
+  document exact dependency versions and public APIs.
+
+### Fixed
+
+- Music playback now stops deterministically for declared stopping members.
+- Browser player resources remain alive for the mount scope and are released
+  by `unmount`.
+
+### Migration notes
+
+- Engines widen their IR gate to 0.40 and consume the 0.40 event/snapshot
+  schemas.
+- Snapshot schema 0.40 adds `world.stage` and `continuation.stage`; old
+  snapshots are not migrated across content versions.
+- Timed branches now require `default`; add an always-open direct choice and
+  pair it with every `timeout`.
 
 ## [0.39.0]
 

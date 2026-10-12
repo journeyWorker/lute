@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "bun"
+    ],
+    "skipLibCheck": true,
+    "paths": {
+      "@lute-lang/runtime": [
+        "../runtime/src/index.ts"
+      ],
+      "@lute-lang/runtime/browser": [
+        "../runtime/src/browser.ts"
+      ],
+      "@lute-lang/player": [
+        "../player/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "test",
+    "scripts",
+    "vitest.config.ts",
+    "vitest.browser.config.ts"
+  ]
+}

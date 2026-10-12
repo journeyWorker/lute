@@ -1,0 +1,45 @@
+bindingsVersion: "0.40"
+canvas: {width: 1920, height: 1080}
+assetsBase: media
+assets:
+  theme: audio/theme.ogg
+  unused: audio/unused.ogg
+backgrounds:
+  foyer: {image: bg/foyer.png, times: {night: bg/night.png}}
+  unusedBg: {image: bg/unused.png}
+characters:
+  guide:
+    sprite: {default: char/guide.png, emotions: {happy: char/happy.png}}
+    costumes: {coat: {default: char/coat.png}}
+  ghost:
+    sprite: {default: char/ghost.png}
+anchors:
+  left: {x: 0.25}
+  centre: {x: 0.5}
+actions:
+  fadeIn: {effect: fadeIn, duration: 0.4}
+  badAction: {effect: fadeIn, duration: 0.4}
+transitions:
+  fade: {effect: fade, duration: 0.6}
+framing:
+  wide: {zoom: 1.0}
+cameraMove:
+  shake: {effect: shake, duration: 0.5, strength: 12}
+cgLayouts:
+  full: {fit: cover}
+textStyles:
+  emphasis: {fontWeight: bold}
+sequences:
+  intro: {video: video/intro.mp4}
+vfx:
+  flash: {effect: flash, color: "#fff", duration: 0.3}
+music:
+  moods:
+    calm: audio/calm.ogg
+    unusedMood: audio/unused.ogg
+sfx:
+  door: audio/door.ogg
+  unusedSfx: audio/unused.ogg
+flow:
+  newGame: {occasion: missing, target: nowhere}
+  idle: {raise: {occasion: missingAgain, target: nowhere}}

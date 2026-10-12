@@ -140,6 +140,7 @@ fn choice_matches_spec_worked_example() {
         converge: "004-1100".into(),
         prompt: None,
         timeout: None,
+        default: None,
         stamp: Stamp::default(),
     });
     assert_eq!(
@@ -328,6 +329,7 @@ fn music_serializes_per_spec() {
     let cmd = Command::Music(MusicCmd {
         position: "006-0200".into(),
         playback: Some("play".into()),
+        stop: None,
         mood: Some("tense".into()),
         volume: None,
         asset_id: Some("mus_theme_a".into()),
@@ -409,6 +411,7 @@ fn retarget_and_position_helpers_visit_every_flow_field() {
         converge: "@2".into(),
         prompt: None,
         timeout: None,
+        default: None,
         stamp: Stamp::default(),
     });
     *cmd.position_mut() = "001-0100".into();
@@ -821,7 +824,7 @@ fn every_kind_has_its_spec_family() {
             "line", "content",
         ),
         (Command::Bg(BgCmd { position: p(), location: None, time: None, asset_id: None, stamp: stamp() }), "bg", "staging"),
-        (Command::Music(MusicCmd { position: p(), playback: None, mood: None, volume: None, asset_id: None, stamp: stamp() }), "music", "staging"),
+        (Command::Music(MusicCmd { position: p(), playback: None, stop: None, mood: None, volume: None, asset_id: None, stamp: stamp() }), "music", "staging"),
         (Command::Sfx(SfxCmd { position: p(), sound: None, asset_id: None, stamp: stamp() }), "sfx", "staging"),
         (Command::Vfx(VfxCmd { position: p(), r#type: "flash".into(), label: None, transition: None, stamp: stamp() }), "vfx", "staging"),
         (
@@ -841,7 +844,7 @@ fn every_kind_has_its_spec_family() {
         (
             Command::Choice(ChoiceCmd {
                 position: p(), branch_id: "b".into(), selection_key: "scene.choices.b".into(),
-                options: vec![], converge: p(), prompt: None, timeout: Some(5), stamp: stamp(),
+                options: vec![], converge: p(), prompt: None, timeout: Some(5), default: None, stamp: stamp(),
             }),
             "choice", "control",
         ),

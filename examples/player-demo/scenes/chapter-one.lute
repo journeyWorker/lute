@@ -1,0 +1,73 @@
+---
+kind: scene
+id: chapter-one
+title: The Signal at Low Tide
+on: chapter
+---
+
+## The Signal at Low Tide
+
+::bg{location="harbor" time="dawn"}
+::music{playback="start" mood="calm" volume="normal" assetId="music.calm"}
+::actor{character="mara" anchor="left" action="fadeIn" emotion="worried" costume="coat"}
+::actor{character="elio" anchor="right" action="fadeIn" emotion="neutral" costume="plain"}
+::camera{framing="wide" transition="fade"}
+@narrator{code="0010"}: At six in the morning, the harbor keeps its secrets under a skin of silver water.
+@mara{code="0010" emotion="worried"}: The lighthouse blinked three times. That is not a weather signal.
+@elio{code="0010" emotion="neutral"}: Or it is a very dramatic gull.
+@mara{code="0020" emotion="angry" action="shake"}: Elio.
+::sfx{sound="bell" assetId="sfx.bell"}
+::vfx{type="flash" transition="dissolve"}
+@narrator{code="0020"}: The bell answers from the fog. Once. Twice. Then silence.
+<timeline duration="1.0">
+  <track subject="camera">
+    ::camera{focus="mara" framing="close" move="pushIn" duration="0.6"}
+    ::camera{move="shake" duration="0.3" at="0.6"}
+  </track>
+</timeline>
+<branch id="signal" prompt="The tide is turning beneath the lighthouse.">
+  <choice id="tower" text="Follow the signal to the lighthouse">
+    ::set{run.choice = "tower"}
+    ::set{run.trust += 1}
+    @mara{code="0030" emotion="hopeful"}: Then we climb before the tide hides the path.
+  </choice>
+  <choice id="harbor" text="Stay and search the harbor">
+    ::set{run.choice = "harbor"}
+    @elio{code="0020" emotion="happy"}: Sensible. Also warmer.
+  </choice>
+</branch>
+<hub id="questions" prompt="The fog waits. What do you ask before leaving?">
+  <choice id="past" text="Ask Mara why she knows the signal" once>
+    @mara{code="0040" emotion="sad"}: My sister sent it the night she vanished.
+    ::set{run.heardSignal = true}
+  </choice>
+  <choice id="weather" text="Ask Elio about the weather" once>
+    @elio{code="0030" emotion="happy"}: Wind from the east. Rain by noon. I brought one umbrella.
+  </choice>
+  <choice id="leave" text="Leave at once" exit>
+    @narrator{code="0030"}: The three of you step into the fog.
+  </choice>
+</hub>
+@mara{code="0050" emotion="worried"}: The signal began as a superstition, then became a timetable.
+@elio{code="0040" emotion="neutral"}: My timetable has breakfast at seven.
+@mara{code="0060" emotion="happy"}: You promised to take this seriously.
+@elio{code="0050" emotion="happy"}: I am seriously hungry.
+@narrator{code="0040"}: Mara checks the brass compass sewn inside her coat.
+@mara{code="0070" emotion="sad"}: Liora gave me this before she went into the fog.
+@elio{code="0060" emotion="worried"}: Then we bring her back before the fog learns our names.
+@mara{code="0080" emotion="hopeful"}: You would do that?
+@elio{code="0070" emotion="happy"}: I have an umbrella and a terrible sense of direction.
+@narrator{code="0050"}: The harbor cranes creak awake around you.
+@mara{code="0090" emotion="neutral"}: At noon, the lighthouse lens turns east.
+@elio{code="0080" emotion="surprised"}: And at dusk?
+@mara{code="0100" emotion="sad"}: At dusk, it turns toward the people it has lost.
+@narrator{code="0060"}: A gull lands on the rail, carrying a thread of blue ribbon.
+@mara{code="0110" emotion="surprised"}: That was Liora's.
+@elio{code="0090" emotion="worried"}: Then the day has chosen us.
+@mara{code="0120" emotion="hopeful"}: Stay close. Whatever happens, we answer together.
+<branch id="harborPromise" prompt="The blue ribbon flutters toward the lighthouse.">
+  <choice id="promise" text="Promise to return together">
+    ::set{run.heardSignal = true}
+    @mara{code="0130" emotion="hopeful"}: We return together.
+  </choice>
+</branch>

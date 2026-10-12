@@ -66,7 +66,9 @@ description: 선택지 메커니즘 — 가드와 into= 실행 기록 축약 문
 
 `<branch>`는 하나의 `choice` 레코드로 컴파일됩니다. `prompt="…"`는 호스트가 옵션 위에 표시하는
 줄이며, `timeout="N"`은 초 단위의 정수 카운트다운입니다(양의 정수가 아니면
-`E-BRANCH-TIMEOUT`입니다).
+`E-BRANCH-TIMEOUT`입니다). 시간 제한이 있는 branch는 `default="<choice id>"`로 시간이 다 되었을 때의
+결과도 반드시 지정해야 합니다. 두 속성은 서로를 요구하며, id는 이 branch의 직접 옵션이어야 하고,
+그 옵션에는 `when`을 붙일 수 없습니다(`E-BRANCH-DEFAULT`).
 
 ```lute check
 ---
@@ -77,7 +79,7 @@ title: The number
 
 ## Counter
 
-<branch id="number" prompt="Ask for her number?" timeout="10">
+<branch id="number" prompt="Ask for her number?" timeout="10" default="soft">
   <choice id="blunt" text="Just ask, flatly">
     @fixer: Marina. Your number.
   </choice>
@@ -100,7 +102,8 @@ title: The number
   ],
   "converge": "001-0600",
   "prompt": "Ask for her number?",
-  "timeout": 10
+  "timeout": 10,
+  "default": "soft"
 }
 ```
 

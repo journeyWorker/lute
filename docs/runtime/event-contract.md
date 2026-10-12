@@ -1,15 +1,15 @@
 # Runtime event contract
 
-**Status: 0.39.0 runtime contract.**
+**Status: 0.40.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
 and grant settlement. The runtime never calls those services itself.
 
-The normative source is [Lute 0.39.0 §§3–12](../proposals/scenario-dsl/0.39.0.md#3-one-contract-definition-rust-types-generated-schemas).
+The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.39.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.39.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.40.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.40.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -60,12 +60,14 @@ This example is a `Seed`:
 Inputs have a `type` tag. Values are JSON scalars—boolean, number or string—
 resolved against the destination's declared type just as in `lute play`.
 Unknown names or values that do not resolve are rejected. Arrays are applied
-in written order. The seven inputs are:
+in written order.
+The eight inputs are:
 
 | Type | Accepted at | Effect |
 |---|---|---|
 | `raiseOccasion` | `idle`; `ended` only for an `outsideRun` occasion | Apply optional writes, bind payload, judge the seam and candidates, present selected beats, settle quests. |
 | `choose` | Matching `awaitChoice` request | Resume with an open option. |
+| `timeout` | Matching timed `awaitChoice` request | Resume exactly as choosing that menu's `default` option. |
 | `bridgeResult` | Matching `awaitBridge` request | Apply result-dependent effects and resume. |
 | `advanceClock` | `idle` | Apply optional writes, move the clock, settle and raise the clock's occasions; optional `pick` controls that raise. |
 | `hostWrite` | `idle` | Apply engine-owned writes and settle. |
@@ -126,16 +128,17 @@ Each of the following examples is an `Input`:
 {"type": "newRun", "writes": {"accept": ["findTheKey"]}}
 ```
 
-There is no dialogue `Advance` or `Timeout` input. Choice timeout seconds
-are carried in the IR, but expiry policy belongs to the host: send `choose`
-with the option that policy selects.
+The host measures wall-clock time and sends `timeout`; wall-clock time never
+enters the runtime. Timeout is accepted only for a timed `awaitChoice` whose
+request matches. Its continuation records a choice of the menu's `default`,
+so it is equivalent to `choose` with that option.
 
 ## Outputs, events and awaits
 
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.39.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.40.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -147,6 +150,9 @@ Consume events in execution order before acting on the await. Events are:
 | `presentationEnd` | `beat`, `document`, `reason?` | The walk finishes or encounters `end`. |
 | `quest` | The `QuestAdvance` fields used by play's `quests[]` | A quest or objective changes status in a settle. |
 | `clock` | `from`, `to`, `passed?` | The in-game clock moves. |
+`Event.record.record` is decoded by the generated `Ir.Command` schema for
+command-shaped records; supporting IR definitions are exported from
+`@lute-lang/runtime` as `Ir`.
 
 `record.record` preserves the `lute run --json` execution-record shape plus
 play-only line `delivery` and menu markers that run strips. Grant records
@@ -154,7 +160,7 @@ carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
 machine's remaining fields; `instance` is the settlement key. The host
 settles the grant, not the runtime.
 
-The read-only queries are part of the 0.39 contract (spec §4.1), not an
+The read-only queries are part of the 0.40 contract (spec §4.1), not an
 implementation-only report:
 
 | Query | Result shape |
@@ -171,9 +177,27 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.39.schema.json` and in
+definitions in `lute-events-0.40.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
+`stage()` returns the persistent presentation stage:
+
+```json
+{
+  "bg": {"location": "foyer", "time": "night", "assetId": "bg.foyer"},
+  "music": {"playback": "theme", "mood": "calm", "volume": "0.8", "assetId": "theme"},
+  "actors": [{"character": "guide", "anchor": "left", "emotion": "happy", "costume": "coat"}],
+  "cg": null,
+  "video": null
+}
+```
+
+Staging records reduce this value in command order before emission. A new
+scene, entry or bundle presentation resets it to empty; quest objective and
+`<on>` bodies do not reset it. The stage is serialized in `world.stage` and
+survives snapshot/restore. A state suspended at `awaitChoice` or
+`awaitBridge` keeps the world from before its input, so the stage at that
+await is serialized as `continuation.stage`, and `stage()` returns it.
 
 | Await type | Fields | What the host can send next |
 |---|---|---|
@@ -183,9 +207,10 @@ than treating query JSON as untyped data.
 | `ended` | `reason: "terminal"` | `newRun` or an `outsideRun` occasion. |
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |
 
-A choice menu carries `construct` (`branch` or `hub`), `id`, `document`,
-`position`, `presentation`, optional `prompt` and `timeout`, and ordered
-options with `id`, `verdict` (`open`, `closed` or `spent`), `exit` and `once`.
+ A choice menu carries `construct` (`branch` or `hub`), `id`, `document`,
+`position`, `presentation`, optional `prompt`, `timeout` and `default`, and
+ordered options with `id`, `verdict` (`open`, `closed` or `spent`), `exit` and
+`once`. Hubs omit `timeout` and `default`.
 An undecided guard never becomes an `unknown` menu verdict: it halts as
 `incomplete`. Request ids are unsigned integers, incremented for each await
 and never reused within a state lineage. Restoring preserves the pending id.
@@ -212,6 +237,8 @@ human refusal text. Codes distinguish:
 - `E-RUNTIME-BUSY`: an input the current await does not accept; presentations
   cannot interleave.
 - `E-RUNTIME-REQUEST`: a choice or bridge request id is not the pending one.
+- `E-RUNTIME-TIMEOUT`: `timeout` was sent while the pending await is not a
+timed choice (a mismatched request remains `E-RUNTIME-REQUEST`).
 - `E-RUNTIME-OPTION`: a missing or non-open choice option.
 - `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or wrong value type.
 - `E-RUNTIME-INPUT`: malformed input/seed, unknown path, relation, quest,
@@ -249,7 +276,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.39.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.40.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

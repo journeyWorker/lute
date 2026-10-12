@@ -89,6 +89,51 @@ defs:
   </otherwise>
 </match>
 "#;
+#[test]
+fn timed_choice_default_and_music_stop_are_serialized() {
+    const DOC: &str = r#"---
+kind: scene
+character: fixer
+season: 1
+episode: 40
+---
+## Timed
+::music{playback="fadeOut"}
+<branch id="door" timeout="10" default="wait">
+  <choice id="open" text="Open">
+    @fixer: Open.
+  </choice>
+  <choice id="wait" text="Wait">
+    @fixer: Wait.
+  </choice>
+</branch>
+"#;
+    let mut input = input(DOC);
+    input
+        .snapshot
+        .domains
+        .get_mut("musicPlayback")
+        .expect("core musicPlayback")
+        .stops = vec!["fadeOut".into()];
+    let artifact = compile(&input).expect("timed choice and music stop compile");
+    let json = serde_json::to_value(&artifact).unwrap();
+    let music = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["kind"] == "music")
+        .expect("music command");
+    assert_eq!(music["playback"], "fadeOut");
+    assert_eq!(music["stop"], true);
+    let choice = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|command| command["kind"] == "choice")
+        .expect("choice command");
+    assert_eq!(choice["timeout"], 10);
+    assert_eq!(choice["default"], "wait");
+}
 
 #[test]
 fn error_doc_emits_no_artifact() {
@@ -275,8 +320,8 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.39.0");
-    assert_eq!(artifact.ir_version, "0.39.0");
+    assert_eq!(artifact.lute, "0.40.0");
+    assert_eq!(artifact.ir_version, "0.40.0");
     assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
     assert!(
         !artifact.capability_snapshot.is_empty(),
@@ -1894,8 +1939,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.39.0"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.39.0"));
+    assert_eq!(actual["lute"], serde_json::json!("0.40.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.40.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`

@@ -11,8 +11,8 @@ table.
 
 This script fails CI the instant one matrix (or the shared env, or a
     platform package's `package.json` name, or `@lute-lang/lute`'s
-`optionalDependencies` set, or a release package set missing
-`@lute-lang/runtime`) drifts from the others — closing the drift hole BEFORE
+`optionalDependencies` set, or a release package set missing one of the
+JS library packages) drifts from the others — closing the drift hole BEFORE
 a broken release rather than discovering it via a failed publish.
 
 Dependency-free by design (stdlib `json`/`re`/`sys`/`pathlib` only — no
@@ -23,8 +23,8 @@ fields each `settings:` row carries.
 
 Coverage note: a drift checker only guards what it is told to compare.
 This one compares the build/publish matrices, the shared `CARGO_*` env,
-the package manifests, and the runtime package's presence in every publish
-loop; it deliberately does NOT assert `setup-bun` version parity (lute pins
+the package manifests, and each JS library package's presence in every
+publish loop; it deliberately does NOT assert `setup-bun` version parity (lute pins
 bun in one workflow only today) — add that comparison here if a second
 workflow ever pins its own bun version.
 """
@@ -45,10 +45,15 @@ PUBLISH_WF = ROOT / ".github/workflows/publish.yml"
 # the release binary was built under different flags than CI proved).
 REQUIRED_ENV = ("CARGO_TERM_COLOR", "CARGO_INCREMENTAL")
 
-# The runtime package is a first-class release artifact, but is not part of
-# the native build matrix below.
-RUNTIME_PACKAGE_DIR = "runtime"
-RUNTIME_PACKAGE_NAME = "@lute-lang/runtime"
+# The JS library packages are first-class release artifacts outside the
+# native build matrix below: package dir -> npm name. Their `@lute-lang/*`
+# dependencies are pinned to the release version, so every one of them is
+# stamped, probed and published.
+LIBRARY_PACKAGES = {
+    "runtime": "@lute-lang/runtime",
+    "player": "@lute-lang/player",
+    "player-web": "@lute-lang/player-web",
+}
 
 # The scalar fields every `matrix.settings` row carries that must agree
 # across the two workflows (publish additionally carries `package_name`,
@@ -147,30 +152,27 @@ def main() -> int:
     build_text = read(BUILD_WF)
     publish_text = read(PUBLISH_WF)
 
-    # Every package set in publish.yml must include the runtime package:
+    # Every package set in publish.yml must include every library package:
     # version stamping and the fresh-release/recovery probe are independent
     # loops, so checking only the publish steps would leave a partial release
     # undetected.
-    stamped = shell_for_values(publish_text, "pkg")
-    check(
-        stamped is not None and f"packages/{RUNTIME_PACKAGE_DIR}" in stamped,
-        "version-stamping package set missing packages/runtime / @lute-lang/runtime",
-    )
-    probed = shell_for_values(publish_text, "pkg_dir")
-    check(
-        probed is not None and RUNTIME_PACKAGE_DIR in probed,
-        "fresh-release/recovery package set missing packages/runtime / @lute-lang/runtime",
-    )
-
-    runtime_manifest = ROOT / "packages/runtime/package.json"
-    if runtime_manifest.is_file():
-        runtime_name = json.loads(runtime_manifest.read_text()).get("name")
+    stamped = shell_for_values(publish_text, "pkg") or set()
+    probed = shell_for_values(publish_text, "pkg_dir") or set()
+    for pkg_dir, name in LIBRARY_PACKAGES.items():
         check(
-            runtime_name == RUNTIME_PACKAGE_NAME,
-            f"runtime package name drift: expected {RUNTIME_PACKAGE_NAME!r}, got {runtime_name!r}",
+            f"packages/{pkg_dir}" in stamped,
+            f"version-stamping package set missing packages/{pkg_dir} / {name}",
         )
-    else:
-        ERRORS.append("packages/runtime/package.json is missing")
+        check(
+            pkg_dir in probed,
+            f"fresh-release/recovery package set missing packages/{pkg_dir} / {name}",
+        )
+        manifest = ROOT / "packages" / pkg_dir / "package.json"
+        if manifest.is_file():
+            actual = json.loads(manifest.read_text()).get("name")
+            check(actual == name, f"{pkg_dir} package name drift: expected {name!r}, got {actual!r}")
+        else:
+            ERRORS.append(f"packages/{pkg_dir}/package.json is missing")
     # 1. Shared env parity.
     build_env = top_level_env(build_text)
     publish_env = top_level_env(publish_text)
@@ -258,11 +260,9 @@ def main() -> int:
                 published.add(pkg_dir)
                 break
     expected_dirs = {r.get("package_dir") for r in publish_rows if r.get("package_dir")}
-    expected_dirs.update({"cli", RUNTIME_PACKAGE_DIR})
-    check(
-        RUNTIME_PACKAGE_DIR in published,
-        "publish package set missing packages/runtime / @lute-lang/runtime",
-    )
+    expected_dirs.update({"cli", *LIBRARY_PACKAGES})
+    for pkg_dir, name in LIBRARY_PACKAGES.items():
+        check(pkg_dir in published, f"publish package set missing packages/{pkg_dir} / {name}")
     check(
         published == expected_dirs,
         f"npm-publish step drift:\n  publishes={sorted(published)}\n  expected ={sorted(expected_dirs)}",

@@ -317,6 +317,10 @@
         },
         "pending": {
           "$ref": "#/$defs/Await"
+        },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The stage at the pending await; the `world` of a suspended state is\nthe world before its input (dsl 0.40.0 §4.2)."
         }
       },
       "required": [
@@ -324,7 +328,8 @@
         "input",
         "answers",
         "pending",
-        "delivered"
+        "delivered",
+        "stage"
       ],
       "type": "object"
     },
@@ -368,6 +373,24 @@
           "required": [
             "type",
             "occasion"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "request": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "timeout",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "request"
           ],
           "type": "object"
         },
@@ -504,6 +527,12 @@
         "construct": {
           "type": "string"
         },
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "document": {
           "type": "string"
         },
@@ -530,8 +559,9 @@
           ]
         },
         "timeout": {
+          "minimum": 0,
           "type": [
-            "number",
+            "integer",
             "null"
           ]
         }
@@ -587,6 +617,169 @@
           "type": "object"
         }
       ]
+    },
+    "Stage": {
+      "properties": {
+        "actors": {
+          "items": {
+            "$ref": "#/$defs/StageActor"
+          },
+          "type": "array"
+        },
+        "bg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageBackground"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageCg"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "music": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageMusic"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "video": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageVideo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actors"
+      ],
+      "type": "object"
+    },
+    "StageActor": {
+      "properties": {
+        "anchor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "character": {
+          "type": "string"
+        },
+        "costume": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "emotion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "character"
+      ],
+      "type": "object"
+    },
+    "StageBackground": {
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StageCg": {
+      "properties": {
+        "assetId": {
+          "type": "string"
+        },
+        "layout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "assetId"
+      ],
+      "type": "object"
+    },
+    "StageMusic": {
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mood": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "playback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volume": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StageVideo": {
+      "properties": {
+        "assetId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "assetId"
+      ],
+      "type": "object"
     },
     "StateWrite": {
       "additionalProperties": false,
@@ -841,6 +1034,10 @@
           "type": "array",
           "uniqueItems": true
         },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The current presentation stage. Unlike scene state, this survives\npresentations and is serialized in runtime snapshots."
+        },
         "state": {
           "additionalProperties": {
             "$ref": "#/$defs/Value"
@@ -874,7 +1071,8 @@
         "deferredHandlers",
         "clockAdvancedByBeat",
         "advanceCascadeDepth",
-        "cadence"
+        "cadence",
+        "stage"
       ],
       "type": "object"
     },
@@ -909,7 +1107,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.39.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.40.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A serialized, resumable runtime state.",

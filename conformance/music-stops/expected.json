@@ -1,0 +1,18 @@
+{
+  "commands": [
+    {
+      "kind": "music",
+      "position": "001-0100"
+    },
+    {
+      "kind": "music",
+      "position": "001-0200"
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.40",
+  "kind": "scene",
+  "quests": {},
+  "state": {}
+}

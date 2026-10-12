@@ -1,5 +1,5 @@
 /**
- * Loads bundles into {@link Program}s (spec 0.39.0 §5.1). A program lives in
+ * Loads bundles into {@link Program}s (spec 0.40.0 §5.1). A program lives in
  * the scope that loaded it and is freed when the scope closes.
  */
 import { Context, Effect, Layer, Scope } from "effect"

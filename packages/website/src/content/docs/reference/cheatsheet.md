@@ -1775,7 +1775,7 @@ id: choice.readback
 
 ## Ask
 
-<branch id="ask" timeout="10">
+<branch id="ask" timeout="10" default="no">
   <choice id="yes" text="Yes">
     @mira: Great.
   </choice>

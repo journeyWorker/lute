@@ -59,6 +59,7 @@ macro_rules! outln {
 }
 
 mod beats_cmd;
+mod bindings;
 mod bundle;
 pub mod bench;
 mod cli;

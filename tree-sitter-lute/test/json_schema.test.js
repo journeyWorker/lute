@@ -586,8 +586,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.39.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.39.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.40.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.40.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
