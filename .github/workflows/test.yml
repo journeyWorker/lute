@@ -495,3 +495,11 @@ jobs:
       - name: Play the demo end to end in Chromium
         working-directory: packages/player-web
         run: bun run test:e2e
+
+      - name: Upload E2E screenshots and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-e2e-results
+          path: packages/player-web/test-results/
+          retention-days: 7

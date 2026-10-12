@@ -93,8 +93,11 @@ test.describe.serial("player demo", () => {
     let timedExpired = false
     let shotMid = false
     const deadline = Date.now() + 540_000
+    const trail: string[] = []
     for (let i = 0; Date.now() < deadline; i++) {
       const now = await current()
+      const state = `${now.flow}/${now.story}`
+      if (trail.at(-1)?.endsWith(state) !== true) trail.push(`${i}:${state}`)
       if (now.flow === "ended" || now.flow === "error" || now.story === "halted") break
       if (!shotMid && (now.story === "shown" || now.story === "typing") && i > 30) {
         await screenshot("mid-game")
@@ -108,7 +111,7 @@ test.describe.serial("player demo", () => {
       }
       await step(now)
     }
-    expect((await current()).flow).toBe("ended")
+    expect((await current()).flow, trail.slice(-40).join(" ")).toBe("ended")
     expect(timedExpired).toBe(true)
     expect(shotMid).toBe(true)
     await screenshot("ending")
