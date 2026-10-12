@@ -28,6 +28,10 @@ pub struct InstalledPlugins {
     /// far as resolution goes; assembly names them as failed rather than
     /// missing.
     pub failed: std::collections::BTreeMap<String, Vec<&'static str>>,
+    /// The first load error of each [`Self::failed`] package, as the cause
+    /// its activating documents' unknown directive tags are attributed to
+    /// (0.41.0 §3.2).
+    pub failed_causes: std::collections::BTreeMap<String, crate::snapshot::InvalidDecl>,
 }
 
 impl InstalledPlugins {
@@ -722,6 +726,7 @@ mod tests {
             lints: vec![],
             cast: vec![],
             sites: Default::default(),
+            invalid: Vec::new(),
         }
     }
 

@@ -47,7 +47,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value as Json};
 
-use crate::{Driver, Machine, Value};
+use crate::{Driver, Machine, Slot, UnresolvedAtom, Value};
 
 /// A host-owned source of fresh walk drivers.
 ///
@@ -81,6 +81,26 @@ pub trait WalkDriver {
 /// What one step operation did: its body record, the quest advances it
 /// made after the body, and what ends the playthrough, if anything.
 pub type StepOutcome = (StepBody, Vec<QuestAdvance>, Option<PlayHalt>);
+
+/// dsl 0.41.0 §5.1: `slot` evaluated over `w` exactly as a walk's guard is —
+/// the effective state (written, seeded, declared default), the fact store
+/// under the world's derive mode, `visited`, the clock paths — with the
+/// atoms that left it unknown.
+pub fn evaluate(
+    p: &ExecProject,
+    w: &World,
+    slot: &Slot,
+    observer: Option<SessionEvalObserver>,
+) -> (Value, Vec<UnresolvedAtom>) {
+    let mut eval = w
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            observer,
+        )
+        .with_visited(&w.visited);
+    eval.eval_atoms(slot)
+}
 
 /// One playthrough over one project, driven by a caller-owned walk factory.
 pub struct Session<'p, 'd, F: WalkDriver> {
@@ -177,6 +197,11 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             member,
             member,
         ))
+    }
+
+    /// dsl 0.41.0 §5.1: `slot` evaluated over this world ([`evaluate`]).
+    pub fn evaluate(&self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
+        evaluate(self.project, &self.world, slot, self.driver.observer())
     }
 
     /// Raise `occasion` (for `target`): its candidates' verdicts, what it

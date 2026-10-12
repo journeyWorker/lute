@@ -26,6 +26,8 @@ export interface PresenterOptions {
   readonly theme: Theme
   readonly titleBackground?: string
   readonly logger?: (message: string, error?: unknown) => void
+  /** Debug-level log; defaults to `console.debug`. Receives one line per custom vfx name. */
+  readonly debug?: (message: string) => void
 }
 
 /** Pixi implementation of the renderer-free player Presenter port. */
@@ -63,6 +65,7 @@ export class PixiPresenter implements Presenter {
   private readonly bindings: Bindings
   private readonly theme: Theme
   private readonly logger: (message: string, error?: unknown) => void
+  private readonly debug: (message: string) => void
   private readonly actors = new Map<string, ActorSprite>()
   private readonly background: Background
   private readonly cg: CgLayer
@@ -73,6 +76,7 @@ export class PixiPresenter implements Presenter {
   private readonly choice: ChoiceMenu
   private readonly choiceActions: PubSub.PubSub<PlayerAction>
   private readonly missing = new Set<string>()
+  private readonly customVfx = new Set<string>()
   private uiHidden = false
 
   constructor(options: PresenterOptions) {
@@ -83,6 +87,7 @@ export class PixiPresenter implements Presenter {
     this.bindings = options.bindings
     this.theme = options.theme
     this.logger = options.logger ?? ((message, error) => console.warn(message, error))
+    this.debug = options.debug ?? ((message) => console.debug(message))
     const design = this.pixi.design
     this.background = new Background(this.pixi.layers.background, this.world, this.bindings, this.assets, design, this.theme, (message) => this.logMissing(message))
     this.cg = new CgLayer(this.pixi.layers.cg, this.world, this.bindings, this.assets, design, this.theme, (message) => this.logMissing(message))
@@ -159,7 +164,7 @@ export class PixiPresenter implements Presenter {
       case "Camera": {
         return Effect.sync(() => this.camera.apply(cue.framing, cue.focus)).pipe(Effect.flatMap(() => this.camera.move(cue.move ?? cue.transition, cue.duration, instant)))
       }
-      case "Vfx": return this.vfx.play(cue.effect, cue.duration, instant)
+      case "Vfx": return cue.effect.effect === "custom" ? this.logCustomVfx(cue.effect.name ?? "") : this.vfx.play(cue.effect, cue.duration, instant)
     }
   }
 
@@ -206,6 +211,16 @@ export class PixiPresenter implements Presenter {
     this.missing.add(message)
     this.logger(message)
   }
+
+  /**
+   * A custom vfx (spec 0.41.0 §7.7) has no catalogue effect here: the Pixi
+   * presenter plays nothing and logs each name once at debug level.
+   */
+  private readonly logCustomVfx = (name: string): Effect.Effect<void> => Effect.sync(() => {
+    if (this.customVfx.has(name)) return
+    this.customVfx.add(name)
+    this.debug(`Custom vfx "${name}" has no Pixi effect; nothing is played`)
+  })
 }
 
 export const presenterLayer = (bindings: Bindings, theme: Theme, assets: TextureAssets) =>

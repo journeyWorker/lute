@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.40.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.41.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -451,7 +451,7 @@ impl<D: Driver> Machine<D> {
     }
 
     /// Evaluate `slot` over live state + the closure.
-    fn eval_atoms(&mut self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
+    pub(crate) fn eval_atoms(&mut self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
         let (v, atoms) = self.store.eval(&slot.expr);
         if let Some(observer) = &mut self.eval_observer {
             observer(

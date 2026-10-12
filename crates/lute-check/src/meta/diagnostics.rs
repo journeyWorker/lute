@@ -101,13 +101,6 @@ pub(super) fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String
              `{{ type: {name}, default: ... }}` and nothing else (dsl 0.8.0 §4)"
         );
     }
-    if name == "number" {
-        return format!(
-            "invalid state declaration for `{path}`: `type: number` is no longer a valid \
-             numeric type; use `type: int` for whole numbers or `type: double` for fractional \
-             values (dsl 0.8.0 §4)"
-        );
-    }
     format!(
         "invalid state declaration for `{path}`: unknown type `{name}`; author state is \
          scalar — `int`, `double`, `bool`, `string`, or `enum`, and an `enum` NESTS its members \
@@ -191,6 +184,67 @@ pub fn meta_path_span(meta: &Meta, path: &[&str]) -> Span {
         .map_or(meta.span, |first| meta_key_span(meta, first))
 }
 
+/// 0.41.0 §3.2: report every `type: number` of the frontmatter `value` —
+/// a state row's, a def's or its parameter's, a component parameter's — as
+/// `E-TYPE-NUMBER` at its `number`, and read it as `double` so the
+/// declaration still enters the environment. Returns each site with its
+/// 1-based line in the file; the caller marks what it declares invalid.
+pub(crate) fn take_number_types(
+    meta: &Meta,
+    value: &mut serde_yaml::Value,
+    diags: &mut Vec<Diagnostic>,
+) -> Vec<(lute_manifest::types::NumberSite, usize)> {
+    let sites = lute_manifest::types::number_type_sites(value);
+    if sites.is_empty() {
+        return Vec::new();
+    }
+    lute_manifest::types::patch_number_sites(value, &sites);
+    let authored = crate::chapters::authored_yaml(&meta.raw_yaml);
+    let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != authored.len();
+    let base = meta.span.byte_start + if enveloped { 4 } else { 0 };
+    let first_line = meta.span.line.max(1) as usize + usize::from(enveloped);
+    let mut out = Vec::new();
+    for site in sites {
+        let range = site.range_in(authored);
+        let (span, line) = match &range {
+            Some(r) => (
+                Span {
+                    byte_start: base + r.start,
+                    byte_end: base + r.end,
+                    line: 0,
+                    column: 0,
+                    utf16_range: (0, 0),
+                },
+                first_line + authored[..r.start].matches('\n').count(),
+            ),
+            None => {
+                let keys: Vec<&str> = site
+                    .path
+                    .iter()
+                    .filter_map(|k| match k {
+                        lute_manifest::types::YamlKey::Key(k) => Some(k.as_str()),
+                        lute_manifest::types::YamlKey::Item(_) => None,
+                    })
+                    .collect();
+                (meta_path_span(meta, &keys), first_line)
+            }
+        };
+        diags.push(Diagnostic {
+            code: lute_manifest::types::E_TYPE_NUMBER.to_string(),
+            severity: Severity::Error,
+            message: lute_manifest::types::number_type_message(site.default.as_slice()),
+            evidence: None,
+            span,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        });
+        out.push((site, line));
+    }
+    out
+}
 /// `E-META-PARSE` for a frontmatter serde_yaml rejects: the message and the
 /// span of the offending character in the FILE (round-5 T3-2). serde_yaml
 /// counts lines from the first line after the `---` opener, so its own

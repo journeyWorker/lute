@@ -385,9 +385,9 @@ fn advance_to_moves_to_the_next_such_position_and_a_step_judges_the_clock() {
     }
 }
 
-/// Ember N16 / R3: an `advance:` step carries the `engine:` writes of the
-/// same moment — applied where the clock arrives, one settle for both — but
-/// not a write to the clock's own paths.
+/// Ember N16 / R3, dsl 0.41.0 §5.4: an `advance:` step carries the `engine:`
+/// writes of the same moment — applied before the clock moves — but not a
+/// write to the clock's own paths.
 #[test]
 fn an_advance_step_carries_engine_writes() {
     let leg = format!("  run.leg: {{ type: int, default: 1, owner: engine }}\n{RAISING_CLOCK}");
@@ -402,8 +402,8 @@ fn an_advance_step_carries_engine_writes() {
     let leg = t.find("  set run.leg = 3").unwrap_or_else(|| panic!("{t}"));
     let day = t.find("  set run.day = 2").unwrap_or_else(|| panic!("{t}"));
     assert!(
-        day < leg,
-        "the engine writes apply where the clock arrives: {t}"
+        leg < day,
+        "the engine writes apply before the clock moves: {t}"
     );
     let out = clock_play(
         "advance-engine-clock",
@@ -440,12 +440,12 @@ fn map_play(tag: &str, script: &str) -> Output {
     play(&dir, script)
 }
 
-/// Ember R3: the `engine:` writes of an `advance:` land where the clock
-/// arrives — after the `dayEnd` it raises on the way, which still reads the
-/// day it closes. Summer R2 / lighthouse N15: the step's `presented` spans
-/// every raise in it; `winner` stays the slot raise's.
+/// dsl 0.41.0 §5.4: the `engine:` writes of an `advance:` land before the
+/// clock moves, so the `dayEnd` it raises on the way reads them. Summer R2 /
+/// lighthouse N15: the step's `presented` spans every raise in it; `winner`
+/// stays the slot raise's.
 #[test]
-fn an_advance_judges_every_raise_and_writes_on_arrival() {
+fn an_advance_judges_every_raise_and_writes_before_the_move() {
     let out = map_play(
         "map-advance",
         "steps:\n  - advance: day\n    engine: { state: { run.leg: 3 } }\n    \
@@ -453,9 +453,9 @@ fn an_advance_judges_every_raise_and_writes_on_arrival() {
     );
     let t = text(&out);
     assert!(out.status.success(), "{t}");
-    let closed = t.find("Leg 1 ends.").unwrap_or_else(|| panic!("{t}"));
     let leg = t.find("  set run.leg = 3").unwrap_or_else(|| panic!("{t}"));
-    assert!(closed < leg, "dayEnd reads the day it closes: {t}");
+    let closed = t.find("Leg 3 ends.").unwrap_or_else(|| panic!("{t}"));
+    assert!(leg < closed, "dayEnd reads the advance's writes: {t}");
     let out = map_play(
         "map-advance-miss",
         "steps:\n  - advance: day\n    expect: { presented: [day.slot] }\n",

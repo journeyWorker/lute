@@ -180,7 +180,10 @@ impl Driver for TraceDriver<'_> {
         }
         self.bridge_answer = Some(answer.clone());
         match answer {
-            Some(a) => BridgeReply::Answer(a),
+            Some(fields) => BridgeReply::Answer {
+                fields,
+                writes: Default::default(),
+            },
             None => BridgeReply::Unanswered,
         }
     }

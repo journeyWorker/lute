@@ -110,6 +110,9 @@ pub(super) fn execute(
             PlayHalt::Error(m) => {
                 PlayHalt::Error(super::plan::locate_step_error(&script.steps, &m).unwrap_or(m))
             }
+            PlayHalt::Refused(m) => {
+                PlayHalt::Refused(super::plan::locate_step_error(&script.steps, &m).unwrap_or(m))
+            }
             h => h,
         }),
         world,

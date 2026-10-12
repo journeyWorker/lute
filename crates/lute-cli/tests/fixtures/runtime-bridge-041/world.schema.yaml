@@ -1,0 +1,13 @@
+state:
+  run.score: { type: int, default: 0 }
+  run.day: { type: int, default: 1, owner: engine }
+  run.slot: { type: { enum: [dawn, dusk] }, default: dawn, owner: engine }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [dawn, dusk]
+entities:
+  foe: { members: [kato, mira] }
+  item: { members: [rope, lamp] }
+relations:
+  pulled: { args: [item], tier: run, reserved: true }

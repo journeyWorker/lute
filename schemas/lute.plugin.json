@@ -625,6 +625,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "host": {
+          "description": "0.41.0 §3.5: the host reads this def (exempt from W-DEF-UNUSED; exported as `host: true` in the index `defs`).",
+          "type": "boolean"
         }
       }
     },

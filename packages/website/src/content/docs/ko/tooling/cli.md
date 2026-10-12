@@ -1,6 +1,6 @@
 ---
 title: CLI 레퍼런스
-description: 모든 lute 하위 명령 — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — 의 개요, 주요 플래그, 종료 코드 계약입니다.
+description: 모든 lute 하위 명령 — init, new, check, check-project, compile, compile-stream, expr, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — 의 개요, 주요 플래그, 종료 코드 계약입니다.
 ---
 
 `lute`는 `.lute` 문서를 헤드리스로 검사하고 컴파일하는 도구입니다. 핵심 `check()`가 계약이며, CLI는 인자 파싱, 파일 I/O, 출력 형식만 추가하고 검증 로직은 소유하지 않습니다. 반복해서 쓰이는 해석 플래그는 두 가지입니다. `--providers <DIR>`는 id를 해석할 provider 스냅숏 디렉터리를 고정하고, `--project <DIR>`는 문서의 활성화된 capability 스냅숏을 해석할 `lute.project.yaml` + `plugins/`를 불러옵니다. 이를 지정하지 않으면 모든 단일 파일 명령(`check`, `compile`, `compile-stream`, `trace`, `context`, `test`)이 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고 stderr에 그 사실을 알립니다(`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`). 파일 위쪽에 매니페스트가 없으면 core만(`lute.core`) 해석합니다. 0.27.0 이전에는 `check`와 `test`만 매니페스트를 찾았기 때문에, `check`가 통과시킨 문서를 `trace`가 `E-UNDECLARED`로 거부할 수 있었습니다. 아래의 권한 인식 작성 명령에서 `--permission-profile <NAME>`은 프로젝트 해석을 요구하며, 해당 신뢰 프로필의 [권한](/ko/tooling/capability-permissions/)을 그 플러그인을 활성화하거나 원본 프로필을 바꾸지 않고 추가 상한으로 적용합니다.
@@ -23,7 +23,7 @@ $ lute check-project <dir> [--json] [--providers <DIR>] [--engine <FILE>]
 
 `<dir>` 아래의 모든 `*.lute` 파일을 결정적인 정렬 순서로 재귀적으로 `check`합니다(0.29.0: 보고서는 원인을 먼저 출력합니다 — `lute.project.yaml` 행, 플러그인, 스키마, 경로 순서의 각 문서, 프로젝트 전체 행 순서). 각 파일을 자신의 가장 가까운 상위 `lute.project.yaml` 루트에 대해 검사하고, **프로젝트 전체 `<quest id>` 고유성**, 연결성 패스(`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), [관계형 가드 분석](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법)(dsl 0.20.0)을 수행합니다. 가드의 모든 `holds(…)`/`count(…)`는 프로젝트 전체에서 불가능, 보장, 가능 중 하나로 판정되며, 절대 성립할 수 없는 가드는 슬롯의 데드 코드 오류(`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`)로, 중복 가드는 `W-FACT-GUARANTEED`로 보고됩니다. 프로젝트 전체 비트/퀘스트 권고도 실행합니다(dsl 0.22.0): `W-BEAT-PRIORITY-TIE`(같은 `select: first` 계기에서 같은 대상 또는 대상 없음이고 priority가 같으며 `when`들이 서로 배타적이라고 증명되지 않아 파일 순서가 승자를 정함), `W-BEAT-ONCE-RUN-USER`(`when`이 user 등급 상태만 읽으므로 매 런마다 반복되는 `once: run` 비트), `W-QUEST-HANDLER-DEAD`(`fail`도, 필수 하위 퀘스트 목표도, 부모 퀘스트도 없는 퀘스트의 `<on event="questFailed">`라서 절대 실패할 수 없음)입니다. 이어서 `identity:`에 따라 정상 검사된 모든 문서를 컴파일하므로 컴파일 단계 오류가 `compile` 때만이 아니라 여기서도 실패합니다: `E-DUP-VOICEKEY`(한 `voiceKey`에 서로 다른 텍스트의 줄 — 0.22.0부터 기본 `{prefix}.{speaker}-{code}`가 씬들을 분리하므로, 이전의 접두사 없는 `identity.voiceKey: "{speaker}-{code}"`를 고정하는 프로젝트가 겪는 위험) 및 `E-CAPABILITY-MISMATCH`(서로 다른 두 capability 스냅숏을 해석하는 문서로, `compile --all`과 `play`가 거부함)입니다. `--engine <FILE>`은 프로젝트의 정렬된 `requiredSemantics` 합집합도 협상하고 기여한 각 문서/범위를 `E-CHECK-ENGINE-SEMANTICS`로 보고하며, playback을 열지 않습니다. 종료 코드는 정상일 때 **0**, 파일에 오류나 프로젝트 전체 충돌이 하나라도 있을 때 **1**, I/O 또는 매트릭스/버전 실패일 때 **2**입니다. 동일한 `--deny <CODE>`/`--deny-warnings` 승격(`check` 참고)도 프로젝트 전체에 적용됩니다.
 
- dsl 0.24.0부터 `check-project`는 `W-QUEST-NEVER-ACCEPTED`(accept 중심 퀘스트 — `start`가 없고 root 또는 `activate="accept"` 자식이지만 프로젝트의 어떤 `::accept`도 이름 붙이지 않음), `W-RELATION-UNREAD`(assert/seed/derive되었지만 어떤 조건, rule body, def도 읽지 않는 relation), `W-DEF-UNUSED`(아무것도 참조하지 않는 `@def`)를 선언 위치에서 프로젝트마다 한 번씩 경고합니다. `mocks/*.yaml` 패스는 mock의 `bridges:` 응답을 mock이 지정한 문서의 플러그인 호출과 대조합니다(`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
+ dsl 0.24.0부터 `check-project`는 `W-QUEST-NEVER-ACCEPTED`(accept 중심 퀘스트 — `start`가 없고 root 또는 `activate="accept"` 자식이지만 프로젝트의 어떤 `::accept`도 이름 붙이지 않음), `W-RELATION-UNREAD`(assert/seed/derive되었지만 어떤 조건, rule body, def도 읽지 않는 relation), `W-DEF-UNUSED`(아무것도 참조하지 않는 `@def`. `host: true`로 선언한 스키마·플러그인 def는 호스트가 읽으므로 제외)를 선언 위치에서 프로젝트마다 한 번씩 경고합니다. `mocks/*.yaml` 패스는 mock의 `bridges:` 응답을 mock이 지정한 문서의 플러그인 호출과 대조합니다(`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
  
 0.40부터 프로젝트에 `player.bindings.yaml`이 있으면 이 명령은 컴파일 후 선택적인
 플레이어 바인딩도 검사합니다. 바인딩 스키마, `assetsBase` 아래의 asset 파일, domain과
@@ -64,6 +64,10 @@ $ lute check-project . --wip
 0.34.0부터 프로젝트 전체 명령은 가장 가까운 매니페스트 루트마다 하나의 `ProjectModel`을 불러옵니다. 따라서 `check-project`, `scenario`, `beats`, `impact`, `calendar`, `play`, `test`는 하나의 조정된 스냅숏을 공유합니다. 분석에서 파생된 결과에는 `evidence` 수준(`proven`, `witnessed`, `bounded`, `heuristic`, `unknown`)이 붙습니다. 사람용 출력은 `[bounded: <scope>]`, `[heuristic]`, `[unknown]`을 추가하며 `proven`이나 `witnessed`에는 접미사를 붙이지 않습니다. bounded 결과는 “이 범위 안에서”라는 뜻이지 “경로가 없다”는 뜻이 아닙니다.
 
 `lute.project.yaml`에 선언된 제약도 `check-project`가 검사합니다. 위반만 진단으로 표시하며, 성립과 미확정 결과는 아래 보고서에 나타납니다.
+
+요약 줄은 심각도별로 셉니다(0.41.0). `lute check`는 파일마다 `ok: <path> (W warning(s))` 또는 `failed: <path> (E error(s), W warning(s))`로, `check-project`는 `ok: <dir> (F file(s), W project-wide warning(s))` 또는 `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`로 끝납니다. `info` 진단은 경고로 세지 않습니다. 실행에 info가 있으면 개수를 뒤에 덧붙이고(`, I info` / `, I project-wide info`), 없으면 위 줄을 그대로 출력합니다. `hint` 진단은 세지 않으며, `--deny`로 승격된 진단은 오류로만 셉니다.
+
+파싱되지 않는 선언은 더 이상 연쇄 오류를 만들지 않습니다(0.41.0). 0.31에서 제거된 `type: number`는 `number` 위치에서 `E-TYPE-NUMBER`로 보고되며, `int`와 `double` 중 무엇을 고를지 알려 줍니다(그 선언이 받는 값이 모두 정수이면 `int`를 제안합니다). 선언은 이름으로 환경에 남습니다. 그런 선언이 든 export가 있는 플러그인도 나머지 항목은 그대로 불러오고, 그 선언에 기대는 곳은 선언을 고칠 때까지 검사하지 않습니다. `E-CLOCK-DECL`이나 사용처마다의 `E-UNKNOWN-DIRECTIVE` 대신, 잘못된 선언 하나당 첫 사용처에 `W-DEPENDS-ON-INVALID` 안내(info) 하나가 붙고 나머지는 개수로 셉니다.
 
 ## impact
 
@@ -128,7 +132,7 @@ constraints:
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.40.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.41.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -238,6 +242,38 @@ $ lute compile-stream <scene.lute> [--project <DIR>] [--providers <DIR>]
 `--permission-profile <NAME>`은 프로젝트 snapshot과 함께 신뢰된 추가 상한 하나를 고정합니다. 고정 템플릿과 추가되는 모든 본문 단위에 적용되며, 스트림 중간에 전환할 수 없습니다. 금지된 단위는 거부된 IR을 담은 update가 나오기 전에 해당 `E-PERMISSION-*` 진단과 함께 종료됩니다.
 
 성공적인 EOF 최종화 뒤에만 종료 **0**이며, 문법/의미/권한/컴파일/스트리밍 거부 시 **1**, 사용법, I/O, 끊어진 stdout 또는 잘못된 UTF-8 시 **2**입니다. 작성된 `::end`는 일반 런타임 명령이며 EOF를 대신하거나 stdin을 닫지 않습니다. 이 명령은 템플릿을 수정하거나 원격/런타임 효과를 수행하지 않습니다. 레코드 스키마, 누적 비용, 허용되는 본문 표면, 권한 고정, 소비자 커서/상태 규칙은 [스트리밍 연속 컴파일러 가이드](/ko/tooling/continuation-compiler/)를 참고하세요.
+
+## expr
+
+```console
+$ lute expr <CEL> [--project <DIR>] [--json]
+```
+
+호스트 조건을 프로젝트에 대해 IR `exprNode`로 내려(lower), 게임이 런타임의 `evaluate` 질의로 실행 상태 위에서 평가할 수 있게 합니다. 런타임에는 CEL 파서가 없으므로 호스트는 빌드 시점에 조건을 내립니다. `--project`의 기본값은 현재 디렉터리이며, 그 디렉터리에 `lute.project.yaml`이 있어야 합니다(없으면 종료 **2**).
+
+조건은 프로젝트 루트에 있는 씬의 `when:`으로 검사됩니다. 이 씬은 프로젝트 문서들이 가져오는 모든 스키마 파일을 가져오고, 프로젝트의 플러그인 집합 아래에서, 매개변수가 있는 def까지 포함한 [프로젝트 인덱스 `defs`](/ko/tooling/runtime-contract/#041의-projectindexjson)를 def 표로 씁니다. 즉 번들이 담는 어휘입니다. 기대 타입은 `bool`입니다. 진단은 검사기 자신의 코드(`E-CEL-PARSE`, `E-CEL-PROFILE`, `E-CEL-TYPE`, `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-REF-ARITY`, `E-FACT-DOMAIN`, …)이며 `<expr>:<줄>:<열>`로 표시되고, 위치는 식 텍스트 안의 위치입니다. 검사는 통과하지만 내려지지 않는 조건은 `E-CEL-PROFILE`입니다.
+
+해석되지 않는 프로젝트 — 매니페스트나 플러그인 오류, 또는 어떤 문서가 가져오는데 해석되지 않는 스키마 import(`E-USES-NOT-FOUND`) — 는 위치 없는 오류(`<expr>: error [CODE] …`)이며, 식은 검사하지 않습니다.
+
+성공하면 stdout에 한 줄, 즉 JSON으로 된 `exprNode`가 나오고 경고는 stderr로 갑니다. 종료 **0**입니다. 오류가 있으면 진단은 stderr로 가고 stdout은 비며 종료 **1**입니다. `seven-days` 예제 게임에서:
+
+```console
+$ lute expr "run.day >= 3"
+{"op":">=","l":{"path":"run.day"},"r":{"int":3}}
+```
+
+<!-- lute-diagnostics -->
+```console
+$ lute expr "@at(3)"
+<expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
+```
+
+`--json`은 객체 하나만 출력합니다. 성공하면 컴파일된 조건(`celSlot`)이 담는 필드 — `@def`를 펼친 텍스트인 `cel`, 펼침으로 입력이 바뀌었을 때의 입력인 `authored`(바뀌지 않았으면 생략), `expr` — 와 `lute check --json`의 진단 객체인 `diagnostics`(경고만)를 담습니다. 오류가 있으면 `{"ok": false, "diagnostics": [...]}`입니다:
+
+```console
+$ lute expr "@at(3, 'night')" --json
+{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+```
 
 ## trace
 
@@ -400,6 +436,8 @@ $ lute fix <path>…
 | `<match on="…">` | `<match subject="…">` |
 | `<choice label="…">` | `<choice text="…">` |
 | `@speaker{id="x"}: …` | 앞 줄에 `::label{name="x"}`을 쓰고, `id=`가 없는 줄로 변경 |
+
+이름이 바뀐 도메인은 프로젝트·스키마·플러그인 YAML에서도 바꿉니다(0.41.0). 최상위 `enums:`·`entities:` 블록 바로 아래의 키와 모든 `domain:` 타입 참조의 값이 대상이며 — `musicAction` → `musicPlayback`(0.37.0에서 이름 변경) — 바꾼 곳마다 수정 하나로 셉니다. 같은 매핑에 새 이름이 이미 있으면 옛 키를 그대로 두고 stderr에 알립니다: `` lute fix: <file>:<line>: kept `musicAction:` — `musicPlayback:` is already declared ``. 그 전까지 새 이름에 대한 `E-DOMAIN-UNKNOWN`은 `` — this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix` ``로 끝납니다.
 
 작성자 key의 snake case는 재작성 방식이 명확한 경우에만 lowerCamelCase가 됩니다. 인라인 텍스트 수정자는 절대 새로 만들지 않으며, 기존 수정자는 바이트 단위로 그대로 보존합니다. 이전 migration도 계속 적용됩니다. `:line[speaker]{…}: text` → `@speaker{…}: text`, 선행 `:` sigil → `@`, choice `as="…"` → `into="…"`, 리터럴 비교 `<when test="$ == 'gold'">` → `<when is="gold">`(`W-WHEN-TEST-LITERAL`), 그리고 0.31 CEL 팩트 질의 및 presence 호출 → 표준 CEL 형식입니다.
 
@@ -669,7 +707,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트는 메모리에서 한 번 컴파일되며, `compile --all`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.40.0"`이 들어갑니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.41.0"`이 들어갑니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--explain <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다.
 

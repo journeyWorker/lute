@@ -1,0 +1,30 @@
+---
+kind: lore
+id: arena
+state:
+  scene.battle.fight.outcome: { type: { enum: [win, lose] }, default: lose }
+  scene.battle.fight.hpFloor: { type: int, default: 0 }
+plugins:
+  arena: {}
+---
+
+<beat id="fight" on="duel" target="kind:foe" once="false">
+  ::battle{foe=occasion.target mode="ambush" resultKey="fight"}
+  <match subject="scene.battle.fight.outcome">
+    <when is="win">
+      @narrator: Won.
+    </when>
+    <otherwise>
+      @narrator: Lost.
+    </otherwise>
+  </match>
+  @narrator: Floor {{scene.battle.fight.hpFloor}}, score {{run.score}}.
+  <branch id="after" prompt="Then?">
+    <choice id="rest" text="Rest">
+      @narrator: You rest.
+    </choice>
+    <choice id="leave" text="Leave">
+      @narrator: You leave.
+    </choice>
+  </branch>
+</beat>

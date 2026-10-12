@@ -106,6 +106,23 @@ pub fn check_directive(
             diags.push(d);
             return diags;
         }
+        // 0.41.0 §3.2: a tag whose declaration is invalid — or, with an
+        // active plugin that failed to load, any tag no plugin declares — is
+        // attributed to that declaration, not reported unknown.
+        let cause = crate::depends::invalid(snapshot, "directive", &dir.tag).or_else(|| {
+            (!snapshot.inactive.contains_key(&dir.tag))
+                .then(|| crate::depends::directive_cause(snapshot, &dir.tag))
+                .flatten()
+        });
+        if let Some(cause) = cause {
+            diags.push(crate::depends::depends_diag(
+                &format!("::{}", dir.tag),
+                cause,
+                dir.span,
+                Layer::Staging,
+            ));
+            return diags;
+        }
         // plugin §11.2: an installed-but-inactive tag is a diagnostic WITH a
         // fix-it (naming the plugin to activate), never silently accepted; a
         // truly-unknown tag still yields the plain staging-layer error.
@@ -305,6 +322,40 @@ pub fn check_directive(
         );
     }
 
+    // dsl 0.41.0 §5.5: an omitted attribute with a declared `default` is
+    // shipped as that value, so the default is judged here exactly like an
+    // authored value, in this document's resolved vocabulary — membership of
+    // an `enumFromOption` / `providerRef` / `domain` / `entity` / `assetKind`
+    // default depends on the project, so assembly could only check its shape.
+    for adecl in &decl.attrs {
+        let Some(default) = adecl.default.as_ref() else {
+            continue;
+        };
+        let present = dir.attrs.iter().any(|a| {
+            a.key == adecl.name
+                || crate::renames::renamed_directive_attr(&dir.tag, &a.key)
+                    == Some(adecl.name.as_str())
+        });
+        let Some(value) = default_attr_value(default).filter(|_| !present) else {
+            continue;
+        };
+        let filled = Attr {
+            key: adecl.name.clone(),
+            value,
+            value_span: dir.span,
+            span: dir.span,
+        };
+        let mut ds = Vec::new();
+        check_attr_value(&owner, adecl, &filled, snapshot, providers, domains, &mut ds);
+        diags.extend(ds.into_iter().map(|mut d| {
+            d.message.push_str(&format!(
+                " — this is the declared `default:` of `{}`, used because the call omits it",
+                adecl.name
+            ));
+            d
+        }));
+    }
+
     // Missing required attributes (dsl §7.2). A required key written under
     // its renamed old spelling already drew `E-RENAMED-ATTR`.
     for adecl in decl.attrs.iter().filter(|a| a.required) {
@@ -359,6 +410,18 @@ fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
         ty: ty.clone(),
         default: None,
     })
+}
+
+/// A declared attr `default` as the authored attribute value it stands in
+/// for. `None` for a list or map default, which no attribute spelling writes.
+fn default_attr_value(default: &Literal) -> Option<AttrValue> {
+    Some(AttrValue::Str(match default {
+        Literal::Bool(b) => b.to_string(),
+        Literal::Int(n) => n.to_string(),
+        Literal::Double(n) => n.to_string(),
+        Literal::Str(s) => s.clone(),
+        Literal::List(_) | Literal::Map(_) => return None,
+    }))
 }
 
 /// One directive of the language itself (see [`LANGUAGE_DIRECTIVES`]).
@@ -649,7 +712,7 @@ pub(crate) fn check_domain_member(
                  in this document's own frontmatter, in a project schema reached through \
                  `uses:`, or in a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
                 attr.key
-            ),
+            ) + &crate::renames::renamed_domain_hint(name, domains),
             attr.value_span,
         ));
     }
@@ -705,9 +768,10 @@ fn check_entity_member(
                 format!(
                     "attribute `{}` of `{owner}` is typed `{{ entity: {kind} }}`, but `{kind}` is \
                      not a declared entity kind — declare it under `entities:` in a project \
-                     schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}",
+                     schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}{}",
                     attr.key,
-                    crate::rel_schema::member_hint(kind, &names)
+                    crate::rel_schema::member_hint(kind, &names),
+                    crate::renames::renamed_domain_hint(kind, domains)
                 ),
                 attr.value_span,
             ));

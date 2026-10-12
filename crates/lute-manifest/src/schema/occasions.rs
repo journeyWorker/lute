@@ -55,6 +55,7 @@ pub struct OccasionBody {
 /// every eligible beat, one after another, in selection order. Appending a
 /// variant leaves the `Debug` of `First`/`All` — and so every existing
 /// snapshot's `capabilitySnapshot` — unchanged.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OccasionSelect {
@@ -77,6 +78,7 @@ impl OccasionSelect {
 
 /// When an occasion judges its `on=` objectives relative to presenting its
 /// beats (dsl 0.24.0 §2): `after` (default, the 0.21 order) or `before`.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OccasionJudge {
@@ -196,6 +198,36 @@ pub enum OccasionTarget {
 impl Default for OccasionTarget {
     fn default() -> Self {
         OccasionTarget::Shape(false)
+    }
+}
+
+/// The serialized form: `true`/`false`, or `{ prefix, entity, members? }`.
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for OccasionTarget {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "OccasionTarget".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "oneOf": [
+                { "type": "boolean" },
+                {
+                    "type": "object",
+                    "properties": {
+                        "prefix": { "type": "string" },
+                        "entity": { "type": "string" },
+                        "members": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "required": ["prefix", "entity"],
+                    "additionalProperties": false
+                }
+            ]
+        })
     }
 }
 

@@ -255,6 +255,15 @@ entities:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  test("defs: `host` is a boolean def key (0.41.0 §3.5)", () => {
+    const { ajv, declSchema } = loadAjv();
+    const good = Bun.YAML.parse('defs:\n  open: { cel: "user.level > 1", host: true }\n');
+    const okGood = validateAgainst(ajv, declSchema.$id, good);
+    expect(okGood.ok, JSON.stringify(okGood.errors)).toBe(true);
+    const bad = Bun.YAML.parse('defs:\n  open: { cel: "user.level > 1", host: "yes" }\n');
+    expect(validateAgainst(ajv, declSchema.$id, bad).ok).toBe(false);
+  });
+
   test("broken def: no `cel`, an unknown key, or `params` without `type` (E-DEF-DECL)", () => {
     const { ajv, declSchema } = loadAjv();
     for (const def of [
@@ -586,8 +595,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.40.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.40.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.41.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.41.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -615,11 +624,65 @@ describe("generated runtime contract schemas", () => {
           validate = ajv.compile({ $ref: `${events.$id}#/$defs/Verdict` });
         } else if (Object.hasOwn(value, "premise")) {
           validate = ajv.compile({ $ref: `${events.$id}#/$defs/Premise` });
+        } else if (Object.hasOwn(value, "open")) {
+          validate = ajv.compile({ $ref: `${events.$id}#/$defs/Gate` });
         }
         expect(validate(value), `${path}: ${JSON.stringify(validate.errors)}`).toBe(true);
         count += 1;
       }
     }
     expect(count).toBeGreaterThan(0);
+  });
+});
+
+// 0.41.0 §4.4: the index `$defs` of the IR schema are generated from the Rust
+// index types; every index the corpus compiles must validate against them.
+describe("generated IR index schema", () => {
+  test("every compiled project.index.json validates as `projectIndex`", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.41.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    ajv.addSchema(ir);
+    const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
+    const projects = [
+      `${ROOT}/crates/lute-runtime-wasm/tests/fixtures/evaluate`,
+      `${ROOT}/crates/lute-cli/tests/fixtures/evaluate-defs`,
+    ];
+    for (const parent of [`${ROOT}/docs/examples`, `${ROOT}/docs/examples/games`]) {
+      for (const entry of readdirSync(parent, { withFileTypes: true })) {
+        const dir = `${parent}/${entry.name}`;
+        if (entry.isDirectory() && existsSync(`${dir}/lute.project.yaml`)) projects.push(dir);
+      }
+    }
+    let defs = 0;
+    for (const project of projects) {
+      const out = `${tmpdir()}/lute-index-schema-${process.pid}-${Math.random().toString(36).slice(2)}`;
+      const run = Bun.spawnSync([luteBin(), "compile", "--all", project, "-o", out], { cwd: ROOT });
+      expect(run.success, `${project}: ${run.stderr.toString()}`).toBe(true);
+      const index = JSON.parse(readFileSync(`${out}/project.index.json`, "utf8"));
+      expect(validate(index), `${project}: ${JSON.stringify(validate.errors)}`).toBe(true);
+      defs += Object.keys(index.defs ?? {}).length;
+    }
+    const committed = JSON.parse(
+      readFileSync(`${ROOT}/crates/lute-runtime-wasm/tests/fixtures/hub-once/project.index.json`, "utf8"),
+    );
+    expect(validate(committed), JSON.stringify(validate.errors)).toBe(true);
+    expect(projects.length).toBeGreaterThan(20);
+    expect(defs).toBeGreaterThan(0);
+  });
+
+  test("an index def row is closed to the documented shape", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.41.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    ajv.addSchema(ir);
+    const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });
+    const row = {
+      cel: "run.gold >= n",
+      expr: { op: ">=", l: { path: "run.gold" }, r: { param: "n" } },
+      params: [{ name: "n", type: "int" }],
+      host: true,
+    };
+    expect(def(row), JSON.stringify(def.errors)).toBe(true);
+    expect(def({ ...row, params: [{ name: "n", type: "number" }] })).toBe(false);
+    expect(def({ cel: "x" })).toBe(false);
   });
 });

@@ -1,0 +1,11 @@
+# Imported by every document through the manifest's `defaults: uses:`.
+state:
+  run.gold: { type: int, default: 0 }
+  run.slot: { type: { enum: [morning, noon, night] }, default: morning }
+entities:
+  npc: { members: [mara, tomas] }
+relations:
+  knows: { args: [npc], tier: run }
+defs:
+  atLeast: { type: bool, params: { n: int }, cel: "run.gold >= n" }
+  rich: "@atLeast(10)"

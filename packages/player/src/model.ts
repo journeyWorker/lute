@@ -52,7 +52,7 @@ export interface CueTiming {
 
 export type CueKind =
   | "line" | "bg" | "music" | "sfx" | "vfx" | "actor" | "camera" | "cg" | "video" | "sequence" | "barrier"
-  | "presentation" | "presentationEnd" | "quest" | "clock" | "bookkeeping"
+  | "presentation" | "presentationEnd" | "quest" | "clock" | "plugin" | "bookkeeping"
 
 /** One runtime record (or session event) as an executable command. */
 export interface Cue {
@@ -91,7 +91,8 @@ export type SchedulerEvent =
 
 export type MachineEvent =
   | PlayerAction
-  | { readonly type: "boot.ready"; readonly canContinue: boolean }
+  /** `confirmsLines`: the presenter's {@link Presenter.confirmsLines} (spec 0.41.0 §7.5). */
+  | { readonly type: "boot.ready"; readonly canContinue: boolean; readonly confirmsLines?: boolean }
   | { readonly type: "batch.started" }
   | { readonly type: "batch.settled"; readonly await: Await }
   /** A line started typing. */
@@ -127,6 +128,10 @@ export interface PlayerMachineContext {
   readonly occupiedSlots: ReadonlyArray<SlotId>
   readonly pendingConfirm: ConfirmAction | undefined
   readonly haltedMessage: string | undefined
+  /** The presenter confirms lines itself: an `advance` while typing is buffered. */
+  readonly confirmsLines: boolean
+  /** An `advance` arrived while the line typed; applied as the release once it is shown. */
+  readonly advanceBuffered: boolean
 }
 
 /** An overlay screen on top of the game. */
@@ -194,7 +199,7 @@ export interface InputPoint {
 /** What a save stores about the runtime (spec §6.7). */
 export interface SaveRuntime {
   readonly snapshot: Snapshot
-  /** Inputs since begin (the seed is the first entry). */
+  /** The session's start (`{ seed }` or `{ snapshot }`), then every accepted input. */
   readonly log: ReadonlyArray<LogEntry>
   readonly backlog: ReadonlyArray<BacklogEntry>
 }

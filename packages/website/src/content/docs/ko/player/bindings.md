@@ -1,12 +1,12 @@
 ---
 title: 플레이어 바인딩 레퍼런스
-description: Lute 0.40 player.bindings.yaml의 모든 섹션, 효과 카탈로그, 매개변수와 check-project 진단입니다.
+description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로그, 매개변수와 check-project 진단입니다.
 ---
 
 `player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. `lute check-project`가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.40"
+bindingsVersion: "0.41"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -24,7 +24,10 @@ cameraMove: { shake: { effect: shake, duration: 0.5, strength: 12 } }
 framing: { closeUp: { zoom: 1.35 } }
 cgLayouts: { full: { fit: cover }, inset: { fit: contain, scale: 0.6 } }
 textStyles: { emphasis: { fontWeight: bold }, whisper: { alpha: 0.6 } }
-vfx: { flash: { effect: flash, color: "#fff", duration: 0.3 } }
+vfx:
+  flash: { effect: flash, color: "#fff", duration: 0.3 }
+  lanterns: { effect: custom }
+  tideRise: { effect: custom, name: tide-rise, duration: 2 }
 music: { moods: { calm: audio/calm.ogg } }
 sfx: { door: audio/door.ogg }
 sequences: { doorOpens: { video: video/door-opens.mp4 } }
@@ -40,7 +43,7 @@ flow:
 
 ## 최상위 섹션
 
-- `bindingsVersion`는 정확히 `"0.40"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
+- `bindingsVersion`는 정확히 `"0.41"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
 - `assets`는 컴파일된 `assetId`를 파일에 연결합니다.
 - `backgrounds`는 `bg.location`을 `image`에 연결하고 `times`는 `bg.time`별 대체 파일을 연결합니다.
 - `characters`는 cast id를 키로 합니다. 각 값에는 `sprite.default`, 선택적 `sprite.emotions`, 같은 sprite 형태의 선택적 `costumes`, 선택적 `nameColor`가 있습니다.
@@ -64,6 +67,9 @@ flow:
 | `flash` | `duration?`, `color?` |
 | `blur` | `duration?`, `strength?` |
 | `tint` | `duration?`, `color?` |
+| `custom` (`vfx` 전용) | `name?`, `duration?` |
+
+`vfx` 항목은 `{ effect: custom, name?, duration? }`일 수 있습니다. 카탈로그 밖의 presenter 정의 효과입니다. `name`의 기본값은 바인딩 키이며, player는 이 항목을 effect가 `custom`이고 해당 `name`을 가진 `Vfx` cue로 그대로 전달합니다. `actions`, `transitions`, `cameraMove`는 닫힌 카탈로그를 유지하므로 그곳의 `effect: custom`은 `E-BINDING-EFFECT`입니다.
 
 알 수 없는 YAML 키는 거부됩니다. 알 수 없는 효과나 매개변수는 `E-BINDING-EFFECT`입니다. 잘못된 YAML 또는 shape는 YAML 위치와 함께 `E-BINDING-SHAPE`입니다. `assetsBase` 아래에서 참조 파일을 찾지 못하면 `E-BINDING-FILE`입니다.
 

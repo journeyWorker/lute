@@ -403,7 +403,7 @@ fn auto_anchor_on_show(
         // and nobody else will say so (see `missing_anchor_domain_diag`).
         None if !domains.contains_key("anchor") => state
             .diags
-            .push(missing_anchor_domain_diag(character, d.span)),
+            .push(missing_anchor_domain_diag(character, d.span, domains)),
         // DECLARED but with no `default:` — already `E-ENUM-MISSING-SEMANTICS`
         // at the declaration (dsl 0.9.0 D-D makes `default:` mandatory for
         // the `anchor` slot), so this arm stays silent instead of piling a
@@ -852,7 +852,11 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
 /// implicitly rather than spelled out. A separate code would split one fact
 /// across two names and need registering in the CLI's code registry
 /// (`crates/lute-cli/src/codes.rs`), where `E-DOMAIN-UNKNOWN` already sits.
-fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
+fn missing_anchor_domain_diag(
+    character: &str,
+    span: Span,
+    domains: &BTreeMap<String, Domain>,
+) -> Diagnostic {
     Diagnostic {
         code: "E-DOMAIN-UNKNOWN".to_string(),
         severity: Severity::Error,
@@ -862,7 +866,7 @@ fn missing_anchor_domain_diag(character: &str, span: Span) -> Diagnostic {
              Declare it in an `enums:` block in this document's own frontmatter, in a project \
              schema reached through `uses:`, or in a plugin's `enums` export, or write an \
              explicit `anchor` here (dsl 0.9.0 D-D)"
-        ),
+        ) + &crate::renames::renamed_domain_hint("anchor", domains),
         evidence: None,
         span,
         layer: Layer::Staging,

@@ -1,15 +1,16 @@
 # Runtime event contract
 
-**Status: 0.40.0 runtime contract.**
+**Status: 0.41.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
 and grant settlement. The runtime never calls those services itself.
 
-The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas).
+The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
+as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.40.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.40.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.41.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.41.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -68,8 +69,8 @@ The eight inputs are:
 | `raiseOccasion` | `idle`; `ended` only for an `outsideRun` occasion | Apply optional writes, bind payload, judge the seam and candidates, present selected beats, settle quests. |
 | `choose` | Matching `awaitChoice` request | Resume with an open option. |
 | `timeout` | Matching timed `awaitChoice` request | Resume exactly as choosing that menu's `default` option. |
-| `bridgeResult` | Matching `awaitBridge` request | Apply result-dependent effects and resume. |
-| `advanceClock` | `idle` | Apply optional writes, move the clock, settle and raise the clock's occasions; optional `pick` controls that raise. |
+| `bridgeResult` | Matching `awaitBridge` request | Apply result-dependent effects, then the optional `writes` (`state`, `facts`, `retract`, `accept`, recorded `effectOf` the tag with `by: "host"`), and resume. |
+| `advanceClock` | `idle` | Apply optional writes and settle (if `terminal` then holds, stop: the clock stays, await `ended`), then move the clock, settling and raising the clock's occasions; optional `pick` controls the slot raise. The `clock` event follows every event of the move. |
 | `hostWrite` | `idle` | Apply engine-owned writes and settle. |
 | `worldEvent` | `idle` | Raise a declared world event to quest handlers. |
 | `newRun` | `idle`, `ended` | Reset run-tier state and quests, apply queued `nextRun` accepts and optional writes, settle. |
@@ -113,7 +114,7 @@ Each of the following examples is an `Input`:
 ```
 
 ```json
-{"type": "bridgeResult", "request": 4, "fields": {"won": true, "score": 12}}
+{"type": "bridgeResult", "request": 4, "fields": {"won": true, "score": 12}, "writes": {"state": [{"path": "user.wellDepth", "value": 3}], "facts": ["pulled(rope)"]}}
 ```
 
 ```json
@@ -138,7 +139,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.40.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.41.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -169,6 +170,24 @@ implementation-only report:
 | `clock()` | `ClockAt` or `null`, where `ClockAt` is `{ day, slot }`. |
 | `terminal()` | `boolean`. |
 | `view(withFacts)` | `WorldView`, `{ state: Record<string, Value>, facts?: string[], quests: Record<string, string>, clock?: ClockView }`; `facts` is included only when requested, and `clock` is nullable when no position exists. |
+| `evaluate(expr)` (0.41) | `Evaluation` `{ value: Value, unresolved?: string[] }` or a rejection. `expr` is an IR `exprNode` — the `expr` of any `{cel, expr}` pair the IR carries (an objective's `visibleWhen.expr`, a beat's `when.expr`). |
+| `def(name, args?)` (0.41) | `Evaluation` or a rejection, for a project def the bundle carries in `project.index.json` `defs`; `args` is one JSON scalar per declared parameter (absent = `[]`), bound to its `param` nodes. Arity or type misfits (an `enum`/closed `domain`/`entity` argument must be a member) are `E-RUNTIME-INPUT`. |
+| `gate(occasion, target?)` (0.41) | `Gate` `{ open: bool, unresolved?: string[] }`: whether a `raiseOccasion` with no writes would pass the seam now — `raisedWhen` false, or `terminal` holding for a non-`outsideRun` occasion, is `{open: false}`; an undecided seam lists its unresolved reads. An undeclared occasion is `E-RUNTIME-INPUT`. |
+
+`evaluate` and `def` (spec 0.41.0 §5.1) evaluate a condition over the state
+exactly as a walk's guard does: the effective state (written, seeded, then
+declared default), the fact store with derivation under the run's `derive`
+mode (`holds`, `count`, `countDistinct`), `visited(...)`, and `now()` from the
+clock paths. Evaluation is three-valued: `value` is `bool`, `int`, `double`,
+`str`, or `unknown`, and an `unknown` value lists in `unresolved` why (an
+unset state path, an undetermined derived fact, `validAt(...)`). An
+`occasion.target` read outside a raise is unknown. A state suspended at an
+await is evaluated over the world from before its input, as `view` is. The
+value is never `error`: an evaluation error (division by zero, `int()` of a
+non-number) is the rejection `E-RUNTIME-EVAL`. An `expr` with a node outside
+the `exprNode` schema (a `param` node is admitted only in an index def), a
+`def` name the bundle does not carry, and `def` arguments that miss the
+declared parameters are `E-RUNTIME-INPUT`. No query changes state.
 
 `Candidate.verdict` is a tagged `Verdict`: `{ verdict: "eligible" }`,
 `{ verdict: "ineligible", premise }`, or `{ verdict: "unknown", why }`.
@@ -177,7 +196,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.40.schema.json` and in
+definitions in `lute-events-0.41.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -202,7 +221,7 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 | Await type | Fields | What the host can send next |
 |---|---|---|
 | `awaitChoice` | `request`, `menu` | `choose` with this request and an open option. |
-| `awaitBridge` | `request`, `tag`, `document`, `position`, `fields` (field → declared type) | Perform the bridge call outside the runtime, then send `bridgeResult`. |
+| `awaitBridge` | `request`, `tag`, `document`, `position`, `attrs` (the call's IR `fields` — authored attributes, `@ref`s folded, omitted ones at their declared `default`; never the stamp's `wait`/`duration`/`delay` or an undeclared cross-cutting `stampAttrs` attribute — with `occasion.target` bound; `{}` when none), `results` (each result field content reads → its declared type from index `bridgeResults`) | Perform the bridge call outside the runtime, then send `bridgeResult` (optionally with `writes`). Non-blocking plugin records are write-free: answer them with `hostWrite` at the next `idle`, or declare the call a bridge. |
 | `idle` | — | An idle input from the input table. |
 | `ended` | `reason: "terminal"` | `newRun` or an `outsideRun` occasion. |
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |
@@ -240,11 +259,23 @@ human refusal text. Codes distinguish:
 - `E-RUNTIME-TIMEOUT`: `timeout` was sent while the pending await is not a
 timed choice (a mismatched request remains `E-RUNTIME-REQUEST`).
 - `E-RUNTIME-OPTION`: a missing or non-open choice option.
-- `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or wrong value type.
+- `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or a value that does
+  not fit its `results` type (`int` an integer within ±2^53, `double` a
+  number, `bool` a boolean, `enum` a member string, otherwise a string).
 - `E-RUNTIME-INPUT`: malformed input/seed, unknown path, relation, quest,
-  occasion, event or beat, or a value incompatible with its declared type.
-- `E-OCCASION-GATE` and existing pick/write/clock refusals: the same refusals
-  as play, including a false `raisedWhen` or a held terminal condition.
+  occasion, event or beat, or a value incompatible with its declared type
+  (an `int` state path takes, as `value` or `add`, an integer within ±2^53);
+  for `evaluate`/`def`, a malformed `exprNode` (a `param` node included), a
+  def the bundle lacks, or a `def` argument fault; `gate` of an undeclared
+  occasion; `bridgeResult.writes` that do not resolve or write the clock's
+  `day`/`slot` path.
+- `E-RUNTIME-EVAL` (0.41): an `evaluate`/`def` condition evaluates to an
+  error.
+- `E-OCCASION-GATE` (0.41): a `raiseOccasion` whose `raisedWhen` is false, or
+  raised while `terminal` holds and not `outsideRun`, is rejected with the
+  state unchanged (its own writes and payload included); the message is play's
+  refusal text. An undecided gate still halts `incomplete`. Existing
+  pick/write/clock refusals keep play's refusals.
 - `E-RUNTIME-HALTED`: any input after a halt.
 
 A halt ends the state lineage. `incomplete` means the walk needed a value no
@@ -276,7 +307,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.40.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.41.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

@@ -334,6 +334,23 @@ pub fn check_clock(
             span,
         ));
     }
+    // 0.41.0 §3.2: a `day`/`slot` path whose row is invalid is not checked:
+    // the clock stays out (as a rejected one does) and says why, once.
+    let invalid = std::iter::once(&clock.day)
+        .chain(clock.slot.as_ref())
+        .find_map(|path| schema.invalid.get(path));
+    if let Some(cause) = invalid {
+        let note = |at: Span| crate::depends::depends_diag("clock:", cause, at, Layer::Content);
+        let mut d = note(span);
+        if let Some((file, at)) = &site.at {
+            d.related.push(lute_core_span::RelatedDiagnostic {
+                file: file.clone(),
+                diagnostic: note(*at),
+            });
+        }
+        diags.push(d);
+        return (None, diags);
+    }
     for what in clock_problems(clock, schema, domains, occasions, false) {
         let mut d = clock_diag(
             format!("clock (declared in `{origin}`): {what} (dsl 0.24.0 §1)"),

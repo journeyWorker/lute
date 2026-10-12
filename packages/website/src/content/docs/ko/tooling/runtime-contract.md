@@ -12,7 +12,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
 규정되어 있습니다. 기계로 검사할 수 있는 형식은
-[`schemas/lute-ir-0.40.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.40.schema.json)
+[`schemas/lute-ir-0.41.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.41.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -28,7 +28,38 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 
 TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --all` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
+
+0.41에서 `Program`에는 `gate(state, occasion, target?)`(`Effect<Gate, InvalidInput>`)와
+`def(state, name, args?)`가 추가됩니다. `args`는 선언된 매개변수마다 JSON 스칼라 하나입니다. 닫힌 관문의
+발생은 `Errors.OccasionGateClosed`(`E-OCCASION-GATE`)로 실패하며 상태를 바꾸지 않습니다.
+`Session.Session`(서비스 타입 `Session.SessionShape`)은 자신이 로드한 `Program`을 `program`으로 노출하므로,
+호스트는 번들을 두 번 로드하지 않고 `current`의 상태를 질의합니다. `RuntimeState`는 같은 번들
+fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로그램에 넘기면 결함(defect)입니다.
+`Bundle.index`의 타입은 `Ir.projectIndex`입니다.
+
+릴리스되지 않은 체크아웃을 호스트에서 시험하려면 Lute 저장소에서 `bash scripts/pack-local.sh
+[--web] [OUT_DIR]`를 실행하세요. 런타임과 player(`--web`이면 `player-web`도)를 `bun pm pack`으로 묶고,
+호스트의 `package.json`에 붙여 넣을 `dependencies`와 `overrides` 항목(`file:<tarball>`)을 출력합니다.
+호스트는 자신의 `effect` `4.0.2`를 유지합니다. `file:../lute/packages/*` 디렉터리 링크는 쓰지 마세요.
+Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스턴스가 두 개 생깁니다.
+[로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
+참고하세요.
  
+## 0.41 런타임 추가 사항
+
+- **관문 거절은 거부입니다.** `raisedWhen`이 거짓인 `raiseOccasion`, 또는 `terminal`이 성립한 뒤
+  `outsideRun`이 아닌 occasion의 발생은 상태를 바꾸지 않고(입력 자신의 쓰기와 payload 포함)
+  `E-OCCASION-GATE`로 거부되며, 메시지는 `lute play`의 거절 문구입니다. 판정할 수 없는 관문은 여전히
+  `incomplete`로 정지합니다. 읽기 전용 질의 `gate(occasion, target?)`가 미리 `{ open, unresolved? }`를 답합니다.
+- **`def(name, args)`**는 매개변수가 있는 인덱스 def를 평가합니다: 선언된 매개변수마다 JSON 스칼라 하나가
+  `param` 노드에 바인딩되며, 개수·타입 불일치는 `E-RUNTIME-INPUT`입니다. `evaluate`는 `param` 노드를 받지 않습니다.
+- **`awaitBridge`**는 `attrs`(호출의 속성, `occasion.target` 바인딩)와 `results`(콘텐츠가 읽는 결과 필드와
+  선언 타입)를 가지며, 답은 그 타입으로 검증됩니다. `bridgeResult`는 `hostWrite`와 같은 `writes`를 가질 수 있고,
+  호출의 선언된 효과 뒤에 적용되어 같은 프레젠테이션의 이후 줄이 읽습니다. 모든 `plugin` 레코드는 `attrs`를
+  가지며, 차단하지 않는 plugin 레코드에는 쓰기가 없습니다.
+- **`advanceClock { writes }`**는 시계가 움직이기 전에 쓰기를 적용하고 정착합니다(그때 `terminal`이 성립하면
+  시계는 머물고 await는 `ended`). 이동의 발생들이 그 쓰기를 읽고, `clock` 이벤트는 마지막에 옵니다.
+
 ## 0.40 런타임 추가 사항
 
 0.40 계약은 persistent presentation `stage`(background, music, actor, CG,
@@ -194,14 +225,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.40` 엔진은 `0.40.*` 아티팩트만 받아들이고 `0.38.*` 및 `0.40.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.41` 엔진은 `0.41.*` 아티팩트만 받아들이고 `0.40.*` 및 `0.42.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.40.0"
+irVersion: "0.41.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -217,7 +248,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.40.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.41.0` 매트릭스에 대한
 `0.38.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
@@ -240,6 +271,26 @@ major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.40.0` 매트�
 match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이 아닌 `is`를 가진 갈래는
 확실히 충족되지 않고, `is: "unset"`은 충족됩니다. 다른 갈래는 정상적으로 평가하며,
 평가 오류가 나면 충족되지 않습니다.
+
+### 0.41의 `project.index.json`
+
+인덱스 형태는 Rust 인덱스 타입에서 생성됩니다. IR 스키마의 `projectIndex`,
+`indexDocument`, `indexEntry`, `indexBeat`, `indexOccasion`,
+`indexStateDomain`, `indexDef`, `fieldType` 정의는 `lute-contract-schema`가
+만들며, 아티팩트 형태(`enumEntry`, `celSlot`, `exprNode`, `clockDecl`, …)는
+다시 정의하지 않고 참조합니다. 바뀐 키는 세 개입니다(spec 0.41.0 §4).
+
+- **`bridgeResults`**: 각 브리지 결과 필드가 `"number"`/`"string"` 대신
+  `occasions[*].payload`와 같은 형태의 선언 타입을 가집니다 — `"bool"`, `"int"`,
+  `"double"`, `"string"`, `{"enum": [...]}`, `{"domain": "<name>"}`, ….
+- **`enums[].labels: { <member>: "<text>" }`**: 병합된 `enums:` 선언의 긴 형식
+  `labels:`이며, 인덱스와 아티팩트 행에 똑같이 실립니다. 선언이 없으면 생략됩니다.
+- **`defs`**: 플러그인 또는 `uses:` 스키마 def마다 이름을 키로 한 행
+  `{ cel, expr, authored?, params?, host? }`입니다. `params`는 인자 순서대로
+  `[{ name, type }]`을 나열하고, 각 파라미터는 `expr`에서 `{"param": "<name>"}`로
+  나타나며, `host: true`는 호스트가 읽는 def를 표시합니다. 스칼라가 아닌 파라미터가
+  있거나, 본문이 낮춰지지 않거나, 두 문서에서 본문이나 파라미터 목록이 다른 def는
+  빠집니다. `param` 노드는 다른 곳에는 나타나지 않습니다.
 
 ### IR 0.37.0에서 변경된 내용
 

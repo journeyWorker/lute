@@ -48,8 +48,97 @@ use crate::ir::{ArtifactMeta, Command, ExecutionIr};
 pub struct IndexUnions {
     pub occasions: BTreeMap<String, IndexOccasion>,
     pub world_events: Vec<String>,
-    pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
+    /// 0.41.0 §4.1: per bridge directive tag, each written result field's
+    /// declared type.
+    pub bridge_results: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
     pub cast: BTreeMap<String, String>,
+    /// dsl 0.41.0 §4.3: the project defs ([`document_defs`]
+    /// unioned over the documents), carried as `ProjectIndex.defs`.
+    pub defs: BTreeMap<String, IndexDef>,
+}
+
+/// dsl 0.41.0 §4.3: the project defs one document sees — its
+/// plugins' `defs:`, then its `uses:` schema imports over them (the
+/// checker's precedence; the document's own frontmatter defs are local to it
+/// and stay out) — each with its body `@def`-expanded and lowered exactly as
+/// a seam condition is, every identifier naming one of its parameters
+/// lowered to a `param` node. A def with a parameter of a non-scalar type (a
+/// host cannot pass a list, record or map argument), or one whose body does
+/// not expand or lower (the checker reports it), is left out. So is an
+/// invalid def (§3.2, a `type: number`; the loader already drops a plugin's)
+/// and every def that references one: its body is absent from the
+/// expansion table, so the dependant does not expand.
+pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDef> {
+    let mut bodies = BTreeMap::new();
+    let mut params = BTreeMap::new();
+    let mut host = BTreeMap::new();
+    for (name, d) in &input.snapshot.defs {
+        bodies.insert(name.clone(), d.cel.clone());
+        params.insert(
+            name.clone(),
+            d.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+        );
+        host.insert(name.clone(), d.host);
+    }
+    for (name, v) in &input.imports.defs {
+        if lute_check::def_decl::is_invalid(v) {
+            // It may shadow a plugin def of the same name: neither is
+            // the def this document sees.
+            bodies.remove(name);
+            continue;
+        }
+        if let Some(body) = v.get("cel").and_then(serde_yaml::Value::as_str) {
+            bodies.insert(name.clone(), body.to_string());
+        }
+        params.insert(name.clone(), lute_check::params_from_yaml(v));
+        host.insert(name.clone(), lute_check::def_decl::is_host(v));
+    }
+    let table = lute_check::DefTable {
+        bodies: &bodies,
+        params: &params,
+    };
+    bodies
+        .iter()
+        .filter_map(|(name, body)| {
+            let declared = params.get(name).map_or(&[][..], Vec::as_slice);
+            if !declared.iter().all(|(_, ty)| is_scalar(ty)) {
+                return None;
+            }
+            let raw = lute_check::expand_cel(body, &table, None, &mut vec![name.clone()]).ok()?;
+            let names: Vec<&str> = declared.iter().map(|(p, _)| p.as_str()).collect();
+            let expr = crate::expr::lower_with_params(&raw, &names)?;
+            let authored = (raw != *body).then(|| body.clone());
+            let def = IndexDef {
+                cel: raw,
+                expr,
+                authored,
+                params: declared
+                    .iter()
+                    .map(|(name, ty)| lute_manifest::schema::DefParam {
+                        name: name.clone(),
+                        ty: ty.clone(),
+                    })
+                    .collect(),
+                host: host.get(name).copied().unwrap_or(false),
+            };
+            Some((name.clone(), def))
+        })
+        .collect()
+}
+
+/// 0.41.0 §4.3: the parameter types a host can pass as one JSON scalar.
+fn is_scalar(ty: &lute_manifest::types::Type) -> bool {
+    use lute_manifest::types::Type;
+    matches!(
+        ty,
+        Type::Bool
+            | Type::Int
+            | Type::Double
+            | Type::Str
+            | Type::Enum(_)
+            | Type::Domain(_)
+            | Type::Entity(_)
+    )
 }
 
 /// One document's contribution to the index.
@@ -397,6 +486,7 @@ pub fn build_index(
         bridge_results: unions.bridge_results.clone(),
         cast: unions.cast.clone(),
         state_domains,
+        defs: unions.defs.clone(),
     })
 }
 

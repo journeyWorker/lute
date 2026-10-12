@@ -944,7 +944,9 @@ when: "clock.weekday < 5"
   schema (only) may declare `terminal: "run.fate == 'taken'"`: every beat is judged under
   `!terminal`, and once it holds play ends `── end: terminal — …` (`--json` `"end": "terminal"`);
   a later `occasion:` / `advance:` step is `E-OCCASION-GATE` until a `newRun`. An `occasion:` step
-  may carry `engine:` writes, applied before the raise.
+  may carry `engine:` writes, applied before the raise. 0.41: an `advance:` step's `engine:`
+  writes land before the clock moves, so its raises read them; through the runtime a refused raise
+  is the rejection `E-OCCASION-GATE` (state unchanged) and `gate(occasion, target?)` asks first.
 - 0.29.0: an ending that outlives runs on purpose (a roguelike's permanent ending) writes the long
   form `terminal: { when: "user.crowned", persists: true }`: `W-TERMINAL-PERSISTENT` is silent,
   `lute play` says the game is over for good instead of offering `newRun`, and the IR carries

@@ -235,6 +235,30 @@ pub(crate) enum Command {
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
     },
+    /// Lower a host condition (a CEL expression a game evaluates over a run
+    /// state through the runtime's `evaluate` query) to an IR `exprNode`
+    /// against a project. The condition is checked as the `when:` of a scene
+    /// at the project root importing every schema file the project's
+    /// documents import, with the project plugin set and the project index
+    /// defs (parameterised ones included); expected type `bool`. On success
+    /// stdout carries the `exprNode` as one line of JSON; diagnostics go to
+    /// stderr. Exit `0` lowered, `1` a diagnostic error, `2` usage or I/O
+    /// failure (including a directory without `lute.project.yaml`).
+    Expr {
+        /// The CEL condition, `@def` references included.
+        #[arg(value_name = "CEL", allow_hyphen_values = true)]
+        cel: String,
+        /// Project directory (`lute.project.yaml`) the condition resolves
+        /// against (default: current directory).
+        #[arg(long, value_name = "DIR", default_value = ".")]
+        project: PathBuf,
+        /// Print one JSON object instead: `ok`, the index `celSlot` fields
+        /// (`cel`, `authored` when `@def` expansion changed the input,
+        /// `expr`) on success, and `diagnostics` as `lute check --json`
+        /// reports them.
+        #[arg(long)]
+        json: bool,
+    },
     /// Back-fill missing stable identity attributes in the corpus: per-speaker
     /// line `code` values and `::use` component `instance` keys. Existing
     /// authored codes and instances are preserved byte-for-byte; only changed

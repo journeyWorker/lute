@@ -1,0 +1,11 @@
+---
+kind: scene
+id: finale
+on: verdict
+once: false
+---
+
+## finale
+
+::set{run.over = true}
+@narrator: It ends.

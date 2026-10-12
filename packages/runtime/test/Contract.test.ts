@@ -14,13 +14,14 @@ const roundTrip = <S extends Schema.Codec<unknown, unknown, never, never>>(schem
     expect(canonical(encoded), where).toBe(canonical(value))
   })
 
-/** The schema of a hand-written contract fixture line, by its discriminant. */
-const fixtureSchema = (line: unknown) =>
-  typeof line === "object" && line !== null && "type" in line
-    ? Contract.Input
-    : typeof line === "object" && line !== null && "verdict" in line
-      ? Contract.Verdict
-      : Contract.Snapshot
+/** The schema of a hand-written contract fixture line, by its discriminating key; otherwise a snapshot. */
+const fixtureSchemas = [
+  ["type", Contract.Input],
+  ["verdict", Contract.Verdict],
+  ["open", Contract.Gate],
+  ["code", Contract.Rejected],
+  ["eventVersion", Contract.Output]
+] as const
 
 describe("generated contract schemas", () => {
   it.effect("round-trip every session expected.jsonl and inputs.jsonl line", () =>
@@ -38,9 +39,10 @@ describe("generated contract schemas", () => {
 
   it.effect("round-trip every contract fixture", () => {
     const fixtures = join(sessionRoot, "contract-fixtures.jsonl")
-    return Effect.forEach(jsonLines(fixtures), (line, index) =>
-      roundTrip(fixtureSchema(line), line, `${fixtures}:${index + 1}`)
-    )
+    return Effect.forEach(jsonLines(fixtures), (line, index) => {
+      const schema = fixtureSchemas.find(([key]) => typeof line === "object" && line !== null && key in line)?.[1]
+      return roundTrip(schema ?? Contract.Snapshot, line, `${fixtures}:${index + 1}`)
+    })
   })
 
   it.effect("refuse malformed values", () =>

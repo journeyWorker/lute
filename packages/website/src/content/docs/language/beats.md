@@ -1028,3 +1028,8 @@ clock-window findings are `bounded` with scope
 `declared clock windows; no path search`. The bounded
 `W-OBJECTIVE-STRANDED` and `W-SLOT-CONTENTION` messages describe only that
 scope, not a universal impossibility.
+
+Since 0.41.0 `W-OBJECTIVE-STRANDED` names that evidence level in its own
+message and is always a warning. It skips a quest that re-arms
+(`tier="run"`, `tier="season:<name>"`, or a `rearm=`), which retries the
+objective, and an objective a beat of another document can complete.

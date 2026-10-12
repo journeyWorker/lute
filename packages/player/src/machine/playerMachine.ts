@@ -36,6 +36,7 @@ const eventSchemas = {
   pickIdle: types<Extract<MachineEvent, { readonly type: "pickIdle" }>>(),
   replayVoice: types<Extract<MachineEvent, { readonly type: "replayVoice" }>>(),
   setSettings: types<Extract<MachineEvent, { readonly type: "setSettings" }>>(),
+  send: types<Extract<MachineEvent, { readonly type: "send" }>>(),
   "boot.ready": types<Extract<MachineEvent, { readonly type: "boot.ready" }>>(),
   "batch.started": types<Extract<MachineEvent, { readonly type: "batch.started" }>>(),
   "batch.settled": types<Extract<MachineEvent, { readonly type: "batch.settled" }>>(),
@@ -81,6 +82,16 @@ const initialContext: PlayerMachineContext = {
   occupiedSlots: [],
   pendingConfirm: undefined,
   haltedMessage: undefined,
+  confirmsLines: false,
+  advanceBuffered: false,
+}
+
+/** The flow after a load, rollback or host `restore`, by the restored await. */
+const flowLoadDone: Transition = ({ event }) => {
+  if (event.type !== "load.done") return
+  if (event.await.type === "ended") return { target: "#playerFlowEnded" }
+  if (event.await.type === "halted") return { target: "#playerFlowError" }
+  return { target: "#playerFlowPlaying" }
 }
 
 const overlayTarget = (stack: ReadonlyArray<PlayerMachineContext["overlayStack"][number]>): string => {
@@ -187,7 +198,7 @@ export const playerMachine = initial.createMachine({
           on: {
             "boot.ready": ({ event }, enq) => {
               emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: event.canContinue, background: undefined } })
-              return { target: "title", context: { canContinue: event.canContinue } }
+              return { target: "title", context: { canContinue: event.canContinue, confirmsLines: event.confirmsLines === true } }
             },
             failed: ({ event }, enq) => {
               emit(enq, { type: "screen.show", screen: showHalted(event.message) })
@@ -211,16 +222,14 @@ export const playerMachine = initial.createMachine({
               emit(enq, { type: "screen.show", screen: showHalted(event.message) })
               return { target: "error", context: { haltedMessage: event.message } }
             },
+            // A host `restore` from the title screen (spec 0.41.0 §7.4).
+            "load.done": flowLoadDone,
           },
         },
         loading: {
           on: {
             "batch.started": { target: "playing" },
-            "load.done": ({ event }) => {
-              if (event.await.type === "ended") return { target: "ended" }
-              if (event.await.type === "halted") return { target: "error" }
-              return { target: "playing" }
-            },
+            "load.done": flowLoadDone,
             failed: ({ event }, enq) => {
               emit(enq, { type: "screen.show", screen: showHalted(event.message) })
               return { target: "error", context: { haltedMessage: event.message } }
@@ -228,6 +237,7 @@ export const playerMachine = initial.createMachine({
           },
         },
         playing: {
+          id: "playerFlowPlaying",
           on: {
             confirm: ({ context, event }) =>
               event.yes && context.pendingConfirm?.type === "toTitle" ? { target: "title" } : undefined,
@@ -236,11 +246,7 @@ export const playerMachine = initial.createMachine({
               if (event.await.type === "ended") return { target: "ended" }
               if (event.await.type === "halted") return { target: "error" }
             },
-            "load.done": ({ event }) => {
-              if (event.await.type === "ended") return { target: "ended" }
-              if (event.await.type === "halted") return { target: "error" }
-              return { target: "playing" }
-            },
+            "load.done": flowLoadDone,
             failed: ({ event }, enq) => {
               emit(enq, { type: "screen.show", screen: showHalted(event.message) })
               return { target: "error", context: { haltedMessage: event.message } }
@@ -248,7 +254,11 @@ export const playerMachine = initial.createMachine({
           },
         },
         ended: {
+          id: "playerFlowEnded",
           on: {
+            // An input the host sends at `ended` (`newRun`, an outside-run raise) plays on.
+            "batch.started": { target: "playing" },
+            "load.done": flowLoadDone,
             confirm: ({ context, event }, enq) => {
               if (!event.yes || context.pendingConfirm?.type !== "toTitle") return
               emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
@@ -260,7 +270,9 @@ export const playerMachine = initial.createMachine({
           },
         },
         error: {
+          id: "playerFlowError",
           on: {
+            "load.done": flowLoadDone,
             confirm: ({ context, event }, enq) => {
               if (!event.yes || context.pendingConfirm?.type !== "toTitle") return
               emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
@@ -279,10 +291,10 @@ export const playerMachine = initial.createMachine({
         running: {
           id: "playerStoryRunning",
           on: {
-            "batch.started": { target: "#playerStoryRunning" },
+            "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
             "line.typing": ({ event }) => ({
               target: "#playerStoryTyping",
-              context: { line: "typing", lastLineRead: event.read, hasVoice: event.hasVoice },
+              context: { line: "typing", lastLineRead: event.read, hasVoice: event.hasVoice, advanceBuffered: false },
             }),
             "line.shown": ({ event }) => ({
               target: "#playerStoryShown",
@@ -296,6 +308,8 @@ export const playerMachine = initial.createMachine({
           on: {
             advance: ({ context }, enq) => {
               if (context.overlayStack.length !== 0 || context.uiHidden) return
+              // A presenter that confirms lines itself: keep the confirm for the release.
+              if (context.confirmsLines) return { context: { advanceBuffered: true } }
               emit(enq, { type: "line.reveal" })
               return { target: "#playerStoryShown" }
             },
@@ -308,7 +322,13 @@ export const playerMachine = initial.createMachine({
               if (context.overlayStack.length !== 0 || context.uiHidden) return
               emit(enq, { type: "rollback" })
             },
-            "line.shown": ({ event }) => ({ target: "#playerStoryShown", context: { line: "shown", lastLineRead: event.read, hasVoice: event.hasVoice } }),
+            "line.shown": ({ context, event }, enq) => {
+              if (context.advanceBuffered && context.mode !== "skip") {
+                emit(enq, { type: "line.release" })
+                return { target: "#playerStoryRunning", context: { line: undefined, autoPending: false, advanceBuffered: false, lastLineRead: event.read, hasVoice: event.hasVoice } }
+              }
+              return { target: "#playerStoryShown", context: { line: "shown", lastLineRead: event.read, hasVoice: event.hasVoice, advanceBuffered: false } }
+            },
           },
         },
         shown: {
@@ -387,7 +407,7 @@ export const playerMachine = initial.createMachine({
         halted: { id: "playerStoryHalted", on: { toTitle: { target: "#playerStoryRunning" }, confirm: { target: "#playerStoryRunning" } } },
       },
       on: {
-        "batch.started": { target: "#playerStoryRunning" },
+        "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
         // Acknowledgements the director sends in every state; only some states act on them.
         "line.released": () => undefined,
         "save.done": () => undefined,
@@ -400,9 +420,14 @@ export const playerMachine = initial.createMachine({
           }
           if (event.await.type === "awaitBridge") emit(enq, { type: "bridge.call", await: event.await })
           if (event.await.type === "idle") emit(enq, { type: "idle.flow", await: event.await })
+          if (event.await.type === "ended") emit(enq, { type: "screen.show", screen: showEnded(event.await.reason) })
+          if (event.await.type === "halted") emit(enq, { type: "screen.show", screen: showHalted(event.await.message) })
           return {
             target,
-            context: { await: event.await, line: undefined, countdownRemaining: event.await.type === "awaitChoice" ? event.await.menu.timeout ?? undefined : undefined, autoPending: false },
+            context: {
+              await: event.await, line: undefined, countdownRemaining: event.await.type === "awaitChoice" ? event.await.menu.timeout ?? undefined : undefined,
+              autoPending: false, advanceBuffered: false, haltedMessage: event.await.type === "halted" ? event.await.message : undefined
+            },
           }
         },
       },
@@ -461,6 +486,8 @@ export const playerMachine = initial.createMachine({
               return { target: context.skipMode === "all" ? "#playerModeSkipAll" : "#playerModeSkipRead", context: { mode: "skip", autoPending: false } }
             },
             "line.shown": ({ context, event }, enq) => {
+              // A buffered confirm releases the line at once (story region, same event): no auto timer.
+              if (context.advanceBuffered) return { context: { lastLineRead: event.read, hasVoice: event.hasVoice } }
               emit(enq, { type: "auto.start", waitVoice: event.hasVoice })
               return { context: { autoPending: true, lastLineRead: event.read, hasVoice: event.hasVoice } }
             },
@@ -635,7 +662,7 @@ export const playerMachine = initial.createMachine({
         },
         "load.done": ({ event }) => ({
           target: "#playerOverlayNone",
-          context: { await: event.await, mode: "normal", overlayStack: [], uiHidden: false, line: undefined, countdownRemaining: event.await.type === "awaitChoice" ? event.await.menu.timeout ?? undefined : undefined, autoPending: false },
+          context: { await: event.await, mode: "normal", overlayStack: [], uiHidden: false, line: undefined, countdownRemaining: event.await.type === "awaitChoice" ? event.await.menu.timeout ?? undefined : undefined, autoPending: false, pendingConfirm: undefined },
         }),
       },
     },

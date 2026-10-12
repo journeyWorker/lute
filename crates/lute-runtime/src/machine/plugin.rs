@@ -24,12 +24,12 @@ pub struct BridgeReads {
     /// writes to a path in `paths` — what every answer to the tag gives
     /// (answers queue per tag, not per call), and what a hint lists.
     pub fields: BTreeMap<String, BTreeSet<String>>,
-    /// dsl 0.26.0 §3.1: per plugin directive tag, the declared type (`bool`,
-    /// `number`, `string`) of each bridge result field an effect of the tag
-    /// reads, from the capability's `result:` shape — what types an answer
-    /// whose landing path no state slot declares. Empty for `lute run` (an
-    /// artifact carries no capability snapshot).
-    pub result_types: BTreeMap<String, BTreeMap<String, &'static str>>,
+    /// dsl 0.26.0 §3.1, 0.41.0 §4.1: per plugin directive tag, the declared
+    /// type of each bridge result field an effect of the tag reads, from the
+    /// capability's `result:` shape (the index `bridgeResults`) — what types
+    /// an answer whose landing path no state slot declares. Empty for
+    /// `lute run` (an artifact carries no capability snapshot).
+    pub result_types: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
 }
 
 impl BridgeReads {
@@ -73,49 +73,22 @@ impl BridgeReads {
         }
     }
 
-    /// dsl 0.26.0 §3.1: `snapshot`'s bridge result types, per directive tag
-    /// ([`Self::result_types`]), merged into `self`.
-    pub fn with_result_types(
-        mut self,
-        snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
-    ) -> Self {
-        use lute_manifest::types::Type;
-        for (tag, decl) in &snapshot.directives {
-            let Some(bridge) = &decl.bridge else {
-                continue;
-            };
-            let Some(cap) = snapshot
-                .bridge_capabilities
-                .get(&(bridge.service.clone(), bridge.operation.clone()))
-            else {
-                continue;
-            };
-            for (field, _) in crate::input::bridge_result_writes(decl) {
-                let Some(f) = cap.result.iter().find(|f| f.name == field) else {
-                    continue;
-                };
-                let ty = match f.ty {
-                    Type::Bool => "bool",
-                    Type::Int | Type::Double => "number",
-                    _ => "string",
-                };
-                self.result_types
-                    .entry(tag.clone())
-                    .or_default()
-                    .insert(field.to_string(), ty);
-            }
-        }
-        self
-    }
-
     /// Whether content reads `field` of a `tag` call's result.
     pub fn reads(&self, tag: &str, field: &str) -> bool {
         self.fields.get(tag).is_some_and(|f| f.contains(field))
     }
 
-    /// dsl 0.26.0 §3.1: the capability-declared type of `tag`'s result `field`.
+    /// dsl 0.26.0 §3.1: the scalar spelling of the capability-declared type
+    /// of `tag`'s result `field` — `bool`, `int`, `double`, or `string` for
+    /// any other declared type.
     pub fn result_type(&self, tag: &str, field: &str) -> Option<&'static str> {
-        self.result_types.get(tag)?.get(field).copied()
+        use lute_manifest::types::Type;
+        Some(match self.result_types.get(tag)?.get(field)? {
+            Type::Bool => "bool",
+            Type::Int => "int",
+            Type::Double => "double",
+            _ => "string",
+        })
     }
 }
 
@@ -170,19 +143,24 @@ impl<D: Driver> Machine<D> {
                 Some((field.to_string(), path.to_string()))
             })
             .collect();
-        let answer = if reads.is_empty() {
-            None
+        // dsl 0.41.0 §5.5: the call's attributes as executed, `occasion.target`
+        // bound — what every `plugin` record and the bridge await carry.
+        let attrs = cmd.get("fields").and_then(Json::as_object);
+        let (answer, host) = if reads.is_empty() {
+            (None, crate::session::Writes::default())
         } else {
             let call = BridgeCall {
                 tag: &tag,
                 addr: addr(cmd),
                 reads: &reads,
+                attrs,
             };
             match self.driver.bridge(&call) {
-                BridgeReply::Answer(a) => Some(a),
-                BridgeReply::Unanswered => None,
+                BridgeReply::Answer { fields, writes } => (Some(fields), writes),
+                BridgeReply::Unanswered => (None, crate::session::Writes::default()),
             }
         };
+        let attrs = Json::Object(attrs.cloned().unwrap_or_default());
         // dsl 0.25.0 §7: whether content reads one of this call's results.
         let read = reads
             .iter()
@@ -209,6 +187,7 @@ impl<D: Driver> Machine<D> {
                     "position": addr(cmd),
                     "kind": "plugin",
                     "tag": tag,
+                    "attrs": attrs,
                     "external": true,
                     "unresolvedEffects": paths,
                     "unanswered": fields,
@@ -231,6 +210,7 @@ impl<D: Driver> Machine<D> {
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("plugin".into()));
         rec.insert("tag".into(), Json::String(tag.clone()));
+        rec.insert("attrs".into(), attrs);
         rec.insert("external".into(), Json::Bool(true));
         rec.insert("unresolvedEffects".into(), json!(unresolved));
         match &answered {
@@ -338,6 +318,88 @@ impl<D: Driver> Machine<D> {
                     return false;
                 }
             }
+        }
+        // dsl 0.41.0 §5.3: the host's writes with the answer, after the
+        // call's declared effects — state, then facts, then retracts, then
+        // accepts — each recorded with `effectOf: <tag>` and `by: "host"`.
+        self.host_writes(cmd, &tag, &host)
+    }
+
+    /// dsl 0.41.0 §5.3: a bridge answer's `writes` at the call. `false` =
+    /// the walk stops here (a write the exclusivity check refused, or an
+    /// `add` to a path with no number).
+    fn host_writes(&mut self, cmd: &Json, tag: &str, host: &crate::session::Writes) -> bool {
+        use crate::session::Write;
+        for (path, write) in &host.state {
+            let value = match write {
+                Write::Set(v) => v.clone(),
+                Write::Add(d) => match self.store.read(path) {
+                    Read::Value(Value::Int(n)) => match n.checked_add(*d as i64) {
+                        Some(n) => Value::Int(n),
+                        None => {
+                            self.fatal = Some(format!("`{path}` overflows adding {d}"));
+                            return false;
+                        }
+                    },
+                    Read::Value(Value::Double(n)) => Value::Double(n + d),
+                    _ => {
+                        self.fatal = Some(format!("`{path}` has no number value to add {d} to"));
+                        return false;
+                    }
+                },
+            };
+            let rec = json!({
+                "position": addr(cmd),
+                "kind": "set",
+                "path": path,
+                "value": value_to_json(&value),
+                "effectOf": tag,
+                "by": "host",
+            });
+            self.write_recorded(path, value, rec);
+            if self.stopped() {
+                return false;
+            }
+        }
+        for (fact, assert) in host
+            .facts
+            .iter()
+            .map(|f| (f, true))
+            .chain(host.retract.iter().map(|f| (f, false)))
+        {
+            let (rel, args) = fact;
+            let before = self.store.exclusive_now();
+            let rec = if assert {
+                self.store.assert((rel.clone(), args.clone()));
+                json!({ "position": addr(cmd), "kind": "assert",
+                        "fact": render_fact(rel, args), "effectOf": tag, "by": "host" })
+            } else {
+                self.store.retract(rel, args);
+                json!({ "position": addr(cmd), "kind": "retract",
+                        "pattern": render_fact(rel, args), "effectOf": tag, "by": "host" })
+            };
+            self.driver.emit(rec);
+            self.exclusive_check(&before);
+            if self.stopped() {
+                return false;
+            }
+        }
+        for quest in &host.accept {
+            let mut rec = serde_json::Map::new();
+            rec.insert("position".into(), Json::String(addr(cmd).to_string()));
+            rec.insert("kind".into(), Json::String("accept".into()));
+            rec.insert("quest".into(), Json::String(quest.clone()));
+            rec.insert("effectOf".into(), Json::String(tag.to_string()));
+            rec.insert("by".into(), Json::String("host".into()));
+            if let Some(state) = self
+                .quest_status
+                .get(quest)
+                .filter(|s| s.as_str() != "unset")
+            {
+                rec.insert("ignored".into(), Json::String(format!("already {state}")));
+            }
+            self.driver.emit(Json::Object(rec));
+            self.accepted.push(quest.clone());
         }
         true
     }

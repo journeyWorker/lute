@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.40.schema.json",
-  "title": "Lute compiled execution IR (irVersion 0.40.x)",
-  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.40.x accepts only 0.40.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.40.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.41.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.41.x)",
+  "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.41.x accepts only 0.41.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.41.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -31,7 +31,7 @@
     },
     "irVersion": {
       "type": "string",
-      "description": "IR schema version the engine gates on: the exact MAJOR.MINOR line before 1.0, MAJOR only from 1.0, e.g. \"0.40.0\"."
+      "description": "IR schema version the engine gates on: the exact MAJOR.MINOR line before 1.0, MAJOR only from 1.0, e.g. \"0.41.0\"."
     },
     "capabilitySnapshot": {
       "type": "string",
@@ -589,6 +589,20 @@
             "args"
           ],
           "description": "function call: int(), double(), or host function."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "param": {
+              "type": "string",
+              "description": "the name of one of the def's parameters."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "param"
+          ],
+          "description": "0.41.0 §4.3: a def parameter, bound to the host's positional argument (`Program.def`). Only in the `expr` of a `project.index.json` `defs` row whose def declares that parameter — never in an artifact, and the runtime's `evaluate` refuses it."
         }
       ]
     },
@@ -874,6 +888,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "0.41.0 §4.2: member → display text, the long-form `labels:` of the merged `enums:` declaration (as `entityKindEntry.labels`). Omitted when none is declared; an unlabelled member renders its id."
         }
       },
       "additionalProperties": true,
@@ -3233,7 +3254,7 @@
         },
         "fields": {
           "type": "object",
-          "description": "resolved directive attrs, typed via the manifest AttrDecls."
+          "description": "resolved directive attrs, typed via the manifest AttrDecls: every authored attr (an `@ref` folded to its constant) plus every omitted attr whose declaration has a `default` (dsl 0.41.0 §5.5). Excludes the stamp's attrs: `wait`/`duration`/`delay` (in `timing`) and an undeclared cross-cutting `stampAttrs` attr (a top-level key beside `timing`)."
         },
         "effects": {
           "type": "array",
@@ -3432,111 +3453,105 @@
       "description": "Lore-kind envelope meta (dsl 0.19.0 §7): `id?`, `title?`, `series?`, `contentLang?`, `extra?`, `plugin?` — every field skipped when unauthored, so it MAY serialize as {}. Present when `kind` == \"lore\"."
     },
     "indexEntry": {
-      "type": "object",
+      "description": "One `<entry>` row of [`ProjectIndex::entries`] (dsl 0.19.0 §7): enough for\nan engine to build its `target → entries` / `series → entries` tables\nwithout loading every lore artifact. `document` is the SAME string as the\nowning [`IndexDocument::path`].",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "document": {
-          "type": "string",
-          "description": "the owning document's `project.index.json` `documents[].path`."
-        },
-        "target": {
-          "type": "string"
-        },
         "category": {
           "type": "string"
         },
-        "series": {
-          "type": "string",
-          "description": "The RESOLVED series, as cmdEntry.series (dsl 0.19.0 §2.1)."
+        "document": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
         },
         "order": {
-          "type": "integer",
           "minimum": 0,
-          "description": "The RESOLVED order, as cmdEntry.order (dsl 0.19.0 §2.1)."
+          "type": "integer"
+        },
+        "series": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "document"
       ],
-      "description": "One row of `project.index.json` `entries` (dsl 0.19.0 §7; `lute compile --all`): every `<entry>` in the project, documents in path order, entries in document order within each. The index itself is not an artifact; this row shape is published here for engines that read it. `entries` is omitted from the index when the project has no lore."
+      "type": "object"
     },
     "indexBeat": {
-      "type": "object",
+      "description": "One row of [`ProjectIndex::beats`] (dsl 0.21.0 §4/§8): every beat in the\nproject, so an engine can build its `occasion → candidates` table without\nloading every artifact. Row order IS the selection tiebreak after\npriority. `id` is the scene's canonical id (`SceneMeta::id`), the\nentry id, or a bundle beat's canonical `<document id>.<beat id>`;\n`document` is the owning [`IndexDocument::path`]; `priority` is\nresolved (unauthored → `0`); `once` is the scene's / bundle beat's policy,\nor an entry's authored `once` (dsl 0.22.0 §7) — absent on an entry row =\nrepeatable.\n`when` is the beat's condition after `@def` expansion (a scene's\n`meta.beat.when`, an entry's own `when`) and `title` the scene's / entry's\ntitle — enough to list the beats and label a `select: all` menu without\nloading every artifact (dsl 0.23.0 §1, §11). Both are omitted when absent.",
       "properties": {
-        "targetKind": {
-          "$ref": "#/$defs/targetKind"
+        "advances": {
+          "description": "dsl 0.31.0 §1: clock movement performed when this beat is presented.",
+          "oneOf": [
+            {
+              "enum": [
+                "slot",
+                "day"
+              ]
+            },
+            {
+              "minimum": 1,
+              "type": "integer"
+            }
+          ]
+        },
+        "document": {
+          "type": "string"
         },
         "forKind": {
-          "$ref": "#/$defs/forKind"
+          "$ref": "#/$defs/forKind",
+          "description": "dsl 0.27.0 §3 (T2-10): a `for=\"kind:<kind>\"` beat's members, as the\nartifact's `forKind`. Omitted when not authored."
         },
         "id": {
-          "type": "string",
-          "description": "the scene's canonical id (sceneMeta.id) for a scene beat, the entry id for an entry beat, the canonical `<document id>.<beat id>` for a bundle beat (dsl 0.23.0 §4)."
+          "type": "string"
         },
         "kind": {
+          "description": "What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat\n(`SceneMeta.beat`), an entry beat (`EntryCmd.on`), or a bundle beat (a\nlore document's `beat` record, dsl 0.23.0 §4).",
           "enum": [
             "scene",
             "entry",
             "bundle"
-          ]
-        },
-        "document": {
-          "type": "string",
-          "description": "the owning document's `project.index.json` `documents[].path`."
+          ],
+          "type": "string"
         },
         "on": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$"
+          "type": "string"
+        },
+        "once": {
+          "description": "The beat's repetition policy: always present on a scene or bundle\nrow; on an entry row the authored `once`, absent = repeatable.",
+          "pattern": "^(run|user|none|day|slot|week|season:.+)$",
+          "type": "string"
+        },
+        "priority": {
+          "default": 0,
+          "type": "integer"
+        },
+        "share": {
+          "description": "dsl 0.25.0 §2: the beat's `share` key — every row of one key is\nspent when any of them is presented. Omitted when not authored.",
+          "type": "string"
+        },
+        "spentBy": {
+          "description": "dsl 0.27.0 §5, 0.28.0 §6: the beat's `spentBy` condition (raw,\n`@def`-expanded) — once it has held the beat is spent for its `once`\nperiod. Omitted when not authored.",
+          "type": "string"
         },
         "target": {
           "type": "string"
         },
-        "priority": {
-          "type": "integer",
-          "description": "the RESOLVED priority (unauthored → 0)."
-        },
-        "once": {
-          "anyOf": [
-            {
-              "enum": [
-                "run",
-                "user",
-                "none",
-                "day",
-                "slot",
-                "week"
-              ]
-            },
-            {
-              "type": "string",
-              "pattern": "^season:[A-Za-z0-9_][A-Za-z0-9_-]*$"
-            }
-          ],
-          "description": "the beat's repetition policy: always present on a scene or bundle row; on an entry row the authored `once` (`run`/`user`, dsl 0.22.0 §7; `day`/`slot`, dsl 0.24.0 §1), absent = repeatable."
-        },
-        "spentBy": {
-          "type": "string",
-          "description": "dsl 0.27.0 §5: the beat's `spentBy` condition after `@def` expansion (raw CEL). Absent when not authored."
-        },
-        "when": {
-          "type": "string",
-          "description": "dsl 0.23.0 §1: the beat's condition after `@def` expansion (raw CEL). Absent when not authored."
+        "targetKind": {
+          "$ref": "#/$defs/targetKind",
+          "description": "dsl 0.26.0 §5: a `target=\"kind:<kind>\"` beat's members, as the\nartifact's `targetKind`. Omitted for any other target."
         },
         "title": {
-          "type": "string",
-          "description": "dsl 0.23.0 §11: the scene's `title:`, or the entry's or bundle beat's `title=` — enough to label a `select: all` menu row. Absent when not authored."
+          "type": "string"
         },
-        "share": {
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_-]*$",
-          "description": "dsl 0.25.0 §2: the beat's shared-spend key — every row of one key is spent when any of them is presented (an entry: read). Absent when not authored."
+        "when": {
+          "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "kind",
@@ -3544,7 +3559,7 @@
         "on",
         "priority"
       ],
-      "description": "One row of `project.index.json` `beats` (dsl 0.21.0 §8; `lute compile --all`): every scene, entry and bundle beat in the project, documents in path order, declaration order within each. Row order is the selection tiebreak after priority (docs/runtime/beats-and-occasions.md). `beats` is omitted from the index when the project has no beats."
+      "type": "object"
     },
     "sectionEntry": {
       "type": "object",
@@ -3694,72 +3709,564 @@
       "description": "dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labels[clock.weekday]` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared. dsl 0.27.0 §4: a finite clock (`last` / `days`) stops at its last position — an advance whose destination lies past it walks there (raising `dayEnd` / `dayStart` at each midnight it crosses on the way), raises the last day's `dayEnd` (never `slot`) and ends the clock; any later advance is the usage error `E-CLOCK-END` until a new run starts the clock over."
     },
     "indexOccasion": {
-      "type": "object",
-      "patternProperties": {
-        "^select$": { "enum": ["first", "all", "sequence"] },
-        "^target$": {
+      "description": "The serializable subset of a capability-declared occasion carried by the\nproject index. The human description and raisedWhen gate are document\nmetadata, not part of the engine's occasion shape.",
+      "properties": {
+        "judge": {
+          "description": "`before` when the occasion judges its objectives before presenting its\nbeats; omitted for the default `after`.",
+          "enum": [
+            "after",
+            "before"
+          ],
+          "type": "string"
+        },
+        "outsideRun": {
+          "type": "boolean"
+        },
+        "payload": {
+          "additionalProperties": {
+            "$ref": "#/$defs/fieldType"
+          },
+          "type": "object"
+        },
+        "select": {
+          "description": "How many eligible beats a raise presents: `first`, `all` or `sequence`.",
+          "enum": [
+            "first",
+            "all",
+            "sequence"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "description": "`true` (raised for any dotted id), `false` (untargeted), or a\n`{ prefix, entity, members? }` target domain.",
           "oneOf": [
-            { "type": "boolean" },
             {
-              "type": "object",
-              "patternProperties": {
-                "^prefix$": { "type": "string" },
-                "^entity$": { "type": "string" },
-                "^members$": { "type": "array", "items": { "type": "string" } }
-              },
+              "type": "boolean"
+            },
+            {
               "additionalProperties": false,
-              "required": ["prefix", "entity"]
+              "properties": {
+                "entity": {
+                  "type": "string"
+                },
+                "members": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "prefix": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prefix",
+                "entity"
+              ],
+              "type": "object"
             }
           ]
-        },
-        "^judge$": { "enum": ["before", "after"] },
-        "^payload$": { "type": "object", "additionalProperties": true },
-        "^outsideRun$": { "type": "boolean" }
-      },
-      "additionalProperties": false,
-      "required": ["select", "target"],
-      "description": "The serializable capability occasion shape in project.index.json, without description or raisedWhen."
-    },
-    "indexStateDomain": {
-      "type": "object",
-      "patternProperties": {
-        "^kind$": { "type": "string" },
-        "^members$": { "type": "array", "items": { "type": "string" } }
-      },
-      "additionalProperties": false,
-      "required": ["kind", "members"],
-      "description": "A closed state member domain, keyed by state path in project.index.json."
-    },
-    "projectIndex": {
-      "type": "object",
-      "patternProperties": {
-        "^occasions$": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/indexOccasion" }
-        },
-        "^worldEvents$": {
-          "type": "array",
-          "items": { "type": "string" },
-          "uniqueItems": true
-        },
-        "^bridgeResults$": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": { "enum": ["bool", "number", "string"] }
-          }
-        },
-        "^cast$": {
-          "type": "object",
-          "additionalProperties": { "type": "string" }
-        },
-        "^stateDomains$": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/indexStateDomain" }
         }
       },
-      "additionalProperties": true,
-      "description": "The optional capability unions carried by project.index.json."
+      "required": [
+        "select",
+        "target"
+      ],
+      "type": "object"
+    },
+    "indexStateDomain": {
+      "description": "A closed state member domain, keyed by state path in\n[`ProjectIndex::state_domains`].",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "members": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "members"
+      ],
+      "type": "object"
+    },
+    "projectIndex": {
+      "description": "`project.index.json` (`lute compile --all`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md).",
+      "properties": {
+        "beats": {
+          "items": {
+            "$ref": "#/$defs/indexBeat"
+          },
+          "type": "array"
+        },
+        "bridgeResults": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/$defs/fieldType"
+            },
+            "type": "object"
+          },
+          "description": "0.41.0 §4.1: per bridge directive tag, the declared result type of\neach field an effect of the tag writes (the capability's `result:`\nshape), as occasion payloads carry theirs. Omitted when empty.",
+          "type": "object"
+        },
+        "capabilitySnapshot": {
+          "default": "",
+          "type": "string"
+        },
+        "cast": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "clock": {
+          "$ref": "#/$defs/clockDecl"
+        },
+        "defs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/indexDef"
+          },
+          "description": "dsl 0.41.0 §4.3: the project defs a host evaluates by name\n(`Program.def`) — plugin `defs:` and the `uses:` schema imports,\nkeyed and sorted by name. Omitted when empty.",
+          "type": "object"
+        },
+        "documents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/indexDocument"
+          },
+          "type": "array"
+        },
+        "entities": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/entityKindEntry"
+          },
+          "type": "array"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/indexEntry"
+          },
+          "type": "array"
+        },
+        "enums": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/enumEntry"
+          },
+          "type": "array"
+        },
+        "gates": {
+          "items": {
+            "description": "dsl 0.27.0 §4: one occasion's `raisedWhen` gate.",
+            "properties": {
+              "occasion": {
+                "type": "string"
+              },
+              "raisedWhen": {
+                "$ref": "#/$defs/celSlot"
+              }
+            },
+            "required": [
+              "occasion",
+              "raisedWhen"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "identityRenames": {
+          "description": "Authored save-identity migrations from `lute.project.yaml`, sorted by\n`from`; omitted when empty.",
+          "items": {
+            "description": "A resolved canonical identity migration entry. The manifest loader keeps\nsource spans separately; this wire DTO is intentionally only the two\ncanonical keys that engines consume.",
+            "properties": {
+              "from": {
+                "description": "The retired canonical NodeKey (e.g. `quest:oldQuest`).",
+                "type": "string"
+              },
+              "to": {
+                "description": "The canonical NodeKey that replaces it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "irVersion": {
+          "type": "string"
+        },
+        "occasions": {
+          "additionalProperties": {
+            "$ref": "#/$defs/indexOccasion"
+          },
+          "type": "object"
+        },
+        "outsideRun": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prereqEdges": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/prereqEdgeEntry"
+          },
+          "type": "array"
+        },
+        "relations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/relationEntry"
+          },
+          "type": "array"
+        },
+        "requiredSemantics": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ruleEntry"
+          },
+          "type": "array"
+        },
+        "seasons": {
+          "items": {
+            "description": "dsl 0.27.0 §5: one declared season.",
+            "properties": {
+              "live": {
+                "$ref": "#/$defs/celSlot"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "live"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "seedFacts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/seedFactEntry"
+          },
+          "type": "array"
+        },
+        "stateDomains": {
+          "additionalProperties": {
+            "$ref": "#/$defs/indexStateDomain"
+          },
+          "type": "object"
+        },
+        "terminal": {
+          "$ref": "#/$defs/celSlot"
+        },
+        "terminalPersists": {
+          "type": "boolean"
+        },
+        "worldEvents": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "irVersion",
+        "capabilitySnapshot",
+        "requiredSemantics",
+        "documents",
+        "entities",
+        "enums",
+        "relations",
+        "seedFacts",
+        "rules",
+        "prereqEdges"
+      ],
+      "type": "object"
+    },
+    "indexDocument": {
+      "description": "One document's row in the index. Paths are FORWARD-SLASH relative to the\nproject root, never absolute — an index is a build output that must survive\nbeing copied to another machine or shipped inside a game package.",
+      "properties": {
+        "artifact": {
+          "description": "Its compiled artifact, relative to the output directory\n(`quests/a.lute.json`).",
+          "type": "string"
+        },
+        "key": {
+          "default": "",
+          "description": "The document's canonical node key: a scene's `{character}.{episodeId}`\n(`canonical_episode_key`); a quest or lore document's authored `id:`\n(dsl 0.19.0 §2.1), else its first declared `<quest id>` / `<entry\nid>` (document order = addressing order). A quest PACK's / lore\ndocument's ids stay recoverable from its own artifact's `quest` /\n`entry` records (and, for entries, [`ProjectIndex::entries`]) — the\nindex names the document, it does not replace it.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "scene",
+          "description": "The document kind: `scene`, `quest` or `lore`.",
+          "enum": [
+            "scene",
+            "quest",
+            "lore"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "Source document, relative to the project root (`quests/a.lute`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "artifact",
+        "kind",
+        "key"
+      ],
+      "type": "object"
+    },
+    "indexDef": {
+      "description": "0.41.0 §4.3: one row of [`ProjectIndex::defs`] — a def's body\n`@def`-expanded (`cel`; the unexpanded body as `authored` when it\ndiffers) and lowered (`expr`, where each parameter is a `param` node),\nits parameters in declaration order (omitted when none) and `host: true`\nwhen the def declares it (omitted otherwise).",
+      "properties": {
+        "authored": {
+          "description": "The body as declared, when expansion changed it.",
+          "type": "string"
+        },
+        "cel": {
+          "description": "The body after `@def` expansion (standard CEL text).",
+          "type": "string"
+        },
+        "expr": {
+          "$ref": "#/$defs/exprNode",
+          "description": "The lowered body."
+        },
+        "host": {
+          "description": "The def declares `host: true` (0.41.0 §3.5).",
+          "type": "boolean"
+        },
+        "params": {
+          "description": "The declared parameters, in declaration (argument) order.",
+          "items": {
+            "description": "A single declared def parameter (dsl §8.1). Order-preserving: the position of\na `DefParam` in [`DefDecl::params`] is the positional-binding order for\n`@name(args)` calls.",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/fieldType"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "cel",
+        "expr"
+      ],
+      "type": "object"
+    },
+    "fieldType": {
+      "description": "A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{\"enum\": [...]}`, `{\"list\": T}`, `{\"record\": [fields]}`, `{\"map\": {\"key\": T, \"value\": T}}`, `{\"domain\": name}`, `{\"entity\": kind}`, `{\"enumFromOption\": option}`, `{\"providerRef\": name}`, `{\"slotId\": {\"namespace\": ns}}`, `{\"assetKind\": kind}`).",
+      "oneOf": [
+        {
+          "enum": [
+            "bool",
+            "int",
+            "double",
+            "string",
+            "narrativeTime"
+          ]
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "enum": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "enum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "list": {
+              "$ref": "#/$defs/fieldType"
+            }
+          },
+          "required": [
+            "list"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "default": {
+                    "description": "the field's default literal (any JSON value but null)."
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "shape": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/fieldType"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "required"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "record"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "map": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/fieldType"
+                },
+                "value": {
+                  "$ref": "#/$defs/fieldType"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "map"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "enumFromOption": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "enumFromOption"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "providerRef": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerRef"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "domain": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "slotId": {
+              "additionalProperties": false,
+              "properties": {
+                "namespace": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "namespace"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "slotId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assetKind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "assetKind"
+          ],
+          "type": "object"
+        }
+      ]
     }
   }
 }

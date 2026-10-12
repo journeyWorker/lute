@@ -1,0 +1,10 @@
+---
+kind: scene
+id: listen
+on: listen
+once: false
+---
+
+## listen
+
+@narrator: Something moves.

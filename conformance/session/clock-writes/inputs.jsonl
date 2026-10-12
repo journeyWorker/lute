@@ -1,0 +1,2 @@
+{"seed":{"derive":true}}
+{"input":{"by":"day","type":"advanceClock","writes":{"state":[{"path":"run.ready","value":true}]}}}

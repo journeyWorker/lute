@@ -1,0 +1,4 @@
+defaultProfile: evaluate
+profiles:
+  evaluate:
+    plugins: { evaluate.cases: true }

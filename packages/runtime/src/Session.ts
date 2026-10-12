@@ -1,7 +1,8 @@
 /**
- * One running playthrough (spec 0.40.0 §5.2): the host sends inputs, watches
- * the state, and subscribes to events and awaits. The session adds no game
- * policy — it answers nothing and paces nothing.
+ * One running playthrough (spec 0.40.0 §5.2, 0.41.0 §6.2): the host sends
+ * inputs, watches the state, subscribes to events and awaits, and queries the
+ * state through the session's program. The session adds no game policy — it
+ * answers nothing and paces nothing.
  */
 import { Context, Effect, Layer, PubSub, Scope, Semaphore, Stream, SubscriptionRef } from "effect"
 import { BundleSource } from "./BundleSource.js"
@@ -9,7 +10,7 @@ import type { BundleError, InputLogError, RuntimeRejection } from "./Errors.js"
 import type { Await, Event, Input, Output, Seed, Snapshot, Stage } from "./generated/Contract.js"
 import { InputLog } from "./InputLog.js"
 import { LuteRuntime } from "./LuteRuntime.js"
-import type { RuntimeState } from "./Program.js"
+import type { Program, RuntimeState } from "./Program.js"
 
 /** Where the session stands: its state, stage, and what it waits for. */
 export interface SessionState {
@@ -18,33 +19,39 @@ export interface SessionState {
   readonly await: Await
 }
 
-export class Session extends Context.Service<
-  Session,
-  {
-    /** The program's fingerprint (what snapshots carry). */
-    readonly fingerprint: string
-    /** The output of `begin`; for a restored session, no events and the snapshot's await. */
-    readonly started: Output
-    /**
-     * Apply one input. Inputs run one at a time, in call order. An accepted
-     * input is logged before its events are published; a rejected one
-     * changes nothing.
-     */
-    readonly send: (input: Input) => Effect.Effect<Output, RuntimeRejection | InputLogError>
-    readonly current: SubscriptionRef.SubscriptionRef<SessionState>
-    /**
-     * Subscribe to the events of every later output, in order. The
-     * subscription exists once this effect completes, so nothing published
-     * afterwards is missed; it ends with its scope or the session's.
-     */
-    readonly events: Effect.Effect<Stream.Stream<Event>, never, Scope.Scope>
-    /** Subscribe to the await of every later output, like `events`. */
-    readonly awaits: Effect.Effect<Stream.Stream<Await>, never, Scope.Scope>
-    readonly save: Effect.Effect<Snapshot>
-    /** Continue from a snapshot; the input log restarts from it. */
-    readonly restore: (snapshot: Snapshot) => Effect.Effect<void, RuntimeRejection | InputLogError>
-  }
->()("@lute-lang/runtime/Session") {}
+/** The session service. */
+export interface SessionShape {
+  /** The program's fingerprint (what snapshots carry). */
+  readonly fingerprint: string
+  /**
+   * The program the layer loaded, valid for the session's scope: run
+   * `view`, `evaluate`, `def`, `gate`, `candidates` … over `current`'s state
+   * without loading the bundle a second time.
+   */
+  readonly program: Program
+  /** The output of `begin`; for a restored session, no events and the snapshot's await. */
+  readonly started: Output
+  /**
+   * Apply one input. Inputs run one at a time, in call order. An accepted
+   * input is logged before its events are published; a rejected one
+   * changes nothing.
+   */
+  readonly send: (input: Input) => Effect.Effect<Output, RuntimeRejection | InputLogError>
+  readonly current: SubscriptionRef.SubscriptionRef<SessionState>
+  /**
+   * Subscribe to the events of every later output, in order. The
+   * subscription exists once this effect completes, so nothing published
+   * afterwards is missed; it ends with its scope or the session's.
+   */
+  readonly events: Effect.Effect<Stream.Stream<Event>, never, Scope.Scope>
+  /** Subscribe to the await of every later output, like `events`. */
+  readonly awaits: Effect.Effect<Stream.Stream<Await>, never, Scope.Scope>
+  readonly save: Effect.Effect<Snapshot>
+  /** Continue from a snapshot; the input log restarts from it. */
+  readonly restore: (snapshot: Snapshot) => Effect.Effect<void, RuntimeRejection | InputLogError>
+}
+
+export class Session extends Context.Service<Session, SessionShape>()("@lute-lang/runtime/Session") {}
 
 /** How a session starts: from a seed, or from a snapshot. */
 export type SessionOptions = { readonly seed: Seed } | { readonly snapshot: Snapshot }
@@ -105,6 +112,7 @@ export const layer = (
 
       return {
         fingerprint: program.fingerprint,
+        program,
         started: started.output,
         send: (input) => lock.withPermits(1)(send(input)),
         current,

@@ -1,0 +1,13 @@
+---
+kind: scene
+id: town.morning
+title: Another morning
+# Repeatable (`once: false`) and only after the first day.
+on: townVisit
+once: false
+when: '!@firstDay && @rich(2) && @score > 1'
+---
+
+## Morning
+
+@narrator: Day {{run.day}}. The square is already awake.

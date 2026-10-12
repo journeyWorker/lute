@@ -1,0 +1,11 @@
+---
+kind: scene
+id: morning
+title: morning
+on: morning
+when: "run.ready"
+once: false
+---
+## Morning
+::set{run.greeted += 1}
+@narrator: Morning reads the write.

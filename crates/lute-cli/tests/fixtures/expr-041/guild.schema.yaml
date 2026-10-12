@@ -1,0 +1,8 @@
+# Imported by the guild scene alone, whose own `uses:` replaces the
+# manifest's: `lute expr` still sees it. `rich` names a second condition
+# here, so the project index (and `lute expr`) has no `rich`.
+state:
+  run.reputation: { type: int, default: 0 }
+defs:
+  respected: "run.reputation > 2"
+  rich: { cel: "run.reputation > 5", host: true }

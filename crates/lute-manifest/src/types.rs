@@ -383,8 +383,215 @@ impl<'de> Deserialize<'de> for Type {
     }
 }
 
+/// 0.41.0 §4.4: the serialized form above, as `fieldType` — a bare
+/// spelling, or a single-key map whose key names the form. A nested type
+/// (`list`, `map`, a `record` field's `type`) is a `$ref` to `fieldType`.
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for Type {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "fieldType".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let ty = generator.subschema_for::<Type>();
+        let one = |key: &str, value: serde_json::Value| {
+            serde_json::json!({
+                "type": "object",
+                "properties": { key: value },
+                "required": [key],
+                "additionalProperties": false
+            })
+        };
+        let name = serde_json::json!({ "type": "string" });
+        schemars::json_schema!({
+            "oneOf": [
+                { "enum": ["bool", "int", "double", "string", "narrativeTime"] },
+                one("enum", serde_json::json!({ "type": "array", "items": { "type": "string" } })),
+                one("list", ty.clone().into()),
+                one("record", serde_json::json!({
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "type": ty,
+                            "default": { "description": "the field's default literal (any JSON value but null)." },
+                            "required": { "type": "boolean" },
+                            "shape": { "type": "string" }
+                        },
+                        "required": ["name", "type", "required"],
+                        "additionalProperties": false
+                    }
+                })),
+                one("map", serde_json::json!({
+                    "type": "object",
+                    "properties": { "key": ty, "value": ty },
+                    "required": ["key", "value"],
+                    "additionalProperties": false
+                })),
+                one("enumFromOption", name.clone()),
+                one("providerRef", name.clone()),
+                one("domain", name.clone()),
+                one("entity", name.clone()),
+                one("slotId", serde_json::json!({
+                    "type": "object",
+                    "properties": { "namespace": { "type": "string" } },
+                    "required": ["namespace"],
+                    "additionalProperties": false
+                })),
+                one("assetKind", name)
+            ],
+            "description": "A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{\"enum\": [...]}`, `{\"list\": T}`, `{\"record\": [fields]}`, `{\"map\": {\"key\": T, \"value\": T}}`, `{\"domain\": name}`, `{\"entity\": kind}`, `{\"enumFromOption\": option}`, `{\"providerRef\": name}`, `{\"slotId\": {\"namespace\": ns}}`, `{\"assetKind\": kind}`)."
+        })
+    }
+}
+
+/// The sentence a `type: number` that reaches a `Type` decoder carries — the
+/// fallback for a surface no [`number_type_sites`] scan covers. Every
+/// declaration surface Lute reads scans first and reports [`E_TYPE_NUMBER`].
 pub const NUMBER_TYPE_REMOVED: &str =
-    "`type: number` is no longer a valid numeric type; use `type: int` for whole numbers or `type: double` for fractional values";
+    "`type: number` is no longer a numeric type — choose `type: int` for whole numbers or `type: double` for fractional values";
+
+/// 0.41.0 §3.2: a declaration typed `number`, the type 0.31 removed.
+pub const E_TYPE_NUMBER: &str = "E-TYPE-NUMBER";
+
+/// [`E_TYPE_NUMBER`]'s message. `seen` is every literal value the checker
+/// sees the declaration take (its own `default:`, and for a state row the
+/// literal writes of its path); when each one is whole the message suggests
+/// `int`, listing at most three distinct values. No values: no suggestion.
+pub fn number_type_message(seen: &[f64]) -> String {
+    let whole = !seen.is_empty() && seen.iter().all(|v| v.is_finite() && v.fract() == 0.0);
+    if !whole {
+        return "`type: number` is no longer a numeric type — choose `type: int` for whole numbers or `type: double` for fractional values".to_string();
+    }
+    let mut shown: Vec<String> = Vec::new();
+    for v in seen {
+        let v = format!("{}", *v as i64);
+        if !shown.contains(&v) {
+            shown.push(v);
+        }
+    }
+    let more = if shown.len() > 3 { ", …" } else { "" };
+    shown.truncate(3);
+    let values = shown.join(", ");
+    format!(
+        "`type: number` is no longer a numeric type — choose `type: int` for whole numbers or `type: double` for fractional values; every value it takes here is whole ({values}{more}), so `int` fits"
+    )
+}
+
+/// One step from a YAML document's root towards a node.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum YamlKey {
+    Key(String),
+    Item(usize),
+}
+
+impl YamlKey {
+    /// The [`crate::yaml_text::YamlStep`] this step is.
+    pub fn step(&self) -> crate::yaml_text::YamlStep<'_> {
+        match self {
+            YamlKey::Key(k) => crate::yaml_text::YamlStep::Key(k),
+            YamlKey::Item(i) => crate::yaml_text::YamlStep::Item(*i),
+        }
+    }
+}
+
+/// A `number` written where a type is declared (0.41.0 §3.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct NumberSite {
+    /// From the scanned value's root to the `number` scalar: the value of a
+    /// `type:` key, or of a key in a shorthand `params:` / `payload:` map.
+    pub path: Vec<YamlKey>,
+    /// The declaration's own `default:`, when it is a number.
+    pub default: Option<f64>,
+}
+
+impl NumberSite {
+    /// The byte range of the `number` word in `text`, the YAML source the
+    /// scanned value was parsed from.
+    pub fn range_in(&self, text: &str) -> Option<std::ops::Range<usize>> {
+        let mut steps: Vec<_> = self.path.iter().map(YamlKey::step).collect();
+        steps.push(crate::yaml_text::YamlStep::Value);
+        let span = crate::yaml_text::yaml_span(text, &steps)?;
+        let start = span.byte_start + text.get(span.byte_start..)?.find("number")?;
+        (start + "number".len() <= text.len()).then_some(start..start + "number".len())
+    }
+}
+
+/// Every [`NumberSite`] of `value`, in document order.
+pub fn number_type_sites(value: &serde_yaml::Value) -> Vec<NumberSite> {
+    fn is_number(v: &serde_yaml::Value) -> bool {
+        v.as_str() == Some("number")
+    }
+    fn walk(v: &serde_yaml::Value, path: &mut Vec<YamlKey>, out: &mut Vec<NumberSite>) {
+        match v {
+            serde_yaml::Value::Mapping(m) => {
+                for (k, child) in m {
+                    let Some(key) = k.as_str() else { continue };
+                    path.push(YamlKey::Key(key.to_string()));
+                    if key == "type" && is_number(child) {
+                        out.push(NumberSite {
+                            path: path.clone(),
+                            default: m.get("default").and_then(serde_yaml::Value::as_f64),
+                        });
+                    } else if let (true, Some(shorthand)) =
+                        (matches!(key, "params" | "payload"), child.as_mapping())
+                    {
+                        for (name, ty) in shorthand {
+                            let Some(name) = name.as_str() else { continue };
+                            path.push(YamlKey::Key(name.to_string()));
+                            if is_number(ty) {
+                                out.push(NumberSite {
+                                    path: path.clone(),
+                                    default: None,
+                                });
+                            } else {
+                                walk(ty, path, out);
+                            }
+                            path.pop();
+                        }
+                    } else {
+                        walk(child, path, out);
+                    }
+                    path.pop();
+                }
+            }
+            serde_yaml::Value::Sequence(items) => {
+                for (i, item) in items.iter().enumerate() {
+                    path.push(YamlKey::Item(i));
+                    walk(item, path, out);
+                    path.pop();
+                }
+            }
+            serde_yaml::Value::Tagged(t) => walk(&t.value, path, out),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(value, &mut Vec::new(), &mut out);
+    out
+}
+
+/// Replace the `number` scalar at every site of `value` with `double`, so
+/// the declaration decodes and the rest of it is still read; the caller has
+/// reported each site and marks its declaration invalid.
+pub fn patch_number_sites(value: &mut serde_yaml::Value, sites: &[NumberSite]) {
+    fn node<'a>(v: &'a mut serde_yaml::Value, path: &[YamlKey]) -> Option<&'a mut serde_yaml::Value> {
+        let Some((step, rest)) = path.split_first() else {
+            return Some(v);
+        };
+        let next = match step {
+            YamlKey::Key(k) => v.get_mut(k.as_str())?,
+            YamlKey::Item(i) => v.get_mut(*i)?,
+        };
+        node(next, rest)
+    }
+    for site in sites {
+        if let Some(at) = node(value, &site.path).filter(|at| at.as_str() == Some("number")) {
+            *at = serde_yaml::Value::String("double".into());
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

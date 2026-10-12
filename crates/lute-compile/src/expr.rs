@@ -53,6 +53,53 @@ pub fn lower_expr(raw: &str) -> Option<ExprNode> {
     lower(&root.expr)
 }
 
+/// 0.41.0 §4.3: [`lower_expr`] of a def body (already `@def`-expanded),
+/// each identifier naming one of the def's `params` lowered to a `param`
+/// node instead of a path. A parameter is a bare identifier, so only a
+/// one-segment `path` names one.
+pub fn lower_with_params(raw: &str, params: &[&str]) -> Option<ExprNode> {
+    let mut node = lower_expr(raw)?;
+    if !params.is_empty() {
+        bind_params(&mut node, params);
+    }
+    Some(node)
+}
+
+fn bind_params(node: &mut ExprNode, params: &[&str]) {
+    match node {
+        ExprNode::Path { path } => {
+            if params.contains(&path.as_str()) {
+                let param = std::mem::take(path);
+                *node = ExprNode::Param { param };
+            }
+        }
+        ExprNode::Unary { l, .. } => bind_params(l, params),
+        ExprNode::Binary { l, r, .. } => {
+            bind_params(l, params);
+            bind_params(r, params);
+        }
+        ExprNode::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
+            bind_params(cond, params);
+            bind_params(then, params);
+            bind_params(otherwise, params);
+        }
+        ExprNode::List { list: items } | ExprNode::Call { args: items, .. } => {
+            for item in items {
+                bind_params(item, params);
+            }
+        }
+        ExprNode::Index { index, key } => {
+            bind_params(index, params);
+            bind_params(key, params);
+        }
+        ExprNode::Lit { .. } | ExprNode::Has { .. } | ExprNode::Param { .. } => {}
+    }
+}
+
 /// Outcome of synthesizing a `<match>` arm's executable expr (IR A13).
 #[derive(Debug)]
 pub(crate) enum ArmExpr {

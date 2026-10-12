@@ -1,0 +1,11 @@
+---
+kind: scene
+id: lobby
+on: enter
+target: room.lobby
+once: false
+---
+
+## lobby
+
+@narrator: The lobby is cold.

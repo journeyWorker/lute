@@ -1,0 +1,10 @@
+# 0.41.0 §3.6 `lute expr` fixture. The `game` profile activates the
+# project's own plugin (plugins/game.rules): an occasion and a host def.
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { game.rules: true }
+defaults:
+  luteVersion: "0.41.0"
+  uses: [world.schema.yaml]

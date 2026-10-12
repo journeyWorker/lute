@@ -1,5 +1,5 @@
 use crate::schema::{DirectiveDecl, Lowering, OpBy, WriteValue};
-use crate::types::Type;
+use crate::types::{Literal, Type};
 
 /// plugin §8.1 closed vocabulary — owned by the core; a plugin MUST NOT invent flags.
 pub const SEMANTICS_VOCAB: &[&str] = &[
@@ -155,6 +155,15 @@ pub enum ManifestError {
         directive: String,
         attr: String,
     },
+    /// dsl 0.41.0 §5.5: an attr's declared `default` does not inhabit its
+    /// declared `type` — the compiler ships the default as the call's field,
+    /// so it must be a value an author could have written.
+    AttrDefaultType {
+        directive: String,
+        attr: String,
+        ty: String,
+        default: String,
+    },
     /// `lower: { record: X }` names something outside the staging kinds
     /// (`LOWER_RECORDS`) — the declaration would otherwise fall through to the
     /// `kind: "plugin"` passthrough and silently do nothing, so assembly
@@ -193,9 +202,9 @@ impl ManifestError {
     /// failure rather than a generic "invalid directive".
     pub fn code(&self) -> &'static str {
         match self {
-            ManifestError::UnknownSemanticsFlag { .. } | ManifestError::DuplicateAttr { .. } => {
-                "E-PLUGIN-INVALID-DIRECTIVE"
-            }
+            ManifestError::UnknownSemanticsFlag { .. }
+            | ManifestError::DuplicateAttr { .. }
+            | ManifestError::AttrDefaultType { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
             ManifestError::EffectWrite { .. } | ManifestError::EffectFact { .. } => {
@@ -217,6 +226,16 @@ impl ManifestError {
             ManifestError::DuplicateAttr { directive, attr } => format!(
                 "directive `::{directive}` declares attribute `{attr}` more than once — keep \
                  one declaration"
+            ),
+            ManifestError::AttrDefaultType {
+                directive,
+                attr,
+                ty,
+                default,
+            } => format!(
+                "directive `::{directive}` declares attribute `{attr}` as `{ty}` with \
+                 `default: {default}`, which is not of type `{ty}` — give a default of the \
+                 declared type"
             ),
             ManifestError::UnknownLowerRecord { directive, record } => format!(
                 "directive `::{directive}` lowers to unknown record `{record}`; \
@@ -258,12 +277,32 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
                 attr: a.name.clone(),
             });
         }
+        if let Some(default) = a.default.as_ref().filter(|v| !attr_default_accepts(&a.ty, v)) {
+            errs.push(ManifestError::AttrDefaultType {
+                directive: d.name.clone(),
+                attr: a.name.clone(),
+                ty: crate::types::type_str(&a.ty),
+                default: crate::types::lit_str(default),
+            });
+        }
     }
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
     errs.extend(validate_effects(d));
     errs
+}
+
+/// Whether an attr's declared `default` is a value of its declared type: the
+/// shared [`crate::types::type_accepts`], plus a YAML integer for a `double`
+/// (`default: 1` reads `1.0`) and any string for the types whose members
+/// resolve against the project (`enumFromOption`, `providerRef`).
+pub fn attr_default_accepts(ty: &Type, default: &Literal) -> bool {
+    match (ty, default) {
+        (Type::Double, Literal::Int(_)) => true,
+        (Type::EnumFromOption(_) | Type::ProviderRef(_), Literal::Str(_)) => true,
+        _ => crate::types::type_accepts(ty, default),
+    }
 }
 
 /// dsl 0.27.0 §2, §4: the directive's declared `effects` against its own
@@ -816,6 +855,30 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| matches!(e, ManifestError::DuplicateAttr { .. })));
+    }
+
+    /// dsl 0.41.0 §5.5: a declared attr `default` is a value of its type —
+    /// `int` refuses `1.5`; `double` takes a YAML integer.
+    #[test]
+    fn attr_default_must_inhabit_the_declared_type() {
+        let with = |ty: Type, default: Literal| {
+            let mut d = dir("d", &[]);
+            d.attrs[0].ty = ty;
+            d.attrs[0].default = Some(default);
+            validate_directive(&d)
+        };
+        let errs = with(Type::Int, Literal::Double(1.5));
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-INVALID-DIRECTIVE");
+        assert_eq!(
+            errs[0].message(),
+            "directive `::d` declares attribute `x` as `int` with `default: 1.5`, which is \
+             not of type `int` — give a default of the declared type"
+        );
+        assert!(!with(Type::Bool, Literal::Str("yes".into())).is_empty());
+        assert!(with(Type::Double, Literal::Int(1)).is_empty());
+        assert!(with(Type::Enum(vec!["a".into()]), Literal::Str("a".into())).is_empty());
+        assert!(with(Type::ProviderRef("p".into()), Literal::Str("id".into())).is_empty());
     }
 
     /// dsl 0.27.0 §4: an `effects:` block parsed from `yaml` on a directive

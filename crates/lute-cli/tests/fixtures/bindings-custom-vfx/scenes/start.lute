@@ -1,0 +1,10 @@
+---
+kind: scene
+id: start
+on: start
+---
+## Start
+::vfx{type="flash"}
+::vfx{type="lanterns"}
+::vfx{type="tideRise"}
+@narrator: Hello.

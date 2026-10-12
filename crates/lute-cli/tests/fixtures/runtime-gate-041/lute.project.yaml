@@ -1,0 +1,6 @@
+defaultProfile: g
+profiles:
+  g:
+    plugins: { ward: true }
+defaults:
+  uses: [world.schema.yaml]

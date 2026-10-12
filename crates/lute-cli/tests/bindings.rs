@@ -25,3 +25,21 @@ fn problem_fixture_json_covers_key_file_missing_and_unused() {
     assert!(key["path"].as_str().unwrap().ends_with("crates/lute-cli/tests/fixtures/bindings-problems/player.bindings.yaml"));
     assert!(key["span"]["line"].as_u64().unwrap() > 0);
 }
+
+#[test]
+fn custom_vfx_bindings_are_clean() {
+    let out = Command::new(bin()).args(["check-project", &fixture("bindings-custom-vfx"), "--json"]).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stdout));
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(value["project_diagnostics"].as_array().unwrap().len(), 0, "{value}");
+}
+
+#[test]
+fn custom_effect_outside_vfx_is_a_binding_effect_error() {
+    let out = Command::new(bin()).args(["check-project", &fixture("bindings-custom-misplaced"), "--json"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let diagnostics = value["project_diagnostics"].as_array().unwrap();
+    let effect = diagnostics.iter().find(|d| d["code"] == "E-BINDING-EFFECT").unwrap_or_else(|| panic!("{value}"));
+    assert!(effect["message"].as_str().unwrap().contains("only under `vfx`"), "{value}");
+}

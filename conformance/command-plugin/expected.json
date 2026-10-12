@@ -1,6 +1,11 @@
 {
   "commands": [
     {
+      "attrs": {
+        "id": "trial",
+        "resultKey": "result",
+        "sync": false
+      },
       "external": true,
       "kind": "plugin",
       "note": "external bridge call — not invoked; bridgeResult effects unresolved",
@@ -17,7 +22,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.40",
+  "irVersion": "0.41",
   "kind": "scene",
   "quests": {},
   "state": {}

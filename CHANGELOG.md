@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.40.0`, the grammar and semantics the checker
+- **Language** — currently `0.41.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.40.0`) and gated on by consuming engines.
+  artifact (currently `0.41.0`) and gated on by consuming engines.
 
 
 
@@ -37,6 +37,175 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.41.0]
+
+**Dogfood fixes** (spec [`0.41.0.md`](docs/proposals/scenario-dsl/0.41.0.md);
+plan
+[`2026-10-12-lute-0.41.0-dogfood.md`](docs/superpowers/plans/2026-10-12-lute-0.41.0-dogfood.md);
+runtime contract [`docs/runtime/event-contract.md`](docs/runtime/event-contract.md);
+player architecture [`docs/player/architecture.md`](docs/player/architecture.md)).
+Moving a Phaser game onto `@lute-lang/runtime` and `@lute-lang/player` filed
+issues #43–#66; this release fixes them across the checker, the IR index, the
+runtime contract and the player packages. It also ships the runtime
+condition queries drafted as 0.40.1, which was never released: their
+normative text is now spec §4.3 and §5.1.
+
+### Syntax
+
+- Defs declared in a project schema file or a plugin's `defs:` export MAY
+  carry `host: true`; such a def is exempt from `W-DEF-UNUSED` and is marked
+  in the index. `host:` on a frontmatter def stays an unknown key, with a hint.
+  The editor schemas `schemas/lute.schema.json` and `schemas/lute.plugin.json`
+  gain the property.
+- `player.bindings.yaml` is `bindingsVersion: "0.41"`; `vfx` entries MAY be
+  `{ effect: custom, name?, duration? }` (only under `vfx:`).
+
+### Semantics
+
+- A declaration that fails to parse but keeps its name stays in the
+  environment as invalid: it reports its own errors only, and its dependants
+  are not reported as unknown or mistyped. A plugin whose export entries are
+  partly invalid still loads its valid entries.
+- `W-OBJECTIVE-STRANDED` is exempt when the objective's quest re-arms
+  (`tier="run"`, `tier="season:…"`, `rearm=`) or a completion beat lives in
+  another document; it is always a warning and its message states its
+  evidence.
+- A gate refusal is a rejection: a `raiseOccasion` whose `raisedWhen` is
+  false, or raised while `terminal` holds and the occasion is not
+  `outsideRun`, is rejected with the state unchanged.
+- `advanceClock` writes (and a `lute play` `advance:` step's `engine:`
+  writes) land before the clock moves, so the new day's raises read them; a
+  terminal reached by those writes ends the input without moving the clock.
+  The `clock` event stays last.
+- Omitted directive attributes with a declared `default` are part of the
+  call: the compiler writes them into the command's `fields`, and the checker
+  judges the default at each call that omits it as an authored value.
+
+### IR
+
+- `lute-ir-0.41` is the aligned execution-IR line
+  (`schemas/lute-ir-0.41.schema.json`); consuming engines widen their IR gate
+  to 0.41.
+- `exprNode` gains `{param}`, admitted only in index defs.
+- `enumEntry` (artifact and index `enums`) gains `labels`.
+- `project.index.json`: `bridgeResults` fields carry their declared `Type`;
+  `defs` rows are `indexDef` with `params` and `host` (parameterised defs
+  with scalar parameters are exported); the index `$defs` of the IR schema
+  are generated from the Rust index types.
+
+### Plugin
+
+- Plugin `defs:` exports MAY carry `host: true`.
+- Assembly refuses a directive attribute `default` that is not a value of its
+  `type` (`E-PLUGIN-INVALID-DIRECTIVE`).
+- `plugin` execution records carry the call's `attrs`.
+
+### CLI
+
+- New `lute expr <CEL> [--project <dir>] [--json]` lowers a host condition to
+  an IR `exprNode` against a project, with checker diagnostics.
+- `lute fix` renames renamed domains (`musicAction` → `musicPlayback`) in
+  project, schema and plugin YAML, preserving comments and layout.
+- `lute check` / `check-project` summaries append `, I info` when info
+  diagnostics are present and never count them as warnings.
+- `lute play --events` prints a gate refusal as a rejection line;
+  `lute compile --all` writes the 0.41 index.
+
+### Diagnostics
+
+- Added `E-TYPE-NUMBER` (every `type: number`, with an `int` suggestion when
+  every value seen is whole) and `W-DEPENDS-ON-INVALID` (info, one per
+  invalid declaration).
+- `E-DOMAIN-UNKNOWN` names a renamed domain the project still declares and
+  suggests `lute fix`.
+- `E-OCCASION-GATE` is a runtime rejection; `E-RUNTIME-EVAL` reports an
+  evaluation error of a condition query; `E-RUNTIME-INPUT` also covers
+  `param` nodes in `evaluate`, `def` argument faults, `gate` of an unknown
+  occasion and unresolved or clock-path `bridgeResult.writes`;
+  `E-RUNTIME-BRIDGE-SHAPE` validates answers against `results` types.
+
+### Identity
+
+- Event and snapshot schemas are `lute-events-0.41` / `lute-snapshot-0.41`;
+  the bindings schema is `lute-player-bindings-0.41`. Player saves and
+  profiles are `saveVersion` / `profileVersion` `"0.41"`.
+
+### Added
+
+- Runtime condition queries: `evaluate(state, expr)` and
+  `def(state, name, args?)` return `Evaluation { value, unresolved? }`;
+  `gate(occasion, target?)` returns `Gate { open, unresolved? }`. Rust
+  `Runtime::evaluate` / `def` / `gate`, wasm `Program.evaluate` / `def` /
+  `gate`.
+- Event contract: `bridgeResult.writes` (host writes with the answer),
+  `awaitBridge.attrs` and typed `awaitBridge.results`.
+- `@lute-lang/runtime`: `Program.evaluate`, `Program.def(state, name, args?)`,
+  `Program.gate`, `Session.program`, `Session.SessionShape`,
+  `Errors.OccasionGateClosed`, `Errors.EvaluationError`,
+  `Errors.QueryRejection`; a package README.
+- `@lute-lang/player`: start from a seed, snapshot or host session
+  (`handle.session`, `handle.program`); `DirectorHandle.send` at `idle` and
+  `ended` and the `send` action; `DirectorHandle.restore`;
+  `linePacing: "presenter"` and `Presenter.confirmsLines`;
+  `PlayerHost.plugin` hooks; bridge answers with writes (`BridgeAnswer`);
+  music `playback` / `volume` and `AudioPlay.restart`; custom vfx
+  (`EffectSpec.name`); `LineView.emotion` / `variant`; the `autosave` option.
+- `scripts/pack-local.sh [--web] [OUT_DIR]` packs the runtime, the player and
+  optionally player-web as tarballs for local dogfooding and prints the
+  `dependencies` and `overrides` a host pastes;
+  `docs/runtime/typescript-runtime.md` documents the recipe.
+
+### Changed
+
+- `awaitBridge.fields` is replaced by `results` (field → declared type).
+- `Runtime::def` takes arguments (`&[Json]`).
+- `PlayerHost.bridge` handlers return `BridgeAnswer` (`{ fields, writes? }`);
+  `PlayerSession.begin` takes no argument and a later `begin` sends `newRun`;
+  `CueFactory.fromOutput` returns one cue per output event;
+  `castNamesFrom` is removed (speaker names come from the index `cast`).
+- `wasm:build` resolves `wasm-bindgen` from `$WASM_BINDGEN`, `PATH` or the
+  wasm-pack cache and fails with an install hint.
+- npm: `@lute-lang/player` declares `@lute-lang/runtime` (exact release
+  version) and `effect` (`4.0.2`) as **peer dependencies** instead of
+  dependencies; `publish.yml` pins the player's `@lute-lang/*` peer ranges to
+  the release version and `check-release-workflow-safety.py` asserts it.
+  `@lute-lang/player-web` keeps its dependencies, which satisfy the peers.
+
+### Fixed
+
+- `DirectorHandle.send` no longer deadlocks when a host `idle` handler waits
+  for the game; the player continues at `ended` (`newRun`, `outsideRun`
+  raises); `restore` drops the abandoned presentation's read marks and
+  autosave.
+- Music cues honour `playback`, `volume` and `stop`; restoring a stage whose
+  music was stopped stays silent; an unbound vfx reaches the presenter as a
+  custom effect instead of `none`.
+- Backlog and dialogue speaker names come from the cast's display names.
+- The TS contract generator keeps the properties of a definition whose
+  `oneOf` / `anyOf` alternatives only add `required` (index
+  `prereqEdgeEntry`, `cmdCamera` in `Ir.ts`).
+
+### Migration notes
+
+- Engines widen their IR gate to 0.41 and hosts their Event/snapshot gates;
+  player projects set `bindingsVersion: "0.41"`. 0.40 player saves are not
+  migrated.
+- Projects from before 0.37 with `musicAction` domain keys: run `lute fix`.
+- Replace `type: number` with `int` or `double` (no automatic fix).
+- Hosts handling `halted` for a closed raise handle `E-OCCASION-GATE` /
+  `Errors.OccasionGateClosed` instead.
+- Hosts reading `awaitBridge.fields` read `results`, and read `attrs` instead
+  of looking the call up in the artifact.
+- Play scripts and hosts whose `advance:` writes must land after the raises
+  move them into a following step or input.
+- Rust embedders pass `&[]` to `Runtime::def`; player hosts wrap bridge
+  answers as `{ fields }`, drop the `begin` argument, read
+  `bundle.index.cast` instead of `castNamesFrom`, and handle
+  `effect: "custom"` + `name` and `AudioPlay.restart` in custom presenters
+  and audio ports.
+- A host that installs `@lute-lang/player` now adds `@lute-lang/runtime` and
+  `effect@4.0.2` to its own `package.json`.
 
 ## [0.40.0]
 

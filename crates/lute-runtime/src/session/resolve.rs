@@ -14,20 +14,30 @@ use crate::driver::BridgeQueues;
 use crate::Value;
 
 /// A `state:` write resolved against the declared type.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Write {
     Set(Value),
     Add(f64),
 }
 
 /// An `engine:` step's (or a `newRun` seed's) writes, validated.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Writes {
     pub state: Vec<(String, Write)>,
     pub facts: Vec<Fact>,
     pub retract: Vec<Fact>,
     /// dsl 0.26.0 §7 (T2-9): accept-driven quests the engine accepts.
     pub accept: Vec<String>,
+}
+
+impl Writes {
+    /// Whether there is nothing to write.
+    pub fn is_empty(&self) -> bool {
+        self.state.is_empty()
+            && self.facts.is_empty()
+            && self.retract.is_empty()
+            && self.accept.is_empty()
+    }
 }
 
 /// A literal against a state-table entry's declared type (the trace-mock

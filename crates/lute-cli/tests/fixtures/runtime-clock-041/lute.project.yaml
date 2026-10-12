@@ -1,0 +1,6 @@
+defaultProfile: clock
+profiles:
+  clock:
+    plugins: { clock.cases: true }
+defaults:
+  uses: [world.schema.yaml]

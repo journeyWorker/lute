@@ -1550,21 +1550,24 @@ pub fn check_project_objective_clock_windows(
                     continue;
                 };
                 let reset = run_tier(q);
-                if !has_deadline {
+                // 0.41.0 §3.4: a quest that re-arms (run/season tier, or a
+                // `rearm=`) retries the objective, and a completion beat of
+                // another document is evidence this pass does not model —
+                // neither is stranded.
+                let rearms = reset || q.rearm.as_ref().is_some_and(|r| !r.raw.trim().is_empty());
+                let outside = windows.iter().any(|(pb, _)| pb.path != path);
+                if !has_deadline && !rearms && !outside {
                     let mut diagnostic = crate::reachability::diag(
                         W_OBJECTIVE_STRANDED,
-                        if reset { Severity::Info } else { Severity::Warning },
+                        Severity::Warning,
                         format!(
-                            "required objective `{}` can only be completed by clock-bounded beats \
-                             whose windows close at {}; it has no `until=` or `by=` — {} \
-                             (dsl 0.31.0 §3)",
+                            "required objective `{}` can only be completed by beats of this \
+                             document whose clock windows close at {}; it has no `until=` or \
+                             `by=` — add `until=` or `by=` so a missed window fails it \
+                             (evidence: bounded — declared clock windows of this document's \
+                             beats, no path search) (dsl 0.31.0 §3)",
                             o.id,
                             clock.describe(first),
-                            if reset {
-                                "the next run retries"
-                            } else {
-                                "add `until=` or `by=` so a missed window fails the objective"
-                            }
                         ),
                         o.span,
                     );

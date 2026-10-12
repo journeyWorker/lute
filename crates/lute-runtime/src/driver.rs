@@ -256,12 +256,20 @@ pub struct BridgeCall<'a> {
     pub addr: &'a str,
     /// `(bridgeResult field, state path it lands on)`, in effect order.
     pub reads: &'a [(String, String)],
+    /// dsl 0.41.0 §5.5: the call's attributes as executed — the IR
+    /// command's `fields`, `occasion.target` bound to its member.
+    pub attrs: Option<&'a serde_json::Map<String, Json>>,
 }
 
 /// The driver's answer to a [`BridgeCall`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum BridgeReply {
-    Answer(BridgeAnswer),
+    /// The answered result fields, and the host's writes (dsl 0.41.0 §5.3)
+    /// applied at the call after its declared effects.
+    Answer {
+        fields: BridgeAnswer,
+        writes: crate::session::Writes,
+    },
     Unanswered,
 }
 

@@ -34,6 +34,10 @@ use crate::schema_import::{
 pub struct RelVocab {
     pub kinds: BTreeMap<String, EntityKindDecl>,
     pub enums: BTreeMap<String, Vec<String>>,
+    /// 0.41.0 §4.2: the long-form `labels:` (member → display text) of each
+    /// [`Self::enums`] entry that declares any, from the same declaration
+    /// the members come from — what the compiler carries as `enumEntry.labels`.
+    pub enum_labels: BTreeMap<String, BTreeMap<String, String>>,
     pub relations: BTreeMap<String, RelationDecl>,
     pub facts: Vec<FactDecl>,
     pub rules: Vec<RuleDecl>,
@@ -777,6 +781,7 @@ pub fn build_rel_vocab(
     }));
 
     let mut enums = imports.rel.enums.clone();
+    let mut enum_labels = imports.rel.enum_labels.clone();
     for (name, members) in inline_enums(typed) {
         if let Some(base_members) = enums.get(&name) {
             let missing = missing_members(&members, base_members);
@@ -790,6 +795,12 @@ pub fn build_rel_vocab(
                 ));
             }
         }
+        // The inline declaration replaces the imported one whole, labels
+        // included — as `merge_domains` lets it.
+        match typed.domains.get(&name).filter(|d| !d.labels.is_empty()) {
+            Some(dom) => enum_labels.insert(name.clone(), dom.labels.clone()),
+            None => enum_labels.remove(&name),
+        };
         enums.insert(name, members);
     }
 
@@ -1110,6 +1121,7 @@ pub fn build_rel_vocab(
     let vocab = RelVocab {
         kinds,
         enums,
+        enum_labels,
         relations,
         facts,
         rules,

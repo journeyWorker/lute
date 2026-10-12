@@ -189,7 +189,7 @@ impl Driver for PlayDriver {
         match self.bridges.next(call.tag) {
             Some(answer) => {
                 self.answers.push(ScriptAnswer::Bridge { tag: call.tag.to_string(), fields: answer.clone() });
-                lute_runtime::BridgeReply::Answer(answer)
+                lute_runtime::BridgeReply::Answer { fields: answer, writes: Default::default() }
             }
             None => lute_runtime::BridgeReply::Unanswered,
         }

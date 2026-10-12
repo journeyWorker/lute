@@ -1,0 +1,11 @@
+state:
+  run.over: { type: bool, default: false }
+  run.noise: { type: int, owner: engine }
+  run.mark: { type: int, default: 0, owner: engine }
+entities:
+  room: { members: [lobby, office] }
+relations:
+  canEnter: { args: [room], tier: run, reserved: true }
+facts:
+  - canEnter(lobby)
+terminal: "run.over"

@@ -208,7 +208,7 @@ pub fn parse_meta_kind_with_defaults(
 
     let raw_parse = serde_yaml::from_str::<serde_yaml::Value>(&meta.raw_yaml);
     let raw_yaml = raw_parse.as_ref().ok().cloned();
-    let value: serde_yaml::Value = match raw_parse {
+    let mut value: serde_yaml::Value = match raw_parse {
         Ok(v) => v,
         Err(e) => {
             // A literal duplicate key inside `entities:`/`relations:`
@@ -231,6 +231,20 @@ pub fn parse_meta_kind_with_defaults(
             }
         }
     };
+    let numbers = super::diagnostics::take_number_types(meta, &mut value, &mut diags);
+    // 0.41.0 §3.2: an invalid state row is kept by name only (`faulty` +
+    // `invalid` below), never installed with a guessed type.
+    for (site, _) in &numbers {
+        if let [lute_manifest::types::YamlKey::Key(section), lute_manifest::types::YamlKey::Key(path), ..] =
+            site.path.as_slice()
+        {
+            if section == "state" {
+                if let Some(rows) = value.get_mut("state").and_then(|s| s.as_mapping_mut()) {
+                    rows.remove(path.as_str());
+                }
+            }
+        }
+    }
 
     // An empty frontmatter deserializes to Null; treat as an empty mapping so the
     // required-key checks still fire.
@@ -683,8 +697,22 @@ pub fn parse_meta_kind_with_defaults(
         )),
     }
     for (name, def) in typed.defs.iter_mut() {
-        match crate::def_decl::lift_def(name, def) {
-            Ok(lifted) => *def = lifted,
+        match crate::def_decl::lift_def(name, def, kind == MetaKind::Schema) {
+            Ok(lifted) => {
+                *def = lifted;
+                // 0.41.0 §3.2: a def typed (or taking a parameter typed)
+                // `number` is kept by name and judged no further.
+                let invalid = numbers.iter().any(|(site, _)| {
+                    matches!(
+                        site.path.as_slice(),
+                        [lute_manifest::types::YamlKey::Key(s), lute_manifest::types::YamlKey::Key(n), ..]
+                            if s == "defs" && n == name
+                    )
+                });
+                if invalid {
+                    crate::def_decl::mark_invalid(def);
+                }
+            }
             Err(message) => diags.push(err_at(
                 crate::def_decl::E_DEF_DECL,
                 message,
@@ -712,22 +740,6 @@ pub fn parse_meta_kind_with_defaults(
     typed.components = get_ref_list(map, "components");
     typed.component = get_str(map, "component");
     let (params, speakers, defaults, params_malformed) = get_params(map, "params");
-    if let Some(raw_params) = map.get(yaml_key("params")).and_then(|v| v.as_mapping()) {
-        for (name, value) in raw_params {
-            let Some(name) = name.as_str() else { continue };
-            let ty = value.get("type").unwrap_or(value);
-            if ty.as_str() == Some("number") {
-                diags.push(err_at(
-                    "E-STATE-DECL",
-                    format!(
-                        "invalid component parameter `{name}`: {}",
-                        lute_manifest::types::NUMBER_TYPE_REMOVED
-                    ),
-                    meta_path_span(meta, &["params", name]),
-                ));
-            }
-        }
-    }
     // A component (and so beat-template) param is read bare as `@name`: an
     // identifier.
     for p in &params {
@@ -774,6 +786,26 @@ pub fn parse_meta_kind_with_defaults(
     }
 
     super::frontmatter_state::parse_state(meta, map, &mut typed, &mut diags);
+    // 0.41.0 §3.2: a state row typed `number` is kept by name, invalid, and
+    // nothing downstream is judged against it.
+    for (site, line) in &numbers {
+        let [lute_manifest::types::YamlKey::Key(section), lute_manifest::types::YamlKey::Key(path), ..] =
+            site.path.as_slice()
+        else {
+            continue;
+        };
+        if section == "state" {
+            typed.state.faulty.insert(path.clone());
+            typed.state.invalid.entry(path.clone()).or_insert_with(|| {
+                lute_manifest::snapshot::InvalidDecl {
+                    cause: path.clone(),
+                    code: lute_manifest::types::E_TYPE_NUMBER.to_string(),
+                    site: Some(line.to_string()),
+                    seen: site.default.into_iter().collect(),
+                }
+            });
+        }
+    }
     // dsl 0.28.0 §1: reserved names are refused where they are declared.
     diags.extend(crate::reserved_names::check_frontmatter(
         meta, map, &mut typed,

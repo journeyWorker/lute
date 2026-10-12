@@ -630,12 +630,22 @@ fn effect_shape_error(text: &str) -> Option<String> {
                 continue;
             };
             let effect = item.get("effect").and_then(serde_yaml::Value::as_str)?;
-            if !known_effect(effect) {
+            let custom = effect == "custom";
+            if custom && section != "vfx" {
+                return Some(format!(
+                    "player effect `custom` is admitted only under `vfx`, not on {section} binding `{name:?}`"
+                ));
+            }
+            if !custom && !known_effect(effect) {
                 return Some(format!(
                     "unknown player effect `{effect}` on binding `{name:?}`"
                 ));
             }
-            let allowed = effect_params(effect);
+            let allowed: &[&str] = if custom {
+                &["name", "duration"]
+            } else {
+                effect_params(effect)
+            };
             for key in item.keys().filter_map(serde_yaml::Value::as_str) {
                 if key != "effect" && !allowed.contains(&key) {
                     return Some(format!(
@@ -731,5 +741,23 @@ mod tests {
         assert!(super::effect_shape_error(
             "actions:\n  hop: {effect: teleport}\n"
         ).is_some());
+    }
+
+    #[test]
+    fn custom_effect_is_admitted_only_under_vfx() {
+        assert_eq!(
+            super::effect_shape_error(
+                "vfx:\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n"
+            ),
+            None
+        );
+        for section in ["actions", "transitions", "cameraMove"] {
+            let message = super::effect_shape_error(&format!("{section}:\n  x: {{effect: custom}}\n"))
+                .expect("custom outside vfx is rejected");
+            assert!(message.contains("only under `vfx`"), "{message}");
+        }
+        let message = super::effect_shape_error("vfx:\n  x: {effect: custom, color: red}\n")
+            .expect("custom keeps a closed parameter set");
+        assert!(message.contains("does not accept parameter `color`"), "{message}");
     }
 }

@@ -1,6 +1,6 @@
 ---
 title: Player getting started
-description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.40 web player.
+description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.41 web player.
 ---
 
 This guide uses the repository's `examples/player-demo`; the same steps work for a project of your own.
@@ -13,14 +13,14 @@ Build a complete bundle. `--all` is required because the browser runtime reads `
 lute compile --all examples/player-demo -o dist/bundle
 ```
 
-The bundle directory must contain `project.index.json` and all referenced artifact JSON files. Copy or serve the 0.40 runtime binding at `lute_runtime_wasm_bg.wasm` as well.
+The bundle directory must contain `project.index.json` and all referenced artifact JSON files. Copy or serve the 0.41 runtime binding at `lute_runtime_wasm_bg.wasm` as well.
 
 ## 2. Write and validate bindings
 
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.40"
+bindingsVersion: "0.41"
 canvas: { width: 1280, height: 720 }
 backgrounds:
   foyer: { image: bg/foyer.png }
@@ -39,11 +39,13 @@ lute check-project examples/player-demo
 
 ## 3. Mount in a page
 
-Install exact 0.40 packages:
+Install exact 0.41 packages:
 
 ```console
-bun add @lute-lang/player-web@0.40.0 @lute-lang/player@0.40.0 @lute-lang/runtime@0.40.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.41.0 @lute-lang/player@0.41.0 @lute-lang/runtime@0.41.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
+
+`@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.
 
 Mount the player into a focusable element:
 

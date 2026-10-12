@@ -41,7 +41,3 @@ pub fn occasions(index: &ProjectIndex) -> BTreeMap<String, lute_manifest::schema
         })
         .collect()
 }
-
-pub fn bridge_result_types(index: &ProjectIndex) -> BTreeMap<String, BTreeMap<String, String>> {
-    index.bridge_results.clone()
-}

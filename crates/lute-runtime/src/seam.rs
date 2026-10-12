@@ -43,13 +43,20 @@ impl Closed {
     }
 }
 
-/// Decide `cond` in `eval`; `Err` names what was unknown.
-fn decide<D: Driver>(eval: &mut Machine<D>, cond: &Slot) -> Result<bool, String> {
+/// Decide `cond` in `eval`; `Err` names what was unknown, with the atoms
+/// that left it so.
+fn decide<D: Driver>(
+    eval: &mut Machine<D>,
+    cond: &Slot,
+) -> Result<bool, (String, Vec<crate::UnresolvedAtom>)> {
     eval.eval_guard(cond).map_err(|atoms| {
-        format!(
-            "`{}` evaluates unknown: {}",
-            cond.raw(),
-            super::session::describe_atoms(&atoms)
+        (
+            format!(
+                "`{}` evaluates unknown: {}",
+                cond.raw(),
+                super::session::describe_atoms(&atoms)
+            ),
+            atoms,
         )
     })
 }
@@ -72,7 +79,8 @@ pub fn terminal_holds(
                 )
                 .with_visited(&w.visited),
             t,
-        ),
+        )
+        .map_err(|(why, _)| why),
     }
 }
 
@@ -106,6 +114,48 @@ pub fn closed(
     closed_in(p, &mut eval, occasion, target)
 }
 
+/// dsl 0.41.0 §5.2: the `gate` query — whether a raise of `occasion` (for
+/// `target`) with no writes would pass the seam in `w`, by [`closed`]'s
+/// rule. `Err` is undecided: one reason per unresolved read.
+pub fn gate(
+    p: &ExecProject,
+    w: &World,
+    occasion: &str,
+    target: Option<&str>,
+) -> Result<bool, Vec<String>> {
+    let mut eval = w
+        .evaluator_with_schema(
+            &p.eval_json,
+            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            None,
+        )
+        .with_visited(&w.visited);
+    match judge_in(p, &mut eval, occasion, target) {
+        Judged::Open => Ok(true),
+        Judged::Closed(_) => Ok(false),
+        Judged::Undecided(why, atoms) => {
+            let mut reasons: Vec<String> = Vec::new();
+            for reason in atoms.iter().map(super::session::describe_atom) {
+                if !reasons.contains(&reason) {
+                    reasons.push(reason);
+                }
+            }
+            if reasons.is_empty() {
+                reasons.push(why);
+            }
+            Err(reasons)
+        }
+    }
+}
+
+/// What the seam decides for one raise ([`judge_in`]).
+enum Judged {
+    Open,
+    Closed(Closed),
+    /// What was unknown, and the atoms that left it so.
+    Undecided(String, Vec<crate::UnresolvedAtom>),
+}
+
 /// [`closed`] decided by `eval` — the world's evaluator in `lute play`, the
 /// walk's own Machine over the mocks in `lute trace` / `lute test` — so
 /// every tool judges the seam by one rule (HW27-04). `target` is the raise
@@ -117,6 +167,20 @@ pub fn closed_in<D: Driver>(
     occasion: &str,
     target: Option<&str>,
 ) -> Option<Closed> {
+    match judge_in(p, eval, occasion, target) {
+        Judged::Open => None,
+        Judged::Closed(why) => Some(why),
+        Judged::Undecided(why, _) => Some(Closed::Unknown(why)),
+    }
+}
+
+/// [`closed_in`] with the atoms of an undecided seam kept.
+fn judge_in<D: Driver>(
+    p: &ExecProject,
+    eval: &mut Machine<D>,
+    occasion: &str,
+    target: Option<&str>,
+) -> Judged {
     let gate = p.index.gates.iter().find(|g| g.occasion == occasion);
     // dsl 0.28.0 (T2-9): an `outsideRun` occasion (a title screen, a
     // gallery) is raised after the game is over too.
@@ -127,21 +191,25 @@ pub fn closed_in<D: Driver>(
         .zip(p.conds.terminal.as_ref())
         .filter(|_| !p.index.outside_run.iter().any(|o| o == occasion));
     if terminal.is_none() && gate.is_none() {
-        return None;
+        return Judged::Open;
     }
     let member = target.map(|t| member(p, occasion, t));
     eval.bind_occasion_target(member.as_deref());
     if let Some((t, cond)) = terminal {
         match decide(eval, cond) {
-            Ok(true) => return Some(Closed::Terminal(t.shown().to_string())),
+            Ok(true) => return Judged::Closed(Closed::Terminal(t.shown().to_string())),
             Ok(false) => {}
-            Err(unknown) => return Some(Closed::Unknown(unknown)),
+            Err((why, atoms)) => return Judged::Undecided(why, atoms),
         }
     }
-    let gate = gate?;
-    let cond = p.conds.gates.get(&gate.occasion)?;
+    let Some(gate) = gate else {
+        return Judged::Open;
+    };
+    let Some(cond) = p.conds.gates.get(&gate.occasion) else {
+        return Judged::Open;
+    };
     match decide(eval, cond) {
-        Ok(true) => None,
+        Ok(true) => Judged::Open,
         Ok(false) => {
             let mut reads: Vec<GuardRead> = Vec::new();
             for r in eval
@@ -153,12 +221,12 @@ pub fn closed_in<D: Driver>(
                     reads.push(r);
                 }
             }
-            Some(Closed::Gate {
+            Judged::Closed(Closed::Gate {
                 raw: gate.raised_when.shown().to_string(),
                 reads,
             })
         }
-        Err(unknown) => Some(Closed::Unknown(unknown)),
+        Err((why, atoms)) => Judged::Undecided(why, atoms),
     }
 }
 
@@ -179,7 +247,7 @@ pub fn refusal(
         None => format!("`{occasion}`"),
     };
     match why {
-        Closed::Terminal(t) => PlayHalt::Error(format!(
+        Closed::Terminal(t) => PlayHalt::Refused(format!(
             "step {n}: {E_OCCASION_GATE}: the game is over — `terminal: {t}` holds, so the engine \
              raises no occasion ({raised} included); {}, or, if the engine raises `{occasion}` \
              outside a run too (a title screen, a gallery), declare it `outsideRun: true`",
@@ -209,7 +277,7 @@ pub fn refusal(
             } else {
                 "make it hold first (an `engine:` write, an earlier step)"
             };
-            PlayHalt::Error(format!(
+            PlayHalt::Refused(format!(
                 "step {n}: {E_OCCASION_GATE}: the engine raises {raised} only when `{raw}` (its \
                  `raisedWhen`), which is false here{} — {fix}, or drop the step",
                 Closed::reads_text(reads)
