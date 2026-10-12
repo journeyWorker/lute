@@ -244,6 +244,56 @@ impl Expr {
     }
 }
 
+/// The JSON integers the IR admits, `±2^53` (`exprNode.int`).
+const INT_BOUND: i64 = 1 << 53;
+
+/// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.40.schema.json`,
+/// recursively: one variant's key set and no other key, each field of its
+/// schema type, `int` within `±2^53`, `op` in its arity's set. Stricter than
+/// [`Expr::decode`], which reads the IR the compiler wrote and tolerates
+/// extra keys.
+fn is_expr_node(node: &Json) -> bool {
+    let Some(obj) = node.as_object() else {
+        return false;
+    };
+    let keys = |want: &[&str]| obj.len() == want.len() && want.iter().all(|k| obj.contains_key(*k));
+    let node = |key: &str| obj.get(key).is_some_and(is_expr_node);
+    let string = |key: &str| obj.get(key).is_some_and(Json::is_string);
+    let nodes = |key: &str| {
+        obj.get(key)
+            .and_then(Json::as_array)
+            .is_some_and(|items| items.iter().all(is_expr_node))
+    };
+    let op = || obj.get("op").and_then(Json::as_str);
+    if keys(&["int"]) {
+        obj["int"]
+            .as_i64()
+            .is_some_and(|n| (-INT_BOUND..=INT_BOUND).contains(&n))
+    } else if keys(&["double"]) {
+        obj["double"].is_number()
+    } else if keys(&["bool"]) {
+        obj["bool"].is_boolean()
+    } else if keys(&["string"]) || keys(&["path"]) || keys(&["has"]) {
+        obj.values().all(Json::is_string)
+    } else if keys(&["list"]) {
+        nodes("list")
+    } else if keys(&["index", "key"]) {
+        node("index") && node("key")
+    } else if keys(&["op", "l"]) {
+        matches!(op(), Some("!" | "-")) && node("l")
+    } else if keys(&["op", "l", "r"]) {
+        op().is_some_and(|sym| matches!(sym, "&&" | "||" | "in") || BinOp::of(sym).is_some())
+            && node("l")
+            && node("r")
+    } else if keys(&["cond", "then", "else"]) {
+        node("cond") && node("then") && node("else")
+    } else if keys(&["call", "args"]) {
+        string("call") && nodes("args")
+    } else {
+        false
+    }
+}
+
 /// A CEL slot of the IR: its text (for messages) and its decoded `expr`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Slot {
@@ -260,6 +310,16 @@ impl Slot {
             raw: raw.to_string(),
             expr,
         }))
+    }
+
+    /// dsl 0.40.1 §2: a host-supplied `exprNode` (the `expr` of an IR
+    /// `{cel, expr}` pair), named by its JSON in messages. `None` unless
+    /// every node of it is exactly an `exprNode` ([`is_expr_node`]).
+    pub fn of_expr(node: &Json) -> Option<Slot> {
+        is_expr_node(node).then(|| Slot {
+            raw: node.to_string(),
+            expr: Expr::decode(node),
+        })
     }
 
     /// A slot over an expression built by the executor itself.
@@ -725,5 +785,50 @@ pub(crate) fn guard_atoms(expr: &Expr, out: &mut Vec<GuardAtom>) {
             guard_atoms(e, out);
         }
         Expr::Lit(_) | Expr::Invalid => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_host_expr_decodes_only_when_every_node_is_an_expr_node() {
+        let lowered = |cel: &str| {
+            serde_json::to_value(lute_compile::expr::lower_expr(cel).expect("CEL in the profile"))
+                .unwrap()
+        };
+        let slot = Slot::of_expr(&lowered("holds('owned', ['key']) && run.n[0] > 1"))
+            .expect("a lowered expression");
+        assert!(slot.raw().contains("\"holds\""), "{}", slot.raw());
+        for cel in ["now() > 0 ? -run.n : 2.5", "'a' in ['a'] || !has(run.x)", "visited('hall')"] {
+            assert!(Slot::of_expr(&lowered(cel)).is_some(), "{cel}");
+        }
+        let rejected = [
+            json!({"op": "!", "l": {"nope": 1}}),
+            json!({"op": "^", "l": {"int": 1}, "r": {"int": 2}}),
+            json!(true),
+            // A call's `args` is a required array.
+            json!({"call": "now", "args": 42}),
+            json!({"call": "now"}),
+            // A node carries exactly one variant's keys.
+            json!({"bool": true, "path": "run.flag"}),
+            json!({"path": "run.flag", "note": "x"}),
+            // Literal bounds and types.
+            json!({"int": 9007199254740993_i64}),
+            json!({"int": 1.5}),
+            json!({"string": 1}),
+            // Arity: a unary op has no `r`; `!` is not binary.
+            json!({"op": "!", "l": {"bool": true}, "r": {"bool": true}}),
+            json!({"op": "&&", "l": {"bool": true}}),
+            // An invalid node nested deep inside valid ones.
+            json!({"op": "&&", "l": {"bool": true}, "r": {"cond": {"bool": true},
+                "then": {"list": [{"int": 1}, {"call": "int", "args": [{"bool": true, "int": 1}]}]},
+                "else": {"list": []}}}),
+        ];
+        for node in rejected {
+            assert!(Slot::of_expr(&node).is_none(), "accepted {node}");
+        }
     }
 }

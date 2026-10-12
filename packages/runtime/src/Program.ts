@@ -63,6 +63,17 @@ export interface Program {
   readonly terminal: (state: RuntimeState) => Effect.Effect<boolean>
   readonly stage: (state: RuntimeState) => Effect.Effect<Contract.Stage>
   readonly view: (state: RuntimeState, options?: { readonly facts?: boolean }) => Effect.Effect<Contract.WorldView>
+  /**
+   * Evaluate an IR `exprNode` — the `expr` of any `{cel, expr}` pair the IR
+   * carries, such as an objective's `visibleWhen.expr` — over the state, as
+   * the runtime's walk reads a guard (spec 0.40.1 §2).
+   */
+  readonly evaluate: (
+    state: RuntimeState,
+    expr: Schema.Json
+  ) => Effect.Effect<Contract.Evaluation, Errors.QueryRejection>
+  /** Evaluate the bundle's parameterless project def `name` over the state (spec 0.40.1 §3). */
+  readonly def: (state: RuntimeState, name: string) => Effect.Effect<Contract.Evaluation, Errors.QueryRejection>
 }
 
 /** Decode JSON the binding returned; a mismatch dies. */
@@ -85,6 +96,8 @@ const decodeCandidate = fromBinding(Schema.NullOr(Contract.Candidate))
 const decodeStage = fromBinding(Contract.Stage)
 const decodeClock = fromBinding(Schema.NullOr(Contract.ClockAt))
 const decodeView = fromBinding(Contract.WorldView)
+const decodeEvaluation = fromBinding(Contract.Evaluation)
+const encodeExpr = toBinding(Schema.Json)
 const encodeSeed = toBinding(Contract.Seed)
 const encodeInput = toBinding(Contract.Input)
 const encodeSnapshot = toBinding(Contract.Snapshot)
@@ -106,6 +119,15 @@ const settle = <A>(
     if (ok) return success()
     if (rejected !== undefined) return rejection(rejected)
     return Effect.die(new Error("the runtime binding returned neither a value nor a rejection"))
+  }).pipe(Effect.ensuring(Effect.sync(() => result.free())))
+
+/** Read a condition query's result object and free it. */
+const queryOf = (result: Glue.QueryResult): Effect.Effect<Contract.Evaluation, Errors.QueryRejection> =>
+  Effect.suspend(() => {
+    const { ok, value, rejected } = result
+    if (ok && value !== undefined) return decodeEvaluation(value)
+    if (!ok && rejected !== undefined) return Effect.flatMap(decodeRejected(rejected), Errors.fromQueryRejected)
+    return Effect.die(new Error("the runtime binding returned neither an evaluation nor a rejection"))
   }).pipe(Effect.ensuring(Effect.sync(() => result.free())))
 
 const stepOf = (result: Glue.StepResult): Effect.Effect<Step, Errors.RuntimeRejection> =>
@@ -187,6 +209,17 @@ export const make = (raw: Glue.Program): Program & { readonly free: Effect.Effec
   ) {
     const handle = yield* handleOf(state)
     return yield* decodeView(raw.view(handle, options?.facts === true))
+  }),
+
+  evaluate: Effect.fn("Lute.Program.evaluate")(function* (state: RuntimeState, expr: Schema.Json) {
+    const handle = yield* handleOf(state)
+    const json = yield* encodeExpr(expr)
+    return yield* queryOf(raw.evaluate(handle, json))
+  }),
+
+  def: Effect.fn("Lute.Program.def")(function* (state: RuntimeState, name: string) {
+    const handle = yield* handleOf(state)
+    return yield* queryOf(raw.def(handle, name))
   }),
 
   free: Effect.sync(() => raw.free())

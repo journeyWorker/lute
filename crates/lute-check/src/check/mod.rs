@@ -119,9 +119,9 @@ use component_body::{
     component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
     walk_component_body, BodyScope,
 };
-pub use fold::fold_env;
+pub use fold::{fold_env, params_from_yaml};
 pub(crate) use fold::resolve_kinds;
-use fold::{attr_str, fold_directive_slots, params_from_yaml};
+use fold::{attr_str, fold_directive_slots};
 pub(crate) use guard::directive_when_refused;
 use guard::{check_beat_when, check_directive_when, check_guard};
 use injections::fold_injections;

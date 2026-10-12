@@ -343,6 +343,28 @@
       "title": "ClockView",
       "type": "object"
     },
+    "Evaluation": {
+      "additionalProperties": false,
+      "description": "The answer of a read-only condition query, `evaluate` or `def`\n(dsl 0.40.1 §2).",
+      "properties": {
+        "unresolved": {
+          "description": "Why an `unknown` value is unknown, one reason per unresolved read;\nomitted for a decided value.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "value": {
+          "$ref": "#/$defs/Value",
+          "description": "The typed value: `bool`, `int`, `double`, `str` or `unknown` — never\n`error`, which is the rejection `E-RUNTIME-EVAL`."
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Evaluation",
+      "type": "object"
+    },
     "Event": {
       "description": "An execution record or session-level notification.",
       "oneOf": [

@@ -114,6 +114,8 @@ pub(crate) struct Conds {
     pub(crate) terminal: Option<Arc<Slot>>,
     pub(crate) gates: BTreeMap<String, Arc<Slot>>,
     pub(crate) beats: BTreeMap<(String, String), BeatConds>,
+    /// dsl 0.40.1 §3: the index's parameterless project defs, by name.
+    pub(crate) defs: BTreeMap<String, Arc<Slot>>,
 }
 
 #[derive(Default)]
@@ -159,6 +161,11 @@ impl Conds {
                 .filter_map(|g| Some((g.occasion.clone(), typed(&g.raised_when)?)))
                 .collect(),
             beats,
+            defs: index
+                .defs
+                .iter()
+                .filter_map(|(name, pair)| Some((name.clone(), typed(pair)?)))
+                .collect(),
         }
     }
 

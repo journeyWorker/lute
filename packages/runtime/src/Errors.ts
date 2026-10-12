@@ -108,6 +108,32 @@ export const fromRejected = (rejected: Rejected): Effect.Effect<never, RuntimeRe
     : Effect.fail(make(rejected.message))
 }
 
+/** `E-RUNTIME-EVAL`: a queried condition evaluates to an error (spec 0.40.1 §2). */
+export class EvaluationError extends Schema.TaggedError<EvaluationError>()("EvaluationError", {
+  code: Schema.Literal("E-RUNTIME-EVAL"),
+  message: Schema.String
+}) {}
+
+/**
+ * Every rejection a condition query (`Program.evaluate`, `Program.def`)
+ * returns: a malformed expression or unknown def name, or an evaluation error.
+ */
+export type QueryRejection = InvalidInput | EvaluationError
+
+/**
+ * Fail with the typed error of a query rejection; any other code dies.
+ */
+export const fromQueryRejected = (rejected: Rejected): Effect.Effect<never, QueryRejection> => {
+  switch (rejected.code) {
+    case "E-RUNTIME-INPUT":
+      return Effect.fail(new InvalidInput({ code: "E-RUNTIME-INPUT", message: rejected.message }))
+    case "E-RUNTIME-EVAL":
+      return Effect.fail(new EvaluationError({ code: "E-RUNTIME-EVAL", message: rejected.message }))
+    default:
+      return Effect.die(new Error(`unknown query rejection ${rejected.code}: ${rejected.message}`))
+  }
+}
+
 /** The bundle's `project.index.json` or an artifact it lists does not exist. */
 export class BundleNotFound extends Schema.TaggedError<BundleNotFound>()("BundleNotFound", {
   path: Schema.String,

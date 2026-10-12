@@ -142,6 +142,16 @@ export const ClockView = Schema.Struct({
 export type ClockView = typeof ClockView.Type;
 
 /**
+ * The answer of a read-only condition query, `evaluate` or `def`
+ * (dsl 0.40.1 §2).
+ */
+export const Evaluation = Schema.Struct({
+  "unresolved": Schema.optionalKey(Schema.Array(Schema.String)),
+  "value": Schema.suspend(() => Value)
+});
+export type Evaluation = typeof Evaluation.Type;
+
+/**
  * An execution record or session-level notification.
  */
 export const Event = Schema.Union([

@@ -7,7 +7,7 @@ import * as Contract from "../src/generated/Contract.js"
 import * as Errors from "../src/Errors.js"
 import * as LuteBun from "../src/bun.js"
 import * as LuteRuntime from "../src/LuteRuntime.js"
-import { canonical, decode, hubFixtureRoot, jsonLines, sessionRoot } from "./support.js"
+import { canonical, compileBundle, decode, evaluateFixtureRoot, hubFixtureRoot, jsonLines, sessionRoot } from "./support.js"
 
 const input = decode(Contract.Input)
 const seed = decode(Contract.Seed)
@@ -104,6 +104,40 @@ describe("Program", () => {
     const unknown = yield* Effect.exit(Errors.fromRejected({ code: "E-NOPE", message: "" }))
     expect(Exit.isFailure(unknown)).toBe(true)
     if (Exit.isFailure(unknown)) expect(Cause.hasDies(unknown.cause)).toBe(true)
+  }))
+
+  it.effect("evaluates IR expressions and project defs (spec 0.40.1)", () => Effect.gen(function* () {
+    const bundleDir = yield* compileBundle(evaluateFixtureRoot)
+    yield* Effect.gen(function* () {
+      const program = yield* programEffect
+      const started = yield* program.begin(seed({ facts: ["owned(key)"] }))
+      const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))
+
+      expect(yield* program.evaluate(started.state, { op: "==", l: { path: "run.count" }, r: { int: 0 } }))
+        .toEqual({ value: { kind: "bool", value: true } })
+      expect(yield* program.evaluate(started.state, {
+        call: "holds",
+        args: [{ string: "owned" }, { list: [{ string: "key" }] }]
+      })).toEqual({ value: { kind: "bool", value: true } })
+      expect(yield* program.def(started.state, "ready")).toEqual({ value: { kind: "bool", value: false } })
+      expect(yield* program.def(started.state, "score")).toEqual({ value: { kind: "int", value: 1 } })
+      expect(yield* program.evaluate(started.state, { path: "run.undeclared" })).toEqual({
+        value: { kind: "unknown" },
+        unresolved: ["state path `run.undeclared` has no value"]
+      })
+
+      const visited = yield* program.step(started.state, input({ occasion: "visit", type: "raiseOccasion" }))
+      expect(yield* program.evaluate(visited.state, { call: "visited", args: [{ string: "hall" }] }))
+        .toEqual({ value: { kind: "bool", value: true } })
+      expect(yield* program.def(visited.state, "ready")).toEqual({ value: { kind: "bool", value: true } })
+      expect(yield* program.def(visited.state, "perCount")).toEqual({ value: { kind: "int", value: 10 } })
+
+      expect(failure(yield* Effect.exit(program.def(started.state, "perCount"))))
+        .toBeInstanceOf(Errors.EvaluationError)
+      expect(failure(yield* Effect.exit(program.def(started.state, "missing")))).toBeInstanceOf(Errors.InvalidInput)
+      expect(failure(yield* Effect.exit(program.evaluate(started.state, { nope: 1 }))))
+        .toBeInstanceOf(Errors.InvalidInput)
+    }).pipe(Effect.provide(LuteBun.runtime), Effect.provide(LuteBun.bundle(bundleDir)))
   }))
 
   it.effect("using a program after its scope closes is a defect", () => Effect.gen(function* () {

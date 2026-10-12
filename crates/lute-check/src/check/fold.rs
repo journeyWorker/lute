@@ -9,7 +9,7 @@ use super::*;
 /// (`serde_yaml::Mapping` is insertion-ordered), deserializing each value to a
 /// `Type` via the same serde path `Type` uses. An absent/non-mapping `params:`
 /// or a malformed entry yields no pair — never a panic.
-pub(super) fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manifest::types::Type)> {
+pub fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manifest::types::Type)> {
     let Some(map) = v.get("params").and_then(|p| p.as_mapping()) else {
         return Vec::new();
     };

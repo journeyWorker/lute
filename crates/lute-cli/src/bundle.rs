@@ -15,6 +15,12 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
 
     let mut unions = IndexUnions::default();
     let mut world_events = BTreeSet::new();
+    // dsl 0.40.1 §3: a def two documents see with different bodies (their
+    // `uses:` differ) names no one condition, so the index omits it. Bodies
+    // are compared as lowered `expr`: the same condition spelled differently
+    // (`@base` in one, written out in the other) is one def, exported with
+    // the first document's `cel`/`authored`, in path order.
+    let mut ambiguous_defs = BTreeSet::new();
     for document in documents {
         if crate::compile_all::is_component_file(&document.path) {
             continue;
@@ -30,6 +36,17 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
         for (id, member) in lute_check::cast::declared_cast(&input.snapshot, &input.imports, &[]) {
             if let Some(name) = member.name {
                 unions.cast.entry(id).or_insert(name);
+            }
+        }
+        for (name, def) in lute_compile::index::document_defs(input) {
+            match unions.defs.get(&name) {
+                Some(seen) if seen.expr != def.expr => {
+                    ambiguous_defs.insert(name);
+                }
+                Some(_) => {}
+                None => {
+                    unions.defs.insert(name, def);
+                }
             }
         }
         for (tag, decl) in &input.snapshot.directives {
@@ -70,6 +87,7 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
         }
     }
     unions.world_events = world_events.into_iter().collect();
+    unions.defs.retain(|name, _| !ambiguous_defs.contains(name));
     unions
 }
 

@@ -169,6 +169,22 @@ implementation-only report:
 | `clock()` | `ClockAt` or `null`, where `ClockAt` is `{ day, slot }`. |
 | `terminal()` | `boolean`. |
 | `view(withFacts)` | `WorldView`, `{ state: Record<string, Value>, facts?: string[], quests: Record<string, string>, clock?: ClockView }`; `facts` is included only when requested, and `clock` is nullable when no position exists. |
+| `evaluate(expr)` (0.40.1) | `Evaluation` `{ value: Value, unresolved?: string[] }` or a rejection. `expr` is an IR `exprNode` — the `expr` of any `{cel, expr}` pair the IR carries (an objective's `visibleWhen.expr`, a beat's `when.expr`). |
+| `def(name)` (0.40.1) | `Evaluation` or a rejection, for a parameterless project def the bundle carries in `project.index.json` `defs`. |
+
+`evaluate` and `def` (spec 0.40.1) evaluate a condition over the state
+exactly as a walk's guard does: the effective state (written, seeded, then
+declared default), the fact store with derivation under the run's `derive`
+mode (`holds`, `count`, `countDistinct`), `visited(...)`, and `now()` from the
+clock paths. Evaluation is three-valued: `value` is `bool`, `int`, `double`,
+`str`, or `unknown`, and an `unknown` value lists in `unresolved` why (an
+unset state path, an undetermined derived fact, `validAt(...)`). An
+`occasion.target` read outside a raise is unknown. A state suspended at an
+await is evaluated over the world from before its input, as `view` is. The
+value is never `error`: an evaluation error (division by zero, `int()` of a
+non-number) is the rejection `E-RUNTIME-EVAL`. An `expr` with a node outside
+the `exprNode` schema, and a `def` name the bundle does not carry (unknown, or
+a def that takes params), is `E-RUNTIME-INPUT`. Neither query changes state.
 
 `Candidate.verdict` is a tagged `Verdict`: `{ verdict: "eligible" }`,
 `{ verdict: "ineligible", premise }`, or `{ verdict: "unknown", why }`.
@@ -242,7 +258,10 @@ timed choice (a mismatched request remains `E-RUNTIME-REQUEST`).
 - `E-RUNTIME-OPTION`: a missing or non-open choice option.
 - `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or wrong value type.
 - `E-RUNTIME-INPUT`: malformed input/seed, unknown path, relation, quest,
-  occasion, event or beat, or a value incompatible with its declared type.
+  occasion, event or beat, or a value incompatible with its declared type;
+  for `evaluate`/`def`, a malformed `exprNode` or a def the bundle lacks.
+- `E-RUNTIME-EVAL` (0.40.1): an `evaluate`/`def` condition evaluates to an
+  error.
 - `E-OCCASION-GATE` and existing pick/write/clock refusals: the same refusals
   as play, including a false `raisedWhen` or a held terminal condition.
 - `E-RUNTIME-HALTED`: any input after a halt.

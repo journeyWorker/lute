@@ -404,6 +404,21 @@ pub struct Rejected {
     pub message: String,
 }
 
+/// The answer of a read-only condition query, `evaluate` or `def`
+/// (dsl 0.40.1 §2).
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Evaluation {
+    /// The typed value: `bool`, `int`, `double`, `str` or `unknown` — never
+    /// `error`, which is the rejection `E-RUNTIME-EVAL`.
+    pub value: crate::Value,
+    /// Why an `unknown` value is unknown, one reason per unresolved read;
+    /// omitted for a decided value.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved: Vec<String>,
+}
+
 /// A resumable runtime state.
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -784,6 +799,49 @@ impl Runtime {
     pub fn view(&self, state: &State, with_facts: bool) -> crate::session::WorldView {
         let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
         Session::resume(&self.project, (*state.world).clone(), &mut f).view(with_facts)
+    }
+
+    /// dsl 0.40.1 §2: evaluate an IR `exprNode` over `state`'s world as a
+    /// walk's guard is. `E-RUNTIME-INPUT` when `expr` is not an `exprNode`;
+    /// `E-RUNTIME-EVAL` when it evaluates to an error.
+    pub fn evaluate(&self, state: &State, expr: &Json) -> Result<Evaluation, Rejected> {
+        let slot = crate::Slot::of_expr(expr)
+            .ok_or_else(|| reject("E-RUNTIME-INPUT", "`expr` is not an IR exprNode"))?;
+        self.evaluated(state, &slot)
+    }
+
+    /// dsl 0.40.1 §3: evaluate the bundle's parameterless def `name` over
+    /// `state`'s world. `E-RUNTIME-INPUT` when the bundle carries no such
+    /// def; `E-RUNTIME-EVAL` when it evaluates to an error.
+    pub fn def(&self, state: &State, name: &str) -> Result<Evaluation, Rejected> {
+        let slot = self.project.conds.defs.get(name).ok_or_else(|| {
+            reject(
+                "E-RUNTIME-INPUT",
+                format!("the bundle carries no parameterless def `{name}`"),
+            )
+        })?;
+        self.evaluated(state, slot)
+    }
+
+    fn evaluated(&self, state: &State, slot: &crate::Slot) -> Result<Evaluation, Rejected> {
+        match crate::session::evaluate(&self.project, &state.world, slot, None) {
+            (crate::Value::Error(error), _) => Err(reject(
+                "E-RUNTIME-EVAL",
+                format!("`{}` evaluates to an error: {error}", slot.raw()),
+            )),
+            (value, atoms) => {
+                let mut unresolved = Vec::new();
+                if value == crate::Value::Unknown {
+                    for atom in &atoms {
+                        let reason = crate::session::describe_atom(atom);
+                        if !unresolved.contains(&reason) {
+                            unresolved.push(reason);
+                        }
+                    }
+                }
+                Ok(Evaluation { value, unresolved })
+            }
+        }
     }
 
     fn seed_world(&self, seed: &Seed) -> Result<World, Rejected> {

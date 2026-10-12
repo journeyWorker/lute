@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use lute_runtime::index::Bundle;
-use lute_runtime::runtime::{Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
+use lute_runtime::runtime::{Evaluation, Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
@@ -41,6 +41,15 @@ pub struct RestoreResult {
 pub struct LoadResult {
     ok: bool,
     program: Option<Program>,
+    rejected: Option<String>,
+}
+
+/// The result of a condition query (`evaluate`, `def`): `Evaluation` JSON
+/// or a rejection.
+#[wasm_bindgen]
+pub struct QueryResult {
+    ok: bool,
+    value: Option<String>,
     rejected: Option<String>,
 }
 
@@ -152,6 +161,24 @@ impl Program {
         canonical(&self.runtime.stage(&state.inner))
     }
 
+    /// Evaluate an IR `exprNode` (JSON) over the state, as `Evaluation`
+    /// JSON; a malformed expression or an evaluation error is rejected.
+    pub fn evaluate(&self, state: &State, expr: &str) -> QueryResult {
+        match serde_json::from_str::<Value>(expr) {
+            Ok(expr) => QueryResult::of(self.runtime.evaluate(&state.inner, &expr)),
+            Err(error) => QueryResult::of(Err(rejection(
+                "E-RUNTIME-INPUT",
+                format!("invalid exprNode JSON: {error}"),
+            ))),
+        }
+    }
+
+    /// Evaluate the bundle's parameterless def `name` over the state, as
+    /// `Evaluation` JSON; an unknown def or an evaluation error is rejected.
+    pub fn def(&self, state: &State, name: &str) -> QueryResult {
+        QueryResult::of(self.runtime.def(&state.inner, name))
+    }
+
     #[wasm_bindgen(getter)]
     pub fn fingerprint(&self) -> String {
         self.runtime.fingerprint().to_owned()
@@ -214,6 +241,41 @@ impl LoadResult {
     #[wasm_bindgen(getter)]
     pub fn rejected(&self) -> Option<String> {
         self.rejected.clone()
+    }
+}
+
+#[wasm_bindgen]
+impl QueryResult {
+    #[wasm_bindgen(getter)]
+    pub fn ok(&self) -> bool {
+        self.ok
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn value(&self) -> Option<String> {
+        self.value.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn rejected(&self) -> Option<String> {
+        self.rejected.clone()
+    }
+}
+
+impl QueryResult {
+    fn of(result: Result<Evaluation, Rejected>) -> Self {
+        match result {
+            Ok(value) => Self {
+                ok: true,
+                value: Some(canonical(&value)),
+                rejected: None,
+            },
+            Err(rejected) => Self {
+                ok: false,
+                value: None,
+                rejected: Some(canonical(&rejected)),
+            },
+        }
     }
 }
 
@@ -364,5 +426,34 @@ mod tests {
         let rejected = result.rejected.expect("input rejection JSON");
         let rejected: Rejected = serde_json::from_str(&rejected).expect("rejection object");
         assert_eq!(rejected.code, "E-RUNTIME-INPUT");
+    }
+
+    #[test]
+    fn evaluate_and_def_answer_values_and_rejections() {
+        let program = program();
+        let started = program.begin(r#"{"derive":true}"#);
+        let state = started.state.expect("successful begin has state");
+        let evaluated = program.evaluate(
+            &state,
+            r#"{"op":"==","l":{"path":"run.count"},"r":{"int":0}}"#,
+        );
+        assert!(evaluated.ok, "evaluate rejected: {:?}", evaluated.rejected);
+        let evaluation: Evaluation =
+            serde_json::from_str(&evaluated.value.expect("evaluation JSON")).expect("Evaluation");
+        assert_eq!(evaluation.value, lute_runtime::Value::Bool(true));
+
+        let code = |result: QueryResult| {
+            assert!(!result.ok);
+            let rejected: Rejected =
+                serde_json::from_str(&result.rejected.expect("rejection JSON")).expect("Rejected");
+            rejected.code
+        };
+        assert_eq!(code(program.evaluate(&state, "{")), "E-RUNTIME-INPUT");
+        assert_eq!(code(program.evaluate(&state, r#"{"nope":1}"#)), "E-RUNTIME-INPUT");
+        assert_eq!(
+            code(program.evaluate(&state, r#"{"op":"/","l":{"int":1},"r":{"int":0}}"#)),
+            "E-RUNTIME-EVAL"
+        );
+        assert_eq!(code(program.def(&state, "missing")), "E-RUNTIME-INPUT");
     }
 }

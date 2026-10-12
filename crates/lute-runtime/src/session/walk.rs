@@ -89,19 +89,19 @@ impl PlayHalt {
     }
 }
 
+/// Why one value went unknown, as a sentence fragment.
+pub fn describe_atom(atom: &UnresolvedAtom) -> String {
+    match atom {
+        UnresolvedAtom::Path(p) => format!("state path `{p}` has no value"),
+        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
+            format!("fact `{f}` is undetermined")
+        }
+        UnresolvedAtom::Time => "now()/validAt(...) has no reference-runtime resolution".to_string(),
+    }
+}
+
 pub fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
-    let mut parts: Vec<String> = atoms
-        .iter()
-        .map(|a| match a {
-            UnresolvedAtom::Path(p) => format!("state path `{p}` has no value"),
-            UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
-                format!("fact `{f}` is undetermined")
-            }
-            UnresolvedAtom::Time => {
-                "now()/validAt(...) has no reference-runtime resolution".to_string()
-            }
-        })
-        .collect();
+    let mut parts: Vec<String> = atoms.iter().map(describe_atom).collect();
     parts.dedup();
     if parts.is_empty() {
         "it does not evaluate to a bool".to_string()

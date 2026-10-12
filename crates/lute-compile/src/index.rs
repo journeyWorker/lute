@@ -50,6 +50,47 @@ pub struct IndexUnions {
     pub world_events: Vec<String>,
     pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
     pub cast: BTreeMap<String, String>,
+    /// dsl 0.40.1 §3: the project defs ([`document_defs`] unioned over the
+    /// documents), carried as `ProjectIndex.defs`.
+    pub defs: BTreeMap<String, CelPair>,
+}
+
+/// dsl 0.40.1 §3: the project defs one document sees — its plugins' `defs:`,
+/// then its `uses:` schema imports over them (the checker's precedence; the
+/// document's own frontmatter defs are local to it and stay out) — each
+/// parameterless one with its body `@def`-expanded and lowered exactly as a
+/// seam condition is. A def taking params, or one whose body does not expand
+/// or lower (the checker reports it), is left out.
+pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, CelPair> {
+    let mut bodies = BTreeMap::new();
+    let mut params = BTreeMap::new();
+    for (name, d) in &input.snapshot.defs {
+        bodies.insert(name.clone(), d.cel.clone());
+        params.insert(
+            name.clone(),
+            d.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+        );
+    }
+    for (name, v) in &input.imports.defs {
+        if let Some(body) = v.get("cel").and_then(serde_yaml::Value::as_str) {
+            bodies.insert(name.clone(), body.to_string());
+        }
+        params.insert(name.clone(), lute_check::params_from_yaml(v));
+    }
+    let table = lute_check::DefTable {
+        bodies: &bodies,
+        params: &params,
+    };
+    bodies
+        .iter()
+        .filter(|(name, _)| params.get(*name).is_none_or(Vec::is_empty))
+        .filter_map(|(name, body)| {
+            let raw = lute_check::expand_cel(body, &table, None, &mut vec![name.clone()]).ok()?;
+            let expr = crate::expr::lower_expr(&raw)?;
+            let authored = (raw != *body).then(|| body.clone());
+            Some((name.clone(), CelPair { raw, expr, authored }))
+        })
+        .collect()
 }
 
 /// One document's contribution to the index.
@@ -397,6 +438,7 @@ pub fn build_index(
         bridge_results: unions.bridge_results.clone(),
         cast: unions.cast.clone(),
         state_domains,
+        defs: unions.defs.clone(),
     })
 }
 

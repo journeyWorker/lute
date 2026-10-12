@@ -172,6 +172,16 @@ A loaded `Program` has this platform-free interface:
 | `clock(state)` | `Effect<Option<ClockAt>>` | Read the current clock position, if the project has one. |
 | `terminal(state)` | `Effect<boolean>` | Test the state's terminal condition. |
 | `view(state, { facts? })` | `Effect<WorldView>` | Read effective state, quests, optional facts, and clock. |
+| `evaluate(state, expr)` | `Effect<Evaluation, QueryRejection>` | Evaluate an IR `exprNode` (the `expr` of a `{cel, expr}` pair, e.g. an objective's `visibleWhen.expr`) as a walk's guard reads it (0.40.1). |
+| `def(state, name)` | `Effect<Evaluation, QueryRejection>` | Evaluate a parameterless project def carried in the bundle's index (0.40.1). |
+
+`Evaluation` is `{ value: Value, unresolved?: string[] }`: `value` is `bool`,
+`int`, `double`, `str`, or `unknown` (with `unresolved` naming why), never
+`error`. `Errors.QueryRejection` is `InvalidInput` (a malformed `exprNode`, or
+a def the bundle does not carry) or `EvaluationError` (the condition
+evaluates to an error). A host that wants a boolean gate decides what
+`unknown` means for it; the runtime's own guards treat it as undecided. See
+`docs/runtime/event-contract.md` for the activation the queries read.
 
 `RuntimeState` is an opaque branded handle. It is never serialized; the
 `Snapshot` is its serialized form. States are immutable values: stepping never
@@ -201,6 +211,7 @@ to their contract code:
 | `Errors.IrVersionMismatch` | `E-RUNTIME-IR-VERSION` | The bundle is not an IR version this runtime executes. |
 | `Errors.SnapshotProjectMismatch` | `E-RUNTIME-SNAPSHOT-PROJECT` | The snapshot belongs to another bundle fingerprint. |
 | `Errors.SnapshotVersionMismatch` | `E-RUNTIME-SNAPSHOT-VERSION` | The snapshot is from another Event minor. |
+| `Errors.EvaluationError` | `E-RUNTIME-EVAL` | An `evaluate`/`def` condition evaluates to an error (0.40.1; not a `RuntimeRejection`). |
 
 `Errors.BundleError` is the union of `BundleNotFound`, `BundleUnreadable`, and
 `BundleMalformed`, each identifying the path concerned. `Errors.WasmLoadError`

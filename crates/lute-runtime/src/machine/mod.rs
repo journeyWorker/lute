@@ -451,7 +451,7 @@ impl<D: Driver> Machine<D> {
     }
 
     /// Evaluate `slot` over live state + the closure.
-    fn eval_atoms(&mut self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
+    pub(crate) fn eval_atoms(&mut self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
         let (v, atoms) = self.store.eval(&slot.expr);
         if let Some(observer) = &mut self.eval_observer {
             observer(

@@ -279,6 +279,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-RUN-OWNED-WRITE", DiagnosticClass::SourceError),
     ("E-RUNTIME-BRIDGE-SHAPE", DiagnosticClass::SourceError),
     ("E-RUNTIME-BUSY", DiagnosticClass::SourceError),
+    ("E-RUNTIME-EVAL", DiagnosticClass::SourceError),
     ("E-RUNTIME-HALTED", DiagnosticClass::SourceError),
     ("E-RUNTIME-INPUT", DiagnosticClass::SourceError),
     ("E-RUNTIME-IR-VERSION", DiagnosticClass::SourceError),

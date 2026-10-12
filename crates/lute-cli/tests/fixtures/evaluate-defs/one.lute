@@ -1,0 +1,11 @@
+---
+kind: scene
+id: one
+luteVersion: "0.40.0"
+title: one
+uses: a.schema.yaml
+on: visit
+priority: 0
+---
+## Room
+@narrator{code="0010"}: The one room.

@@ -1,0 +1,14 @@
+state:
+  run.count: { type: int, default: 0 }
+  user.flag: { type: bool, default: false }
+entities:
+  item:
+    members: [key, map]
+relations:
+  owned: { args: [item], tier: run }
+defs:
+  ready: { type: bool, cel: "holds('owned', ['key']) && visited('hall')" }
+  readyTwice: { type: bool, cel: "@ready && run.count >= 2" }
+  score: { type: int, cel: "run.count * 10 + 1" }
+  perCount: { type: int, cel: "10 / run.count" }
+  atLeast: { type: bool, params: { n: int }, cel: "run.count >= n" }

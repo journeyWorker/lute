@@ -190,6 +190,12 @@ pub struct ProjectIndex {
     pub cast: BTreeMap<String, String>,
     #[serde(rename = "stateDomains", default, skip_serializing_if = "BTreeMap::is_empty")]
     pub state_domains: BTreeMap<String, StateDomain>,
+    /// dsl 0.40.1 §3: every parameterless project def (plugin `defs:` and
+    /// the `uses:` schema imports every document sees alike), name-sorted,
+    /// its body `@def`-expanded and lowered — what a host evaluates by name
+    /// (`Program.def`). Omitted when empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub defs: BTreeMap<String, CelPair>,
 }
 
 impl ProjectIndex {

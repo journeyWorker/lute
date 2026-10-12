@@ -3756,6 +3756,11 @@
         "^stateDomains$": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/indexStateDomain" }
+        },
+        "^defs$": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/celSlot" },
+          "description": "dsl 0.40.1 §3: every parameterless project def (plugin `defs:` and the `uses:` schema imports every document sees with one body), keyed by name, its body `@def`-expanded and lowered; what a host evaluates by name (`Program.def`). Omitted when empty."
         }
       },
       "additionalProperties": true,

@@ -1222,6 +1222,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.38.0 §5.3"],
     },
     Code {
+        code: "E-RUNTIME-EVAL",
+        summary: "A runtime condition query (`evaluate` of an IR expression or `def` of a project def) evaluates to an error, such as division by zero or `int()` of a non-number.",
+        spec: &["dsl 0.40.1 §2"],
+    },
+    Code {
         code: "E-RUNTIME-HALTED",
         summary: "An input was supplied after the runtime state entered a halted lineage.",
         spec: &["dsl 0.38.0 §5.3"],

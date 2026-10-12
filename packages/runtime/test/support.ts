@@ -7,6 +7,7 @@ export const repositoryRoot = resolve(import.meta.dirname, "../../..")
 const targetDir = process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "target")
 export const sessionRoot = join(repositoryRoot, "conformance", "session")
 export const hubFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm", "tests", "fixtures", "hub-once")
+export const evaluateFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm", "tests", "fixtures", "evaluate")
 
 let cliBuilt = false
 

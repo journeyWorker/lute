@@ -1392,6 +1392,12 @@ A runtime input is not accepted while another input is suspended, or an answer i
 
 Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md)
 
+### E-RUNTIME-EVAL
+
+A runtime condition query (`evaluate` of an IR expression or `def` of a project def) evaluates to an error, such as division by zero or `int()` of a non-number.
+
+Spec: [dsl 0.40.1 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.1.md)
+
 ### E-RUNTIME-HALTED
 
 An input was supplied after the runtime state entered a halted lineage.

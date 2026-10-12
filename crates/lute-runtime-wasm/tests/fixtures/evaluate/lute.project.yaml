@@ -1,0 +1,6 @@
+defaultProfile: evaluate
+profiles:
+  evaluate:
+    plugins: { evaluate.cases: true }
+defaults:
+  uses: [world.schema.yaml]

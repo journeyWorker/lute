@@ -38,6 +38,33 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+**Runtime condition queries** (draft spec
+[`0.40.1.md`](docs/proposals/scenario-dsl/0.40.1.md); runtime contract
+[`docs/runtime/event-contract.md`](docs/runtime/event-contract.md)). A host
+asks the runtime whether a condition holds instead of re-implementing its
+evaluator.
+
+### IR
+
+- `project.index.json` carries `defs`: every parameterless project def
+  (plugin `defs:` and `uses:` schema imports), `@def`-expanded and lowered to a
+  `{cel, expr, authored?}` slot. A def two documents see with different bodies
+  is left out. Additive under `lute-ir-0.40`.
+
+### Runtime
+
+- `Runtime::evaluate(state, expr)` evaluates an IR `exprNode` over a state as
+  a walk's guard is (state, facts via `holds`/`count`, `visited`, clock), and
+  `Runtime::def(state, name)` evaluates a project def from the index. Both
+  return `Evaluation { value, unresolved? }` (`bool`/`int`/`double`/`str`/
+  `unknown`), reject an evaluation error as `E-RUNTIME-EVAL`, and reject a
+  malformed `exprNode` or an unknown def as `E-RUNTIME-INPUT`. `Evaluation`
+  joins `lute-events-0.40.schema.json`.
+- `@lute-lang/runtime`: `Program.evaluate` / `Program.def`, typed errors
+  `Errors.EvaluationError` and `Errors.QueryRejection`.
+
 ## [0.40.0]
 
 **Runtime R3 and the web player** (spec
