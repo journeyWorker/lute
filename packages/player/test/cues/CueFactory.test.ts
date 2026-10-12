@@ -16,7 +16,7 @@ import type { AudioPlay, AudioPort, PlayMode, PluginCall, Presenter, StageCue } 
 const decodeOutput = Schema.decodeUnknownSync(Runtime.Contract.Output)
 const decodeBindings = Schema.decodeUnknownSync(Bindings.Bindings)
 const bindings = decodeBindings({
-  bindingsVersion: "0.40",
+  bindingsVersion: "0.41",
   canvas: { width: 1920, height: 1080 },
   assets: { bg: "bg.png", actor: "actor.png", cg: "cg.png", video: "video.mp4", music: "music.ogg", sfx: "sfx.ogg" },
   backgrounds: { foyer: { image: "foyer.png", times: { night: "foyer-night.png" } } },
@@ -63,7 +63,7 @@ const index: Runtime.Ir.projectIndex = {
   documents: [{ artifact: "scene.json", key: "scene", kind: "scene", path: "scene.lute" }],
   entities: [],
   enums: [],
-  irVersion: "0.40.0",
+  irVersion: "0.41.0",
   prereqEdges: [],
   relations: [],
   requiredSemantics: [],
@@ -72,7 +72,7 @@ const index: Runtime.Ir.projectIndex = {
   cast: { guide: "Guide-san" }
 }
 const bundle: Runtime.Bundle.Bundle = { index, artifacts: { "scene.json": { commands } } }
-const output = decodeOutput({ eventVersion: "0.40", await: { type: "idle" }, events: [
+const output = decodeOutput({ eventVersion: "0.41", await: { type: "idle" }, events: [
   { type: "record", document: "scene", record: { kind: "line", position: "001-0100", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1" } },
   { type: "record", document: "scene", record: { kind: "bg", position: "001-0200" } },
   { type: "record", document: "scene", record: { kind: "actor", position: "001-0300" } },
@@ -124,7 +124,7 @@ describe("CueFactory", () => {
     expect(stop?.timing.wait).toBe(false)
   }))
   it.effect("normalizes timing defaults by cue kind", () => Effect.gen(function* () {
-    const localOutput = decodeOutput({ eventVersion: "0.40", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500" } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800" } }] })
+    const localOutput = decodeOutput({ eventVersion: "0.41", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500" } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800" } }] })
     const cues = yield* factory.fromOutput(localOutput, new Set())
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
@@ -246,7 +246,7 @@ describe("CueFactory", () => {
   }))
 
   it("collects a restored stage's files with the same resolution its cues and music use", () => {
-    const unbound = decodeBindings({ bindingsVersion: "0.40", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
+    const unbound = decodeBindings({ bindingsVersion: "0.41", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
     const stage = { actors: [], bg: { assetId: "bg/hall.png" }, cg: { assetId: "cg/one.png" }, music: { assetId: "bgm/theme.ogg", mood: "calm" } }
     expect(CueFactory.stageFiles(unbound, stage)).toEqual(["bg/hall.png", "cg/one.png", "bgm/theme.ogg"])
     expect(CueFactory.stageMusic(unbound, stage)?.file).toBe("bgm/theme.ogg")
@@ -256,7 +256,7 @@ describe("CueFactory", () => {
   })
 
   it.effect("a bg or music record with an unmapped assetId names that file, as its restored stage does", () => Effect.gen(function* () {
-    const unbound = decodeBindings({ bindingsVersion: "0.40", canvas: { width: 1, height: 1 } })
+    const unbound = decodeBindings({ bindingsVersion: "0.41", canvas: { width: 1, height: 1 } })
     const local = CueFactory.make({ bundle: { index, artifacts: { "scene.json": { commands: [
       { kind: "bg", family: "staging", position: "003-0100", assetId: "bg/hall.png" },
       { kind: "music", family: "staging", position: "003-0200", assetId: "bgm/theme.ogg" }

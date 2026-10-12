@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Sources: schemas/lute-events-0.40.schema.json, schemas/lute-snapshot-0.40.schema.json
+// Sources: schemas/lute-events-0.41.schema.json, schemas/lute-snapshot-0.41.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -144,7 +144,7 @@ export type ClockView = typeof ClockView.Type;
 
 /**
  * The answer of a read-only condition query, `evaluate` or `def`
- * (dsl 0.40.1 §2).
+ * (dsl 0.41.0 §5.1).
  */
 export const Evaluation = Schema.Struct({
   "unresolved": Schema.optionalKey(Schema.Array(Schema.String)),

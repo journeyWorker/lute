@@ -52,12 +52,12 @@ pub struct IndexUnions {
     /// declared type.
     pub bridge_results: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
     pub cast: BTreeMap<String, String>,
-    /// dsl 0.40.1 §3, 0.41.0 §4.3: the project defs ([`document_defs`]
+    /// dsl 0.41.0 §4.3: the project defs ([`document_defs`]
     /// unioned over the documents), carried as `ProjectIndex.defs`.
     pub defs: BTreeMap<String, IndexDef>,
 }
 
-/// dsl 0.40.1 §3, 0.41.0 §4.3: the project defs one document sees — its
+/// dsl 0.41.0 §4.3: the project defs one document sees — its
 /// plugins' `defs:`, then its `uses:` schema imports over them (the
 /// checker's precedence; the document's own frontmatter defs are local to it
 /// and stay out) — each with its body `@def`-expanded and lowered exactly as

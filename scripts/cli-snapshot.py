@@ -4,6 +4,7 @@
 Usage:
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR
+    scripts/cli-snapshot.py --self-test
 
 The corpus is discovered from ``docs/examples``, ``conformance``, and the
 registered diagnostic-code table in this checkout.  Each invocation gets a
@@ -34,20 +35,20 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 CONFORMANCE = ROOT / "conformance"
 
-# These are intentionally narrow.  In particular, replacing every 0.39/0.40
+# These are intentionally narrow.  In particular, replacing every 0.40/0.41
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
     r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
-    r"0\.(?:39|40)(?:\.\d+)?"
+    r"0\.(?:40|41)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
-    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:39|40)"
+    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:40|41)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
 # The engine gate names the toolchain's own IR version in its refusal.
-ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:39|40)\.\d+(?=`)")
-VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:39|40)(?:\.\d+)?(?![A-Za-z0-9])")
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:40|41)\.\d+(?=`)")
+VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:40|41)(?:\.\d+)?(?![A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -286,6 +287,48 @@ def normalize_for_compare(data: bytes, label: str) -> bytes:
     return text.encode("utf-8")
 
 
+# (label, 0.40 rendering, 0.41 rendering) for every stamp form the
+# normalizer owns; both renderings must normalize to the same text.
+SELF_TEST_STAMPS = (
+    ("compile", '{"irVersion": "0.40.0", "lute": "0.40.0"}', '{"irVersion": "0.41.0", "lute": "0.41.0"}'),
+    ("check", 'luteVersion: "0.40.0"', 'luteVersion: "0.41.0"'),
+    ("play", '{"eventVersion":"0.40.0","snapshotVersion":"0.40.0"}', '{"eventVersion":"0.41.0","snapshotVersion":"0.41.0"}'),
+    (
+        "schema",
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.40.schema.json"',
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.41.schema.json"',
+    ),
+    ("run", "the engine accepts `0.40.0` artifacts", "the engine accepts `0.41.0` artifacts"),
+    ("version", "lute toolchain 0.40.0\nlanguage      0.40.0\n", "lute toolchain 0.41.0\nlanguage      0.41.0\n"),
+)
+# (label, text) the normalizer must leave byte-identical.
+SELF_TEST_UNTOUCHED = (
+    ("version", "lute toolchain 0.4\n"),
+    ("version", "lute toolchain 10.40.1\n"),
+    ("compile", '{"irVersion": "0.4", "lute": "10.40.1"}'),
+    ("check", "a value of 0.40 in prose stays"),
+)
+
+
+def self_test() -> int:
+    failures = []
+    for label, old, new in SELF_TEST_STAMPS:
+        old_norm = normalize_for_compare(old.encode(), label)
+        new_norm = normalize_for_compare(new.encode(), label)
+        if old_norm != new_norm or old_norm == old.encode():
+            failures.append(f"{label}: {old!r} -> {old_norm!r}, {new!r} -> {new_norm!r}")
+    for label, text in SELF_TEST_UNTOUCHED:
+        normalized = normalize_for_compare(text.encode(), label)
+        if normalized != text.encode():
+            failures.append(f"{label}: {text!r} changed to {normalized!r}")
+    for failure in failures:
+        print(f"cli-snapshot self-test: FAIL {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print(f"cli-snapshot self-test: OK ({len(SELF_TEST_STAMPS)} stamp forms, {len(SELF_TEST_UNTOUCHED)} untouched)")
+    return 0
+
+
 def manifest(path: Path) -> dict[str, object]:
     try:
         value = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
@@ -383,14 +426,20 @@ def compare(current: Path, baseline: Path) -> int:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path, help="lute executable")
-    parser.add_argument("output", type=Path, help="directory to write")
+    parser.add_argument("binary", type=Path, nargs="?", help="lute executable")
+    parser.add_argument("output", type=Path, nargs="?", help="directory to write")
     parser.add_argument("--compare", type=Path, help="baseline snapshot directory")
-    return parser.parse_args(argv)
+    parser.add_argument("--self-test", action="store_true", help="check normalize_for_compare and exit")
+    args = parser.parse_args(argv)
+    if not args.self_test and (args.binary is None or args.output is None):
+        parser.error("LUTE-BINARY and OUTPUT-DIR are required unless --self-test")
+    return args
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
+    if args.self_test:
+        return self_test()
     binary = args.binary if args.binary.is_absolute() else (ROOT / args.binary)
     binary = binary.resolve()
     output = args.output if args.output.is_absolute() else (ROOT / args.output)

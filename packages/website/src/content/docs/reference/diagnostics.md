@@ -1396,7 +1396,7 @@ Spec: [dsl 0.38.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 A runtime condition query (`evaluate` of an IR expression or `def` of a project def) evaluates to an error, such as division by zero or `int()` of a non-number.
 
-Spec: [dsl 0.40.1 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.1.md)
+Spec: [dsl 0.41.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### E-RUNTIME-HALTED
 

@@ -82,7 +82,7 @@ pub trait WalkDriver {
 /// made after the body, and what ends the playthrough, if anything.
 pub type StepOutcome = (StepBody, Vec<QuestAdvance>, Option<PlayHalt>);
 
-/// dsl 0.40.1 §2: `slot` evaluated over `w` exactly as a walk's guard is —
+/// dsl 0.41.0 §5.1: `slot` evaluated over `w` exactly as a walk's guard is —
 /// the effective state (written, seeded, declared default), the fact store
 /// under the world's derive mode, `visited`, the clock paths — with the
 /// atoms that left it unknown.
@@ -199,7 +199,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
         ))
     }
 
-    /// dsl 0.40.1 §2: `slot` evaluated over this world ([`evaluate`]).
+    /// dsl 0.41.0 §5.1: `slot` evaluated over this world ([`evaluate`]).
     pub fn evaluate(&self, slot: &Slot) -> (Value, Vec<UnresolvedAtom>) {
         evaluate(self.project, &self.world, slot, self.driver.observer())
     }

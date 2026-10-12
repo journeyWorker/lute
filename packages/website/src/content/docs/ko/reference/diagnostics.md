@@ -1394,7 +1394,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 런타임 조건 질의(IR 식의 `evaluate`, 프로젝트 def의 `def`)가 오류로 평가되었습니다. 예: 0으로 나누기, 숫자가 아닌 값의 `int()`.
 
-명세: [dsl 0.40.1 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.1.md)
+명세: [dsl 0.41.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
 
 ### E-RUNTIME-HALTED
 

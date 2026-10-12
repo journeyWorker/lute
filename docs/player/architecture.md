@@ -49,7 +49,7 @@ All types live in `src/model.ts` unless noted; modules import only `model.ts`,
 
 ```ts
 /** Every record the runtime emits, decoded with the generated IR schemas. */
-type IrRecord = Ir.Command            // from @lute-lang/runtime (generated from schemas/lute-ir-0.40.schema.json)
+type IrRecord = Ir.Command            // from @lute-lang/runtime (generated from schemas/lute-ir-0.41.schema.json)
 
 interface CueContext {
   readonly presenter: Presenter

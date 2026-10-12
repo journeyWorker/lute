@@ -121,7 +121,7 @@ export const fromRejected = (rejected: Rejected): Effect.Effect<never, RuntimeRe
     : Effect.fail(make(rejected.message))
 }
 
-/** `E-RUNTIME-EVAL`: a queried condition evaluates to an error (spec 0.40.1 §2). */
+/** `E-RUNTIME-EVAL`: a queried condition evaluates to an error (spec 0.41.0 §5.1). */
 export class EvaluationError extends Schema.TaggedError<EvaluationError>()("EvaluationError", {
   code: Schema.Literal("E-RUNTIME-EVAL"),
   message: Schema.String

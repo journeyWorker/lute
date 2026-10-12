@@ -28,7 +28,20 @@ fn collect<T: schemars::JsonSchema>(name: &str, defs: &mut BTreeMap<String, Valu
     defs.insert(name.to_string(), root);
 }
 
+/// The release line (`major.minor`) the schema files are named for, from the
+/// workspace version: `0.41.0` writes `lute-*-0.41.schema.json`.
+fn release_line() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let mut parts = version.splitn(3, '.');
+    match (parts.next(), parts.next()) {
+        (Some(major), Some(minor)) => format!("{major}.{minor}"),
+        _ => panic!("CARGO_PKG_VERSION {version:?} is not major.minor.patch"),
+    }
+}
+
 fn main() {
+    let line = release_line();
+    let id = |name: &str| format!("https://lute-lang.vercel.app/schemas/lute-{name}-{line}.schema.json");
     let mut defs = BTreeMap::new();
     collect::<Input>("Input", &mut defs);
     collect::<Seed>("Seed", &mut defs);
@@ -50,11 +63,11 @@ fn main() {
     collect::<ClockAt>("ClockAt", &mut defs);
     let mut bindings = schema::<Bindings>();
     bindings.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
-    bindings.as_object_mut().unwrap().insert("$id".into(), json!("https://lute-lang.vercel.app/schemas/lute-player-bindings-0.40.schema.json"));
+    bindings.as_object_mut().unwrap().insert("$id".into(), json!(id("player-bindings")));
     let event = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.40.schema.json",
-        "title": "Lute runtime events (eventVersion 0.40.x)",
+        "$id": id("events"),
+        "title": format!("Lute runtime events (eventVersion {line}.x)"),
         "oneOf": [
             {"$ref":"#/$defs/Input"}, {"$ref":"#/$defs/Seed"},
             {"$ref":"#/$defs/Output"}, {"$ref":"#/$defs/Rejected"},
@@ -68,14 +81,14 @@ fn main() {
         for (key, value) in std::mem::take(found) { snap_defs.insert(key, value); }
     }
     snap.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
-    snap.as_object_mut().unwrap().insert("$id".into(), json!("https://lute-lang.vercel.app/schemas/lute-snapshot-0.40.schema.json"));
+    snap.as_object_mut().unwrap().insert("$id".into(), json!(id("snapshot")));
     snap.as_object_mut().unwrap().insert("$defs".into(), serde_json::to_value(snap_defs).unwrap());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
     fs::create_dir_all(&root).unwrap();
-    write(root.join("lute-events-0.40.schema.json"), event);
-    write(root.join("lute-snapshot-0.40.schema.json"), snap);
-    write(root.join("lute-player-bindings-0.40.schema.json"), bindings);
-    let ir = root.join("lute-ir-0.40.schema.json");
+    write(root.join(format!("lute-events-{line}.schema.json")), event);
+    write(root.join(format!("lute-snapshot-{line}.schema.json")), snap);
+    write(root.join(format!("lute-player-bindings-{line}.schema.json")), bindings);
+    let ir = root.join(format!("lute-ir-{line}.schema.json"));
     let text = fs::read_to_string(&ir).expect("read the IR schema");
     fs::write(&ir, splice_ir_defs(&text, &index_defs())).expect("write the IR schema");
 }

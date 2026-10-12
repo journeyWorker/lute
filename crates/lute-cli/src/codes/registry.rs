@@ -1224,7 +1224,7 @@ pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-RUNTIME-EVAL",
         summary: "A runtime condition query (`evaluate` of an IR expression or `def` of a project def) evaluates to an error, such as division by zero or `int()` of a non-number.",
-        spec: &["dsl 0.40.1 §2"],
+        spec: &["dsl 0.41.0 §5.1"],
     },
     Code {
         code: "E-RUNTIME-HALTED",

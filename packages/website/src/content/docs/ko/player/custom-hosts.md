@@ -95,7 +95,7 @@ non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호
 
 ```json
 {
-  "saveVersion": "0.40",
+  "saveVersion": "0.41",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -104,7 +104,7 @@ non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion: "0.40"`, project fingerprint, `readLines`, settings을 사용합니다. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion: "0.41"`, project fingerprint, `readLines`, settings을 사용합니다. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 ## 롤백과 기록
 

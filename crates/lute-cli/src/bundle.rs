@@ -74,7 +74,7 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
 /// The project index `defs` over the inputs of the project's documents (its
 /// component fragments excluded), given in source-path order.
 ///
-/// dsl 0.40.1 §3, 0.41.0 §4.3: a def two documents see with different
+/// dsl 0.41.0 §4.3: a def two documents see with different
 /// bodies or parameter lists (their `uses:` differ) names no one condition,
 /// so the index omits it. Bodies are compared as lowered `expr` plus
 /// `params`: the same condition spelled differently (`@base` in one, written

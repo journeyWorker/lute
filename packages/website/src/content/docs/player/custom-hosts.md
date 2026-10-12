@@ -97,7 +97,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.40",
+  "saveVersion": "0.41",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -106,7 +106,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion: "0.40"`, the project fingerprint, `readLines`, and settings. Storage is namespaced by the project fingerprint, so unrelated bundles do not share saves. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion: "0.41"`, the project fingerprint, `readLines`, and settings. Storage is namespaced by the project fingerprint, so unrelated bundles do not share saves. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 ## Rollback and history
 

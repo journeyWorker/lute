@@ -1,4 +1,4 @@
-//! dsl 0.40.1 §§2–3, 0.41.0 §5.1: the runtime's read-only condition
+//! dsl 0.41.0 §5.1: the runtime's read-only condition
 //! queries over a bundle `lute compile --all` emits — `evaluate` of an IR
 //! `exprNode` and `def` of a project def the index carries, its parameters
 //! bound to the host's arguments.

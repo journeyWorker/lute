@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-ir-0.40.schema.json
+// Source: schemas/lute-ir-0.41.schema.json
 
 import * as Schema from "effect/Schema";
 

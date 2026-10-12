@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.40.0";
+pub const EVENT_VERSION: &str = "0.41.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.40.0";
+pub const IR_VERSION: &str = "0.41.0";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -416,7 +416,7 @@ pub struct Rejected {
 }
 
 /// The answer of a read-only condition query, `evaluate` or `def`
-/// (dsl 0.40.1 §2).
+/// (dsl 0.41.0 §5.1).
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -841,7 +841,7 @@ impl Runtime {
         Session::resume(&self.project, (*state.world).clone(), &mut f).view(with_facts)
     }
 
-    /// dsl 0.40.1 §2: evaluate an IR `exprNode` over `state`'s world as a
+    /// dsl 0.41.0 §5.1: evaluate an IR `exprNode` over `state`'s world as a
     /// walk's guard is. `E-RUNTIME-INPUT` when `expr` is not an `exprNode`;
     /// `E-RUNTIME-EVAL` when it evaluates to an error.
     pub fn evaluate(&self, state: &State, expr: &Json) -> Result<Evaluation, Rejected> {

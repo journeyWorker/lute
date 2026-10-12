@@ -114,7 +114,7 @@ describe("Program", () => {
     if (Exit.isFailure(unknown)) expect(Cause.hasDies(unknown.cause)).toBe(true)
   }))
 
-  it.effect("evaluates IR expressions and project defs (spec 0.40.1)", () => Effect.gen(function* () {
+  it.effect("evaluates IR expressions and project defs (spec 0.41.0 §5.1)", () => Effect.gen(function* () {
     const bundleDir = yield* compileBundle(evaluateFixtureRoot)
     yield* Effect.gen(function* () {
       const program = yield* programEffect

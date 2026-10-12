@@ -1,6 +1,6 @@
 ---
 title: 플레이어 시작하기
-description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.40 웹 플레이어를 마운트합니다.
+description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.41 웹 플레이어를 마운트합니다.
 ---
 
 이 가이드는 저장소의 `examples/player-demo`를 사용합니다. 자신의 프로젝트에도 같은 단계를 적용할 수 있습니다.
@@ -13,14 +13,14 @@ description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사
 lute compile --all examples/player-demo -o dist/bundle
 ```
 
-번들 디렉터리에는 `project.index.json`과 그 안에서 참조하는 모든 아티팩트 JSON 파일이 있어야 합니다. 0.40 런타임 바인딩 `lute_runtime_wasm_bg.wasm`도 제공합니다.
+번들 디렉터리에는 `project.index.json`과 그 안에서 참조하는 모든 아티팩트 JSON 파일이 있어야 합니다. 0.41 런타임 바인딩 `lute_runtime_wasm_bg.wasm`도 제공합니다.
 
 ## 2. 바인딩 작성과 검사
 
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.40"
+bindingsVersion: "0.41"
 canvas: { width: 1280, height: 720 }
 backgrounds:
   foyer: { image: bg/foyer.png }
@@ -39,10 +39,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.40 패키지를 설치합니다.
+정확한 0.41 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.40.0 @lute-lang/player@0.40.0 @lute-lang/runtime@0.40.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.41.0 @lute-lang/player@0.41.0 @lute-lang/runtime@0.41.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
