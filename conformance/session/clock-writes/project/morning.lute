@@ -1,0 +1,13 @@
+---
+kind: scene
+id: morning
+luteVersion: "0.40.0"
+title: morning
+on: morning
+when: "run.ready"
+priority: 0
+once: false
+---
+## Morning
+::set{run.greeted += 1}
+@narrator{code="0010"}: The engine's write is already here.

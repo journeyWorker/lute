@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use lute_runtime::index::Bundle;
-use lute_runtime::runtime::{Evaluation, Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
+use lute_runtime::runtime::{Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
@@ -44,8 +44,8 @@ pub struct LoadResult {
     rejected: Option<String>,
 }
 
-/// The result of a condition query (`evaluate`, `def`): `Evaluation` JSON
-/// or a rejection.
+/// The result of a query (`evaluate`, `def`, `gate`): its answer JSON
+/// (`Evaluation`, `Gate`) or a rejection.
 #[wasm_bindgen]
 pub struct QueryResult {
     ok: bool,
@@ -166,17 +166,36 @@ impl Program {
     pub fn evaluate(&self, state: &State, expr: &str) -> QueryResult {
         match serde_json::from_str::<Value>(expr) {
             Ok(expr) => QueryResult::of(self.runtime.evaluate(&state.inner, &expr)),
-            Err(error) => QueryResult::of(Err(rejection(
+            Err(error) => QueryResult::of(Err::<(), _>(rejection(
                 "E-RUNTIME-INPUT",
                 format!("invalid exprNode JSON: {error}"),
             ))),
         }
     }
 
-    /// Evaluate the bundle's parameterless def `name` over the state, as
-    /// `Evaluation` JSON; an unknown def or an evaluation error is rejected.
-    pub fn def(&self, state: &State, name: &str) -> QueryResult {
-        QueryResult::of(self.runtime.def(&state.inner, name))
+    /// Evaluate the bundle's def `name` over the state, its parameters bound
+    /// to `args` (a JSON array of scalars, one per declared parameter;
+    /// absent = `[]`), as `Evaluation` JSON; an unknown def, an argument
+    /// fault or an evaluation error is rejected.
+    pub fn def(&self, state: &State, name: &str, args: Option<String>) -> QueryResult {
+        let args = match args.as_deref().map(serde_json::from_str::<Vec<Value>>) {
+            None => Vec::new(),
+            Some(Ok(args)) => args,
+            Some(Err(error)) => {
+                return QueryResult::of(Err::<(), _>(rejection(
+                    "E-RUNTIME-INPUT",
+                    format!("invalid def arguments JSON (an array of scalars): {error}"),
+                )))
+            }
+        };
+        QueryResult::of(self.runtime.def(&state.inner, name, &args))
+    }
+
+    /// Whether a `raiseOccasion` of `occasion` (for `target`) with no writes
+    /// would pass the seam now, as `Gate` JSON; an occasion the bundle does
+    /// not declare is rejected.
+    pub fn gate(&self, state: &State, occasion: &str, target: Option<String>) -> QueryResult {
+        QueryResult::of(self.runtime.gate(&state.inner, occasion, target.as_deref()))
     }
 
     #[wasm_bindgen(getter)]
@@ -263,7 +282,7 @@ impl QueryResult {
 }
 
 impl QueryResult {
-    fn of(result: Result<Evaluation, Rejected>) -> Self {
+    fn of<T: serde::Serialize>(result: Result<T, Rejected>) -> Self {
         match result {
             Ok(value) => Self {
                 ok: true,
@@ -379,6 +398,7 @@ fn canonical<T: serde::Serialize>(value: &T) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lute_runtime::runtime::{Evaluation, Gate};
 
     const INDEX: &str = include_str!("../tests/fixtures/hub-once/project.index.json");
     const ARTIFACTS: &str = include_str!("../tests/fixtures/hub-once/artifacts.json");
@@ -450,10 +470,38 @@ mod tests {
         };
         assert_eq!(code(program.evaluate(&state, "{")), "E-RUNTIME-INPUT");
         assert_eq!(code(program.evaluate(&state, r#"{"nope":1}"#)), "E-RUNTIME-INPUT");
+        assert_eq!(code(program.evaluate(&state, r#"{"param":"n"}"#)), "E-RUNTIME-INPUT");
         assert_eq!(
             code(program.evaluate(&state, r#"{"op":"/","l":{"int":1},"r":{"int":0}}"#)),
             "E-RUNTIME-EVAL"
         );
-        assert_eq!(code(program.def(&state, "missing")), "E-RUNTIME-INPUT");
+        assert_eq!(code(program.def(&state, "missing", None)), "E-RUNTIME-INPUT");
+        assert_eq!(
+            code(program.def(&state, "missing", Some("{".into()))),
+            "E-RUNTIME-INPUT"
+        );
+        assert_eq!(code(program.gate(&state, "missing", None)), "E-RUNTIME-INPUT");
+    }
+
+    #[test]
+    fn gate_of_an_ungated_occasion_is_open() {
+        let program = program();
+        let started = program.begin(r#"{"derive":true}"#);
+        let state = started.state.expect("successful begin has state");
+        let index: Value = serde_json::from_str(INDEX).expect("index JSON");
+        let occasion = index["occasions"]
+            .as_object()
+            .and_then(|o| o.keys().next().cloned())
+            .expect("the fixture declares an occasion");
+        let result = program.gate(&state, &occasion, None);
+        assert!(result.ok, "gate rejected: {:?}", result.rejected);
+        let gate: Gate = serde_json::from_str(&result.value.expect("Gate JSON")).expect("Gate");
+        assert_eq!(
+            gate,
+            Gate {
+                open: true,
+                unresolved: Vec::new()
+            }
+        );
     }
 }

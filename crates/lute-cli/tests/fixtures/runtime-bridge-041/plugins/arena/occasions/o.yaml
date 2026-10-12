@@ -1,0 +1,3 @@
+occasions:
+  duel: { select: first, target: { prefix: foe, entity: foe } }
+  give: { select: first }

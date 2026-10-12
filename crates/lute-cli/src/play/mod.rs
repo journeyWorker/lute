@@ -515,7 +515,9 @@ pub fn run_play(
     // A missed expectation fails the play (exit 1) — unless the walk itself
     // already failed harder (an error, or a usage-level refusal).
     match (&play.outcome, misses.is_empty()) {
-        (Err(h @ (PlayHalt::Error(_) | PlayHalt::Fatal(_))), _) => ExitCode::from(h.exit_code()),
+        (Err(h @ (PlayHalt::Error(_) | PlayHalt::Refused(_) | PlayHalt::Fatal(_))), _) => {
+            ExitCode::from(h.exit_code())
+        }
         (_, false) => ExitCode::from(1),
         (Ok(_), true) => ExitCode::SUCCESS,
         (Err(h), true) => ExitCode::from(h.exit_code()),

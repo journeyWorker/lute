@@ -294,6 +294,35 @@ fn is_expr_node(node: &Json) -> bool {
     }
 }
 
+/// dsl 0.41.0 §5.1: an index def's lowered body with each `param` node
+/// (`{"param": name}`) replaced by the literal node of its argument in
+/// `args` (keyed by parameter name). A `param` node with no argument is left
+/// as it is and decodes to [`Expr::Invalid`]; `param` is admitted only here,
+/// never in a host-supplied `exprNode` ([`is_expr_node`]).
+pub(crate) fn bind_params(node: &Json, args: &std::collections::BTreeMap<&str, Value>) -> Json {
+    match node {
+        Json::Object(obj) => {
+            if let (1, Some(name)) = (obj.len(), obj.get("param").and_then(Json::as_str)) {
+                let literal = match args.get(name) {
+                    Some(Value::Int(n)) => serde_json::json!({ "int": n }),
+                    Some(Value::Double(x)) => serde_json::json!({ "double": x }),
+                    Some(Value::Bool(b)) => serde_json::json!({ "bool": b }),
+                    Some(Value::Str(s)) => serde_json::json!({ "string": s }),
+                    _ => return node.clone(),
+                };
+                return literal;
+            }
+            Json::Object(
+                obj.iter()
+                    .map(|(k, v)| (k.clone(), bind_params(v, args)))
+                    .collect(),
+            )
+        }
+        Json::Array(items) => Json::Array(items.iter().map(|v| bind_params(v, args)).collect()),
+        other => other.clone(),
+    }
+}
+
 /// A CEL slot of the IR: its text (for messages) and its decoded `expr`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Slot {

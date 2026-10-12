@@ -1,0 +1,12 @@
+---
+kind: scene
+id: gift
+title: Gift
+on: give
+once: false
+plugins:
+  arena: {}
+---
+## Gift
+::handOver{item="rope" to="mira"}
+@narrator: Given.

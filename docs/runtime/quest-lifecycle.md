@@ -236,9 +236,9 @@ so the same settle that rearmed it activates it and completes it again at
 once (its rewards and `questComplete` fire again). Read state that starts
 over with the quest instead: a `season.<name>.*` counter under `tier:
 "season:<name>"`, or a counter the engine zeroes no later than the moment
-the rearm condition turns true (in `lute play`, an `engine:` step before the
-`advance:` that reaches it — an advance's own `engine:` writes land only
-where it arrives, after the positions it crosses). The checker does not
+the rearm condition turns true (in `lute play`, an `engine:` write on the
+`advance:` that reaches it, or an earlier step — since 0.41 an advance's own
+`engine:` writes land before the clock moves). The checker does not
 warn about this shape.
 
 **Every position an advance crosses is an evaluation instant** (dsl 0.27.0

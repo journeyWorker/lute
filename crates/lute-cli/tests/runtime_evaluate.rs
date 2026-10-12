@@ -1,6 +1,7 @@
-//! dsl 0.40.1 §§2–3: the runtime's read-only condition queries over a bundle
-//! `lute compile --all` emits — `evaluate` of an IR `exprNode` and `def` of a
-//! project def the index carries.
+//! dsl 0.40.1 §§2–3, 0.41.0 §5.1: the runtime's read-only condition
+//! queries over a bundle `lute compile --all` emits — `evaluate` of an IR
+//! `exprNode` and `def` of a project def the index carries, its parameters
+//! bound to the host's arguments.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -61,8 +62,12 @@ fn value(runtime: &Runtime, state: &State, cel: &str) -> Value {
 }
 
 fn def(runtime: &Runtime, state: &State, name: &str) -> Value {
+    def_with(runtime, state, name, &[])
+}
+
+fn def_with(runtime: &Runtime, state: &State, name: &str, args: &[Json]) -> Value {
     runtime
-        .def(state, name)
+        .def(state, name, args)
         .unwrap_or_else(|r| panic!("{name}: {} {}", r.code, r.message))
         .value
 }
@@ -77,7 +82,17 @@ fn the_index_carries_project_defs_expanded_with_params_and_host() {
     let defs = bundle.index["defs"].as_object().expect("index defs");
     assert_eq!(
         defs.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["atLeast", "atLeastTwice", "hallOpen", "perCount", "ready", "readyTwice", "score"]
+        [
+            "atLeast",
+            "atLeastTwice",
+            "flagIs",
+            "hallOpen",
+            "owns",
+            "perCount",
+            "ready",
+            "readyTwice",
+            "score"
+        ]
     );
     assert_eq!(
         defs["readyTwice"]["cel"],
@@ -136,6 +151,58 @@ fn evaluate_reads_state_facts_visited_and_defs() {
     assert_eq!(def(&runtime, &start, "hallOpen"), Value::Bool(true));
 }
 
+/// 0.41.0 §5.1 rules 7–8: `def` binds each `param` node to the positional
+/// argument of the same index — through nested `@def`s and inside a fact
+/// query's argument list — and refuses an arity mismatch or an argument
+/// that does not fit its parameter's type (`E-RUNTIME-INPUT`).
+#[test]
+fn def_binds_arguments_and_refuses_misfits() {
+    let runtime = Runtime::load(compiled_bundle("evaluate-args")).unwrap();
+    let seed = Seed {
+        facts: vec!["owned(key)".into()],
+        ..Seed::default()
+    };
+    let (state, _) = runtime.begin(seed).unwrap();
+    assert_eq!(def_with(&runtime, &state, "atLeast", &[json!(0)]), Value::Bool(true));
+    assert_eq!(def_with(&runtime, &state, "atLeast", &[json!(1)]), Value::Bool(false));
+    assert_eq!(def_with(&runtime, &state, "atLeastTwice", &[json!(0)]), Value::Bool(true));
+    assert_eq!(def_with(&runtime, &state, "owns", &[json!("key")]), Value::Bool(true));
+    assert_eq!(def_with(&runtime, &state, "owns", &[json!("map")]), Value::Bool(false));
+    assert_eq!(def_with(&runtime, &state, "flagIs", &[json!(false)]), Value::Bool(true));
+
+    for (name, args) in [
+        ("atLeast", vec![]),
+        ("atLeast", vec![json!(1), json!(2)]),
+        ("ready", vec![json!(1)]),
+        ("atLeast", vec![json!(1.5)]),
+        ("atLeast", vec![json!("1")]),
+        ("atLeast", vec![json!(1_i64 << 54)]),
+        ("flagIs", vec![json!("true")]),
+        ("owns", vec![json!(1)]),
+        ("owns", vec![json!("sword")]),
+    ] {
+        let r = runtime.def(&state, name, &args).unwrap_err();
+        assert_eq!(r.code, "E-RUNTIME-INPUT", "{name}({args:?}): {}", r.message);
+    }
+    let r = runtime.def(&state, "owns", &[json!("sword")]).unwrap_err();
+    assert!(r.message.contains("not a member of `item`"), "{}", r.message);
+}
+
+/// 0.41.0 §5.1 rule 5: a `param` node is admitted only in an index def's
+/// body — never in a host-supplied `exprNode`, however deep.
+#[test]
+fn evaluate_refuses_a_param_node() {
+    let runtime = Runtime::load(compiled_bundle("evaluate-param")).unwrap();
+    let (state, _) = runtime.begin(Seed::default()).unwrap();
+    for node in [
+        json!({"param": "n"}),
+        json!({"op": ">=", "l": {"path": "run.count"}, "r": {"param": "n"}}),
+    ] {
+        let r = runtime.evaluate(&state, &node).unwrap_err();
+        assert_eq!(r.code, "E-RUNTIME-INPUT", "{node}: {}", r.message);
+    }
+}
+
 #[test]
 fn unknowns_errors_and_bad_queries() {
     let runtime = Runtime::load(compiled_bundle("evaluate-errors")).unwrap();
@@ -150,16 +217,16 @@ fn unknowns_errors_and_bad_queries() {
         }
     );
 
-    let error = runtime.def(&state, "perCount").unwrap_err();
+    let error = runtime.def(&state, "perCount", &[]).unwrap_err();
     assert_eq!(error.code, "E-RUNTIME-EVAL", "{}", error.message);
     assert!(error.message.contains("division by zero"), "{}", error.message);
     let error = runtime.evaluate(&state, &expr("int('x')")).unwrap_err();
     assert_eq!(error.code, "E-RUNTIME-EVAL", "{}", error.message);
 
-    // A def with params is not a condition on its own; a def the index
-    // leaves out and an unknown name are not one.
+    // A def with params needs its arguments; a def the index leaves out and
+    // an unknown name are not one.
     for name in ["atLeast", "anyOf", "missing"] {
-        let r = runtime.def(&state, name).unwrap_err();
+        let r = runtime.def(&state, name, &[]).unwrap_err();
         assert_eq!(r.code, "E-RUNTIME-INPUT", "{name}: {}", r.message);
     }
     // Not exprNodes: a non-array `args`, two variants' keys on one node, a
@@ -197,6 +264,6 @@ fn defs_documents_see_differently_are_exported_by_expanded_body_and_params() {
     let (state, _) = runtime.begin(Seed::default()).unwrap();
     assert_eq!(def(&runtime, &state, "gated"), Value::Bool(false));
     for name in ["split", "within"] {
-        assert_eq!(runtime.def(&state, name).unwrap_err().code, "E-RUNTIME-INPUT");
+        assert_eq!(runtime.def(&state, name, &[]).unwrap_err().code, "E-RUNTIME-INPUT");
     }
 }

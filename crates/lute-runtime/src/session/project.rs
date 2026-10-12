@@ -114,8 +114,6 @@ pub(crate) struct Conds {
     pub(crate) terminal: Option<Arc<Slot>>,
     pub(crate) gates: BTreeMap<String, Arc<Slot>>,
     pub(crate) beats: BTreeMap<(String, String), BeatConds>,
-    /// dsl 0.40.1 §3: the index's parameterless project defs, by name.
-    pub(crate) defs: BTreeMap<String, Arc<Slot>>,
 }
 
 #[derive(Default)]
@@ -161,16 +159,6 @@ impl Conds {
                 .filter_map(|g| Some((g.occasion.clone(), typed(&g.raised_when)?)))
                 .collect(),
             beats,
-            // 0.41.0 §4.3: a def with parameters needs its arguments, which
-            // `def` does not take yet; only the parameterless ones answer.
-            defs: index
-                .defs
-                .iter()
-                .filter(|(_, def)| def.params.is_empty())
-                .filter_map(|(name, def)| {
-                    Some((name.clone(), serde_json::to_value(def).ok().and_then(|j| Slot::of(&j))?))
-                })
-                .collect(),
         }
     }
 

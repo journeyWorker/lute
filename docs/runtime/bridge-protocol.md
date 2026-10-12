@@ -117,6 +117,27 @@ lands in one of the state tiers described in
 4. Ignore unknown fields on the record (forward compatibility, per the
    [execution model](./execution-model.md) version policy).
 
+### Through the runtime (Event 0.41)
+
+A call whose `bridgeResult` effects land on paths content reads suspends the
+walk with `awaitBridge`: `attrs` is the record's `fields` as executed
+(`occasion.target` bound to the raise's member, `{}` when none) and
+`results` maps each result field content reads to its declared type (index
+`bridgeResults`). The host answers with `bridgeResult { request, fields,
+writes? }`; `fields` are validated against `results`
+(`E-RUNTIME-BRIDGE-SHAPE`), and the optional `writes` — `hostWrite`'s
+`state` / `facts` / `retract` / `accept` — resolve when the answer arrives
+(an unresolved write, or one to the clock's `day` / `slot` path, is
+`E-RUNTIME-INPUT`) and apply at the call after its declared effects, each
+recorded with `effectOf: <tag>` and `by: "host"`, so later lines of the same
+presentation read them. A replay re-applies them; a suspended snapshot
+carries them in `continuation.answers[*].writes`.
+
+A plugin call that does not block (no result content reads) is write-free:
+its `plugin` record (with `attrs`) is data for the host, which writes with
+`hostWrite` at the next `idle`. A host action whose effect later lines must
+see is declared as a bridge.
+
 ## Interactive services and return to a script
 
 A host service may keep a conversation, minigame, or other interaction active

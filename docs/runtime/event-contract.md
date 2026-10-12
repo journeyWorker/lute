@@ -68,8 +68,8 @@ The eight inputs are:
 | `raiseOccasion` | `idle`; `ended` only for an `outsideRun` occasion | Apply optional writes, bind payload, judge the seam and candidates, present selected beats, settle quests. |
 | `choose` | Matching `awaitChoice` request | Resume with an open option. |
 | `timeout` | Matching timed `awaitChoice` request | Resume exactly as choosing that menu's `default` option. |
-| `bridgeResult` | Matching `awaitBridge` request | Apply result-dependent effects and resume. |
-| `advanceClock` | `idle` | Apply optional writes, move the clock, settle and raise the clock's occasions; optional `pick` controls that raise. |
+| `bridgeResult` | Matching `awaitBridge` request | Apply result-dependent effects, then the optional `writes` (`state`, `facts`, `retract`, `accept`, recorded `effectOf` the tag with `by: "host"`), and resume. |
+| `advanceClock` | `idle` | Apply optional writes and settle (if `terminal` then holds, stop: the clock stays, await `ended`), then move the clock, settling and raising the clock's occasions; optional `pick` controls the slot raise. The `clock` event follows every event of the move. |
 | `hostWrite` | `idle` | Apply engine-owned writes and settle. |
 | `worldEvent` | `idle` | Raise a declared world event to quest handlers. |
 | `newRun` | `idle`, `ended` | Reset run-tier state and quests, apply queued `nextRun` accepts and optional writes, settle. |
@@ -113,7 +113,7 @@ Each of the following examples is an `Input`:
 ```
 
 ```json
-{"type": "bridgeResult", "request": 4, "fields": {"won": true, "score": 12}}
+{"type": "bridgeResult", "request": 4, "fields": {"won": true, "score": 12}, "writes": {"state": [{"path": "user.wellDepth", "value": 3}], "facts": ["pulled(rope)"]}}
 ```
 
 ```json
@@ -170,7 +170,8 @@ implementation-only report:
 | `terminal()` | `boolean`. |
 | `view(withFacts)` | `WorldView`, `{ state: Record<string, Value>, facts?: string[], quests: Record<string, string>, clock?: ClockView }`; `facts` is included only when requested, and `clock` is nullable when no position exists. |
 | `evaluate(expr)` (0.40.1) | `Evaluation` `{ value: Value, unresolved?: string[] }` or a rejection. `expr` is an IR `exprNode` — the `expr` of any `{cel, expr}` pair the IR carries (an objective's `visibleWhen.expr`, a beat's `when.expr`). |
-| `def(name)` (0.40.1) | `Evaluation` or a rejection, for a parameterless project def the bundle carries in `project.index.json` `defs`. |
+| `def(name, args?)` (0.41) | `Evaluation` or a rejection, for a project def the bundle carries in `project.index.json` `defs`; `args` is one JSON scalar per declared parameter (absent = `[]`), bound to its `param` nodes. Arity or type misfits (an `enum`/closed `domain`/`entity` argument must be a member) are `E-RUNTIME-INPUT`. |
+| `gate(occasion, target?)` (0.41) | `Gate` `{ open: bool, unresolved?: string[] }`: whether a `raiseOccasion` with no writes would pass the seam now — `raisedWhen` false, or `terminal` holding for a non-`outsideRun` occasion, is `{open: false}`; an undecided seam lists its unresolved reads. An undeclared occasion is `E-RUNTIME-INPUT`. |
 
 `evaluate` and `def` (spec 0.40.1) evaluate a condition over the state
 exactly as a walk's guard does: the effective state (written, seeded, then
@@ -183,8 +184,9 @@ unset state path, an undetermined derived fact, `validAt(...)`). An
 await is evaluated over the world from before its input, as `view` is. The
 value is never `error`: an evaluation error (division by zero, `int()` of a
 non-number) is the rejection `E-RUNTIME-EVAL`. An `expr` with a node outside
-the `exprNode` schema, and a `def` name the bundle does not carry (unknown, or
-a def that takes params), is `E-RUNTIME-INPUT`. Neither query changes state.
+the `exprNode` schema (a `param` node is admitted only in an index def), a
+`def` name the bundle does not carry, and `def` arguments that miss the
+declared parameters are `E-RUNTIME-INPUT`. No query changes state.
 
 `Candidate.verdict` is a tagged `Verdict`: `{ verdict: "eligible" }`,
 `{ verdict: "ineligible", premise }`, or `{ verdict: "unknown", why }`.
@@ -218,7 +220,7 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 | Await type | Fields | What the host can send next |
 |---|---|---|
 | `awaitChoice` | `request`, `menu` | `choose` with this request and an open option. |
-| `awaitBridge` | `request`, `tag`, `document`, `position`, `fields` (field → declared type) | Perform the bridge call outside the runtime, then send `bridgeResult`. |
+| `awaitBridge` | `request`, `tag`, `document`, `position`, `attrs` (the call's IR `fields`, `occasion.target` bound; `{}` when none), `results` (each result field content reads → its declared type from index `bridgeResults`) | Perform the bridge call outside the runtime, then send `bridgeResult` (optionally with `writes`). Non-blocking plugin records are write-free: answer them with `hostWrite` at the next `idle`, or declare the call a bridge. |
 | `idle` | — | An idle input from the input table. |
 | `ended` | `reason: "terminal"` | `newRun` or an `outsideRun` occasion. |
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |
@@ -256,14 +258,22 @@ human refusal text. Codes distinguish:
 - `E-RUNTIME-TIMEOUT`: `timeout` was sent while the pending await is not a
 timed choice (a mismatched request remains `E-RUNTIME-REQUEST`).
 - `E-RUNTIME-OPTION`: a missing or non-open choice option.
-- `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or wrong value type.
+- `E-RUNTIME-BRIDGE-SHAPE`: a missing field content reads, or a value that does
+  not fit its `results` type (`int` an integer, `double` a number, `bool` a
+  boolean, `enum` a member string, otherwise a string).
 - `E-RUNTIME-INPUT`: malformed input/seed, unknown path, relation, quest,
   occasion, event or beat, or a value incompatible with its declared type;
-  for `evaluate`/`def`, a malformed `exprNode` or a def the bundle lacks.
+  for `evaluate`/`def`, a malformed `exprNode` (a `param` node included), a
+  def the bundle lacks, or a `def` argument fault; `gate` of an undeclared
+  occasion; `bridgeResult.writes` that do not resolve or write the clock's
+  `day`/`slot` path.
 - `E-RUNTIME-EVAL` (0.40.1): an `evaluate`/`def` condition evaluates to an
   error.
-- `E-OCCASION-GATE` and existing pick/write/clock refusals: the same refusals
-  as play, including a false `raisedWhen` or a held terminal condition.
+- `E-OCCASION-GATE` (0.41): a `raiseOccasion` whose `raisedWhen` is false, or
+  raised while `terminal` holds and not `outsideRun`, is rejected with the
+  state unchanged (its own writes and payload included); the message is play's
+  refusal text. An undecided gate still halts `incomplete`. Existing
+  pick/write/clock refusals keep play's refusals.
 - `E-RUNTIME-HALTED`: any input after a halt.
 
 A halt ends the state lineage. `incomplete` means the walk needed a value no

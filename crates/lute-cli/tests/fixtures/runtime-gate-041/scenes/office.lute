@@ -1,0 +1,11 @@
+---
+kind: scene
+id: office
+on: enter
+target: room.office
+once: false
+---
+
+## office
+
+@narrator: The office door gives.

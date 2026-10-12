@@ -29,6 +29,27 @@ grant settlement; the runtime returns those effects as data.
 
 TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
  
+## 0.41 runtime additions
+
+- **Gate refusals are rejections.** A `raiseOccasion` whose `raisedWhen` is
+  false, or raised after `terminal` holds when the occasion is not
+  `outsideRun`, is rejected `E-OCCASION-GATE` with the state unchanged (the
+  input's own writes and payload included); the message is `lute play`'s
+  refusal text. An undecided gate still halts `incomplete`. The read-only
+  `gate(occasion, target?)` query answers `{ open, unresolved? }` beforehand.
+- **`def(name, args)`** evaluates an index def with parameters: one JSON
+  scalar per declared parameter, bound to its `param` nodes; arity and type
+  misfits are `E-RUNTIME-INPUT`. `evaluate` never admits a `param` node.
+- **`awaitBridge`** carries `attrs` (the call's attributes, `occasion.target`
+  bound) and `results` (each result field content reads with its declared
+  type); answers are validated against those types. `bridgeResult` may carry
+  `writes` (as `hostWrite`'s), applied at the call after its declared effects,
+  so later lines of the same presentation read them. Every `plugin` record
+  carries `attrs`; non-blocking plugin records are write-free.
+- **`advanceClock { writes }`** applies and settles its writes before the
+  clock moves (if `terminal` then holds, the clock stays and the await is
+  `ended`); the move's raises read them, and the `clock` event comes last.
+
 ## 0.40 runtime additions
 
 The 0.40 contract carries the persistent presentation `stage` (background,

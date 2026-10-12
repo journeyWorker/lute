@@ -963,7 +963,9 @@ when: "clock.weekday < 5"
   `terminal: "run.fate == 'taken'"`을 선언할 수 있습니다: 모든 비트는 `!terminal` 아래에서 판정되고, 그것이
   성립하면 플레이는 `── end: terminal — …`로 끝나며(`--json` `"end": "terminal"`), 그 뒤의 `occasion:` /
   `advance:` 스텝은 `newRun` 전까지 `E-OCCASION-GATE`입니다. `occasion:` 스텝은 발생 전에 적용되는
-  `engine:` 쓰기를 가질 수 있습니다.
+  `engine:` 쓰기를 가질 수 있습니다. 0.41: `advance:` 스텝의 `engine:` 쓰기는 시계가 움직이기 전에
+  적용되므로 그 발생들이 읽습니다. 런타임에서 거부된 발생은 상태를 바꾸지 않는 거부 `E-OCCASION-GATE`이며,
+  `gate(occasion, target?)`로 미리 물을 수 있습니다.
 - 0.29.0: 의도적으로 런을 넘어 남는 결말(로그라이크의 영구 결말)은 긴 형식
   `terminal: { when: "user.crowned", persists: true }`로 씁니다: `W-TERMINAL-PERSISTENT`는 나오지 않고,
   `lute play`는 `newRun`을 권하는 대신 게임이 영영 끝났다고 말하며, IR은 `terminalPersists: true`를

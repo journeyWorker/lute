@@ -1145,10 +1145,11 @@ clock:
 `done="run.leg >= 3" by="clock.index >= 2"` — 3일째 전에 세 번째 구간을 걷는 것.
 
 **같은 순간의 엔진 쓰기.** `advance:` 스텝은 `engine:`을 함께 가질 수 있습니다 — 시계가 움직일 때 엔진이
-쓰는 것, 여기서는 일행이 밤새 끝낸 구간입니다. 쓰기는 시계가 도착하는 곳에 적용됩니다: advance가 가는 길에
-발생시키는 모든 `dayEnd` / `dayStart` 뒤 — 그래서 그날 저녁의 `dayEnd`는 여전히 자신이 닫는 날을 읽습니다 —
-그리고 마지막 정착과 발생 전입니다. 마지막 이동과 쓰기 뒤에 정착이 한 번 따르고, `done`이 `by`보다 먼저
-판정되므로, 쓰기가 완료시키는 목표는 이동의 기한이 지나는 바로 그 정착에서 완료됩니다:
+쓰는 것, 여기서는 일행이 밤새 끝낸 구간입니다. 0.41부터 쓰기는 시계가 움직이기 전에 먼저 적용됩니다: 쓰기가
+적용되고 퀘스트가 정착한 뒤 — `terminal`이 그때 성립하면 시계는 그 자리에 머뭅니다 — advance가 시계를 움직이므로,
+가는 길의 모든 `dayEnd` / `dayStart`와 마지막 발생이 그 쓰기를 읽습니다. 이동의 발생 뒤에 적용되어야 하는 쓰기는
+뒤따르는 `engine:` 스텝에 둡니다. `done`이 `by`보다 먼저 판정되므로, 쓰기가 완료시키는 목표는 이동의 기한이
+지나기 전에 완료됩니다:
 
 ```yaml
 steps:
@@ -1174,15 +1175,15 @@ expect:
   → road.morning
 @narrator: Day 2, leg 0.
 ── step 2 · advance day: day 2 → day 3 ──────────────
+  set run.leg = 3
+  trek.leg3 done
+  quest trek -> complete
 ── step 2 · day 2 · dusk ──────────────
   ✓ road.camp [scene, priority 0]
   → road.camp
 @narrator: Camp on day 2.
 ── step 2 · day 3 ──────────────
   set run.day = 3
-  set run.leg = 3
-  trek.leg3 done
-  quest trek -> complete
 ── step 2 · morning ──────────────
   ✓ road.morning [scene, priority 0]
   → road.morning
@@ -1191,11 +1192,11 @@ expect:
 ── expect: every expectation held ──────────────
 ```
 
-시계가 `dayStart`를 선언하지 않았으므로 자정을 넘는 이동은 `morning` 발생 전에 자신의 위치 헤더
-— `── step 2 · day 3`, 이동의 쓰기, 엔진의 쓰기, 정착과 함께 — 아래에 출력되고, 아침 줄은 이미 구간 3을
-읽습니다. 같은 쓰기를 advance 뒤의 별도 `engine:` 스텝으로 쓰면 정착 하나만큼 늦습니다: 3일째로의 이동이
+엔진의 쓰기와 그 정착이 먼저, `dusk` 발생 전에 스텝 헤더 아래에 출력됩니다. 시계가 `dayStart`를 선언하지
+않았으므로 자정을 넘는 이동은 `morning` 발생 전에 자신의 위치 헤더(`── step 2 · day 3`) 아래에 출력되고,
+스텝의 모든 발생이 이미 구간 3을 읽습니다. 같은 쓰기를 advance 뒤의 별도 `engine:` 스텝으로 쓰면 정착 하나만큼 늦습니다: 3일째로의 이동이
 먼저 퀘스트를 실패시킵니다(`trek.leg3 failed (by)`). `--json`에서 이 쓰기는 advance 자신의 `writes`에서
-마지막 이동의 쓰기 뒤에 오고, 그 정착이 `quests`입니다. 쓰기는 `engine:` 스텝의
+이동의 쓰기보다 먼저 오고, 그 정착은 `quests`에 있습니다. 쓰기는 `engine:` 스텝의
 규칙을 따르지만, `advance:` 옆에서 시계 자신의 `day`나 `slot` 경로를 쓰는 것은 사용법 오류(종료 코드 2)입니다:
 `` step 1: `engine:` writes `run.day`, which the `advance:` beside it moves — write the clock in a step of its own, or let `advance:` move it ``.
 
@@ -1287,7 +1288,7 @@ advance의 `by`는 `"to night"`이나 `"to Fri morning"`입니다. 시계가 선
 멈춥니다. 마지막 위치에 정확히 도착하는 `advance:`는 평범한 전진입니다. 그 너머로 가려는 전진은 마지막
 위치까지만 가서 마지막 날의 `dayEnd`를 한 번 발생시키고 `slot` 계기는 발생시키지 않으며, 머리글에
 `· the clock ends (its last position)`이 붙습니다(`--json`: `advance.ended: true`). 그 스텝의 `engine:`
-쓰기는 그 `dayEnd` 뒤에 적용됩니다. 그 뒤의 `advance:` — 또는 `engine:` 스텝이 날을 옮겨 끝을 지난 곳에서
+쓰기는 모든 advance에서처럼 이동 전에 적용됩니다. 그 뒤의 `advance:` — 또는 `engine:` 스텝이 날을 옮겨 끝을 지난 곳에서
 시작하는 전진 — 은 `newRun`이 시계를 다시 시작하기 전까지 `E-CLOCK-END`로 플레이를 멈춥니다(종료 코드 1,
 `lute test`에서도 같음):
 

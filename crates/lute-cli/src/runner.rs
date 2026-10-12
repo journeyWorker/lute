@@ -1140,7 +1140,10 @@ impl Driver for RunDriver {
 
     fn bridge(&mut self, call: &BridgeCall<'_>) -> BridgeReply {
         match self.bridges.next(call.tag) {
-            Some(a) => BridgeReply::Answer(a),
+            Some(fields) => BridgeReply::Answer {
+                fields,
+                writes: Default::default(),
+            },
             None => BridgeReply::Unanswered,
         }
     }

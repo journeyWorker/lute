@@ -204,13 +204,6 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
         evaluate(self.project, &self.world, slot, self.driver.observer())
     }
 
-    /// dsl 0.40.1 §3: the project def `name` evaluated over this world;
-    /// `None` when the index carries no parameterless def by that name.
-    pub fn def(&self, name: &str) -> Option<(Value, Vec<UnresolvedAtom>)> {
-        let slot = self.project.conds.defs.get(name)?;
-        Some(self.evaluate(slot))
-    }
-
     /// Raise `occasion` (for `target`): its candidates' verdicts, what it
     /// presents (`pick` on a `select: all` occasion; `choose` over the
     /// script's), every quest settle after each presentation, and the

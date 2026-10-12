@@ -70,6 +70,10 @@
                 },
                 "tag": {
                   "type": "string"
+                },
+                "writes": {
+                  "$ref": "#/$defs/WritesInput",
+                  "description": "dsl 0.41.0 §5.3: the host's writes with the answer, re-applied\non replay."
                 }
               },
               "required": [
@@ -112,15 +116,15 @@
         },
         {
           "additionalProperties": false,
+          "description": "dsl 0.41.0 §5.5: a plugin call suspended for its bridge results.",
           "properties": {
+            "attrs": {
+              "additionalProperties": true,
+              "description": "The call's attributes as the runtime executes it: the IR\ncommand's `fields`, `occasion.target` bound to the raise's\nmember (`{}` when none).",
+              "type": "object"
+            },
             "document": {
               "type": "string"
-            },
-            "fields": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
             },
             "position": {
               "type": "string"
@@ -128,6 +132,13 @@
             "request": {
               "minimum": 0,
               "type": "integer"
+            },
+            "results": {
+              "additionalProperties": {
+                "$ref": "#/$defs/fieldType"
+              },
+              "description": "Each result field content reads, with its declared type.",
+              "type": "object"
             },
             "tag": {
               "type": "string"
@@ -143,7 +154,8 @@
             "tag",
             "document",
             "position",
-            "fields"
+            "attrs",
+            "results"
           ],
           "type": "object"
         },
@@ -418,6 +430,7 @@
         },
         {
           "additionalProperties": false,
+          "description": "dsl 0.41.0 §5.3: the answer to the pending `awaitBridge` — the\nresult `fields` content reads, and the host's own `writes`, applied\nat the call after its declared effects.",
           "properties": {
             "fields": {
               "additionalProperties": true,
@@ -430,6 +443,9 @@
             "type": {
               "const": "bridgeResult",
               "type": "string"
+            },
+            "writes": {
+              "$ref": "#/$defs/WritesInput"
             }
           },
           "required": [
@@ -1105,6 +1121,191 @@
         }
       },
       "type": "object"
+    },
+    "fieldType": {
+      "description": "A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{\"enum\": [...]}`, `{\"list\": T}`, `{\"record\": [fields]}`, `{\"map\": {\"key\": T, \"value\": T}}`, `{\"domain\": name}`, `{\"entity\": kind}`, `{\"enumFromOption\": option}`, `{\"providerRef\": name}`, `{\"slotId\": {\"namespace\": ns}}`, `{\"assetKind\": kind}`).",
+      "oneOf": [
+        {
+          "enum": [
+            "bool",
+            "int",
+            "double",
+            "string",
+            "narrativeTime"
+          ]
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "enum": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "enum"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "list": {
+              "$ref": "#/$defs/fieldType"
+            }
+          },
+          "required": [
+            "list"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "record": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "default": {
+                    "description": "the field's default literal (any JSON value but null)."
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "shape": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "$ref": "#/$defs/fieldType"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type",
+                  "required"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "record"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "map": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/fieldType"
+                },
+                "value": {
+                  "$ref": "#/$defs/fieldType"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "map"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "enumFromOption": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "enumFromOption"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "providerRef": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "providerRef"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "domain": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "slotId": {
+              "additionalProperties": false,
+              "properties": {
+                "namespace": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "namespace"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "slotId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assetKind": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "assetKind"
+          ],
+          "type": "object"
+        }
+      ]
     }
   },
   "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.40.schema.json",

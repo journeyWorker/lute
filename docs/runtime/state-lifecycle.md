@@ -245,7 +245,10 @@ walks to each day's last slot to raise `dayEnd`; `advance: day` raises
 `dayEnd` where the clock stands. The transcript prints each midnight raise
 under the step (`── step 4 · day 1 (Mon) night · dayEnd`), and `--json`
 lists them under `advance.days`. An `advance:` step's `engine:` writes land
-where the clock arrives, after its midnight stops. Its `expect.presented`
+first, before the clock moves (dsl 0.41.0 §5.4): they settle, then — unless
+`terminal` now holds, when the clock stays — the move's raises read them.
+Writes that must land after the raises go in a following `engine:` step.
+Its `expect.presented`
 lists what every raise of the step presented (each `dayEnd` / `dayStart`,
 then the `slot` raise), in order; `winner`, `offered` and `notOffered`
 judge the `slot` raise. An `occasion:` step that raises the clock's own
@@ -288,7 +291,7 @@ position: an advance landing exactly there is an ordinary advance; one
 whose destination lies past it walks to the last position — raising
 `dayEnd` / `dayStart` at every midnight it crosses on the way, as always —
 then raises the last day's `dayEnd` (never `raise.slot`) and **ends** the
-clock; the step's `engine:` writes land after that `dayEnd`. Every later
+clock. Every later
 advance — or one starting past the last position, because an `engine:`
 write moved the day on — is a usage error, `E-CLOCK-END` (`lute play` /
 `lute test` exit 1). A run start (`newRun`) resets the day / slot paths

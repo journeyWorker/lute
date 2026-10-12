@@ -29,6 +29,21 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --all` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
  
+## 0.41 런타임 추가 사항
+
+- **관문 거절은 거부입니다.** `raisedWhen`이 거짓인 `raiseOccasion`, 또는 `terminal`이 성립한 뒤
+  `outsideRun`이 아닌 occasion의 발생은 상태를 바꾸지 않고(입력 자신의 쓰기와 payload 포함)
+  `E-OCCASION-GATE`로 거부되며, 메시지는 `lute play`의 거절 문구입니다. 판정할 수 없는 관문은 여전히
+  `incomplete`로 정지합니다. 읽기 전용 질의 `gate(occasion, target?)`가 미리 `{ open, unresolved? }`를 답합니다.
+- **`def(name, args)`**는 매개변수가 있는 인덱스 def를 평가합니다: 선언된 매개변수마다 JSON 스칼라 하나가
+  `param` 노드에 바인딩되며, 개수·타입 불일치는 `E-RUNTIME-INPUT`입니다. `evaluate`는 `param` 노드를 받지 않습니다.
+- **`awaitBridge`**는 `attrs`(호출의 속성, `occasion.target` 바인딩)와 `results`(콘텐츠가 읽는 결과 필드와
+  선언 타입)를 가지며, 답은 그 타입으로 검증됩니다. `bridgeResult`는 `hostWrite`와 같은 `writes`를 가질 수 있고,
+  호출의 선언된 효과 뒤에 적용되어 같은 프레젠테이션의 이후 줄이 읽습니다. 모든 `plugin` 레코드는 `attrs`를
+  가지며, 차단하지 않는 plugin 레코드에는 쓰기가 없습니다.
+- **`advanceClock { writes }`**는 시계가 움직이기 전에 쓰기를 적용하고 정착합니다(그때 `terminal`이 성립하면
+  시계는 머물고 await는 `ended`). 이동의 발생들이 그 쓰기를 읽고, `clock` 이벤트는 마지막에 옵니다.
+
 ## 0.40 런타임 추가 사항
 
 0.40 계약은 persistent presentation `stage`(background, music, actor, CG,

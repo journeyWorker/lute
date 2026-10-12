@@ -15,3 +15,5 @@ defs:
   atLeastTwice: { type: bool, params: { m: int }, cel: "@atLeast(m) && run.count >= m * 2" }
   anyOf: { type: bool, params: { counts: { list: int } }, cel: "run.count in counts" }
   hallOpen: { type: bool, host: true, cel: "!user.flag" }
+  owns: { type: bool, host: true, params: { it: { entity: item } }, cel: "holds('owned', [it])" }
+  flagIs: { type: bool, host: true, params: { want: bool }, cel: "user.flag == want" }

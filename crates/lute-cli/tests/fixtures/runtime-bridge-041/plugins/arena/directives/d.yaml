@@ -1,0 +1,20 @@
+directives:
+  - name: battle
+    layer: bridge
+    attrs:
+      - { name: foe, required: true, type: { entity: foe } }
+      - { name: mode, required: true, type: { enum: [ambush, open] } }
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.battle } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [battle, { fromAttr: { name: resultKey, slotType: localId } }], shape: battleResult }
+    effects:
+      writes:
+        - { scope: scene, path: [battle, { fromAttr: { name: resultKey } }, outcome], value: { fromBridgeResult: outcome } }
+        - { scope: scene, path: [battle, { fromAttr: { name: resultKey } }, hpFloor], value: { fromBridgeResult: hpFloor } }
+    bridge: { service: arena, operation: battle }
+  - name: handOver
+    attrs:
+      - { name: item, required: true, type: string }
+      - { name: to, required: true, type: { entity: foe } }

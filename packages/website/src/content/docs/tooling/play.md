@@ -832,7 +832,7 @@ clock:
 
 `road.morning` answers `morning` (`once: day`, `Day {{run.day}}, leg {{run.leg}}.`), `road.camp` answers `dusk` (`Camp on day {{run.day}}.`), and the quest `trek` (`start="true"`) has one objective, `done="run.leg >= 3" by="clock.index >= 2"` — the third leg walked before day 3.
 
-**The engine's writes of the same moment.** An `advance:` step may carry `engine:` — what the engine writes as the clock moves, here the leg the party finished overnight. The writes land where the clock arrives: after every `dayEnd` / `dayStart` the advance raises on the way — so that evening's `dayEnd` still reads the day it closes — and before the final settle and raise. One settle follows the last move and the writes together, and since `done` is judged before `by`, an objective the write completes is done in the settle where the move's deadline passes:
+**The engine's writes of the same moment.** An `advance:` step may carry `engine:` — what the engine writes as the clock moves, here the leg the party finished overnight. Since 0.41 the writes land first, before the clock moves: they are applied and the quests settle, then (unless `terminal` now holds, when the clock stays where it is) the advance moves the clock, so every `dayEnd` / `dayStart` and the final raise read them. Writes that must land after the move's raises go in a following `engine:` step. Since `done` is judged before `by`, an objective the write completes is done before the move's deadline passes:
 
 ```yaml
 steps:
@@ -858,15 +858,15 @@ expect:
   → road.morning
 @narrator: Day 2, leg 0.
 ── step 2 · advance day: day 2 → day 3 ──────────────
+  set run.leg = 3
+  trek.leg3 done
+  quest trek -> complete
 ── step 2 · day 2 · dusk ──────────────
   ✓ road.camp [scene, priority 0]
   → road.camp
 @narrator: Camp on day 2.
 ── step 2 · day 3 ──────────────
   set run.day = 3
-  set run.leg = 3
-  trek.leg3 done
-  quest trek -> complete
 ── step 2 · morning ──────────────
   ✓ road.morning [scene, priority 0]
   → road.morning
@@ -875,7 +875,7 @@ expect:
 ── expect: every expectation held ──────────────
 ```
 
-The clock declares no `dayStart`, so the move across midnight prints under its own position header — `── step 2 · day 3`, with the move's write, the engine's, and the settle — before the `morning` raise, and the morning line already reads leg 3. Written as a separate `engine:` step after the advance, the same write comes a settle too late: the move to day 3 fails the quest first (`trek.leg3 failed (by)`). In `--json` the writes follow the last move's in the advance's own `writes`, and that settle is its `quests`. The writes follow an `engine:` step's rules, except that a write to the clock's own `day` or `slot` path beside `advance:` is a usage error (exit 2): `` step 1: `engine:` writes `run.day`, which the `advance:` beside it moves — write the clock in a step of its own, or let `advance:` move it ``.
+The engine's write and its settle print first, under the step's header, before the `dusk` raise; the clock declares no `dayStart`, so the move across midnight prints under its own position header — `── step 2 · day 3` — before the `morning` raise, and every raise of the step already reads leg 3. Written as a separate `engine:` step after the advance, the same write comes a settle too late: the move to day 3 fails the quest first (`trek.leg3 failed (by)`). In `--json` the writes come first in the advance's own `writes`, before the move's, and their settle is in its `quests`. The writes follow an `engine:` step's rules, except that a write to the clock's own `day` or `slot` path beside `advance:` is a usage error (exit 2): `` step 1: `engine:` writes `run.day`, which the `advance:` beside it moves — write the clock in a step of its own, or let `advance:` move it ``.
 
 The clock only moves forward. An `engine:` step that moves `clock.index` backward stops the walk at that step — a usage error found when the step runs, exit 2 — naming both positions:
 
@@ -941,7 +941,7 @@ steps:
 
 Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 is already at night, so it goes to the next night. Step 4 crosses three midnights to Friday morning; this clock names no `dayEnd` / `dayStart`, so only the final `slotStart` is raised. The quests still settle at every position the advance passes, so `fest`'s deadline fails on Wednesday morning, where the clock first reaches day 3: the transcript prints the move there, that settle, then the rest of the move. A season that opens and closes on the way, or a `rearm=` that turns true there, acts at its own position the same way (see [Seasons and rearmed quests](#seasons-and-rearmed-quests)). In `--json` the advance's `by` is `"to night"` or `"to Fri morning"`. A slot or weekday the clock does not declare is a usage error before anything plays (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``; `` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
 
-**When the clock ends** (dsl 0.27.0 §4). A clock that declares `last: { day: 1, slot: h05 }` (or `days: N`) stops there. An `advance:` that lands exactly on the last position is ordinary. One that would go past it moves only to the last position, raises the last day's `dayEnd` once and no `slot` occasion, and its header says `· the clock ends (its last position)` (`--json`: `advance.ended: true`); its `engine:` writes land after that `dayEnd`. Any later `advance:` — or one starting past the end because an `engine:` step moved the day on — halts the play with `E-CLOCK-END` (exit 1, in `lute test` too) until a `newRun` starts the clock over:
+**When the clock ends** (dsl 0.27.0 §4). A clock that declares `last: { day: 1, slot: h05 }` (or `days: N`) stops there. An `advance:` that lands exactly on the last position is ordinary. One that would go past it moves only to the last position, raises the last day's `dayEnd` once and no `slot` occasion, and its header says `· the clock ends (its last position)` (`--json`: `advance.ended: true`); its `engine:` writes land before the move, as on every advance. Any later `advance:` — or one starting past the end because an `engine:` step moved the day on — halts the play with `E-CLOCK-END` (exit 1, in `lute test` too) until a `newRun` starts the clock over:
 
 ```
 ── step 2 · advance slot: day 1 h05 → day 1 h05 · the clock ends (its last position) ──────────────

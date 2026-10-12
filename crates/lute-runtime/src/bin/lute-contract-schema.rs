@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use lute_runtime::runtime::{Await, Evaluation, Event, Input, Output, Rejected, Seed, Snapshot, StreamLine};
+use lute_runtime::runtime::{Await, Evaluation, Event, Gate, Input, Output, Rejected, Seed, Snapshot, StreamLine};
 use lute_runtime::session::{Candidate, ClockView, Premise, Verdict, WorldView};
 use lute_runtime::GuardRead;
 use lute_manifest::bindings::Bindings;
@@ -43,6 +43,7 @@ fn main() {
     collect::<WorldView>("WorldView", &mut defs);
     collect::<ClockView>("ClockView", &mut defs);
     collect::<Evaluation>("Evaluation", &mut defs);
+    collect::<Gate>("Gate", &mut defs);
     collect::<GuardRead>("GuardRead", &mut defs);
     collect::<Atom>("Atom", &mut defs);
     collect::<BeatOnce>("BeatOnce", &mut defs);

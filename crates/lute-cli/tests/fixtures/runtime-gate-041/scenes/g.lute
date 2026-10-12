@@ -1,0 +1,10 @@
+---
+kind: scene
+id: g
+on: gallery
+once: false
+---
+
+## g
+
+@narrator: The gallery.

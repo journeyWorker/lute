@@ -111,10 +111,15 @@ pub enum Input {
     Timeout { request: u64 },
     #[serde(rename = "choose")]
     Choose { request: u64, option: String },
+    /// dsl 0.41.0 §5.3: the answer to the pending `awaitBridge` — the
+    /// result `fields` content reads, and the host's own `writes`, applied
+    /// at the call after its declared effects.
     #[serde(rename = "bridgeResult")]
     BridgeResult {
         request: u64,
         fields: BTreeMap<String, Json>,
+        #[serde(default, skip_serializing_if = "WritesInput::is_empty")]
+        writes: WritesInput,
     },
     #[serde(rename = "advanceClock")]
     AdvanceClock {
@@ -254,13 +259,19 @@ pub enum Event {
 pub enum Await {
     #[serde(rename = "awaitChoice")]
     Choice { request: u64, menu: MenuAwait },
+    /// dsl 0.41.0 §5.5: a plugin call suspended for its bridge results.
     #[serde(rename = "awaitBridge")]
     Bridge {
         request: u64,
         tag: String,
         document: String,
         position: String,
-        fields: BTreeMap<String, String>,
+        /// The call's attributes as the runtime executes it: the IR
+        /// command's `fields`, `occasion.target` bound to the raise's
+        /// member (`{}` when none).
+        attrs: BTreeMap<String, Json>,
+        /// Each result field content reads, with its declared type.
+        results: BTreeMap<String, lute_manifest::types::Type>,
     },
     #[serde(rename = "idle")]
     Idle,
@@ -419,6 +430,21 @@ pub struct Evaluation {
     pub unresolved: Vec<String>,
 }
 
+/// dsl 0.41.0 §5.2: the answer of the `gate` query — whether a
+/// `raiseOccasion` of the occasion (for its target) with no writes would
+/// pass the seam now.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Gate {
+    /// The raise would be made.
+    pub open: bool,
+    /// Why the gate is undecided, one reason per unresolved read (as
+    /// [`Evaluation::unresolved`]); omitted when it is decided.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unresolved: Vec<String>,
+}
+
 /// A resumable runtime state.
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -490,6 +516,10 @@ pub(crate) enum Answer {
     Bridge {
         tag: String,
         fields: BTreeMap<String, Json>,
+        /// dsl 0.41.0 §5.3: the host's writes with the answer, re-applied
+        /// on replay.
+        #[serde(default, skip_serializing_if = "WritesInput::is_empty")]
+        writes: WritesInput,
     },
 }
 
@@ -708,11 +738,15 @@ impl Runtime {
                     ))
                 }
                 (
-                    Input::BridgeResult { request, fields },
+                    Input::BridgeResult {
+                        request,
+                        fields,
+                        writes,
+                    },
                     Await::Bridge {
                         request: expected,
                         tag,
-                        fields: shape,
+                        results,
                         ..
                     },
                 ) => {
@@ -722,13 +756,19 @@ impl Runtime {
                             reject("E-RUNTIME-REQUEST", "bridge request does not match the pending await"),
                         ));
                     }
-                    if let Err(m) = validate_bridge(shape, fields) {
+                    if let Err(m) = validate_bridge(results, fields) {
                         return Err((unchanged.clone(), reject("E-RUNTIME-BRIDGE-SHAPE", m)));
+                    }
+                    // dsl 0.41.0 §5.3: the writes resolve when the input
+                    // arrives, as `hostWrite`'s do.
+                    if let Err(m) = resolve_answer_writes(&self.project, writes) {
+                        return Err((unchanged.clone(), reject("E-RUNTIME-INPUT", m)));
                     }
                     let mut a = c.answers;
                     a.push(Answer::Bridge {
                         tag: tag.clone(),
                         fields: fields.clone(),
+                        writes: writes.clone(),
                     });
                     ((*c.before).clone(), c.input, a, c.delivered)
                 }
@@ -810,17 +850,53 @@ impl Runtime {
         self.evaluated(state, &slot)
     }
 
-    /// dsl 0.40.1 §3: evaluate the bundle's parameterless def `name` over
-    /// `state`'s world. `E-RUNTIME-INPUT` when the bundle carries no such
-    /// def; `E-RUNTIME-EVAL` when it evaluates to an error.
-    pub fn def(&self, state: &State, name: &str) -> Result<Evaluation, Rejected> {
-        let slot = self.project.conds.defs.get(name).ok_or_else(|| {
+    /// dsl 0.41.0 §5.1: evaluate the index def `name` over `state`'s world,
+    /// each `param` node bound to the positional argument of the same index
+    /// in `args` (one JSON scalar per declared parameter). `E-RUNTIME-INPUT`
+    /// when the bundle carries no such def, on an arity mismatch or an
+    /// argument that does not fit its parameter type; `E-RUNTIME-EVAL` when
+    /// it evaluates to an error.
+    pub fn def(&self, state: &State, name: &str, args: &[Json]) -> Result<Evaluation, Rejected> {
+        let def = self.project.index.defs.get(name).ok_or_else(|| {
             reject(
                 "E-RUNTIME-INPUT",
-                format!("the bundle carries no parameterless def `{name}`"),
+                format!("the bundle carries no def `{name}`"),
             )
         })?;
-        self.evaluated(state, slot)
+        let bound = def_args(&self.project, name, &def.params, args)
+            .map_err(|m| reject("E-RUNTIME-INPUT", m))?;
+        let expr = serde_json::to_value(&def.expr).map_err(|e| {
+            reject("E-RUNTIME-INPUT", format!("def `{name}` does not encode: {e}"))
+        })?;
+        let expr = crate::expr::bind_params(&expr, &bound);
+        let slot = crate::Slot::of(&serde_json::json!({ "cel": def.cel, "expr": expr }))
+            .ok_or_else(|| reject("E-RUNTIME-INPUT", format!("def `{name}` does not decode")))?;
+        self.evaluated(state, &slot)
+    }
+
+    /// dsl 0.41.0 §5.2: whether a `raiseOccasion` of `occasion` (for
+    /// `target`) with no writes would pass the seam now — the raise rule of
+    /// `step` exactly. `E-RUNTIME-INPUT` when the bundle declares no such
+    /// occasion. The state is read as `view` reads it and not changed.
+    pub fn gate(&self, state: &State, occasion: &str, target: Option<&str>) -> Result<Gate, Rejected> {
+        if !self.project.occasions.contains_key(occasion) {
+            return Err(reject(
+                "E-RUNTIME-INPUT",
+                format!("the bundle declares no occasion `{occasion}`"),
+            ));
+        }
+        Ok(
+            match crate::seam::gate(&self.project, &state.world, occasion, target) {
+                Ok(open) => Gate {
+                    open,
+                    unresolved: Vec::new(),
+                },
+                Err(unresolved) => Gate {
+                    open: false,
+                    unresolved,
+                },
+            },
+        )
     }
 
     fn evaluated(&self, state: &State, slot: &crate::Slot) -> Result<Evaluation, Rejected> {
@@ -922,7 +998,8 @@ impl Runtime {
         delivered: usize,
         request: u64,
     ) -> Result<(State, Output), Rejected> {
-        let mut factory = ReplayFactory::new(self.project.clone(), answers.clone());
+        let mut factory = ReplayFactory::replaying(self.project.clone(), answers.clone())
+            .map_err(|m| reject("E-RUNTIME-INPUT", m))?;
         let (stop, final_world, ended) = {
             let mut session = Session::resume(&self.project, world.clone(), &mut factory);
             let outcome =
@@ -931,6 +1008,12 @@ impl Runtime {
             let ended = stop.is_none() && session.terminal();
             (stop, session.world.clone(), ended)
         };
+        // dsl 0.41.0 §5.2: a raise the engine would not make is rejected —
+        // the state stays as it was, the input's own writes and payload
+        // included — never a halt.
+        if let Some(refused @ PlayHalt::Refused(_)) = &stop {
+            return Err(reject("E-OCCASION-GATE", refused.message()));
+        }
         let events = factory.events.clone();
         if let Some(await_) = factory.pending.take() {
             let cut = factory
@@ -1011,21 +1094,112 @@ fn reject(code: impl Into<String>, message: impl Into<String>) -> Rejected {
 fn set_request(await_: Await, request: u64) -> Await {
     match await_ {
         Await::Choice { menu, .. } => Await::Choice { request, menu },
-        Await::Bridge {
-            tag,
-            document,
-            position,
-            fields,
-            ..
-        } => Await::Bridge {
+        Await::Bridge { request: _, tag, document, position, attrs, results } => Await::Bridge {
             request,
             tag,
             document,
             position,
-            fields,
+            attrs,
+            results,
         },
         other => other,
     }
+}
+
+/// dsl 0.41.0 §5.1 rule 8: `args` against def `name`'s declared `params`,
+/// keyed by parameter name — one JSON scalar per parameter, each fitting
+/// its type (`int` a JSON integer within `±2^53`, `double` a number, `bool`
+/// a boolean, `string` a string, `enum` a member string, `domain` /
+/// `entity` a string, a member when the kind is closed).
+fn def_args<'d>(
+    p: &ExecProject,
+    name: &str,
+    params: &'d [lute_manifest::schema::DefParam],
+    args: &[Json],
+) -> Result<BTreeMap<&'d str, crate::Value>, String> {
+    use crate::Value;
+    use lute_manifest::types::Type;
+    if args.len() != params.len() {
+        let declared: Vec<&str> = params.iter().map(|d| d.name.as_str()).collect();
+        return Err(format!(
+            "def `{name}` takes {} argument(s) ({}), not {}",
+            params.len(),
+            declared.join(", "),
+            args.len()
+        ));
+    }
+    const INT_BOUND: i64 = 1 << 53;
+    let mut bound = BTreeMap::new();
+    for (param, arg) in params.iter().zip(args) {
+        let misfit = |what: &str| {
+            format!(
+                "argument `{}` of def `{name}` must be {what}, not `{arg}`",
+                param.name
+            )
+        };
+        let member = |kind: &str, members: Option<&[String]>| -> Result<Value, String> {
+            let s = arg
+                .as_str()
+                .ok_or_else(|| misfit(&format!("a `{kind}` member string")))?;
+            if let Some(members) = members {
+                crate::session::member_of(kind, members, s)
+                    .map_err(|m| format!("argument `{}` of def `{name}`: {m}", param.name))?;
+            }
+            Ok(Value::Str(s.to_string()))
+        };
+        let value = match &param.ty {
+            Type::Int => arg
+                .as_i64()
+                .filter(|n| (-INT_BOUND..=INT_BOUND).contains(n))
+                .map(Value::Int)
+                .ok_or_else(|| misfit("a JSON integer within ±2^53"))?,
+            Type::Double => arg
+                .as_f64()
+                .map(Value::Double)
+                .ok_or_else(|| misfit("a number"))?,
+            Type::Bool => arg
+                .as_bool()
+                .map(Value::Bool)
+                .ok_or_else(|| misfit("a boolean"))?,
+            Type::Str => arg
+                .as_str()
+                .map(|s| Value::Str(s.to_string()))
+                .ok_or_else(|| misfit("a string"))?,
+            Type::Enum(members) => member("enum", Some(members))?,
+            Type::Domain(kind) | Type::Entity(kind) => {
+                member(kind, crate::session::domain_members(p, kind))?
+            }
+            other => {
+                return Err(format!(
+                    "parameter `{}` of def `{name}` has type `{}`, which a host cannot pass",
+                    param.name,
+                    serde_json::to_string(other).unwrap_or_default()
+                ))
+            }
+        };
+        bound.insert(param.name.as_str(), value);
+    }
+    Ok(bound)
+}
+
+/// dsl 0.41.0 §5.3 rule 2: a `bridgeResult`'s `writes`, resolved as
+/// `hostWrite`'s are; a write to the clock's `day` / `slot` path is refused
+/// (the clock cannot move inside a walk).
+fn resolve_answer_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
+    if let Some(clock) = &p.index.clock {
+        if let Some(w) = raw
+            .state
+            .iter()
+            .find(|w| w.path == clock.day || clock.slot.as_deref() == Some(w.path.as_str()))
+        {
+            return Err(format!(
+                "bridgeResult writes `{}`, the clock's path — the clock cannot move inside a \
+                 walk; move it with `advanceClock` after the answer",
+                w.path
+            ));
+        }
+    }
+    resolve_writes(p, raw)
 }
 
 fn scalar_text(v: Option<&Json>) -> Option<String> {
@@ -1206,6 +1380,9 @@ fn execute_input<F: WalkDriver>(
 struct ReplayFactory {
     project: Arc<ExecProject>,
     answers: Vec<Answer>,
+    /// dsl 0.41.0 §5.3: each answer's resolved `writes`, by answer index
+    /// (empty for a choice).
+    writes: Arc<Vec<Writes>>,
     answer_cursor: usize,
     events: Vec<Event>,
     pending: Option<Await>,
@@ -1215,10 +1392,12 @@ struct ReplayFactory {
     document: String,
 }
 impl ReplayFactory {
+    /// A factory for a query: no answers to replay.
     fn new(project: Arc<ExecProject>, answers: Vec<Answer>) -> Self {
         Self {
             project,
             answers,
+            writes: Arc::default(),
             answer_cursor: 0,
             events: Vec::new(),
             pending: None,
@@ -1227,9 +1406,26 @@ impl ReplayFactory {
             document: String::new(),
         }
     }
+
+    /// A factory replaying `answers`, each bridge answer's `writes`
+    /// resolved ([`resolve_answer_writes`]); `Err` names a write that does
+    /// not resolve.
+    fn replaying(project: Arc<ExecProject>, answers: Vec<Answer>) -> Result<Self, String> {
+        let writes = answers
+            .iter()
+            .map(|answer| match answer {
+                Answer::Bridge { writes, .. } => resolve_answer_writes(&project, writes),
+                Answer::Choice { .. } => Ok(Writes::default()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut factory = Self::new(project, answers);
+        factory.writes = Arc::new(writes);
+        Ok(factory)
+    }
 }
 struct ReplayDriver {
     choices: Vec<Answer>,
+    writes: Arc<Vec<Writes>>,
     cursor: usize,
     document: String,
     events: Vec<Event>,
@@ -1299,39 +1495,42 @@ impl Driver for ReplayDriver {
     }
     fn bridge(&mut self, call: &BridgeCall<'_>) -> BridgeReply {
         if self.cursor < self.choices.len() {
-            if let Answer::Bridge { tag, fields } = &self.choices[self.cursor] {
+            if let Answer::Bridge { tag, fields, .. } = &self.choices[self.cursor] {
                 if tag == call.tag {
+                    let writes = self.writes.get(self.cursor).cloned().unwrap_or_default();
                     self.cursor += 1;
-                    return BridgeReply::Answer(
-                        fields
+                    return BridgeReply::Answer {
+                        fields: fields
                             .iter()
                             .filter_map(|(k, v)| scalar_text(Some(v)).map(|s| (k.clone(), s)))
                             .collect(),
-                    );
+                        writes,
+                    };
                 }
             }
         }
-        let fields = call
+        // dsl 0.41.0 §5.5: each result field content reads, typed by the
+        // capability's `result:` (index `bridgeResults`), else by the state
+        // slot it lands on.
+        let results = call
             .reads
             .iter()
             .filter(|(field, _)| self.project.bridge_reads.reads(call.tag, field))
             .map(|(field, path)| {
-                let ty = self
+                let declared = self
                     .project
-                    .state_table
-                    .get(path)
-                    .and_then(|entry| entry.get("type"))
-                    .and_then(Json::as_str)
-                    .unwrap_or("string");
-                (
-                    field.clone(),
-                    match ty {
-                        "int" | "double" | "number" => "number",
-                        "bool" => "bool",
-                        _ => "string",
-                    }
-                    .to_string(),
-                )
+                    .bridge_reads
+                    .result_types
+                    .get(call.tag)
+                    .and_then(|fields| fields.get(field))
+                    .cloned();
+                let ty = declared.unwrap_or_else(|| {
+                    self.project
+                        .state_table
+                        .get(path)
+                        .map_or(lute_manifest::types::Type::Str, state_result_type)
+                });
+                (field.clone(), ty)
             })
             .collect();
         self.pending = Some(Await::Bridge {
@@ -1339,7 +1538,11 @@ impl Driver for ReplayDriver {
             tag: call.tag.into(),
             document: self.document.clone(),
             position: call.addr.into(),
-            fields,
+            attrs: call
+                .attrs
+                .map(|attrs| attrs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default(),
+            results,
         });
         self.pending_cut = Some(self.events.len());
         BridgeReply::Unanswered
@@ -1365,6 +1568,7 @@ impl WalkDriver for ReplayFactory {
         self.document = document.into();
         ReplayDriver {
             choices: self.answers.clone(),
+            writes: self.writes.clone(),
             cursor: self.answer_cursor,
             document: document.into(),
             events: Vec::new(),
@@ -1421,21 +1625,53 @@ impl WalkDriver for ReplayFactory {
     }
 }
 
+/// The type a result field landing on a state slot (its state-table
+/// `entry`) answers in, when no capability declares one.
+fn state_result_type(entry: &Json) -> lute_manifest::types::Type {
+    use lute_manifest::types::Type;
+    match entry.get("type").and_then(Json::as_str) {
+        Some("bool") => Type::Bool,
+        Some("int") => Type::Int,
+        Some("double" | "number") => Type::Double,
+        Some("enum") => Type::Enum(
+            entry
+                .get("domain")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Json::as_str)
+                .map(str::to_string)
+                .collect(),
+        ),
+        _ => Type::Str,
+    }
+}
+
+/// dsl 0.41.0 §5.5 rule 2: a `bridgeResult`'s `fields` against the await's
+/// `results` types — `int` an integer, `double` a number, `bool` a
+/// boolean, `string` a string, `enum` a member string, `domain` / `entity`
+/// a string.
 fn validate_bridge(
-    shape: &BTreeMap<String, String>,
+    results: &BTreeMap<String, lute_manifest::types::Type>,
     fields: &BTreeMap<String, Json>,
 ) -> Result<(), String> {
-    for (name, ty) in shape {
+    use lute_manifest::types::Type;
+    for (name, ty) in results {
         let Some(v) = fields.get(name) else {
             return Err(format!("bridge field `{name}` is required"));
         };
-        let good = match ty.as_str() {
-            "bool" => v.is_boolean(),
-            "number" => v.is_number(),
-            _ => v.is_string(),
+        let (good, what) = match ty {
+            Type::Bool => (v.is_boolean(), "a boolean".to_string()),
+            Type::Int => (v.is_i64() || v.is_u64(), "an integer".to_string()),
+            Type::Double => (v.is_number(), "a number".to_string()),
+            Type::Enum(members) => (
+                v.as_str().is_some_and(|s| members.iter().any(|m| m == s)),
+                format!("one of {}", members.join(", ")),
+            ),
+            _ => (v.is_string(), "a string".to_string()),
         };
         if !good {
-            return Err(format!("bridge field `{name}` must be a {ty}"));
+            return Err(format!("bridge field `{name}` must be {what}, not `{v}`"));
         }
     }
     Ok(())

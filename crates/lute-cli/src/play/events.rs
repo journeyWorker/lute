@@ -178,7 +178,7 @@ pub fn drive_events(
                 Await::Bridge {
                     request,
                     tag,
-                    fields: shape,
+                    results,
                     ..
                 } => match answers.next() {
                     Some(ScriptAnswer::Bridge {
@@ -186,7 +186,8 @@ pub fn drive_events(
                         fields,
                     }) if answered == tag => Ok(Input::BridgeResult {
                         request: *request,
-                        fields: bridge_fields(fields, shape),
+                        fields: bridge_fields(fields, results),
+                        writes: WritesInput::default(),
                     }),
                     None => Err(DriveEnd::Unanswered(format!(
                         "plugin call `{tag}` has no scripted `bridges:` answer"
@@ -403,16 +404,17 @@ fn scalar(text: &str) -> Value {
 }
 
 /// A bridge answer as `bridgeResult` fields, each typed by the await's
-/// field shape (`bool`, `number`, else string).
+/// `results` (`bool`, `int`, `double`, else a string).
 fn bridge_fields(
     answer: &BridgeAnswer,
-    shape: &BTreeMap<String, String>,
+    results: &BTreeMap<String, lute_manifest::types::Type>,
 ) -> BTreeMap<String, Value> {
+    use lute_manifest::types::Type;
     answer
         .iter()
         .map(|(field, text)| {
-            let value = match shape.get(field).map(String::as_str) {
-                Some("bool" | "number") => match scalar(text) {
+            let value = match results.get(field) {
+                Some(Type::Bool | Type::Int | Type::Double) => match scalar(text) {
                     Value::String(_) => Value::String(text.clone()),
                     v => v,
                 },

@@ -1,0 +1,9 @@
+---
+kind: scene
+id: night
+title: night
+on: night
+once: false
+---
+## Night
+@narrator: Night falls.
