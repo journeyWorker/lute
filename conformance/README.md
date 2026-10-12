@@ -35,7 +35,16 @@ contains the corresponding `seed` and every `input` envelope. Regenerate all
 session streams with `cargo build -p lute-cli && conformance/regenerate.sh`.
 The session test compares the CLI stream byte-for-byte and replays
 `inputs.jsonl` through `Runtime::begin`/`step`, comparing each serialized
-output with the stream.
+output with the stream. `session/README.md` lists the cases.
+
+`session/contract-fixtures.jsonl` is hand-written: contract values no session
+case emits (each `advanceClock` form, `Verdict`/`Premise` rows, a snapshot, a
+`bridgeResult` with `writes`, an `awaitBridge` output with `attrs`/`results`,
+`gate` answers, an `E-OCCASION-GATE` rejection). A gate refusal is not a
+session case — a session runs to exit 0 with one output per input — so the
+rejection appears only here. The generated event/snapshot schemas validate
+every line (`tree-sitter-lute/test/json_schema.test.js`).
+
 ## Replaying
 
 From the repository root:
@@ -124,7 +133,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `lore-entry-reread` | the same entry **re-read** — the mock seeds `entry.scientistLog1.read: true`, so the text presents (the `otherwise` arm) and the `assert`/`set` records are recorded as `skipped` events (`effect` + the record's `path`/`fact`/`pattern`) without changing state or facts |
 | `command-staging` | staging/timeline command records: `bg` (`::bg`), `music` (`playback`), `sfx`, `vfx` (`type`), `actor` (`::actor`), `camera` (`focus`/`framing`/`move`/`transition`), `cg` (`display`), `video` (`display`), plus the timeline `barrier`; all are compiled and replayed in one linear scene |
 | `command-lifecycle` | lore beat presentation (`beat`), quest acceptance (`accept`), and fact retraction (`retract`) in a beat selected by `beat.txt` |
-| `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation |
+| `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation, and the record carries the call's typed `attrs` (dsl 0.41.0 §5.5) |
 | `cel-numbers` | typed `int`/`double` CEL literals and arithmetic, including truncating division, modulo, conversions, and numeric rendering |
 | `cel-facts` | list-form `holds`, `count`, `countDistinct`, `validAt`, `now`, and `visited`, including wildcards and `occasion.target` |
 | `cel-presence` | `has()` and quoted-key `in` presence checks plus indexed state reads |

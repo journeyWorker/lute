@@ -624,6 +624,8 @@ describe("generated runtime contract schemas", () => {
           validate = ajv.compile({ $ref: `${events.$id}#/$defs/Verdict` });
         } else if (Object.hasOwn(value, "premise")) {
           validate = ajv.compile({ $ref: `${events.$id}#/$defs/Premise` });
+        } else if (Object.hasOwn(value, "open")) {
+          validate = ajv.compile({ $ref: `${events.$id}#/$defs/Gate` });
         }
         expect(validate(value), `${path}: ${JSON.stringify(validate.errors)}`).toBe(true);
         count += 1;
