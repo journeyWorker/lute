@@ -32,7 +32,13 @@ const view = await player.view()
 await player.unmount()
 ```
 
-`bindings` accepts a decoded `Bindings` object, YAML text, or `{ url }`. `assetsUrl` overrides the file's `assetsBase`; `host` supplies custom bridge/idle behavior. `mountPlayer` returns Promise methods `act`, `view`, and `unmount`. The Effect-native `LuteWeb.mount` is available when the application already manages an Effect scope.
+`bindings` accepts a decoded `Bindings` object, YAML text, or `{ url }`. `assetsUrl` overrides the file's `assetsBase`; `host` is the core's `PlayerHost`: `bridge` handlers return a `BridgeAnswer` (`{ fields, writes? }`), `plugin` handlers run as waiting cues, and `idle` answers idle waits. `mountPlayer` returns Promise methods `act`, `view`, and `unmount`. The Effect-native `LuteWeb.mount` is available when the application already manages an Effect scope; its handle is the core's `LutePlayerHandle` (`actions`, `view`, `send`, `restore`, `shutdown`, plus the runtime `session` and its `program`).
+
+## Cue handling
+
+- **Names.** The dialogue name plate and backlog rows show `speakerName`, the cast display name from the bundle index (`cast: { id: name }`); name colours stay keyed by the speaker id.
+- **Music.** `PixiAudio` honours `AudioPlay.restart`: `restart: true` plays the file from its start; without it, the music file already playing only changes volume, fading over `fade`, and a different file crossfades.
+- **Custom vfx.** A `StageCue.Vfx` whose `effect.effect` is `"custom"` (a project vfx bound as `{ effect: custom }`, or a vfx type with no binding) has no Pixi effect: the presenter plays nothing and logs `effect.name` once at debug level (`PresenterOptions.debug`, default `console.debug`). Render project effects with your own `Presenter`.
 
 ## API and guides
 

@@ -26,9 +26,15 @@ export interface AudioBackend {
 
 interface ActivePlayback {
   readonly channel: AudioChannel
-  readonly inputVolume: number
+  readonly file: string
+  /** The requested level in [0, 1]; mid volume-change ramp it holds the ramp's current value. */
+  inputVolume: number
+  /** The live fade multiplier in [0, 1] (0 while silent before a fade-in, 1 at rest). */
+  factor: number
   readonly playback: AudioPlayback
   fade: Fiber.Fiber<void, never> | undefined
+  /** Set once the playback is fading out or stopped; it no longer counts as playing. */
+  stopping: boolean
 }
 
 const clamp = (value: number): number => Math.max(0, Math.min(1, value))
@@ -79,12 +85,23 @@ export class PixiAudio implements AudioPort {
   }
 
 
-  /** Play a channel sound, waiting for finite sounds to end. */
+  /**
+   * Play a channel sound, waiting for finite sounds to end. Music without
+   * `restart` whose file is the one already playing only changes its volume,
+   * fading over `fade`, without restarting it (spec 0.41.0 §7.7).
+   */
   readonly play = (channel: AudioChannel, soundToPlay: AudioPlay): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
       if (!SubscriptionRef.getUnsafe(self.unlocked)) {
         yield* Deferred.await(self.gate)
+      }
+      if (channel === "music" && !soundToPlay.restart) {
+        const playing = self.active.music.filter((record) => !record.stopping).at(-1)
+        if (playing !== undefined && playing.file === soundToPlay.file) {
+          yield* self.changeVolume(playing, clamp(soundToPlay.volume), soundToPlay.fade)
+          return
+        }
       }
       const loaded = yield* self.backend.load(soundToPlay.file).pipe(
         Effect.catch((error) => {
@@ -110,14 +127,17 @@ export class PixiAudio implements AudioPort {
       if (channel === "music") yield* self.replaceMusic(soundToPlay.fade)
       const record: ActivePlayback = {
         channel,
+        file: soundToPlay.file,
         inputVolume,
+        factor: positive(soundToPlay.fade) > 0 ? 0 : 1,
         playback: playback.value,
-        fade: undefined
+        fade: undefined,
+        stopping: false
       }
       self.active[channel].push(record)
-      record.playback.setVolume(soundToPlay.fade > 0 ? 0 : self.effectiveVolume(channel, inputVolume))
+      self.applyVolume(record)
       if (positive(soundToPlay.fade) > 0) {
-        record.fade = yield* self.startFade(record, 0, 1, soundToPlay.fade, false)
+        record.fade = yield* self.startFade(record, 1, soundToPlay.fade, false)
       }
       if (!soundToPlay.loop) {
         yield* record.playback.ended
@@ -131,7 +151,10 @@ export class PixiAudio implements AudioPort {
       const self = this
       const records = self.active[channel].slice()
       if (records.length === 0) return
-      for (const record of records) yield* self.interruptFade(record)
+      for (const record of records) {
+        record.stopping = true
+        yield* self.interruptFade(record)
+      }
       const duration = positive(fade)
       if (duration === 0) {
         for (const record of records) {
@@ -153,9 +176,7 @@ export class PixiAudio implements AudioPort {
         voice: clamp(volumes.voice)
       }
       for (const channel of ["music", "sfx", "voice"] as const) {
-        for (const record of this.active[channel]) {
-          record.playback.setVolume(this.effectiveVolume(channel, record.inputVolume))
-        }
+        for (const record of this.active[channel]) this.applyVolume(record)
       }
     })
 
@@ -175,11 +196,31 @@ export class PixiAudio implements AudioPort {
       Effect.tap(() => Effect.sync(() => { record.fade = undefined }))
     )
 
+  private applyVolume(record: ActivePlayback): void {
+    record.playback.setVolume(this.effectiveVolume(record.channel, record.inputVolume) * record.factor)
+  }
+
+  /** Fade `record`'s live factor to `to` over `duration` seconds, starting from wherever it is now. */
   private readonly startFade = (
     record: ActivePlayback,
-    from: number,
     to: number,
     duration: number,
+    stopAtEnd: boolean
+  ): Effect.Effect<Fiber.Fiber<void, never>> => {
+    const from = record.factor
+    return this.ramp(record, duration, (progress) => {
+      record.factor = from + (to - from) * progress
+    }, stopAtEnd)
+  }
+
+  /**
+   * Step `record` through `advance(progress)` over `duration` seconds on a
+   * detached fiber, applying its volume after each step.
+   */
+  private readonly ramp = (
+    record: ActivePlayback,
+    duration: number,
+    advance: (progress: number) => void,
     stopAtEnd: boolean
   ): Effect.Effect<Fiber.Fiber<void, never>> => {
     const steps = Math.max(1, Math.ceil(duration * 20))
@@ -188,24 +229,48 @@ export class PixiAudio implements AudioPort {
       Array.from({ length: steps }, (_, index) => index + 1),
       (step) => Effect.sleep(interval).pipe(
         Effect.flatMap(() => Effect.sync(() => {
-          const factor = from + (to - from) * (step / steps)
-          record.playback.setVolume(this.effectiveVolume(record.channel, record.inputVolume) * factor)
+          advance(step / steps)
+          this.applyVolume(record)
         }))
       ),
       { discard: true }
     ).pipe(
       Effect.flatMap(() => Effect.sync(() => {
-        record.playback.setVolume(this.effectiveVolume(record.channel, record.inputVolume) * to)
+        advance(1)
+        this.applyVolume(record)
         if (stopAtEnd) record.playback.stop()
       }))
     )
     return Effect.forkDetach(fade)
   }
 
+  /**
+   * Move a playing record to a new input volume, fading over `fade` seconds
+   * from its current level (finishing an interrupted fade-in); it keeps playing.
+   */
+  private readonly changeVolume = (record: ActivePlayback, inputVolume: number, fade: number): Effect.Effect<void> =>
+    Effect.gen({ self: this }, function* () {
+      const self = this
+      yield* self.interruptFade(record)
+      const duration = positive(fade)
+      if (duration === 0) {
+        record.inputVolume = inputVolume
+        record.factor = 1
+        self.applyVolume(record)
+        return
+      }
+      const fromVolume = record.inputVolume
+      const fromFactor = record.factor
+      record.fade = yield* self.ramp(record, duration, (progress) => {
+        record.inputVolume = fromVolume + (inputVolume - fromVolume) * progress
+        record.factor = fromFactor + (1 - fromFactor) * progress
+      }, false)
+    })
+
   private readonly fadeOutAndStop = (record: ActivePlayback, duration: number): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
-      const fiber = yield* self.startFade(record, 1, 0, duration, true)
+      const fiber = yield* self.startFade(record, 0, duration, true)
       yield* Fiber.join(fiber)
       self.removeRecord(record)
     })
@@ -226,12 +291,13 @@ export class PixiAudio implements AudioPort {
       const self = this
       const old = self.active.music.slice()
       for (const record of old) {
+        record.stopping = true
         yield* self.interruptFade(record)
         if (positive(fade) === 0) {
           record.playback.stop()
           self.removeRecord(record)
         } else {
-          const fiber = yield* self.startFade(record, 1, 0, fade, true)
+          const fiber = yield* self.startFade(record, 0, fade, true)
           record.fade = fiber
           yield* Effect.forkDetach(
             Fiber.join(fiber).pipe(

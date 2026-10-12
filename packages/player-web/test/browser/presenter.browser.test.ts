@@ -6,7 +6,7 @@ import type { Layers, Theme } from "../../src/engine/types.js"
 import { PixiApp } from "../../src/engine/app.js"
 import { World } from "../../src/engine/world.js"
 import { Ui } from "../../src/ui/ui.js"
-import { PixiPresenter } from "../../src/presenter/pixiPresenter.js"
+import { PixiPresenter, type PresenterOptions } from "../../src/presenter/pixiPresenter.js"
 import { themeFromBindings } from "../../src/theme.js"
 
 const theme: Theme = { font: "sans-serif", text: 0xffffff, accent: 0xe0c080, panel: 0x101018, panelAlpha: 0.82, readText: 0x9a9aaa }
@@ -47,7 +47,7 @@ const makeBindingsAssets = () => {
   return { texture: (file: string) => textures[file], video: (file: string) => textures[file] }
 }
 
-const withPresenter = async (callback: (presenter: PixiPresenter, pixi: { readonly layers: Layers; readonly app: Application }) => Promise<void>): Promise<void> => {
+const withPresenter = async (callback: (presenter: PixiPresenter, pixi: { readonly layers: Layers; readonly app: Application }) => Promise<void>, extra: Pick<PresenterOptions, "debug"> = {}): Promise<void> => {
   const element = document.createElement("div")
   element.style.width = "320px"
   element.style.height = "180px"
@@ -59,7 +59,7 @@ const withPresenter = async (callback: (presenter: PixiPresenter, pixi: { readon
     const world = yield* World
     const ui = new Ui(pixi.layers.overlay, theme, world)
     ui.setDesign(pixi.design)
-    const presenter = new PixiPresenter({ pixi, world, ui, assets: makeBindingsAssets(), bindings, theme: themeFromBindings(bindings) })
+    const presenter = new PixiPresenter({ pixi, world, ui, assets: makeBindingsAssets(), bindings, theme: themeFromBindings(bindings), ...extra })
     yield* Effect.promise(() => callback(presenter, pixi))
   }).pipe(Effect.provide(engineLayer))))
   element.remove()
@@ -120,6 +120,30 @@ describe("PixiPresenter scene cues", () => {
     await Effect.runPromise(presenter.stage({ _tag: "Vfx", effect: { effect: "flash", params: {} }, duration: 0.2 }, "skip"))
     expect(pixi.layers.overlay.children[0]?.alpha).toBe(0)
   }))
+
+  it("plays nothing for a custom vfx and logs each name once at debug level", async () => {
+    const debug: Array<string> = []
+    await withPresenter(async (presenter, pixi) => {
+      const labels = (): Array<string> => {
+        const found: Array<string> = []
+        const walk = (node: Container): void => {
+          found.push(node.label)
+          for (const child of node.children) walk(child)
+        }
+        walk(pixi.layers.overlay)
+        return found
+      }
+      const custom = (name: string): StageCue => ({ _tag: "Vfx", effect: { effect: "custom", name, params: {} }, duration: 2 })
+      const before = labels()
+      await Effect.runPromise(presenter.stage(custom("lanterns"), "normal"))
+      await Effect.runPromise(presenter.stage(custom("lanterns"), "skip"))
+      await Effect.runPromise(presenter.stage(custom("tide-rise"), "normal"))
+      expect(labels()).toEqual(before)
+    }, { debug: (message) => debug.push(message) })
+    expect(debug).toHaveLength(2)
+    expect(debug[0]).toContain("lanterns")
+    expect(debug[1]).toContain("tide-rise")
+  })
 
   it("plays a bound sequence", async () => withPresenter(async (presenter, pixi) => {
     await Effect.runPromise(presenter.stage({ _tag: "Sequence", name: "intro", video: undefined }, "skip"))

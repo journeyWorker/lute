@@ -50,6 +50,9 @@ describe("catalogue parameter contract", () => {
   it("unknown effect returns EffectDecodeError", async () => {
     expect((await Effect.runPromise(Effect.result(build("unknown", new Container()))))._tag).toBe("Failure")
   })
+  it("custom vfx is not a catalogue effect", async () => {
+    expect((await Effect.runPromise(Effect.result(build("custom", new Container()))))._tag).toBe("Failure")
+  })
   it("unknown parameter returns EffectDecodeError", async () => {
     expect((await Effect.runPromise(Effect.result(build("fade", new Container(), { strength: 1 }))))._tag).toBe("Failure")
   })

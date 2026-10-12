@@ -62,6 +62,16 @@ describe("DialogueWindow browser scene", () => {
     expect(entity.target.children[1]?.visible).toBe(true)
   })
 
+  it("shows the cast display name, coloured by the speaker id, for a line with emotion and variant", async () => {
+    const entity = new DialogueWindow(new Container(), worldFor(), theme, { nameColors: { edda: 0x66ccff } })
+    const cast: LineView = { ...line, speaker: "edda", speakerName: "에다", emotion: "happy", variant: "wet" }
+    await Effect.runPromise(entity.show(cast, settings, "skip"))
+    const name = entity.target.children[1]?.children[0]
+    expect(name).toBeInstanceOf(Text)
+    expect((name as Text).text).toBe("에다")
+    expect((name as Text).style.fill).toBe(0x66ccff)
+  })
+
   it("progressively reveals text", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme)
     await Effect.runPromise(entity.show(line, settings, "normal"))

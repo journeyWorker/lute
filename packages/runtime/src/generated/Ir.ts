@@ -391,14 +391,19 @@ export type ruleEntry = typeof ruleEntry.Type;
 /**
  * One advisory graph edge (connectivity spec §2.6, T13): a single node's raw declared `after` (scene, bundle beat) or `follows` (quest), verbatim.
  */
-export const prereqEdgeEntry = Schema.Union([
-  Schema.Struct({
-    "after": Schema.Json
-  }),
-  Schema.Struct({
-    "follows": Schema.Json
-  })
-]);
+export const prereqEdgeEntry = Schema.Struct({
+  "node": Schema.String,
+  "after": Schema.optionalKey(Schema.String),
+  "follows": Schema.optionalKey(Schema.String),
+  "formula": Schema.optionalKey(Schema.Json)
+}).check(Schema.makeFilter((value) => [
+  [
+    "after"
+  ],
+  [
+    "follows"
+  ]
+].filter((keys) => keys.every((key) => key in value)).length === 1 || "expected exactly one of the key sets: after | follows"));
 export type prereqEdgeEntry = typeof prereqEdgeEntry.Type;
 
 /**
@@ -792,20 +797,31 @@ export type cmdActor = typeof cmdActor.Type;
 /**
  * `::camera` (dsl 0.37.0 D1, §5.3): opaque project-domain members; at least one is present after checking. No numeric transform is synthesized.
  */
-export const cmdCamera = Schema.Union([
-  Schema.Struct({
-    "focus": Schema.Json
-  }),
-  Schema.Struct({
-    "framing": Schema.Json
-  }),
-  Schema.Struct({
-    "move": Schema.Json
-  }),
-  Schema.Struct({
-    "transition": Schema.Json
-  })
-]);
+export const cmdCamera = Schema.Struct({
+  "kind": Schema.Literal("camera"),
+  "family": Schema.Literal("staging"),
+  "position": Schema.suspend(() => position),
+  "focus": Schema.optionalKey(Schema.String),
+  "framing": Schema.optionalKey(Schema.String),
+  "move": Schema.optionalKey(Schema.String),
+  "transition": Schema.optionalKey(Schema.String),
+  "timing": Schema.optionalKey(Schema.suspend(() => timing)),
+  "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
+  "source": Schema.optionalKey(Schema.suspend(() => source))
+}).check(Schema.makeFilter((value) => [
+  [
+    "focus"
+  ],
+  [
+    "framing"
+  ],
+  [
+    "move"
+  ],
+  [
+    "transition"
+  ]
+].filter((keys) => keys.every((key) => key in value)).length >= 1 || "expected at least one of the key sets: focus | framing | move | transition"));
 export type cmdCamera = typeof cmdCamera.Type;
 
 /**

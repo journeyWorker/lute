@@ -171,6 +171,35 @@ function taggedUnion(branches: JsonSchema[]): string | undefined {
   return undefined;
 }
 
+/**
+ * An object schema whose `oneOf` / `anyOf` branches only name `required` key
+ * sets (`{ properties, required, oneOf: [{ required: [a] }, { required: [b] }] }`):
+ * the branches constrain which properties are present, they are not alternative shapes.
+ */
+function requiredKeySets(schema: JsonSchema): { readonly key: "oneOf" | "anyOf"; readonly sets: string[][] } | undefined {
+  if (schema.properties === undefined || typeof schema.properties !== "object") return undefined;
+  const key = Array.isArray(schema.oneOf) ? "oneOf" : Array.isArray(schema.anyOf) ? "anyOf" : undefined;
+  if (key === undefined) return undefined;
+  const branches = schema[key] as JsonSchema[];
+  const requiredOnly = branches.every((branch) =>
+    branch !== null && typeof branch === "object" && Array.isArray(branch.required)
+    && Object.keys(branch).every((name) => name === "required"));
+  return requiredOnly ? { key, sets: branches.map((branch) => branch.required as string[]) } : undefined;
+}
+
+const withoutBranches = (schema: JsonSchema): JsonSchema => {
+  const { oneOf: _oneOf, anyOf: _anyOf, ...rest } = schema;
+  return rest;
+};
+
+/** `struct` checked against `requiredKeySets`: exactly one (`oneOf`) or at least one (`anyOf`) set fully present. */
+function keySetCheck(struct: string, keySets: { readonly key: "oneOf" | "anyOf"; readonly sets: string[][] }): string {
+  const exactlyOne = keySets.key === "oneOf";
+  const message = `expected ${exactlyOne ? "exactly one" : "at least one"} of the key sets: ${keySets.sets.map((set) => set.join(" + ")).join(" | ")}`;
+  const count = `${quote(keySets.sets)}.filter((keys) => keys.every((key) => key in value)).length`;
+  return `${struct}.check(Schema.makeFilter((value) => ${count} ${exactlyOne ? "=== 1" : ">= 1"} || ${quote(message)}))`;
+}
+
 function expression(schema: JsonSchema, path: string): string {
   if (schema === true || Object.keys(schema).length === 0) return "Schema.Json";
   if (schema === false) return pointer(path);
@@ -179,6 +208,8 @@ function expression(schema: JsonSchema, path: string): string {
   if (schema.const !== undefined) return `Schema.Literal(${quote(schema.const)})`;
   if (Array.isArray(schema.enum)) return `Schema.Literals(${quote(schema.enum)})`;
 
+  const keySets = requiredKeySets(schema);
+  if (keySets !== undefined) return keySetCheck(expression(withoutBranches(schema), path), keySets);
   if (Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)) {
     const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
     const branches = schema[key] as JsonSchema[];
@@ -327,6 +358,7 @@ function typeExpression(schema: JsonSchema, path: string): string {
   }
   if (schema.const !== undefined) return quote(schema.const);
   if (Array.isArray(schema.enum)) return `(${schema.enum.map(quote).join(" | ")})`;
+  if (requiredKeySets(schema) !== undefined) return typeExpression(withoutBranches(schema), path);
   if (Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)) {
     const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
     const maybeNullable = nullable(schema);
@@ -396,7 +428,7 @@ function definitionLines(name: string, schema: JsonSchema, path: string, recursi
     return out;
   }
   const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
-  const members = Array.isArray(schema[key]) && !nullable(schema).isNullable
+  const members = Array.isArray(schema[key]) && !nullable(schema).isNullable && requiredKeySets(schema) === undefined
     ? (schema[key] as JsonSchema[]).map((branch, index) => typeExpression(branch, `${path}/${key}/${index}`))
     : [typeExpression(schema, path)];
   out.push(`export type ${name} =`);
