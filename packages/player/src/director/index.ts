@@ -1,21 +1,28 @@
 /** Effect director: owns the progression actor and all player side effects. */
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream, SubscriptionRef } from "effect"
 import { createActor } from "xstate"
-import type { Contract } from "@lute-lang/runtime"
+import type { Errors } from "@lute-lang/runtime"
 import { derivePlayerView, playerMachine } from "../machine/playerMachine.js"
 import type {
   ConfirmAction, CueContext, CueFactoryShape, CueSchedulerShape, DirectorCommand, Input, LineGate,
-  MachineEvent, Output, Overlay, PlayerView, Stage
+  MachineEvent, Output, Overlay, PlayerView, SaveRuntime, Stage
 } from "../model.js"
 import type { PlayerSessionShape } from "../session/index.js"
+import { SaveIncompatible } from "../session/index.js"
 import type { Bindings } from "../bindings/schema.js"
 import type {
   AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, SlotId
 } from "../ports/index.js"
-import { stageFiles } from "../cues/index.js"
-import { resolveFile } from "../bindings/load.js"
+import { stageFiles, stageMusic, voiceFile } from "../cues/index.js"
 import { AssetMissing } from "../ports/index.js"
 import type { ProfileStoreShape, SaveStoreShape } from "../stores/index.js"
+import { autosavesAt } from "../stores/autosave.js"
+import type { Autosave } from "../stores/autosave.js"
+
+export type { Autosave } from "../stores/autosave.js"
+
+/** Who paces lines (spec 0.41.0 §7.5): the director (reveal/release on `advance`), or the presenter. */
+export type LinePacing = "director" | "presenter"
 
 export interface DirectorOptions {
   readonly bindings: Bindings
@@ -28,41 +35,65 @@ export interface DirectorOptions {
   readonly host?: PlayerHost
   readonly cueFactory: CueFactoryShape
   readonly scheduler: CueSchedulerShape
-  readonly seed?: Contract.Seed
+  /**
+   * `"presenter"`: `Presenter.showLine` completes when the reader released the
+   * line; `advance` never reveals or releases a line and no auto timer runs
+   * for lines. Default `"director"`.
+   */
+  readonly linePacing?: LinePacing
+  /** When the `auto` slot is written; default at a presentation start and at every `awaitChoice`. */
+  readonly autosave?: Autosave
 }
+
+/** The director is not at an await that takes the operation (spec 0.41.0 §7.2, §7.4). */
+export class DirectorBusy extends Schema.TaggedError<DirectorBusy>()("DirectorBusy", {
+  flow: Schema.String,
+  story: Schema.String
+}) {}
 
 export interface DirectorHandle {
   readonly actions: (action: PlayerAction) => Effect.Effect<void>
   readonly view: SubscriptionRef.SubscriptionRef<PlayerView>
+  /**
+   * Send a runtime input while no batch runs and the story waits at `idle` or
+   * `ended` (else `DirectorBusy`, nothing changes). A runtime rejection fails
+   * with it and the director stays at the same await. Completes when the
+   * runtime accepted the input and its batch started, not when it ends.
+   */
+  readonly send: (input: Input) => Effect.Effect<void, Errors.RuntimeRejection | Errors.InputLogError | DirectorBusy>
+  /**
+   * Continue from a host's save (spec 0.41.0 §7.4) in every flow state but
+   * `boot`: abandon the running presentation, restore the session, drop the
+   * read marks added after the save, rewrite the `auto` slot (when autosave is
+   * on), rebuild the stage and re-present the restored await.
+   */
+  readonly restore: (save: SaveRuntime) => Effect.Effect<void, SaveIncompatible | Errors.RuntimeRejection | Errors.InputLogError | DirectorBusy>
   readonly shutdown: Effect.Effect<void>
 }
 
-interface WorkEvent { readonly _tag: "event"; readonly event: MachineEvent }
-interface WorkCommand { readonly _tag: "command"; readonly command: DirectorCommand }
-type Work = WorkEvent | WorkCommand
+type SendError = Errors.RuntimeRejection | Errors.InputLogError | DirectorBusy
+type RestoreError = SaveIncompatible | SendError
+
+type Work =
+  | { readonly _tag: "event"; readonly event: MachineEvent }
+  | { readonly _tag: "command"; readonly command: DirectorCommand }
+  | { readonly _tag: "send"; readonly input: Input; readonly reply: Deferred.Deferred<void, SendError> }
+  | { readonly _tag: "restore"; readonly save: SaveRuntime; readonly reply: Deferred.Deferred<void, RestoreError> }
+  /** A host hook's result, applied in the loop while its await is still current. */
+  | { readonly _tag: "host"; readonly generation: number; readonly apply: Effect.Effect<void, unknown, Scope.Scope> }
 
 const isCommand = (value: unknown): value is DirectorCommand =>
-  typeof value === "object" && value !== null && typeof (value as { readonly type?: unknown }).type === "string"
-
-const commandType = (value: unknown): string => typeof value === "object" && value !== null && "type" in value
-  ? String((value as { readonly type: unknown }).type) : "unknown"
+  typeof value === "object" && value !== null && "type" in value && typeof value.type === "string"
 
 const seconds = (value: number): number => Math.max(0, value)
 
 /** Runtime director value. Most hosts should use {@link LutePlayer.make}. */
 export class Director extends Context.Service<Director, DirectorHandle>()("Lute.Player.Director") {}
 
-const musicFile = (bindings: Bindings, stage: Stage): string | undefined => {
-  const music = stage.music
-  if (music == null) return undefined
-  if (music.assetId !== undefined && music.assetId !== null) return bindings.assets?.[music.assetId] ?? resolveFile(bindings, music.assetId)
-  if (music.mood !== undefined && music.mood !== null) return bindings.music?.moods?.[music.mood]
-  return undefined
-}
-
 export const make = Effect.fn("Lute.Player.Director.make")(function* (options: DirectorOptions) {
   const factory = options.cueFactory
   const scheduler = options.scheduler
+  const presenterPaced = options.linePacing === "presenter"
   const settings = yield* SubscriptionRef.get(options.profile.settings)
   const view = yield* SubscriptionRef.make<PlayerView>({
     flow: "boot", story: "running", mode: "normal", overlay: "none", countdownRemaining: undefined, uiHidden: false
@@ -70,9 +101,17 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   const work = yield* Queue.unbounded<Work>()
   const actor = createActor(playerMachine)
   let batchFiber: Fiber.Fiber<void, unknown> | undefined
+  // The batch that runs; cleared by the batch itself before it settles.
+  let batchRunning: number | undefined
+  let batchCount = 0
   let countdownFiber: Fiber.Fiber<void, never> | undefined
   let autoFiber: Fiber.Fiber<void, never> | undefined
-  let countdownRef = yield* SubscriptionRef.make<number>(0)
+  let choiceFiber: Fiber.Fiber<void, never> | undefined
+  // The host hook (idle flow, bridge handler) of the current await, on a fiber
+  // of its own; `hostGeneration` invalidates results of an abandoned await.
+  let hostFiber: Fiber.Fiber<void, never> | undefined
+  let hostGeneration = 0
+  const countdownRef = yield* SubscriptionRef.make<number>(0)
   let countdownPaused = false
   let currentLine: LineView | undefined
   const voiceWaiters = new Map<string, Deferred.Deferred<void>>()
@@ -81,9 +120,16 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   let currentSettings = settings
   let closed = false
   const commandBuffer: DirectorCommand[] = []
+  // Read marks this director added, by the input point (log length) of their batch.
+  const readJournal = new Map<number, ReadonlyArray<string>>()
 
+  const currentView = (): PlayerView => derivePlayerView(actor.getSnapshot())
+  const busy = (): DirectorBusy => {
+    const { flow, story } = currentView()
+    return new DirectorBusy({ flow, story })
+  }
   const updateView = Effect.gen(function* () {
-    yield* SubscriptionRef.set(view, derivePlayerView(actor.getSnapshot()))
+    yield* SubscriptionRef.set(view, currentView())
   })
   const offerEvent = (event: MachineEvent): Effect.Effect<void> => Queue.offer(work, { _tag: "event", event })
   const markVoiceEnded = (lineId: string): Effect.Effect<void> => Effect.gen(function* () {
@@ -100,17 +146,37 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     voiceWaiters.set(lineId, waiter)
     yield* Deferred.await(waiter)
   })
-  const offerCommand = (command: DirectorCommand): Effect.Effect<void> => Queue.offer(work, { _tag: "command", command })
 
   actor.on("*", (value) => {
     if (isCommand(value)) commandBuffer.push(value)
   })
 
   const interruptBatch = Effect.fn("Lute.Player.Director.interruptBatch")(function* () {
+    batchRunning = undefined
     if (batchFiber !== undefined) {
       yield* Fiber.interrupt(batchFiber)
       batchFiber = undefined
     }
+  })
+
+  /** Abandon the host hook of the current await (a `send`, or any input that leaves it). */
+  const interruptHost = Effect.fn("Lute.Player.Director.interruptHost")(function* () {
+    hostGeneration++
+    if (hostFiber !== undefined) {
+      yield* Fiber.interrupt(hostFiber)
+      hostFiber = undefined
+    }
+  })
+
+  /** Run a host hook on its own fiber; `apply` its result in the loop while the await is current. */
+  const forkHost = <A>(
+    hook: Effect.Effect<A>,
+    apply: (value: A) => Effect.Effect<void, unknown, Scope.Scope>
+  ): Effect.Effect<void, never, Scope.Scope> => Effect.gen(function* () {
+    yield* interruptHost()
+    const generation = hostGeneration
+    hostFiber = yield* Effect.forkScoped(Effect.flatMap(hook, (value) =>
+      Queue.offer(work, { _tag: "host", generation, apply: apply(value) })).pipe(Effect.asVoid))
   })
 
   // The release of the current line. Created when the line starts typing, so
@@ -123,16 +189,33 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     if (released !== undefined) yield* Deferred.succeed(released, undefined)
   })
 
+  const hasVoice = (line: LineView): boolean => line.voiceKey.length > 0 && typeof options.bindings.voice?.pattern === "string"
+
   const lineGate: LineGate = {
     started: (line) => Effect.gen(function* () {
       currentLine = line
       lineReleased = yield* Deferred.make<void>()
-      yield* offerEvent({ type: "line.typing", read: line.read, hasVoice: line.voiceKey.length > 0 && typeof options.bindings.voice?.pattern === "string" })
+      yield* offerEvent({ type: "line.typing", read: line.read, hasVoice: hasVoice(line) })
     }),
     release: (line) => Effect.gen(function* () {
       const released = lineReleased
-      yield* offerEvent({ type: "line.shown", read: line.read, hasVoice: line.voiceKey.length > 0 && typeof options.bindings.voice?.pattern === "string" })
-      if (released !== undefined) yield* Deferred.await(released)
+      yield* offerEvent({ type: "line.shown", read: line.read, hasVoice: hasVoice(line) })
+      if (released === undefined) return
+      if (presenterPaced) {
+        // The presenter's `showLine` completed: the reader released the line.
+        // Skipping that began while it typed is released by the machine — or
+        // stops at an unread line, which the presenter then shows normally.
+        if ((yield* SubscriptionRef.get(modeRef)) === "skip") {
+          const stopped = Stream.runHead(Stream.filter(SubscriptionRef.changes(modeRef), (mode) => mode !== "skip"))
+          const outcome = yield* Effect.raceFirst(Effect.as(Deferred.await(released), "released" as const), Effect.as(stopped, "stopped" as const))
+          if (outcome === "stopped") yield* options.presenter.showLine(line, "normal")
+        }
+        if (!(yield* Deferred.isDone(released))) {
+          yield* options.presenter.clearLine
+          yield* offerEvent({ type: "line.released" })
+          yield* finishLine()
+        }
+      } else yield* Deferred.await(released)
       lineReleased = undefined
     })
   }
@@ -160,30 +243,53 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     ))
   }
 
+  // CueScheduler's mode is only normal/skip; auto is normal pacing.
+  const modeRef = yield* SubscriptionRef.make<"normal" | "skip">("normal")
+
   const setMode = (mode: "normal" | "auto" | "skip"): Effect.Effect<void> =>
     SubscriptionRef.set(modeRef, mode === "skip" ? "skip" : "normal")
+
+  const saveSlot = (slot: SlotId): Effect.Effect<void, unknown, Scope.Scope> => Effect.gen(function* () {
+    const runtime = yield* options.session.snapshot
+    const backlog = yield* SubscriptionRef.get(options.session.backlog)
+    const label = backlog.at(-1)?.text ?? "Save"
+    const thumbnail = yield* options.presenter.capture
+    yield* options.saves.save(slot, { project: options.session.fingerprint, runtime, label, thumbnail })
+    yield* offerEvent({ type: "save.done" })
+    yield* offerEvent({ type: "slot.occupied", slot, occupied: true })
+  })
+
+  // An autosave that fails is logged; it never stops the story.
+  const autosave = saveSlot("auto").pipe(Effect.catchCause((cause) => Effect.logWarning("autosave failed", cause)))
 
   const playBatch = Effect.fn("Lute.Player.Director.playBatch")(function* (output: Output) {
     const read = yield* SubscriptionRef.get(options.profile.readLines)
     const cues = yield* factory.fromOutput(output, read)
     const files = cues.flatMap((cue) => cue.files)
+    const inputPoint = (yield* options.session.current).logLength
     const context: CueContext = { presenter: options.presenter, audio: options.audio, bindings: options.bindings, settings: currentSettings, voiceEnded: markVoiceEnded }
-    if (output.events.some((event) => event.type === "presentation")) yield* saveSlot("auto")
-    yield* offerEvent({ type: "batch.started" })
+    if (autosavesAt(options.autosave, "presentation") && output.events.some((event) => event.type === "presentation")) yield* autosave
+    // Inside the loop: the machine takes the batch start before the batch runs.
+    actor.send({ type: "batch.started" })
+    const batch = ++batchCount
+    batchRunning = batch
     const running = Effect.scoped(Effect.gen(function* () {
       yield* ensureAssets(files)
       yield* scheduler.play(cues, context, modeRef, lineGate)
-      for (const cue of cues) if (cue.line !== undefined) yield* options.profile.markRead(cue.line.lineId)
+      const marked = new Set<string>()
+      for (const cue of cues) {
+        if (cue.line === undefined || read.has(cue.line.lineId) || marked.has(cue.line.lineId)) continue
+        yield* options.profile.markRead(cue.line.lineId)
+        marked.add(cue.line.lineId)
+      }
+      if (marked.size > 0) readJournal.set(inputPoint, [...(readJournal.get(inputPoint) ?? []), ...marked])
       const point = yield* options.session.current
-      if (point.await.type === "awaitChoice") yield* saveSlot("auto")
+      if (autosavesAt(options.autosave, "choice") && point.await.type === "awaitChoice") yield* autosave
+      if (batchRunning === batch) batchRunning = undefined
       yield* offerEvent({ type: "batch.settled", await: point.await })
-      batchFiber = undefined
     }))
     batchFiber = yield* Effect.forkScoped(running)
   })
-
-  // CueScheduler's mode is only normal/skip; auto is normal pacing.
-  const modeRef = yield* SubscriptionRef.make<"normal" | "skip">("normal")
 
   const stopTimers = Effect.fn("Lute.Player.Director.stopTimers")(function* () {
     if (countdownFiber !== undefined) yield* Fiber.interrupt(countdownFiber)
@@ -206,31 +312,85 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     yield* offerEvent({ type: "countdown.expired" })
   })
 
-  const restartMusic = (stage: Stage): Effect.Effect<void> => Effect.gen(function* () {
-    const file = musicFile(options.bindings, stage)
-    if (file === undefined) yield* options.audio.stop("music", 0)
-    else yield* options.audio.play("music", { file, loop: true, volume: 1, fade: 0 })
-  })
+  /** The restored stage's music (§7.7): silent without music or at `stop` / `fadeOut`. */
+  const restartMusic = (stage: Stage): Effect.Effect<void> => {
+    const music = stageMusic(options.bindings, stage)
+    return music === undefined ? options.audio.stop("music", 0) : options.audio.play("music", music)
+  }
 
-  const saveSlot = (slot: SlotId): Effect.Effect<void, unknown, Scope.Scope> => Effect.gen(function* () {
-    const runtime = yield* options.session.snapshot
-    const backlog = yield* SubscriptionRef.get(options.session.backlog)
-    const label = backlog.at(-1)?.text ?? "Save"
-    const thumbnail = yield* options.presenter.capture
-    yield* options.saves.save(slot, { project: options.session.fingerprint, runtime, label, thumbnail })
-    yield* offerEvent({ type: "save.done" })
-    yield* offerEvent({ type: "slot.occupied", slot, occupied: true })
+  const presentStage = (stage: Stage): Effect.Effect<void, never, Scope.Scope> => Effect.gen(function* () {
+    yield* ensureAssets(stageFiles(options.bindings, stage))
+    yield* options.presenter.restore(stage)
+    yield* restartMusic(stage)
   })
 
   const loadSlot = (slot: SlotId): Effect.Effect<void, unknown, Scope.Scope> => Effect.gen(function* () {
     yield* interruptBatch()
+    yield* interruptHost()
     const saved = yield* options.saves.load(slot)
     const point = yield* options.session.restore(saved.runtime)
+    // A loaded save starts another lineage: its input points are not the journal's.
+    readJournal.clear()
     yield* options.presenter.hideScreen
-    yield* ensureAssets(stageFiles(options.bindings, point.stage))
-    yield* options.presenter.restore(point.stage)
-    yield* restartMusic(point.stage)
+    yield* presentStage(point.stage)
     yield* offerEvent({ type: "load.done", await: point.await })
+  })
+
+  /**
+   * Send `input` at `idle` / `ended` (spec 0.41.0 §7.2–§7.3). A refusal (busy,
+   * or the runtime's) changes nothing; an accepted input leaves the await and
+   * plays its batch.
+   */
+  const sendInput = (input: Input): Effect.Effect<void, SendError, Scope.Scope> => Effect.gen(function* () {
+    const { story } = currentView()
+    if (batchRunning !== undefined || (story !== "idle" && story !== "ended")) return yield* Effect.fail(busy())
+    const output = yield* options.session.send(input)
+    yield* interruptHost()
+    // The idle menu or the ending screen gives way to the batch.
+    if (idleOptions.length > 0 || story === "ended") yield* options.presenter.hideScreen
+    idleOptions = []
+    yield* playBatch(output)
+  })
+
+  /** Stop everything the current await runs: batch, timers, host hook, choice UI, overlays. */
+  const abandonPresentation = Effect.gen(function* () {
+    yield* interruptBatch()
+    yield* stopTimers()
+    yield* interruptHost()
+    if (choiceFiber !== undefined) yield* Fiber.interrupt(choiceFiber)
+    choiceFiber = undefined
+    lineReleased = undefined
+    currentLine = undefined
+    idleOptions = []
+    yield* options.presenter.hideChoice
+    yield* options.presenter.hideScreen
+    yield* options.presenter.clearLine
+  })
+
+  /** A host `restore` (spec 0.41.0 §7.4). */
+  const restoreSave = (save: SaveRuntime): Effect.Effect<void, RestoreError, Scope.Scope> => Effect.gen(function* () {
+    if (currentView().flow === "boot") return yield* Effect.fail(busy())
+    if (save.snapshot.project !== undefined && save.snapshot.project !== options.session.fingerprint) {
+      return yield* Effect.fail(new SaveIncompatible({ message: "save belongs to another project" }))
+    }
+    yield* abandonPresentation
+    const restored = yield* Effect.exit(options.session.restore(save))
+    if (Exit.isFailure(restored)) {
+      yield* offerEvent({ type: "failed", message: "restore failed" })
+      return yield* Effect.failCause(restored.cause)
+    }
+    const point = restored.value
+    // The abandoned presentation's read marks go; the marks up to the save stay.
+    const dropped: string[] = []
+    for (const [inputPoint, lineIds] of readJournal) {
+      if (inputPoint <= save.log.length) continue
+      dropped.push(...lineIds)
+      readJournal.delete(inputPoint)
+    }
+    if (dropped.length > 0) yield* options.profile.unmarkRead(dropped).pipe(Effect.catchCause((cause) => Effect.logWarning("read history update failed", cause)))
+    yield* presentStage(point.stage)
+    if (options.autosave !== false) yield* autosave
+    actor.send({ type: "load.done", await: point.await })
   })
 
   const confirmMessage = (action: ConfirmAction | undefined): string => {
@@ -262,12 +422,16 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     }
   }
 
+  const failed = (message: string) => (cause: unknown): Effect.Effect<void> =>
+    Effect.logError(message, cause).pipe(Effect.andThen(offerEvent({ type: "failed", message })))
+
   const handleCommand = (command: DirectorCommand): Effect.Effect<void, unknown, Scope.Scope> => {
     switch (command.type) {
       case "session.newGame":
         return Effect.gen(function* () {
           yield* interruptBatch()
-          const output = yield* options.session.begin(options.seed ?? {})
+          yield* interruptHost()
+          const output = yield* options.session.begin
           yield* playBatch(output)
         })
       case "session.continue": return loadSlot("quick")
@@ -295,6 +459,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
           yield* finishLine()
         })
       case "auto.start":
+        // Presenter-paced lines run no auto timer: the presenter reads `PlayerView.mode`.
+        if (presenterPaced) return Effect.void
         return Effect.gen(function* () {
           if (autoFiber !== undefined) yield* Fiber.interrupt(autoFiber)
           const lineId = currentLine?.lineId
@@ -312,35 +478,55 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "countdown.resume": return Effect.sync(() => { countdownPaused = false })
       case "countdown.cancel": return countdownFiber === undefined ? Effect.void : Fiber.interrupt(countdownFiber).pipe(Effect.andThen(Effect.sync(() => { countdownFiber = undefined })))
       case "choice.show":
-        return Effect.forkScoped(Effect.gen(function* () {
-          const remaining = Stream.fromEffectRepeat(Effect.andThen(Effect.sleep(100), SubscriptionRef.get(countdownRef)))
-          const option = yield* options.presenter.showChoice(factory.choiceView(command.await, currentSettings.locale), remaining)
-          yield* offerEvent({ type: "choose", option })
-        })).pipe(Effect.asVoid)
-      case "choice.hide": return options.presenter.hideChoice
+        return Effect.gen(function* () {
+          choiceFiber = yield* Effect.forkScoped(Effect.gen(function* () {
+            const remaining = Stream.fromEffectRepeat(Effect.andThen(Effect.sleep(100), SubscriptionRef.get(countdownRef)))
+            const option = yield* options.presenter.showChoice(factory.choiceView(command.await, currentSettings.locale), remaining)
+            yield* offerEvent({ type: "choose", option })
+          }))
+        })
+      case "choice.hide": return Effect.andThen(Effect.sync(() => { choiceFiber = undefined }), options.presenter.hideChoice)
       case "bridge.call": {
         const handler = options.host?.bridge?.[command.await.tag]
-        return handler === undefined
-          ? offerEvent({ type: "bridge.unhandled", tag: command.await.tag })
-          : handler(command.await).pipe(Effect.flatMap((fields) => options.session.send({ type: "bridgeResult", request: command.await.request, fields: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(fields) })), Effect.flatMap(playBatch), Effect.andThen(offerEvent({ type: "bridge.answered" })))
+        if (handler === undefined) return offerEvent({ type: "bridge.unhandled", tag: command.await.tag })
+        const request = command.await.request
+        // The handler runs on a fiber of its own: actions keep working while
+        // the host plays, and its `send` is refused as busy, not deadlocked.
+        return forkHost(handler(command.await), (answer) => Effect.gen(function* () {
+          const fields = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(answer.fields)
+          const output = yield* options.session.send({ type: "bridgeResult", request, fields, ...(answer.writes === undefined ? {} : { writes: answer.writes }) })
+          yield* playBatch(output)
+          yield* offerEvent({ type: "bridge.answered" })
+        }).pipe(Effect.catchCause(failed("bridge answer failed"))))
       }
-      case "idle.flow":
-        return Effect.gen(function* () {
+      case "idle.flow": {
+        const sendIdle = (input: Input) => sendInput(input).pipe(Effect.catchCause(failed("idle input failed")))
+        // The idle flow runs on a fiber of its own (spec 0.41.0 §7.2): a host
+        // `idle` that waits for the game never blocks actions or `send`.
+        return forkHost(Effect.gen(function* () {
           const hostInput = options.host?.idle === undefined ? undefined : yield* options.host.idle(command.await)
-          if (hostInput !== undefined) return yield* handleCommand({ type: "session.send", input: hostInput })
-          const result = yield* options.session.idle
-          if (result?._tag === "Input") return yield* handleCommand({ type: "session.send", input: result.input })
-          if (result?._tag === "Menu") {
-            idleOptions = result.options
-            yield* options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
-          }
+          return hostInput !== undefined ? { _tag: "Input" as const, input: hostInput } : yield* options.session.idle
+        }), (result) => {
+          if (result?._tag === "Input") return sendIdle(result.input)
+          if (result?._tag !== "Menu") return Effect.void
+          idleOptions = result.options
+          return options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
         })
+      }
       case "mode.changed": return setMode(command.mode)
       case "save": return saveSlot(command.slot)
       case "load": return loadSlot(command.slot)
       case "delete": return options.saves.delete(command.slot).pipe(Effect.andThen(offerEvent({ type: "slot.occupied", slot: command.slot, occupied: false })))
       case "rollback":
-        return Effect.gen(function* () { yield* interruptBatch(); const point = yield* options.session.rollback(1); yield* ensureAssets(stageFiles(options.bindings, point.stage)); yield* options.presenter.restore(point.stage); yield* restartMusic(point.stage); yield* offerEvent({ type: "load.done", await: point.await }) })
+        return Effect.gen(function* () {
+          yield* interruptBatch()
+          yield* interruptHost()
+          const point = yield* options.session.rollback(1)
+          // Input points past the rolled-back one are an abandoned branch.
+          for (const inputPoint of readJournal.keys()) if (inputPoint > point.logLength) readJournal.delete(inputPoint)
+          yield* presentStage(point.stage)
+          yield* offerEvent({ type: "load.done", await: point.await })
+        })
       case "screen.show": return options.presenter.showScreen(command.screen)
       case "screen.hide": return options.presenter.hideScreen
       case "overlay.show":
@@ -350,36 +536,61 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "settings.apply":
         return Effect.gen(function* () { yield* options.profile.updateSettings(command.settings); currentSettings = yield* SubscriptionRef.get(options.profile.settings); yield* options.presenter.applySettings(currentSettings); yield* options.audio.setVolumes(currentSettings.volumes) })
       case "voice.replay": {
-        const pattern = options.bindings.voice?.pattern
-        const file = typeof pattern !== "string" ? undefined : resolveFile(options.bindings, pattern.replaceAll("{voiceKey}", command.lineId))
-        return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0 })
+        const file = voiceFile(options.bindings, command.lineId)
+        return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0, restart: true })
       }
-      case "toTitle": return Effect.gen(function* () { yield* interruptBatch(); yield* stopTimers() })
+      case "toTitle":
+        return Effect.gen(function* () { yield* interruptBatch(); yield* stopTimers(); yield* interruptHost(); idleOptions = [] })
     }
   }
 
   const process = Effect.gen(function* () {
     while (!closed) {
       const item = yield* Queue.take(work)
-      if (item._tag === "event") {
-        if (item.event.type === "pickIdle") {
-          // The idle menu answers once: a repeated pick (double click, held
-          // key) must not send a second input while the first one runs.
-          const selected = idleOptions[item.event.index]
-          if (selected !== undefined) {
-            idleOptions = []
-            yield* options.presenter.hideScreen
-            yield* handleCommand({ type: "session.send", input: selected.input }).pipe(Effect.catchCause((cause) => Effect.logError("idle input failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "idle input failed" })))))
-          }
-        } else {
-          actor.send(item.event)
+      // A `send` / `restore` is answered once the machine took the batch
+      // start or restored await and the view shows it.
+      let answer: Effect.Effect<void> = Effect.void
+      switch (item._tag) {
+        case "event": {
+          const event = item.event
+          if (event.type === "pickIdle") {
+            // The idle menu answers once: a repeated pick (double click, held
+            // key) must not send a second input while the first one runs.
+            const selected = idleOptions[event.index]
+            if (selected !== undefined) yield* sendInput(selected.input).pipe(Effect.catchCause(failed("idle input failed")))
+          } else if (event.type === "send") {
+            yield* sendInput(event.input).pipe(Effect.catchCause((cause) => Effect.logWarning("send refused", cause)))
+          } else if (event.type === "advance" && presenterPaced) {
+            // The presenter takes the reader's confirm itself.
+          } else actor.send(event)
+          break
         }
-      } else yield* handleCommand(item.command).pipe(Effect.catchCause((cause) => Effect.logError("director command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "director command failed" })))))
+        case "command":
+          yield* handleCommand(item.command).pipe(Effect.catchCause(failed("director command failed")))
+          break
+        case "send": {
+          const exit = yield* Effect.exit(sendInput(item.input))
+          answer = Deferred.done(item.reply, exit).pipe(Effect.asVoid)
+          break
+        }
+        case "restore": {
+          const exit = yield* Effect.exit(restoreSave(item.save))
+          answer = Deferred.done(item.reply, exit).pipe(Effect.asVoid)
+          break
+        }
+        case "host":
+          if (item.generation === hostGeneration) {
+            hostFiber = undefined
+            yield* item.apply.pipe(Effect.catchCause(failed("host hook failed")))
+          }
+          break
+      }
       while (commandBuffer.length > 0) {
         const command = commandBuffer.shift()
-        if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause((cause) => Effect.logError("director command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "director command failed" })))))
+        if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause(failed("director command failed")))
       }
       yield* updateView
+      yield* answer
     }
   })
   const processor = yield* Effect.forkScoped(process)
@@ -388,21 +599,40 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   yield* options.presenter.applySettings(currentSettings)
   yield* options.audio.setVolumes(currentSettings.volumes)
   const canContinue = (yield* options.saves.list).some(({ slot }) => slot === "quick" || slot === "auto")
-  actor.send({ type: "boot.ready", canContinue })
+  actor.send({ type: "boot.ready", canContinue, confirmsLines: options.presenter.confirmsLines === true })
   yield* updateView
   while (commandBuffer.length > 0) {
     const command = commandBuffer.shift()
-    if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause((cause) => Effect.logError("boot command failed", cause).pipe(Effect.andThen(offerEvent({ type: "failed", message: "boot command failed" })))))
+    if (command !== undefined) yield* handleCommand(command).pipe(Effect.catchCause(failed("boot command failed")))
   }
+
+  /** Hand `make` to the loop and wait for its reply; a closed director is busy. */
+  const ask = <E>(make: (reply: Deferred.Deferred<void, E | DirectorBusy>) => Work): Effect.Effect<void, E | DirectorBusy> => Effect.gen(function* () {
+    if (closed) return yield* Effect.fail(busy())
+    const reply = yield* Deferred.make<void, E | DirectorBusy>()
+    yield* Queue.offer(work, make(reply))
+    return yield* Deferred.await(reply)
+  })
 
   const shutdown = Effect.gen(function* () {
     if (closed) return
     closed = true
     yield* Fiber.interrupt(processor)
+    // Questions the loop will not answer any more.
+    for (const item of yield* Queue.clear(work)) {
+      if (item._tag === "send") yield* Deferred.fail(item.reply, busy())
+      else if (item._tag === "restore") yield* Deferred.fail(item.reply, busy())
+    }
     yield* Queue.shutdown(work)
     actor.stop()
   })
-  return { actions: (action: PlayerAction) => offerEvent(action), view, shutdown }
+  return {
+    actions: (action: PlayerAction) => offerEvent(action),
+    view,
+    send: (input: Input) => ask<SendError>((reply) => ({ _tag: "send", input, reply })),
+    restore: (save: SaveRuntime) => ask<RestoreError>((reply) => ({ _tag: "restore", save, reply })),
+    shutdown
+  } satisfies DirectorHandle
 })
 
 /** Layer constructor for hosts that already provide all player dependencies. */

@@ -216,6 +216,8 @@ const Profile = Schema.Struct({
 export interface ProfileStoreShape {
   readonly readLines: SubscriptionRef.SubscriptionRef<ReadonlySet<string>>
   readonly markRead: (lineId: string) => Effect.Effect<void, ProfileCorrupt>
+  /** Remove lines from the read history (a host `restore` drops the marks of the abandoned presentation). */
+  readonly unmarkRead: (lineIds: Iterable<string>) => Effect.Effect<void, ProfileCorrupt>
   readonly settings: SubscriptionRef.SubscriptionRef<Settings>
   readonly updateSettings: (settings: SettingsChanges) => Effect.Effect<void, ProfileCorrupt>
 }
@@ -283,6 +285,12 @@ export const profileLayer = (
       markRead: (lineId: string) => Effect.gen(function* () {
         const next = new Set(yield* SubscriptionRef.get(readRef))
         next.add(lineId)
+        yield* SubscriptionRef.set(readRef, next)
+        yield* persist(next, yield* SubscriptionRef.get(settingsRef))
+      }),
+      unmarkRead: (lineIds: Iterable<string>) => Effect.gen(function* () {
+        const next = new Set(yield* SubscriptionRef.get(readRef))
+        for (const lineId of lineIds) next.delete(lineId)
         yield* SubscriptionRef.set(readRef, next)
         yield* persist(next, yield* SubscriptionRef.get(settingsRef))
       }),

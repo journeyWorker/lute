@@ -1,8 +1,9 @@
 # `@lute-lang/player` — architecture
 
-Normative behaviour: `docs/proposals/scenario-dsl/0.40.0.md` §6–§7. This document
-fixes the module boundaries and the TypeScript contracts between them, so the
-modules are built and tested independently and composed by the director.
+Normative behaviour: `docs/proposals/scenario-dsl/0.40.0.md` §6–§7 and
+`0.41.0.md` §7 (host surface). This document fixes the module boundaries and
+the TypeScript contracts between them, so the modules are built and tested
+independently and composed by the director.
 
 ```text
                     PlayerAction (input/)            host: PlayerHost
@@ -78,8 +79,35 @@ interface CueFactory {
 `LineCue.execute` = `presenter.showLine(view, "normal")` in parallel with the
 voice (`audio.play("voice", key)` when `bindings.voice` resolves a file);
 completes when the text is fully shown — releasing the line is the
-director's job (see `LineGate`). `MusicCue` resolves `assetId` / `mood`
-through bindings, crossfades, and stops on `stop: true`.
+director's job (see `LineGate`). `LineView.speakerName` is the index `cast`
+name (`bundle.index.cast`, empty for narration); `emotion` / `variant` carry
+the line command's values.
+
+**One cue per event (normative).** `CueFactory.fromOutput` returns exactly
+one cue per output event, in event order. A host MAY wrap the factory relying
+on it.
+
+**Music** (`MusicCue`) reads `playback`, `volume`, `stop`, `mood`, `assetId`:
+`stop: true` or `playback: stop` stops (fade `duration ?? 0`); `fadeOut`
+stops over `duration ?? 1` s; `start` plays the file from its start
+(`AudioPlay.restart: true`); anything else changes to the file — the file
+already playing only changes volume. `volume` is a number clamped to [0, 1]
+(absent or not finite → 1). After a load, rollback or `restore` the stage's
+music is silent when the stage has none or its `playback` is `stop` /
+`fadeOut` (`stageMusic`).
+
+**Vfx** (`StageCue.Vfx.effect`): a catalogue binding gives its effect; a
+`{ effect: custom, name?, duration? }` binding gives
+`{ effect: "custom", name: name ?? key, params: {} }` with its `duration` as
+the cue's; a type with no binding gives `{ effect: "custom", name: type,
+params: {} }`. The presenter decides what a custom effect plays.
+
+**Plugin records.** A `plugin` record whose tag has a `PlayerHost.plugin`
+handler is a waiting cue: the scheduler runs the handler (with a
+`PluginCall { tag, attrs, document, position }`) at the record's place and
+continues when it completes, in skip mode too. Without a handler, and for a
+record carrying `answered` (a call answered through `awaitBridge`) or an
+effect record sharing the plugin's position, it stays bookkeeping.
 
 ### scheduler (`scheduler/`)
 
@@ -157,7 +185,7 @@ interface InputPoint {
 }
 
 interface PlayerSession {
-  readonly begin: Effect.Effect<Output, RuntimeRejection>              // seed + flow.newGame raise
+  readonly begin: Effect.Effect<Output, RuntimeRejection>              // §7.3, below
   readonly send: (input: Input) => Effect.Effect<Output, RuntimeRejection>
   readonly current: Effect.Effect<InputPoint>
   readonly rollback: (steps: number) => Effect.Effect<InputPoint>       // fails NothingToRollback
@@ -168,6 +196,16 @@ interface PlayerSession {
 ```
 
 History keeps the last `settings.rollbackDepth` (default 100) input points.
+The input log starts with `{ seed }` (the `seed` option) or `{ snapshot }`
+(the runtime session's save when the player session is built). `begin`
+returns the runtime session's `started` output while the player session has
+accepted no input since it was built; afterwards it sends `newRun`. Either is
+followed by the bound `flow.newGame` raise, the events concatenated in order
+with the last await (so the first `begin` presents `started` before the
+raise). A session that waits where `newRun` is refused (halted, at a choice
+or a bridge) is first restored to the snapshot captured when the player
+session was built. Backlog names come from the `cast` option (the index
+`cast`).
 
 ### stores (`stores/`)
 
@@ -180,14 +218,51 @@ and version checks (`SaveIncompatible`).
 
 `LutePlayer.make(options)` (scoped) composes: bindings decode, runtime
 session, machine actor, scheduler, ports, stores. It is the only module that
-creates fibers that outlive a call. It exposes `actions: (a: PlayerAction) =>
-Effect<void>`, `view: SubscriptionRef<PlayerView>` (what screens render), and
-`host` hooks.
+creates fibers that outlive a call.
+
+- **Start** (§7.1): `seed` (default `{ derive: true }`) or `snapshot` builds
+  `Session.layer` in the player's scope; `session` drives the host's runtime
+  session, which the player never closes (the host still provides the same
+  bundle through `BundleSource`, and a `KeyValueStore`).
+- **Handle**: `actions`, `view: SubscriptionRef<PlayerView>`, `send`,
+  `restore`, `shutdown`, plus `session` (the runtime session) and `program`
+  (`session.program`) for `current`, `events`, `view` / `evaluate` / `def` /
+  `gate` / `candidates` without a second load.
+- **`send(input)`** (§7.2–§7.3): accepted while no batch runs and the story
+  waits at `idle` or `ended`; otherwise `DirectorBusy { flow, story }` and
+  nothing changes. A runtime rejection fails `send` and the director stays at
+  the same await. An accepted input plays as a batch (`ended` goes back to
+  `playing`); `send` completes once the batch started, not when it ends. The
+  `{ type: "send", input }` action does the same and logs a refusal.
+- **Host hooks run on fibers of their own**: `PlayerHost.idle` and
+  `PlayerHost.bridge` never block the command loop, so actions keep working
+  and a handler's own `send` is refused as busy instead of deadlocking. A
+  `send` or any input that leaves the await interrupts the pending hook. A
+  bridge handler returns `BridgeAnswer { fields, writes? }`, sent as
+  `bridgeResult`.
+- **`restore(save)`** (§7.4), in every flow state but `boot`: interrupt the
+  batch, countdown, auto timer and host hook; hide the choice UI, any overlay
+  and the line; `PlayerSession.restore`; remove the read marks the director
+  added at input points later than `save.log.length` (it journals the marks
+  per input point); rewrite the `auto` slot unless `autosave: false`; ensure
+  the stage's files, `presenter.restore(stage)`, restart the stage music;
+  re-present the await (`load.done`, accepted from `title`, `ended` and
+  `halted`).
+- **Line pacing** (§7.5): `linePacing: "presenter"` — `showLine` completes
+  when the reader released the line; `advance` never reveals or releases and
+  no auto timer runs for lines. With the default `"director"` pacing, a
+  presenter declaring `confirmsLines: true` gets an `advance` that arrives
+  while the line types buffered and applied as the release at `line.shown`.
+- **Autosave** (§7.9): omitted, the `auto` slot is written at a presentation
+  start and at every `awaitChoice`; `"presentation"` / `"choice"`, only
+  there; `false`, never (no snapshot, no `presenter.capture`).
 
 ## Testing
 
 - `cues/`: every record kind decodes; unknown kind is a defect; line view
-  resolution (cast name, locale, segments, read flag); music stop.
+  resolution (index cast name, emotion/variant, locale, segments, read flag);
+  the music table; vfx effects (custom, catalogue, unbound); plugin waiting
+  cues; one cue per event.
 - `scheduler/`: each §6.3 rule with a recording presenter and `TestClock`.
 - `machine/`: pure actor tests — event sequences → state + emitted commands
   (advance/reveal/release, auto, skip stops, choice, timed choice → timeout,
@@ -198,13 +273,21 @@ Effect<void>`, `view: SubscriptionRef<PlayerView>` (what screens render), and
 - `director/`: end-to-end with fake ports: play `conformance/session/*`
   cases from their `inputs.jsonl` (answers by choose/bridge/timeout) and
   assert the presenter saw every record in order and the final await equals
+  the runtime's; save → load reproduces stage/backlog/await; rollback;
+  `send` (idle, ended, busy, rejected), host hooks on their own fibers,
+  `restore` from playing/ended/halted, line pacing, autosave modes, bridge
+  answers with writes.
+- `LutePlayer`: start from a seed, a snapshot or a host session; the handle's
+  `session` / `program`.
 
 ### Choices and restored stages
 
 `CueFactory.choiceView(await_, locale)` resolves authored branch/hub prompt and
 option text (with locale fallback) from the bundle index. Presenters receive a
 `ChoiceView`, including runtime verdicts, timeout, default, once, and exit
-metadata. Before `Presenter.restore(stage)` on load or rollback, the director
-ensures `stageFiles(bindings, stage)` so bound background, sprites, CG/video,
-and music assets are available.
-  the runtime's; save → load reproduces stage/backlog/await; rollback.
+metadata. Before `Presenter.restore(stage)` on load, rollback or `restore`,
+the director ensures `stageFiles(bindings, stage)` so bound background,
+sprites, CG/video, and the music `stageMusic` restarts are available. Cues and
+restored stages name files with one rule: an asset id is its `assets` entry,
+or the id itself as a file relative to `assetsBase` (`assetFile`); the host's
+loader and audio port resolve files against `assetsBase`.

@@ -1,11 +1,13 @@
 /**
  * The seams between the player core and a renderer/host (spec 0.40.0 §6–§7,
- * docs/player/architecture.md). `@lute-lang/player-web` implements these with
- * PixiJS and Web Audio; an engine host implements them with its own renderer.
- * Every operation is an Effect that completes when its effect has finished.
+ * 0.41.0 §7, docs/player/architecture.md). `@lute-lang/player-web` implements
+ * these with PixiJS and Web Audio; an engine host implements them with its own
+ * renderer. Every operation is an Effect that completes when its effect has
+ * finished.
  */
 import type { Effect, Scope, Stream } from "effect"
 import { Schema } from "effect"
+import type { Contract } from "@lute-lang/runtime"
 import type { Stage, MenuAwait, BridgeAwait, Input, Await } from "../model.js"
 
 /** One run of line text, or a pause, after locale and style resolution. */
@@ -20,11 +22,15 @@ export interface LineView {
   readonly role: string
   /** Cast id of the speaker (`narrator` for narration). */
   readonly speaker: string
-  /** Display name (cast `name`, or empty for narration). */
+  /** Display name from the bundle index `cast` (`{ id: name }`); empty for narration. */
   readonly speakerName: string
   readonly segments: ReadonlyArray<Segment>
   /** Already in the read history. */
   readonly read: boolean
+  /** The line command's `emotion`, when authored. */
+  readonly emotion?: string
+  /** The line command's `variant`, when authored. */
+  readonly variant?: string
 }
 
 /** How a cue is played: normally, or snapped to its end state (skip). */
@@ -41,10 +47,16 @@ export type StageCue =
   | { readonly _tag: "Vfx"; readonly effect: EffectSpec; readonly duration: number | undefined }
   | { readonly _tag: "Sequence"; readonly name: string; readonly video: string | undefined }
 
-/** A named effect from the player effect catalogue with its bound parameters. */
+/**
+ * A named effect with its bound parameters: a player catalogue effect, or
+ * `effect: "custom"` (a `vfx` with a custom binding or no binding), which the
+ * presenter resolves by `name` (spec 0.41.0 §7.7).
+ */
 export interface EffectSpec {
   readonly effect: string
   readonly params: Readonly<Record<string, number | string | boolean>>
+  /** Present exactly when `effect` is `"custom"`: the presenter-defined effect's name. */
+  readonly name?: string
 }
 
 /** Authored and runtime-resolved choice data for presenters. */
@@ -67,7 +79,12 @@ export interface ChoiceView {
 export interface Presenter {
   /** Play a staging cue; completes when its visual effect finished (at once in skip mode). */
   readonly stage: (cue: StageCue, mode: PlayMode) => Effect.Effect<void>
-  /** Show and type a line; completes when the line is fully shown. */
+  /**
+   * Show and type a line. With the default `linePacing: "director"` it
+   * completes when the line is fully shown; with `linePacing: "presenter"` it
+   * completes when the reader released the line (the presenter types, pages
+   * and takes the confirm itself). `mode: "skip"` completes at once.
+   */
   readonly showLine: (line: LineView, mode: PlayMode) => Effect.Effect<void>
   /** Finish typing the current line at once. */
   readonly revealLine: Effect.Effect<void>
@@ -89,6 +106,13 @@ export interface Presenter {
   readonly capture: Effect.Effect<string>
   /** Player actions produced by on-screen widgets (buttons, menus, slots). */
   readonly actions: Stream.Stream<PlayerAction>
+  /**
+   * The presenter takes the reader's confirm itself: with the default
+   * director pacing, an `advance` that arrives while the line is typing is
+   * kept and applied as the release once the line is shown, instead of
+   * revealing it (spec 0.41.0 §7.5).
+   */
+  readonly confirmsLines?: boolean
 }
 
 export type AudioChannel = "music" | "sfx" | "voice"
@@ -99,8 +123,14 @@ export interface AudioPlay {
   readonly loop: boolean
   /** 0–1, multiplied with the channel volume. */
   readonly volume: number
-  /** Crossfade/fade-in seconds. */
+  /** Crossfade/fade-in seconds (music), or fade-in seconds. */
   readonly fade: number
+  /**
+   * Music: play the file from its start even when it is already playing. Without
+   * `restart`, playing the music file that already plays only changes its
+   * volume (fading over `fade`). One-shot channels always start the sound.
+   */
+  readonly restart: boolean
 }
 
 /** Sound seam. `play` completes when the sound ended (looping music: when it started). */
@@ -150,6 +180,11 @@ export type PlayerAction =
   | { readonly type: "pickIdle"; readonly index: number }
   | { readonly type: "replayVoice"; readonly lineId: string }
   | { readonly type: "setSettings"; readonly settings: Partial<Settings> }
+  /**
+   * Send a runtime input at `idle` or `ended`, as `DirectorHandle.send` does;
+   * a refusal is logged and changes nothing (spec 0.41.0 §7.2).
+   */
+  | { readonly type: "send"; readonly input: Input }
 
 export type SlotId = "quick" | "auto" | number
 
@@ -202,9 +237,37 @@ export type ScreenModel =
   | { readonly _tag: "Menu" }
   | { readonly _tag: "Ended"; readonly reason: string }
 
-/** Host hooks: bridges and the idle flow. */
+/** A host's answer to an `awaitBridge`: sent as `bridgeResult { request, fields, writes? }`. */
+export interface BridgeAnswer {
+  readonly fields: Readonly<Record<string, unknown>>
+  /** Host writes applied with the result, before the lines that follow it. */
+  readonly writes?: Contract.WritesInput
+}
+
+/** A non-blocking `plugin` record handed to {@link PlayerHost.plugin}. */
+export interface PluginCall {
+  readonly tag: string
+  /** The record's resolved directive attributes. */
+  readonly attrs: BridgeAwait["attrs"]
+  /** The record's source document. */
+  readonly document: string
+  readonly position: string
+}
+
+/** Host hooks: bridges, plugin records and the idle flow. */
 export interface PlayerHost {
-  readonly bridge?: Readonly<Record<string, (request: BridgeAwait) => Effect.Effect<Readonly<Record<string, unknown>>>>>
-  /** Override the bindings' idle flow: return the input to send, or undefined to wait for the reader. */
+  /** Answer an `awaitBridge` by its tag; runs on a fiber of its own. */
+  readonly bridge?: Readonly<Record<string, (request: BridgeAwait) => Effect.Effect<BridgeAnswer>>>
+  /**
+   * Run a game action for a `plugin` record by its tag, at the record's place
+   * in the batch (a waiting cue, run in skip mode too). Records the host
+   * answered through `awaitBridge` are never handed here.
+   */
+  readonly plugin?: Readonly<Record<string, (call: PluginCall) => Effect.Effect<void>>>
+  /**
+   * Override the bindings' idle flow: return the input to send, or undefined to
+   * wait (for the reader, or for a later `send`). Runs on a fiber of its own; a
+   * `send` or any input that leaves `idle` interrupts it.
+   */
   readonly idle?: (await_: Await) => Effect.Effect<Input | undefined>
 }

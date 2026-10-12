@@ -57,11 +57,21 @@ interface PointRecord {
 
 /** Session service contract used by the director. */
 export interface PlayerSessionShape {
-  readonly begin: (flow: Contract.Seed) => Effect.Effect<Output, Errors.RuntimeRejection | Errors.InputLogError>
+  /**
+   * Start the story (spec 0.41.0 §7.3). While the session has accepted no
+   * input since it was built, the runtime session's `started` output; after
+   * that a new run: `newRun`. Either is followed by the bound `flow.newGame`
+   * raise when there is one, the events concatenated in order with the last
+   * await. A session that waits where `newRun` is refused (halted, at a choice
+   * or a bridge) is first restored to the snapshot captured when the player
+   * session was built.
+   */
+  readonly begin: Effect.Effect<Output, Errors.RuntimeRejection | Errors.InputLogError>
   readonly send: (input: Input) => Effect.Effect<Output, Errors.RuntimeRejection | Errors.InputLogError>
   readonly current: Effect.Effect<InputPoint>
   readonly rollback: (steps: number) => Effect.Effect<InputPoint, NothingToRollback | Errors.RuntimeRejection | Errors.InputLogError>
   readonly snapshot: Effect.Effect<SaveRuntime, Errors.RuntimeRejection>
+  /** Continue from a save: runtime snapshot, input log and backlog; the rollback history is cleared. */
   readonly restore: (save: SaveRuntime) => Effect.Effect<InputPoint, SaveIncompatible | Errors.RuntimeRejection | Errors.InputLogError>
   readonly backlog: SubscriptionRef.SubscriptionRef<ReadonlyArray<BacklogEntry>>
   readonly idle: Effect.Effect<IdleResult | undefined>
@@ -76,16 +86,22 @@ export class PlayerSession extends Context.Service<PlayerSession, PlayerSessionS
 /** Options for constructing a player session over a runtime Session. */
 export interface SessionOptions {
   readonly bindings: Bindings
+  /**
+   * The seed the runtime session started from: the input log starts with
+   * `{ seed }`. Without it (a snapshot start, or a host's session) the log
+   * starts with `{ snapshot }`, the session's save when the player session is
+   * built.
+   */
   readonly seed?: Contract.Seed
   readonly settings?: Pick<Settings, "rollbackDepth" | "locale">
-  /** Cast id → display name for backlog entries (narration has none). */
-  readonly castNames?: ReadonlyMap<string, string>
+  /** The bundle index `cast` (cast id → display name) for backlog names; narration has none. */
+  readonly cast?: Readonly<Record<string, string>>
 }
 
 const linesFromOutput = (
   output: Output,
   locale: string,
-  castNames: ReadonlyMap<string, string>
+  cast: Readonly<Record<string, string>>
 ): ReadonlyArray<BacklogEntry> => {
   const result: BacklogEntry[] = []
   for (const event of output.events) {
@@ -107,7 +123,7 @@ const linesFromOutput = (
     const role = value("role")
     const speakerName = typeof speaker !== "string" || role === "narration" || speaker === "narrator"
       ? ""
-      : castNames.get(speaker) ?? speaker
+      : cast[speaker] ?? speaker
     const voiceKey = typeof voice === "string" ? voice : ""
     result.push({ lineId: lineIdValue, voiceKey, speakerName, text, hasVoice: voiceKey.length > 0 })
   }
@@ -121,19 +137,27 @@ const point = (state: RuntimeSession.SessionState, backlogLength: number, logLen
   logLength
 })
 
-/** Construct the service. The supplied runtime Session starts from `seed`. */
+/** `newRun` is accepted at `idle` and `ended` only (event contract). */
+const acceptsNewRun = (await_: Contract.Await): boolean => await_.type === "idle" || await_.type === "ended"
+
+/** Construct the service over the runtime Session in context; it never closes that session. */
 export const layer = (
   options: SessionOptions
 ): Layer.Layer<PlayerSession, never, RuntimeSession.Session> =>
   Layer.effect(PlayerSession, Effect.gen(function* () {
     const runtime = yield* RuntimeSession.Session
-    const seed = options.seed ?? {}
     const locale = options.settings?.locale ?? "en"
-    const castNames = options.castNames ?? new Map<string, string>()
+    const cast = options.cast ?? {}
     const depth = Math.max(0, options.settings?.rollbackDepth ?? 100)
     const backlog = yield* SubscriptionRef.make<ReadonlyArray<BacklogEntry>>([])
-    let log: ReadonlyArray<LogEntry> = [{ seed }]
+    // Where the player session starts: `begin` returns here when `newRun`
+    // cannot run where the session waits.
+    const start = yield* runtime.save
+    const startEntry: LogEntry = options.seed === undefined ? { snapshot: start } : { seed: options.seed }
+    let log: ReadonlyArray<LogEntry> = [startEntry]
     let history: ReadonlyArray<PointRecord> = []
+    // No input accepted since the player session was built: `begin` presents `started`.
+    let fresh = true
 
     const currentPoint = Effect.gen(function* () {
       const state = yield* SubscriptionRef.get(runtime.current)
@@ -147,19 +171,30 @@ export const layer = (
       const beforeBacklog = yield* SubscriptionRef.get(backlog)
       const beforeLog = log
       const beforePoint = point(beforeState, beforeBacklog.length, beforeLog.length)
-      history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
       const output = yield* runtime.send(input)
+      history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
       log = [...beforeLog, { input }]
-      const added = linesFromOutput(output, locale, castNames)
+      fresh = false
+      const added = linesFromOutput(output, locale, cast)
       yield* SubscriptionRef.set(backlog, [...beforeBacklog, ...added])
       return output
     })
 
-    const begin = Effect.fn("Lute.Player.Session.begin")(function* (_flow: Contract.Seed) {
-      const configured = options.bindings.flow?.newGame
-      if (configured == null) return yield* Effect.succeed(runtime.started)
-      return yield* send({ type: "raiseOccasion", occasion: configured.occasion })
-    })
+    const begin = Effect.gen(function* () {
+      let fromStart = fresh
+      if (!fresh && !acceptsNewRun((yield* SubscriptionRef.get(runtime.current)).await)) {
+        yield* runtime.restore(start)
+        log = [startEntry]
+        history = []
+        yield* SubscriptionRef.set(backlog, [])
+        fromStart = !acceptsNewRun(start.await)
+      }
+      const first = fromStart ? runtime.started : yield* send({ type: "newRun" })
+      const newGame = options.bindings.flow?.newGame
+      if (newGame == null) return first
+      const raised = yield* send({ type: "raiseOccasion", occasion: newGame.occasion, ...(newGame.target == null ? {} : { target: newGame.target }) })
+      return { ...raised, events: [...first.events, ...raised.events] } satisfies Output
+    }).pipe(Effect.withSpan("Lute.Player.Session.begin"))
 
     const rollback = Effect.fn("Lute.Player.Session.rollback")(function* (steps: number) {
       if (!Number.isInteger(steps) || steps < 1 || steps > history.length) {
@@ -169,6 +204,7 @@ export const layer = (
       if (target === undefined) return yield* Effect.fail(new NothingToRollback({ steps }))
       yield* runtime.restore(target.snapshot)
       log = target.log
+      fresh = false
       yield* SubscriptionRef.set(backlog, target.backlog)
       history = history.slice(0, history.length - steps)
       return target.point
@@ -186,6 +222,7 @@ export const layer = (
       }
       yield* runtime.restore(save.snapshot)
       log = save.log
+      fresh = false
       yield* SubscriptionRef.set(backlog, save.backlog)
       const state = yield* SubscriptionRef.get(runtime.current)
       const entries = yield* SubscriptionRef.get(backlog)

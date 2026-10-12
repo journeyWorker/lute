@@ -47,7 +47,7 @@ description: 기본 키보드, 마우스, touch와 gamepad 매핑, auto, skip, b
 
 auto mode는 voice가 끝난 뒤(있다면) `settings.autoDelay`초를 기다리고 표시된 line을 release합니다. 입력이나 overlay는 대기 중인 auto를 취소합니다. skip mode는 `read`(기본값: 읽지 않은 line에서 중지) 또는 `all`입니다. 두 모드 모두 choice, bridge, idle에서 멈추며 skip은 시각 효과를 끝 상태로 즉시 이동시킵니다.
 
-machine의 line 진행은 두 단계입니다. 입력 중 advance는 `line.reveal`을, 완전히 표시된 뒤 advance는 `line.release`를 발생시킵니다.
+machine의 line 진행은 두 단계입니다. 입력 중 advance는 `line.reveal`을, 완전히 표시된 뒤 advance는 `line.release`를 발생시킵니다. 확인 입력을 직접 받는 presenter는 `confirmsLines: true`를 선언하거나(타이핑 중 advance를 보관했다가 line이 표시되면 해제로 적용), 호스트가 `linePacing: "presenter"`를 선택할 수 있습니다. 이때는 presenter의 `showLine` 완료가 line을 해제하고 advance와 auto 타이머는 line에 관여하지 않습니다.
 
 ## Backlog와 읽기 기록
 
@@ -59,4 +59,4 @@ backlog를 열면 overlay와 auto/countdown 동작이 일시 중지됩니다. ba
 
 ## Custom UI용 action 이름
 
-코어는 `advance`, `toggleAuto`, `toggleSkip`, `skipHold`, `rollback`, `openBacklog`, `openMenu`, `openSave`, `openLoad`, `openSettings`, `quickSave`, `quickLoad`, `hideUI`, `choose`, `close`, `newGame`, `continue`, `toTitle`, `saveSlot`, `loadSlot`, `deleteSlot`, `confirm`, `pickIdle`, `replayVoice`, `setSettings`를 받습니다.
+코어는 `advance`, `toggleAuto`, `toggleSkip`, `skipHold`, `rollback`, `openBacklog`, `openMenu`, `openSave`, `openLoad`, `openSettings`, `quickSave`, `quickLoad`, `hideUI`, `choose`, `close`, `newGame`, `continue`, `toTitle`, `saveSlot`, `loadSlot`, `deleteSlot`, `confirm`, `pickIdle`, `replayVoice`, `setSettings`, `send`(idle이나 엔딩에서의 런타임 입력, 거부되면 기록만 하고 아무것도 바꾸지 않음)를 받습니다.

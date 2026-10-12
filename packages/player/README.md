@@ -9,7 +9,7 @@ bun add @lute-lang/player@0.40.0 @lute-lang/runtime@0.40.0 effect@4.0.2
 # npm install @lute-lang/player@0.40.0 @lute-lang/runtime@0.40.0 effect@4.0.2
 ```
 
-`effect@4.0.2` is a required peer dependency. The runtime and player package versions are released in lockstep.
+`@lute-lang/runtime` (the same release version) and `effect@4.0.2` are **peer dependencies**: the host installs them once, so the player, the runtime and the host share one `effect` and one runtime. For unreleased local builds, depend on packed tarballs (`scripts/pack-local.sh`), not `file:` directory links — see "Local dogfooding" in `docs/runtime/typescript-runtime.md`.
 
 ## Minimal usage
 
@@ -24,8 +24,11 @@ const program = LutePlayer.make({
   presenter,
   audio,
   assets,
-  host: { bridge: { "my-plugin": (request) => answerPlugin(request) } },
-  seed: { derive: true }
+  host: {
+    bridge: { "my-plugin": (request) => answerPlugin(request).pipe(Effect.map((fields) => ({ fields }))) },
+    plugin: { well: (call) => game.well(call.attrs) }
+  },
+  seed: { derive: true }          // or `snapshot`, or the host's runtime `session`
 })
 
 // Run `program` in a scope with the runtime, bundle, input-log, and store layers.
@@ -33,7 +36,14 @@ const handle = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide
 await Effect.runPromise(handle.actions({ type: "newGame" }))
 ```
 
-`handle.view` is a live `SubscriptionRef<PlayerView>`, `handle.actions` accepts `PlayerAction`, and `handle.shutdown` closes the player. A host implements `Presenter`, `AudioPort`, and `AssetLoader`; `PlayerHost` optionally answers bridge awaits and controls the idle flow.
+The handle:
+
+- `view` is a live `SubscriptionRef<PlayerView>`; `actions` accepts `PlayerAction`; `shutdown` closes the player.
+- `send(input)` hands the runtime an input at `idle` or `ended` (`DirectorBusy` elsewhere); it completes when the input's batch started.
+- `restore(save)` continues from a host checkpoint (`PlayerSession.snapshot`): the stage, backlog, read history and `auto` slot follow the save and its await is presented again.
+- `session` and `program` are the runtime session in use and its program, for `current`, `events` and queries (`view`, `evaluate`, `def`, `gate`, `candidates`).
+
+Options beyond the ports: `host` (`bridge` answers `{ fields, writes? }`, `plugin` runs a game action at a `plugin` record's place, `idle` overrides the idle flow — each on a fiber of its own), `linePacing: "presenter"` (the presenter types, pages and takes the confirm), `autosave` (`false`, `"presentation"`, `"choice"`; default both). A `Presenter` may set `confirmsLines: true` to have an `advance` that arrives while a line types kept as its release.
 
 ## API and guides
 
