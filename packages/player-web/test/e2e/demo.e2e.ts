@@ -92,7 +92,8 @@ test.describe.serial("player demo", () => {
     await freshGame()
     let timedExpired = false
     let shotMid = false
-    for (let i = 0; i < 1200; i++) {
+    const deadline = Date.now() + 540_000
+    for (let i = 0; Date.now() < deadline; i++) {
       const now = await current()
       if (now.flow === "ended" || now.flow === "error" || now.story === "halted") break
       if (!shotMid && (now.story === "shown" || now.story === "typing") && i > 30) {

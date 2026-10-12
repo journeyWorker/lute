@@ -366,7 +366,12 @@ jobs:
           key: lute-runtime-ts-cargo-${{ hashFiles('Cargo.lock') }}
 
       - name: Install wasm-bindgen CLI
-        run: cargo install --locked wasm-bindgen-cli --version 0.2.126
+        # The cargo cache may restore the binary without cargo's install
+        # metadata; reuse it when it is the pinned version.
+        run: |
+          if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen 0.2.126" ]; then
+            cargo install --locked --force wasm-bindgen-cli --version 0.2.126
+          fi
 
       - name: Build lute CLI
         run: cargo build -q -p lute-cli
@@ -426,7 +431,12 @@ jobs:
           key: lute-player-cargo-${{ hashFiles('Cargo.lock') }}
 
       - name: Install wasm-bindgen CLI
-        run: cargo install --locked wasm-bindgen-cli --version 0.2.126
+        # The cargo cache may restore the binary without cargo's install
+        # metadata; reuse it when it is the pinned version.
+        run: |
+          if [ "$(wasm-bindgen --version 2>/dev/null)" != "wasm-bindgen 0.2.126" ]; then
+            cargo install --locked --force wasm-bindgen-cli --version 0.2.126
+          fi
 
       - name: Build lute CLI
         run: cargo build -q -p lute-cli
