@@ -556,8 +556,9 @@ fn all_indexes_capability_unions_from_starfall_example() {
     assert_eq!(index["occasions"]["summon"]["target"]["prefix"], "hero");
     assert_eq!(index["occasions"]["summon"]["payload"]["copies"], "int");
     assert_eq!(index["worldEvents"][0], "seasonClose");
+    // 0.41.0 §4.1: the declared result type, as occasion payloads carry theirs.
     assert_eq!(index["bridgeResults"]["purchase"]["bought"], "bool");
-    assert_eq!(index["bridgeResults"]["purchase"]["remaining"], "number");
+    assert_eq!(index["bridgeResults"]["purchase"]["remaining"], "int");
     assert_eq!(index["cast"]["aria"], "Aria");
     assert_eq!(
         index["stateDomains"]["occasion.payload.banner"]["kind"],
@@ -570,5 +571,46 @@ fn all_indexes_capability_unions_from_starfall_example() {
             .first()
             .unwrap(),
         "standard"
+    );
+    // 0.41.0 §4.2: enum labels, one row type in the index and the artifacts.
+    let banner = |enums: &serde_json::Value| {
+        enums
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == "banner")
+            .cloned()
+            .unwrap()
+    };
+    let indexed = banner(&index["enums"]);
+    assert_eq!(indexed["labels"]["starfall"], "Starfall Night");
+    let artifact = read_json(&out.join("lore/bonds/aria.lute.json"));
+    assert_eq!(banner(&artifact["enums"]), indexed);
+}
+
+/// 0.41.0 §4.1: each bridge result field carries its declared type in the
+/// occasion-payload form — an enum result its members.
+#[test]
+fn all_types_bridge_results_as_declared() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/examples/games/lantern-academy");
+    let out = lute_scratch::ScratchDir::named("lantern-bridge-results-out");
+    let result = support::run_cli([
+        "compile",
+        "--all",
+        root.to_str().unwrap(),
+        "-o",
+        out.to_str().unwrap(),
+    ]);
+    assert_eq!(
+        result.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let index = read_json(&out.join("project.index.json"));
+    assert_eq!(
+        index["bridgeResults"]["exam"],
+        serde_json::json!({"grade": {"enum": ["fail", "pass", "top"]}, "score": "int"})
     );
 }

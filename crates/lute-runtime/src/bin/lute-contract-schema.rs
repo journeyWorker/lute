@@ -8,9 +8,10 @@ use lute_runtime::GuardRead;
 use lute_manifest::bindings::Bindings;
 use lute_manifest::clock::ClockAt;
 use lute_manifest::semantics::prereq::Atom;
-use lute_ir::BeatOnce;
+use lute_ir::{BeatOnce, ProjectIndex};
+use schemars::generate::SchemaSettings;
 use schemars::schema_for;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 fn schema<T: schemars::JsonSchema>() -> Value {
     serde_json::to_value(schema_for!(T)).expect("schema serializes")
 }
@@ -73,6 +74,219 @@ fn main() {
     write(root.join("lute-events-0.40.schema.json"), event);
     write(root.join("lute-snapshot-0.40.schema.json"), snap);
     write(root.join("lute-player-bindings-0.40.schema.json"), bindings);
+    let ir = root.join("lute-ir-0.40.schema.json");
+    let text = fs::read_to_string(&ir).expect("read the IR schema");
+    fs::write(&ir, splice_ir_defs(&text, &index_defs())).expect("write the IR schema");
+}
+
+/// 0.41.0 §4.4: the `$defs` of the IR schema generated from the Rust index
+/// types. Every other key of that file is hand-written.
+const INDEX_DEFS: [&str; 8] = [
+    "projectIndex",
+    "indexDocument",
+    "indexEntry",
+    "indexBeat",
+    "indexOccasion",
+    "indexStateDomain",
+    "indexDef",
+    "fieldType",
+];
+
+/// The index types' schemas, keyed as [`INDEX_DEFS`]. They describe the
+/// index as the compiler writes it (the serialize contract): a key the
+/// writer omits when empty is optional, and is never `null`. A type with no
+/// key of its own (an occasion's `select`, a beat's `once`, …) is inlined;
+/// a shape the hand-written part defines is a `$ref` to it.
+fn index_defs() -> BTreeMap<String, Value> {
+    let root = SchemaSettings::draft2020_12()
+        .for_serialize()
+        .into_generator()
+        .into_root_schema_for::<ProjectIndex>();
+    let Value::Object(mut root) = serde_json::to_value(root).expect("schema serializes") else {
+        unreachable!("a struct's schema is an object")
+    };
+    let Some(Value::Object(found)) = root.remove("$defs") else {
+        panic!("the index schema has no $defs");
+    };
+    root.remove("$schema");
+    root.remove("title");
+    let mut defs: BTreeMap<String, Value> = found.into_iter().collect();
+    defs.insert("projectIndex".into(), Value::Object(root));
+    let helpers: BTreeMap<String, Value> = defs
+        .extract_if(.., |name, _| !INDEX_DEFS.contains(&name.as_str()))
+        .collect();
+    for value in defs.values_mut() {
+        inline(value, &helpers);
+        drop_null_options(value);
+        strip_numeric_formats(value);
+    }
+    assert_eq!(
+        defs.keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>(),
+        INDEX_DEFS.into_iter().collect(),
+        "the index types define exactly the generator-owned $defs"
+    );
+    defs
+}
+
+/// Replace every `$ref` to a `helpers` schema with the schema itself, the
+/// referring object's own keys (its `description`) over it.
+fn inline(value: &mut Value, helpers: &BTreeMap<String, Value>) {
+    match value {
+        Value::Object(object) => {
+            let helper = object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(|r| r.strip_prefix("#/$defs/"))
+                .and_then(|name| helpers.get(name));
+            if let Some(helper) = helper {
+                let mut merged = helper.as_object().cloned().unwrap_or_default();
+                object.remove("$ref");
+                merged.extend(std::mem::take(object));
+                *object = merged;
+            }
+            for child in object.values_mut() {
+                inline(child, helpers);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                inline(item, helpers);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// An optional property of an object schema (one not `required`) is
+/// omitted when absent, never written `null`: drop the `null` alternative
+/// schemars adds for an `Option`.
+fn drop_null_options(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let required: Vec<String> = object
+                .get("required")
+                .and_then(Value::as_array)
+                .map(|r| r.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
+            if let Some(Value::Object(properties)) = object.get_mut("properties") {
+                for (name, property) in properties.iter_mut() {
+                    if !required.contains(name) {
+                        drop_null(property);
+                    }
+                }
+            }
+            for child in object.values_mut() {
+                drop_null_options(child);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                drop_null_options(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn drop_null(property: &mut Value) {
+    let Some(object) = property.as_object_mut() else {
+        return;
+    };
+    if let Some(Value::Array(types)) = object.get_mut("type") {
+        types.retain(|t| t != "null");
+        if let [only] = types.as_slice() {
+            let only = only.clone();
+            object.insert("type".into(), only);
+        }
+        return;
+    }
+    let Some(Value::Array(choices)) = object.get("anyOf") else {
+        return;
+    };
+    let kept: Vec<Value> = choices
+        .iter()
+        .filter(|c| c.get("type").and_then(Value::as_str) != Some("null"))
+        .cloned()
+        .collect();
+    if let [only] = kept.as_slice() {
+        let mut merged = only.as_object().cloned().unwrap_or_default();
+        object.remove("anyOf");
+        merged.extend(std::mem::take(object));
+        *object = merged;
+    }
+}
+
+/// `text` (the IR schema) with each generator-owned `$defs` entry replaced
+/// by its generated schema in place, the ones it lacks appended in
+/// [`INDEX_DEFS`] order; every other line is kept byte for byte.
+fn splice_ir_defs(text: &str, defs: &BTreeMap<String, Value>) -> String {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let open = lines
+        .iter()
+        .position(|l| *l == "  \"$defs\": {\n")
+        .expect("the IR schema has a top-level $defs");
+    let close = open
+        + lines[open..]
+            .iter()
+            .position(|l| l.trim_end() == "  }" || l.trim_end() == "  },")
+            .expect("the IR schema's $defs closes");
+    let entry_key = |line: &str| {
+        let rest = line.strip_prefix("    \"")?;
+        Some(rest[..rest.find('"')?].to_string())
+    };
+    let mut starts: Vec<(usize, String)> = (open + 1..close)
+        .filter_map(|i| entry_key(lines[i]).map(|key| (i, key)))
+        .collect();
+    starts.push((close, String::new()));
+    let render = |key: &str, value: &Value| {
+        let pretty = serde_json::to_string_pretty(value).expect("schema JSON");
+        format!("    \"{key}\": {}", pretty.replace('\n', "\n    "))
+    };
+    let mut entries: Vec<String> = Vec::new();
+    let mut present = Vec::new();
+    for pair in starts.windows(2) {
+        let ((from, key), (to, _)) = (&pair[0], &pair[1]);
+        entries.push(match defs.get(key) {
+            Some(value) => render(key, value),
+            None => {
+                let body = lines[*from..*to].concat();
+                let body = body.trim_end_matches('\n');
+                body.strip_suffix(',').unwrap_or(body).to_string()
+            }
+        });
+        present.push(key.clone());
+    }
+    for key in INDEX_DEFS {
+        if !present.iter().any(|k| k == key) {
+            entries.push(render(key, &defs[key]));
+        }
+    }
+    let mut out = lines[..=open].concat();
+    out.push_str(&entries.join(",\n"));
+    out.push('\n');
+    out.push_str(&lines[close..].concat());
+    let parsed: Value = serde_json::from_str(&out).expect("the spliced IR schema is JSON");
+    check_refs(&parsed, parsed["$defs"].as_object().expect("$defs"));
+    out
+}
+
+/// Every `#/$defs/<name>` reference names a definition of the file.
+fn check_refs(value: &Value, defs: &Map<String, Value>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(name) = object
+                .get("$ref")
+                .and_then(Value::as_str)
+                .and_then(|r| r.strip_prefix("#/$defs/"))
+                .and_then(|r| r.split('/').next())
+            {
+                assert!(defs.contains_key(name), "`$ref` to undefined `{name}`");
+            }
+            object.values().for_each(|child| check_refs(child, defs));
+        }
+        Value::Array(items) => items.iter().for_each(|item| check_refs(item, defs)),
+        _ => {}
+    }
 }
 
 fn write(path: impl AsRef<Path>, mut value: Value) {

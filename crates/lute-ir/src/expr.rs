@@ -15,6 +15,8 @@
 //! - ternary   → `{"cond": <node>, "then": <node>, "else": <node>}`
 //! - list      → `{"list": [<node>, ...]}`
 //! - `has(p)`  → `{"has": "<path>"}`
+//! - parameter → `{"param": "<name>"}` (0.41.0 §4.3): a def parameter, only
+//!   in the body of a `project.index.json` `defs` row that declares it
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -50,6 +52,9 @@ pub enum ExprNode {
     Call { call: String, args: Vec<ExprNode> },
     /// Presence test over a canonical path.
     Has { has: String },
+    /// A def parameter (0.41.0 §4.3), bound by the host's positional
+    /// argument: only in an index `defs` row's `expr`, never in an artifact.
+    Param { param: String },
 }
 
 /// A scalar literal value. Serialized untagged, so it emits a bare JSON number,
@@ -147,6 +152,9 @@ impl<'de> Deserialize<'de> for ExprNode {
             Has {
                 has: String,
             },
+            Param {
+                param: String,
+            },
         }
         fn op<E: serde::de::Error>(op: String) -> Result<&'static str, E> {
             OPS.iter()
@@ -178,6 +186,7 @@ impl<'de> Deserialize<'de> for ExprNode {
                 },
                 Raw::Call { call, args } => ExprNode::Call { call, args: all(args)? },
                 Raw::Has { has } => ExprNode::Has { has },
+                Raw::Param { param } => ExprNode::Param { param },
             })
         }
         node(Raw::deserialize(d)?)
@@ -222,5 +231,17 @@ mod tests {
     fn an_unknown_operator_is_refused() {
         let json = serde_json::json!({ "op": "<>", "l": { "path": "a" }, "r": { "path": "b" } });
         assert!(serde_json::from_value::<ExprNode>(json).is_err());
+    }
+
+    #[test]
+    fn a_param_node_reads_back_as_written() {
+        let node = ExprNode::Binary {
+            op: ">=",
+            l: b(ExprNode::Path { path: "run.gold".into() }),
+            r: b(ExprNode::Param { param: "n".into() }),
+        };
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(json["r"], serde_json::json!({ "param": "n" }));
+        assert_eq!(serde_json::from_value::<ExprNode>(json).unwrap(), node);
     }
 }

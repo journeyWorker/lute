@@ -1577,6 +1577,7 @@ fn expr_to_cel(expr: &ExprNode) -> String {
             LitVal::Str(v) => cel_quote(v),
         },
         ExprNode::Path { path } => path.clone(),
+        ExprNode::Param { param } => param.clone(),
         ExprNode::Unary { op, l } => format!("({op}{})", expr_to_cel(l)),
         ExprNode::Binary { op, l, r } => {
             format!("({} {op} {})", expr_to_cel(l), expr_to_cel(r))

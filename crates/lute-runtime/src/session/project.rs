@@ -161,10 +161,15 @@ impl Conds {
                 .filter_map(|g| Some((g.occasion.clone(), typed(&g.raised_when)?)))
                 .collect(),
             beats,
+            // 0.41.0 §4.3: a def with parameters needs its arguments, which
+            // `def` does not take yet; only the parameterless ones answer.
             defs: index
                 .defs
                 .iter()
-                .filter_map(|(name, pair)| Some((name.clone(), typed(pair)?)))
+                .filter(|(_, def)| def.params.is_empty())
+                .filter_map(|(name, def)| {
+                    Some((name.clone(), serde_json::to_value(def).ok().and_then(|j| Slot::of(&j))?))
+                })
                 .collect(),
         }
     }
@@ -238,9 +243,10 @@ impl ExecProject {
         if let Some(clock) = &index.clock { eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null); }
         let store_schemas = [Store::schema_for_project(&eval_json, false, &rules, &state_table), Store::schema_for_project(&eval_json, true, &rules, &state_table)];
         let codes = artifacts.iter().map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a)))).collect();
-        let mut result_types = BTreeMap::new();
-        for (tag, fields) in &index.bridge_results { result_types.insert(tag.clone(), fields.iter().map(|(field, ty)| (field.clone(), match ty.as_str() { "bool" => "bool", "number" => "number", _ => "string" })).collect()); }
-        let bridge_reads = Arc::new(BridgeReads { result_types, ..BridgeReads::of(artifacts.values()) });
+        let bridge_reads = Arc::new(BridgeReads {
+            result_types: index.bridge_results.clone(),
+            ..BridgeReads::of(artifacts.values())
+        });
         let conds = Conds::of(&index, &artifacts);
         let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
         let world_events = index.world_events.iter().cloned().collect();

@@ -241,6 +241,26 @@ match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이
 확실히 충족되지 않고, `is: "unset"`은 충족됩니다. 다른 갈래는 정상적으로 평가하며,
 평가 오류가 나면 충족되지 않습니다.
 
+### 0.41의 `project.index.json`
+
+인덱스 형태는 Rust 인덱스 타입에서 생성됩니다. IR 스키마의 `projectIndex`,
+`indexDocument`, `indexEntry`, `indexBeat`, `indexOccasion`,
+`indexStateDomain`, `indexDef`, `fieldType` 정의는 `lute-contract-schema`가
+만들며, 아티팩트 형태(`enumEntry`, `celSlot`, `exprNode`, `clockDecl`, …)는
+다시 정의하지 않고 참조합니다. 바뀐 키는 세 개입니다(spec 0.41.0 §4).
+
+- **`bridgeResults`**: 각 브리지 결과 필드가 `"number"`/`"string"` 대신
+  `occasions[*].payload`와 같은 형태의 선언 타입을 가집니다 — `"bool"`, `"int"`,
+  `"double"`, `"string"`, `{"enum": [...]}`, `{"domain": "<name>"}`, ….
+- **`enums[].labels: { <member>: "<text>" }`**: 병합된 `enums:` 선언의 긴 형식
+  `labels:`이며, 인덱스와 아티팩트 행에 똑같이 실립니다. 선언이 없으면 생략됩니다.
+- **`defs`**: 플러그인 또는 `uses:` 스키마 def마다 이름을 키로 한 행
+  `{ cel, expr, authored?, params?, host? }`입니다. `params`는 인자 순서대로
+  `[{ name, type }]`을 나열하고, 각 파라미터는 `expr`에서 `{"param": "<name>"}`로
+  나타나며, `host: true`는 호스트가 읽는 def를 표시합니다. 스칼라가 아닌 파라미터가
+  있거나, 본문이 낮춰지지 않거나, 두 문서에서 본문이나 파라미터 목록이 다른 def는
+  빠집니다. `param` 노드는 다른 곳에는 나타나지 않습니다.
+
 ### IR 0.37.0에서 변경된 내용
 
 **깨끗한 표면 전환: 이름이 바뀐 종류와 필드, 새 종류 하나, 제거된 필드.** 0.36 계열의

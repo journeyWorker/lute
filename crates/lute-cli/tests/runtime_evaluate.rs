@@ -67,20 +67,41 @@ fn def(runtime: &Runtime, state: &State, name: &str) -> Value {
         .value
 }
 
-/// The index carries every parameterless def, `@def`-expanded.
+/// The index carries every project def with scalar parameters, its body
+/// `@def`-expanded, each parameter a `param` node (nested `@def`s
+/// included), `params` in declaration order and `host` when declared; a def
+/// with a list parameter stays out.
 #[test]
-fn the_index_carries_parameterless_defs_expanded() {
+fn the_index_carries_project_defs_expanded_with_params_and_host() {
     let bundle = compiled_bundle("evaluate-index");
     let defs = bundle.index["defs"].as_object().expect("index defs");
     assert_eq!(
         defs.keys().map(String::as_str).collect::<Vec<_>>(),
-        ["perCount", "ready", "readyTwice", "score"]
+        ["atLeast", "atLeastTwice", "hallOpen", "perCount", "ready", "readyTwice", "score"]
     );
     assert_eq!(
         defs["readyTwice"]["cel"],
         "(holds('owned', ['key']) && visited('hall')) && run.count >= 2"
     );
     assert_eq!(defs["readyTwice"]["authored"], "@ready && run.count >= 2");
+    assert_eq!(
+        defs["atLeast"],
+        json!({
+            "cel": "run.count >= n",
+            "expr": {"op": ">=", "l": {"path": "run.count"}, "r": {"param": "n"}},
+            "params": [{"name": "n", "type": "int"}]
+        })
+    );
+    assert_eq!(defs["atLeastTwice"]["cel"], "(run.count >= m) && run.count >= m * 2");
+    assert_eq!(
+        defs["atLeastTwice"]["expr"],
+        json!({"op": "&&",
+            "l": {"op": ">=", "l": {"path": "run.count"}, "r": {"param": "m"}},
+            "r": {"op": ">=", "l": {"path": "run.count"},
+                "r": {"op": "*", "l": {"param": "m"}, "r": {"int": 2}}}})
+    );
+    assert_eq!(defs["hallOpen"]["host"], true);
+    assert!(defs["ready"].get("host").is_none() && defs["ready"].get("params").is_none());
 }
 
 #[test]
@@ -112,6 +133,7 @@ fn evaluate_reads_state_facts_visited_and_defs() {
     assert_eq!(def(&runtime, &visited, "perCount"), Value::Int(10));
     // The earlier state is untouched.
     assert_eq!(def(&runtime, &start, "ready"), Value::Bool(false));
+    assert_eq!(def(&runtime, &start, "hallOpen"), Value::Bool(true));
 }
 
 #[test]
@@ -134,8 +156,9 @@ fn unknowns_errors_and_bad_queries() {
     let error = runtime.evaluate(&state, &expr("int('x')")).unwrap_err();
     assert_eq!(error.code, "E-RUNTIME-EVAL", "{}", error.message);
 
-    // A def with params is not a condition on its own; an unknown name is not one.
-    for name in ["atLeast", "missing"] {
+    // A def with params is not a condition on its own; a def the index
+    // leaves out and an unknown name are not one.
+    for name in ["atLeast", "anyOf", "missing"] {
         let r = runtime.def(&state, name).unwrap_err();
         assert_eq!(r.code, "E-RUNTIME-INPUT", "{name}: {}", r.message);
     }
@@ -155,19 +178,25 @@ fn unknowns_errors_and_bad_queries() {
 
 /// Documents with different `uses:` see `gated` spelled differently (`@base`
 /// against the written-out body) but expanded alike — one def, exported with
-/// the first document's spelling — and `split` with different bodies, so the
-/// index omits it.
+/// the first document's spelling — `split` with different bodies, and
+/// `within` with one body but different parameter lists, so the index omits
+/// both.
 #[test]
-fn defs_documents_see_differently_are_exported_by_expanded_body() {
+fn defs_documents_see_differently_are_exported_by_expanded_body_and_params() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/evaluate-defs");
     let bundle = compiled(&fixture, "evaluate-defs");
     let defs = bundle.index["defs"].as_object().expect("index defs");
-    assert_eq!(defs.keys().map(String::as_str).collect::<Vec<_>>(), ["base", "gated"]);
+    assert_eq!(
+        defs.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["atLeast", "base", "gated"]
+    );
     assert_eq!(defs["gated"]["authored"], "@base");
     assert_eq!(defs["gated"]["expr"], defs["base"]["expr"]);
 
     let runtime = Runtime::load(bundle).unwrap();
     let (state, _) = runtime.begin(Seed::default()).unwrap();
     assert_eq!(def(&runtime, &state, "gated"), Value::Bool(false));
-    assert_eq!(runtime.def(&state, "split").unwrap_err().code, "E-RUNTIME-INPUT");
+    for name in ["split", "within"] {
+        assert_eq!(runtime.def(&state, name).unwrap_err().code, "E-RUNTIME-INPUT");
+    }
 }

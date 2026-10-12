@@ -294,6 +294,30 @@ with `is` other than `"unset"` is definitely not satisfied; `is: "unset"` is
 satisfied. Other arms are evaluated normally, and an evaluation error means
 not satisfied.
 
+### `project.index.json` in 0.41
+
+The index shape is generated from the Rust index types: the `projectIndex`,
+`indexDocument`, `indexEntry`, `indexBeat`, `indexOccasion`,
+`indexStateDomain`, `indexDef` and `fieldType` definitions of the IR schema
+come from `lute-contract-schema`, and refer to the artifact shapes
+(`enumEntry`, `celSlot`, `exprNode`, `clockDecl`, …) instead of repeating
+them. Three keys change (spec 0.41.0 §4):
+
+- **`bridgeResults`**: each bridge result field carries its declared type in
+  the `occasions[*].payload` form — `"bool"`, `"int"`, `"double"`,
+  `"string"`, `{"enum": [...]}`, `{"domain": "<name>"}`, … — instead of
+  `"number"`/`"string"`.
+- **`enums[].labels: { <member>: "<text>" }`**: the long-form `labels:` of the
+  merged `enums:` declaration, on index and artifact rows alike, omitted when
+  none is declared.
+- **`defs`**: one row per plugin or `uses:` schema def, keyed by name —
+  `{ cel, expr, authored?, params?, host? }`. `params` lists
+  `[{ name, type }]` in argument order, each parameter appears in `expr` as
+  `{"param": "<name>"}`, and `host: true` marks a def the host reads. Defs
+  with a non-scalar parameter, a body that does not lower, or different
+  bodies or parameter lists in two documents are left out. A `param` node
+  appears nowhere else.
+
 ### What IR 0.37.0 changed
 
 **A clean surface cutover: renamed kinds and fields, one new kind, removed fields.** An

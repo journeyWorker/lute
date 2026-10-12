@@ -383,6 +383,69 @@ impl<'de> Deserialize<'de> for Type {
     }
 }
 
+/// 0.41.0 §4.4: the serialized form above, as `fieldType` — a bare
+/// spelling, or a single-key map whose key names the form. A nested type
+/// (`list`, `map`, a `record` field's `type`) is a `$ref` to `fieldType`.
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for Type {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "fieldType".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let ty = generator.subschema_for::<Type>();
+        let one = |key: &str, value: serde_json::Value| {
+            serde_json::json!({
+                "type": "object",
+                "properties": { key: value },
+                "required": [key],
+                "additionalProperties": false
+            })
+        };
+        let name = serde_json::json!({ "type": "string" });
+        schemars::json_schema!({
+            "oneOf": [
+                { "enum": ["bool", "int", "double", "string", "narrativeTime"] },
+                one("enum", serde_json::json!({ "type": "array", "items": { "type": "string" } })),
+                one("list", ty.clone().into()),
+                one("record", serde_json::json!({
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "type": ty,
+                            "default": { "description": "the field's default literal (any JSON value but null)." },
+                            "required": { "type": "boolean" },
+                            "shape": { "type": "string" }
+                        },
+                        "required": ["name", "type", "required"],
+                        "additionalProperties": false
+                    }
+                })),
+                one("map", serde_json::json!({
+                    "type": "object",
+                    "properties": { "key": ty, "value": ty },
+                    "required": ["key", "value"],
+                    "additionalProperties": false
+                })),
+                one("enumFromOption", name.clone()),
+                one("providerRef", name.clone()),
+                one("domain", name.clone()),
+                one("entity", name.clone()),
+                one("slotId", serde_json::json!({
+                    "type": "object",
+                    "properties": { "namespace": { "type": "string" } },
+                    "required": ["namespace"],
+                    "additionalProperties": false
+                })),
+                one("assetKind", name)
+            ],
+            "description": "A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{\"enum\": [...]}`, `{\"list\": T}`, `{\"record\": [fields]}`, `{\"map\": {\"key\": T, \"value\": T}}`, `{\"domain\": name}`, `{\"entity\": kind}`, `{\"enumFromOption\": option}`, `{\"providerRef\": name}`, `{\"slotId\": {\"namespace\": ns}}`, `{\"assetKind\": kind}`)."
+        })
+    }
+}
+
 /// The sentence a `type: number` that reaches a `Type` decoder carries — the
 /// fallback for a surface no [`number_type_sites`] scan covers. Every
 /// declaration surface Lute reads scans first and reports [`E_TYPE_NUMBER`].

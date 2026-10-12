@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use lute_ir::IndexOccasion;
 use lute_compile::index::IndexUnions;
 use lute_manifest::schema::WriteValue;
-use lute_manifest::types::Type;
 use lute_model::ProjectModel;
 
 /// Collect the capability vocabulary that is shared by every compiled document.
@@ -15,11 +14,12 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
 
     let mut unions = IndexUnions::default();
     let mut world_events = BTreeSet::new();
-    // dsl 0.40.1 §3: a def two documents see with different bodies (their
-    // `uses:` differ) names no one condition, so the index omits it. Bodies
-    // are compared as lowered `expr`: the same condition spelled differently
-    // (`@base` in one, written out in the other) is one def, exported with
-    // the first document's `cel`/`authored`, in path order.
+    // dsl 0.40.1 §3, 0.41.0 §4.3: a def two documents see with different
+    // bodies or parameter lists (their `uses:` differ) names no one
+    // condition, so the index omits it. Bodies are compared as lowered
+    // `expr` plus `params`: the same condition spelled differently (`@base`
+    // in one, written out in the other) is one def, exported with the first
+    // document's `cel`/`authored`, in path order.
     let mut ambiguous_defs = BTreeSet::new();
     for document in documents {
         if crate::compile_all::is_component_file(&document.path) {
@@ -40,7 +40,7 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
         }
         for (name, def) in lute_compile::index::document_defs(input) {
             match unions.defs.get(&name) {
-                Some(seen) if seen.expr != def.expr => {
+                Some(seen) if seen.expr != def.expr || seen.params != def.params => {
                     ambiguous_defs.insert(name);
                 }
                 Some(_) => {}
@@ -73,16 +73,13 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
                 else {
                     continue;
                 };
-                let ty = match result.ty {
-                    Type::Bool => "bool",
-                    Type::Int | Type::Double => "number",
-                    _ => "string",
-                };
+                // 0.41.0 §4.1: the declared result type, as occasion
+                // payloads carry theirs.
                 unions
                     .bridge_results
                     .entry(tag.clone())
                     .or_default()
-                    .insert(field.to_string(), ty.to_string());
+                    .insert(field.to_string(), result.ty.clone());
             }
         }
     }

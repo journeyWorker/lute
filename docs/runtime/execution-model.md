@@ -61,7 +61,9 @@ struct (`ir.rs`):
   `cgLayout`, `sequence`, `textStyle`) when the project declares it in a
   schema the document imports — the compiler ships no members of its own, so
   the artifact is self-describing about the vocabulary it was compiled
-  against. Each entry is `{ name, members }`; member-level semantics
+  against. Each entry is `{ name, members, labels? }`: `labels` (0.41.0) is
+  the long-form `labels:` of the merged `enums:` declaration (member → display
+  text), omitted when none is declared, exactly as `entities[].labels`; member-level semantics
   (`exits:`/`default:`) are **not** serialized, because the compiler has
   already resolved them into `actor.exit` and the emitted anchor. A vocabulary
   supplied by a plugin `enums` export does **not** appear here — it is part of
@@ -79,6 +81,35 @@ struct (`ir.rs`):
 A project's engine **unions** the per-document `relations` / `rules` /
 `seedFacts` / `entities` / `enums` / `prereqEdges` across every artifact it
 loads, exactly as it concatenates the command streams.
+
+### `project.index.json` (0.41.0)
+
+`lute compile --all` writes that union, plus the document table and the
+project-wide capability vocabulary, as `project.index.json`. Its shape is the
+`projectIndex` definition of `schemas/lute-ir-0.40.schema.json`: the index
+`$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
+`indexOccasion`, `indexStateDomain`, `indexDef`, `fieldType`) are generated
+from the Rust index types by `lute-contract-schema` and `$ref` the hand-written
+artifact shapes (`enumEntry`, `celSlot`, `exprNode`, `clockDecl`, …). Three
+keys changed in 0.41:
+
+- **`bridgeResults`** — per bridge directive tag, each result field's
+  declared type in the same form as `occasions[*].payload` (`"bool"`, `"int"`,
+  `"double"`, `"string"`, `{"enum": [...]}`, `{"domain": "<name>"}`, …):
+  `{"battle": {"outcome": {"enum": ["win", "lose"]}, "hpFloor": "int"}}`.
+- **`enums[].labels`** — as in an artifact (one row type).
+- **`defs`** — name-sorted, omitted when empty: every def of the project's
+  plugins' `defs:` and `uses:` schema imports (never a document's own
+  frontmatter defs). A row is `{ cel, expr, authored?, params?, host? }`:
+  `cel` the body `@def`-expanded, `authored` the body as declared when that
+  differs, `expr` the lowered body in which each parameter is a
+  `{"param": "<name>"}` node, `params` the `[{name, type}]` parameters in
+  argument order, `host: true` when the def declares it. A def with a
+  parameter that is not a scalar (`bool`/`int`/`double`/`string`/`enum`/
+  `domain`/`entity`), one whose body does not lower, or one two documents see
+  with different bodies or parameter lists is left out. A `param` node
+  appears only in these rows; a host evaluates a row by name
+  (`Program.def`).
 
 ## Version negotiation
 

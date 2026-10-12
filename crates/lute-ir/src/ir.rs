@@ -161,6 +161,27 @@ impl AdvanceSpec {
     }
 }
 
+/// The serialized form: `"slot"`, `"day"`, or a slot count of at least 1.
+#[cfg(feature = "json-schema")]
+impl schemars::JsonSchema for AdvanceSpec {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "AdvanceSpec".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "oneOf": [
+                { "enum": ["slot", "day"] },
+                { "type": "integer", "minimum": 1 }
+            ]
+        })
+    }
+}
+
 impl serde::Serialize for AdvanceSpec {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -225,6 +246,7 @@ pub struct ForKind {
 /// `lute_check::meta::DocKind` — kept as a SEPARATE serde enum
 /// so `Serialize` never leaks onto lute-check's public type (serialization
 /// concerns stay in the crate that owns the wire format).
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DocKind {
@@ -291,11 +313,15 @@ impl LabelForms {
     }
 }
 
-/// One merged `enums:` entry (dsl 0.3.0 §3).
+/// One merged `enums:` entry (dsl 0.3.0 §3): its members and, 0.41.0 §4.2,
+/// the long-form `labels:` of the merged declaration (member → display
+/// text), omitted when none is declared — as [`EntityKindEntry::labels`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EnumEntry {
     pub name: String,
     pub members: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// One merged relation declaration (dsl 0.3.0 §4).
@@ -423,17 +449,21 @@ pub enum PrereqEdge {
 }
 
 /// dsl 0.27.0 §4: one occasion's `raisedWhen` gate.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GateEntry {
     pub occasion: String,
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
     pub raised_when: CelPair,
 }
 
 /// dsl 0.27.0 §5: one declared season.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SeasonEntry {
     pub name: String,
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
     pub live: CelPair,
 }

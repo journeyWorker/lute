@@ -954,6 +954,7 @@ fn rel_entries(
         .map(|(name, members)| EnumEntry {
             name: name.clone(),
             members: members.clone(),
+            labels: vocab.enum_labels.get(name).cloned().unwrap_or_default(),
         })
         .collect();
     let relations = vocab

@@ -12,3 +12,6 @@ defs:
   score: { type: int, cel: "run.count * 10 + 1" }
   perCount: { type: int, cel: "10 / run.count" }
   atLeast: { type: bool, params: { n: int }, cel: "run.count >= n" }
+  atLeastTwice: { type: bool, params: { m: int }, cel: "@atLeast(m) && run.count >= m * 2" }
+  anyOf: { type: bool, params: { counts: { list: int } }, cel: "run.count in counts" }
+  hallOpen: { type: bool, host: true, cel: "!user.flag" }

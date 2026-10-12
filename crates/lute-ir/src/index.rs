@@ -5,13 +5,15 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AdvanceSpec, BeatOnce, CelPair, DocKind, EntityKindEntry, EnumEntry, ForKind, GateEntry,
-    PrereqEdgeEntry, RelationEntry, RuleEntry, SeasonEntry, SeedFactEntry, TargetKind,
+    AdvanceSpec, BeatOnce, CelPair, DocKind, EntityKindEntry, EnumEntry, ExprNode, ForKind,
+    GateEntry, PrereqEdgeEntry, RelationEntry, RuleEntry, SeasonEntry, SeedFactEntry, TargetKind,
 };
 
 /// One document's row in the index. Paths are FORWARD-SLASH relative to the
 /// project root, never absolute — an index is a build output that must survive
 /// being copied to another machine or shipped inside a game package.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexDocument"))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexDocument {
@@ -20,6 +22,7 @@ pub struct IndexDocument {
     /// Its compiled artifact, relative to the output directory
     /// (`quests/a.lute.json`).
     pub artifact: String,
+    /// The document kind: `scene`, `quest` or `lore`.
     #[serde(default)]
     pub kind: DocKind,
     /// The document's canonical node key: a scene's `{character}.{episodeId}`
@@ -37,6 +40,8 @@ pub struct IndexDocument {
 /// an engine to build its `target → entries` / `series → entries` tables
 /// without loading every lore artifact. `document` is the SAME string as the
 /// owning [`IndexDocument::path`].
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexEntry"))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexEntry {
@@ -78,6 +83,8 @@ pub enum BeatKind {
 /// `meta.beat.when`, an entry's own `when`) and `title` the scene's / entry's
 /// title — enough to list the beats and label a `select: all` menu without
 /// loading every artifact (dsl 0.23.0 §1, §11). Both are omitted when absent.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexBeat"))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexBeat {
@@ -89,6 +96,8 @@ pub struct IndexBeat {
     pub target: Option<String>,
     #[serde(default)]
     pub priority: i64,
+    /// The beat's repetition policy: always present on a scene or bundle
+    /// row; on an entry row the authored `once`, absent = repeatable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub once: Option<BeatOnce>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -102,10 +111,12 @@ pub struct IndexBeat {
     /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's members, as the
     /// artifact's `targetKind`. Omitted for any other target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::target_kind"))]
     pub target_kind: Option<TargetKind>,
     /// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat's members, as the
     /// artifact's `forKind`. Omitted when not authored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::for_kind"))]
     pub for_kind: Option<ForKind>,
     /// dsl 0.27.0 §5, 0.28.0 §6: the beat's `spentBy` condition (raw,
     /// `@def`-expanded) — once it has held the beat is spent for its `once`
@@ -140,6 +151,14 @@ impl IndexBeat {
 /// The six vocabulary arrays are ALWAYS emitted, empty included: an engine
 /// unions them unconditionally, and an absent key would force it to distinguish
 /// "no relations" from "index too old to carry them".
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(
+    feature = "json-schema",
+    schemars(
+        rename = "projectIndex",
+        description = "`project.index.json` (`lute compile --all`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md)."
+    )
+)]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectIndex {
@@ -148,31 +167,41 @@ pub struct ProjectIndex {
     pub capability_snapshot: String,
     #[serde(default)]
     pub required_semantics: Vec<String>,
+    /// Authored save-identity migrations from `lute.project.yaml`, sorted by
+    /// `from`; omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
     #[serde(default)]
     pub documents: Vec<IndexDocument>,
     #[serde(default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::entity_kinds"))]
     pub entities: Vec<EntityKindEntry>,
     #[serde(default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::enums"))]
     pub enums: Vec<EnumEntry>,
     #[serde(default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::relations"))]
     pub relations: Vec<RelationEntry>,
     #[serde(rename = "seedFacts", default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::seed_facts"))]
     pub seed_facts: Vec<SeedFactEntry>,
     #[serde(default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::rules"))]
     pub rules: Vec<RuleEntry>,
     #[serde(rename = "prereqEdges", default)]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::prereq_edges"))]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<IndexEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beats: Vec<IndexBeat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::clock_decl"))]
     pub clock: Option<lute_manifest::clock::ClockDecl>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gates: Vec<GateEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
     pub terminal: Option<CelPair>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub terminal_persists: bool,
@@ -184,18 +213,45 @@ pub struct ProjectIndex {
     pub occasions: BTreeMap<String, IndexOccasion>,
     #[serde(rename = "worldEvents", default, skip_serializing_if = "Vec::is_empty")]
     pub world_events: Vec<String>,
+    /// 0.41.0 §4.1: per bridge directive tag, the declared result type of
+    /// each field an effect of the tag writes (the capability's `result:`
+    /// shape), as occasion payloads carry theirs. Omitted when empty.
     #[serde(rename = "bridgeResults", default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub bridge_results: BTreeMap<String, BTreeMap<String, String>>,
+    pub bridge_results: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cast: BTreeMap<String, String>,
     #[serde(rename = "stateDomains", default, skip_serializing_if = "BTreeMap::is_empty")]
     pub state_domains: BTreeMap<String, StateDomain>,
-    /// dsl 0.40.1 §3: every parameterless project def (plugin `defs:` and
-    /// the `uses:` schema imports every document sees alike), name-sorted,
-    /// its body `@def`-expanded and lowered — what a host evaluates by name
-    /// (`Program.def`). Omitted when empty.
+    /// dsl 0.40.1 §3, 0.41.0 §4.3: the project defs a host evaluates by name
+    /// (`Program.def`) — plugin `defs:` and the `uses:` schema imports,
+    /// keyed and sorted by name. Omitted when empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub defs: BTreeMap<String, CelPair>,
+    pub defs: BTreeMap<String, IndexDef>,
+}
+
+/// 0.41.0 §4.3: one row of [`ProjectIndex::defs`] — a def's body
+/// `@def`-expanded (`cel`; the unexpanded body as `authored` when it
+/// differs) and lowered (`expr`, where each parameter is a `param` node),
+/// its parameters in declaration order (omitted when none) and `host: true`
+/// when the def declares it (omitted otherwise).
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexDef"))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct IndexDef {
+    /// The body after `@def` expansion (standard CEL text).
+    pub cel: String,
+    /// The lowered body.
+    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::expr_node"))]
+    pub expr: ExprNode,
+    /// The body as declared, when expansion changed it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored: Option<String>,
+    /// The declared parameters, in declaration (argument) order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<lute_manifest::schema::DefParam>,
+    /// The def declares `host: true` (0.41.0 §3.5).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub host: bool,
 }
 
 impl ProjectIndex {
@@ -211,11 +267,18 @@ impl ProjectIndex {
 /// The serializable subset of a capability-declared occasion carried by the
 /// project index. The human description and raisedWhen gate are document
 /// metadata, not part of the engine's occasion shape.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexOccasion"))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexOccasion {
+    /// How many eligible beats a raise presents: `first`, `all` or `sequence`.
     pub select: lute_manifest::schema::OccasionSelect,
+    /// `true` (raised for any dotted id), `false` (untargeted), or a
+    /// `{ prefix, entity, members? }` target domain.
     pub target: lute_manifest::schema::OccasionTarget,
+    /// `before` when the occasion judges its objectives before presenting its
+    /// beats; omitted for the default `after`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub judge: Option<lute_manifest::schema::OccasionJudge>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -224,6 +287,10 @@ pub struct IndexOccasion {
     pub outside_run: bool,
 }
 
+/// A closed state member domain, keyed by state path in
+/// [`ProjectIndex::state_domains`].
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(rename = "indexStateDomain"))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct StateDomain {
     pub kind: String,

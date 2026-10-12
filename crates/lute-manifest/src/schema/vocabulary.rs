@@ -88,6 +88,7 @@ pub struct BridgeCapability {
 /// A single declared def parameter (dsl §8.1). Order-preserving: the position of
 /// a `DefParam` in [`DefDecl::params`] is the positional-binding order for
 /// `@name(args)` calls.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct DefParam {
     pub name: String,

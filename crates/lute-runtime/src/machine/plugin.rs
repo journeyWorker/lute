@@ -24,12 +24,12 @@ pub struct BridgeReads {
     /// writes to a path in `paths` — what every answer to the tag gives
     /// (answers queue per tag, not per call), and what a hint lists.
     pub fields: BTreeMap<String, BTreeSet<String>>,
-    /// dsl 0.26.0 §3.1: per plugin directive tag, the declared type (`bool`,
-    /// `number`, `string`) of each bridge result field an effect of the tag
-    /// reads, from the capability's `result:` shape — what types an answer
-    /// whose landing path no state slot declares. Empty for `lute run` (an
-    /// artifact carries no capability snapshot).
-    pub result_types: BTreeMap<String, BTreeMap<String, &'static str>>,
+    /// dsl 0.26.0 §3.1, 0.41.0 §4.1: per plugin directive tag, the declared
+    /// type of each bridge result field an effect of the tag reads, from the
+    /// capability's `result:` shape (the index `bridgeResults`) — what types
+    /// an answer whose landing path no state slot declares. Empty for
+    /// `lute run` (an artifact carries no capability snapshot).
+    pub result_types: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
 }
 
 impl BridgeReads {
@@ -73,49 +73,22 @@ impl BridgeReads {
         }
     }
 
-    /// dsl 0.26.0 §3.1: `snapshot`'s bridge result types, per directive tag
-    /// ([`Self::result_types`]), merged into `self`.
-    pub fn with_result_types(
-        mut self,
-        snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
-    ) -> Self {
-        use lute_manifest::types::Type;
-        for (tag, decl) in &snapshot.directives {
-            let Some(bridge) = &decl.bridge else {
-                continue;
-            };
-            let Some(cap) = snapshot
-                .bridge_capabilities
-                .get(&(bridge.service.clone(), bridge.operation.clone()))
-            else {
-                continue;
-            };
-            for (field, _) in crate::input::bridge_result_writes(decl) {
-                let Some(f) = cap.result.iter().find(|f| f.name == field) else {
-                    continue;
-                };
-                let ty = match f.ty {
-                    Type::Bool => "bool",
-                    Type::Int | Type::Double => "number",
-                    _ => "string",
-                };
-                self.result_types
-                    .entry(tag.clone())
-                    .or_default()
-                    .insert(field.to_string(), ty);
-            }
-        }
-        self
-    }
-
     /// Whether content reads `field` of a `tag` call's result.
     pub fn reads(&self, tag: &str, field: &str) -> bool {
         self.fields.get(tag).is_some_and(|f| f.contains(field))
     }
 
-    /// dsl 0.26.0 §3.1: the capability-declared type of `tag`'s result `field`.
+    /// dsl 0.26.0 §3.1: the scalar spelling of the capability-declared type
+    /// of `tag`'s result `field` — `bool`, `int`, `double`, or `string` for
+    /// any other declared type.
     pub fn result_type(&self, tag: &str, field: &str) -> Option<&'static str> {
-        self.result_types.get(tag)?.get(field).copied()
+        use lute_manifest::types::Type;
+        Some(match self.result_types.get(tag)?.get(field)? {
+            Type::Bool => "bool",
+            Type::Int => "int",
+            Type::Double => "double",
+            _ => "string",
+        })
     }
 }
 

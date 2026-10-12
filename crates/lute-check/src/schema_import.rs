@@ -154,6 +154,9 @@ pub struct RelImports {
     /// Project `enums:` per name (kept distinct from `domains` so relation-arg
     /// resolution can distinguish enum vs kind vs plugin domain).
     pub enums: BTreeMap<String, Vec<String>>,
+    /// 0.41.0 §4.2: each resolved enum's long-form `labels:`, from the
+    /// winning declaration (omitted when it declares none).
+    pub enum_labels: BTreeMap<String, BTreeMap<String, String>>,
     /// Seed facts, deterministic order: (depth, file, list index).
     pub facts: Vec<FactDecl>,
     /// Rules, same deterministic order. ALWAYS union (spec §4.1).
@@ -1047,6 +1050,11 @@ fn resolve_imports_in(
             enums: rel_enums
                 .iter()
                 .map(|(k, v)| (k.clone(), v.members.clone()))
+                .collect(),
+            enum_labels: rel_enums
+                .iter()
+                .filter(|(_, v)| !v.labels.is_empty())
+                .map(|(k, v)| (k.clone(), v.labels.clone()))
                 .collect(),
             facts,
             rules,

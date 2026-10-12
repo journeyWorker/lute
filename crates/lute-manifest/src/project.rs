@@ -29,9 +29,12 @@ use crate::constraints::{parse_constraints, ConstraintDecl};
 /// A resolved canonical identity migration entry. The manifest loader keeps
 /// source spans separately; this wire DTO is intentionally only the two
 /// canonical keys that engines consume.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct IdentityRename {
+    /// The retired canonical NodeKey (e.g. `quest:oldQuest`).
     pub from: String,
+    /// The canonical NodeKey that replaces it.
     pub to: String,
 }
 
