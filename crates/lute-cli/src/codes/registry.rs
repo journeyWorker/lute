@@ -933,7 +933,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, or declares the same attribute name more than once.",
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).",
         spec: &[],
     },
     Code {

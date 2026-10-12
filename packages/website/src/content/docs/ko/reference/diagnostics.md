@@ -1056,7 +1056,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했습니다.
+플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다).
 
 ### E-PLUGIN-IO
 

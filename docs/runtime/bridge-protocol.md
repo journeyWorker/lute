@@ -42,9 +42,13 @@ A plugin directive with a bridge lowers to a `Command::Plugin`, serialized as
   dispatch by `(plugin, tag)`. Omitted when ownership is core or unresolved;
   never taken from an authored attribute.
 - `fields` — the resolved directive attrs, typed via the manifest `AttrDecl`s
-  (`PluginCmd.fields`, a string→JSON map). Plugin-owned call options such as
-  `sync` live here. The reserved core `wait` attribute belongs to the record's
-  `timing` object, not to this map.
+  (`PluginCmd.fields`, a string→JSON map): every authored attr (an `@ref`
+  folded to its constant) plus every omitted attr at its declared `default`
+  (0.41.0 §5.5). Plugin-owned call options such as `sync` live here. The
+  stamp's attrs do not: the core timing attrs `wait`, `duration` and `delay`
+  belong to the record's `timing` object, and a plugin cross-cutting
+  `stampAttrs` attr the directive does not declare itself is a top-level key
+  of the record beside `timing`.
 - `effects` — the resolved state-write bindings (`PluginCmd.effects`); **absent**
   when the directive declares none.
 - `retracts` / `asserts` — the facts the call retracts and then asserts,

@@ -1,9 +1,10 @@
 //! dsl 0.41.0 §5.3 / §5.5: `awaitBridge` carries the call's `attrs`
-//! (`occasion.target` bound) and its typed `results`; a `bridgeResult` is
-//! validated against them and may carry `writes`, applied at the call after
-//! its declared effects — visible to the lines after it, replayed on resume,
-//! serialized in a suspended state's snapshot — and refused when unresolved
-//! or aimed at the clock. Every `plugin` record carries `attrs`.
+//! (`occasion.target` bound, declared defaults filled, `@ref`s folded) and its
+//! typed `results`; a `bridgeResult` is validated against them and may carry
+//! `writes`, applied at the call after its declared effects — visible to the
+//! lines after it, replayed on resume, serialized in a suspended state's
+//! snapshot — and refused when unresolved or aimed at the clock. Every
+//! `plugin` record carries `attrs`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -20,8 +21,8 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runtime-bridge-041")
 }
 
-/// `lute compile --all` of the fixture, read back as a host reads it.
-fn runtime(scratch: &str) -> Runtime {
+/// `lute compile --all` of the fixture into `scratch`: the bundle directory.
+fn compiled(scratch: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = Command::new(BIN)
@@ -32,9 +33,16 @@ fn runtime(scratch: &str) -> Runtime {
         .output()
         .unwrap();
     assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
-    let read = |path: &Path| -> Json {
-        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
-    };
+    (scratch, out)
+}
+
+fn read(path: &Path) -> Json {
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// The compiled fixture, read back as a host reads it.
+fn runtime(scratch: &str) -> Runtime {
+    let (_scratch, out) = compiled(scratch);
     let index = read(&out.join("project.index.json"));
     let artifacts: BTreeMap<String, Json> = index["documents"]
         .as_array()
@@ -107,7 +115,7 @@ fn await_bridge_carries_attrs_and_typed_results() {
         json!({
             "type": "awaitBridge", "request": 1, "tag": "battle", "document": "fight.lute",
             "position": "001-0200",
-            "attrs": {"foe": "kato", "mode": "ambush", "resultKey": "fight"},
+            "attrs": {"foe": "kato", "mode": "ambush", "resultKey": "fight", "rounds": 3},
             "results": {"outcome": {"enum": ["win", "lose"]}, "hpFloor": "int"}
         })
     );
@@ -205,7 +213,9 @@ fn unresolved_or_clock_answer_writes_are_refused() {
     }
 }
 
-/// A non-blocking plugin call records its `attrs` too.
+/// A non-blocking plugin call records its `attrs` too: the omitted `wrapped`
+/// and `weight` at their declared defaults, `count=@pair` as the int its def
+/// folds to.
 #[test]
 fn every_plugin_record_carries_attrs() {
     let runtime = runtime("bridge041-attrs");
@@ -213,5 +223,127 @@ fn every_plugin_record_carries_attrs() {
     let (_, output) = step(&runtime, &start, json!({"type": "raiseOccasion", "occasion": "give"}));
     let plugin = records(&output).into_iter().find(|r| r["kind"] == "plugin").unwrap();
     assert_eq!(plugin["tag"], "handOver");
-    assert_eq!(plugin["attrs"], json!({"item": "rope", "to": "mira"}));
+    assert_eq!(
+        plugin["attrs"],
+        json!({"item": "rope", "to": "mira", "count": 2, "wrapped": false, "weight": 1.0})
+    );
+}
+
+/// The artifact ships the declared defaults of omitted attrs in `fields`,
+/// typed as an authored value (`double` `default: 1` reads `1.0`), and a
+/// folded `@ref` as its typed constant — no CEL text, so a host without
+/// directive declarations sees the call whole.
+#[test]
+fn artifacts_carry_declared_defaults_and_folded_refs() {
+    let (_scratch, out) = compiled("bridge041-artifact");
+    let fields = |artifact: &str, tag: &str| -> Json {
+        read(&out.join(artifact))["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["kind"] == "plugin" && c["tag"] == tag)
+            .unwrap()["fields"]
+            .clone()
+    };
+    assert_eq!(
+        fields("fight.lute.json", "battle"),
+        json!({"foe": "occasion.target", "mode": "ambush", "resultKey": "fight", "rounds": 3})
+    );
+    let gift = fields("gift.lute.json", "handOver");
+    assert_eq!(
+        gift,
+        json!({"item": "rope", "to": "mira", "count": 2, "wrapped": false, "weight": 1.0})
+    );
+    assert!(gift["weight"].is_f64(), "{gift}");
+}
+
+/// `lute check-project` of the fixture with each `(file, from, to)` edit
+/// applied: whether it passed, and everything it printed.
+fn check_edited(scratch: &str, edits: &[(&str, &str, &str)]) -> (bool, String) {
+    let project = lute_scratch::ScratchDir::named(scratch);
+    copy_tree(&fixture(), &project);
+    for (file, from, to) in edits {
+        let path = project.join(file);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(from), "{file} has no `{from}`");
+        std::fs::write(&path, text.replace(from, to)).unwrap();
+    }
+    let out = Command::new(BIN).arg("check-project").arg(&*project).output().unwrap();
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    (out.status.success(), text)
+}
+
+/// A declared default that is not a value of its attr's type never reaches
+/// an artifact: the plugin is refused when the project loads.
+#[test]
+fn an_ill_typed_attr_default_is_refused_at_load() {
+    let (ok, text) = check_edited(
+        "bridge041-bad-default",
+        &[(
+            "plugins/arena/directives/d.yaml",
+            "{ name: rounds, type: int, default: 3 }",
+            "{ name: rounds, type: int, default: 1.5 }",
+        )],
+    );
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains(
+            "E-PLUGIN-INVALID-DIRECTIVE: directive `::battle` declares attribute `rounds` as \
+             `int` with `default: 1.5`, which is not of type `int`"
+        ),
+        "{text}"
+    );
+}
+
+/// A default whose members the project resolves (`enumFromOption`) is judged
+/// at each call that omits it, like the authored value it stands in for.
+#[test]
+fn a_project_resolved_default_is_judged_where_a_call_omits_it() {
+    let check = |scratch: &str, default: &str| {
+        let weight = "      - { name: weight, type: double, default: 1 }\n";
+        let level = format!(
+            "{weight}      - {{ name: level, type: {{ enumFromOption: levels }}, default: {default} }}\n"
+        );
+        check_edited(
+            scratch,
+            &[
+                (
+                    "plugins/arena/plugin.yaml",
+                    "exports:",
+                    "options:\n  - { name: levels, type: { list: string }, default: [easy, hard] }\nexports:",
+                ),
+                ("plugins/arena/directives/d.yaml", weight, &level),
+                // Activation resolves the option the attr's members come from.
+                ("lute.project.yaml", "arena: true", "arena: { levels: [easy, hard] }"),
+            ],
+        )
+    };
+    let (ok, text) = check("bridge041-option-default-ok", "hard");
+    assert!(ok, "{text}");
+    let (ok, text) = check("bridge041-option-default-bad", "bogus");
+    assert!(!ok, "{text}");
+    assert!(
+        text.contains(
+            "gift.lute:13:1: error [E-BAD-ENUM] `bogus` is not a valid value for `level` of \
+             `::handOver` (expected one of: easy, hard) — this is the declared `default:` of \
+             `level`, used because the call omits it"
+        ),
+        "{text}"
+    );
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let (source, target) = (entry.path(), to.join(entry.file_name()));
+        if source.is_dir() {
+            copy_tree(&source, &target);
+        } else {
+            std::fs::copy(&source, &target).unwrap();
+        }
+    }
 }

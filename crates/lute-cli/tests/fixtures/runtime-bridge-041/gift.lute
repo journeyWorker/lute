@@ -6,7 +6,9 @@ on: give
 once: false
 plugins:
   arena: {}
+defs:
+  pair: "1 + 1"
 ---
 ## Gift
-::handOver{item="rope" to="mira"}
+::handOver{item="rope" to="mira" count=@pair}
 @narrator: Given.

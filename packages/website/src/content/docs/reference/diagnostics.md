@@ -1058,7 +1058,7 @@ A plugin package declares the same id more than once within one export kind; the
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, or declares the same attribute name more than once.
+A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).
 
 ### E-PLUGIN-IO
 

@@ -5,6 +5,7 @@ directives:
       - { name: foe, required: true, type: { entity: foe } }
       - { name: mode, required: true, type: { enum: [ambush, open] } }
       - { name: resultKey, required: true, type: { slotId: { namespace: scene.battle } } }
+      - { name: rounds, type: int, default: 3 }
     semantics: [ "writes.sceneState", "bridgeCall" ]
     state:
       declares:
@@ -18,3 +19,6 @@ directives:
     attrs:
       - { name: item, required: true, type: string }
       - { name: to, required: true, type: { entity: foe } }
+      - { name: count, type: int }
+      - { name: wrapped, type: bool, default: false }
+      - { name: weight, type: double, default: 1 }

@@ -3254,7 +3254,7 @@
         },
         "fields": {
           "type": "object",
-          "description": "resolved directive attrs, typed via the manifest AttrDecls."
+          "description": "resolved directive attrs, typed via the manifest AttrDecls: every authored attr (an `@ref` folded to its constant) plus every omitted attr whose declaration has a `default` (dsl 0.41.0 §5.5). Excludes the stamp's attrs: `wait`/`duration`/`delay` (in `timing`) and an undeclared cross-cutting `stampAttrs` attr (a top-level key beside `timing`)."
         },
         "effects": {
           "type": "array",

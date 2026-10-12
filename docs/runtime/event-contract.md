@@ -220,7 +220,7 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 | Await type | Fields | What the host can send next |
 |---|---|---|
 | `awaitChoice` | `request`, `menu` | `choose` with this request and an open option. |
-| `awaitBridge` | `request`, `tag`, `document`, `position`, `attrs` (the call's IR `fields`, `occasion.target` bound; `{}` when none), `results` (each result field content reads → its declared type from index `bridgeResults`) | Perform the bridge call outside the runtime, then send `bridgeResult` (optionally with `writes`). Non-blocking plugin records are write-free: answer them with `hostWrite` at the next `idle`, or declare the call a bridge. |
+| `awaitBridge` | `request`, `tag`, `document`, `position`, `attrs` (the call's IR `fields` — authored attributes, `@ref`s folded, omitted ones at their declared `default`; never the stamp's `wait`/`duration`/`delay` or an undeclared cross-cutting `stampAttrs` attribute — with `occasion.target` bound; `{}` when none), `results` (each result field content reads → its declared type from index `bridgeResults`) | Perform the bridge call outside the runtime, then send `bridgeResult` (optionally with `writes`). Non-blocking plugin records are write-free: answer them with `hostWrite` at the next `idle`, or declare the call a bridge. |
 | `idle` | — | An idle input from the input table. |
 | `ended` | `reason: "terminal"` | `newRun` or an `outsideRun` occasion. |
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |

@@ -407,7 +407,7 @@ pub fn lower_directive(
             // directive's manifest AttrDecls when the decl is known.
             let mut fields = BTreeMap::new();
             for a in &dir.attrs {
-                if a.key == "wait" || a.key == "duration" || a.key == "delay" {
+                if is_stamp_timing_attr(&a.key) {
                     continue; // already resolved into the stamp
                 }
                 // A cross-cutting stamp attr this directive does not declare
@@ -417,6 +417,16 @@ pub fn lower_directive(
                     continue;
                 }
                 fields.insert(a.key.clone(), attr_json(a, decl));
+            }
+            // 0.41.0 §5.5: an omitted attr with a declared `default` ships
+            // that default, typed as the authored value would be — the
+            // runtime has no directive declarations to fill it from.
+            for ad in decl.map(|d| d.attrs.as_slice()).unwrap_or_default() {
+                if let Some(default) = ad.default.as_ref().filter(|_| !is_stamp_timing_attr(&ad.name)) {
+                    fields
+                        .entry(ad.name.clone())
+                        .or_insert_with(|| default_json(default, &ad.ty));
+                }
             }
             // IR A12: resolve the manifest directive's declared `effects.writes`
             // into artifact-local bindings (fromAttr templates substituted).
@@ -791,6 +801,23 @@ fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
             _ => serde_json::Value::String(s.clone()),
         },
     }
+}
+
+/// A declared attr `default` as JSON. Assembly already proved it a value of
+/// the attr's type (`lute_manifest::validate::attr_default_accepts`), whose
+/// one widening is a YAML integer defaulting a `double`: that reads `1.0`,
+/// as an authored `1` would.
+fn default_json(default: &Literal, ty: &Type) -> serde_json::Value {
+    match (default, ty) {
+        (Literal::Int(n), Type::Double) => serde_json::Value::from(*n as f64),
+        _ => crate::literal_json(default),
+    }
+}
+
+/// The cross-cutting timing attrs every directive resolves into its stamp
+/// rather than its `fields`.
+fn is_stamp_timing_attr(key: &str) -> bool {
+    matches!(key, "wait" | "duration" | "delay")
 }
 
 /// The state path one manifest `WriteDecl` writes at this call: `scope` + each
