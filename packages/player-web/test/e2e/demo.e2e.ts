@@ -87,6 +87,8 @@ test.describe.serial("player demo", () => {
   })
 
   test("plays to an ending with real keyboard input; the timed choice expires", async () => {
+    // A full playthrough under SwiftShader on a CI runner takes minutes.
+    test.setTimeout(600_000)
     await freshGame()
     let timedExpired = false
     let shotMid = false
