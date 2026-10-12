@@ -10,10 +10,12 @@ moment `.github/workflows/build-native.yml` (test matrix) and
 table.
 
 This script fails CI the instant one matrix (or the shared env, or a
-    platform package's `package.json` name, or `@lute-lang/lute`'s
+platform package's `package.json` name, or `@lute-lang/lute`'s
 `optionalDependencies` set, or a release package set missing one of the
-JS library packages) drifts from the others — closing the drift hole BEFORE
-a broken release rather than discovering it via a failed publish.
+JS library packages, or the version stamp no longer pinning the player
+packages' `@lute-lang/*` dependencies and peer dependencies) drifts from
+the others — closing the drift hole BEFORE a broken release rather than
+discovering it via a failed publish.
 
 Dependency-free by design (stdlib `json`/`re`/`sys`/`pathlib` only — no
 PyYAML, no `yq`), so it runs as the FIRST step of both workflows on a
@@ -148,6 +150,125 @@ def shell_for_values(text: str, variable: str) -> set[str] | None:
     return set(match.group("values").split())
 
 
+def shell_for_blocks(text: str, variable: str) -> list[tuple[set[str], str]]:
+    """Every shell `for <variable> in …; do … done` loop: (values, body)."""
+    return [
+        (set(m.group("values").split()), m.group("body"))
+        for m in re.finditer(
+            rf"^\s*for {re.escape(variable)} in (?P<values>[^;\n]+); do\s*$(?P<body>.*?)^\s*done\s*$",
+            text,
+            re.MULTILINE | re.DOTALL,
+        )
+    ]
+
+
+# The library packages whose `@lute-lang/*` `dependencies` AND
+# `peerDependencies` the version-stamping step must pin to the release
+# version (npm has no lockstep range; the player declares the runtime as a
+# peer, spec 0.41.0 §7.11).
+PINNED_PACKAGES = ("player", "player-web")
+PINNED_FIELDS = ("dependencies", "peerDependencies")
+
+
+def strip_shell_comment(line: str) -> str:
+    """`line` without its shell/YAML `#` comment (quote-aware, one line)."""
+    single = double = escaped = False
+    for i, c in enumerate(line):
+        if escaped:
+            escaped = False
+        elif single:
+            single = c != "'"
+        elif double:
+            if c == "\\":
+                escaped = True
+            elif c == '"':
+                double = False
+        elif c == "\\":
+            escaped = True
+        elif c == "'":
+            single = True
+        elif c == '"':
+            double = True
+        elif c == "#" and (i == 0 or line[i - 1].isspace()):
+            return line[:i]
+    return line
+
+
+def strip_jq_comments(program: str) -> str:
+    """`program` without jq `#` comments (outside jq string literals)."""
+    out = []
+    for line in program.split("\n"):
+        string = escaped = False
+        for i, c in enumerate(line):
+            if escaped:
+                escaped = False
+            elif string:
+                if c == "\\":
+                    escaped = True
+                elif c == '"':
+                    string = False
+            elif c == '"':
+                string = True
+            elif c == "#":
+                line = line[:i]
+                break
+        out.append(line)
+    return "\n".join(out)
+
+
+def peer_pin_errors(publish_text: str) -> list[str]:
+    """Check 6: for each player package, a `for pkg in …` loop over it
+    passes `jq` a program (comments stripped) that pins `@lute-lang/`-prefixed
+    entries of both `dependencies` and `peerDependencies`."""
+    code = "\n".join(strip_shell_comment(line) for line in publish_text.splitlines())
+    pinned: dict[str, set[str]] = {pkg_dir: set() for pkg_dir in PINNED_PACKAGES}
+    for values, body in shell_for_blocks(code, "pkg"):
+        body = re.sub(r"\\\n", " ", body)
+        for m in re.finditer(r"\bjq\b[^'\n]*'(?P<program>[^'\n]*)'", body):
+            program = strip_jq_comments(m.group("program"))
+            if 'startswith("@lute-lang/")' not in program:
+                continue
+            fields = {f for f in PINNED_FIELDS if re.search(rf'(\.{f}\b|"{f}")', program)}
+            for pkg_dir in PINNED_PACKAGES:
+                if f"packages/{pkg_dir}" in values:
+                    pinned[pkg_dir] |= fields
+    return [
+        f"publish.yml does not pin packages/{pkg_dir}'s @lute-lang/* {field} to the release version"
+        for pkg_dir in PINNED_PACKAGES
+        for field in PINNED_FIELDS
+        if field not in pinned[pkg_dir]
+    ]
+
+
+def self_test_peer_pin() -> None:
+    """Check 6 must reject a dependencies-only filter whose shell or jq
+    comments name `peerDependencies`/`startswith`, and accept the real pin."""
+    loop = (
+        "        run: |\n"
+        "          {comment}\n"
+        "          for pkg in packages/player packages/player-web; do\n"
+        "            jq --arg v \"$VERSION\" \\\n"
+        "              '{program}' \\\n"
+        "              \"$pkg/package.json\" > \"$pkg/package.json.tmp\"  {comment}\n"
+        "          done\n"
+    )
+    pin = 'with_entries(if (.key | startswith("@lute-lang/")) then .value = $v else . end)'
+    deps_only = f".dependencies = (.dependencies | {pin})"
+    both = f'def pin($k): if has($k) then .[$k] |= {pin} else . end; pin("dependencies") | pin("peerDependencies")'
+    decoy = '# .peerDependencies startswith("@lute-lang/")'
+    cases = (
+        (loop.format(comment="", program=both), True),
+        (loop.format(comment="", program=deps_only), False),
+        (loop.format(comment=decoy, program=deps_only), False),
+        (loop.format(comment="", program=f"{deps_only} {decoy}"), False),
+        (loop.format(comment=decoy, program="."), False),
+    )
+    for i, (text, ok) in enumerate(cases):
+        if (not peer_pin_errors(text)) != ok:
+            fail(f"check 6 self-test case {i} misjudged (expected {'pass' if ok else 'drift'})")
+
+
+
 def main() -> int:
     build_text = read(BUILD_WF)
     publish_text = read(PUBLISH_WF)
@@ -267,6 +388,13 @@ def main() -> int:
         published == expected_dirs,
         f"npm-publish step drift:\n  publishes={sorted(published)}\n  expected ={sorted(expected_dirs)}",
     )
+
+    # 6. The player packages' `@lute-lang/*` dependencies and peer
+    #    dependencies are rewritten to the release version: a loop over each
+    #    of them runs a jq filter that pins `@lute-lang/`-prefixed entries of
+    #    both `dependencies` and `peerDependencies` (comments ignored).
+    self_test_peer_pin()
+    ERRORS.extend(peer_pin_errors(publish_text))
 
     if ERRORS:
         print("check-release-workflow-safety: DRIFT DETECTED\n", file=sys.stderr)

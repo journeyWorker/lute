@@ -210,11 +210,11 @@ jobs:
             '.optionalDependencies = (.optionalDependencies | with_entries(.value = $v))' \
             packages/cli/package.json > packages/cli/package.json.tmp
           mv packages/cli/package.json.tmp packages/cli/package.json
-          # The player packages pin their @lute-lang/* dependencies to the
-          # release version (lockstep).
+          # The player packages pin their @lute-lang/* dependencies and peer
+          # dependencies to the release version (lockstep).
           for pkg in packages/player packages/player-web; do
             jq --arg v "$VERSION" \
-              '.dependencies = (.dependencies | with_entries(if (.key | startswith("@lute-lang/")) then .value = $v else . end))' \
+              'def pin($k): if has($k) then .[$k] |= with_entries(if (.key | startswith("@lute-lang/")) then .value = $v else . end) else . end; pin("dependencies") | pin("peerDependencies")' \
               "$pkg/package.json" > "$pkg/package.json.tmp"
             mv "$pkg/package.json.tmp" "$pkg/package.json"
           done
