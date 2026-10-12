@@ -18,8 +18,9 @@ export interface InputMap {
 /** Default keyboard, pointer and gesture table for visual-novel controls. */
 export const defaultInputMap: InputMap = {
   keyboard: {
-    Enter: { type: "advance" }, " ": { type: "advance" }, a: { type: "toggleAuto" }, A: { type: "toggleAuto" }, s: { type: "toggleSkip" }, S: { type: "toggleSkip" }, Escape: { type: "openMenu" }, PageUp: { type: "openBacklog" }, F5: { type: "quickSave" }, F9: { type: "quickLoad" }, h: { type: "hideUI" }, H: { type: "hideUI" }, Backspace: { type: "rollback" },
-    "1": { type: "choose", option: "1" }, "2": { type: "choose", option: "2" }, "3": { type: "choose", option: "3" }, "4": { type: "choose", option: "4" }, "5": { type: "choose", option: "5" }, "6": { type: "choose", option: "6" }, "7": { type: "choose", option: "7" }, "8": { type: "choose", option: "8" }, "9": { type: "choose", option: "9" }
+    Enter: { type: "advance" }, " ": { type: "advance" }, a: { type: "toggleAuto" }, A: { type: "toggleAuto" }, s: { type: "toggleSkip" }, S: { type: "toggleSkip" }, Escape: { type: "openMenu" }, PageUp: { type: "openBacklog" }, F5: { type: "quickSave" }, F9: { type: "quickLoad" }, h: { type: "hideUI" }, H: { type: "hideUI" }, Backspace: { type: "rollback" }
+    // Digits are not mapped: the choice menu owns them (it knows which
+    // option each number names).
   },
   pointer: { click: { type: "advance" }, contextmenu: { type: "openMenu" }, middle: { type: "hideUI" } }
 }
