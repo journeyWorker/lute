@@ -26,7 +26,7 @@ pub struct Bindings {
     #[serde(default)]
     pub camera_move: BTreeMap<String, EffectSpec>,
     #[serde(default)]
-    pub vfx: BTreeMap<String, EffectSpec>,
+    pub vfx: BTreeMap<String, VfxSpec>,
     #[serde(default)]
     pub framing: BTreeMap<String, Framing>,
     #[serde(default)]
@@ -201,6 +201,52 @@ pub enum EffectSpec {
     },
 }
 
+/// A `vfx` binding: a catalogue effect, or a presenter-defined custom effect
+/// (spec 0.41 §7.7). `custom` is admitted only here; actions, transitions and
+/// camera moves keep the closed [`EffectSpec`] catalogue.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum VfxSpec {
+    Custom(CustomVfx),
+    Effect(EffectSpec),
+}
+
+// Dispatch on `effect` so a catalogue entry keeps the precise `EffectSpec`
+// serde error instead of an untagged "no variant matched".
+impl<'de> Deserialize<'de> for VfxSpec {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let custom = value.get("effect").and_then(serde_yaml::Value::as_str) == Some("custom");
+        if custom {
+            CustomVfx::deserialize(value).map(Self::Custom)
+        } else {
+            EffectSpec::deserialize(value).map(Self::Effect)
+        }
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+/// `{ effect: custom, name?, duration? }`; `name` defaults to the binding key.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CustomVfx {
+    pub effect: CustomEffect,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub duration: Option<f64>,
+}
+
+/// The `custom` effect tag of [`CustomVfx`].
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CustomEffect {
+    Custom,
+}
+
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -356,6 +402,44 @@ mod tests {
         assert!(serde_yaml::from_str::<Bindings>(
             "bindingsVersion: '0.40'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
         ).is_err());
+    }
+
+    #[test]
+    fn vfx_admits_custom_effects_beside_the_catalogue() {
+        let value: Bindings = serde_yaml::from_str(
+            "bindingsVersion: '0.40'\ncanvas: {width: 1, height: 1}\nvfx:\n  flash: {effect: flash, color: '#fff', duration: 0.3}\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n",
+        )
+        .unwrap();
+        assert!(matches!(
+            value.vfx["flash"],
+            VfxSpec::Effect(EffectSpec::Flash { .. })
+        ));
+        assert_eq!(
+            value.vfx["lanterns"],
+            VfxSpec::Custom(CustomVfx {
+                effect: CustomEffect::Custom,
+                name: None,
+                duration: None,
+            })
+        );
+        assert_eq!(
+            value.vfx["tideRise"],
+            VfxSpec::Custom(CustomVfx {
+                effect: CustomEffect::Custom,
+                name: Some("tide-rise".into()),
+                duration: Some(2.0),
+            })
+        );
+        for rejected in [
+            "vfx: {x: {effect: custom, strength: 2}}",
+            "vfx: {x: {effect: flash, duration: soon}}",
+            "actions: {x: {effect: custom}}",
+            "transitions: {x: {effect: custom}}",
+            "cameraMove: {x: {effect: custom}}",
+        ] {
+            let text = format!("bindingsVersion: '0.40'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
+            assert!(serde_yaml::from_str::<Bindings>(&text).is_err(), "{rejected}");
+        }
     }
 
     #[test]

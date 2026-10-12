@@ -122,6 +122,40 @@
       ],
       "type": "object"
     },
+    "CustomEffect": {
+      "description": "The `custom` effect tag of [`CustomVfx`].",
+      "enum": [
+        "custom"
+      ],
+      "type": "string"
+    },
+    "CustomVfx": {
+      "additionalProperties": false,
+      "description": "`{ effect: custom, name?, duration? }`; `name` defaults to the binding key.",
+      "properties": {
+        "duration": {
+          "default": null,
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "effect": {
+          "$ref": "#/$defs/CustomEffect"
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "effect"
+      ],
+      "type": "object"
+    },
     "EffectSpec": {
       "description": "A named player effect. The externally tagged `effect` field deliberately\nmakes each effect's parameter set closed in both serde and schemars.",
       "oneOf": [
@@ -872,6 +906,17 @@
       },
       "type": "object"
     },
+    "VfxSpec": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CustomVfx"
+        },
+        {
+          "$ref": "#/$defs/EffectSpec"
+        }
+      ],
+      "description": "A `vfx` binding: a catalogue effect, or a presenter-defined custom effect\n(spec 0.41 §7.7). `custom` is admitted only here; actions, transitions and\ncamera moves keep the closed [`EffectSpec`] catalogue."
+    },
     "Voice": {
       "additionalProperties": false,
       "properties": {
@@ -1007,7 +1052,7 @@
     },
     "vfx": {
       "additionalProperties": {
-        "$ref": "#/$defs/EffectSpec"
+        "$ref": "#/$defs/VfxSpec"
       },
       "default": {},
       "type": "object"

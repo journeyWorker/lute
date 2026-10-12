@@ -24,7 +24,10 @@ cameraMove: { shake: { effect: shake, duration: 0.5, strength: 12 } }
 framing: { closeUp: { zoom: 1.35 } }
 cgLayouts: { full: { fit: cover }, inset: { fit: contain, scale: 0.6 } }
 textStyles: { emphasis: { fontWeight: bold }, whisper: { alpha: 0.6 } }
-vfx: { flash: { effect: flash, color: "#fff", duration: 0.3 } }
+vfx:
+  flash: { effect: flash, color: "#fff", duration: 0.3 }
+  lanterns: { effect: custom }
+  tideRise: { effect: custom, name: tide-rise, duration: 2 }
 music: { moods: { calm: audio/calm.ogg } }
 sfx: { door: audio/door.ogg }
 sequences: { doorOpens: { video: video/door-opens.mp4 } }
@@ -77,6 +80,13 @@ Effect objects have an `effect` key and only the parameters listed here:
 | `flash` | `duration?`, `color?` |
 | `blur` | `duration?`, `strength?` |
 | `tint` | `duration?`, `color?` |
+| `custom` (only under `vfx`) | `name?`, `duration?` |
+
+A `vfx` entry MAY be `{ effect: custom, name?, duration? }`: a
+presenter-defined effect outside the catalogue. `name` defaults to the binding
+key; the player passes the entry through as a `Vfx` cue whose effect is
+`custom` with that `name`. `actions`, `transitions`, and `cameraMove` keep the
+closed catalogue: `effect: custom` there is `E-BINDING-EFFECT`.
 
 Unknown YAML keys are rejected. Unknown effects or parameters produce
 `E-BINDING-EFFECT`; malformed YAML/shape produces `E-BINDING-SHAPE` with the

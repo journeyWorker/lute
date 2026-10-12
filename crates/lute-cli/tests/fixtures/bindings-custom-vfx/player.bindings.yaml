@@ -1,0 +1,6 @@
+bindingsVersion: "0.40"
+canvas: {width: 1920, height: 1080}
+vfx:
+  flash: {effect: flash, color: "#fff", duration: 0.3}
+  lanterns: {effect: custom}
+  tideRise: {effect: custom, name: tide-rise, duration: 2}
