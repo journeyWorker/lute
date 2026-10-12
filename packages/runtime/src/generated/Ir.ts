@@ -152,6 +152,9 @@ export const exprNode = Schema.Union([
   Schema.Struct({
     "call": Schema.String,
     "args": Schema.Array(Schema.Json)
+  }),
+  Schema.Struct({
+    "param": Schema.String
   })
 ]);
 export type exprNode = typeof exprNode.Type;
@@ -275,7 +278,8 @@ export type entityKindEntry = typeof entityKindEntry.Type;
  */
 export const enumEntry = Schema.Struct({
   "name": Schema.String,
-  "members": Schema.Array(Schema.String)
+  "members": Schema.Array(Schema.String),
+  "labels": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
 });
 export type enumEntry = typeof enumEntry.Type;
 
@@ -1242,26 +1246,51 @@ export const loreMeta = Schema.Struct({
 export type loreMeta = typeof loreMeta.Type;
 
 /**
- * One row of `project.index.json` `entries` (dsl 0.19.0 §7; `lute compile --all`): every `<entry>` in the project, documents in path order, entries in document order within each. The index itself is not an artifact; this row shape is published here for engines that read it. `entries` is omitted from the index when the project has no lore.
+ * One `<entry>` row of `ProjectIndex::entries` (dsl 0.19.0 §7): enough for
+ * an engine to build its `target → entries` / `series → entries` tables
+ * without loading every lore artifact. `document` is the SAME string as the
+ * owning `IndexDocument::path`.
  */
 export const indexEntry = Schema.Struct({
-  "id": Schema.String,
-  "document": Schema.String,
-  "target": Schema.optionalKey(Schema.String),
   "category": Schema.optionalKey(Schema.String),
-  "series": Schema.optionalKey(Schema.String),
+  "document": Schema.String,
+  "id": Schema.String,
   "order": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(0))
-  ))
+  )),
+  "series": Schema.optionalKey(Schema.String),
+  "target": Schema.optionalKey(Schema.String)
 });
 export type indexEntry = typeof indexEntry.Type;
 
 /**
- * One row of `project.index.json` `beats` (dsl 0.21.0 §8; `lute compile --all`): every scene, entry and bundle beat in the project, documents in path order, declaration order within each. Row order is the selection tiebreak after priority (docs/runtime/beats-and-occasions.md). `beats` is omitted from the index when the project has no beats.
+ * One row of `ProjectIndex::beats` (dsl 0.21.0 §4/§8): every beat in the
+ * project, so an engine can build its `occasion → candidates` table without
+ * loading every artifact. Row order IS the selection tiebreak after
+ * priority. `id` is the scene's canonical id (`SceneMeta::id`), the
+ * entry id, or a bundle beat's canonical `<document id>.<beat id>`;
+ * `document` is the owning `IndexDocument::path`; `priority` is
+ * resolved (unauthored → `0`); `once` is the scene's / bundle beat's policy,
+ * or an entry's authored `once` (dsl 0.22.0 §7) — absent on an entry row =
+ * repeatable.
+ * `when` is the beat's condition after `@def` expansion (a scene's
+ * `meta.beat.when`, an entry's own `when`) and `title` the scene's / entry's
+ * title — enough to list the beats and label a `select: all` menu without
+ * loading every artifact (dsl 0.23.0 §1, §11). Both are omitted when absent.
  */
 export const indexBeat = Schema.Struct({
-  "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
+  "advances": Schema.optionalKey(Schema.Union([
+    Schema.Literals([
+      "slot",
+      "day"
+    ]),
+    Schema.Int
+    .pipe(
+      Schema.check(Schema.isGreaterThanOrEqualTo(1))
+    )
+  ])),
+  "document": Schema.String,
   "forKind": Schema.optionalKey(Schema.suspend(() => forKind)),
   "id": Schema.String,
   "kind": Schema.Literals([
@@ -1269,34 +1298,18 @@ export const indexBeat = Schema.Struct({
     "entry",
     "bundle"
   ]),
-  "document": Schema.String,
-  "on": Schema.String
+  "on": Schema.String,
+  "once": Schema.optionalKey(Schema.String
   .pipe(
-    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-  ),
-  "target": Schema.optionalKey(Schema.String),
+    Schema.check(Schema.isPattern(new RegExp("^(run|user|none|day|slot|week|season:.+)$")))
+  )),
   "priority": Schema.Int,
-  "once": Schema.optionalKey(Schema.Union([
-    Schema.Literals([
-      "run",
-      "user",
-      "none",
-      "day",
-      "slot",
-      "week"
-    ]),
-    Schema.String
-    .pipe(
-      Schema.check(Schema.isPattern(new RegExp("^season:[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-    )
-  ])),
+  "share": Schema.optionalKey(Schema.String),
   "spentBy": Schema.optionalKey(Schema.String),
-  "when": Schema.optionalKey(Schema.String),
+  "target": Schema.optionalKey(Schema.String),
+  "targetKind": Schema.optionalKey(Schema.suspend(() => targetKind)),
   "title": Schema.optionalKey(Schema.String),
-  "share": Schema.optionalKey(Schema.String
-  .pipe(
-    Schema.check(Schema.isPattern(new RegExp("^[A-Za-z0-9_][A-Za-z0-9_-]*$")))
-  ))
+  "when": Schema.optionalKey(Schema.String)
 });
 export type indexBeat = typeof indexBeat.Type;
 
@@ -1370,24 +1383,216 @@ export const clockDecl = Schema.Struct({
 export type clockDecl = typeof clockDecl.Type;
 
 /**
- * The serializable capability occasion shape in project.index.json, without description or raisedWhen.
+ * The serializable subset of a capability-declared occasion carried by the
+ * project index. The human description and raisedWhen gate are document
+ * metadata, not part of the engine's occasion shape.
  */
 export const indexOccasion = Schema.Struct({
+  "judge": Schema.optionalKey(Schema.Literals([
+    "after",
+    "before"
+  ])),
+  "outsideRun": Schema.optionalKey(Schema.Boolean),
+  "payload": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => fieldType))),
+  "select": Schema.Literals([
+    "first",
+    "all",
+    "sequence"
+  ]),
+  "target": Schema.Union([
+    Schema.Boolean,
+    Schema.Struct({
+      "entity": Schema.String,
+      "members": Schema.optionalKey(Schema.Array(Schema.String)),
+      "prefix": Schema.String
+    })
+  ])
 });
 export type indexOccasion = typeof indexOccasion.Type;
 
 /**
- * A closed state member domain, keyed by state path in project.index.json.
+ * A closed state member domain, keyed by state path in
+ * `ProjectIndex::state_domains`.
  */
 export const indexStateDomain = Schema.Struct({
+  "kind": Schema.String,
+  "members": Schema.Array(Schema.String)
 });
 export type indexStateDomain = typeof indexStateDomain.Type;
 
 /**
- * The optional capability unions carried by project.index.json.
+ * `project.index.json` (`lute compile --all`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md).
  */
-export const projectIndex = Schema.Record(Schema.String, Schema.Json);
+export const projectIndex = Schema.Struct({
+  "beats": Schema.optionalKey(Schema.Array(Schema.suspend(() => indexBeat))),
+  "bridgeResults": Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.suspend(() => fieldType)))),
+  "capabilitySnapshot": Schema.String,
+  "cast": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "clock": Schema.optionalKey(Schema.suspend(() => clockDecl)),
+  "defs": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => indexDef))),
+  "documents": Schema.Array(Schema.suspend(() => indexDocument)),
+  "entities": Schema.Array(Schema.suspend(() => entityKindEntry)),
+  "entries": Schema.optionalKey(Schema.Array(Schema.suspend(() => indexEntry))),
+  "enums": Schema.Array(Schema.suspend(() => enumEntry)),
+  "gates": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "occasion": Schema.String,
+    "raisedWhen": Schema.suspend(() => celSlot)
+  }))),
+  "identityRenames": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "from": Schema.String,
+    "to": Schema.String
+  }))),
+  "irVersion": Schema.String,
+  "occasions": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => indexOccasion))),
+  "outsideRun": Schema.optionalKey(Schema.Array(Schema.String)),
+  "prereqEdges": Schema.Array(Schema.suspend(() => prereqEdgeEntry)),
+  "relations": Schema.Array(Schema.suspend(() => relationEntry)),
+  "requiredSemantics": Schema.Array(Schema.String),
+  "rules": Schema.Array(Schema.suspend(() => ruleEntry)),
+  "seasons": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "live": Schema.suspend(() => celSlot),
+    "name": Schema.String
+  }))),
+  "seedFacts": Schema.Array(Schema.suspend(() => seedFactEntry)),
+  "stateDomains": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => indexStateDomain))),
+  "terminal": Schema.optionalKey(Schema.suspend(() => celSlot)),
+  "terminalPersists": Schema.optionalKey(Schema.Boolean),
+  "worldEvents": Schema.optionalKey(Schema.Array(Schema.String))
+});
 export type projectIndex = typeof projectIndex.Type;
+
+/**
+ * One document's row in the index. Paths are FORWARD-SLASH relative to the
+ * project root, never absolute — an index is a build output that must survive
+ * being copied to another machine or shipped inside a game package.
+ */
+export const indexDocument = Schema.Struct({
+  "artifact": Schema.String,
+  "key": Schema.String,
+  "kind": Schema.Literals([
+    "scene",
+    "quest",
+    "lore"
+  ]),
+  "path": Schema.String
+});
+export type indexDocument = typeof indexDocument.Type;
+
+/**
+ * 0.41.0 §4.3: one row of `ProjectIndex::defs` — a def's body
+ * `@def`-expanded (`cel`; the unexpanded body as `authored` when it
+ * differs) and lowered (`expr`, where each parameter is a `param` node),
+ * its parameters in declaration order (omitted when none) and `host: true`
+ * when the def declares it (omitted otherwise).
+ */
+export const indexDef = Schema.Struct({
+  "authored": Schema.optionalKey(Schema.String),
+  "cel": Schema.String,
+  "expr": Schema.Json,
+  "host": Schema.optionalKey(Schema.Boolean),
+  "params": Schema.optionalKey(Schema.Array(Schema.Struct({
+    "name": Schema.String,
+    "type": Schema.suspend(() => fieldType)
+  })))
+});
+export type indexDef = typeof indexDef.Type;
+
+/**
+ * A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{"enum": ...}`, `{"list": T}`, `{"record": fields}`, `{"map": {"key": T, "value": T}}`, `{"domain": name}`, `{"entity": kind}`, `{"enumFromOption": option}`, `{"providerRef": name}`, `{"slotId": {"namespace": ns}}`, `{"assetKind": kind}`).
+ */
+export type fieldType =
+  | ("bool" | "int" | "double" | "string" | "narrativeTime")
+  | {
+    readonly "enum": ReadonlyArray<string>
+  }
+  | {
+    readonly "list": fieldType
+  }
+  | {
+    readonly "record": ReadonlyArray<{
+      readonly "default"?: Schema.Json,
+      readonly "name": string,
+      readonly "required": boolean,
+      readonly "shape"?: string,
+      readonly "type": fieldType
+    }>
+  }
+  | {
+    readonly "map": {
+      readonly "key": fieldType,
+      readonly "value": fieldType
+    }
+  }
+  | {
+    readonly "enumFromOption": string
+  }
+  | {
+    readonly "providerRef": string
+  }
+  | {
+    readonly "domain": string
+  }
+  | {
+    readonly "entity": string
+  }
+  | {
+    readonly "slotId": {
+      readonly "namespace": string
+    }
+  }
+  | {
+    readonly "assetKind": string
+  };
+export const fieldType: Schema.Codec<fieldType> = Schema.Union([
+  Schema.Literals([
+    "bool",
+    "int",
+    "double",
+    "string",
+    "narrativeTime"
+  ]),
+  Schema.Struct({
+    "enum": Schema.Array(Schema.String)
+  }),
+  Schema.Struct({
+    "list": Schema.suspend(() => fieldType)
+  }),
+  Schema.Struct({
+    "record": Schema.Array(Schema.Struct({
+      "default": Schema.optionalKey(Schema.Json),
+      "name": Schema.String,
+      "required": Schema.Boolean,
+      "shape": Schema.optionalKey(Schema.String),
+      "type": Schema.suspend(() => fieldType)
+    }))
+  }),
+  Schema.Struct({
+    "map": Schema.Struct({
+      "key": Schema.suspend(() => fieldType),
+      "value": Schema.suspend(() => fieldType)
+    })
+  }),
+  Schema.Struct({
+    "enumFromOption": Schema.String
+  }),
+  Schema.Struct({
+    "providerRef": Schema.String
+  }),
+  Schema.Struct({
+    "domain": Schema.String
+  }),
+  Schema.Struct({
+    "entity": Schema.String
+  }),
+  Schema.Struct({
+    "slotId": Schema.Struct({
+      "namespace": Schema.String
+    })
+  }),
+  Schema.Struct({
+    "assetKind": Schema.String
+  })
+]);
 
 /**
  * One command record (dsl 0.37.0 §5.3), tagged on `kind` with its `family`. An engine MUST error on an unknown `kind` (version-negotiation policy, top-level description); it MUST ignore unknown FIELDS within a known record.
