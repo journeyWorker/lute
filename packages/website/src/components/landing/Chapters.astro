@@ -1,0 +1,28 @@
+---
+/**
+ * The book's index: every top-level documentation section with the number
+ * the docs spine prints for it (derived from the same sidebar order).
+ */
+import { chapters } from "../../lib/section";
+
+interface Props {
+  pagesWord: [string, string];
+}
+
+const { pagesWord } = Astro.props;
+const list = chapters(Astro.locals.starlightRoute.sidebar);
+---
+
+<ol class="gb-index">
+  {
+    list.map((c) => (
+      <li>
+        <a href={c.href}>
+          <span class="gb-index__n">{c.number}</span>
+          <span class="gb-index__label">{c.label}</span>
+          <span class="gb-index__pages">{c.pages === 1 ? pagesWord[0] : `${c.pages} ${pagesWord[1]}`}</span>
+        </a>
+      </li>
+    ))
+  }
+</ol>

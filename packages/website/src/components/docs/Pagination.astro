@@ -1,0 +1,55 @@
+---
+import { Icon } from "@astrojs/starlight/components";
+import { sectionNumberOf } from "../../lib/section";
+
+const { dir, lang, pagination, sidebar } = Astro.locals.starlightRoute;
+const isRtl = dir === "rtl";
+const ko = lang.startsWith("ko");
+
+// A gamebook's way forward: "turn to 5.4". Starlight's own "Next"/"Previous"
+// strings stay in the accessible name; the visible cue is the book's.
+const cue = {
+  prev: (n: string) => (ko ? `${n}번으로 돌아가기` : `Back to ${n}`),
+  next: (n: string) => (ko ? `${n}번으로` : `Turn to ${n}`),
+};
+
+const links = (
+  [
+    ["prev", pagination.prev, Astro.locals.t("page.previousLink")],
+    ["next", pagination.next, Astro.locals.t("page.nextLink")],
+  ] as const
+).flatMap(([rel, link, label]) =>
+  link ? [{ rel, link, label, number: sectionNumberOf(sidebar, link.href) }] : [],
+);
+const arrow = (rel: "prev" | "next") =>
+  (rel === "next") !== isRtl ? "right-arrow" : "left-arrow";
+---
+
+{
+  links.length > 0 && (
+    <div class="gb-turn print:hidden" dir={dir}>
+      {links.map(({ rel, link, label, number }) => (
+        <a href={link.href} rel={rel} class:list={["gb-turn__link", `gb-turn__link--${rel}`]}>
+          <span class="gb-turn__cell" aria-hidden="true">
+            {number ?? <Icon name={arrow(rel)} size="1.5rem" />}
+          </span>
+          <span class="gb-turn__body">
+            <span class="gb-turn__cue">
+              {number ? (
+                <>
+                  <span class="sr-only">{label}: </span>
+                  {rel === "prev" && <Icon name={arrow(rel)} class="gb-turn__arrow" />}
+                  {cue[rel](number)}
+                  {rel === "next" && <Icon name={arrow(rel)} class="gb-turn__arrow" />}
+                </>
+              ) : (
+                label
+              )}
+            </span>
+            <span class="gb-turn__title">{link.label}</span>
+          </span>
+        </a>
+      ))}
+    </div>
+  )
+}

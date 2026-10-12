@@ -1,0 +1,382 @@
+{
+  "tool": "build-phase",
+  "version": 2,
+  "startedAt": "2026-10-12T13:43:45.933Z",
+  "comp": ".impeccable/mocks/comp-2-page.webp",
+  "direction": "e11bad04",
+  "breakpoint": "1536x1024",
+  "artifact": "src/content/docs/index.mdx",
+  "phase": "review",
+  "phases": {
+    "comps": {
+      "status": "closed",
+      "openedAt": "2026-10-12T13:43:45.933Z",
+      "closedAt": "2026-10-12T14:03:12.818Z",
+      "attempts": 1,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "3 comps, 1 approved",
+        "approved": ".impeccable/mocks/comp-2-page.webp",
+        "at": "2026-10-12T14:03:12.817Z"
+      },
+      "forced": null
+    },
+    "spec": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:03:12.859Z",
+      "closedAt": "2026-10-12T14:11:13.503Z",
+      "attempts": 2,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "41 regions, 0 plates, 16 text regions measured",
+        "at": "2026-10-12T14:11:13.503Z"
+      },
+      "forced": null
+    },
+    "plates": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:11:13.503Z",
+      "closedAt": "2026-10-12T14:38:05.761Z",
+      "attempts": 2,
+      "notes": [
+        {
+          "at": "2026-10-12T14:38:05.656Z",
+          "text": "Plan review (session bf9f8e5a…d5c6): owner decided the CHECKED seal is code-drawn (two CSS rings + per-letter arc text, localizable, per-section content) and the other 40 regions code-drawn; owner approval relayed by orchestrator via structured question tool (owner remote, could not open the local review page); submitted in the page by the build agent at the owner's instruction."
+        }
+      ],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "no plates owed",
+        "at": "2026-10-12T14:38:05.755Z"
+      },
+      "forced": null
+    },
+    "hero": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:38:05.761Z",
+      "closedAt": "2026-10-12T14:48:37.058Z",
+      "attempts": 2,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "hero 92% (match)",
+        "score": 0.9187,
+        "verdict": "match",
+        "report": ".impeccable/review/diff/hero/report.json",
+        "sideBySide": "/Users/journey/Workspace/lute-website/packages/website/.impeccable/review/diff/hero/side-by-side.png",
+        "advisories": [
+          "(advisory, above the 72% bar; fix in the polish pass before responsive) 8 readings:",
+          "  text spine-imprint: letter-spacing is wider than the comp's (gap 0.536 vs 0.344 of the cap height); set letter-spacing to close it by about 2px",
+          "  text spine-imprint: the face renders 31% heavier than the comp's (ink density 0.62 vs 0.47); drop a weight step or use the ranked face",
+          "  text section-number: ink is #080808 in the build, #c5c5c5 in the comp; use the comp's colour",
+          "  text footline: ink is #0e0e0e in the build, #474849 in the comp; use the comp's colour",
+          "  text sheet-title: ink is #898989 in the build, #494a4a in the comp; use the comp's colour",
+          "  text box-affect-label: ink is #707070 in the build, #101011 in the comp; use the comp's colour",
+          "  text box-affect-value: ink is #5e5e5d in the build, #141413 in the comp; use the comp's colour",
+          "  control install-go: its rule sits 13px into the box in the comp and 31px in the build (+18px), so the strip is taller than the comp's; match the height, not only the position"
+        ],
+        "regionVerdicts": {
+          "spine": "match",
+          "wordmark": "drift",
+          "spine-rule-1": "drift",
+          "nav-1": "match",
+          "nav-2": "drift",
+          "nav-3": "drift",
+          "nav-4": "match",
+          "nav-5": "drift",
+          "spine-imprint": "drift",
+          "spine-rule-2": "match",
+          "spine-meta": "drift",
+          "section-number": "drift",
+          "headline": "drift",
+          "prose": "match",
+          "choice-2": "match",
+          "choice-2-num": "match",
+          "choice-2-text": "drift",
+          "choice-3": "match",
+          "choice-3-num": "match",
+          "choice-3-text": "match",
+          "install": "match",
+          "install-cmd": "drift",
+          "install-divider": "contradicted",
+          "install-go": "drift",
+          "playground": "drift",
+          "footline": "drift",
+          "sheet-rule": "drift",
+          "sheet-title": "drift",
+          "sheet-rule-1": "match",
+          "box-affect": "match",
+          "box-affect-label": "drift",
+          "box-affect-rule": "contradicted",
+          "box-affect-value": "drift",
+          "box-number": "drift",
+          "box-number-label": "drift",
+          "box-number-rule": "contradicted",
+          "seal": "drift",
+          "sheet-rule-2": "drift",
+          "sheet-note": "drift",
+          "sheet-rule-3": "drift",
+          "sheet-foot": "drift"
+        },
+        "at": "2026-10-12T14:48:37.051Z"
+      },
+      "forced": null,
+      "readingsSeen": {
+        "text spine-imprint: letter-spacing is wider than the comp's (gap 0.536 vs 0.344 of the cap height); set letter-spacing to close it by about 2px": 2,
+        "text playground: cap height 24.3px in the build, 16.9px in the comp (+44%); set font-size so the cap height renders at 16.9px": 1,
+        "text spine-imprint: the face renders 31% heavier than the comp's (ink density 0.62 vs 0.47); drop a weight step or use the ranked face": 2,
+        "text section-number: ink is #080808 in the build, #c5c5c5 in the comp; use the comp's colour": 2,
+        "text footline: ink is #0e0e0e in the build, #474849 in the comp; use the comp's colour": 2,
+        "text sheet-title: ink is #898989 in the build, #494a4a in the comp; use the comp's colour": 2,
+        "text box-affect-label: ink is #707070 in the build, #101011 in the comp; use the comp's colour": 2,
+        "control install-go: its rule sits 13px into the box in the comp and 31px in the build (+18px), so the strip is taller than the comp's; match the height, not only the position": 2,
+        "text box-affect-value: ink is #5e5e5d in the build, #141413 in the comp; use the comp's colour": 1
+      },
+      "history": [
+        {
+          "at": "2026-10-12T14:47:46.180Z",
+          "score": 0.9175,
+          "worstIds": [
+            "box-affect-value",
+            "playground"
+          ],
+          "blockingReasons": [
+            "region box-affect-value is missing (detail 7%, structure 57%): the comp shows material the build does not",
+            "region playground (control) is contradicted (structure 34%, detail added 23%): this control differs from the comp: inspect its lettering and visible shape separately against the crop and the measured readings; preserve the region's control classification"
+          ],
+          "regionVerdicts": {
+            "spine": "match",
+            "wordmark": "drift",
+            "spine-rule-1": "drift",
+            "nav-1": "match",
+            "nav-2": "drift",
+            "nav-3": "drift",
+            "nav-4": "match",
+            "nav-5": "drift",
+            "spine-imprint": "drift",
+            "spine-rule-2": "match",
+            "spine-meta": "drift",
+            "section-number": "drift",
+            "headline": "drift",
+            "prose": "match",
+            "choice-2": "match",
+            "choice-2-num": "match",
+            "choice-2-text": "drift",
+            "choice-3": "match",
+            "choice-3-num": "match",
+            "choice-3-text": "match",
+            "install": "match",
+            "install-cmd": "drift",
+            "install-divider": "contradicted",
+            "install-go": "drift",
+            "playground": "contradicted",
+            "footline": "drift",
+            "sheet-rule": "drift",
+            "sheet-title": "drift",
+            "sheet-rule-1": "match",
+            "box-affect": "drift",
+            "box-affect-label": "drift",
+            "box-affect-rule": "contradicted",
+            "box-affect-value": "missing",
+            "box-number": "match",
+            "box-number-label": "drift",
+            "box-number-rule": "contradicted",
+            "seal": "drift",
+            "sheet-rule-2": "drift",
+            "sheet-note": "drift",
+            "sheet-rule-3": "drift",
+            "sheet-foot": "drift"
+          },
+          "artifactHash": "5c279d80c6e4"
+        },
+        {
+          "at": "2026-10-12T14:48:37.058Z",
+          "score": 0.9187,
+          "worstIds": [],
+          "blockingReasons": [],
+          "regionVerdicts": {
+            "spine": "match",
+            "wordmark": "drift",
+            "spine-rule-1": "drift",
+            "nav-1": "match",
+            "nav-2": "drift",
+            "nav-3": "drift",
+            "nav-4": "match",
+            "nav-5": "drift",
+            "spine-imprint": "drift",
+            "spine-rule-2": "match",
+            "spine-meta": "drift",
+            "section-number": "drift",
+            "headline": "drift",
+            "prose": "match",
+            "choice-2": "match",
+            "choice-2-num": "match",
+            "choice-2-text": "drift",
+            "choice-3": "match",
+            "choice-3-num": "match",
+            "choice-3-text": "match",
+            "install": "match",
+            "install-cmd": "drift",
+            "install-divider": "contradicted",
+            "install-go": "drift",
+            "playground": "drift",
+            "footline": "drift",
+            "sheet-rule": "drift",
+            "sheet-title": "drift",
+            "sheet-rule-1": "match",
+            "box-affect": "match",
+            "box-affect-label": "drift",
+            "box-affect-rule": "contradicted",
+            "box-affect-value": "drift",
+            "box-number": "drift",
+            "box-number-label": "drift",
+            "box-number-rule": "contradicted",
+            "seal": "drift",
+            "sheet-rule-2": "drift",
+            "sheet-note": "drift",
+            "sheet-rule-3": "drift",
+            "sheet-foot": "drift"
+          },
+          "artifactHash": "5c279d80c6e4"
+        }
+      ]
+    },
+    "sections": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:48:37.058Z",
+      "closedAt": "2026-10-12T14:51:08.011Z",
+      "attempts": 1,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "no mechanical gate",
+        "at": "2026-10-12T14:51:08.011Z"
+      },
+      "forced": null
+    },
+    "motion": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:51:08.011Z",
+      "closedAt": "2026-10-12T14:54:49.611Z",
+      "attempts": 1,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "no mechanical gate",
+        "at": "2026-10-12T14:54:49.610Z"
+      },
+      "forced": null
+    },
+    "responsive": {
+      "status": "closed",
+      "openedAt": "2026-10-12T14:54:49.611Z",
+      "closedAt": "2026-10-12T15:20:53.363Z",
+      "attempts": 3,
+      "notes": [],
+      "gate": {
+        "ok": true,
+        "reasons": [],
+        "summary": "desktop 92% (match)",
+        "score": 0.9158,
+        "verdict": "match",
+        "report": ".impeccable/review/diff/desktop/report.json",
+        "sideBySide": "/Users/journey/Workspace/lute-website/packages/website/.impeccable/review/diff/desktop/side-by-side.png",
+        "regionVerdicts": {
+          "spine": "match",
+          "wordmark": "drift",
+          "spine-rule-1": "drift",
+          "nav-1": "match",
+          "nav-2": "drift",
+          "nav-3": "drift",
+          "nav-4": "match",
+          "nav-5": "drift",
+          "spine-imprint": "drift",
+          "spine-rule-2": "drift",
+          "spine-meta": "drift",
+          "section-number": "drift",
+          "headline": "drift",
+          "prose": "drift",
+          "choice-2": "match",
+          "choice-2-num": "match",
+          "choice-2-text": "drift",
+          "choice-3": "match",
+          "choice-3-num": "match",
+          "choice-3-text": "match",
+          "install": "match",
+          "install-cmd": "drift",
+          "install-divider": "drift",
+          "install-go": "drift",
+          "playground": "drift",
+          "footline": "drift",
+          "sheet-rule": "drift",
+          "sheet-title": "drift",
+          "sheet-rule-1": "match",
+          "box-affect": "drift",
+          "box-affect-label": "drift",
+          "box-affect-rule": "drift",
+          "box-affect-value": "drift",
+          "box-number": "drift",
+          "box-number-label": "drift",
+          "box-number-rule": "contradicted",
+          "seal": "drift",
+          "sheet-rule-2": "drift",
+          "sheet-note": "drift",
+          "sheet-rule-3": "match",
+          "sheet-foot": "drift"
+        },
+        "at": "2026-10-12T15:20:53.360Z"
+      },
+      "forced": null,
+      "history": [
+        {
+          "at": "2026-10-12T14:55:10.912Z",
+          "score": 0.9158,
+          "worstIds": [
+            "spine-meta"
+          ],
+          "blockingReasons": [
+            "at desktop width, region spine-meta (text) is contradicted (structure 43%)"
+          ]
+        },
+        {
+          "at": "2026-10-12T14:55:43.463Z",
+          "score": 0.9159,
+          "worstIds": [],
+          "blockingReasons": []
+        },
+        {
+          "at": "2026-10-12T15:20:53.363Z",
+          "score": 0.9158,
+          "worstIds": [],
+          "blockingReasons": []
+        }
+      ]
+    },
+    "review": {
+      "status": "closed",
+      "openedAt": "2026-10-12T15:20:53.363Z",
+      "closedAt": "2026-10-12T15:20:53.842Z",
+      "attempts": 0,
+      "notes": [],
+      "gate": null,
+      "forced": null
+    }
+  },
+  "finish": {
+    "disposition": "ship",
+    "at": "2026-10-12T15:20:53.665Z",
+    "phaseAtFinish": "review",
+    "artifactInputsSha256": "437c52e86e1f827c38f90ae8db5cff32416979bdd07add4d535c2a211ace0d4d",
+    "artifactSha256": "edcdc79c404298850522d80501ea92becfd65099b85b7adebb784f7a43e4db68"
+  },
+  "plates": {},
+  "responsiveInputSha256": "437c52e86e1f827c38f90ae8db5cff32416979bdd07add4d535c2a211ace0d4d"
+}

@@ -1,0 +1,64 @@
+---
+/**
+ * Section 1: the scene set as gamebook prose, its two choices printed as
+ * "turn to" lines, and the one solid control (copy the command, get started).
+ * Designed as the first section of the future playable intro: the prose and
+ * the choices are what the player will render here.
+ */
+import Seal from "./Seal.astro";
+import TurnArrow from "./TurnArrow.astro";
+import Install from "./Install.astro";
+import type { Lang } from "./strings";
+
+interface Choice {
+  to: number;
+  href: string;
+  choose: "blunt" | "soft";
+  text: string;
+  turn: string;
+}
+
+interface Props {
+  lang: Lang;
+  title: string[];
+  prose: string[];
+  choices: Choice[];
+  command: string;
+  start: { text: string; href: string };
+  alt: { text: string; href: string };
+  foot: string;
+  seal: [string, string];
+}
+
+const { lang, title, prose, choices, command, start, alt, foot, seal } = Astro.props;
+---
+
+<section id="begin" class="gb-sec gb-hero" data-section="1" tabindex="-1" aria-labelledby="begin-title">
+  <div class="gb-hero__head">
+    <span class="gb-hero__num" aria-hidden="true">1</span>
+    <h1 id="begin-title" class="gb-hero__title">
+      {title.map((line) => <span>{line}</span>)}
+    </h1>
+    <Seal class="gb-hero__seal" hidden lang={lang} center={seal} />
+  </div>
+  <p class="gb-hero__prose">
+    {prose.map((line) => <span>{line}</span>)}
+  </p>
+  <ol class="gb-turns">
+    {
+      choices.map((c) => (
+        <li>
+          <a class="gb-turn" href={c.href} data-choose={c.choose}>
+            <span class="gb-turn__n" aria-hidden="true">{c.to}</span>
+            <span class="gb-turn__text">
+              {c.text}
+              <span class="gb-turn__to"><TurnArrow />{c.turn}</span>
+            </span>
+          </a>
+        </li>
+      ))
+    }
+  </ol>
+  <Install lang={lang} command={command} start={start} alt={alt} />
+  <p class="gb-hero__foot">{foot}</p>
+</section>

@@ -1,0 +1,29 @@
+---
+/**
+ * The one solid control: the command (click copies it) and Get started,
+ * with the playground beside it. Section 1 places it by the comp; section 5
+ * closes the book with it.
+ */
+import { strings, type Lang } from "./strings";
+
+interface Props {
+  lang: Lang;
+  command: string;
+  start: { text: string; href: string };
+  alt: { text: string; href: string };
+}
+
+const { lang, command, start, alt } = Astro.props;
+const t = strings[lang];
+---
+
+<div class="gb-cta">
+  <div class="gb-install">
+    <button class="gb-install__cmd" type="button" data-copy={command} aria-label={`${t.copy}: ${command}`}>
+      <code>{command}</code>
+    </button>
+    <span class="gb-install__divider" aria-hidden="true"></span>
+    <a class="gb-install__go" href={start.href}>{start.text}</a>
+  </div>
+  <a class="gb-cta__alt" href={alt.href}>{alt.text}</a>
+</div>

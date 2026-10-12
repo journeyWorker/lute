@@ -1,0 +1,133 @@
+{
+  "title": "Lute 웹사이트의 시각 세계 고르기",
+  "question": "Assigned by the roll: The Prompt Book. Keep it, take an alternate, or re-roll.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "The Prompt Book",
+      "kicker": "THE ROLL",
+      "lineage": "the stage manager's prompt book and cue sheet, called from the prompt desk in the wings",
+      "thesis": "Lute calls the show before opening night: every line of the scene is a script page, every directive a numbered cue in the margin, and the checker has already stood by and called GO on each one.",
+      "palette": ["#0e1420", "#f4f6f8", "#ffd23f", "#ff4f8b", "#28c7d9", "#e5322d", "#22c55e"],
+      "materials": [
+        "bright white bond script pages in a black cloth ring binder",
+        "highlighter strokes per department (LX yellow, SND cyan, FLY pink)",
+        "graphite cue calls, circled cue numbers, spike-tape marks",
+        "blue running light of the wings; red standby and green GO cue lights"
+      ],
+      "viewport": "The prompt desk at night: deep blue-black wings, one open prompt-book spread lit from above. The right page is a real Lute scene set as script; the margin to its left is the cue column, each directive's cue number circled, its standby/GO call pencilled, department highlighters running along the lines they touch. The headline is the SM's first call. The primary action is the cue light: one GO button (install command + Get started) that glows green only for the action that matters; Playground sits beside it as the house-open call.",
+      "risk": "Theatre is one step removed from game studios; if the script plate drifts warm it falls into the cream-paper editorial rut. Keep the pages bond-white, the ground the wings, the colour in the highlighters and cue lights.",
+      "raised": [
+        { "from": "challenger-shareware-installer", "raise": "Gated GO: a cue only turns green when the checker passes. In the playground, Run stays on red standby with the blocking diagnostic beside it until the scene checks clean." },
+        { "from": "challenger-creator-hardware-bench", "raise": "One reserved action colour: GO green appears on exactly one control per view, the primary action, and nowhere else." },
+        { "from": "challenger-split-flap-concourse", "raise": "Columns never move: the cue column and the department columns hold fixed positions on every page, landing and docs; only their marks change." },
+        { "from": "challenger-emission-line-rail", "raise": "State by line form, not hue alone: standby is a dashed cue line, GO solid, cut struck through — readable in greyscale and by colour-blind readers." }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.png"
+    },
+    {
+      "id": "model-pick",
+      "label": "The Lined Script",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "the script supervisor's lined script on a film set",
+      "thesis": "Coverage is proof: the script supervisor rules a coloured vertical line down the page for every take, so a glance shows which lines were shot. Lute's connectivity analysis does the same for every branch.",
+      "palette": ["#f7f7f2", "#16181d", "#d7263d", "#1b6ef3", "#0f9d58", "#f6a400"],
+      "materials": [
+        "typed script page",
+        "ruled coverage lines, wavy when the line is off-camera",
+        "shot and take numbers in the head margin",
+        "continuity Polaroids clipped to the page"
+      ],
+      "viewport": "A single tall script page at full width: a Lute scene typed down the centre, five coloured coverage lines ruled through it top to bottom, each labelled with the analysis it stands for (reachable, total, quest closes, budget, translations). Primary action under the title block.",
+      "risk": "The most familiar of the strong candidates: a typed script page sits close to the screenplay and editorial-paper looks many tool sites already wear.",
+      "comp": ".impeccable/mocks/decision/model-pick.png"
+    },
+    {
+      "id": "challenger-jacquard",
+      "label": "Jacquard Brocade",
+      "verdict": "competitive",
+      "lineage": "punched-card jacquard looms weaving brocade",
+      "thesis": "Punched instructions resolve into a picture: the .lute source is the card chain, the checked IR the weave, the engine's scene the gold bird.",
+      "palette": ["#0c1633", "#d4a531", "#efe6d2", "#141414"],
+      "materials": ["midnight silk", "gold weft floats", "punched instruction cards"],
+      "viewport": "A card chain of real Lute lines feeding a loom; beneath it the woven motif of the same scene's branch graph in gold on midnight.",
+      "case": "Holds product clarity (source → data → picture, fully traceable); loses on audience identification — writers do not recognise themselves in a loom.",
+      "risk": "Ornament can swallow the reference pages; gold on navy reads luxury rather than tool.",
+      "comp": ".impeccable/mocks/decision/challenger-jacquard.png",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-jacquard-punched-brocade-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-jacquard-punched-brocade.webp"
+    },
+    {
+      "id": "challenger-multiplane",
+      "label": "Multiplane Cel Dawn",
+      "verdict": "competitive",
+      "lineage": "multiplane cel animation",
+      "thesis": "A scene is stacked planes the camera moves through; Lute stages the layers (bg, actor, dialogue) and the reader travels through them.",
+      "palette": ["#2f4a3a", "#8fa3a8", "#3a2a1e", "#f2b544"],
+      "materials": ["gouache painted planes", "clear cels", "mist"],
+      "viewport": "Painted planes of a visual-novel scene sliding at different speeds; the Lute source for that scene sits on the nearest cel.",
+      "case": "Holds audience identification for VN and story writers; loses product clarity — depth and painting say nothing about checking or contracts.",
+      "risk": "Needs commissioned painted assets; long reference pages have no planes to stand on.",
+      "comp": ".impeccable/mocks/decision/challenger-multiplane.png",
+      "hero": "https://impeccable.style/worlds/cards/cinema-cinematography-editing-multiplane-cel-dawn-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/cinema-cinematography-editing-multiplane-cel-dawn.webp"
+    },
+    {
+      "id": "challenger-shareware-installer",
+      "label": "Shareware Installer",
+      "verdict": "declined",
+      "lineage": "1990s shareware install wizards",
+      "palette": ["#c0c0c0", "#000080", "#ffffff"],
+      "materials": ["beveled system chrome", "dithered banner"],
+      "case": "Loses both axes: a linear wizard contradicts branching narrative, and writers do not identify with installers.",
+      "kept": "Gated progress — GO stays on standby until the checker passes.",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-shareware-installer-screens-hero.webp"
+    },
+    {
+      "id": "challenger-creator-hardware-bench",
+      "label": "Creator Hardware Bench",
+      "verdict": "declined",
+      "lineage": "creator desk instruments and keycaps",
+      "palette": ["#3a3d42", "#d8d2c4", "#ff6a13"],
+      "materials": ["keycaps", "knurled knobs", "amber status screen"],
+      "case": "Loses both axes: hardware says nothing about scenes or proofs.",
+      "kept": "One reserved action colour for the single control that matters.",
+      "hero": "https://impeccable.style/worlds/cards/design-canon-creator-hardware-bench-hero.webp"
+    },
+    {
+      "id": "challenger-split-flap-concourse",
+      "label": "Split-flap Concourse",
+      "verdict": "declined",
+      "lineage": "rail concourse departure boards",
+      "palette": ["#111111", "#f2f2f2", "#f5a623"],
+      "materials": ["split flaps", "brushed steel"],
+      "case": "Loses both axes: departures are a schedule, not a branching scene.",
+      "kept": "Fixed columns; only the marks in them change.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-split-flap-concourse-hero.webp"
+    },
+    {
+      "id": "challenger-emission-line-rail",
+      "label": "Emission-line Rail",
+      "verdict": "declined",
+      "lineage": "spectrograph plates",
+      "palette": ["#1c1f22", "#e8e4da", "#ffd700"],
+      "materials": ["charcoal continuum", "hairline emission lines"],
+      "case": "Loses both axes: an instrument plate is an operator's tool, not a writer's page.",
+      "kept": "State carried by line form (dashed / solid / struck), not by hue alone.",
+      "hero": "https://impeccable.style/worlds/cards/operate-c-emission-line-rail-hero.webp"
+    }
+  ],
+  "reroll": { "registers": ["safer", "bolder"] },
+  "buildPath": { "value": "comp", "toggle": true },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A developer-tool docs site executed impeccably: dark product hero with a code window, feature grid, install block, Starlight docs.",
+    "palette": ["#0b1020", "#e6e8ee", "#7c5cff"],
+    "materials": ["code window", "feature grid", "clean docs chrome"],
+    "viewport": "Headline and tagline left, a highlighted .lute scene in an editor window right, install command and Get started below.",
+    "risk": "Indistinguishable from every other language toolchain by design.",
+    "comp": ".impeccable/mocks/decision/canon.png"
+  },
+  "steer": true
+}

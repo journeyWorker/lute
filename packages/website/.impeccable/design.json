@@ -1,0 +1,448 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T15:19:52.179Z",
+  "title": "Design System: Lute",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Newsprint Paper",
+        "canonical": "#f8f8f7",
+        "tonalRamp": [
+          "#4a4a4a",
+          "#888888",
+          "#c6c6c6",
+          "#f8f8f7",
+          "#fafaf9",
+          "#fcfcfb",
+          "#fdfdfd",
+          "#fefefe"
+        ]
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "Code Paper",
+        "canonical": "#efefec",
+        "tonalRamp": [
+          "#484847",
+          "#838382",
+          "#bfbfbd",
+          "#efefec",
+          "#f3f3f1",
+          "#f7f7f6",
+          "#fbfbfa",
+          "#fdfdfd"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Black Ink",
+        "canonical": "#0a0a0a",
+        "tonalRamp": [
+          "#030303",
+          "#060606",
+          "#080808",
+          "#0a0a0a",
+          "#474747",
+          "#858585",
+          "#bababa",
+          "#e7e7e7"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink Grey",
+        "canonical": "#3a3a38",
+        "tonalRamp": [
+          "#111111",
+          "#20201f",
+          "#2e2e2d",
+          "#3a3a38",
+          "#6b6b6a",
+          "#9d9d9c",
+          "#c8c8c7",
+          "#ebebeb"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Pencil Grey",
+        "canonical": "#5c5c58",
+        "tonalRamp": [
+          "#1c1c1a",
+          "#333330",
+          "#4a4a46",
+          "#5c5c58",
+          "#858582",
+          "#aeaeac",
+          "#d1d1d0",
+          "#efefee"
+        ]
+      },
+      "bottle-green": {
+        "role": "primary",
+        "displayName": "Bottle Green",
+        "canonical": "#084828",
+        "tonalRamp": [
+          "#02160c",
+          "#042816",
+          "#063a20",
+          "#084828",
+          "#46765e",
+          "#84a494",
+          "#baccc3",
+          "#e6edea"
+        ]
+      },
+      "bottle-green-2": {
+        "role": "primary",
+        "displayName": "Bottle Green Light",
+        "canonical": "#0b5a33",
+        "tonalRamp": [
+          "#031b0f",
+          "#06321c",
+          "#094829",
+          "#0b5a33",
+          "#488366",
+          "#85ad99",
+          "#bbd1c6",
+          "#e7efeb"
+        ]
+      },
+      "green-tint": {
+        "role": "primary",
+        "displayName": "Green Wash",
+        "canonical": "#dbe7df",
+        "tonalRamp": [
+          "#424543",
+          "#787f7b",
+          "#afb9b2",
+          "#dbe7df",
+          "#e4ede7",
+          "#edf3ef",
+          "#f5f8f6",
+          "#fbfdfc"
+        ]
+      },
+      "cadmium-red": {
+        "role": "secondary",
+        "displayName": "Cadmium Red",
+        "canonical": "#b3200e",
+        "tonalRamp": [
+          "#360a04",
+          "#621208",
+          "#8f1a0b",
+          "#b3200e",
+          "#c6584a",
+          "#d99087",
+          "#eac1bc",
+          "#f7e9e7"
+        ]
+      },
+      "red-tint": {
+        "role": "secondary",
+        "displayName": "Red Wash",
+        "canonical": "#f3dcd7",
+        "tonalRamp": [
+          "#494241",
+          "#867976",
+          "#c2b0ac",
+          "#f3dcd7",
+          "#f6e5e1",
+          "#f9eeeb",
+          "#fcf5f4",
+          "#fefcfb"
+        ]
+      },
+      "ultramarine": {
+        "role": "tertiary",
+        "displayName": "Ultramarine",
+        "canonical": "#1c2a96",
+        "tonalRamp": [
+          "#080d2d",
+          "#0f1753",
+          "#162278",
+          "#1c2a96",
+          "#555fb0",
+          "#8e95cb",
+          "#bfc3e2",
+          "#e8eaf5"
+        ]
+      },
+      "blue-tint": {
+        "role": "tertiary",
+        "displayName": "Blue Wash",
+        "canonical": "#dcdff2",
+        "tonalRamp": [
+          "#424349",
+          "#797b85",
+          "#b0b2c2",
+          "#dcdff2",
+          "#e5e7f5",
+          "#eeeff9",
+          "#f5f6fb",
+          "#fcfcfe"
+        ]
+      },
+      "night-ground": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "#111311",
+        "tonalRamp": [
+          "#050605",
+          "#090a09",
+          "#0e0f0e",
+          "#111311",
+          "#4d4e4d",
+          "#888988",
+          "#bcbdbc",
+          "#e7e7e7"
+        ]
+      },
+      "night-print": {
+        "role": "neutral",
+        "displayName": "Night Print",
+        "canonical": "#efefea",
+        "tonalRamp": [
+          "#484846",
+          "#838381",
+          "#bfbfbb",
+          "#efefea",
+          "#f3f3ef",
+          "#f7f7f5",
+          "#fbfbf9",
+          "#fdfdfd"
+        ]
+      },
+      "night-green": {
+        "role": "primary",
+        "displayName": "Night Green",
+        "canonical": "#6cc493",
+        "tonalRamp": [
+          "#203b2c",
+          "#3b6c51",
+          "#569d76",
+          "#6cc493",
+          "#91d3ae",
+          "#b6e2c9",
+          "#d6eee1",
+          "#f0f9f4"
+        ]
+      },
+      "night-red": {
+        "role": "secondary",
+        "displayName": "Night Red",
+        "canonical": "#ff8f78",
+        "tonalRamp": [
+          "#4d2b24",
+          "#8c4f42",
+          "#cc7260",
+          "#ff8f78",
+          "#ffab9a",
+          "#ffc7bc",
+          "#ffe0d9",
+          "#fff4f2"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Landing hero and chapter titles (Anton; Black Han Sans for Hangul)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Docs h1 and h2."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Section numerals on landing and docs titles; lining figures."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Nav, h3, ledger terms, turn-to titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Reading text; 40rem docs measure."
+      },
+      "passage": {
+        "displayName": "Passage",
+        "purpose": "Landing outcome passage set as a gamebook paragraph."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Mono uppercase cues, aside titles, code UI."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Inline and block code, sheet data."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "All landing transitions and keyframes."
+      },
+      {
+        "name": "page-turn",
+        "value": "300ms clip-path inset(0 0 0 0) → inset(0 100% 0 0) on ::view-transition-old(gb-page)",
+        "purpose": "Page-turn wipe."
+      },
+      {
+        "name": "write-in",
+        "value": "520ms clip-path reveal",
+        "purpose": "Sheet value ticked in."
+      },
+      {
+        "name": "re-stamp",
+        "value": "360ms opacity .25→1, scale 1.08→1",
+        "purpose": "Seal re-stamps."
+      },
+      {
+        "name": "hover",
+        "value": "200ms",
+        "purpose": "Turn-to wash and arrow nudge."
+      },
+      {
+        "name": "nav-underline",
+        "value": "260ms scaleX from left",
+        "purpose": "Spine link hover/current."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none",
+        "purpose": "prefers-reduced-motion disables all landing motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "docs-header",
+        "value": "50rem"
+      },
+      {
+        "name": "landing-one-column",
+        "value": "64rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Turn-to Row",
+      "kind": "custom",
+      "refersTo": "turn-to",
+      "description": "Numbered way forward; landing CTAs and docs pagination.",
+      "html": "<a class=\"ds-turn\" href=\"#\"><span class=\"ds-turn__n\">2</span><span class=\"ds-turn__t\">Write your first scene <svg class=\"ds-arrow\" viewBox=\"0 0 24 16\" aria-hidden=\"true\"><path d=\"M0 8h21M14 1l7 7-7 7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg></span></a>",
+      "css": ".ds-turn{display:grid;grid-template-columns:4.75rem 1fr;align-items:center;height:4.75rem;border:1.5px solid var(--gb-ink,#0a0a0a);background:var(--gb-paper,#f8f8f7);color:var(--gb-ink,#0a0a0a);text-decoration:none;transition:background-color 200ms cubic-bezier(0.16, 1, 0.3, 1)} .ds-turn__n{display:grid;place-items:center;height:100%;margin:-1.5px 0 -1.5px -1.5px;background:var(--gb-green,#084828);color:var(--gb-paper,#f8f8f7);font:560 2rem/1 \"Libre Caslon Condensed Variable\",Georgia,serif;font-variant-numeric:lining-nums} .ds-turn__t{display:flex;align-items:center;gap:.42em;padding-left:1rem;font:400 1.5rem/1 \"Charis SIL\",Georgia,serif} .ds-arrow{width:.78em;transition:transform 200ms cubic-bezier(0.16, 1, 0.3, 1)} .ds-turn:hover{background:var(--gb-green-tint,#dbe7df)} .ds-turn:hover .ds-arrow{transform:translateX(.12em)} .ds-turn:focus-visible{outline:2px solid currentColor;outline-offset:4px}"
+    },
+    {
+      "name": "Install Control",
+      "kind": "button",
+      "refersTo": "install",
+      "description": "Ink bar: copyable command plus go link.",
+      "html": "<div class=\"ds-install\"><button class=\"ds-install__cmd\"><code>bunx @lute-lang/lute check scene.lute</code></button><span class=\"ds-install__div\"></span><a class=\"ds-install__go\" href=\"#\">Get started</a></div>",
+      "css": ".ds-install{display:inline-grid;grid-template-columns:auto 1.5px auto;align-items:center;height:3.5rem;background:var(--gb-ink,#0a0a0a);color:var(--gb-paper,#f8f8f7)} .ds-install__cmd{height:100%;padding:0 1.25rem;border:0;background:none;color:inherit;cursor:copy} .ds-install__cmd code{font:450 1rem \"JetBrains Mono Variable\",monospace;letter-spacing:-.03em;user-select:all} .ds-install__div{height:70%;background:currentColor} .ds-install__go{padding:0 1.25rem;font:600 1.5rem/3.5rem \"Libre Caslon Condensed Variable\",Georgia,serif;color:inherit;text-decoration:none} .ds-install__go:hover,.ds-install__cmd:hover code{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:.2em} .ds-install :focus-visible{outline:2px solid currentColor;outline-offset:4px}"
+    },
+    {
+      "name": "Spine Navigation",
+      "kind": "nav",
+      "refersTo": "spine",
+      "description": "Green cover band with numbered condensed links.",
+      "html": "<nav class=\"ds-spine\"><a href=\"#\" aria-current=\"page\"><span>1</span>Why Lute</a><a href=\"#\"><span>2</span>The language</a><a href=\"#\"><span>3</span>Tools</a></nav>",
+      "css": ".ds-spine{display:grid;gap:1.5rem;padding:2rem;background:var(--gb-green,#084828);color:var(--gb-paper,#f8f8f7)} .ds-spine a{position:relative;display:grid;grid-template-columns:2.2rem auto;font:560 1.4rem/1 \"Libre Caslon Condensed Variable\",Georgia,serif;color:inherit;text-decoration:none} .ds-spine span{font-variant-numeric:lining-nums tabular-nums} .ds-spine a::after{content:\"\";position:absolute;left:2.2rem;right:0;bottom:-.4rem;height:2px;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform 260ms cubic-bezier(0.16, 1, 0.3, 1)} .ds-spine a:hover::after,.ds-spine a[aria-current]::after{transform:scaleX(1)} .ds-spine a:focus-visible{outline:2px solid currentColor;outline-offset:4px}"
+    },
+    {
+      "name": "Adventure-sheet Box",
+      "kind": "card",
+      "refersTo": "sheet-box",
+      "description": "Ruled stat box: struck previous value, written-in new value.",
+      "html": "<dl class=\"ds-box\"><dt>Courage</dt><dd><s>3</s><b>4</b></dd></dl>",
+      "css": ".ds-box{width:15rem;margin:0;border:1.5px solid var(--gb-ink,#0a0a0a);background:var(--gb-paper,#f8f8f7);color:var(--gb-ink,#0a0a0a);font-family:\"Libre Caslon Condensed Variable\",Georgia,serif;font-size:1.3rem} .ds-box dt{padding:.6rem .9rem;border-bottom:1px solid currentColor;font-weight:430} .ds-box dd{display:flex;gap:.5em;margin:0;padding:.8rem .9rem;font-weight:500;font-variant-numeric:lining-nums} .ds-box s{color:var(--gb-ink-3,#5c5c58);text-decoration-thickness:1px} .ds-box b{color:var(--gb-green,#084828);font-weight:700}"
+    },
+    {
+      "name": "Ledger Rows",
+      "kind": "custom",
+      "description": "Ruled term/definition rows used instead of cards.",
+      "html": "<dl class=\"ds-ledger\"><div><dt>lute check</dt><dd>Statically validates a document — types, guards, relation signatures, match totality — and says what to change when it refuses.</dd></div></dl>",
+      "css": ".ds-ledger{margin:0;border-top:1px solid var(--gb-ink,#0a0a0a);color:var(--gb-ink,#0a0a0a)} .ds-ledger div{display:grid;grid-template-columns:minmax(0,13em) 1fr;gap:1.25em;padding:.85em 0;border-bottom:1px solid var(--gb-ink,#0a0a0a)} .ds-ledger dt{font:700 1.1rem/1.3 \"Libre Caslon Condensed Variable\",Georgia,serif} .ds-ledger dd{margin:0;font:400 1rem/1.5 \"Charis SIL\",Georgia,serif}"
+    },
+    {
+      "name": "Sheet Note (Aside)",
+      "kind": "card",
+      "refersTo": "aside-tip-title",
+      "description": "Docs aside: ruled box with filled mono label cell.",
+      "html": "<aside class=\"ds-aside\"><p class=\"ds-aside__t\">Tip</p><div class=\"ds-aside__c\">Run <code>bunx @lute-lang/lute check scene.lute</code>.</div></aside>",
+      "css": ".ds-aside{border:1px solid var(--gb-ink,#0a0a0a);color:var(--gb-ink,#0a0a0a);font:400 1rem/1.65 \"Charis SIL\",Georgia,serif} .ds-aside__t{display:inline-flex;margin:-1px 0 0 -1px;padding:.375rem .75rem;background:var(--gb-green,#084828);color:var(--gb-paper,#f8f8f7);font:600 .6875rem/1.4 \"JetBrains Mono Variable\",monospace;letter-spacing:.12em;text-transform:uppercase} .ds-aside__c{padding:.875rem 1.125rem 1rem;border-top:1px solid var(--gb-ink,#0a0a0a)} .ds-aside code{font-family:\"JetBrains Mono Variable\",monospace;background:var(--gb-paper-2,#efefec);padding:.08em .28em}"
+    },
+    {
+      "name": "Checker's Seal",
+      "kind": "custom",
+      "refersTo": "seal",
+      "description": "Code-drawn green double-ring stamp, the only circle.",
+      "html": "<div class=\"ds-seal\"><div class=\"ds-seal__ring\"></div><div class=\"ds-seal__c\">CHECKED</div></div>",
+      "css": ".ds-seal{position:relative;width:10rem;height:10rem;border-radius:50%;border:2px solid var(--gb-green,#084828);color:var(--gb-green,#084828);transform:rotate(-6deg);font-family:\"Libre Caslon Condensed Variable\",Georgia,serif} .ds-seal__ring{position:absolute;inset:.42rem;border-radius:50%;border:1px solid currentColor} .ds-seal__c{position:absolute;inset:0;display:grid;place-content:center;text-align:center;font-weight:700;font-size:1rem;line-height:1.15;transform:rotate(-4deg)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Open Gamebook",
+    "overview": "**Creative North Star: \"The Open Gamebook\"**\n\nThe site is a printed choose-your-path book. Interior pages are bright newsprint white printed in one black ink; three cover inks (bottle green, cadmium red, ultramarine) own whole regions — the spine, numeral cells, full-bleed chapter fields — rather than sprinkling accents. Every way forward is a numbered \"turn to\" line, every list of facts is a ruled adventure-sheet row, and every heading carries its section number.\n\nThe landing is one open spread measured off a 1536 × 1024 comp: a green spine on the left, the page in the middle, an adventure sheet on the right with ruled boxes and a code-drawn checker's seal. The docs are the book's interior: the same spine becomes Starlight's numbered sidebar, titles and h2s are numbered, asides are sheet notes, pagination is turn-to rows. Light is the printed book; dark docs are night reading on a near-black ground. The landing always prints light.\n\nContent is real: only genuine `.lute` source and genuine CLI output appear, and version strings are read at build time from the repository's constants (`src/lib/versions.ts`), never typed into copy.",
+    "keyCharacteristics": [
+      "One ink on paper; cover inks fill regions, never decorate.",
+      "Square everything: zero radius, 1px (comp 1.5px) ink rules; the seal is the only circle.",
+      "No shadows; depth comes from ink fields and ruled boxes.",
+      "Numbers are the navigation: condensed lining numerals on spine, titles, h2s, turn-to cells.",
+      "Hangul is first-class: keep-all breaking, no faux italic, tight tracking."
+    ],
+    "rules": [
+      {
+        "name": "The Cover Ink Rule",
+        "body": "Green, red and blue fill a region (spine, numeral cell, field section) or nothing. On a field, the field's ink becomes the text's ground and paper becomes the spot.",
+        "section": "colors"
+      },
+      {
+        "name": "The Night Reading Rule",
+        "body": "Only the docs switch to dark, and only through Starlight's theme switch (`data-theme`), never the OS preference alone. The landing forces `color-scheme: light`; dark code inks apply only on docs.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lining Figures Rule",
+        "body": "Caslon numerals are `lining-nums` only. Tabular figures widen `. , :` to figure width, so `tabular-nums` is never applied to anything that carries punctuation (it is used only on bare numeral columns: spine nav, book index).",
+        "section": "typography"
+      },
+      {
+        "name": "The Case Rule",
+        "body": "File names and commands keep their case: code frame titles, terminal headers and CLI output on the sheet are never uppercased.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hangul Rule",
+        "body": "`word-break: keep-all` everywhere Korean appears; Hangul has no italic, so emphasis is upright (emphasis dots in docs) and the declared-default italic drops; wide label tracking collapses to ~0.04em.",
+        "section": "typography"
+      },
+      {
+        "name": "The Printed Depth Rule",
+        "body": "If something must stand forward, give it an ink field or a rule, never a shadow or blur.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** fill regions with a cover ink (spine, numeral cell, field section) and print everything else in one ink on paper.",
+      "**Do** number things: section numerals from `sectionNumber()`/counters, turn-to cells, h2 `n.m` prefixes.",
+      "**Do** express sets of facts as ruled ledger rows or ruled tables.",
+      "**Do** use only real `.lute` code and real CLI output; read versions from `src/lib/versions.ts`.",
+      "**Do** set Caslon numerals with `lining-nums`; keep Hangul `keep-all`, upright, and tightly tracked.",
+      "**Do** write landing geometry in comp pixels (`calc(N * var(--u))`) and let spare width go to the spine."
+    ],
+    "donts": [
+      "**Don't** round corners or add shadows; the seal is the only circle.",
+      "**Don't** use cards; use ledger rows.",
+      "**Don't** apply `tabular-nums` to numerals that carry punctuation.",
+      "**Don't** uppercase file names, commands or CLI output.",
+      "**Don't** let the landing go dark or follow the OS color preference.",
+      "**Don't** fake italics on Hangul.",
+      "**Don't** use glyph icons; arrows are drawn SVG."
+    ]
+  }
+}

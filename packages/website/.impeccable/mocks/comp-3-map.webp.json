@@ -1,0 +1,6 @@
+{
+ "prompt": "Ultramarine field led by the checker-drawn section map (numbered boxes 1-9, arrows), CHECKED 9/9 seal; tilted section-1 page at right; headline and yellow install control bottom left.",
+ "tool": "omp generate_image (gpt-image-2-codex)",
+ "direction": "e11bad04",
+ "approved": false
+}

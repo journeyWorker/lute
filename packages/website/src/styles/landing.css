@@ -1,0 +1,1340 @@
+/* ============================================================
+   Landing — the open gamebook (approved comp: 1536 × 1024).
+   Desktop geometry is measured off the comp in comp pixels and
+   scaled by --u (one comp pixel at the current viewport), so the
+   first viewport holds its composition from 1024 to 1600+ wide.
+   ============================================================ */
+
+html:has(.gb-book) {
+  color-scheme: light;
+  scroll-padding-top: 0;
+  background: var(--gb-paper);
+}
+
+html:has(.gb-book) body {
+  background: var(--gb-paper);
+}
+
+html:has(.gb-book) main {
+  padding: 0;
+}
+
+.gb-frame {
+  container-type: inline-size;
+}
+
+.gb-book {
+  --u: min(100cqw / 1536, 100svh / 1024);
+  --spot: var(--gb-green);
+  --body: clamp(1.0625rem, calc(22 * var(--u)), 1.375rem);
+
+  position: relative;
+  display: grid;
+  /* Page and sheet keep the comp's widths and adjacency at every desktop
+     size; any spare width goes to the green spine (the cover ink owns it). */
+  grid-template-columns: minmax(calc(280 * var(--u)), 1fr) minmax(0, calc(970 * var(--u))) calc(286 * var(--u));
+  min-height: 100svh;
+  background: var(--gb-paper);
+  color: var(--gb-ink);
+  font-family: var(--gb-text);
+  font-size: var(--body);
+  line-height: 1.55;
+  font-kerning: normal;
+}
+
+.gb-book :where(a) {
+  color: inherit;
+}
+
+.gb-book :where(p, ol, ul, dl, dd, h1, h2, h3, figure) {
+  margin: 0;
+}
+
+.gb-book :where(ol, ul) {
+  padding: 0;
+  list-style: none;
+}
+
+.gb-book :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.gb-book [tabindex="-1"]:focus {
+  outline: none;
+}
+
+/* ---------- Spine: the book's cover band ---------- */
+
+.gb-spine {
+  background: var(--gb-green);
+  color: var(--gb-on-ink);
+}
+
+.gb-spine__inner {
+  position: sticky;
+  top: 0;
+  height: calc(1024 * var(--u));
+}
+
+.gb-spine__inner > * {
+  position: absolute;
+  left: calc(32 * var(--u));
+}
+
+.gb-wordmark {
+  top: calc(29.2 * var(--u));
+  left: calc(29 * var(--u)) !important;
+  font-family: var(--gb-cond);
+  font-size: calc(132.6 * var(--u));
+  font-weight: 640;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.gb-spine__rule {
+  top: calc(182 * var(--u));
+  width: calc(60 * var(--u));
+  height: max(1px, calc(2 * var(--u)));
+  background: currentColor;
+}
+
+.gb-spine__rule--2 {
+  top: calc(885 * var(--u));
+  width: calc(49 * var(--u));
+}
+
+.gb-nav {
+  top: calc(236.4 * var(--u));
+  display: grid;
+  gap: calc(39.55 * var(--u));
+}
+
+.gb-nav a {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(52 * var(--u)) auto;
+  font-family: var(--gb-cond);
+  font-size: calc(30.2 * var(--u));
+  font-weight: 560;
+  white-space: nowrap;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.gb-nav a::after {
+  content: "";
+  position: absolute;
+  left: calc(52 * var(--u));
+  right: 0;
+  bottom: calc(-9 * var(--u));
+  height: max(1px, calc(2 * var(--u)));
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gb-nav a:hover::after,
+.gb-nav a[aria-current]::after {
+  transform: scaleX(1);
+}
+
+.gb-nav__n {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.gb-spine__imprint,
+.gb-spine__meta,
+.gb-sheet__title,
+.gb-sheet__note,
+.gb-sheet__foot,
+.gb-hero__foot {
+  font-family: var(--gb-mono);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.gb-spine__imprint,
+.gb-spine__meta,
+.gb-sheet__title,
+.gb-sheet__note,
+.gb-sheet__foot {
+  display: grid;
+}
+
+.gb-spine__imprint {
+  top: calc(791.6 * var(--u));
+  font-size: max(11.5px, calc(17.8 * var(--u)));
+  line-height: max(1.4em, calc(26 * var(--u)));
+  letter-spacing: 0.2em;
+  font-weight: 400;
+}
+
+.gb-spine__meta {
+  top: calc(909.3 * var(--u));
+  font-size: max(11.5px, calc(12.9 * var(--u)));
+  line-height: max(1.55em, calc(21 * var(--u)));
+  letter-spacing: 0.5em;
+  justify-items: start;
+}
+
+.gb-spine__meta a {
+  text-decoration: none;
+}
+
+.gb-spine__meta a:lang(ko) {
+  letter-spacing: 0.04em;
+}
+
+.gb-spine__meta a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.3em;
+}
+
+.gb-spine__meta a[aria-current] {
+  font-weight: 800;
+}
+
+/* ---------- Adventure sheet column ---------- */
+
+.gb-sheet__inner {
+  position: sticky;
+  top: 0;
+  height: calc(1024 * var(--u));
+}
+
+.gb-sheet__inner::before {
+  content: "";
+  position: absolute;
+  left: calc(2 * var(--u));
+  top: calc(27 * var(--u));
+  bottom: calc(28 * var(--u));
+  width: max(1px, calc(2 * var(--u)));
+  background: var(--gb-ink);
+}
+
+.gb-sheet__inner > * {
+  position: absolute;
+  left: calc(32 * var(--u));
+}
+
+.gb-sheet__title {
+  top: calc(46.5 * var(--u));
+  font-size: max(11.5px, calc(13.6 * var(--u)));
+  line-height: max(1.55em, calc(23 * var(--u)));
+  letter-spacing: 0.55em;
+}
+
+.gb-sheet__rule {
+  top: calc(131 * var(--u));
+  width: calc(50 * var(--u));
+  height: max(1px, calc(1.5 * var(--u)));
+  background: var(--gb-ink);
+}
+
+.gb-sheet__rule--2 {
+  top: calc(710 * var(--u));
+}
+
+.gb-sheet__rule--3 {
+  top: calc(834 * var(--u));
+}
+
+.gb-boxes {
+  top: calc(163 * var(--u));
+  left: calc(23 * var(--u)) !important;
+  display: grid;
+  gap: calc(23 * var(--u));
+  width: calc(235 * var(--u));
+}
+
+.gb-box {
+  position: relative;
+  height: calc(112 * var(--u));
+  border: max(1px, calc(1.5 * var(--u))) solid var(--gb-ink);
+}
+
+.gb-box dt,
+.gb-box dd {
+  position: absolute;
+  left: calc(14 * var(--u));
+  font-family: var(--gb-cond);
+  font-size: calc(21.2 * var(--u));
+  line-height: calc(24 * var(--u));
+  white-space: nowrap;
+}
+
+.gb-box dt {
+  top: calc(13 * var(--u));
+  font-weight: 430;
+}
+
+.gb-box dt::after {
+  content: "";
+  position: absolute;
+  left: calc(-4 * var(--u));
+  top: calc(38 * var(--u));
+  width: calc(214 * var(--u));
+  height: 1px;
+  background: var(--gb-ink);
+}
+
+.gb-box dd {
+  top: calc(69 * var(--u));
+  display: flex;
+  gap: 0.5em;
+  font-weight: 500;
+  font-variant-numeric: lining-nums;
+}
+
+.gb-box__was:empty {
+  display: none;
+}
+
+.gb-box__was {
+  color: var(--gb-ink-3);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.gb-box__default {
+  color: var(--gb-ink-3);
+  font-style: italic;
+}
+
+.gb-box.is-ticked [data-value] {
+  color: var(--gb-green);
+  font-weight: 700;
+  animation: gb-write 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes gb-write {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.gb-sheet__note {
+  top: calc(736.7 * var(--u));
+  font-size: max(11.5px, calc(14.1 * var(--u)));
+  line-height: max(1.55em, calc(25 * var(--u)));
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  /* Real CLI output: file names keep their case. */
+  text-transform: none;
+}
+
+.gb-sheet__foot {
+  top: calc(862.2 * var(--u));
+  font-size: max(11.5px, calc(14.1 * var(--u)));
+  line-height: max(1.55em, calc(24 * var(--u)));
+  letter-spacing: 0.18em;
+  text-transform: none;
+}
+
+/* ---------- The checker's seal ---------- */
+
+.gb-seal {
+  --d: calc(241 * var(--u));
+
+  position: absolute;
+  width: var(--d);
+  height: var(--d);
+  border-radius: 50%;
+  border: calc(0.014 * var(--d)) solid var(--gb-green);
+  color: var(--gb-green);
+  transform: rotate(-6deg);
+  font-family: var(--gb-cond);
+}
+
+.gb-sheet__seal {
+  top: calc(433 * var(--u));
+  left: calc(26 * var(--u)) !important;
+}
+
+.gb-seal__ring {
+  position: absolute;
+  inset: calc(0.042 * var(--d));
+  border-radius: 50%;
+  border: calc(0.007 * var(--d)) solid currentColor;
+}
+
+.gb-seal__arc > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1em;
+  margin-left: -0.5em;
+  text-align: center;
+  line-height: 1;
+}
+
+.gb-seal__arc--top > span {
+  font-size: calc(0.15 * var(--d));
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: -0.5em;
+  transform: rotate(var(--a)) translateY(calc(-0.35 * var(--d)));
+}
+
+.gb-seal__arc--bottom > span {
+  font-size: calc(0.11 * var(--d));
+  font-weight: 700;
+  margin-top: -0.5em;
+  transform: rotate(var(--a)) translateY(calc(0.345 * var(--d)));
+}
+
+.gb-seal__center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  font-size: calc(0.098 * var(--d));
+  font-weight: 700;
+  line-height: 1.15;
+  transform: rotate(-4deg);
+}
+
+.gb-seal__dot {
+  position: absolute;
+  left: 50%;
+  width: calc(0.026 * var(--d));
+  height: calc(0.026 * var(--d));
+  margin-left: calc(-0.013 * var(--d));
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.gb-seal__dot--top {
+  top: 33%;
+}
+
+.gb-seal__dot--bottom {
+  top: 65%;
+}
+
+.gb-seal.is-stamped {
+  animation: gb-stamp 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes gb-stamp {
+  from {
+    opacity: 0.25;
+    transform: rotate(-6deg) scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-6deg) scale(1);
+  }
+}
+
+.gb-hero__seal {
+  display: none;
+}
+
+/* ---------- Section 1 (first viewport) ---------- */
+
+.gb-page {
+  position: relative;
+  min-width: 0;
+  view-transition-name: gb-page;
+}
+
+.gb-hero {
+  position: relative;
+  height: calc(1024 * var(--u));
+}
+
+.gb-hero > *,
+.gb-hero__head > * {
+  position: absolute;
+}
+
+.gb-hero__head {
+  position: static !important;
+}
+
+.gb-hero__num {
+  left: calc(42 * var(--u));
+  top: calc(24.3 * var(--u));
+  font-family: var(--gb-cond);
+  font-size: calc(458.5 * var(--u));
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: lining-nums;
+}
+
+.gb-hero__title {
+  left: calc(228 * var(--u));
+  top: calc(80.9 * var(--u));
+  display: grid;
+  font-family: var(--gb-display);
+  font-size: calc(122 * var(--u));
+  font-weight: 400;
+  line-height: calc(120.5 * var(--u));
+  letter-spacing: -0.028em;
+  white-space: nowrap;
+}
+
+.gb-hero__prose {
+  left: calc(56 * var(--u));
+  top: calc(471.2 * var(--u));
+  display: grid;
+  font-size: calc(45 * var(--u));
+  letter-spacing: -0.025em;
+  line-height: calc(50 * var(--u));
+}
+
+.gb-turns {
+  left: calc(57 * var(--u));
+  top: calc(600 * var(--u));
+  display: grid;
+  gap: calc(22 * var(--u));
+  width: calc(890 * var(--u));
+}
+
+.gb-turn {
+  --cell: var(--spot);
+
+  display: grid;
+  grid-template-columns: calc(88 * var(--u)) 1fr;
+  align-items: center;
+  height: calc(94 * var(--u));
+  border: max(1px, calc(1.5 * var(--u))) solid var(--gb-ink);
+  text-decoration: none;
+  background: var(--gb-paper);
+  transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gb-turn__n {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: calc(-1.5 * var(--u)) 0 calc(-1.5 * var(--u)) calc(-1.5 * var(--u));
+  background: var(--cell);
+  color: var(--gb-on-ink);
+  font-family: var(--gb-cond);
+  font-size: calc(50 * var(--u));
+  font-weight: 560;
+  line-height: 1;
+}
+
+.gb-turn__text {
+  display: flex;
+  align-items: center;
+  gap: 0.42em;
+  padding-left: calc(23 * var(--u));
+  font-size: calc(43 * var(--u));
+  letter-spacing: -0.015em;
+  line-height: 1;
+}
+
+.gb-turn__to {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42em;
+  white-space: nowrap;
+}
+
+.gb-arrow {
+  width: 0.78em;
+  height: auto;
+  flex: none;
+}
+
+.gb-turn:hover {
+  background: var(--gb-green-tint);
+}
+
+.gb-turn:hover .gb-arrow {
+  transform: translateX(0.12em);
+}
+
+.gb-arrow {
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gb-cta {
+  left: calc(57 * var(--u));
+  top: calc(854 * var(--u));
+  display: flex;
+  align-items: center;
+  gap: calc(37 * var(--u));
+}
+
+.gb-install {
+  display: grid;
+  grid-template-columns: calc(497 * var(--u)) max(1px, calc(1.5 * var(--u))) calc(213.5 * var(--u));
+  align-items: center;
+  height: calc(76 * var(--u));
+  background: var(--gb-ink);
+  color: var(--gb-on-ink);
+}
+
+.gb-install__cmd {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 0 0 calc(26 * var(--u));
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: copy;
+  text-align: left;
+}
+
+.gb-install__cmd code {
+  font-family: var(--gb-mono);
+  font-size: calc(21 * var(--u));
+  font-weight: 450;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  user-select: all;
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+.gb-install__cmd.is-copied code {
+  color: #9fd5b3;
+}
+
+.gb-install__divider {
+  height: calc(52 * var(--u));
+  background: currentColor;
+}
+
+.gb-install__go {
+  padding: 0 calc(26 * var(--u));
+  font-family: var(--gb-cond);
+  font-size: calc(34 * var(--u));
+  font-weight: 600;
+  line-height: calc(76 * var(--u));
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.gb-install__go:hover,
+.gb-install__cmd:hover code {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.gb-cta__alt {
+  font-family: var(--gb-text);
+  font-size: calc(25.5 * var(--u));
+  font-weight: 400;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: calc(9 * var(--u));
+}
+
+.gb-cta__alt:hover {
+  text-decoration-thickness: 2px;
+}
+
+.gb-hero__foot {
+  left: calc(61 * var(--u));
+  top: calc(952.5 * var(--u));
+  font-size: max(11.5px, calc(13.4 * var(--u)));
+  line-height: max(1.2em, calc(15 * var(--u)));
+  letter-spacing: 0.44em;
+}
+
+.gb-copied {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ---------- Sections 2–5 ---------- */
+
+.gb-chapter {
+  --spot: var(--gb-green);
+  --cell-ink: var(--gb-on-ink);
+  --field: transparent;
+  --field-ink: var(--gb-ink);
+  --rule: var(--gb-ink);
+
+  padding: calc(120 * var(--u)) calc(25 * var(--u)) calc(140 * var(--u)) calc(56 * var(--u));
+  background: var(--field);
+  color: var(--field-ink);
+}
+
+.gb-tone-red {
+  --spot: var(--gb-red);
+}
+
+.gb-tone-field-blue {
+  --spot: var(--gb-paper);
+  --cell-ink: var(--gb-blue);
+  --field: var(--gb-blue);
+  --field-ink: var(--gb-on-ink);
+  --rule: var(--gb-on-ink);
+}
+
+.gb-tone-field-red {
+  --spot: var(--gb-paper);
+  --cell-ink: var(--gb-red);
+  --field: var(--gb-red);
+  --field-ink: var(--gb-on-ink);
+  --rule: var(--gb-on-ink);
+}
+
+.gb-chapter__head {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(40 * var(--u));
+  margin-bottom: calc(64 * var(--u));
+}
+
+.gb-chapter__num {
+  font-family: var(--gb-cond);
+  font-size: calc(300 * var(--u));
+  font-weight: 700;
+  line-height: 0.74;
+  color: var(--spot);
+  font-variant-numeric: lining-nums;
+}
+
+.gb-tone-field-blue .gb-chapter__num,
+.gb-tone-field-red .gb-chapter__num {
+  color: var(--field-ink);
+}
+
+.gb-chapter__title {
+  text-wrap: balance;
+  font-family: var(--gb-display);
+  font-size: calc(122 * var(--u));
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: -0.012em;
+}
+
+.gb-chapter__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.15em;
+  max-width: calc(888 * var(--u));
+}
+
+.gb-chapter .sl-heading-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+  margin-top: 1.6em;
+}
+
+.gb-chapter .sl-heading-wrapper h3 {
+  margin-top: 0;
+}
+
+.gb-chapter .sl-anchor-link {
+  color: var(--spot);
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.gb-chapter .sl-heading-wrapper:hover .sl-anchor-link,
+.gb-chapter .sl-anchor-link:focus-visible {
+  opacity: 1;
+}
+
+.gb-chapter .sl-anchor-link svg {
+  width: 0.75em;
+  height: 0.75em;
+}
+
+.gb-chapter__body > :where(p, h3, .gb-passage, .gb-ledger, ul, ol) {
+  max-width: 34em;
+}
+
+.gb-chapter__body h3 {
+  text-wrap: balance;
+  margin-top: 1.6em;
+  font-family: var(--gb-cond);
+  font-size: clamp(1.5rem, calc(44 * var(--u)), 2.75rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+}
+
+.gb-chapter__body a:not([class]) {
+  text-decoration: underline;
+  text-decoration-color: var(--spot);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+.gb-tone-field-blue .gb-chapter__body a:not([class]),
+.gb-tone-field-red .gb-chapter__body a:not([class]) {
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+}
+
+.gb-chapter__body a:not([class]):hover {
+  text-decoration-thickness: 3px;
+}
+
+.gb-chapter__body :not(pre, .gb-install__cmd) > code {
+  font-family: var(--gb-mono);
+  font-size: 0.86em;
+  padding: 0.08em 0.28em;
+  background: color-mix(in srgb, var(--field-ink) 8%, transparent);
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+/* The outcome passage: a printed gamebook paragraph, set larger. */
+.gb-passage {
+  font-size: clamp(1.375rem, calc(36 * var(--u)), 2.25rem);
+  line-height: 1.32;
+  letter-spacing: -0.005em;
+  padding-bottom: calc(40 * var(--u));
+  border-bottom: 1px solid var(--rule);
+}
+
+.gb-passage p + p {
+  margin-top: 0.6em;
+}
+
+.gb-passage code {
+  font-size: 0.72em !important;
+}
+
+/* Ledger: ruled adventure-sheet rows instead of cards. */
+.gb-ledger {
+  display: grid;
+  border-top: 1px solid var(--rule);
+}
+
+.gb-ledger > div {
+  display: grid;
+  grid-template-columns: minmax(0, 13em) minmax(0, 1fr);
+  gap: 1.25em;
+  padding: 0.85em 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.gb-ledger dt {
+  font-family: var(--gb-cond);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.gb-ledger dd {
+  line-height: 1.5;
+}
+
+.gb-ledger--tools dt code {
+  background: none !important;
+  padding: 0 !important;
+  font-size: 0.9em;
+}
+
+/* Tables: ruled, never boxed. */
+.gb-chapter__body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.gb-chapter__body th,
+.gb-chapter__body td {
+  padding: 0.55em 0.9em 0.55em 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--rule);
+}
+
+.gb-chapter__body th {
+  font-family: var(--gb-cond);
+  font-weight: 700;
+  border-bottom-width: 2px;
+}
+
+/* Code: the expressive-code frame sits as full-column manuscript. */
+.gb-chapter__body .expressive-code {
+  max-width: 100%;
+}
+
+/* Continue: the "turn to" line at the end of a section. */
+.gb-turn--next {
+  width: min(100%, calc(888 * var(--u)));
+  margin-top: calc(48 * var(--u));
+  border-color: var(--rule);
+  background: transparent;
+  color: inherit;
+}
+
+.gb-turn--next .gb-turn__n {
+  background: var(--spot);
+  color: var(--cell-ink);
+}
+
+.gb-turn--next .gb-turn__text {
+  font-size: clamp(1.25rem, calc(36 * var(--u)), 2.25rem);
+}
+
+.gb-tone-field-blue .gb-turn:hover,
+.gb-tone-field-red .gb-turn:hover {
+  background: color-mix(in srgb, var(--gb-paper) 12%, transparent);
+}
+
+/* The book's index (section 5). */
+.gb-index {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: calc(40 * var(--u));
+  max-width: none !important;
+  border-top: 1px solid var(--rule);
+}
+
+.gb-index a {
+  display: grid;
+  grid-template-columns: 2.4em 1fr auto;
+  align-items: baseline;
+  gap: 0.5em;
+  padding: 0.55em 0;
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none;
+}
+
+.gb-index__n {
+  font-family: var(--gb-cond);
+  font-size: 1.6em;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.gb-index__label {
+  font-family: var(--gb-cond);
+  font-weight: 600;
+  font-size: 1.1em;
+}
+
+.gb-index__pages {
+  font-family: var(--gb-mono);
+  font-size: 0.7em;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.gb-index a:hover .gb-index__label {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+}
+
+.gb-chapter .gb-cta {
+  position: static;
+  margin-top: calc(56 * var(--u));
+}
+
+.gb-tone-field-red .gb-install {
+  background: var(--gb-ink);
+}
+
+/* ---------- Hangul ---------- */
+
+/* Hangul has no italic; emphasis and marginal notes stay upright. */
+.gb-book:lang(ko) em,
+.gb-book:lang(ko) .gb-box__default {
+  font-style: normal;
+}
+
+.gb-book:lang(ko) em {
+  font-weight: 700;
+}
+
+/* Wide tracking spells Hangul out syllable by syllable; keep it close. */
+.gb-book:lang(ko) :is(.gb-sheet__title, .gb-spine__imprint, .gb-hero__foot) {
+  letter-spacing: 0.04em;
+}
+
+.gb-book:lang(ko) .gb-seal__arc--top > span {
+  font-size: calc(0.12 * var(--d));
+}
+
+.gb-book:lang(ko) .gb-seal__arc--bottom > span {
+  font-size: calc(0.085 * var(--d));
+}
+
+.gb-book:lang(ko) .gb-seal__center {
+  font-size: calc(0.085 * var(--d));
+}
+
+@media (min-width: 64rem) {
+  .gb-book:lang(ko) .gb-cta__alt {
+    font-size: calc(22 * var(--u));
+  }
+}
+
+/* ---------- Motion: the page-turn cut ---------- */
+
+::view-transition-group(gb-page) {
+  animation-duration: 0s;
+}
+
+::view-transition-old(gb-page) {
+  z-index: 1;
+  animation: gb-turn-page 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+::view-transition-new(gb-page) {
+  animation: none;
+}
+
+@keyframes gb-turn-page {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 100% 0 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gb-book *,
+  .gb-book *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- Mobile and narrow tablets: one column ---------- */
+
+@media (max-width: 63.99rem) {
+  .gb-book {
+    --u: calc(100cqw / 1536);
+    --m: calc(100cqw / 390);
+
+    grid-template-columns: minmax(0, 1fr);
+    font-size: 1.0625rem;
+  }
+
+  .gb-spine__inner,
+  .gb-sheet__inner {
+    position: static;
+    height: auto;
+  }
+
+  .gb-spine__inner > *,
+  .gb-sheet__inner > *,
+  .gb-hero > *,
+  .gb-hero__head > * {
+    position: static;
+  }
+
+  .gb-spine__inner {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding: 1.1rem 1.25rem 1rem;
+  }
+
+  .gb-wordmark {
+    font-size: 3.4rem;
+  }
+
+  .gb-spine__rule,
+  .gb-spine__imprint {
+    display: none;
+  }
+
+  .gb-spine__meta {
+    justify-self: end;
+    display: flex;
+    gap: 1rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    line-height: 1.4;
+  }
+
+  .gb-nav {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    margin: 0 -1.25rem;
+    padding: 0.25rem 1.25rem 0.2rem;
+    scrollbar-width: none;
+  }
+
+  .gb-nav a {
+    grid-template-columns: auto auto;
+    gap: 0.4rem;
+    padding: 0.45rem 0.7rem 0.55rem;
+    font-size: 1.15rem;
+    white-space: nowrap;
+    border: 1px solid color-mix(in srgb, var(--gb-on-ink) 45%, transparent);
+  }
+
+  .gb-nav a::after {
+    display: none;
+  }
+
+  .gb-nav a[aria-current] {
+    background: var(--gb-paper);
+    color: var(--gb-green);
+    border-color: var(--gb-paper);
+  }
+
+  /* Section 1 */
+  .gb-hero {
+    height: auto;
+    padding: 1.75rem 1.25rem 2.5rem;
+    display: grid;
+    gap: 1.5rem;
+  }
+
+  .gb-hero__head {
+    position: relative !important;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: end;
+    gap: 0.9rem;
+  }
+
+  .gb-hero__num {
+    font-size: calc(196 * var(--m));
+    line-height: 0.74;
+  }
+
+  .gb-hero__title {
+    font-size: calc(49 * var(--m));
+    line-height: 0.98;
+    white-space: normal;
+  }
+
+  .gb-hero__seal {
+    --d: 124px;
+
+    display: block;
+    position: relative !important;
+    grid-column: 1 / -1;
+    justify-self: end;
+    margin: -0.25rem 0.4rem -0.5rem 0;
+  }
+
+  .gb-hero__prose {
+    font-size: 1.4rem;
+    line-height: 1.3;
+  }
+
+  .gb-turns {
+    width: 100%;
+    gap: 0.75rem;
+  }
+
+  .gb-turn {
+    grid-template-columns: 3.4rem 1fr;
+    height: auto;
+    min-height: 4rem;
+    border-width: 1px;
+  }
+
+  .gb-turn__n {
+    margin: -1px 0 -1px -1px;
+    font-size: 2rem;
+  }
+
+  .gb-turn__text {
+    display: block;
+    padding: 0.7rem 0.75rem;
+    font-size: 1.3rem;
+    line-height: 1.25;
+    text-wrap: balance;
+  }
+
+  /* The "→ turn to N" fragment takes its own line, as in Korean. */
+  .gb-turn__to {
+    display: flex;
+    width: max-content;
+  }
+
+  .gb-cta {
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
+  }
+
+  .gb-install {
+    grid-template-columns: 1fr;
+    width: 100%;
+    height: auto;
+  }
+
+  .gb-install__cmd {
+    padding: 1rem 1.1rem;
+  }
+
+  .gb-install__cmd code {
+    font-size: 0.85rem;
+  }
+
+  .gb-install__divider {
+    width: auto;
+    height: 1px;
+    margin: 0 1.1rem;
+  }
+
+  .gb-install__go {
+    padding: 0 1.1rem;
+    font-size: 1.6rem;
+    line-height: 3.4rem;
+  }
+
+  .gb-cta__alt {
+    font-size: 1.4rem;
+    text-underline-offset: 0.25em;
+  }
+
+  .gb-hero__foot {
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    line-height: 1.5;
+  }
+
+  /* The sheet rides along the bottom edge (the two state boxes) once the
+     reader has left section 1, so it never covers the first viewport's action. */
+  .gb-sheet {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    order: 3;
+    display: none;
+    background: var(--gb-paper);
+    border-top: 1px solid var(--gb-ink);
+  }
+
+  .gb-book[data-in-view]:not([data-in-view="1"]) .gb-sheet {
+    display: block;
+  }
+
+  .gb-sheet__inner {
+    padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom));
+  }
+
+  .gb-sheet__inner::before,
+  .gb-sheet__title,
+  .gb-sheet__rule,
+  .gb-sheet__seal,
+  .gb-sheet__note,
+  .gb-sheet__foot {
+    display: none;
+  }
+
+  .gb-boxes {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .gb-box {
+    height: auto;
+    padding: 0.3rem 0.55rem 0.35rem;
+    border-width: 1px;
+  }
+
+  .gb-box dt,
+  .gb-box dd {
+    position: static;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .gb-box dt {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid var(--gb-ink);
+  }
+
+  .gb-box dt::after {
+    display: none;
+  }
+
+  .gb-box dd {
+    font-size: 1rem;
+  }
+
+  .gb-page {
+    order: 2;
+  }
+
+  /* Sections */
+  .gb-chapter {
+    padding: 3.5rem 1.25rem 4rem;
+  }
+
+  .gb-chapter__body {
+    max-width: none;
+  }
+
+  .gb-turn--next {
+    width: 100%;
+    margin-top: 1.5rem;
+  }
+
+  .gb-chapter .gb-cta {
+    margin-top: 2rem;
+  }
+
+  .gb-chapter__head {
+    gap: 0.9rem;
+    margin-bottom: 2rem;
+  }
+
+  .gb-chapter__num {
+    font-size: 8.5rem;
+  }
+
+  .gb-chapter__title {
+    font-size: 3rem;
+  }
+
+  .gb-passage {
+    font-size: 1.35rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .gb-chapter__body h3 {
+    font-size: 1.75rem;
+  }
+
+  .gb-ledger > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+
+  .gb-index {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gb-turn--next .gb-turn__text {
+    font-size: 1.2rem;
+  }
+
+  .gb-chapter__body table {
+    display: block;
+    overflow-x: auto;
+    font-size: 0.92rem;
+  }
+}

@@ -1,0 +1,8 @@
+---
+import DocsPageTitle from "../docs/DocsPageTitle.astro";
+import { isLanding } from "../../lib/route";
+
+const landing = isLanding(Astro.locals.starlightRoute);
+---
+
+{!landing && <DocsPageTitle />}

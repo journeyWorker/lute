@@ -1,0 +1,21 @@
+---
+/** A "turn to" line that continues the book at the next section. */
+import TurnArrow from "./TurnArrow.astro";
+
+interface Props {
+  to: number;
+  href: string;
+  label: string;
+  turn: string;
+}
+
+const { to, href, label, turn } = Astro.props;
+---
+
+<a class="gb-turn gb-turn--next" href={href}>
+  <span class="gb-turn__n" aria-hidden="true">{to}</span>
+  <span class="gb-turn__text">
+    {label}
+    <span class="gb-turn__to"><TurnArrow />{turn}</span>
+  </span>
+</a>

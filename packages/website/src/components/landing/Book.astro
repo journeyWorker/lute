@@ -1,0 +1,106 @@
+---
+/**
+ * The landing page as one open gamebook: the green spine carries the
+ * wordmark and the numbered sections, the page column carries the sections
+ * (the MDX), and the adventure-sheet column keeps the scene's real state and
+ * the checker's seal for the section in view.
+ */
+import "../../styles/landing.css";
+import Seal from "./Seal.astro";
+import { strings, type Lang, type SheetProof } from "./strings";
+import { versions } from "../../lib/versions";
+
+interface Props {
+  lang: Lang;
+  /** What the sheet shows before any section reports itself (section 1). */
+  proof: SheetProof;
+}
+
+const { lang, proof } = Astro.props;
+const t = strings[lang];
+// What `lute version` prints, line for line.
+const foot = [`toolchain ${versions.toolchain}`, `language ${versions.language}`, `IR schema ${versions.ir}`];
+---
+
+<div class="gb-book" lang={lang} data-copied={t.copied}>
+  <nav class="gb-spine" aria-label={t.navLabel}>
+    <div class="gb-spine__inner">
+      <a class="gb-wordmark" href={t.home} lang="en">Lute</a>
+      <span class="gb-spine__rule" aria-hidden="true"></span>
+      <ol class="gb-nav">
+        {
+          t.nav.map((item, i) => (
+            <li>
+              <a href={`#${item.id}`} data-nav={item.id} aria-current={i === 0 ? "location" : undefined}>
+                <span class="gb-nav__n">{i + 1}</span>
+                <span class="gb-nav__label">{item.label}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="gb-spine__imprint">
+        {t.imprint.map((line) => <span>{line}</span>)}
+      </p>
+      <span class="gb-spine__rule gb-spine__rule--2" aria-hidden="true"></span>
+      <p class="gb-spine__meta">
+        {
+          t.langs.map((l) => (
+            <a href={l.href} lang={l.lang} hreflang={l.lang} aria-current={l.current ? "page" : undefined}>
+              {l.label}
+            </a>
+          ))
+        }
+        <a href="https://github.com/journeyWorker/lute" lang="en">{t.github}</a>
+      </p>
+    </div>
+  </nav>
+
+  <div class="gb-page">
+    <slot />
+    <p class="gb-copied" role="status" aria-live="polite"></p>
+  </div>
+
+  <aside class="gb-sheet" aria-label={t.sheetLabel}>
+    <div class="gb-sheet__inner">
+      <p class="gb-sheet__title">
+        <span>{t.sheetTitle[0]}</span>
+        <span>{t.sheetTitle[1]}</span>
+        <span>{t.sectionWord} <span data-sheet-section>1</span></span>
+      </p>
+      <span class="gb-sheet__rule" aria-hidden="true"></span>
+      <dl class="gb-boxes" aria-label={t.stateLabel} aria-live="polite">
+        <div class="gb-box" data-state="scene.affect.marina">
+          <dt lang="en">scene.affect.marina</dt>
+          <dd>
+            <span class="gb-box__was" data-was></span><span data-value>0</span>
+            <span class="gb-box__default" data-default>{t.defaultWord}</span>
+          </dd>
+        </div>
+        <div class="gb-box" data-state="scene.choices.number">
+          <dt lang="en">scene.choices.number</dt>
+          <dd>
+            <span class="gb-box__was" data-was></span><span data-value lang="en">unset</span>
+            <span class="gb-box__default" data-default>{t.defaultWord}</span>
+          </dd>
+        </div>
+      </dl>
+      <Seal class="gb-sheet__seal" lang={lang} center={proof.seal} />
+      <span class="gb-sheet__rule gb-sheet__rule--2" aria-hidden="true"></span>
+      <p class="gb-sheet__note" lang="en" data-note>
+        {proof.note.map((line) => <span>{line}</span>)}
+      </p>
+      <span class="gb-sheet__rule gb-sheet__rule--3" aria-hidden="true"></span>
+      <p class="gb-sheet__foot" lang="en">
+        {foot.map((line) => <span>{line}</span>)}
+      </p>
+    </div>
+  </aside>
+</div>
+
+<script>
+  import { mountBook } from "./book-client";
+
+  const book = document.querySelector<HTMLElement>(".gb-book");
+  if (book) mountBook(book);
+</script>

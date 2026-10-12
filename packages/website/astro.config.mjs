@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import remarkCjkFriendly from "remark-cjk-friendly";
 
 // The SAME TextMate grammar the VS Code extension ships — read, not copied, so
 // the site can never highlight a dialect the editor does not. `editors/vscode`
@@ -19,6 +20,10 @@ const luteGrammar = {
   ),
   name: "lute",
 };
+
+/** The gamebook's code inks: one black ink, green for the language's words, red strings, blue data. */
+const codeTheme = (name) =>
+  JSON.parse(readFileSync(new URL(`./src/styles/code/${name}.json`, import.meta.url), "utf8"));
 
 /** Matches the `lute-diagnostics` marker and nothing else. */
 const DIAGNOSTIC_MARKER = /^<!--\s*lute-diagnostics\b[\s\S]*?-->$/;
@@ -40,6 +45,8 @@ function stripDiagnosticMarkers() {
 // https://astro.build/config
 export default defineConfig({
   site: "https://lute-lang.vercel.app",
+  // The dev toolbar paints over the page bottom in every review capture.
+  devToolbar: { enabled: false },
   integrations: [
     starlight({
       title: "Lute",
@@ -57,7 +64,15 @@ export default defineConfig({
           href: "https://github.com/journeyWorker/lute",
         },
       ],
-      customCss: ["./src/styles/theme.css"],
+      customCss: ["./src/styles/theme.css", "./src/styles/docs.css"],
+      components: {
+        PageFrame: "./src/components/overrides/PageFrame.astro",
+        ContentPanel: "./src/components/overrides/ContentPanel.astro",
+        MarkdownContent: "./src/components/overrides/MarkdownContent.astro",
+        PageTitle: "./src/components/overrides/PageTitle.astro",
+        Footer: "./src/components/overrides/Footer.astro",
+        Pagination: "./src/components/docs/Pagination.astro",
+      },
       favicon: "/favicon.png",
       sidebar: [
         {
@@ -202,6 +217,34 @@ export default defineConfig({
       ],
       expressiveCode: {
         shiki: { langs: [luteGrammar] },
+        // Light is the default: the landing always prints on paper (and on solid
+        // cover-ink fields), so its frames carry their own opaque paper-2. Docs
+        // switch to the dark inks with Starlight's theme; the landing never does.
+        themes: [codeTheme("gamebook-light"), codeTheme("gamebook-dark")],
+        themeCssSelector: (theme) =>
+          theme.type === "dark" ? ':root[data-theme="dark"]:not(:has(.gb-book))' : false,
+        // Only Starlight's `data-theme` switches inks; never the OS preference alone.
+        useDarkModeMediaQuery: false,
+        // Frame colours live in the theme files so each variant is self-contained.
+        styleOverrides: {
+          borderRadius: "0px",
+          borderWidth: "1px",
+          codeFontFamily: "var(--gb-mono)",
+          uiFontFamily: "var(--gb-mono)",
+          uiFontSize: "0.6875rem",
+          uiFontWeight: "500",
+          frames: {
+            shadowColor: "transparent",
+            frameBoxShadowCssValue: "none",
+            editorActiveTabBorderColor: "transparent",
+            editorActiveTabIndicatorHeight: "0px",
+            editorTabBorderRadius: "0px",
+            terminalTitlebarDotsOpacity: "0",
+            terminalTitlebarBorderBottomColor: "#0a0a0a",
+            tooltipSuccessBackground: "#084828",
+            tooltipSuccessForeground: "#f8f8f7",
+          },
+        },
       },
     }),
   ],
@@ -213,6 +256,11 @@ export default defineConfig({
     // than ship an internal review note (and, on an opted-out block, a
     // paragraph-long reason) inside every reader's HTML. `.mdx` needs no
     // handling — MDX comments never reach the tree.
-    remarkPlugins: [stripDiagnosticMarkers],
+    //
+    // CommonMark's flanking rules refuse `**보간(interpolation)**입니다`
+    // (emphasis closing before a Hangul particle) and print the asterisks;
+    // remark-cjk-friendly relaxes them for CJK so Korean pages read like
+    // English ones.
+    remarkPlugins: [stripDiagnosticMarkers, remarkCjkFriendly],
   },
 });
