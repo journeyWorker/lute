@@ -337,7 +337,7 @@ pub fn check_inline_modifiers(
                          `{TEXT_STYLE_DOMAIN}` domain is declared to name it — declare it in \
                          `enums:` (`{TEXT_STYLE_DOMAIN}: [{name}]`) to make `:{name}[…]` a text \
                          style (dsl 0.37.0 §3.6)"
-                    ),
+                    ) + &crate::renames::renamed_domain_hint(TEXT_STYLE_DOMAIN, domains),
                     m.span,
                 )),
                 Some(domain) if !domain.open && !domain.members.iter().any(|s| s == name) => {

@@ -1,0 +1,14 @@
+---
+kind: scene
+id: town.welcome
+title: First arrival
+# A beat: answers `townVisit`, once per save (`once: user`).
+on: townVisit
+once: user
+priority: 10
+---
+
+## The town
+
+::bg{location="town" time="day"}
+@narrator: The lamps along the square are lit — all but the one by the door.

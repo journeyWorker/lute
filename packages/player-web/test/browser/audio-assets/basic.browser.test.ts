@@ -43,7 +43,7 @@ describe("browser audio and assets", () => {
     const wavUrl = `${URL.createObjectURL(wavBlob())}#tone.wav`
     const audio = new PixiAudio({ backend: pixiSoundBackend })
     await Effect.runPromise(audio.unlock)
-    await Effect.runPromise(audio.play("sfx", { file: wavUrl, loop: false, volume: 0.1, fade: 0 }))
+    await Effect.runPromise(audio.play("sfx", { file: wavUrl, loop: false, volume: 0.1, fade: 0, restart: true }))
     URL.revokeObjectURL(wavUrl.split("#")[0] ?? wavUrl)
   })
 })

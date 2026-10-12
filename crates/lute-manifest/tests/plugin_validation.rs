@@ -62,6 +62,7 @@ fn backdrop_plugin(lower: Lowering) -> LoadedPlugin {
         lints: vec![],
         cast: vec![],
         sites: Default::default(),
+        invalid: Vec::new(),
     }
 }
 

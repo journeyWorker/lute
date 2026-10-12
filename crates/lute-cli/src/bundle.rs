@@ -1,24 +1,24 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use lute_ir::IndexOccasion;
+use lute_ir::{IndexDef, IndexOccasion};
 use lute_compile::index::IndexUnions;
 use lute_manifest::schema::WriteValue;
-use lute_manifest::types::Type;
 use lute_model::ProjectModel;
 
 /// Collect the capability vocabulary that is shared by every compiled document.
 /// Documents are visited in source-path order so a duplicate declaration's
 /// first value is stable and matches the whole-project play collector.
 pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
-    let mut documents: Vec<_> = model.documents().iter().collect();
+    let mut documents: Vec<_> = model
+        .documents()
+        .iter()
+        .filter(|document| !crate::compile_all::is_component_file(&document.path))
+        .collect();
     documents.sort_by(|a, b| a.path.cmp(&b.path));
 
     let mut unions = IndexUnions::default();
     let mut world_events = BTreeSet::new();
-    for document in documents {
-        if crate::compile_all::is_component_file(&document.path) {
-            continue;
-        }
+    for document in &documents {
         let input = &document.input;
         for (name, decl) in &input.snapshot.occasions {
             unions
@@ -56,21 +56,50 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
                 else {
                     continue;
                 };
-                let ty = match result.ty {
-                    Type::Bool => "bool",
-                    Type::Int | Type::Double => "number",
-                    _ => "string",
-                };
+                // 0.41.0 §4.1: the declared result type, as occasion
+                // payloads carry theirs.
                 unions
                     .bridge_results
                     .entry(tag.clone())
                     .or_default()
-                    .insert(field.to_string(), ty.to_string());
+                    .insert(field.to_string(), result.ty.clone());
             }
         }
     }
     unions.world_events = world_events.into_iter().collect();
+    unions.defs = index_defs(documents.iter().map(|document| &document.input));
     unions
+}
+
+/// The project index `defs` over the inputs of the project's documents (its
+/// component fragments excluded), given in source-path order.
+///
+/// dsl 0.41.0 §4.3: a def two documents see with different
+/// bodies or parameter lists (their `uses:` differ) names no one condition,
+/// so the index omits it. Bodies are compared as lowered `expr` plus
+/// `params`: the same condition spelled differently (`@base` in one, written
+/// out in the other) is one def, exported with the first document's
+/// `cel`/`authored`.
+pub(crate) fn index_defs<'a>(
+    inputs: impl IntoIterator<Item = &'a lute_check::CheckInput>,
+) -> BTreeMap<String, IndexDef> {
+    let mut defs: BTreeMap<String, IndexDef> = BTreeMap::new();
+    let mut ambiguous = BTreeSet::new();
+    for input in inputs {
+        for (name, def) in lute_compile::index::document_defs(input) {
+            match defs.get(&name) {
+                Some(seen) if seen.expr != def.expr || seen.params != def.params => {
+                    ambiguous.insert(name);
+                }
+                Some(_) => {}
+                None => {
+                    defs.insert(name, def);
+                }
+            }
+        }
+    }
+    defs.retain(|name, _| !ambiguous.contains(name));
+    defs
 }
 
 /// Serialize the exact bundle shape emitted by `compile --all`.

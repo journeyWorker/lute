@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.40.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.41.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -35,7 +35,16 @@ contains the corresponding `seed` and every `input` envelope. Regenerate all
 session streams with `cargo build -p lute-cli && conformance/regenerate.sh`.
 The session test compares the CLI stream byte-for-byte and replays
 `inputs.jsonl` through `Runtime::begin`/`step`, comparing each serialized
-output with the stream.
+output with the stream. `session/README.md` lists the cases.
+
+`session/contract-fixtures.jsonl` is hand-written: contract values no session
+case emits (each `advanceClock` form, `Verdict`/`Premise` rows, a snapshot, a
+`bridgeResult` with `writes`, an `awaitBridge` output with `attrs`/`results`,
+`gate` answers, an `E-OCCASION-GATE` rejection). A gate refusal is not a
+session case — a session runs to exit 0 with one output per input — so the
+rejection appears only here. The generated event/snapshot schemas validate
+every line (`tree-sitter-lute/test/json_schema.test.js`).
+
 ## Replaying
 
 From the repository root:
@@ -124,7 +133,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `lore-entry-reread` | the same entry **re-read** — the mock seeds `entry.scientistLog1.read: true`, so the text presents (the `otherwise` arm) and the `assert`/`set` records are recorded as `skipped` events (`effect` + the record's `path`/`fact`/`pattern`) without changing state or facts |
 | `command-staging` | staging/timeline command records: `bg` (`::bg`), `music` (`playback`), `sfx`, `vfx` (`type`), `actor` (`::actor`), `camera` (`focus`/`framing`/`move`/`transition`), `cg` (`display`), `video` (`display`), plus the timeline `barrier`; all are compiled and replayed in one linear scene |
 | `command-lifecycle` | lore beat presentation (`beat`), quest acceptance (`accept`), and fact retraction (`retract`) in a beat selected by `beat.txt` |
-| `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation |
+| `command-plugin` | a local capability plugin's mock bridge (`plugin`) with an unanswered bridge result; the runner records the external call without host invocation, and the record carries the call's typed `attrs` (dsl 0.41.0 §5.5) |
 | `cel-numbers` | typed `int`/`double` CEL literals and arithmetic, including truncating division, modulo, conversions, and numeric rendering |
 | `cel-facts` | list-form `holds`, `count`, `countDistinct`, `validAt`, `now`, and `visited`, including wildcards and `occasion.target` |
 | `cel-presence` | `has()` and quoted-key `in` presence checks plus indexed state reads |
@@ -165,7 +174,7 @@ fixtures. `command-staging` covers `bg`, `music`, `sfx`, `vfx`, `actor`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. Every recorded command
 carries its `family` (`content`, `staging`, `state`, `control`, `declaration`,
 `plugin`) and `position`. No requested kind is unsupported by the reference
-runner. The staging fixture uses a live `luteVersion: "0.40.0"` header, as do
+runner. The staging fixture uses a live `luteVersion: "0.41.0"` header, as do
 the lifecycle and plugin sources.
 
 ### Diagnostic fixtures
@@ -272,7 +281,7 @@ Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; t
 
 ## Edit-task suite
 
-The 0.40.0 AI edit-loop conformance suite is in
+The 0.41.0 AI edit-loop conformance suite is in
 [`edit-tasks/`](edit-tasks/). It contains 12 inspect/plan/patch/check cases;
 `REPORT.json` records the expected outcomes.
 

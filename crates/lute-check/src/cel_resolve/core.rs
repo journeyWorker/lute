@@ -168,7 +168,14 @@ pub fn check_cel_slot(
             //     declared type. Conservative: unresolvable args (compound
             //     expressions, unknown paths) are silently skipped — only a
             //     PROVABLY-wrong arg flags, never a false positive.
-            if let (Some(call), Some(params)) = (r.call.as_ref(), ctx.env.def_params.get(&r.name)) {
+            // 0.41.0 §3.2: an untyped def (an invalid one, or one whose type
+            // did not settle — each already reported) has no parameter
+            // types to judge an argument against.
+            if let (Some(call), Some(params), true) = (
+                r.call.as_ref(),
+                ctx.env.def_params.get(&r.name),
+                ctx.env.def_types.contains_key(&r.name),
+            ) {
                 if call.args.len() == params.len() {
                     for (arg_span, (_pname, pty)) in call.args.iter().zip(params.iter()) {
                         // `arg_span` byte offsets are relative to `slot.raw` (what

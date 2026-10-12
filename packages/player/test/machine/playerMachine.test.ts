@@ -19,10 +19,11 @@ const choiceAwait = (timeout?: number) => ({
 
 const bridgeAwait = {
   type: "awaitBridge" as const,
+  attrs: {},
   document: "doc",
-  fields: {},
   position: "0",
   request: 4,
+  results: {},
   tag: "host",
 }
 
@@ -438,6 +439,68 @@ describe("playerMachine", () => {
     const run = playingActor()
     run.actor.send({ type: "batch.settled", await: choiceAwait() })
     expect(derivePlayerView(run.actor.getSnapshot()).story).toBe("choice")
+  })
+  it("buffers an advance while typing when the presenter confirms lines, releasing at line.shown (§7.5)", () => {
+    const run = makeActor()
+    run.actor.send({ type: "boot.ready", canContinue: false, confirmsLines: true })
+    run.actor.send({ type: "newGame" })
+    run.actor.send({ type: "batch.started" })
+    run.actor.send({ type: "line.typing", read: false, hasVoice: false })
+    const before = run.commands.length
+    run.actor.send({ type: "advance" })
+    expect(run.commands.slice(before)).toEqual([])
+    expect(run.actor.getSnapshot().value).toMatchObject({ story: "typing" })
+    run.actor.send({ type: "line.shown", read: false, hasVoice: false })
+    expect(commandTypes(run.commands.slice(before))).toEqual(["line.release"])
+    expect(run.actor.getSnapshot().value).toMatchObject({ story: "running" })
+    // The next line types without a buffered confirm.
+    run.actor.send({ type: "line.typing", read: false, hasVoice: false })
+    run.actor.send({ type: "line.shown", read: false, hasVoice: false })
+    expect(run.actor.getSnapshot().value).toMatchObject({ story: "shown" })
+  })
+  it("a buffered confirm in auto mode starts no auto timer (§7.5)", () => {
+    const run = makeActor()
+    run.actor.send({ type: "boot.ready", canContinue: false, confirmsLines: true })
+    run.actor.send({ type: "newGame" })
+    run.actor.send({ type: "batch.started" })
+    run.actor.send({ type: "toggleAuto" })
+    run.actor.send({ type: "line.typing", read: false, hasVoice: false })
+    run.actor.send({ type: "advance" })
+    const before = run.commands.length
+    run.actor.send({ type: "line.shown", read: false, hasVoice: false })
+    expect(commandTypes(run.commands.slice(before))).toEqual(["line.release"])
+  })
+  it("without confirmsLines an advance while typing still reveals", () => {
+    const run = lineActor()
+    run.actor.send({ type: "advance" })
+    expect(run.commands.at(-1)?.type).toBe("line.reveal")
+  })
+  it("plays on from ended when a batch starts (§7.3)", () => {
+    const run = playingActor()
+    run.actor.send({ type: "batch.settled", await: { type: "ended", reason: "terminal" } })
+    expect(derivePlayerView(run.actor.getSnapshot())).toMatchObject({ flow: "ended", story: "ended" })
+    run.actor.send({ type: "batch.started" })
+    expect(derivePlayerView(run.actor.getSnapshot())).toMatchObject({ flow: "playing", story: "running" })
+  })
+  it("accepts load.done from ended, halted and title and re-presents the await (§7.4)", () => {
+    const ended = playingActor()
+    ended.actor.send({ type: "batch.settled", await: { type: "ended", reason: "terminal" } })
+    ended.actor.send({ type: "load.done", await: choiceAwait() })
+    expect(derivePlayerView(ended.actor.getSnapshot())).toMatchObject({ flow: "playing", story: "choice" })
+    expect(commandTypes(ended.commands)).toContain("choice.show")
+
+    const halted = playingActor()
+    halted.actor.send({ type: "batch.settled", await: { type: "halted", kind: "incomplete", message: "stuck" } })
+    expect(derivePlayerView(halted.actor.getSnapshot()).flow).toBe("error")
+    halted.actor.send({ type: "load.done", await: { type: "idle" } })
+    expect(derivePlayerView(halted.actor.getSnapshot())).toMatchObject({ flow: "playing", story: "idle" })
+    expect(commandTypes(halted.commands)).toContain("idle.flow")
+
+    const title = makeActor()
+    title.actor.send({ type: "boot.ready", canContinue: false })
+    title.actor.send({ type: "load.done", await: { type: "ended", reason: "terminal" } })
+    expect(derivePlayerView(title.actor.getSnapshot())).toMatchObject({ flow: "ended", story: "ended" })
+    expect(title.commands).toContainEqual({ type: "screen.show", screen: { _tag: "Ended", reason: "terminal" } })
   })
   it("survives seeded random action sequences without sending runtime input through overlays", () => {
     let seed = 0x12345678

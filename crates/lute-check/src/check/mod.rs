@@ -98,6 +98,7 @@ mod choice_record;
 mod component_body;
 mod fold;
 mod guard;
+mod host;
 mod injections;
 mod interp;
 mod literal_text;
@@ -119,9 +120,10 @@ use component_body::{
     component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
     walk_component_body, BodyScope,
 };
-pub use fold::fold_env;
+pub use fold::{fold_env, params_from_yaml};
+pub use host::{check_host_condition, HostCondition};
 pub(crate) use fold::resolve_kinds;
-use fold::{attr_str, fold_directive_slots, params_from_yaml};
+use fold::{attr_str, fold_directive_slots};
 pub(crate) use guard::directive_when_refused;
 use guard::{check_beat_when, check_directive_when, check_guard};
 use injections::fold_injections;
@@ -283,6 +285,9 @@ pub struct FoldedEnv {
     pub env: Env,
     /// def name -> raw CEL body, merged plugin < imported < inline (D4 input).
     pub def_bodies: std::collections::BTreeMap<String, String>,
+    /// 0.41.0 §3.5: the defs this document sees that declare `host: true` —
+    /// a schema file's or a plugin's — read by the host, so never unused.
+    pub host_defs: std::collections::BTreeSet<String>,
     /// The resolved root document kind (dsl 0.2.0 §3.1): `Scene` when
     /// unresolved (missing/unknown `kind:`) so scene stays the degrade-safe
     /// path and downstream dispatch never panics.

@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-player-bindings-0.40.schema.json
+// Source: schemas/lute-player-bindings-0.41.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -46,6 +46,24 @@ export const Character = Schema.Struct({
   "sprite": Schema.suspend(() => Sprite)
 });
 export type Character = typeof Character.Type;
+
+/**
+ * The `custom` effect tag of `CustomVfx`.
+ */
+export const CustomEffect = Schema.Literals([
+  "custom"
+]);
+export type CustomEffect = typeof CustomEffect.Type;
+
+/**
+ * `{ effect: custom, name?, duration? }`; `name` defaults to the binding key.
+ */
+export const CustomVfx = Schema.Struct({
+  "duration": Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  "effect": Schema.suspend(() => CustomEffect),
+  "name": Schema.optionalKey(Schema.NullOr(Schema.String))
+});
+export type CustomVfx = typeof CustomVfx.Type;
 
 /**
  * A named player effect. The externally tagged `effect` field deliberately
@@ -231,6 +249,17 @@ export const Ui = Schema.Struct({
 });
 export type Ui = typeof Ui.Type;
 
+/**
+ * A `vfx` binding: a catalogue effect, or a presenter-defined custom effect
+ * (spec 0.41 §7.7). `custom` is admitted only here; actions, transitions and
+ * camera moves keep the closed `EffectSpec` catalogue.
+ */
+export const VfxSpec = Schema.Union([
+  Schema.suspend(() => CustomVfx),
+  Schema.suspend(() => EffectSpec)
+]);
+export type VfxSpec = typeof VfxSpec.Type;
+
 export const Voice = Schema.Struct({
   "pattern": Schema.optionalKey(Schema.NullOr(Schema.String))
 });
@@ -255,7 +284,7 @@ export const Bindings = Schema.Struct({
   "textStyles": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => TextStyle))),
   "transitions": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => EffectSpec))),
   "ui": Schema.optionalKey(Schema.suspend(() => Ui)),
-  "vfx": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => EffectSpec))),
+  "vfx": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => VfxSpec))),
   "voice": Schema.optionalKey(Schema.suspend(() => Voice))
 });
 export type Bindings = typeof Bindings.Type;

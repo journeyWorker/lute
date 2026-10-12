@@ -175,8 +175,13 @@ pub fn check_project_usage(
         inner.remove(*name);
         used.extend(inner);
     }
+    let host: BTreeSet<&str> = docs
+        .iter()
+        .flat_map(|d| d.folded.host_defs.iter().map(String::as_str))
+        .collect();
     for name in def_bodies.keys() {
-        if used.contains(*name) {
+        // 0.41.0 §3.5: a `host: true` def is read by the host, not the story.
+        if used.contains(*name) || host.contains(*name) {
             continue;
         }
         let Some((path, span)) = declaration(docs, DeclKind::Def, "defs", name) else {
@@ -344,6 +349,47 @@ fn ref_names(text: &str, out: &mut BTreeSet<String>) {
 
 fn is_ident_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
+}
+
+/// 0.41.0 §3.2: per invalid state row of the project (keyed by its
+/// `file:line` site), every literal value it takes — its own `default:`,
+/// then each literal `::set` (`=`, `+=`, `-=`) of its path in every walked
+/// document — for the `E-TYPE-NUMBER` `int` suggestion.
+pub fn number_row_values(docs: &[UsageDoc<'_>]) -> BTreeMap<String, Vec<f64>> {
+    let mut rows: BTreeMap<&str, (&str, Vec<f64>)> = BTreeMap::new();
+    for d in docs {
+        for (path, decl) in &d.folded.env.state.invalid {
+            if let Some(site) = &decl.site {
+                rows.entry(path.as_str())
+                    .or_insert_with(|| (site.as_str(), decl.seen.clone()));
+            }
+        }
+    }
+    if rows.is_empty() {
+        return BTreeMap::new();
+    }
+    for d in docs {
+        let bodies = d
+            .doc
+            .sections
+            .iter()
+            .map(|s| &s.body)
+            .chain(d.doc.quests.iter().map(|q| &q.body))
+            .chain(d.doc.entries.iter().map(|e| &e.body))
+            .chain(d.doc.beats.iter().map(|b| &b.body));
+        for body in bodies {
+            scan(body, &mut |n| {
+                let Node::Set(set) = n else { return };
+                let Some((_, seen)) = rows.get_mut(set.path.as_str()) else { return };
+                if let Ok(v) = set.expr.raw.trim().parse::<f64>() {
+                    seen.push(v);
+                }
+            });
+        }
+    }
+    rows.into_values()
+        .map(|(site, seen)| (site.to_string(), seen))
+        .collect()
 }
 
 /// Visit every node of `nodes`, nested bodies included.

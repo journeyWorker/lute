@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Sources: schemas/lute-events-0.40.schema.json, schemas/lute-snapshot-0.40.schema.json
+// Sources: schemas/lute-events-0.41.schema.json, schemas/lute-snapshot-0.41.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -49,13 +49,14 @@ export const Await = Schema.Union([
     "type": Schema.Literal("awaitChoice")
   }),
   Schema.Struct({
+    "attrs": Schema.Record(Schema.String, Schema.Json),
     "document": Schema.String,
-    "fields": Schema.Record(Schema.String, Schema.String),
     "position": Schema.String,
     "request": Schema.Int
     .pipe(
       Schema.check(Schema.isGreaterThanOrEqualTo(0))
     ),
+    "results": Schema.Record(Schema.String, Schema.suspend(() => fieldType)),
     "tag": Schema.String,
     "type": Schema.Literal("awaitBridge")
   }),
@@ -142,6 +143,16 @@ export const ClockView = Schema.Struct({
 export type ClockView = typeof ClockView.Type;
 
 /**
+ * The answer of a read-only condition query, `evaluate` or `def`
+ * (dsl 0.41.0 §5.1).
+ */
+export const Evaluation = Schema.Struct({
+  "unresolved": Schema.optionalKey(Schema.Array(Schema.String)),
+  "value": Schema.suspend(() => Value)
+});
+export type Evaluation = typeof Evaluation.Type;
+
+/**
  * An execution record or session-level notification.
  */
 export const Event = Schema.Union([
@@ -180,6 +191,17 @@ export const Event = Schema.Union([
   Schema.toTaggedUnion("type")
 );
 export type Event = typeof Event.Type;
+
+/**
+ * dsl 0.41.0 §5.2: the answer of the `gate` query — whether a
+ * `raiseOccasion` of the occasion (for its target) with no writes would
+ * pass the seam now.
+ */
+export const Gate = Schema.Struct({
+  "open": Schema.Boolean,
+  "unresolved": Schema.optionalKey(Schema.Array(Schema.String))
+});
+export type Gate = typeof Gate.Type;
 
 /**
  * One read of a guard that decided false, as the premise a refusal names
@@ -261,7 +283,8 @@ export const Input = Schema.Union([
     .pipe(
       Schema.check(Schema.isGreaterThanOrEqualTo(0))
     ),
-    "type": Schema.Literal("bridgeResult")
+    "type": Schema.Literal("bridgeResult"),
+    "writes": Schema.optionalKey(Schema.suspend(() => WritesInput))
   }),
   Schema.Struct({
     "by": Schema.suspend(() => AdvanceBy),
@@ -498,6 +521,103 @@ export const WritesInput = Schema.Struct({
 });
 export type WritesInput = typeof WritesInput.Type;
 
+/**
+ * A declared value type (plugin §7) as the IR serializes it: a bare spelling (`bool`, `int`, `double`, `string`, `narrativeTime`) or a single-key map naming the form (`{"enum": ...}`, `{"list": T}`, `{"record": fields}`, `{"map": {"key": T, "value": T}}`, `{"domain": name}`, `{"entity": kind}`, `{"enumFromOption": option}`, `{"providerRef": name}`, `{"slotId": {"namespace": ns}}`, `{"assetKind": kind}`).
+ */
+export type fieldType =
+  | ("bool" | "int" | "double" | "string" | "narrativeTime")
+  | {
+    readonly "enum": ReadonlyArray<string>
+  }
+  | {
+    readonly "list": fieldType
+  }
+  | {
+    readonly "record": ReadonlyArray<{
+      readonly "default"?: Schema.Json,
+      readonly "name": string,
+      readonly "required": boolean,
+      readonly "shape"?: string,
+      readonly "type": fieldType
+    }>
+  }
+  | {
+    readonly "map": {
+      readonly "key": fieldType,
+      readonly "value": fieldType
+    }
+  }
+  | {
+    readonly "enumFromOption": string
+  }
+  | {
+    readonly "providerRef": string
+  }
+  | {
+    readonly "domain": string
+  }
+  | {
+    readonly "entity": string
+  }
+  | {
+    readonly "slotId": {
+      readonly "namespace": string
+    }
+  }
+  | {
+    readonly "assetKind": string
+  };
+export const fieldType: Schema.Codec<fieldType> = Schema.Union([
+  Schema.Literals([
+    "bool",
+    "int",
+    "double",
+    "string",
+    "narrativeTime"
+  ]),
+  Schema.Struct({
+    "enum": Schema.Array(Schema.String)
+  }),
+  Schema.Struct({
+    "list": Schema.suspend(() => fieldType)
+  }),
+  Schema.Struct({
+    "record": Schema.Array(Schema.Struct({
+      "default": Schema.optionalKey(Schema.Json),
+      "name": Schema.String,
+      "required": Schema.Boolean,
+      "shape": Schema.optionalKey(Schema.String),
+      "type": Schema.suspend(() => fieldType)
+    }))
+  }),
+  Schema.Struct({
+    "map": Schema.Struct({
+      "key": Schema.suspend(() => fieldType),
+      "value": Schema.suspend(() => fieldType)
+    })
+  }),
+  Schema.Struct({
+    "enumFromOption": Schema.String
+  }),
+  Schema.Struct({
+    "providerRef": Schema.String
+  }),
+  Schema.Struct({
+    "domain": Schema.String
+  }),
+  Schema.Struct({
+    "entity": Schema.String
+  }),
+  Schema.Struct({
+    "slotId": Schema.Struct({
+      "namespace": Schema.String
+    })
+  }),
+  Schema.Struct({
+    "assetKind": Schema.String
+  })
+]);
+
 export const Answer = Schema.Union([
   Schema.Struct({
     "choice": Schema.Struct({
@@ -508,7 +628,8 @@ export const Answer = Schema.Union([
   Schema.Struct({
     "bridge": Schema.Struct({
       "fields": Schema.Record(Schema.String, Schema.Json),
-      "tag": Schema.String
+      "tag": Schema.String,
+      "writes": Schema.optionalKey(Schema.suspend(() => WritesInput))
     })
   })
 ]);

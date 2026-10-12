@@ -219,7 +219,7 @@ sets back to 0 when the week turns. Had the objective read a run-long total,
 quest would start it and complete it again at once, rewards and all. Give a rearmed quest's
 objectives state that starts over with it: a counter the engine resets no later than the moment
 the condition turns true (in a play script, an `engine:` step before the `advance:` that reaches
-that moment; an advance's own `engine:` writes land where it stops), or a `season.<name>.*` path
+that moment; an advance's own `engine:` writes land before the clock moves), or a `season.<name>.*` path
 under `tier="season:<name>"`. The checker does not warn about this.
 
 Because only the false→true turn rearms, a constant condition never does: `rearm="true"`,

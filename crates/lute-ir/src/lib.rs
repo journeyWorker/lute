@@ -12,10 +12,13 @@
 mod expr;
 mod index;
 mod ir;
+#[cfg(feature = "json-schema")]
+mod schema;
 
 pub use expr::{ExprNode, LitVal};
 pub use index::{
-    BeatKind, IndexBeat, IndexDocument, IndexEntry, IndexOccasion, ProjectIndex, StateDomain,
+    BeatKind, IndexBeat, IndexDef, IndexDocument, IndexEntry, IndexOccasion, ProjectIndex,
+    StateDomain,
 };
 pub use ir::{
     AdvanceSpec, AtomEntry, BeatOnce, BodyEntry, CelPair, DocKind, EntityKindEntry, EnumEntry,

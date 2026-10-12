@@ -466,8 +466,9 @@ pub(crate) fn check_payload_domains(
                 severity: lute_core_span::Severity::Error,
                 message: format!(
                     "occasion `{on}`'s payload field `{field}` is typed `{{ {form}: {k} }}`, but \
-                     `{k}` is not a declared enum or entity kind{}",
-                    crate::rel_schema::member_hint(k, &names)
+                     `{k}` is not a declared enum or entity kind{}{}",
+                    crate::rel_schema::member_hint(k, &names),
+                    crate::renames::renamed_domain_hint(k, domains)
                 ),
                 evidence: None,
                 span,

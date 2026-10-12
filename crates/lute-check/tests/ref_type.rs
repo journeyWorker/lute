@@ -207,6 +207,7 @@ fn plugin_def_ref_is_declared_and_type_checked() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let codes = check_codes(SCENE_WARMTH, snap);
@@ -235,6 +236,7 @@ fn plugin_def_ref_type_mismatch_flags() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let codes = check_codes(SCENE_COUNT, snap);
@@ -265,6 +267,7 @@ fn call_form_whole_slot_number_def_in_bool_guard_flags_ref_type() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@countAtLeast(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -294,6 +297,7 @@ fn compound_call_comparison_is_not_whole_slot() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: int, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@toNum(scene.n) == @toNum(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -321,6 +325,7 @@ fn arity_mismatch_flags() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@atLeast\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -343,6 +348,7 @@ fn arity_match_is_clean() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@atLeast(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -362,6 +368,7 @@ fn paramless_def_called_with_args_flags_arity() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@warm(1)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -385,6 +392,7 @@ fn arg_type_mismatch_flags() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@atLeast('hi')\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -407,6 +415,7 @@ fn arg_type_match_is_clean() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@atLeast(2)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";
@@ -430,6 +439,7 @@ fn unresolvable_arg_is_not_flagged() {
             min: None,
             max: None,
             values: None,
+            host: false,
         },
     );
     let scene = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.n: { type: int, default: 0 }\n  scene.flag: { type: bool, default: false }\n---\n## Shot 1.\n<match subject=\"scene.flag\">\n<when test=\"@atLeast(scene.n + 1)\">@narrator: a\n</when>\n<otherwise>@narrator: b\n</otherwise>\n</match>\n";

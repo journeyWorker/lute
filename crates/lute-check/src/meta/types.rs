@@ -64,6 +64,12 @@ pub struct StateSchema {
     /// imports) and rejected (`E-CLOCK-DECL`), so the project has no clock
     /// because of that one error — what needs a clock stays quiet.
     pub clock_rejected: bool,
+    /// 0.41.0 §3.2: declared paths whose row is invalid (`type: number`),
+    /// each with what its dependants name (the cause's code and
+    /// `file:line`). The row is installed (read as `double`) and
+    /// [`Self::faulty`], so its name resolves and nothing is judged against
+    /// its type; a `clock:` naming it is not checked.
+    pub invalid: BTreeMap<String, lute_manifest::snapshot::InvalidDecl>,
 }
 
 impl StateSchema {
@@ -115,6 +121,17 @@ impl StateSchema {
             if let Some(d) = domains.get(name).filter(|d| !d.open) {
                 self.domain_members
                     .insert(path.clone(), (name.clone(), d.members.clone()));
+            }
+        }
+    }
+
+    /// Name `file` in the site of every [`Self::invalid`] row parsed from it:
+    /// the frontmatter parse knows only the line (`"7"`), the caller the
+    /// file (`world.schema.yaml:7`).
+    pub fn place_invalid(&mut self, file: &str) {
+        for decl in self.invalid.values_mut() {
+            if let Some(line) = decl.site.as_mut().filter(|s| !s.contains(':')) {
+                *line = format!("{file}:{line}");
             }
         }
     }

@@ -1,0 +1,7 @@
+steps:
+  - advance: day
+    engine: { state: { run.ready: true } }
+    expect: { winner: morning, state: { run.day: 2, run.slot: dawn, run.greeted: 1 } }
+expect:
+  end: complete
+  state: { run.greeted: 1 }

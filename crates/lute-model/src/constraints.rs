@@ -730,6 +730,7 @@ mod tests {
             typed: TypedMeta::default(),
             env,
             def_bodies: Default::default(),
+            host_defs: Default::default(),
             doc_kind: DocKind::Scene,
             domains: Default::default(),
             occasions,

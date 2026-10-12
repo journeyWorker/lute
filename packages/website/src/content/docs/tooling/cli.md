@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
+description: Every lute subcommand — init, new, check, check-project, compile, compile-stream, expr, run, play, trace, test, lint, scenario, beats, calendar, refs, loc, context, tag, fix, lore, doctor, catalog refresh, version — with its synopsis, key flags, and exit-code contract.
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, every single-file command (`check`, `compile`, `compile-stream`, `trace`, `context`, `test`) applies the nearest `lute.project.yaml` above the file and says so on stderr (`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`); with no manifest above the file it resolves core-only (`lute.core`). Before 0.27.0 only `check` and `test` looked for the manifest, so `trace` could refuse with `E-UNDECLARED` a document `check` passed. On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
@@ -23,7 +23,7 @@ $ lute check-project <dir> [--json] [--providers <DIR>] [--engine <FILE>]
 
 Recursively `check` every `*.lute` file under `<dir>` in deterministic sorted order (0.29.0: the report prints causes first — rows at `lute.project.yaml`, then plugins, then schemas, then each document in path order, then the project-wide rows), each against its own nearest-ancestor `lute.project.yaml` root, **plus** project-wide `<quest id>` uniqueness, the connectivity passes (`E-CONN-*`, `W-QUEST-REF-UNKNOWN`, `E-STATE-MAYBE-UNAVAILABLE`), and the [relational guard analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards) (dsl 0.20.0): every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project, so a guard that can never hold is reported through its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`) and a redundant one as `W-FACT-GUARANTEED`. The project-wide beat and quest advisories run here too (dsl 0.22.0): `W-BEAT-PRIORITY-TIE` (beats on one `select: first` occasion, for the same or no target, with equal priority and `when`s not provably exclusive, so file order picks the winner), `W-BEAT-ONCE-RUN-USER` (a `once: run` beat whose `when` reads only user-tier state, so it replays every run), and `W-QUEST-HANDLER-DEAD` (an `<on event="questFailed">` on a quest that has no `fail`, no required subquest objective, and no parent quest, so it can never fail). It then compiles every document that checked clean under its project's `identity:`, so compile-stage errors fail here rather than only at `compile`: `E-DUP-VOICEKEY` (lines with different text on one `voiceKey` — since 0.22.0 the default `{prefix}.{speaker}-{code}` keeps scenes apart, so this is what a project pinning the older unprefixed `identity.voiceKey: "{speaker}-{code}"` risks) and `E-CAPABILITY-MISMATCH` (documents resolving two capability snapshots, which `compile --all` and `play` refuse). `--engine <FILE>` additionally negotiates the project's sorted `requiredSemantics` union and reports each contributing document/span with `E-CHECK-ENGINE-SEMANTICS`; it never opens playback. Exit **0** clean, **1** when any file has an error or a project-wide collision, **2** on I/O or matrix/version failure. The same `--deny <CODE>`/`--deny-warnings` promotion (see `check`) applies project-wide.
 
-Since dsl 0.24.0 `check-project` also warns `W-QUEST-NEVER-ACCEPTED` (an accept-driven quest — no `start`, a root or an `activate="accept"` child — that no `::accept` in the project names), `W-RELATION-UNREAD` (a relation asserted, seeded or derived that no condition, rule body or def reads) and `W-DEF-UNUSED` (a `@def` nothing references), each once per project at its declaration, and its `mocks/*.yaml` pass checks a mock's `bridges:` answers against the plugin calls of the document it names (`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
+Since dsl 0.24.0 `check-project` also warns `W-QUEST-NEVER-ACCEPTED` (an accept-driven quest — no `start`, a root or an `activate="accept"` child — that no `::accept` in the project names), `W-RELATION-UNREAD` (a relation asserted, seeded or derived that no condition, rule body or def reads) and `W-DEF-UNUSED` (a `@def` nothing references; a schema or plugin def declared `host: true` is read by the host and exempt), each once per project at its declaration, and its `mocks/*.yaml` pass checks a mock's `bridges:` answers against the plugin calls of the document it names (`E-TRACE-MOCK-UNDECLARED` / `E-TRACE-MOCK-TYPE`).
  
 In 0.40, when the project contains `player.bindings.yaml`, this command also
 validates the optional player bindings after compilation. It checks the
@@ -65,6 +65,10 @@ Without `--wip` the same line is `error [E-ENTRY-UNREACHABLE]` and the command e
 Since 0.34.0, project-wide commands load one `ProjectModel` per nearest manifest root; `check-project`, `scenario`, `beats`, `impact`, `calendar`, `play`, and `test` therefore share one reconciled snapshot. Analysis-derived results carry an `evidence` level (`proven`, `witnessed`, `bounded`, `heuristic`, or `unknown`). Human output adds `[bounded: <scope>]`, `[heuristic]`, or `[unknown]`; it does not suffix `proven` or `witnessed`. A bounded result means “within this scope”, never “no path exists”.
 
 Constraints declared in `lute.project.yaml` are also checked by `check-project`: only violations are diagnostics; holds and unknowns appear in the report below.
+
+Summaries count by severity (0.41.0). `lute check` ends each file with `ok: <path> (W warning(s))` or `failed: <path> (E error(s), W warning(s))`, and `check-project` with `ok: <dir> (F file(s), W project-wide warning(s))` or `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`. An `info` diagnostic is never a warning: when a run has any, the count is appended (`, I info` / `, I project-wide info`); a run without one prints exactly the line above. `hint` diagnostics are not counted, and a `--deny`-promoted diagnostic counts as an error only.
+
+A declaration that does not parse no longer cascades (0.41.0). A `type: number` — the type 0.31 removed — is `E-TYPE-NUMBER` at its `number`, naming the choice between `int` and `double` (and suggesting `int` when every value it takes is whole). The declaration stays in the environment by name: a plugin whose export holds it still loads its other entries, and what depends on it is not checked until it is fixed — one `W-DEPENDS-ON-INVALID` note (an info) per invalid declaration, at its first dependant, counts the rest, instead of an `E-CLOCK-DECL` or one `E-UNKNOWN-DIRECTIVE` per use.
 
 ## impact
 
@@ -160,7 +164,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.40.0 and the AI edit-loop
+contract; the repository's current release is 0.41.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -289,6 +293,38 @@ or performs remote/runtime effects. See the
 [streaming continuation compiler guide](/tooling/continuation-compiler/) for
 the record schema, cumulative cost, admitted body surface, permission freezing,
 and consumer cursor/state rules.
+
+## expr
+
+```console
+$ lute expr <CEL> [--project <DIR>] [--json]
+```
+
+Lower a host condition to an IR `exprNode` against a project, so a game can evaluate it over a run state with the runtime's `evaluate` query. The runtime ships no CEL parser: a host lowers its conditions at build time. `--project` defaults to the current directory, which must hold a `lute.project.yaml` (else exit **2**).
+
+The condition is checked as the `when:` of a scene at the project root that imports every schema file the project's documents import, under the project's plugin set, with the [project index `defs`](/tooling/runtime-contract/#projectindexjson-in-041) — parameterised defs included — as its def table: the vocabulary the bundle carries. Its expected type is `bool`. Diagnostics are the checker's own codes (`E-CEL-PARSE`, `E-CEL-PROFILE`, `E-CEL-TYPE`, `E-UNDECLARED`, `E-UNDECLARED-REF`, `E-REF-ARITY`, `E-FACT-DOMAIN`, …) at `<expr>:<line>:<column>`, positions in the expression text. A condition that checks but does not lower is `E-CEL-PROFILE`.
+
+A project that does not resolve — a manifest or plugin error, or a schema import some document names that does not resolve (`E-USES-NOT-FOUND`) — is an error with no position (`<expr>: error [CODE] …`); the expression is not checked.
+
+On success stdout carries one line, the `exprNode` as JSON, and warnings go to stderr; exit **0**. On an error the diagnostics go to stderr, stdout stays empty, and the exit is **1**. In the `seven-days` example game:
+
+```console
+$ lute expr "run.day >= 3"
+{"op":">=","l":{"path":"run.day"},"r":{"int":3}}
+```
+
+<!-- lute-diagnostics -->
+```console
+$ lute expr "@at(3)"
+<expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
+```
+
+`--json` prints exactly one object. On success it carries the fields a compiled condition (`celSlot`) carries — `cel`, the `@def`-expanded text; `authored`, the input when expansion changed it (omitted otherwise); `expr` — and `diagnostics`, the `lute check --json` diagnostic objects (warnings only). On an error it is `{"ok": false, "diagnostics": [...]}`:
+
+```console
+$ lute expr "@at(3, 'night')" --json
+{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+```
 
 ## trace
 
@@ -451,6 +487,8 @@ The 0.37 surface rewrites, each of which `lute check` reports with the new spell
 | `<match on="…">` | `<match subject="…">` |
 | `<choice label="…">` | `<choice text="…">` |
 | `@speaker{id="x"}: …` | `::label{name="x"}` on the line before, and the line without `id=` |
+
+A renamed domain is renamed in project, schema and plugin YAML too (0.41.0): a key directly under a top-level `enums:` or `entities:` block and the scalar of every `domain:` type reference — `musicAction` → `musicPlayback` (renamed in 0.37.0); each rename counts as one fix. A mapping that already declares the new name keeps the old key, and `lute fix` says so on stderr: `` lute fix: <file>:<line>: kept `musicAction:` — `musicPlayback:` is already declared ``. Until then, an `E-DOMAIN-UNKNOWN` for the new name ends with `` — this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix` ``.
 
 An author key in snake case becomes lowerCamelCase only where the rewrite is unambiguous. Inline text modifiers are never invented; an existing one is kept byte for byte. The earlier migrations still apply: `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`), and 0.31 CEL fact-query and presence calls to their standard-CEL forms.
 
@@ -721,7 +759,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.40.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.41.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 

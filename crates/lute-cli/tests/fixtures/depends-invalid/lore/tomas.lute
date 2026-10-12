@@ -1,0 +1,16 @@
+---
+kind: lore
+id: lore.tomas
+title: Tomas
+---
+
+// Entry beats: lore that answers `talk` at npc.tomas. The first applies its
+// ::assert on its first read only (`entry.tomasOil.read`).
+<entry id="tomasOil" on="talk" target="npc.tomas" category="bark" title="Tomas and the oil" priority="10" when="quest.lampOut.state == 'active'">
+  @tomas: Oil? Top shelf. Tell Mara it's the wick, not the oil.
+  ::assert{ knows(lamp) }
+</entry>
+
+<entry id="tomasBusy" on="talk" target="npc.tomas" category="bark" title="Tomas, busy">
+  @tomas: Busy.
+</entry>

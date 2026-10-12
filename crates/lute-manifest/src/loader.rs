@@ -56,6 +56,11 @@ pub struct LoadedPlugin {
     /// `path:line:column` of its FIRST declaration — so an error assembly
     /// raises about ONE declaration points at its line ([`LoadedPlugin::site`]).
     pub sites: Sites,
+    /// 0.41.0 §3.2: declarations dropped from the lists above because they
+    /// are invalid (a `type: number`, or a reference to such a
+    /// declaration of this package), by `(kind, name)` — kept by name so a
+    /// use is attributed to them rather than reported unknown.
+    pub invalid: Vec<((&'static str, String), crate::snapshot::InvalidDecl)>,
 }
 
 /// [`LoadedPlugin::sites`]: kind → name → `path:line:column`.
@@ -192,6 +197,15 @@ pub enum LoadError {
         at: At,
         first: Option<String>,
     },
+    /// 0.41.0 §3.2: a declaration typed `number`. The package still loads;
+    /// `entry` — the export entry the type sits in, as `(kind, name)` — is
+    /// kept by name as invalid ([`LoadedPlugin::invalid`]).
+    TypeNumber {
+        file: String,
+        at: At,
+        msg: String,
+        entry: Option<(&'static str, String)>,
+    },
     MissingExportDir {
         export: String,
         path: String,
@@ -240,6 +254,7 @@ impl LoadError {
             LoadError::Parse { .. } => "E-PLUGIN-PARSE",
             LoadError::Key { .. } => "E-PLUGIN-KEY",
             LoadError::DuplicateId { .. } => "E-PLUGIN-DUP-ID",
+            LoadError::TypeNumber { .. } => crate::types::E_TYPE_NUMBER,
             LoadError::MissingExportDir { .. } => "E-PLUGIN-MISSING-EXPORT",
             LoadError::Io { .. } => "E-PLUGIN-IO",
             LoadError::UnknownExport { .. } => "E-PLUGIN-UNKNOWN-EXPORT",
@@ -269,7 +284,8 @@ impl std::fmt::Display for LoadError {
         match self {
             LoadError::Manifest { file, at, msg }
             | LoadError::Parse { file, at, msg }
-            | LoadError::Key { file, at, msg } => {
+            | LoadError::Key { file, at, msg }
+            | LoadError::TypeNumber { file, at, msg, .. } => {
                 place(f, file, *at)?;
                 f.write_str(msg)
             }
@@ -362,6 +378,7 @@ fn load_package(
         lints: Vec::new(),
         cast: Vec::new(),
         sites: BTreeMap::new(),
+        invalid: Vec::new(),
     };
 
     // Read each declared export. A relative export path resolves under `dir`.
@@ -688,14 +705,162 @@ fn load_package(
         }
     }
 
-    if errs
-        .iter()
-        .all(|e| matches!(e, LoadError::DuplicateId { .. }))
-    {
+    drop_invalid(dir, &mut out, &errs);
+    if errs.iter().all(|e| {
+        matches!(
+            e,
+            LoadError::DuplicateId { .. } | LoadError::TypeNumber { .. }
+        )
+    }) {
         Ok((out, errs))
     } else {
         Err((Some(out.manifest.id), errs))
     }
+}
+
+/// 0.41.0 §3.2: move each export entry a `type: number` sits in — and each
+/// entry of this package that references one (a directive calling an
+/// invalid bridge or declaring an invalid shape, a template of an invalid
+/// shape) — out of the loaded lists into [`LoadedPlugin::invalid`], so the
+/// package's valid entries still assemble.
+fn drop_invalid(dir: &Path, out: &mut LoadedPlugin, errs: &[LoadError]) {
+    use crate::snapshot::InvalidDecl;
+    let base = dir.parent().unwrap_or(dir);
+    for e in errs {
+        let LoadError::TypeNumber {
+            entry: Some((kind, name)),
+            ..
+        } = e
+        else {
+            continue;
+        };
+        if out.invalid.iter().any(|((k, n), _)| k == kind && n == name) {
+            continue;
+        }
+        out.invalid.push((
+            (kind, name.clone()),
+            InvalidDecl {
+                cause: name.clone(),
+                code: crate::types::E_TYPE_NUMBER.to_string(),
+                site: e.site_in(base),
+                seen: Vec::new(),
+            },
+        ));
+    }
+    if out.invalid.is_empty() {
+        return;
+    }
+    let find = |invalid: &[((&'static str, String), InvalidDecl)], kind: &str, name: &str| {
+        invalid
+            .iter()
+            .find(|((k, n), _)| *k == kind && n == name)
+            .map(|(_, d)| d.clone())
+    };
+    let mut dependants = Vec::new();
+    for d in &out.directives {
+        if find(&out.invalid, "directive", &d.name).is_some() {
+            continue;
+        }
+        let bridge = d.bridge.as_ref().and_then(|b| {
+            find(&out.invalid, "bridge", &format!("{}.{}", b.service, b.operation))
+        });
+        let shape = || {
+            d.state
+                .iter()
+                .flat_map(|s| &s.declares)
+                .find_map(|slot| find(&out.invalid, "shape", &slot.shape))
+        };
+        if let Some(cause) = bridge.or_else(shape) {
+            dependants.push((("directive", d.name.clone()), cause));
+        }
+    }
+    for t in &out.state_templates {
+        if let Some(cause) = find(&out.invalid, "shape", &t.shape) {
+            dependants.push((("template", t.name.clone()), cause));
+        }
+    }
+    out.invalid.extend(dependants);
+    let invalid = &out.invalid;
+    let gone = |kind: &str, name: &str| invalid.iter().any(|((k, n), _)| *k == kind && n == name);
+    out.directives.retain(|d| !gone("directive", &d.name));
+    out.state_shapes.retain(|s| !gone("shape", &s.name));
+    out.state_templates.retain(|t| !gone("template", &t.name));
+    out.bridge
+        .retain(|b| !gone("bridge", &format!("{}.{}", b.service, b.operation)));
+    out.defs.retain(|d| !gone("def", &d.name));
+    out.occasions.retain(|o| !gone("occasion", &o.name));
+    out.stamp_attrs.retain(|a| !gone("stampAttr", &a.name));
+    out.reward_kinds.retain(|r| !gone("rewardKind", &r.name));
+    out.asset_kinds.retain(|a| !gone("assetKind", &a.kind));
+    out.frontmatter.retain(|key, _| !gone("frontmatter", key));
+}
+
+/// 0.41.0 §3.2: report every `type: number` of the export file `text` as
+/// [`LoadError::TypeNumber`] and return the text with each one read as
+/// `double` (same length, so every other error keeps its position), so the
+/// file's other entries still load.
+fn patch_numbers(file: &Path, text: String, errs: &mut Vec<LoadError>) -> String {
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        return text;
+    };
+    let sites = crate::types::number_type_sites(&value);
+    if sites.is_empty() {
+        return text;
+    }
+    let mut patched = text.clone();
+    for site in &sites {
+        let range = site.range_in(&text);
+        if let Some(r) = &range {
+            patched.replace_range(r.clone(), "double");
+        }
+        errs.push(LoadError::TypeNumber {
+            file: file.display().to_string(),
+            at: range.map(|r| crate::yaml_text::line_col(&text, r.start)),
+            msg: crate::types::number_type_message(site.default.as_slice()),
+            entry: export_entry(&value, &site.path),
+        });
+    }
+    patched
+}
+
+/// The export entry `path` lies in, as the `(kind, name)` the package's
+/// [`Sites`] use: `directives[0]` → `("directive", <its name>)`,
+/// `occasions.dive` → `("occasion", "dive")`.
+fn export_entry(
+    value: &serde_yaml::Value,
+    path: &[crate::types::YamlKey],
+) -> Option<(&'static str, String)> {
+    use crate::types::YamlKey;
+    let [YamlKey::Key(section), entry, ..] = path else {
+        return None;
+    };
+    let kind = match section.as_str() {
+        "directives" => "directive",
+        "stateShapes" => "shape",
+        "stateTemplates" => "template",
+        "bridgeCapabilities" => "bridge",
+        "defs" => "def",
+        "occasions" => "occasion",
+        "stampAttrs" => "stampAttr",
+        "rewardKinds" => "rewardKind",
+        "assetKinds" => "assetKind",
+        "frontmatter" => "frontmatter",
+        _ => return None,
+    };
+    let name = match entry {
+        YamlKey::Key(name) => name.clone(),
+        YamlKey::Item(i) => {
+            let e = value.get(section.as_str())?.get(*i)?;
+            let field = |f: &str| e.get(f).and_then(serde_yaml::Value::as_str);
+            match kind {
+                "bridge" => format!("{}.{}", field("service")?, field("operation")?),
+                "assetKind" => field("kind")?.to_string(),
+                "frontmatter" => field("key")?.to_string(),
+                _ => field("name")?.to_string(),
+            }
+        }
+    };
+    Some((kind, name))
 }
 
 /// The `Type` variants a segment position actually enforces
@@ -1020,11 +1185,22 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
             }
             Err((id, mut e)) => {
                 if let Some(id) = id {
-                    let codes = reg.failed.entry(id).or_default();
+                    let codes = reg.failed.entry(id.clone()).or_default();
                     for err in &e {
                         if !codes.contains(&err.code()) {
                             codes.push(err.code());
                         }
+                    }
+                    if let Some(first) = e.first() {
+                        reg.failed_causes.insert(
+                            id.clone(),
+                            crate::snapshot::InvalidDecl {
+                                cause: id,
+                                code: first.code().to_string(),
+                                site: first.site_in(dir),
+                                seen: Vec::new(),
+                            },
+                        );
                     }
                 }
                 errs.append(&mut e);
@@ -1032,6 +1208,41 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
         }
     }
     (reg, errs)
+}
+
+/// `file:line` (or `file`) with `file` relative to `base`, `/`-separated.
+fn rel_site(base: &Path, file: &str, at: At) -> String {
+    let rel = Path::new(file).strip_prefix(base).map_or_else(
+        |_| file.to_string(),
+        |rel| {
+            rel.components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/")
+        },
+    );
+    match at {
+        Some((line, _)) => format!("{rel}:{line}"),
+        None => rel,
+    }
+}
+
+impl LoadError {
+    /// Where this error sits, as [`rel_site`] relative to `base`.
+    pub fn site_in(&self, base: &Path) -> Option<String> {
+        match self {
+            LoadError::Manifest { file, at, .. }
+            | LoadError::Parse { file, at, .. }
+            | LoadError::Key { file, at, .. }
+            | LoadError::TypeNumber { file, at, .. }
+            | LoadError::DuplicateId { file, at, .. }
+            | LoadError::UnknownExport { file, at, .. } => Some(rel_site(base, file, *at)),
+            LoadError::MissingExportDir { path, .. } | LoadError::Io { path, .. } => {
+                Some(rel_site(base, path, None))
+            }
+            LoadError::AssetSegmentType { file, .. } => Some(rel_site(base, file, None)),
+        }
+    }
 }
 
 /// Read `plugin.yaml` at `path`: every key it holds is one it takes, its
@@ -1150,6 +1361,23 @@ fn read_manifest(
     if !errs.is_empty() {
         return Err((id, errs));
     }
+    // 0.41.0 §3.2: an option typed `number` is this manifest's own error,
+    // and a package whose `plugin.yaml` fails does not load.
+    let numbers = crate::types::number_type_sites(&doc);
+    if !numbers.is_empty() {
+        let errs = numbers
+            .iter()
+            .map(|site| LoadError::TypeNumber {
+                file: file.clone(),
+                at: site
+                    .range_in(&text)
+                    .map(|r| crate::yaml_text::line_col(&text, r.start)),
+                msg: crate::types::number_type_message(site.default.as_slice()),
+                entry: None,
+            })
+            .collect();
+        return Err((id, errs));
+    }
     match serde_yaml::from_str::<PluginManifest>(&text) {
         Ok(m) => Ok((m, text)),
         Err(e) => {
@@ -1178,6 +1406,7 @@ where
                 continue;
             }
         };
+        let s = patch_numbers(&file, s, errs);
         match serde_yaml::from_str::<F>(&s) {
             Ok(f) => {
                 let src = Source {

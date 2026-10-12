@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { withHarness, record, flush } from "./support.js"
 
 const cases = sessionCases()
-const noFlow = { bindingsVersion: "0.40" as const, canvas: { width: 1920, height: 1080 } }
+const noFlow = { bindingsVersion: "0.41" as const, canvas: { width: 1920, height: 1080 } }
 const timed = () => compileBundle(join(sessionRoot, "timed-choice", "project"))
 const drain = <A extends { readonly action: (action: { readonly type: "advance" }) => Effect.Effect<void>; readonly view: Effect.Effect<{ readonly story: string }> }>(h: A) => Effect.gen(function* () {
   for (let i = 0; i < 100; i++) {
@@ -33,7 +33,7 @@ describe("Director", () => {
       return value.kind === "line" ? [Schema.decodeUnknownSync(Schema.String)(value.lineId)] : []
     }))
     yield* withHarness(bundle, { bindings: noFlow, seed: initial, choices,
-      host: { idle: () => Effect.sync(() => pending.shift()), bridge: bridge === undefined ? {} : { minigame: () => Effect.succeed(bridge.fields), check: () => Effect.succeed(bridge.fields) } }
+      host: { idle: () => Effect.sync(() => pending.shift()), bridge: bridge === undefined ? {} : { minigame: () => Effect.succeed({ fields: bridge.fields }), check: () => Effect.succeed({ fields: bridge.fields }) } }
     }, (h) => Effect.gen(function* () {
       yield* h.action({ type: "newGame" })
       for (let i = 0; i < 200; i++) {

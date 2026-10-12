@@ -1,11 +1,13 @@
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import * as Runtime from "@lute-lang/runtime"
 import type { Bindings } from "../bindings/schema.js"
-import type { Cue, CueContext, CueFactoryShape, CueTiming, Event, Output, Stage, ChoiceAwait } from "../model.js"
-import type { AudioPlay, ChoiceView, EffectSpec, LineView, Segment, StageCue } from "../ports/index.js"
+import type { BridgeAwait, Cue, CueContext, CueFactoryShape, CueTiming, Event, Output, Stage, ChoiceAwait } from "../model.js"
+import type { AudioPlay, ChoiceView, EffectSpec, LineView, PlayerHost, PluginCall, Segment, StageCue } from "../ports/index.js"
 
 type Bundle = Runtime.Bundle.Bundle
 type JsonRecord = { readonly [key: string]: unknown }
+/** The bundle index `cast`: cast id → display name. */
+type Cast = Readonly<Record<string, string>>
 
 const decodeCommand = Schema.decodeUnknownOption(Runtime.Ir.Command)
 const isRecord = (value: unknown): value is JsonRecord => typeof value === "object" && value !== null && !Array.isArray(value)
@@ -57,29 +59,43 @@ const timingOf = (value: unknown, kind: string): CueTiming => {
   }
 }
 
-const filesForAsset = (bindings: Bindings, assetId: unknown): ReadonlyArray<string> => {
-  if (!string(assetId) || !bindings.assets) return []
-  const file = bindings.assets[assetId]
-  return file === undefined ? [] : [file]
+/**
+ * The bound file of an asset id: its `assets` entry, or the id itself as a
+ * file relative to `assetsBase`. Cues and restored stages name bound files
+ * the same way; the host's `AssetLoader` / `AudioPort` resolve them against
+ * `assetsBase` (`BindingsLoader.resolveFile`).
+ */
+export const assetFile = (bindings: Bindings, assetId: string): string => bindings.assets?.[assetId] ?? assetId
+
+const filesForAsset = (bindings: Bindings, assetId: unknown): ReadonlyArray<string> =>
+  string(assetId) ? [assetFile(bindings, assetId)] : []
+
+/** The bound file of a voice key (`voice.pattern`), when voice is bound. */
+export const voiceFile = (bindings: Bindings, voiceKey: string): string | undefined => {
+  const pattern = bindings.voice?.pattern
+  return pattern && voiceKey ? pattern.replaceAll("{voiceKey}", voiceKey) : undefined
 }
 
-/** Resolve every bound file referenced by a restored stage. */
+/** A music record's or stage's file: `assetId` (see {@link assetFile}), else the bound `mood`. */
+const musicFile = (bindings: Bindings, value: { readonly assetId?: unknown; readonly mood?: unknown }): string | undefined =>
+  string(value.assetId) ? assetFile(bindings, value.assetId) : string(value.mood) ? bindings.music?.moods?.[value.mood] : undefined
+
+/**
+ * Every bound file a restored stage needs, resolved exactly as the cues and
+ * {@link stageMusic} resolve them (ensured before `Presenter.restore` and the
+ * music restart).
+ */
 export const stageFiles = (bindings: Bindings, stage: Stage): ReadonlyArray<string> => {
   const files: string[] = []
-  const background = fileForBackground(bindings, stage.bg ?? {})
+  const background = backgroundFile(bindings, stage.bg ?? {})
   if (background !== undefined) files.push(background)
   for (const actor of stage.actors) {
     const file = spriteFile(bindings, actor)
     if (file !== undefined) files.push(file)
   }
-  if (stage.cg?.assetId !== undefined) files.push(...filesForAsset(bindings, stage.cg.assetId))
-  if (stage.video?.assetId !== undefined) files.push(...filesForAsset(bindings, stage.video.assetId))
-  const music = stage.music
-  if (music?.assetId !== undefined && music.assetId !== null) files.push(...filesForAsset(bindings, music.assetId))
-  else if (music?.mood !== undefined && music.mood !== null) {
-    const file = bindings.music?.moods?.[music.mood]
-    if (file !== undefined) files.push(file)
-  }
+  files.push(...filesForAsset(bindings, stage.cg?.assetId), ...filesForAsset(bindings, stage.video?.assetId))
+  const music = stageMusic(bindings, stage)
+  if (music !== undefined) files.push(music.file)
   return files
 }
 
@@ -89,7 +105,7 @@ const optionalStage = <T extends StageCue>(cue: T, duration: number | undefined,
   ...(transition === undefined ? {} : { transition })
 })
 
-const lineView = (value: JsonRecord, locale: string, readLines: ReadonlySet<string>, castNames: ReadonlyMap<string, string>): LineView => {
+const lineView = (value: JsonRecord, locale: string, readLines: ReadonlySet<string>, cast: Cast): LineView => {
   const lineId = string(value.lineId) ? value.lineId : ""
   const speaker = string(value.speaker) ? value.speaker : "narrator"
   const role = string(value.role) ? value.role : "narration"
@@ -115,76 +131,40 @@ const lineView = (value: JsonRecord, locale: string, readLines: ReadonlySet<stri
     voiceKey: string(value.voiceKey) ? value.voiceKey : "",
     role,
     speaker,
-    speakerName: role === "narration" || speaker === "narrator" ? "" : (castNames.get(speaker) ?? speaker),
+    speakerName: speakerName(cast, role, speaker),
     segments,
-    read: readLines.has(lineId)
+    read: readLines.has(lineId),
+    ...(string(value.emotion) ? { emotion: value.emotion } : {}),
+    ...(string(value.variant) || number(value.variant) ? { variant: String(value.variant) } : {})
   }
 }
 
-/** Cast id → display name, from the compiled artifacts' cast tables. */
-export const castNamesFrom = (artifacts: Readonly<Record<string, unknown>>): Map<string, string> => {
-  const names = new Map<string, string>()
-  const visit = (value: unknown): void => {
-    if (!isRecord(value)) return
-    const cast = value.cast
-    if (Array.isArray(cast)) {
-      for (const member of cast) if (isRecord(member) && string(member.id) && string(member.name)) names.set(member.id, member.name)
-    } else if (isRecord(cast)) {
-      for (const [id, member] of Object.entries(cast)) if (isRecord(member) && string(member.name)) names.set(id, member.name)
-    }
-    for (const child of Object.values(value)) if (isRecord(child) || Array.isArray(child)) visit(child)
-  }
-  for (const artifact of Object.values(artifacts)) visit(artifact)
-  return names
-}
+/** A line's display name: the index `cast` name of its speaker, empty for narration. */
+export const speakerName = (cast: Cast, role: string, speaker: string): string =>
+  role === "narration" || speaker === "narrator" ? "" : (cast[speaker] ?? speaker)
 
+/**
+ * Document → position → IR command. A runtime record's `document` is the
+ * source document path (`game.lute`), not the artifact file
+ * (`game.lute.json`): the index `documents` rows map both the path and the
+ * document key to the artifact.
+ */
 const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> => {
   const result = new Map<string, Map<string, JsonRecord>>()
-  const index = isRecord(bundle.index) ? bundle.index : undefined
-  const documents = Array.isArray(index?.documents) ? index.documents : []
-  const artifactKeys = new Map<string, Set<string>>()
-  const addKey = (artifact: string, key: unknown): void => {
-    if (!string(key) || key.length === 0) return
-    const keys = artifactKeys.get(artifact) ?? new Set<string>()
-    keys.add(key)
-    artifactKeys.set(artifact, keys)
-  }
-  // Runtime record.document is the source document path (for example,
-  // `game.lute`), not the compiled artifact filename (`game.lute.json`).
-  // Keep the indexed path/key aliases and the artifact-derived aliases for
-  // synthetic bundles that do not carry an index.
-  for (const document of documents) {
-    if (!isRecord(document) || !string(document.artifact)) continue
-    addKey(document.artifact, document.path)
-    addKey(document.artifact, document.key)
-  }
-  const withoutJson = (value: string): string => value.endsWith(".json") ? value.slice(0, -5) : value
-  const basename = (value: string): string => {
-    const normalized = value.replaceAll("\\", "/")
-    const slash = normalized.lastIndexOf("/")
-    return slash < 0 ? normalized : normalized.slice(slash + 1)
-  }
-  for (const [artifactPath, artifact] of Object.entries(bundle.artifacts)) {
-    // Store the set before adding aliases so aliases are not lost when the
-    // artifact was absent from the bundle index.
-    const keys = artifactKeys.get(artifactPath) ?? new Set<string>()
-    artifactKeys.set(artifactPath, keys)
-    addKey(artifactPath, field(record(artifact, "meta"), "id"))
-    addKey(artifactPath, field(artifact, "document"))
-    addKey(artifactPath, withoutJson(artifactPath))
-    addKey(artifactPath, withoutJson(basename(artifactPath)))
-    for (const documentKey of keys) {
-      const commands = result.get(documentKey) ?? new Map<string, JsonRecord>()
-      const visit = (value: unknown): void => {
-        if (isRecord(value)) {
-          const position = positionOf(value)
-          if (position && kindOf(value)) commands.set(position, value)
-          for (const child of Object.values(value)) visit(child)
-        } else if (Array.isArray(value)) for (const child of value) visit(child)
-      }
-      visit(artifact)
-      result.set(documentKey, commands)
+  for (const document of bundle.index.documents) {
+    const artifact = bundle.artifacts[document.artifact]
+    if (artifact === undefined) continue
+    const commands = new Map<string, JsonRecord>()
+    const visit = (value: unknown): void => {
+      if (isRecord(value)) {
+        const position = positionOf(value)
+        if (position && kindOf(value)) commands.set(position, value)
+        for (const child of Object.values(value)) visit(child)
+      } else if (Array.isArray(value)) for (const child of value) visit(child)
     }
+    visit(artifact)
+    result.set(document.path, commands)
+    result.set(document.key, commands)
   }
   return result
 }
@@ -206,11 +186,13 @@ const cueBase = (kind: Cue["kind"], timing: CueTiming, stage: boolean, files: Re
   kind, timing, stage, files, line, execute, complete, describe
 })
 
-const fileForBackground = (bindings: Bindings, value: JsonRecord): string | undefined => {
+/** A background's file: the bound location (and time), else its `assetId` (see {@link assetFile}). */
+const backgroundFile = (bindings: Bindings, value: JsonRecord): string | undefined => {
   const location = string(value.location) ? value.location : undefined
   const time = string(value.time) ? value.time : undefined
   const background = location && bindings.backgrounds ? bindings.backgrounds[location] : undefined
-  return background === undefined ? undefined : time && background.times?.[time] ? background.times[time] : background.image
+  if (background !== undefined) return time && background.times?.[time] ? background.times[time] : background.image
+  return string(value.assetId) ? assetFile(bindings, value.assetId) : undefined
 }
 
 const spriteFile = (bindings: Bindings, value: JsonRecord): string | undefined => {
@@ -221,19 +203,49 @@ const spriteFile = (bindings: Bindings, value: JsonRecord): string | undefined =
   return string(value.emotion) && character.sprite.emotions?.[value.emotion] ? character.sprite.emotions[value.emotion] : character.sprite.default
 }
 
-const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, readLines: ReadonlySet<string>, castNames: ReadonlyMap<string, string>): Cue | undefined => {
+/** A music record's or stage's `volume`: a number clamped to [0, 1]; absent or not finite → 1. */
+export const musicVolume = (value: unknown): number => {
+  const parsed = number(value) ? value : string(value) && value.trim().length > 0 ? Number(value) : Number.NaN
+  return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1
+}
+
+/**
+ * The music a restored stage plays (load, rollback, `restore`): none when the
+ * stage has no music or its `playback` is `stop` / `fadeOut` (spec 0.41.0 §7.7).
+ */
+export const stageMusic = (bindings: Bindings, stage: Stage): AudioPlay | undefined => {
+  const music = stage.music
+  if (music == null || music.playback === "stop" || music.playback === "fadeOut") return undefined
+  const file = musicFile(bindings, music)
+  return file === undefined ? undefined : { file, loop: true, volume: musicVolume(music.volume), fade: 0, restart: false }
+}
+
+/**
+ * A `vfx` type's effect (spec 0.41.0 §7.7): a catalogue binding gives its
+ * effect; a custom binding gives `{ effect: "custom", name: name ?? type }`
+ * and its `duration`; an unbound type gives `{ effect: "custom", name: type }`.
+ */
+const vfxEffect = (bindings: Bindings, type: string): { readonly effect: EffectSpec; readonly duration: number | undefined } => {
+  const binding = bindings.vfx?.[type]
+  if (binding === undefined) return { effect: { effect: "custom", name: type, params: {} }, duration: undefined }
+  if (binding.effect === "custom") {
+    return { effect: { effect: "custom", name: binding.name ?? type, params: {} }, duration: binding.duration ?? undefined }
+  }
+  return { effect: effect(binding) ?? { effect: binding.effect, params: {} }, duration: undefined }
+}
+
+const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, readLines: ReadonlySet<string>, cast: Cast): Cue | undefined => {
   const kind = kindOf(value)
   if (!kind) return undefined
   const timing = timingOf(value, kind)
   const duration = timing.duration
   switch (kind) {
     case "line": {
-      const line = lineView(value, locale, readLines, castNames)
-      const pattern = bindings.voice?.pattern
-      const voice = pattern && line.voiceKey ? pattern.replaceAll("{voiceKey}", line.voiceKey) : undefined
+      const line = lineView(value, locale, readLines, cast)
+      const voice = voiceFile(bindings, line.voiceKey)
       return cueBase("line", timing, false, voice ? [voice] : [], `line ${line.lineId}`, (ctx) => Effect.gen(function* () {
         if (voice) {
-          const played = ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0 })
+          const played = ctx.audio.play("voice", { file: voice, loop: false, volume: 1, fade: 0, restart: true })
           yield* Effect.forkDetach(ctx.voiceEnded === undefined ? played : played.pipe(Effect.ensuring(ctx.voiceEnded(line.lineId))))
         }
         yield* ctx.presenter.showLine(line, "normal")
@@ -250,8 +262,8 @@ const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, re
         transition: bindingEffect(bindings.transitions, value.transition),
         duration
       }, duration, bindingEffect(bindings.transitions, value.transition))
-      const file = fileForBackground(bindings, value)
-      return cueBase("bg", timing, true, file ? [file] : filesForAsset(bindings, value.assetId), `background ${String(value.location ?? "")}`, (ctx) => ctx.presenter.stage(bg, "normal"), (ctx) => ctx.presenter.stage(bg, "skip"))
+      const file = backgroundFile(bindings, value)
+      return cueBase("bg", timing, true, file ? [file] : [], `background ${String(value.location ?? "")}`, (ctx) => ctx.presenter.stage(bg, "normal"), (ctx) => ctx.presenter.stage(bg, "skip"))
     }
     case "actor": {
       const character = string(value.character) ? value.character : ""
@@ -262,19 +274,29 @@ const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, re
       return cueBase("actor", timing, true, file ? [file] : [], `actor ${character}`, (ctx) => ctx.presenter.stage(actor, "normal"), (ctx) => ctx.presenter.stage(actor, "skip"))
     }
     case "music": {
-      const file = string(value.assetId) && bindings.assets?.[value.assetId] ? bindings.assets[value.assetId] : string(value.mood) ? bindings.music?.moods?.[value.mood] : undefined
-      const audio: AudioPlay | undefined = file ? { file, loop: true, volume: 1, fade: duration ?? 0 } : undefined
-      return cueBase("music", timing, true, file ? [file] : filesForAsset(bindings, value.assetId), `music ${value.stop === true ? "stop" : String(value.mood ?? "")}`, (ctx) => value.stop === true ? ctx.audio.stop("music", duration ?? 0) : audio ? ctx.audio.play("music", audio) : Effect.void, (ctx) => value.stop === true ? ctx.audio.stop("music", 0) : audio ? ctx.audio.play("music", { ...audio, fade: 0 }) : Effect.void)
+      const file = musicFile(bindings, value)
+      const playback = string(value.playback) ? value.playback : undefined
+      // Spec 0.41.0 §7.7: `stop: true` / `stop` stop at once (or over `duration`),
+      // `fadeOut` over `duration ?? 1`; `start` plays from the start; anything
+      // else changes to the file (the file already playing only changes volume).
+      const stopFade = value.stop === true || playback === "stop" ? duration ?? 0 : playback === "fadeOut" ? duration ?? 1 : undefined
+      const audio: AudioPlay | undefined = file ? { file, loop: true, volume: musicVolume(value.volume), fade: duration ?? 0, restart: playback === "start" } : undefined
+      const describe = `music ${stopFade !== undefined ? "stop" : playback ?? String(value.mood ?? value.assetId ?? "")}`
+      return cueBase("music", timing, true, stopFade === undefined && file ? [file] : [], describe,
+        (ctx) => stopFade !== undefined ? ctx.audio.stop("music", stopFade) : audio ? ctx.audio.play("music", audio) : Effect.void,
+        (ctx) => stopFade !== undefined ? ctx.audio.stop("music", 0) : audio ? ctx.audio.play("music", { ...audio, fade: 0 }) : Effect.void)
     }
     case "sfx": {
-      const file = string(value.assetId) && bindings.assets?.[value.assetId] ? bindings.assets[value.assetId] : string(value.sound) ? bindings.sfx?.[value.sound] : undefined
-      const audio: AudioPlay | undefined = file ? { file, loop: false, volume: 1, fade: 0 } : undefined
+      const file = string(value.assetId) ? assetFile(bindings, value.assetId) : string(value.sound) ? bindings.sfx?.[value.sound] : undefined
+      const audio: AudioPlay | undefined = file ? { file, loop: false, volume: 1, fade: 0, restart: true } : undefined
       return cueBase("sfx", timing, false, file ? [file] : [], `sfx ${String(value.sound ?? "")}`, (ctx) => audio ? ctx.audio.play("sfx", audio) : Effect.void, noop)
     }
     case "vfx": {
-      const vfx = bindingEffect(bindings.vfx, value.type) ?? { effect: String(value.transition ?? "none"), params: {} }
-      const stage: StageCue = optionalStage({ _tag: "Vfx" as const, effect: vfx, duration }, duration, undefined)
-      return cueBase("vfx", timing, false, [], `vfx ${String(value.type)}`, (ctx) => ctx.presenter.stage(stage, "normal"), (ctx) => ctx.presenter.stage(stage, "skip"))
+      const type = string(value.type) ? value.type : ""
+      const { effect: vfx, duration: bound } = vfxEffect(bindings, type)
+      const vfxDuration = duration ?? bound
+      const stage: StageCue = optionalStage({ _tag: "Vfx" as const, effect: vfx, duration: vfxDuration }, vfxDuration, undefined)
+      return cueBase("vfx", timing, false, [], `vfx ${type}`, (ctx) => ctx.presenter.stage(stage, "normal"), (ctx) => ctx.presenter.stage(stage, "skip"))
     }
     case "camera": {
       const camera: StageCue = optionalStage({ _tag: "Camera" as const, focus: string(value.focus) ? value.focus : undefined, framing: string(value.framing) ? value.framing : undefined, move: bindingEffect(bindings.cameraMove, value.move), transition: bindingEffect(bindings.transitions, value.transition), duration }, duration, undefined)
@@ -310,9 +332,33 @@ const makeEventCue = (event: Exclude<Event, { readonly type: "record" }>): Cue =
   return cueBase("clock", timingOf({}, "clock"), false, [], "clock", noop, noop)
 }
 
-const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFactoryShape => {
+const decodeAttrs = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))
+
+/**
+ * A `plugin` record whose tag has a host `plugin` handler: a waiting cue that
+ * runs the handler at the record's place, in skip mode too (a game action is
+ * not presentation). Spec 0.41.0 §7.6.
+ */
+const pluginCue = (
+  handler: (call: PluginCall) => Effect.Effect<void>,
+  runtimeRecord: JsonRecord,
+  command: JsonRecord,
+  document: string,
+  position: string
+): Cue => {
+  const tag = string(runtimeRecord.tag) ? runtimeRecord.tag : String(command.tag)
+  const attrs: BridgeAwait["attrs"] = Option.getOrElse(decodeAttrs(runtimeRecord.attrs), () => ({}))
+  const call: PluginCall = { tag, attrs, document, position }
+  const run = (_ctx: CueContext): Effect.Effect<void> => handler(call)
+  return cueBase("plugin", { ...timingOf(command, "plugin"), wait: true }, false, [], `plugin ${tag}`, run, run)
+}
+
+const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
+  const { bundle, bindings } = options
+  const locale = options.locale ?? "en"
   const commands = commandIndexFrom(bundle)
-  const castNames = castNamesFrom(bundle.artifacts)
+  const cast: Cast = bundle.index.cast ?? {}
+  const plugins = options.plugin ?? {}
   const choiceView = (await_: ChoiceAwait, selectedLocale = locale): ChoiceView => {
     const source = commands.get(await_.menu.document)?.get(await_.menu.position)
     const authoredOptions = Array.isArray(source?.options) ? source.options : []
@@ -367,7 +413,13 @@ const makeFactory = (bundle: Bundle, bindings: Bindings, locale: string): CueFac
         // not command fields and must not overwrite the command.
         const decoded = decodeRecord(source)
         const command = decoded.kind === "line" ? { ...decoded, ...lineRuntimeFields(runtimeRecord) } : decoded
-        const cue = makeRecordCue(command, bindings, locale, readLines, castNames)
+        // Only the `plugin` record itself is a hook — not the effect records
+        // (`set` … `effectOf`) that share its position — and never a call the
+        // host answered through `awaitBridge`.
+        const handler = runtimeRecord.kind === "plugin" && command.kind === "plugin" && !("answered" in runtimeRecord) && string(command.tag) ? plugins[command.tag] : undefined
+        const cue = handler !== undefined
+          ? pluginCue(handler, runtimeRecord, command, event.document, position)
+          : makeRecordCue(command, bindings, locale, readLines, cast)
         if (cue === undefined) return yield* Effect.die(new Error(`unknown runtime record kind: ${String(command.kind)}`))
         cues.push(cue)
       }
@@ -382,10 +434,16 @@ export interface CueFactoryOptions {
   readonly bundle: Bundle
   readonly bindings: Bindings
   readonly locale?: string
+  /** Host `plugin` handlers: their records become waiting cues (spec 0.41.0 §7.6). */
+  readonly plugin?: PlayerHost["plugin"]
 }
 
-/** Installs a cue factory bound to a compiled bundle and player bindings. */
-export const layer = (options: CueFactoryOptions): Layer.Layer<CueFactory> => Layer.succeed(CueFactory, makeFactory(options.bundle, options.bindings, options.locale ?? "en"))
+/**
+ * Installs a cue factory bound to a compiled bundle and player bindings.
+ * `fromOutput` returns exactly one cue per output event, in event order
+ * (normative: a host MAY wrap the factory relying on it).
+ */
+export const layer = (options: CueFactoryOptions): Layer.Layer<CueFactory> => Layer.succeed(CueFactory, makeFactory(options))
 
-/** Creates a cue factory value without installing an Effect layer. */
-export const make = (options: CueFactoryOptions): CueFactoryShape => makeFactory(options.bundle, options.bindings, options.locale ?? "en")
+/** Creates a cue factory value without installing an Effect layer (one cue per output event, in order). */
+export const make = (options: CueFactoryOptions): CueFactoryShape => makeFactory(options)

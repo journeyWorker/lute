@@ -212,18 +212,17 @@ pub fn walk_clock<F: super::WalkDriver>(
     (Vec::new(), None)
 }
 
-/// dsl 0.24.0 §1: one `advance:` — write the clock's day/slot paths `by`
-/// slots (or to the next day's first slot) forward, apply the step's
-/// `engine:` writes where the clock arrives, settle every quest (a `by`
-/// deadline the new time passes fails here), then raise the clock's
-/// `raise.slot` occasion, exactly as an `occasion:` step raises it. With
-/// `raise.dayEnd` / `raise.dayStart`, every midnight the advance crosses is
-/// a stop of its own, before the `engine:` writes (ember R3: that evening's
-/// `dayEnd` still reads the day it closes): `dayEnd` is raised at the day's
-/// last slot (`advance: <n>` walks there — it never skips the close of a
-/// day; `advance: day` closes the day where the clock stands), then the
-/// clock crosses to the next day's first slot and `dayStart` is raised
-/// there; each move settles the quests first.
+/// dsl 0.24.0 §1, 0.41.0 §5.4: one `advance:` — apply the step's `engine:`
+/// writes and settle every quest (the game over then: the clock stays),
+/// then write the clock's day/slot paths `by` slots (or to the next day's
+/// first slot) forward, settle every quest (a `by` deadline the new time
+/// passes fails here), then raise the clock's `raise.slot` occasion,
+/// exactly as an `occasion:` step raises it. With `raise.dayEnd` /
+/// `raise.dayStart`, every midnight the advance crosses is a stop of its
+/// own: `dayEnd` is raised at the day's last slot (`advance: <n>` walks
+/// there — it never skips the close of a day; `advance: day` closes the day
+/// where the clock stands), then the clock crosses to the next day's first
+/// slot and `dayStart` is raised there; each move settles the quests first.
 #[allow(clippy::too_many_arguments)]
 pub fn run_advance<F: super::WalkDriver>(
     p: &ExecProject,
@@ -355,6 +354,37 @@ pub fn run_advance<F: super::WalkDriver>(
         );
     }
     let mut writes = Vec::new();
+    let mut settled = Vec::new();
+    // dsl 0.41.0 §5.4: the step's writes land before the clock moves —
+    // their records, then the settle, as `hostWrite`'s — so the raises the
+    // move makes read them. If the game is over then, the clock does not
+    // move on: the step ends here.
+    let mut from = from;
+    if !engine.is_empty() {
+        match apply_writes(w, engine) {
+            Ok(engine) => writes.extend(engine),
+            Err(e) => {
+                let at = clock.describe(from);
+                return (
+                    body(at.clone(), at, writes, settled, Vec::new(), None, false, Vec::new()),
+                    Vec::new(),
+                    Some(PlayHalt::Error(format!("step {n}: {e}"))),
+                );
+            }
+        }
+        refresh_clock(p, w);
+        from = clock_at(p, w).unwrap_or(from);
+        let (quests, halt) = advance_quests(p, w, factory);
+        settled.extend(quests);
+        if halt.is_some() || matches!(crate::seam::terminal_holds(p, w, None), Ok(true)) {
+            let at = clock.describe(from);
+            return (
+                body(at.clone(), at, writes, settled, Vec::new(), None, false, Vec::new()),
+                Vec::new(),
+                halt,
+            );
+        }
+    }
     let mut to = clock.advance(from, by);
     // An advance whose destination lies past the end walks to the last
     // position, raising what it crosses on the way, then ends the clock.
@@ -363,7 +393,6 @@ pub fn run_advance<F: super::WalkDriver>(
         to = end;
     }
     let mut at = from;
-    let mut settled = Vec::new();
     let mut days = Vec::new();
     let mut stop = None;
     let mut closed = Vec::new();
@@ -479,8 +508,7 @@ pub fn run_advance<F: super::WalkDriver>(
         }
     }
     // dsl 0.27.0 §4: at the end the clock raises the last day's `dayEnd`
-    // (never its `raise.slot`) and stops; the step's `engine:` writes land
-    // after it, where the clock stays.
+    // (never its `raise.slot`) and stops.
     if ends && stop.is_none() {
         crate::clock::set_ended(clock, &mut w.state, true);
         if let Some(end) = &raise.day_end {
@@ -510,12 +538,6 @@ pub fn run_advance<F: super::WalkDriver>(
             } else {
                 w.defer_by = None;
             }
-        }
-    }
-    if stop.is_none() {
-        match apply_writes(w, engine) {
-            Ok(engine) => writes.extend(engine),
-            Err(e) => stop = Some(PlayHalt::Error(format!("step {n}: {e}"))),
         }
     }
     if stop.is_none() {

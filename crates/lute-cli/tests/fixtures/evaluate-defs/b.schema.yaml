@@ -1,0 +1,8 @@
+state:
+  run.count: { type: int, default: 0 }
+defs:
+  base: { type: bool, cel: "run.count >= 1" }
+  gated: { type: bool, cel: "run.count >= 1" }
+  split: { type: bool, cel: "run.count > 5" }
+  atLeast: { type: bool, params: { n: int }, cel: "run.count >= n" }
+  within: { type: bool, params: { n: int, slack: int }, cel: "run.count <= n" }

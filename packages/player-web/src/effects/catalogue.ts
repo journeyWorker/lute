@@ -5,7 +5,10 @@ import type { WipeDirection } from "../engine/behaviours.js"
 import type { Behaviour } from "../engine/types.js"
 import { linear } from "../engine/easing.js"
 
-/** Names accepted by the 0.40 player effect catalogue. */
+/**
+ * Names in the player effect catalogue. `custom` (a project vfx, spec 0.41.0
+ * §7.7) is not one: the presenter handles it before reaching the catalogue.
+ */
 export type EffectName =
   | "fade" | "dissolve" | "wipeLeft" | "wipeRight" | "wipeUp" | "wipeDown" | "slideLeft" | "slideRight"
   | "cut" | "fadeIn" | "fadeOut" | "slideIn" | "slideOut" | "hop" | "shake" | "none" | "zoom" | "pan"

@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.40.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.40.schema.json)
+[`schemas/lute-ir-0.41.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.41.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -28,7 +28,47 @@ grant settlement; the runtime returns those effects as data.
 ## TypeScript runtime
 
 TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
+
+In 0.41 a `Program` adds `gate(state, occasion, target?)` (`Effect<Gate, InvalidInput>`)
+and `def(state, name, args?)`, whose `args` are one JSON scalar per declared
+parameter; a closed raise fails with `Errors.OccasionGateClosed`
+(`E-OCCASION-GATE`) and leaves the state unchanged. `Session.Session` (service
+type `Session.SessionShape`) exposes `program`, the `Program` it loaded, so a
+host queries `current`'s state without loading the bundle twice. A
+`RuntimeState` is valid for every `Program` of the same bundle fingerprint;
+handing it to a program of another fingerprint is a defect. `Bundle.index` is
+typed `Ir.projectIndex`.
+
+To try an unreleased checkout in a host, run `bash scripts/pack-local.sh
+[--web] [OUT_DIR]` in the Lute repository: it packs the runtime and player
+(and `player-web` with `--web`) with `bun pm pack` and prints the
+`dependencies` and `overrides` entries (`file:<tarball>`) to paste into the
+host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
+`file:../lute/packages/*` directories: they resolve the Lute repository's own
+`effect`, giving the host two `effect` instances. See
+[Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
  
+## 0.41 runtime additions
+
+- **Gate refusals are rejections.** A `raiseOccasion` whose `raisedWhen` is
+  false, or raised after `terminal` holds when the occasion is not
+  `outsideRun`, is rejected `E-OCCASION-GATE` with the state unchanged (the
+  input's own writes and payload included); the message is `lute play`'s
+  refusal text. An undecided gate still halts `incomplete`. The read-only
+  `gate(occasion, target?)` query answers `{ open, unresolved? }` beforehand.
+- **`def(name, args)`** evaluates an index def with parameters: one JSON
+  scalar per declared parameter, bound to its `param` nodes; arity and type
+  misfits are `E-RUNTIME-INPUT`. `evaluate` never admits a `param` node.
+- **`awaitBridge`** carries `attrs` (the call's attributes, `occasion.target`
+  bound) and `results` (each result field content reads with its declared
+  type); answers are validated against those types. `bridgeResult` may carry
+  `writes` (as `hostWrite`'s), applied at the call after its declared effects,
+  so later lines of the same presentation read them. Every `plugin` record
+  carries `attrs`; non-blocking plugin records are write-free.
+- **`advanceClock { writes }`** applies and settles its writes before the
+  clock moves (if `terminal` then holds, the clock stays and the await is
+  `ended`); the move's raises read them, and the `clock` event comes last.
+
 ## 0.40 runtime additions
 
 The 0.40 contract carries the persistent presentation `stage` (background,
@@ -238,8 +278,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.40` engine accepts only `0.40.*` artifacts and refuses `0.38.*`
-   and `0.40.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.41` engine accepts only `0.41.*` artifacts and refuses `0.40.*`
+   and `0.42.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -251,7 +291,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.40.0"
+irVersion: "0.41.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -267,7 +307,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.38.*` artifact against the `0.40.0`
+the matrix's exact major.minor line (a `0.38.*` artifact against the `0.41.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
@@ -293,6 +333,30 @@ When the match subject is a bare state path with no effective value, an arm
 with `is` other than `"unset"` is definitely not satisfied; `is: "unset"` is
 satisfied. Other arms are evaluated normally, and an evaluation error means
 not satisfied.
+
+### `project.index.json` in 0.41
+
+The index shape is generated from the Rust index types: the `projectIndex`,
+`indexDocument`, `indexEntry`, `indexBeat`, `indexOccasion`,
+`indexStateDomain`, `indexDef` and `fieldType` definitions of the IR schema
+come from `lute-contract-schema`, and refer to the artifact shapes
+(`enumEntry`, `celSlot`, `exprNode`, `clockDecl`, …) instead of repeating
+them. Three keys change (spec 0.41.0 §4):
+
+- **`bridgeResults`**: each bridge result field carries its declared type in
+  the `occasions[*].payload` form — `"bool"`, `"int"`, `"double"`,
+  `"string"`, `{"enum": [...]}`, `{"domain": "<name>"}`, … — instead of
+  `"number"`/`"string"`.
+- **`enums[].labels: { <member>: "<text>" }`**: the long-form `labels:` of the
+  merged `enums:` declaration, on index and artifact rows alike, omitted when
+  none is declared.
+- **`defs`**: one row per plugin or `uses:` schema def, keyed by name —
+  `{ cel, expr, authored?, params?, host? }`. `params` lists
+  `[{ name, type }]` in argument order, each parameter appears in `expr` as
+  `{"param": "<name>"}`, and `host: true` marks a def the host reads. Defs
+  with a non-scalar parameter, a body that does not lower, or different
+  bodies or parameter lists in two documents are left out. A `param` node
+  appears nowhere else.
 
 ### What IR 0.37.0 changed
 

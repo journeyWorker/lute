@@ -72,6 +72,7 @@ pub(crate) fn run_check_project(
         .flat_map(|model| model.project_diagnostics().iter().cloned())
         .collect();
     relocate_imported_diags(&mut file_results, &mut project_diags, dir);
+    lute_check::depends::fold_project_dependants(&mut file_results);
     // Project constraint verdicts are anchored at their manifest declarations.
     for model in &models {
         let Some(project) = model.manifest() else { continue; };
@@ -231,6 +232,33 @@ pub(crate) fn run_check_project(
         // An origin is the canonical schema path; print it walk-relative like
         // every other check-project diagnostic (`./world.schema.yaml:73:3`).
         let canon_dir = canonical_path(dir);
+        // 0.41.0 §3.2: a state row's `type: number` suggests `int` from
+        // every value the project gives it — its default and each literal
+        // `::set` — not its default alone. One diagnostic per site, reworded.
+        let number_values = lute_check::number_row_values(&docs);
+        if !number_values.is_empty() {
+            let refine = |path: &Path, d: &mut lute_core_span::Diagnostic| {
+                if d.code != lute_manifest::types::E_TYPE_NUMBER {
+                    return;
+                }
+                let Some(name) = path.file_name() else { return };
+                let key = format!("{}:{}", name.to_string_lossy(), d.span.line);
+                let Some(seen) = number_values.get(&key) else { return };
+                let tail = d
+                    .message
+                    .find(" (imported by ")
+                    .map_or_else(String::new, |i| d.message[i..].to_string());
+                d.message = lute_manifest::types::number_type_message(seen) + &tail;
+            };
+            for (path, d) in &mut project_diags {
+                refine(path, d);
+            }
+            for (path, result) in &mut file_results {
+                for d in &mut result.diagnostics {
+                    refine(path, d);
+                }
+            }
+        }
         for (path, mut d) in lute_check::check_project_usage(&docs, &extra) {
             let text = std::fs::read_to_string(&path).unwrap_or_default();
             d.span = normalize_span_from_text(&text, d.span);
@@ -318,18 +346,30 @@ pub(crate) fn run_check_project(
             .iter()
             .filter(|(_, d)| d.severity == Severity::Error || policy.denied(d))
             .count();
-        let project_warning_count = project_diags.len() - project_error_count;
+        let project_warning_count = crate::output::count_severity(
+            project_diags.iter().map(|(_, d)| d),
+            Severity::Warning,
+            policy,
+        );
+        let project_infos = crate::output::info_tail(
+            crate::output::count_severity(
+                project_diags.iter().map(|(_, d)| d),
+                Severity::Info,
+                policy,
+            ),
+            "project-wide info",
+        );
         let project_error_count = project_error_count + resolve_errors;
         if ok {
             println!(
-                "ok: {} ({} file(s), {} project-wide warning(s))",
+                "ok: {} ({} file(s), {} project-wide warning(s){project_infos})",
                 dir.display(),
                 file_results.len(),
                 project_warning_count
             );
         } else {
             println!(
-                "failed: {} ({} file(s), {} project-wide error(s), {} project-wide warning(s))",
+                "failed: {} ({} file(s), {} project-wide error(s), {} project-wide warning(s){project_infos})",
                 dir.display(),
                 file_results.len(),
                 project_error_count,

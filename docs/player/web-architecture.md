@@ -1,8 +1,9 @@
 # `@lute-lang/player-web` — architecture
 
-Normative behaviour: `docs/proposals/scenario-dsl/0.40.0.md` §7. It implements
-the core's ports (`@lute-lang/player` `ports/`) with PixiJS 8 (WebGL) and
-`@pixi/sound`, and provides the screens, input and `mount`.
+Normative behaviour: `docs/proposals/scenario-dsl/0.40.0.md` §7, as amended by
+`docs/proposals/scenario-dsl/0.41.0.md` §8. It implements the core's ports
+(`@lute-lang/player` `ports/`) with PixiJS 8 (WebGL) and `@pixi/sound`, and
+provides the screens, input and `mount`.
 
 ```text
 mount ─► WebPlayer layer ─┬─ PixiApp (scoped Application, layers, letterbox, ticker)
@@ -60,6 +61,7 @@ interface World {
 // effects/
 type EffectName = "fade" | "dissolve" | "wipeLeft" | "wipeRight" | "wipeUp" | "wipeDown" | "slideLeft" | "slideRight"
   | "cut" | "fadeIn" | "fadeOut" | "slideIn" | "slideOut" | "hop" | "shake" | "none" | "zoom" | "pan" | "flash" | "blur" | "tint"
+// `custom` (a project vfx, 0.41.0 §7.7) is not a catalogue effect: the presenter handles it first.
 interface EffectCatalogue {
   /** Behaviours for an effect on a target, with params from bindings and the cue's duration. */
   readonly build: (name: EffectName, target: Container, params: EffectParams, duration: number) => ReadonlyArray<Behaviour>
@@ -77,16 +79,21 @@ interface EntityOps {                            // the vocabulary cues map to
   restore(stage: Stage): Effect<void>            // rebuild everything at once
 }
 class PixiPresenter implements Presenter          // uses EntityOps, DialogueWindow, ChoiceMenu, Ui; capture() via renderer.extract
+// A StageCue.Vfx with effect.effect === "custom" plays nothing; the presenter logs effect.name once per name
+// through PresenterOptions.debug (default console.debug).
 
 // text/
 interface DialogueWindow {
   show(line: LineView, settings: TextSettings, mode: PlayMode): Effect<void>   // typewriter over segments (styles, rate, pause), name plate
+                                                                               // shows line.speakerName (index cast name); colour keyed by line.speaker
   reveal: Effect<void>; clear: Effect<void>; setOpacity(alpha: number): void; setHidden(hidden: boolean): void
 }
 interface ChoiceMenu { show(menu: MenuAwait, remaining: Stream<number>): Effect<string>; hide: Effect<void> }
 
 // audio/
 class PixiAudio implements AudioPort             // channels music (crossfade), sfx, voice; fades as Effects; unlock on first gesture
+                                                 // music: restart plays from the start; without it the file already
+                                                 // playing only changes volume (fading over `fade`)
 
 // assets/
 class PixiAssets implements AssetLoader          // keys = binding paths; Pixi Assets manifest/bundles; refcounted ensure/release; progress stream
@@ -106,8 +113,8 @@ interface InputMap { readonly keyboard: Record<string, PlayerAction>; readonly p
 const Input: Layer<Stream<PlayerAction>>          // keyboard/pointer/touch (tap, long press, swipe)/gamepad (polled on ticker)
 
 // mount.ts
-LuteWeb.mount(element, options): Effect<WebPlayerHandle, MountError, Scope>
-mountPlayer(element, options): Promise<{ unmount(): Promise<void> }>    // the only Promise API
+LuteWeb.mount(element, options): Effect<WebPlayerHandle, MountError, Scope>   // WebPlayerHandle = LutePlayerHandle (send, restore, session, program)
+mountPlayer(element, options): Promise<{ act, view, unmount }>              // the only Promise API; options.host is the core's PlayerHost
 ```
 
 ## Testing

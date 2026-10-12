@@ -138,7 +138,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     })))
     if (title !== undefined && title !== null) {
       const file = resolveAsset(bindings, assetsBase, title.music)
-      yield* Effect.forkScoped(audio.play("music", { file, loop: true, volume: 1, fade: 0 }).pipe(Effect.catch(() => Effect.void)))
+      yield* Effect.forkScoped(audio.play("music", { file, loop: true, volume: 1, fade: 0, restart: true }).pipe(Effect.catch(() => Effect.void)))
     }
     return player
   })

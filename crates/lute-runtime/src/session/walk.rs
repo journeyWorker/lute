@@ -55,6 +55,11 @@ pub enum PlayHalt {
     /// decision the runner refused (`E-TRACE-CHOICE`: guard false, or a
     /// spent `once` option) at its presentation point.
     Error(String),
+    /// exit 1 — dsl 0.41.0 §5.2: a raise the engine would not make (its
+    /// `raisedWhen` is false, or the game is over and the occasion is not
+    /// `outsideRun`). `lute play` prints it as an error; the runtime rejects
+    /// the input (`E-OCCASION-GATE`) with the state unchanged.
+    Refused(String),
     /// exit 2 — the runner refused a malformed artifact / unknown command.
     Fatal(String),
     /// exit 3 — something the reference runner cannot decide.
@@ -65,7 +70,7 @@ impl PlayHalt {
     /// The process exit this halt maps to (1, 2 or 3).
     pub fn exit_code(&self) -> u8 {
         match self {
-            PlayHalt::Error(_) => 1,
+            PlayHalt::Error(_) | PlayHalt::Refused(_) => 1,
             PlayHalt::Fatal(_) => 2,
             PlayHalt::Incomplete(_) => 3,
         }
@@ -75,33 +80,34 @@ impl PlayHalt {
     /// ([`lute_core_span::plain_message`]).
     pub fn message(&self) -> std::borrow::Cow<'_, str> {
         match self {
-            PlayHalt::Error(m) | PlayHalt::Fatal(m) | PlayHalt::Incomplete(m) => {
-                lute_core_span::plain_message(m)
-            }
+            PlayHalt::Error(m)
+            | PlayHalt::Refused(m)
+            | PlayHalt::Fatal(m)
+            | PlayHalt::Incomplete(m) => lute_core_span::plain_message(m),
         }
     }
 
     pub fn exit_label(&self) -> &'static str {
         match self {
             PlayHalt::Incomplete(_) => "incomplete",
-            PlayHalt::Error(_) | PlayHalt::Fatal(_) => "error",
+            PlayHalt::Error(_) | PlayHalt::Refused(_) | PlayHalt::Fatal(_) => "error",
         }
     }
 }
 
+/// Why one value went unknown, as a sentence fragment.
+pub fn describe_atom(atom: &UnresolvedAtom) -> String {
+    match atom {
+        UnresolvedAtom::Path(p) => format!("state path `{p}` has no value"),
+        UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
+            format!("fact `{f}` is undetermined")
+        }
+        UnresolvedAtom::Time => "now()/validAt(...) has no reference-runtime resolution".to_string(),
+    }
+}
+
 pub fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
-    let mut parts: Vec<String> = atoms
-        .iter()
-        .map(|a| match a {
-            UnresolvedAtom::Path(p) => format!("state path `{p}` has no value"),
-            UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
-                format!("fact `{f}` is undetermined")
-            }
-            UnresolvedAtom::Time => {
-                "now()/validAt(...) has no reference-runtime resolution".to_string()
-            }
-        })
-        .collect();
+    let mut parts: Vec<String> = atoms.iter().map(describe_atom).collect();
     parts.dedup();
     if parts.is_empty() {
         "it does not evaluate to a bool".to_string()

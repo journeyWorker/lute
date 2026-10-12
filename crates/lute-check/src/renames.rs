@@ -42,6 +42,41 @@ pub const RENAMED_DIRECTIVE_ATTRS: &[(&str, &str, &str)] = &[
     (lute_manifest::core::LABEL_DIRECTIVE, "id", lute_manifest::core::LABEL_NAME_ATTR),
 ];
 
+/// A domain (enum or entity kind) renamed by a clean cutover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenamedDomain {
+    /// The name a project written before `since` declares.
+    pub old: &'static str,
+    /// The name the toolchain reads since `since`.
+    pub new: &'static str,
+    /// The release that renamed it.
+    pub since: &'static str,
+}
+
+/// Renamed domains (0.41.0 §3.1). The only source for both `lute fix`'s YAML
+/// domain rename and the `E-DOMAIN-UNKNOWN` rename hint.
+pub const RENAMED_DOMAINS: &[RenamedDomain] = &[RenamedDomain {
+    old: "musicAction",
+    new: "musicPlayback",
+    since: "0.37.0",
+}];
+
+/// The tail an `E-DOMAIN-UNKNOWN` for `name` appends when `name` is a renamed
+/// domain's new name and the document's folded vocabulary `declared` still
+/// declares its old name (0.41.0 §3.1); empty otherwise.
+pub fn renamed_domain_hint<V>(name: &str, declared: &std::collections::BTreeMap<String, V>) -> String {
+    RENAMED_DOMAINS
+        .iter()
+        .find(|r| r.new == name && declared.contains_key(r.old))
+        .map(|r| {
+            format!(
+                " — this project declares `{}`, renamed `{}` in {}; run `lute fix`",
+                r.old, r.new, r.since
+            )
+        })
+        .unwrap_or_default()
+}
+
 /// Removed directive attributes that need a hand migration:
 /// `(tag, key, code, remedy)`.
 const REMOVED_DIRECTIVE_ATTRS: &[(&str, &str, &str, &str)] = &[

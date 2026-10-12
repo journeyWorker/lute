@@ -28,6 +28,7 @@ pub mod def_decl;
 pub mod def_inline;
 pub mod defassign;
 pub(crate) mod defaults_note;
+pub mod depends;
 pub mod directive_facts;
 pub mod directives;
 pub mod display_names;
@@ -79,7 +80,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.40.0";
+pub const LUTE_LANG_VERSION: &str = "0.41.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -176,9 +177,9 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, check_parsed, diagnostic_order, fold_env, order_diagnostics, CheckInput, CheckResult,
-    DomainUse, FoldedEnv, Resolved, E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP,
-    INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    check, check_host_condition, check_parsed, diagnostic_order, fold_env, order_diagnostics,
+    params_from_yaml, CheckInput, CheckResult, DomainUse, FoldedEnv, HostCondition, Resolved,
+    E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
@@ -252,7 +253,8 @@ pub use timeline::{
     E_TIMELINE_DURATION, E_TIME_RESOLUTION,
 };
 pub use usage::{
-    check_project_usage, document_read_view, schema_sources, yaml_read_view, UsageDoc,
+    check_project_usage, document_read_view, number_row_values, schema_sources, yaml_read_view,
+    UsageDoc,
     W_DEF_UNUSED, W_RELATION_UNREAD,
 };
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

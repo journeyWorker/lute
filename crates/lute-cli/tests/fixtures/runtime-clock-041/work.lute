@@ -1,0 +1,10 @@
+---
+kind: scene
+id: work
+title: work
+on: work
+once: false
+advances: slot
+---
+## Work
+@narrator: Work takes the morning.

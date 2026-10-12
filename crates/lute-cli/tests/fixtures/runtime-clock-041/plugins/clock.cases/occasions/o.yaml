@@ -1,0 +1,5 @@
+occasions:
+  morning: { select: first }
+  night: { select: first }
+  tick: { select: first }
+  work: { select: first }

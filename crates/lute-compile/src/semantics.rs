@@ -67,7 +67,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "int","irVersion","is","key","kind","l","label","labelForms","labels","last","layout","length",
     "lhs","lineId","list","live","localeSegments","location","lute","members","meta","mood","move",
     "n","name","negated","node","objectives","occasion","on","once","op","open","optional",
-    "options","or","order","otherwise","outcome","outsideRun","overloads","owner","params","path",
+    "options","or","order","otherwise","outcome","outsideRun","overloads","owner","param","params","path",
     "pause","placeholders","playback","plugin","posReset","position","prefix","preload",
     "prereqEdges","priority","prompt","provenance","quest","r","raise","raiseAtStart","raisedWhen",
     "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
@@ -229,7 +229,10 @@ fn scan_expr(out: &mut Collected, expr: &ExprNode, addr: Option<&str>, what: &st
             scan_expr(out, index, addr, what);
             scan_expr(out, key, addr, what);
         }
-        ExprNode::Lit { .. } | ExprNode::Path { .. } | ExprNode::Has { .. } => {}
+        ExprNode::Lit { .. }
+        | ExprNode::Path { .. }
+        | ExprNode::Has { .. }
+        | ExprNode::Param { .. } => {}
     }
 }
 
@@ -380,7 +383,11 @@ mod tests {
     #[test]
     fn state_enums_alone_are_not_knowledge_facts() {
         let mut ir = test_ir();
-        ir.enums.push(EnumEntry { name: "mood".into(), members: vec!["calm".into()] });
+        ir.enums.push(EnumEntry {
+            name: "mood".into(),
+            members: vec!["calm".into()],
+            labels: Default::default(),
+        });
         assert!(!collect(&ir).ids.contains(FACTS.as_str()));
     }
 
@@ -401,7 +408,9 @@ mod tests {
                         }
                     }
                     for (key, sub) in map {
-                        if key != "properties" {
+                        // 0.41.0 §4.4: the generated index `$defs` describe
+                        // `project.index.json`, never an artifact.
+                        if key != "properties" && !(path == "/$defs" && INDEX_ONLY.contains(&key.as_str())) {
                             walk(sub, &format!("{path}/{key}"), missing);
                         }
                     }
@@ -414,6 +423,10 @@ mod tests {
                 _ => {}
             }
         }
+        const INDEX_ONLY: [&str; 8] = [
+            "projectIndex", "indexDocument", "indexEntry", "indexBeat", "indexOccasion",
+            "indexStateDomain", "indexDef", "fieldType",
+        ];
         let minor = crate::LUTE_IR_VERSION.rsplit_once('.').expect("x.y.z").0;
         let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(format!("../../schemas/lute-ir-{minor}.schema.json"));
@@ -432,7 +445,7 @@ mod tests {
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.40.0".into(), ir_version: "0.40.0".into(),
+            kind: DocKind::Scene, lute: "0.41.0".into(), ir_version: "0.41.0".into(),
             capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
             meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
             state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),

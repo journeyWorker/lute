@@ -1,0 +1,6 @@
+occasions:
+  enter: { select: first, target: { prefix: room, entity: room }, raisedWhen: "holds('canEnter', [occasion.target])" }
+  listen: { select: first, raisedWhen: "run.noise > 1" }
+  verdict: { select: first }
+  title: { select: first, outsideRun: true }
+  gallery: { select: first }

@@ -343,8 +343,9 @@ pub(crate) fn check_domain_types(
                 let names: Vec<String> = domains.keys().cloned().collect();
                 let message = format!(
                     "`{at}` is typed `{{ {form}: {name} }}`, but `{name}` is not a declared enum \
-                     or entity kind{}",
-                    crate::rel_schema::member_hint(name, &names)
+                     or entity kind{}{}",
+                    crate::rel_schema::member_hint(name, &names),
+                    crate::renames::renamed_domain_hint(name, domains)
                 );
                 out.extend(locate(at, "type", &message, "E-DOMAIN-UNKNOWN"));
             }

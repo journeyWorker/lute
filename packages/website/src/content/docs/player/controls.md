@@ -49,7 +49,7 @@ A disconnected gamepad resets edge detection; holding a button does not repeated
 
 Auto mode waits until voice ends (when present), then waits `settings.autoDelay` seconds before releasing a shown line. Any input or overlay cancels the pending auto action. Skip mode can be `read` (the default: stop on unread lines) or `all`. Both modes still stop at choices, bridges, and idle; skip snaps visual effects to their end state. Toggling skip during a batch takes effect at the next cue.
 
-The machine's line progression is deliberately two-step: advance while typing emits `line.reveal`; advance after the line is fully shown emits `line.release`. This keeps input behavior deterministic across renderers.
+The machine's line progression is deliberately two-step: advance while typing emits `line.reveal`; advance after the line is fully shown emits `line.release`. This keeps input behavior deterministic across renderers. A presenter that takes the confirm itself can declare `confirmsLines: true` (an advance while typing is kept as the release once the line is shown), or the host can choose `linePacing: "presenter"`, where the presenter's `showLine` completion releases the line and advance and auto timers leave lines alone.
 
 ## Backlog and read history
 
@@ -61,4 +61,4 @@ Opening backlog pauses overlays and auto/countdown activity. A backlog entry con
 
 ## Action names for custom UIs
 
-The core accepts `advance`, `toggleAuto`, `toggleSkip`, `skipHold`, `rollback`, `openBacklog`, `openMenu`, `openSave`, `openLoad`, `openSettings`, `quickSave`, `quickLoad`, `hideUI`, `choose`, `close`, `newGame`, `continue`, `toTitle`, `saveSlot`, `loadSlot`, `deleteSlot`, `confirm`, `pickIdle`, `replayVoice`, and `setSettings`. A custom renderer can emit these directly without using browser input listeners.
+The core accepts `advance`, `toggleAuto`, `toggleSkip`, `skipHold`, `rollback`, `openBacklog`, `openMenu`, `openSave`, `openLoad`, `openSettings`, `quickSave`, `quickLoad`, `hideUI`, `choose`, `close`, `newGame`, `continue`, `toTitle`, `saveSlot`, `loadSlot`, `deleteSlot`, `confirm`, `pickIdle`, `replayVoice`, `setSettings`, and `send` (a runtime input at idle or the ending; a refusal is logged and changes nothing). A custom renderer can emit these directly without using browser input listeners.

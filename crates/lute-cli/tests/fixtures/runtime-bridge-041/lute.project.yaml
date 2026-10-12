@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: arena
+profiles:
+  arena:
+    plugins: { arena: true }
+defaults:
+  uses: [world.schema.yaml]

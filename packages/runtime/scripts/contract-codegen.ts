@@ -1,31 +1,42 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 type JsonSchema = any;
 const root = resolve(import.meta.dir, "../../..");
 
+const cargoManifest = Bun.TOML.parse(await readFile(resolve(root, "Cargo.toml"), "utf8")) as {
+  workspace?: { package?: { version?: unknown } };
+};
+const workspaceVersion = cargoManifest.workspace?.package?.version;
+const releaseLine = typeof workspaceVersion === "string" ? /^(\d+\.\d+)\.\d+/.exec(workspaceVersion)?.[1] : undefined;
+if (releaseLine === undefined) {
+  throw new Error(`root Cargo.toml [workspace.package] version is not major.minor.patch: ${String(workspaceVersion)}`);
+}
+const schemaPath = (family: string): string => resolve(root, `schemas/${family}-${releaseLine}.schema.json`);
+
 const generationTable = [
   {
-    inputPaths: [
-      resolve(root, "schemas/lute-events-0.40.schema.json"),
-      resolve(root, "schemas/lute-snapshot-0.40.schema.json")
-    ],
+    inputPaths: [schemaPath("lute-events"), schemaPath("lute-snapshot")],
     outputPath: resolve(import.meta.dir, "../src/generated/Contract.ts"),
     rootNames: ["Snapshot"]
   },
   {
-    inputPaths: [resolve(root, "schemas/lute-ir-0.40.schema.json")],
+    inputPaths: [schemaPath("lute-ir")],
     outputPath: resolve(import.meta.dir, "../src/generated/Ir.ts"),
     rootNames: ["Command"]
   },
   {
-    inputPaths: [resolve(root, "schemas/lute-player-bindings-0.40.schema.json")],
+    inputPaths: [schemaPath("lute-player-bindings")],
     outputPath: resolve(root, "packages/player/src/bindings/schema.ts"),
     rootNames: ["Bindings"]
   }
 ] as const;
+for (const path of generationTable.flatMap((entry) => entry.inputPaths)) {
+  await access(path).catch(() => {
+    throw new Error(`missing contract schema input: ${path}`);
+  });
+}
 const schemaPaths = generationTable[0].inputPaths;
-const outputPath = generationTable[0].outputPath;
 const schemas = await Promise.all(schemaPaths.map(async (path) => JSON.parse(await readFile(path, "utf8")) as JsonSchema));
 const defs = new Map<string, JsonSchema>();
 const canonical = (value: unknown): unknown => {
@@ -59,9 +70,10 @@ const refName = (ref: string, path: string): string => {
   if (!match) return pointer(`${path}/$ref`);
   return match[1]!;
 };
+const opaqueDefs: Record<string, true> = { exprNode: true, prereqFormula: true };
 const refExpr = (ref: string, _path?: string): string => {
   const match = /^#\/\$defs\/([^/]+)$/.exec(ref);
-  if (!match || match[1] === "exprNode" || match[1] === "prereqFormula") return "Schema.Json";
+  if (!match || opaqueDefs[match[1]!]) return "Schema.Json";
   return `Schema.suspend(() => ${match[1]!})`;
 };
 function formatExpression(source: string): string[] {
@@ -159,6 +171,35 @@ function taggedUnion(branches: JsonSchema[]): string | undefined {
   return undefined;
 }
 
+/**
+ * An object schema whose `oneOf` / `anyOf` branches only name `required` key
+ * sets (`{ properties, required, oneOf: [{ required: [a] }, { required: [b] }] }`):
+ * the branches constrain which properties are present, they are not alternative shapes.
+ */
+function requiredKeySets(schema: JsonSchema): { readonly key: "oneOf" | "anyOf"; readonly sets: string[][] } | undefined {
+  if (schema.properties === undefined || typeof schema.properties !== "object") return undefined;
+  const key = Array.isArray(schema.oneOf) ? "oneOf" : Array.isArray(schema.anyOf) ? "anyOf" : undefined;
+  if (key === undefined) return undefined;
+  const branches = schema[key] as JsonSchema[];
+  const requiredOnly = branches.every((branch) =>
+    branch !== null && typeof branch === "object" && Array.isArray(branch.required)
+    && Object.keys(branch).every((name) => name === "required"));
+  return requiredOnly ? { key, sets: branches.map((branch) => branch.required as string[]) } : undefined;
+}
+
+const withoutBranches = (schema: JsonSchema): JsonSchema => {
+  const { oneOf: _oneOf, anyOf: _anyOf, ...rest } = schema;
+  return rest;
+};
+
+/** `struct` checked against `requiredKeySets`: exactly one (`oneOf`) or at least one (`anyOf`) set fully present. */
+function keySetCheck(struct: string, keySets: { readonly key: "oneOf" | "anyOf"; readonly sets: string[][] }): string {
+  const exactlyOne = keySets.key === "oneOf";
+  const message = `expected ${exactlyOne ? "exactly one" : "at least one"} of the key sets: ${keySets.sets.map((set) => set.join(" + ")).join(" | ")}`;
+  const count = `${quote(keySets.sets)}.filter((keys) => keys.every((key) => key in value)).length`;
+  return `${struct}.check(Schema.makeFilter((value) => ${count} ${exactlyOne ? "=== 1" : ">= 1"} || ${quote(message)}))`;
+}
+
 function expression(schema: JsonSchema, path: string): string {
   if (schema === true || Object.keys(schema).length === 0) return "Schema.Json";
   if (schema === false) return pointer(path);
@@ -167,6 +208,8 @@ function expression(schema: JsonSchema, path: string): string {
   if (schema.const !== undefined) return `Schema.Literal(${quote(schema.const)})`;
   if (Array.isArray(schema.enum)) return `Schema.Literals(${quote(schema.enum)})`;
 
+  const keySets = requiredKeySets(schema);
+  if (keySets !== undefined) return keySetCheck(expression(withoutBranches(schema), path), keySets);
   if (Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)) {
     const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
     const branches = schema[key] as JsonSchema[];
@@ -268,19 +311,142 @@ function jsdoc(description: unknown): string[] {
   return ["/**", ...clean.split("\n").map((line) => ` * ${line}`), " */"];
 }
 
-function pushExport(name: string, schema: JsonSchema, path: string): void {
+function refsOf(schema: JsonSchema, into: Set<string>): Set<string> {
+  if (Array.isArray(schema)) {
+    for (const item of schema) refsOf(item, into);
+  } else if (schema && typeof schema === "object") {
+    for (const [key, value] of Object.entries(schema)) {
+      if (key === "$ref" && typeof value === "string") {
+        const match = /^#\/\$defs\/([^/]+)$/.exec(value);
+        if (match && !opaqueDefs[match[1]!]) into.add(match[1]!);
+      } else {
+        refsOf(value, into);
+      }
+    }
+  }
+  return into;
+}
+
+/** Definitions that reach themselves through `$ref`s; their consts need an explicit type. */
+function recursiveDefinitions(definitions: Map<string, JsonSchema>): Set<string> {
+  const edges = new Map([...definitions].map(([name, definition]) => [name, refsOf(definition, new Set())]));
+  const recursive = new Set<string>();
+  for (const name of definitions.keys()) {
+    const seen = new Set<string>();
+    const pending = [...(edges.get(name) ?? [])];
+    while (pending.length > 0) {
+      const next = pending.pop()!;
+      if (next === name) {
+        recursive.add(name);
+        break;
+      }
+      if (seen.has(next)) continue;
+      seen.add(next);
+      pending.push(...(edges.get(next) ?? []));
+    }
+  }
+  return recursive;
+}
+
+/** The TypeScript `Type` of `expression(schema)`, spelled out for recursive definitions. */
+function typeExpression(schema: JsonSchema, path: string): string {
+  if (schema === true || Object.keys(schema).length === 0) return "Schema.Json";
+  if (schema === false) return pointer(path);
+  if (schema.$ref) {
+    const name = refName(schema.$ref, path);
+    return opaqueDefs[name] ? "Schema.Json" : name;
+  }
+  if (schema.const !== undefined) return quote(schema.const);
+  if (Array.isArray(schema.enum)) return `(${schema.enum.map(quote).join(" | ")})`;
+  if (requiredKeySets(schema) !== undefined) return typeExpression(withoutBranches(schema), path);
+  if (Array.isArray(schema.oneOf) || Array.isArray(schema.anyOf)) {
+    const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
+    const maybeNullable = nullable(schema);
+    if (maybeNullable.isNullable) return `(${typeExpression(maybeNullable.base, `${path}/${key}`)} | null)`;
+    const branches = schema[key] as JsonSchema[];
+    return `(${branches.map((branch, index) => typeExpression(branch, `${path}/${key}/${index}`)).join(" | ")})`;
+  }
+  if (Array.isArray(schema.type)) {
+    const types = schema.type.filter((type: string) => type !== "null");
+    if (types.length === 1 && schema.type.includes("null")) {
+      return `(${typeExpression({ ...schema, type: types[0] }, path)} | null)`;
+    }
+    if (types.length === 0 && schema.type.includes("null")) return "null";
+    return `(${types.map((type: string) => typeExpression({ ...schema, type }, path)).join(" | ")})`;
+  }
+  if (schema.type === undefined) {
+    if (Array.isArray(schema.required)) return typeExpression({ ...schema, type: "object" }, path);
+    return "Schema.Json";
+  }
+  switch (schema.type) {
+    case "null": return "null";
+    case "string": return "string";
+    case "boolean": return "boolean";
+    case "number":
+    case "integer": return "number";
+    case "array": {
+      if (Array.isArray(schema.prefixItems)) {
+        if (schema.items !== undefined && schema.items !== false) return pointer(`${path}/items`);
+        return `readonly [${schema.prefixItems.map((item: JsonSchema, index: number) => typeExpression(item, `${path}/prefixItems/${index}`)).join(", ")}]`;
+      }
+      if (schema.items === undefined) return pointer(`${path}/items`);
+      return `ReadonlyArray<${typeExpression(schema.items, `${path}/items`)}>`;
+    }
+    case "object": {
+      const properties = schema.properties as Record<string, JsonSchema> | undefined;
+      if (properties === undefined && schema.additionalProperties === undefined) {
+        const required = (schema.required ?? []) as string[];
+        return required.length === 0
+          ? "Schema.Json"
+          : `{${required.map((name) => `readonly ${quote(name)}: Schema.Json`).join(", ")}}`;
+      }
+      const propertyEntries = Object.entries(properties ?? {});
+      const additional = schema.additionalProperties;
+      if (propertyEntries.length === 0 && additional === true) return "{readonly [x: string]: Schema.Json}";
+      if (propertyEntries.length === 0 && additional && typeof additional === "object") {
+        return `{readonly [x: string]: ${typeExpression(additional, `${path}/additionalProperties`)}}`;
+      }
+      const required = new Set<string>((schema.required ?? []) as string[]);
+      return `{${propertyEntries.map(([name, property]) => {
+        const value = nullable(property);
+        const inner = typeExpression(value.base, `${path}/properties/${name}`);
+        const field = value.isNullable ? `(${inner} | null)` : inner;
+        return `readonly ${quote(name)}${required.has(name) ? "" : "?"}: ${field}`;
+      }).join(", ")}}`;
+    }
+    default: return pointer(path);
+  }
+}
+
+function definitionLines(name: string, schema: JsonSchema, path: string, recursive: boolean): string[] {
+  const out = jsdoc(schema.description);
   const formatted = formatExpression(expression(schema, path));
-  lines.push(`export const ${name} = ${formatted[0]!}`);
-  lines.push(...formatted.slice(1));
-  lines[lines.length - 1] += ";";
-  lines.push(`export type ${name} = typeof ${name}.Type;`);
-  lines.push("");
+  if (!recursive) {
+    out.push(`export const ${name} = ${formatted[0]!}`, ...formatted.slice(1));
+    out[out.length - 1] += ";";
+    out.push(`export type ${name} = typeof ${name}.Type;`, "");
+    return out;
+  }
+  const key = Array.isArray(schema.oneOf) ? "oneOf" : "anyOf";
+  const members = Array.isArray(schema[key]) && !nullable(schema).isNullable && requiredKeySets(schema) === undefined
+    ? (schema[key] as JsonSchema[]).map((branch, index) => typeExpression(branch, `${path}/${key}/${index}`))
+    : [typeExpression(schema, path)];
+  out.push(`export type ${name} =`);
+  for (const member of members) {
+    const memberLines = formatExpression(member);
+    out.push(`  | ${memberLines[0]!}`, ...memberLines.slice(1).map((line) => `  ${line}`));
+  }
+  out[out.length - 1] += ";";
+  out.push(`export const ${name}: Schema.Codec<${name}> = ${formatted[0]!}`, ...formatted.slice(1));
+  out[out.length - 1] += ";";
+  out.push("");
+  return out;
 }
 
 const lines: string[] = [
   "// THIS FILE IS GENERATED — DO NOT EDIT.",
   "// Generator: packages/runtime/scripts/contract-codegen.ts",
-  "// Sources: schemas/lute-events-0.40.schema.json, schemas/lute-snapshot-0.40.schema.json",
+  `// Sources: schemas/lute-events-${releaseLine}.schema.json, schemas/lute-snapshot-${releaseLine}.schema.json`,
   "",
   'import * as Schema from "effect/Schema";',
   'import type * as SchemaAST from "effect/SchemaAST";',
@@ -288,13 +454,11 @@ const lines: string[] = [
   'export const parseOptions = { onExcessProperty: "error" } as const satisfies SchemaAST.ParseOptions;',
   ""
 ];
+const contractRecursive = recursiveDefinitions(defs);
 for (const [name, definition] of defs) {
-  lines.push(...jsdoc(definition.description));
-  pushExport(name, definition, `#/$defs/${name}`);
+  lines.push(...definitionLines(name, definition, `#/$defs/${name}`, contractRecursive.has(name)));
 }
-const snapshot = schemas[1]!;
-lines.push(...jsdoc(snapshot.description));
-pushExport("Snapshot", snapshot, "#");
+lines.push(...definitionLines("Snapshot", schemas[1]!, "#", false));
 await writeFile(generationTable[0].outputPath, `${lines.join("\n")}\n`, "utf8");
 const irSchema = JSON.parse(
   await readFile(generationTable[1].inputPaths[0], "utf8")
@@ -305,20 +469,15 @@ const irDefs = new Map<string, JsonSchema>(
 const irLines: string[] = [
   "// THIS FILE IS GENERATED — DO NOT EDIT.",
   "// Generator: packages/runtime/scripts/contract-codegen.ts",
-  "// Source: schemas/lute-ir-0.40.schema.json",
+  `// Source: schemas/lute-ir-${releaseLine}.schema.json`,
   "",
   'import * as Schema from "effect/Schema";',
   ""
 ];
+const irRecursive = recursiveDefinitions(irDefs);
 for (const [name, definition] of irDefs) {
   if (name === "command") continue;
-  irLines.push(...jsdoc(definition.description));
-  const formatted = formatExpression(expression(definition, `#/$defs/${name}`));
-  const exportName = name;
-  irLines.push(`export const ${exportName} = ${formatted[0]!}`);
-  irLines.push(...formatted.slice(1));
-  irLines[irLines.length - 1] += ";";
-  irLines.push(`export type ${exportName} = typeof ${exportName}.Type;`, "");
+  irLines.push(...definitionLines(name, definition, `#/$defs/${name}`, irRecursive.has(name)));
 }
 const command = irDefs.get("command");
 if (command === undefined || !Array.isArray(command.oneOf)) {
@@ -343,7 +502,7 @@ const bindingDefs = new Map<string, JsonSchema>(
 const bindingLines: string[] = [
   "// THIS FILE IS GENERATED — DO NOT EDIT.",
   "// Generator: packages/runtime/scripts/contract-codegen.ts",
-  "// Source: schemas/lute-player-bindings-0.40.schema.json",
+  `// Source: schemas/lute-player-bindings-${releaseLine}.schema.json`,
   "",
   'import * as Schema from "effect/Schema";',
   'import type * as SchemaAST from "effect/SchemaAST";',
@@ -351,18 +510,9 @@ const bindingLines: string[] = [
   'export const parseOptions = { onExcessProperty: "error" } as const satisfies SchemaAST.ParseOptions;',
   ""
 ];
+const bindingRecursive = recursiveDefinitions(bindingDefs);
 for (const [name, definition] of bindingDefs) {
-  bindingLines.push(...jsdoc(definition.description));
-  const formatted = formatExpression(expression(definition, `#/$defs/${name}`));
-  bindingLines.push(`export const ${name} = ${formatted[0]!}`);
-  bindingLines.push(...formatted.slice(1));
-  bindingLines[bindingLines.length - 1] += ";";
-  bindingLines.push(`export type ${name} = typeof ${name}.Type;`, "");
+  bindingLines.push(...definitionLines(name, definition, `#/$defs/${name}`, bindingRecursive.has(name)));
 }
-bindingLines.push(...jsdoc(bindingsSchema.description));
-const bindingsFormatted = formatExpression(expression(bindingsSchema, "#"));
-bindingLines.push(`export const Bindings = ${bindingsFormatted[0]!}`);
-bindingLines.push(...bindingsFormatted.slice(1));
-bindingLines[bindingLines.length - 1] += ";";
-bindingLines.push("export type Bindings = typeof Bindings.Type;", "");
+bindingLines.push(...definitionLines("Bindings", bindingsSchema, "#", false));
 await writeFile(generationTable[2].outputPath, `${bindingLines.join("\n")}\n`, "utf8");

@@ -1,0 +1,10 @@
+---
+kind: scene
+id: tick
+title: tick
+on: tick
+once: false
+---
+## Tick
+::set{run.ticks += 1}
+@narrator: The slot is raised.

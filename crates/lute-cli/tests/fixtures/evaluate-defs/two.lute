@@ -1,0 +1,11 @@
+---
+kind: scene
+id: two
+luteVersion: "0.41.0"
+title: two
+uses: b.schema.yaml
+on: visit
+priority: 1
+---
+## Room
+@narrator{code="0010"}: The two room.

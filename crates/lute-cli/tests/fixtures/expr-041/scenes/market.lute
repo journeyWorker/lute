@@ -1,0 +1,12 @@
+---
+kind: scene
+id: market
+title: The market
+on: visit
+when: "@atLeast(3)"
+---
+
+## Market
+
+@narrator: The stalls are open.
+::set{run.gold += 1}
