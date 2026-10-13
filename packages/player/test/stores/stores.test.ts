@@ -41,7 +41,7 @@ const world = {
   visited: []
 }
 const runtime: SaveRuntime = {
-  snapshot: { await: { type: "idle" }, continuation: null, project, request: 0, snapshotVersion: "0.41", world },
+  snapshot: { await: { type: "idle" }, continuation: null, project, request: 0, snapshotVersion: "0.42", world },
   log: [],
   backlog: []
 }

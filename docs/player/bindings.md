@@ -6,7 +6,7 @@ fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
 ```yaml
-bindingsVersion: "0.41"
+bindingsVersion: "0.42"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -44,7 +44,7 @@ flow:
 
 ## Sections
 
-- `bindingsVersion` is `"0.41"`; `canvas` contains positive `width` and
+- `bindingsVersion` is `"0.42"`; `canvas` contains positive `width` and
   `height`. `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to an `image`; `times` maps

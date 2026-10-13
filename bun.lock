@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@lute-lang/lute",
-      "version": "0.41.1",
+      "version": "0.42.0",
       "bin": {
         "lute": "./bin.js",
         "lute-lsp": "./lsp-bin.js",
@@ -24,19 +24,19 @@
     },
     "packages/core-darwin-arm64": {
       "name": "@lute-lang/lute-core-darwin-arm64",
-      "version": "0.41.1",
+      "version": "0.42.0",
     },
     "packages/core-linux-x64": {
       "name": "@lute-lang/lute-core-linux-x64",
-      "version": "0.41.1",
+      "version": "0.42.0",
     },
     "packages/core-win32-x64": {
       "name": "@lute-lang/lute-core-win32-x64",
-      "version": "0.41.1",
+      "version": "0.42.0",
     },
     "packages/player": {
       "name": "@lute-lang/player",
-      "version": "0.41.1",
+      "version": "0.42.0",
       "dependencies": {
         "@xstate/effect": "0.1.0-alpha.7",
         "xstate": "6.0.0-alpha.65",
@@ -57,7 +57,7 @@
     },
     "packages/player-web": {
       "name": "@lute-lang/player-web",
-      "version": "0.41.1",
+      "version": "0.42.0",
       "dependencies": {
         "@lute-lang/player": "0.41.1",
         "@lute-lang/runtime": "0.41.1",
@@ -81,7 +81,7 @@
     },
     "packages/runtime": {
       "name": "@lute-lang/runtime",
-      "version": "0.41.1",
+      "version": "0.42.0",
       "devDependencies": {
         "@effect/platform-browser": "4.0.2",
         "@effect/platform-bun": "4.0.2",

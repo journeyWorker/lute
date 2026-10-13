@@ -33,7 +33,7 @@ fn check(tag: &str, declared: bool, volumes: &str) -> (i32, String) {
     write(
         &dir,
         "player.bindings.yaml",
-        &format!("bindingsVersion: \"0.41\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
+        &format!("bindingsVersion: \"0.42\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
     );
     let out = Command::new(BIN).arg("check-project").arg(&*dir).output().unwrap();
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();

@@ -44,7 +44,7 @@
     "seen(jon, key)",
     "seen(mira, map)"
   ],
-  "irVersion": "0.41",
+  "irVersion": "0.42",
   "kind": "scene",
   "quests": {},
   "state": {}

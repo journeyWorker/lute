@@ -40,7 +40,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.41",
+  "irVersion": "0.42",
   "kind": "quest",
   "quests": {
     "grantInstance": "complete"

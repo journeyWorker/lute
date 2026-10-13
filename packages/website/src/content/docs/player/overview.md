@@ -34,9 +34,9 @@ The runtime owns story state, stage, awaits, and outcomes. The player sends inpu
 
 | Package | Responsibility | Public entry point |
 | --- | --- | --- |
-| `@lute-lang/player@0.41.1` | Renderer-free player core, ports, bindings decoder, cues, scheduler, session, stores | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.41.1` | PixiJS/Web Audio presenter, assets, screens, input, browser mounting | `mountPlayer(element, options)` or `LuteWeb.mount` |
-| `@lute-lang/runtime@0.41.1` | Bundle loading, wasm runtime session, event contract, snapshots and queries | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.42.0` | Renderer-free player core, ports, bindings decoder, cues, scheduler, session, stores | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.42.0` | PixiJS/Web Audio presenter, assets, screens, input, browser mounting | `mountPlayer(element, options)` or `LuteWeb.mount` |
+| `@lute-lang/runtime@0.42.0` | Bundle loading, wasm runtime session, event contract, snapshots and queries | `@lute-lang/runtime/browser` |
 
 ## Package checks
 

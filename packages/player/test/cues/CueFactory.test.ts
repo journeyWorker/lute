@@ -16,7 +16,7 @@ import type { AudioPlay, AudioPort, PlayMode, PluginCall, Presenter, StageCue } 
 const decodeOutput = Schema.decodeUnknownSync(Runtime.Contract.Output)
 const decodeBindings = Schema.decodeUnknownSync(Bindings.Bindings)
 const bindings = decodeBindings({
-  bindingsVersion: "0.41",
+  bindingsVersion: "0.42",
   canvas: { width: 1920, height: 1080 },
   assets: { bg: "bg.png", actor: "actor.png", cg: "cg.png", video: "video.mp4", music: "music.ogg", sfx: "sfx.ogg" },
   volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 },
@@ -257,7 +257,7 @@ describe("CueFactory", () => {
   }))
 
   it("collects a restored stage's files with the same resolution its cues and music use", () => {
-    const unbound = decodeBindings({ bindingsVersion: "0.41", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
+    const unbound = decodeBindings({ bindingsVersion: "0.42", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
     const stage = { actors: [], bg: { assetId: "bg/hall.png" }, cg: { assetId: "cg/one.png" }, music: { assetId: "bgm/theme.ogg", mood: "calm" } }
     expect(CueFactory.stageFiles(unbound, stage)).toEqual(["bg/hall.png", "cg/one.png", "bgm/theme.ogg"])
     expect(CueFactory.stageMusic(unbound, stage)?.file).toBe("bgm/theme.ogg")
@@ -267,7 +267,7 @@ describe("CueFactory", () => {
   })
 
   it.effect("a bg or music record with an unmapped assetId names that file, as its restored stage does", () => Effect.gen(function* () {
-    const unbound = decodeBindings({ bindingsVersion: "0.41", canvas: { width: 1, height: 1 } })
+    const unbound = decodeBindings({ bindingsVersion: "0.42", canvas: { width: 1, height: 1 } })
     const local = CueFactory.make({ bundle: { index, artifacts: { "scene.json": { commands: [
       { kind: "bg", family: "staging", position: "003-0100", assetId: "bg/hall.png" },
       { kind: "music", family: "staging", position: "003-0200", assetId: "bgm/theme.ogg" }
