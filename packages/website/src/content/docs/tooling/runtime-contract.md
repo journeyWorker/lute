@@ -48,6 +48,22 @@ host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
 `effect`, giving the host two `effect` instances. See
 [Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
  
+## 0.42 runtime additions
+
+Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and plugin `stampAttrs` stay where they were, so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
+
+| kind | `attrs` |
+| --- | --- |
+| `bg` | `location?`, `time?`, `assetId?` |
+| `music` | `playback?`, `stop?`, `mood?`, `volume?`, `assetId?` |
+| `sfx` | `sound?`, `assetId?` |
+| `vfx` | `type`, `label?`, `transition?` |
+| `actor` | `character`, `anchor?`, `action?`, `exit?`, `emotion?`, `costume?`, `posReset?`, `preload?` |
+| `camera` | `focus?`, `framing?`, `move?`, `transition?` |
+| `cg` | `assetId`, `display`, `layout?` |
+| `video` | `assetId`, `display` |
+| `sequence` | `name` |
+
 ## 0.41 runtime additions
 
 - **Gate refusals are rejections.** A `raiseOccasion` whose `raisedWhen` is

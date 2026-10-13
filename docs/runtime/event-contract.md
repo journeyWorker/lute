@@ -155,6 +155,24 @@ Consume events in execution order before acting on the await. Events are:
 command-shaped records; supporting IR definitions are exported from
 `@lute-lang/runtime` as `Ir`.
 
+Since 0.42 every staging record (`bg`, `music`, `sfx`, `vfx`, `actor`,
+`camera`, `cg`, `video`, `sequence`) carries `attrs`, the command's resolved
+fields: authored values and lowered defaults, absent optional fields omitted,
+always an object, never `kind`, `position`, `timing`, provenance or plugin
+`stampAttrs`. A host reads media fields from `attrs`, not from the artifact.
+
+| kind | `attrs` |
+| --- | --- |
+| `bg` | `location?`, `time?`, `assetId?` |
+| `music` | `playback?`, `stop?`, `mood?`, `volume?`, `assetId?` |
+| `sfx` | `sound?`, `assetId?` |
+| `vfx` | `type`, `label?`, `transition?` |
+| `actor` | `character`, `anchor?`, `action?`, `exit?`, `emotion?`, `costume?`, `posReset?`, `preload?` |
+| `camera` | `focus?`, `framing?`, `move?`, `transition?` |
+| `cg` | `assetId`, `display`, `layout?` |
+| `video` | `assetId`, `display` |
+| `sequence` | `name` |
+
 `record.record` preserves the `lute run --json` execution-record shape plus
 play-only line `delivery` and menu markers that run strips. Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the

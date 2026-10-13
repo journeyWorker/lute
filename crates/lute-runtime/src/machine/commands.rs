@@ -134,11 +134,41 @@ fn segments_with(segments: &Json, rendered: &[String]) -> Json {
     Json::Array(runs)
 }
 
+/// The resolved command fields a staging record of `kind` carries as
+/// `attrs` (0.42.0 §4.2), in their IR (serialized) names.
+fn staging_fields(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "bg" => &["location", "time", "assetId"],
+        "music" => &["playback", "stop", "mood", "volume", "assetId"],
+        "sfx" => &["sound", "assetId"],
+        "vfx" => &["type", "label", "transition"],
+        "actor" => &[
+            "character", "anchor", "action", "exit", "emotion", "costume", "posReset", "preload",
+        ],
+        "camera" => &["focus", "framing", "move", "transition"],
+        "cg" => &["assetId", "display", "layout"],
+        "video" => &["assetId", "display"],
+        "sequence" => &["name"],
+        _ => &[],
+    }
+}
+
 impl<D: Driver> Machine<D> {
+    /// A staging record (dsl 0.37.0 §5.1) with its resolved command fields
+    /// as `attrs` (0.42.0 §4): the kind's own fields the command carries —
+    /// authored values and the defaults lowering filled in — never the
+    /// envelope (`kind`, `family`, `position`), `timing`, `provenance`,
+    /// `source` or a plugin's cross-cutting stamp attrs. An absent optional
+    /// field is omitted; `attrs` is always an object.
     pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
+        let attrs: serde_json::Map<String, Json> = staging_fields(kind)
+            .iter()
+            .filter_map(|field| Some((field.to_string(), cmd.get(*field)?.clone())))
+            .collect();
         let record = serde_json::json!({
             "kind": kind,
             "position": addr(cmd),
+            "attrs": attrs,
         });
         self.stage.apply(kind, cmd);
         self.driver.emit(record);

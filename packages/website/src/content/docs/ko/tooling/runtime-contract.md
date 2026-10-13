@@ -45,6 +45,22 @@ Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스�
 [로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
 참고하세요.
  
+## 0.42 런타임 추가 사항
+
+모든 스테이징 레코드 — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` — 는 `plugin` 레코드의 `attrs`처럼 명령의 해석된 필드를 `attrs`로 담습니다. 작성한 값과 lowering이 채운 기본값이 들어가고(`cg`의 `display: "show"`, actor의 선언된 기본 `anchor`), 없는 선택 필드는 생략되며 `attrs`는 항상 객체입니다. 레코드 엔벨로프(`kind`, `position`), `timing`, provenance, 플러그인 `stampAttrs`는 원래 자리에 있으므로 호스트는 아티팩트에서 명령을 찾지 않고 스테이징 레코드를 읽습니다. `volume`은 여전히 프로젝트 `volume` 도메인의 멤버이며, 플레이어가 [`volumes`](/ko/player/bindings/)로 gain으로 바꿉니다.
+
+| kind | `attrs` |
+| --- | --- |
+| `bg` | `location?`, `time?`, `assetId?` |
+| `music` | `playback?`, `stop?`, `mood?`, `volume?`, `assetId?` |
+| `sfx` | `sound?`, `assetId?` |
+| `vfx` | `type`, `label?`, `transition?` |
+| `actor` | `character`, `anchor?`, `action?`, `exit?`, `emotion?`, `costume?`, `posReset?`, `preload?` |
+| `camera` | `focus?`, `framing?`, `move?`, `transition?` |
+| `cg` | `assetId`, `display`, `layout?` |
+| `video` | `assetId`, `display` |
+| `sequence` | `name` |
+
 ## 0.41 런타임 추가 사항
 
 - **관문 거절은 거부입니다.** `raisedWhen`이 거짓인 `raiseOccasion`, 또는 `terminal`이 성립한 뒤
