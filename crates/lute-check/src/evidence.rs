@@ -62,6 +62,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
     ("E-BRANCH-PROMPT", DiagnosticClass::SourceError),
     ("E-BRANCH-TIMEOUT", DiagnosticClass::SourceError),
     ("E-BRANCH-DEFAULT", DiagnosticClass::SourceError),
+    ("E-BRIDGE-NO-RESULT-WRITE", DiagnosticClass::SourceError),
     ("E-CAMERA-EMPTY", DiagnosticClass::SourceError),
     ("E-CAMERA-REMOVED", DiagnosticClass::SourceError),
     ("E-CAPABILITY-MISMATCH", DiagnosticClass::SourceError),

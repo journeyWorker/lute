@@ -326,15 +326,15 @@ steps:
 
 `--events`는 재개 가능한 런타임 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 시드와 그 출력이,
 그 다음 줄부터는 플레이어가 보낸 각 입력과 출력이 짝을 이룹니다(`choose`, `bridgeResult` 응답도 포함).
-모든 출력에는 `eventVersion: "0.41.0"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
+모든 출력에는 `eventVersion: "0.41.1"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
 함께 사용할 수 없습니다.
 
 허브 적합성 프로젝트에서 얻은 짧은 실제 스트림은 다음과 같습니다(첫 선택 뒤에 두 번째 대기가 열립니다).
 
 ```json
-{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.41.0","events":[]}}
-{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.41.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
-{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.41.1","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
 - `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
@@ -499,8 +499,8 @@ expect:                                   # assert the end of the play
 
 이 스크립트의 트랜스크립트는 [트랜스크립트](#트랜스크립트)의 예제입니다.
 
-`state:`, `facts:`, `choose:`, `bridges:`는 [`lute trace --mock`](/ko/tooling/tracing/) 파일과 정확히 같은
-문법을 씁니다.
+`state:`, `facts:`, `choose:`는 [`lute trace --mock`](/ko/tooling/tracing/) 파일과 정확히 같은 문법을 씁니다.
+`bridges:`도 같으며, 플레이 스크립트의 응답은 호스트 쓰기를 함께 적는 긴 형식도 받습니다([브리지 호출에 답하기](#브리지-호출에-답하기)).
 
 - `state:` 시드는 선언된 경로 — `scene.*`는 안 됨 — 를 가리키며, 값은 선언된 타입에 맞아야
   합니다(숫자 경로면 `int` 또는 `double`, enum이면 멤버). 그 밖의 경우는 사용법 오류(종료 코드 2)입니다.
@@ -841,6 +841,22 @@ steps:
 시계가 선 자리에서 거짓이면 전진은 그 계기를 발생시키지 않습니다. 오류가 아닙니다: 시계는 움직이고 퀘스트도
 정착하며, 스텝에 메모가 붙습니다(`--json`: 스텝의 `notes`):
 `` note: `hourStrikes` was not raised at day 1 h01 — its `raisedWhen: run.hp > 1` is false there; the clock moved on without it ``.
+
+시계를 옮기는 비트(0.41.1): `advances:`를 선언한 비트는 제시된 뒤 `advance:` 스텝처럼 시계를 옮깁니다. 트랜스크립트는 그 이동을 비트 바로 다음에 advance 스텝의 표기로 보여 주고, 이어서 그 이동이 만든 발생 — `dayEnd`와 `dayStart`가 제시한 비트를 차례로, 그다음 시계의 `slot` 계기 — 과, 그 자리에서 관문이 닫혀 발생하지 않은 계기를 스텝 메모와 같은 이유로 보여 줍니다. `--events`는 그대로입니다(그 `clock` 이벤트가 이동을 담습니다):
+
+```
+── step 2 · work ──────────────
+  ✓ work [scene, priority 0]
+  → work
+@narrator: Work advances the clock.
+  ↻ advance slot: day 1 dusk → day 2 dawn
+  ↻ night (clock raise)
+@narrator: Night falls.
+  ↻ morning (clock raise — not raised: its `raisedWhen: run.ready` is false there since `run.ready` is false; the clock moved on without it)
+  ↻ tick (clock raise)
+  set run.ticks = 1
+@narrator: The slot is raised.
+```
 
 ### 시계 앞으로 돌리기
 
@@ -2121,6 +2137,33 @@ steps:
 `--json`에서 호출의 `plugin` 레코드에는 `"answered": [{ "field": "passed", "value": true }, …]`가, 워크가
 멈춘 곳에서는 `"unanswered": ["passed", "margin"]`이 담깁니다. [`lute trace`](/ko/tooling/tracing/), `lute test`,
 `lute run --mock`도 같은 `bridges:` 키를 받습니다.
+
+**응답과 함께 쓰는 호스트 쓰기**(0.41.1). 호스트는 bridge 호출에 답하면서 자기 쓰기도 함께 보낼 수 있습니다(`bridgeResult.writes`, 호출 자리에서 선언된 효과 다음에 적용). 플레이 스크립트에서는 이 응답을 긴 형식으로 적습니다. `fields`는 위의 평면 필드 맵이고, `writes`는 런타임의 `writes` 형태 그대로입니다 — `{ path, value }`나 `{ path, add }`인 `state` 항목, 그리고 `facts`, `retract`, `accept` 목록이며 모두 생략할 수 있습니다:
+
+```yaml
+bridges:
+  battle:
+    - fields: { outcome: win, hpFloor: 3 }
+      writes:
+        state:
+          - { path: run.score, value: 1 }
+        facts: [pulled(rope)]
+steps:
+  - occasion: duel
+    target: foe.kato
+```
+
+쓰기는 결과 필드가 들어간 뒤 호출의 효과로 트랜스크립트에 나타납니다:
+
+```
+::battle{foe=occasion.target mode="ambush" resultKey="fight"}        (bridge answered: outcome="win", hpFloor=3)
+  set scene.battle.fight.outcome = "win"  (effect of ::battle)
+  set scene.battle.fight.hpFloor = 3  (effect of ::battle)
+  set run.score = 1  (effect of ::battle)
+  assert pulled(rope)  (effect of ::battle)
+```
+
+긴 형식은 최상위, 스텝, `include:`에서 모두 쓸 수 있고 같은 목록에 평면 응답과 섞을 수 있습니다. 큐 순서, 스텝 응답 우선 소비, 남은 응답 처리는 그대로입니다. `lute play --events`는 응답과 함께 쓰기를 보냅니다(`bridgeResult { request, fields, writes }`). 다른 키가 있는 긴 형식 응답, 스칼라가 아닌 `fields`, 형식이 틀린 `writes`는 사용 오류(종료 코드 2)이며, 런타임이 거부할 쓰기 — 선언되지 않은 경로, 시계 자신의 `day` / `slot`(시계는 `advance:` 스텝으로 옮기세요) — 도 마찬가지입니다: `` top level: `bridges.battle` answer 1 `writes`: state `run.nope` is not a declared state path in this project ``. 트레이스 mock — `lute trace`, `lute run --mock`, `*.test.yaml` 시나리오 테스트 — 은 평면 응답만 받습니다.
 
 ### 기대값
 

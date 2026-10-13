@@ -137,6 +137,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.11.1 §4"],
     },
     Code {
+        code: "E-BRIDGE-NO-RESULT-WRITE",
+        summary: "A plugin directive declares `layer: bridge` and `bridgeCall` semantics, but no `effects.writes` entry reads a bridge result (`fromBridgeResult`), so the call would compile as a record nothing waits for; add a `fromBridgeResult` write or remove `layer: bridge`.",
+        spec: &["dsl 0.41.1 §3.5"],
+    },
+    Code {
         code: "E-CAMERA-EMPTY",
         summary: "A `::camera` directive names none of `focus`, `framing`, `move` or `transition`, so it has nothing to do.",
         spec: &["dsl 0.37.0 §3.3"],

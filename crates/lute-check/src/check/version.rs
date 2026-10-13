@@ -80,7 +80,7 @@ pub(super) fn check_lute_version_stale(
 }
 
 /// `MAJOR.MINOR.PATCH` as a comparable triple; `None` for anything else.
-fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
+pub fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
     let mut parts = v.trim().split('.');
     let triple = (
         parts.next()?.parse().ok()?,
@@ -187,8 +187,8 @@ mod lute_version_tests {
     /// `0.31.0` is a language AND IR release: declared beat/entry advancement
     /// and the two clock-window diagnostics move all axes to the same number.
     #[test]
-    fn language_ir_and_toolchain_are_aligned_at_0_41_0() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.41.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.41.0");
+    fn language_ir_and_toolchain_are_aligned_at_0_41_1() {
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.41.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.41.1");
     }
 }

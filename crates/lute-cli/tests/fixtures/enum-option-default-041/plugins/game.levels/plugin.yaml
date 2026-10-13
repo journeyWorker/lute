@@ -1,0 +1,9 @@
+id: game.levels
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  directives: directives/
+options:
+  - { name: levels, type: { list: string }, default: [easy, hard] }
+  - { name: tiers, type: { list: string } }

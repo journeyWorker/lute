@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: morning
-luteVersion: "0.41.0"
+luteVersion: "0.41.1"
 title: morning
 on: morning
 when: "run.ready"

@@ -174,6 +174,12 @@ A `<branch timeout>` value does not parse as a positive whole number of seconds.
 
 Spec: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md)
 
+### E-BRIDGE-NO-RESULT-WRITE
+
+A plugin directive declares `layer: bridge` and `bridgeCall` semantics, but no `effects.writes` entry reads a bridge result (`fromBridgeResult`), so the call would compile as a record nothing waits for; add a `fromBridgeResult` write or remove `layer: bridge`.
+
+Spec: [dsl 0.41.1 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md)
+
 ### E-CAMERA-EMPTY
 
 A `::camera` directive names none of `focus`, `framing`, `move` or `transition`, so it has nothing to do.

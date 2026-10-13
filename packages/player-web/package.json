@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/player-web",
-  "version": "0.41.0",
+  "version": "0.41.1",
   "description": "The Lute web visual-novel player: PixiJS 8 renderer, Web Audio, screens and input over @lute-lang/player.",
   "license": "MIT",
   "type": "module",
@@ -28,8 +28,8 @@
     "demo": "bun scripts/demo.ts"
   },
   "dependencies": {
-    "@lute-lang/player": "0.41.0",
-    "@lute-lang/runtime": "0.41.0",
+    "@lute-lang/player": "0.41.1",
+    "@lute-lang/runtime": "0.41.1",
     "pixi.js": "8.22.0",
     "@pixi/sound": "6.0.1"
   },

@@ -1,0 +1,12 @@
+# 세계 어휘 — the vocabulary
+enums:
+  slot: [아침, 낮, 저녁]   # 하루의 시간대 — slots
+  musicAction: [start, stop]
+state:
+  run.slot: { type: { domain: slot }, default: 아침 }
+  run.title: { type: string, default: "새벽 — dawn" }
+  run.music:
+    type: { domain: musicAction }   # 음악 — music
+    default: start
+  run.note: { type: string, default: 'domain: musicAction는 그대로' }
+  run.mood: { type: string, default: 고요함—calm }

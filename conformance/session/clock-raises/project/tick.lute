@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: tick
-luteVersion: "0.41.0"
+luteVersion: "0.41.1"
 title: tick
 on: tick
 priority: 0

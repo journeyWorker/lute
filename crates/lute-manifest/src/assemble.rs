@@ -281,16 +281,17 @@ pub fn assemble_snapshot(
     for ap in active {
         if ap.id == "lute.core" {
             // Already embedded; just record resolved options.
-            let version = snap
+            let (version, option_defaults) = snap
                 .plugins
                 .get("lute.core")
-                .map(|p| p.version.clone())
+                .map(|p| (p.version.clone(), p.option_defaults.clone()))
                 .unwrap_or_default();
             snap.plugins.insert(
                 ap.id.clone(),
                 ResolvedPlugin {
                     version,
                     options: ap.options.clone(),
+                    option_defaults,
                 },
             );
             continue;
@@ -571,6 +572,7 @@ pub fn assemble_snapshot(
             ResolvedPlugin {
                 version: pkg.manifest.version.clone(),
                 options: ap.options.clone(),
+                option_defaults: option_defaults(&pkg.manifest),
             },
         );
     }
@@ -626,6 +628,18 @@ pub fn assemble_snapshot(
 
     snap.version = capability_version(&snap);
     (snap, errs)
+}
+
+/// A plugin manifest's declared `options[].default` values, by option name
+/// ([`ResolvedPlugin::option_defaults`], 0.41.1 §3.4).
+pub(crate) fn option_defaults(
+    manifest: &crate::schema::PluginManifest,
+) -> BTreeMap<String, crate::types::Literal> {
+    manifest
+        .options
+        .iter()
+        .filter_map(|o| Some((o.name.clone(), o.default.clone()?)))
+        .collect()
 }
 
 /// Report every directive attr typed `assetKind(name)` whose kind is not present

@@ -1,0 +1,9 @@
+---
+kind: scene
+id: odds
+plugins:
+  arena: {}
+---
+## Odds
+::odds
+@narrator: The odds are taken.

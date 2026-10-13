@@ -34,6 +34,19 @@ const requirements = Layer.mergeAll(
 
 `LutePlayerOptions` requires `bindings`, `presenter`, `audio`, and `assets`; it accepts optional `host`, `linePacing`, `autosave`, and one start: `seed` (default `{ derive: true }`), `snapshot` (a runtime snapshot), or `session` (a runtime session the host built — the player drives it and never closes it). Bindings can be decoded data or YAML text. Provide runtime, bundle, input-log, and key-value-store services before running `LutePlayer.make` in a scope; with `session`, only the bundle (the same one) and the key-value store are required.
 
+## Upgrading from 0.40
+
+The player-session option that names speakers is `cast` (since 0.41.0). A host that composes the session itself with `Session.layer` (the `PlayerSession` layer) passes `SessionOptions.cast` — a plain record, cast id → display name, which is the bundle index's `cast` — where 0.40 took `castNames`, a `ReadonlyMap`. The old `castNamesFrom(artifacts)` helper is gone; read the names from `bundle.index.cast`:
+
+```ts
+import { Session } from "@lute-lang/player"
+
+// 0.40: Session.layer({ bindings, castNames: Cues.castNamesFrom(artifacts) })
+Session.layer({ bindings, cast: bundle.index.cast ?? {} })
+```
+
+`LutePlayer.make` fills `cast` from the bundle for you. The full list of 0.41 migration steps is in the [CHANGELOG](https://github.com/journeyWorker/lute/blob/v0.41.1/CHANGELOG.md#0411).
+
 ## The handle
 
 `LutePlayer.make` returns `actions`, `view`, `send`, `restore`, `shutdown`, `session`, and `program`:

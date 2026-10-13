@@ -141,7 +141,7 @@ pub fn check_project_usage(
         if decl.reserved || !written.contains(name) || read.contains(name) {
             continue;
         }
-        let Some((path, span)) = declaration(docs, DeclKind::Relation, "relations", name) else {
+        let Some((path, span, _)) = declaration(docs, DeclKind::Relation, "relations", name) else {
             continue;
         };
         out.push((
@@ -184,8 +184,17 @@ pub fn check_project_usage(
         if used.contains(*name) || host.contains(*name) {
             continue;
         }
-        let Some((path, span)) = declaration(docs, DeclKind::Def, "defs", name) else {
+        let Some((path, span, imported)) = declaration(docs, DeclKind::Def, "defs", name) else {
             continue;
+        };
+        // 0.41.1 §3.3: a schema file's def may be read by the host instead —
+        // name the `host: true` escape. A frontmatter def refuses `host:`
+        // (`E-DEF-DECL`), so its message never suggests it.
+        let remedy = if imported {
+            "use it, drop it, or mark it `host: true` if the host reads it (for example, \
+             `Program.def`)"
+        } else {
+            "use it or drop it"
         };
         out.push((
             path,
@@ -193,8 +202,7 @@ pub fn check_project_usage(
                 W_DEF_UNUSED,
                 format!(
                     "def `{name}` is declared but no `@{name}` reference uses it anywhere in the \
-                     project (content, other defs, or rule guards); use it or drop it \
-                     (dsl 0.24.0)"
+                     project (content, other defs, or rule guards); {remedy} (dsl 0.24.0)"
                 ),
                 span,
             ),
@@ -205,14 +213,15 @@ pub fn check_project_usage(
 }
 
 /// Where `name` is declared: the schema file an import resolved it from
-/// (`RelVocab::origins`), else the first walked document whose own
-/// frontmatter `block:` (`relations` / `defs`) declares it, at the key.
+/// (`RelVocab::origins`, `true`), else the first walked document whose own
+/// frontmatter `block:` (`relations` / `defs`) declares it, at the key
+/// (`false`).
 fn declaration(
     docs: &[UsageDoc<'_>],
     kind: DeclKind,
     block: &str,
     name: &str,
-) -> Option<(PathBuf, Span)> {
+) -> Option<(PathBuf, Span, bool)> {
     let imported = docs.iter().find_map(|d| {
         let origins = &d.folded.env.rel_vocab.origins;
         match kind {
@@ -221,7 +230,7 @@ fn declaration(
         }
     });
     if let Some(o) = imported {
-        return Some((o.file.clone(), o.span));
+        return Some((o.file.clone(), o.span, true));
     }
     docs.iter().find_map(|d| {
         let map = d.folded.typed.yaml()?.as_mapping()?;
@@ -231,6 +240,7 @@ fn declaration(
         Some((
             d.path.to_path_buf(),
             crate::meta::meta_key_span(&d.doc.meta, name),
+            false,
         ))
     })
 }

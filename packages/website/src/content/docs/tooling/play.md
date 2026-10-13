@@ -191,16 +191,16 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 `--events` writes a resumable runtime stream as compact JSON Lines. The first
 line contains the seed and its output; every following line pairs the input
 the player took with its output, including `choose` and `bridgeResult`
-answers. Each output is stamped with `eventVersion: "0.41.0"`. The stream is
+answers. Each output is stamped with `eventVersion: "0.41.1"`. The stream is
 exclusive with `--json`, `--ir`, `--explain`, and `--dump-conditions`.
 
 A short real stream from the hub conformance project looks like this (the
 first choice opens a second await):
 
 ```json
-{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.41.0","events":[]}}
-{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.41.0","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
-{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.0","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.41.1","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
 - `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
@@ -342,7 +342,7 @@ expect:                                   # assert the end of the play
 
 Its transcript is the example in [The transcript](#the-transcript).
 
-`state:`, `facts:`, `choose:`, and `bridges:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file.
+`state:`, `facts:`, and `choose:` use exactly the grammar of a [`lute trace --mock`](/tooling/tracing/) file. So does `bridges:`, whose answers in a play script may also take the long form with host writes ([Answering bridge calls](#answering-bridge-calls)).
 
 - A `state:` seed names a declared path — never `scene.*` — and its value must fit the declared type (an `int` or `double` for a numeric path, a member for an enum); anything else is a usage error (exit 2). A `quest.<id>.state` seed (`state: { quest.lostCup.state: active }`) is that quest's lifecycle status from the start, exactly as a `quests:` entry, and a `quest.<id>.objectives.<oid>.done: true` seed is an objective the save has already done — see [Starting from a save](#starting-from-a-save). A `prev.run.<path>` seed (dsl 0.23.0) is the value `run.<path>` had when the previous run ended, and follows that run path's type — see [Run boundaries](#run-boundaries).
 - A `facts:` entry is a ground atom of a declared, non-derived relation at its arity, with members of its closed argument domains. A **reserved** relation is allowed — the engine is exactly who asserts one.
@@ -962,6 +962,22 @@ Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 
 ```
 
 After the [game is over](#the-game-is-over) no `advance:` runs at all.
+
+**A beat that advances the clock** (0.41.1). A beat declaring `advances:` moves the clock as an `advance:` step would, once it has been presented. The transcript shows that movement right after the beat, in the advance step's spelling, then each raise it made — the beats `dayEnd` and `dayStart` presented, in order, then the clock's `slot` occasion — and a raise whose gate was closed at its place, with the same reason as the step's note. `--events` is unchanged (its `clock` event carries the movement):
+
+```
+── step 2 · work ──────────────
+  ✓ work [scene, priority 0]
+  → work
+@narrator: Work advances the clock.
+  ↻ advance slot: day 1 dusk → day 2 dawn
+  ↻ night (clock raise)
+@narrator: Night falls.
+  ↻ morning (clock raise — not raised: its `raisedWhen: run.ready` is false there since `run.ready` is false; the clock moved on without it)
+  ↻ tick (clock raise)
+  set run.ticks = 1
+@narrator: The slot is raised.
+```
 
 **Sharing a routine.** `include: <file>` (a step whose action is `include`; since 0.27.0 it may also carry `repeat`, `choose` and `bridges`) splices another file's steps in its place: the file is a list of steps, or a mapping whose only key is `steps:`. The path resolves against the including file, and includes may nest. A day of routine lives in one file that several routes share:
 
@@ -1628,6 +1644,33 @@ steps:
 ```
 
 In `--json` the call's `plugin` record carries `"answered": [{ "field": "passed", "value": true }, …]`, or `"unanswered": ["passed", "margin"]` where the walk halted. [`lute trace`](/tooling/tracing/), `lute test` and `lute run --mock` take the same `bridges:` key.
+
+**Host writes with an answer** (0.41.1). A host may answer a bridge call with writes of its own (`bridgeResult.writes`, applied at the call after its declared effects). A play script spells such an answer in the long form: `fields` is the flat field map above, and `writes` is the runtime's `writes` shape — `state` entries `{ path, value }` or `{ path, add }`, and `facts`, `retract` and `accept` lists, each optional:
+
+```yaml
+bridges:
+  battle:
+    - fields: { outcome: win, hpFloor: 3 }
+      writes:
+        state:
+          - { path: run.score, value: 1 }
+        facts: [pulled(rope)]
+steps:
+  - occasion: duel
+    target: foe.kato
+```
+
+The writes show in the transcript as effects of the call, after the result fields land:
+
+```
+::battle{foe=occasion.target mode="ambush" resultKey="fight"}        (bridge answered: outcome="win", hpFloor=3)
+  set scene.battle.fight.outcome = "win"  (effect of ::battle)
+  set scene.battle.fight.hpFloor = 3  (effect of ::battle)
+  set run.score = 1  (effect of ::battle)
+  assert pulled(rope)  (effect of ::battle)
+```
+
+The long form works at the top level, on a step and on an `include:`, beside flat answers in the same list; queue order, step-before-top consumption and leftover answers are unchanged. `lute play --events` sends the writes with the answer (`bridgeResult { request, fields, writes }`). A long-form answer with another key, `fields` that are not scalars, or malformed `writes` is a usage error (exit 2), as is a write the runtime would refuse — an undeclared path, or the clock's own `day` / `slot` (move the clock with an `advance:` step): `` top level: `bridges.battle` answer 1 `writes`: state `run.nope` is not a declared state path in this project ``. Trace mocks — `lute trace`, `lute run --mock` and `*.test.yaml` scenario tests — take flat answers only.
 
 ### Expectations
 

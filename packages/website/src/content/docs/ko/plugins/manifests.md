@@ -36,6 +36,8 @@ options:                   # OPTIONAL — typed activation options
 
 `depends[].range`는 두 형태로만 고정됩니다 — 캐럿(`^x.y.z`, 1.0 이전 의미론) 또는 세 요소로 된 정확한 버전입니다. 그 밖의 표기는 정의상 만족시킬 수 없습니다.
 
+옵션의 값은 활성 프로필이 준 값이고, 없으면 선언된 `default:`입니다. `{ enumFromOption: <option> }` 타입의 속성은 이 실제 값으로 검사합니다(0.41.1). 위 매니페스트와 플러그인을 켜기만 하는 프로필(`plugins: { arcia.minigame: true }`)에서는 `{ enumFromOption: allowedKinds }` 타입 속성의 `kind="racing"`이 `rhythm, puzzle, timing`에 대해 `E-BAD-ENUM`이며, 생략된 속성의 선언된 `default:`가 목록 밖이어도 마찬가지입니다. 프로필이 `allowedKinds: [rhythm]`을 주면 그 목록으로 좁혀집니다. 프로필 값도 `default:`도 없는 옵션이면 속성을 검사하지 않습니다.
+
 ## Export 파일
 
 각 export 종류에는 규범 스키마가 있습니다. 모두 하나의 작은 매니페스트 타입 시스템(`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, 그리고 `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, shape 참조)으로 타입이 지정됩니다. dsl 0.26.0부터 디렉티브 속성은 `{ entity: <kind> }`로도 타입을 지정할 수 있습니다([엔진 id를 엔티티 종류로 타입 지정](#엔티티-종류로-형식이-지정된-엔진-id) 참고). 상태 경로는 `$name` 보간이 아니라 **구조화된 세그먼트**를 사용합니다.

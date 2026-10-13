@@ -1,0 +1,5 @@
+occasions:
+  morning: { select: first, raisedWhen: "run.ready" }
+  night: { select: first }
+  tick: { select: first }
+  work: { select: first }

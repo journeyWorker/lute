@@ -16,9 +16,10 @@
 //!   no fix-it.
 //! - **`EnumFromOption` owner (plugin §7):** a [`DirectiveDecl`] does not record
 //!   which plugin declared it, so we cannot scope the option lookup to the
-//!   owning plugin. We best-effort resolve the option across all resolved
-//!   plugins; if no plugin resolves that option to a string list we skip the
-//!   membership check rather than emit a false `E-BAD-ENUM`.
+//!   owning plugin. We best-effort resolve the option's effective value — the
+//!   profile's, else the manifest's declared default (0.41.1 §3.4) — across
+//!   all resolved plugins; if none resolves that option to a string list we
+//!   skip the membership check rather than emit a false `E-BAD-ENUM`.
 
 use std::collections::BTreeMap;
 
@@ -921,26 +922,34 @@ fn check_asset_id(
     }
 }
 
-/// Best-effort resolve an `EnumFromOption` domain: find any resolved plugin
-/// whose `options[opt]` is a string list/enum literal and return its members.
-/// Returns `None` when no plugin resolves the option to a string list (see
-/// module docs on the missing owning-plugin API).
+/// Best-effort resolve an `EnumFromOption` domain: the option's effective
+/// value on a resolved plugin, as a string list (0.41.1 §3.4) — a profile
+/// value first (the first plugin whose profile sets the option to a list),
+/// otherwise, when no profile sets the option at all, the first plugin
+/// manifest's `options[].default` for it. Returns `None` when neither
+/// resolves the option to a string list (see module docs on the missing
+/// owning-plugin API), so the membership check is skipped.
 fn resolve_option_domain(snapshot: &CapabilitySnapshot, opt: &str) -> Option<Vec<String>> {
-    for plugin in snapshot.plugins.values() {
-        if let Some(Literal::List(items)) = plugin.options.get(opt) {
-            let mut members = Vec::with_capacity(items.len());
-            for item in items {
-                match item {
-                    Literal::Str(s) => members.push(s.clone()),
-                    // A non-string member means this isn't an enum-of-strings
-                    // domain; bail rather than half-resolve.
-                    _ => return None,
-                }
-            }
-            return Some(members);
+    let list = |lit: &Literal| match lit {
+        Literal::List(items) => Some(items.clone()),
+        _ => None,
+    };
+    let plugins = || snapshot.plugins.values();
+    let items = if plugins().any(|p| p.options.contains_key(opt)) {
+        plugins().find_map(|p| p.options.get(opt).and_then(list))
+    } else {
+        plugins().find_map(|p| p.option_defaults.get(opt).and_then(list))
+    }?;
+    let mut members = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            Literal::Str(s) => members.push(s),
+            // A non-string member means this isn't an enum-of-strings
+            // domain; bail rather than half-resolve.
+            _ => return None,
         }
     }
-    None
+    Some(members)
 }
 
 /// Map a literal `AttrValue` to a `Literal` in the declared type's domain so
@@ -1021,6 +1030,33 @@ mod tests {
             column: 1,
             utf16_range: (0, 0),
         }
+    }
+
+    /// 0.41.1 §3.4: a profile that sets the option at all — even to a value
+    /// that is no list — wins over every manifest default; with no profile
+    /// value the first declared default is the domain; neither is a skip.
+    #[test]
+    fn option_domain_prefers_any_profile_value_over_defaults() {
+        use lute_manifest::snapshot::ResolvedPlugin;
+        let list = |xs: &[&str]| Literal::List(xs.iter().map(|x| Literal::Str(x.to_string())).collect());
+        let plugin = |options: Vec<(&str, Literal)>, defaults: Vec<(&str, Literal)>| ResolvedPlugin {
+            version: "0.1.0".into(),
+            options: options.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+            option_defaults: defaults.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+        };
+        let mut snap = CapabilitySnapshot::default();
+        snap.plugins.insert("a.levels".into(), plugin(vec![], vec![("levels", list(&["easy", "hard"]))]));
+        assert_eq!(
+            resolve_option_domain(&snap, "levels"),
+            Some(vec!["easy".to_string(), "hard".to_string()])
+        );
+        assert_eq!(resolve_option_domain(&snap, "tiers"), None);
+
+        snap.plugins.insert("b.levels".into(), plugin(vec![("levels", list(&["hard"]))], vec![]));
+        assert_eq!(resolve_option_domain(&snap, "levels"), Some(vec!["hard".to_string()]));
+
+        snap.plugins.insert("b.levels".into(), plugin(vec![("levels", Literal::Bool(true))], vec![]));
+        assert_eq!(resolve_option_domain(&snap, "levels"), None);
     }
 
     fn directive(tag: &str, attrs: &[(&str, &str)]) -> Directive {

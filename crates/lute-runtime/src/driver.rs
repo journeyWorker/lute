@@ -377,17 +377,18 @@ impl ScriptedChoices {
 /// tag, one answer per call, in call order. `step` (a `lute play` step's own
 /// `bridges:`) is consumed before `top` (the play's top-level `bridges:`, or
 /// a `lute run --mock`'s).
+///
+/// `A` is the answer: the runtime's field map by default; `lute play` carries
+/// each answer's host writes (0.41.1 §4.1) beside it.
 #[derive(Clone, Debug, Default)]
-pub struct BridgeQueues {
-    pub step: BTreeMap<String, VecDeque<BridgeAnswer>>,
-    pub top: BTreeMap<String, VecDeque<BridgeAnswer>>,
+pub struct BridgeQueues<A = BridgeAnswer> {
+    pub step: BTreeMap<String, VecDeque<A>>,
+    pub top: BTreeMap<String, VecDeque<A>>,
 }
 
-impl BridgeQueues {
+impl<A: Clone> BridgeQueues<A> {
     /// A `bridges:` surface as a queue.
-    pub fn queue(
-        answers: &BTreeMap<String, Vec<BridgeAnswer>>,
-    ) -> BTreeMap<String, VecDeque<BridgeAnswer>> {
+    pub fn queue(answers: &BTreeMap<String, Vec<A>>) -> BTreeMap<String, VecDeque<A>> {
         answers
             .iter()
             .filter(|(_, list)| !list.is_empty())
@@ -397,7 +398,7 @@ impl BridgeQueues {
 
     /// The next answer for a call of `tag`: the step's first, then the top
     /// level's.
-    pub fn next(&mut self, tag: &str) -> Option<BridgeAnswer> {
+    pub fn next(&mut self, tag: &str) -> Option<A> {
         for tier in [&mut self.step, &mut self.top] {
             if let Some(q) = tier.get_mut(tag) {
                 if let Some(a) = q.pop_front() {

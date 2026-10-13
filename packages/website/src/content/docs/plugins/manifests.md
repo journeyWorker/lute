@@ -36,6 +36,8 @@ options:                   # OPTIONAL — typed activation options
 
 `depends[].range` is pinned to two forms only — caret (`^x.y.z`, pre-1.0 semantics) or an exact three-component version. Any other spelling is unsatisfiable by definition.
 
+An option's value is the active profile's, otherwise its declared `default:`. An attribute typed `{ enumFromOption: <option> }` is checked against that effective value (0.41.1): with the manifest above and a profile that only enables the plugin (`plugins: { arcia.minigame: true }`), `kind="racing"` on an attribute typed `{ enumFromOption: allowedKinds }` is `E-BAD-ENUM` against `rhythm, puzzle, timing`, and so is an omitted attribute's declared `default:` outside the list. A profile that sets `allowedKinds: [rhythm]` narrows it to that list. An option with neither a profile value nor a `default:` leaves the attribute unchecked.
+
 ## Export files
 
 Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.

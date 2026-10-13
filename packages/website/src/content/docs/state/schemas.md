@@ -205,9 +205,11 @@ run. With several schemas, the project's ending persists only when every declara
 
 `check-project` reports `W-DEF-UNUSED` (dsl 0.24.0 §7) for a declared `@def` that no content, no other def, and no rule guard references. It is reported once per project, at the declaration: the schema file's line, or the document's own `defs:` key. Play scripts and tests are not uses. The relational counterpart is `W-RELATION-UNREAD` (see [Relations nothing reads](/state/facts-and-datalog/#relations-nothing-reads)).
 
+A schema file's def that only the host reads — a game's `Program.def`, say — is not dead: mark it `host: true` and the warning stays silent, as the message says (0.41.1). A document's own frontmatter def cannot take `host:` (`E-DEF-DECL`), so its warning only says to use the def or drop it.
+
 <!-- lute-diagnostics -->
 ```
-./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it or drop it
+./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it, drop it, or mark it `host: true` if the host reads it (for example, `Program.def`)
 ```
 
 ## Composition: `uses` and `extends`

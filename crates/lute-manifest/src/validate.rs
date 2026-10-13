@@ -305,6 +305,28 @@ pub fn attr_default_accepts(ty: &Type, default: &Literal) -> bool {
     }
 }
 
+/// 0.41.1 §3.5: a directive declared `layer: bridge` with `bridgeCall`
+/// semantics but no `effects.writes` entry reading a bridge result — it
+/// would compile to a non-blocking record whose answer nothing waits for.
+pub const E_BRIDGE_NO_RESULT_WRITE: &str = "E-BRIDGE-NO-RESULT-WRITE";
+
+/// The [`E_BRIDGE_NO_RESULT_WRITE`] message for `d`, when `d` is such a
+/// declaration. The loader reports it at the declaration's `name:`.
+pub fn bridge_without_result_write(d: &DirectiveDecl) -> Option<String> {
+    let nominal = d.layer.as_deref() == Some("bridge") && d.semantics.iter().any(|s| s == "bridgeCall");
+    let reads_result = d.effects.iter().flat_map(|e| &e.writes).any(|w| {
+        matches!(w.value, WriteValue::FromBridgeResult { .. })
+    });
+    (nominal && !reads_result).then(|| {
+        format!(
+            "bridge directive `{}` declares `layer: bridge` but no `effects.writes` reads a \
+             bridge result; it will not block — add a `fromBridgeResult` write or remove \
+             `layer: bridge`",
+            d.name
+        )
+    })
+}
+
 /// dsl 0.27.0 §2, §4: the directive's declared `effects` against its own
 /// attrs. The loader runs this where it knows the file, so a fault names
 /// its line ([`crate::loader`]); assembly re-runs it for a declaration that

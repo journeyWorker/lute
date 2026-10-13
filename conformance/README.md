@@ -174,7 +174,7 @@ fixtures. `command-staging` covers `bg`, `music`, `sfx`, `vfx`, `actor`,
 `beat`, and `retract`; `command-plugin` covers `plugin`. Every recorded command
 carries its `family` (`content`, `staging`, `state`, `control`, `declaration`,
 `plugin`) and `position`. No requested kind is unsupported by the reference
-runner. The staging fixture uses a live `luteVersion: "0.41.0"` header, as do
+runner. The staging fixture uses a live `luteVersion: "0.41.1"` header, as do
 the lifecycle and plugin sources.
 
 ### Diagnostic fixtures

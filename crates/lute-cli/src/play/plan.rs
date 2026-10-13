@@ -12,12 +12,24 @@ use lute_runtime::session::{
     atom_problem, entry_flag, is_candidate, project_decisions, resolve_bridges, resolve_fact,
     resolve_state, seed_world, ExecProject, Pick, SeedError, World, WorldSeed, Write, Writes,
 };
+use lute_runtime::BridgeAnswer;
 use serde_json::Value as Json;
 
 use super::script::{
-    in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptedPick,
-    ScriptStep, Segment, StepAction,
+    in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptBridgeAnswer,
+    ScriptedPick, ScriptStep, Segment, StepAction,
 };
+
+/// One planned `bridges:` answer (0.41.1 §4.1): the field map the runtime
+/// already took, the long form's `writes` as written — what `--events`
+/// sends as `bridgeResult.writes` — and the same writes resolved against the
+/// project, which `lute play`'s walk applies at the call.
+#[derive(Clone, Debug, Default)]
+pub(super) struct PlannedBridgeAnswer {
+    pub(super) fields: BridgeAnswer,
+    pub(super) input: lute_runtime::WritesInput,
+    pub(super) writes: Writes,
+}
 
 /// What a planned step does.
 pub(super) enum Action {
@@ -57,7 +69,7 @@ pub(super) struct Step {
     pub(super) action: Action,
     /// The step's own `bridges:` (dsl 0.24.0 §5), resolved against the
     /// project's plugin calls — every run of the step gets them afresh.
-    pub(super) bridges: BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
     /// dsl 0.27.0 (T3-22): the `include:` segments around the step,
     /// outermost first — one `Arc` per segment, shared by its steps.
     pub(super) segments: Vec<Arc<Scope>>,
@@ -69,7 +81,64 @@ pub(super) struct Scope {
     /// `include: <file>` at `file:line:col`, for messages.
     pub(super) include: String,
     pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) bridges: BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
+}
+
+/// A `bridges:` surface (top level, a step's, an `include:`'s) resolved
+/// against the project: each answer's fields checked against the calls that
+/// read them ([`resolve_bridges`]), then [`bridge_queues`].
+pub(super) fn resolve_script_bridges(
+    p: &ExecProject,
+    at: &str,
+    raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
+) -> Result<BTreeMap<String, VecDeque<PlannedBridgeAnswer>>, String> {
+    let fields: BTreeMap<_, Vec<_>> = raw
+        .iter()
+        .map(|(tag, answers)| {
+            (
+                tag.clone(),
+                answers.iter().map(|answer| answer.fields.clone()).collect(),
+            )
+        })
+        .collect();
+    resolve_bridges(p, at, &fields)?;
+    bridge_queues(p, at, raw)
+}
+
+/// A `bridges:` surface queued for the walk (empty lists queue nothing),
+/// each answer's fields as written and its `writes` (0.41.1 §4.1) resolved
+/// as the runtime resolves a `bridgeResult`'s. `Err` names the first write
+/// that does not resolve.
+pub(super) fn bridge_queues(
+    p: &ExecProject,
+    at: &str,
+    raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
+) -> Result<BTreeMap<String, VecDeque<PlannedBridgeAnswer>>, String> {
+    let mut out = BTreeMap::new();
+    for (tag, answers) in raw.iter().filter(|(_, answers)| !answers.is_empty()) {
+        let mut planned = VecDeque::with_capacity(answers.len());
+        for (index, answer) in answers.iter().enumerate() {
+            let writes = lute_runtime::resolve_bridge_writes(p, &answer.writes).map_err(|e| {
+                // The runtime leaves an undeclared path's message for its
+                // caller to prefix with the path.
+                let path = answer
+                    .writes
+                    .state
+                    .iter()
+                    .map(|w| w.path.as_str())
+                    .find(|path| resolve_state(p, path, "").is_err_and(|m| m == e));
+                let e = path.map_or_else(|| e.clone(), |path| format!("state `{path}` {e}"));
+                format!("{at}: `bridges.{tag}` answer {} `writes`: {e}", index + 1)
+            })?;
+            planned.push_back(PlannedBridgeAnswer {
+                fields: answer.fields.clone(),
+                input: answer.writes.clone(),
+                writes,
+            });
+        }
+        out.insert(tag.clone(), planned);
+    }
+    Ok(out)
 }
 
 /// Resolve an `engine:` step's / `newRun` seed's writes. A `quest.*` path is
@@ -351,7 +420,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 segments.push(scope.clone());
                 continue;
             }
-            match resolve_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges) {
+            match resolve_script_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges) {
                 Ok(bridges) => {
                     let scope = Arc::new(Scope {
                         include: seg.include.clone(),
@@ -364,7 +433,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                 Err(e) => errs.push(e),
             }
         }
-        let bridges = resolve_bridges(p, &format!("step {n}"), &step.bridges)
+        let bridges = resolve_script_bridges(p, &format!("step {n}"), &step.bridges)
             .map_err(|e| errs.push(e))
             .ok();
         match (action, bridges) {
@@ -914,7 +983,7 @@ fn check_decisions(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>)
             }
             for (tag, answers) in &seg.bridges {
                 let one = BTreeMap::from([(tag.clone(), answers.clone())]);
-                if let Err(e) = resolve_bridges(p, "", &one) {
+                if let Err(e) = resolve_script_bridges(p, "", &one) {
                     errs.push(
                         seg.at
                             .locate_keys(&["bridges", tag], e.trim_start_matches(": ")),
@@ -1004,7 +1073,7 @@ pub(super) fn plan_script(
     check_needles(needles, script, &mut errs);
     check_expect_facts(project, script, &mut errs);
     check_expect_state_values(project, script, &mut errs);
-    if let Err(e) = resolve_bridges(project, "top level", &script.surfaces.bridges) {
+    if let Err(e) = resolve_script_bridges(project, "top level", &script.bridges) {
         errs.push(e);
     }
     let world = seed_world(

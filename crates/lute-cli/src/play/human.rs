@@ -6,8 +6,10 @@
 use std::collections::BTreeMap;
 
 use lute_manifest::schema::OccasionSelect;
+use lute_runtime::seam::{Closed, ClosedRaise};
 use lute_runtime::session::{
-    kind_label, value_to_json, Candidate, ExecProject, Pick, Played, Presented, StepBody, Verdict,
+    kind_label, value_to_json, Candidate, ClockRaise, ExecProject, Pick, Played, Presented,
+    StepBody, Verdict,
 };
 use serde_json::Value as Json;
 use lute_trace::exec::record::{line_head, render_attrs, said_line};
@@ -916,15 +918,49 @@ fn render_occasion_human(
     }
 }
 
+/// What follows a presented beat (0.41.1 §4.2): its `advances:` movement —
+/// the explicit `advance:` header's spelling, then each `dayEnd` /
+/// `dayStart` raise it made or found closed, in raise order — then the
+/// beats the clock's slot raise presented.
 fn render_raised(out: &mut String, p: &ExecProject, view: View, beat: &Presented) {
+    if let Some(advance) = &beat.advance {
+        out.push_str(&format!(
+            "  ↻ advance {}: {} → {}\n",
+            advance.by, advance.from, advance.to
+        ));
+        for raise in &advance.raises {
+            match raise {
+                ClockRaise::Raised(raised) => render_clock_raise(out, p, view, raised),
+                ClockRaise::Closed(closed) => out.push_str(&format!(
+                    "  ↻ {} (clock raise — not raised: {}; the clock moved on without it)\n",
+                    closed.occasion,
+                    closed_why(closed)
+                )),
+            }
+        }
+    }
     for raised in &beat.raised {
-        out.push_str(&format!("  ↻ {} (clock raise)\n", raised.id));
-        render_records(out, p, view, &raised.document, &raised.transcript);
-        render_raised(out, p, view, raised);
+        render_clock_raise(out, p, view, raised);
     }
 }
 
+fn render_clock_raise(out: &mut String, p: &ExecProject, view: View, raised: &Presented) {
+    out.push_str(&format!("  ↻ {} (clock raise)\n", raised.id));
+    render_records(out, p, view, &raised.document, &raised.transcript);
+    render_raised(out, p, view, raised);
+}
 
+/// Why a clock raise was not made (dsl 0.27.0 §4): its closed seam.
+pub(super) fn closed_why(closed: &ClosedRaise) -> String {
+    match &closed.why {
+        Closed::Gate { raw, reads } => format!(
+            "its `raisedWhen: {raw}` is false there{}",
+            Closed::reads_text(reads)
+        ),
+        Closed::Terminal(t) => format!("the game is over (`terminal: {t}` holds)"),
+        Closed::Unknown(u) => format!("whether the engine may raise it is undecided: {u}"),
+    }
+}
 
 /// The play's presented content, one canonical `@speaker{delivery}: text`
 /// line ([`lute_trace::exec::record::said_line`], the head the human transcript

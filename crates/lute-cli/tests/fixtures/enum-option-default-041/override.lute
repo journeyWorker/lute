@@ -1,0 +1,9 @@
+---
+kind: scene
+id: override
+profile: hard
+---
+## Override
+::level{value="hard"}
+::level{value="easy" mode="hard"}
+@narrator: Only hard counts here.

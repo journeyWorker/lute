@@ -8,10 +8,9 @@ use std::sync::Arc;
 
 use serde_json::Value as Json;
 
-use lute_runtime::seam::Closed;
 use lute_runtime::session::{PlayHalt, Played, QuestAdvance, Session, StepBody, World};
 
-use super::plan::{Action, Scope, Step};
+use super::plan::{Action, PlannedBridgeAnswer, Scope, Step};
 use super::script::PlayScript;
 use super::driver::PlayDriverState;
 use crate::play_expect::WorldView;
@@ -356,17 +355,11 @@ fn closed_raise_notes(body: &StepBody) -> Vec<String> {
     closed
         .iter()
         .map(|c| {
-            let why = match &c.why {
-                Closed::Gate { raw, reads } => format!(
-                    "its `raisedWhen: {raw}` is false there{}",
-                    Closed::reads_text(reads)
-                ),
-                Closed::Terminal(t) => format!("the game is over (`terminal: {t}` holds)"),
-                Closed::Unknown(u) => format!("whether the engine may raise it is undecided: {u}"),
-            };
             format!(
-                "`{}` was not raised at {} — {why}; the clock moved on without it",
-                c.occasion, c.at
+                "`{}` was not raised at {} — {}; the clock moved on without it",
+                c.occasion,
+                c.at,
+                super::human::closed_why(c)
             )
         })
         .collect()
@@ -456,7 +449,7 @@ struct OpenScope {
         Option<Vec<super::script::ScriptedPick>>,
         Option<usize>,
     )>,
-    bridges: Vec<(String, Option<VecDeque<lute_runtime::BridgeAnswer>>)>,
+    bridges: Vec<(String, Option<VecDeque<PlannedBridgeAnswer>>)>,
     used: Used,
 }
 
@@ -794,7 +787,7 @@ fn clock_raised_note(
 /// expected to decide something decided nothing.
 fn unconsumed_step_bridges(
     n: usize,
-    leftover: &BTreeMap<String, VecDeque<lute_runtime::BridgeAnswer>>,
+    leftover: &BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
 ) -> Option<PlayHalt> {
     if leftover.is_empty() {
         return None;
@@ -805,7 +798,8 @@ fn unconsumed_step_bridges(
             let answers: Vec<String> = q
                 .iter()
                 .map(|a| {
-                    let fields: Vec<String> = a.iter().map(|(f, v)| format!("{f}: {v}")).collect();
+                    let fields: Vec<String> =
+                        a.fields.iter().map(|(f, v)| format!("{f}: {v}")).collect();
                     format!("{{{}}}", fields.join(", "))
                 })
                 .collect();

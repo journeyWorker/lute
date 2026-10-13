@@ -66,6 +66,8 @@ directives:
 
 모든 쓰기 경로는 슬롯의 shape로 선언되어야 **합니다(MUST)**. 블로킹 브리지는 플러그인이 소유하는 `sync` 속성을 사용합니다 — 예약된 DSL 타이밍 키 `wait`가 아닙니다. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`는 코어 스탬프가 소유하는 여덟 이름입니다. 플러그인이 이 중 하나를 속성으로 선언하면 조립 시 [`E-PLUGIN-RESERVED-STAMP-ATTR`](/ko/plugins/manifests/)로 거부됩니다.
 
+호출이 블로킹되는 것(호스트의 답을 기다리는 것)은 `effects.writes` 항목이 bridge 결과를 읽기 때문입니다. `layer: bridge`와 `bridgeCall`을 선언했지만 `fromBridgeResult` 쓰기가 없는 디렉티브는 아무것도 기다리지 않는 레코드로 컴파일되므로, 0.41.1부터 선언 위치에서 [`E-BRIDGE-NO-RESULT-WRITE`](/ko/reference/diagnostics/#e-bridge-no-result-write)가 되고 쓰기를 추가하거나 `layer: bridge`를 지울 때까지 프로젝트가 컴파일되지 않습니다.
+
 ## 예제: `::minigame`과 결과 슬롯에 대한 match
 
 씬은 아무것도 손으로 쓰지 않습니다. 브리지를 실행한 뒤 선언된 슬롯을 읽습니다:

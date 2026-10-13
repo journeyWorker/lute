@@ -173,6 +173,12 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md)
 
+### E-BRIDGE-NO-RESULT-WRITE
+
+플러그인 디렉티브가 `layer: bridge`와 `bridgeCall` 의미를 선언했지만 bridge 결과를 읽는(`fromBridgeResult`) `effects.writes` 항목이 없어, 호출이 아무것도 기다리지 않는 레코드로 컴파일됩니다. `fromBridgeResult` 쓰기를 추가하거나 `layer: bridge`를 지우세요.
+
+명세: [dsl 0.41.1 §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md)
+
 ### E-CAMERA-EMPTY
 
 `::camera` 지시어가 `focus`, `framing`, `move`, `transition` 중 어느 것도 지정하지 않아 할 일이 없습니다.
