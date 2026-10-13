@@ -206,6 +206,15 @@ pub enum LoadError {
         msg: String,
         entry: Option<(&'static str, String)>,
     },
+    /// 0.41.1 §3.5: a `layer: bridge` + `bridgeCall` directive with no
+    /// `effects.writes` reading a bridge result, at its `name:`. The
+    /// package still loads — the declaration is otherwise sound, so its
+    /// uses are checked — but the error fails the run, so nothing compiles.
+    BridgeNoResultWrite {
+        file: String,
+        at: At,
+        msg: String,
+    },
     MissingExportDir {
         export: String,
         path: String,
@@ -255,6 +264,7 @@ impl LoadError {
             LoadError::Key { .. } => "E-PLUGIN-KEY",
             LoadError::DuplicateId { .. } => "E-PLUGIN-DUP-ID",
             LoadError::TypeNumber { .. } => crate::types::E_TYPE_NUMBER,
+            LoadError::BridgeNoResultWrite { .. } => crate::validate::E_BRIDGE_NO_RESULT_WRITE,
             LoadError::MissingExportDir { .. } => "E-PLUGIN-MISSING-EXPORT",
             LoadError::Io { .. } => "E-PLUGIN-IO",
             LoadError::UnknownExport { .. } => "E-PLUGIN-UNKNOWN-EXPORT",
@@ -285,7 +295,8 @@ impl std::fmt::Display for LoadError {
             LoadError::Manifest { file, at, msg }
             | LoadError::Parse { file, at, msg }
             | LoadError::Key { file, at, msg }
-            | LoadError::TypeNumber { file, at, msg, .. } => {
+            | LoadError::TypeNumber { file, at, msg, .. }
+            | LoadError::BridgeNoResultWrite { file, at, msg } => {
                 place(f, file, *at)?;
                 f.write_str(msg)
             }
@@ -411,7 +422,7 @@ fn load_package(
         match export.as_str() {
             "directives" => read_kind::<DirectivesFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let (file, text) = (src.file, src.text);
-                for d in &f.directives {
+                for (i, d) in f.directives.iter().enumerate() {
                     // dsl 0.26.0 §4: `when=` is the core directive condition on
                     // every plugin passthrough directive; an attribute of that
                     // name could never be written.
@@ -435,6 +446,16 @@ fn load_package(
                             file: file.display().to_string(),
                             at: effect_error_line(text, &d.name, &me.message()),
                             msg: me.message(),
+                        });
+                    }
+                    if let Some(msg) = crate::validate::bridge_without_result_write(d) {
+                        // At this declaration's own `name:` when a name repeats.
+                        let nth = f.directives[..i].iter().filter(|o| o.name == d.name).count();
+                        e.push(LoadError::BridgeNoResultWrite {
+                            file: file.display().to_string(),
+                            at: field_value_at(text, "name", &d.name, nth)
+                                .map(|o| crate::yaml_text::line_col(text, o)),
+                            msg,
                         });
                     }
                 }
@@ -709,7 +730,9 @@ fn load_package(
     if errs.iter().all(|e| {
         matches!(
             e,
-            LoadError::DuplicateId { .. } | LoadError::TypeNumber { .. }
+            LoadError::DuplicateId { .. }
+                | LoadError::TypeNumber { .. }
+                | LoadError::BridgeNoResultWrite { .. }
         )
     }) {
         Ok((out, errs))
@@ -1235,6 +1258,7 @@ impl LoadError {
             | LoadError::Parse { file, at, .. }
             | LoadError::Key { file, at, .. }
             | LoadError::TypeNumber { file, at, .. }
+            | LoadError::BridgeNoResultWrite { file, at, .. }
             | LoadError::DuplicateId { file, at, .. }
             | LoadError::UnknownExport { file, at, .. } => Some(rel_site(base, file, *at)),
             LoadError::MissingExportDir { path, .. } | LoadError::Io { path, .. } => {

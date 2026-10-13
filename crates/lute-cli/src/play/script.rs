@@ -6,10 +6,18 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
 use lute_runtime::session::{Pick, SaveSeed, QUEST_STATES};
-use lute_runtime::BridgeAnswer;
+use lute_runtime::{BridgeAnswer, WritesInput};
 use lute_trace::mock::MockSet;
+
+/// One authored play-script bridge answer. The runtime's public field alias
+/// remains the carrier for result fields; writes retain their public input
+/// shape until planning resolves them against the executable project.
+#[derive(Clone, Debug)]
+pub(super) struct ScriptBridgeAnswer {
+    pub(super) fields: BridgeAnswer,
+    pub(super) writes: WritesInput,
+}
 
 /// The complete legal top-level key set of a play script.
 pub(crate) const SCRIPT_KEYS: &[&str] = &[
@@ -163,7 +171,7 @@ pub(super) struct ScriptStep {
     pub(super) action: StepAction,
     /// `bridges:` (dsl 0.24.0 §5): answers for the plugin calls this step
     /// makes, consumed before the top-level ones.
-    pub(super) bridges: BTreeMap<String, Vec<BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     /// Where the step was written (round-5 T3-13).
     pub(super) at: StepSource,
     /// dsl 0.27.0 (T3-22): the `include:` segments the step was spliced in
@@ -311,7 +319,7 @@ pub(super) struct Segment {
     /// usage errors are located there.
     pub(super) at: StepSource,
     pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) bridges: BTreeMap<String, Vec<BridgeAnswer>>,
+    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
 }
 
 /// Where a play script was written: its top-level keys (`choose:`, …) are
@@ -388,6 +396,8 @@ impl ScriptSource {
 pub(super) struct PlayScript {
     /// `state:` / `facts:` surfaces parsed by the trace-mock grammar.
     pub(super) surfaces: MockSet,
+    /// Top-level scripted bridge answers, kept with their optional writes.
+    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     /// Top-level scripted branch/hub answers, kept typed (not mock strings).
     pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(super) save: SaveSeed,
@@ -471,6 +481,7 @@ pub(super) fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String
 /// The top-level keys of a play script other than `steps:`.
 struct ScriptTop<'v> {
     surfaces: MockSet,
+    bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     choose: BTreeMap<String, Vec<ScriptedPick>>,
     save: SaveSeed,
     expect: Option<serde_yaml::Value>,
@@ -496,6 +507,7 @@ pub(super) fn parse_script_with(
     let (top, mut errs) = parse_top(&value, &source).map_err(|e| plain(&e))?;
     let ScriptTop {
         surfaces,
+        bridges,
         choose,
         save,
         expect,
@@ -562,6 +574,7 @@ pub(super) fn parse_script_with(
     }
     Ok(PlayScript {
         surfaces,
+        bridges,
         choose,
         save,
         steps: parsed,
@@ -571,6 +584,117 @@ pub(super) fn parse_script_with(
         derive,
     })
 }
+
+/// 0.41.1 §4.1: whether a `bridges:` answer is the long form
+/// `{ fields: { … }, writes: { … } }` rather than a flat field map — a
+/// `fields` that is a mapping, or a `writes` that is a mapping or list (a
+/// flat answer maps every field to a scalar).
+fn long_form_answer(answer: &serde_yaml::Value) -> bool {
+    let Some(m) = answer.as_mapping() else {
+        return false;
+    };
+    m.get("fields").is_some_and(serde_yaml::Value::is_mapping)
+        || m.get("writes").is_some_and(|w| w.is_mapping() || w.is_sequence())
+}
+
+/// Whether any answer of a `bridges:` mapping is the long form.
+pub(super) fn has_long_form(value: &serde_yaml::Value) -> bool {
+    value.as_mapping().is_some_and(|tags| {
+        tags.values()
+            .filter_map(serde_yaml::Value::as_sequence)
+            .flatten()
+            .any(long_form_answer)
+    })
+}
+
+/// A play script's `bridges:` — top level, a step's or an `include:`'s.
+/// Without a long-form answer it is exactly the trace-mock grammar
+/// ([`lute_trace::parse_bridges`], messages and all). With one (0.41.1
+/// §4.1), each long-form answer is `fields` (the flat field map) plus an
+/// optional `writes` in the runtime's own `WritesInput` shape, beside flat
+/// answers in the same lists.
+fn parse_play_bridges(
+    value: &serde_yaml::Value,
+) -> Result<BTreeMap<String, Vec<ScriptBridgeAnswer>>, String> {
+    let legacy = |fields| ScriptBridgeAnswer {
+        fields,
+        writes: WritesInput::default(),
+    };
+    if !has_long_form(value) {
+        return lute_trace::parse_bridges(value).map(|tags| {
+            tags.into_iter()
+                .map(|(tag, answers)| (tag, answers.into_iter().map(legacy).collect()))
+                .collect()
+        });
+    }
+    let flat = |tag: &str, n: usize, what: &str, m: &serde_yaml::Mapping| {
+        m.iter()
+            .map(|(field, value)| match (field.as_str(), scalar_text(value)) {
+                (Some(field), Some(value)) => Ok((field.to_string(), value)),
+                _ => Err(format!(
+                    "`bridges.{tag}` answer {n}{what} must map field names to scalar literals \
+                     (bool/number/string)"
+                )),
+            })
+            .collect::<Result<BridgeAnswer, String>>()
+    };
+    let mut out = BTreeMap::new();
+    for (tag, answers) in value.as_mapping().into_iter().flatten() {
+        let (Some(tag), Some(answers)) = (tag.as_str(), answers.as_sequence()) else {
+            // The trace-mock grammar names the shape.
+            return lute_trace::parse_bridges(&serde_yaml::Value::Mapping(
+                [(tag.clone(), answers.clone())].into_iter().collect(),
+            ))
+            .map(|_| BTreeMap::new());
+        };
+        let mut parsed = Vec::with_capacity(answers.len());
+        for (index, answer) in answers.iter().enumerate() {
+            let n = index + 1;
+            let Some(m) = answer.as_mapping() else {
+                return Err(format!(
+                    "`bridges.{tag}` answer {n} must be a mapping of bridge result field -> \
+                     literal, e.g. `{{ passed: true }}`"
+                ));
+            };
+            if !long_form_answer(answer) {
+                parsed.push(legacy(flat(tag, n, "", m)?));
+                continue;
+            }
+            if let Some(key) = m.keys().find(|k| !matches!(k.as_str(), Some("fields" | "writes"))) {
+                return Err(format!(
+                    "`bridges.{tag}` answer {n} has unknown key `{}` — a long-form answer is \
+                     `{{ fields: {{ … }}, writes: {{ … }} }}`",
+                    key.as_str().unwrap_or("?")
+                ));
+            }
+            let fields = match m.get("fields") {
+                Some(serde_yaml::Value::Mapping(f)) => flat(tag, n, " `fields`", f)?,
+                Some(_) => {
+                    return Err(format!(
+                        "`bridges.{tag}` answer {n} `fields` must map field names to scalar \
+                         literals (bool/number/string)"
+                    ))
+                }
+                None => {
+                    return Err(format!(
+                        "`bridges.{tag}` answer {n} has `writes` but no `fields` — a long-form \
+                         answer is `{{ fields: {{ … }}, writes: {{ … }} }}`"
+                    ))
+                }
+            };
+            let writes = match m.get("writes") {
+                None => WritesInput::default(),
+                Some(w) => serde_yaml::from_value(w.clone()).map_err(|e| {
+                    format!("`bridges.{tag}` answer {n} `writes` is malformed: {e}")
+                })?,
+            };
+            parsed.push(ScriptBridgeAnswer { fields, writes });
+        }
+        out.insert(tag.to_string(), parsed);
+    }
+    Ok(out)
+}
+
 
 /// A play script's top level, `steps:` left as written, and every usage
 /// error of its other keys, located. `Err` when it is no mapping at all.
@@ -584,10 +708,13 @@ fn parse_top<'v>(
     let mut errs = Vec::new();
     // `expect:` errors are located at their own node (a list item too).
     let mut expect_errs = Vec::new();
+    // A long-form `bridges:` is located like the mock surfaces' errors.
+    let mut bridge_errs = Vec::new();
     let mut refuse = |keys: &[&str], msg: String| {
         errs.push(format!("{}: {msg}", source.at(keys)));
     };
     let mut surfaces = serde_yaml::Mapping::new();
+    let mut bridges = BTreeMap::new();
     let mut choose = BTreeMap::new();
     let mut steps = None;
     let mut save = SaveSeed::default();
@@ -602,6 +729,12 @@ fn parse_top<'v>(
         };
         match key {
             "steps" => steps = Some(v),
+            // 0.41.1 §4.1: a long-form answer is the play's own surface;
+            // otherwise `bridges:` stays the trace-mock grammar below.
+            "bridges" if has_long_form(v) => match parse_play_bridges(v) {
+                Ok(value) => bridges = value,
+                Err(e) => bridge_errs.push(source.locate(&e)),
+            },
             "choose" => match parse_choose(v) {
                 Ok(value) => choose = value,
                 Err(e) => refuse(&[key], e),
@@ -699,7 +832,8 @@ fn parse_top<'v>(
         }
     }
     errs.extend(expect_errs);
-    let surfaces = if surfaces.is_empty() {
+    errs.extend(bridge_errs);
+    let mut surfaces = if surfaces.is_empty() {
         MockSet::default()
     } else {
         let parsed = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
@@ -713,9 +847,22 @@ fn parse_top<'v>(
             }
         }
     };
+    // A flat `bridges:` was read by the mock grammar: its answers write
+    // nothing.
+    for (tag, answers) in std::mem::take(&mut surfaces.bridges) {
+        let answers = answers
+            .into_iter()
+            .map(|fields| ScriptBridgeAnswer {
+                fields,
+                writes: WritesInput::default(),
+            })
+            .collect();
+        bridges.insert(tag, answers);
+    }
     Ok((
         ScriptTop {
             surfaces,
+            bridges,
             choose,
             save,
             expect,
@@ -846,7 +993,7 @@ fn expand_includes(
                     choose = parse_choose(v).map_err(|e| err(key, e))?;
                 }
                 "bridges" => {
-                    bridges = lute_trace::parse_bridges(v).map_err(|e| err(key, e))?;
+                    bridges = parse_play_bridges(v).map_err(|e| err(key, e))?;
                 }
                 // A section marker: it labels the steps it splices in.
                 "label" => {
@@ -1178,7 +1325,7 @@ fn parse_step_keys(
                 choose = parse_choose(v).map_err(|e| format!("step {n}: `choose`: {e}"))?;
             }
             "bridges" => {
-                bridges = lute_trace::parse_bridges(v).map_err(|e| format!("step {n}: {e}"))?
+                bridges = parse_play_bridges(v).map_err(|e| format!("step {n}: {e}"))?
             }
             "expect" => {
                 for e in crate::play_expect::validate(v, false) {

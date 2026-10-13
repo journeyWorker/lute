@@ -98,7 +98,7 @@ use driver::PlayDriverState;
 use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
-use plan::{locate_step_error, plan_script, plan_steps, Step};
+use plan::{bridge_queues, locate_step_error, plan_script, plan_steps, Step};
 use project::{compile_play_project, compile_project};
 #[cfg(test)]
 pub(crate) use project::{assemble_project_from_model, build_project_model, manifest_gate, PLAY};
@@ -208,6 +208,8 @@ struct Loaded {
     plan: Vec<Step>,
     world: World,
 }
+/// The play driver for `script`. Its top-level `bridges:` writes were
+/// resolved by [`plan_script`] (the calendar's replay checks them itself).
 fn driver_for(
     project: &ExecProject,
     script: &PlayScript,
@@ -215,7 +217,8 @@ fn driver_for(
 ) -> PlayDriverState {
     let bridges = BridgeQueues {
         step: Default::default(),
-        top: BridgeQueues::queue(&script.surfaces.bridges),
+        top: bridge_queues(project, "top level", &script.bridges)
+            .expect("the top-level bridge writes were resolved before the walk"),
     };
     PlayDriverState::for_project(project, script.choose.clone(), bridges)
         .with_observer(observer)

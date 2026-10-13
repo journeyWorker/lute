@@ -1,0 +1,4 @@
+# 0.41.1 §4.2: a beat whose `advances: slot` crosses midnight.
+steps:
+  - engine: { state: { run.slot: dusk } }
+  - occasion: work

@@ -1,0 +1,7 @@
+directives:
+  - name: odds
+    layer: bridge
+    attrs:
+      - { name: sync, type: bool, default: true }
+    semantics: [ "bridgeCall" ]
+    bridge: { service: arena, operation: odds }

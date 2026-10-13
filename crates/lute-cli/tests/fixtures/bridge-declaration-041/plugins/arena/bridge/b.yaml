@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: arena
+    operation: odds
+    replay: recorded
+    result:
+      - { name: chance, type: int }

@@ -33,7 +33,11 @@ pub enum ScriptAnswer {
     /// A timed branch's default was selected by expiry.
     Timeout { menu: String },
     /// A plugin call's bridge answer for `tag`.
-    Bridge { tag: String, fields: BridgeAnswer },
+    Bridge {
+        tag: String,
+        fields: BridgeAnswer,
+        writes: WritesInput,
+    },
 }
 
 /// What `lute play`'s report path produced for the script: its machine
@@ -184,10 +188,11 @@ pub fn drive_events(
                     Some(ScriptAnswer::Bridge {
                         tag: answered,
                         fields,
+                        writes,
                     }) if answered == tag => Ok(Input::BridgeResult {
                         request: *request,
                         fields: bridge_fields(fields, results),
-                        writes: WritesInput::default(),
+                        writes: writes.clone(),
                     }),
                     None => Err(DriveEnd::Unanswered(format!(
                         "plugin call `{tag}` has no scripted `bridges:` answer"

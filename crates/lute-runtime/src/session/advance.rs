@@ -30,6 +30,9 @@ pub struct DayRaise {
     pub settled: Vec<QuestAdvance>,
     pub occasion: Box<StepBody>,
     pub quests: Vec<QuestAdvance>,
+    /// How many closed raises (the `closed` of the same advance) came
+    /// before this one — where they sit among the raises, in raise order.
+    pub closed_before: usize,
 }
 
 /// The positions an `advance:` stood at on its way, strictly between where
@@ -434,6 +437,7 @@ pub fn run_advance<F: super::WalkDriver>(
                     settled: std::mem::take(&mut settled),
                     occasion: Box::new(occasion),
                     quests,
+                    closed_before: closed.len(),
                 });
                 if halt.is_some() {
                     stop = halt;
@@ -489,6 +493,7 @@ pub fn run_advance<F: super::WalkDriver>(
             settled: std::mem::take(&mut settled),
             occasion: Box::new(occasion),
             quests,
+            closed_before: closed.len(),
         });
         if halt.is_some() {
             stop = halt;
@@ -533,6 +538,7 @@ pub fn run_advance<F: super::WalkDriver>(
                     settled: std::mem::take(&mut settled),
                     occasion: Box::new(occasion),
                     quests: q,
+                    closed_before: closed.len(),
                 });
                 stop = halt;
             } else {

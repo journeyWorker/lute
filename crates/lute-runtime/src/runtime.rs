@@ -761,7 +761,7 @@ impl Runtime {
                     }
                     // dsl 0.41.0 §5.3: the writes resolve when the input
                     // arrives, as `hostWrite`'s do.
-                    if let Err(m) = resolve_answer_writes(&self.project, writes) {
+                    if let Err(m) = resolve_bridge_writes(&self.project, writes) {
                         return Err((unchanged.clone(), reject("E-RUNTIME-INPUT", m)));
                     }
                     let mut a = c.answers;
@@ -1182,7 +1182,7 @@ fn def_args<'d>(
 /// dsl 0.41.0 §5.3 rule 2: a `bridgeResult`'s `writes`, resolved as
 /// `hostWrite`'s are; a write to the clock's `day` / `slot` path is refused
 /// (the clock cannot move inside a walk).
-fn resolve_answer_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
+pub fn resolve_bridge_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
     if let Some(clock) = &p.index.clock {
         if let Some(w) = raw
             .state
@@ -1444,7 +1444,7 @@ impl ReplayFactory {
         let writes = answers
             .iter()
             .map(|answer| match answer {
-                Answer::Bridge { writes, .. } => resolve_answer_writes(&project, writes),
+                Answer::Bridge { writes, .. } => resolve_bridge_writes(&project, writes),
                 Answer::Choice { .. } => Ok(Writes::default()),
             })
             .collect::<Result<Vec<_>, _>>()?;

@@ -55,6 +55,9 @@ pub(super) fn start_world(
         until: until.map(|_| (save.steps[stop].n, save.steps[stop].label.clone())),
         clock_start: clock_at(p, &w),
     };
+    // A long-form answer's writes resolve as `lute play` resolves them, even
+    // when no step is replayed.
+    super::super::plan::bridge_queues(p, "top level", &save.bridges).map_err(at)?;
     if stop == 0 {
         return Ok((w, origin));
     }

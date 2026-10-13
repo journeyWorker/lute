@@ -12,6 +12,7 @@ use lute_runtime::{
 use serde_json::Value as Json;
 
 use super::events::ScriptAnswer;
+use super::plan::PlannedBridgeAnswer;
 use super::producers::{decisions_of, Decision, Premises, Producers};
 use super::script::ScriptedPick;
 /// The CLI-owned state used to drive and resume play walks.
@@ -24,7 +25,7 @@ use super::script::ScriptedPick;
 pub(crate) struct PlayDriverState {
     pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
     pub(crate) choice_cursor: BTreeMap<String, usize>,
-    pub(crate) bridges: BridgeQueues,
+    pub(crate) bridges: BridgeQueues<PlannedBridgeAnswer>,
     pub(crate) decisions: Vec<Decision>,
     pub(crate) step: usize,
     pub(crate) document: String,
@@ -41,7 +42,7 @@ pub(crate) struct PlayDriverState {
 impl PlayDriverState {
     pub(crate) fn new(
         choose: BTreeMap<String, Vec<ScriptedPick>>,
-        bridges: BridgeQueues,
+        bridges: BridgeQueues<PlannedBridgeAnswer>,
         producers: Option<Arc<Producers>>,
     ) -> Self {
         Self { choose, bridges, producers, ..Self::default() }
@@ -49,7 +50,7 @@ impl PlayDriverState {
     pub(crate) fn for_project(
         project: &ExecProject,
         choose: BTreeMap<String, Vec<ScriptedPick>>,
-        bridges: BridgeQueues,
+        bridges: BridgeQueues<PlannedBridgeAnswer>,
     ) -> Self {
         let reserved = project
             .index
@@ -78,18 +79,19 @@ impl PlayDriverState {
         &mut self,
         step: usize,
         choose: &BTreeMap<String, Vec<ScriptedPick>>,
-        bridges: &BTreeMap<String, Vec<BridgeAnswer>>,
+        bridges: &BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
     ) {
         self.step = step;
         self.choose.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-        self.bridges.step = BridgeQueues::queue(bridges);
+        self.bridges.step = bridges.clone();
     }
 
     pub(crate) fn set_top_choose(&mut self, choose: BTreeMap<String, Vec<ScriptedPick>>) {
         self.choose = choose;
     }
-
-    pub(crate) fn top_bridges_mut(&mut self) -> &mut BTreeMap<String, VecDeque<BridgeAnswer>> {
+    pub(crate) fn top_bridges_mut(
+        &mut self,
+    ) -> &mut BTreeMap<String, VecDeque<PlannedBridgeAnswer>> {
         &mut self.bridges.top
     }
 }
@@ -126,7 +128,7 @@ impl PlayChoices {
 
 pub(crate) struct PlayDriver {
     pub(crate) choices: PlayChoices,
-    pub(crate) bridges: BridgeQueues,
+    pub(crate) bridges: BridgeQueues<PlannedBridgeAnswer>,
     pub(crate) transcript: Vec<Json>,
     pub(crate) premises: Premises,
     /// The decisions and bridge answers this walk gave, in order.
@@ -188,8 +190,15 @@ impl Driver for PlayDriver {
     fn bridge(&mut self, call: &BridgeCall<'_>) -> lute_runtime::BridgeReply {
         match self.bridges.next(call.tag) {
             Some(answer) => {
-                self.answers.push(ScriptAnswer::Bridge { tag: call.tag.to_string(), fields: answer.clone() });
-                lute_runtime::BridgeReply::Answer { fields: answer, writes: Default::default() }
+                self.answers.push(ScriptAnswer::Bridge {
+                    tag: call.tag.to_string(),
+                    fields: answer.fields.clone(),
+                    writes: answer.input,
+                });
+                lute_runtime::BridgeReply::Answer {
+                    fields: answer.fields,
+                    writes: answer.writes,
+                }
             }
             None => lute_runtime::BridgeReply::Unanswered,
         }
@@ -299,13 +308,20 @@ pub(crate) fn walk_stop(result: Result<(), String>, outcome: &Walked, what: &str
     }
 }
 
-pub(crate) fn consumed_bridges(before: &BridgeQueues, after: &BridgeQueues) -> BTreeMap<String, Vec<BridgeAnswer>> {
+pub(crate) fn consumed_bridges(
+    before: &BridgeQueues<PlannedBridgeAnswer>,
+    after: &BridgeQueues<PlannedBridgeAnswer>,
+) -> BTreeMap<String, Vec<BridgeAnswer>> {
     let mut out = BTreeMap::new();
     for (was, now) in [(&before.step, &after.step), (&before.top, &after.top)] {
         for (tag, queue) in was {
             let left = now.get(tag).map_or(0, VecDeque::len);
             let taken = queue.len().saturating_sub(left);
-            if taken > 0 { out.entry(tag.clone()).or_insert_with(Vec::new).extend(queue.iter().take(taken).cloned()); }
+            if taken > 0 {
+                out.entry(tag.clone())
+                    .or_insert_with(Vec::new)
+                    .extend(queue.iter().take(taken).map(|answer| answer.fields.clone()));
+            }
         }
     }
     out

@@ -72,6 +72,8 @@ directives:
 
 Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
+A call blocks — waits for the host's answer — because an `effects.writes` entry reads a bridge result. A directive that declares `layer: bridge` and `bridgeCall` but has no `fromBridgeResult` write would compile to a record nothing waits for, so since 0.41.1 it is [`E-BRIDGE-NO-RESULT-WRITE`](/reference/diagnostics/#e-bridge-no-result-write) at its declaration, and the project does not compile until you add the write or remove `layer: bridge`.
+
 ## Worked example: `::minigame` and the match over its result slot
 
 The scene writes nothing by hand. It runs the bridge, then reads the declared slot:

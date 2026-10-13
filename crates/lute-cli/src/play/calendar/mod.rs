@@ -210,6 +210,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     let save = match args.script {
         None => PlayScript {
             surfaces: lute_runtime::MockSet::default(),
+            bridges: std::collections::BTreeMap::new(),
             choose: std::collections::BTreeMap::new(),
             save: lute_runtime::session::SaveSeed::default(),
             steps: Vec::new(),

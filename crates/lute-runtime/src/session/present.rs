@@ -41,12 +41,37 @@ pub struct Presented {
     pub facts_before: BTreeSet<Fact>,
     pub facts_after: BTreeSet<Fact>,
     pub raised: Vec<Presented>,
+    /// dsl 0.31.0 §1: the clock movement the beat's `advances:` made, for
+    /// the human play transcript (0.41.1 §4.2).
+    pub advance: Option<BeatAdvance>,
     /// The presented scenes `visited(…)` read before the presentation.
     pub visited_before: BTreeSet<String>,
     /// Quest id -> state before the presentation.
     pub quests_before: BTreeMap<String, String>,
     /// The bridge answers the presentation consumed, per tag, in call order.
     pub bridges: BTreeMap<String, Vec<crate::BridgeAnswer>>,
+}
+
+/// A beat's declared clock movement (0.41.1 §4.2): `by`, `from` and `to` as
+/// an explicit `advance:` step's header writes them, then, in raise order,
+/// every `dayEnd` / `dayStart` raise it made and every raise it found
+/// closed. The raise of the clock's `slot` occasion where the clock stops is
+/// [`Presented::raised`].
+#[derive(Clone)]
+pub struct BeatAdvance {
+    pub by: String,
+    pub from: String,
+    pub to: String,
+    pub raises: Vec<ClockRaise>,
+}
+
+/// One clock raise of a [`BeatAdvance`].
+#[derive(Clone)]
+pub enum ClockRaise {
+    /// A beat the raise presented.
+    Raised(Box<Presented>),
+    /// A raise not made: its seam was closed.
+    Closed(crate::seam::ClosedRaise),
 }
 
 /// A scene's fresh starting state: its OWN `scene.*` defaults (never the
@@ -232,6 +257,7 @@ pub fn present<B, C, F: super::WalkDriver>(
     let state_after_body = w.state.clone();
     let facts_after_body = w.facts.clone();
     let mut raised = Vec::new();
+    let mut advance = None;
     // dsl 0.31.0 §1: a declared beat advance is the same clock movement as
     // an explicit `advance:` step.
     if stop.is_none() {
@@ -272,9 +298,46 @@ pub fn present<B, C, F: super::WalkDriver>(
                         factory.event(crate::runtime::Event::Clock { from: serde_json::json!({ "day": from.day, "slot": from.slot }), to: serde_json::json!({ "day": to.day, "slot": to.slot }), passed: None });
                     }
                 }
-                if let StepBody::Advance { raised: Some(occasion), .. } = advance_body {
-                    if let StepBody::Occasion { presented, .. } = *occasion {
-                        raised = presented;
+                if let StepBody::Advance {
+                    by: by_text,
+                    from: from_text,
+                    to: to_text,
+                    days,
+                    raised: slot,
+                    closed,
+                    ..
+                } = advance_body
+                {
+                    // 0.41.1 §4.2: the midnight raises and the closed
+                    // ones, merged in raise order.
+                    let mut raises = Vec::new();
+                    let mut closed = closed.into_iter();
+                    let mut taken = 0;
+                    for day in days {
+                        raises.extend(
+                            closed
+                                .by_ref()
+                                .take(day.closed_before - taken)
+                                .map(ClockRaise::Closed),
+                        );
+                        taken = day.closed_before;
+                        if let StepBody::Occasion { presented, .. } = *day.occasion {
+                            raises.extend(
+                                presented.into_iter().map(|b| ClockRaise::Raised(Box::new(b))),
+                            );
+                        }
+                    }
+                    raises.extend(closed.map(ClockRaise::Closed));
+                    advance = Some(BeatAdvance {
+                        by: by_text,
+                        from: from_text,
+                        to: to_text,
+                        raises,
+                    });
+                    if let Some(occasion) = slot {
+                        if let StepBody::Occasion { presented, .. } = *occasion {
+                            raised = presented;
+                        }
                     }
                 }
                 w.clock_advanced_by_beat = true;
@@ -294,6 +357,7 @@ pub fn present<B, C, F: super::WalkDriver>(
         facts_before,
         facts_after: w.facts.clone(),
         facts_after_body,
+        advance,
         raised,
         visited_before,
         quests_before,
