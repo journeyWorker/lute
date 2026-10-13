@@ -47,10 +47,10 @@ Options beyond the ports: `host` (`bridge` answers `{ fields, writes? }`, `plugi
 
 ## API and guides
 
-- [Core architecture](../../docs/player/architecture.md)
-- [Bindings reference](../../docs/player/bindings.md)
-- [Player overview](/player/overview/)
-- [Custom hosts](/player/custom-hosts/)
-- [Runtime event contract](../../docs/runtime/event-contract.md)
+- [Core architecture](https://github.com/journeyWorker/lute/blob/v0.41.1/docs/player/architecture.md)
+- [Bindings reference](https://github.com/journeyWorker/lute/blob/v0.41.1/docs/player/bindings.md)
+- [Player overview](https://lute-lang.vercel.app/player/overview/)
+- [Custom hosts](https://lute-lang.vercel.app/player/custom-hosts/)
+- [Runtime event contract](https://github.com/journeyWorker/lute/blob/v0.41.1/docs/runtime/event-contract.md)
 
 Source and releases: [github.com/journeyWorker/lute](https://github.com/journeyWorker/lute).

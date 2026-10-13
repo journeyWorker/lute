@@ -34,6 +34,19 @@ const requirements = Layer.mergeAll(
 
 `LutePlayerOptions`에는 `bindings`, `presenter`, `audio`, `assets`가 필요하며 `host`, `linePacing`, `autosave`와 시작점 하나를 선택적으로 받습니다. 시작점은 `seed`(기본 `{ derive: true }`), `snapshot`(런타임 스냅숏), `session`(호스트가 만든 런타임 세션 — 플레이어가 구동만 하고 닫지 않음) 중 하나입니다. 바인딩은 디코딩된 값이나 YAML 문자열일 수 있습니다. `LutePlayer.make`를 scope 안에서 실행하기 전에 runtime, bundle, input-log, key-value-store 서비스를 제공합니다. `session`을 넘기면 같은 bundle과 key-value store만 필요합니다.
 
+## 0.40에서 올리기
+
+화자 이름을 주는 플레이어 세션 옵션은 `cast`입니다(0.41.0부터). 세션을 `Session.layer`(`PlayerSession` 레이어)로 직접 조합하는 호스트는 0.40의 `castNames`(`ReadonlyMap`) 대신 `SessionOptions.cast`에 일반 레코드(cast id → 표시 이름), 즉 번들 인덱스의 `cast`를 넘깁니다. 예전 `castNamesFrom(artifacts)` 헬퍼는 없어졌으므로 이름은 `bundle.index.cast`에서 읽습니다.
+
+```ts
+import { Session } from "@lute-lang/player"
+
+// 0.40: Session.layer({ bindings, castNames: Cues.castNamesFrom(artifacts) })
+Session.layer({ bindings, cast: bundle.index.cast ?? {} })
+```
+
+`LutePlayer.make`는 번들에서 `cast`를 알아서 채웁니다. 0.41 migration 단계 전체는 [CHANGELOG](https://github.com/journeyWorker/lute/blob/v0.41.1/CHANGELOG.md#0411)에 있습니다.
+
 ## 핸들
 
 `LutePlayer.make`는 `actions`, `view`, `send`, `restore`, `shutdown`, `session`, `program`을 반환합니다.

@@ -38,6 +38,90 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [0.41.1]
+
+**Rust-only patch on the 0.41 line** (spec
+[`0.41.1.md`](docs/proposals/scenario-dsl/0.41.1.md); plan
+[`2026-10-13-lute-0.41.1-rust.md`](docs/superpowers/plans/2026-10-13-lute-0.41.1-rust.md);
+decisions
+[`2026-10-13-lute-0.41.1-decisions.md`](docs/superpowers/notes/2026-10-13-lute-0.41.1-decisions.md)).
+Fixes issues #67, #72–#76 and #81–#84 filed while moving a game onto 0.41.0.
+The **toolchain** and the **language** (the checker) earn the release. **IR,
+Event, snapshot and player bindings are stamp-only no-ops for consumers**:
+`irVersion`, `eventVersion` and `snapshotVersion` read `0.41.1`, but no
+artifact, event or snapshot field changes; `bindingsVersion` stays `"0.41"`;
+`schemas/lute-{ir,events,snapshot,player-bindings}-0.41.schema.json` and the
+generated TypeScript (`packages/runtime/src/generated/**`,
+`packages/player/src/bindings/schema.ts`) are byte-identical to 0.41.0. The
+npm packages align to `0.41.1` with no TypeScript change. Engines and hosts
+gated on the 0.41 line accept 0.41.1 output unchanged.
+
+### Semantics
+
+- An attribute typed `{ enumFromOption: <option> }` — authored, or an
+  omitted attribute's declared `default:` — is checked against the option's
+  effective value: the active profile's, otherwise the plugin manifest's
+  `options[].default`. Before, an option the profile left unset skipped the
+  check. An option with neither still skips it. (#67)
+
+### Plugin
+
+- A directive declaring `layer: bridge` and `bridgeCall` semantics must have
+  an `effects.writes` entry reading a bridge result (`fromBridgeResult`);
+  without one it is `E-BRIDGE-NO-RESULT-WRITE` at its declaration and the
+  project does not compile. Before, it compiled silently to a non-blocking
+  record nothing waited for. (#81)
+
+### CLI
+
+- `lute fix` scans YAML as bytes: Korean, an em dash or any other UTF-8 in a
+  scalar, quoted string or comment no longer panics it (exit 101), and is
+  kept byte for byte. (#74)
+- `lute fix` raises an existing language stamp older than the toolchain —
+  `defaults: luteVersion` in `lute.project.yaml` and a `.lute` document's own
+  frontmatter `luteVersion` — to `0.41.1`, one fix each, in place. A missing,
+  current, newer or non-numeric stamp is left alone. (#76)
+- `lute play` scripts answer a bridge call in a long form,
+  `{ fields: { … }, writes: { state, facts, retract, accept } }`, at the top
+  level, on a step and on an `include:`; the writes are the runtime's
+  `bridgeResult.writes`, applied at the call, and `--events` sends them with
+  the answer. Flat answers are unchanged. (#82)
+- The human `lute play` transcript shows a presented beat's `advances:`
+  movement (`↻ advance <by>: <from> → <to>`), then each clock raise it made
+  (`↻ <beat> (clock raise)`) or found closed
+  (`↻ <occasion> (clock raise — not raised: <why>; the clock moved on without
+  it)`), in raise order. `--events` and `--json` are unchanged. (#83)
+
+### Diagnostics
+
+- Added `E-BRIDGE-NO-RESULT-WRITE` (error). (#81)
+- `W-DEF-UNUSED` on a project schema's def ends ``use it, drop it, or mark
+  it `host: true` if the host reads it (for example, `Program.def`)``; on a
+  frontmatter def, which cannot take `host:`, it still ends `use it or drop
+  it`. (#75)
+
+### Packages and documentation
+
+- `@lute-lang/lute` ships a README: install, `lute --help`, and links to the
+  CLI reference and these notes. (#73)
+- `@lute-lang/player`'s README links are absolute and pinned to `v0.41.1`.
+  (#72)
+- The 0.41 migration notes name the player-session option rename below.
+  (#84)
+
+### Migration notes
+
+- From 0.41.0: run `lute fix` to raise `luteVersion` stamps to `0.41.1`. A
+  project that declares a plugin directive `layer: bridge` + `bridgeCall`
+  with no `fromBridgeResult` write adds the write or removes
+  `layer: bridge`. Values of an `enumFromOption` attribute outside the
+  plugin's declared option default are now `E-BAD-ENUM`.
+- From 0.40 (completing the 0.41.0 notes): the player-session option
+  `castNames` (a `ReadonlyMap`, built with `Cues.castNamesFrom(artifacts)`)
+  is now `cast`, a plain record from `bundle.index.cast`:
+  `Session.layer({ bindings, cast: bundle.index.cast ?? {} })`.
+  `LutePlayer.make` fills it from the bundle.
+
 ## [0.41.0]
 
 **Dogfood fixes** (spec [`0.41.0.md`](docs/proposals/scenario-dsl/0.41.0.md);
@@ -201,7 +285,8 @@ normative text is now spec §4.3 and §5.1.
   move them into a following step or input.
 - Rust embedders pass `&[]` to `Runtime::def`; player hosts wrap bridge
   answers as `{ fields }`, drop the `begin` argument, read
-  `bundle.index.cast` instead of `castNamesFrom`, and handle
+  `bundle.index.cast` instead of `castNamesFrom` and pass it to
+  `Session.layer` as `cast` (formerly `castNames`; listed in 0.41.1), and handle
   `effect: "custom"` + `name` and `AudioPlay.restart` in custom presenters
   and audio ports.
 - A host that installs `@lute-lang/player` now adds `@lute-lang/runtime` and
