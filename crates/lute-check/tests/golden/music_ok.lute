@@ -8,7 +8,7 @@ title: Music cue
 
 ## Shot 1.
 
-::music{playback="start" mood="peaceful" volume="down" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3"}
+::music{playback="start" mood="peaceful" volume="quiet" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3"}
 
 @narrator: The loop settles into something almost pleasant.
 

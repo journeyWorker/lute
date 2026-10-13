@@ -11,7 +11,7 @@ after: 'visited("common.festival")'
 ## The closed stacks
 
 ::bg{location="library" time="dusk"}
-::music{playback="start" mood="romantic" volume="down"}
+::music{playback="start" mood="romantic" volume="quiet"}
 ::actor{character="soren" anchor="center" action="fadeInUp"}
 @soren{code="0010" emotion="shy"}: The closed stacks. Nobody comes here. That's the whole point of them. And of me, usually.
 @soren{code="0020"}: Every student since 1890 has hidden a letter in these books. I've read all of them. I'm not proud of it.

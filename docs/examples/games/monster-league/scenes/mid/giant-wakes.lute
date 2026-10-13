@@ -28,6 +28,6 @@ when: "holds('hasItem', ['wakingFlute'])"
 ::camera{move="shake" duration="1.2"}
 @narrator{code="0040"}: The wall of fur stops snoring. An eye opens, as big as a cartwheel, and looks straight at you.
 ::accept{quest="midSleepingGiant"}
-::music{playback="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="loud"}
 @narrator{code="0050"}: Slumbear gets up. It is not happy about it.
 ::encounter{species="slumbear" level="40"}

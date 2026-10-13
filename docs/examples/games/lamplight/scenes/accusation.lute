@@ -10,7 +10,7 @@ components: [../components/lamps-out.component.lute]
 ## Platform four
 
 ::bg{location="ossery_platform" time="dawn"}
-::music{playback="change" mood="tense" volume="down"}
+::music{playback="change" mood="tense" volume="quiet"}
 ::sfx{sound="brakes, long hiss"}
 @narrator{code="0010"}: The Lamplight comes into Ossery under a sky the colour of dishwater. Two constables wait on platform four with their hands behind their backs.
 @narrator{code="0020"}: Crane has kept everyone in the dining car. Nobody has touched their coffee.

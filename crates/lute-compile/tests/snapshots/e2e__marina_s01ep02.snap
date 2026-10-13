@@ -136,9 +136,9 @@ expression: json
       "name": "volume",
       "members": [
         "silent",
-        "down",
+        "quiet",
         "normal",
-        "up",
+        "loud",
         "full"
       ]
     }
@@ -161,7 +161,7 @@ expression: json
       "position": "001-0200",
       "playback": "start",
       "mood": "peaceful",
-      "volume": "down",
+      "volume": "quiet",
       "assetId": "sound-bgm-common-vn-mood-peaceful-0.mp3"
     },
     {

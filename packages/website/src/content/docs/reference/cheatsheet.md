@@ -305,7 +305,7 @@ enums:
   anchor: { members: [left, center, right], default: center }
   costume: [apron]
   mood: [peaceful]
-  volume: [down, normal]
+  volume: [quiet, normal]
   musicPlayback: [start, fadeOut]
   vfxType: [whiteOut]
   framing: [closeUp, wide]
@@ -320,7 +320,7 @@ state:
 ## Counter {#counter}
 
 ::bg{location="diner" time="night"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 ::sequence{name="dinerOpening"}
 ::actor{character="mira" anchor="center" action="fadeInUp" costume="apron"}
 ::camera{focus="mira" framing="closeUp" move="pushIn" duration="0.5" wait="true"}

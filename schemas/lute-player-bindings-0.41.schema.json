@@ -1062,6 +1062,14 @@
       "default": {
         "pattern": null
       }
+    },
+    "volumes": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "default": {},
+      "description": "0.42.0 §3.2: the project `volume` domain's absolute levels as gains,\neach a finite number in `[0, 1]` (checked by `check-project`).",
+      "type": "object"
     }
   },
   "required": [

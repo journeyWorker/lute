@@ -11,7 +11,7 @@ when: "holds('at', ['wren', 'village'])"
 ## Below the switchbacks
 
 ::bg{location="village_pen" time="afternoon"}
-::music{playback="start" mood="upbeat" volume="down"}
+::music{playback="start" mood="upbeat" volume="quiet"}
 @narrator{code="0010"}: The path down takes forty minutes and your knees file a complaint at every bend. At the bottom: a stone trough, a goat pen, and a girl sitting on the fence with a bundle of willow sticks across her lap.
 ::use{component="enter" who="wren" side="left" instance="use-001"}
 @wren{code="0010" emotion="laughing"}: You're the station intern. You walk like the station intern. Everybody walks like that the first week.

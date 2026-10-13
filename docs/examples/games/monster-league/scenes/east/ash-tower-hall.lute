@@ -16,7 +16,7 @@ when: "!holds('hasItem', ['spectralLens'])"
 ## The hall of candles
 
 ::bg{location="ash-tower-hall" time="night"}
-::music{playback="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="quiet"}
 @narrator{code="0010"}: Inside, Ash Tower is candles: hundreds of them, on every ledge, for every monster whose name is carved into the walls.
 ::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
 ::actor{character="ashgroveMourner" anchor="left" action="enter"}

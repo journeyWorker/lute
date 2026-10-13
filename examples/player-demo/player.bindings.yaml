@@ -41,6 +41,7 @@ cgLayouts: { full: { fit: cover }, inset: { fit: contain, scale: 0.65, x: 0.5, y
 textStyles: { emphasis: { fontWeight: bold, color: "#ffe39b" }, whisper: { alpha: 0.6, scale: 0.9, fontStyle: italic } }
 music:
   moods: { calm: audio/calm.wav, tense: audio/tense.wav, hopeful: audio/hopeful.wav, sad: audio/hopeful.wav, triumphant: audio/hopeful.wav }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 sfx: { bell: sfx/bell.wav, glass: sfx/glass.wav }
 vfx:
   flash: { effect: flash, color: "#ffffff", duration: 0.3 }

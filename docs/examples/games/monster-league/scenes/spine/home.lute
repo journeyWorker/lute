@@ -7,7 +7,7 @@ title: Morning in Hollowtown
 ## Upstairs
 
 ::bg{location="player-house" time="morning"}
-::music{playback="start" mood="upbeat" volume="down"}
+::music{playback="start" mood="upbeat" volume="quiet"}
 @narrator{code="0010"}: Sunlight on the floorboards. The console in the corner is still switched on from last night.
 @narrator{code="0020"}: It is {{clock.weekdayLabel}} morning in Hollowtown.
 ::actor{character="mom" anchor="right" action="enter"}

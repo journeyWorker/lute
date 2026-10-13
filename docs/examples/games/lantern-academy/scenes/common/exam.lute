@@ -11,7 +11,7 @@ after: 'visited("common.injury")'
 ## The exam hall
 
 ::bg{location="hall" time="morning"}
-::music{playback="start" mood="tense" volume="down"}
+::music{playback="start" mood="tense" volume="quiet"}
 @headmistress{code="0010"}: Pens down when the bell goes, not after. Anyone failing today spends every afternoon until the festival in remedial study.
 @you{code="0010" mono when="quest.studyGroup.state == 'complete'"}: Soren's handwriting is still on my notes. Dates in blue, kings in green.
 

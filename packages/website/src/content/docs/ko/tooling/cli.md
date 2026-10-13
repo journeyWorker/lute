@@ -443,6 +443,8 @@ YAML 처리는 텍스트를 바이트 단위로 읽으므로, 스칼라·따옴�
 
 툴체인보다 오래된 기존 언어 스탬프는 툴체인 버전으로 올립니다(0.41.1). `lute.project.yaml`의 `defaults: luteVersion`과 `.lute` 문서 자체의 frontmatter `luteVersion`이 대상이며, 각각 수정 하나로 세고 값 주변의 따옴표와 주석은 유지합니다. 따라서 해당 `W-LUTE-VERSION-STALE`이 사라집니다. 없는 스탬프는 추가하지 않으며, 더 새롭거나 `MAJOR.MINOR.PATCH` 형식이 아닌 스탬프는 그대로 둡니다.
 
+옛 문서화된 `volume` 단계를 그대로 쓰는 프로젝트에서는 그 단계의 이름을 바꿉니다(0.42). 프로젝트의 접힌(folded) `volume` 도메인이 정확히 `[silent, down, normal, up, full]`일 때 — `volume` 도메인을 보는 모든 문서에서 그 멤버가 그 순서로 — 선언, 모든 `volume=` 디렉티브 값, `player.bindings.yaml`의 `volumes:` 키에서 `down`은 `quiet`, `up`은 `loud`가 되며 토큰마다 수정 하나로 셉니다. 프로젝트가 직접 고른 레벨(부분집합, 다른 이름, 다른 순서)이거나 문서들이 서로 다르면 건드리지 않습니다. 프로젝트 밖의 `.lute` 파일은 자신의 프런트매터로 판단합니다.
+
 작성자 key의 snake case는 재작성 방식이 명확한 경우에만 lowerCamelCase가 됩니다. 인라인 텍스트 수정자는 절대 새로 만들지 않으며, 기존 수정자는 바이트 단위로 그대로 보존합니다. 이전 migration도 계속 적용됩니다. `:line[speaker]{…}: text` → `@speaker{…}: text`, 선행 `:` sigil → `@`, choice `as="…"` → `into="…"`, 리터럴 비교 `<when test="$ == 'gold'">` → `<when is="gold">`(`W-WHEN-TEST-LITERAL`), 그리고 0.31 CEL 팩트 질의 및 presence 호출 → 표준 CEL 형식입니다.
 
 0.36 씬:

@@ -22,7 +22,7 @@ title: The station's routine
 
 <beat id="night" on="slotStart" title="Seven o'clock, and supper" priority="10" once="false" when="run.slot == 'night' && !(run.day == 7)">
   ::bg{location="kitchen" time="night"}
-  ::music{playback="start" mood="peaceful" volume="down"}
+  ::music{playback="start" mood="peaceful" volume="quiet"}
   @narrator{code="0010"}: The seven o'clock readings, then supper: lentils, black bread, whatever Pell brought up last.
   @ines{code="0010" emotion="tired" when="run.weather == 'storm'"}: Eat. The wind will still be there after.
   @ines{code="0020" emotion="neutral" when="run.weather != 'storm'"}: Clear tonight. Sol will be insufferable about it.

@@ -30,7 +30,7 @@ when: "run.lair.quarryDig != 'cleared' && @southDigOpen"
 <match subject="scene.battle.fight.won">
   <when is="true">
     @gruntDig{code="0020"}: Fine. Keep the rocks. The Director already has the one that matters, and it isn't in this hole.
-    ::music{playback="change" mood="calm" volume="down"}
+    ::music{playback="change" mood="calm" volume="quiet"}
     @narrator{code="0020"}: The grunts pack up their lights and run. The fossil pit is quiet. The dig is {{run.lair.quarryDig}}.
     @narrator{code="0030"}: Most of the tarpaulins went with them. Two fossils are left in the mud: a smooth dome of shell, and a spiral like a stone snail.
     <branch id="southDigFossil" prompt="You can carry one of them out.">

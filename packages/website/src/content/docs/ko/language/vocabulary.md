@@ -55,7 +55,7 @@ enums:
     members: [fadeInUp, sway, lean, idle, fadeOut, hide]
     exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   framing: [wide, medium, close]
@@ -63,6 +63,8 @@ enums:
   transition: [cut, dissolve, fade]
   textStyle: [emphasis, whisper]
 ```
+
+`volume` 멤버는 **절대 레벨**, 곧 `silent, quiet, normal, loud, full`처럼 정도의 순서가 있는 단계이며 현재 레벨에 대한 상대적 이동이 아닙니다. `quiet`를 두 번 써도 더 조용해지지 않고 `quiet` 레벨로 재생됩니다(0.42). 플레이어는 [`player.bindings.yaml`](/ko/player/bindings/)의 `volumes:` 표로 각 멤버를 gain으로 바꿉니다. 0.42 전의 문서화된 단계는 `silent, down, normal, up, full`이었고, `lute fix`는 `volume` 도메인이 정확히 그 옛 단계인 프로젝트에서 `down` → `quiet`, `up` → `loud`로 이름을 바꾸며 프로젝트가 직접 고른 레벨은 그대로 둡니다([`lute fix`](/ko/tooling/cli/#fix)).
 
 이 블록으로 가는 경로는 **세 가지**이며, 셋 모두 같은 파서와 같은 검증기를 통과합니다.
 

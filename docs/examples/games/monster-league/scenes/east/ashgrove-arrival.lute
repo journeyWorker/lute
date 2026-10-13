@@ -13,7 +13,7 @@ priority: 20
 ## The quiet town
 
 ::bg{location="ashgrove" time="day"}
-::music{playback="change" mood="sad" volume="down"}
+::music{playback="change" mood="sad" volume="quiet"}
 @narrator{code="0010"}: Ashgrove. Grey roofs, grey smoke, and above them all the old tower, taller than anything should be in a town this small.
 @narrator{code="0020"}: Paper lanterns hang unlit from every eave. Nobody is in the street.
 ::actor{character="ashgroveCaretaker" anchor="center" action="enter"}

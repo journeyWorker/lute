@@ -35,6 +35,10 @@ pub struct Bindings {
     pub text_styles: BTreeMap<String, TextStyle>,
     #[serde(default)]
     pub music: Music,
+    /// 0.42.0 §3.2: the project `volume` domain's absolute levels as gains,
+    /// each a finite number in `[0, 1]` (checked by `check-project`).
+    #[serde(default)]
+    pub volumes: BTreeMap<String, f64>,
     #[serde(default)]
     pub sfx: BTreeMap<String, String>,
     #[serde(default)]

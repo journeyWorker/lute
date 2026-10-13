@@ -8,6 +8,6 @@ enums:
     members: [fadeInUp, idle, lean, fadeOut, hide]
     exits: [fadeOut, hide]
   mood: [hearth, stair, dread, triumph, elegy]
-  volume: [silent, down, normal, up]
+  volume: [silent, quiet, normal, loud]
   musicPlayback: [start, change, stop, fadeOut]
   vfxType: [emberBurst, ashFall, whiteOut, blackOut]

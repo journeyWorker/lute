@@ -9,6 +9,6 @@ enums:
     members: [fadeInUp, fadeOut]
     exits: [fadeOut]
   mood: [peaceful, tense, romantic, sad, festive]
-  volume: [down, normal]
+  volume: [quiet, normal]
   musicPlayback: [start, fadeOut]
   vfxType: [petals, lanterns, whiteOut]

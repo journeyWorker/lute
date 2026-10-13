@@ -1076,12 +1076,12 @@ mod tests {
     #[test]
     fn remaining_core_directives_lower_to_their_kinds() {
         let v = lower_first(
-            "::music{playback=\"start\" mood=\"peaceful\" volume=\"down\" assetId=\"m.mp3\"}",
+            "::music{playback=\"start\" mood=\"peaceful\" volume=\"quiet\" assetId=\"m.mp3\"}",
         );
         assert_eq!(v["kind"], "music");
         assert_eq!(v["playback"], "start");
         assert_eq!(v["mood"], "peaceful");
-        assert_eq!(v["volume"], "down");
+        assert_eq!(v["volume"], "quiet");
         let v = lower_first("::sfx{sound=\"hum\" assetId=\"s.mp3\"}");
         assert_eq!(v["kind"], "sfx");
         assert_eq!(v["sound"], "hum");

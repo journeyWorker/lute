@@ -16,7 +16,7 @@ when: "clock.weekday == 4 && @isNight"
 ## The procession
 
 ::bg{location="ash-tower-hall" time="night"}
-::music{playback="change" mood="calm" volume="down"}
+::music{playback="change" mood="calm" volume="quiet"}
 @narrator{code="0010"}: It is Friday night, and Ashgrove comes up the hill with its lanterns: paper moons on sticks, one for every monster the town has lost.
 <match subject="run.lair.towerSiege">
   <when is="cleared">

@@ -29,6 +29,7 @@ vfx:
   lanterns: { effect: custom }
   tideRise: { effect: custom, name: tide-rise, duration: 2 }
 music: { moods: { calm: audio/calm.ogg } }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 sfx: { door: audio/door.ogg }
 sequences: { doorOpens: { video: video/door-opens.mp4 } }
 voice: { pattern: "voice/{voiceKey}.ogg" }
@@ -49,6 +50,7 @@ flow:
 - `characters`는 cast id를 키로 합니다. 각 값에는 `sprite.default`, 선택적 `sprite.emotions`, 같은 sprite 형태의 선택적 `costumes`, 선택적 `nameColor`가 있습니다.
 - `anchors`, `actions`, `transitions`, `framing`, `cameraMove`, `cgLayouts`, `textStyles`, `sequences`는 선언된 staging domain을 키로 합니다. anchor는 `x`와 선택적 `y`, `scale`을 사용하고, framing은 `zoom`과 선택적 `x`, `y`를 사용하며, CG layout은 `fit: cover|contain`과 선택적 `scale`, `x`, `y`를 사용합니다. text style은 `fontWeight`, `fontStyle`, `color`, `alpha`, `scale`, `letterSpacing`을 받습니다.
 - `music.moods`, `sfx`, `vfx`는 컴파일 문서에서 사용하는 값을 키로 합니다. `sequences` 값에는 `video`가 있고 `voice.pattern`은 `{voiceKey}` 경로 템플릿입니다.
+- `volumes`(0.42)는 프로젝트 `volume` 도메인의 각 멤버를 gain, 즉 `0`에서 `1` 사이의 유한한 수에 대응시킵니다. 음악 큐의 `volume`은 절대 레벨이므로 플레이어는 그 멤버의 gain으로 재생하고 숫자를 해석하지 않습니다. `volume`이 없는 큐는 gain `1`로, gain이 없는 멤버는 전체 볼륨이 아니라 `0`으로 재생됩니다. 알 수 없는 키는 `E-BINDING-KEY`, 키가 없는 멤버는 `W-BINDING-MISSING`, `[0, 1]` 범위의 유한한 수가 아닌 gain은 그 값 위치의 `E-BINDING-SHAPE`입니다.
 - `ui`에는 `font`, title의 `background`와 `music`, 임의의 theme 색상 이름이 들어갑니다.
 - `flow.newGame`은 하나의 계기를 발생시키며 `flow.idle`은 `{label, occasion, target?}` 메뉴 목록 또는 `raise: {occasion, target?}`입니다.
 

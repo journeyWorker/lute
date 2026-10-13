@@ -13,6 +13,7 @@
 //! document), `2` on an I/O failure (an unreadable path or an unwritable
 //! file) — the worst outcome across the files wins.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -223,7 +224,8 @@ fn tag_file(file: &Path, force: bool, scope: Scope<'_>) -> (Outcome, usize) {
 pub fn run_fix(paths: &[PathBuf]) -> ExitCode {
     if let [path] = paths {
         if !path.is_dir() {
-            return fix_file(path, Scope::Single).0.exit_code();
+            let volume = volume_eligibility(std::slice::from_ref(path))[0];
+            return fix_file(path, Scope::Single, volume).0.exit_code();
         }
     }
     let mut files = Vec::new();
@@ -240,11 +242,12 @@ pub fn run_fix(paths: &[PathBuf]) -> ExitCode {
             files.push(path.clone());
         }
     }
+    let volume = volume_eligibility(&files);
     let mut worst = Outcome::Unchanged;
     let mut changed = 0;
     let mut fixes = 0;
-    for file in &files {
-        let (outcome, n) = fix_file(file, Scope::Tree(file));
+    for (file, &volume) in files.iter().zip(&volume) {
+        let (outcome, n) = fix_file(file, Scope::Tree(file), volume);
         if outcome == Outcome::Changed {
             changed += 1;
             fixes += n;
@@ -278,7 +281,7 @@ fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn fix_file(file: &Path, scope: Scope<'_>) -> (Outcome, usize) {
+fn fix_file(file: &Path, scope: Scope<'_>, volume: bool) -> (Outcome, usize) {
     let Some(text) = read(file) else {
         return (Outcome::Failed, 0);
     };
@@ -308,6 +311,11 @@ fn fix_file(file: &Path, scope: Scope<'_>) -> (Outcome, usize) {
     let stamp = rewrite_lute_version(&out, file);
     changed += stamp.changed;
     out = stamp.text;
+    if volume {
+        let renamed = rewrite_volume(&out, yaml);
+        changed += renamed.changed;
+        out = renamed.text;
+    }
     if changed == 0 {
         scope.say_unchanged("nothing to fix");
         return (Outcome::Unchanged, 0);
@@ -872,6 +880,323 @@ fn yaml_scalar_span(line: &str, start: usize) -> Option<(usize, usize)> {
         [] | [b'"' | b'\'' | b'{' | b'[' | b'|' | b'>' | b'&' | b'*' | b'!', ..] => None,
         _ => Some((start, start + raw.len())),
     }
+}
+
+/// 0.42.0 §3.3: the documented `volume` scale before 0.42, in order — the
+/// only folded `volume` domain `lute fix` migrates.
+const OLD_VOLUME: [&str; 5] = ["silent", "down", "normal", "up", "full"];
+
+/// The 0.42 member for an old relative-sounding `volume` member.
+fn new_volume_member(old: &str) -> Option<&'static str> {
+    match old {
+        "down" => Some("quiet"),
+        "up" => Some("loud"),
+        _ => None,
+    }
+}
+
+/// Whether each of `files` gets the 0.42 volume migration, decided before
+/// any file is rewritten: its project's folded `volume` domain is exactly
+/// [`OLD_VOLUME`] in every document that sees one, or — a `.lute` file
+/// outside any project — its own frontmatter declares exactly that.
+fn volume_eligibility(files: &[PathBuf]) -> Vec<bool> {
+    let mut projects: BTreeMap<PathBuf, bool> = BTreeMap::new();
+    files
+        .iter()
+        .map(|file| match project_root(file) {
+            Some(root) => *projects
+                .entry(root)
+                .or_insert_with_key(|root| project_has_old_volume(root)),
+            None => {
+                file.extension().is_some_and(|ext| ext == "lute")
+                    && read(file).is_some_and(|text| frontmatter_volume(&text).is_some_and(is_old_volume))
+            }
+        })
+        .collect()
+}
+
+fn is_old_volume(members: Vec<String>) -> bool {
+    members.iter().map(String::as_str).eq(OLD_VOLUME)
+}
+
+/// The nearest directory at or above `file` holding a `lute.project.yaml`.
+fn project_root(file: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(file).ok()?;
+    absolute
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.join("lute.project.yaml").is_file())
+        .map(Path::to_path_buf)
+}
+
+/// Whether the project at `root` folds exactly [`OLD_VOLUME`] wherever a
+/// document sees a `volume` domain (and at least one does). Documents that
+/// disagree make the project ineligible: its declarations are not the old
+/// scale alone.
+fn project_has_old_volume(root: &Path) -> bool {
+    let options = lute_model::ModelOptions {
+        compile: false,
+        ..Default::default()
+    };
+    let Ok(model) = lute_model::ProjectModel::build_single_root(root, &options) else {
+        return false;
+    };
+    let mut seen = false;
+    for document in model.documents() {
+        if let Some(domain) = document.folded.domains.get("volume") {
+            if !is_old_volume(domain.members.clone()) {
+                return false;
+            }
+            seen = true;
+        }
+    }
+    seen
+}
+
+/// A `.lute` document's own frontmatter `enums: volume:` members.
+fn frontmatter_volume(text: &str) -> Option<Vec<String>> {
+    let (start, end) = frontmatter_range(text)?;
+    let yaml = text[start..end].strip_suffix("\n---").unwrap_or(&text[start..end]);
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml).ok()?;
+    let volume = value.get("enums")?.get("volume")?;
+    let members = volume.get("members").unwrap_or(volume);
+    members
+        .as_sequence()?
+        .iter()
+        .map(|m| m.as_str().map(str::to_string))
+        .collect()
+}
+
+/// 0.42.0 §3.3: in a file whose project folds the old scale, rename `down`
+/// → `quiet` and `up` → `loud` where they are `volume` members — the
+/// `volume:` entry of a top-level `enums:` (a YAML file's, or a document's
+/// frontmatter), the keys of a bindings file's top-level `volumes:`, and a
+/// directive's `volume=` value. Spans are spliced in place; each renamed
+/// token is one fix.
+fn rewrite_volume(text: &str, yaml: bool) -> Rewrite {
+    if yaml {
+        return apply_edits(text, volume_yaml_edits(text, 0));
+    }
+    let mut edits = Vec::new();
+    let body_from = match frontmatter_range(text) {
+        Some((start, end)) => {
+            edits.extend(volume_yaml_edits(&text[start..end], start));
+            end
+        }
+        None => 0,
+    };
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if offset >= body_from && line.trim_start().starts_with("::") {
+            edits.extend(volume_attr_edits(line, offset));
+        }
+        offset += line.len();
+    }
+    apply_edits(text, edits)
+}
+
+/// The `volume=<member>` attribute values of one directive line.
+fn volume_attr_edits(line: &str, offset: usize) -> Vec<(usize, usize, String)> {
+    let bytes = line.as_bytes();
+    let mut edits = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = line[from..].find("volume=") {
+        let at = from + rel;
+        from = at + "volume=".len();
+        if at > 0 && (is_ident_continue(bytes[at - 1]) || bytes[at - 1] == b'-') {
+            continue;
+        }
+        let quote = bytes.get(from).copied().filter(|c| *c == b'"' || *c == b'\'');
+        let start = from + usize::from(quote.is_some());
+        let mut end = start;
+        while end < bytes.len() && is_ident_continue(bytes[end]) {
+            end += 1;
+        }
+        let closes = match quote {
+            Some(q) => bytes.get(end) == Some(&q),
+            None => bytes.get(end).is_none_or(|c| !is_ident_continue(*c) && *c != b'-'),
+        };
+        if let (true, Some(new)) = (closes, new_volume_member(&line[start..end])) {
+            edits.push((offset + start, offset + end, new.to_string()));
+        }
+    }
+    edits
+}
+
+/// The old members in a YAML text's `enums: volume:` entry and its
+/// `volumes:` keys, as edits at `base` + their offset.
+fn volume_yaml_edits(text: &str, base: usize) -> Vec<(usize, usize, String)> {
+    let lines: Vec<(usize, &str)> = text
+        .split_inclusive('\n')
+        .scan(0, |offset, line| {
+            let at = *offset;
+            *offset += line.len();
+            Some((at, line.strip_suffix('\n').unwrap_or(line)))
+        })
+        .collect();
+    let mut edits = Vec::new();
+    let mut push = |at: usize, token: &str| {
+        if let Some(new) = new_volume_member(token) {
+            edits.push((base + at, base + at + token.len(), new.to_string()));
+        }
+    };
+    for (i, &(line_at, body)) in lines.iter().enumerate() {
+        let Some((0, end, value)) = yaml_key_value(body) else {
+            continue;
+        };
+        let section = &body[..end];
+        let enums = yaml_key_is(section, "enums");
+        if !enums && !yaml_key_is(section, "volumes") {
+            continue;
+        }
+        // The entries of the section: (key offset, key, value region).
+        let mut entries: Vec<(usize, &str, std::ops::Range<usize>)> = Vec::new();
+        if body[value..].starts_with('{') {
+            let close = line_at + value + balanced_end(&text[line_at + value..]);
+            let keys = flow_map_keys(text, line_at + value);
+            for (k, &(at, key)) in keys.iter().enumerate() {
+                let next = keys.get(k + 1).map_or(close, |&(n, _)| n);
+                entries.push((at, key, at + key.len()..next));
+            }
+        } else if yaml_value_end(body, value) == value {
+            let mut child_indent = None;
+            let mut j = i + 1;
+            while j < lines.len() {
+                let (at, child) = lines[j];
+                let trimmed = child.trim_start();
+                let indent = child.len() - trimmed.len();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    j += 1;
+                    continue;
+                }
+                if indent == 0 {
+                    break;
+                }
+                if *child_indent.get_or_insert(indent) != indent {
+                    j += 1;
+                    continue;
+                }
+                let Some((start, end, _)) = yaml_key_value(child) else {
+                    j += 1;
+                    continue;
+                };
+                let raw = &child[start..end];
+                let (key, inner) = match raw.as_bytes() {
+                    [q @ (b'"' | b'\''), .., last] if last == q => (&raw[1..raw.len() - 1], start + 1),
+                    _ => (raw, start),
+                };
+                // The entry's value: the rest of its line and every deeper line.
+                let mut stop = j + 1;
+                while stop < lines.len() {
+                    let (_, next) = lines[stop];
+                    let t = next.trim_start();
+                    if !t.is_empty() && !t.starts_with('#') && next.len() - t.len() <= indent {
+                        break;
+                    }
+                    stop += 1;
+                }
+                let region_end = lines.get(stop).map_or(text.len(), |&(at, _)| at);
+                entries.push((at + inner, key, at + end..region_end));
+                j = stop;
+            }
+        }
+        for (at, key, region) in entries {
+            if enums && key == "volume" {
+                for (token_at, token) in member_tokens(&text[region.clone()]) {
+                    push(region.start + token_at, token);
+                }
+            } else if !enums {
+                push(at, key);
+            }
+        }
+    }
+    edits
+}
+
+/// The byte length of the balanced `{…}` / `[…]` opening `text`.
+fn balanced_end(text: &str) -> usize {
+    let mut depth = 0usize;
+    let mut quote = None;
+    for (i, b) in text.bytes().enumerate() {
+        match (quote, b) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, b'"' | b'\'') => quote = Some(b),
+            (None, b'{' | b'[') => depth += 1,
+            (None, b'}' | b']') => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    text.len()
+}
+
+/// The member references of a `volume:` declaration's value region, outside
+/// comments: a list item (`[a, b]`, `- a`), a mapping key (`labels: { a: … }`)
+/// and a `default:` value. A quoted string counts when its content is one
+/// identifier. Other scalars — a `description:`, say — are prose.
+fn member_tokens(region: &str) -> Vec<(usize, &str)> {
+    let b = region.as_bytes();
+    let ident = |c: u8| is_ident_continue(c) || c == b'-';
+    let blank = |c: u8| c == b' ' || c == b'\t';
+    // Is the token spanning `outer` (quotes included) a member position?
+    let member = |outer: std::ops::Range<usize>| {
+        let mut p = outer.start;
+        while p > 0 && b[p - 1].is_ascii_whitespace() {
+            p -= 1;
+        }
+        let prev = p.checked_sub(1).map(|i| b[i]);
+        let mut n = outer.end;
+        while n < b.len() && blank(b[n]) {
+            n += 1;
+        }
+        let next = b.get(n).copied();
+        let ends_item = matches!(next, None | Some(b',' | b']' | b'#' | b'\n' | b'\r'));
+        let dash_item = prev == Some(b'-')
+            && region[..p - 1].bytes().rev().take_while(|c| *c != b'\n').all(blank);
+        let default_value = prev == Some(b':') && region[..p - 1].trim_end().ends_with("default");
+        next == Some(b':')
+            || (ends_item && (matches!(prev, Some(b'[' | b',')) || dash_item))
+            || default_value
+    };
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'#' if i == 0 || b[i - 1].is_ascii_whitespace() => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            q @ (b'"' | b'\'') => {
+                let start = i + 1;
+                let mut end = start;
+                while end < b.len() && b[end] != q && b[end] != b'\n' {
+                    end += 1;
+                }
+                let one = end > start && region[start..end].bytes().all(ident);
+                if one && member(i..(end + 1).min(b.len())) {
+                    out.push((start, &region[start..end]));
+                }
+                i = end + 1;
+            }
+            c if ident(c) => {
+                let start = i;
+                while i < b.len() && ident(b[i]) {
+                    i += 1;
+                }
+                if member(start..i) {
+                    out.push((start, &region[start..i]));
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    out
 }
 
 fn apply_edits(text: &str, mut edits: Vec<(usize, usize, String)>) -> Rewrite {

@@ -29,6 +29,7 @@ vfx:
   lanterns: { effect: custom }
   tideRise: { effect: custom, name: tide-rise, duration: 2 }
 music: { moods: { calm: audio/calm.ogg } }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 sfx: { door: audio/door.ogg }
 sequences: { doorOpens: { video: video/door-opens.mp4 } }
 voice: { pattern: "voice/{voiceKey}.ogg" }
@@ -49,6 +50,7 @@ flow:
 - `characters` is keyed by cast id. Each value has `sprite.default`, optional `sprite.emotions`, optional `costumes` (each with the same sprite shape), and optional `nameColor`.
 - `anchors`, `actions`, `transitions`, `framing`, `cameraMove`, `cgLayouts`, `textStyles`, and `sequences` are keyed by their declared staging domains. Anchors have `x` plus optional `y` and `scale`; framing has `zoom` plus optional `x` and `y`; CG layouts have `fit: cover|contain` plus optional `scale`, `x`, and `y`; text styles accept `fontWeight`, `fontStyle`, `color`, `alpha`, `scale`, and `letterSpacing`.
 - `music.moods`, `sfx`, and `vfx` are keyed by values used by compiled documents. `sequences` values contain `video`; `voice.pattern` is a `{voiceKey}` path template.
+- `volumes` (0.42) maps each member of the project's `volume` domain to a gain, a finite number from `0` to `1`. A music cue's `volume` is an absolute level: the player plays it at that member's gain and never parses a number. A cue with no `volume` plays at gain `1`; a member without a gain plays at `0`, never at full volume. An unknown key is `E-BINDING-KEY`, a member with no key is `W-BINDING-MISSING`, and a gain that is not a finite number in `[0, 1]` is `E-BINDING-SHAPE` at its value.
 - `ui` contains `font`, a title `background` and `music`, and arbitrary theme colour names.
 - `flow.newGame` raises one `occasion`; `flow.idle` is either a `menu` list of `{label, occasion, target?}` entries or `raise: {occasion, target?}`.
 

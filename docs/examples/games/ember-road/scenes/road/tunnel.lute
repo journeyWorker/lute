@@ -13,7 +13,7 @@ components: [../../components/reaction.component.lute]
 ## The Smugglers' Cut
 
 ::bg{location="mill_tunnel" time="night"}
-::music{playback="change" mood="tense" volume="down"}
+::music{playback="change" mood="tense" volume="quiet"}
 @narrator{code="0010"}: The cut runs under the river, brick-lined and sweating. Two Duskbound sit at a plank table with a lantern and a pot of something that was once a stew. Behind them, a door with a bar across it.
 @narrator{code="0020"}: One of the guards is barely older than the twins.
 

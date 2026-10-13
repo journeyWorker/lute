@@ -125,6 +125,35 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
         &anchor,
         &mut out,
     );
+    // 0.42.0 §3.2: one gain per `volume` member, each finite in [0, 1].
+    check_domain_map(
+        &bindings.volumes,
+        "volume",
+        domains.get("volume"),
+        &anchor,
+        &mut out,
+    );
+    for (member, gain) in &bindings.volumes {
+        if !(gain.is_finite() && (0.0..=1.0).contains(gain)) {
+            use lute_manifest::yaml_text::{yaml_span, YamlStep};
+            let span = yaml_span(
+                &text,
+                &[YamlStep::Key("volumes"), YamlStep::Key(member), YamlStep::Value],
+            )
+            .unwrap_or_else(|| anchor(member));
+            out.push((
+                path.clone(),
+                diag(
+                    "E-BINDING-SHAPE",
+                    format!(
+                        "volume binding `{member}` gain must be a finite number in [0, 1], \
+                         got `{gain}`"
+                    ),
+                    span,
+                ),
+            ));
+        }
+    }
     for (id, character) in &bindings.characters {
         if !cast.contains(id) {
             out.push((

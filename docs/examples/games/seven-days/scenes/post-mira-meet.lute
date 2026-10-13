@@ -11,7 +11,7 @@ priority: 30
 ## The post office
 
 ::bg{location="post_office" time="morning"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 @narrator{code="0010"}: The post office is a counter, a rack of postcards, and a franking machine the size of a small car.
 ::actor{character="mira" anchor="center" action="fadeInUp"}
 @mira{code="0010" emotion="happy"}: You're Pell's! You've got her eyebrows. Postcards are forty pence, stamps are extra, and the machine is broken.

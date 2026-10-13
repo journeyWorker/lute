@@ -9,7 +9,7 @@ enums:
     members: [enter, bow, cheer, idle, exit]
     exits: [exit]
   mood: [calm, upbeat, tense, battle, eerie, triumphant, sad, festive]
-  volume: [down, normal, up]
+  volume: [quiet, normal, loud]
   musicPlayback: [start, change, stop, fadeOut]
   vfxType: [flash, whiteOut, blackOut, sparkle, rain, fog]
   cameraMove: [shake]

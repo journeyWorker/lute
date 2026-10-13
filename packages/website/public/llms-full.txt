@@ -2603,7 +2603,7 @@ enums:
   anchor: { members: [left, center, right], default: center }
   costume: [apron]
   mood: [peaceful]
-  volume: [down, normal]
+  volume: [quiet, normal]
   musicPlayback: [start, fadeOut]
   vfxType: [whiteOut]
   framing: [closeUp, wide]
@@ -2618,7 +2618,7 @@ state:
 ## Counter {#counter}
 
 ::bg{location="diner" time="night"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 ::sequence{name="dinerOpening"}
 ::actor{character="mira" anchor="center" action="fadeInUp" costume="apron"}
 ::camera{focus="mira" framing="closeUp" move="pushIn" duration="0.5" wait="true"}
@@ -5393,7 +5393,7 @@ enums:
     members: [fadeInUp, sway, lean, idle, fadeOut, hide]
     exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   framing: [wide, medium, close]
@@ -5401,6 +5401,8 @@ enums:
   transition: [cut, dissolve, fade]
   textStyle: [emphasis, whisper]
 ```
+
+`volume` members are **absolute levels**, an ordered scale of degree like `silent, quiet, normal, loud, full` — never moves relative to the current level: writing `quiet` twice plays at the `quiet` level, not quieter (0.42). A player turns each member into a gain through the `volumes:` table of [`player.bindings.yaml`](/player/bindings/). Before 0.42 the documented scale was `silent, down, normal, up, full`; `lute fix` renames `down` → `quiet` and `up` → `loud` in a project whose `volume` domain is exactly that old scale, and leaves a project's own levels alone ([`lute fix`](/tooling/cli/#fix)).
 
 There are **three routes** to that block, and all three go through the same parser and the same
 validator.
@@ -6162,7 +6164,7 @@ forward jump pair `::jump` / `::label` — with these canonical attributes:
 
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
-::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
+::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="quiet"}
 ::actor{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" framing="close" duration="0.5"}
 ```
