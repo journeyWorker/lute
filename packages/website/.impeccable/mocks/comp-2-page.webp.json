@@ -1,0 +1,6 @@
+{
+ "prompt": "Single big gamebook page; bottle-green spine band with section nav; huge section 1, prose, two turn-to choice controls; pinned adventure-sheet column with CHECKED seal; black install control.",
+ "tool": "omp generate_image (gpt-image-2-codex)",
+ "direction": "e11bad04",
+ "approved": true
+}

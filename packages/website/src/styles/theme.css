@@ -1,199 +1,121 @@
 /* ============================================================
-   Lute — site theme
-   Hybrid instrument identity: warm amber/gold on midnight navy.
-   Display type: Fraunces (serif). Body: system sans. Code: JetBrains Mono.
-   Accent motif: subtle violet glow reserved for VN dialogue demos.
+   Lute — the gamebook
+   Cover inks own whole regions (bottle green, cadmium red,
+   ultramarine); interior pages are bright newsprint white printed
+   in one black ink. Display: Anton (Black Han Sans for Hangul).
+   Condensed serif for numerals, wordmark and navigation: Libre
+   Caslon Condensed (lining figures). Text: Charis SIL (Noto Serif KR for
+   Hangul). Code and adventure-sheet data: JetBrains Mono.
+   DESIGN.md is the record of this system.
    ============================================================ */
 
-@import "@fontsource-variable/fraunces";
+@import "@fontsource/anton/400.css";
+@import "@fontsource/black-han-sans/400.css";
+@import "@fontsource-variable/libre-caslon-condensed/wght.css";
+@import "@fontsource/charis-sil/400.css";
+@import "@fontsource/charis-sil/400-italic.css";
+@import "@fontsource/charis-sil/700.css";
+@import "@fontsource/noto-serif-kr/400.css";
+@import "@fontsource/noto-serif-kr/700.css";
+@import "@fontsource/noto-serif-kr/900.css";
 @import "@fontsource-variable/jetbrains-mono";
 
 :root {
-  /* Dark theme (default): midnight navy + amber/gold */
-  --sl-color-accent-low: #402c0d;
-  --sl-color-accent: #e0a94a;
-  --sl-color-accent-high: #f6dca0;
-  --sl-color-white: #f4f1ea;
-  --sl-color-gray-1: #e0e2ec;
-  --sl-color-gray-2: #b7bccd;
-  --sl-color-gray-3: #838aa4;
-  --sl-color-gray-4: #565d77;
-  --sl-color-gray-5: #333b54;
-  --sl-color-gray-6: #171d31;
-  --sl-color-black: #0e1322;
+  /* Inks */
+  --gb-paper: #f8f8f7;
+  --gb-paper-2: #efefec;
+  --gb-ink: #0a0a0a;
+  --gb-ink-2: #3a3a38;
+  --gb-ink-3: #5c5c58;
+  --gb-green: #084828;
+  --gb-green-2: #0b5a33;
+  --gb-green-tint: #dbe7df;
+  --gb-red: #b3200e;
+  --gb-red-tint: #f3dcd7;
+  --gb-blue: #1c2a96;
+  --gb-blue-tint: #dcdff2;
+  --gb-on-ink: #f8f8f7;
 
-  --sl-color-bg-nav: #10162a;
-  --sl-color-bg-sidebar: #0c1120;
-  --sl-color-hairline: #232b45;
-  --sl-color-hairline-light: #1b2138;
+  /* Faces */
+  --gb-display: "Anton", "Black Han Sans", "Arial Narrow", sans-serif;
+  --gb-cond: "Libre Caslon Condensed Variable", "Noto Serif KR", Georgia, serif;
+  --gb-text: "Charis SIL", "Noto Serif KR", Georgia, "Times New Roman", serif;
+  --gb-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo,
+    "Apple SD Gothic Neo", monospace;
 
-  --sl-font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular",
-    Menlo, monospace;
-  --lute-serif: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman",
-    serif;
+  /* Starlight: dark theme (night reading) */
+  --sl-color-accent-low: #12341f;
+  --sl-color-accent: #6cc493;
+  --sl-color-accent-high: #c4ecd3;
+  --sl-color-white: #efefea;
+  --sl-color-gray-1: #e2e2dc;
+  --sl-color-gray-2: #c4c4bd;
+  --sl-color-gray-3: #9b9b94;
+  --sl-color-gray-4: #6a6a64;
+  --sl-color-gray-5: #3a3c38;
+  --sl-color-gray-6: #1c1e1b;
+  --sl-color-black: #111311;
 
-  /* Violet glow — reserved for VN dialogue demo boxes */
-  --lute-violet: #8b7ce8;
+  --sl-color-bg-nav: #111311;
+  --sl-color-bg-sidebar: var(--gb-green);
+  --sl-color-hairline: #3a3c38;
+  --sl-color-hairline-light: #262825;
+  --sl-color-hairline-shade: #000;
+
+  --sl-font: var(--gb-text);
+  --sl-font-mono: var(--gb-mono);
+  --sl-text-body: 1.0625rem;
+  --sl-line-height: 1.65;
+
+  /* Paper / ink pair for components that print the same in both themes */
+  --gb-page: var(--sl-color-black);
+  --gb-print: var(--sl-color-white);
+  --gb-rule: var(--sl-color-gray-4);
+
+  accent-color: var(--sl-color-accent);
 }
 
-/* Light theme: warm parchment */
+/* Light theme: the printed book (default for docs) */
 :root[data-theme="light"] {
-  --sl-color-accent-low: #f4e4bf;
-  --sl-color-accent: #9a6f1c;
-  --sl-color-accent-high: #4e3808;
-  --sl-color-white: #1c1a24;
-  --sl-color-gray-1: #2b2933;
-  --sl-color-gray-2: #45424f;
-  --sl-color-gray-3: #6b6776;
-  --sl-color-gray-4: #948fa0;
-  --sl-color-gray-5: #cbc6d2;
-  --sl-color-gray-6: #efebf1;
-  --sl-color-gray-7: #f6f3f0;
-  --sl-color-black: #fbf8f4;
+  --sl-color-accent-low: var(--gb-green-tint);
+  --sl-color-accent: var(--gb-green-2);
+  --sl-color-accent-high: var(--gb-green);
+  --sl-color-white: var(--gb-ink);
+  --sl-color-gray-1: #1c1c1a;
+  --sl-color-gray-2: #2f2f2d;
+  --sl-color-gray-3: var(--gb-ink-3);
+  --sl-color-gray-4: #8a8a85;
+  --sl-color-gray-5: #c9c9c4;
+  --sl-color-gray-6: #ececea;
+  --sl-color-gray-7: #f3f3f1;
+  --sl-color-black: var(--gb-paper);
 
-  --sl-color-bg-nav: #f6f3f0;
-  --sl-color-bg-sidebar: #f6f3f0;
-  --sl-color-hairline: #e4dcd0;
-  --sl-color-hairline-light: #eee7dc;
+  --sl-color-bg-nav: var(--gb-paper);
+  --sl-color-bg-sidebar: var(--gb-green);
+  --sl-color-hairline: #c9c9c4;
+  --sl-color-hairline-light: #e2e2de;
+  --sl-color-hairline-shade: var(--gb-ink);
 
-  --lute-violet: #6b5cd0;
+  --gb-rule: var(--gb-ink);
 }
 
-/* ---------- Typography: serif display voice ---------- */
+/* ---------- Browser surfaces ---------- */
 
-.sl-markdown-content h1,
-.sl-markdown-content h2,
-.sl-markdown-content h3,
-.sl-markdown-content h4,
-h1[data-page-title],
-.hero h1,
-.hero .tagline strong {
-  font-family: var(--lute-serif);
-  font-weight: 520;
-  letter-spacing: -0.015em;
+::selection {
+  background: var(--gb-green);
+  color: var(--gb-on-ink);
 }
 
-.site-title {
-  font-family: var(--lute-serif);
-  font-weight: 560;
-  font-size: var(--sl-text-xl);
-  letter-spacing: -0.02em;
+html {
+  scrollbar-color: var(--sl-color-gray-4) transparent;
 }
 
-/* Inline code gets a whisper of brass */
-.sl-markdown-content code:not(pre code) {
-  color: var(--sl-color-accent-high);
-  background: var(--sl-color-accent-low);
-  border-radius: 0.25rem;
-}
-:root[data-theme="light"] .sl-markdown-content code:not(pre code) {
-  color: var(--sl-color-accent-high);
+:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 3px;
 }
 
-/* ---------- Splash / hero ---------- */
-
-[data-has-hero] .hero {
-  padding-block: 3rem;
-}
-
-[data-has-hero] .hero h1 {
-  font-family: var(--lute-serif);
-  font-weight: 480;
-  font-size: clamp(2.75rem, 6vw, 4.5rem);
-  line-height: 1.04;
-  letter-spacing: -0.02em;
-  background: linear-gradient(
-    92deg,
-    var(--sl-color-accent-high),
-    var(--sl-color-accent)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-[data-has-hero] .hero .tagline {
-  color: var(--sl-color-gray-2);
-  max-width: 44ch;
-  font-size: var(--sl-text-lg);
-}
-
-/* Faint amber wash + fret-line motif behind the splash page */
-[data-has-hero] .main-frame {
-  background:
-    radial-gradient(
-      60% 55% at 82% 8%,
-      color-mix(in srgb, var(--sl-color-accent) 12%, transparent),
-      transparent 70%
-    ),
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0,
-      transparent 71px,
-      color-mix(in srgb, var(--sl-color-hairline) 55%, transparent) 71px,
-      color-mix(in srgb, var(--sl-color-hairline) 55%, transparent) 72px
-    );
-}
-
-/* ---------- Landing sections ---------- */
-
-.lute-kicker {
-  font-family: var(--sl-font-mono);
-  font-size: var(--sl-text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: var(--sl-color-accent);
-}
-
-.lute-lead {
-  font-family: var(--lute-serif);
-  font-size: var(--sl-text-lg);
-  color: var(--sl-color-gray-1);
-  max-width: 60ch;
-}
-
-/* ---------- VN dialogue demo boxes (violet glow) ---------- */
-
-.vn-scene {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  margin-block: 1.5rem;
-}
-
-.vn-dialogue {
-  background: color-mix(in srgb, var(--lute-violet) 8%, var(--sl-color-black));
-  border: 1px solid color-mix(in srgb, var(--lute-violet) 55%, transparent);
-  border-radius: 0.85rem;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--lute-violet) 14%, transparent),
-    0 10px 34px -14px color-mix(in srgb, var(--lute-violet) 65%, transparent);
-  padding: 0.85rem 1.15rem;
-}
-
-.vn-dialogue.narrator {
-  border-style: dashed;
-  border-color: color-mix(in srgb, var(--lute-violet) 32%, transparent);
-  box-shadow: none;
-  background: color-mix(in srgb, var(--sl-color-gray-6) 60%, transparent);
-}
-
-.vn-dialogue .speaker {
-  display: block;
-  font-variant: small-caps;
-  letter-spacing: 0.07em;
-  color: var(--sl-color-accent-high);
-  font-weight: 650;
-  font-size: var(--sl-text-sm);
-  margin-bottom: 0.15rem;
-}
-
-.vn-dialogue.narrator .speaker {
-  color: var(--sl-color-gray-3);
-}
-
-.vn-dialogue .line {
-  color: var(--sl-color-gray-1);
-  margin: 0;
-  line-height: 1.5;
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }

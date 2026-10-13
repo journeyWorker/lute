@@ -1,0 +1,6 @@
+{
+ "prompt": "Open gamebook spread on cadmium-red cover field: section 1 prose with turn-to choices (left), adventure sheet with scene state + CHECKED seal (right), headline and install-command control below.",
+ "tool": "omp generate_image (gpt-image-2-codex)",
+ "direction": "e11bad04",
+ "approved": false
+}

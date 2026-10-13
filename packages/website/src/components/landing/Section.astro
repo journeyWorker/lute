@@ -1,0 +1,36 @@
+---
+/**
+ * A numbered section of the book (2–5). `tone` picks its spot ink, or a
+ * cover-ink field that owns the whole page column. The section reports what
+ * the checker proved for it to the adventure sheet through data attributes.
+ */
+import type { SheetProof } from "./strings";
+
+interface Props {
+  n: number;
+  id: string;
+  title: string;
+  tone: "red" | "green" | "field-blue" | "field-red";
+  proof: SheetProof;
+}
+
+const { n, id, title, tone, proof } = Astro.props;
+---
+
+<section
+  id={id}
+  class:list={["gb-sec", "gb-chapter", `gb-tone-${tone}`]}
+  data-section={n}
+  data-proof-seal={JSON.stringify(proof.seal)}
+  data-proof-note={JSON.stringify(proof.note)}
+  tabindex="-1"
+  aria-labelledby={`${id}-title`}
+>
+  <header class="gb-chapter__head">
+    <span class="gb-chapter__num" aria-hidden="true">{n}</span>
+    <h2 id={`${id}-title`} class="gb-chapter__title">{title}</h2>
+  </header>
+  <div class="gb-chapter__body">
+    <slot />
+  </div>
+</section>

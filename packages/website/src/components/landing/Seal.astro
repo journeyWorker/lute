@@ -1,0 +1,49 @@
+---
+/**
+ * The checker's seal: two inked rings, the verdict arched across the top,
+ * what was proved for the section in view set in the middle, "no dead ends"
+ * arched underneath. Letters on the arcs are placed one by one so the seal
+ * stays text (localised, selectable by assistive tech through its label).
+ */
+import { strings, type Lang } from "./strings";
+
+interface Props {
+  lang: Lang;
+  center: [string, string];
+  class?: string;
+  hidden?: boolean;
+}
+
+const { lang, center, class: className, hidden } = Astro.props;
+const { sealTop: top, sealBottom: bottom, sealSteps } = strings[lang];
+
+const topLetters = [...top].map((ch, i, all) => ({ ch, a: (i - (all.length - 1) / 2) * sealSteps[0] }));
+const bottomLetters = [...bottom].map((ch, i, all) => ({
+  ch,
+  a: -(i - (all.length - 1) / 2) * sealSteps[1],
+}));
+---
+
+<div
+  class:list={["gb-seal", className]}
+  role={hidden ? undefined : "img"}
+  aria-hidden={hidden ? "true" : undefined}
+  aria-label={hidden ? undefined : `${top}: ${center.join(" ")}, ${bottom}`}
+  data-seal
+  data-top={top}
+  data-bottom={bottom}
+>
+  <span class="gb-seal__ring" aria-hidden="true"></span>
+  <span class="gb-seal__arc gb-seal__arc--top" aria-hidden="true">
+    {topLetters.map(({ ch, a }) => <span style={`--a: ${a}deg`}>{ch}</span>)}
+  </span>
+  <span class="gb-seal__dot gb-seal__dot--top" aria-hidden="true"></span>
+  <span class="gb-seal__center" aria-hidden="true">
+    <span data-seal-line="0">{center[0]}</span>
+    <span data-seal-line="1">{center[1]}</span>
+  </span>
+  <span class="gb-seal__dot gb-seal__dot--bottom" aria-hidden="true"></span>
+  <span class="gb-seal__arc gb-seal__arc--bottom" aria-hidden="true">
+    {bottomLetters.map(({ ch, a }) => <span style={`--a: ${a}deg`}>{ch}</span>)}
+  </span>
+</div>

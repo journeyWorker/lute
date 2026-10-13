@@ -5,19 +5,6 @@ description: >-
   관계형 세계 상태를 작성하고, 도달 가능성을 검사하고 결과를 시뮬레이션하며
   버전이 명시된 JSON IR과 CEL로 컴파일합니다.
 template: splash
-hero:
-  title: Lute
-  tagline: 분기형 게임을 위한 정적 분석 가능 내러티브 언어.
-  image:
-    file: ../../../assets/hero-lute.png
-  actions:
-    - text: 시작하기
-      link: /ko/getting-started/installation/
-      icon: right-arrow
-    - text: GitHub
-      link: https://github.com/journeyWorker/lute
-      icon: external
-      variant: minimal
 head:
   - tag: meta
     attrs:
@@ -37,36 +24,61 @@ head:
       content: "/og.png"
 ---
 
-import { Aside, Card, CardGrid } from "@astrojs/starlight/components";
+import Book from "../../../components/landing/Book.astro";
+import Hero from "../../../components/landing/Hero.astro";
+import Section from "../../../components/landing/Section.astro";
+import Passage from "../../../components/landing/Passage.astro";
+import Turn from "../../../components/landing/Turn.astro";
+import Chapters from "../../../components/landing/Chapters.astro";
+import Install from "../../../components/landing/Install.astro";
 
-<span class="lute-kicker">어떤 저장소에서든, 명령 하나로</span>
+<Book
+  lang="ko"
+  proof={{
+    seal: ["모든 섹션에", "도달 가능"],
+    note: ["lute check", "ok: scene.lute", "0 warning(s)"],
+  }}
+>
 
-```bash
-# 시나리오를 작성하고, 검사하고, 시뮬레이션합니다 — 하나의 Rust 코어를 npm으로 배포
-bunx @lute-lang/lute check scene.lute
-```
+<Hero
+  lang="ko"
+  title={["게임북을 쓰면,", "증명은", "Lute가 합니다."]}
+  prose={["마리나가 라멘 카운터에서 고개를 든다.", "‘어머! 픽서 씨!’"]}
+  choices={[
+    { to: 2, href: "#language", choose: "blunt", text: "담담하게 묻는다면", turn: "2번으로" },
+    { to: 3, href: "#engine", choose: "soft", text: "다정하게 묻는다면", turn: "3번으로" },
+  ]}
+  command="bunx @lute-lang/lute check scene.lute"
+  start={{ text: "시작하기", href: "/ko/getting-started/installation/" }}
+  alt={{ text: "플레이그라운드", href: "/playground/" }}
+  foot="어떤 저장소에서든, 명령 하나로"
+  seal={["모든 섹션에", "도달 가능"]}
+/>
 
-<p class="lute-lead">
-  Lute는 <strong>total</strong> 저작 언어입니다: 모든 시나리오는 반드시 종료되며
-  모든 경로가 분석 가능합니다. 장면을 작성하면 Lute가 이를 플랫 JSON 명령 레코드와
-  <code>CEL</code>로 컴파일하고, 단 한 줄이 배포되기 전에 무엇이 도달 가능한지
-  증명합니다.
-</p>
+<Section
+  n={2}
+  id="language"
+  title="언어"
+  tone="red"
+  proof={{ seal: ["모든 match가", "total"], note: ["lute check", "ok: scene.lute", "0 warning(s)"] }}
+>
 
-<Aside type="note" title="문서 안내">
-  한국어 문서는 시작 가이드까지 제공되며, 고급 레퍼런스는 영어로 제공됩니다.
-</Aside>
+<Passage choose="blunt">
 
-<span class="lute-kicker">언어</span>
+당신은 담담하게 묻는다. *“마리나. 번호 좀.”* 그녀가 번호를 적어 주고, 당신은 속으로
+생각한다. *아무래도 오늘 저녁, 저 사람을 어딘가로 데려가게 된 모양이다.*
 
-## 대본처럼 읽히는 장면
+</Passage>
 
-대사, 플레이어 선택, 상태 기반 콜백 — 아래 분기는 언제나 번호를 얻지만, 부드럽게
-물으면 그녀의 마음이 조금 누그러집니다. `<match>`는 첫 일치가 우선이며 `<otherwise>`가
-필수라서, 모든 분기는 total합니다. `{mono}` 속마음 줄은 frontmatter `pov`로 지정한 시점 인물
-(여기서는 `fixer`)만 말할 수 있습니다.
+### 1번 섹션의 원문
 
-```lute check
+장면은 대본처럼 읽힙니다. 1번 섹션은 바로 이 `.lute` 문서입니다. 대사, 선택지를 담은
+`<branch>`, 그리고 당신의 선택을 되짚는 `<match>`. `<match>`는 첫 일치가 우선이며
+`<otherwise>`가 필수라서 모든 분기는 total합니다 — 어느 쪽이든 번호는 얻고, 다정하게
+물으면 그녀의 마음이 조금 누그러질 뿐입니다. `{mono}` 속마음 줄은 frontmatter `pov`로
+지정한 시점 인물(여기서는 `fixer`)만 말할 수 있습니다.
+
+```lute check title="scene.lute"
 ---
 kind: scene
 character: marina
@@ -78,13 +90,13 @@ state:
   scene.affect.marina: { type: int, default: 0 }
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
-  framing: [wide, medium, closeUp]
+  framing: [close, tight]
 defs:
   fond: { type: bool, cel: "scene.affect.marina >= 1" }
 ---
 
-## The Hostess with a Name {#hostess}
-::camera{focus="marina" framing="closeUp" duration="0.5"}
+## The Hostess with a Name
+::camera{focus="marina" framing="close" duration="0.5"}
 
 @marina{emotion="surprised"}: Oh!
 @marina{emotion="delighted"}: Mr. Fixer!
@@ -112,11 +124,20 @@ defs:
 </match>
 ```
 
-정교하게 안무된 하나의 순간, 여러 개의 동시 트랙 — 하나의 대상을 속성별 트랙
-(`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과 나란히 배치합니다. 카메라의
-`framing`과 `move` 값은 프로젝트가 선언한 도메인의 멤버입니다:
+`<otherwise>`를 빼면 체커는 장면을 거부하고, 어떤 선택지가 처리되지 않았는지 짚어 줍니다:
 
-```lute check
+{/* lute-diagnostics unverified="verbatim lute 0.40.0 output; E-NONEXHAUSTIVE has two message literals (match_check/exhaustive.rs) that differ only in the spec citation the CLI strips, so the pin is ambiguous" */}
+```text title="lute check scene.lute"
+scene.lute:36:1: error [E-NONEXHAUSTIVE] non-exhaustive `<match>`: `blunt`, `soft` are not covered and there is no `<otherwise>`
+failed: scene.lute (1 error(s), 0 warning(s))
+```
+
+### 한 순간, 여러 트랙
+
+하나의 대상을 속성별 트랙(`pos`, `opacity`)으로 나누고, 독립적인 카메라 트랙과
+나란히 배치합니다:
+
+```lute check title="beat.lute"
 ---
 kind: scene
 character: marina
@@ -125,8 +146,8 @@ episode: 1
 enums:
   anchor: { members: [left, center, right], default: center }
   action: { members: [slideInLeft, fadeInUp, fadeOut], exits: [fadeOut] }
-  framing: [wide, medium, closeUp]
-  cameraMove: [pushIn, shake]
+  framing: [close, tight]
+  cameraMove: [shake]
 ---
 
 ## Beat
@@ -139,75 +160,262 @@ enums:
     ::actor{character="marina" action="fadeInUp"}
   </track>
   <track subject="camera">
-    ::camera{focus="marina" framing="closeUp" move="pushIn" duration="0.6"}
+    ::camera{focus="marina" framing="tight" duration="0.6"}
     ::camera{move="shake" duration="0.3" at="0.7"}
   </track>
 </timeline>
 ```
 
-<span class="lute-kicker">Lute를 선택하는 이유</span>
+### 조사도 검사합니다
 
-## 믿을 수 있는 시나리오를 위해
+스토리 중심 RPG는 대사만이 아니라 세계 상태로 움직입니다. `<hub>`는 떠날 때까지
+선택지를 다시 보여 주고, 선택지는 `when` 가드가 참일 때만 제시되며, 단서는
+`::assert`로 기록하는 관계형 팩트이고, 마지막 `<match>`는 사건이 얼마나 진전됐는지에
+반응합니다. 체커는 플레이어가 보기 전에 모든 관계 시그니처, 가드, match 분기를
+검증합니다.
 
-<CardGrid stagger>
-  <Card title="튜링 완전이 아닌, total" icon="approve-check">
-    모든 시나리오는 반드시 종료되고 모든 경로가 분석 가능하다는 것이 증명됩니다 —
-    무한 루프도, 무한 재귀도, 도달 불가능한 뜻밖의 상황도 없습니다.
-  </Card>
-  <Card title="타입이 지정된 플러그인 기능" icon="puzzle">
-    디렉티브와 프로바이더는 타입이 지정된 매니페스트로 선언되므로, 체커는 각
-    플러그인이 무엇을 방출하고 소비할 수 있는지 정확히 알고 있습니다.
-  </Card>
-  <Card title="CEL + Datalog 팩트" icon="list-format">
-    가드는 평범한 <code>CEL</code> 표현식입니다. Datalog 팩트 계층을 통해 더 높은
-    차원의 진리를 도출하고 장면 전체에서 질의할 수 있습니다.
-  </Card>
-  <Card title="배포 전에 시뮬레이션" icon="rocket">
-    <code>lute trace</code>는 모의 YAML — 상태, 팩트, 선택, 이벤트 — 을 상대로
-    시나리오를 실행하므로, 누군가 플레이하기 전에 그 흐름을 직접 지켜볼 수 있습니다.
-  </Card>
-  <Card title="그래프로 검증된 연결성" icon="random">
-    도달 가능성 분석과 Guaranteed / Possible 엔벨로프가, 어떤 장면·선택·상태에
-    실제로 도달할 수 있는지를 증명합니다.
-  </Card>
-  <Card title="AI에 준비된 저작 환경" icon="comment">
-    <code>lute context</code>는 에이전트를 위해 설계된 프로젝트의 구조화된 뷰를
-    방출합니다 — 이 언어는 모델을 거스르지 않고, 모델과 함께 작성되도록 설계되었습니다.
-  </Card>
-  <Card title="LSP + 에디터" icon="laptop">
-    언어 서버가 진단, 호버, 자동완성을 에디터로 전달하므로, 실수는 런타임이 아니라
-    입력하는 순간에 드러납니다.
-  </Card>
-  <Card title="JSON으로 컴파일" icon="document">
-    출력은 플랫 JSON 명령 레코드와 CEL입니다 — Lute 런타임 없이도 어떤 언어의 어떤
-    엔진에든 손쉽게 불러올 수 있습니다.
-  </Card>
-</CardGrid>
+```lute check title="study.lute"
+---
+kind: scene
+character: detective
+season: 1
+episode: 1
+pov: detective
+entities:
+  clue:    { members: [cufflink, ledger] }
+  suspect: { members: [mireille] }
+relations:
+  found:   { args: [clue], tier: run }
+  accused: { args: [suspect], tier: run }
+state:
+  run.caseProgress: { type: int, default: 0 }
+---
 
-<span class="lute-kicker">실제로 재생해 보기</span>
+## The Study
 
-## 하나의 장면, 렌더링된 모습
+@narrator: The lamp still burned. The ledger had already given you one name.
 
-위와 동일한 소스를 실제로 재생한 모습입니다 — 대사 상자는 런타임이 Lute의 명령
-레코드를 장면으로 바꾸는 방식입니다.
+<hub id="investigate">
+  <choice id="desk" text="Search the writing desk" once>
+    @detective: A cufflink, wedged behind the drawer.
+    ::assert{ found(cufflink) }
+  </choice>
+  <choice id="confront" text="Confront Mireille with the ledger" when="holds('found', ['ledger'])">
+    @mireille: ...You've read it, then. Fine.
+    ::assert{ accused(mireille) }
+    ::set{run.caseProgress += 1}
+  </choice>
+  <choice id="leave" text="Step back into the hall" exit>
+    @detective: Enough for now.
+  </choice>
+</hub>
 
-<div class="vn-scene" role="group" aria-label="Sample visual-novel scene">
-  <div class="vn-dialogue narrator">
-    <span class="speaker">Narrator</span>
-    <p class="line">호스티스가 메뉴판을 가슴에 꼭 안은 채 다가왔다. 그녀의 얼굴이 환해졌다.</p>
+<match subject="run.caseProgress">
+  <when is="1..">
+    @detective{mono}: A name, a motive. The case has a spine now.
+  </when>
+  <otherwise>
+    @detective{mono}: Still only shadows. Keep looking.
+  </otherwise>
+</match>
+```
+
+<dl class="gb-ledger">
+  <div>
+    <dt>단서 발견</dt>
+    <dd>`found(cufflink)`가 런 팩트 저장소에 기록되고, `holds('found', ['ledger'])`가 이미 참이므로 `confront` 선택지가 열립니다.</dd>
   </div>
-  <div class="vn-dialogue">
-    <span class="speaker">Marina</span>
-    <p class="line">어머! Fixer 씨! 라멘 카운터에서 뵀죠 — Mechageki에서도 드시는군요, 정말 멋지지 않나요?</p>
+  <div>
+    <dt>퀘스트 진행</dt>
+    <dd>`run.caseProgress`가 올라가고, 마지막 `<match>`는 *“A name, a motive. The case has a spine now.”*로 넘어갑니다.</dd>
   </div>
-  <div class="vn-dialogue">
-    <span class="speaker">Fixer</span>
-    <p class="line">Marina — 혹시 번호를 좀 알려주실 수 있을까요?</p>
-  </div>
-  <div class="vn-dialogue">
-    <span class="speaker">Marina</span>
-    <p class="line">그럼요! 바로 알려드릴게요, Fixer 씨.</p>
-  </div>
-</div>
+</dl>
 
-직접 하나 써보실 준비가 되셨나요? [`bunx @lute-lang/lute`로 시작하기 →](/ko/getting-started/installation/)
+### 체커가 지키게 하는 것
+
+<dl class="gb-ledger">
+  <div>
+    <dt>튜링 완전이 아닌, total</dt>
+    <dd>모든 시나리오는 반드시 종료됩니다 — 무한 루프도, 무한 재귀도 없습니다. `::end`는 도달한 엔딩의 이름을 남기며, 같은 직선 본문에서 그 뒤에 오는 코드는 죽은 코드로 보고됩니다(`W-CODE-AFTER-END`).</dd>
+  </div>
+  <div>
+    <dt>CEL + Datalog 팩트</dt>
+    <dd>가드는 평범한 `CEL` 표현식입니다. Datalog 팩트 계층으로 더 높은 차원의 사실을 도출하고 장면 전체에서 질의할 수 있습니다.</dd>
+  </div>
+  <div>
+    <dt>타입이 지정된 플러그인 기능</dt>
+    <dd>디렉티브와 프로바이더는 타입이 지정된 매니페스트로 선언되므로, 체커는 각 플러그인이 무엇을 방출하고 소비하는지 정확히 압니다 — 옵션 타입이 틀리거나 코어가 소유한 이름을 쓰는 매니페스트는 거부합니다.</dd>
+  </div>
+</dl>
+
+<Turn to={3} href="#engine" label="엔진이 무엇을 받는지 보려면" turn="3번으로" />
+
+</Section>
+
+<Section
+  n={3}
+  id="engine"
+  title="엔진"
+  tone="field-blue"
+  proof={{ seal: ["IR 0.40.0", "버전 명시"], note: ["lute compile", "irVersion", "0.40.0"] }}
+>
+
+<Passage choose="soft">
+
+당신은 다정하게 묻는다. *“마리나 — 혹시 번호를 알려 줄 수 있을까요?”*
+`scene.affect.marina`가 0에서 1이 되고, 콜백은 첫 번째 분기를 탄다.
+*정중하게 물었다. 그 이유는 굳이 따져 보지 않기로 한다.*
+
+</Passage>
+
+### Lute는 게임을 실행하지 않습니다
+
+Lute는 저작 시점의 절반입니다. 문법, 체커, 컴파일러. Lute가 아는 모든 것은 버전이
+명시된 JSON IR과 CEL이 되고, 엔진은 문서화된 [런타임 계약](/ko/tooling/runtime-contract/)을
+통해 그것을 불러옵니다 — 엔진은 Lute 파서나 컴파일러를 내장하지 않습니다.
+
+```text title="누가 무엇을 하는가"
+writer
+  │  writes
+  ▼
+.lute source ──▶ Lute [ parse · check · analyze · trace · compile · LSP ]
+                   │  emits
+                   ▼
+        versioned JSON IR + CEL
+                   │  loaded by
+                   ▼
+   engine adapter [ command loop · CEL eval · facts · quest lifecycle · bridges ]
+                   │  drives
+                   ▼
+        UI · animation · save · gameplay
+```
+
+| Lute (저작 + 툴체인) | 엔진 (런타임) |
+| --- | --- |
+| 문법 + 타입 검사 | 렌더링 + 입력 |
+| 선택 / `<match>` 제어 데이터 | 명령 실행 |
+| 퀘스트 선언 | 퀘스트 진행 |
+| 데이터로서의 팩트 + Datalog 규칙 | 팩트 저장소 + 규칙 평가 |
+| 타임라인 데이터 | 애니메이션 재생 |
+| 브리지 시그니처 검사 | 미니게임 / QTE 실행 |
+| 연결성 분석 | 장면 진입 + 저장 |
+
+### IR도 게임북입니다
+
+1번 섹션의 선택지는, 각 선택지가 넘어갈 위치를 적어 둔 레코드로 컴파일됩니다.
+`lute compile scene.lute`의 출력에서 그 명령 하나만 잘라 낸 것입니다:
+
+```json title="lute compile scene.lute — 선택 레코드"
+{
+  "kind": "choice",
+  "family": "control",
+  "position": "001-0500",
+  "branchId": "number",
+  "selectionKey": "scene.choices.number",
+  "options": [
+    {
+      "id": "blunt",
+      "text": "Just ask, flatly",
+      "lineId": "marina.s01ep02.number.blunt",
+      "target": "001-0600"
+    },
+    {
+      "id": "soft",
+      "text": "Ask gently",
+      "lineId": "marina.s01ep02.number.soft",
+      "target": "001-0800"
+    }
+  ],
+  "converge": "001-1100"
+}
+```
+
+공식 런타임(`@lute-lang/runtime`, 순수 스텝 함수)을 내장하거나, 적합성 코퍼스에 맞춰
+IR을 직접 해석하세요. 플레이어(`@lute-lang/player`, `@lute-lang/player-web`)는 이야기를
+그리고, 세계는 게임이 가집니다. 전체 분담은 [런타임 계약](/ko/tooling/runtime-contract/)
+페이지에 있습니다.
+
+<Turn to={4} href="#tools" label="누가 플레이하기 전에 돌려 보려면" turn="4번으로" />
+
+</Section>
+
+<Section
+  n={4}
+  id="tools"
+  title="도구"
+  tone="green"
+  proof={{ seal: ["한 경로를", "끝까지"], note: ["lute trace", "2 decisions", "choices 1/2"] }}
+>
+
+누가 1번 섹션을 플레이하기 전에, 먼저 걸어 보세요. `lute trace`는 결정적이고 모의
+데이터로 구동되는 경로 하나 — 상태, 팩트, 선택, 이벤트 — 를 실행하고, 모든 결정과 그
+이유를 보고합니다. 모든 경로가 아니라 그 한 경로를 걷습니다.
+
+```text title="lute trace scene.lute --choose number=soft"
+trace: scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
+  ## The Hostess with a Name
+    ::camera{focus="marina" framing="close" duration=0.5}
+    @marina{emotion="surprised"}  Oh!
+    @marina{emotion="delighted"}  Mr. Fixer!
+    @marina{emotion="delighted"}  From the ramen counter — you eat at Mechageki too, isn't it wonderful?
+  <branch number>   eligible: blunt, soft   -> soft
+    @fixer  Marina — would you mind terribly if I had your number?
+    ::set  scene.affect.marina = 1
+  <match scene.choices.number>   -> arm 1 (@fond)
+    @fixer{mono}  I asked nicely, which I am electing not to examine.
+trace complete: 2 decisions; choices 1/2 (number), arms 1/2 (scene.choices.number @36:1)
+```
+
+<dl class="gb-ledger gb-ledger--tools">
+  <div>
+    <dt>`lute check`</dt>
+    <dd>문서를 정적으로 검증합니다 — 타입, 가드, 관계 시그니처, match의 total 여부 — 그리고 거부할 때는 무엇을 고치면 되는지 알려 줍니다.</dd>
+  </div>
+  <div>
+    <dt>`lute trace`</dt>
+    <dd>당신이 준 모의 데이터로 결정적인 경로 하나를 미리 보여 주므로, 누군가 플레이하기 전에 시나리오가 펼쳐지는 모습을 지켜볼 수 있습니다.</dd>
+  </div>
+  <div>
+    <dt>`lute check-project`</dt>
+    <dd>선언한 `after:` 경로 — `visited`, `completed`, `active` — 위에서 도달 가능성을 계산해 Reachable / Unreachable / Unknown을 돌려줍니다. 관계형 관문은 거짓 확신이 아니라 사람이 검토할 경계로 드러납니다.</dd>
+  </div>
+  <div>
+    <dt>`lute context`</dt>
+    <dd>에이전트를 위해 설계된 프로젝트의 구조화된 뷰를 방출합니다 — 이 언어는 모델을 거스르지 않고, 모델과 함께 작성되도록 설계되었습니다.</dd>
+  </div>
+  <div>
+    <dt>언어 서버</dt>
+    <dd>진단, 호버, 자동완성을 에디터로 전달하므로, 실수는 런타임이 아니라 입력하는 순간에 드러납니다.</dd>
+  </div>
+</dl>
+
+<Turn to={5} href="#docs" label="나머지 책을 읽으려면" turn="5번으로" />
+
+</Section>
+
+<Section
+  n={5}
+  id="docs"
+  title="문서"
+  tone="field-red"
+  proof={{ seal: ["모든 섹션에", "도달 가능"], note: ["lute check", "ok: scene.lute", "0 warning(s)"] }}
+>
+
+레퍼런스의 모든 페이지에는 이 페이지처럼 번호가 붙어 있습니다. 첫 장면부터 시작하거나,
+필요한 장을 바로 펼치세요.
+
+<Chapters pagesWord={["1쪽", "쪽"]} />
+
+설치 없이 지금 바로 써 보고 싶다면 [플레이그라운드](/playground/)로 가세요. 실시간 진단,
+컴파일된 JSON IR, 모의 데이터 트레이스가 모두 브라우저에서 돌아갑니다.
+
+<Install
+  lang="ko"
+  command="bunx @lute-lang/lute check scene.lute"
+  start={{ text: "시작하기", href: "/ko/getting-started/installation/" }}
+  alt={{ text: "플레이그라운드", href: "/playground/" }}
+/>
+
+</Section>
+
+</Book>

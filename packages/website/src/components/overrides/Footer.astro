@@ -1,0 +1,8 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+import { isLanding } from "../../lib/route";
+
+const landing = isLanding(Astro.locals.starlightRoute);
+---
+
+{!landing && <Default />}

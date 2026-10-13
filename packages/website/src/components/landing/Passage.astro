@@ -1,0 +1,15 @@
+---
+/**
+ * The scene's outcome for the choice that turned here, set as gamebook
+ * prose. Its lines are the scene's own (see the `lute trace` transcript).
+ */
+interface Props {
+  choose: "blunt" | "soft";
+}
+
+const { choose } = Astro.props;
+---
+
+<div class="gb-passage" data-passage={choose}>
+  <slot />
+</div>

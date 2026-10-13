@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Scaffold reference: comp-2-page.webp</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&family=Caladea:wght@400&family=Anton:wght@400&family=Alike:wght@400&family=Oxygen+Mono:wght@400&display=swap">
+  <link rel="stylesheet" href="layout.css">
+  <style>html,body{margin:0}body{background:#f8f8f8}.region{box-sizing:border-box}.region.text p{white-space:pre-wrap}</style>
+</head>
+<body>
+<!-- Reference only. Every region sits at its measured box inside a comp-aspect frame. Take the boxes (layout.css), keep your own semantic structure. -->
+<main class="comp-frame" style="max-width:1536px">
+  <div class="r-spine region chrome" data-region="spine"><!-- bottle-green spine band, full height, carries the wordmark and the numbered section nav --></div>
+  <div class="r-wordmark region text" data-region="wordmark"><!-- Lute wordmark in white, heavy condensed serif display, tight --><p style="font-size:var(--r-wordmark-font);font-family:var(--r-wordmark-family),sans-serif;font-weight:var(--r-wordmark-weight);line-height:1.05;margin:0">wordmark</p></div>
+  <div class="r-spine-rule-1 region chrome" data-region="spine-rule-1"><!-- short white hairline rule under the wordmark --></div>
+  <div class="r-nav-1 region control" data-region="nav-1"><!-- nav item: numeral 1 then Begin, white condensed serif: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop nav-1); a control need not have button chrome --></div>
+  <div class="r-nav-2 region control" data-region="nav-2"><!-- nav item: numeral 2 then The language, white condensed serif: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop nav-2); a control need not have button chrome --></div>
+  <div class="r-nav-3 region control" data-region="nav-3"><!-- nav item: numeral 3 then Your engine, white condensed serif: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop nav-3); a control need not have button chrome --></div>
+  <div class="r-nav-4 region control" data-region="nav-4"><!-- nav item: numeral 4 then Tools, white condensed serif: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop nav-4); a control need not have button chrome --></div>
+  <div class="r-nav-5 region control" data-region="nav-5"><!-- nav item: numeral 5 then Docs, white condensed serif: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop nav-5); a control need not have button chrome --></div>
+  <div class="r-spine-imprint region text" data-region="spine-imprint"><!-- three short lines of widely tracked white small caps in a typewriter face (invented tagline in the comp; the build sets real copy here) --><p style="font-size:var(--r-spine-imprint-font);line-height:1.05;margin:0">spine-imprint</p></div>
+  <div class="r-spine-rule-2 region chrome" data-region="spine-rule-2"><!-- short white hairline rule between the two spine imprints --></div>
+  <div class="r-spine-meta region text" data-region="spine-meta"><!-- three tiny lines of widely tracked white small caps in a typewriter face (invented tagline in the comp; the build sets real links here) --><p style="font-size:var(--r-spine-meta-font);line-height:1.05;margin:0">spine-meta</p></div>
+  <div class="r-section-number region text" data-region="section-number"><!-- giant black section numeral 1, heavy condensed serif, cap height about 350px --><p style="line-height:1.05;margin:0">section-number</p></div>
+  <div class="r-headline region text" data-region="headline"><!-- headline Write the gamebook. Lute proves it. in three lines, black ultra-condensed heavy grotesque, very tight leading --><p style="font-size:var(--r-headline-font);font-family:var(--r-headline-family),sans-serif;font-weight:var(--r-headline-weight);line-height:1.05;margin:0">headline</p></div>
+  <div class="r-prose region text" data-region="prose"><!-- two lines of gamebook prose in a sturdy black text serif: Marina looks up from the ramen counter. Oh! Mr. Fixer! --><p style="font-size:var(--r-prose-font);font-family:var(--r-prose-family),sans-serif;font-weight:var(--r-prose-weight);line-height:1.05;margin:0">prose</p></div>
+  <div class="r-choice-2 region control" data-region="choice-2"><!-- turn-to choice row: hairline black outline box with a solid green numeral cell 2 on the left: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop choice-2); a control need not have button chrome --></div>
+  <div class="r-choice-2-num region control" data-region="choice-2-num"><!-- solid bottle-green square cell with white serif numeral 2: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop choice-2-num); a control need not have button chrome --></div>
+  <div class="r-choice-2-text region text" data-region="choice-2-text"><!-- If you ask flatly, arrow, turn to 2, black text serif --><p style="font-size:var(--r-choice-2-text-font);line-height:1.05;margin:0">choice-2-text</p></div>
+  <div class="r-choice-3 region control" data-region="choice-3"><!-- turn-to choice row: hairline black outline box with a solid green numeral cell 3 on the left: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop choice-3); a control need not have button chrome --></div>
+  <div class="r-choice-3-num region control" data-region="choice-3-num"><!-- solid bottle-green square cell with white serif numeral 3: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop choice-3-num); a control need not have button chrome --></div>
+  <div class="r-choice-3-text region text" data-region="choice-3-text"><!-- If you ask gently, arrow, turn to 3, black text serif --><p style="font-size:var(--r-choice-3-text-font);line-height:1.05;margin:0">choice-3-text</p></div>
+  <div class="r-install region control" data-region="install"><!-- solid black install bar: the command, a thin white divider, then Get started: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop install); a control need not have button chrome --></div>
+  <div class="r-install-cmd region text" data-region="install-cmd"><!-- bunx @lute-lang/lute check scene.lute in white monospace --><p style="font-size:var(--r-install-cmd-font);font-family:var(--r-install-cmd-family),sans-serif;font-weight:var(--r-install-cmd-weight);line-height:1.05;margin:0">install-cmd</p></div>
+  <div class="r-install-divider region chrome" data-region="install-divider"><!-- thin white vertical divider inside the black bar --></div>
+  <div class="r-install-go region control" data-region="install-go"><!-- Get started in white condensed serif, the primary action: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop install-go); a control need not have button chrome --></div>
+  <div class="r-playground region control" data-region="playground"><!-- Playground text link in black serif with a hairline underline: match the control's lettering and visible shape to the crop (comp-spec.mjs --crop playground); a control need not have button chrome --></div>
+  <div class="r-footline region text" data-region="footline"><!-- one line of widely tracked small black typewriter caps under the install bar (invented tagline in the comp; the build sets real copy here) --><p style="font-size:var(--r-footline-font);line-height:1.05;margin:0">footline</p></div>
+  <div class="r-sheet-rule region chrome" data-region="sheet-rule"><!-- thin black vertical rule separating the page from the adventure-sheet column --></div>
+  <div class="r-sheet-title region text" data-region="sheet-title"><!-- three short lines of widely tracked small black typewriter caps (invented tagline in the comp; the build sets the sheet's title here) --><p style="font-size:var(--r-sheet-title-font);line-height:1.05;margin:0">sheet-title</p></div>
+  <div class="r-sheet-rule-1 region chrome" data-region="sheet-rule-1"><!-- short black hairline rule under the sheet title --></div>
+  <div class="r-box-affect region chrome" data-region="box-affect"><!-- adventure-sheet box: hairline black outline, state name on top, hairline rule, value line below --></div>
+  <div class="r-box-affect-label region text" data-region="box-affect-label"><!-- scene.affect.marina in black text serif --><p style="font-size:var(--r-box-affect-label-font);line-height:1.05;margin:0">box-affect-label</p></div>
+  <div class="r-box-affect-rule region chrome" data-region="box-affect-rule"><!-- hairline rule inside the box under the state name --></div>
+  <div class="r-box-affect-value region text" data-region="box-affect-value"><!-- the state value line, black text serif (the comp's pencilled 0 to 1 label is not literal; the build shows the real value) --><p style="font-size:var(--r-box-affect-value-font);line-height:1.05;margin:0">box-affect-value</p></div>
+  <div class="r-box-number region chrome" data-region="box-number"><!-- adventure-sheet box: hairline black outline, state name on top, hairline rule, empty value line --></div>
+  <div class="r-box-number-label region text" data-region="box-number-label"><!-- scene.choices.number in black text serif --><p style="font-size:var(--r-box-number-label-font);line-height:1.05;margin:0">box-number-label</p></div>
+  <div class="r-box-number-rule region chrome" data-region="box-number-rule"><!-- hairline rule inside the box under the state name --></div>
+  <div class="r-seal region chrome" data-region="seal"><!-- round green seal tilted slightly: two concentric green rings, CHECKED arched across the top, every section reachable set in the centre, no dead ends arched along the bottom, small dots between --></div>
+  <div class="r-sheet-rule-2 region chrome" data-region="sheet-rule-2"><!-- short black hairline rule under the seal --></div>
+  <div class="r-sheet-note region text" data-region="sheet-note"><!-- three short lines of widely tracked small black typewriter caps (invented tagline in the comp; the build sets the checker's real result here) --><p style="font-size:var(--r-sheet-note-font);line-height:1.05;margin:0">sheet-note</p></div>
+  <div class="r-sheet-rule-3 region chrome" data-region="sheet-rule-3"><!-- short black hairline rule --></div>
+  <div class="r-sheet-foot region text" data-region="sheet-foot"><!-- three short lines of widely tracked small black typewriter caps (invented tagline in the comp; the build sets real copy here) --><p style="font-size:var(--r-sheet-foot-font);line-height:1.05;margin:0">sheet-foot</p></div>
+</main>
+</body>
+</html>

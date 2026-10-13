@@ -1,0 +1,8 @@
+---
+import Default from "@astrojs/starlight/components/MarkdownContent.astro";
+import { isLanding } from "../../lib/route";
+
+const landing = isLanding(Astro.locals.starlightRoute);
+---
+
+{landing ? <slot /> : <Default><slot /></Default>}

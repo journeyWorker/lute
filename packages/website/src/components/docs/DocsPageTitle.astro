@@ -1,0 +1,19 @@
+---
+import { sectionNumber } from "../../lib/section";
+
+// Starlight's skip link and "On this page" overview target this id.
+const PAGE_TITLE_ID = "_top";
+const { starlightRoute } = Astro.locals;
+const number = sectionNumber(starlightRoute.sidebar);
+// The h2 numerals in the column and in "On this page" both sit outside this
+// header, so the section number is published on the root for them to inherit.
+const sectionVar = number ? `:root{--gb-section:"${number}"}` : undefined;
+---
+
+{sectionVar && <style is:inline set:html={sectionVar} />}
+<header class:list={["gb-title", { "gb-title--numbered": number }]}>
+  {number && <span class="gb-title__number" aria-hidden="true">{number}</span>}
+  <h1 id={PAGE_TITLE_ID}>
+    {starlightRoute.entry.data.title}
+  </h1>
+</header>

@@ -1,0 +1,199 @@
+{
+  "name": "gamebook-light",
+  "type": "light",
+  "colors": {
+    "editor.background": "#efefec",
+    "editor.foreground": "#0a0a0a",
+    "editor.selectionBackground": "#dbe7df",
+    "editorLineNumber.foreground": "#5c5c58",
+    "terminal.background": "#efefec",
+    "terminal.foreground": "#0a0a0a",
+    "titleBar.border": "#0a0a0a",
+    "editorGroupHeader.tabsBackground": "#efefec",
+    "editorGroupHeader.tabsBorder": "#0a0a0a",
+    "tab.activeBackground": "#efefec",
+    "tab.activeForeground": "#0a0a0a",
+    "titleBar.activeBackground": "#0a0a0a",
+    "titleBar.activeForeground": "#f8f8f7",
+    "focusBorder": "#084828",
+    "scrollbarSlider.background": "#8a8a8566",
+    "scrollbarSlider.hoverBackground": "#5c5c58aa"
+  },
+  "tokenColors": [
+    {
+      "settings": {
+        "foreground": "#0a0a0a"
+      }
+    },
+    {
+      "name": "Comments",
+      "scope": [
+        "comment",
+        "punctuation.definition.comment"
+      ],
+      "settings": {
+        "foreground": "#5c5c58",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Punctuation",
+      "scope": [
+        "punctuation",
+        "meta.brace",
+        "keyword.operator",
+        "punctuation.separator",
+        "punctuation.section"
+      ],
+      "settings": {
+        "foreground": "#3a3a38"
+      }
+    },
+    {
+      "name": "Keywords, tags, directives",
+      "scope": [
+        "keyword",
+        "keyword.control",
+        "storage",
+        "storage.type",
+        "storage.modifier",
+        "entity.name.tag",
+        "punctuation.definition.tag",
+        "meta.tag punctuation.definition.tag",
+        "entity.name.function.directive",
+        "punctuation.definition.directive",
+        "support.function.builtin",
+        "variable.language",
+        "support.type.property-name.css"
+      ],
+      "settings": {
+        "foreground": "#084828"
+      }
+    },
+    {
+      "name": "Speakers and section headings",
+      "scope": [
+        "entity.name.type.speaker",
+        "entity.name.section",
+        "markup.heading",
+        "punctuation.definition.heading",
+        "entity.name.type",
+        "entity.name.class",
+        "support.class"
+      ],
+      "settings": {
+        "foreground": "#084828",
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "name": "Strings",
+      "scope": [
+        "string",
+        "string.quoted",
+        "punctuation.definition.string",
+        "string.template",
+        "markup.inline.raw",
+        "string.regexp"
+      ],
+      "settings": {
+        "foreground": "#b3200e"
+      }
+    },
+    {
+      "name": "Dialogue prose stays in ink",
+      "scope": [
+        "string.unquoted.dialogue"
+      ],
+      "settings": {
+        "foreground": "#0a0a0a"
+      }
+    },
+    {
+      "name": "Attributes, numbers, constants, properties",
+      "scope": [
+        "entity.other.attribute-name",
+        "constant",
+        "constant.numeric",
+        "constant.language",
+        "constant.character",
+        "support.constant",
+        "support.type.property-name",
+        "meta.object-literal.key",
+        "variable.other.property",
+        "variable.parameter",
+        "variable.other.entity",
+        "entity.name.function",
+        "support.function",
+        "meta.property-name",
+        "entity.name.tag.yaml",
+        "keyword.other.unit"
+      ],
+      "settings": {
+        "foreground": "#1c2a96"
+      }
+    },
+    {
+      "name": "Shell commands",
+      "scope": [
+        "entity.name.command",
+        "support.function.builtin.shell"
+      ],
+      "settings": {
+        "foreground": "#084828"
+      }
+    },
+    {
+      "name": "Variables",
+      "scope": [
+        "variable",
+        "variable.other.readwrite"
+      ],
+      "settings": {
+        "foreground": "#0a0a0a"
+      }
+    },
+    {
+      "name": "Diff",
+      "scope": [
+        "markup.inserted"
+      ],
+      "settings": {
+        "foreground": "#084828"
+      }
+    },
+    {
+      "scope": [
+        "markup.deleted"
+      ],
+      "settings": {
+        "foreground": "#b3200e"
+      }
+    },
+    {
+      "scope": [
+        "markup.bold"
+      ],
+      "settings": {
+        "fontStyle": "bold"
+      }
+    },
+    {
+      "scope": [
+        "markup.italic"
+      ],
+      "settings": {
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "scope": [
+        "invalid"
+      ],
+      "settings": {
+        "foreground": "#b3200e",
+        "fontStyle": "underline"
+      }
+    }
+  ]
+}
