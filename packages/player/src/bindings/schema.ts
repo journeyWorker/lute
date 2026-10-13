@@ -285,7 +285,8 @@ export const Bindings = Schema.Struct({
   "transitions": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => EffectSpec))),
   "ui": Schema.optionalKey(Schema.suspend(() => Ui)),
   "vfx": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => VfxSpec))),
-  "voice": Schema.optionalKey(Schema.suspend(() => Voice))
+  "voice": Schema.optionalKey(Schema.suspend(() => Voice)),
+  "volumes": Schema.optionalKey(Schema.Record(Schema.String, Schema.Number))
 });
 export type Bindings = typeof Bindings.Type;
 
