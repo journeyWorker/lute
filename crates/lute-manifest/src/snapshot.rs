@@ -186,6 +186,12 @@ impl std::fmt::Debug for Domain {
 pub struct ResolvedPlugin {
     pub version: String,
     pub options: BTreeMap<String, Literal>,
+    /// The plugin manifest's declared `options[].default` values, by option
+    /// name (0.41.1 §3.4): what an option the profile leaves unset is worth
+    /// to a check that needs its value (`enumFromOption`). Declaration data,
+    /// not resolved activation, so it is NOT folded into the capability
+    /// version — the snapshot hash reads `options` only.
+    pub option_defaults: BTreeMap<String, Literal>,
 }
 
 impl CapabilitySnapshot {
@@ -228,6 +234,7 @@ impl SnapshotBuilder {
                     .iter()
                     .map(|(k, v)| (k.to_string(), v.clone()))
                     .collect(),
+                option_defaults: BTreeMap::new(),
             },
         );
         self

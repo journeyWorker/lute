@@ -1,0 +1,11 @@
+directives:
+  - name: level
+    layer: staging
+    attrs:
+      - { name: value, type: { enumFromOption: levels } }
+      - { name: mode, type: { enumFromOption: levels }, default: easy }
+      - { name: tier, type: { enumFromOption: tiers } }
+  - name: rank
+    layer: staging
+    attrs:
+      - { name: start, type: { enumFromOption: levels }, default: medium }

@@ -1,0 +1,7 @@
+---
+kind: scene
+id: valid
+---
+## Valid
+::level{value="hard" tier="anything"}
+@narrator: The level holds.

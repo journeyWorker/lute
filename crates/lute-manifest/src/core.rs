@@ -119,6 +119,7 @@ fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
         ResolvedPlugin {
             version: manifest.version.clone(),
             options: BTreeMap::new(),
+            option_defaults: crate::assemble::option_defaults(&manifest),
         },
     );
 
