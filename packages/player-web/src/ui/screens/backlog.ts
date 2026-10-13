@@ -23,7 +23,7 @@ export class BacklogScreen extends ScreenView {
     text.position.set(0, 25)
     row.addChild(name, text)
     if (entry.hasVoice) {
-      const voice = new Button("Voice", theme, () => emit({ type: "replayVoice", lineId: entry.lineId }))
+      const voice = new Button("Voice", theme, () => emit({ type: "replayVoice", lineId: entry.lineId, voiceKey: entry.voiceKey }))
       voice.position.set(720, 14)
       row.addChild(voice)
     }
