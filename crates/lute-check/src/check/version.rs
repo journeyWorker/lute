@@ -80,7 +80,7 @@ pub(super) fn check_lute_version_stale(
 }
 
 /// `MAJOR.MINOR.PATCH` as a comparable triple; `None` for anything else.
-fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
+pub fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
     let mut parts = v.trim().split('.');
     let triple = (
         parts.next()?.parse().ok()?,

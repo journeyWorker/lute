@@ -439,6 +439,10 @@ $ lute fix <path>…
 
 이름이 바뀐 도메인은 프로젝트·스키마·플러그인 YAML에서도 바꿉니다(0.41.0). 최상위 `enums:`·`entities:` 블록 바로 아래의 키와 모든 `domain:` 타입 참조의 값이 대상이며 — `musicAction` → `musicPlayback`(0.37.0에서 이름 변경) — 바꾼 곳마다 수정 하나로 셉니다. 같은 매핑에 새 이름이 이미 있으면 옛 키를 그대로 두고 stderr에 알립니다: `` lute fix: <file>:<line>: kept `musicAction:` — `musicPlayback:` is already declared ``. 그 전까지 새 이름에 대한 `E-DOMAIN-UNKNOWN`은 `` — this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix` ``로 끝납니다.
 
+YAML 처리는 텍스트를 바이트 단위로 읽으므로, 스칼라·따옴표 문자열·주석 안의 한글, em dash 같은 UTF-8 문자는 바이트 그대로 유지됩니다(0.41.1. 0.41.0은 여기서 panic했습니다).
+
+툴체인보다 오래된 기존 언어 스탬프는 툴체인 버전으로 올립니다(0.41.1). `lute.project.yaml`의 `defaults: luteVersion`과 `.lute` 문서 자체의 frontmatter `luteVersion`이 대상이며, 각각 수정 하나로 세고 값 주변의 따옴표와 주석은 유지합니다. 따라서 해당 `W-LUTE-VERSION-STALE`이 사라집니다. 없는 스탬프는 추가하지 않으며, 더 새롭거나 `MAJOR.MINOR.PATCH` 형식이 아닌 스탬프는 그대로 둡니다.
+
 작성자 key의 snake case는 재작성 방식이 명확한 경우에만 lowerCamelCase가 됩니다. 인라인 텍스트 수정자는 절대 새로 만들지 않으며, 기존 수정자는 바이트 단위로 그대로 보존합니다. 이전 migration도 계속 적용됩니다. `:line[speaker]{…}: text` → `@speaker{…}: text`, 선행 `:` sigil → `@`, choice `as="…"` → `into="…"`, 리터럴 비교 `<when test="$ == 'gold'">` → `<when is="gold">`(`W-WHEN-TEST-LITERAL`), 그리고 0.31 CEL 팩트 질의 및 presence 호출 → 표준 CEL 형식입니다.
 
 0.36 씬:

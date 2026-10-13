@@ -305,6 +305,9 @@ fn fix_file(file: &Path, scope: Scope<'_>) -> (Outcome, usize) {
         changed += domains.rewrite.changed;
         out = domains.rewrite.text;
     }
+    let stamp = rewrite_lute_version(&out, file);
+    changed += stamp.changed;
+    out = stamp.text;
     if changed == 0 {
         scope.say_unchanged("nothing to fix");
         return (Outcome::Unchanged, 0);
@@ -724,6 +727,153 @@ fn frontmatter_range(text: &str) -> Option<(usize, usize)> {
     Some((first_end, first_end + close_rel + 4))
 }
 
+/// 0.41.1 §3.2: raise an existing language stamp older than the toolchain's
+/// [`lute_check::LUTE_LANG_VERSION`] to it — `defaults.luteVersion` in a
+/// `lute.project.yaml`, a `.lute` document's top-level frontmatter
+/// `luteVersion`. Only the scalar's text is spliced (quotes, comments and
+/// layout survive); a missing stamp is never added, and a current, newer or
+/// non-`MAJOR.MINOR.PATCH` stamp is left alone, so a second run changes
+/// nothing.
+fn rewrite_lute_version(text: &str, file: &Path) -> Rewrite {
+    let span = if file.file_name().is_some_and(|name| name == "lute.project.yaml") {
+        manifest_stamp_span(text)
+    } else if file.extension().is_some_and(|ext| ext == "lute") {
+        frontmatter_range(text).and_then(|(start, end)| {
+            let (s, e) = document_stamp_span(&text[start..end])?;
+            Some((start + s, start + e))
+        })
+    } else {
+        None
+    };
+    let current = lute_check::LUTE_LANG_VERSION;
+    let older = |stamp: &str| {
+        matches!(
+            (lute_check::check::version_triple(stamp), lute_check::check::version_triple(current)),
+            (Some(s), Some(c)) if s < c
+        )
+    };
+    let edits = span
+        .filter(|&(s, e)| older(&text[s..e]))
+        .map(|(s, e)| (s, e, current.to_string()))
+        .into_iter()
+        .collect();
+    apply_edits(text, edits)
+}
+
+/// The byte span of the scalar text of a top-level `luteVersion:` key in a
+/// document's frontmatter YAML (quotes excluded).
+fn document_stamp_span(yaml: &str) -> Option<(usize, usize)> {
+    let mut offset = 0;
+    for line in yaml.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        if let Some((0, end, value)) = yaml_key_value(body) {
+            if yaml_key_is(&body[..end], "luteVersion") {
+                let (s, e) = yaml_scalar_span(body, value)?;
+                return Some((offset + s, offset + e));
+            }
+        }
+        offset += line.len();
+    }
+    None
+}
+
+/// The byte span of the scalar text of `defaults.luteVersion` in a project
+/// manifest — a block mapping under the top-level `defaults:` key, or a flow
+/// mapping `defaults: { luteVersion: … }` (quotes excluded).
+fn manifest_stamp_span(text: &str) -> Option<(usize, usize)> {
+    let lines: Vec<(usize, &str)> = text
+        .split_inclusive('\n')
+        .scan(0, |offset, line| {
+            let at = *offset;
+            *offset += line.len();
+            Some((at, line.strip_suffix('\n').unwrap_or(line)))
+        })
+        .collect();
+    let (i, (line_at, body, value)) = lines.iter().enumerate().find_map(|(i, &(at, body))| {
+        match yaml_key_value(body) {
+            Some((0, end, value)) if yaml_key_is(&body[..end], "defaults") => Some((i, (at, body, value))),
+            _ => None,
+        }
+    })?;
+    if body[value..].starts_with('{') {
+        let (at, key) = flow_map_keys(text, line_at + value)
+            .into_iter()
+            .find(|(_, key)| *key == "luteVersion")?;
+        let b = text.as_bytes();
+        let mut v = at + key.len();
+        // A quoted key's closing quote, then the `:` and its spaces.
+        while v < b.len() && matches!(b[v], b'"' | b'\'' | b' ' | b'\t') {
+            v += 1;
+        }
+        if b.get(v) != Some(&b':') {
+            return None;
+        }
+        v += 1;
+        while v < b.len() && matches!(b[v], b' ' | b'\t') {
+            v += 1;
+        }
+        return match b.get(v) {
+            Some(&q @ (b'"' | b'\'')) => {
+                let close = text[v + 1..].find(q as char)? + v + 1;
+                Some((v + 1, close))
+            }
+            _ => {
+                let mut e = v;
+                while e < b.len() && !matches!(b[e], b',' | b'}' | b'#' | b'\n' | b'\r' | b' ' | b'\t') {
+                    e += 1;
+                }
+                (e > v).then_some((v, e))
+            }
+        };
+    }
+    if yaml_value_end(body, value) != value {
+        return None;
+    }
+    let mut child_indent = None;
+    for &(offset, body) in &lines[i + 1..] {
+        let trimmed = body.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let indent = body.len() - trimmed.len();
+        if indent == 0 {
+            break;
+        }
+        if *child_indent.get_or_insert(indent) != indent {
+            continue;
+        }
+        if let Some((start, end, value)) = yaml_key_value(body) {
+            if start == indent && yaml_key_is(&body[start..end], "luteVersion") {
+                let (s, e) = yaml_scalar_span(body, value)?;
+                return Some((offset + s, offset + e));
+            }
+        }
+    }
+    None
+}
+
+/// Whether the YAML mapping key spelled `raw` — plain, `'single'` or
+/// `"double"`-quoted — is `name`.
+fn yaml_key_is(raw: &str, name: &str) -> bool {
+    match raw.as_bytes() {
+        [q @ (b'"' | b'\''), .., last] if last == q => &raw[1..raw.len() - 1] == name,
+        _ => raw == name,
+    }
+}
+
+/// The text of the plain or quoted YAML scalar starting at byte `start` of
+/// `line` (quotes excluded); `None` for a collection, block scalar, anchor,
+/// alias, tag, empty or unterminated value.
+fn yaml_scalar_span(line: &str, start: usize) -> Option<(usize, usize)> {
+    let end = yaml_value_end(line, start);
+    let raw = line.get(start..end)?.trim_end();
+    match raw.as_bytes() {
+        [q @ (b'"' | b'\''), .., last] if last == q => Some((start + 1, start + raw.len() - 1)),
+        [] | [b'"' | b'\'' | b'{' | b'[' | b'|' | b'>' | b'&' | b'*' | b'!', ..] => None,
+        _ => Some((start, start + raw.len())),
+    }
+}
+
 fn apply_edits(text: &str, mut edits: Vec<(usize, usize, String)>) -> Rewrite {
     edits.sort_by_key(|(start, _, _)| *start);
     let mut out = text.to_string();
@@ -906,8 +1056,8 @@ fn rewrite_yaml_domains(text: &str) -> DomainRewrite {
             }
             if let Some((start, end, _)) = yaml_key_value(body) {
                 let raw = &body[start..end];
-                let (key, inner) = match raw.as_bytes()[0] {
-                    b'"' | b'\'' if raw.len() >= 2 => (&raw[1..raw.len() - 1], start + 1),
+                let (key, inner) = match raw.as_bytes() {
+                    [q @ (b'"' | b'\''), .., last] if last == q => (&raw[1..raw.len() - 1], start + 1),
                     _ => (raw, start),
                 };
                 keys.push((i, key, offset + inner));
@@ -928,7 +1078,7 @@ fn rewrite_yaml_domains(text: &str) -> DomainRewrite {
                 Some(_) => {}
                 None if b == b'\'' || b == b'"' => quote = Some(b),
                 None if b == b'#' && (j == 0 || bytes[j - 1].is_ascii_whitespace()) => break,
-                None if body[j..].starts_with("domain:")
+                None if bytes[j..].starts_with(b"domain:")
                     && (j == 0 || !is_ident_continue(bytes[j - 1])) =>
                 {
                     let mut v = j + "domain:".len();
@@ -1129,7 +1279,7 @@ fn yaml_value_end(line: &str, start: usize) -> usize {
 fn rewrite_yaml_scalar(raw: &str, cel_key: bool) -> Option<String> {
     let (decoded, quote) = if raw.starts_with('"') && raw.ends_with('"') {
         (serde_yaml::from_str::<String>(raw).ok()?, Some(b'"'))
-    } else if raw.starts_with('\'') && raw.ends_with('\'') {
+    } else if raw.len() >= 2 && raw.starts_with('\'') && raw.ends_with('\'') {
         (raw[1..raw.len() - 1].replace("''", "'"), Some(b'\''))
     } else {
         (raw.trim().to_string(), None)

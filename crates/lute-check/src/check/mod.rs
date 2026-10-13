@@ -149,7 +149,7 @@ use use_site::{
     E_COMPONENT_STATE,
 };
 use version::check_lute_version_stale;
-pub use version::{INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE};
+pub use version::{version_triple, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE};
 use walker::Walker;
 
 /// The input to one `check()` invocation — the document text plus the resolved

@@ -143,9 +143,11 @@ terminal: { when: "user.crowned", persists: true }
 
 `check-project`는 선언된 `@def`를 콘텐츠, 다른 def 또는 규칙 가드가 참조하지 않을 때 `W-DEF-UNUSED`(dsl 0.24.0 §7)를 보고합니다. 프로젝트당 한 번, 선언 위치에서 보고됩니다. 스키마 파일의 줄 또는 문서 자체의 `defs:` 키 위치입니다. 플레이 스크립트와 테스트는 사용처가 아닙니다. 관계형 대응 항목은 `W-RELATION-UNREAD`입니다([읽는 항목이 없는 관계](/ko/state/facts-and-datalog/#아무도-읽지-않는-관계)를 참조).
 
+호스트만 읽는 스키마 파일의 def(예: 게임의 `Program.def`)는 죽은 코드가 아닙니다. 메시지가 안내하듯 `host: true`로 표시하면 경고가 나오지 않습니다(0.41.1). 문서 자체의 frontmatter def는 `host:`를 받을 수 없으므로(`E-DEF-DECL`), 그 경고는 def를 쓰거나 지우라고만 안내합니다.
+
 <!-- lute-diagnostics -->
 ```
-./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it or drop it
+./world.schema.yaml:5:3: warning [W-DEF-UNUSED] def `stale` is declared but no `@stale` reference uses it anywhere in the project (content, other defs, or rule guards); use it, drop it, or mark it `host: true` if the host reads it (for example, `Program.def`)
 ```
 ## 구성: `uses`와 `extends`
 

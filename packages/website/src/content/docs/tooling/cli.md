@@ -490,6 +490,10 @@ The 0.37 surface rewrites, each of which `lute check` reports with the new spell
 
 A renamed domain is renamed in project, schema and plugin YAML too (0.41.0): a key directly under a top-level `enums:` or `entities:` block and the scalar of every `domain:` type reference — `musicAction` → `musicPlayback` (renamed in 0.37.0); each rename counts as one fix. A mapping that already declares the new name keeps the old key, and `lute fix` says so on stderr: `` lute fix: <file>:<line>: kept `musicAction:` — `musicPlayback:` is already declared ``. Until then, an `E-DOMAIN-UNKNOWN` for the new name ends with `` — this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix` ``.
 
+The YAML passes read the text as bytes, so Korean, an em dash or any other UTF-8 in a scalar, a quoted string or a comment is carried through byte for byte (0.41.1; 0.41.0 panicked on it).
+
+An existing language stamp older than the toolchain is raised to it (0.41.1): `defaults: luteVersion` in `lute.project.yaml` and a `.lute` document's own frontmatter `luteVersion`, each one fix, with the quotes and comment around the value kept — so the `W-LUTE-VERSION-STALE` it answered goes away. A missing stamp is not added, and a newer or non-`MAJOR.MINOR.PATCH` stamp is left alone.
+
 An author key in snake case becomes lowerCamelCase only where the rewrite is unambiguous. Inline text modifiers are never invented; an existing one is kept byte for byte. The earlier migrations still apply: `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`), and 0.31 CEL fact-query and presence calls to their standard-CEL forms.
 
 A 0.36 scene:
