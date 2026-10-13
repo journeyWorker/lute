@@ -11,9 +11,10 @@ import type { Contract } from "@lute-lang/runtime"
 import { decode } from "./bindings/load.js"
 import type { BindingsInvalid } from "./bindings/load.js"
 import type { Bindings } from "./bindings/schema.js"
-import { make as makeCues } from "./cues/index.js"
 import { make as makeDirector } from "./director/index.js"
 import type { Autosave, DirectorHandle, LinePacing } from "./director/index.js"
+import type { CueFactoryWrapper } from "./model.js"
+export type { CueFactoryWrapper }
 import type { AssetLoader, AudioPort, PlayerHost, Presenter } from "./ports/index.js"
 import { make as makeScheduler } from "./scheduler/index.js"
 import { layer as sessionLayer, PlayerSession } from "./session/index.js"
@@ -38,6 +39,8 @@ export type LutePlayerOptions = LutePlayerStart & {
   readonly audio: AudioPort
   readonly assets: AssetLoader
   readonly host?: PlayerHost
+  /** Wrap the default cue factory exactly once. */
+  readonly cueFactory?: CueFactoryWrapper
   /** Who paces lines (spec 0.41.0 §7.5); default `"director"`. */
   readonly linePacing?: LinePacing
   /** When the `auto` slot is written (spec 0.41.0 §7.9); default at a presentation start and every `awaitChoice`. */
@@ -94,13 +97,14 @@ const build = Effect.fn("Lute.Player.make")(function* (options: LutePlayerOption
   const built = yield* Layer.build(Layer.mergeAll(saveLayer({ project }), profileLayer({ project })))
   const director = yield* makeDirector({
     bindings,
+    bundle,
     session: playerSession,
     presenter: options.presenter,
     audio: options.audio,
     assets: options.assets,
     profile: Context.get(built, ProfileStore),
     saves: Context.get(built, SaveStore),
-    cueFactory: makeCues({ bundle, bindings, ...(options.host?.plugin === undefined ? {} : { plugin: options.host.plugin }) }),
+    ...(options.cueFactory === undefined ? {} : { cueFactory: options.cueFactory }),
     scheduler: yield* makeScheduler(),
     ...(options.host === undefined ? {} : { host: options.host }),
     ...(options.linePacing === undefined ? {} : { linePacing: options.linePacing }),

@@ -87,12 +87,15 @@ the line command's values.
 one cue per output event, in event order. A host MAY wrap the factory relying
 on it.
 
-**Music** (`MusicCue`) reads `playback`, `volume`, `stop`, `mood`, `assetId`:
+**Music** (`MusicCue`) reads resolved media fields from the runtime record's
+`attrs` (`playback`, `volume`, `stop`, `mood`, `assetId`) rather than reopening
+the artifact. Volume is an absolute binding member: an omitted member gives
+gain `1`; an unresolved or malformed member gives `0`, and
+`bindings.volumes` gains are clamped defensively to `[0, 1]`.
 `stop: true` or `playback: stop` stops (fade `duration ?? 0`); `fadeOut`
 stops over `duration ?? 1` s; `start` plays the file from its start
 (`AudioPlay.restart: true`); anything else changes to the file — the file
-already playing only changes volume. `volume` is a number clamped to [0, 1]
-(absent or not finite → 1). After a load, rollback or `restore` the stage's
+already playing only changes volume. After a load, rollback or `restore` the stage's
 music is silent when the stage has none or its `playback` is `stop` /
 `fadeOut` (`stageMusic`).
 
@@ -225,9 +228,11 @@ creates fibers that outlive a call.
   session, which the player never closes (the host still provides the same
   bundle through `BundleSource`, and a `KeyValueStore`).
 - **Handle**: `actions`, `view: SubscriptionRef<PlayerView>`, `send`,
-  `restore`, `shutdown`, plus `session` (the runtime session) and `program`
-  (`session.program`) for `current`, `events`, `view` / `evaluate` / `def` /
-  `gate` / `candidates` without a second load.
+  `snapshot`, `restore`, `shutdown`, plus `session` (the runtime session) and
+  `program` (`session.program`) for `current`, `events`, `view` / `evaluate` /
+  `def` / `gate` / `candidates` without a second load.
+  `snapshot` is linearized with `send` and `restore` and returns the last
+  committed runtime snapshot, accepted-input log and backlog.
 - **`send(input)`** (§7.2–§7.3): accepted while no batch runs and the story
   waits at `idle` or `ended`; otherwise `DirectorBusy { flow, story }` and
   nothing changes. A runtime rejection fails `send` and the director stays at
@@ -248,6 +253,11 @@ creates fibers that outlive a call.
   the stage's files, `presenter.restore(stage)`, restart the stage music;
   re-present the await (`load.done`, accepted from `title`, `ended` and
   `halted`).
+- **Cue composition** (§5.1, §5.3): `LutePlayer.make` creates the default
+  factory, applies `cueFactory?: (base) => base` exactly once, and preserves
+  one cue per output event and event order. `Director.make` can build the same
+  factory from its bundle and bindings; `host.plugin` wins duplicate tags when
+  merged with a pre-composed factory.
 - **Line pacing** (§7.5): `linePacing: "presenter"` — `showLine` completes
   when the reader released the line; `advance` never reveals or releases and
   no auto timer runs for lines. With the default `"director"` pacing, a

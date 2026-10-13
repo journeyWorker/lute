@@ -203,10 +203,16 @@ const spriteFile = (bindings: Bindings, value: JsonRecord): string | undefined =
   return string(value.emotion) && character.sprite.emotions?.[value.emotion] ? character.sprite.emotions[value.emotion] : character.sprite.default
 }
 
-/** A music record's or stage's `volume`: a number clamped to [0, 1]; absent or not finite → 1. */
-export const musicVolume = (value: unknown): number => {
-  const parsed = number(value) ? value : string(value) && value.trim().length > 0 ? Number(value) : Number.NaN
-  return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : 1
+/**
+ * A music record's or stage's `volume` member, as the gain `bindings.volumes`
+ * maps it to (clamped to [0, 1]). Absent → 1; a member without a finite gain
+ * → 0 (`lute check` rejects it; a stale build plays silent, never loud).
+ * Numeric strings are members like any other, never parsed as numbers.
+ */
+export const musicVolume = (bindings: Bindings, value: unknown): number => {
+  if (value === undefined) return 1
+  const gain = string(value) ? bindings.volumes?.[value] : undefined
+  return number(gain) && Number.isFinite(gain) ? Math.min(1, Math.max(0, gain)) : 0
 }
 
 /**
@@ -217,7 +223,7 @@ export const stageMusic = (bindings: Bindings, stage: Stage): AudioPlay | undefi
   const music = stage.music
   if (music == null || music.playback === "stop" || music.playback === "fadeOut") return undefined
   const file = musicFile(bindings, music)
-  return file === undefined ? undefined : { file, loop: true, volume: musicVolume(music.volume), fade: 0, restart: false }
+  return file === undefined ? undefined : { file, loop: true, volume: musicVolume(bindings, music.volume), fade: 0, restart: false }
 }
 
 /**
@@ -280,7 +286,7 @@ const makeRecordCue = (value: JsonRecord, bindings: Bindings, locale: string, re
       // `fadeOut` over `duration ?? 1`; `start` plays from the start; anything
       // else changes to the file (the file already playing only changes volume).
       const stopFade = value.stop === true || playback === "stop" ? duration ?? 0 : playback === "fadeOut" ? duration ?? 1 : undefined
-      const audio: AudioPlay | undefined = file ? { file, loop: true, volume: musicVolume(value.volume), fade: duration ?? 0, restart: playback === "start" } : undefined
+      const audio: AudioPlay | undefined = file ? { file, loop: true, volume: musicVolume(bindings, value.volume), fade: duration ?? 0, restart: playback === "start" } : undefined
       const describe = `music ${stopFade !== undefined ? "stop" : playback ?? String(value.mood ?? value.assetId ?? "")}`
       return cueBase("music", timing, true, stopFade === undefined && file ? [file] : [], describe,
         (ctx) => stopFade !== undefined ? ctx.audio.stop("music", stopFade) : audio ? ctx.audio.play("music", audio) : Effect.void,
@@ -353,6 +359,8 @@ const pluginCue = (
   return cueBase("plugin", { ...timingOf(command, "plugin"), wait: true }, false, [], `plugin ${tag}`, run, run)
 }
 
+/** The options each `make` factory was built from, so host handlers can be merged in. */
+const factoryOptions = new WeakMap<CueFactoryShape, CueFactoryOptions>()
 const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
   const { bundle, bindings } = options
   const locale = options.locale ?? "en"
@@ -407,12 +415,16 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
         const documentCommands = commands.get(event.document)
         const source = documentCommands?.get(position)
         if (!source) return yield* Effect.die(new Error(`runtime record position not found: ${event.document}:${position}`))
-        // The IR command is the record's full shape; the runtime record adds
-        // only run-time values (a line's resolved text and identities).
-        // Other kinds' record fields (e.g. a `set`'s evaluated value) are
-        // not command fields and must not overwrite the command.
+        // Staging records carry resolved fields in `attrs`; the artifact is
+        // consulted only for the record kind/envelope (and line presentation
+        // text/cast). Never recover a staging media field from the artifact.
         const decoded = decodeRecord(source)
-        const command = decoded.kind === "line" ? { ...decoded, ...lineRuntimeFields(runtimeRecord) } : decoded
+        // Timing is not a record field: it stays on the artifact command.
+        const command = decoded.kind === "line"
+          ? { ...decoded, ...lineRuntimeFields(runtimeRecord) }
+          : decoded.family === "staging"
+            ? { ...(record(runtimeRecord, "attrs") ?? {}), kind: decoded.kind, family: decoded.family, position: decoded.position, ...(decoded.timing === undefined ? {} : { timing: decoded.timing }) }
+            : decoded
         // Only the `plugin` record itself is a hook — not the effect records
         // (`set` … `effectOf`) that share its position — and never a call the
         // host answered through `awaitBridge`.
@@ -428,6 +440,16 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
   }
 }
 
+/**
+ * A pre-composed factory with `plugin` handlers merged in; `plugin` wins a
+ * duplicate tag. `undefined` when there are handlers to merge and the factory
+ * was not built by {@link make}.
+ */
+export const mergePlugin = (factory: CueFactoryShape, plugin: PlayerHost["plugin"] | undefined): CueFactoryShape | undefined => {
+  if (plugin === undefined) return factory
+  const built = factoryOptions.get(factory)
+  return built === undefined ? undefined : make({ ...built, plugin: { ...built.plugin, ...plugin } })
+}
 export class CueFactory extends Context.Service<CueFactory, CueFactoryShape>()("Lute.Player.CueFactory") {}
 
 export interface CueFactoryOptions {
@@ -443,7 +465,11 @@ export interface CueFactoryOptions {
  * `fromOutput` returns exactly one cue per output event, in event order
  * (normative: a host MAY wrap the factory relying on it).
  */
-export const layer = (options: CueFactoryOptions): Layer.Layer<CueFactory> => Layer.succeed(CueFactory, makeFactory(options))
+export const layer = (options: CueFactoryOptions): Layer.Layer<CueFactory> => Layer.succeed(CueFactory, make(options))
 
 /** Creates a cue factory value without installing an Effect layer (one cue per output event, in order). */
-export const make = (options: CueFactoryOptions): CueFactoryShape => makeFactory(options)
+export const make = (options: CueFactoryOptions): CueFactoryShape => {
+  const factory = makeFactory(options)
+  factoryOptions.set(factory, options)
+  return factory
+}

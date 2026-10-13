@@ -22,6 +22,7 @@ lute compile --all examples/player-demo -o dist/bundle
 ```yaml
 bindingsVersion: "0.41"
 canvas: { width: 1280, height: 720 }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
   foyer: { image: bg/foyer.png }
 characters:

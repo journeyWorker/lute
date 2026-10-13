@@ -31,8 +31,7 @@ const requirements = Layer.mergeAll(
   myKeyValueStore
 )
 ```
-
-`LutePlayerOptions` requires `bindings`, `presenter`, `audio`, and `assets`; it accepts optional `host`, `linePacing`, `autosave`, and one start: `seed` (default `{ derive: true }`), `snapshot` (a runtime snapshot), or `session` (a runtime session the host built — the player drives it and never closes it). Bindings can be decoded data or YAML text. Provide runtime, bundle, input-log, and key-value-store services before running `LutePlayer.make` in a scope; with `session`, only the bundle (the same one) and the key-value store are required.
+`LutePlayerOptions` requires `bindings`, `presenter`, `audio`, and `assets`; it accepts optional `host`, `cueFactory`, `linePacing`, and `autosave`, plus one start: `seed` (default `{ derive: true }`), `snapshot` (a runtime snapshot), or `session` (a runtime session the host built — the player drives it and never closes it). `cueFactory` wraps the default `CueFactoryShape` exactly once; return its `fromOutput` unchanged when you need the one-cue-per-output-event ordering. Bindings can be decoded data or YAML text. Provide runtime, bundle, input-log, and key-value-store services before running `LutePlayer.make` in a scope; with `session`, only the bundle (the same one) and the key-value store are required.
 
 ## Upgrading from 0.40
 
@@ -49,11 +48,12 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 ## The handle
 
-`LutePlayer.make` returns `actions`, `view`, `send`, `restore`, `shutdown`, `session`, and `program`:
+`LutePlayer.make` returns `actions`, `view`, `send`, `snapshot`, `restore`, `shutdown`, `session`, and `program`:
 
+- `snapshot` is an `Effect<SaveRuntime, Errors.RuntimeRejection>` checkpoint. It takes the player session's lock, so it is linearized with `send` and `restore`; called while a batch is presenting, it does not wait for the presentation and returns the last committed runtime snapshot, accepted-input log, and backlog (each backlog entry includes its `voiceKey`). It does not capture presenter overlays, timers, profile state, or renderer fibers; pass the result directly to `restore(save)`.
 - `session` is the runtime session in use and `program` its `session.program`. Read `current`, subscribe to `events`, and run `view` / `evaluate` / `def` / `gate` / `candidates` without loading the bundle a second time.
 - `send(input)` hands the runtime an input while no batch runs and the story waits at `idle` or `ended` (a `newRun` or an outside-run raise at the ending plays on). Elsewhere it fails with `DirectorBusy { flow, story }` and changes nothing; a runtime rejection fails it with the runtime's error and the director stays at the same await. It completes when the input was accepted and its batch started — a handler that sends never waits on its own presentation. The `{ type: "send", input }` action does the same from a widget.
-- `restore(save)` continues from a host checkpoint (`PlayerSession.snapshot` — runtime snapshot, input log, backlog) in every flow state but boot: the running presentation is abandoned, the read marks added after the checkpoint are removed, the `auto` slot is rewritten (unless autosave is off), the stage and its music are rebuilt, and the restored await is presented again (a choice shows its menu, a bridge calls its handler, idle runs the idle flow, an ending shows the ending).
+- `restore(save)` continues from a host checkpoint (the handle's `snapshot` — runtime snapshot, input log, backlog) in every flow state but boot: the running presentation is abandoned, the read marks added after the checkpoint are removed, the `auto` slot is rewritten (unless autosave is off), the stage and its music are rebuilt, and the restored await is presented again (a choice shows its menu, a bridge calls its handler, idle runs the idle flow, an ending shows the ending).
 
 ## Port contracts
 
@@ -61,7 +61,7 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 A `StageCue.Vfx` carries an `EffectSpec`: a catalogue effect (`flash`, `shake`, …) or `effect: "custom"` with a `name` — a `{ effect: custom }` vfx binding (its `name` or the binding key) or a vfx type with no binding. Branch on `cue.effect.effect === "custom"` and read `cue.effect.name`. `LineView.speakerName` is the cast name from the bundle index (empty for narration); `emotion` and `variant` carry the line's own values.
 
-`AudioPort` implements `play(channel, sound)`, `stop(channel, fade)`, and `setVolumes`. Channels are `music`, `sfx`, and `voice`. `AudioPlay.file` is already resolved from bindings; `loop`, `volume` (0–1), `fade` and `restart` are explicit. Music records follow `playback`: `start` plays from the start (`restart: true`); `stop` / `fadeOut` stop (fade `duration`, `fadeOut` defaulting to 1 s); any other value changes to the file, and playing the file that already plays without `restart` only changes its volume. `AssetLoader.ensure(files)` keeps files loaded for the open scope and reports progress through its stream; missing files fail with `AssetMissing`.
+`AudioPort` implements `play(channel, sound)`, `stop(channel, fade)`, and `setVolumes`. Channels are `music`, `sfx`, and `voice`. `AudioPlay.file` is already resolved from bindings; `loop`, `volume` (0–1), `fade` and `restart` are explicit; a music `volume` is the gain `bindings.volumes` maps the record's member to (no member: 1; a member without a gain: 0). Music records follow `playback`: `start` plays from the start (`restart: true`); `stop` / `fadeOut` stop (fade `duration`, `fadeOut` defaulting to 1 s); any other value changes to the file, and playing the file that already plays without `restart` only changes its volume. `AssetLoader.ensure(files)` keeps files loaded for the open scope and reports progress through its stream; missing files fail with `AssetMissing`.
 
 The public `PlayerAction` union is the device-independent input surface: advance, auto/skip, rollback, backlog/menu/save/load/settings, quick save/load, UI visibility, choice, idle, send, voice replay, and settings actions. A native host can emit these actions from any device.
 
@@ -95,6 +95,14 @@ The handler receives the typed `BridgeAwait` (`request`, `tag`, `document`, `pos
 ## Plugin records
 
 A non-blocking plugin directive reaches the host through `PlayerHost.plugin`, keyed by tag. The record becomes a waiting cue: the handler runs with a `PluginCall { tag, attrs, document, position }` at the record's place in the batch, the batch continues when it completes, and it runs in skip mode too (a game action is not presentation). Records of calls answered through a bridge are never handed to `plugin`. The cue factory returns exactly one cue per output event, in order, so a host may also wrap it.
+
+`Director.make` accepts the same `bundle`, `bindings`, optional cue-factory
+wrapper, and `host` options, so a hand-composed director does not need a
+second plugin-wiring call. If a pre-composed `Cues.make({ plugin })` and
+`host.plugin` both handle a tag, the host handler wins; unique tags from both
+maps remain available and the duplicate runs only once. A pre-composed factory
+not built by `Cues.make` cannot take `host.plugin`: `Director.make` dies
+rather than drop the handlers — pass a wrapper instead.
 
 ## Idle flow
 

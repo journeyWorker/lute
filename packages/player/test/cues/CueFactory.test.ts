@@ -19,6 +19,7 @@ const bindings = decodeBindings({
   bindingsVersion: "0.41",
   canvas: { width: 1920, height: 1080 },
   assets: { bg: "bg.png", actor: "actor.png", cg: "cg.png", video: "video.mp4", music: "music.ogg", sfx: "sfx.ogg" },
+  volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 },
   backgrounds: { foyer: { image: "foyer.png", times: { night: "foyer-night.png" } } },
   characters: { guide: { sprite: { default: "guide.png", emotions: { happy: "guide-happy.png" } }, nameColor: "#fff" } },
   actions: { enter: { effect: "fadeIn", duration: 0.5 } },
@@ -45,8 +46,8 @@ const commands = [
   { kind: "set", family: "state", position: "001-1200", path: "x", op: "set", value: { cel: "1", expr: { int: 1 } } },
   { kind: "line", family: "content", position: "002-0100", role: "dialogue", speaker: "guide", emotion: "happy", variant: 2, text: "Hi", lineId: "line-2", voiceKey: "" },
   { kind: "line", family: "content", position: "002-0150", role: "narration", speaker: "narrator", text: "Quiet.", lineId: "line-3", voiceKey: "" },
-  { kind: "music", family: "staging", position: "002-0200", playback: "start", mood: "calm", volume: "0.5" },
-  { kind: "music", family: "staging", position: "002-0300", playback: "change", assetId: "music", volume: "2" },
+  { kind: "music", family: "staging", position: "002-0200", playback: "start", mood: "calm", volume: "normal" },
+  { kind: "music", family: "staging", position: "002-0300", playback: "change", assetId: "music", volume: "loud" },
   { kind: "music", family: "staging", position: "002-0400", playback: "fadeOut" },
   { kind: "music", family: "staging", position: "002-0500", playback: "stop", timing: { duration: 2 } },
   { kind: "music", family: "staging", position: "002-0600", playback: "fadeOut", timing: { duration: 3 } },
@@ -71,19 +72,24 @@ const index: Runtime.Ir.projectIndex = {
   seedFacts: [],
   cast: { guide: "Guide-san" }
 }
+/** A staging command's fields as the runtime record's `attrs` carries them (no envelope, no timing). */
+const runtimeAttrs = (position: string) => {
+  const { kind: _kind, family: _family, position: _position, timing: _timing, ...attrs } = commands.find((command) => command.position === position) ?? {}
+  return attrs
+}
 const bundle: Runtime.Bundle.Bundle = { index, artifacts: { "scene.json": { commands } } }
-const output = decodeOutput({ eventVersion: "0.41", await: { type: "idle" }, events: [
+const output = decodeOutput({ eventVersion: "0.42", await: { type: "idle" }, events: [
   { type: "record", document: "scene", record: { kind: "line", position: "001-0100", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1" } },
-  { type: "record", document: "scene", record: { kind: "bg", position: "001-0200" } },
-  { type: "record", document: "scene", record: { kind: "actor", position: "001-0300" } },
-  { type: "record", document: "scene", record: { kind: "cg", position: "001-0400" } },
-  { type: "record", document: "scene", record: { kind: "video", position: "001-0500" } },
-  { type: "record", document: "scene", record: { kind: "camera", position: "001-0600" } },
-  { type: "record", document: "scene", record: { kind: "vfx", position: "001-0700" } },
-  { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800" } },
-  { type: "record", document: "scene", record: { kind: "music", position: "001-0900" } },
-  { type: "record", document: "scene", record: { kind: "music", position: "001-1000" } },
-  { type: "record", document: "scene", record: { kind: "sfx", position: "001-1100" } },
+  { type: "record", document: "scene", record: { kind: "bg", position: "001-0200", attrs: { location: "foyer", time: "night", assetId: "bg" } } },
+  { type: "record", document: "scene", record: { kind: "actor", position: "001-0300", attrs: { character: "guide", emotion: "happy", action: "enter" } } },
+  { type: "record", document: "scene", record: { kind: "cg", position: "001-0400", attrs: { assetId: "cg", display: "show" } } },
+  { type: "record", document: "scene", record: { kind: "video", position: "001-0500", attrs: { assetId: "video", display: "show" } } },
+  { type: "record", document: "scene", record: { kind: "camera", position: "001-0600", attrs: { focus: "guide" } } },
+  { type: "record", document: "scene", record: { kind: "vfx", position: "001-0700", attrs: { type: "flash" } } },
+  { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800", attrs: { name: "intro" } } },
+  { type: "record", document: "scene", record: { kind: "music", position: "001-0900", attrs: { mood: "calm", assetId: "music" } } },
+  { type: "record", document: "scene", record: { kind: "music", position: "001-1000", attrs: { stop: true } } },
+  { type: "record", document: "scene", record: { kind: "sfx", position: "001-1100", attrs: { sound: "bell", assetId: "sfx" } } },
   { type: "record", document: "scene", record: { kind: "set", position: "001-1200" } },
   { type: "presentation", beat: "start", document: "scene", kind: "scene" },
   { type: "presentationEnd", beat: "start", document: "scene", reason: null },
@@ -124,7 +130,7 @@ describe("CueFactory", () => {
     expect(stop?.timing.wait).toBe(false)
   }))
   it.effect("normalizes timing defaults by cue kind", () => Effect.gen(function* () {
-    const localOutput = decodeOutput({ eventVersion: "0.41", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500" } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800" } }] })
+    const localOutput = decodeOutput({ eventVersion: "0.42", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500", attrs: { assetId: "video", display: "show" } } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800", attrs: { name: "intro" } } }] })
     const cues = yield* factory.fromOutput(localOutput, new Set())
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
@@ -145,6 +151,11 @@ describe("CueFactory", () => {
     expect(view.options.map((option) => [option.id, option.text])).toEqual([["open", "Open it"], ["wait", "Wait"]])
   }))
 
+  it.effect("uses runtime attrs instead of artifact media fields", () => Effect.gen(function* () {
+    const local = CueFactory.make({ bundle, bindings })
+    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "001-0200", attrs: { assetId: "runtime-bg.png" } }]), new Set())
+    expect(cues[0]?.files).toEqual(["runtime-bg.png"])
+  }))
   it.effect("maps Background StageCue", () => Effect.gen(function* () {
     const cues = yield* factory.fromOutput(output, new Set())
     expect(cues[1]?.kind).toBe("bg")
@@ -156,14 +167,14 @@ describe("CueFactory", () => {
     expect(cues[2]?.files).toEqual(["guide-happy.png"])
   }))
   it.effect("maps ActorExit StageCue", () => Effect.gen(function* () {
-    const exitOutput = decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "actor", position: "001-0300", exit: true } }] })
+    const exitOutput = decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "actor", position: "001-0300", attrs: { character: "guide", exit: true } } }] })
     const cues = yield* factory.fromOutput(exitOutput, new Set())
     expect(cues[0]?.kind).toBe("actor")
     expect(cues[0]?.describe).toContain("guide")
   }))
   it.effect("maps Cg show and hide StageCues", () => Effect.gen(function* () {
     const cues = yield* factory.fromOutput(output, new Set())
-    const hidden = yield* factory.fromOutput(decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "cg", position: "001-0400", display: "hide" } }] }), new Set())
+    const hidden = yield* factory.fromOutput(decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "cg", position: "001-0400", attrs: { display: "hide" } } }] }), new Set())
     expect(cues[3]?.kind).toBe("cg")
     expect(hidden[0]?.kind).toBe("cg")
   }))
@@ -217,15 +228,15 @@ describe("CueFactory", () => {
 
   it.effect("plays music by playback, volume and duration (§7.7 table)", () => Effect.gen(function* () {
     const positions = ["002-0200", "002-0300", "002-0400", "002-0500", "002-0600", "002-0700", "002-0750", "001-0900", "001-1000"]
-    const cues = yield* factory.fromOutput(recordsOutput(positions.map((position) => ({ kind: "music", position }))), new Set())
+    const cues = yield* factory.fromOutput(recordsOutput(positions.map((position) => ({ kind: "music", position, attrs: runtimeAttrs(position) }))), new Set())
     const played = yield* recordAudio(cues, "execute")
     expect(played).toEqual([
       { play: { file: "calm.ogg", loop: true, volume: 0.5, fade: 0, restart: true } },
-      { play: { file: "music.ogg", loop: true, volume: 1, fade: 0, restart: false } },
+      { play: { file: "music.ogg", loop: true, volume: 0.75, fade: 0, restart: false } },
       { stop: 1 },
       { stop: 2 },
       { stop: 3 },
-      { play: { file: "calm.ogg", loop: true, volume: 1, fade: 1.5, restart: false } },
+      { play: { file: "calm.ogg", loop: true, volume: 0.75, fade: 1.5, restart: false } },
       { stop: 0 },
       { play: { file: "music.ogg", loop: true, volume: 1, fade: 0, restart: false } },
       { stop: 0 }
@@ -233,16 +244,16 @@ describe("CueFactory", () => {
     // Skip snaps: no fades, the same files and restarts.
     expect(yield* recordAudio(cues, "complete")).toEqual([
       { play: { file: "calm.ogg", loop: true, volume: 0.5, fade: 0, restart: true } },
-      { play: { file: "music.ogg", loop: true, volume: 1, fade: 0, restart: false } },
+      { play: { file: "music.ogg", loop: true, volume: 0.75, fade: 0, restart: false } },
       { stop: 0 }, { stop: 0 }, { stop: 0 },
-      { play: { file: "calm.ogg", loop: true, volume: 1, fade: 0, restart: false } },
+      { play: { file: "calm.ogg", loop: true, volume: 0.75, fade: 0, restart: false } },
       { stop: 0 },
       { play: { file: "music.ogg", loop: true, volume: 1, fade: 0, restart: false } },
       { stop: 0 }
     ])
-    expect(CueFactory.musicVolume("0.25")).toBe(0.25)
-    expect(CueFactory.musicVolume("-1")).toBe(0)
-    expect(CueFactory.musicVolume(undefined)).toBe(1)
+    expect(CueFactory.musicVolume(bindings, "0.25")).toBe(0)
+    expect(CueFactory.musicVolume(bindings, "missing")).toBe(0)
+    expect(CueFactory.musicVolume(bindings, undefined)).toBe(1)
   }))
 
   it("collects a restored stage's files with the same resolution its cues and music use", () => {
@@ -261,7 +272,7 @@ describe("CueFactory", () => {
       { kind: "bg", family: "staging", position: "003-0100", assetId: "bg/hall.png" },
       { kind: "music", family: "staging", position: "003-0200", assetId: "bgm/theme.ogg" }
     ] } } }, bindings: unbound })
-    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "003-0100" }, { kind: "music", position: "003-0200" }]), new Set())
+    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "003-0100", attrs: { assetId: "bg/hall.png" } }, { kind: "music", position: "003-0200", attrs: { assetId: "bgm/theme.ogg" } }]), new Set())
     expect(cues.map((cue) => cue.files)).toEqual([["bg/hall.png"], ["bgm/theme.ogg"]])
   }))
 
@@ -270,7 +281,7 @@ describe("CueFactory", () => {
     expect(CueFactory.stageMusic(bindings, { actors: [], music: { mood: "calm", playback: "stop" } })).toBeUndefined()
     expect(CueFactory.stageMusic(bindings, { actors: [] })).toBeUndefined()
     expect(CueFactory.stageMusic(bindings, { actors: [], music: { mood: "calm", playback: "start", volume: "0.4" } }))
-      .toEqual({ file: "calm.ogg", loop: true, volume: 0.4, fade: 0, restart: false })
+      .toEqual({ file: "calm.ogg", loop: true, volume: 0, fade: 0, restart: false })
   })
 
   it.effect("gives StageCue.Vfx an EffectSpec for custom, catalogue and unbound vfx (§7.7)", () => Effect.gen(function* () {
@@ -343,8 +354,14 @@ describe("CueFactory", () => {
   }))
 })
 
+const stagingKinds: Record<string, true> = { bg: true, music: true, sfx: true, vfx: true, actor: true, camera: true, cg: true, video: true, sequence: true }
 const recordsOutput = (records: ReadonlyArray<Readonly<Record<string, unknown>>>) =>
-  decodeOutput({ eventVersion: "0.41", await: { type: "idle" }, events: records.map((record) => ({ type: "record", document: "scene", record })) })
+  decodeOutput({ eventVersion: "0.42", await: { type: "idle" }, events: records.map((record) => {
+    if (!stagingKinds[String(record.kind)] || record.attrs !== undefined) return { type: "record", document: "scene", record }
+    const source = commands.find((command) => command.position === record.position)
+    const attrs = source === undefined ? {} : Object.fromEntries(Object.entries(source).filter(([key]) => !["kind", "family", "position", "timing"].includes(key)))
+    return { type: "record", document: "scene", record: { ...record, attrs } }
+  }) })
 
 const silentPresenter: Presenter = {
   stage: () => Effect.void, showLine: () => Effect.void, revealLine: Effect.void, clearLine: Effect.void, restore: () => Effect.void,

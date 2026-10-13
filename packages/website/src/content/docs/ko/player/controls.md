@@ -51,7 +51,7 @@ machine의 line 진행은 두 단계입니다. 입력 중 advance는 `line.revea
 
 ## Backlog와 읽기 기록
 
-backlog를 열면 overlay와 auto/countdown 동작이 일시 중지됩니다. backlog entry에는 `lineId`, voice key, speaker name, text, `hasVoice`가 있습니다. profile은 읽은 line id set을 저장하며 host는 `replayVoice`로 음성을 다시 재생할 수 있습니다.
+backlog를 열면 overlay와 auto/countdown 동작이 일시 중지됩니다. backlog entry에는 `lineId`, 원래 line의 `voiceKey`, speaker name, text, `hasVoice`가 있습니다. 음성 replay는 `lineId`가 아니라 이 `voiceKey`로 파일을 해석하며 runtime state를 바꾸지 않습니다. profile은 읽은 line id set을 저장하며 host는 `replayVoice`로 음성을 다시 재생할 수 있습니다.
 
 ## 저장과 quick save
 
