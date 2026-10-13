@@ -43,7 +43,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="theaterGhost" on="enterPlace" target="place.silvercrestTheater" title="The theater ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['silvercrestTheater'])">
   ::bg{location="silvercrest-theater" time="night"}
-  ::music{playback="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="quiet"}
   @narrator{code="0010"}: Dust sheets over the seats, and a spotlight that nobody switched on. On the stage, through the lens, a woman in a silver gown is bowing to an empty house.
   @narrator{code="0020"}: She straightens up, sees you, and smiles as if you were the whole audience. Then she comes down the steps.
   ::assert{midGhostSeen(silvercrestTheater)}
@@ -62,7 +62,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="wellGhost" on="enterPlace" target="place.wardenmereWell" title="The well ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['wardenmereWell'])">
   ::bg{location="wardenmere-well" time="night"}
-  ::music{playback="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="quiet"}
   @narrator{code="0010"}: You lean over the well and look down through the lens. Far below, a girl looks up and sings the first line of a song you almost know.
   @narrator{code="0020"}: The echo sings the second line. Then something climbs out of the well to hear the rest.
   ::assert{midGhostSeen(wardenmereWell)}
@@ -81,7 +81,7 @@ title: Madame Oriel's ghost stories and the three haunts
 
 <beat id="lighthouseGhost" on="enterPlace" target="place.fairhavenLighthouse" title="The lighthouse ghost" once="false" when="holds('hasItem', ['spectralLens']) && !holds('midGhostSeen', ['fairhavenLighthouse'])">
   ::bg{location="fairhaven-lighthouse" time="night"}
-  ::music{playback="change" mood="eerie" volume="down"}
+  ::music{playback="change" mood="eerie" volume="quiet"}
   @narrator{code="0010"}: A hundred and twelve steps to the lamp room. At the top, through the lens, an old man in oilskins is striking match after match against the dead lamp.
   @narrator{code="0020"}: He looks round at you, holds out the matchbox, and when you don't take it, he gets angry.
   ::assert{midGhostSeen(fairhavenLighthouse)}

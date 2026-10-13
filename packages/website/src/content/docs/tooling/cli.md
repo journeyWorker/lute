@@ -164,7 +164,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.41.1 and the AI edit-loop
+contract; the repository's current release is 0.42.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -441,7 +441,6 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
         "syntax": ":speed[text]{rate=1.25}"
       }
     ],
-    "lowering": "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves"
   }
 }
 ```
@@ -492,7 +491,9 @@ A renamed domain is renamed in project, schema and plugin YAML too (0.41.0): a k
 
 The YAML passes read the text as bytes, so Korean, an em dash or any other UTF-8 in a scalar, a quoted string or a comment is carried through byte for byte (0.41.1; 0.41.0 panicked on it).
 
-An existing language stamp older than the toolchain is raised to it (0.41.1): `defaults: luteVersion` in `lute.project.yaml` and a `.lute` document's own frontmatter `luteVersion`, each one fix, with the quotes and comment around the value kept — so the `W-LUTE-VERSION-STALE` it answered goes away. A missing stamp is not added, and a newer or non-`MAJOR.MINOR.PATCH` stamp is left alone.
+An existing language stamp older than the toolchain is raised to it (0.42.0): `defaults: luteVersion` in `lute.project.yaml` and a `.lute` document's own frontmatter `luteVersion`, each one fix, with the quotes and comment around the value kept — so the `W-LUTE-VERSION-STALE` it answered goes away. A missing stamp is not added, and a newer or non-`MAJOR.MINOR.PATCH` stamp is left alone.
+
+The `volume` scale is renamed in a project that still uses the old documented one (0.42): when the project's folded `volume` domain is exactly `[silent, down, normal, up, full]` — those members in that order, in every document that sees a `volume` domain — `down` becomes `quiet` and `up` becomes `loud` in the declaration, in every `volume=` directive value and in the keys of `player.bindings.yaml`'s `volumes:`, one fix per token. A project that chose its own levels (a subset, other names, another order) or whose documents disagree is not touched; a `.lute` file outside any project is judged by its own frontmatter.
 
 An author key in snake case becomes lowerCamelCase only where the rewrite is unambiguous. Inline text modifiers are never invented; an existing one is kept byte for byte. The earlier migrations still apply: `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`), and 0.31 CEL fact-query and presence calls to their standard-CEL forms.
 
@@ -711,7 +712,7 @@ Diagnose the local toolchain and project setup: the version axes, the project ma
 
 ```console
 $ lute doctor .
-lute doctor — .
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.42.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
   • toolchain version: 0.22.0
   • language version: 0.22.0
   • IR schema version: 0.22.0
@@ -763,7 +764,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.41.1"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.42.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 

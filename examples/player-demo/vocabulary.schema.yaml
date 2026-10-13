@@ -2,7 +2,7 @@ enums:
   emotion: [neutral, happy, worried, angry, hopeful, sad, surprised]
   costume: [plain, coat, raincloak, uniform]
   mood: [calm, tense, hopeful, sad, triumphant]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: { members: [start, change, stop, fadeOut], stops: [stop, fadeOut] }
   vfxType: [flash, shake]
   framing: [wide, close]

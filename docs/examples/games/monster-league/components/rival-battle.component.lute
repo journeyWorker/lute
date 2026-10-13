@@ -15,7 +15,7 @@ params:
 this component's own ::battle result. */
 ::actor{character="rival" action="enter"}
 @rival{code="0010"}: {{@intro}}
-::music{playback="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="loud"}
 ::battle{foe="rival" kind=@kind team=@meet resultKey="fight"}
 ::assert{rivalFought(@meet)}
 <match subject="scene.battle.fight.won">

@@ -1,17 +1,33 @@
 {
   "commands": [
     {
+      "attrs": {
+        "playback": "start",
+        "volume": "quiet"
+      },
       "kind": "music",
       "position": "001-0100"
     },
     {
+      "attrs": {
+        "playback": "change",
+        "volume": "loud"
+      },
       "kind": "music",
       "position": "001-0200"
+    },
+    {
+      "attrs": {
+        "playback": "stop",
+        "stop": true
+      },
+      "kind": "music",
+      "position": "001-0300"
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.41",
+  "irVersion": "0.42",
   "kind": "scene",
   "quests": {},
   "state": {}

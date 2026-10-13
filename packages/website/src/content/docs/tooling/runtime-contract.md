@@ -12,7 +12,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
 The machine-checkable shape is
-[`schemas/lute-ir-0.41.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.41.schema.json)
+[`schemas/lute-ir-0.42.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.42.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -48,6 +48,22 @@ host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
 `effect`, giving the host two `effect` instances. See
 [Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
  
+## 0.42 runtime additions
+
+Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and plugin `stampAttrs` stay where they were, so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
+
+| kind | `attrs` |
+| --- | --- |
+| `bg` | `location?`, `time?`, `assetId?` |
+| `music` | `playback?`, `stop?`, `mood?`, `volume?`, `assetId?` |
+| `sfx` | `sound?`, `assetId?` |
+| `vfx` | `type`, `label?`, `transition?` |
+| `actor` | `character`, `anchor?`, `action?`, `exit?`, `emotion?`, `costume?`, `posReset?`, `preload?` |
+| `camera` | `focus?`, `framing?`, `move?`, `transition?` |
+| `cg` | `assetId`, `display`, `layout?` |
+| `video` | `assetId`, `display` |
+| `sequence` | `name` |
+
 ## 0.41 runtime additions
 
 - **Gate refusals are rejections.** A `raiseOccasion` whose `raisedWhen` is
@@ -278,8 +294,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.41` engine accepts only `0.41.*` artifacts and refuses `0.40.*`
-   and `0.42.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.42` engine accepts only `0.42.*` artifacts and refuses `0.41.*`
+   and `0.43.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -291,7 +307,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.41.1"
+irVersion: "0.42.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -307,11 +323,11 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.38.*` artifact against the `0.41.1`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.42.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
-artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
 
+artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
 `lute check --engine <file>` and `lute check-project --engine <file>` perform
 author-time negotiation without playback. Missing capabilities are reported as
 `E-CHECK-ENGINE-SEMANTICS` with the lowered construct's source span, semantic

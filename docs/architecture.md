@@ -179,7 +179,7 @@ existing attrs and names stay.
 | Directive | Attrs |
 |---|---|
 | `::bg` | `location`, `time`, `assetId` |
-| `::music` | `playback` (domain `musicPlayback`, e.g. `start\|change\|stop\|resume\|fadeOut`), `mood`, `volume` (domain `volume`, e.g. `silent\|down\|normal\|up\|full`), `assetId` |
+| `::music` | `playback` (domain `musicPlayback`, e.g. `start\|change\|stop\|resume\|fadeOut`), `mood`, `volume` (domain `volume`, e.g. `silent\|quiet\|normal\|loud\|full`, absolute levels), `assetId` |
 | `::sfx` | `sound` (description), `assetId` |
 | `::actor` | `character`, `anchor` (domain `anchor`), `action` (domain `action`, e.g. `fadeInUp` / `fadeOutDown` / `pose*`), `emotion`, `costume` — **character entrance/exit/pose lives here** |
 | `::vfx` | `type` (e.g. `blackOut`), `label`, `transition` |

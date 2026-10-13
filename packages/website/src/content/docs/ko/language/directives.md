@@ -33,7 +33,7 @@ description: lute.core의 열세 가지 디렉티브 — 열 가지 연출 말�
 
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
-::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
+::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="quiet"}
 ::actor{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" framing="close" duration="0.5"}
 ```

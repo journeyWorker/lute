@@ -156,7 +156,7 @@ has no direct promise API.
 ## Program API
 
 `LuteRuntime` loads a `Bundle` into a scoped `Program`. A `Bundle` consists of
-the `project.index.json`, typed by the generated `Ir.projectIndex` (0.41), and
+the `project.index.json`, typed by the generated `Ir.projectIndex` (0.42), and
 an object mapping every index `artifact` path to its parsed artifact.
 `BundleSource.directory(path)`, `BundleSource.url(base)`, and
 `BundleSource.value(bundle)` construct the source layer; the first two decode
@@ -304,8 +304,8 @@ const replay = (program: Program.Program, text: string) =>
 
 `Contract` is the generated Effect-schema namespace. Rust types in
 `crates/lute-runtime` are the single definition of the event and snapshot
-contract; `schemars` emits `schemas/lute-events-0.41.schema.json` and
-`schemas/lute-snapshot-0.41.schema.json`, and the package's code generator
+contract; `schemars` emits `schemas/lute-events-0.42.schema.json` and
+`schemas/lute-snapshot-0.42.schema.json`, and the package's code generator
 emits `packages/runtime/src/generated/Contract.ts` from those schemas. Do not
 hand-edit the generated TypeScript.
 
@@ -325,7 +325,7 @@ command and artifact shapes and, since 0.41, the `project.index.json` types
 
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
-line), and its output carries `eventVersion: "0.41.1"`. Schema regeneration is
+line), and its output carries `eventVersion: "0.42.0"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.
 
 ## Local dogfooding

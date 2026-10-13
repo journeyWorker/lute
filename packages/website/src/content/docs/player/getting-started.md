@@ -22,6 +22,7 @@ Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled stagi
 ```yaml
 bindingsVersion: "0.41"
 canvas: { width: 1280, height: 720 }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
   foyer: { image: bg/foyer.png }
 characters:
@@ -39,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. Mount in a page
 
-Install exact 0.41 packages:
+Install exact 0.42 packages:
 
 ```console
-bun add @lute-lang/player-web@0.41.1 @lute-lang/player@0.41.1 @lute-lang/runtime@0.41.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.42.0 @lute-lang/player@0.42.0 @lute-lang/runtime@0.42.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.

@@ -37,7 +37,7 @@ title: The Earth Gym — Team Eclipse's last floor
 <beat id="earthGymAdminSelene" on="trainerSpotted" target="trainer.earthGymAdminSelene" title="Admin Selene" once="false" when="!holds('defeated', ['earthGymAdminSelene']) && !holds('defeated', ['vex'])">
   ::actor{character="earthGymAdminSelene" anchor="center" action="enter"}
   @earthGymAdminSelene{code="0010" emotion="smug"}: Admin Selene, Team Eclipse. I run the Director's calendar, and you are not on it.
-  ::music{playback="change" mood="battle" volume="up"}
+  ::music{playback="change" mood="battle" volume="loud"}
   ::battle{foe="earthGymAdminSelene" kind="boss" team="first" resultKey="fight"}
   <match subject="scene.battle.fight.won">
     <when is="true">

@@ -322,7 +322,7 @@ enums:
   anchor: { members: [left, center, right], default: center }
   costume: [apron]
   mood: [peaceful]
-  volume: [down, normal]
+  volume: [quiet, normal]
   musicPlayback: [start, fadeOut]
   vfxType: [whiteOut]
   framing: [closeUp, wide]
@@ -338,7 +338,7 @@ state:
 ## Counter {#counter}
 
 ::bg{location="diner" time="night"}
-::music{playback="start" mood="peaceful" volume="down" assetId="bgm.diner"}
+::music{playback="start" mood="peaceful" volume="quiet" assetId="bgm.diner"}
 ::actor{character="mira" anchor="center" action="fadeInUp" emotion="happy" costume="apron"}
 ::camera{focus="mira" framing="closeUp" move="pushIn" duration="0.5" wait="true"}
 @narrator: The diner hums.

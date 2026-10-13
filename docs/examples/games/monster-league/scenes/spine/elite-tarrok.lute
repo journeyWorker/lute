@@ -13,7 +13,7 @@ when: "@badgeCount >= 8 && holds('defeated', ['frostine']) && !holds('defeated',
 ::bg{location="fistChamber" time="day"}
 ::actor{character="tarrok" anchor="center" action="enter"}
 @tarrok{code="0010"}: I am Tarrok. I trained on a mountain until the mountain gave up. Show me your strongest!
-::music{playback="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="loud"}
 ::battle{foe="tarrok" kind="elite" resultKey="fight"}
 <match subject="scene.battle.fight.won">
   <when is="true">

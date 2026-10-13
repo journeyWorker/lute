@@ -10,7 +10,7 @@ when: "run.day == 1 && run.slot == 'morning'"
 ## The top station
 
 ::bg{location="funicular_top" time="morning"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 @narrator{code="0010"}: The funicular car shudders the last ten metres and stops against the buffers with a sound like a dropped drawer.
 @narrator{code="0020"}: Hallen Ridge Weather Station: two stone huts, a mast, a white louvred box on legs, and more sky than you have ever been under.
 @narrator{code="0030" when="has(prev.run.route)"}: It looks exactly as you left it last summer. The door still sticks.

@@ -8,14 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.41.1`, the grammar and semantics the checker
+- **Language** — currently `0.42.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.41.1`) and gated on by consuming engines.
-
-
-
+  artifact (currently `0.42.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -37,6 +34,132 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.42.0]
+
+**Player contract and volume bindings** (spec
+[`0.42.0.md`](docs/proposals/scenario-dsl/0.42.0.md)). This is a clean
+cutover: all public version axes, contract schemas, generated contracts,
+packages and callers move to 0.42.0/0.42 together, with no compatibility alias
+for removed volume spellings or numeric volume forms.
+
+### Syntax
+
+- None. `volume` stays a project domain written as a member name; the
+  documented scale renames two members (see Language).
+
+### Semantics
+
+- A music `volume` member is an absolute level whose gain the player looks up
+  in `bindings.volumes`; numeric volume values have no meaning (#77).
+
+### IR
+
+- Artifacts unchanged except the `irVersion` stamp; the IR schema file moves
+  to `schemas/lute-ir-0.42.schema.json`.
+
+### Plugin
+
+- None for manifests. Player hosts: `host.plugin` handlers reach the default
+  cue factory `Director.make` builds and win a tag over a pre-composed
+  `Cues.make({ plugin })` handler (#80).
+
+### CLI
+
+- `lute fix` migrates the exact old volume domain (`down`/`up` → `quiet`/`loud`)
+  across `.lute` values, YAML references and `volumes` keys (#77).
+- `lute check` validates `player.bindings.yaml` `volumes` against the folded
+  `volume` domain (#77).
+
+### Diagnostics
+
+- `volumes` reuses the binding diagnostics: an unknown key is `E-BINDING-KEY`,
+  a missing member `W-BINDING-MISSING`, a gain that is not a finite number in
+  `[0, 1]` `E-BINDING-SHAPE` (#77).
+
+### Identity
+
+- Runtime staging records (`bg`, `music`, `sfx`, `vfx`, `actor`, `camera`,
+  `cg`, `video`, `sequence`) carry resolved `attrs`, so `lute run`/`lute play
+  --events` output gains that field; positions and line identities are
+  unchanged (#78).
+
+### Language
+
+- `volume` remains a project domain of absolute levels. The documented scale
+  is `silent`, `quiet`, `normal`, `loud`, `full`; numeric volume syntax is not
+  accepted.
+- `lute fix` migrates `down` → `quiet` and `up` → `loud` only when the folded
+  project domain is exactly the old ordered set
+  `[silent, down, normal, up, full]`. It also updates command values, YAML
+  CEL/domain/member references and matching `volumes` keys, preserving layout
+  and remaining idempotent. Custom, split or ambiguous domains are not
+  rewritten.
+
+### Bindings
+
+- `bindingsVersion` and the schema line move to `0.42`; bindings gain an
+  optional top-level `volumes` map of finite gains in `[0, 1]`.
+- Volume keys are checked against the folded `volume` domain:
+  unknown keys are `E-BINDING-KEY`, missing declared members are
+  `W-BINDING-MISSING`, and non-number, non-finite or out-of-range gains are
+  `E-BINDING-SHAPE`. Malformed values are never clamped by the checker.
+- The player resolves media volume only through `bindings.volumes`. An absent
+  command volume keeps the 0.41 default gain of 1; a present but missing or
+  invalid lookup resolves to 0, with defensive final clamping. Numeric values
+  are not parsed as gains.
+
+### Event and IR
+
+- The nine staging record kinds `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`,
+  `cg`, `video` and `sequence` now carry resolved `attrs` objects. Optional
+  fields are omitted; timing, provenance and envelope fields retain their
+  existing locations. Hosts should read media fields from `attrs`, not reopen
+  artifacts.
+- Event and snapshot schemas and generated contracts move to `-0.42`; all
+  contract axes stamp 0.42.0/0.42.
+
+### Player API
+
+- `LutePlayer.make` accepts a one-time `cueFactory(base)` wrapper. The wrapper
+  preserves output order and one-cue-per-output-event unless the host takes
+  responsibility for those invariants.
+- `LutePlayerHandle` exposes `snapshot`, serialized under the player session
+  lock as one coherent `SaveRuntime` containing runtime snapshot, accepted
+  input log and replayable backlog. `restore` remains the existing operation;
+  snapshot does not fail with `DirectorBusy` or mutate the player.
+- `Director.make` takes the `bundle` and builds the same default cue factory as
+  `LutePlayer.make`; its optional `cueFactory` is a wrapper of that default or
+  a pre-composed `Cues.make` factory. `host.plugin` is merged into it and wins
+  a duplicate tag; a pre-composed factory not built by `Cues.make` together
+  with `host.plugin` is a defect instead of silently dropping the handlers.
+- Backlog and replay events carry `voiceKey`; replay resolves voice by the
+  original key, never by `lineId`. Numeric `musicVolume` parsing is removed.
+
+### Tooling and CI
+
+- Package `typecheck` scripts use Bun's checker (`bun check`); `build` retains
+  `tsc` for declaration emission. CI pins Bun `1.4.3` and compares Bun and
+  `tsc --noEmit` once for this release; the comparison is removed afterward.
+
+### Packages and release
+
+- `@lute-lang/lute`, the three platform packages, `@lute-lang/runtime`,
+  `@lute-lang/player` and `@lute-lang/player-web` publish `0.42.0` in
+  lockstep. Consuming engines widen version gates and install the matching
+  package line.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| Language | Documented `volume` members `down`/`up` become `quiet`/`loud`; numeric volume is not accepted. | Run `lute fix` only for the exact old domain; migrate custom domains manually and author absolute members. |
+| Bindings | `bindingsVersion` and schema line move to 0.42; new `volumes` map is checked against `volume`. | Add one finite gain per domain member; do not rely on an unmapped member (it resolves to 0). |
+| Event | Nine media/staging record kinds gain resolved `attrs`; Event/snapshot schemas move to `-0.42`. | Regenerate consumers; read `attrs`, not artifacts, for media fields. |
+| Player API | `BacklogEntry`/replay events carry `voiceKey`; numeric `musicVolume` parsing is removed. | Persist the key from line output and resolve voice by key; use bindings volume members. |
+| Player API | `Director` construction uses the unified cue-factory seam; explicit host plugin wins over a pre-composed duplicate. | Pass `host.plugin` and migrate custom composition to `cueFactory(base)`. |
+| Tooling/CI | Package `typecheck` now means Bun's checker; Bun pin is 1.4.3. | Use `bun check`; keep `tsc` only for build/declarations. |
+| Release | All seven packages and all contract axes stamp 0.42.0. | Widen version gates and install the matching package line. |
 
 ## [0.41.1]
 

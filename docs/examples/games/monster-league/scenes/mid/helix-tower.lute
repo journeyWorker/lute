@@ -69,7 +69,7 @@ when: "run.lair.helixHQ != 'cleared' && run.lair.towerSiege == 'cleared'"
 
 ::label{name="boardroom"}
 ::bg{location="helix-boardroom" time="day"}
-::music{playback="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="loud"}
 @narrator{code="0060"}: A long table, a wall of windows over Silvercrest, and at the far end a woman in a grey Eclipse coat, turning a pen over and over.
 ::use{component="trainerBattle" who="gruntHelix" intro="The Director's plans are bigger than one tower, child. He is already waiting for you at the end of the road. But you won't leave this one." win="Enough! We're pulling out of Silvercrest. Tell your friend on the stairs he talks too much." lose="Security will see you out. Through the lobby, this time." prize="1500" instance="use-005"}
 ::set{run.lair.helixHQ = "cleared" when="@wonFight"}

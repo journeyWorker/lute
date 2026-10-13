@@ -43,7 +43,7 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
     );
     d.insert(
         "volume".to_string(),
-        closed(&["silent", "down", "normal", "up", "full"]),
+        closed(&["silent", "quiet", "normal", "loud", "full"]),
     );
     d.insert(
         "vfxType".to_string(),

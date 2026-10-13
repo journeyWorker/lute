@@ -11,7 +11,7 @@ after: 'visited("common.festival")'
 ## The observatory roof
 
 ::bg{location="roof" time="dusk"}
-::music{playback="start" mood="romantic" volume="down"}
+::music{playback="start" mood="romantic" volume="quiet"}
 ::actor{character="ren" anchor="center" action="fadeInUp"}
 @ren{code="0010" emotion="stern"}: This roof is off limits. I have the only key. Therefore I am the only one who can break the rule, and I am choosing to. Sit.
 @ren{code="0020" emotion="flustered"}: I come up here to name the stars. Officially they have names. I give them better ones.

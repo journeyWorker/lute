@@ -931,7 +931,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.41.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.42.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -1062,6 +1062,14 @@
       "default": {
         "pattern": null
       }
+    },
+    "volumes": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "default": {},
+      "description": "0.42.0 §3.2: the project `volume` domain's absolute levels as gains,\neach a finite number in `[0, 1]` (checked by `check-project`).",
+      "type": "object"
     }
   },
   "required": [

@@ -35,6 +35,10 @@ pub struct Bindings {
     pub text_styles: BTreeMap<String, TextStyle>,
     #[serde(default)]
     pub music: Music,
+    /// 0.42.0 §3.2: the project `volume` domain's absolute levels as gains,
+    /// each a finite number in `[0, 1]` (checked by `check-project`).
+    #[serde(default)]
+    pub volumes: BTreeMap<String, f64>,
     #[serde(default)]
     pub sfx: BTreeMap<String, String>,
     #[serde(default)]
@@ -393,21 +397,21 @@ mod tests {
     #[test]
     fn decodes_the_spec_shape_and_rejects_unknown_effect_parameters() {
         let value: Bindings = serde_yaml::from_str(
-            "bindingsVersion: '0.41'\ncanvas: {width: 1920, height: 1080}\nactions: {hop: {effect: hop, duration: 0.2}}\n",
+            "bindingsVersion: '0.42'\ncanvas: {width: 1920, height: 1080}\nactions: {hop: {effect: hop, duration: 0.2}}\n",
         ).unwrap();
         assert!(matches!(
             value.actions["hop"],
             EffectSpec::Hop { duration: Some(_) }
         ));
         assert!(serde_yaml::from_str::<Bindings>(
-            "bindingsVersion: '0.41'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
+            "bindingsVersion: '0.42'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
         ).is_err());
     }
 
     #[test]
     fn vfx_admits_custom_effects_beside_the_catalogue() {
         let value: Bindings = serde_yaml::from_str(
-            "bindingsVersion: '0.41'\ncanvas: {width: 1, height: 1}\nvfx:\n  flash: {effect: flash, color: '#fff', duration: 0.3}\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n",
+            "bindingsVersion: '0.42'\ncanvas: {width: 1, height: 1}\nvfx:\n  flash: {effect: flash, color: '#fff', duration: 0.3}\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n",
         )
         .unwrap();
         assert!(matches!(
@@ -437,7 +441,7 @@ mod tests {
             "transitions: {x: {effect: custom}}",
             "cameraMove: {x: {effect: custom}}",
         ] {
-            let text = format!("bindingsVersion: '0.41'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
+            let text = format!("bindingsVersion: '0.42'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
             assert!(serde_yaml::from_str::<Bindings>(&text).is_err(), "{rejected}");
         }
     }
@@ -445,7 +449,7 @@ mod tests {
     #[test]
     fn strict_shape_errors_keep_yaml_position() {
         let error = serde_yaml::from_str::<Bindings>(
-            "bindingsVersion: '0.41'\ncanvas: {width: 1, height: 1}\nunknown: true\n",
+            "bindingsVersion: '0.42'\ncanvas: {width: 1, height: 1}\nunknown: true\n",
         )
         .unwrap_err();
         let location = error.location().expect("serde_yaml reports a location");

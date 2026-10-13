@@ -53,7 +53,7 @@ The machine's line progression is deliberately two-step: advance while typing em
 
 ## Backlog and read history
 
-Opening backlog pauses overlays and auto/countdown activity. A backlog entry contains `lineId`, voice key, speaker name, text, and `hasVoice`; the profile persists the set of read line ids. A host can replay a line's voice without changing the runtime state. Close the backlog with the UI's close action, then input resumes.
+Opening backlog pauses overlays and auto/countdown activity. A backlog entry contains `lineId`, the original `voiceKey`, speaker name, text, and `hasVoice`; replay resolves the voice file by that `voiceKey` (never by `lineId`) without changing runtime state. Close the backlog with the UI's close action, then input resumes.
 
 ## Saves and quick saves
 

@@ -38,7 +38,7 @@ forward jump pair `::jump` / `::label` — with these canonical attributes:
 
 ```lute
 ::bg{location="family_restaurant" time="afternoon" assetId="BG.space.family_restaurant.interior.afternoon"}
-::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="down"}
+::music{playback="start" mood="peaceful" assetId="sound-bgm-common-vn-mood-peaceful-0.mp3" volume="quiet"}
 ::actor{character="marina" anchor="center" action="fadeInUp"}
 ::camera{focus="marina" framing="close" duration="0.5"}
 ```

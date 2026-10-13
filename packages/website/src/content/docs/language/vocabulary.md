@@ -69,7 +69,7 @@ enums:
     members: [fadeInUp, sway, lean, idle, fadeOut, hide]
     exits: [fadeOut, hide]
   mood: [peaceful, tense, romantic, sad, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   framing: [wide, medium, close]
@@ -77,6 +77,8 @@ enums:
   transition: [cut, dissolve, fade]
   textStyle: [emphasis, whisper]
 ```
+
+`volume` members are **absolute levels**, an ordered scale of degree like `silent, quiet, normal, loud, full` — never moves relative to the current level: writing `quiet` twice plays at the `quiet` level, not quieter (0.42). A player turns each member into a gain through the `volumes:` table of [`player.bindings.yaml`](/player/bindings/). Before 0.42 the documented scale was `silent, down, normal, up, full`; `lute fix` renames `down` → `quiet` and `up` → `loud` in a project whose `volume` domain is exactly that old scale, and leaves a project's own levels alone ([`lute fix`](/tooling/cli/#fix)).
 
 There are **three routes** to that block, and all three go through the same parser and the same
 validator.

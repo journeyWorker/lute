@@ -1,38 +1,78 @@
 {
   "commands": [
     {
+      "attrs": {
+        "assetId": "BG.harbor.night",
+        "location": "harbor",
+        "time": "night"
+      },
       "kind": "bg",
       "position": "001-0100"
     },
     {
+      "attrs": {
+        "assetId": "BGM.harbor",
+        "mood": "calm",
+        "playback": "start",
+        "volume": "normal"
+      },
       "kind": "music",
       "position": "001-0200"
     },
     {
+      "attrs": {
+        "assetId": "SFX.bell",
+        "sound": "bell"
+      },
       "kind": "sfx",
       "position": "001-0300"
     },
     {
+      "attrs": {
+        "transition": "flash",
+        "type": "whiteOut"
+      },
       "kind": "vfx",
       "position": "001-0400"
     },
     {
+      "attrs": {
+        "action": "fadeInUp",
+        "anchor": "center",
+        "character": "hero"
+      },
       "kind": "actor",
       "position": "001-0500"
     },
     {
+      "attrs": {
+        "focus": "hero",
+        "framing": "close"
+      },
       "kind": "camera",
       "position": "001-0600"
     },
     {
+      "attrs": {
+        "assetId": "CUT.harbor",
+        "display": "show"
+      },
       "kind": "cg",
       "position": "001-0700"
     },
     {
+      "attrs": {
+        "assetId": "VID.harbor",
+        "display": "show"
+      },
       "kind": "video",
       "position": "001-0800"
     },
     {
+      "attrs": {
+        "focus": "hero",
+        "framing": "tight"
+      },
       "kind": "camera",
       "position": "001-0900"
     },
@@ -50,25 +90,39 @@
       "text": "The harbor waits."
     },
     {
+      "attrs": {
+        "framing": "wide"
+      },
       "kind": "camera",
       "position": "001-1200"
     },
     {
+      "attrs": {
+        "assetId": "CUT.harbor",
+        "display": "hide"
+      },
       "kind": "cg",
       "position": "001-1300"
     },
     {
+      "attrs": {
+        "assetId": "VID.harbor",
+        "display": "hide"
+      },
       "kind": "video",
       "position": "001-1400"
     },
     {
+      "attrs": {
+        "playback": "stop"
+      },
       "kind": "music",
       "position": "001-1500"
     }
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.41",
+  "irVersion": "0.42",
   "kind": "scene",
   "quests": {},
   "state": {}

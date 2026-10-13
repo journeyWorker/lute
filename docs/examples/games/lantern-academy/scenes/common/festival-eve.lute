@@ -11,7 +11,7 @@ after: 'visited("common.exam")'
 ## Lakeshore
 
 ::bg{location="lakeshore" time="evening"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 ::actor{character="hotaru" anchor="center" action="fadeInUp"}
 @narrator{code="0010"}: A girl in an old-fashioned uniform is sitting on the jetty, lighting lanterns nobody asked her to light.
 @hotaru{code="0010" emotion="smiling"}: You can see me. Most transfers can't, the first week.

@@ -22,6 +22,7 @@ lute compile --all examples/player-demo -o dist/bundle
 ```yaml
 bindingsVersion: "0.41"
 canvas: { width: 1280, height: 720 }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
   foyer: { image: bg/foyer.png }
 characters:
@@ -39,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.41 패키지를 설치합니다.
+정확한 0.42 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.41.1 @lute-lang/player@0.41.1 @lute-lang/runtime@0.41.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.42.0 @lute-lang/player@0.42.0 @lute-lang/runtime@0.42.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.

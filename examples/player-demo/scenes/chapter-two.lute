@@ -9,7 +9,7 @@ after: 'visited("chapter-one")'
 ## The Glass Stair
 
 ::bg{location="lighthouse" time="noon"}
-::music{playback="change" mood="tense" volume="up" assetId="music.tense"}
+::music{playback="change" mood="tense" volume="loud" assetId="music.tense"}
 ::actor{character="mara" anchor="center" action="fadeIn" emotion="worried" costume="raincloak"}
 ::actor{character="elio" anchor="right" action="fadeIn" emotion="surprised" costume="coat"}
 ::camera{focus="mara" framing="close" transition="wipeLeft"}

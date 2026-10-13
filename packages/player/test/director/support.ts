@@ -9,17 +9,17 @@ import { PlayerSession, layer as sessionLayer } from "../../src/session/index.js
 import { ProfileStore, SaveStore, profileLayer, layer as saveLayer } from "../../src/stores/index.js"
 import { make as makeDirector } from "../../src/director/index.js"
 import type { Autosave, LinePacing } from "../../src/director/index.js"
-import * as CueFactory from "../../src/cues/index.js"
+import type { CueFactoryOptions } from "../../src/cues/index.js"
 import * as Scheduler from "../../src/scheduler/index.js"
 import { AssetMissing } from "../../src/ports/index.js"
 import type { AudioChannel, AudioPlay, LineView, Presenter, ScreenModel, StageCue, Volumes, PlayerHost } from "../../src/ports/index.js"
 import type { Bindings } from "../../src/bindings/schema.js"
-import type { Stage } from "../../src/model.js"
+import type { CueFactoryShape, CueFactoryWrapper, Stage } from "../../src/model.js"
 
 export const flush = Effect.forEach(Array.from({ length: 100 }), () => Effect.yieldNow, { discard: true })
 export const record = (value: unknown): Readonly<Record<string, unknown>> => Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(value)
 export const seed = { derive: true }
-export const defaultBindings: Bindings = { bindingsVersion: "0.41", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+export const defaultBindings: Bindings = { bindingsVersion: "0.42", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 export interface Options {
   readonly host?: PlayerHost
   readonly bindings?: Bindings
@@ -32,6 +32,8 @@ export interface Options {
   readonly linePacing?: LinePacing
   readonly autosave?: Autosave
   readonly confirmsLines?: boolean
+  /** A default-factory wrapper, or a pre-composed factory built from the loaded bundle. */
+  readonly cueFactory?: CueFactoryWrapper | { readonly compose: (bundle: CueFactoryOptions["bundle"], bindings: Bindings) => CueFactoryShape }
 }
 export const harness = (options: Options = {}) => Effect.gen(function* () {
   const session = yield* PlayerSession
@@ -80,11 +82,11 @@ export const harness = (options: Options = {}) => Effect.gen(function* () {
     ...(options.confirmsLines === undefined ? {} : { confirmsLines: options.confirmsLines })
   }
   const bindings = options.bindings ?? defaultBindings
-  const director = yield* makeDirector({ session, profile, saves, presenter, bindings,
+  const director = yield* makeDirector({ session, profile, saves, presenter, bindings, bundle: compiled,
     ...(options.host === undefined ? {} : { host: options.host }),
     ...(options.linePacing === undefined ? {} : { linePacing: options.linePacing }),
     ...(options.autosave === undefined ? {} : { autosave: options.autosave }),
-    cueFactory: CueFactory.make({ bundle: compiled, bindings, ...(options.host?.plugin === undefined ? {} : { plugin: options.host.plugin }) }),
+    ...(options.cueFactory === undefined ? {} : { cueFactory: typeof options.cueFactory === "function" ? options.cueFactory : options.cueFactory.compose(compiled, bindings) }),
     scheduler: yield* Scheduler.make(),
     audio: {
       play: (channel, sound) => Effect.gen(function* () { plays.push({ channel, sound }); media.push(`play ${channel} ${sound.file}`); if (channel === "voice") yield* Effect.sleep(options.voiceMs ?? 2000) }),

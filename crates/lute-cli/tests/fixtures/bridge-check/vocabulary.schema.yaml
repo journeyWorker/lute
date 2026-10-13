@@ -19,6 +19,6 @@ enums:
   # `::vfx`, `::actor`). Declared up front so reaching for one is an edit to
   # THIS list rather than an `E-DOMAIN-UNKNOWN`.
   mood: [peaceful, tense, romantic, sad, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]

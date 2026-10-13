@@ -12,7 +12,7 @@ components: [../components/lamps-out.component.lute]
 ## Sleeper car, 2:31
 
 ::bg{location="sleeper_corridor" time="night"}
-::music{playback="start" mood="tense" volume="down"}
+::music{playback="start" mood="tense" volume="quiet"}
 @narrator{code="0010"}: At 2:31 somebody knocks on compartment 3 as though the door owes them money.
 @inspector{code="0010" mono}: I know this knock.
 ::use{component="lampsOut" depth="brief" where="the sleeper car" memory="The tunnel. Again." instance="use-001"}

@@ -1,5 +1,5 @@
 /** Runtime-backed player session with rollback, saves, and backlog. */
-import { Context, Effect, Layer, Schema, SubscriptionRef } from "effect"
+import { Context, Effect, Layer, Schema, Semaphore, SubscriptionRef } from "effect"
 import { Session as RuntimeSession } from "@lute-lang/runtime"
 import type { Contract, Errors } from "@lute-lang/runtime"
 import type { Bindings, Input, InputPoint, LogEntry, Output, SaveRuntime } from "../model.js"
@@ -149,6 +149,7 @@ export const layer = (
     const locale = options.settings?.locale ?? "en"
     const cast = options.cast ?? {}
     const depth = Math.max(0, options.settings?.rollbackDepth ?? 100)
+    const lock = yield* Semaphore.make(1)
     const backlog = yield* SubscriptionRef.make<ReadonlyArray<BacklogEntry>>([])
     // Where the player session starts: `begin` returns here when `newRun`
     // cannot run where the session waits.
@@ -232,12 +233,12 @@ export const layer = (
     })
 
     return {
-      begin,
-      send,
-      current: currentPoint,
-      rollback,
-      snapshot,
-      restore,
+      begin: lock.withPermits(1)(begin),
+      send: (input: Input) => lock.withPermits(1)(send(input)),
+      current: lock.withPermits(1)(currentPoint),
+      rollback: (steps: number) => lock.withPermits(1)(rollback(steps)),
+      snapshot: lock.withPermits(1)(snapshot),
+      restore: (save: SaveRuntime) => lock.withPermits(1)(restore(save)),
       backlog,
       idle: Effect.succeed(idle(options.bindings)),
       fingerprint: runtime.fingerprint

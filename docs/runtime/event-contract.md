@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.41.1 runtime contract.**
+**Status: 0.42.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.41.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.41.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.42.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.42.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -139,7 +139,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.41.1", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.42.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -154,6 +154,24 @@ Consume events in execution order before acting on the await. Events are:
 `Event.record.record` is decoded by the generated `Ir.Command` schema for
 command-shaped records; supporting IR definitions are exported from
 `@lute-lang/runtime` as `Ir`.
+
+Since 0.42 every staging record (`bg`, `music`, `sfx`, `vfx`, `actor`,
+`camera`, `cg`, `video`, `sequence`) carries `attrs`, the command's resolved
+fields: authored values and lowered defaults, absent optional fields omitted,
+always an object, never `kind`, `position`, `timing`, provenance or plugin
+`stampAttrs`. A host reads media fields from `attrs`, not from the artifact.
+
+| kind | `attrs` |
+| --- | --- |
+| `bg` | `location?`, `time?`, `assetId?` |
+| `music` | `playback?`, `stop?`, `mood?`, `volume?`, `assetId?` |
+| `sfx` | `sound?`, `assetId?` |
+| `vfx` | `type`, `label?`, `transition?` |
+| `actor` | `character`, `anchor?`, `action?`, `exit?`, `emotion?`, `costume?`, `posReset?`, `preload?` |
+| `camera` | `focus?`, `framing?`, `move?`, `transition?` |
+| `cg` | `assetId`, `display`, `layout?` |
+| `video` | `assetId`, `display` |
+| `sequence` | `name` |
 
 `record.record` preserves the `lute run --json` execution-record shape plus
 play-only line `delivery` and menu markers that run strips. Grant records
@@ -196,7 +214,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.41.schema.json` and in
+definitions in `lute-events-0.42.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -307,7 +325,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.41.1`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.42.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

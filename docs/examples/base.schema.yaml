@@ -13,7 +13,7 @@ defs:
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]
   mood: [peaceful, tense, romantic, sad, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   framing: [close, tight]

@@ -1,7 +1,7 @@
 {
   "kind": "scene",
-  "lute": "0.41.1",
-  "irVersion": "0.41.1",
+  "lute": "0.42.0",
+  "irVersion": "0.42.0",
   "requiredSemantics": ["lute.core/1"],
   "state": [{"path":"run.day","type":"int","default":1,"owner":"engine"}],
   "commands": [{"kind":"set","family":"state","position":"001-0100","path":"run.day","value":2}],

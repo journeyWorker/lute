@@ -10,7 +10,7 @@ once: false
 ## The workbench
 
 ::bg{location="lantern_shop" time="night"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 ::actor{character="pell" anchor="left" action="fadeInUp"}
 ::set{run.seen.pell = run.day}
 

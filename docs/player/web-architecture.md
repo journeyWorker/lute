@@ -128,3 +128,15 @@ mountPlayer(element, options): Promise<{ act, view, unmount }>              // t
   reveal; choice menu click and countdown; screens render and emit actions;
   audio channel state (with a silent fake AudioContext if needed); screenshot
   of a fixed frame with tolerance.
+
+## Package checks
+
+`@lute-lang/player-web` uses `bun run typecheck` as its package typecheck.
+During 0.42 this is `bun check`; `bun run build` remains the
+declaration-emitting `scripts/build.ts`/`tsc` path.
+
+The 0.42.0 CI job pins Bun 1.4.3 and also runs
+`scripts/compare-typecheck.sh packages/player-web` once to compare normalized
+Bun and `tsc --noEmit` diagnostics. A non-empty equal diagnostic set may
+accompany matching failures, but any failed command with an empty extracted set
+fails. Remove this comparison after 0.42.0.

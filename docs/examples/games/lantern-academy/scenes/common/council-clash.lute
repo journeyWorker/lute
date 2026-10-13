@@ -11,7 +11,7 @@ after: 'visited("common.arrival")'
 ## Council room
 
 ::bg{location="council" time="morning"}
-::music{playback="start" mood="tense" volume="down"}
+::music{playback="start" mood="tense" volume="quiet"}
 ::actor{character="ren" anchor="left" action="fadeInUp"}
 ::actor{character="kai" anchor="right" action="fadeInUp"}
 @ren{code="0010" emotion="stern"}: Item four. The old music room is condemned. Someone has been in it after curfew, every night, for a month.

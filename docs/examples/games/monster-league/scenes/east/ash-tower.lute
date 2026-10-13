@@ -17,7 +17,7 @@ when: "run.lair.towerSiege != 'cleared'"
 ## The top floor
 
 ::bg{location="ash-tower-top" time="night"}
-::music{playback="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="quiet"}
 ::set{run.lair.towerSiege = "found" when="run.lair.towerSiege == 'hidden'"}
 @narrator{code="0010"}: At the top of the tower, under the old bells, two Eclipse grunts stand guard over an old man tied to a chair.
 @elderRook{code="0010" os}: I have told you. The old monsters sleep where they sleep. Your Director may whistle for them.

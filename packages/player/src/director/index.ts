@@ -1,10 +1,11 @@
 /** Effect director: owns the progression actor and all player side effects. */
 import { Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Scope, Stream, SubscriptionRef } from "effect"
 import { createActor } from "xstate"
+import * as Runtime from "@lute-lang/runtime"
 import type { Errors } from "@lute-lang/runtime"
 import { derivePlayerView, playerMachine } from "../machine/playerMachine.js"
 import type {
-  ConfirmAction, CueContext, CueFactoryShape, CueSchedulerShape, DirectorCommand, Input, LineGate,
+  ConfirmAction, CueContext, CueFactoryShape, CueFactoryWrapper, CueSchedulerShape, DirectorCommand, Input, LineGate,
   MachineEvent, Output, Overlay, PlayerView, SaveRuntime, Stage
 } from "../model.js"
 import type { PlayerSessionShape } from "../session/index.js"
@@ -13,7 +14,7 @@ import type { Bindings } from "../bindings/schema.js"
 import type {
   AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, SlotId
 } from "../ports/index.js"
-import { stageFiles, stageMusic, voiceFile } from "../cues/index.js"
+import { make as makeCues, mergePlugin, stageFiles, stageMusic, voiceFile } from "../cues/index.js"
 import { AssetMissing } from "../ports/index.js"
 import type { ProfileStoreShape, SaveStoreShape } from "../stores/index.js"
 import { autosavesAt } from "../stores/autosave.js"
@@ -26,6 +27,7 @@ export type LinePacing = "director" | "presenter"
 
 export interface DirectorOptions {
   readonly bindings: Bindings
+  readonly bundle: Runtime.Bundle.Bundle
   readonly session: PlayerSessionShape
   readonly presenter: Presenter
   readonly audio: AudioPort
@@ -33,7 +35,8 @@ export interface DirectorOptions {
   readonly profile: ProfileStoreShape
   readonly saves: SaveStoreShape
   readonly host?: PlayerHost
-  readonly cueFactory: CueFactoryShape
+  /** A pre-composed factory, or a wrapper around the default factory. */
+  readonly cueFactory?: CueFactoryShape | CueFactoryWrapper
   readonly scheduler: CueSchedulerShape
   /**
    * `"presenter"`: `Presenter.showLine` completes when the reader released the
@@ -68,6 +71,8 @@ export interface DirectorHandle {
    * on), rebuild the stage and re-present the restored await.
    */
   readonly restore: (save: SaveRuntime) => Effect.Effect<void, SaveIncompatible | Errors.RuntimeRejection | Errors.InputLogError | DirectorBusy>
+  /** A coherent runtime snapshot, accepted-input log and backlog. */
+  readonly snapshot: Effect.Effect<SaveRuntime, Errors.RuntimeRejection>
   readonly shutdown: Effect.Effect<void>
 }
 
@@ -91,7 +96,19 @@ const seconds = (value: number): number => Math.max(0, value)
 export class Director extends Context.Service<Director, DirectorHandle>()("Lute.Player.Director") {}
 
 export const make = Effect.fn("Lute.Player.Director.make")(function* (options: DirectorOptions) {
-  const factory = options.cueFactory
+  const defaultFactory = makeCues({
+    bundle: options.bundle,
+    bindings: options.bindings,
+    ...(options.host?.plugin === undefined ? {} : { plugin: options.host.plugin })
+  })
+  const factory = options.cueFactory === undefined
+    ? defaultFactory
+    : typeof options.cueFactory === "function"
+      ? options.cueFactory(defaultFactory)
+      : mergePlugin(options.cueFactory, options.host?.plugin)
+  if (factory === undefined) {
+    return yield* Effect.die(new Error("host.plugin cannot be merged into a cue factory not built by Cues.make; pass a cueFactory wrapper instead"))
+  }
   const scheduler = options.scheduler
   const presenterPaced = options.linePacing === "presenter"
   const settings = yield* SubscriptionRef.get(options.profile.settings)
@@ -536,7 +553,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "settings.apply":
         return Effect.gen(function* () { yield* options.profile.updateSettings(command.settings); currentSettings = yield* SubscriptionRef.get(options.profile.settings); yield* options.presenter.applySettings(currentSettings); yield* options.audio.setVolumes(currentSettings.volumes) })
       case "voice.replay": {
-        const file = voiceFile(options.bindings, command.lineId)
+        const file = voiceFile(options.bindings, command.voiceKey)
         return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0, restart: true })
       }
       case "toTitle":
@@ -560,6 +577,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
             if (selected !== undefined) yield* sendInput(selected.input).pipe(Effect.catchCause(failed("idle input failed")))
           } else if (event.type === "send") {
             yield* sendInput(event.input).pipe(Effect.catchCause((cause) => Effect.logWarning("send refused", cause)))
+          } else if (event.type === "replayVoice") {
+            yield* handleCommand({ type: "voice.replay", lineId: event.lineId, voiceKey: event.voiceKey }).pipe(Effect.catchCause(failed("voice replay failed")))
           } else if (event.type === "advance" && presenterPaced) {
             // The presenter takes the reader's confirm itself.
           } else actor.send(event)
@@ -631,6 +650,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     view,
     send: (input: Input) => ask<SendError>((reply) => ({ _tag: "send", input, reply })),
     restore: (save: SaveRuntime) => ask<RestoreError>((reply) => ({ _tag: "restore", save, reply })),
+    // The session lock linearizes this with send/restore: a call made while a
+    // batch is presenting returns the last committed point without waiting.
+    snapshot: options.session.snapshot,
     shutdown
   } satisfies DirectorHandle
 })

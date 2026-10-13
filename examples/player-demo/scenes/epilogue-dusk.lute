@@ -10,7 +10,7 @@ when: "run.path == 'dusk'"
 ## The Door Below
 
 ::bg{location="harbor" time="night"}
-::music{playback="change" mood="sad" volume="down" assetId="music.tense"}
+::music{playback="change" mood="sad" volume="quiet" assetId="music.tense"}
 ::actor{character="mara" anchor="left" action="fadeIn" emotion="sad" costume="raincloak"}
 ::actor{character="elio" anchor="right" action="fadeIn" emotion="worried" costume="coat"}
 @narrator{code="0010"}: The tide lowers, revealing a door beneath the pier.

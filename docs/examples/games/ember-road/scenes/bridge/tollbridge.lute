@@ -12,7 +12,7 @@ components: [../../components/reaction.component.lute]
 ## The Chain
 
 ::bg{location="tollbridge" time="day"}
-::music{playback="change" mood="tense" volume="up"}
+::music{playback="change" mood="tense" volume="loud"}
 @narrator{code="0010"}: The Tollbridge is older than the Company, older than Ostwick: five stone arches over a gorge, and a chain across the near end as thick as a man's leg. Twenty crossbows on the parapet. One woman on the chain.
 ::actor{character="maelis" anchor="center" action="fadeInUp"}
 @maelis{code="0010"}: Company wagons. Eleven. You're a day early, Warden. I'd almost be flattered.

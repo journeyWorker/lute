@@ -12,7 +12,7 @@ when: "holds('at', ['sol', 'roof']) && run.day <= 3"
 ## The roof
 
 ::bg{location="roof" time="night"}
-::music{playback="start" mood="romantic" volume="down"}
+::music{playback="start" mood="romantic" volume="quiet"}
 @narrator{code="0010"}: The hatch lets out onto flat tar and a guard rail nobody trusts. Sol is lying on his back on an army blanket, a star chart weighted with a torch.
 ::use{component="enter" who="sol" instance="use-001"}
 @sol{code="0010" emotion="happy"}: You came. Lie down. The trick is you have to stop trying to see anything.

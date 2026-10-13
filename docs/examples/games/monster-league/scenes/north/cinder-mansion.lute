@@ -12,7 +12,7 @@ target: place.cinderMansion
 ## The hall
 
 ::bg{location="cinder-mansion" time="night"}
-::music{playback="change" mood="eerie" volume="down"}
+::music{playback="change" mood="eerie" volume="quiet"}
 @narrator{code="0010"}: The mansion burned years ago. The stairs are gone, the portraits are black squares, and the floor creaks as if it is thinking about giving way.
 @narrator{code="0020"}: Two doors are still standing: a library to the left, and to the right a door with a laboratory warning sign half melted off it.
 

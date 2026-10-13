@@ -14,7 +14,7 @@ priority: 10
 ## The hall
 
 ::bg{location="pebbleton-museum" time="day"}
-::music{playback="start" mood="calm" volume="down"}
+::music{playback="start" mood="calm" volume="quiet"}
 @narrator{code="0010"}: The Pebbleton Museum of Old Things. The hall is cool and smells of polish. In the middle, under glass, a fossil the size of a kite: two stone wings, spread.
 ::actor{character="pebbletonCurator" anchor="center" action="enter"}
 @pebbletonCurator{code="0010" emotion="happy"}: A visitor! Welcome, welcome. I'm Ottoline, the curator. That's our wing fossil. Seventy million years old and it still looks cross about something.

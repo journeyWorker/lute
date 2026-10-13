@@ -11,7 +11,7 @@ when: "holds('at', ['sol', 'radio'])"
 ## The radio room
 
 ::bg{location="radio_room" time="morning"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 @narrator{code="0010"}: The radio room smells of warm valves and cold coffee. A man is asleep upright in the operator's chair, headphones around his neck, one hand still on the log.
 ::use{component="enter" who="sol" side="right" instance="use-001"}
 @sol{code="0010" emotion="surprised"}: I'm awake. I was listening with my eyes shut. It's a technique.

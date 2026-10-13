@@ -15,7 +15,7 @@ params:
 win the badge. The outcome is this component's own ::battle result. */
 ::actor{character=@who action="enter"}
 @@who{code="0010"}: {{@intro}}
-::music{playback="change" mood="battle" volume="up"}
+::music{playback="change" mood="battle" volume="loud"}
 ::battle{foe=@who kind="gym" resultKey="fight"}
 <match subject="scene.battle.fight.won">
   <when is="true">

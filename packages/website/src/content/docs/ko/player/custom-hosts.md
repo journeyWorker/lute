@@ -32,7 +32,7 @@ const requirements = Layer.mergeAll(
 )
 ```
 
-`LutePlayerOptions`에는 `bindings`, `presenter`, `audio`, `assets`가 필요하며 `host`, `linePacing`, `autosave`와 시작점 하나를 선택적으로 받습니다. 시작점은 `seed`(기본 `{ derive: true }`), `snapshot`(런타임 스냅숏), `session`(호스트가 만든 런타임 세션 — 플레이어가 구동만 하고 닫지 않음) 중 하나입니다. 바인딩은 디코딩된 값이나 YAML 문자열일 수 있습니다. `LutePlayer.make`를 scope 안에서 실행하기 전에 runtime, bundle, input-log, key-value-store 서비스를 제공합니다. `session`을 넘기면 같은 bundle과 key-value store만 필요합니다.
+`LutePlayerOptions`에는 `bindings`, `presenter`, `audio`, `assets`가 필요하며 `host`, `cueFactory`, `linePacing`, `autosave`와 시작점 하나를 선택적으로 받습니다. 시작점은 `seed`(기본 `{ derive: true }`), `snapshot`(런타임 스냅숏), `session`(호스트가 만든 런타임 세션 — 플레이어가 구동만 하고 닫지 않음) 중 하나입니다. `cueFactory`는 기본 `CueFactoryShape`를 정확히 한 번 감싸며, 출력 이벤트마다 cue 하나라는 순서를 유지하려면 `fromOutput`을 그대로 위임해야 합니다. 바인딩은 디코딩된 값이나 YAML 문자열일 수 있습니다. `LutePlayer.make`를 scope 안에서 실행하기 전에 runtime, bundle, input-log, key-value-store 서비스를 제공합니다. `session`을 넘기면 같은 bundle과 key-value store만 필요합니다.
 
 ## 0.40에서 올리기
 
@@ -49,11 +49,12 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 ## 핸들
 
-`LutePlayer.make`는 `actions`, `view`, `send`, `restore`, `shutdown`, `session`, `program`을 반환합니다.
+`LutePlayer.make`는 `actions`, `view`, `send`, `snapshot`, `restore`, `shutdown`, `session`, `program`을 반환합니다.
 
+- `snapshot`은 `Effect<SaveRuntime, Errors.RuntimeRejection>` 체크포인트입니다. 플레이어 세션의 lock을 잡으므로 `send`와 `restore`에 대해 선형화되며, batch가 연출 중일 때 호출해도 연출을 기다리지 않고 마지막으로 커밋된 런타임 스냅숏, 수락된 input log와 backlog(각 entry의 `voiceKey` 포함)를 반환합니다. presenter overlay, timer, profile state, renderer fiber는 저장하지 않습니다. 결과를 그대로 `restore(save)`에 넘기면 됩니다.
 - `session`은 사용 중인 런타임 세션이고 `program`은 그 `session.program`입니다. bundle을 다시 로드하지 않고 `current`를 읽고 `events`를 구독하며 `view` / `evaluate` / `def` / `gate` / `candidates`를 실행합니다.
 - `send(input)`은 batch가 돌지 않고 이야기가 `idle` 또는 `ended`에서 기다릴 때 런타임에 입력을 넘깁니다(엔딩에서 `newRun`이나 outside-run 계기를 보내면 이어서 진행됩니다). 그 밖에서는 `DirectorBusy { flow, story }`로 실패하고 아무것도 바꾸지 않습니다. 런타임이 거부하면 그 오류로 실패하고 director는 같은 await에 머뭅니다. 입력이 수락되어 batch가 시작되면 완료되므로, send하는 핸들러가 자기 연출을 기다리는 일은 없습니다. `{ type: "send", input }` action도 같은 동작입니다.
-- `restore(save)`는 boot를 제외한 모든 flow 상태에서 호스트 체크포인트(`PlayerSession.snapshot` — 런타임 스냅숏, input log, backlog)로 이어 갑니다. 진행 중인 연출을 버리고, 체크포인트 뒤에 추가된 읽음 표시를 지우고, `auto` 슬롯을 다시 쓰며(autosave가 꺼져 있지 않으면), stage와 음악을 다시 만들고, 복원된 await를 다시 제시합니다(choice는 메뉴, bridge는 핸들러, idle은 idle 흐름, 엔딩은 엔딩 화면).
+- `restore(save)`는 boot를 제외한 모든 flow 상태에서 호스트 체크포인트(핸들의 `snapshot` — 런타임 스냅숏, input log, backlog)로 이어 갑니다. 진행 중인 연출을 버리고, 체크포인트 뒤에 추가된 읽음 표시를 지우고, `auto` 슬롯을 다시 쓰며(autosave가 꺼져 있지 않으면), stage와 음악을 다시 만들고, 복원된 await를 다시 제시합니다(choice는 메뉴, bridge는 핸들러, idle은 idle 흐름, 엔딩은 엔딩 화면).
 
 ## 포트 계약
 
@@ -61,7 +62,7 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 `StageCue.Vfx`는 `EffectSpec`을 담습니다. 카탈로그 효과(`flash`, `shake`, …)이거나, `{ effect: custom }` vfx 바인딩(`name` 또는 바인딩 키)이나 바인딩 없는 vfx 타입이면 `name`이 있는 `effect: "custom"`입니다. `cue.effect.effect === "custom"`으로 분기하고 `cue.effect.name`을 읽습니다. `LineView.speakerName`은 bundle index의 cast 이름(내레이션은 빈 문자열)이며 `emotion`과 `variant`는 line 자체의 값입니다.
 
-`AudioPort`는 `play(channel, sound)`, `stop(channel, fade)`, `setVolumes`를 구현합니다. 채널은 `music`, `sfx`, `voice`입니다. `AudioPlay.file`은 이미 바인딩에서 해석되며 `loop`, `volume`(0–1), `fade`, `restart`가 명시됩니다. music 레코드는 `playback`을 따릅니다. `start`는 처음부터 재생하고(`restart: true`), `stop` / `fadeOut`은 멈추며(`duration`만큼 fade, `fadeOut` 기본 1초), 그 밖의 값은 해당 파일로 바꿉니다. 이미 재생 중인 파일을 `restart` 없이 재생하면 볼륨만 바뀝니다. `AssetLoader.ensure(files)`는 열린 scope 동안 파일을 유지하고 stream으로 progress를 보고합니다. 없는 파일은 `AssetMissing`로 실패합니다.
+`AudioPort`는 `play(channel, sound)`, `stop(channel, fade)`, `setVolumes`를 구현합니다. 채널은 `music`, `sfx`, `voice`입니다. `AudioPlay.file`은 이미 바인딩에서 해석되며 `loop`, `volume`(0–1), `fade`, `restart`가 명시됩니다. music의 `volume`은 레코드의 멤버를 `bindings.volumes`가 대응시킨 gain입니다(멤버 없음: 1, gain이 없는 멤버: 0). music 레코드는 `playback`을 따릅니다. `start`는 처음부터 재생하고(`restart: true`), `stop` / `fadeOut`은 멈추며(`duration`만큼 fade, `fadeOut` 기본 1초), 그 밖의 값은 해당 파일로 바꿉니다. 이미 재생 중인 파일을 `restart` 없이 재생하면 볼륨만 바뀝니다. `AssetLoader.ensure(files)`는 열린 scope 동안 파일을 유지하고 stream으로 progress를 보고합니다. 없는 파일은 `AssetMissing`로 실패합니다.
 
 ## 대사 진행 주체
 
@@ -93,6 +94,15 @@ const host = {
 ## Plugin 레코드
 
 non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호스트에 전달됩니다. 레코드는 대기 cue가 되어, batch 안 레코드 위치에서 `PluginCall { tag, attrs, document, position }`으로 핸들러를 실행하고 완료되면 batch를 이어 가며 skip 모드에서도 실행합니다(게임 동작은 연출이 아님). bridge로 답한 호출의 레코드는 `plugin`에 넘기지 않습니다. cue factory는 출력 이벤트마다 정확히 cue 하나를 순서대로 반환하므로 호스트가 factory를 감쌀 수도 있습니다.
+
+`Director.make`도 같은 `bundle`, `bindings`, cue-factory wrapper, `host`
+옵션으로 기본 factory를 만들 수 있으므로 hand-composed director에 별도
+plugin wiring이 필요하지 않습니다. 미리 `Cues.make({ plugin })`으로 만든
+factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하며,
+양쪽의 고유 tag는 모두 남고 중복 handler는 한 번만 실행됩니다.
+`Cues.make`로 만들지 않은 pre-composed factory에는 `host.plugin`을 합칠 수
+없으므로 `Director.make`는 handler를 버리지 않고 die합니다. 이때는 wrapper를
+넘기세요.
 
 ## Idle 흐름
 

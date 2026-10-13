@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-player-bindings-0.41.schema.json
+// Source: schemas/lute-player-bindings-0.42.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -285,7 +285,8 @@ export const Bindings = Schema.Struct({
   "transitions": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => EffectSpec))),
   "ui": Schema.optionalKey(Schema.suspend(() => Ui)),
   "vfx": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => VfxSpec))),
-  "voice": Schema.optionalKey(Schema.suspend(() => Voice))
+  "voice": Schema.optionalKey(Schema.suspend(() => Voice)),
+  "volumes": Schema.optionalKey(Schema.Record(Schema.String, Schema.Number))
 });
 export type Bindings = typeof Bindings.Type;
 

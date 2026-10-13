@@ -10,7 +10,7 @@ priority: 10
 ## The Landing
 
 ::bg{location="skerry_landing" time="morning"}
-::music{playback="start" mood="tense" volume="down"}
+::music{playback="start" mood="tense" volume="quiet"}
 @narrator{code="0010"}: The boat noses against the iron steps of Skerry Rock. Spray comes over the gunwale in sheets.
 ::actor{character="hollis" anchor="left" action="fadeInUp"}
 @hollis{code="0010"}: This is as close as I go, Inspector. The Board pays me to ferry, not to drown.

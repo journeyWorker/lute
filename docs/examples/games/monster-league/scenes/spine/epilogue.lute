@@ -10,7 +10,7 @@ after: 'visited("spine.hallOfFame")'
 ## Hollowtown
 
 ::bg{location="player-house" time="morning"}
-::music{playback="start" mood="calm" volume="down"}
+::music{playback="start" mood="calm" volume="quiet"}
 ::actor{character="mom" anchor="right" action="enter"}
 @mom{code="0010" emotion="happy"}: The Champion, sleeping in my spare room. The neighbours won't stop knocking.
 @mom{code="0020"}: Kai came by. He said to tell you he's training on Route 1 and you'd better not get lazy.

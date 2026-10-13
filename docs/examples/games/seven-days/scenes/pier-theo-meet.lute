@@ -11,7 +11,7 @@ priority: 20
 ## The pier, early
 
 ::bg{location="pier" time="morning"}
-::music{playback="start" mood="peaceful" volume="down"}
+::music{playback="start" mood="peaceful" volume="quiet"}
 @narrator{code="0010"}: The tide is out. Boats lie on their sides in the mud like tired dogs.
 ::actor{character="theo" anchor="right" action="slideInRight"}
 ::set{run.seen.theo = run.day}

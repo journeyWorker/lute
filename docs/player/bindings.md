@@ -6,7 +6,7 @@ fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
 ```yaml
-bindingsVersion: "0.41"
+bindingsVersion: "0.42"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -29,6 +29,7 @@ vfx:
   lanterns: { effect: custom }
   tideRise: { effect: custom, name: tide-rise, duration: 2 }
 music: { moods: { calm: audio/calm.ogg } }
+volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 sfx: { door: audio/door.ogg }
 sequences: { doorOpens: { video: video/door-opens.mp4 } }
 voice: { pattern: "voice/{voiceKey}.ogg" }
@@ -43,7 +44,7 @@ flow:
 
 ## Sections
 
-- `bindingsVersion` is `"0.41"`; `canvas` contains positive `width` and
+- `bindingsVersion` is `"0.42"`; `canvas` contains positive `width` and
   `height`. `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to an `image`; `times` maps
@@ -60,6 +61,13 @@ flow:
 - `music.moods`, `sfx`, and `vfx` are keyed by values used by compiled
   documents. `sequences` values contain `video`; `voice.pattern` is a
   `{voiceKey}` path template.
+- `volumes` (0.42) maps each member of the project's `volume` domain to a gain,
+  a finite number in `[0, 1]`. The player resolves a music cue's `volume`
+  member only through this table: no `volume` is gain `1`, a member without a
+  gain is gain `0`, and a number is never parsed. `check-project` reports an
+  unknown key (`E-BINDING-KEY`), a member without a key
+  (`W-BINDING-MISSING`) and a gain outside `[0, 1]` or not finite
+  (`E-BINDING-SHAPE`, at the value).
 - `ui` contains `font`, a title `background` and `music`, and arbitrary theme
   colour names.
 - `flow.newGame` raises one `occasion`; `flow.idle` is either a `menu` list of

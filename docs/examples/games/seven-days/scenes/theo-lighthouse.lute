@@ -11,7 +11,7 @@ priority: 50
 ## The lighthouse gallery
 
 ::bg{location="lighthouse_gallery" time="night"}
-::music{playback="start" mood="tender" volume="down"}
+::music{playback="start" mood="tender" volume="quiet"}
 ::actor{character="theo" anchor="left" action="slideInLeft"}
 ::set{run.seen.theo = run.day}
 @theo{code="0010" emotion="surprised"}: You came. You actually — okay. Okay. Look down. Don't look at me, look down.

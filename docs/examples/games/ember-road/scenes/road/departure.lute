@@ -11,7 +11,7 @@ components: [../../components/reaction.component.lute]
 ## The Ostwick Gate
 
 ::bg{location="ostwick_gate" time="dawn"}
-::music{playback="start" mood="upbeat" volume="down"}
+::music{playback="start" mood="upbeat" volume="quiet"}
 @narrator{code="0010"}: Eleven wagons, forty mules, and a strongbox nobody is supposed to know about. East of the gate the Ember Road opens like a wound that never closed.
 ::actor{character="brannoc" anchor="center" action="fadeInUp"}
 @brannoc{code="0010"}: Warden. The Company has paid for three things: the cargo, the road, and you. Get all eleven wagons over the Tollbridge before the fourth night.

@@ -18,7 +18,7 @@ enums:
   # `docs/examples/base.schema.yaml`, because the members are the PROJECT's (or
   # its engine's) to choose — only the slot name is the compiler's.
   mood: [bright, tense, peaceful, romantic, upbeat]
-  volume: [silent, down, normal, up, full]
+  volume: [silent, quiet, normal, loud, full]
   musicPlayback: [start, change, stop, resume, fadeOut]
   vfxType: [whiteOut, blackOut, rain, snow, leaves, petals, raindrop]
   framing: [close]

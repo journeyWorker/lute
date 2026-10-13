@@ -8,6 +8,6 @@ enums:
     members: [fadeInUp, slideInLeft, slideInRight, lean, fadeOut, slideOut]
     exits: [fadeOut, slideOut]
   mood: [peaceful, wistful, festive, lonely, tender]
-  volume: [silent, down, normal, up]
+  volume: [silent, quiet, normal, loud]
   musicPlayback: [start, change, stop, fadeOut]
   vfxType: [lanterns, dawn, rain, fadeBlack]

@@ -1,9 +1,12 @@
 /** Spec 0.41.0 §7.2–§7.4, §7.6, §7.9, §7.10: the director's host-facing operations. */
 import { Deferred, Effect, Exit, Option, SubscriptionRef } from "effect"
 import { describe, expect, it } from "@effect/vitest"
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as Errors from "../../../runtime/src/Errors.js"
 import { compileBundle, hubFixtureRoot, repositoryRoot, sessionRoot } from "../../../runtime/test/support.js"
+import * as Cues from "../../src/cues/index.js"
 import { DirectorBusy } from "../../src/director/index.js"
 import { SaveIncompatible } from "../../src/session/index.js"
 import type { Bindings } from "../../src/bindings/schema.js"
@@ -12,7 +15,7 @@ import { flush, withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
 const canvas = { width: 1920, height: 1080 }
-const noFlow: Bindings = { bindingsVersion: "0.41", canvas }
+const noFlow: Bindings = { bindingsVersion: "0.42", canvas }
 const visit: Input = { type: "raiseOccasion", occasion: "visit" }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))
@@ -194,13 +197,13 @@ describe("DirectorHandle.restore (§7.4)", () => {
 
   it.effect("restarts the stage's music and refuses a save of another project", () => Effect.gen(function* () {
     const bundle = yield* compileBundle(join(sessionRoot, "stage-snapshot", "project"))
-    yield* withHarness(bundle, { bindings: { ...noFlow, assets: { "BGM.parlor": "parlor.ogg" } } }, (h) => Effect.gen(function* () {
+    yield* withHarness(bundle, { bindings: { ...noFlow, assets: { "BGM.parlor": "parlor.ogg" }, volumes: { normal: 0.6 } } }, (h) => Effect.gen(function* () {
       yield* h.action({ type: "newGame" })
       yield* h.director.send(visit); yield* drain(h)
       const save = yield* h.session.snapshot
       yield* h.director.restore(save)
       yield* flush
-      expect(h.plays.at(-1)).toEqual({ channel: "music", sound: { file: "parlor.ogg", loop: true, volume: 1, fade: 0, restart: false } })
+      expect(h.plays.at(-1)).toEqual({ channel: "music", sound: { file: "parlor.ogg", loop: true, volume: 0.6, fade: 0, restart: false } })
       const other = { ...save, snapshot: { ...save.snapshot, project: "other" } }
       expect(failure(yield* Effect.exit(h.director.restore(other)))).toBeInstanceOf(SaveIncompatible)
     }))
@@ -228,6 +231,18 @@ describe("DirectorHandle.restore (§7.4)", () => {
     yield* h.director.restore(save)
     yield* flush
     expect((yield* h.saves.list).some((slot) => slot.slot === "auto")).toBe(false)
+  })))
+})
+
+describe("voice replay (§5.4)", () => {
+  it.effect("uses voiceKey rather than lineId", () => withHarness(hubFixtureRoot, {
+    bindings: { ...noFlow, voice: { pattern: "voice/{voiceKey}.ogg" } }
+  }, (h) => Effect.gen(function* () {
+    yield* h.action({ type: "replayVoice", lineId: "display-line", voiceKey: "original-voice" })
+    expect(h.plays.at(-1)).toEqual({
+      channel: "voice",
+      sound: { file: "voice/original-voice.ogg", loop: false, volume: 1, fade: 0, restart: true }
+    })
   })))
 })
 
@@ -287,4 +302,74 @@ describe("bridges and plugin records (§7.6, §7.10)", () => {
       expect(lineText(h)).toEqual(["Persuasion failed.", "Score received."])
     }))
   }))
+})
+
+describe("cue factory composition (§5.3)", () => {
+  const bridgeHost = { bindings: { ...noFlow, flow: { newGame: { occasion: "chapter" } } } } as const
+  /** conformance/command-plugin as a `chapter` scene: one unanswered `demo` plugin record. */
+  const pluginProject = Effect.suspend(() => {
+    const dir = mkdtempSync(join(tmpdir(), "lute-player-plugin-"))
+    cpSync(join(repositoryRoot, "conformance", "command-plugin"), dir, { recursive: true })
+    for (const file of ["artifact.json", "expected.json", "mock.yaml"]) rmSync(join(dir, file))
+    const source = join(dir, "source.lute")
+    writeFileSync(source, readFileSync(source, "utf8").replace("kind: scene\n", "kind: scene\nid: trial\non: chapter\n"))
+    return compileBundle(dir)
+  })
+  it.effect("host.plugin wins a tag over a pre-composed factory's handler", () => Effect.gen(function* () {
+    const bundle = yield* pluginProject
+    const calls: Array<string> = []
+    yield* withHarness(bundle, {
+      ...bridgeHost,
+      cueFactory: { compose: (compiled, bindings) => Cues.make({ bundle: compiled, bindings, plugin: { demo: () => Effect.sync(() => { calls.push("composed") }) } }) },
+      host: { plugin: { demo: () => Effect.sync(() => { calls.push("host") }) } }
+    }, (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" }); yield* drain(h)
+      expect(calls).toEqual(["host"])
+    }))
+  }))
+
+  it.effect("a wrapper wraps the default factory once, and that factory carries host.plugin", () => Effect.gen(function* () {
+    const bundle = yield* pluginProject
+    const calls: Array<string> = []
+    let wraps = 0
+    let outputs = 0
+    yield* withHarness(bundle, {
+      ...bridgeHost,
+      cueFactory: (base) => {
+        wraps++
+        return { ...base, fromOutput: (output, read) => { outputs++; return base.fromOutput(output, read) } }
+      },
+      host: { plugin: { demo: () => Effect.sync(() => { calls.push("host") }) } }
+    }, (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" }); yield* drain(h)
+      expect(wraps).toBe(1)
+      expect(outputs).toBeGreaterThan(0)
+      expect(calls).toEqual(["host"])
+    }))
+  }))
+
+  it.effect("host.plugin with a factory not built by Cues.make is a defect, not ignored", () => Effect.gen(function* () {
+    const bundle = yield* pluginProject
+    const exit = yield* Effect.exit(withHarness(bundle, {
+      ...bridgeHost,
+      cueFactory: { compose: (compiled, bindings) => {
+        const base = Cues.make({ bundle: compiled, bindings })
+        return { choiceView: base.choiceView, fromOutput: base.fromOutput }
+      } },
+      host: { plugin: { demo: () => Effect.void } }
+    }, () => Effect.void))
+    expect(Exit.hasDies(exit)).toBe(true)
+  }))
+})
+
+describe("DirectorHandle.snapshot (§5.2)", () => {
+  it.effect("while a line is presenting it returns the committed runtime point, log and backlog together", () => withHarness(hubFixtureRoot, { typing: true }, (h) => Effect.gen(function* () {
+    yield* h.action({ type: "newGame" })
+    expect((yield* h.view).story).toBe("typing")
+    const save = yield* h.director.snapshot
+    expect(save).toEqual(yield* h.session.snapshot)
+    expect(save.log.at(-1)).toEqual({ input: { type: "raiseOccasion", occasion: "visit" } })
+    expect(save.backlog.length).toBeGreaterThan(0)
+    expect(save.snapshot.await).toEqual((yield* SubscriptionRef.get(h.runtime.current)).await)
+  })))
 })

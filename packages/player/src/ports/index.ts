@@ -178,7 +178,7 @@ export type PlayerAction =
   | { readonly type: "deleteSlot"; readonly slot: SlotId }
   | { readonly type: "confirm"; readonly yes: boolean }
   | { readonly type: "pickIdle"; readonly index: number }
-  | { readonly type: "replayVoice"; readonly lineId: string }
+  | { readonly type: "replayVoice"; readonly lineId: string; readonly voiceKey: string }
   | { readonly type: "setSettings"; readonly settings: Partial<Settings> }
   /**
    * Send a runtime input at `idle` or `ended`, as `DirectorHandle.send` does;

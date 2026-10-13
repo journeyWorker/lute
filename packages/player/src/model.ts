@@ -182,7 +182,7 @@ export type DirectorCommand =
   | { readonly type: "overlay.hide" }
   | { readonly type: "ui.hidden"; readonly hidden: boolean }
   | { readonly type: "settings.apply"; readonly settings: Partial<Settings> }
-  | { readonly type: "voice.replay"; readonly lineId: string }
+  | { readonly type: "voice.replay"; readonly lineId: string; readonly voiceKey: string }
   | { readonly type: "toTitle" }
 
 // ── Session ──────────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ export interface CueFactoryShape {
   /** Resolve authored choice text for a runtime await. */
   readonly choiceView: (await_: ChoiceAwait, locale?: string) => ChoiceView
 }
-
+export type CueFactoryWrapper = (base: CueFactoryShape) => CueFactoryShape
 export interface CueSchedulerShape {
   readonly play: (
     cues: ReadonlyArray<Cue>,

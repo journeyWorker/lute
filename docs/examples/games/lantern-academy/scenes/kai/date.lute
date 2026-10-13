@@ -11,7 +11,7 @@ after: 'visited("common.festival")'
 ## The old music room
 
 ::bg{location="musicRoom" time="dusk"}
-::music{playback="start" mood="romantic" volume="down"}
+::music{playback="start" mood="romantic" volume="quiet"}
 ::actor{character="kai" anchor="center" action="fadeInUp"}
 @kai{code="0010" emotion="smirk"}: Mind the floor. Left of the piano is a hole. Right of the piano is a bigger hole.
 @kai{code="0020"}: Four bars. I've had four bars for a year. Sit. Play the fifth one.
