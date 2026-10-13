@@ -204,7 +204,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
       # tree-sitter-lute is NOT part of the root bun workspace (root
       # `workspaces` is `packages/*`), so its own lockfile must be installed
@@ -322,7 +322,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
@@ -379,7 +379,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
@@ -391,6 +391,9 @@ jobs:
       - name: Typecheck runtime
         working-directory: packages/runtime
         run: bun run typecheck
+      # Temporary 0.42.0 compatibility check; remove after this release.
+      - name: Compare runtime Bun and TypeScript diagnostics
+        run: bash scripts/compare-typecheck.sh packages/runtime
 
       - name: Check runtime contract
         working-directory: packages/runtime
@@ -444,7 +447,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
@@ -459,6 +462,9 @@ jobs:
       - name: Typecheck player core
         working-directory: packages/player
         run: bun run typecheck
+      # Temporary 0.42.0 compatibility check; remove after this release.
+      - name: Compare player Bun and TypeScript diagnostics
+        run: bash scripts/compare-typecheck.sh packages/player
 
       - name: Test player core
         working-directory: packages/player
@@ -475,6 +481,9 @@ jobs:
       - name: Typecheck web player
         working-directory: packages/player-web
         run: bun run typecheck
+      # Temporary 0.42.0 compatibility check; remove after this release.
+      - name: Compare player-web Bun and TypeScript diagnostics
+        run: bash scripts/compare-typecheck.sh packages/player-web
 
       - name: Test web player
         working-directory: packages/player-web

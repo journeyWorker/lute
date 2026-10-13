@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+package_dir=${@: -1}
+case "$package_dir" in
+  *mismatch)
+    printf '%s/a.ts(1,1): error TS2322: Bun wording\n' "$package_dir"
+    exit 1
+    ;;
+  *failure)
+    exit 7
+    ;;
+  *)
+    printf 'unexpected package in fake bun: %s\n' "$package_dir" >&2
+    exit 8
+    ;;
+esac

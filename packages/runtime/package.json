@@ -31,7 +31,7 @@
     "wasm:build:release": "bun scripts/wasm-build.ts --release",
     "wasm:build:test-panic": "bun scripts/wasm-build.ts --test-panic",
     "build": "bun scripts/build.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check",
     "test": "bunx --bun vitest run",
     "test:browser": "bunx --bun vitest run --config vitest.browser.config.ts",
     "contract:gen": "bun scripts/contract-codegen.ts",
