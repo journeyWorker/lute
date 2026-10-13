@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import vercel from "@astrojs/vercel";
 
 // The SAME TextMate grammar the VS Code extension ships — read, not copied, so
 // the site can never highlight a dialect the editor does not. `editors/vscode`
@@ -40,6 +41,12 @@ function stripDiagnosticMarkers() {
 // https://astro.build/config
 export default defineConfig({
   site: "https://lute-lang.vercel.app",
+  output: "static",
+  adapter: vercel({
+    webAnalytics: {
+      enabled: true,
+    },
+  }),
   integrations: [
     starlight({
       title: "Lute",
