@@ -21,7 +21,18 @@
       "name": "musicPlayback",
       "members": [
         "start",
+        "change",
         "stop"
+      ]
+    },
+    {
+      "name": "volume",
+      "members": [
+        "silent",
+        "quiet",
+        "normal",
+        "loud",
+        "full"
       ]
     }
   ],
@@ -30,12 +41,20 @@
       "kind": "music",
       "family": "staging",
       "position": "001-0100",
-      "playback": "start"
+      "playback": "start",
+      "volume": "quiet"
     },
     {
       "kind": "music",
       "family": "staging",
       "position": "001-0200",
+      "playback": "change",
+      "volume": "loud"
+    },
+    {
+      "kind": "music",
+      "family": "staging",
+      "position": "001-0300",
       "playback": "stop",
       "stop": true
     }

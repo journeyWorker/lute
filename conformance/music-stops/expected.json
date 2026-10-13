@@ -1,12 +1,28 @@
 {
   "commands": [
     {
+      "attrs": {
+        "playback": "start",
+        "volume": "quiet"
+      },
       "kind": "music",
       "position": "001-0100"
     },
     {
+      "attrs": {
+        "playback": "change",
+        "volume": "loud"
+      },
       "kind": "music",
       "position": "001-0200"
+    },
+    {
+      "attrs": {
+        "playback": "stop",
+        "stop": true
+      },
+      "kind": "music",
+      "position": "001-0300"
     }
   ],
   "exit": "complete",

@@ -1,6 +1,9 @@
 {
   "commands": [
     {
+      "attrs": {
+        "focus": "hero"
+      },
       "kind": "camera",
       "position": "001-0100"
     },

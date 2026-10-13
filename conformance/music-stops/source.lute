@@ -9,5 +9,6 @@ uses: ./schema.yaml
 ---
 
 ## Music
-::music{playback="start"}
+::music{playback="start" volume="quiet"}
+::music{playback="change" volume="loud"}
 ::music{playback="stop"}

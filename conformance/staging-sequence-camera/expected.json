@@ -1,54 +1,113 @@
 {
   "commands": [
     {
+      "attrs": {
+        "assetId": "BG.harbor",
+        "location": "harbor",
+        "time": "dusk"
+      },
       "kind": "bg",
       "position": "001-0100"
     },
     {
+      "attrs": {
+        "assetId": "BGM.harbor",
+        "mood": "calm",
+        "playback": "start",
+        "volume": "normal"
+      },
       "kind": "music",
       "position": "001-0200"
     },
     {
+      "attrs": {
+        "assetId": "SFX.gull",
+        "sound": "gull"
+      },
       "kind": "sfx",
       "position": "001-0300"
     },
     {
+      "attrs": {
+        "transition": "flash",
+        "type": "whiteOut"
+      },
       "kind": "vfx",
       "position": "001-0400"
     },
     {
+      "attrs": {
+        "name": "harborArrival"
+      },
       "kind": "sequence",
       "position": "001-0500"
     },
     {
+      "attrs": {
+        "action": "fadeIn",
+        "character": "hero",
+        "costume": "coat",
+        "emotion": "calm"
+      },
       "kind": "actor",
       "position": "001-0600"
     },
     {
+      "attrs": {
+        "anchor": "center",
+        "character": "hero"
+      },
       "kind": "actor",
       "position": "001-0700"
     },
     {
+      "attrs": {
+        "character": "hero",
+        "emotion": "shy"
+      },
       "kind": "actor",
       "position": "001-0800"
     },
     {
+      "attrs": {
+        "focus": "hero",
+        "framing": "close",
+        "move": "pan",
+        "transition": "fade"
+      },
       "kind": "camera",
       "position": "001-0900"
     },
     {
+      "attrs": {
+        "assetId": "CG.harbor",
+        "display": "show"
+      },
       "kind": "cg",
       "position": "001-1000"
     },
     {
+      "attrs": {
+        "assetId": "CG.harbor.inset",
+        "display": "hide",
+        "layout": "inset"
+      },
       "kind": "cg",
       "position": "001-1100"
     },
     {
+      "attrs": {
+        "assetId": "VID.harbor",
+        "display": "show"
+      },
       "kind": "video",
       "position": "001-1200"
     },
     {
+      "attrs": {
+        "character": "hero",
+        "posReset": true
+      },
       "kind": "actor",
       "position": "001-1300"
     },
@@ -59,10 +118,17 @@
       "text": "The ferry is late."
     },
     {
+      "attrs": {
+        "framing": "wide",
+        "move": "shake"
+      },
       "kind": "camera",
       "position": "001-1500"
     },
     {
+      "attrs": {
+        "sound": "horn"
+      },
       "kind": "sfx",
       "position": "001-1600"
     },
@@ -74,14 +140,25 @@
       "timeline": 0
     },
     {
+      "attrs": {
+        "name": "ferryLeaves"
+      },
       "kind": "sequence",
       "position": "001-1800"
     },
     {
+      "attrs": {
+        "action": "fadeOut",
+        "character": "hero",
+        "exit": true
+      },
       "kind": "actor",
       "position": "001-1900"
     },
     {
+      "attrs": {
+        "playback": "stop"
+      },
       "kind": "music",
       "position": "001-2000"
     }

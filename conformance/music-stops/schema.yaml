@@ -1,4 +1,5 @@
 enums:
   musicPlayback:
-    members: [start, stop]
+    members: [start, change, stop]
     stops: [stop]
+  volume: [silent, quiet, normal, loud, full]
