@@ -602,7 +602,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.41.0", "commands": [command]})
+        json!({"irVersion": "0.41.1", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.41.0`, the grammar and semantics the checker
+- **Language** — currently `0.41.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.41.0`) and gated on by consuming engines.
+  artifact (currently `0.41.1`) and gated on by consuming engines.
 
 
 
@@ -56,6 +56,10 @@ generated TypeScript (`packages/runtime/src/generated/**`,
 npm packages align to `0.41.1` with no TypeScript change. Engines and hosts
 gated on the 0.41 line accept 0.41.1 output unchanged.
 
+### Syntax
+
+- None.
+
 ### Semantics
 
 - An attribute typed `{ enumFromOption: <option> }` — authored, or an
@@ -63,6 +67,12 @@ gated on the 0.41 line accept 0.41.1 output unchanged.
   effective value: the active profile's, otherwise the plugin manifest's
   `options[].default`. Before, an option the profile left unset skipped the
   check. An option with neither still skips it. (#67)
+
+### IR
+
+- Stamp only: artifacts and `project.index.json` read `irVersion: "0.41.1"`;
+  no field, shape or meaning changes, and `schemas/lute-ir-0.41.schema.json`
+  is byte-identical.
 
 ### Plugin
 
@@ -99,6 +109,14 @@ gated on the 0.41 line accept 0.41.1 output unchanged.
   it `host: true` if the host reads it (for example, `Program.def`)``; on a
   frontmatter def, which cannot take `host:`, it still ends `use it or drop
   it`. (#75)
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.41.1`; the Event,
+  snapshot and bindings schemas stay `lute-events-0.41`, `lute-snapshot-0.41`
+  and `lute-player-bindings-0.41` (bodies unchanged), `bindingsVersion` stays
+  `"0.41"`, and saves and profiles stay `"0.41"`. Line ids and voice keys do
+  not move.
 
 ### Packages and documentation
 

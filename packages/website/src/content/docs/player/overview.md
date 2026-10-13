@@ -34,8 +34,8 @@ The runtime owns story state, stage, awaits, and outcomes. The player sends inpu
 
 | Package | Responsibility | Public entry point |
 | --- | --- | --- |
-| `@lute-lang/player@0.41.0` | Renderer-free player core, ports, bindings decoder, cues, scheduler, session, stores | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.41.0` | PixiJS/Web Audio presenter, assets, screens, input, browser mounting | `mountPlayer(element, options)` or `LuteWeb.mount` |
-| `@lute-lang/runtime@0.41.0` | Bundle loading, wasm runtime session, event contract, snapshots and queries | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.41.1` | Renderer-free player core, ports, bindings decoder, cues, scheduler, session, stores | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.41.1` | PixiJS/Web Audio presenter, assets, screens, input, browser mounting | `mountPlayer(element, options)` or `LuteWeb.mount` |
+| `@lute-lang/runtime@0.41.1` | Bundle loading, wasm runtime session, event contract, snapshots and queries | `@lute-lang/runtime/browser` |
 
 The core API is intentionally host-neutral. Implement `Presenter`, `AudioPort`, and `AssetLoader` to use a different renderer; use `PlayerHost` for bridge calls, plugin records and idle policy. The player handle also sends runtime inputs at idle or at the ending (`send`), continues from a host checkpoint (`restore`), and exposes the runtime `session` and its `program` for host queries; the player can start from a seed, a snapshot, or a runtime session the host built. See [Custom hosts](/player/custom-hosts/). For the complete staging vocabulary, see [Bindings](/player/bindings/); for the browser path, see [Getting started](/player/getting-started/).

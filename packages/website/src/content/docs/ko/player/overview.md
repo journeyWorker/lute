@@ -34,8 +34,8 @@ player-web: mount ─► PixiApp ─► World/PixiPresenter
 
 | 패키지 | 책임 | 공개 진입점 |
 | --- | --- | --- |
-| `@lute-lang/player@0.41.0` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.41.0` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
-| `@lute-lang/runtime@0.41.0` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.41.1` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.41.1` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
+| `@lute-lang/runtime@0.41.1` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
 
 코어 API는 호스트에 종속되지 않습니다. 다른 렌더러를 사용하려면 `Presenter`, `AudioPort`, `AssetLoader`를 구현하고, 브리지 호출, plugin 레코드, idle 정책에는 `PlayerHost`를 사용합니다. 플레이어 핸들은 idle이나 엔딩에서 런타임 입력을 보내고(`send`), 호스트 체크포인트에서 이어 가며(`restore`), 호스트 질의를 위해 런타임 `session`과 그 `program`을 노출합니다. 플레이어는 seed, 스냅숏, 호스트가 만든 런타임 세션 중 하나에서 시작할 수 있습니다. 자세한 내용은 [커스텀 호스트](/ko/player/custom-hosts/)를 참고하세요. 전체 staging 어휘는 [바인딩](/ko/player/bindings/)에서, 브라우저 경로는 [시작하기](/ko/player/getting-started/)에서 설명합니다.
