@@ -789,10 +789,7 @@ fn run_one_test(
         }
         let Some(built) = build_input(&lute_path, providers, None, None) else {
             return Err(crate::envelope::fail_quietly(
-                crate::envelope::CliError::io(
-                    &lute_path,
-                    format!("cannot read {}", lute_path.display()),
-                ),
+                crate::envelope::CliError::unreadable_document(&lute_path),
             ));
         };
         built.report_project_diags();

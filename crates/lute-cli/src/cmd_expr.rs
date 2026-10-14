@@ -47,7 +47,14 @@ struct Report<'a> {
 pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
     if !project.join("lute.project.yaml").is_file() {
         let message = format!("lute expr: no lute.project.yaml in {} — pass the project directory with --project <DIR>", project.display());
-        return envelope::fail(envelope::CliError::usage(message).with_argument("--project"));
+        // A directory that does not exist cannot be read; an existing one
+        // without a manifest is the wrong `--project`.
+        let error = if project.is_dir() {
+            envelope::CliError::usage(message).with_argument("--project")
+        } else {
+            envelope::CliError::io(project, message)
+        };
+        return envelope::fail(error);
     }
     let cache = InputCache::default();
     let documents = match project_documents(&cache, project) {

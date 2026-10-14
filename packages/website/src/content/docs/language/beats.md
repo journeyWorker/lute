@@ -1033,3 +1033,11 @@ Since 0.41.0 `W-OBJECTIVE-STRANDED` names that evidence level in its own
 message and is always a warning. It skips a quest that re-arms
 (`tier="run"`, `tier="season:<name>"`, or a `rearm=`), which retries the
 objective, and an objective a beat of another document can complete.
+
+## JSON for beat tooling
+
+`lute beats --json` is a report, not an artifact stream. Consume its top-level
+`command`, `schemaVersion: "0.43.0.beats"`, and `ok` fields, then the beat verdicts and
+their `evidence` (`proven`, `heuristic`, or `bounded`). Do not infer eligibility from
+human formatting. The command identity and all report versions are discoverable with
+`LUTE_TELEMETRY=0 target/debug/lute schema beats`.

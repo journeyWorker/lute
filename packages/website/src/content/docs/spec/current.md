@@ -383,3 +383,12 @@ this index does not rewrite those citations.
   validation, reserved stamp-attribute rejection, cross-cutting `stampAttrs`,
   and the declarative `lower: { record, fields }` form made real — remain its
   base as amended. See the [specification index](/spec/) for all four.
+
+## 0.43 CLI contract addendum
+
+The language and artifact shapes remain governed by the version claims above. The 0.43
+agent-facing addition is the CLI contract: JSON reports have a flat `command`,
+`schemaVersion`, and exit-consistent `ok`; JSON-mode failures use `E-CLI-USAGE`,
+`E-CLI-IO`, or `E-CLI-INPUT`; `lute schema` describes the parser's command tree; and
+local telemetry is opt-out with `LUTE_TELEMETRY=0` or `DO_NOT_TRACK=1`. Artifacts,
+`run --json`, and event streams keep their existing non-report protocols.

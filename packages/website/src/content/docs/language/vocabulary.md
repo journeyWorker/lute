@@ -242,3 +242,10 @@ This is a *scoping* limit, not a checking divergence. Every content-line rule no
 routes: `0.9.0` closed five stages of `check()` that used to be root-only, so a component body no
 longer checks clean through a `::use` while the same lines report at scene level. See
 [Components & extends](/language/components-and-extends/).
+
+## JSON tooling note
+
+Vocabulary declarations are reflected in compiled artifacts and capability reports, not in a
+human-readable transcript. For machine consumers, use the report envelope (`command`,
+`schemaVersion`, `ok`) and treat `lute context --json` as the capability surface. The CLI
+command tree and output schema are available from `LUTE_TELEMETRY=0 target/debug/lute schema context`.

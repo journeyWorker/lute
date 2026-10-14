@@ -57,10 +57,7 @@ pub(crate) fn run_trace(
     let discovered = discover_project(file, project);
     let resolved = project.or(discovered.as_deref());
     let Some(built) = build_input(file, providers, resolved, None) else {
-        return envelope::fail_quietly(CliError::io(
-            file,
-            format!("cannot read {}", file.display()),
-        ));
+        return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     built.report_project_diags();
     let BuiltInput {

@@ -4,6 +4,79 @@ description: Every lute subcommand — init, new, check, check-project, compile,
 ---
 
 `lute` is the headless checker and compiler for `.lute` documents. The core `check()` is the contract; the CLI adds argument parsing, file I/O, and output formatting, and owns no validation logic. Two resolution flags recur: `--providers <DIR>` pins a directory of provider snapshots to resolve ids against, and `--project <DIR>` loads a `lute.project.yaml` + `plugins/` to resolve the document's activated capability snapshot. Without it, every single-file command (`check`, `compile`, `compile-stream`, `trace`, `context`, `test`) applies the nearest `lute.project.yaml` above the file and says so on stderr (`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`); with no manifest above the file it resolves core-only (`lute.core`). Before 0.27.0 only `check` and `test` looked for the manifest, so `trace` could refuse with `E-UNDECLARED` a document `check` passed. On the permission-aware authoring commands below, `--permission-profile <NAME>` requires project resolution and applies that trusted profile's [permissions](/tooling/capability-permissions/) as an additional ceiling without activating its plugins or changing the source profile.
+## Machine-readable output (0.43)
+
+Every command has an **id**: its subcommand path as typed — `check`, `check-project`, `scenario reach`, `loc report`. Flags never change it. The same id appears in reports, error envelopes, `lute schema` and telemetry.
+
+**Reports.** A report printed in JSON mode is one JSON object with three header fields beside the report's own: `command` (the id), `schemaVersion` (the payload's shape version) and `ok` — `true` exactly when the process exits **0**. Keys are emitted in sorted order; read them by name.
+
+| Command | JSON flag | `schemaVersion` |
+|---|---|---|
+| `check` | `--json` | `0.43.0.check` |
+| `check-project` | `--json` | `0.43.0.check-project` |
+| `impact` | `--json` | `0.43.0.impact` |
+| `constraints` | `--json` | `0.43.0.constraints` |
+| `lint` | `--json` | `0.43.0.lint` |
+| `compile` | `--json` | `0.43.0.compile` |
+| `expr` | `--json` | `0.43.0.expr` |
+| `context` | `--json` | `0.43.0.surface` |
+| `context` | `--json --target` | `0.36.0.context` |
+| `context` | `--json --at` | `0.36.0.position` |
+| `diff` | `--json` | `0.36.0.diff` |
+| `patch` | `--json` | `0.43.0.patch` |
+| `trace` | `--json` | `0.43.0.trace` |
+| `play` | `--json` | `0.43.0.play` |
+| `test` | `--json` | `0.43.0.test` |
+| `scenario` | `--format json` | `0.43.0.scenario` |
+| `scenario reach` | `--format json` | `0.43.0.scenario-reach` |
+| `scenario envelope` | `--format json` | `0.43.0.scenario-envelope` |
+| `scenario knowledge` | `--format json` | `0.43.0.scenario-knowledge` |
+| `beats` | `--json` | `0.43.0.beats` |
+| `calendar` | `--json` | `0.43.0.calendar` |
+| `refs` | `--json` | `0.43.0.refs` |
+| `lore` | `--json` | `0.43.0.lore` |
+| `loc report` | `--json` | `0.43.0.loc-report` |
+| `doctor` | `--json` | `0.43.0.doctor` |
+| `schema` | always | `0.43.0.schema` |
+
+Three reports that used to be bare arrays are objects now: `constraints` puts its rows under `constraints`; a `trace` refusal and a `compile` refusal put their diagnostics under `diagnostics`. `patch` reports whether the patch was accepted in `accepted` (its `ok` is the exit rule, see [`lute patch`](#lute-patch-0366)).
+
+**Not reports.** Artifacts and engine contracts keep their own shape: the execution IR `compile` writes (and `compile --all`'s output directory), `compile-stream`'s NDJSON, `run --json`, `play --events`, `loc export` rows and `version --json`.
+
+**Errors.** A run is in JSON mode when its arguments before `--` contain `--json` or `--format json`, or the command is `schema`. In JSON mode, a failure because the command line is invalid, a path cannot be read or written, or an input file is not valid prints the error envelope on stdout and still exits **2**; the human message stays on stderr, unchanged:
+
+```json
+{
+  "command": "check",
+  "error": {
+    "code": "E-CLI-IO",
+    "message": "lute: cannot read missing.lute: no such file or directory",
+    "path": "missing.lute"
+  },
+  "ok": false,
+  "schemaVersion": "0.43.0.error"
+}
+```
+
+`error.code` is `E-CLI-USAGE` (invalid command line — `error.argument` names the argument and `error.hint` carries the parser's suggestion when it has one), `E-CLI-IO` (a path cannot be read or written; `error.path`) or `E-CLI-INPUT` (a file was read but is malformed, of the wrong kind or an unsupported version; `error.path` when one file is at fault). `lute --explain E-CLI-USAGE` explains each. `compile-stream` and `play --events` keep their stream protocols and never print the envelope; `patch` keeps its own refusal documents.
+
+## schema
+
+```console
+$ lute schema [COMMAND]...
+```
+
+Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, and `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion`. The data comes from the parser's own definition, so it cannot drift from `--help`. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
+
+## Telemetry
+
+Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
+
+```json
+{"v":1,"ts":1760400000000,"lute":"0.43.0","command":"check","json":true,"exit":0,"durationMs":12}
+```
+
+That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
 
 ## check
 
@@ -319,11 +392,15 @@ $ lute expr "@at(3)"
 <expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
 ```
 
-`--json` prints exactly one object. On success it carries the fields a compiled condition (`celSlot`) carries — `cel`, the `@def`-expanded text; `authored`, the input when expansion changed it (omitted otherwise); `expr` — and `diagnostics`, the `lute check --json` diagnostic objects (warnings only). On an error it is `{"ok": false, "diagnostics": [...]}`:
+`--json` prints exactly one enveloped object with `command: "expr"`,
+`schemaVersion: "0.43.0.expr"`, and `ok`; the compiled-condition fields
+(`cel`, optional `authored`, `expr`, and `diagnostics`) remain at the top
+level. On an error, the report likewise keeps `ok: false` and its
+`diagnostics`:
 
 ```console
 $ lute expr "@at(3, 'night')" --json
-{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+{"command":"expr","schemaVersion":"0.43.0.expr","ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
 ```
 
 ## trace
@@ -1026,12 +1103,17 @@ Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
 `removeNode`, `createFile`, `moveFile`, and revision-guarded `replaceText`.
 Preserve claims include `ids`, positional `lineIds`, `voiceKeys`,
 `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`,
-and `constraints`. A successful JSON report has `schemaVersion`,
-`ok`, `before`, `after`, `diff`, and `writes`. An accepted patch exits 1 when
-it changes semantics (the diff is in the report for review) and 0 when it
-doesn't; `--dry-run` uses the same codes without writing. Refusals exit 2 and use
-`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`,
-`E-PATCH-PRESERVE`; I/O failures also exit 2, with `error.kind: "io"` and no code.
+and `constraints`.
+A patch report uses `schemaVersion: "0.43.0.patch"` and keeps the existing
+`before`, `after`, `diff`, and `writes` fields. Its `accepted` field says
+whether the patch passed patch validation; the envelope's `ok` instead follows
+the process exit rule. Thus an accepted patch with semantic changes has
+`accepted: true`, `ok: false`, and exit **1** so the caller can review the
+diff; an accepted, meaning-preserving patch has both `accepted: true` and
+`ok: true` with exit **0**. `--dry-run` uses the same decisions without
+writing. Refusals exit **2** and retain their patch codes
+(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`,
+`E-PATCH-PRESERVE`); an unreadable patch file uses the JSON error envelope.
 
 `context` returns `schemaVersion`, `projectRevision`, `files`, `target`,
 `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, and

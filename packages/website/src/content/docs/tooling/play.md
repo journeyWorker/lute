@@ -2,6 +2,9 @@
 title: Playing a story
 description: "Occasions and beats (dsl 0.21.0) — how a project says which piece of story answers which engine moment — and `lute play`, the reference player that walks a scripted playthrough through a whole project: raised occasions, the engine's own writes, a save to start from, and assertions `lute test` runs (dsl 0.22.0); occasions that play a whole sequence, side remarks, deadlines, targeted objectives, and beat bundles (dsl 0.23.0); a clock the script advances, answers for plugin bridge calls, and quest structure in the transcript (dsl 0.24.0); a clock advanced to a named slot or weekday, quests the engine accepts, and beats that answer a whole kind (dsl 0.26.0)."
 ---
+## Machine-readable output (0.43)
+
+With `--json`, `lute play` returns one envelope object, not a bare transcript array: `command`, `schemaVersion`, `ok`, and the command payload. A failed invocation returns `ok: false` and an `error` object with a stable code; inspect the exit status before decoding stdout. `--events` remains NDJSON and is a separate stream contract.
 
 A narrative game picks its next piece of story at moments of its own: a visit to town, entering a room, talking to an NPC, a new day, the start of a run. Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl 0.21.0). The engine raises occasions; Lute defines which beats are eligible and which one wins. `lute play` is the reference player for that contract: give it a script of raised occasions and it walks the whole project, printing every candidate beat, its verdict, and the winner, and playing the winner through the same reference runner as `lute run`.
 

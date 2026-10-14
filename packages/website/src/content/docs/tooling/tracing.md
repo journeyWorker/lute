@@ -2,6 +2,9 @@
 title: Tracing guide
 description: "Preview a scene before you ship it — seeding state, facts, choices, events, accepts, the visited set, a save's quest status and entry reads, raised occasions (for a target, too), the previous run and plugin bridge answers via flags or a mock YAML file, credited rewards and objective bodies, quest structure, presenting one bundle beat or a kind beat's member, how the project's rules derive over them, reading the decision transcript (def references as authored, or `--expand`ed; a taken `::jump` followed to its label), and the E-TRACE-* refusals."
 ---
+## Machine-readable output (0.43)
+
+`lute trace --json` returns a single `{ "command", "schemaVersion", "ok", ... }` envelope. A refused trace has `ok: false` and a structured `error`; a nonzero exit status must be handled before parsing stdout. This differs from `--events`, which is NDJSON.
 
 `lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::jump` to its `::label` and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::jump`](#following-a-taken-jump) and [`lute test`](/tooling/cli/#test).
 

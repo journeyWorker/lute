@@ -11,7 +11,6 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-규정되어 있습니다. 기계로 검사할 수 있는 형식은
 [`schemas/lute-ir-0.42.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.42.schema.json)
 (JSON Schema draft 2020-12)입니다.
 

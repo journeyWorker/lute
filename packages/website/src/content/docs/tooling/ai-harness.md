@@ -2,6 +2,9 @@
 title: AI harness guide
 description: Wiring Lute into an AI authoring pipeline — trusted permission-profile ceilings, filtered lute context, the lute check --json feedback loop, exit codes, diagnostics, and the proof-vs-review boundary.
 ---
+## Machine-readable CLI contract (0.43)
+
+Every JSON-capable command now emits one object with `command`, `schemaVersion`, `ok`, and its command-specific payload. Errors use `ok: false` plus an `error` object (`code`, `message`, and optional `path`, `argument`, or `hint`); they are not diagnostic arrays. Branch on the process exit code before parsing stdout, and keep stderr for project-resolution and usage failures. Use `lute schema <command> --json` (or `lute schema --json`) to discover the current command IDs and schema versions. Examples in this guide assume `LUTE_TELEMETRY=0` when output must be reproducible.
 
 Lute can be driven by a model or any other authoring tool, but the tool never becomes an authority. A harness reads exit codes and JSON, never prose, while the host independently selects the project and [capability-permission ceiling](/tooling/capability-permissions/). A working loop is: **trusted context in → generate → check under the same ceiling → promote → tag**. Lute itself makes no AI or remote service call.
 

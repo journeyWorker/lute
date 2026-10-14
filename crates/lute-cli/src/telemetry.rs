@@ -48,7 +48,8 @@ pub(crate) fn status_from(var: impl Fn(&str) -> Option<OsString>) -> Status {
     if value("LUTE_TELEMETRY").is_some_and(|v| matches!(v.as_str(), "0" | "false" | "off" | "no")) {
         return Status::Disabled("LUTE_TELEMETRY");
     }
-    if value("DO_NOT_TRACK").is_some_and(|v| !v.is_empty() && v != "0") {
+    // `DO_NOT_TRACK` is compared exactly: anything but empty or `0` opts out.
+    if var("DO_NOT_TRACK").is_some_and(|v| !v.is_empty() && v != "0") {
         return Status::Disabled("DO_NOT_TRACK");
     }
     match state_dir(&var) {
@@ -171,6 +172,10 @@ mod tests {
         );
         assert_eq!(
             status_from(env(&[("DO_NOT_TRACK", "true"), ("HOME", "/h")])),
+            Status::Disabled("DO_NOT_TRACK")
+        );
+        assert_eq!(
+            status_from(env(&[("DO_NOT_TRACK", " 0 "), ("HOME", "/h")])),
             Status::Disabled("DO_NOT_TRACK")
         );
         for kept in ["0", ""] {

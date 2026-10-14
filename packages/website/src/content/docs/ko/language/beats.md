@@ -954,3 +954,11 @@ kind 대상, `W-ENTRY-WRITE-REREAD`, 더 정교한 `W-BEAT-PRIORITY-TIE`, `cover
 0.41.0부터 `W-OBJECTIVE-STRANDED`는 메시지에 이 근거 수준을 직접 밝히며 항상 경고입니다.
 목표를 다시 시도하는 재무장 퀘스트(`tier="run"`, `tier="season:<name>"`, `rearm=`)와
 다른 문서의 비트가 완료할 수 있는 목표는 보고하지 않습니다.
+
+## 비트 도구의 JSON
+
+`lute beats --json`은 아티팩트 스트림이 아닌 보고서입니다. 최상위
+`command`, `schemaVersion: "0.43.0.beats"`, `ok`를 읽은 뒤 비트 판정과
+`evidence`(`proven`, `heuristic`, `bounded`)를 처리하세요. 사람이 읽는 형식으로 적격성을
+추론하지 마세요. 명령 id와 보고서 버전은
+`LUTE_TELEMETRY=0 target/debug/lute schema beats`로 확인할 수 있습니다.

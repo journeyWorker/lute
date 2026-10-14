@@ -4,6 +4,79 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 ---
 
 `lute`는 `.lute` 문서를 헤드리스로 검사하고 컴파일하는 도구입니다. 핵심 `check()`가 계약이며, CLI는 인자 파싱, 파일 I/O, 출력 형식만 추가하고 검증 로직은 소유하지 않습니다. 반복해서 쓰이는 해석 플래그는 두 가지입니다. `--providers <DIR>`는 id를 해석할 provider 스냅숏 디렉터리를 고정하고, `--project <DIR>`는 문서의 활성화된 capability 스냅숏을 해석할 `lute.project.yaml` + `plugins/`를 불러옵니다. 이를 지정하지 않으면 모든 단일 파일 명령(`check`, `compile`, `compile-stream`, `trace`, `context`, `test`)이 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고 stderr에 그 사실을 알립니다(`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`). 파일 위쪽에 매니페스트가 없으면 core만(`lute.core`) 해석합니다. 0.27.0 이전에는 `check`와 `test`만 매니페스트를 찾았기 때문에, `check`가 통과시킨 문서를 `trace`가 `E-UNDECLARED`로 거부할 수 있었습니다. 아래의 권한 인식 작성 명령에서 `--permission-profile <NAME>`은 프로젝트 해석을 요구하며, 해당 신뢰 프로필의 [권한](/ko/tooling/capability-permissions/)을 그 플러그인을 활성화하거나 원본 프로필을 바꾸지 않고 추가 상한으로 적용합니다.
+## 기계 판독용 출력 (0.43)
+
+모든 명령에는 **id**가 있습니다. 입력한 그대로의 하위 명령 경로입니다(`check`, `check-project`, `scenario reach`, `loc report`). 플래그는 id를 바꾸지 않습니다. 같은 id가 보고서, 오류 envelope, `lute schema`, telemetry에 쓰입니다.
+
+**보고서.** JSON 모드로 출력되는 보고서는 JSON 객체 하나이며, 보고서 자체 필드 옆에 머리 필드 세 개가 있습니다. `command`(id), `schemaVersion`(payload 형태 버전), `ok`(프로세스가 **0**으로 끝날 때만 `true`)입니다. 키는 정렬된 순서로 출력되므로 이름으로 읽으세요.
+
+| 명령 | JSON 플래그 | `schemaVersion` |
+|---|---|---|
+| `check` | `--json` | `0.43.0.check` |
+| `check-project` | `--json` | `0.43.0.check-project` |
+| `impact` | `--json` | `0.43.0.impact` |
+| `constraints` | `--json` | `0.43.0.constraints` |
+| `lint` | `--json` | `0.43.0.lint` |
+| `compile` | `--json` | `0.43.0.compile` |
+| `expr` | `--json` | `0.43.0.expr` |
+| `context` | `--json` | `0.43.0.surface` |
+| `context` | `--json --target` | `0.36.0.context` |
+| `context` | `--json --at` | `0.36.0.position` |
+| `diff` | `--json` | `0.36.0.diff` |
+| `patch` | `--json` | `0.43.0.patch` |
+| `trace` | `--json` | `0.43.0.trace` |
+| `play` | `--json` | `0.43.0.play` |
+| `test` | `--json` | `0.43.0.test` |
+| `scenario` | `--format json` | `0.43.0.scenario` |
+| `scenario reach` | `--format json` | `0.43.0.scenario-reach` |
+| `scenario envelope` | `--format json` | `0.43.0.scenario-envelope` |
+| `scenario knowledge` | `--format json` | `0.43.0.scenario-knowledge` |
+| `beats` | `--json` | `0.43.0.beats` |
+| `calendar` | `--json` | `0.43.0.calendar` |
+| `refs` | `--json` | `0.43.0.refs` |
+| `lore` | `--json` | `0.43.0.lore` |
+| `loc report` | `--json` | `0.43.0.loc-report` |
+| `doctor` | `--json` | `0.43.0.doctor` |
+| `schema` | 항상 | `0.43.0.schema` |
+
+배열이던 보고서 세 개는 이제 객체입니다. `constraints`는 행을 `constraints` 필드에, `trace`와 `compile`의 거부는 진단을 `diagnostics` 필드에 담습니다. `patch`는 패치가 받아들여졌는지를 `accepted`로 알립니다(`ok`는 종료 코드 규칙을 따릅니다. [`lute patch`](#lute-patch-0366) 참고).
+
+**보고서가 아닌 것.** 산출물과 엔진 계약은 자기 형태를 유지합니다. `compile`이 쓰는 실행 IR(그리고 `compile --all`의 출력 디렉터리), `compile-stream`의 NDJSON, `run --json`, `play --events`, `loc export` 행, `version --json`입니다.
+
+**오류.** `--` 앞 인자에 `--json`이나 `--format json`이 있거나 명령이 `schema`이면 JSON 모드입니다. JSON 모드에서 명령줄이 잘못되었거나, 경로를 읽거나 쓸 수 없거나, 입력 파일이 맞지 않아 실패하면 stdout에 오류 envelope를 출력하고 여전히 **2**로 끝납니다. 사람이 읽는 메시지는 stderr에 그대로 남습니다.
+
+```json
+{
+  "command": "check",
+  "error": {
+    "code": "E-CLI-IO",
+    "message": "lute: cannot read missing.lute: no such file or directory",
+    "path": "missing.lute"
+  },
+  "ok": false,
+  "schemaVersion": "0.43.0.error"
+}
+```
+
+`error.code`는 `E-CLI-USAGE`(잘못된 명령줄. `error.argument`가 해당 인자를, `error.hint`가 파서의 제안을 담습니다), `E-CLI-IO`(경로를 읽거나 쓸 수 없음. `error.path`), `E-CLI-INPUT`(읽은 파일이 깨졌거나 종류가 다르거나 지원하지 않는 버전. 한 파일의 문제면 `error.path`) 중 하나입니다. `lute --explain E-CLI-USAGE`로 각각 설명을 볼 수 있습니다. `compile-stream`과 `play --events`는 스트림 프로토콜을 유지하며 envelope를 출력하지 않고, `patch`는 자체 거부 문서를 유지합니다.
+
+## schema
+
+```console
+$ lute schema [COMMAND]...
+```
+
+명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, 그리고 `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion`입니다. 파서 자신의 정의에서 나오므로 `--help`와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
+
+## Telemetry
+
+`lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
+
+```json
+{"v":1,"ts":1760400000000,"lute":"0.43.0","command":"check","json":true,"exit":0,"durationMs":12}
+```
+
+이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
 
 ## check
 
@@ -268,11 +341,14 @@ $ lute expr "@at(3)"
 <expr>:1:1: error [E-REF-ARITY] `@at` expects 2 argument(s) but got 1
 ```
 
-`--json`은 객체 하나만 출력합니다. 성공하면 컴파일된 조건(`celSlot`)이 담는 필드 — `@def`를 펼친 텍스트인 `cel`, 펼침으로 입력이 바뀌었을 때의 입력인 `authored`(바뀌지 않았으면 생략), `expr` — 와 `lute check --json`의 진단 객체인 `diagnostics`(경고만)를 담습니다. 오류가 있으면 `{"ok": false, "diagnostics": [...]}`입니다:
+`--json`은 `command: "expr"`, `schemaVersion: "0.43.0.expr"`, `ok`를
+포함하는 envelope 객체 하나를 출력하며, 컴파일된 조건의 필드(`cel`,
+선택적 `authored`, `expr`, `diagnostics`)는 최상위에 그대로 둡니다. 오류도
+`ok: false`와 `diagnostics`를 유지합니다.
 
 ```console
 $ lute expr "@at(3, 'night')" --json
-{"ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
+{"command":"expr","schemaVersion":"0.43.0.expr","ok":true,"cel":"(run.day == 3 && run.slot == 'night')","authored":"@at(3, 'night')","expr":{"op":"&&","l":{"op":"==","l":{"path":"run.day"},"r":{"int":3}},"r":{"op":"==","l":{"path":"run.slot"},"r":{"string":"night"}}},"diagnostics":[]}
 ```
 
 ## trace
@@ -952,6 +1028,6 @@ id: cli-identity
 
 `diff`는 디렉터리 또는 `git:<revision>` 양쪽을 비교하고 `schemaVersion: "0.36.0.diff"`, `before`, `after`, 정렬된 의미론적 `changes`를 출력합니다. 포맷만 달라진 경우 빈 배열입니다. 비교가 생성되면 종료 0, 입력·materialization·파싱·I/O 오류면 종료 2입니다.
 
-`patch`는 [AI harness guide](/ko/tooling/ai-harness/)에 문서화된 엄격한 요청 형식을 받습니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. 성공한 JSON 보고서는 `schemaVersion`, `ok`, `before`, `after`, `diff`, `writes`를 가집니다. 승인된 patch는 의미를 변경하면 1(검토를 위해 diff가 보고서에 포함됨), 변경하지 않으면 0으로 종료하며 `--dry-run`도 쓰기 없이 같은 코드를 사용합니다. 거부는 2로 종료하고 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE`를 사용합니다. I/O 실패도 2이며 `error.kind: "io"`이고 코드는 없습니다.
+`patch`는 [AI harness guide](/ko/tooling/ai-harness/)에 문서화된 엄격한 요청 형식을 받습니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. patch 보고서는 `schemaVersion: "0.43.0.patch"`와 `before`, `after`, `diff`, `writes`를 유지합니다. `accepted`는 patch 검증 통과 여부를 나타내고, envelope의 `ok`는 종료 코드 규칙을 따릅니다. 따라서 의미가 바뀐 승인 patch는 `accepted: true`, `ok: false`, 종료 **1**(검토용 diff 포함)이고, 의미를 보존한 patch는 `accepted: true`, `ok: true`, 종료 **0**입니다. `--dry-run`도 쓰기 없이 같은 판정을 사용합니다. 거부는 **2**로 종료하며 기존 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE` 코드를 유지합니다. 읽을 수 없는 patch 파일은 JSON error envelope을 사용합니다.
 
 `context`는 `schemaVersion`, `projectRevision`, `files`, `target`, `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, `notIncluded`를 반환합니다. 경계는 조용히 버리지 않고 보고합니다. `--run`에는 스크립트 경로가 필요하며 실행된 증거를 `witnessed`로 표시합니다.

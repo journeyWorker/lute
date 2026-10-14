@@ -904,3 +904,11 @@ undischargeable: no literal inhabits `narrativeTime`, so the slot can carry no `
 guard forms — `has(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a narrative-time operand.
 (`quest.<id>.state` is exempt for a different reason: it is always assigned.) The engine guarantees
 the stamp exists for any activated instance, and a read is only meaningful inside one.
+
+## JSON reports for quests
+
+`lute scenario --format json` returns one report object with `command`,
+`schemaVersion: "0.43.0.scenario"`, and `ok`; `scenario reach --format json` uses
+`0.43.0.scenario-reach`. These are reports, while compiled artifacts and `run --json`
+remain their own contracts. In automation, inspect the envelope before reading anchors,
+edges, or quest state. Use `LUTE_TELEMETRY=0` for reproducible command examples.

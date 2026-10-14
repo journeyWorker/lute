@@ -343,6 +343,15 @@ impl CliError {
         CliError::new(ErrorCode::Io, message).with_path(path)
     }
 
+    /// `E-CLI-IO` for a document [`lute_load::build_input`] could not read:
+    /// the same message the loader already printed to stderr.
+    pub(crate) fn unreadable_document(path: &Path) -> Self {
+        let message = lute_load::read_document(path)
+            .err()
+            .unwrap_or_else(|| format!("lute: cannot read {}", path.display()));
+        CliError::io(path, message)
+    }
+
     /// `E-CLI-INPUT` for `path` with the human `message`.
     pub(crate) fn input(path: &Path, message: impl Into<String>) -> Self {
         CliError::new(ErrorCode::Input, message).with_path(path)

@@ -581,3 +581,11 @@ title: Across the river
 태그와 그 모든 속성은 **하나의 물리적 줄**에 있어야 하므로, 가독성을 위해 긴 `<objective …/>`를 줄바꿈하지 마세요 — 파싱 오류가 됩니다. 형태에 유의하세요: `validAt`는 *시점* 질의이며, 해당 순간에 팩트가 유효했을 때만 참입니다. 따라서 "활성화 이후"는 "지금 참이고 활성화 시점에는 아직 참이 아니었음"이라는 연접입니다 — `validAt(R, …activatedAt)`만 쓰면 반대 질문을 하게 됩니다. `validAt` 바깥에서 narrative-time 값에는 순서 비교 `<`, `<=`, `==`, `>`, `>=`만 허용됩니다. `!=`는 `E-TEMPORAL-ARG`이며, 그 값에 대한 산술도 마찬가지입니다. 구간 의미론은 [팩트와 Datalog](/ko/state/facts-and-datalog/)을 참고하세요.
 
 `activatedAt`는 `E-MAYBE-UNSET`에서도 제외됩니다. 이 값에 maybe-unset 판정을 내리면 해소할 수 없기 때문입니다. `narrativeTime`에는 값을 담는 리터럴이 없으므로 `default:`를 줄 수 없고, 두 가드 형태 — `has(p)`와 `has(p)` — 자체가 narrative-time 피연산자에 대한 `E-TEMPORAL-ARG`입니다. (`quest.<id>.state`는 항상 할당되므로 다른 이유로 제외됩니다.) 엔진은 활성화된 모든 인스턴스에 스탬프가 존재하도록 보장하며, 이 읽기는 하나의 활성화된 인스턴스 안에서만 의미가 있습니다.
+
+## 퀘스트 JSON 보고서
+
+`lute scenario --format json`은 `command`, `schemaVersion: "0.43.0.scenario"`, `ok`를
+포함한 보고서 객체 하나를 반환하며, `scenario reach --format json`의 버전은
+`0.43.0.scenario-reach`입니다. 컴파일 아티팩트와 `run --json`은 별도의 계약이므로 봉투로
+감싸지지 않습니다. 자동화에서는 앵커, 간선, 퀘스트 상태를 읽기 전에 봉투를 먼저 검사하세요.
+재현 가능한 예제에는 `LUTE_TELEMETRY=0`을 사용하세요.

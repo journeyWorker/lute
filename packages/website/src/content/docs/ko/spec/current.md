@@ -381,3 +381,12 @@ index 또는 fact 인수는 글자, 숫자, `_` 또는 `-`로 구성되며 `-`�
   검증, 예약된 stamp-attribute 거부, cross-cutting `stampAttrs`,
   그리고 실제로 구현된 선언적 `lower: { record, fields }` 형식 — 은 개정된 형태로
   그 기반으로 남아 있습니다. 네 가지 모두에 대해서는 [specification index](/ko/spec/)를 참조하십시오.
+
+## 0.43 CLI 계약 부록
+
+언어와 아티팩트 형태는 위의 버전 주장에 정의된 계약을 따릅니다. 0.43 에이전트용 추가 사항은
+CLI 계약입니다. JSON 보고서는 `command`, `schemaVersion`, 종료 코드와 일치하는 `ok`를 갖는
+평면 객체이며, JSON 모드 실패는 `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT`을 사용합니다.
+`lute schema`는 파서의 명령 트리를 설명하고, 로컬 텔레메트리는
+`LUTE_TELEMETRY=0` 또는 `DO_NOT_TRACK=1`로 선택 해제합니다. 아티팩트, `run --json`,
+이벤트 스트림은 기존의 보고서가 아닌 프로토콜을 유지합니다.

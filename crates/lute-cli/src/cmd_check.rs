@@ -578,10 +578,7 @@ pub(crate) fn run_check(
     // for paths the project declares, and advice that would have broken it.
     let project = resolve_project(file, project);
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
-        return envelope::fail_quietly(CliError::io(
-            file,
-            format!("cannot read {}", file.display()),
-        ));
+        return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     // `build_input` no longer prints these itself (`lute doctor` folds them into
     // its checklist instead); every gating command emits them exactly as before.

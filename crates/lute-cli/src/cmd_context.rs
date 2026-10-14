@@ -72,10 +72,7 @@ fn run_authoring_context(
     // FS-F2: the same project `lute check` resolves the file against.
     let project = resolve_project(file, project);
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
-        return envelope::fail_quietly(CliError::io(
-            file,
-            format!("cannot read {}", file.display()),
-        ));
+        return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     built.report_project_diags();
     let BuiltInput {
@@ -375,10 +372,7 @@ fn run_position_context(
         resolve_project(&path, None)
     };
     let Some(built) = build_input(&path, providers, root.as_deref(), permission_profile) else {
-        return envelope::fail_quietly(CliError::io(
-            &path,
-            format!("cannot read {}", path.display()),
-        ));
+        return envelope::fail_quietly(CliError::unreadable_document(&path));
     };
     let (doc, _) = lute_syntax::parse(&source);
     let Some(offset) = line_column_offset(&source, line, column) else {
