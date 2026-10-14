@@ -5,7 +5,7 @@ import { Contract } from "@lute-lang/runtime"
 import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
 import type { SaveRuntime } from "../model.js"
 
-const VERSION: "0.42" = "0.42"
+const VERSION: "0.43" = "0.43"
 
 /** A malformed or unreadable persisted save. */
 export class SaveCorrupt extends Schema.TaggedError<SaveCorrupt>()("SaveCorrupt", {

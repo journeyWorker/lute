@@ -1,12 +1,12 @@
 # @lute-lang/player-web
 
-The Lute 0.42 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
+The Lute 0.43 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
 
 ## Install
 
 ```sh
-bun add @lute-lang/player-web@0.42.1 @lute-lang/player@0.42.1 @lute-lang/runtime@0.42.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
-# npm install @lute-lang/player-web@0.42.1 @lute-lang/player@0.42.1 @lute-lang/runtime@0.42.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.43.0 @lute-lang/player@0.43.0 @lute-lang/runtime@0.43.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+# npm install @lute-lang/player-web@0.43.0 @lute-lang/player@0.43.0 @lute-lang/runtime@0.43.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 The package requires exact `effect@4.0.2` and `@effect/platform-browser@4.0.2` peers. Runtime and player packages are released in lockstep.

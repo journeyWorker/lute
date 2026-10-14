@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/runtime",
-  "version": "0.42.1",
+  "version": "0.43.0",
   "description": "The Lute runtime for TypeScript hosts, in Effect: load a compiled Lute bundle, drive the resumable step function, replay input logs (Bun and browsers).",
   "license": "MIT",
   "type": "module",

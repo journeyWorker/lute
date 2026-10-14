@@ -7,7 +7,7 @@ import { framingPlacement } from "../src/scene/camera.js"
 import { themeFromBindings } from "../src/theme.js"
 
 const bindings: Bindings = {
-  bindingsVersion: "0.42",
+  bindingsVersion: "0.43",
   canvas: { width: 1920, height: 1080 },
   characters: {
     guide: {

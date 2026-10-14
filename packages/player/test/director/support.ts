@@ -19,7 +19,7 @@ import type { CueFactoryShape, CueFactoryWrapper, Stage } from "../../src/model.
 export const flush = Effect.forEach(Array.from({ length: 100 }), () => Effect.yieldNow, { discard: true })
 export const record = (value: unknown): Readonly<Record<string, unknown>> => Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(value)
 export const seed = { derive: true }
-export const defaultBindings: Bindings = { bindingsVersion: "0.42", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+export const defaultBindings: Bindings = { bindingsVersion: "0.43", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 export interface Options {
   readonly host?: PlayerHost
   readonly bindings?: Bindings
