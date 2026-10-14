@@ -202,6 +202,21 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §9.6"],
     },
     Code {
+        code: "E-CLI-INPUT",
+        summary: "An input file was read but is not valid for the command: malformed JSON or YAML, the wrong kind of document, or an unsupported version.",
+        spec: &["dsl 0.43.0 §4.3"],
+    },
+    Code {
+        code: "E-CLI-IO",
+        summary: "A file or directory the command names cannot be read or written.",
+        spec: &["dsl 0.43.0 §4.3"],
+    },
+    Code {
+        code: "E-CLI-USAGE",
+        summary: "The command line is invalid: an unknown command or argument, a missing required argument, or an invalid value or combination.",
+        spec: &["dsl 0.43.0 §4.3"],
+    },
+    Code {
         code: "E-CLIP-OVERLAP",
         summary: "Two clips in the same `<track>` have overlapping `[at, at+duration)` intervals.",
         spec: &["dsl §11.4"],

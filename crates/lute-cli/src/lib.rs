@@ -85,6 +85,7 @@ mod differential;
 mod doctor;
 mod endings;
 mod engine_matrix;
+mod envelope;
 mod explain;
 mod knowledge;
 mod lint;
@@ -117,6 +118,7 @@ use cmd_impact::run_impact;
 use cmd_scenario::run_scenario;
 use cmd_trace::run_trace;
 use cmd_version::run_version;
+use envelope::CliError;
 
 // The shared surface the other modules reach as `crate::…`.
 pub(crate) use cli::ScenarioCommand;
@@ -139,16 +141,30 @@ pub(crate) use project::{
 
 /// The `lute` command line: parse `std::env::args` and run the command.
 pub fn run() -> ExitCode {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let json = envelope::json_mode_in(&args);
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(err) => {
+            envelope::set_invocation(envelope::command_id_in(&args), json);
             if let Some(code) = explain_subcommand_typo() {
                 eprintln!("error: unrecognized subcommand 'explain'; did you mean `lute --explain {code}`?");
-                return ExitCode::from(2);
+                return envelope::fail_quietly(
+                    CliError::usage(format!(
+                        "unrecognized subcommand 'explain'; did you mean `lute --explain {code}`?"
+                    ))
+                    .with_argument("explain")
+                    .with_hint(format!("lute --explain {code}")),
+                );
             }
-            err.exit()
+            if !json || envelope::is_display(&err) {
+                err.exit()
+            }
+            let _ = err.print();
+            return envelope::fail_quietly(envelope::usage_from_clap(&err));
         }
     };
+    envelope::set_invocation(cli.command.as_ref().map(|c| c.id().to_string()), json);
     if let Some(code) = cli.explain {
         return codes::explain(code);
     }
@@ -295,11 +311,13 @@ pub fn run() -> ExitCode {
                 [o] if !o.contains('@') => format!("`--occasion {o}@{t}`"),
                 _ => format!("`--occasion <occasion>@{t}`"),
             };
-            eprintln!(
-                "lute trace: `--target {t}`: trace names a raise's target in the occasion — \
-                 {spelled}"
-            );
-            ExitCode::from(2)
+            envelope::fail(
+                CliError::usage(format!(
+                    "lute trace: `--target {t}`: trace names a raise's target in the occasion — \
+                     {spelled}"
+                ))
+                .with_argument("--target"),
+            )
         }
         Command::Trace {
             file,
@@ -351,16 +369,17 @@ pub fn run() -> ExitCode {
             target,
             start,
         } => match retired_on {
-            Some(on) => {
-                eprintln!(
+            Some(on) => envelope::fail(
+                CliError::usage(format!(
                     "lute new: `--on` is now `--occasion`, as in every other command — \
                      `lute new {} {} --occasion {}`",
                     shell_word(&kind),
                     shell_word(&name),
                     shell_word(&on)
-                );
-                ExitCode::from(2)
-            }
+                ))
+                .with_argument("--on")
+                .with_hint("--occasion"),
+            ),
             None => scaffold::run_new(
                 &kind,
                 &name,
@@ -448,11 +467,13 @@ pub fn run() -> ExitCode {
             command,
         } => {
             if facts && command.is_some() {
-                eprintln!(
-                    "lute scenario: --facts applies to the graph view only; \
-                     `reach`/`envelope`/`knowledge` already show a node's facts"
+                return envelope::fail(
+                    CliError::usage(
+                        "lute scenario: --facts applies to the graph view only; \
+                         `reach`/`envelope`/`knowledge` already show a node's facts",
+                    )
+                    .with_argument("--facts"),
                 );
-                return ExitCode::from(2);
             }
             match format.as_deref() {
                 None | Some("text") => run_scenario(&dir, providers.as_deref(), command, facts),
@@ -504,12 +525,15 @@ fn retired_on_flag(command: &str, on: &[String]) -> ExitCode {
         .iter()
         .map(|o| format!("--occasion {}", shell_word(o)))
         .collect();
-    eprintln!(
-        "lute {command}: there is no `--on`; an occasion is named with `--occasion`, as in \
-         every command — `{}`",
-        flags.join(" ")
-    );
-    ExitCode::from(2)
+    envelope::fail(
+        CliError::usage(format!(
+            "lute {command}: there is no `--on`; an occasion is named with `--occasion`, as in \
+             every command — `{}`",
+            flags.join(" ")
+        ))
+        .with_argument("--on")
+        .with_hint("--occasion"),
+    )
 }
 
 /// `word` as one shell argument: bare when it is plain, else single-quoted.

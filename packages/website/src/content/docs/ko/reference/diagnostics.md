@@ -251,6 +251,24 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 명세: [dsl §9.6](/ko/spec/)
 
+### E-CLI-INPUT
+
+입력 파일을 읽었지만 명령에 맞지 않습니다. JSON이나 YAML 형식이 깨졌거나, 문서 종류가 다르거나, 지원하지 않는 버전입니다.
+
+명세: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
+### E-CLI-IO
+
+명령이 가리키는 파일이나 디렉터리를 읽거나 쓸 수 없습니다.
+
+명세: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
+### E-CLI-USAGE
+
+명령줄이 잘못되었습니다. 알 수 없는 명령이나 인자, 빠진 필수 인자, 잘못된 값이나 조합입니다.
+
+명세: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
 ### E-CLIP-OVERLAP
 
 같은 `<track>` 안의 두 클립이 겹치는 `[at, at+duration)` 구간을 가집니다.

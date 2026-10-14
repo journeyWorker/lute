@@ -252,6 +252,24 @@ A guard or condition reads a reserved choice-log path, which may not be read fro
 
 Spec: [dsl §9.6](/spec/)
 
+### E-CLI-INPUT
+
+An input file was read but is not valid for the command: malformed JSON or YAML, the wrong kind of document, or an unsupported version.
+
+Spec: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
+### E-CLI-IO
+
+A file or directory the command names cannot be read or written.
+
+Spec: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
+### E-CLI-USAGE
+
+The command line is invalid: an unknown command or argument, a missing required argument, or an invalid value or combination.
+
+Spec: [dsl 0.43.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md)
+
 ### E-CLIP-OVERLAP
 
 Two clips in the same `<track>` have overlapping `[at, at+duration)` intervals.
