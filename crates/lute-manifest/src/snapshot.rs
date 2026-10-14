@@ -934,7 +934,7 @@ mod tests {
         let mut snapshot = baseline.clone();
         let first = Permissions {
             layers: vec![
-                serde_yaml::from_str("directives: [bg, music]\nstateWrites: [scene.*]\n").unwrap(),
+                yaml_serde::from_str("directives: [bg, music]\nstateWrites: [scene.*]\n").unwrap(),
             ],
         };
         snapshot.restrict_permissions(&first);
@@ -944,7 +944,7 @@ mod tests {
 
         let after_first = snapshot.version.clone();
         let unrestricted = Permissions {
-            layers: vec![serde_yaml::from_str(
+            layers: vec![yaml_serde::from_str(
                 "directives: ['*']\nstateWrites: ['*']\nrewards: true\n",
             )
             .unwrap()],
@@ -954,7 +954,7 @@ mod tests {
         assert!(!snapshot.permissions.allows_directive("camera"));
 
         let second = Permissions {
-            layers: vec![serde_yaml::from_str("directives: [bg]\n").unwrap()],
+            layers: vec![yaml_serde::from_str("directives: [bg]\n").unwrap()],
         };
         snapshot.restrict_permissions(&second);
         assert!(snapshot.permissions.allows_directive("bg"));

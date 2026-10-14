@@ -230,13 +230,13 @@ fn declared_extends(file: &Path) -> Vec<PathBuf> {
         Some(rest) => rest.split("\n---").next().unwrap_or_default(),
         None => text.as_str(),
     };
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(yaml) else {
+    let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(yaml) else {
         return Vec::new();
     };
     let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
     let entries: Vec<&str> = match value.get("extends") {
-        Some(serde_yaml::Value::String(s)) => vec![s.as_str()],
-        Some(serde_yaml::Value::Sequence(v)) => v.iter().filter_map(|e| e.as_str()).collect(),
+        Some(yaml_serde::Value::String(s)) => vec![s.as_str()],
+        Some(yaml_serde::Value::Sequence(v)) => v.iter().filter_map(|e| e.as_str()).collect(),
         _ => Vec::new(),
     };
     entries

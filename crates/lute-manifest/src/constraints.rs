@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use crate::yaml_text::{yaml_span, YamlStep};
-use serde_yaml::Value;
+use yaml_serde::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConstraintSeverity {
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn parses_typed_declarations_and_retains_field_spans() {
         let text = "constraints:\n  - id: reach\n    kind: reachable\n    node: scene:hub\n";
-        let value: Value = serde_yaml::from_str(text).unwrap();
+        let value: Value = yaml_serde::from_str(text).unwrap();
         let (items, diags) = parse_constraints(value.get("constraints"), text);
         assert!(diags.is_empty(), "{diags:?}");
         assert_eq!(items[0].id, "reach");
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn malformed_declarations_are_field_anchored() {
         let text = "constraints:\n  - id: bad\n    kind: nope\n    node: not-a-ref\n";
-        let value: Value = serde_yaml::from_str(text).unwrap();
+        let value: Value = yaml_serde::from_str(text).unwrap();
         let (_, diags) = parse_constraints(value.get("constraints"), text);
         assert_eq!(diags[0].code, "E-CONSTRAINT-DECL");
         assert!(diags[0].span.as_ref().unwrap().start >= text.find("kind").unwrap());
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn flow_declarations_and_errors_anchor_each_mapping_field() {
         let text = "constraints: [{id: a, kind: reachable, node: scene:first}, {id: b, kind: reachable, node: scene:second}, {id: bad, kind: nope}]\n";
-        let value: Value = serde_yaml::from_str(text).unwrap();
+        let value: Value = yaml_serde::from_str(text).unwrap();
         let (items, diags) = parse_constraints(value.get("constraints"), text);
         assert_eq!(items.len(), 2);
         assert_eq!(&text[items[0].field_spans["node"].clone()], "node");

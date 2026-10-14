@@ -1,16 +1,13 @@
 ---
-title: "AI harness surface — 0.42.1"
+title: "AI harness surface — 0.43.0"
 status: Implemented
 ---
-
 # AI harness surface
 
-This page is the thin adapter contract for 0.42.1. The current language is
-0.42.1; the latest language-surface revision is `docs/proposals/scenario-dsl/0.37.0.md`; the context/patch/diff source-edit
-contract it relies on was specified in `docs/proposals/scenario-dsl/0.35.0.md`
-and `0.36.0.md`, and 0.37.0 leaves it unchanged. This page only gives a harness
-the stable command sequence and JSON boundaries. The CLI is the boundary, not a
-chat app, session manager, MCP server, or Lute-specific agent protocol
+This page is the thin adapter contract for 0.43.0. The current language is
+0.43.0; the CLI's machine-readable reports use a common JSON envelope. The
+CLI is the boundary, not a chat app, session manager, MCP server, or
+Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).
 
 ## Sequence
@@ -25,6 +22,13 @@ chat app, session manager, MCP server, or Lute-specific agent protocol
 5. **Replay:** use the project's existing play/test/trace surface as the
    reference executor; a patch does not claim runtime success merely because
    static checks pass.
+
+Every report JSON object has `command`, `schemaVersion`, and `ok`; `ok` is
+`true` exactly when the process exits 0. A refusal or I/O failure has
+`ok: false`; JSON-mode I/O failures use the `0.43.0.error` envelope and
+retain the command name and structured `error`. `run --json` and
+`play --events` are deliberately unwrapped runtime/artifact streams.
+
 
 ## Revision contract
 
@@ -133,12 +137,12 @@ Inspect `context.json`, then plan a request whose `base.project` and
 $ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
 ```
 
-The successful patch JSON has `schemaVersion: "0.36.0.patch"` (unchanged in
-0.37.0: the patch report contract did not change, so its schema id keeps the
-release that last changed it), `ok: true`,
-`before`, `after`, `diff`, and `writes`. `diff.changes` is the semantic
-review surface; formatting-only edits have no changes. Apply the identical
-request only after review:
+The successful patch JSON has `schemaVersion: "0.43.0.patch"`, `accepted`,
+`ok`, `before`, `after`, `diff`, and `writes`. An accepted patch with semantic
+changes has `accepted: true` but `ok: false` and exits 1; formatting-only
+accepted patches have `ok: true`. `diff.changes` is the semantic review
+surface; formatting-only edits have no changes. Apply the identical request
+only after review:
 
 ```console
 $ lute patch /tmp/drowned-crown planned-patch.json --json

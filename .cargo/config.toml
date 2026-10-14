@@ -1,0 +1,6 @@
+# Processes cargo runs — tests, `cargo run`, benchmarks — must not write to
+# the developer's telemetry file (dsl 0.43.0 §6): every `lute` a test spawns
+# inherits this. Telemetry's own tests opt back in with a temporary state
+# directory.
+[env]
+LUTE_TELEMETRY = "0"

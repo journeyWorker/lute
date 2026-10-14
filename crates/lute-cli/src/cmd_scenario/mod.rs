@@ -15,6 +15,7 @@ use crate::cmd_scenario::graph::run_scenario_graph;
 use crate::cmd_scenario::node_envelope::run_scenario_envelope;
 use crate::cmd_scenario::reach::run_scenario_reach;
 use crate::endings;
+use crate::envelope::{self, CliError};
 use crate::knowledge;
 use crate::output::write_stdout;
 use crate::project::{collect_project_docs, ByRoot};
@@ -110,8 +111,10 @@ fn pick_unique_root<'a>(
 ) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
     match matches.len() {
         0 => {
-            eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
-            Err(ExitCode::from(2))
+            let message = format!("lute: unknown node `{node_id_raw}` under {}", dir.display());
+            Err(envelope::fail(
+                CliError::usage(message).with_argument(node_id_raw),
+            ))
         }
         1 => Ok(matches.pop().expect("len == 1")),
         n => {
@@ -119,15 +122,17 @@ fn pick_unique_root<'a>(
                 .iter()
                 .map(|(r, _)| r.display().to_string())
                 .collect();
-            eprintln!(
+            let message = format!(
                 "lute: node `{node_id_raw}` is declared in {n} different project roots under \
-                 {} -- ambiguous (a scene/quest id is only unique WITHIN one resolved project \
+                 {} -- ambiguous (a scene/quest id is only unique WITHIN one project \
                  root); narrow the directory argument to a single project root: \
                  {}",
                 dir.display(),
                 roots.join(", ")
             );
-            Err(ExitCode::from(2))
+            Err(envelope::fail(
+                CliError::usage(message).with_argument(node_id_raw),
+            ))
         }
     }
 }
@@ -192,8 +197,10 @@ pub(crate) fn resolve_node_ref<'a>(
     .collect();
     match found.len() {
         0 => {
-            eprintln!("lute: unknown node `{node_id_raw}` under {}", dir.display());
-            Err(ExitCode::from(2))
+            let message = format!("lute: unknown node `{node_id_raw}` under {}", dir.display());
+            Err(envelope::fail(
+                CliError::usage(message).with_argument(node_id_raw),
+            ))
         }
         1 => {
             let (node_ref, matches) = found.pop().expect("len == 1");
@@ -217,13 +224,15 @@ pub(crate) fn resolve_node_ref<'a>(
                     NodeRef::Beat(_) => format!("`beat:{node_id_raw}`"),
                 })
                 .collect();
-            eprintln!(
+            let message = format!(
                 "lute: node `{node_id_raw}` matches {} in this project -- ambiguous (none is \
                  silently preferred); disambiguate with an explicit {} prefix",
                 kinds.join(" and "),
                 prefixes.join(" or "),
             );
-            Err(ExitCode::from(2))
+            Err(envelope::fail(
+                CliError::usage(message).with_argument(node_id_raw),
+            ))
         }
     }
 }
@@ -321,7 +330,9 @@ pub(crate) fn run_scenario(
         }
     };
     if write_stdout(&out).is_err() {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::io_without_path(
+            "lute scenario: cannot write stdout",
+        ));
     }
     code
 }

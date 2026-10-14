@@ -80,7 +80,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.42.1";
+pub const LUTE_LANG_VERSION: &str = "0.43.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -103,7 +103,7 @@ pub fn desugar_document(
     // The def names `@name` resolves against in this document: plugin,
     // imported and inline `defs:`. `desugar_document` runs before the
     // checker has a TypedMeta, so this is the one intentional entrance parse.
-    let inline = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml).ok();
+    let inline = yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml).ok();
     let mut host_defs: std::collections::BTreeSet<String> =
         input.snapshot.defs.keys().cloned().collect();
     host_defs.extend(input.imports.defs.keys().cloned());

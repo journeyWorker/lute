@@ -93,7 +93,7 @@ impl ProviderSet {
         let snaps = paths
             .iter()
             .filter_map(|p| std::fs::read_to_string(p).ok())
-            .filter_map(|s| serde_yaml::from_str::<ProviderSnapshot>(&s).ok())
+            .filter_map(|s| yaml_serde::from_str::<ProviderSnapshot>(&s).ok())
             .collect();
         Self { snaps }
     }
@@ -181,7 +181,7 @@ mod tests {
             .into(),
             stale: false,
         };
-        let yaml = serde_yaml::to_string(&snap).unwrap();
+        let yaml = yaml_serde::to_string(&snap).unwrap();
         // camelCase wire form per spec §10.
         assert!(
             yaml.contains("manifestVersion:"),
@@ -207,7 +207,7 @@ mod tests {
             entries: [("character".to_string(), vec!["marina".to_string()])].into(),
             stale: true,
         };
-        std::fs::write(dir.join("core.yaml"), serde_yaml::to_string(&snap).unwrap()).unwrap();
+        std::fs::write(dir.join("core.yaml"), yaml_serde::to_string(&snap).unwrap()).unwrap();
         let set = ProviderSet::load(&dir);
         assert_eq!(set.contains("character", "ghost"), IdStatus::Stale);
         std::fs::remove_dir_all(&dir).unwrap();

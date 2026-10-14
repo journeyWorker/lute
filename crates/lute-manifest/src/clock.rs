@@ -479,7 +479,7 @@ mod tests {
     use super::*;
 
     fn clock() -> ClockDecl {
-        serde_yaml::from_str(
+        yaml_serde::from_str(
             "day: run.day\nslot: run.slot\nslots: [morning, afternoon, night]\n\
              raise: slotStart\nweek: { length: 7, first: 1, labels: [Sun, Mon, Tue, Wed, Thu, Fri, Sat] }\n",
         )
@@ -566,22 +566,22 @@ mod tests {
 
     #[test]
     fn shape_problems_name_each_defect() {
-        let c: ClockDecl = serde_yaml::from_str(
+        let c: ClockDecl = yaml_serde::from_str(
             "day: run.d\nslot: run.s\nslots: [a, a]\nweek: { length: 3, first: 3, labels: [x] }\n",
         )
         .unwrap();
         let p = c.shape_problems();
         assert_eq!(p.len(), 3, "{p:?}");
         assert!(
-            serde_yaml::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err()
+            yaml_serde::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err()
         );
-        let stray: ClockDecl = serde_yaml::from_str("day: a\nslots: [x]\n").unwrap();
+        let stray: ClockDecl = yaml_serde::from_str("day: a\nslots: [x]\n").unwrap();
         assert_eq!(stray.shape_problems().len(), 1, "`slots:` without `slot:`");
     }
 
     #[test]
     fn a_day_granular_clock_counts_whole_days() {
-        let c: ClockDecl = serde_yaml::from_str("day: run.day\nraise: arrive\n").unwrap();
+        let c: ClockDecl = yaml_serde::from_str("day: run.day\nraise: arrive\n").unwrap();
         assert!(c.shape_problems().is_empty());
         let d3 = c.at(3.0, None).unwrap();
         assert_eq!(c.index(d3), 2);
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn raise_is_one_occasion_or_a_map_of_moments() {
-        let c: ClockDecl = serde_yaml::from_str(
+        let c: ClockDecl = yaml_serde::from_str(
             "day: run.day\nslot: run.slot\nslots: [a]\nraise: { slot: slotStart, dayEnd: dayEnd }\n",
         )
         .unwrap();
@@ -610,7 +610,7 @@ mod tests {
             (Some("slotStart"), None, Some("dayEnd"))
         );
         assert!(
-            serde_yaml::from_str::<ClockDecl>("day: d\nraise: { dusk: x }\n").is_err(),
+            yaml_serde::from_str::<ClockDecl>("day: d\nraise: { dusk: x }\n").is_err(),
             "an unknown moment is refused"
         );
     }
@@ -620,7 +620,7 @@ mod tests {
     fn a_finite_clock_knows_its_last_position() {
         let base = "day: run.night\nslot: run.hour\nslots: [h23, h00, h05]\n";
         let parse =
-            |extra: &str| -> ClockDecl { serde_yaml::from_str(&format!("{base}{extra}")).unwrap() };
+            |extra: &str| -> ClockDecl { yaml_serde::from_str(&format!("{base}{extra}")).unwrap() };
         let last = parse("last: { day: 1, slot: h05 }\n");
         assert!(last.shape_problems().is_empty());
         assert_eq!(last.last_at(), Some(ClockAt { day: 1, slot: 2 }));
@@ -644,7 +644,7 @@ mod tests {
             "a clock without `last:` never ends"
         );
         assert!(!parse("").is_past_end(ClockAt { day: 99, slot: 0 }));
-        let day_clock: ClockDecl = serde_yaml::from_str("day: run.day\ndays: 3\n").unwrap();
+        let day_clock: ClockDecl = yaml_serde::from_str("day: run.day\ndays: 3\n").unwrap();
         assert_eq!(day_clock.last_at(), Some(ClockAt { day: 3, slot: 0 }));
         // The IR form is unchanged for a clock that declares neither.
         assert!(!serde_json::to_string(&parse("")).unwrap().contains("last"));
@@ -653,7 +653,7 @@ mod tests {
     #[test]
     fn finite_clock_shape_problems_name_each_defect() {
         let problems = |yaml: &str| {
-            serde_yaml::from_str::<ClockDecl>(yaml)
+            yaml_serde::from_str::<ClockDecl>(yaml)
                 .unwrap()
                 .shape_problems()
         };
@@ -678,7 +678,7 @@ mod tests {
         let p = problems("day: d\nlast: { day: 2, slot: a }\n");
         assert!(p.len() == 1 && p[0].contains("counts whole days"), "{p:?}");
         assert!(
-            serde_yaml::from_str::<ClockDecl>(&format!("{slotted}last: {{ day: 1, hour: a }}\n"))
+            yaml_serde::from_str::<ClockDecl>(&format!("{slotted}last: {{ day: 1, hour: a }}\n"))
                 .is_err(),
             "an unknown `last:` key is refused"
         );

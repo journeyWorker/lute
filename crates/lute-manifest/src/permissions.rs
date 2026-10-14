@@ -294,7 +294,7 @@ mod tests {
     use super::*;
 
     fn parse(yaml: &str) -> PermissionSet {
-        serde_yaml::from_str(yaml).unwrap()
+        yaml_serde::from_str(yaml).unwrap()
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
             "bridges: [dialogue/respond/extra]",
         ] {
             assert!(
-                serde_yaml::from_str::<PermissionSet>(yaml).is_err(),
+                yaml_serde::from_str::<PermissionSet>(yaml).is_err(),
                 "must reject {yaml:?}"
             );
         }

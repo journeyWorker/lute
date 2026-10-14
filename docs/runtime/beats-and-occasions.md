@@ -462,9 +462,11 @@ history, not user state.
   it, for the step's `target`. A step target outside the occasion's target
   domain is a usage error with a did-you-mean, and so is `pick:` on a
   `select: sequence` occasion. A step's `expect: { presented: [ids] }` matches
-  the presented beats exactly and in order. `--json` emits the same
-  transcript: `presented` is the first presentation and `then` lists the rest
-  in order; a candidate or presentation that rides along carries `also: true`.
+  `--json` emits the same transcript inside the 0.43 report envelope:
+  `command: "play"`, `schemaVersion: "0.43.0.play"`, and `ok`, followed by
+  the transcript fields; `presented` is the first presentation and `then`
+  lists the rest in order. A candidate or presentation that rides along
+  carries `also: true`.
   On a `judge: before` occasion the quest transitions its raise made print
   under the step header, before the candidates (`--json`: the step's
   `judgedBefore`, while its `quests` are the ones after the presentations);

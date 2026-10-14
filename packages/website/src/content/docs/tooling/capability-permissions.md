@@ -14,6 +14,9 @@ This is an **Unreleased toolchain feature**, not a published-version claim. The
 [normative plugin-system delta](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.6.md)
 and [runtime/security guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md)
 are the source contracts.
+## Machine-readable permission context (0.43)
+
+`lute context --json` and other JSON-capable commands return the 0.43 envelope (`command`, `schemaVersion`, `ok`, and payload). Permission/profile resolution failures are structured `ok: false` errors with a stable code; they are not an empty successful permissions list. Hosts must branch on exit status before consuming the payload. Set `LUTE_TELEMETRY=0` for deterministic examples.
 
 ## Configure authored and restricted profiles
 

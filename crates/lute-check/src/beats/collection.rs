@@ -23,11 +23,11 @@ pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once e
      `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
      window of a declared season), or `false` (repeatable)";
 
-pub(super) fn parse_advances(v: &serde_yaml::Value) -> Option<AdvanceSpec> {
+pub(super) fn parse_advances(v: &yaml_serde::Value) -> Option<AdvanceSpec> {
     match v {
-        serde_yaml::Value::String(s) if s == "slot" => Some(AdvanceSpec::Slot),
-        serde_yaml::Value::String(s) if s == "day" => Some(AdvanceSpec::Day),
-        serde_yaml::Value::Number(n) => n
+        yaml_serde::Value::String(s) if s == "slot" => Some(AdvanceSpec::Slot),
+        yaml_serde::Value::String(s) if s == "day" => Some(AdvanceSpec::Day),
+        yaml_serde::Value::Number(n) => n
             .as_u64()
             .and_then(|n| u32::try_from(n).ok())
             .filter(|n| *n >= 1)
@@ -37,11 +37,11 @@ pub(super) fn parse_advances(v: &serde_yaml::Value) -> Option<AdvanceSpec> {
 }
 
 pub(crate) fn advances_from_yaml(
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     get_span: impl Fn(&str) -> Span,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<AdvanceSpec> {
-    let v = map.get(serde_yaml::Value::String("advances".to_string()))?;
+    let v = map.get(yaml_serde::Value::String("advances".to_string()))?;
     if let Some(spec) = parse_advances(v) {
         return Some(spec);
     }
@@ -153,11 +153,11 @@ pub fn parse_beat_priority(raw: &str) -> Option<i64> {
 /// on every other kind the beat keys are `E-META-UNKNOWN-KEY`.
 pub(crate) fn lift_scene_beat(
     meta: &Meta,
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     occasions: &BTreeMap<String, OccasionDecl>,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<BeatMeta> {
-    let get = |key: &str| map.get(serde_yaml::Value::String(key.to_string()));
+    let get = |key: &str| map.get(yaml_serde::Value::String(key.to_string()));
     let mut push = |message: String, span: Span| {
         diags.push(beat_diag(
             E_BEAT_ATTR,
@@ -297,7 +297,7 @@ pub(crate) fn lift_scene_beat(
 
     let once = match get("once") {
         None => BeatOnce::Run,
-        Some(serde_yaml::Value::Bool(false)) => BeatOnce::None,
+        Some(yaml_serde::Value::Bool(false)) => BeatOnce::None,
         Some(v) => match v.as_str().and_then(BeatOnce::parse) {
             Some(once) => once,
             None => {
@@ -343,8 +343,8 @@ pub(crate) fn lift_scene_beat(
     });
 
     let also = match get("also") {
-        None | Some(serde_yaml::Value::Bool(false)) => false,
-        Some(serde_yaml::Value::Bool(true)) => true,
+        None | Some(yaml_serde::Value::Bool(false)) => false,
+        Some(yaml_serde::Value::Bool(true)) => true,
         Some(v) => {
             push(
                 format!(

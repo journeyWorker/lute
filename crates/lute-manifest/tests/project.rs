@@ -562,7 +562,7 @@ fn defaults_extra_mapping_loads() {
         .expect("`extra:` default is applied");
     let map = value.as_mapping().expect("stored as a YAML mapping");
     assert_eq!(
-        map.get(serde_yaml::Value::String("arc".into()))
+        map.get(yaml_serde::Value::String("arc".into()))
             .and_then(|v| v.as_str()),
         Some("main")
     );

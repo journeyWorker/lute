@@ -38,7 +38,10 @@ use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Node, Reward};
 use serde_json::{json, Value as Json};
 
-use crate::{ByRoot, DocGroup};
+use crate::{
+    envelope::{self, CliError},
+    ByRoot, DocGroup,
+};
 
 /// The verdict words of one row, and the summary bucket they fall in.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -364,12 +367,14 @@ fn rows(
     }
     if let Some(o) = occasion.filter(|o| !known.contains(*o)) {
         let known: Vec<&str> = known.iter().map(String::as_str).collect();
-        eprintln!(
+        let message = format!(
             "lute scenario reach: `--endings={o}` names no occasion a beat of this project \
              answers (answered: {})",
             known.join(", ")
         );
-        return Err(ExitCode::from(2));
+        return Err(envelope::fail(
+            CliError::usage(message).with_argument("--endings"),
+        ));
     }
     Ok(out)
 }

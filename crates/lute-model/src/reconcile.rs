@@ -1090,11 +1090,11 @@ fn mocked_accepts_under(root: &Path) -> BTreeMap<String, Vec<PathBuf>> {
             let Ok(text) = std::fs::read_to_string(&path) else {
                 continue;
             };
-            let Ok(serde_yaml::Value::Mapping(top)) = serde_yaml::from_str(&text) else {
+            let Ok(yaml_serde::Value::Mapping(top)) = yaml_serde::from_str(&text) else {
                 continue;
             };
             let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            if let Some(serde_yaml::Value::Sequence(items)) = top.get("accepts") {
+            if let Some(yaml_serde::Value::Sequence(items)) = top.get("accepts") {
                 for id in items.iter().filter_map(|item| item.as_str()) {
                     let files = out.entry(id.to_string()).or_insert_with(Vec::new);
                     if !files.iter().any(|file| file == &rel) {
@@ -1140,7 +1140,7 @@ fn plugin_cast_home(plugins_dir: &Path, id: &str) -> Option<(PathBuf, Span)> {
         let Ok(text) = std::fs::read_to_string(package.join("plugin.yaml")) else {
             continue;
         };
-        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        let Ok(manifest) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
             continue;
         };
         let Some(rel) = manifest

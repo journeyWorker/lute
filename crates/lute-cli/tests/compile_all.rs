@@ -143,7 +143,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.42.1");
+    assert_eq!(index["irVersion"], "0.43.0");
     assert!(
         index["capabilitySnapshot"]
             .as_str()

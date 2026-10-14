@@ -33,12 +33,12 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
     if uses.is_empty() {
         if let Some(values) = defaults
             .get("uses")
-            .and_then(serde_yaml::Value::as_sequence)
+            .and_then(yaml_serde::Value::as_sequence)
         {
             uses.extend(
                 values
                     .iter()
-                    .filter_map(serde_yaml::Value::as_str)
+                    .filter_map(yaml_serde::Value::as_str)
                     .map(str::to_owned),
             );
         }

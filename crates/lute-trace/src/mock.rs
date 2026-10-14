@@ -122,20 +122,20 @@ impl ChooseSpans {
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
 /// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
 /// is the reason, unprefixed.
-pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
+pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
     let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
                  each a mapping of bridge result field -> literal";
-    let serde_yaml::Value::Mapping(m) = v else {
+    let yaml_serde::Value::Mapping(m) = v else {
         return Err(shape.to_string());
     };
     let mut out = BTreeMap::new();
     for (tag, answers) in m {
-        let (Some(tag), serde_yaml::Value::Sequence(answers)) = (tag.as_str(), answers) else {
+        let (Some(tag), yaml_serde::Value::Sequence(answers)) = (tag.as_str(), answers) else {
             return Err(shape.to_string());
         };
         let mut list = Vec::with_capacity(answers.len());
         for (i, answer) in answers.iter().enumerate() {
-            let serde_yaml::Value::Mapping(fields) = answer else {
+            let yaml_serde::Value::Mapping(fields) = answer else {
                 return Err(format!(
                     "`bridges.{tag}` answer {} must be a mapping of bridge result field -> \
                      literal, e.g. `{{ passed: true }}`",
@@ -247,7 +247,7 @@ pub const E_TRACE_MOCK_PARSE: &str = "E-TRACE-MOCK-PARSE";
 ///
 /// Anchored at the mock file and naming the offending key in its message,
 /// never at a line and column: `parse_mock_yaml` deserializes into
-/// `serde_yaml::Value`, which retains no position, so a mock entry not
+/// `yaml_serde::Value`, which retains no position, so a mock entry not
 /// re-located in the text ([`yaml_span`], [`MOCK_TEXT`]) carries the
 /// all-zeros [`synthetic_span`] (D-AB).
 pub const E_MOCK_SUBJECT: &str = "E-MOCK-SUBJECT";
@@ -294,11 +294,11 @@ fn mock_diag(code: &str, message: String, at: Option<Span>) -> Diagnostic {
 /// `Number` -> its `Display` text, `String` verbatim. Any other shape (a
 /// nested sequence/mapping, `null`, a tagged value) has no `--state` analog
 /// and yields `None` — the caller reports it as a malformed mock.
-fn scalar_to_text(v: &serde_yaml::Value) -> Option<String> {
+fn scalar_to_text(v: &yaml_serde::Value) -> Option<String> {
     match v {
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::String(s) => Some(s.clone()),
+        yaml_serde::Value::Bool(b) => Some(b.to_string()),
+        yaml_serde::Value::Number(n) => Some(n.to_string()),
+        yaml_serde::Value::String(s) => Some(s.clone()),
         _ => None,
     }
 }
@@ -382,17 +382,17 @@ pub fn parse_mock_surfaces(text: &str) -> Result<MockSet, Diagnostic> {
 #[allow(clippy::result_large_err)]
 fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Diagnostic> {
     let span = synthetic_span();
-    let value: serde_yaml::Value = serde_yaml::from_str(text).map_err(|e| {
+    let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {
         diag(
             E_TRACE_MOCK_PARSE,
             format!("malformed `--mock` YAML: {e}"),
             span,
         )
     })?;
-    if matches!(value, serde_yaml::Value::Null) {
+    if matches!(value, yaml_serde::Value::Null) {
         return Ok(MockSet::default());
     }
-    let serde_yaml::Value::Mapping(top) = value else {
+    let yaml_serde::Value::Mapping(top) = value else {
         return Err(diag(
             E_TRACE_MOCK_PARSE,
             "a `--mock` file must be a YAML mapping with `state:`/`facts:`/`choose:`/`events:` \
@@ -435,7 +435,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     let mut mocks = MockSet::default();
 
     if let Some(v) = top.get("state") {
-        let serde_yaml::Value::Mapping(m) = v else {
+        let yaml_serde::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`state:` must be a mapping of path -> literal".to_string(),
@@ -463,7 +463,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     }
 
     if let Some(v) = top.get("facts") {
-        let serde_yaml::Value::Sequence(items) = v else {
+        let yaml_serde::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`facts:` must be a list of quoted fact patterns".to_string(),
@@ -483,7 +483,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     }
 
     if let Some(v) = top.get("choose") {
-        let serde_yaml::Value::Mapping(m) = v else {
+        let yaml_serde::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`choose:` must be a mapping of branch/hub id -> choice id(s)".to_string(),
@@ -499,8 +499,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 ));
             };
             let ids = match v {
-                serde_yaml::Value::String(s) => vec![s.clone()],
-                serde_yaml::Value::Sequence(items) => {
+                yaml_serde::Value::String(s) => vec![s.clone()],
+                yaml_serde::Value::Sequence(items) => {
                     let mut out = Vec::new();
                     for item in items {
                         let Some(s) = item.as_str() else {
@@ -528,7 +528,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     }
 
     if let Some(v) = top.get("events") {
-        let serde_yaml::Value::Sequence(items) = v else {
+        let yaml_serde::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`events:` must be a list of event names".to_string(),
@@ -549,7 +549,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 
     // `accepts:` — a list of quest ids (§4.4).
     if let Some(v) = top.get("accepts") {
-        let serde_yaml::Value::Sequence(items) = v else {
+        let yaml_serde::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`accepts:` must be a list of quest ids".to_string(),
@@ -572,7 +572,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     // names) — both plain lists of strings.
     for (key, what) in [("visited", "scene ids"), ("occasions", "occasion names")] {
         let Some(v) = top.get(key) else { continue };
-        let serde_yaml::Value::Sequence(items) = v else {
+        let yaml_serde::Value::Sequence(items) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 format!("`{key}:` must be a list of {what}"),
@@ -589,7 +589,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
                 // T3-42: `{ occasion: talk, target: npc.mira }` (or
                 // `{ talk: npc.mira }`) — the raise is one string here.
                 let joined = item.as_mapping().and_then(|m| {
-                    let text = |k: &str| m.get(k).and_then(serde_yaml::Value::as_str);
+                    let text = |k: &str| m.get(k).and_then(yaml_serde::Value::as_str);
                     match (text("occasion"), text("target"), m.iter().next()) {
                         (Some(o), Some(t), _) => Some(format!("{o}@{t}")),
                         (None, None, Some((o, t))) if m.len() == 1 => {
@@ -631,7 +631,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     // same seeding every `state: { quest.<id>.state: … }` mock already
     // gets, never a second channel.
     if let Some(v) = top.get("quests") {
-        let serde_yaml::Value::Mapping(m) = v else {
+        let yaml_serde::Value::Mapping(m) = v else {
             return Err(diag(
                 E_TRACE_MOCK_PARSE,
                 "`quests:` must be a map of quest id -> unset | active | complete | failed \
@@ -667,12 +667,12 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
     if let Some(v) = top.get("entriesRead") {
         let shape = "`entriesRead:` must be a map `{ run: [entry ids], user: [entry ids] }` \
                     ";
-        let serde_yaml::Value::Mapping(m) = v else {
+        let yaml_serde::Value::Mapping(m) = v else {
             return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
         };
         for (tier, ids) in m {
             let tier = tier.as_str().unwrap_or_default();
-            let (serde_yaml::Value::Sequence(ids), "run" | "user") = (ids, tier) else {
+            let (yaml_serde::Value::Sequence(ids), "run" | "user") = (ids, tier) else {
                 return Err(diag(E_TRACE_MOCK_PARSE, shape.to_string(), span));
             };
             for (i, id) in ids.iter().enumerate() {
@@ -737,7 +737,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 #[allow(clippy::result_large_err)]
 pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
     let span = synthetic_span();
-    let value: serde_yaml::Value = serde_yaml::from_str(text).map_err(|e| {
+    let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {
         diag(
             E_TRACE_MOCK_PARSE,
             format!("malformed mock YAML: {e}"),
@@ -749,7 +749,7 @@ pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
     };
     match top.get("file") {
         None => Ok(None),
-        Some(serde_yaml::Value::String(s)) => Ok(Some(s.clone())),
+        Some(yaml_serde::Value::String(s)) => Ok(Some(s.clone())),
         Some(_) => Err(diag(
             E_TRACE_MOCK_PARSE,
             "`file:` must be a path to the document this mock previews, relative to this file \

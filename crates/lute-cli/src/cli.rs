@@ -885,6 +885,65 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Describe commands as JSON: arguments, options and machine-readable outputs.
+    ///
+    /// With no path, lists the top-level commands; with a path (`lute schema
+    /// scenario reach`), describes that command: its positional arguments
+    /// and options (name, whether required or repeatable, value name,
+    /// possible values, default), its subcommands, and each machine-readable
+    /// output (the flag selecting it, `report`/`artifact`/`stream`, and a
+    /// report's `schemaVersion`). Always JSON; reads no files. Exit `0`, or
+    /// `2` for an unknown command path.
+    Schema {
+        /// A command path, e.g. `scenario reach`; omitted to list the
+        /// top-level commands.
+        path: Vec<String>,
+    },
+}
+
+impl Command {
+    /// The command id (dsl 0.43.0 §3.1): the subcommand path as typed.
+    pub(crate) fn id(&self) -> &'static str {
+        match self {
+            Command::Check { .. } => "check",
+            Command::CheckProject { .. } => "check-project",
+            Command::Impact { .. } => "impact",
+            Command::Constraints { .. } => "constraints",
+            Command::Lint { .. } => "lint",
+            Command::Compile { .. } => "compile",
+            Command::CompileStream { .. } => "compile-stream",
+            Command::Expr { .. } => "expr",
+            Command::Tag { .. } => "tag",
+            Command::Fix { .. } => "fix",
+            Command::Context { .. } => "context",
+            Command::Fmt { .. } => "fmt",
+            Command::Diff { .. } => "diff",
+            Command::Patch { .. } => "patch",
+            Command::Trace { .. } => "trace",
+            Command::Catalog(CatalogCommand::Refresh { .. }) => "catalog refresh",
+            Command::Init { .. } => "init",
+            Command::New { .. } => "new",
+            Command::Doctor { .. } => "doctor",
+            Command::Run { .. } => "run",
+            Command::Play { .. } => "play",
+            Command::Test { .. } => "test",
+            Command::Loc(LocCommand::Export { .. }) => "loc export",
+            Command::Loc(LocCommand::Import { .. }) => "loc import",
+            Command::Loc(LocCommand::Report { .. }) => "loc report",
+            Command::Lore { .. } => "lore",
+            Command::Refs { .. } => "refs",
+            Command::Scenario { command, .. } => match command {
+                None => "scenario",
+                Some(ScenarioCommand::Reach { .. }) => "scenario reach",
+                Some(ScenarioCommand::Envelope { .. }) => "scenario envelope",
+                Some(ScenarioCommand::Knowledge { .. }) => "scenario knowledge",
+            },
+            Command::Beats { .. } => "beats",
+            Command::Calendar { .. } => "calendar",
+            Command::Version { .. } => "version",
+            Command::Schema { .. } => "schema",
+        }
+    }
 }
 
 /// See [`Command::Scenario`].

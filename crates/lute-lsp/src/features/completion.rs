@@ -1045,11 +1045,11 @@ fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionI
         && before[open + 1..].trim_start().starts_with(['\'', '"'])
     {
         let mut names = Vec::new();
-        if let Ok(serde_yaml::Value::Mapping(map)) =
-            serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+        if let Ok(yaml_serde::Value::Mapping(map)) =
+            yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
         {
-            if let Some(serde_yaml::Value::Sequence(relations)) =
-                map.get(serde_yaml::Value::String("relations".into()))
+            if let Some(yaml_serde::Value::Sequence(relations)) =
+                map.get(yaml_serde::Value::String("relations".into()))
             {
                 for relation in relations {
                     if let Some(n) = relation.get("name").and_then(|v| v.as_str()) {
@@ -1777,7 +1777,7 @@ mod tests {
         );
         imports.defs.insert(
             "helped".to_string(),
-            serde_yaml::from_str("{ type: bool, cel: \"true\" }").unwrap(),
+            yaml_serde::from_str("{ type: bool, cel: \"true\" }").unwrap(),
         );
         imports
     }

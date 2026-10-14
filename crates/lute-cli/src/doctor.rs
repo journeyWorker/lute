@@ -1042,8 +1042,24 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     checks.push(sibling_language_server_check());
     #[cfg(unix)]
     checks.push(running_language_servers_check());
+    checks.push(telemetry_check());
 
     Some(checks)
+}
+
+/// Where local telemetry goes, or what turned it off (dsl 0.43.0 §6.5).
+/// Informational: it never fails.
+fn telemetry_check() -> Check {
+    use crate::telemetry::{status, Status, OPT_OUT};
+    let detail = match status() {
+        Status::Enabled(file) => format!(
+            "on, local only: {} (set {OPT_OUT} to turn it off)",
+            file.display()
+        ),
+        Status::Disabled(variable) => format!("off ({variable})"),
+        Status::Unavailable => "off (no state directory)".to_string(),
+    };
+    Check::info("telemetry", "Telemetry", detail)
 }
 
 /// Render the checklist as human `✓`/`✗`/`•` lines.
@@ -1067,7 +1083,7 @@ fn print_human(dir: &Path, checks: &[Check]) {
 /// Render the checklist as a stable-keyed JSON object: `{ "dir": …, "checks":
 /// { <key>: { "label", "ok", "detail", "hint" } } }`. `serde_json::Map` sorts
 /// keys lexicographically, so the object is deterministic across runs.
-fn print_json(dir: &Path, checks: &[Check]) {
+fn print_json(dir: &Path, checks: &[Check], exit: u8) -> ExitCode {
     let mut map = serde_json::Map::new();
     for c in checks {
         let mut obj = serde_json::Map::new();
@@ -1077,10 +1093,7 @@ fn print_json(dir: &Path, checks: &[Check]) {
         );
         obj.insert(
             "ok".to_string(),
-            match c.ok {
-                Some(b) => serde_json::Value::Bool(b),
-                None => serde_json::Value::Null,
-            },
+            c.ok.map_or(serde_json::Value::Null, serde_json::Value::Bool),
         );
         obj.insert(
             "detail".to_string(),
@@ -1088,21 +1101,23 @@ fn print_json(dir: &Path, checks: &[Check]) {
         );
         obj.insert(
             "hint".to_string(),
-            match &c.hint {
-                Some(h) => serde_json::Value::from(h.clone()),
-                None => serde_json::Value::Null,
-            },
+            c.hint.as_ref().map_or(serde_json::Value::Null, |h| {
+                serde_json::Value::from(h.clone())
+            }),
         );
         map.insert(c.key.to_string(), serde_json::Value::Object(obj));
     }
-    let root = serde_json::json!({
+    let payload = serde_json::json!({
         "dir": dir.display().to_string(),
         "checks": serde_json::Value::Object(map),
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&root).expect("doctor report serializes")
-    );
+    let wrapped = crate::envelope::report(crate::envelope::version::DOCTOR, exit, payload);
+    let text = serde_json::to_string_pretty(&wrapped).expect("doctor report serializes") + "\n";
+    if crate::write_stdout(&text).is_err() {
+        ExitCode::from(2)
+    } else {
+        ExitCode::from(exit)
+    }
 }
 
 /// Diagnose the toolchain and project setup. See [`crate::Command::Doctor`].
@@ -1112,17 +1127,21 @@ fn print_json(dir: &Path, checks: &[Check]) {
 /// failed.
 pub fn run_doctor(dir: &Path, json: bool, strict: bool) -> ExitCode {
     let Some(checks) = collect_checks(dir) else {
-        eprintln!("lute doctor: cannot read `{}`", dir.display());
-        return ExitCode::from(2);
+        let err = crate::envelope::CliError::io(
+            dir,
+            format!("lute doctor: cannot read `{}`", dir.display()),
+        );
+        return crate::envelope::fail(err);
+    };
+    let exit = if strict && checks.iter().any(|c| c.ok == Some(false)) {
+        1
+    } else {
+        0
     };
     if json {
-        print_json(dir, &checks);
+        print_json(dir, &checks, exit)
     } else {
         print_human(dir, &checks);
-    }
-    if strict && checks.iter().any(|c| c.ok == Some(false)) {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
+        ExitCode::from(exit)
     }
 }

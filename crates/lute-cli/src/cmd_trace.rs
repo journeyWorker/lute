@@ -9,6 +9,7 @@ use lute_runtime::MockSet;
 use lute_trace::{merge, parse_mock_yaml, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
+use crate::envelope::{self, CliError};
 use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
 use crate::project::{discover_project, project_assert_relations_in, project_quest_ids_in};
 use lute_load::{build_input, BuiltInput};
@@ -56,7 +57,7 @@ pub(crate) fn run_trace(
     let discovered = discover_project(file, project);
     let resolved = project.or(discovered.as_deref());
     let Some(built) = build_input(file, providers, resolved, None) else {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     built.report_project_diags();
     let BuiltInput {
@@ -102,12 +103,14 @@ pub(crate) fn run_trace(
                     ids.join(", ")
                 ));
             }
-            eprintln!(
-                "lute trace: {} is a lore document — pass {}",
-                file.display(),
-                ways.join(" or ")
+            return envelope::fail(
+                CliError::usage(format!(
+                    "lute trace: {} is a lore document — pass {}",
+                    file.display(),
+                    ways.join(" or ")
+                ))
+                .with_argument("--entry"),
             );
-            return ExitCode::from(2);
         }
     }
 
@@ -117,8 +120,10 @@ pub(crate) fn run_trace(
                 Ok(t) => t,
                 Err(e) => {
                     let e = lute_manifest::io_reason(&e);
-                    eprintln!("lute: cannot read {}: {e}", path.display());
-                    return ExitCode::from(2);
+                    return envelope::fail(CliError::io(
+                        path,
+                        format!("lute: cannot read {}: {e}", path.display()),
+                    ));
                 }
             };
             // D-AC: the command line supplies the subject and it wins. A
@@ -130,21 +135,25 @@ pub(crate) fn run_trace(
                     let named = std::fs::canonicalize(base.join(&rel)).ok();
                     let target = std::fs::canonicalize(file).ok();
                     if named.is_none() || named != target {
-                        eprintln!(
-                            "lute: {}: [{}] `file: {rel}` names a different document than the one \
-                             traced ({}) — the mock's subject and the command line must \
-                             agree",
-                            path.display(),
-                            lute_trace::E_MOCK_SUBJECT,
-                            file.display()
-                        );
-                        return ExitCode::from(2);
+                        return envelope::fail(CliError::input(
+                            path,
+                            format!(
+                                "lute: {}: [{}] `file: {rel}` names a different document than the one \
+                                 traced ({}) — the mock's subject and the command line must \
+                                 agree",
+                                path.display(),
+                                lute_trace::E_MOCK_SUBJECT,
+                                file.display()
+                            ),
+                        ));
                     }
                 }
                 Ok(None) => {}
                 Err(d) => {
-                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.text());
-                    return ExitCode::from(2);
+                    return envelope::fail(CliError::input(
+                        path,
+                        format!("lute: {}: [{}] {}", path.display(), d.code, d.text()),
+                    ));
                 }
             }
             match parse_mock_yaml(&text) {
@@ -160,8 +169,10 @@ pub(crate) fn run_trace(
                     // position that does not exist, which is the exact defect
                     // §8 opens with. The subject arm above already renders
                     // this way; now the grammar arm does too.
-                    eprintln!("lute: {}: [{}] {}", path.display(), d.code, d.text());
-                    return ExitCode::from(2);
+                    return envelope::fail(CliError::input(
+                        path,
+                        format!("lute: {}: [{}] {}", path.display(), d.code, d.text()),
+                    ));
                 }
             }
         }
@@ -219,11 +230,14 @@ pub(crate) fn run_trace(
         if let Some((component, at)) = component_name_of(file) {
             let diag = component_root_diag(&component, at);
             if json {
-                match serde_json::to_string_pretty(&[&diag]) {
+                let payload = serde_json::json!({ "diagnostics": [&diag] });
+                let wrapped = crate::envelope::report(crate::envelope::version::TRACE, 1, payload);
+                match serde_json::to_string_pretty(&wrapped) {
                     Ok(s) => println!("{s}"),
                     Err(e) => {
-                        eprintln!("lute: failed to serialize diagnostics: {e}");
-                        return ExitCode::from(2);
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute: failed to serialize diagnostics: {e}"
+                        )));
                     }
                 }
             } else {
@@ -275,11 +289,14 @@ pub(crate) fn run_trace(
         TraceExit::Incomplete => print_trace_report(&report, json, expand, ExitCode::from(3)),
         TraceExit::Refused(diags) => {
             if json {
-                match serde_json::to_string_pretty(&diags) {
+                let payload = serde_json::json!({ "diagnostics": diags });
+                let wrapped = crate::envelope::report(crate::envelope::version::TRACE, 1, payload);
+                match serde_json::to_string_pretty(&wrapped) {
                     Ok(s) => println!("{s}"),
                     Err(e) => {
-                        eprintln!("lute: failed to serialize diagnostics: {e}");
-                        return ExitCode::from(2);
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute: failed to serialize diagnostics: {e}"
+                        )));
                     }
                 }
             } else {
@@ -289,8 +306,10 @@ pub(crate) fn run_trace(
                     && diags
                         .iter()
                         .all(|d| d.code == lute_check::fact_check::E_FACT_EXCLUSIVE);
-                if exclusive && write_stdout(&report.render_human()).is_err() {
-                    return ExitCode::from(2);
+                if let Err(e) = write_stdout(&report.render_human()) {
+                    return envelope::fail_quietly(CliError::io_without_path(format!(
+                        "lute: cannot write stdout: {e}"
+                    )));
                 }
                 // A `bridges:` answer's diagnostic is anchored in the mock's
                 // own text (dsl 0.24.0 §5), so it renders against the mock.
@@ -351,14 +370,23 @@ pub(crate) fn run_trace(
 /// to return when the write succeeds.
 fn print_trace_report(report: &TraceReport, json: bool, expand: bool, code: ExitCode) -> ExitCode {
     let text = if json {
-        format!("{}\n", report.render_json())
+        let payload: serde_json::Value =
+            serde_json::from_str(&report.render_json()).unwrap_or_else(|_| serde_json::json!({}));
+        let exit = if code == ExitCode::SUCCESS { 0 } else { 3 };
+        let wrapped = crate::envelope::report(crate::envelope::version::TRACE, exit, payload);
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&wrapped).unwrap_or_default()
+        )
     } else if expand {
         report.render_human_expanded()
     } else {
         report.render_human()
     };
-    if write_stdout(&text).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = write_stdout(&text) {
+        return envelope::fail_quietly(CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
     }
     code
 }

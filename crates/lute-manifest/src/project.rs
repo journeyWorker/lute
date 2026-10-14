@@ -229,11 +229,11 @@ struct RawProject {
     #[serde(default)]
     identity: Option<RawIdentity>,
     #[serde(default)]
-    defaults: Option<serde_yaml::Mapping>,
+    defaults: Option<yaml_serde::Mapping>,
     #[serde(default)]
-    chapters: Option<serde_yaml::Value>,
+    chapters: Option<yaml_serde::Value>,
     #[serde(default)]
-    constraints: Option<serde_yaml::Value>,
+    constraints: Option<yaml_serde::Value>,
     #[serde(default)]
     permissions: PermissionSet,
 }
@@ -245,7 +245,7 @@ struct RawProfile {
     /// Each entry activates a plugin: `true` (presence-only) or a mapping of
     /// option values. Kept as raw YAML so `true` and a map coexist under one key.
     #[serde(default)]
-    plugins: BTreeMap<String, serde_yaml::Value>,
+    plugins: BTreeMap<String, yaml_serde::Value>,
     #[serde(default)]
     permissions: PermissionSet,
 }
@@ -253,7 +253,7 @@ struct RawProfile {
 /// Normalize a single `profiles[..].plugins` entry value into an option map:
 /// `true` (or any non-mapping scalar) → empty map (plugin §11: presence
 /// activates); a mapping → `Literal::from_yaml` per value.
-fn plugin_options(value: &serde_yaml::Value) -> BTreeMap<String, Literal> {
+fn plugin_options(value: &yaml_serde::Value) -> BTreeMap<String, Literal> {
     match Literal::from_yaml(value) {
         Some(Literal::Map(m)) => m,
         _ => BTreeMap::new(),
@@ -329,7 +329,7 @@ pub const E_DEFAULTS_KEY: &str = "E-DEFAULTS-KEY";
 /// keeps the authored string (D-Z).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MetaDefaults {
-    entries: std::collections::BTreeMap<String, serde_yaml::Value>,
+    entries: std::collections::BTreeMap<String, yaml_serde::Value>,
     /// dsl 0.28.0 §4: the manifest's `chapters:` — carried with the
     /// defaults because it is frontmatter the listed scenes did not have to
     /// write (`on:` / `after:` / `priority:`), applied by the same parse-time
@@ -348,7 +348,7 @@ impl MetaDefaults {
     /// The default for `key`, or `None` when the manifest supplies none.
     /// A key present with an empty or null value IS present and returns
     /// `Some` — §6.2's "present-but-empty counts as present".
-    pub fn get(&self, key: &str) -> Option<&serde_yaml::Value> {
+    pub fn get(&self, key: &str) -> Option<&yaml_serde::Value> {
         self.entries.get(key)
     }
     /// Every supplied key, sorted.
@@ -409,12 +409,12 @@ impl Chain {
         &self,
         id: &str,
         chained: bool,
-    ) -> Option<Vec<(&'static str, serde_yaml::Value)>> {
+    ) -> Option<Vec<(&'static str, yaml_serde::Value)>> {
         if !self.applied {
             return None;
         }
         let i = self.scenes.iter().position(|s| s == id)?;
-        let mut out = vec![("on", serde_yaml::Value::String(self.on.clone()))];
+        let mut out = vec![("on", yaml_serde::Value::String(self.on.clone()))];
         if let Some(prev) = i
             .checked_sub(1)
             .map(|p| &self.scenes[p])
@@ -422,11 +422,11 @@ impl Chain {
         {
             out.push((
                 "after",
-                serde_yaml::Value::String(format!("visited(\"{prev}\")")),
+                yaml_serde::Value::String(format!("visited(\"{prev}\")")),
             ));
         }
         let priority = 10 * (self.scenes.len() - i) as i64;
-        out.push(("priority", serde_yaml::Value::Number(priority.into())));
+        out.push(("priority", yaml_serde::Value::Number(priority.into())));
         Some(out)
     }
 }
@@ -495,15 +495,15 @@ fn entry_hint(text: &str) -> Option<&str> {
 /// its later occurrence dropped. Each diagnostic carries its
 /// [`ChapterAnchor`]; `lute check-project` reports them located, beside its
 /// checks of the documents.
-fn resolve_chapters(raw: Option<serde_yaml::Value>) -> (Vec<Chain>, Vec<ChapterDiag>) {
+fn resolve_chapters(raw: Option<yaml_serde::Value>) -> (Vec<Chain>, Vec<ChapterDiag>) {
     let mut diags = Vec::new();
     let mut chains: Vec<Chain> = Vec::new();
     let Some(raw) = raw else {
         return (chains, diags);
     };
-    let items: Vec<serde_yaml::Value> = match raw {
-        serde_yaml::Value::Sequence(items) if !items.is_empty() => items,
-        serde_yaml::Value::Mapping(map) => {
+    let items: Vec<yaml_serde::Value> = match raw {
+        yaml_serde::Value::Sequence(items) if !items.is_empty() => items,
+        yaml_serde::Value::Mapping(map) => {
             diags.push(ChapterDiag {
                 message: "`chapters:` is a list of chains — write this chain as a list item, \
                           `- on: …` in block style or `chapters: [{ on: <occasion>, scenes: \
@@ -511,7 +511,7 @@ fn resolve_chapters(raw: Option<serde_yaml::Value>) -> (Vec<Chain>, Vec<ChapterD
                     .to_string(),
                 anchor: ChapterAnchor::Top("chapters".to_string()),
             });
-            let mut chain = resolve_chain(0, &serde_yaml::Value::Mapping(map), &[], &mut diags);
+            let mut chain = resolve_chain(0, &yaml_serde::Value::Mapping(map), &[], &mut diags);
             chain.applied = false;
             chains.push(chain);
             return (chains, diags);
@@ -537,7 +537,7 @@ fn resolve_chapters(raw: Option<serde_yaml::Value>) -> (Vec<Chain>, Vec<ChapterD
 /// or scene).
 fn resolve_chain(
     index: usize,
-    item: &serde_yaml::Value,
+    item: &yaml_serde::Value,
     earlier: &[Chain],
     diags: &mut Vec<ChapterDiag>,
 ) -> Chain {
@@ -546,7 +546,7 @@ fn resolve_chain(
         diags.push(ChapterDiag { message, anchor });
     };
     let mut chain = Chain::default();
-    let serde_yaml::Value::Mapping(map) = item else {
+    let yaml_serde::Value::Mapping(map) = item else {
         err(
             format!(
                 "{} must be a mapping `{{ on: <occasion>, scenes: [<scene id>, …] }}`",
@@ -561,7 +561,7 @@ fn resolve_chain(
     // "missing" error would only repeat it.
     let mut meant: Vec<&str> = Vec::new();
     let mut scenes_key = "scenes";
-    let mut written_on: Option<&serde_yaml::Value> = map.get("on");
+    let mut written_on: Option<&yaml_serde::Value> = map.get("on");
     for key in map.keys() {
         let name = key.as_str().unwrap_or("");
         if KEYS.contains(&name) {
@@ -637,7 +637,7 @@ fn resolve_chain(
         );
     }
     match map.get(scenes_key) {
-        Some(serde_yaml::Value::Sequence(items)) if !items.is_empty() => {
+        Some(yaml_serde::Value::Sequence(items)) if !items.is_empty() => {
             for item in items {
                 match item.as_str().map(str::trim) {
                     Some(id) if is_scene_word(id) => {
@@ -669,7 +669,7 @@ fn resolve_chain(
                     }
                     _ => {
                         ok = false;
-                        let rendered = serde_yaml::to_string(item).unwrap_or_default();
+                        let rendered = yaml_serde::to_string(item).unwrap_or_default();
                         let text = item.as_str().unwrap_or(rendered.trim());
                         let hint = entry_hint(text).map_or_else(
                             || "e.g. `prologue`".to_string(),
@@ -710,8 +710,8 @@ fn resolve_chain(
 /// going through a `lute.project.yaml` on disk. Used by downstream crates'
 /// unit tests (`lute-check`) to exercise the defaults-merge path in
 /// `parse_meta_kind_with_defaults` without staging a temp manifest.
-impl FromIterator<(String, serde_yaml::Value)> for MetaDefaults {
-    fn from_iter<I: IntoIterator<Item = (String, serde_yaml::Value)>>(iter: I) -> Self {
+impl FromIterator<(String, yaml_serde::Value)> for MetaDefaults {
+    fn from_iter<I: IntoIterator<Item = (String, yaml_serde::Value)>>(iter: I) -> Self {
         Self {
             entries: iter.into_iter().collect(),
             chapters: Vec::new(),
@@ -732,13 +732,13 @@ struct RawIdentity {
     #[serde(rename = "requireStable", default)]
     require_stable: bool,
     #[serde(default)]
-    renames: Option<serde_yaml::Value>,
+    renames: Option<yaml_serde::Value>,
 }
 
 /// Resolve the YAML mapping while retaining one source location per entry.
 /// Graph-dependent endpoint checks belong to the project model.
 fn resolve_identity_renames(
-    raw: Option<serde_yaml::Value>,
+    raw: Option<yaml_serde::Value>,
     text: &str,
     locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
 ) -> (Vec<IdentityRenameDecl>, Vec<ResolveDiag>) {
@@ -748,7 +748,7 @@ fn resolve_identity_renames(
     let Some(raw) = raw else {
         return (entries, diags);
     };
-    let serde_yaml::Value::Mapping(map) = raw else {
+    let yaml_serde::Value::Mapping(map) = raw else {
         diags.push(ResolveDiag {
             span: locate(&["identity", "renames"]),
             code: "E-RENAME-LEDGER".into(),
@@ -955,7 +955,7 @@ fn resolve_identity(
 /// happens where it already happens, at the document, because a defaulted
 /// value flows through the identical `parse_meta_kind` path as an authored
 /// one (§6.2, Task 5).
-fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static str> {
+fn defaults_shape_ok(key: &str, v: &yaml_serde::Value) -> Result<(), &'static str> {
     match key {
         "season" | "episode" => v.as_i64().map(|_| ()).ok_or("an integer"),
         "kind" => match v.as_str() {
@@ -967,7 +967,7 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         }
         // dsl 0.37.0 §3.4: the speakers beside the POV who may speak `mono`.
         "monoSpeakers" => match v.as_sequence() {
-            Some(items) if items.iter().all(serde_yaml::Value::is_string) => Ok(()),
+            Some(items) if items.iter().all(yaml_serde::Value::is_string) => Ok(()),
             _ => Err("a list of speaker ids"),
         },
         // dsl 0.26.0 §2.4: the `tier=` a `<quest>` without one takes;
@@ -982,8 +982,8 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         // strings, exactly as authored frontmatter does. A null or empty
         // sequence is a PRESENT value meaning "none" (§6.2) and is legal.
         "uses" | "extends" | "components" => match v {
-            serde_yaml::Value::Null | serde_yaml::Value::String(_) => Ok(()),
-            serde_yaml::Value::Sequence(items) => {
+            yaml_serde::Value::Null | yaml_serde::Value::String(_) => Ok(()),
+            yaml_serde::Value::Sequence(items) => {
                 if items.iter().all(|i| i.is_string()) {
                     Ok(())
                 } else {
@@ -998,7 +998,7 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
         // lift path that an authored block takes), same discipline as the
         // `uses`/`extends`/`components` string-list check above.
         "extra" => match v {
-            serde_yaml::Value::Mapping(_) | serde_yaml::Value::Null => Ok(()),
+            yaml_serde::Value::Mapping(_) | yaml_serde::Value::Null => Ok(()),
             _ => Err("a mapping"),
         },
         _ => Ok(()),
@@ -1009,7 +1009,7 @@ fn defaults_shape_ok(key: &str, v: &serde_yaml::Value) -> Result<(), &'static st
 /// nearest legal spelling (`Run` → `run`), a bare season name for
 /// `season:<name>`, and a season name in the legacy `season:` (the episode
 /// number) the way a scene is tied to a season instead. Empty otherwise.
-fn defaults_value_hint(key: &str, v: &serde_yaml::Value) -> String {
+fn defaults_value_hint(key: &str, v: &yaml_serde::Value) -> String {
     let Some(raw) = v.as_str() else {
         return String::new();
     };
@@ -1081,19 +1081,19 @@ fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, Stri
 /// a file listed twice is imported once, at its first position.
 fn canonicalise_entry(
     manifest_dir: &Path,
-    v: &serde_yaml::Value,
+    v: &yaml_serde::Value,
     globs: bool,
-) -> Result<serde_yaml::Value, String> {
+) -> Result<yaml_serde::Value, String> {
     let items: Vec<&str> = match v {
-        serde_yaml::Value::Null => return Ok(v.clone()),
-        serde_yaml::Value::String(s) if !(globs && is_glob(s)) => {
-            return Ok(serde_yaml::Value::String(canonical_default_path(
+        yaml_serde::Value::Null => return Ok(v.clone()),
+        yaml_serde::Value::String(s) if !(globs && is_glob(s)) => {
+            return Ok(yaml_serde::Value::String(canonical_default_path(
                 manifest_dir,
                 s,
             )?))
         }
-        serde_yaml::Value::String(s) => vec![s.as_str()],
-        serde_yaml::Value::Sequence(items) => {
+        yaml_serde::Value::String(s) => vec![s.as_str()],
+        yaml_serde::Value::Sequence(items) => {
             let mut values = Vec::with_capacity(items.len());
             for item in items {
                 let Some(value) = item.as_str() else {
@@ -1105,9 +1105,9 @@ fn canonicalise_entry(
         }
         _ => return Err("defaults entry must be a path or list of paths".to_string()),
     };
-    let mut out: Vec<serde_yaml::Value> = Vec::with_capacity(items.len());
+    let mut out: Vec<yaml_serde::Value> = Vec::with_capacity(items.len());
     let mut push = |p: String| {
-        let p = serde_yaml::Value::String(p);
+        let p = yaml_serde::Value::String(p);
         if !out.contains(&p) {
             out.push(p);
         }
@@ -1121,7 +1121,7 @@ fn canonicalise_entry(
             push(canonical_default_path(manifest_dir, s)?);
         }
     }
-    Ok(serde_yaml::Value::Sequence(out))
+    Ok(yaml_serde::Value::Sequence(out))
 }
 
 fn is_glob(s: &str) -> bool {
@@ -1206,7 +1206,7 @@ fn segment_matches(pattern: &str, name: &str) -> bool {
 /// nobody can act on must not silently reach a document.
 fn resolve_defaults(
     manifest_dir: &Path,
-    raw: Option<serde_yaml::Mapping>,
+    raw: Option<yaml_serde::Mapping>,
     locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
 ) -> (MetaDefaults, Vec<ResolveDiag>) {
     let mut out = MetaDefaults::default();
@@ -1304,14 +1304,14 @@ fn manifest_key_message(key: &str) -> String {
 /// Remove every key of `map` outside `known` (so the rest still loads) and
 /// report each as [`E_MANIFEST_KEY`] at `path` + the key.
 fn drop_unknown_keys(
-    map: &mut serde_yaml::Mapping,
+    map: &mut yaml_serde::Mapping,
     known: &[&str],
     path: &[&str],
     message: &dyn Fn(&str) -> String,
     locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
     diags: &mut Vec<ResolveDiag>,
 ) {
-    let unknown: Vec<serde_yaml::Value> = map
+    let unknown: Vec<yaml_serde::Value> = map
         .keys()
         .filter(|k| !k.as_str().is_some_and(|k| known.contains(&k)))
         .cloned()
@@ -1319,8 +1319,8 @@ fn drop_unknown_keys(
     for k in unknown {
         map.remove(&k);
         let key = match &k {
-            serde_yaml::Value::String(s) => s.clone(),
-            other => serde_yaml::to_string(other)
+            yaml_serde::Value::String(s) => s.clone(),
+            other => yaml_serde::to_string(other)
                 .unwrap_or_default()
                 .trim()
                 .to_string(),
@@ -1335,8 +1335,8 @@ fn drop_unknown_keys(
     }
 }
 
-fn chapter_origins(text: &str, raw: Option<&serde_yaml::Value>, path: &Path) -> Vec<ChapterOrigin> {
-    let Some(serde_yaml::Value::Sequence(items)) = raw else {
+fn chapter_origins(text: &str, raw: Option<&yaml_serde::Value>, path: &Path) -> Vec<ChapterOrigin> {
+    let Some(yaml_serde::Value::Sequence(items)) = raw else {
         return Vec::new();
     };
     let file = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -1350,10 +1350,10 @@ fn chapter_origins(text: &str, raw: Option<&serde_yaml::Value>, path: &Path) -> 
         .map(|(i, item)| {
             let on = item
                 .get("on")
-                .and_then(serde_yaml::Value::as_str)
+                .and_then(yaml_serde::Value::as_str)
                 .and_then(|_| yaml_span(text, &[Key("chapters"), Item(i), Key("on"), Value]));
             let mut scenes = BTreeMap::new();
-            if let Some(values) = item.get("scenes").and_then(serde_yaml::Value::as_sequence) {
+            if let Some(values) = item.get("scenes").and_then(yaml_serde::Value::as_sequence) {
                 for (j, value) in values.iter().enumerate() {
                     let Some(value) = value.as_str() else {
                         continue;
@@ -1388,7 +1388,7 @@ pub enum ProjectLoadError {
         line: usize,
         column: usize,
         message: String,
-        source: Box<serde_yaml::Error>,
+        source: Box<yaml_serde::Error>,
     },
     Invalid {
         path: PathBuf,
@@ -1469,7 +1469,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
             reason: message.to_string(),
         }
     };
-    let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
+    let value: yaml_serde::Value = match yaml_serde::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             let fault = crate::yaml_text::yaml_fault(&text, &e);
@@ -1484,8 +1484,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
         }
     };
     let mut map = match value {
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => serde_yaml::Mapping::new(),
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::Null => yaml_serde::Mapping::new(),
         _ => {
             return Err(fail(
                 0,
@@ -1514,9 +1514,9 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
         &locate,
         &mut key_diags,
     );
-    if let Some(serde_yaml::Value::Mapping(profiles)) = map.get_mut("profiles") {
+    if let Some(yaml_serde::Value::Mapping(profiles)) = map.get_mut("profiles") {
         for (name, profile) in profiles.iter_mut() {
-            let (Some(name), serde_yaml::Value::Mapping(profile)) = (name.as_str(), profile) else {
+            let (Some(name), yaml_serde::Value::Mapping(profile)) = (name.as_str(), profile) else {
                 continue;
             };
             let message = |key: &str| {
@@ -1536,7 +1536,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
             );
         }
     }
-    if let Some(serde_yaml::Value::Mapping(identity)) = map.get_mut("identity") {
+    if let Some(yaml_serde::Value::Mapping(identity)) = map.get_mut("identity") {
         let message = |key: &str| {
             format!(
                 "`identity:` has no key `{key}`{} (it takes `lineId:` and `voiceKey:`)",
@@ -1562,13 +1562,13 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     }
     // Through text, not `from_value`: `Value`'s deserializer reads a `null`
     // as an empty mapping, which would accept `permissions: null`.
-    let cleaned = serde_yaml::to_string(&serde_yaml::Value::Mapping(map)).map_err(|e| {
+    let cleaned = yaml_serde::to_string(&yaml_serde::Value::Mapping(map)).map_err(|e| {
         fail(
             0,
             &format!("could not normalize manifest: {}", plain_serde(&e)),
         )
     })?;
-    let raw: RawProject = serde_yaml::from_str(&cleaned).map_err(|e| {
+    let raw: RawProject = yaml_serde::from_str(&cleaned).map_err(|e| {
         fail(
             0,
             &format!("a value has the wrong shape: {}", plain_serde(&e)),
@@ -1641,7 +1641,7 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
 /// A `serde` deserialization error of a manifest value, without the
 /// library's line/column marks (the manifest's own key is named instead)
 /// and without a Rust type name.
-fn plain_serde(e: &serde_yaml::Error) -> String {
+fn plain_serde(e: &yaml_serde::Error) -> String {
     let s = e.to_string();
     let s = s.split(" at line ").next().unwrap_or(&s);
     s.replace("invalid type: ", "")
@@ -1698,7 +1698,7 @@ pub fn resolve_permissions(
 pub fn resolve_document_snapshot(
     project: Option<&ProjectConfig>,
     scene_profile: Option<&str>,
-    scene_plugins: &BTreeMap<String, serde_yaml::Value>,
+    scene_plugins: &BTreeMap<String, yaml_serde::Value>,
 ) -> (CapabilitySnapshot, Vec<ResolveDiag>) {
     let Some(project) = project else {
         return (load_core_snapshot(), Vec::new());
@@ -1789,7 +1789,7 @@ mod tests {
     #[test]
     fn chapter_origins_anchor_flow_style_values() {
         let text = "defaultProfile: core\nprofiles: {core: {plugins: {}}}\nchapters: [{on: open, scenes: [first, second]}]\n";
-        let value: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
+        let value: yaml_serde::Value = yaml_serde::from_str(text).unwrap();
         let origins = chapter_origins(text, value.get("chapters"), Path::new("lute.project.yaml"));
         assert_eq!(origins.len(), 1);
         let on = origins[0].on.expect("flow `on` span");

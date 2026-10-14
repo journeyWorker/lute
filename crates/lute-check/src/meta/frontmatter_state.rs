@@ -2,7 +2,7 @@ use super::*;
 
 pub(super) fn parse_state(
     meta: &Meta,
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     typed: &mut TypedMeta,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -34,8 +34,8 @@ pub(super) fn parse_state(
     // Parse the inline `state:` schema (dsl §9.3).
     if let Some(state_val) = map.get(yaml_key("state")) {
         match state_val {
-            serde_yaml::Value::Null => {}
-            serde_yaml::Value::Mapping(state_map) => {
+            yaml_serde::Value::Null => {}
+            yaml_serde::Value::Mapping(state_map) => {
                 for (path_key, decl_val) in state_map.iter() {
                     let Some(path) = path_key.as_str() else {
                         diags.push(err(
@@ -103,7 +103,7 @@ pub(super) fn parse_state(
                         ));
                         typed.state.faulty.insert(path.to_string());
                     }
-                    match serde_yaml::from_value::<StateDeclRaw>(decl_val.clone()) {
+                    match yaml_serde::from_value::<StateDeclRaw>(decl_val.clone()) {
                         Ok(raw) if matches!(raw.ty, Type::NarrativeTime) => {
                             // D11: `narrativeTime` is engine-surfaced only (a
                             // plugin capability's `state_shapes` anchor path,
@@ -277,7 +277,7 @@ pub(super) fn parse_state(
                             }
                         }
                         // dsl 0.5.0 §2.2 / #21 T10.2: this arm forwarded
-                        // `serde_yaml`'s own error — "invalid type: unit
+                        // `yaml_serde`'s own error — "invalid type: unit
                         // variant, expected newtype variant", or "expected
                         // struct StateDeclRaw". Neither "unit variant" nor
                         // "newtype variant" nor `StateDeclRaw` occurs

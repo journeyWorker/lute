@@ -773,10 +773,10 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
     for (n, _, expect) in &script.step_expects {
         let n = *n;
         // Every list of beat ids: `expect.<key>`, or `expect.presented.<o>`.
-        let mut lists: Vec<(Vec<&str>, &serde_yaml::Value)> = Vec::new();
+        let mut lists: Vec<(Vec<&str>, &yaml_serde::Value)> = Vec::new();
         for key in ["winner", "offered", "notOffered", "presented"] {
             match expect.get(key) {
-                Some(serde_yaml::Value::Mapping(keyed)) if key == "presented" => {
+                Some(yaml_serde::Value::Mapping(keyed)) if key == "presented" => {
                     for (occasion, v) in keyed {
                         let Some(occasion) = occasion.as_str() else {
                             continue;
@@ -810,7 +810,7 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
         for (keys, v) in lists {
             let key = keys[1..].join(".");
             let ids: Vec<(Option<usize>, String)> = match v {
-                serde_yaml::Value::Sequence(items) => items
+                yaml_serde::Value::Sequence(items) => items
                     .iter()
                     .enumerate()
                     .filter_map(|(i, v)| Some((Some(i), scalar_text(v)?)))
@@ -859,7 +859,7 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
                 ));
             }
         }
-        let Some(serde_yaml::Value::Mapping(clock_want)) = expect.get("clock") else {
+        let Some(yaml_serde::Value::Mapping(clock_want)) = expect.get("clock") else {
             continue;
         };
         let mut refuse = |keys: &[&str], msg: String| {
@@ -874,7 +874,7 @@ fn check_expect_names(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
             );
             continue;
         };
-        if let Some(slot) = clock_want.get("slot").and_then(serde_yaml::Value::as_str) {
+        if let Some(slot) = clock_want.get("slot").and_then(yaml_serde::Value::as_str) {
             let slots: Vec<&str> = clock.slots.iter().map(String::as_str).collect();
             if clock.slot.is_none() {
                 refuse(
@@ -1118,7 +1118,7 @@ fn check_needles(
         return;
     };
     for key in ["transcriptContains", "transcriptLacks"] {
-        let Some(serde_yaml::Value::Sequence(needles)) = expect.get(key) else {
+        let Some(yaml_serde::Value::Sequence(needles)) = expect.get(key) else {
             continue;
         };
         for (i, needle) in needles.iter().enumerate() {
@@ -1145,10 +1145,10 @@ fn check_needles(
 /// 2) with a did-you-mean, located at the atom.
 #[allow(dead_code)]
 fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
-    let problems = |expect: &serde_yaml::Value| -> Vec<(&'static str, usize, String)> {
+    let problems = |expect: &yaml_serde::Value| -> Vec<(&'static str, usize, String)> {
         let mut out = Vec::new();
         for key in ["facts", "notFacts"] {
-            let Some(serde_yaml::Value::Sequence(atoms)) = expect.get(key) else {
+            let Some(yaml_serde::Value::Sequence(atoms)) = expect.get(key) else {
                 continue;
             };
             for (i, atom) in atoms.iter().enumerate() {
@@ -1201,8 +1201,8 @@ fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Ve
             .collect();
         Some((path.to_string(), members))
     };
-    let problems = |expect: &serde_yaml::Value| -> Vec<(String, String)> {
-        let Some(serde_yaml::Value::Mapping(state)) = expect.get("state") else {
+    let problems = |expect: &yaml_serde::Value| -> Vec<(String, String)> {
+        let Some(yaml_serde::Value::Mapping(state)) = expect.get("state") else {
             return Vec::new();
         };
         state

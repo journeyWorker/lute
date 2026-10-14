@@ -398,7 +398,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.42.1";
+pub const LUTE_IR_VERSION: &str = "0.43.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -1156,16 +1156,16 @@ fn artifact_meta(
     snapshot: &CapabilitySnapshot,
     beat: Option<BeatIr>,
 ) -> SceneMeta {
-    let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let raw = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup_str = |key: &str| -> Option<String> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_str()
             .map(String::from)
     };
     let lookup_i64 = |key: &str| -> Option<i64> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_i64()
     };
     let title = lookup_str("title");
@@ -1287,7 +1287,7 @@ fn scene_beat(
 /// (deterministic, plugin §11.3 "first owner wins" does not apply here — this
 /// reads the ALREADY-merged snapshot, never resolves ownership itself).
 fn plugin_frontmatter(
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     snapshot: &CapabilitySnapshot,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut out = BTreeMap::new();
@@ -1394,10 +1394,10 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
 /// serialize as `{}` when none of id/title/contentLang/extra/plugin are
 /// authored (all five carry `skip_serializing_if`).
 fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> QuestMeta {
-    let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let raw = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup = |key: &str| -> Option<String> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_str()
             .map(String::from)
     };
@@ -1800,7 +1800,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.42.1");
+        assert_eq!(super::LUTE_IR_VERSION, "0.43.0");
     }
 
     #[test]
@@ -1809,8 +1809,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.42.1");
-        assert_eq!(v["irVersion"], "0.42.1");
+        assert_eq!(v["lute"], "0.43.0");
+        assert_eq!(v["irVersion"], "0.43.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

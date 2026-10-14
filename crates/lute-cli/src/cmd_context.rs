@@ -11,6 +11,7 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
+use crate::envelope::{self, CliError};
 use crate::output::{pretty_json, write_stdout};
 use crate::project::{discover_project, resolve_project};
 use lute_load::{build_input, BuiltInput};
@@ -71,7 +72,7 @@ fn run_authoring_context(
     // FS-F2: the same project `lute check` resolves the file against.
     let project = resolve_project(file, project);
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     built.report_project_diags();
     let BuiltInput {
@@ -117,19 +118,25 @@ fn run_authoring_context(
         project.as_deref(),
     );
     if json {
-        match pretty_json(&surface) {
+        let report = envelope::report(crate::envelope::version::SURFACE, 0, surface);
+        match pretty_json(&report) {
             Ok(s) => {
                 if write_stdout(&format!("{s}\n")).is_err() {
-                    return ExitCode::from(2);
+                    return envelope::fail_quietly(CliError::io_without_path(
+                        "lute context: cannot write stdout",
+                    ));
                 }
             }
             Err(e) => {
-                eprintln!("lute: failed to serialize context: {e}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize context: {e}"
+                )));
             }
         }
     } else if write_stdout(&context_outline(&surface)).is_err() {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::io_without_path(
+            "lute context: cannot write stdout",
+        ));
     }
     ExitCode::SUCCESS
 }
@@ -152,7 +159,9 @@ fn run_task_context(
         return run_position_context(file, json, providers, project, permission_profile, spec);
     }
     let Some(raw_target) = target else {
-        return ExitCode::from(2);
+        return envelope::fail(
+            CliError::usage("lute context: --target requires a value").with_argument("--target"),
+        );
     };
     let root = resolve_project(file, project).unwrap_or_else(|| {
         file.parent()
@@ -170,15 +179,19 @@ fn run_task_context(
     let model = match ProjectModel::build_single_root(&root, &opts) {
         Ok(model) => model,
         Err(error) => {
-            eprintln!("lute: cannot build context model: {error}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                &root,
+                format!("lute: cannot build context model: {error}"),
+            ));
         }
     };
     let key = match lute_resolve::parse_node_key(raw_target) {
         Ok(key) => key,
         Err(error) => {
-            eprintln!("lute: context target refused: {error:?}");
-            return ExitCode::from(2);
+            return envelope::fail(
+                CliError::usage(format!("lute: context target refused: {error:?}"))
+                    .with_argument(raw_target),
+            );
         }
     };
     let graph = model.graph();
@@ -189,15 +202,21 @@ fn run_task_context(
         .filter_map(|edge| edge.file.as_ref().map(|path| path.display().to_string()))
         .collect::<BTreeSet<_>>();
     if graph.ambiguous.contains(&key) || candidates.len() > 1 {
-        eprintln!(
-            "lute: context target refused: E-CONTEXT-TARGET ambiguous `{raw_target}` candidates: {}",
-            candidates.into_iter().collect::<Vec<_>>().join(", ")
+        return envelope::fail(
+            CliError::usage(format!(
+                "lute: context target refused: E-CONTEXT-TARGET ambiguous `{raw_target}` candidates: {}",
+                candidates.into_iter().collect::<Vec<_>>().join(", ")
+            ))
+            .with_argument(raw_target),
         );
-        return ExitCode::from(2);
     }
     let Some(node) = graph.nodes.get(&key) else {
-        eprintln!("lute: context target refused: E-CONTEXT-TARGET unknown target `{raw_target}`");
-        return ExitCode::from(2);
+        return envelope::fail(
+            CliError::usage(format!(
+                "lute: context target refused: E-CONTEXT-TARGET unknown target `{raw_target}`"
+            ))
+            .with_argument(raw_target),
+        );
     };
     let limit = max_items;
     let mut not_included = Vec::new();
@@ -253,7 +272,7 @@ fn run_task_context(
         .file
         .as_ref()
         .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|source| node.span.map(|span| excerpt(&source, span)));
+        .and_then(|source: String| node.span.map(|span| excerpt(&source, span)));
     let identity = {
         let mut value = serde_json::to_value(&node.identity).unwrap_or_default();
         if key.kind == NodeKind::Line {
@@ -330,15 +349,18 @@ fn run_position_context(
     let (path, line, column) = match parse_position(spec) {
         Ok(value) => value,
         Err(error) => {
-            eprintln!("lute: invalid --at: {error}");
-            return ExitCode::from(2);
+            return envelope::fail(
+                CliError::usage(format!("lute: invalid --at: {error}")).with_argument("--at"),
+            );
         }
     };
     let source = match std::fs::read_to_string(&path) {
         Ok(source) => source,
         Err(error) => {
-            eprintln!("lute: cannot read {}: {error}", path.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                &path,
+                format!("lute: cannot read {}: {error}", path.display()),
+            ));
         }
     };
     // Preserve the legacy `--at` note: this path probed the nearest manifest
@@ -350,12 +372,13 @@ fn run_position_context(
         resolve_project(&path, None)
     };
     let Some(built) = build_input(&path, providers, root.as_deref(), permission_profile) else {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::unreadable_document(&path));
     };
     let (doc, _) = lute_syntax::parse(&source);
     let Some(offset) = line_column_offset(&source, line, column) else {
-        eprintln!("lute: --at coordinate is outside the source");
-        return ExitCode::from(2);
+        return envelope::fail(
+            CliError::usage("lute: --at coordinate is outside the source").with_argument("--at"),
+        );
     };
     let resolution = match lute_resolve::resolve_position(
         lute_resolve::PositionQuery {
@@ -383,11 +406,18 @@ fn run_position_context(
 
 fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
     let text = if json {
-        match pretty_json(&value) {
+        let version = value
+            .get("schemaVersion")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or(crate::envelope::version::CONTEXT)
+            .to_string();
+        let report = envelope::report(&version, 0, value);
+        match pretty_json(&report) {
             Ok(s) => format!("{s}\n"),
             Err(error) => {
-                eprintln!("lute: failed to serialize context: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize context: {error}"
+                )));
             }
         }
     } else {
@@ -395,7 +425,11 @@ fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
     };
     write_stdout(&text)
         .map(|_| ExitCode::SUCCESS)
-        .unwrap_or_else(|_| ExitCode::from(2))
+        .unwrap_or_else(|_| {
+            envelope::fail_quietly(CliError::io_without_path(
+                "lute context: cannot write stdout",
+            ))
+        })
 }
 
 fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {

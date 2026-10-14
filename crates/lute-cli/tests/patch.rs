@@ -48,7 +48,7 @@ fn dry_run_json_reports_diff_and_preserves_source() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.36.0.patch");
+    assert_eq!(report["schemaVersion"], "0.43.0.patch");
     assert_eq!(report["writes"][0], "scene.lute");
     assert_eq!(std::fs::read(root.join("scene.lute")).unwrap(), original);
 }
@@ -137,8 +137,12 @@ fn accepted_json_has_shape_and_exit_review() {
         String::from_utf8_lossy(&output.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.36.0.patch");
-    assert_eq!(report["ok"], true);
+    assert_eq!(report["schemaVersion"], "0.43.0.patch");
+    assert_eq!(report["command"], "patch");
+    // Accepted with semantic changes: exit 1, so the envelope's `ok` is false
+    // while `accepted` says the patch applied (dsl 0.43.0 §3.3).
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["accepted"], true);
     assert!(report["before"]["sha256"].is_string());
     assert!(report["after"]["sha256"].is_string());
     assert!(report["diff"]["changes"].is_array());
@@ -167,8 +171,9 @@ fn stale_json_refusal_has_code_and_exit_two() {
         .unwrap();
     assert_eq!(output.status.code(), Some(2));
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(report["schemaVersion"], "0.36.0.patch");
+    assert_eq!(report["schemaVersion"], "0.43.0.patch");
     assert_eq!(report["ok"], false);
+    assert_eq!(report["accepted"], false);
     assert_eq!(report["code"], "E-PATCH-STALE");
     assert!(report["message"].is_string());
 }

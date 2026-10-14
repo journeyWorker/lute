@@ -997,7 +997,7 @@ fn frontmatter_volume(text: &str) -> Option<Vec<String>> {
     let yaml = text[start..end]
         .strip_suffix("\n---")
         .unwrap_or(&text[start..end]);
-    let value: serde_yaml::Value = serde_yaml::from_str(yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(yaml).ok()?;
     let volume = value.get("enums")?.get("volume")?;
     let members = volume.get("members").unwrap_or(volume);
     members
@@ -1579,7 +1579,7 @@ fn rewrite_yaml_quoted_segments(line: &str) -> Option<String> {
                 let decoded = if quote == b'\'' {
                     raw[1..raw.len() - 1].replace("''", "'")
                 } else {
-                    serde_yaml::from_str::<String>(raw).ok()?
+                    yaml_serde::from_str::<String>(raw).ok()?
                 };
                 let cel_quote = if decoded.contains("cel(\"") {
                     '\''
@@ -1672,7 +1672,7 @@ fn yaml_value_end(line: &str, start: usize) -> usize {
 
 fn rewrite_yaml_scalar(raw: &str, cel_key: bool) -> Option<String> {
     let (decoded, quote) = if raw.starts_with('"') && raw.ends_with('"') {
-        (serde_yaml::from_str::<String>(raw).ok()?, Some(b'"'))
+        (yaml_serde::from_str::<String>(raw).ok()?, Some(b'"'))
     } else if raw.len() >= 2 && raw.starts_with('\'') && raw.ends_with('\'') {
         (raw[1..raw.len() - 1].replace("''", "'"), Some(b'\''))
     } else {
@@ -1830,7 +1830,7 @@ mod tests {
     fn rewrites_rule_guard_to_yaml_and_datalog_round_trip() {
         let source = "rules:\n  - 'foo(a) :- cel(\"holds(rel(a, b))\")'\n";
         let out = rewrite_yaml_cel(source);
-        let yaml: serde_yaml::Value = serde_yaml::from_str(&out.text).expect("YAML");
+        let yaml: yaml_serde::Value = yaml_serde::from_str(&out.text).expect("YAML");
         let body = yaml["rules"][0].as_str().expect("rule string");
         assert!(lute_syntax::datalog::parse_rule(body).is_ok(), "{body}");
         assert_eq!(rewrite_yaml_cel(&out.text).text, out.text);

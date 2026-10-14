@@ -531,7 +531,7 @@ pub(super) fn render_json(
     results: &[TestResult],
     cov: Option<(&CoverageAccum, &Path)>,
     units: &[CoverageUnit],
-) -> String {
+) -> serde_json::Value {
     use serde_json::{json, Value};
 
     let tests: Vec<Value> = results
@@ -647,8 +647,5 @@ pub(super) fn render_json(
         });
     }
 
-    format!(
-        "{}\n",
-        serde_json::to_string_pretty(&root).expect("report is JSON-serializable")
-    )
+    root
 }

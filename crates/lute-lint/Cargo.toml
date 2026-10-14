@@ -12,4 +12,4 @@ lute-cel = { path = "../lute-cel" }
 lute-manifest = { path = "../lute-manifest" }
 cel-parser = "0.10.1"
 serde = { workspace = true }
-serde_yaml = { workspace = true }
+yaml_serde = { workspace = true }

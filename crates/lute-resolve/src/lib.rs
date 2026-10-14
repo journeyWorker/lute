@@ -357,7 +357,7 @@ fn symbols_for_cursor(
             let ty = value
                 .get("type")
                 .cloned()
-                .and_then(|v| serde_yaml::from_value(v).ok());
+                .and_then(|v| yaml_serde::from_value(v).ok());
             symbols.push(Symbol {
                 name: name.clone(),
                 kind: "def".into(),

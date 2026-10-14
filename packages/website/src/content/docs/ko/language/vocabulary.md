@@ -174,3 +174,10 @@ failed: s.lute (2 error(s), 0 warning(s))
 **어휘 import는 소비자가 소유합니다.** 실질적인 규칙은 이렇습니다: 선언을 프로젝트 루트에 두고 씬과 컴포넌트가 모두 같은 선언에 도달하게 하세요. `docs/examples`가 이 방식을 씁니다. *컴포넌트 스키마* 표면 — 컴포넌트가 자체 import를 선언하고 `::use`가 그것을 확장으로 가져오는 방식 — 은 별도로 제출된 이름 붙은 향후 방향이며, 이번 릴리스에는 포함되지 않습니다.
 
 이는 검사 차이가 아니라 *범위 지정*의 한계입니다. 모든 콘텐츠 줄 규칙은 이제 두 경로 모두에서 실행됩니다. `0.9.0`은 예전에는 루트에서만 실행되던 `check()`의 다섯 단계를 닫았으므로, 이제 컴포넌트 본문이 `::use`를 통해 조용히 검사를 통과하지 않고 씬 수준에서 같은 줄을 보고합니다. [컴포넌트와 extends](/ko/language/components-and-extends/)를 참고하세요.
+
+## JSON 도구 참고
+
+어휘 선언은 사람이 읽는 트랜스크립트가 아니라 컴파일 아티팩트와 capability 보고서에 반영됩니다.
+기계 소비자는 `command`, `schemaVersion`, `ok`를 포함한 보고서 봉투를 사용하고
+`lute context --json`을 capability 표면으로 취급하세요. CLI 명령 트리와 출력 스키마는
+`LUTE_TELEMETRY=0 target/debug/lute schema context`에서 확인할 수 있습니다.

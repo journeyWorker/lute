@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The harness never writes the developer's telemetry (dsl 0.43.0 §6).
+export LUTE_TELEMETRY=0
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tmp=$(mktemp -d)
 keep_tmp=0

@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED execution IR
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.42.schema.json`).
+//! `schemas/lute-ir-0.43.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! execution IR (`lute compile` output), gates on `irVersion` by exact minor
@@ -58,6 +58,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::engine_matrix::EngineMatrixError;
+use crate::envelope::{self, CliError};
+
 use lute_runtime::{
     render_fact, value_to_json, value_to_string, BridgeCall, BridgeQueues, BridgeReply, Driver,
     Forced, Machine, Menu, OnUnknown, Pick, ScriptedChoices, Seed, UnknownSite, Verdict,
@@ -102,27 +105,32 @@ pub fn run_artifact(
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute run: cannot read {}: {e}", artifact.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                artifact,
+                format!("lute run: cannot read {}: {e}", artifact.display()),
+            ));
         }
     };
     let art: Json = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("lute run: {} is not valid JSON: {e}", artifact.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::input(
+                artifact,
+                format!("lute run: {} is not valid JSON: {e}", artifact.display()),
+            ));
         }
     };
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
-        Err(e) => {
-            eprintln!("lute run: {e}");
-            return ExitCode::from(2);
+        Err(EngineMatrixError::Io { path, message }) => {
+            return envelope::fail(CliError::io(&path, format!("lute run: {message}")));
+        }
+        Err(EngineMatrixError::Input { path, message }) => {
+            return envelope::fail(CliError::input(&path, format!("lute run: {message}")));
         }
     };
     if let Err(e) = matrix.negotiate(&art) {
-        eprintln!("lute run: {e}");
-        return ExitCode::from(2);
+        return envelope::fail(CliError::input(artifact, format!("lute run: {e}")));
     }
 
     // ── Version negotiation (execution-model.md): pre-1.0 exact minor,
@@ -137,16 +145,17 @@ pub fn run_artifact(
             } else {
                 format!("this runner implements MAJOR {impl_major}")
             };
-            eprintln!(
-                "lute run: unsupported irVersion {ir_version:?}: {rule} (got {ir_version:?})"
-            );
-            return ExitCode::from(2);
+            return envelope::fail(CliError::input(
+                artifact,
+                format!(
+                    "lute run: unsupported irVersion {ir_version:?}: {rule} (got {ir_version:?})"
+                ),
+            ));
         }
     }
 
     if let Some(reason) = removed_ir_field(&art) {
-        eprintln!("lute run: {reason}");
-        return ExitCode::from(2);
+        return envelope::fail(CliError::input(artifact, format!("lute run: {reason}")));
     }
 
     if let Some(reason) = owned_write_refusal(&art) {
@@ -155,15 +164,19 @@ pub fn run_artifact(
     }
 
     if !art.get("commands").map(Json::is_array).unwrap_or(false) {
-        eprintln!("lute run: execution IR has no `commands` array");
-        return ExitCode::from(2);
+        return envelope::fail(CliError::input(
+            artifact,
+            "lute run: execution IR has no `commands` array",
+        ));
     }
     // ── dsl 0.19.0 §8: a lore execution IR is looked up, never played. ──
     let is_lore = art.get("kind").and_then(Json::as_str) == Some("lore");
     let presented = match (entry, beat) {
         (Some(_), Some(_)) => {
-            eprintln!("lute run: pass `--entry` or `--beat`, not both");
-            return ExitCode::from(2);
+            return envelope::fail(
+                CliError::usage("lute run: pass `--entry` or `--beat`, not both")
+                    .with_argument("--entry"),
+            );
         }
         (Some(id), None) => Some(("entry", id)),
         (None, Some(id)) => Some(("beat", id)),
@@ -171,20 +184,24 @@ pub fn run_artifact(
     };
     match (is_lore, presented) {
         (true, None) => {
-            eprintln!(
-                "lute run: {} is a lore execution IR — there is no sequence to play; pass \
-                 `--entry <id>` to present one entry or `--beat <id>` to present one bundle beat",
-                artifact.display()
+            return envelope::fail(
+                CliError::usage(format!(
+                    "lute run: {} is a lore execution IR — there is no sequence to play; pass \
+                     `--entry <id>` to present one entry or `--beat <id>` to present one bundle beat",
+                    artifact.display()
+                ))
+                .with_argument("--entry"),
             );
-            return ExitCode::from(2);
         }
         (false, Some((flag, id))) => {
-            eprintln!(
-                "lute run: `--{flag} {id}` needs a lore execution IR; {} is kind {:?}",
-                artifact.display(),
-                art.get("kind").and_then(Json::as_str).unwrap_or("scene")
+            return envelope::fail(
+                CliError::usage(format!(
+                    "lute run: `--{flag} {id}` needs a lore execution IR; {} is kind {:?}",
+                    artifact.display(),
+                    art.get("kind").and_then(Json::as_str).unwrap_or("scene")
+                ))
+                .with_argument(format!("--{flag}")),
             );
-            return ExitCode::from(2);
         }
         _ => {}
     }
@@ -196,14 +213,18 @@ pub fn run_artifact(
             Ok(t) => match lute_trace::parse_mock_yaml(&t) {
                 Ok(m) => m,
                 Err(d) => {
-                    eprintln!("lute run: invalid mock {}: {}", path.display(), d.text());
-                    return ExitCode::from(2);
+                    return envelope::fail(CliError::input(
+                        path,
+                        format!("lute run: invalid mock {}: {}", path.display(), d.text()),
+                    ));
                 }
             },
             Err(e) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute run: cannot read mock {}: {e}", path.display());
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io(
+                    path,
+                    format!("lute run: cannot read mock {}: {e}", path.display()),
+                ));
             }
         },
     };
@@ -214,11 +235,13 @@ pub fn run_artifact(
         let file = match std::fs::File::create(path) {
             Ok(file) => std::rc::Rc::new(std::cell::RefCell::new(file)),
             Err(e) => {
-                eprintln!(
-                    "lute run: cannot create condition dump {}: {e}",
-                    path.display()
-                );
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io(
+                    path,
+                    format!(
+                        "lute run: cannot create condition dump {}: {e}",
+                        path.display()
+                    ),
+                ));
             }
         };
         let mut env = art.get("celEnv").cloned().unwrap_or_else(|| json!({}));
@@ -294,10 +317,10 @@ pub fn run_artifact(
         m.bind_occasion_target(None);
     }
     match result {
-        Err(msg) => {
-            eprintln!("lute run: {}", lute_core_span::plain_message(&msg));
-            ExitCode::from(2)
-        }
+        Err(msg) => envelope::fail(CliError::input(
+            artifact,
+            format!("lute run: {}", lute_core_span::plain_message(&msg)),
+        )),
         Ok(()) => {
             if json_out {
                 println!(
@@ -689,7 +712,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.42.1", "commands": [command]})
+        json!({"irVersion": "0.43.0", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is

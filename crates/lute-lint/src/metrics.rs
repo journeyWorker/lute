@@ -94,16 +94,16 @@ pub struct SceneRow {
 /// sequence` chain — it plays onto the stage the previous scene set, which
 /// is why it needs no `::bg` of its own.
 pub fn doc_kind(raw_yaml: &str) -> String {
-    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
+    let Ok(yaml_serde::Value::Mapping(map)) = yaml_serde::from_str::<yaml_serde::Value>(raw_yaml)
     else {
         return "scene".to_string();
     };
-    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    let key = |k: &str| yaml_serde::Value::String(k.to_string());
     if map.contains_key(key("component")) {
         return "component".to_string();
     }
     match map.get(key("kind")) {
-        Some(serde_yaml::Value::String(k)) if k != "scene" => k.clone(),
+        Some(yaml_serde::Value::String(k)) if k != "scene" => k.clone(),
         _ if map.contains_key(key("on")) => "beat".to_string(),
         _ => "scene".to_string(),
     }

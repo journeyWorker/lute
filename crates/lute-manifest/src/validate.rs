@@ -453,7 +453,7 @@ fn validate_effect_facts(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
 fn validate_record_lowering(
     d: &DirectiveDecl,
     record: &str,
-    fields: &serde_yaml::Value,
+    fields: &yaml_serde::Value,
     errs: &mut Vec<ManifestError>,
 ) {
     let Some(decls) = lower_record_fields(record) else {
@@ -472,10 +472,10 @@ fn validate_record_lowering(
     };
     // `fields:` with nothing after it deserializes to Null — a record lowering
     // that binds nothing is legal (every target field takes its default).
-    let empty = serde_yaml::Mapping::new();
+    let empty = yaml_serde::Mapping::new();
     let map = match fields {
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => &empty,
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::Null => &empty,
         _ => {
             bad(
                 "`fields` must be a mapping of targetField -> { fromAttr: <attr> } | <literal>"
@@ -498,11 +498,11 @@ fn validate_record_lowering(
         };
         match v {
             // Binding form: `{ fromAttr: <attrName> }`.
-            serde_yaml::Value::Mapping(m)
-                if m.contains_key(serde_yaml::Value::from("fromAttr")) =>
+            yaml_serde::Value::Mapping(m)
+                if m.contains_key(yaml_serde::Value::from("fromAttr")) =>
             {
                 let Some(attr) = m
-                    .get(serde_yaml::Value::from("fromAttr"))
+                    .get(yaml_serde::Value::from("fromAttr"))
                     .and_then(|a| a.as_str())
                 else {
                     bad(format!(
@@ -541,8 +541,8 @@ fn validate_record_lowering(
             _ => {
                 let ok = matches!(
                     (kind, v),
-                    (LowerFieldKind::Str, serde_yaml::Value::String(_))
-                        | (LowerFieldKind::Bool, serde_yaml::Value::Bool(_))
+                    (LowerFieldKind::Str, yaml_serde::Value::String(_))
+                        | (LowerFieldKind::Bool, yaml_serde::Value::Bool(_))
                 );
                 if !ok {
                     bad(format!(
@@ -557,15 +557,15 @@ fn validate_record_lowering(
 }
 
 /// The YAML shape word for a value that could not fill a record field.
-fn yaml_kind(v: &serde_yaml::Value) -> &'static str {
+fn yaml_kind(v: &yaml_serde::Value) -> &'static str {
     match v {
-        serde_yaml::Value::Null => "null",
-        serde_yaml::Value::Bool(_) => "bool",
-        serde_yaml::Value::Number(_) => "number",
-        serde_yaml::Value::String(_) => "string",
-        serde_yaml::Value::Sequence(_) => "a sequence",
-        serde_yaml::Value::Mapping(_) => "a mapping",
-        serde_yaml::Value::Tagged(_) => "a tagged value",
+        yaml_serde::Value::Null => "null",
+        yaml_serde::Value::Bool(_) => "bool",
+        yaml_serde::Value::Number(_) => "number",
+        yaml_serde::Value::String(_) => "string",
+        yaml_serde::Value::Sequence(_) => "a sequence",
+        yaml_serde::Value::Mapping(_) => "a mapping",
+        yaml_serde::Value::Tagged(_) => "a tagged value",
     }
 }
 
@@ -921,7 +921,7 @@ mod tests {
     fn fact_dir(yaml: &str) -> DirectiveDecl {
         let mut d = dir("give", &[]);
         d.attrs[0].name = "item".into();
-        d.effects = Some(serde_yaml::from_str(yaml).expect("fixture yaml"));
+        d.effects = Some(yaml_serde::from_str(yaml).expect("fixture yaml"));
         d
     }
 
@@ -967,7 +967,7 @@ mod tests {
         }];
         d.lower = Lowering::Record {
             record: record.into(),
-            fields: serde_yaml::from_str(fields_yaml).expect("fixture yaml"),
+            fields: yaml_serde::from_str(fields_yaml).expect("fixture yaml"),
         };
         d
     }

@@ -405,9 +405,9 @@ pub(super) struct PlayScript {
     /// Where the script was written.
     pub(super) source: ScriptSource,
     /// Every step `expect:` (dsl 0.22.0 §4): `(step n, label, expect)`.
-    pub(super) step_expects: Vec<(usize, Option<String>, serde_yaml::Value)>,
+    pub(super) step_expects: Vec<(usize, Option<String>, yaml_serde::Value)>,
     /// The top-level (end-of-play) `expect:`.
-    pub(super) expect: Option<serde_yaml::Value>,
+    pub(super) expect: Option<yaml_serde::Value>,
     /// The top-level `derive:` key (dsl 0.22.0 §6); `None` = the default.
     pub(super) derive: Option<bool>,
 }
@@ -419,18 +419,18 @@ impl PlayScript {
 }
 
 /// A YAML scalar rendered back to the text a mock literal carries.
-pub(super) fn scalar_text(v: &serde_yaml::Value) -> Option<String> {
+pub(super) fn scalar_text(v: &yaml_serde::Value) -> Option<String> {
     match v {
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::String(s) => Some(s.clone()),
+        yaml_serde::Value::Bool(b) => Some(b.to_string()),
+        yaml_serde::Value::Number(n) => Some(n.to_string()),
+        yaml_serde::Value::String(s) => Some(s.clone()),
         _ => None,
     }
 }
 
 /// A list of non-empty strings (`what` names it in the error).
-fn string_list(v: &serde_yaml::Value, what: &str) -> Result<Vec<String>, String> {
-    let serde_yaml::Value::Sequence(items) = v else {
+fn string_list(v: &yaml_serde::Value, what: &str) -> Result<Vec<String>, String> {
+    let yaml_serde::Value::Sequence(items) = v else {
         return Err(format!("{what} must be a list"));
     };
     items
@@ -447,8 +447,8 @@ fn string_list(v: &serde_yaml::Value, what: &str) -> Result<Vec<String>, String>
 
 /// A mapping whose only keys are `legal`, each an optional string list:
 /// `presented: { user, run }` / `entriesRead: { run, user }`.
-fn tiered_lists(v: &serde_yaml::Value, key: &str) -> Result<(Vec<String>, Vec<String>), String> {
-    let serde_yaml::Value::Mapping(m) = v else {
+fn tiered_lists(v: &yaml_serde::Value, key: &str) -> Result<(Vec<String>, Vec<String>), String> {
+    let yaml_serde::Value::Mapping(m) = v else {
         return Err(format!(
             "`{key}:` must be a mapping `{{ run: [...], user: [...] }}`"
         ));
@@ -484,9 +484,9 @@ struct ScriptTop<'v> {
     bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     choose: BTreeMap<String, Vec<ScriptedPick>>,
     save: SaveSeed,
-    expect: Option<serde_yaml::Value>,
+    expect: Option<yaml_serde::Value>,
     derive: Option<bool>,
-    steps: Option<&'v serde_yaml::Value>,
+    steps: Option<&'v yaml_serde::Value>,
 }
 
 /// [`parse_script`]; `steps_required: false` also admits a script that is
@@ -498,8 +498,8 @@ pub(super) fn parse_script_with(
     steps_required: bool,
 ) -> Result<PlayScript, String> {
     let plain = |e: &str| format!("invalid play script {}: {e}", path.display());
-    let value: serde_yaml::Value =
-        serde_yaml::from_str(text).map_err(|e| plain(&format!("malformed YAML: {e}")))?;
+    let value: yaml_serde::Value =
+        yaml_serde::from_str(text).map_err(|e| plain(&format!("malformed YAML: {e}")))?;
     let source = ScriptSource {
         file: path.to_path_buf(),
         text: Arc::from(text),
@@ -515,7 +515,7 @@ pub(super) fn parse_script_with(
         steps,
     } = top;
     let items = match steps {
-        Some(serde_yaml::Value::Sequence(items)) => {
+        Some(yaml_serde::Value::Sequence(items)) => {
             if items.is_empty() && steps_required {
                 errs.push(format!(
                     "{}: `steps:` is empty — there is nothing to play",
@@ -589,20 +589,20 @@ pub(super) fn parse_script_with(
 /// `{ fields: { … }, writes: { … } }` rather than a flat field map — a
 /// `fields` that is a mapping, or a `writes` that is a mapping or list (a
 /// flat answer maps every field to a scalar).
-fn long_form_answer(answer: &serde_yaml::Value) -> bool {
+fn long_form_answer(answer: &yaml_serde::Value) -> bool {
     let Some(m) = answer.as_mapping() else {
         return false;
     };
-    m.get("fields").is_some_and(serde_yaml::Value::is_mapping)
+    m.get("fields").is_some_and(yaml_serde::Value::is_mapping)
         || m.get("writes")
             .is_some_and(|w| w.is_mapping() || w.is_sequence())
 }
 
 /// Whether any answer of a `bridges:` mapping is the long form.
-pub(super) fn has_long_form(value: &serde_yaml::Value) -> bool {
+pub(super) fn has_long_form(value: &yaml_serde::Value) -> bool {
     value.as_mapping().is_some_and(|tags| {
         tags.values()
-            .filter_map(serde_yaml::Value::as_sequence)
+            .filter_map(yaml_serde::Value::as_sequence)
             .flatten()
             .any(long_form_answer)
     })
@@ -615,7 +615,7 @@ pub(super) fn has_long_form(value: &serde_yaml::Value) -> bool {
 /// optional `writes` in the runtime's own `WritesInput` shape, beside flat
 /// answers in the same lists.
 fn parse_play_bridges(
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
 ) -> Result<BTreeMap<String, Vec<ScriptBridgeAnswer>>, String> {
     let legacy = |fields| ScriptBridgeAnswer {
         fields,
@@ -628,7 +628,7 @@ fn parse_play_bridges(
                 .collect()
         });
     }
-    let flat = |tag: &str, n: usize, what: &str, m: &serde_yaml::Mapping| {
+    let flat = |tag: &str, n: usize, what: &str, m: &yaml_serde::Mapping| {
         m.iter()
             .map(
                 |(field, value)| match (field.as_str(), scalar_text(value)) {
@@ -645,7 +645,7 @@ fn parse_play_bridges(
     for (tag, answers) in value.as_mapping().into_iter().flatten() {
         let (Some(tag), Some(answers)) = (tag.as_str(), answers.as_sequence()) else {
             // The trace-mock grammar names the shape.
-            return lute_trace::parse_bridges(&serde_yaml::Value::Mapping(
+            return lute_trace::parse_bridges(&yaml_serde::Value::Mapping(
                 [(tag.clone(), answers.clone())].into_iter().collect(),
             ))
             .map(|_| BTreeMap::new());
@@ -674,7 +674,7 @@ fn parse_play_bridges(
                 ));
             }
             let fields = match m.get("fields") {
-                Some(serde_yaml::Value::Mapping(f)) => flat(tag, n, " `fields`", f)?,
+                Some(yaml_serde::Value::Mapping(f)) => flat(tag, n, " `fields`", f)?,
                 Some(_) => {
                     return Err(format!(
                         "`bridges.{tag}` answer {n} `fields` must map field names to scalar \
@@ -690,7 +690,7 @@ fn parse_play_bridges(
             };
             let writes = match m.get("writes") {
                 None => WritesInput::default(),
-                Some(w) => serde_yaml::from_value(w.clone()).map_err(|e| {
+                Some(w) => yaml_serde::from_value(w.clone()).map_err(|e| {
                     format!("`bridges.{tag}` answer {n} `writes` is malformed: {e}")
                 })?,
             };
@@ -704,10 +704,10 @@ fn parse_play_bridges(
 /// A play script's top level, `steps:` left as written, and every usage
 /// error of its other keys, located. `Err` when it is no mapping at all.
 fn parse_top<'v>(
-    value: &'v serde_yaml::Value,
+    value: &'v yaml_serde::Value,
     source: &ScriptSource,
 ) -> Result<(ScriptTop<'v>, Vec<String>), String> {
-    let serde_yaml::Value::Mapping(top) = value else {
+    let yaml_serde::Value::Mapping(top) = value else {
         return Err("a play script must be a YAML mapping with a `steps:` list".to_string());
     };
     let mut errs = Vec::new();
@@ -718,7 +718,7 @@ fn parse_top<'v>(
     let mut refuse = |keys: &[&str], msg: String| {
         errs.push(format!("{}: {msg}", source.at(keys)));
     };
-    let mut surfaces = serde_yaml::Mapping::new();
+    let mut surfaces = yaml_serde::Mapping::new();
     let mut bridges = BTreeMap::new();
     let mut choose = BTreeMap::new();
     let mut steps = None;
@@ -760,7 +760,7 @@ fn parse_top<'v>(
                 Err(e) => refuse(&[key], e),
             },
             "quests" => {
-                let serde_yaml::Value::Mapping(m) = v else {
+                let yaml_serde::Value::Mapping(m) = v else {
                     refuse(
                         &[key],
                         "`quests:` must be a mapping of quest id -> status".to_string(),
@@ -782,7 +782,7 @@ fn parse_top<'v>(
                 }
             }
             "questInstances" => {
-                let serde_yaml::Value::Mapping(m) = v else {
+                let yaml_serde::Value::Mapping(m) = v else {
                     refuse(
                         &[key],
                         "`questInstances:` must be a mapping of quest id -> positive integer"
@@ -844,7 +844,7 @@ fn parse_top<'v>(
     let mut surfaces = if surfaces.is_empty() {
         MockSet::default()
     } else {
-        let parsed = serde_yaml::to_string(&serde_yaml::Value::Mapping(surfaces))
+        let parsed = yaml_serde::to_string(&yaml_serde::Value::Mapping(surfaces))
             .map_err(|e| format!("cannot re-read `state:`/`facts:`: {e}"))
             .and_then(|text| lute_trace::parse_mock_yaml(&text).map_err(|d| d.text().into_owned()));
         match parsed {
@@ -961,15 +961,15 @@ const INCLUDE_KEYS: &[&str] = &["bridges", "choose", "include", "label", "repeat
 /// step it splices in over the script's own — each repetition a segment of
 /// its own.
 fn expand_includes(
-    steps: &[serde_yaml::Value],
+    steps: &[yaml_serde::Value],
     from: &Included,
     stack: &mut Vec<PathBuf>,
-    out: &mut Vec<(serde_yaml::Value, StepSource, Vec<Arc<Segment>>)>,
+    out: &mut Vec<(yaml_serde::Value, StepSource, Vec<Arc<Segment>>)>,
 ) -> Result<(), String> {
     for (index, item) in steps.iter().enumerate() {
         let Some(target) = item.get("include") else {
             let mut item = item.clone();
-            if let (Some(label), serde_yaml::Value::Mapping(m)) = (&from.label, &mut item) {
+            if let (Some(label), yaml_serde::Value::Mapping(m)) = (&from.label, &mut item) {
                 if !m.contains_key("label") {
                     m.insert("label".into(), label.as_str().into());
                 }
@@ -979,7 +979,7 @@ fn expand_includes(
         };
         let here = from.source(index);
         let err = |key: &str, msg: String| here.locate_keys(&[key], &msg);
-        let serde_yaml::Value::Mapping(m) = item else {
+        let yaml_serde::Value::Mapping(m) = item else {
             unreachable!("`get` found a key")
         };
         let (mut repeat, mut choose, mut bridges) = (1usize, BTreeMap::new(), BTreeMap::new());
@@ -1051,12 +1051,12 @@ fn expand_includes(
                 format!("cannot read `include: {rel}` ({}): {e}", file.display()),
             )
         })?;
-        let value: serde_yaml::Value = serde_yaml::from_str(&text)
+        let value: yaml_serde::Value = yaml_serde::from_str(&text)
             .map_err(|e| format!("{}: malformed YAML: {e}", file.display()))?;
         let (included, under_steps) = match &value {
-            serde_yaml::Value::Sequence(items) => (Some(items.as_slice()), false),
-            serde_yaml::Value::Mapping(m) if m.len() == 1 => match m.get("steps") {
-                Some(serde_yaml::Value::Sequence(items)) => (Some(items.as_slice()), true),
+            yaml_serde::Value::Sequence(items) => (Some(items.as_slice()), false),
+            yaml_serde::Value::Mapping(m) if m.len() == 1 => match m.get("steps") {
+                Some(yaml_serde::Value::Sequence(items)) => (Some(items.as_slice()), true),
                 _ => (None, false),
             },
             _ => (None, false),
@@ -1099,8 +1099,8 @@ fn expand_includes(
 
 /// A step's, include's, or top-level `choose:`, parsed without the trace
 /// mock grammar so a timeout remains a typed scripted answer.
-fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<ScriptedPick>>, String> {
-    let serde_yaml::Value::Mapping(entries) = v else {
+fn parse_choose(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<ScriptedPick>>, String> {
+    let yaml_serde::Value::Mapping(entries) = v else {
         return Err("`choose:` must be a mapping of branch/hub id to choice id(s)".into());
     };
     let mut out = BTreeMap::new();
@@ -1109,7 +1109,7 @@ fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<ScriptedPi
             return Err("`choose:` keys must be branch or hub ids".into());
         };
         let values = match value {
-            serde_yaml::Value::Sequence(items) => items
+            yaml_serde::Value::Sequence(items) => items
                 .iter()
                 .enumerate()
                 .map(|(i, item)| parse_pick(id, item, Some(i + 1)))
@@ -1123,7 +1123,7 @@ fn parse_choose(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<ScriptedPi
 
 fn parse_pick(
     id: &str,
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     item: Option<usize>,
 ) -> Result<ScriptedPick, String> {
     let where_ = item.map_or_else(
@@ -1131,17 +1131,17 @@ fn parse_pick(
         |i| format!("`choose.{id}` list item {i}"),
     );
     match value {
-        serde_yaml::Value::String(option) if !option.trim().is_empty() => {
+        yaml_serde::Value::String(option) if !option.trim().is_empty() => {
             Ok(ScriptedPick::Option(option.trim().to_string()))
         }
-        serde_yaml::Value::Mapping(fields) => {
-            let timeout = fields.get(serde_yaml::Value::String("timeout".into()));
+        yaml_serde::Value::Mapping(fields) => {
+            let timeout = fields.get(yaml_serde::Value::String("timeout".into()));
             if fields.len() != 1 || timeout.is_none() {
                 return Err(format!(
                     "{where_} mapping must be exactly `{{ timeout: true }}`"
                 ));
             }
-            if timeout.and_then(serde_yaml::Value::as_bool) != Some(true) {
+            if timeout.and_then(yaml_serde::Value::as_bool) != Some(true) {
                 return Err(format!(
                     "{where_} timeout mapping must set `timeout` to `true`"
                 ));
@@ -1159,7 +1159,7 @@ fn parse_pick(
 fn parse_writes(
     n: usize,
     key: &str,
-    v: &serde_yaml::Value,
+    v: &yaml_serde::Value,
     retract: bool,
 ) -> Result<RawWrites, String> {
     let legal = if retract {
@@ -1167,14 +1167,14 @@ fn parse_writes(
     } else {
         "state, facts"
     };
-    let serde_yaml::Value::Mapping(m) = v else {
+    let yaml_serde::Value::Mapping(m) = v else {
         return Err(format!("step {n}: `{key}:` must be a mapping ({legal})"));
     };
     let mut w = RawWrites::default();
     for (k, v) in m {
         match k.as_str() {
             Some("state") => {
-                let serde_yaml::Value::Mapping(paths) = v else {
+                let yaml_serde::Value::Mapping(paths) = v else {
                     return Err(format!(
                         "step {n}: `{key}.state` must be a mapping of path -> value"
                     ));
@@ -1184,7 +1184,7 @@ fn parse_writes(
                         return Err(format!("step {n}: `{key}.state` keys must be state paths"));
                     };
                     let write = match value {
-                        serde_yaml::Value::Mapping(delta) => {
+                        yaml_serde::Value::Mapping(delta) => {
                             let add = match (delta.len(), delta.get("add")) {
                                 (1, Some(a)) => a.as_f64(),
                                 _ => None,
@@ -1231,9 +1231,9 @@ fn parse_writes(
 /// are all reported; otherwise the step's first error).
 fn parse_step(
     n: usize,
-    item: &serde_yaml::Value,
+    item: &yaml_serde::Value,
     at: StepSource,
-) -> Result<(ScriptStep, Option<serde_yaml::Value>), Vec<String>> {
+) -> Result<(ScriptStep, Option<yaml_serde::Value>), Vec<String>> {
     let mut errs = Vec::new();
     match parse_step_keys(n, item, at.clone(), &mut errs) {
         Ok(Some(step)) if errs.is_empty() => Ok(step),
@@ -1253,21 +1253,21 @@ fn parse_step(
 /// step's first other error, unlocated.
 fn parse_step_keys(
     n: usize,
-    item: &serde_yaml::Value,
+    item: &yaml_serde::Value,
     at: StepSource,
     errs: &mut Vec<String>,
-) -> Result<Option<(ScriptStep, Option<serde_yaml::Value>)>, String> {
+) -> Result<Option<(ScriptStep, Option<yaml_serde::Value>)>, String> {
     let shape =
         "one of `occasion` (with `target`, `payload`, `pick`, `choose`), `newRun`, `engine`, \
                  `event`, `advance` (with `pick`, `choose`, `engine`), `end` — plus \
                  `label`/`repeat`/`expect`";
-    let serde_yaml::Value::Mapping(m) = item else {
+    let yaml_serde::Value::Mapping(m) = item else {
         return Err(format!("step {n} must be a mapping — {shape}"));
     };
     if m.is_empty() {
         return Err(format!("step {n} is empty — {shape}"));
     }
-    let non_empty = |key: &str, v: &serde_yaml::Value| {
+    let non_empty = |key: &str, v: &yaml_serde::Value| {
         v.as_str()
             .map(str::trim)
             .filter(|s| !s.is_empty())
@@ -1313,7 +1313,7 @@ fn parse_step_keys(
             // dsl 0.27.0 §3: `payload: { copies: 2 }` — the raise's payload.
             "payload" => {
                 occasion_only.push(key);
-                let serde_yaml::Value::Mapping(fields) = v else {
+                let yaml_serde::Value::Mapping(fields) = v else {
                     return Err(format!(
                         "step {n}: `payload` must be a mapping of field -> literal"
                     ));
@@ -1363,8 +1363,8 @@ fn parse_step_keys(
             }
             "newRun" => {
                 writes = Some(match v {
-                    serde_yaml::Value::Bool(true) => RawWrites::default(),
-                    serde_yaml::Value::Mapping(_) => parse_writes(n, key, v, false)?,
+                    yaml_serde::Value::Bool(true) => RawWrites::default(),
+                    yaml_serde::Value::Mapping(_) => parse_writes(n, key, v, false)?,
                     _ => {
                         return Err(format!(
                             "step {n}: `newRun` must be `true` or `{{ state: …, facts: … }}`"
@@ -1378,13 +1378,13 @@ fn parse_step_keys(
                 let shape = "`advance` is `slot`, `day`, a number of slots, `{ to: <slot> }` \
                              or `{ to: { weekday: <label or number>, slot: <slot> } }`";
                 advance = Some(match v {
-                    serde_yaml::Value::String(s) if s.trim() == "slot" => {
+                    yaml_serde::Value::String(s) if s.trim() == "slot" => {
                         AdvanceBy::By(Advance::Slots(1))
                     }
-                    serde_yaml::Value::String(s) if s.trim() == "day" => {
+                    yaml_serde::Value::String(s) if s.trim() == "day" => {
                         AdvanceBy::By(Advance::Day)
                     }
-                    serde_yaml::Value::Number(k) => {
+                    yaml_serde::Value::Number(k) => {
                         match k.as_u64().and_then(|k| u32::try_from(k).ok()) {
                             Some(k) if k >= 1 => AdvanceBy::By(Advance::Slots(k)),
                             _ => {
@@ -1396,15 +1396,15 @@ fn parse_step_keys(
                         }
                     }
                     // dsl 0.26.0 §7 (T2-5): forward to the next such position.
-                    serde_yaml::Value::Mapping(m) if m.len() == 1 && m.contains_key("to") => {
-                        match m.get("to").unwrap_or(&serde_yaml::Value::Null) {
-                            serde_yaml::Value::String(slot) if !slot.trim().is_empty() => {
+                    yaml_serde::Value::Mapping(m) if m.len() == 1 && m.contains_key("to") => {
+                        match m.get("to").unwrap_or(&yaml_serde::Value::Null) {
+                            yaml_serde::Value::String(slot) if !slot.trim().is_empty() => {
                                 AdvanceBy::To {
                                     weekday: None,
                                     slot: Some(slot.trim().to_string()),
                                 }
                             }
-                            serde_yaml::Value::Mapping(to) => {
+                            yaml_serde::Value::Mapping(to) => {
                                 let (mut weekday, mut slot) = (None, None);
                                 for (k, v) in to {
                                     match (k.as_str(), scalar_text(v)) {
@@ -1425,7 +1425,7 @@ fn parse_step_keys(
                 });
             }
             "end" => {
-                if v != &serde_yaml::Value::Bool(true) {
+                if v != &yaml_serde::Value::Bool(true) {
                     return Err(format!(
                         "step {n}: `end` must be `true` — it ends the playthrough; later \
                          steps are skipped"
@@ -1493,7 +1493,7 @@ fn parse_step_keys(
         && expect
             .as_ref()
             .and_then(|e| e.get("presented"))
-            .is_some_and(serde_yaml::Value::is_mapping)
+            .is_some_and(yaml_serde::Value::is_mapping)
     {
         return Err(format!(
             "step {n}: `expect.presented` keyed by occasion applies to an `advance:` step, which \

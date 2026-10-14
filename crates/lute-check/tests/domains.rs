@@ -298,7 +298,7 @@ fn codes_with_domain_attr_against(
     snapshot: &CapabilitySnapshot,
     domains: &BTreeMap<String, Domain>,
 ) -> Vec<String> {
-    let ty: Type = serde_yaml::from_str(type_yaml)
+    let ty: Type = yaml_serde::from_str(type_yaml)
         .unwrap_or_else(|e| panic!("bad type yaml `{type_yaml}`: {e}"));
     let mut snap = snapshot.clone();
     snap.directives.insert(

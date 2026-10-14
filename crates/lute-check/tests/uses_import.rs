@@ -737,7 +737,7 @@ fn state_decl_names_the_path_the_legal_shape_and_the_nesting_level() {
     );
 }
 
-/// `serde_yaml` says "invalid type: unit variant, expected newtype variant"
+/// `yaml_serde` says "invalid type: unit variant, expected newtype variant"
 /// for the nesting mistake AND for a bare `type: enum`, "missing field
 /// `type`" for a declaration without one, and "expected struct StateDeclRaw"
 /// — a Rust type name — for a non-mapping. One fixed sentence blaming

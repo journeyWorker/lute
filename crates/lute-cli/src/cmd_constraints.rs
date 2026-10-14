@@ -1,3 +1,4 @@
+use crate::envelope::{self, CliError};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -23,8 +24,7 @@ pub(crate) fn run_constraints(
     let models = match lute_model::ProjectModel::roots_under(dir, &opts) {
         Ok(models) => models,
         Err(error) => {
-            eprintln!("lute constraints: {error}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(dir, format!("lute constraints: {error}")));
         }
     };
     let mut all = Vec::<serde_json::Value>::new();
@@ -128,12 +128,16 @@ pub(crate) fn run_constraints(
             }
         }
     }
+    let exit = if failed { 1 } else { 0 };
     if json {
-        match serde_json::to_string_pretty(&all) {
+        let payload = serde_json::json!({"constraints": all});
+        let report = envelope::report(crate::envelope::version::CONSTRAINTS, exit, payload);
+        match serde_json::to_string_pretty(&report) {
             Ok(text) => println!("{text}"),
             Err(error) => {
-                eprintln!("lute constraints: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute constraints: {error}"
+                )));
             }
         }
     }

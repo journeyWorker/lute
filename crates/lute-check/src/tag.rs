@@ -414,13 +414,13 @@ fn retag_scope(
 /// YAML cannot lock (the checker reports it separately); an absent key is
 /// unlocked.
 pub fn codes_locked(raw_yaml: &str) -> bool {
-    let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(raw_yaml)
+    let Ok(yaml_serde::Value::Mapping(map)) = yaml_serde::from_str::<yaml_serde::Value>(raw_yaml)
     else {
         return false;
     };
-    match map.get(serde_yaml::Value::String("codesLocked".into())) {
+    match map.get(yaml_serde::Value::String("codesLocked".into())) {
         None => false,
-        Some(serde_yaml::Value::Bool(false)) => false,
+        Some(yaml_serde::Value::Bool(false)) => false,
         Some(_) => true,
     }
 }

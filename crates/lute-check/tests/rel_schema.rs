@@ -136,7 +136,7 @@ fn relation_shape_diagnostics() {
 
 #[test]
 fn raw_duplicate_relation_key_is_relation_dup() {
-    // serde_yaml collapses duplicate keys; the Task 5 raw-text scan preserves them.
+    // yaml_serde collapses duplicate keys; the Task 5 raw-text scan preserves them.
     let c = codes(&scene_with(
         "entities:\n  c: { members: [x] }\nrelations:\n  inParty: { args: [c], tier: run }\n  inParty: { args: [c, c], tier: run }\n",
     ));

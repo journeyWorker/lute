@@ -59,7 +59,7 @@ pub struct ImportedTerminal {
 #[derive(Clone, Debug, Default)]
 pub struct SchemaImports {
     pub state: StateSchema,
-    pub defs: BTreeMap<String, serde_yaml::Value>,
+    pub defs: BTreeMap<String, yaml_serde::Value>,
     /// def name -> the file whose declaration won (the resolved `defs` entry's
     /// origin), for a diagnostic about an imported def that is raised in the
     /// IMPORTER — `E-DEF-DECL` when its type cannot be inferred there
@@ -202,7 +202,7 @@ struct ParsedDoc {
     clock_rejected: bool,
     /// 0.41.0 §3.2: this doc's invalid state rows, sited in this file.
     invalid: BTreeMap<String, lute_manifest::snapshot::InvalidDecl>,
-    defs: BTreeMap<String, serde_yaml::Value>,
+    defs: BTreeMap<String, yaml_serde::Value>,
     /// Project `enums:`/`entities:` domains, ALREADY fused the same way
     /// `TypedMeta::domains` fuses them (entities win a same-doc name
     /// clash). Phase 2 (`resolve_imports`) recovers this doc's PURE
@@ -539,7 +539,7 @@ fn resolve_imports_in(
 
     // --- Phase 2: gather EVERY declaration per NAME, then resolve deterministically.
     let mut state_by_name: BTreeMap<String, Vec<(PathBuf, usize, StateDecl)>> = BTreeMap::new();
-    let mut def_by_name: BTreeMap<String, Vec<(PathBuf, usize, serde_yaml::Value)>> =
+    let mut def_by_name: BTreeMap<String, Vec<(PathBuf, usize, yaml_serde::Value)>> =
         BTreeMap::new();
     let mut kind_by_name: BTreeMap<String, Vec<(PathBuf, usize, EntityKindDecl)>> = BTreeMap::new();
     let mut relation_by_name: BTreeMap<String, Vec<(PathBuf, usize, RelationDecl)>> =

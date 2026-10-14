@@ -3,18 +3,21 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::envelope::{self, CliError};
 use lute_model::{apply_patch, PatchRefusal, PatchRequest};
 fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
     if let PatchRefusal::Io { path, message } = refusal {
-        return serde_json::json!({
-            "schemaVersion": "0.36.0.patch",
-            "ok": false,
-            "error": {"kind": "io", "path": path, "message": message},
-        });
+        return envelope::report(
+            envelope::version::PATCH,
+            2,
+            serde_json::json!({
+                "accepted": false,
+                "error": {"kind": "io", "path": path, "message": message},
+            }),
+        );
     }
     let mut value = serde_json::json!({
-        "schemaVersion": "0.36.0.patch",
-        "ok": false,
+        "accepted": false,
         "code": refusal.code(),
         "message": refusal.message(),
     });
@@ -50,38 +53,55 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
         }
         PatchRefusal::Io { .. } => unreachable!(),
     }
-    value
+    envelope::report(envelope::version::PATCH, 2, value)
 }
 
-fn report_json(report: &lute_model::PatchReport) -> Result<String, serde_json::Error> {
+fn report_json(report: &lute_model::PatchReport, exit: u8) -> Result<String, serde_json::Error> {
     let mut value = serde_json::to_value(report)?;
-    value["schemaVersion"] = serde_json::Value::String("0.36.0.patch".into());
-    value["ok"] = serde_json::Value::Bool(true);
+    value["accepted"] = serde_json::Value::Bool(true);
+    let value = envelope::report(envelope::version::PATCH, exit, value);
     serde_json::to_string_pretty(&value).map(|text| format!("{text}\n"))
 }
 
 /// Run `lute patch` after parsing the strict request schema. A successful
 /// patch or dry-run is exit 0 only when semantic changes are empty; accepted
 /// semantic changes return exit 1. Refusals and malformed input are exit 2.
+/// The JSON document says which with `accepted` (dsl 0.43.0 §3.3); its `ok`
+/// is the envelope's (exit `0`).
 pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCode {
     let input = match std::fs::read_to_string(patch) {
         Ok(input) => input,
         Err(error) => {
-            eprintln!("lute patch: cannot read {}: {error}", patch.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                patch,
+                format!("lute patch: cannot read {}: {error}", patch.display()),
+            ));
         }
     };
     let request: PatchRequest = match serde_json::from_str(&input) {
         Ok(request) => request,
         Err(error) => {
             let refusal = serde_json::json!({
-                "schemaVersion": "0.36.0.patch",
-                "ok": false,
+                "accepted": false,
                 "code": "E-PATCH-EDIT",
                 "message": format!("invalid patch JSON: {error}"),
             });
             if json {
-                println!("{}", serde_json::to_string_pretty(&refusal).unwrap());
+                let value = envelope::report(envelope::version::PATCH, 2, refusal);
+                match serde_json::to_string_pretty(&value) {
+                    Ok(text) => {
+                        if crate::output::write_stdout(&(text + "\n")).is_err() {
+                            return envelope::fail(CliError::io_without_path(
+                                "lute patch: cannot write stdout",
+                            ));
+                        }
+                    }
+                    Err(error) => {
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute patch: cannot serialize refusal: {error}"
+                        )));
+                    }
+                }
             } else {
                 eprintln!("lute patch: E-PATCH-EDIT: invalid patch JSON: {error}");
             }
@@ -90,16 +110,20 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
     };
     match apply_patch(dir, request, dry_run) {
         Ok(report) => {
+            let exit = if report.diff.changes.is_empty() { 0 } else { 1 };
             if json {
-                match report_json(&report) {
+                match report_json(&report, exit) {
                     Ok(text) => {
                         if crate::output::write_stdout(&text).is_err() {
-                            return ExitCode::from(2);
+                            return envelope::fail(CliError::io_without_path(
+                                "lute patch: cannot write stdout",
+                            ));
                         }
                     }
                     Err(error) => {
-                        eprintln!("lute patch: cannot serialize report: {error}");
-                        return ExitCode::from(2);
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute patch: cannot serialize report: {error}"
+                        )));
                     }
                 }
             } else {
@@ -120,18 +144,23 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
                     return ExitCode::from(2);
                 }
             }
-            if report.diff.changes.is_empty() {
-                ExitCode::SUCCESS
-            } else {
-                ExitCode::from(1)
-            }
+            ExitCode::from(exit)
         }
         Err(refusal) => {
             if json {
                 let value = refusal_json(&refusal);
-                let text = format!("{}\n", serde_json::to_string_pretty(&value).unwrap());
+                let text = match serde_json::to_string_pretty(&value) {
+                    Ok(text) => format!("{text}\n"),
+                    Err(error) => {
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute patch: cannot serialize refusal: {error}"
+                        )));
+                    }
+                };
                 if crate::output::write_stdout(&text).is_err() {
-                    return ExitCode::from(2);
+                    return envelope::fail(CliError::io_without_path(
+                        "lute patch: cannot write stdout",
+                    ));
                 }
             } else {
                 eprintln!("lute patch: {refusal}");

@@ -235,9 +235,9 @@ fn declaration(
     }
     docs.iter().find_map(|d| {
         let map = d.folded.typed.yaml()?.as_mapping()?;
-        map.get(serde_yaml::Value::String(block.to_string()))?
+        map.get(yaml_serde::Value::String(block.to_string()))?
             .as_mapping()?
-            .get(serde_yaml::Value::String(name.to_string()))?;
+            .get(yaml_serde::Value::String(name.to_string()))?;
         Some((
             d.path.to_path_buf(),
             crate::meta::meta_key_span(&d.doc.meta, name),
@@ -282,25 +282,25 @@ pub fn document_read_view(text: &str) -> String {
 /// written — its parse error is reported elsewhere, and a read is never
 /// dropped for it.
 pub fn yaml_read_view(text: &str) -> String {
-    fn push_scalars(v: &serde_yaml::Value, out: &mut String) {
+    fn push_scalars(v: &yaml_serde::Value, out: &mut String) {
         match v {
-            serde_yaml::Value::String(s) => {
+            yaml_serde::Value::String(s) => {
                 out.push_str(s);
                 out.push('\n');
             }
-            serde_yaml::Value::Sequence(items) => items.iter().for_each(|i| push_scalars(i, out)),
-            serde_yaml::Value::Mapping(m) => {
+            yaml_serde::Value::Sequence(items) => items.iter().for_each(|i| push_scalars(i, out)),
+            yaml_serde::Value::Mapping(m) => {
                 for (k, v) in m {
                     push_scalars(k, out);
                     push_scalars(v, out);
                 }
             }
-            serde_yaml::Value::Tagged(t) => push_scalars(&t.value, out),
-            serde_yaml::Value::Null | serde_yaml::Value::Bool(_) | serde_yaml::Value::Number(_) => {
+            yaml_serde::Value::Tagged(t) => push_scalars(&t.value, out),
+            yaml_serde::Value::Null | yaml_serde::Value::Bool(_) | yaml_serde::Value::Number(_) => {
             }
         }
     }
-    match serde_yaml::from_str::<serde_yaml::Value>(text) {
+    match yaml_serde::from_str::<yaml_serde::Value>(text) {
         Ok(v) => {
             let mut out = String::new();
             push_scalars(&v, &mut out);

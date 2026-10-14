@@ -323,22 +323,30 @@ pub(crate) fn run_beats(
             .split_once('@')
             .filter(|(name, _)| known_occasions.contains(*name))
         {
-            eprintln!(
+            let message = format!(
                 "lute beats: `--occasion {o}`: give the target on its own — `--occasion {name} \
                  --target {target}`"
             );
-            return ExitCode::from(2);
+            eprintln!("{message}");
+            return crate::envelope::fail_quietly(
+                crate::envelope::CliError::usage(message).with_argument("--occasion"),
+            );
         }
         let known: Vec<&str> = known_occasions.iter().map(String::as_str).collect();
-        eprintln!(
+        let message = format!(
             "lute beats: `--occasion {o}` is not an occasion of this project{} (known: {})",
             lute_manifest::suggest::did_you_mean(o, known.iter().copied()),
             known.join(", ")
         );
-        return ExitCode::from(2);
+        eprintln!("{message}");
+        return crate::envelope::fail_quietly(
+            crate::envelope::CliError::usage(message).with_argument("--occasion"),
+        );
     }
     let out = if json_out {
-        let mut s = pretty_json(&json!({ "roots": roots_json })).unwrap_or_default();
+        let payload = json!({ "roots": roots_json });
+        let wrapped = crate::envelope::report(crate::envelope::version::BEATS, 0, payload);
+        let mut s = pretty_json(&wrapped).unwrap_or_default();
         s.push('\n');
         s
     } else if by_root.is_empty() {
@@ -348,7 +356,9 @@ pub(crate) fn run_beats(
     };
     match crate::write_stdout(&out) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(2),
+        Err(e) => crate::envelope::fail_quietly(crate::envelope::CliError::io_without_path(
+            format!("lute: cannot write stdout: {e}"),
+        )),
     }
 }
 

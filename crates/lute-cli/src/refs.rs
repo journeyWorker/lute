@@ -59,10 +59,12 @@ enum Target<'q> {
 /// Run `lute refs`. See the module doc.
 pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) -> ExitCode {
     if attrs.is_empty() && rewards.is_empty() {
-        eprintln!(
-            "lute refs: name what to list with `--attr <directive>.<attr>` or `--reward <KIND>`"
+        let message =
+            "lute refs: name what to list with `--attr <directive>.<attr>` or `--reward <KIND>`";
+        eprintln!("{message}");
+        return crate::envelope::fail_quietly(
+            crate::envelope::CliError::usage(message).with_argument("--attr/--reward"),
         );
-        return ExitCode::from(2);
     }
     let mut targets = Vec::new();
     for a in attrs {
@@ -72,8 +74,13 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
                 targets.push((a.clone(), Target::Attr { directive, attr }));
             }
             _ => {
-                eprintln!("lute refs: `--attr {a}` is not `<directive>.<attr>` (e.g. `give.item`)");
-                return ExitCode::from(2);
+                let message = format!(
+                    "lute refs: `--attr {a}` is not `<directive>.<attr>` (e.g. `give.item`)"
+                );
+                eprintln!("{message}");
+                return crate::envelope::fail_quietly(
+                    crate::envelope::CliError::usage(message).with_argument("--attr"),
+                );
             }
         }
     }
@@ -85,8 +92,9 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
         Ok(f) => f,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute refs: cannot walk {}: {e}", dir.display());
-            return ExitCode::from(2);
+            let message = format!("lute refs: cannot walk {}: {e}", dir.display());
+            eprintln!("{message}");
+            return crate::envelope::fail_quietly(crate::envelope::CliError::io(dir, message));
         }
     };
     // Desugared as every pass reads it (dsl 0.27.0 §6/§8).
@@ -100,8 +108,9 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
             Ok(d) => docs.push((path, d)),
             Err(e) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute refs: cannot read {}: {e}", path.display());
-                return ExitCode::from(2);
+                let message = format!("lute refs: cannot read {}: {e}", path.display());
+                eprintln!("{message}");
+                return crate::envelope::fail_quietly(crate::envelope::CliError::io(path, message));
             }
         }
     }
@@ -166,18 +175,19 @@ pub fn run_refs(dir: &Path, attrs: &[String], rewards: &[String], json: bool) ->
             .collect(),
     };
     let text = if json {
-        match serde_json::to_string_pretty(&report) {
-            Ok(s) => format!("{s}\n"),
-            Err(e) => {
-                eprintln!("lute refs: cannot serialize the report: {e}");
-                return ExitCode::from(2);
-            }
-        }
+        let payload = serde_json::to_value(&report).expect("refs report serializes");
+        let wrapped = crate::envelope::report(crate::envelope::version::REFS, 0, payload);
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&wrapped).expect("refs envelope serializes")
+        )
     } else {
         render_text(&report)
     };
-    if crate::write_stdout(&text).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = crate::write_stdout(&text) {
+        return crate::envelope::fail_quietly(crate::envelope::CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
     }
     ExitCode::SUCCESS
 }

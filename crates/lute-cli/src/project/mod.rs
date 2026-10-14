@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::envelope::{self, CliError};
 use lute_core_span::{Diagnostic, Span, TextIndex};
 /// (`PathBuf`'s `Ord` is byte-lexicographic) for deterministic output
 /// regardless of the OS's directory-iteration order. Symlinked directories
@@ -37,6 +38,35 @@ use lute_model::assemble_root_scenario;
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
 /// `check-project` and `lute scenario` (T14) both group by.
 pub(crate) use lute_model::{ByRoot, DocGroup};
+
+pub(crate) fn model_cli_error_with_message(
+    dir: &Path,
+    error: &lute_model::ModelError,
+    display_message: String,
+) -> CliError {
+    let detail = error.to_string();
+    match error {
+        lute_model::ModelError::Io(_) => CliError::io(dir, display_message),
+        lute_model::ModelError::Input(_) => {
+            // A document the model could not read is an I/O failure on that
+            // document; any other input failure is the input's fault.
+            let unreadable = detail
+                .strip_prefix("lute: cannot read ")
+                .and_then(|rest| rest.rsplit_once(": ").map(|(path, _)| PathBuf::from(path)));
+            let missing = detail
+                .strip_prefix("missing pre-splice compile document for ")
+                .map(PathBuf::from);
+            match (unreadable, missing) {
+                (Some(path), _) => CliError::io(&path, display_message),
+                (None, Some(path)) => CliError::input(&path, display_message),
+                (None, None) => CliError::input_without_path(display_message),
+            }
+        }
+        lute_model::ModelError::Resolve(_) => CliError::input_without_path(display_message),
+        lute_model::ModelError::Compile { path, .. } => CliError::input(path, display_message),
+        lute_model::ModelError::Index(_) => CliError::input_without_path(display_message),
+    }
+}
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
 /// `fold_env` each one, and group the parsed docs by resolved project root
@@ -88,11 +118,13 @@ pub(crate) fn collect_project_docs_in(
         let mut file_results = Vec::new();
         let mut by_root = BTreeMap::new();
         for model in memo.roots_under(dir, &opts).map_err(|error| {
-            eprintln!(
+            let message = format!(
                 "lute: cannot build project under {}: {error}",
                 dir.display()
             );
-            ExitCode::from(2)
+            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+            eprintln!("{message}");
+            envelope::fail_quietly(envelope_error)
         })? {
             let root = model.root().to_path_buf();
             let mut group = Vec::new();
@@ -170,16 +202,20 @@ pub(crate) fn collect_project_inputs_in(
     };
     let models = if single_root {
         vec![memo.single_root(dir, &opts).map_err(|error| {
-            eprintln!("lute: cannot build project {}: {error}", dir.display());
-            ExitCode::from(2)
+            let message = format!("lute: cannot build project {}: {error}", dir.display());
+            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+            eprintln!("{message}");
+            envelope::fail_quietly(envelope_error)
         })?]
     } else {
         memo.roots_under(dir, &opts).map_err(|error| {
-            eprintln!(
+            let message = format!(
                 "lute: cannot build project under {}: {error}",
                 dir.display()
             );
-            ExitCode::from(2)
+            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+            eprintln!("{message}");
+            envelope::fail_quietly(envelope_error)
         })?
     };
     let mut file_results = Vec::new();

@@ -18,14 +18,14 @@ use crate::CheckInput;
 /// document writes `key:` itself — the list its own one replaced. `None`
 /// when the document does not write `key:`, or the manifest has no default.
 pub(crate) fn replaced(
-    frontmatter: Option<&serde_yaml::Value>,
+    frontmatter: Option<&yaml_serde::Value>,
     input: &CheckInput,
     key: &str,
 ) -> Option<Vec<String>> {
     frontmatter?.get(key)?;
     let paths: Vec<String> = match input.defaults.get(key)? {
-        serde_yaml::Value::String(s) => vec![s.clone()],
-        serde_yaml::Value::Sequence(v) => v
+        yaml_serde::Value::String(s) => vec![s.clone()],
+        yaml_serde::Value::Sequence(v) => v
             .iter()
             .filter_map(|p| p.as_str().map(str::to_string))
             .collect(),

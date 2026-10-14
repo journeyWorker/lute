@@ -2,6 +2,9 @@
 title: 스토리 개요
 description: "계기로 선택되는 스토리를 읽기 전용으로 보는 세 가지 방법(dsl 0.23.0): `lute beats`는 각 계기의 비트 사다리를 검사기의 판정과 함께 출력하고, `lute calendar`는 상태 값 격자에서 플레이의 자격 판정을 평가하며, `lute scenario knowledge`는 모든 팩트 가드 조건을 규칙을 거쳐 그 팩트를 만드는 주체까지 추적합니다. 0.24.0부터: 시계와 visited 축, 계기별 축, `--facts` 표, calendar의 never-presented 목록, 작성된 그대로의 def와 `--expand`. 0.26.0부터: `lute beats`의 covered fallback과 종류 사다리, `lute scenario --facts`의 팩트 producer 간선, `knowledge`의 개수 세기 규칙 전제입니다."
 ---
+## 기계 판독 출력 (0.43)
+
+`beats`, `calendar`, `scenario`의 `--json` 결과는 `command`, `schemaVersion`, `ok`와 payload를 담은 envelope 객체입니다. 오류는 `ok: false`와 구조화된 `error`로 표현되며, 성공한 빈 결과로 위장하지 않습니다. 항상 종료 코드를 먼저 확인하세요.
 
 스토리를 위에서 아래로 읽는 대신 [계기](/ko/tooling/play/)로 선택하면 "둘째 날 저녁 여관에서 무엇이 재생되는가?"에 답하는 단일 파일은 없습니다. 답은 모든 비트의 `on`, `target`, `priority`, `once`, `after:`, `when`, 프로젝트의 규칙, 세이브가 이미 보유한 값 전체에 흩어져 있습니다. dsl 0.23.0부터 세 명령이 이를 한 화면에 모읍니다:
 

@@ -85,8 +85,8 @@ fn spent_beats<'d>(doc: &'d Document, folded: &'d FoldedEnv) -> Vec<SpentBeat<'d
                 once_written: folded
                     .typed
                     .yaml()
-                    .and_then(serde_yaml::Value::as_mapping)
-                    .is_some_and(|m| m.contains_key(serde_yaml::Value::String("once".into()))),
+                    .and_then(yaml_serde::Value::as_mapping)
+                    .is_some_and(|m| m.contains_key(yaml_serde::Value::String("once".into()))),
                 at: s.span,
             });
         }

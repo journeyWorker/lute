@@ -32,7 +32,10 @@ use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 use rayon::prelude::*;
 use serde_json::{json, Map, Value as Json};
 
-use crate::{ByRoot, DocGroup};
+use crate::{
+    envelope::{self, CliError},
+    ByRoot, DocGroup,
+};
 
 /// One fact-guarded element: what it is, where, its conditions and the
 /// atoms they query.
@@ -400,8 +403,8 @@ impl Walk<'_> {
 
 /// A scene document's frontmatter `when:` as authored.
 fn frontmatter_when(doc: &Document) -> Option<String> {
-    let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok()?;
-    meta.get(serde_yaml::Value::String("when".into()))?
+    let meta = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok()?;
+    meta.get(yaml_serde::Value::String("when".into()))?
         .as_str()
         .map(|s| s.trim().to_string())
 }
@@ -1445,8 +1448,8 @@ pub(crate) fn run_text(
     let picked = match select(&roots, for_node) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("lute scenario knowledge: {e}");
-            return ExitCode::from(2);
+            let message = format!("lute scenario knowledge: {e}");
+            return envelope::fail(CliError::usage(message).with_argument("--for"));
         }
     };
     if by_root.is_empty() {

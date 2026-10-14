@@ -1,4 +1,5 @@
 {
+  "command": "check-project",
   "files": [
     {
       "diagnostics": [],
@@ -46,5 +47,6 @@
         ]
       }
     }
-  ]
+  ],
+  "schemaVersion": "0.43.0.check-project"
 }

@@ -236,7 +236,7 @@ entities:
 
   test("broken declaration: a Type tagged-map with two keys is ambiguous", () => {
     const { ajv, declSchema } = loadAjv();
-    // `serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to
+    // `yaml_serde::with::singleton_map_recursive` requires EXACTLY one key to
     // resolve the `Type` tag (types.rs) — `{ enum: [...], list: int }` has
     // two, so real Rust deserialization fails too.
     const doc = Bun.YAML.parse(
@@ -595,8 +595,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.42.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.42.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.43.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.43.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -639,7 +639,7 @@ describe("generated runtime contract schemas", () => {
 // index types; every index the corpus compiles must validate against them.
 describe("generated IR index schema", () => {
   test("every compiled project.index.json validates as `projectIndex`", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.42.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.43.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
@@ -671,7 +671,7 @@ describe("generated IR index schema", () => {
   });
 
   test("an index def row is closed to the documented shape", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.42.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.43.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });

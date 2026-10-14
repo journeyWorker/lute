@@ -136,12 +136,12 @@ pub fn apply_chapters(
     {
         return;
     }
-    let Ok(serde_yaml::Value::Mapping(map)) =
-        serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+    let Ok(yaml_serde::Value::Mapping(map)) =
+        yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
     else {
         return;
     };
-    let Some(id) = map.get("id").and_then(serde_yaml::Value::as_str) else {
+    let Some(id) = map.get("id").and_then(yaml_serde::Value::as_str) else {
         return;
     };
     let Some(chain) = defaults.chain_of(id.trim()) else {
@@ -167,9 +167,9 @@ pub fn apply_chapters(
         }
         let text = match value {
             // `visited("prev")`: single-quoted so the inner quotes survive.
-            serde_yaml::Value::String(s) if key == "after" => format!("'{s}'"),
-            serde_yaml::Value::String(s) => s,
-            serde_yaml::Value::Number(n) => n.to_string(),
+            yaml_serde::Value::String(s) if key == "after" => format!("'{s}'"),
+            yaml_serde::Value::String(s) => s,
+            yaml_serde::Value::Number(n) => n.to_string(),
             _ => continue,
         };
         lines.push_str(&format!("{key}: {text}\n"));
@@ -514,9 +514,9 @@ type SceneKeys<'a> = BTreeMap<String, Vec<(PathBuf, Span)>>;
 /// A frontmatter's authored top-level scalar `key`, as text.
 fn own(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
     let v = typed.yaml()?.as_mapping()?;
-    match v.get(serde_yaml::Value::String(key.to_string()))? {
-        serde_yaml::Value::String(s) => Some(s.trim().to_string()),
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
+    match v.get(yaml_serde::Value::String(key.to_string()))? {
+        yaml_serde::Value::String(s) => Some(s.trim().to_string()),
+        yaml_serde::Value::Bool(b) => Some(b.to_string()),
         _ => None,
     }
 }
@@ -956,8 +956,8 @@ mod tests {
         .0
     }
 
-    fn map(doc: &Document) -> serde_yaml::Mapping {
-        serde_yaml::from_str(&doc.meta.raw_yaml).unwrap()
+    fn map(doc: &Document) -> yaml_serde::Mapping {
+        yaml_serde::from_str(&doc.meta.raw_yaml).unwrap()
     }
 
     fn typed(doc: &Document) -> crate::meta::TypedMeta {

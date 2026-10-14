@@ -281,6 +281,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -694,7 +695,9 @@ def project_root_for(rel: str) -> pathlib.Path | None:
 
 
 def run_lute(lute: str, args: list[str]) -> tuple[int, str]:
-    proc = subprocess.run([lute, *args], capture_output=True, text=True)
+    # Doc gates never write the developer's telemetry (dsl 0.43.0 §6).
+    env = {**os.environ, "LUTE_TELEMETRY": "0"}
+    proc = subprocess.run([lute, *args], capture_output=True, text=True, env=env)
     return proc.returncode, proc.stdout + proc.stderr
 
 

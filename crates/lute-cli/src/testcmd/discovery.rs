@@ -41,7 +41,7 @@ fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
 /// order, each at `file:line:col` of the key (or value) it names. Empty
 /// when the file is well-keyed.
 pub(super) fn closed_key_violations(
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     text: &str,
     file: &Path,
 ) -> Vec<String> {
@@ -119,8 +119,8 @@ pub(super) fn closed_key_violations(
 pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("cannot read test script {}: {error}", path.display()))?;
-    let value: serde_yaml::Value =
-        serde_yaml::from_str(&text).map_err(|error| format!("malformed test YAML: {error}"))?;
+    let value: yaml_serde::Value =
+        yaml_serde::from_str(&text).map_err(|error| format!("malformed test YAML: {error}"))?;
     let Some(map) = value.as_mapping() else {
         return Err("test script must be a YAML mapping".into());
     };
@@ -128,27 +128,27 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
         return Err("test script has unknown keys".into());
     }
     let mut refs = BTreeSet::new();
-    if let Some(ids) = map.get("visited").and_then(serde_yaml::Value::as_sequence) {
+    if let Some(ids) = map.get("visited").and_then(yaml_serde::Value::as_sequence) {
         refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
     }
-    if let Some(ids) = map.get("accepts").and_then(serde_yaml::Value::as_sequence) {
+    if let Some(ids) = map.get("accepts").and_then(yaml_serde::Value::as_sequence) {
         refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
     }
-    if let Some(quests) = map.get("quests").and_then(serde_yaml::Value::as_mapping) {
+    if let Some(quests) = map.get("quests").and_then(yaml_serde::Value::as_mapping) {
         refs.extend(
             quests
                 .keys()
                 .filter_map(|id| id.as_str().map(str::to_string)),
         );
     }
-    if let Some(id) = map.get("beat").and_then(serde_yaml::Value::as_str) {
+    if let Some(id) = map.get("beat").and_then(yaml_serde::Value::as_str) {
         refs.insert(id.to_string());
     }
-    if let Some(id) = map.get("entry").and_then(serde_yaml::Value::as_str) {
+    if let Some(id) = map.get("entry").and_then(yaml_serde::Value::as_str) {
         refs.insert(id.to_string());
     }
     for key in ["entries"] {
-        if let Some(ids) = map.get(key).and_then(serde_yaml::Value::as_sequence) {
+        if let Some(ids) = map.get(key).and_then(yaml_serde::Value::as_sequence) {
             refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
         }
     }
@@ -158,7 +158,7 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
     Ok(refs.into_iter().collect())
 }
 
-fn collect_test_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
+fn collect_test_expect_context_references(value: &yaml_serde::Value, refs: &mut BTreeSet<String>) {
     let Some(map) = value.as_mapping() else {
         return;
     };

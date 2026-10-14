@@ -21,16 +21,17 @@
 //! directory is worse than no output, because a build system would happily ship
 //! it.
 
+use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
 use lute_compile::locale::LocaleBundle;
+use lute_compile::ExecutionIr;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
-use lute_compile::ExecutionIr;
-
+use crate::envelope::{self, CliError};
 use crate::{render_diagnostics, DenyPolicy};
 use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
+use serde_json::json;
 
 /// The project index's fixed file name inside the output directory.
 const INDEX_FILE: &str = "project.index.json";
@@ -109,8 +110,10 @@ pub fn run(
         }
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot walk {} for manifests: {e}", project.display());
-            return ExitCode::from(2);
+            return envelope::fail(envelope::CliError::io(
+                project,
+                format!("lute: cannot walk {} for manifests: {e}", project.display()),
+            ));
         }
     }
     let opts = ModelOptions {
@@ -124,7 +127,9 @@ pub fn run(
         Ok(model) => model,
         Err(ModelError::Compile { path, diagnostics }) => {
             if json {
-                match serde_json::to_string_pretty(&diagnostics) {
+                let payload = json!({ "diagnostics": diagnostics });
+                let value = envelope::report(envelope::version::COMPILE, 1, payload);
+                match serde_json::to_string_pretty(&value) {
                     Ok(mut rendered) => {
                         rendered.push('\n');
                         print!("{rendered}");
@@ -153,8 +158,11 @@ pub fn run(
             return ExitCode::FAILURE;
         }
         Err(error) => {
-            eprintln!("lute: cannot build project {}: {error}", project.display());
-            return ExitCode::from(2);
+            let message = format!("lute: cannot build project {}: {error}", project.display());
+            let envelope_error =
+                crate::project::model_cli_error_with_message(project, &error, message.clone());
+            eprintln!("{message}");
+            return envelope::fail_quietly(envelope_error);
         }
     };
     if model.has_resolution_errors() {
@@ -208,7 +216,9 @@ pub fn run(
         };
         if !doc.check.ok {
             let rendered = if json {
-                match serde_json::to_string_pretty(&doc.check.diagnostics) {
+                let payload = json!({ "diagnostics": doc.check.diagnostics });
+                let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
+                match serde_json::to_string_pretty(&wrapped) {
                     Ok(mut s) => {
                         s.push('\n');
                         s
@@ -333,26 +343,34 @@ pub fn run(
         if let Some(parent) = c.out_path.parent() {
             if let Err(e) = std::fs::create_dir_all(parent) {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute: cannot create {}: {e}", parent.display());
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io(
+                    parent,
+                    format!("lute: cannot create {}: {e}", parent.display()),
+                ));
             }
         }
         if let Err(e) = std::fs::write(&c.out_path, &s) {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot write {}: {e}", c.out_path.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                &c.out_path,
+                format!("lute: cannot write {}: {e}", c.out_path.display()),
+            ));
         }
     }
     if let Err(e) = std::fs::create_dir_all(out_dir) {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot create {}: {e}", out_dir.display());
-        return ExitCode::from(2);
+        return envelope::fail(CliError::io(
+            out_dir,
+            format!("lute: cannot create {}: {e}", out_dir.display()),
+        ));
     }
     let index_path = out_dir.join(INDEX_FILE);
     if let Err(e) = std::fs::write(&index_path, index_json.as_bytes()) {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot write {}: {e}", index_path.display());
-        return ExitCode::from(2);
+        return envelope::fail(CliError::io(
+            &index_path,
+            format!("lute: cannot write {}: {e}", index_path.display()),
+        ));
     }
 
     eprintln!(

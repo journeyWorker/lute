@@ -355,12 +355,12 @@ fn scene_prefix(doc: &Document) -> Option<String> {
     if let Some(id) = authored_doc_id(doc) {
         return Some(id);
     }
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
     let map = match value {
-        serde_yaml::Value::Mapping(m) => m,
+        yaml_serde::Value::Mapping(m) => m,
         _ => return None,
     };
-    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    let key = |k: &str| yaml_serde::Value::String(k.to_string());
     let character = map.get(key("character"))?.as_str()?.to_string();
     if character.is_empty() {
         return None;
@@ -379,7 +379,7 @@ fn scene_prefix(doc: &Document) -> Option<String> {
 /// stamping an id `lute compile` would refuse). `None` when absent or
 /// invalid; [`scene_prefix`] then falls through to the triad derivation.
 fn authored_doc_id(doc: &Document) -> Option<String> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
     let id = value.get("id")?.as_str()?.trim();
     let valid = !id.is_empty()
         && id
@@ -452,7 +452,7 @@ fn document_units(
 /// so it is not a document for export purposes — its lines are exported once
 /// per `::use` expansion, under the caller's prefix (#3, T6.10).
 fn is_component_document(doc: &Document) -> bool {
-    serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+    yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
         .ok()
         .and_then(|v| v.get("component").cloned())
         .is_some()
@@ -471,8 +471,9 @@ fn is_component_document(doc: &Document) -> bool {
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute loc: cannot walk {}: {e}", dir.display());
-        ExitCode::from(2)
+        let message = format!("lute loc: cannot walk {}: {e}", dir.display());
+        eprintln!("{message}");
+        crate::envelope::fail_quietly(crate::envelope::CliError::io(dir, message))
     })?;
     let mut units = Vec::new();
     for path in &files {
@@ -547,8 +548,12 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
 /// Extract translatable lines to a localization export. See [`crate::LocCommand::Export`].
 pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
     if format != "json" && format != "csv" {
-        eprintln!("lute loc export: unknown format `{format}` (expected `json` or `csv`)");
-        return ExitCode::from(2);
+        let message =
+            format!("lute loc export: unknown format `{format}` (expected `json` or `csv`)");
+        eprintln!("{message}");
+        return crate::envelope::fail_quietly(
+            crate::envelope::CliError::usage(message).with_argument("--format"),
+        );
     }
     let units = match collect_units(dir) {
         Ok(u) => u,
@@ -568,12 +573,16 @@ pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
     let write_result = match out {
         Some(path) => std::fs::write(path, rendered.as_bytes()).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute loc export: cannot write {}: {e}", path.display());
+            let message = format!("lute loc export: cannot write {}: {e}", path.display());
+            eprintln!("{message}");
+            crate::envelope::CliError::io(path, message)
         }),
-        None => crate::write_stdout(&rendered).map_err(|_| {}),
+        None => crate::write_stdout(&rendered).map_err(|e| {
+            crate::envelope::CliError::io_without_path(format!("lute: cannot write stdout: {e}"))
+        }),
     };
-    if write_result.is_err() {
-        return ExitCode::from(2);
+    if let Err(err) = write_result {
+        return crate::envelope::fail_quietly(err);
     }
 
     if untagged > 0 {
@@ -805,12 +814,19 @@ pub fn run_report(dir: &Path, json: bool) -> ExitCode {
     }
 
     let rendered = if json {
-        render_report_json(&docs, &totals)
+        let payload: serde_json::Value = serde_json::from_str(&render_report_json(&docs, &totals))
+            .expect("loc report serializes");
+        let wrapped = crate::envelope::report(crate::envelope::version::LOC_REPORT, 0, payload);
+        let mut text = serde_json::to_string_pretty(&wrapped).expect("loc envelope serializes");
+        text.push('\n');
+        text
     } else {
         render_report_human(&docs, &totals)
     };
-    if crate::write_stdout(&rendered).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = crate::write_stdout(&rendered) {
+        return crate::envelope::fail_quietly(crate::envelope::CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
     }
     ExitCode::SUCCESS
 }
@@ -981,8 +997,9 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
             Ok(t) => t,
             Err(e) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute loc import: cannot read {}: {e}", file.display());
-                return ExitCode::from(2);
+                let message = format!("lute loc import: cannot read {}: {e}", file.display());
+                eprintln!("{message}");
+                return crate::envelope::fail_quietly(crate::envelope::CliError::io(file, message));
             }
         };
         let is_csv = file
@@ -1068,12 +1085,16 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
     let write_result = match out {
         Some(path) => std::fs::write(path, rendered.as_bytes()).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute loc import: cannot write {}: {e}", path.display());
+            let message = format!("lute loc import: cannot write {}: {e}", path.display());
+            eprintln!("{message}");
+            crate::envelope::CliError::io(path, message)
         }),
-        None => crate::write_stdout(&rendered).map_err(|_| {}),
+        None => crate::write_stdout(&rendered).map_err(|e| {
+            crate::envelope::CliError::io_without_path(format!("lute: cannot write stdout: {e}"))
+        }),
     };
-    if write_result.is_err() {
-        return ExitCode::from(2);
+    if let Err(err) = write_result {
+        return crate::envelope::fail_quietly(err);
     }
 
     if skipped > 0 {

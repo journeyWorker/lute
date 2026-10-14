@@ -3,7 +3,7 @@ use crate::types::Type;
 
 #[test]
 fn number_plugin_attr_type_names_int_and_double() {
-    let error = serde_yaml::from_str::<DirectivesFile>(
+    let error = yaml_serde::from_str::<DirectivesFile>(
         "directives:\n  - name: depth\n    attrs:\n      - { name: value, type: number }\n",
     )
     .unwrap_err()
@@ -16,7 +16,7 @@ fn number_plugin_attr_type_names_int_and_double() {
 
 #[test]
 fn number_payload_type_names_int_and_double() {
-    let error = serde_yaml::from_str::<OccasionsFile>(
+    let error = yaml_serde::from_str::<OccasionsFile>(
         "occasions:\n  dive: { select: first, payload: { depth: number } }\n",
     )
     .unwrap_err()
@@ -33,7 +33,7 @@ fn number_def_param_type_names_int_and_double() {
         let source = format!(
             "defs:\n  - name: deep\n    type: bool\n    cel: 'depth > 0'\n    params: {params}\n"
         );
-        let error = serde_yaml::from_str::<DefsFile>(&source)
+        let error = yaml_serde::from_str::<DefsFile>(&source)
             .unwrap_err()
             .to_string();
         assert!(
@@ -58,7 +58,7 @@ directives:
 
 #[test]
 fn parses_directive_with_attrs_and_lower() {
-    let file: DirectivesFile = serde_yaml::from_str(MINIGAME_DIR).unwrap();
+    let file: DirectivesFile = yaml_serde::from_str(MINIGAME_DIR).unwrap();
     let d = &file.directives[0];
     assert_eq!(d.name, "minigame");
     assert_eq!(d.attrs.len(), 3);
@@ -74,7 +74,7 @@ stateShapes:
     fields:
       - { name: rank, type: { enum: [fail, gold] }, default: fail }
 "#;
-    let f: StateFile = serde_yaml::from_str(y).unwrap();
+    let f: StateFile = yaml_serde::from_str(y).unwrap();
     assert_eq!(f.state_shapes.unwrap()[0].fields[0].name, "rank");
 }
 #[test]
@@ -85,7 +85,7 @@ writes:
   - { scope: scene, path: [minigame, attempts], value: { op: increment, by: 1 } }
   - { scope: scene, path: [flags, done], value: true }
 "#;
-    let e: DirectiveEffects = serde_yaml::from_str(y).unwrap();
+    let e: DirectiveEffects = yaml_serde::from_str(y).unwrap();
     assert!(matches!(
         e.writes[0].value,
         WriteValue::FromBridgeResult { .. }
@@ -98,14 +98,14 @@ writes:
 fn fact_effects_parse_and_keep_the_debug_of_a_writes_only_block() {
     // dsl 0.27.0 §4: `writes` is optional, facts are `rel(arg, …)`.
     let e: DirectiveEffects =
-        serde_yaml::from_str("asserts: [\"holding(@item)\", \"seen(key, true)\"]").unwrap();
+        yaml_serde::from_str("asserts: [\"holding(@item)\", \"seen(key, true)\"]").unwrap();
     assert!(e.writes.is_empty());
     assert_eq!(e.asserts[0].relation, "holding");
     assert_eq!(e.asserts[0].args, vec![FactEffectArg::Attr("item".into())]);
     assert_eq!(e.asserts[1].to_string(), "seen(key, true)");
     // capabilitySnapshot hashes `Debug`: a block without facts prints as
     // it did before `asserts`/`retracts` existed.
-    let w: DirectiveEffects = serde_yaml::from_str(
+    let w: DirectiveEffects = yaml_serde::from_str(
         "writes: [ { scope: run, path: [sanity], value: { op: increment, by: -1 } } ]",
     )
     .unwrap();
@@ -117,7 +117,7 @@ fn fact_effects_parse_and_keep_the_debug_of_a_writes_only_block() {
     );
     assert!(format!("{e:?}").contains("asserts: [\"holding(@item)\""));
     // …and serializes without the empty lists.
-    let back = serde_yaml::to_string(&w).unwrap();
+    let back = yaml_serde::to_string(&w).unwrap();
     assert!(!back.contains("asserts"), "{back}");
 }
 
@@ -130,7 +130,7 @@ fn malformed_fact_effects_are_refused_naming_the_shape() {
         "(item)",
         "holding(\"x\")",
     ] {
-        let err = serde_yaml::from_str::<DirectiveEffects>(&format!("asserts: ['{bad}']"))
+        let err = yaml_serde::from_str::<DirectiveEffects>(&format!("asserts: ['{bad}']"))
             .unwrap_err()
             .to_string();
         assert!(
@@ -138,7 +138,7 @@ fn malformed_fact_effects_are_refused_naming_the_shape() {
             "{bad}: {err}"
         );
     }
-    let err = serde_yaml::from_str::<DirectiveEffects>("asserts: [ { holding: item } ]")
+    let err = yaml_serde::from_str::<DirectiveEffects>("asserts: [ { holding: item } ]")
         .unwrap_err()
         .to_string();
     assert!(err.contains("expected a string"), "{err}");
@@ -147,23 +147,23 @@ fn malformed_fact_effects_are_refused_naming_the_shape() {
 #[test]
 fn lowering_record_form_binds() {
     let y = "record: setBackground\nfields: {}";
-    let l: Lowering = serde_yaml::from_str(y).unwrap();
+    let l: Lowering = yaml_serde::from_str(y).unwrap();
     assert!(matches!(l, Lowering::Record { .. }));
 }
 
 #[test]
 fn absent_lower_is_the_generic_passthrough() {
     let y = "directives:\n  - { name: encounter, attrs: [ { name: id, type: string } ] }\n";
-    let file: DirectivesFile = serde_yaml::from_str(y).unwrap();
+    let file: DirectivesFile = yaml_serde::from_str(y).unwrap();
     assert!(file.directives[0].lower.is_passthrough());
     // …and it serializes as no `lower:` at all.
-    let back = serde_yaml::to_string(&file.directives[0]).unwrap();
+    let back = yaml_serde::to_string(&file.directives[0]).unwrap();
     assert!(!back.contains("lower"), "{back}");
 }
 
 #[test]
 fn unregistered_builtin_hook_is_rejected_naming_the_registry() {
-    let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: encounter }")
+    let err = yaml_serde::from_str::<Lowering>("{ kind: builtin, name: encounter }")
         .unwrap_err()
         .to_string();
     assert!(
@@ -172,7 +172,7 @@ fn unregistered_builtin_hook_is_rejected_naming_the_registry() {
     );
     assert!(err.contains(&BUILTIN_LOWERING_HOOKS.join(", ")), "{err}");
     assert!(err.contains("omit `lower:`"), "{err}");
-    let err = serde_yaml::from_str::<Lowering>("{ kind: builtin, name: actorStag }")
+    let err = yaml_serde::from_str::<Lowering>("{ kind: builtin, name: actorStag }")
         .unwrap_err()
         .to_string();
     assert!(err.contains("did you mean `actorStage`?"), "{err}");
@@ -194,7 +194,7 @@ fn malformed_lowering_shapes_are_named() {
         ("{}", "`lower:` is empty"),
         ("{ record: bg, feilds: {} }", "unknown field `feilds`"),
     ] {
-        let err = serde_yaml::from_str::<Lowering>(y).unwrap_err().to_string();
+        let err = yaml_serde::from_str::<Lowering>(y).unwrap_err().to_string();
         assert!(err.contains(want), "{y}: {err}");
     }
 }
@@ -203,7 +203,7 @@ fn malformed_lowering_shapes_are_named() {
 fn builtin_hook_registry_is_exactly_the_core_hooks() {
     // The registry is the set of hooks the embedded `lute.core` manifest
     // names; a hook added to one without the other fails here.
-    let core: DirectivesFile = serde_yaml::from_str(include_str!(
+    let core: DirectivesFile = yaml_serde::from_str(include_str!(
         "../../assets/lute.core/directives/staging.yaml"
     ))
     .unwrap();
@@ -221,22 +221,22 @@ fn builtin_hook_registry_is_exactly_the_core_hooks() {
 
 #[test]
 fn export_bodies_reject_unknown_keys() {
-    let occ = serde_yaml::from_str::<OccasionsFile>("occasions:\n  report: { selct: all }\n")
+    let occ = yaml_serde::from_str::<OccasionsFile>("occasions:\n  report: { selct: all }\n")
         .unwrap_err()
         .to_string();
     assert!(occ.contains("unknown field `selct`"), "{occ}");
     let rk =
-        serde_yaml::from_str::<RewardKindsFile>("rewardKinds:\n  gold: { credit: run.gold }\n")
+        yaml_serde::from_str::<RewardKindsFile>("rewardKinds:\n  gold: { credit: run.gold }\n")
             .unwrap_err()
             .to_string();
     assert!(rk.contains("unknown field `credit`"), "{rk}");
-    let dir = serde_yaml::from_str::<DirectivesFile>(
+    let dir = yaml_serde::from_str::<DirectivesFile>(
         "directives:\n  - { name: x, attrs: [ { name: a, type: string, requird: true } ] }\n",
     )
     .unwrap_err()
     .to_string();
     assert!(dir.contains("unknown field `requird`"), "{dir}");
-    let target = serde_yaml::from_str::<OccasionsFile>(
+    let target = yaml_serde::from_str::<OccasionsFile>(
         "occasions:\n  talk: { target: { prefix: npc, entity: npc, member: [a] } }\n",
     );
     assert!(target.is_err(), "a typo'd target domain key must not parse");
@@ -253,7 +253,7 @@ exports: { directives: directives/, state: state/ }
 options:
   - { name: resultScope, type: { enum: [scene, run] }, default: scene }
 "#;
-    let m: PluginManifest = serde_yaml::from_str(y).unwrap();
+    let m: PluginManifest = yaml_serde::from_str(y).unwrap();
     assert_eq!(m.id, "arcia.minigame");
     assert_eq!(m.kind, "capability");
     assert_eq!(m.depends.len(), 1);
@@ -275,7 +275,7 @@ assetKinds:
     fallback: [emotionGroup, neutral, variant0]
     persistence: scene
 "#;
-    let file: AssetKindsFile = serde_yaml::from_str(y).unwrap();
+    let file: AssetKindsFile = yaml_serde::from_str(y).unwrap();
     let d = &file.asset_kinds[0];
     assert_eq!(d.kind, "CH");
     assert_eq!(d.sep, ".");
@@ -321,7 +321,7 @@ assetKinds:
              { attr: variation, field: variation } ]
     fallback: [ dropVariation, areaKind, preferAfternoon, anyView ]
 "#;
-    let file: AssetKindsFile = serde_yaml::from_str(y).unwrap();
+    let file: AssetKindsFile = yaml_serde::from_str(y).unwrap();
     let d = &file.asset_kinds[0];
     assert_eq!(d.kind, "BG");
     assert_eq!(d.resolve, AssetResolve::Query);
@@ -341,9 +341,9 @@ assetKinds:
 #[test]
 fn def_params_mapping_deserializes_in_source_order() {
     // §8.1 `params:` MAPPING spelling — order MUST be preserved for positional
-    // arg binding (serde_yaml::Mapping is insertion-ordered).
+    // arg binding (yaml_serde::Mapping is insertion-ordered).
     let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params: { a: int, b: bool }\n";
-    let file: DefsFile = serde_yaml::from_str(src).unwrap();
+    let file: DefsFile = yaml_serde::from_str(src).unwrap();
     let d = &file.defs[0];
     assert_eq!(
         d.params,
@@ -364,7 +364,7 @@ fn def_params_mapping_deserializes_in_source_order() {
 fn def_params_sequence_spelling_deserializes() {
     // The plugin `defs.yaml` list spelling `[{ name, type }]` also works.
     let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: int }\n      - { name: b, type: bool }\n";
-    let file: DefsFile = serde_yaml::from_str(src).unwrap();
+    let file: DefsFile = yaml_serde::from_str(src).unwrap();
     assert_eq!(
         file.defs[0].params,
         vec![
@@ -386,7 +386,7 @@ fn def_params_sequence_skips_malformed_entry() {
     // missing `type`) is skipped, not fatal — the file still keeps its good
     // params rather than being rejected wholesale (mirrors the MAPPING path).
     let src = "defs:\n  - name: pair\n    type: bool\n    cel: \"true\"\n    params:\n      - { name: a, type: int }\n      - { name: b }\n";
-    let file: DefsFile = serde_yaml::from_str(src).unwrap();
+    let file: DefsFile = yaml_serde::from_str(src).unwrap();
     assert_eq!(
         file.defs[0].params,
         vec![DefParam {
@@ -399,6 +399,6 @@ fn def_params_sequence_skips_malformed_entry() {
 #[test]
 fn def_params_absent_yields_empty() {
     let src = "defs:\n  - name: bare\n    type: bool\n    cel: \"true\"\n";
-    let file: DefsFile = serde_yaml::from_str(src).unwrap();
+    let file: DefsFile = yaml_serde::from_str(src).unwrap();
     assert!(file.defs[0].params.is_empty());
 }

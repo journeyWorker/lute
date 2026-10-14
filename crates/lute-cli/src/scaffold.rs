@@ -1302,21 +1302,21 @@ fn beat_ladder(root: &Path, on: &str, target: Option<&str>) -> BeatLadder {
             continue;
         };
         let (doc, _) = lute_syntax::parse(&text);
-        if let Some(m) = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml)
+        if let Some(m) = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml)
             .ok()
-            .filter(|m| m.get("on").and_then(serde_yaml::Value::as_str) == Some(on))
+            .filter(|m| m.get("on").and_then(yaml_serde::Value::as_str) == Some(on))
         {
             let key = |k: &str| m.get(k);
-            let repeatable = matches!(key("once"), Some(serde_yaml::Value::Bool(false)))
-                || key("once").and_then(serde_yaml::Value::as_str) == Some("false");
-            let rival = covers(key("target").and_then(serde_yaml::Value::as_str));
+            let repeatable = matches!(key("once"), Some(yaml_serde::Value::Bool(false)))
+                || key("once").and_then(yaml_serde::Value::as_str) == Some("false");
+            let rival = covers(key("target").and_then(yaml_serde::Value::as_str));
             let fallback = rival
                 && repeatable
                 && ["when", "after", "spentBy"]
                     .iter()
                     .all(|k| key(k).is_none());
-            let id = key("id").and_then(serde_yaml::Value::as_str).unwrap_or("");
-            if let Some(p) = key("priority").map_or(Some(0), serde_yaml::Value::as_i64) {
+            let id = key("id").and_then(yaml_serde::Value::as_str).unwrap_or("");
+            if let Some(p) = key("priority").map_or(Some(0), yaml_serde::Value::as_i64) {
                 ladder.add(p, rival, fallback.then_some(id));
             }
         }

@@ -22,7 +22,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_yaml::Value;
+use yaml_serde::Value;
 
 use crate::snapshot::Domain;
 
@@ -177,7 +177,7 @@ pub fn enum_shape_errors(value: &Value) -> Vec<(String, Vec<String>)> {
             if label.as_str().is_none() {
                 let member = match member {
                     Value::String(s) => s.clone(),
-                    other => serde_yaml::to_string(other)
+                    other => yaml_serde::to_string(other)
                         .unwrap_or_default()
                         .trim()
                         .to_string(),
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn parse_enums_reads_member_lists() {
-        let v: Value = serde_yaml::from_str("action: [wave, bow]\nmood: [calm, tense]").unwrap();
+        let v: Value = yaml_serde::from_str("action: [wave, bow]\nmood: [calm, tense]").unwrap();
         let doms = parse_enums(&v);
         assert_eq!(doms["action"].members, vec!["wave", "bow"]);
         assert!(!doms["action"].open);
@@ -212,13 +212,13 @@ mod tests {
     #[test]
     fn parse_enums_absent_or_malformed_is_empty() {
         assert!(parse_enums(&Value::Null).is_empty());
-        let v: Value = serde_yaml::from_str("action: notAList").unwrap();
+        let v: Value = yaml_serde::from_str("action: notAList").unwrap();
         assert!(parse_enums(&v).is_empty());
     }
 
     #[test]
     fn parse_enums_reads_long_form() {
-        let v: Value = serde_yaml::from_str(
+        let v: Value = yaml_serde::from_str(
             "anchor:\n  members: [left, center, right]\n  default: center\n\
              action:\n  members: [sway, fadeOut, hide]\n  exits: [fadeOut, hide]\n\
              musicPlayback:\n  members: [start, stop]\n  stops: [stop]\n",
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn parse_enums_flat_list_is_shorthand() {
-        let v: Value = serde_yaml::from_str("emotion: [neutral, sad]").unwrap();
+        let v: Value = yaml_serde::from_str("emotion: [neutral, sad]").unwrap();
         let doms = parse_enums(&v);
         assert_eq!(doms["emotion"].members, vec!["neutral", "sad"]);
         assert_eq!(doms["emotion"].default, None);
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn parse_enums_reads_labels_and_reports_non_string_ones() {
-        let v: Value = serde_yaml::from_str(
+        let v: Value = yaml_serde::from_str(
             "weekday:\n  members: [mon, sun]\n  labels: { sun: Sunday }\n\
              slot:\n  members: [am, pm]\n  labels: { am: 7, pm: Evening }\n\
              mood:\n  members: [calm]\n  labels: [Calm]\n",
@@ -276,7 +276,7 @@ mod tests {
     // every member unlabelled; `member:` dropped the whole enum).
     #[test]
     fn enum_long_form_refuses_unknown_keys() {
-        let v: Value = serde_yaml::from_str(
+        let v: Value = yaml_serde::from_str(
             "day:\n  members: [mon, tue]\n  lables: { mon: Monday }\n\
              hour:\n  member: [h1, h2]\n",
         )

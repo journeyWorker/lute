@@ -27,7 +27,7 @@ clap = { version = "4", features = ["derive"] }
 cel-parser = "0.10.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
+yaml_serde = { workspace = true }
 rayon = "1.12"
 
 [dev-dependencies]

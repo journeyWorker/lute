@@ -70,7 +70,7 @@ pub const CLEAR_DIRECTIVE: &str = "clear";
 pub enum CoreLoadError {
     AssetParse {
         asset: &'static str,
-        source: Arc<serde_yaml::Error>,
+        source: Arc<yaml_serde::Error>,
     },
 }
 
@@ -94,16 +94,16 @@ impl std::error::Error for CoreLoadError {
 
 fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
     let manifest: PluginManifest =
-        serde_yaml::from_str(MANIFEST).map_err(|e| CoreLoadError::AssetParse {
+        yaml_serde::from_str(MANIFEST).map_err(|e| CoreLoadError::AssetParse {
             asset: "plugin.yaml",
             source: Arc::new(e),
         })?;
     let staging: DirectivesFile =
-        serde_yaml::from_str(STAGING).map_err(|e| CoreLoadError::AssetParse {
+        yaml_serde::from_str(STAGING).map_err(|e| CoreLoadError::AssetParse {
             asset: "directives/staging.yaml",
             source: Arc::new(e),
         })?;
-    let enums: EnumsFile = serde_yaml::from_str(ENUMS).map_err(|e| CoreLoadError::AssetParse {
+    let enums: EnumsFile = yaml_serde::from_str(ENUMS).map_err(|e| CoreLoadError::AssetParse {
         asset: "enums.yaml",
         source: Arc::new(e),
     })?;

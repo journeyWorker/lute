@@ -678,7 +678,7 @@ fn variant_composition_group_fires_when_thin() {
         "variant-composition".into(),
         lute_lint::RuleOverride {
             level: None,
-            options: serde_yaml::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
+            options: yaml_serde::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
         },
     );
     let out = lint(
@@ -706,7 +706,7 @@ fn variant_composition_inert_when_attr_absent() {
         "variant-composition".into(),
         lute_lint::RuleOverride {
             level: None,
-            options: serde_yaml::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
+            options: yaml_serde::from_str("groupBy: variant\nminPerGroup: 2\n").unwrap(),
         },
     );
     let out = lint(
@@ -748,7 +748,7 @@ fn asset_exists_fires_on_absent_id() {
         "asset-exists".into(),
         lute_lint::RuleOverride {
             level: None,
-            options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
+            options: yaml_serde::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
     let out = lint(
@@ -778,7 +778,7 @@ fn asset_exists_sentinel_skips() {
         "asset-exists".into(),
         lute_lint::RuleOverride {
             level: None,
-            options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
+            options: yaml_serde::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
     let out = lint(
@@ -812,7 +812,7 @@ fn asset_exists_stale_downgrades_to_warning() {
         "asset-exists".into(),
         lute_lint::RuleOverride {
             level: None,
-            options: serde_yaml::from_str("providers: { bg: bg-catalog }\n").unwrap(),
+            options: yaml_serde::from_str("providers: { bg: bg-catalog }\n").unwrap(),
         },
     );
     let out = lint(

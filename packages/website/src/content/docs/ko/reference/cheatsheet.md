@@ -1967,3 +1967,18 @@ rules:
 모든 경로에서 앞서 실행된 `::assert{inParty(isolde)}`나 아무도 retract하지 않는 시드가 있으면
 `check-project`는 모든 경로에서 성립하는 팩트를 세므로 `@isolde: …`가 깨끗합니다. 단일 파일 검사는 그럴 수
 없으며, 메시지가 그 사실을 알려 줍니다.
+
+## 기계 판독 CLI 출력
+
+에이전트는 사람이 읽는 출력을 파싱하지 말고 JSON 보고서 봉투를 사용해야 합니다. JSON 보고서는
+stdout에 `command`, `schemaVersion`, `ok`를 포함한 객체 하나를 출력하며, `ok`는 프로세스 종료 코드가
+0일 때만 `true`입니다. `LUTE_TELEMETRY=0 target/debug/lute schema check`의 실제 출력은
+`schemaVersion: "0.43.0.schema"`이며 `--json` 검사 보고서(`0.43.0.check)의 인자와 출력을 설명합니다.
+`lute schema`는 항상 JSON이며 인자, 옵션, 출력을 나열합니다.
+
+JSON 모드의 사용법·I/O·입력 오류도 객체 하나입니다. `error.code`는 `E-CLI-USAGE`, `E-CLI-IO`,
+`E-CLI-INPUT` 중 하나이며 가능한 경우 `error.path`, `error.argument`, `error.hint`가 들어갑니다.
+[CLI 참고서의 기계 판독 출력](/ko/tooling/cli/#기계-판독-출력)에서 안정적인 필드를 확인하세요.
+
+텔레메트리는 로컬에서만 기록되며 선택 해제할 수 있습니다. 결정적인 예제와 CI에서는
+`LUTE_TELEMETRY=0`(또는 `DO_NOT_TRACK=1`)을 설정하세요. 명령 출력은 바뀌지 않습니다.

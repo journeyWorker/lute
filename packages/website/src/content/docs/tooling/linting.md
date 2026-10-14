@@ -2,6 +2,9 @@
 title: Linting
 description: "lute lint — advisory, per-project editorial lints (L-* codes) configured in lute.lint.yaml: the seven core rules, project-local custom rules, plugin lint exports, the metric tables rules read, the display-name advisory W-DISPLAY-NAME-DUP (dsl 0.26.0), and the exit-code contract."
 ---
+## Machine-readable output (0.43)
+
+`lute lint --json` uses the CLI envelope: `command`, `schemaVersion`, `ok`, and the diagnostic payload. Errors have `ok: false` and an `error` object; findings remain in the successful payload. The exit status is authoritative, including when warnings are promoted with `--deny` or `--deny-warnings`.
 
 `lute lint [PATH]` reviews project content for configurable editorial and
 composition concerns. It collects documents by their nearest `lute.project.yaml`,

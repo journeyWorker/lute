@@ -90,7 +90,7 @@ pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDe
             bodies.remove(name);
             continue;
         }
-        if let Some(body) = v.get("cel").and_then(serde_yaml::Value::as_str) {
+        if let Some(body) = v.get("cel").and_then(yaml_serde::Value::as_str) {
             bodies.insert(name.clone(), body.to_string());
         }
         params.insert(name.clone(), lute_check::params_from_yaml(v));

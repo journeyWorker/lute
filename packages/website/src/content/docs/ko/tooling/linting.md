@@ -2,6 +2,9 @@
 title: 린팅
 description: "lute lint — lute.lint.yaml에서 설정하는 자문형 프로젝트별 editorial lint(L-* 코드), 일곱 core 규칙, 프로젝트 로컬 custom 규칙, 플러그인 lint export, 규칙이 읽는 metric table, display-name advisory W-DISPLAY-NAME-DUP(dsl 0.26.0), 종료 코드 계약입니다."
 ---
+## 기계 판독 출력 (0.43)
+
+`lute lint --json`은 `command`, `schemaVersion`, `ok`와 진단 payload를 담은 CLI envelope를 사용합니다. 오류는 `ok: false`와 `error` 객체로 반환되고, 진단 결과는 성공 payload에 남습니다. `--deny` 또는 `--deny-warnings`로 경고를 승격한 경우에도 종료 코드가 권위 있는 결과입니다.
 
 `lute lint [PATH]`는 설정 가능한 editorial 및 composition 문제를 검토합니다. 가장 가까운 `lute.project.yaml`별로 문서를 모으고, 활성화된 각 규칙에 대해 같은 metric table을 계산한 뒤, 일반 human 또는 `--json` 진단 형식으로 결과를 보고합니다.
 

@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: one
-luteVersion: "0.42.1"
+luteVersion: "0.43.0"
 title: one
 uses: a.schema.yaml
 on: visit

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use lute_model::{ModelOptions, ProjectModel};
 use serde::Serialize;
-use serde_yaml::Value as Yaml;
+use yaml_serde::Value as Yaml;
 
 const MIN_SAMPLE: Duration = Duration::from_millis(200);
 const TIERS: [(&str, &str); 3] = [
@@ -533,7 +533,7 @@ fn prepare_tests(model: &ProjectModel, root: &Path) -> Result<Vec<PreparedTest>,
     load_tests(root)?
         .into_iter()
         .map(|test| {
-            let yaml: Yaml = serde_yaml::from_str(&test.text)
+            let yaml: Yaml = yaml_serde::from_str(&test.text)
                 .map_err(|error| format!("{}: invalid test YAML: {error}", test.path.display()))?;
             let file = yaml
                 .get("file")

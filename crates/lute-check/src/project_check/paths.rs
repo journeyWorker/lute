@@ -13,7 +13,7 @@ fn scene_when_slot(
     meta: &crate::meta::TypedMeta,
 ) -> Option<lute_syntax::ast::CelSlot> {
     let map = meta.yaml()?.as_mapping()?;
-    let key = |k: &str| map.get(serde_yaml::Value::String(k.to_string()));
+    let key = |k: &str| map.get(yaml_serde::Value::String(k.to_string()));
     key("on")?;
     let raw = key("when")?.as_str().filter(|w| !w.trim().is_empty())?;
     Some(lute_syntax::ast::CelSlot::raw(

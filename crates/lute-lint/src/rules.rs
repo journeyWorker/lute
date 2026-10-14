@@ -45,7 +45,7 @@ pub struct ResolvedRule {
     pub id: String,
     pub target: LintTarget,
     pub level: LintLevel,
-    pub options: serde_yaml::Mapping,
+    pub options: yaml_serde::Mapping,
     pub kind: RuleKind,
     /// Where the level came from — feeds `E-LINT-EXPR` provenance so the
     /// author sees which file put the rule at that severity.
@@ -181,7 +181,7 @@ pub fn active_group_bys(rules: &[ResolvedRule]) -> BTreeSet<String> {
         if let RuleKind::Rust(RustRuleId::VariantComposition) = &r.kind {
             if let Some(gb) = r
                 .options
-                .get(serde_yaml::Value::from("groupBy"))
+                .get(yaml_serde::Value::from("groupBy"))
                 .and_then(|v| v.as_str())
             {
                 out.insert(gb.to_string());
@@ -305,7 +305,7 @@ fn resolve_core(
 ) -> Option<ResolvedRule> {
     let (default_options, when, message) = match entry.kind {
         CoreKind::Data(yaml) => {
-            let decl: LintRuleDecl = match serde_yaml::from_str(yaml) {
+            let decl: LintRuleDecl = match yaml_serde::from_str(yaml) {
                 Ok(d) => d,
                 Err(e) => {
                     diags.push(config_diag(
@@ -322,7 +322,7 @@ fn resolve_core(
             (opts, decl.when, decl.message)
         }
         CoreKind::Rust(_, defaults_yaml) => {
-            let opts: serde_yaml::Mapping = serde_yaml::from_str(defaults_yaml).unwrap_or_default();
+            let opts: yaml_serde::Mapping = yaml_serde::from_str(defaults_yaml).unwrap_or_default();
             (opts, String::new(), String::new())
         }
     };
@@ -392,7 +392,7 @@ fn resolve_decl(
     })
 }
 
-fn to_mapping(m: &serde_yaml::Mapping) -> serde_yaml::Mapping {
+fn to_mapping(m: &yaml_serde::Mapping) -> yaml_serde::Mapping {
     m.clone()
 }
 
@@ -401,8 +401,8 @@ fn to_mapping(m: &serde_yaml::Mapping) -> serde_yaml::Mapping {
 /// key is unknown.
 fn validate_options(
     id: &str,
-    defaults: &serde_yaml::Mapping,
-    overrides: &serde_yaml::Mapping,
+    defaults: &yaml_serde::Mapping,
+    overrides: &yaml_serde::Mapping,
 ) -> Result<(), String> {
     for (k, ov) in overrides {
         let Some(dv) = defaults.get(k) else {
@@ -423,8 +423,8 @@ fn validate_options(
     Ok(())
 }
 
-fn type_compatible(a: &serde_yaml::Value, b: &serde_yaml::Value) -> bool {
-    use serde_yaml::Value::*;
+fn type_compatible(a: &yaml_serde::Value, b: &yaml_serde::Value) -> bool {
+    use yaml_serde::Value::*;
     match (a, b) {
         (Bool(_), Bool(_)) => true,
         (Number(_), Number(_)) => true,
@@ -649,12 +649,12 @@ fn expr_error(rule_id: &str, msg: String, span: Span) -> Finding {
 // Rust rules
 // ---------------------------------------------------------------------------
 
-fn opt_num(m: &serde_yaml::Mapping, key: &str) -> Option<f64> {
-    m.get(serde_yaml::Value::from(key)).and_then(|v| v.as_f64())
+fn opt_num(m: &yaml_serde::Mapping, key: &str) -> Option<f64> {
+    m.get(yaml_serde::Value::from(key)).and_then(|v| v.as_f64())
 }
 
-fn opt_str<'a>(m: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
-    m.get(serde_yaml::Value::from(key)).and_then(|v| v.as_str())
+fn opt_str<'a>(m: &'a yaml_serde::Mapping, key: &str) -> Option<&'a str> {
+    m.get(yaml_serde::Value::from(key)).and_then(|v| v.as_str())
 }
 
 fn eval_emotion_distribution(
@@ -823,16 +823,16 @@ fn eval_asset_exists(
 ) -> Vec<Finding> {
     let opts = &rule.options;
     // Directive-tag → provider-id map.
-    let providers_map = match opts.get(serde_yaml::Value::from("providers")) {
-        Some(serde_yaml::Value::Mapping(m)) => m.clone(),
+    let providers_map = match opts.get(yaml_serde::Value::from("providers")) {
+        Some(yaml_serde::Value::Mapping(m)) => m.clone(),
         _ => return Vec::new(),
     };
     if providers_map.is_empty() {
         return Vec::new();
     }
     // Sentinel values that skip validation.
-    let sentinels: BTreeSet<String> = match opts.get(serde_yaml::Value::from("sentinels")) {
-        Some(serde_yaml::Value::Sequence(seq)) => seq
+    let sentinels: BTreeSet<String> = match opts.get(yaml_serde::Value::from("sentinels")) {
+        Some(yaml_serde::Value::Sequence(seq)) => seq
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_ascii_lowercase()))
             .collect(),
@@ -845,7 +845,7 @@ fn eval_asset_exists(
 
     let mut out = Vec::new();
     for d in ctx.directives {
-        let Some(provider_val) = providers_map.get(serde_yaml::Value::from(d.tag.as_str())) else {
+        let Some(provider_val) = providers_map.get(yaml_serde::Value::from(d.tag.as_str())) else {
             continue;
         };
         let Some(provider) = provider_val.as_str() else {
@@ -1007,7 +1007,7 @@ fn project_value(p: &ProjectRow) -> Value {
     Value::Map(m)
 }
 
-fn mapping_to_value(m: &serde_yaml::Mapping) -> Value {
+fn mapping_to_value(m: &yaml_serde::Mapping) -> Value {
     let mut out = BTreeMap::new();
     for (k, v) in m {
         let Some(k) = k.as_str() else {
@@ -1018,21 +1018,21 @@ fn mapping_to_value(m: &serde_yaml::Mapping) -> Value {
     Value::Map(out)
 }
 
-fn yaml_to_value(v: &serde_yaml::Value) -> Value {
+fn yaml_to_value(v: &yaml_serde::Value) -> Value {
     match v {
-        serde_yaml::Value::Null => Value::Null,
-        serde_yaml::Value::Bool(b) => Value::Bool(*b),
-        serde_yaml::Value::Number(n) => {
+        yaml_serde::Value::Null => Value::Null,
+        yaml_serde::Value::Bool(b) => Value::Bool(*b),
+        yaml_serde::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Value::Int(i)
             } else {
                 n.as_f64().map(Value::Double).unwrap_or(Value::Null)
             }
         }
-        serde_yaml::Value::String(s) => Value::Str(s.clone()),
-        serde_yaml::Value::Sequence(seq) => Value::List(seq.iter().map(yaml_to_value).collect()),
-        serde_yaml::Value::Mapping(m) => mapping_to_value(m),
-        serde_yaml::Value::Tagged(t) => yaml_to_value(&t.value),
+        yaml_serde::Value::String(s) => Value::Str(s.clone()),
+        yaml_serde::Value::Sequence(seq) => Value::List(seq.iter().map(yaml_to_value).collect()),
+        yaml_serde::Value::Mapping(m) => mapping_to_value(m),
+        yaml_serde::Value::Tagged(t) => yaml_to_value(&t.value),
     }
 }
 
@@ -1043,7 +1043,7 @@ mod tests {
     #[test]
     fn core_data_yaml_parses() {
         for yaml in CORE_DATA_YAML {
-            let _decl: LintRuleDecl = serde_yaml::from_str(yaml).expect(yaml);
+            let _decl: LintRuleDecl = yaml_serde::from_str(yaml).expect(yaml);
         }
     }
 }

@@ -1201,11 +1201,14 @@ the compiler emits, component binding, the `when=` desugar and the persist desug
 inherited by construction (D14); the compile-time `SourceMap` maps each record back to its
 span and authored text.
 
-**Output (§4.5).** Deterministic for identical inputs; human transcript or `--json`
-(`TraceReport::render_json`, normative top-level keys `file`/`seeds`/`steps`/`decisions`/
-`unresolved`/`coverage`). Exit codes: `0` complete, `1` refused (check errors or invalid
-mocks — `E-TRACE-*` render exactly as check diagnostics do), `2` I/O, `3` incomplete (an
-`unknown` guard halted the walk).
+**Output (§4.5).** Deterministic for identical inputs; human transcript or
+`--json` (`TraceReport::render_json`, normative top-level keys
+`command: "trace"`/`schemaVersion: "0.43.0.trace"`/`ok` plus
+`file`/`seeds`/`steps`/`decisions`/`unresolved`/`coverage`). `ok` is true
+exactly for exit 0; JSON refusals use the common `0.43.0.error` envelope.
+Exit codes: `0` complete, `1` refused (check errors or invalid mocks —
+`E-TRACE-*` render exactly as check diagnostics do), `2` I/O, `3` incomplete
+(an `unknown` guard halted the walk).
 
 **D20 — auto-selection honesty (confirmed; ratified in spec §4.4).** At a `<branch>`/`<hub>`
 with no `--choose` entry, zero true-eligible choices, and at least one unknown-guarded

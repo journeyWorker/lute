@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.42.1`, the grammar and semantics the checker
+- **Language** — currently `0.43.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.42.1`) and gated on by consuming engines.
+  artifact (currently `0.43.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,94 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.43.0]
+
+**Agent-facing CLI contract** (spec
+[`0.43.0.md`](docs/proposals/scenario-dsl/0.43.0.md); plan
+[`2026-10-14-lute-0.43.0-cli-contract.md`](docs/superpowers/plans/2026-10-14-lute-0.43.0-cli-contract.md);
+decisions
+[`2026-10-14-lute-0.43-decisions.md`](docs/superpowers/notes/2026-10-14-lute-0.43-decisions.md),
+based on [`docs/deep-research-report.md`](docs/deep-research-report.md)).
+Issues #88–#92. The **toolchain** earns the release: every `--json` report
+shares one envelope, failures in JSON mode are structured, `lute schema`
+describes the command line, and the CLI keeps local, opt-out telemetry.
+**Language, IR, Event, snapshot and bindings shapes do not change**; their
+stamps read `0.43.0`, the contract schemas move to the `0.43` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.43.schema.json`, bodies
+unchanged apart from `$id`/title) and `bindingsVersion` is `"0.43"`. The npm
+packages publish `0.43.0` with no TypeScript API change.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp and schema line only).
+
+### Plugin
+
+- None.
+
+### CLI
+
+- **Common JSON envelope (#89).** Every report printed with `--json` (or
+  `--format json`) carries `command` (the subcommand path as typed, e.g.
+  `scenario reach`), `schemaVersion` (its payload shape, `0.43.0.<name>`, or
+  the unchanged `0.36.0.diff` / `0.36.0.context` / `0.36.0.position`) and
+  `ok` (`true` exactly when the process exits `0`). `constraints`, a `trace`
+  refusal and a `compile` refusal are objects (`constraints` /
+  `diagnostics` fields) instead of arrays. `patch` is `0.43.0.patch`: its
+  former `ok` ("accepted") is now `accepted`.
+- Not enveloped: `compile`'s IR, `compile-stream`, `run --json`,
+  `play --events`, `loc export` and `version --json`.
+- **Error envelope (#90).** In JSON mode (`--json`, `--format json`, or
+  `lute schema`), a usage error, an unreadable or unwritable path, or an
+  invalid input file prints `{command, schemaVersion: "0.43.0.error", ok:
+  false, error: {code, message, path?, argument?, hint?}}` on stdout and
+  still exits `2`; the human message on stderr is unchanged. Streams keep
+  their protocols.
+- **`lute schema [COMMAND]...` (#91)** prints the command tree as JSON —
+  arguments, options, subcommands and each machine-readable output's flag,
+  kind and `schemaVersion` — from the parser's own definition.
+- **Local telemetry (#92).** Each invocation appends
+  `{v, ts, lute, command, json, exit, durationMs}` to `telemetry.jsonl` in
+  the state directory (`$XDG_STATE_HOME/lute`, `~/.local/state/lute`,
+  `%LOCALAPPDATA%\lute`); nothing else is recorded and nothing is sent.
+  Off with `LUTE_TELEMETRY=0` (`false`/`off`/`no`) or `DO_NOT_TRACK`;
+  `lute doctor` reports it. The repository's tests, scripts and CI run with
+  it off (`.cargo/config.toml`, workflow `env`).
+
+### Diagnostics
+
+- New registered codes `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT` (the error
+  envelope's codes; `lute --explain` covers them).
+
+### Identity
+
+- None.
+
+### Dependencies
+
+- `serde_yaml` (deprecated upstream) is replaced by `yaml_serde` 0.10.7, the
+  YAML organization's maintained fork (#88). This drops `unsafe-libyaml`
+  (RUSTSEC-2023-0075, RUSTSEC-2024-0449). No behaviour change.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| CLI | Every `--json` report gains `command`, `schemaVersion`, `ok`; `constraints`, `trace` refusals and `compile` refusals are objects instead of arrays. | Read the array from `constraints` / `diagnostics`; use `ok` instead of per-command success fields where convenient. |
+| CLI | `patch --json` is `0.43.0.patch`: `ok` is `true` only on exit `0`; whether the patch was accepted is the new `accepted` field (an accepted patch with semantic changes exits `1`, `ok: false`, `accepted: true`). | Read `accepted` where `ok` was read. |
+| CLI | In JSON mode, usage/I/O/input failures print an error envelope on stdout. | Parse stdout in JSON mode even when the exit code is `2`. |
+| Diagnostics | New codes `E-CLI-USAGE`, `E-CLI-IO`, `E-CLI-INPUT`. | None. |
+| Tooling | Local telemetry is on by default. | Set `LUTE_TELEMETRY=0` (or `DO_NOT_TRACK=1`) to disable. |
+| Release | All axes and packages stamp `0.43.0`; schemas move to the `0.43` line; `bindingsVersion: "0.43"`. | Widen version gates to 0.43; update `bindingsVersion`. |
 
 ## [0.42.1]
 

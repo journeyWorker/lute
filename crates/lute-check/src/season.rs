@@ -41,7 +41,7 @@ fn diag(message: String, span: Span) -> Diagnostic {
 /// `span_at(path)` locates below `seasons:` — `[]` for `seasons:` itself,
 /// `[name]` for an entry, `[name, "live"]` for its condition.
 pub fn parse_seasons(
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     span_at: &dyn Fn(&[&str]) -> Span,
 ) -> (Seasons, Vec<Diagnostic>) {
     let mut out = Seasons::new();
@@ -83,10 +83,10 @@ const SEASON_EXAMPLE: &str =
     "`seasons: { harvest: { live: \"@harvestLive\" } }` (short form `harvest: \"@harvestLive\"`)";
 
 /// Why season key `k` is no season name.
-fn bad_season_name(k: &serde_yaml::Value) -> String {
+fn bad_season_name(k: &yaml_serde::Value) -> String {
     let shown = match k.as_str() {
         Some(s) => s.to_string(),
-        None => serde_yaml::to_string(k)
+        None => yaml_serde::to_string(k)
             .unwrap_or_default()
             .trim()
             .to_string(),
@@ -97,7 +97,7 @@ fn bad_season_name(k: &serde_yaml::Value) -> String {
 
 /// The `live` condition of season `name`'s body `v`: a condition string (the
 /// short form) or `{ live: "<condition>" }`.
-fn season_live(name: &str, v: &serde_yaml::Value) -> Result<String, String> {
+fn season_live(name: &str, v: &yaml_serde::Value) -> Result<String, String> {
     let empty = || {
         format!(
             "season `{name}` has no condition — write `{name}: {{ live: \"<condition>\" }}` \
@@ -105,11 +105,11 @@ fn season_live(name: &str, v: &serde_yaml::Value) -> Result<String, String> {
         )
     };
     let live = match v {
-        serde_yaml::Value::String(s) => s,
-        serde_yaml::Value::Null => return Err(empty()),
-        serde_yaml::Value::Mapping(m) => {
+        yaml_serde::Value::String(s) => s,
+        yaml_serde::Value::Null => return Err(empty()),
+        yaml_serde::Value::Mapping(m) => {
             if let Some(key) = m.keys().find(|k| k.as_str() != Some("live")) {
-                let key = serde_yaml::to_string(key).unwrap_or_default();
+                let key = yaml_serde::to_string(key).unwrap_or_default();
                 let key = key.trim();
                 return Err(format!(
                     "season `{name}` has no key `{key}`{} — a season declares only \
@@ -118,10 +118,10 @@ fn season_live(name: &str, v: &serde_yaml::Value) -> Result<String, String> {
                 ));
             }
             match m.get("live") {
-                Some(serde_yaml::Value::String(s)) => s,
-                None | Some(serde_yaml::Value::Null) => return Err(empty()),
+                Some(yaml_serde::Value::String(s)) => s,
+                None | Some(yaml_serde::Value::Null) => return Err(empty()),
                 Some(other) => {
-                    let shown = serde_yaml::to_string(other).unwrap_or_default();
+                    let shown = yaml_serde::to_string(other).unwrap_or_default();
                     let shown = shown.trim();
                     return Err(format!(
                         "season `{name}`'s `live: {shown}` is not a condition string — quote \

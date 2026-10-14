@@ -49,6 +49,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::envelope::{self, CliError};
 use lute_ir::IndexBeat;
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::OccasionSelect;
@@ -198,14 +199,37 @@ impl Origin {
         format!("the save in {script}{replayed}{until}")
     }
 }
+fn calendar_human(message: &str) -> String {
+    message
+        .lines()
+        .map(|line| format!("lute calendar: {}", lute_core_span::plain_message(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn calendar_argument(message: &str) -> Option<&'static str> {
+    [
+        ("`--axis", "--axis"),
+        ("axes' product", "--axis"),
+        ("`--where", "--where"),
+        ("`--occasion", "--occasion"),
+        ("`--target", "--target"),
+        ("`--facts", "--facts"),
+        ("`--until", "--until"),
+    ]
+    .iter()
+    .find_map(|(needle, argument)| message.contains(needle).then_some(*argument))
+}
 /// See [`crate::Command::Calendar`].
 pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
-    // One line per usage error, each plain text.
     let usage = |msg: String| {
-        for line in msg.lines() {
-            eprintln!("lute calendar: {}", lute_core_span::plain_message(line));
+        let human = calendar_human(&msg);
+        let error = CliError::usage(human);
+        if let Some(argument) = calendar_argument(&msg) {
+            envelope::fail(error.with_argument(argument))
+        } else {
+            envelope::fail(error)
         }
-        ExitCode::from(2)
     };
     let save = match args.script {
         None => PlayScript {
@@ -224,12 +248,17 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
                 Ok(t) => t,
                 Err(e) => {
                     let e = lute_manifest::io_reason(&e);
-                    return usage(format!("cannot read {}: {e}", path.display()));
+                    return envelope::fail(CliError::io(
+                        path,
+                        format!("lute calendar: cannot read {}: {e}", path.display()),
+                    ));
                 }
             };
             match parse_script_with(&text, path, false) {
                 Ok(s) => s,
-                Err(e) => return usage(e),
+                Err(e) => {
+                    return envelope::fail(CliError::input(path, calendar_human(&e)));
+                }
             }
         }
     };
@@ -246,7 +275,13 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         }
     }
     if !dir.is_dir() {
-        return usage(format!("{} is not a project directory", dir.display()));
+        return envelope::fail(CliError::io(
+            dir,
+            format!(
+                "lute calendar: {} is not a project directory",
+                dir.display()
+            ),
+        ));
     }
     let p = match compile_project(
         &lute_model::ModelMemo::default(),
@@ -255,6 +290,15 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         &crate::EngineMatrix::reference(),
     ) {
         Ok((p, _)) => p,
+        Err(code) if code == ExitCode::from(2) => {
+            return envelope::fail_quietly(CliError::io(
+                dir,
+                format!(
+                    "lute calendar: cannot build project under {}",
+                    dir.display()
+                ),
+            ));
+        }
         Err(code) => return code,
     };
     let mut resolved = Vec::with_capacity(args.axes.len());
@@ -366,7 +410,13 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     }
     let (base, origin) = match start_world(&p, &save, args.script, args.until) {
         Ok(b) => b,
-        Err(e) => return usage(e),
+        Err(e) if e.contains("`--until") => return usage(e),
+        Err(e) => {
+            if let Some(path) = args.script {
+                return envelope::fail(CliError::input(path, calendar_human(&e)));
+            }
+            return usage(e);
+        }
     };
     // With `--axis clock`, or at the position a replayed script stopped at,
     // a column of an occasion the clock's `raise:` map raises is judged
@@ -616,7 +666,9 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         unraised: &unraised,
     };
     let out = if args.json {
-        let mut s = serde_json::to_string_pretty(&render_json(&report)).unwrap_or_default();
+        let wrapped =
+            crate::envelope::report(crate::envelope::version::CALENDAR, 0, render_json(&report));
+        let mut s = serde_json::to_string_pretty(&wrapped).unwrap_or_default();
         s.push('\n');
         s
     } else if args.csv {
@@ -626,7 +678,9 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     };
     match crate::write_stdout(&out) {
         Ok(()) => ExitCode::SUCCESS,
-        Err(_) => ExitCode::from(2),
+        Err(e) => envelope::fail_quietly(CliError::io_without_path(format!(
+            "lute calendar: cannot write stdout: {e}"
+        ))),
     }
 }
 

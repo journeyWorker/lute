@@ -3,8 +3,8 @@ use super::SchemaError;
 use crate::types::{Field, PathSegment, Type};
 use serde::{Deserialize, Serialize};
 /// Deserialize `DefDecl.params` in SOURCE order (dsl §8.1). Accepts either the
-/// §8.1 `params:` YAML MAPPING (`{ p: number }`) — read via `serde_yaml::Mapping`,
-/// which is insertion-ordered in serde_yaml 0.9.34, so declaration order is
+/// §8.1 `params:` YAML MAPPING (`{ p: number }`) — read via `yaml_serde::Mapping`,
+/// which is insertion-ordered in yaml_serde, so declaration order is
 /// preserved for positional arg binding — OR a SEQUENCE of `{ name, type }`
 /// entries (the plugin `defs.yaml` list spelling). A malformed mapping entry is
 /// skipped, never a panic.
@@ -14,11 +14,11 @@ where
 {
     use serde::de::Error;
     use serde::Deserialize;
-    Ok(match serde_yaml::Value::deserialize(d)? {
-        serde_yaml::Value::Sequence(v) => {
+    Ok(match yaml_serde::Value::deserialize(d)? {
+        yaml_serde::Value::Sequence(v) => {
             let mut params = Vec::new();
             for value in v {
-                match serde_yaml::from_value::<DefParam>(value.clone()) {
+                match yaml_serde::from_value::<DefParam>(value.clone()) {
                     Ok(param) => params.push(param),
                     Err(_) if value.get("type").and_then(|v| v.as_str()) == Some("number") => {
                         return Err(D::Error::custom(crate::types::NUMBER_TYPE_REMOVED));
@@ -28,14 +28,14 @@ where
             }
             params
         }
-        serde_yaml::Value::Mapping(m) => {
+        yaml_serde::Value::Mapping(m) => {
             let mut params = Vec::new();
             for (key, value) in m {
                 let Some(name) = key.as_str() else { continue };
                 if value.as_str() == Some("number") {
                     return Err(D::Error::custom(crate::types::NUMBER_TYPE_REMOVED));
                 }
-                if let Ok(ty) = serde_yaml::from_value::<Type>(value) {
+                if let Ok(ty) = yaml_serde::from_value::<Type>(value) {
                     params.push(DefParam {
                         name: name.to_string(),
                         ty,

@@ -719,20 +719,20 @@ pub(super) fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
 /// The YAML value an author wrote, for the "got …" half of a message. A
 /// quoted `"false"` / `"10"` is a string where a bool or number is meant:
 /// the message says so instead of printing `false` against `false`.
-pub(super) fn describe(v: &serde_yaml::Value) -> String {
+pub(super) fn describe(v: &yaml_serde::Value) -> String {
     match v {
-        serde_yaml::Value::String(s)
+        yaml_serde::Value::String(s)
             if s == "true" || s == "false" || s.trim().parse::<f64>().is_ok() =>
         {
             format!("the quoted string `\"{s}\"` — write it unquoted, `{s}`")
         }
-        serde_yaml::Value::String(s) => format!("`{s}`"),
-        serde_yaml::Value::Bool(b) => format!("`{b}`"),
-        serde_yaml::Value::Number(n) => format!("`{n}`"),
-        serde_yaml::Value::Null => "an empty value".to_string(),
-        serde_yaml::Value::Sequence(_) => "a list".to_string(),
-        serde_yaml::Value::Mapping(_) => "a mapping".to_string(),
-        serde_yaml::Value::Tagged(_) => "a tagged value".to_string(),
+        yaml_serde::Value::String(s) => format!("`{s}`"),
+        yaml_serde::Value::Bool(b) => format!("`{b}`"),
+        yaml_serde::Value::Number(n) => format!("`{n}`"),
+        yaml_serde::Value::Null => "an empty value".to_string(),
+        yaml_serde::Value::Sequence(_) => "a list".to_string(),
+        yaml_serde::Value::Mapping(_) => "a mapping".to_string(),
+        yaml_serde::Value::Tagged(_) => "a tagged value".to_string(),
     }
 }
 

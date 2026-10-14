@@ -46,12 +46,12 @@ pub(super) fn scene_after(meta: &crate::meta::TypedMeta) -> SceneAfter {
     let Some(value) = meta.yaml() else {
         return SceneAfter::Absent;
     };
-    let serde_yaml::Value::Mapping(map) = value else {
+    let yaml_serde::Value::Mapping(map) = value else {
         return SceneAfter::Absent;
     };
-    match map.get(serde_yaml::Value::String("after".to_string())) {
+    match map.get(yaml_serde::Value::String("after".to_string())) {
         None => SceneAfter::Absent,
-        Some(serde_yaml::Value::String(s)) => SceneAfter::String(s.clone()),
+        Some(yaml_serde::Value::String(s)) => SceneAfter::String(s.clone()),
         Some(_) => SceneAfter::NonString,
     }
 }

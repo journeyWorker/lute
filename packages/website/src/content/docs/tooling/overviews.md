@@ -2,6 +2,9 @@
 title: Story overviews
 description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0: covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
 ---
+## Machine-readable output (0.43)
+
+`--json` responses from `beats`, `calendar`, and `scenario` are envelope objects with `command`, `schemaVersion`, `ok`, and the command payload. Errors are represented by `ok: false` and a structured `error` (`code`, `message`, and optional location fields), never by a successful empty result. Check the exit code first.
 
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
 

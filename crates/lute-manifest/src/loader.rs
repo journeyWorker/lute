@@ -830,7 +830,7 @@ fn drop_invalid(dir: &Path, out: &mut LoadedPlugin, errs: &[LoadError]) {
 /// `double` (same length, so every other error keeps its position), so the
 /// file's other entries still load.
 fn patch_numbers(file: &Path, text: String, errs: &mut Vec<LoadError>) -> String {
-    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+    let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
         return text;
     };
     let sites = crate::types::number_type_sites(&value);
@@ -857,7 +857,7 @@ fn patch_numbers(file: &Path, text: String, errs: &mut Vec<LoadError>) -> String
 /// [`Sites`] use: `directives[0]` → `("directive", <its name>)`,
 /// `occasions.dive` → `("occasion", "dive")`.
 fn export_entry(
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     path: &[crate::types::YamlKey],
 ) -> Option<(&'static str, String)> {
     use crate::types::YamlKey;
@@ -881,7 +881,7 @@ fn export_entry(
         YamlKey::Key(name) => name.clone(),
         YamlKey::Item(i) => {
             let e = value.get(section.as_str())?.get(*i)?;
-            let field = |f: &str| e.get(f).and_then(serde_yaml::Value::as_str);
+            let field = |f: &str| e.get(f).and_then(yaml_serde::Value::as_str);
             match kind {
                 "bridge" => format!("{}.{}", field("service")?, field("operation")?),
                 "assetKind" => field("kind")?.to_string(),
@@ -1053,7 +1053,7 @@ fn check_occasion_members(
 /// scalar that is not a string (`raisedWhen: true`, a number) would be read
 /// as its text; it is refused like a non-string `terminal:`.
 fn check_gate_types(text: &str, file: &Path, errs: &mut Vec<LoadError>) {
-    let Ok(doc) = serde_yaml::from_str::<serde_yaml::Value>(text) else {
+    let Ok(doc) = yaml_serde::from_str::<yaml_serde::Value>(text) else {
         return;
     };
     let Some(occasions) = doc.get("occasions").and_then(|o| o.as_mapping()) else {
@@ -1067,7 +1067,7 @@ fn check_gate_types(text: &str, file: &Path, errs: &mut Vec<LoadError>) {
             continue;
         }
         let name = name.as_str().unwrap_or_default();
-        let shown = serde_yaml::to_string(gate).unwrap_or_default();
+        let shown = yaml_serde::to_string(gate).unwrap_or_default();
         let shown = shown.trim();
         errs.push(LoadError::Parse {
             file: file.display().to_string(),
@@ -1283,7 +1283,7 @@ impl LoadError {
 fn read_manifest(
     path: &Path,
 ) -> Result<(PluginManifest, String), (Option<String>, Vec<LoadError>)> {
-    use serde_yaml::Value;
+    use yaml_serde::Value;
     let file = path.display().to_string();
     let fail = |at: At, msg: String| {
         vec![LoadError::Manifest {
@@ -1298,7 +1298,7 @@ fn read_manifest(
             fail(None, format!("`plugin.yaml` could not be read: {e}")),
         )
     })?;
-    let doc: Value = serde_yaml::from_str(&text).map_err(|e| {
+    let doc: Value = yaml_serde::from_str(&text).map_err(|e| {
         let fault = crate::yaml_text::yaml_fault(&text, &e);
         let at = crate::yaml_text::line_col(&text, fault.offset);
         (None, fail(Some(at), fault.message))
@@ -1310,7 +1310,7 @@ fn read_manifest(
     };
     let id = map.get("id").and_then(Value::as_str).map(str::to_string);
     let shown = |v: &Value| {
-        serde_yaml::to_string(v)
+        yaml_serde::to_string(v)
             .unwrap_or_default()
             .trim()
             .to_string()
@@ -1409,7 +1409,7 @@ fn read_manifest(
             .collect();
         return Err((id, errs));
     }
-    match serde_yaml::from_str::<PluginManifest>(&text) {
+    match yaml_serde::from_str::<PluginManifest>(&text) {
         Ok(m) => Ok((m, text)),
         Err(e) => {
             let (at, msg) = data_error(&text, &e);
@@ -1438,7 +1438,7 @@ where
             }
         };
         let s = patch_numbers(&file, s, errs);
-        match serde_yaml::from_str::<F>(&s) {
+        match yaml_serde::from_str::<F>(&s) {
             Ok(f) => {
                 let src = Source {
                     pkg,
@@ -1460,9 +1460,9 @@ where
 /// picks one }` parses as `description: Pick one` plus a null-valued key `the
 /// player picks one`); anything else as [`LoadError::Parse`], reworded by
 /// [`data_error`].
-fn export_error(file: &str, src: &str, e: &serde_yaml::Error) -> LoadError {
+fn export_error(file: &str, src: &str, e: &yaml_serde::Error) -> LoadError {
     let file = file.to_string();
-    let doc = match serde_yaml::from_str::<serde_yaml::Value>(src) {
+    let doc = match yaml_serde::from_str::<yaml_serde::Value>(src) {
         Ok(doc) => doc,
         Err(syntax) => {
             let fault = crate::yaml_text::yaml_fault(src, &syntax);
@@ -1503,9 +1503,9 @@ fn export_error(file: &str, src: &str, e: &serde_yaml::Error) -> LoadError {
     }
 }
 
-/// A `serde_yaml` data error (the text parsed as YAML) of `src`, reworded:
+/// A `yaml_serde` data error (the text parsed as YAML) of `src`, reworded:
 /// its place and [`plain_data_error`]'s sentence.
-fn data_error(src: &str, e: &serde_yaml::Error) -> (At, String) {
+fn data_error(src: &str, e: &yaml_serde::Error) -> (At, String) {
     let at = e
         .location()
         .map(|l| crate::yaml_text::line_col(src, l.index()));
@@ -1513,10 +1513,10 @@ fn data_error(src: &str, e: &serde_yaml::Error) -> (At, String) {
     (at, plain_data_error(path.as_deref(), &detail))
 }
 
-/// serde_yaml's error text split into the key path it names (`occasions.talk`,
+/// yaml_serde's error text split into the key path it names (`occasions.talk`,
 /// `directives[0]`; `None` at the top level) and the problem, without the
 /// ` at line N column M` mark (the location carries it).
-fn serde_parts(e: &serde_yaml::Error) -> (Option<String>, String) {
+fn serde_parts(e: &yaml_serde::Error) -> (Option<String>, String) {
     let mut text = e.to_string();
     if let Some(l) = e.location() {
         let mark = format!(" at line {} column {}", l.line(), l.column());
@@ -1684,16 +1684,16 @@ fn unknown_field(msg: &str) -> Option<(String, Vec<String>)> {
 
 /// The first mapping in `doc` holding `key`; if it also holds keys with no
 /// value that are not accepted fields, the "quote it" hint naming them.
-fn null_key_hint(doc: &serde_yaml::Value, key: &str, expected: &[String]) -> Option<String> {
-    fn find<'a>(v: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Mapping> {
+fn null_key_hint(doc: &yaml_serde::Value, key: &str, expected: &[String]) -> Option<String> {
+    fn find<'a>(v: &'a yaml_serde::Value, key: &str) -> Option<&'a yaml_serde::Mapping> {
         match v {
-            serde_yaml::Value::Mapping(m) => {
+            yaml_serde::Value::Mapping(m) => {
                 if m.contains_key(key) {
                     return Some(m);
                 }
                 m.values().find_map(|v| find(v, key))
             }
-            serde_yaml::Value::Sequence(s) => s.iter().find_map(|v| find(v, key)),
+            yaml_serde::Value::Sequence(s) => s.iter().find_map(|v| find(v, key)),
             _ => None,
         }
     }

@@ -51,7 +51,7 @@ pub struct Env {
     /// < inline:
     ///   * plugin defs — `snapshot.defs` `DefDecl.ty` is already a typed `Type`.
     ///   * imported-schema `defs:` (dsl §9.2) and inline frontmatter `defs:` —
-    ///     stored UNTYPED as `serde_yaml::Value`; the `type:` sub-value is
+    ///     stored UNTYPED as `yaml_serde::Value`; the `type:` sub-value is
     ///     pulled out and deserialized into `Type` (malformed/absent `type:`
     ///     yields NO entry — never a panic).
     ///
@@ -194,13 +194,13 @@ pub struct Ctx<'a> {
 ///   DefDecl>` (snapshot.rs:19); `DefDecl.ty: Type` (schema.rs:167-170) is a
 ///   ready `Type`. Insert `(name, ty.clone())` directly.
 /// * **Inline frontmatter `defs:` — stored UNTYPED.** `parse_meta` keeps them as
-///   `TypedMeta.defs: BTreeMap<String, serde_yaml::Value>` (`crate::meta`,
+///   `TypedMeta.defs: BTreeMap<String, yaml_serde::Value>` (`crate::meta`,
 ///   meta.rs:44; populated meta.rs:152). Each value is a mapping like
 ///   `{ type: bool, cel: "…" }` (see `docs/examples/marina-s01ep02.lute:14-15`:
 ///   `fond: { type: bool, cel: "scene.affect.marina >= 1" }`). B2.2 pulls the
 ///   `type:` sub-value and deserializes it into `Type` via the SAME serde path
 ///   `Type` uses (the `TypeDef` singleton-map shadow, `types.rs:149-270`), e.g.
-///   `serde_yaml::from_value::<Type>(v.get("type")?.clone()).ok()`. A
+///   `yaml_serde::from_value::<Type>(v.get("type")?.clone()).ok()`. A
 ///   malformed/absent `type:` yields NO entry — never a panic.
 ///
 /// # `ctx.defs` vs `def_types` (two tables, one union source)

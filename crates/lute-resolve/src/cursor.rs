@@ -604,7 +604,7 @@ pub struct DefInfo {
 /// exported defs. Returns `None` for an unknown ref (graceful — no placeholder).
 pub fn def_info(
     name: &str,
-    defs: &std::collections::BTreeMap<String, serde_yaml::Value>,
+    defs: &std::collections::BTreeMap<String, yaml_serde::Value>,
     snapshot: &CapabilitySnapshot,
 ) -> Option<DefInfo> {
     if let Some(v) = defs.get(name) {
@@ -636,10 +636,10 @@ fn def_decl_info(d: &DefDecl) -> DefInfo {
 }
 
 /// Best-effort label for a `type:` value expressed as raw YAML (inline `defs:`).
-fn yaml_type_label(v: &serde_yaml::Value) -> Option<String> {
+fn yaml_type_label(v: &yaml_serde::Value) -> Option<String> {
     match v {
-        serde_yaml::Value::String(s) => Some(s.clone()),
-        serde_yaml::Value::Mapping(_) => serde_yaml::from_value::<Type>(v.clone())
+        yaml_serde::Value::String(s) => Some(s.clone()),
+        yaml_serde::Value::Mapping(_) => yaml_serde::from_value::<Type>(v.clone())
             .ok()
             .map(|t| type_label(&t)),
         _ => None,
