@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Superseded
 ---
 
 # Haven drive test, re-run against Lute 0.10.0 — findings

@@ -1,6 +1,6 @@
 ---
 title: "AI harness surface — 0.42.0"
-status: Draft
+status: Implemented
 ---
 
 # AI harness surface
