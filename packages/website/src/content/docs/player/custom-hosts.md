@@ -33,6 +33,99 @@ const requirements = Layer.mergeAll(
 ```
 `LutePlayerOptions` requires `bindings`, `presenter`, `audio`, and `assets`; it accepts optional `host`, `cueFactory`, `linePacing`, and `autosave`, plus one start: `seed` (default `{ derive: true }`), `snapshot` (a runtime snapshot), or `session` (a runtime session the host built — the player drives it and never closes it). `cueFactory` wraps the default `CueFactoryShape` exactly once; return its `fromOutput` unchanged when you need the one-cue-per-output-event ordering. Bindings can be decoded data or YAML text. Provide runtime, bundle, input-log, and key-value-store services before running `LutePlayer.make` in a scope; with `session`, only the bundle (the same one) and the key-value store are required.
 
+## Hosting recipes (0.44)
+
+Three ways a host composes the player, each checked against the published types (names such as `bundle`, `startMinigame` or `storeCheckpoint` stand for your own values). The imports they share:
+
+```ts
+import { Effect, Layer } from "effect"
+import { BrowserKeyValueStore } from "@effect/platform-browser"
+import { Cues, Director, LutePlayer, Scheduler, Session, Stores, type SaveRuntime } from "@lute-lang/player"
+import { BundleSource, InputLog, Session as RuntimeSession } from "@lute-lang/runtime"
+import * as RuntimeBrowser from "@lute-lang/runtime/browser"
+```
+
+### Composing `Director.make` yourself
+
+`LutePlayer.make` builds the director for you. A host that composes it by hand passes the compiled `bundle` (required since 0.42: the director builds the default cue factory from it), the player session, stores and scheduler, and — optionally — `host` and a `cueFactory` wrapper:
+
+```ts
+const director = Effect.gen(function* () {
+  return yield* Director.make({
+    bundle,                                    // the compiled bundle value
+    bindings, presenter, audio, assets,
+    session: yield* Session.PlayerSession,     // Session.layer({ bindings, … }) over the runtime session
+    profile: yield* Stores.ProfileStore,       // Stores.profileLayer({ project })
+    saves: yield* Stores.SaveStore,            // Stores.layer({ project })
+    scheduler: yield* Scheduler.make(),
+    host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
+    cueFactory: (base) => ({
+      ...base,
+      fromOutput: (output, readLines) =>
+        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+    })
+  })
+})
+```
+
+- `host.plugin` reaches the default cue factory; you do not wire it a second time.
+- A `cueFactory` **function** wraps that default exactly once (keep one cue per output event, in order).
+- A pre-composed factory **value** must come from `Cues.make({ bundle, bindings, plugin })` for `host.plugin` to be merged into it (the host's handler wins a duplicate tag); any other value together with `host.plugin` makes `Director.make` die rather than drop the handlers.
+
+### `LutePlayer.make` over your own runtime session
+
+When the game owns the runtime session (it queries it, raises occasions, keeps its input log), build that session first and hand it to the player. The player needs the **same** `BundleSource` (it reads the artifacts for cues) and a `KeyValueStore` for saves and the profile:
+
+```ts
+const bundleSource = BundleSource.value(bundleValue)   // or BundleSource.directory(root) / BundleSource.url(base)
+const runtimeSession = RuntimeSession.layer({ seed: { derive: true } }).pipe(   // or { snapshot }
+  Layer.provide(Layer.mergeAll(RuntimeBrowser.runtime(wasmUrl), bundleSource, InputLog.memory))
+)
+
+const game = Effect.scoped(Effect.gen(function* () {
+  const session = yield* RuntimeSession.Session
+  const player = yield* LutePlayer.make({ session, bindings, presenter, audio, assets, host })
+  yield* player.actions({ type: "newGame" })
+  // …
+}))
+
+Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSource, Stores.memory))))
+```
+
+- `Stores.memory` keeps saves and the profile in memory (tests, previews). For saves that survive a reload use a persistent `KeyValueStore`: `BrowserKeyValueStore.layerLocalStorage` in a browser, or your own implementation on Bun/Node/native hosts. The player writes `save:quick`, `save:auto`, `save:1`… and `profile:<project>`; give it a prefixed store (`KeyValueStore.prefix`) if it shares one with the game.
+- `InputLog.memory` keeps the runtime's input log in memory; `InputLog.keyValueStore("game-log")` persists it in the same store.
+- Requirements: `make({ session })` needs `Scope`, `BundleSource` and `KeyValueStore`. `make({ seed })` / `make({ snapshot })` build the runtime session themselves and also need `LuteRuntime` and `InputLog`.
+
+### Runtime snapshot versus player save
+
+| | runtime `Contract.Snapshot` | player `SaveRuntime` |
+|---|---|---|
+| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
+| Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
+| Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+
+Checkpoint and restore a running player with the handle:
+
+```ts
+const save: SaveRuntime = yield* player.snapshot   // linearized with send/restore
+yield* storeCheckpoint(save)
+// … later, same player:
+yield* player.restore(save)
+```
+
+To resume in a **fresh** player (a new page, a new process), start its runtime from the save's runtime snapshot, then restore the save to bring back the log and backlog. `LutePlayer.make` returns once the player has left `boot`, so `restore` can follow at once:
+
+```ts
+const resume = Effect.scoped(Effect.gen(function* () {
+  const save = yield* loadCheckpoint
+  const player = yield* LutePlayer.make({ snapshot: save.snapshot, bindings, presenter, audio, assets })
+  yield* player.restore(save)
+}))
+```
+
+With your own runtime session, build it with `RuntimeSession.layer({ snapshot: save.snapshot })` and pass it as `session`. The save must come from the same compiled bundle (the project fingerprint is checked); otherwise `restore` fails `SaveIncompatible`.
+
 ## Upgrading from 0.40
 
 The player-session option that names speakers is `cast` (since 0.41.0). A host that composes the session itself with `Session.layer` (the `PlayerSession` layer) passes `SessionOptions.cast` — a plain record, cast id → display name, which is the bundle index's `cast` — where 0.40 took `castNames`, a `ReadonlyMap`. The old `castNamesFrom(artifacts)` helper is gone; read the names from `bundle.index.cast`:
@@ -52,7 +145,8 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 - `snapshot` is an `Effect<SaveRuntime, Errors.RuntimeRejection>` checkpoint. It takes the player session's lock, so it is linearized with `send` and `restore`; called while a batch is presenting, it does not wait for the presentation and returns the last committed runtime snapshot, accepted-input log, and backlog (each backlog entry includes its `voiceKey`). It does not capture presenter overlays, timers, profile state, or renderer fibers; pass the result directly to `restore(save)`.
 - `session` is the runtime session in use and `program` its `session.program`. Read `current`, subscribe to `events`, and run `view` / `evaluate` / `def` / `gate` / `candidates` without loading the bundle a second time.
-- `send(input)` hands the runtime an input while no batch runs and the story waits at `idle` or `ended` (at `ended`, only `newRun` or an outside-run raise is accepted). An input that ends the run carries host writes on `raiseOccasion`, `advanceClock`, `bridgeResult`, or `hostWrite`; `choose`, `timeout`, and `worldEvent` carry none, so write before them or author the write. `newRun` writes seed the next run and the ended run's `run.*` is readable as `prev.run.*`. A `hostWrite` after the ending fails `RuntimeBusy` with a message saying the run has ended. Elsewhere it fails with `DirectorBusy { flow, story }` and changes nothing; a runtime rejection fails it with the runtime's error and the director stays at the same await.
+- `send(input)` hands the runtime an input while no batch runs and the story waits at `idle` or `ended` (at `ended`, only `newRun` or an outside-run raise is accepted). Elsewhere it fails with `DirectorBusy { flow, story }` and changes nothing; a runtime rejection fails it with the runtime's error and the director stays at the same await.
+- **Writes that belong to the ending (0.44).** Once the story is at `ended`, a `hostWrite` is refused (`RuntimeBusy`, its message says so). Send ending metadata as `writes` on the input that ends the run — the `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite` that makes `terminal` hold (`send({ type: "raiseOccasion", occasion: "dawn", writes: { state: [{ path: "run.endedBy", value: "dawnSeven" }] } })`). `choose`, `timeout` and `worldEvent` carry no writes: when one of them ends the run, record the state in the story (a `::set` in the branch) or in a `hostWrite` sent before it. `newRun`'s writes seed the next run, where the ended run's values read as `prev.run.*`.
 `send` completes when the input was accepted and its batch started.
 
 ## Port contracts
@@ -118,7 +212,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "the release line",
+  "saveVersion": "0.44",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -127,7 +221,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion: "0.41"`, the project fingerprint, `readLines`, and settings. Storage is namespaced by the project fingerprint, so unrelated bundles do not share saves. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.44"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 ## Rollback and history
 

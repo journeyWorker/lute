@@ -45,41 +45,98 @@ The handle:
 
 Options beyond the ports: `host` (`bridge` answers `{ fields, writes? }`, `plugin` runs a game action at a `plugin` record's place, `idle` overrides the idle flow — each on a fiber of its own), `linePacing: "presenter"` (the presenter types, pages and takes the confirm), `autosave` (`false`, `"presentation"`, `"choice"`; default both). A `Presenter` may set `confirmsLines: true` to have an `advance` that arrives while a line types kept as its release.
 
-## Hosting recipes
+## Hosting recipes (0.44)
 
-### Compose `Director.make` directly
-
-`Director.make` requires `bundle`, `session`, `bindings`, `presenter`, `audio`, `assets`, `profile`, `saves`, and `scheduler` (plus the host's scope). Its default cue factory receives `host.plugin`:
+Three ways a host composes the player, each checked against the published types (names such as `bundle`, `startMinigame` or `storeCheckpoint` stand for your own values). The imports they share:
 
 ```ts
-const director = Director.make({
-  bundle, session, bindings, presenter, audio, assets, profile, saves, scheduler,
-  host: { plugin: { sparkle: call => sparkle(call.attrs) } },
-  cueFactory: (base) => ({ ...base, fromOutput: output => myOutput(base.fromOutput(output)) })
+import { Effect, Layer } from "effect"
+import { BrowserKeyValueStore } from "@effect/platform-browser"
+import { Cues, Director, LutePlayer, Scheduler, Session, Stores, type SaveRuntime } from "@lute-lang/player"
+import { BundleSource, InputLog, Session as RuntimeSession } from "@lute-lang/runtime"
+import * as RuntimeBrowser from "@lute-lang/runtime/browser"
+```
+
+### Composing `Director.make` yourself
+
+`LutePlayer.make` builds the director for you. A host that composes it by hand passes the compiled `bundle` (required since 0.42: the director builds the default cue factory from it), the player session, stores and scheduler, and — optionally — `host` and a `cueFactory` wrapper:
+
+```ts
+const director = Effect.gen(function* () {
+  return yield* Director.make({
+    bundle,                                    // the compiled bundle value
+    bindings, presenter, audio, assets,
+    session: yield* Session.PlayerSession,     // Session.layer({ bindings, … }) over the runtime session
+    profile: yield* Stores.ProfileStore,       // Stores.profileLayer({ project })
+    saves: yield* Stores.SaveStore,            // Stores.layer({ project })
+    scheduler: yield* Scheduler.make(),
+    host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
+    cueFactory: (base) => ({
+      ...base,
+      fromOutput: (output, readLines) =>
+        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+    })
+  })
 })
 ```
 
-`host.plugin` is merged into the default factory, and a wrapper receives that factory. If supplying a pre-composed factory, create it with `Cues.make({ bundle, bindings })`; an arbitrary factory cannot merge `host.plugin` and `make` dies.
+- `host.plugin` reaches the default cue factory; you do not wire it a second time.
+- A `cueFactory` **function** wraps that default exactly once (keep one cue per output event, in order).
+- A pre-composed factory **value** must come from `Cues.make({ bundle, bindings, plugin })` for `host.plugin` to be merged into it (the host's handler wins a duplicate tag); any other value together with `host.plugin` makes `Director.make` die rather than drop the handlers.
 
-### External runtime session
+### `LutePlayer.make` over your own runtime session
 
-Build the runtime session yourself, then pass the same bundle source and a key-value store to the player:
+When the game owns the runtime session (it queries it, raises occasions, keeps its input log), build that session first and hand it to the player. The player needs the **same** `BundleSource` (it reads the artifacts for cues) and a `KeyValueStore` for saves and the profile:
 
 ```ts
-const source = BundleSource.value(bundle) // or BundleSource.directory(root) / BundleSource.url(base)
-const session = Session.layer({ seed }).pipe(
-  Layer.provide(Layer.mergeAll(LuteRuntime.layer, source, InputLog.memory))
+const bundleSource = BundleSource.value(bundleValue)   // or BundleSource.directory(root) / BundleSource.url(base)
+const runtimeSession = RuntimeSession.layer({ seed: { derive: true } }).pipe(   // or { snapshot }
+  Layer.provide(Layer.mergeAll(RuntimeBrowser.runtime(wasmUrl), bundleSource, InputLog.memory))
 )
-const handle = LutePlayer.make({
-  session, bindings, presenter, audio, assets, host, cueFactory
-}).pipe(Effect.provide(Layer.mergeAll(source, Stores.memory)))
+
+const game = Effect.scoped(Effect.gen(function* () {
+  const session = yield* RuntimeSession.Session
+  const player = yield* LutePlayer.make({ session, bindings, presenter, audio, assets, host })
+  yield* player.actions({ type: "newGame" })
+  // …
+}))
+
+Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSource, Stores.memory))))
 ```
 
-Use `InputLog.keyValueStore("game-log")` instead of `InputLog.memory` for persistence, and use `BrowserKeyValueStore.layerLocalStorage` in browsers or a host-supplied `KeyValueStore` elsewhere. Both `make` overloads require `Scope`; the `session` overload additionally requires `BundleSource` and `KeyValueStore`, while seed/snapshot construction may also receive `LuteRuntime` and `InputLog`.
+- `Stores.memory` keeps saves and the profile in memory (tests, previews). For saves that survive a reload use a persistent `KeyValueStore`: `BrowserKeyValueStore.layerLocalStorage` in a browser, or your own implementation on Bun/Node/native hosts. The player writes `save:quick`, `save:auto`, `save:1`… and `profile:<project>`; give it a prefixed store (`KeyValueStore.prefix`) if it shares one with the game.
+- `InputLog.memory` keeps the runtime's input log in memory; `InputLog.keyValueStore("game-log")` persists it in the same store.
+- Requirements: `make({ session })` needs `Scope`, `BundleSource` and `KeyValueStore`. `make({ seed })` / `make({ snapshot })` build the runtime session themselves and also need `LuteRuntime` and `InputLog`.
 
-### Runtime snapshots and player saves
+### Runtime snapshot versus player save
 
-`Contract.Snapshot` is produced and consumed by the runtime and restores runtime state only. `SaveRuntime` is produced by `handle.snapshot`, consumed by `handle.restore`, and restores the runtime snapshot plus player log and backlog. On a running player: `const save = await handle.snapshot; store(save); await handle.restore(save)`. For a fresh player use `LutePlayer.make({ snapshot: save.snapshot, ... })`, leave `boot` by running `actions({ type: "newGame" })`, then call `restore(save)`. The bundle fingerprint must match or `SaveIncompatible` is raised.
+| | runtime `Contract.Snapshot` | player `SaveRuntime` |
+|---|---|---|
+| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
+| Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
+| Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+
+Checkpoint and restore a running player with the handle:
+
+```ts
+const save: SaveRuntime = yield* player.snapshot   // linearized with send/restore
+yield* storeCheckpoint(save)
+// … later, same player:
+yield* player.restore(save)
+```
+
+To resume in a **fresh** player (a new page, a new process), start its runtime from the save's runtime snapshot, then restore the save to bring back the log and backlog. `LutePlayer.make` returns once the player has left `boot`, so `restore` can follow at once:
+
+```ts
+const resume = Effect.scoped(Effect.gen(function* () {
+  const save = yield* loadCheckpoint
+  const player = yield* LutePlayer.make({ snapshot: save.snapshot, bindings, presenter, audio, assets })
+  yield* player.restore(save)
+}))
+```
+
+With your own runtime session, build it with `RuntimeSession.layer({ snapshot: save.snapshot })` and pass it as `session`. The save must come from the same compiled bundle (the project fingerprint is checked); otherwise `restore` fails `SaveIncompatible`.
 
 ## API and guides
 

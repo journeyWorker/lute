@@ -34,6 +34,99 @@ const requirements = Layer.mergeAll(
 
 `LutePlayerOptions`에는 `bindings`, `presenter`, `audio`, `assets`가 필요하며 `host`, `cueFactory`, `linePacing`, `autosave`와 시작점 하나를 선택적으로 받습니다. 시작점은 `seed`(기본 `{ derive: true }`), `snapshot`(런타임 스냅숏), `session`(호스트가 만든 런타임 세션 — 플레이어가 구동만 하고 닫지 않음) 중 하나입니다. `cueFactory`는 기본 `CueFactoryShape`를 정확히 한 번 감싸며, 출력 이벤트마다 cue 하나라는 순서를 유지하려면 `fromOutput`을 그대로 위임해야 합니다. 바인딩은 디코딩된 값이나 YAML 문자열일 수 있습니다. `LutePlayer.make`를 scope 안에서 실행하기 전에 runtime, bundle, input-log, key-value-store 서비스를 제공합니다. `session`을 넘기면 같은 bundle과 key-value store만 필요합니다.
 
+## 호스팅 레시피 (0.44)
+
+호스트가 플레이어를 조립하는 세 가지 방법입니다. 각 예제는 공개된 타입으로 검사했습니다(`bundle`, `startMinigame`, `storeCheckpoint` 같은 이름은 호스트의 값입니다). 공통 import:
+
+```ts
+import { Effect, Layer } from "effect"
+import { BrowserKeyValueStore } from "@effect/platform-browser"
+import { Cues, Director, LutePlayer, Scheduler, Session, Stores, type SaveRuntime } from "@lute-lang/player"
+import { BundleSource, InputLog, Session as RuntimeSession } from "@lute-lang/runtime"
+import * as RuntimeBrowser from "@lute-lang/runtime/browser"
+```
+
+### `Director.make` 직접 조립하기
+
+`LutePlayer.make`는 director를 대신 만들어 줍니다. 직접 조립하는 호스트는 컴파일된 `bundle`(0.42부터 필수: director가 이것으로 기본 cue factory를 만듭니다), 플레이어 세션, 저장소, 스케줄러를 넘기고, 필요하면 `host`와 `cueFactory` 래퍼를 넘깁니다.
+
+```ts
+const director = Effect.gen(function* () {
+  return yield* Director.make({
+    bundle,                                    // 컴파일된 번들 값
+    bindings, presenter, audio, assets,
+    session: yield* Session.PlayerSession,     // 런타임 세션 위의 Session.layer({ bindings, … })
+    profile: yield* Stores.ProfileStore,       // Stores.profileLayer({ project })
+    saves: yield* Stores.SaveStore,            // Stores.layer({ project })
+    scheduler: yield* Scheduler.make(),
+    host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
+    cueFactory: (base) => ({
+      ...base,
+      fromOutput: (output, readLines) =>
+        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+    })
+  })
+})
+```
+
+- `host.plugin`은 기본 cue factory에 전달되므로 다시 연결할 필요가 없습니다.
+- `cueFactory` **함수**는 그 기본 factory를 정확히 한 번 감쌉니다(출력 이벤트마다 cue 하나, 순서 유지).
+- 미리 만든 factory **값**은 `Cues.make({ bundle, bindings, plugin })`으로 만든 것이어야 `host.plugin`이 합쳐집니다(같은 tag면 호스트 핸들러가 우선). 다른 값을 `host.plugin`과 함께 넘기면 핸들러를 버리지 않고 `Director.make`가 die합니다.
+
+### 직접 만든 런타임 세션으로 `LutePlayer.make` 쓰기
+
+게임이 런타임 세션을 소유할 때(질의하고, 계기를 발생시키고, input log를 관리할 때)는 세션을 먼저 만들어 플레이어에 넘깁니다. 플레이어에는 **같은** `BundleSource`(cue를 만들 때 아티팩트를 읽음)와 저장·프로필용 `KeyValueStore`가 필요합니다.
+
+```ts
+const bundleSource = BundleSource.value(bundleValue)   // 또는 BundleSource.directory(root) / BundleSource.url(base)
+const runtimeSession = RuntimeSession.layer({ seed: { derive: true } }).pipe(   // 또는 { snapshot }
+  Layer.provide(Layer.mergeAll(RuntimeBrowser.runtime(wasmUrl), bundleSource, InputLog.memory))
+)
+
+const game = Effect.scoped(Effect.gen(function* () {
+  const session = yield* RuntimeSession.Session
+  const player = yield* LutePlayer.make({ session, bindings, presenter, audio, assets, host })
+  yield* player.actions({ type: "newGame" })
+  // …
+}))
+
+Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSource, Stores.memory))))
+```
+
+- `Stores.memory`는 저장과 프로필을 메모리에 둡니다(테스트, 미리보기). 새로고침 뒤에도 남는 저장에는 영구 `KeyValueStore`를 쓰세요. 브라우저에서는 `BrowserKeyValueStore.layerLocalStorage`, Bun/Node/네이티브 호스트에서는 직접 구현한 store입니다. 플레이어는 `save:quick`, `save:auto`, `save:1`…과 `profile:<project>`에 씁니다. 게임과 store를 함께 쓴다면 접두사를 붙인 store(`KeyValueStore.prefix`)를 주세요.
+- `InputLog.memory`는 런타임 input log를 메모리에 두고, `InputLog.keyValueStore("game-log")`는 같은 store에 영구 저장합니다.
+- 요구 사항: `make({ session })`에는 `Scope`, `BundleSource`, `KeyValueStore`가 필요합니다. `make({ seed })` / `make({ snapshot })`은 런타임 세션을 직접 만들므로 `LuteRuntime`과 `InputLog`도 필요합니다.
+
+### 런타임 스냅숏과 플레이어 저장
+
+| | 런타임 `Contract.Snapshot` | 플레이어 `SaveRuntime` |
+|---|---|---|
+| 담는 것 | 런타임 상태: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world`(state, facts, stage, clock) | `{ snapshot, log, backlog }`: 그 런타임 스냅숏과 플레이어의 accepted-input log, backlog |
+| 만드는 곳 | 런타임 `Session.save` | 플레이어 핸들의 `snapshot`(`DirectorHandle.snapshot`) |
+| 쓰는 곳 | 런타임 `Session.restore`, `LutePlayer.make({ snapshot })`, `RuntimeSession.layer({ snapshot })` | 핸들의 `restore(save)`, 저장 슬롯 |
+| 복원하는 것 | 이야기 위치 | 이야기와 플레이어 log·backlog. 체크포인트 뒤에 붙은 읽음 표시는 지우고, rollback 기록은 비우고, `auto` 슬롯을 다시 쓰고, stage와 음악을 다시 만들고, await를 다시 제시합니다 |
+
+실행 중인 플레이어는 핸들로 체크포인트를 만들고 복원합니다.
+
+```ts
+const save: SaveRuntime = yield* player.snapshot   // send/restore와 선형화됨
+yield* storeCheckpoint(save)
+// … 나중에, 같은 플레이어에서:
+yield* player.restore(save)
+```
+
+**새** 플레이어(새 페이지, 새 프로세스)에서 이어 하려면, 저장의 런타임 스냅숏에서 런타임을 시작한 뒤 저장을 복원해 log와 backlog를 되살립니다. `LutePlayer.make`는 플레이어가 `boot`를 벗어난 뒤 돌아오므로 바로 `restore`할 수 있습니다.
+
+```ts
+const resume = Effect.scoped(Effect.gen(function* () {
+  const save = yield* loadCheckpoint
+  const player = yield* LutePlayer.make({ snapshot: save.snapshot, bindings, presenter, audio, assets })
+  yield* player.restore(save)
+}))
+```
+
+직접 만든 런타임 세션을 쓴다면 `RuntimeSession.layer({ snapshot: save.snapshot })`로 만들어 `session`으로 넘깁니다. 저장은 같은 컴파일 번들에서 나온 것이어야 합니다(프로젝트 fingerprint를 검사). 아니면 `restore`가 `SaveIncompatible`로 실패합니다.
+
 ## 0.40에서 올리기
 
 화자 이름을 주는 플레이어 세션 옵션은 `cast`입니다(0.41.0부터). 세션을 `Session.layer`(`PlayerSession` 레이어)로 직접 조합하는 호스트는 0.40의 `castNames`(`ReadonlyMap`) 대신 `SessionOptions.cast`에 일반 레코드(cast id → 표시 이름), 즉 번들 인덱스의 `cast`를 넘깁니다. 예전 `castNamesFrom(artifacts)` 헬퍼는 없어졌으므로 이름은 `bundle.index.cast`에서 읽습니다.
@@ -53,7 +146,8 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 - `snapshot`은 `Effect<SaveRuntime, Errors.RuntimeRejection>` 체크포인트입니다. 플레이어 세션의 lock을 잡으므로 `send`와 `restore`에 대해 선형화되며, batch가 연출 중일 때 호출해도 연출을 기다리지 않고 마지막으로 커밋된 런타임 스냅숏, 수락된 input log와 backlog(각 entry의 `voiceKey` 포함)를 반환합니다. presenter overlay, timer, profile state, renderer fiber는 저장하지 않습니다. 결과를 그대로 `restore(save)`에 넘기면 됩니다.
 - `session`은 사용 중인 런타임 세션이고 `program`은 그 `session.program`입니다. bundle을 다시 로드하지 않고 `current`를 읽고 `events`를 구독하며 `view` / `evaluate` / `def` / `gate` / `candidates`를 실행합니다.
-- `send(input)`은 batch가 돌지 않고 이야기가 `idle` 또는 `ended`에서 기다릴 때 런타임에 입력을 넘깁니다(엔딩에서 `newRun`이나 outside-run 계기를 보내면 이어서 진행됩니다). 그 밖에서는 `DirectorBusy { flow, story }`로 실패하고 아무것도 바꾸지 않습니다. 런타임이 거부하면 그 오류로 실패하고 director는 같은 await에 머뭅니다. 입력이 수락되어 batch가 시작되면 완료되므로, send하는 핸들러가 자기 연출을 기다리는 일은 없습니다. `{ type: "send", input }` action도 같은 동작입니다.
+- `send(input)`은 batch가 돌지 않고 이야기가 `idle` 또는 `ended`에서 기다릴 때 런타임에 입력을 넘깁니다(`ended`에서는 `newRun` 또는 outside-run 계기만 받습니다). 그 밖에서는 `DirectorBusy { flow, story }`로 실패하고 아무것도 바꾸지 않습니다. 런타임이 거부하면 그 오류로 실패하고 director는 같은 await에 머뭅니다. 입력이 수락되어 batch가 시작되면 완료되므로, send하는 핸들러가 자기 연출을 기다리는 일은 없습니다. `{ type: "send", input }` action도 같은 동작입니다.
+- **엔딩에 속한 쓰기 (0.44).** 이야기가 `ended`에 이르면 `hostWrite`는 거절됩니다(`RuntimeBusy`, 메시지가 이유를 알려 줍니다). 엔딩 메타데이터는 run을 끝내는 입력, 즉 `terminal`을 성립시키는 `raiseOccasion`, `advanceClock`, `bridgeResult`, `hostWrite`의 `writes`에 실어 보내세요(`send({ type: "raiseOccasion", occasion: "dawn", writes: { state: [{ path: "run.endedBy", value: "dawnSeven" }] } })`). `choose`, `timeout`, `worldEvent`는 쓰기를 싣지 않으므로, 이들이 run을 끝낸다면 그 상태를 스토리(갈래 안의 `::set`)나 그 전에 보낸 `hostWrite`에 기록하세요. `newRun`의 쓰기는 다음 run의 초기값이며, 그 run에서 끝난 run의 값은 `prev.run.*`로 읽힙니다.
 - `restore(save)`는 boot를 제외한 모든 flow 상태에서 호스트 체크포인트(핸들의 `snapshot` — 런타임 스냅숏, input log, backlog)로 이어 갑니다. 진행 중인 연출을 버리고, 체크포인트 뒤에 추가된 읽음 표시를 지우고, `auto` 슬롯을 다시 쓰며(autosave가 꺼져 있지 않으면), stage와 음악을 다시 만들고, 복원된 await를 다시 제시합니다(choice는 메뉴, bridge는 핸들러, idle은 idle 흐름, 엔딩은 엔딩 화면).
 
 ## 포트 계약
@@ -118,7 +212,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.41",
+  "saveVersion": "0.44",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -127,7 +221,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion: "0.41"`, project fingerprint, `readLines`, settings을 사용합니다. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.44"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 ## 롤백과 기록
 
