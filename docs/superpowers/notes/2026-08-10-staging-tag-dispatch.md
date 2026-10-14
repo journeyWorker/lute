@@ -1,5 +1,5 @@
 ---
-status: Draft
+status: Superseded
 ---
 
 # The staging reducer dispatches on the source tag, not the record kind — filed for 0.11.0
@@ -550,3 +550,26 @@ All under `/tmp/stage-dispatch/`, none added to the corpus:
 | `docA5` / `docB5` | stateful line, scene change, plain line — `auto_pose_reset` |
 | `docPC` | positive control: `W-STAGE-ABSENT` fires under pure `lute.core`, no plugin involved |
 | `kindcheck` | the assignment's literal `kind: record` spelling, confirmed to parse (silently ignored extra key) |
+
+## Addendum, 2026-10-15 (Lute 0.44)
+
+Re-measured on `5b223cde` (v0.43.0) with a core `::bg` scene against a plugin
+`::place` lowered by `lower: { record: bg, fields: { location: { fromAttr: location } } }`
+(scratch projects, not in the corpus). The record kind is `bg` since the 0.37
+rename; `record: background` is now `E-LOWER-RECORD-UNKNOWN`.
+
+- **`lower:`'s closed grammar shipped in 0.24.0.** `RawLowering` denies unknown
+  keys and checks the shape: an unknown key is `E-PLUGIN-KEY` naming it;
+  `kind: record`, a mix of both shapes, an unregistered builtin hook and a
+  `record` without `fields` are each `E-PLUGIN-PARSE` with a specific message
+  (`crates/lute-manifest/src/schema/directives.rs`, tests in
+  `src/schema/tests.rs` and `tests/loader.rs`). The adjacent find above is closed.
+- **The dispatch gap remains, narrower.** The scene-change auto-hide still runs
+  for `::bg` only (the plugin scene gets no `stage-bookkeeping` exit, so the
+  runtime stage keeps the character), and the pose reset still fires after a
+  plugin scene change. `W-STAGE-ABSENT` no longer diverges: it fires for both.
+- **Decision.** No behaviour change in 0.44; the current behaviour is documented
+  for plugin authors (website `plugins/manifests.md`), and the fix — the
+  lowered record kind driving the stage reducer — is the first 0.45 candidate in
+  [`2026-10-15-lute-0.44-decisions.md`](2026-10-15-lute-0.44-decisions.md) §3,
+  which now carries this note's open item.
