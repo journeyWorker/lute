@@ -1,0 +1,5 @@
+# Formatting-only commits; git blame --ignore-revs-file .git-blame-ignore-revs
+# (GitHub applies this file automatically).
+
+# 0.42.1: rustfmt over the whole workspace (default configuration)
+806e73fc9f19afed72903f3bf21052273d9d2fc1
