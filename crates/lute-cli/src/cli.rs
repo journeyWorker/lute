@@ -885,6 +885,20 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Describe commands as JSON: arguments, options and machine-readable outputs.
+    ///
+    /// With no path, lists the top-level commands; with a path (`lute schema
+    /// scenario reach`), describes that command: its positional arguments
+    /// and options (name, whether required or repeatable, value name,
+    /// possible values, default), its subcommands, and each machine-readable
+    /// output (the flag selecting it, `report`/`artifact`/`stream`, and a
+    /// report's `schemaVersion`). Always JSON; reads no files. Exit `0`, or
+    /// `2` for an unknown command path.
+    Schema {
+        /// A command path, e.g. `scenario reach`; omitted to list the
+        /// top-level commands.
+        path: Vec<String>,
+    },
 }
 
 impl Command {
@@ -927,6 +941,7 @@ impl Command {
             Command::Beats { .. } => "beats",
             Command::Calendar { .. } => "calendar",
             Command::Version { .. } => "version",
+            Command::Schema { .. } => "schema",
         }
     }
 }

@@ -607,8 +607,9 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
         Ok(f) => f,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute lore: cannot walk {}: {e}", dir.display());
-            return ExitCode::from(2);
+            let message = format!("lute lore: cannot walk {}: {e}", dir.display());
+            eprintln!("{message}");
+            return crate::envelope::fail_quietly(crate::envelope::CliError::io(dir, message));
         }
     };
     // Every file reads and parses independently (desugared as every pass
@@ -649,8 +650,9 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             Ok(p) => p,
             Err(e) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute lore: cannot read {}: {e}", path.display());
-                return ExitCode::from(2);
+                let message = format!("lute lore: cannot read {}: {e}", path.display());
+                eprintln!("{message}");
+                return crate::envelope::fail_quietly(crate::envelope::CliError::io(path, message));
             }
         };
         if errors > 0 {
@@ -686,20 +688,19 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
         );
     }
     let text = if json {
-        match serde_json::to_string_pretty(&report) {
-            Ok(s) => format!("{s}\n"),
-            Err(e) => {
-                eprintln!("lute lore: cannot serialize the report: {e}");
-                return ExitCode::from(2);
-            }
-        }
+        let payload = serde_json::to_value(&report).expect("lore report serializes");
+        let wrapped = crate::envelope::report(crate::envelope::version::LORE, 0, payload);
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&wrapped).expect("lore envelope serializes")
+        )
     } else {
         render_text(&report)
     };
-    // T3-15: one write through `write_stdout`, so `lute lore … | head` exits
-    // `2` on the closed pipe instead of panicking inside `println!`.
-    if crate::write_stdout(&text).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = crate::write_stdout(&text) {
+        return crate::envelope::fail_quietly(crate::envelope::CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
     }
     ExitCode::SUCCESS
 }

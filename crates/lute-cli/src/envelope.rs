@@ -34,7 +34,7 @@ pub(crate) mod version {
     pub(crate) const CONTEXT: &str = "0.36.0.context";
     pub(crate) const POSITION: &str = "0.36.0.position";
     pub(crate) const DIFF: &str = "0.36.0.diff";
-    pub(crate) const PATCH: &str = "0.36.0.patch";
+    pub(crate) const PATCH: &str = "0.43.0.patch";
     pub(crate) const TRACE: &str = "0.43.0.trace";
     pub(crate) const PLAY: &str = "0.43.0.play";
     pub(crate) const TEST: &str = "0.43.0.test";
@@ -375,10 +375,6 @@ impl CliError {
         self
     }
 
-    pub(crate) fn code(&self) -> ErrorCode {
-        self.code
-    }
-
     /// The error envelope (dsl 0.43.0 §4.2).
     pub(crate) fn envelope(&self) -> Value {
         let mut error = Map::new();
@@ -442,10 +438,13 @@ pub(crate) fn usage_from_clap(err: &clap::Error) -> CliError {
         Some(ContextValue::Strings(v)) => v.last().cloned(),
         _ => None,
     };
+    // clap names an option with its value placeholder (`--project <DIR>`);
+    // the argument is the option itself.
     if let Some(argument) =
         string(ContextKind::InvalidArg).or_else(|| string(ContextKind::InvalidSubcommand))
     {
-        cli_error = cli_error.with_argument(argument);
+        let token = argument.split_whitespace().next().map(str::to_string);
+        cli_error = cli_error.with_argument(token.unwrap_or(argument));
     }
     if let Some(hint) = string(ContextKind::SuggestedArg)
         .or_else(|| string(ContextKind::SuggestedSubcommand))

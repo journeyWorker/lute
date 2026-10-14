@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
+use crate::envelope::{self, CliError};
 use crate::manifests;
 use crate::mockcheck;
 use crate::output::{pretty_json, print_human, project_report_json, severity_str, DenyPolicy};
@@ -33,9 +34,17 @@ pub(crate) fn run_check_project(
 ) -> ExitCode {
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(matrix) => matrix,
-        Err(error) => {
-            eprintln!("lute check-project: {error}");
-            return ExitCode::from(2);
+        Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
+            return envelope::fail(CliError::io(
+                &path,
+                format!("lute check-project: {message}"),
+            ));
+        }
+        Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
+            return envelope::fail(CliError::input(
+                &path,
+                format!("lute check-project: {message}"),
+            ));
         }
     };
     // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
@@ -45,8 +54,10 @@ pub(crate) fn run_check_project(
         Ok(verdicts) => manifests::report_and_gate(&verdicts),
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot walk {} for manifests: {e}", dir.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                dir,
+                format!("lute: cannot walk {} for manifests: {e}", dir.display()),
+            ));
         }
     };
     if manifest_invalid {
@@ -352,8 +363,10 @@ pub(crate) fn run_check_project(
         Ok(diags) => project_diags.extend(diags),
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot walk {} for mocks: {e}", dir.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                dir,
+                format!("lute: cannot walk {} for mocks: {e}", dir.display()),
+            ));
         }
     }
 
@@ -388,15 +401,19 @@ pub(crate) fn run_check_project(
         let report = match project_report_json(&file_results, &project_diags, ok, policy) {
             Ok(report) => report,
             Err(error) => {
-                eprintln!("lute: failed to serialize result: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize result: {error}"
+                )));
             }
         };
+        let exit = if ok { 0 } else { 1 };
+        let report = envelope::report(crate::envelope::version::CHECK_PROJECT, exit, report);
         match pretty_json(&report) {
             Ok(s) => println!("{s}"),
             Err(error) => {
-                eprintln!("lute: failed to serialize result: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize result: {error}"
+                )));
             }
         }
     } else {

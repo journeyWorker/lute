@@ -1,4 +1,5 @@
 {
+  "command": "check",
   "diagnostics": [
     {
       "code": "E-SECTION-DUP",
@@ -28,5 +29,6 @@
     ],
     "injections": [],
     "timeline_tables": []
-  }
+  },
+  "schemaVersion": "0.43.0.check"
 }

@@ -94,6 +94,7 @@ mod project;
 mod provenance;
 mod run;
 mod script;
+use crate::envelope::{self, CliError};
 use driver::PlayDriverState;
 use human::{render_human, View, RULE};
 use json::render_json;
@@ -256,7 +257,48 @@ fn load(
     })
 }
 
-/// Read and parse a play script (exit 2 with the usage error).
+fn play_human(message: &str) -> String {
+    message
+        .lines()
+        .map(|line| format!("lute play: {}", lute_core_span::plain_message(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn play_script_failure(script_path: &Path, message: String) -> ExitCode {
+    let human = play_human(&message);
+    let error = if message.starts_with("cannot read play script") {
+        CliError::io(script_path, human)
+    } else {
+        CliError::input(script_path, human)
+    };
+    envelope::fail(error)
+}
+fn play_compile_failure(
+    dir: &Path,
+    script_path: &Path,
+    code: ExitCode,
+    message: String,
+) -> ExitCode {
+    if code != ExitCode::from(2) {
+        for line in message.lines() {
+            eprintln!("lute play: {}", lute_core_span::plain_message(line));
+        }
+        return code;
+    }
+    if message == format!("{} is not a project directory", dir.display()) {
+        return envelope::fail(CliError::io(dir, play_human(&message)));
+    }
+    if !message.is_empty() {
+        return envelope::fail(CliError::input(script_path, play_human(&message)));
+    }
+    envelope::fail_quietly(CliError::io(
+        dir,
+        format!("lute play: cannot build project under {}", dir.display()),
+    ))
+}
+
+/// Read and parse a play script (exit 2 with the input/I/O error).
 fn load_script(script_path: &Path) -> Result<PlayScript, (ExitCode, String)> {
     let usage = |e: String| (ExitCode::from(2), e);
     let text = std::fs::read_to_string(script_path).map_err(|e| {
@@ -432,9 +474,11 @@ pub fn run_play(
     }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
-        Err(e) => {
-            eprintln!("lute play: {e}");
-            return ExitCode::from(2);
+        Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
+            return envelope::fail(CliError::io(&path, format!("lute play: {message}")));
+        }
+        Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
+            return envelope::fail(CliError::input(&path, format!("lute play: {message}")));
         }
     };
     let Loaded {
@@ -445,17 +489,19 @@ pub fn run_play(
     } = match load(dir, script_path, no_derive, &matrix) {
         Ok(l) => l,
         Err((code, msg)) => {
-            for line in msg.lines() {
-                eprintln!("lute play: {}", lute_core_span::plain_message(line));
+            if code == ExitCode::from(2)
+                && (msg.starts_with("cannot read play script")
+                    || msg.starts_with("invalid play script"))
+            {
+                return play_script_failure(script_path, msg);
             }
-            return code;
+            return play_compile_failure(dir, script_path, code, msg);
         }
     };
     let mut driver = driver_for(&project, &script, None);
     if let Some(path) = dump_conditions {
         if let Err(msg) = install_condition_dump(&project, &mut driver, path) {
-            eprintln!("lute play: {msg}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(path, format!("lute play: {msg}")));
         }
     }
     let initial_facts = if explain.is_empty() {
@@ -487,16 +533,31 @@ pub fn run_play(
         ) {
             Ok(e) => Some(e),
             Err(e) => {
-                eprintln!(
+                let message = format!(
                     "lute play: --explain: {}",
                     lute_core_span::plain_message(&e)
                 );
-                return ExitCode::from(2);
+                return envelope::fail(CliError::usage(message).with_argument("--explain"));
             }
         }
     };
     let outcome = play_outcome(&project, &play);
     let misses = judge(&script, &outcome);
+    let exit = match (&play.outcome, misses.is_empty()) {
+        (Err(h @ (PlayHalt::Error(_) | PlayHalt::Refused(_) | PlayHalt::Fatal(_))), _) => {
+            ExitCode::from(h.exit_code())
+        }
+        (_, false) => ExitCode::from(1),
+        (Ok(_), true) => ExitCode::SUCCESS,
+        (Err(h), true) => ExitCode::from(h.exit_code()),
+    };
+    let exit_num = if exit == ExitCode::SUCCESS {
+        0
+    } else if !misses.is_empty() {
+        1
+    } else {
+        3
+    };
     let text = if json {
         let mut v = render_json(&play);
         if let Json::Object(root) = &mut v {
@@ -514,7 +575,11 @@ pub fn run_play(
                 root.insert("explain".into(), j.clone());
             }
         }
-        format!("{}\n", serde_json::to_string_pretty(&v).unwrap_or_default())
+        let wrapped = crate::envelope::report(crate::envelope::version::PLAY, exit_num, v);
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&wrapped).unwrap_or_default()
+        )
     } else {
         let mut text = render_human(
             &project,
@@ -543,19 +608,12 @@ pub fn run_play(
         }
         text
     };
-    if crate::write_stdout(&text).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = crate::write_stdout(&text) {
+        return envelope::fail_quietly(CliError::io_without_path(format!(
+            "lute play: cannot write stdout: {e}"
+        )));
     }
-    // A missed expectation fails the play (exit 1) — unless the walk itself
-    // already failed harder (an error, or a usage-level refusal).
-    match (&play.outcome, misses.is_empty()) {
-        (Err(h @ (PlayHalt::Error(_) | PlayHalt::Refused(_) | PlayHalt::Fatal(_))), _) => {
-            ExitCode::from(h.exit_code())
-        }
-        (_, false) => ExitCode::from(1),
-        (Ok(_), true) => ExitCode::SUCCESS,
-        (Err(h), true) => ExitCode::from(h.exit_code()),
-    }
+    exit
 }
 
 pub(crate) struct PlayTestRun {

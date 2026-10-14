@@ -327,6 +327,9 @@ fn lore_report_json_carries_the_same_data() {
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let expected = serde_json::json!({
+        "command": "lore",
+        "schemaVersion": "0.43.0.lore",
+        "ok": true,
         "targets": [
             {"target": "item.rusty_key", "entries": [
                 {"id": "rustyKey", "document": "lore/ship.lute", "target": "item.rusty_key", "category": "item"}

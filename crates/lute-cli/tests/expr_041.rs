@@ -74,6 +74,8 @@ fn the_json_report_carries_the_cel_slot_a_compiled_beat_carries() {
     assert_eq!(
         report,
         json!({
+            "command": "expr",
+            "schemaVersion": "0.43.0.expr",
             "ok": true,
             "cel": when["cel"],
             "authored": when["authored"],
@@ -88,6 +90,8 @@ fn the_json_report_carries_the_cel_slot_a_compiled_beat_carries() {
     assert_eq!(
         report,
         json!({
+            "command": "expr",
+            "schemaVersion": "0.43.0.expr",
             "ok": true,
             "cel": "run.gold >= 3",
             "expr": {"op": ">=", "l": {"path": "run.gold"}, "r": {"int": 3}},
@@ -116,7 +120,7 @@ fn the_vocabulary_is_every_imported_schema_the_plugins_and_the_index_defs() {
     assert_eq!(out.status.code(), Some(1));
     let report = json_report(&out);
     assert_eq!(report["ok"], false);
-    assert_eq!(report.as_object().unwrap().len(), 2, "{report}");
+    assert_eq!(report.as_object().unwrap().len(), 4, "{report}");
     assert_eq!(
         report["diagnostics"][0]["code"], "E-UNDECLARED-REF",
         "{report}"
@@ -211,7 +215,7 @@ fn a_project_that_does_not_resolve_reports_in_the_json_report_alone() {
     assert_eq!(out.status.code(), Some(1));
     assert_eq!(text(&out.stderr), "", "stdout is self-contained");
     let report = json_report(&out);
-    assert_eq!(report.as_object().unwrap().len(), 2, "{report}");
+    assert_eq!(report.as_object().unwrap().len(), 4, "{report}");
     assert_eq!(report["ok"], false);
     let diagnostics = report["diagnostics"].as_array().unwrap();
     assert_eq!(diagnostics.len(), 1, "{report}");
@@ -260,7 +264,13 @@ fn the_project_defaults_to_the_current_directory_and_must_have_a_manifest() {
             .output()
             .unwrap();
         assert_eq!(out.status.code(), Some(2), "{args:?}");
-        assert_eq!(text(&out.stdout), "");
+        if args[0] == "--json" {
+            let error: Value = serde_json::from_slice(&out.stdout).unwrap();
+            assert_eq!(error["error"]["code"], "E-CLI-USAGE");
+            assert_eq!(error["error"]["argument"], "--project");
+        } else {
+            assert_eq!(text(&out.stdout), "");
+        }
         assert!(
             text(&out.stderr).contains("no lute.project.yaml"),
             "{}",

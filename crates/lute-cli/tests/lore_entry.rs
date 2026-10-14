@@ -123,7 +123,10 @@ fn run_lore_without_entry_or_entry_on_a_scene_is_a_usage_error() {
     let (code, stdout, stderr) = lute(&["run", ARTIFACT, "--json"]);
     assert_eq!(code, Some(2), "stdout: {stdout}");
     assert!(stderr.contains("is a lore execution IR"), "{stderr}");
-    assert!(stdout.is_empty(), "{stdout}");
+    // JSON mode: the failure is the error envelope (dsl 0.43.0 §4.2).
+    let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(v["schemaVersion"], "0.43.0.error");
+    assert_eq!(v["command"], "run");
 
     let (code, _, stderr) = lute(&["run", SCENE_ARTIFACT, "--entry", "scientistLog1"]);
     assert_eq!(code, Some(2));

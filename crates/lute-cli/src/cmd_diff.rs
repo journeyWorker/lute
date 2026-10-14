@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::envelope::{self, CliError};
 use lute_model::{diff, ModelOptions, ProjectModel};
-
 struct Materialized {
     root: PathBuf,
     cleanup: bool,
@@ -178,17 +178,11 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
 pub(crate) fn run(before: &Path, after: &Path, json: bool) -> ExitCode {
     let before = match materialize(before) {
         Ok(side) => side,
-        Err(e) => {
-            eprintln!("lute diff: {e}");
-            return ExitCode::from(2);
-        }
+        Err(e) => return envelope::fail(CliError::io(before, format!("lute diff: {e}"))),
     };
     let after = match materialize(after) {
         Ok(side) => side,
-        Err(e) => {
-            eprintln!("lute diff: {e}");
-            return ExitCode::from(2);
-        }
+        Err(e) => return envelope::fail(CliError::io(after, format!("lute diff: {e}"))),
     };
     let opts = ModelOptions {
         compile: true,
@@ -197,28 +191,37 @@ pub(crate) fn run(before: &Path, after: &Path, json: bool) -> ExitCode {
     let before_model = match ProjectModel::build_single_root(&before.root, &opts) {
         Ok(model) => model,
         Err(e) => {
-            eprintln!("lute diff: cannot build before model: {e}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                &before.root,
+                format!("lute diff: cannot build before model: {e}"),
+            ));
         }
     };
     let after_model = match ProjectModel::build_single_root(&after.root, &opts) {
         Ok(model) => model,
         Err(e) => {
-            eprintln!("lute diff: cannot build after model: {e}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                &after.root,
+                format!("lute diff: cannot build after model: {e}"),
+            ));
         }
     };
     let report = match diff::diff_models(&before_model, &after_model) {
         Ok(report) => report,
         Err(e) => {
-            eprintln!("lute diff: {e}");
-            return ExitCode::from(2);
+            return envelope::fail(CliError::input_without_path(format!("lute diff: {e}")));
         }
     };
     let output: Result<String, String> = if json {
-        serde_json::to_string_pretty(&report)
-            .map(|text| format!("{text}\n"))
-            .map_err(|e| e.to_string())
+        match serde_json::to_value(&report) {
+            Ok(payload) => {
+                let value = envelope::report(crate::envelope::version::DIFF, 0, payload);
+                serde_json::to_string_pretty(&value)
+                    .map(|text| format!("{text}\n"))
+                    .map_err(|e| e.to_string())
+            }
+            Err(e) => Err(e.to_string()),
+        }
     } else {
         Ok(diff::human(&report))
     };
@@ -227,13 +230,12 @@ pub(crate) fn run(before: &Path, after: &Path, json: bool) -> ExitCode {
             if crate::output::write_stdout(&text).is_ok() {
                 ExitCode::SUCCESS
             } else {
-                ExitCode::from(2)
+                envelope::fail_quietly(CliError::io_without_path("lute diff: cannot write stdout"))
             }
         }
-        Err(e) => {
-            eprintln!("lute diff: cannot serialize report: {e}");
-            ExitCode::from(2)
-        }
+        Err(e) => envelope::fail(CliError::io_without_path(format!(
+            "lute diff: cannot serialize report: {e}"
+        ))),
     }
 }
 

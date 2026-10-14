@@ -1,4 +1,5 @@
 {
+  "command": "check",
   "diagnostics": [
     {
       "code": "E-REMOVED-TAG",
@@ -46,5 +47,6 @@
     ],
     "injections": [],
     "timeline_tables": []
-  }
+  },
+  "schemaVersion": "0.43.0.check"
 }

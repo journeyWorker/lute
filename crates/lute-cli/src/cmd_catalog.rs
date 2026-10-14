@@ -1,11 +1,12 @@
 //! `lute catalog refresh`.
 
-use std::path::{Path, PathBuf};
-use std::process::ExitCode;
-
 use lute_load::manifest_context;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSnapshot;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+
+use crate::envelope::{self, CliError};
 
 /// Re-stamp every provider snapshot in `dir` to the current `capabilitySnapshot`
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is
@@ -21,8 +22,10 @@ use lute_manifest::provider::ProviderSnapshot;
 pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     if let Err(e) = std::fs::create_dir_all(dir) {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot create {}: {e}", dir.display());
-        return ExitCode::from(2);
+        return envelope::fail(CliError::io(
+            dir,
+            format!("lute: cannot create {}: {e}", dir.display()),
+        ));
     }
 
     // Under a project, stamp the resolved snapshot's version (plugin §13). A
@@ -43,8 +46,10 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         Ok(rd) => rd,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", dir.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                dir,
+                format!("lute: cannot read {}: {e}", dir.display()),
+            ));
         }
     };
 
@@ -66,8 +71,10 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
             Ok(r) => r,
             Err(e) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute: cannot read {}: {e}", path.display());
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io(
+                    path,
+                    format!("lute: cannot read {}: {e}", path.display()),
+                ));
             }
         };
         let mut snap: ProviderSnapshot = match yaml_serde::from_str(&raw) {
@@ -91,8 +98,10 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         };
         if let Err(e) = std::fs::write(path, out) {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot write {}: {e}", path.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                path,
+                format!("lute: cannot write {}: {e}", path.display()),
+            ));
         }
         refreshed += 1;
     }

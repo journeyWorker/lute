@@ -20,12 +20,12 @@ use serde_json::{Map, Value};
 use lute_check::connectivity::{ConnGraph, EdgeKind, NodeId, PrereqState};
 use lute_check::envelope;
 
+use crate::envelope::{self as cli_envelope, CliError};
 use crate::{
     assemble_root_scenario, collect_project_docs, format_prereq, node_cycle_degraded,
     node_ref_to_id, primary_node_ambiguity_note, reach_evidence, reach_verdict_text,
     resolve_node_ref, topo_layers, unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
 };
-
 /// Render the scenario report in a non-text format. See
 /// [`crate::Command::Scenario`]. `json` and `dot` are the only valid
 /// formats; anything else is a usage error (exit `2`) naming the valid set.
@@ -39,10 +39,12 @@ pub fn run(
     match format {
         "json" => run_json(dir, providers, command, facts),
         "dot" => run_dot(dir, providers, command, facts),
-        other => {
-            eprintln!("lute scenario: unknown --format `{other}` (valid formats: text, json, dot)");
-            ExitCode::from(2)
-        }
+        other => cli_envelope::fail(
+            CliError::usage(format!(
+                "lute scenario: unknown --format `{other}` (valid formats: text, json, dot)"
+            ))
+            .with_argument("--format"),
+        ),
     }
 }
 
@@ -155,7 +157,7 @@ fn run_json(
                 .collect();
             let mut top = Map::new();
             top.insert("roots".to_string(), Value::Array(roots));
-            print_json(&Value::Object(top))
+            print_json(&Value::Object(top), crate::envelope::version::SCENARIO, 0)
         }
         Some(ScenarioCommand::Reach {
             endings: Some(occasion),
@@ -166,7 +168,11 @@ fn run_json(
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ) {
             Ok((v, exit)) => {
-                let printed = print_json(&v);
+                let printed = print_json(
+                    &v,
+                    crate::envelope::version::SCENARIO_REACH,
+                    if exit == ExitCode::SUCCESS { 0 } else { 3 },
+                );
                 if printed == ExitCode::SUCCESS {
                     exit
                 } else {
@@ -186,11 +192,10 @@ fn run_json(
         }
         Some(ScenarioCommand::Knowledge { for_node }) => {
             match crate::knowledge::json(&by_root, for_node.as_deref()) {
-                Ok(v) => print_json(&v),
-                Err(e) => {
-                    eprintln!("lute scenario knowledge: {e}");
-                    ExitCode::from(2)
-                }
+                Ok(v) => print_json(&v, crate::envelope::version::SCENARIO_KNOWLEDGE, 0),
+                Err(e) => cli_envelope::fail(
+                    CliError::usage(format!("lute scenario knowledge: {e}")).with_argument("--for"),
+                ),
             }
         }
     }
@@ -394,7 +399,11 @@ fn reach_json(
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
         obj.insert("evidence".to_string(), Value::String("unknown".to_string()));
-        return print_json(&Value::Object(obj));
+        return print_json(
+            &Value::Object(obj),
+            crate::envelope::version::SCENARIO_REACH,
+            0,
+        );
     }
 
     obj.insert(
@@ -454,7 +463,11 @@ fn reach_json(
         obj.insert("referenced".to_string(), Value::Array(referenced));
     }
 
-    print_json(&Value::Object(obj))
+    print_json(
+        &Value::Object(obj),
+        crate::envelope::version::SCENARIO_REACH,
+        0,
+    )
 }
 
 /// `scenario envelope <node> --format json`: the single-node envelope view —
@@ -492,7 +505,11 @@ fn envelope_json(
 
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
-        return print_json(&Value::Object(obj));
+        return print_json(
+            &Value::Object(obj),
+            crate::envelope::version::SCENARIO_ENVELOPE,
+            0,
+        );
     }
 
     obj.insert(
@@ -573,16 +590,29 @@ fn envelope_json(
         obj.insert("enrichmentNote".to_string(), Value::Bool(note));
     }
 
-    print_json(&Value::Object(obj))
+    print_json(
+        &Value::Object(obj),
+        crate::envelope::version::SCENARIO_ENVELOPE,
+        0,
+    )
 }
 
 /// Serialize `value` to stdout as pretty JSON + a trailing newline. Exit `0`
 /// on success, `2` on a serialization/write failure (matching the CLI's
 /// I/O-error tier) — written through [`crate::write_stdout`], so a closed pipe
 /// is that I/O failure rather than a `println!` panic (T3-15).
-fn print_json(value: &Value) -> ExitCode {
+fn print_json(value: &Value, version: &str, exit: u8) -> ExitCode {
     match serde_json::to_string_pretty(value) {
-        Ok(s) => write_or_io_error(&format!("{s}\n")),
+        Ok(_) => {
+            let wrapped = crate::envelope::report(version, exit, value.clone());
+            match serde_json::to_string_pretty(&wrapped) {
+                Ok(s) => write_or_io_error(&format!("{s}\n")),
+                Err(e) => {
+                    eprintln!("lute scenario: failed to serialize JSON: {e}");
+                    ExitCode::from(2)
+                }
+            }
+        }
         Err(e) => {
             eprintln!("lute scenario: failed to serialize JSON: {e}");
             ExitCode::from(2)
@@ -593,7 +623,9 @@ fn print_json(value: &Value) -> ExitCode {
 /// `0` once `text` is on stdout, `2` when the write fails (e.g. EPIPE).
 fn write_or_io_error(text: &str) -> ExitCode {
     if crate::write_stdout(text).is_err() {
-        return ExitCode::from(2);
+        return cli_envelope::fail_quietly(CliError::io_without_path(
+            "lute scenario: cannot write stdout",
+        ));
     }
     ExitCode::SUCCESS
 }
@@ -612,11 +644,13 @@ fn run_dot(
     // report has no graph to draw, so it is a usage error (exit 2) rather
     // than a misleading empty digraph.
     if command.is_some() {
-        eprintln!(
-            "lute scenario: --format dot applies to the graph view only; \
-             `reach`/`envelope`/`knowledge` have no graph to render (use --format json or text)"
+        return cli_envelope::fail(
+            CliError::usage(
+                "lute scenario: --format dot applies to the graph view only; \
+                 `reach`/`envelope`/`knowledge` have no graph to render (use --format json or text)",
+            )
+            .with_argument("--format"),
         );
-        return ExitCode::from(2);
     }
     let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
         Ok(v) => v,

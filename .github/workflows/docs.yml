@@ -36,6 +36,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # CI never writes Lute telemetry (dsl 0.43.0 §6).
+  LUTE_TELEMETRY: "0"
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_DEBUG: line-tables-only

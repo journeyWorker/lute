@@ -16,11 +16,10 @@ pub fn run_test(
         Some((true, _)) => (vec![dir.to_path_buf()], Vec::new()),
         Some((_, true)) => (Vec::new(), vec![dir.to_path_buf()]),
         Some(_) => {
-            eprintln!(
+            return crate::envelope::fail(crate::envelope::CliError::usage(format!(
                 "lute: {} is not a directory, a `*.test.yaml` or a `*.play.yaml`",
                 dir.display()
-            );
-            return ExitCode::from(2);
+            )));
         }
         None => match (
             find_files_with_suffix(dir, ".test.yaml"),
@@ -29,8 +28,10 @@ pub fn run_test(
             (Ok(t), Ok(p)) => (t, p),
             (Err(e), _) | (_, Err(e)) => {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute: cannot walk {}: {e}", dir.display());
-                return ExitCode::from(2);
+                return crate::envelope::fail(crate::envelope::CliError::io(
+                    dir,
+                    format!("lute: cannot walk {}: {e}", dir.display()),
+                ));
             }
         },
     };
@@ -192,10 +193,19 @@ pub fn run_test(
     // T3-15: the whole report is rendered first and written once, so a
     // closed pipe (`lute test … | head`) is an I/O exit rather than a panic.
     let text = if json {
-        render_json(
+        let payload = render_json(
             &results,
             coverage.then_some((&cov, coverage_root.as_path())),
             &units,
+        );
+        let wrapped = crate::envelope::report(
+            crate::envelope::version::TEST,
+            if failed > 0 { 1 } else { 0 },
+            payload,
+        );
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&wrapped).expect("test report serializes")
         )
     } else {
         render_human(
@@ -205,8 +215,10 @@ pub fn run_test(
             &units,
         )
     };
-    if crate::write_stdout(&text).is_err() {
-        return ExitCode::from(2);
+    if let Err(e) = crate::write_stdout(&text) {
+        return crate::envelope::fail_quietly(crate::envelope::CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
     }
 
     if failed > 0 {
@@ -311,10 +323,16 @@ impl Shared {
         };
         for root in model_roots {
             let model = memo.single_root(&root, &opts).map_err(|error| {
-                eprintln!("lute: cannot build project {}: {error}", root.display());
+                let message = format!("lute: cannot build project {}: {error}", root.display());
                 match *error {
-                    ModelError::Io(_) | ModelError::Input(_) => ExitCode::from(2),
+                    ModelError::Io(_) => {
+                        crate::envelope::fail_quietly(crate::envelope::CliError::io(&root, message))
+                    }
+                    ModelError::Input(_) => crate::envelope::fail_quietly(
+                        crate::envelope::CliError::input(&root, message),
+                    ),
                     ModelError::Resolve(_) | ModelError::Compile { .. } | ModelError::Index(_) => {
+                        eprintln!("{message}");
                         ExitCode::from(1)
                     }
                 }
@@ -511,8 +529,11 @@ fn run_one_test(
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", test_file.display());
-            return Err(ExitCode::from(2));
+            let message = format!("lute: cannot read {}: {e}", test_file.display());
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::io(test_file, message),
+            ));
         }
     };
 
@@ -524,8 +545,11 @@ fn run_one_test(
     let mut mocks = match parse_mock_surfaces(&text) {
         Ok(m) => m,
         Err(d) => {
-            eprintln!("lute: {}: [{}] {}", test_file.display(), d.code, d.text());
-            return Err(ExitCode::from(2));
+            let message = format!("lute: {}: [{}] {}", test_file.display(), d.code, d.text());
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
     // `--no-derive` wins over the test's own `derive:` key (dsl 0.22.0 §6).
@@ -539,18 +563,24 @@ fn run_one_test(
     let top: yaml_serde::Value = match yaml_serde::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("lute: {}: malformed test yaml: {e}", test_file.display());
-            return Err(ExitCode::from(2));
+            let message = format!("lute: {}: malformed test yaml: {e}", test_file.display());
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
     let map = match top.as_mapping() {
         Some(m) => m,
         None => {
-            eprintln!(
+            let message = format!(
                 "lute: {}: a test file must be a YAML mapping with a `file:` key",
                 test_file.display()
             );
-            return Err(ExitCode::from(2));
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
 
@@ -597,15 +627,21 @@ fn run_one_test(
     let rel = match lute_trace::mock_subject(&text) {
         Ok(Some(s)) => s,
         Ok(None) => {
-            eprintln!(
+            let message = format!(
                 "lute: {}: missing required `file:` (path to the `.lute` under test)",
                 test_file.display()
             );
-            return Err(ExitCode::from(2));
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
         Err(d) => {
-            eprintln!("lute: {}: [{}] {}", test_file.display(), d.code, d.text());
-            return Err(ExitCode::from(2));
+            let message = format!("lute: {}: [{}] {}", test_file.display(), d.code, d.text());
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
     // dsl 0.22.0 §5: `entry: <id>` / `entries: [ids]` — the lore entries to
@@ -619,39 +655,51 @@ fn run_one_test(
             .filter_map(|i| i.as_str().map(str::to_string))
             .collect(),
         (Some(_), Some(_)) => {
-            eprintln!(
+            let message = format!(
                 "lute: {}: name the entries to present with ONE of `entry: <id>` or \
                  `entries: [ids]`, not both",
                 test_file.display()
             );
-            return Err(ExitCode::from(2));
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
         _ => {
-            eprintln!(
+            let message = format!(
                 "lute: {}: `entry:` must be one entry id and `entries:` a list of entry ids",
                 test_file.display()
             );
-            return Err(ExitCode::from(2));
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
     let beat: Option<String> = match map.get("beat") {
         None => None,
         Some(yaml_serde::Value::String(id)) if !id.trim().is_empty() => Some(id.clone()),
         Some(_) => {
-            eprintln!(
+            let message = format!(
                 "lute: {}: `beat:` must be one bundle beat id (`<beat id>` or \
                  `<document id>.<beat id>`)",
                 test_file.display()
             );
-            return Err(ExitCode::from(2));
+            eprintln!("{message}");
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::input(test_file, message),
+            ));
         }
     };
     if beat.is_some() && !entries.is_empty() {
-        eprintln!(
+        let message = format!(
             "lute: {}: a test presents ONE of `beat:` or `entry:` / `entries:`, not both",
             test_file.display()
         );
-        return Err(ExitCode::from(2));
+        eprintln!("{message}");
+        return Err(crate::envelope::fail_quietly(
+            crate::envelope::CliError::input(test_file, message),
+        ));
     }
 
     let base = test_file.parent().unwrap_or_else(|| Path::new("."));
@@ -740,7 +788,12 @@ fn run_one_test(
             return Err(ExitCode::from(1));
         }
         let Some(built) = build_input(&lute_path, providers, None, None) else {
-            return Err(ExitCode::from(2));
+            return Err(crate::envelope::fail_quietly(
+                crate::envelope::CliError::io(
+                    &lute_path,
+                    format!("cannot read {}", lute_path.display()),
+                ),
+            ));
         };
         built.report_project_diags();
         Some(built)

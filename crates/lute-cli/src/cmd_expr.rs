@@ -18,8 +18,8 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_load::{assemble_input, find_lute_files, read_document, BuiltInput, InputCache};
 use serde::Serialize;
 
+use crate::envelope::{self, CliError};
 use crate::{render_diagnostics, write_stdout, DenyPolicy};
-
 /// The name diagnostics of the condition are rendered under.
 const EXPR_LABEL: &str = "<expr>";
 
@@ -46,19 +46,13 @@ struct Report<'a> {
 /// I/O failure.
 pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
     if !project.join("lute.project.yaml").is_file() {
-        eprintln!(
-            "lute expr: no lute.project.yaml in {} — pass the project directory with --project <DIR>",
-            project.display()
-        );
-        return ExitCode::from(2);
+        let message = format!("lute expr: no lute.project.yaml in {} — pass the project directory with --project <DIR>", project.display());
+        return envelope::fail(envelope::CliError::usage(message).with_argument("--project"));
     }
     let cache = InputCache::default();
     let documents = match project_documents(&cache, project) {
         Ok(documents) => documents,
-        Err(message) => {
-            eprintln!("{message}");
-            return ExitCode::from(2);
-        }
+        Err(message) => return envelope::fail(envelope::CliError::io(project, message)),
     };
     let index_defs = crate::bundle::index_defs(documents.iter().map(|(_, built)| &built.input));
     let text = synthetic_document(project, &documents);
@@ -132,7 +126,19 @@ fn finish(
         diagnostics,
     };
     let stdout = if json {
-        serde_json::to_string(&report).map(Some)
+        let payload = match serde_json::to_value(&report) {
+            Ok(value) => value,
+            Err(e) => {
+                eprintln!("lute expr: failed to serialize the result: {e}");
+                return ExitCode::from(2);
+            }
+        };
+        serde_json::to_string(&envelope::report(
+            envelope::version::EXPR,
+            if report.ok { 0 } else { 1 },
+            payload,
+        ))
+        .map(Some)
     } else {
         eprint!(
             "{}",
@@ -150,7 +156,9 @@ fn finish(
     if let Some(mut line) = stdout {
         line.push('\n');
         if write_stdout(&line).is_err() {
-            return ExitCode::from(2);
+            return envelope::fail_quietly(CliError::io_without_path(
+                "lute expr: cannot write stdout",
+            ));
         }
     }
     if report.ok {

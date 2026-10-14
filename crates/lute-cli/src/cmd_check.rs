@@ -9,6 +9,7 @@ use lute_check::{check, fold_env, CheckInput, Mode};
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
+use crate::envelope::{self, CliError};
 use crate::output::{check_result_json, pretty_json, print_human, DenyPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
 use lute_load::{
@@ -446,8 +447,10 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            return ExitCode::from(2);
+            return envelope::fail(CliError::io(
+                file,
+                format!("lute: cannot read {}: {e}", file.display()),
+            ));
         }
     };
     let byte_end = text.len();
@@ -575,7 +578,10 @@ pub(crate) fn run_check(
     // for paths the project declares, and advice that would have broken it.
     let project = resolve_project(file, project);
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::io(
+            file,
+            format!("cannot read {}", file.display()),
+        ));
     };
     // `build_input` no longer prints these itself (`lute doctor` folds them into
     // its checklist instead); every gating command emits them exactly as before.
@@ -610,9 +616,11 @@ pub(crate) fn run_check(
     }
     let matrix = match crate::EngineMatrix::load(_engine) {
         Ok(m) => m,
-        Err(e) => {
-            eprintln!("lute check: {e}");
-            return ExitCode::from(2);
+        Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
+            return envelope::fail(CliError::io(&path, format!("lute check: {message}")));
+        }
+        Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
+            return envelope::fail(CliError::input(&path, format!("lute check: {message}")));
         }
     };
     if _engine.is_some() && result.ok {
@@ -712,15 +720,19 @@ fn render_check_result(
         let value = match check_result_json(result, ok, policy) {
             Ok(value) => value,
             Err(error) => {
-                eprintln!("lute: failed to serialize result: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize result: {error}"
+                )));
             }
         };
-        match pretty_json(&value) {
+        let exit = if ok { 0 } else { 1 };
+        let report = envelope::report(crate::envelope::version::CHECK, exit, value);
+        match pretty_json(&report) {
             Ok(s) => println!("{s}"),
             Err(error) => {
-                eprintln!("lute: failed to serialize result: {error}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize result: {error}"
+                )));
             }
         }
     } else {

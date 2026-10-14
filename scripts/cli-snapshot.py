@@ -143,6 +143,8 @@ def environment() -> dict[str, str]:
             "CARGO_TERM_COLOR": "never",
             "NO_COLOR": "1",
             "RUST_BACKTRACE": "0",
+            # Snapshots never write the developer's telemetry (dsl 0.43.0 §6).
+            "LUTE_TELEMETRY": "0",
         }
     )
     return env

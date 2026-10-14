@@ -75,6 +75,7 @@ mod cmd_fmt;
 mod cmd_impact;
 mod cmd_patch;
 mod cmd_scenario;
+mod cmd_schema;
 mod cmd_trace;
 mod cmd_version;
 mod codes;
@@ -105,6 +106,7 @@ mod runner;
 mod scaffold;
 mod scenario_fmt;
 mod stream;
+mod telemetry;
 mod testcmd;
 
 use cli::{CatalogCommand, Cli, Command, LocCommand};
@@ -139,14 +141,24 @@ pub(crate) use project::{
     project_quest_ids, ByRoot, DocGroup,
 };
 
-/// The `lute` command line: parse `std::env::args` and run the command.
+/// The `lute` command line: parse `std::env::args`, run the command, and
+/// record the invocation in the local telemetry file (dsl 0.43.0 §6).
 pub fn run() -> ExitCode {
+    let started = std::time::Instant::now();
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
-    let json = envelope::json_mode_in(&args);
-    let cli = match Cli::try_parse() {
+    let code = dispatch(&args);
+    telemetry::record(&args, code, started.elapsed());
+    code
+}
+
+fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
+    let json = envelope::json_mode_in(args);
+    let cli = match Cli::try_parse_from(
+        std::iter::once(std::ffi::OsString::from("lute")).chain(args.iter().cloned()),
+    ) {
         Ok(cli) => cli,
         Err(err) => {
-            envelope::set_invocation(envelope::command_id_in(&args), json);
+            envelope::set_invocation(envelope::command_id_in(args), json);
             if let Some(code) = explain_subcommand_typo() {
                 eprintln!("error: unrecognized subcommand 'explain'; did you mean `lute --explain {code}`?");
                 return envelope::fail_quietly(
@@ -158,7 +170,10 @@ pub fn run() -> ExitCode {
                 );
             }
             if !json || envelope::is_display(&err) {
-                err.exit()
+                // What `err.exit()` does, minus the exit: telemetry records
+                // usage errors and help displays too.
+                let _ = err.print();
+                return ExitCode::from(u8::try_from(err.exit_code()).unwrap_or(2));
             }
             let _ = err.print();
             return envelope::fail_quietly(envelope::usage_from_clap(&err));
@@ -515,6 +530,7 @@ pub fn run() -> ExitCode {
             },
         ),
         Command::Version { json } => run_version(json),
+        Command::Schema { path } => cmd_schema::run(&path),
     }
 }
 

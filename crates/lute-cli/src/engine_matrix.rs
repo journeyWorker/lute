@@ -1,8 +1,27 @@
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::fmt;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value as Json;
+
+/// A failure while loading an engine matrix, retaining whether the named path
+/// could not be read or contained invalid input.
+#[derive(Debug)]
+pub(crate) enum EngineMatrixError {
+    Io { path: PathBuf, message: String },
+    Input { path: PathBuf, message: String },
+}
+
+impl fmt::Display for EngineMatrixError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io { message, .. } | Self::Input { message, .. } => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for EngineMatrixError {}
 
 /// `lute.engine.yaml` (dsl 0.33.0 §4). The optional descriptive `version` and
 /// `description` keys never participate in negotiation, so like any unknown
@@ -27,27 +46,43 @@ impl EngineMatrix {
         }
     }
 
-    pub(crate) fn load(path: Option<&Path>) -> Result<Self, String> {
+    pub(crate) fn load(path: Option<&Path>) -> Result<Self, EngineMatrixError> {
         let Some(path) = path else {
             return Ok(Self::reference());
         };
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("E-ENGINE-MATRIX: cannot read {}: {}", path.display(), e))?;
-        let matrix: Self =
-            yaml_serde::from_str(&text).map_err(|e| format!("E-ENGINE-MATRIX: {}", e))?;
+        let text = std::fs::read_to_string(path).map_err(|e| EngineMatrixError::Io {
+            path: path.to_owned(),
+            message: format!("E-ENGINE-MATRIX: cannot read {}: {}", path.display(), e),
+        })?;
+        let matrix: Self = yaml_serde::from_str(&text).map_err(|e| EngineMatrixError::Input {
+            path: path.to_owned(),
+            message: format!("E-ENGINE-MATRIX: {}", e),
+        })?;
         if matrix.engine.trim().is_empty() || parse_version(&matrix.ir_version).is_none() {
-            return Err("E-ENGINE-MATRIX: `engine` must be non-empty and `irVersion` must be MAJOR.MINOR.PATCH".into());
+            return Err(EngineMatrixError::Input {
+                path: path.to_owned(),
+                message: "E-ENGINE-MATRIX: `engine` must be non-empty and `irVersion` must be MAJOR.MINOR.PATCH".into(),
+            });
         }
         let mut seen = BTreeSet::new();
         for id in &matrix.supported_ids {
             if !well_formed_id(id) {
-                return Err(format!("E-ENGINE-MATRIX: malformed semantic id `{id}`"));
+                return Err(EngineMatrixError::Input {
+                    path: path.to_owned(),
+                    message: format!("E-ENGINE-MATRIX: malformed semantic id `{id}`"),
+                });
             }
             if !lute_compile::semantics::is_registered(id) {
-                return Err(format!("E-ENGINE-MATRIX: unknown semantic id `{id}`"));
+                return Err(EngineMatrixError::Input {
+                    path: path.to_owned(),
+                    message: format!("E-ENGINE-MATRIX: unknown semantic id `{id}`"),
+                });
             }
             if !seen.insert(id) {
-                return Err(format!("E-ENGINE-MATRIX: duplicate semantic id `{id}`"));
+                return Err(EngineMatrixError::Input {
+                    path: path.to_owned(),
+                    message: format!("E-ENGINE-MATRIX: duplicate semantic id `{id}`"),
+                });
             }
         }
         Ok(matrix)

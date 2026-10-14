@@ -32,7 +32,10 @@ use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 use rayon::prelude::*;
 use serde_json::{json, Map, Value as Json};
 
-use crate::{ByRoot, DocGroup};
+use crate::{
+    envelope::{self, CliError},
+    ByRoot, DocGroup,
+};
 
 /// One fact-guarded element: what it is, where, its conditions and the
 /// atoms they query.
@@ -1445,8 +1448,8 @@ pub(crate) fn run_text(
     let picked = match select(&roots, for_node) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("lute scenario knowledge: {e}");
-            return ExitCode::from(2);
+            let message = format!("lute scenario knowledge: {e}");
+            return envelope::fail(CliError::usage(message).with_argument("--for"));
         }
     };
     if by_root.is_empty() {

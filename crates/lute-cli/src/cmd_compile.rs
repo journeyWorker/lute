@@ -9,10 +9,11 @@ use lute_core_span::Severity;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
+use crate::envelope::{self, CliError};
 use crate::loc;
 use crate::output::{pretty_json, render_diagnostics, severity_str, write_stdout, DenyPolicy};
 use crate::project::resolve_project;
-use lute_load::{build_input, BuiltInput};
+use lute_load::{build_input, read_document, BuiltInput};
 use lute_model::project_gate_result;
 use lute_model::{ModelError, ModelOptions, ProjectModel};
 
@@ -42,11 +43,8 @@ pub(crate) fn dispatch_compile(
 ) -> ExitCode {
     if !all {
         let Some(file) = file else {
-            eprintln!(
-                "error: the following required arguments were not provided:\n  <FILE>\n\n\
-                 Usage: lute compile <FILE>\n       lute compile --all <DIR> -o <DIR>"
-            );
-            return ExitCode::from(2);
+            let message = "error: the following required arguments were not provided:\n  <FILE>\n\nUsage: lute compile <FILE>\n       lute compile --all <DIR> -o <DIR>";
+            return envelope::fail(CliError::usage(message).with_argument("<FILE>"));
         };
         return run_compile(
             file,
@@ -59,9 +57,7 @@ pub(crate) fn dispatch_compile(
             policy,
         );
     }
-
-    // T3-42: `lute compile --all <DIR>` names the project positionally, as
-    // `lute test` / `lute play` do.
+    // T3-42: `--all` names the project positionally, as `lute test` / `lute play` do.
     let (project, file) = match (project, file) {
         (None, Some(dir)) if dir.is_dir() => (Some(dir), None),
         other => other,
@@ -74,18 +70,14 @@ pub(crate) fn dispatch_compile(
         usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single execution IR to write to stdout)".to_string());
     }
     if let Some(file) = file {
-        usage.push(format!(
-            "--all takes no <FILE> ({}): it compiles every document of the project — name the \
-             project directory, `--all <DIR>` or `--all --project <DIR>`",
-            file.display()
-        ));
+        usage.push(format!("--all takes no <FILE> ({}): it compiles every document of the project — name the project directory, `--all <DIR>` or `--all --project <DIR>`", file.display()));
     }
     if !usage.is_empty() {
-        for message in usage {
+        for message in &usage {
             eprintln!("error: {message}");
         }
         eprintln!("\nUsage: lute compile --all <DIR> -o <DIR>");
-        return ExitCode::from(2);
+        return envelope::fail_quietly(CliError::usage(usage.join("\n")).with_argument("--all"));
     }
     let bundle = match locales.map(load_locale_bundle).transpose() {
         Ok(b) => b,
@@ -138,7 +130,13 @@ fn run_compile(
     // the reconciled project verdict below.
     let resolved = resolve_project(file, project);
     let Some(built) = build_input(file, providers, resolved.as_deref(), permission_profile) else {
-        return ExitCode::from(2);
+        if let Err(message) = read_document(file) {
+            return envelope::fail_quietly(CliError::io(file, message));
+        }
+        return envelope::fail(CliError::input(
+            file,
+            format!("lute compile: cannot parse {}", file.display()),
+        ));
     };
     built.report_project_diags();
     let BuiltInput {
@@ -204,7 +202,9 @@ fn run_compile(
                 // prints the merge diagnostics as JSON on stdout, exactly as
                 // a failed check gate does below.
                 if refused && json {
-                    let mut s = match pretty_json(&merged) {
+                    let payload = serde_json::json!({ "diagnostics": merged });
+                    let report = envelope::report(envelope::version::COMPILE, 1, payload);
+                    let mut s = match pretty_json(&report) {
                         Ok(s) => s,
                         Err(error) => {
                             eprintln!("lute: failed to serialize diagnostics: {error}");
@@ -213,7 +213,9 @@ fn run_compile(
                     };
                     s.push('\n');
                     if write_stdout(&s).is_err() {
-                        return ExitCode::from(2);
+                        return envelope::fail_quietly(CliError::io_without_path(
+                            "lute compile: cannot write stdout",
+                        ));
                     }
                     return ExitCode::FAILURE;
                 }
@@ -243,13 +245,17 @@ fn run_compile(
                 Some(path) => {
                     if let Err(e) = std::fs::write(path, &s) {
                         let e = lute_manifest::io_reason(&e);
-                        eprintln!("lute: cannot write {}: {e}", path.display());
-                        return ExitCode::from(2);
+                        return envelope::fail(CliError::io(
+                            path,
+                            format!("lute: cannot write {}: {e}", path.display()),
+                        ));
                     }
                 }
                 None => {
                     if write_stdout(&s).is_err() {
-                        return ExitCode::from(2);
+                        return envelope::fail_quietly(CliError::io_without_path(
+                            "lute compile: cannot write stdout",
+                        ));
                     }
                 }
             }
@@ -257,7 +263,9 @@ fn run_compile(
         }
         Err(diags) => {
             let s = if json {
-                let mut s = match pretty_json(&diags) {
+                let payload = serde_json::json!({ "diagnostics": diags });
+                let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
+                let mut s = match pretty_json(&wrapped) {
                     Ok(s) => s,
                     Err(error) => {
                         eprintln!("lute: failed to serialize diagnostics: {error}");
@@ -288,7 +296,9 @@ fn run_compile(
                 s
             };
             if write_stdout(&s).is_err() {
-                return ExitCode::from(2);
+                return envelope::fail_quietly(CliError::io_without_path(
+                    "lute compile: cannot write stdout",
+                ));
             }
             ExitCode::FAILURE
         }
@@ -363,8 +373,10 @@ fn stamp_project_identity_renames(
 fn load_locale_bundle(path: &Path) -> Result<lute_compile::locale::LocaleBundle, ExitCode> {
     let text = std::fs::read_to_string(path).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot read {}: {e}", path.display());
-        ExitCode::from(2)
+        envelope::fail(CliError::io(
+            path,
+            format!("lute: cannot read {}: {e}", path.display()),
+        ))
     })?;
     lute_compile::locale::LocaleBundle::parse(&text).map_err(|msg| {
         eprintln!("{}: error [{}] {msg}", path.display(), loc::E_LOCALE_BUNDLE);

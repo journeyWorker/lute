@@ -17,6 +17,7 @@
 //! including `E-LINT-CONFIG`/`E-LINT-EXPR`), `2` I/O, malformed YAML, or
 //! usage.
 
+use crate::envelope::{self, CliError};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -109,18 +110,20 @@ fn read_root_config(
         }
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", path.display());
-            return Err(ExitCode::from(2));
+            return Err(envelope::fail(CliError::io(
+                &path,
+                format!("lute: cannot read {}: {e}", path.display()),
+            )));
         }
     };
     let idx = TextIndex::new(&text);
     let span = Span::from_bytes(&idx, 0, text.len());
     match parse_config(&text, span) {
         Ok((cfg, diags)) => Ok(Some((path, cfg, diags, span))),
-        Err(e) => {
-            eprintln!("lute: malformed {}: {e}", path.display());
-            Err(ExitCode::from(2))
-        }
+        Err(e) => Err(envelope::fail(CliError::input(
+            &path,
+            format!("lute: malformed {}: {e}", path.display()),
+        ))),
     }
 }
 
@@ -185,7 +188,13 @@ fn build_lint_input(
 ) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
     let (text, doc, built) = if with_project {
         let Some(built) = build_input(file, None, Some(root), None) else {
-            return Err(ExitCode::from(2));
+            if let Err(message) = read_document(file) {
+                return Err(envelope::fail_quietly(CliError::io(file, message)));
+            }
+            return Err(envelope::fail(CliError::input(
+                file,
+                format!("lute lint: cannot parse {}", file.display()),
+            )));
         };
         let text = built.input.text.clone();
         let mut parsed = lute_syntax::parse(&text);
@@ -197,10 +206,8 @@ fn build_lint_input(
         );
         (text, parsed.0, Some(built))
     } else {
-        let text = read_document(file).map_err(|message| {
-            eprintln!("{message}");
-            ExitCode::from(2)
-        })?;
+        let text =
+            read_document(file).map_err(|message| envelope::fail(CliError::io(file, message)))?;
         let doc = lute_syntax::parse(&text).0;
         (text, doc, None)
     };
@@ -226,18 +233,22 @@ fn project_for_root(root: &Path) -> Result<Option<ProjectConfig>, ExitCode> {
         wip: false,
     };
     let model = lute_model::ProjectModel::build_single_root(root, &opts).map_err(|error| {
-        eprintln!("lute: cannot load project {}: {error}", root.display());
-        ExitCode::from(2)
+        envelope::fail(CliError::io(
+            root,
+            format!("lute: cannot load project {}: {error}", root.display()),
+        ))
     })?;
     model
         .manifest()
         .cloned()
         .ok_or_else(|| {
-            eprintln!(
-                "lute: cannot load project manifest {}",
-                root.join("lute.project.yaml").display()
-            );
-            ExitCode::from(2)
+            envelope::fail(CliError::input(
+                &root.join("lute.project.yaml"),
+                format!(
+                    "lute: cannot load project manifest {}",
+                    root.join("lute.project.yaml").display()
+                ),
+            ))
         })
         .map(Some)
 }
@@ -251,15 +262,19 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         Ok(m) => m,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", path.display());
-            return Err(ExitCode::from(2));
+            return Err(envelope::fail(CliError::io(
+                path,
+                format!("lute: cannot read {}: {e}", path.display()),
+            )));
         }
     };
 
     let by_root: BTreeMap<PathBuf, Vec<PathBuf>> = if meta.is_file() {
         if path.extension().and_then(|e| e.to_str()) != Some("lute") {
-            eprintln!("lute: {} is not a .lute file", path.display());
-            return Err(ExitCode::from(2));
+            return Err(envelope::fail(CliError::input(
+                path,
+                format!("lute: {} is not a .lute file", path.display()),
+            )));
         }
         let fallback = path
             .parent()
@@ -272,8 +287,10 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
     } else {
         let files = find_lute_files(path).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot walk {}: {e}", path.display());
-            ExitCode::from(2)
+            envelope::fail(CliError::io(
+                path,
+                format!("lute: cannot walk {}: {e}", path.display()),
+            ))
         })?;
         let mut m: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
         for f in files {
@@ -535,16 +552,19 @@ pub fn run_lint(
             .iter()
             .map(|(p, d)| diag_to_json(p, d, policy.denied(d)))
             .collect();
-        let report = serde_json::json!({
+        let payload = serde_json::json!({
             "ok": ok,
             "diagnostics": diagnostics,
             "configDiagnostics": config_diagnostics,
         });
+        let exit = if ok { 0 } else { 1 };
+        let report = envelope::report(crate::envelope::version::LINT, exit, payload);
         match serde_json::to_string_pretty(&report) {
             Ok(s) => println!("{s}"),
             Err(e) => {
-                eprintln!("lute: failed to serialize result: {e}");
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io_without_path(format!(
+                    "lute: failed to serialize result: {e}"
+                )));
             }
         }
     } else {

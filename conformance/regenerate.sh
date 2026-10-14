@@ -16,6 +16,8 @@
 # diagnostics/*: expected.json is the `--json` diagnostics output with the
 #   fixture's absolute directory prefix removed.
 set -euo pipefail
+# Regeneration never writes the developer's telemetry (dsl 0.43.0 §6).
+export LUTE_TELEMETRY=0
 root=$(cd "$(dirname "$0")/.." && pwd)
 lute=${LUTE:-$root/target/debug/lute}
 [[ -x "$lute" ]] || { echo "missing binary: $lute (cargo build -p lute-cli)" >&2; exit 2; }
