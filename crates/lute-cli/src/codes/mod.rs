@@ -340,7 +340,10 @@ mod tests {
             } else if let Some(spec) = line.strip_prefix("명세: ") {
                 let (_, s) = sections.last_mut().expect("a spec line under a section");
                 // The Korean twin links to Korean pages (`/ko/spec/`) where they exist.
-                *s = spec.split(", ").map(|link| link.replace("](/ko/", "](/")).collect();
+                *s = spec
+                    .split(", ")
+                    .map(|link| link.replace("](/ko/", "](/"))
+                    .collect();
             }
         }
         let want: Vec<(String, Vec<String>)> = ["error", "warning"]
@@ -363,12 +366,19 @@ mod tests {
 
     #[test]
     fn every_registry_code_has_exactly_one_evidence_classification() {
-        let registry: std::collections::BTreeSet<&str> = CODES.iter().map(|code| code.code).collect();
+        let registry: std::collections::BTreeSet<&str> =
+            CODES.iter().map(|code| code.code).collect();
         let table = lute_check::evidence::DIAGNOSTIC_CLASSIFICATIONS;
         let mut classified = std::collections::BTreeSet::new();
         for (code, _) in table {
-            assert!(classified.insert(*code), "duplicate evidence classification for {code}");
-            assert!(registry.contains(code), "evidence table has unregistered code {code}");
+            assert!(
+                classified.insert(*code),
+                "duplicate evidence classification for {code}"
+            );
+            assert!(
+                registry.contains(code),
+                "evidence table has unregistered code {code}"
+            );
         }
         assert_eq!(classified, registry, "registry and evidence table drifted");
     }

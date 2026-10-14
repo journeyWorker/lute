@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Document, Node};
-use crate::ProjectDoc;
-use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 use super::paths::referenced_paths;
 use super::quest_tree::E_QUEST_REF_UNKNOWN;
+use crate::ProjectDoc;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
+use lute_syntax::ast::{Document, Node};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 /// dsl 0.5.1 §1.4: a `check-project` reference to a reserved
 /// `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path whose
@@ -48,7 +48,9 @@ fn ref_diag(message: String, span: Span, whole_project: bool) -> Diagnostic {
 /// document's own missing-id problem (`E-QUEST-ID-MISSING`/
 /// `E-OBJECTIVE-ID-MISSING`, reported wherever it is directly `check()`-ed),
 /// not a definition this project-wide pass can meaningfully index.
-pub(crate) fn defined_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeMap<&'a str, BTreeSet<&'a str>> {
+pub(crate) fn defined_quests<'a>(
+    docs: &'a [ProjectDoc<'a>],
+) -> BTreeMap<&'a str, BTreeSet<&'a str>> {
     let mut out: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for item in docs {
         let doc = item.doc;

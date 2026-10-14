@@ -124,9 +124,7 @@ pub(crate) struct BeatConds {
 
 impl Conds {
     fn of(index: &ProjectIndex, artifacts: &BTreeMap<String, Json>) -> Self {
-        let typed = |pair: &CelPair| {
-            serde_json::to_value(pair).ok().and_then(|j| Slot::of(&j))
-        };
+        let typed = |pair: &CelPair| serde_json::to_value(pair).ok().and_then(|j| Slot::of(&j));
         let beat = |head: &Json| BeatConds {
             when: head.get("when").and_then(Slot::of),
             spent_by: head.get("spentBy").and_then(Slot::of),
@@ -188,58 +186,263 @@ impl ExecProject {
             let mut artifacts = BTreeMap::new();
             for doc in &index.documents {
                 let Some(artifact) = bundled.remove(&doc.artifact) else {
-                    return Err((2, vec![format!("bundle is missing artifact {} for {}", doc.artifact, doc.path)]));
+                    return Err((
+                        2,
+                        vec![format!(
+                            "bundle is missing artifact {} for {}",
+                            doc.artifact, doc.path
+                        )],
+                    ));
                 };
                 artifacts.insert(doc.path.clone(), artifact);
             }
             artifacts
         };
         for beat in &mut index.beats {
-            if !lute_manifest::semantics::beats::beat_target_restricts(&beat.on, &occasions) { beat.target = None; }
+            if !lute_manifest::semantics::beats::beat_target_restricts(&beat.on, &occasions) {
+                beat.target = None;
+            }
         }
         let mut state_table: BTreeMap<String, Json> = BTreeMap::new();
         let mut declared_in = BTreeMap::new();
         for (rel, art) in &artifacts {
-            for e in art.get("state").and_then(Json::as_array).into_iter().flatten() {
-                let Some(path) = e.get("path").and_then(Json::as_str) else { continue };
+            for e in art
+                .get("state")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten()
+            {
+                let Some(path) = e.get("path").and_then(Json::as_str) else {
+                    continue;
+                };
                 if let Some(first) = state_table.get(path) {
                     if !path.starts_with("scene.") && first.get("type") != e.get("type") {
-                        return Err((1, vec![format!("state path `{path}` differs between {} and {rel}", declared_in[path])]));
+                        return Err((
+                            1,
+                            vec![format!(
+                                "state path `{path}` differs between {} and {rel}",
+                                declared_in[path]
+                            )],
+                        ));
                     }
-                } else { state_table.insert(path.to_string(), e.clone()); declared_in.insert(path.to_string(), rel.as_str()); }
+                } else {
+                    state_table.insert(path.to_string(), e.clone());
+                    declared_in.insert(path.to_string(), rel.as_str());
+                }
             }
         }
-        let state_domains = index.state_domains.iter().map(|(p, d)| (p.clone(), (d.kind.clone(), d.members.clone()))).collect();
+        let state_domains = index
+            .state_domains
+            .iter()
+            .map(|(p, d)| (p.clone(), (d.kind.clone(), d.members.clone())))
+            .collect();
         let rules = serde_json::to_value(&index.rules).unwrap_or_else(|_| json!([]));
-        let seed_facts = index.seed_facts.iter().map(|f| (f.relation.clone(), f.args.clone())).collect();
-        let run_relations = index.relations.iter().filter(|r| r.tier.as_deref() == Some("run")).map(|r| r.name.clone()).collect();
-        let quest_docs = artifacts.iter().filter(|(_, a)| a.get("kind").and_then(Json::as_str) == Some("quest")).map(|(r, _)| r.clone()).collect::<Vec<_>>();
-        let quest_cmds = || quest_docs.iter().filter_map(|r| artifacts.get(r)).flat_map(|a| a.get("commands").and_then(Json::as_array).into_iter().flatten()).filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest"));
-        let objectives_of = |c: &Json| -> Option<(String, Vec<String>)> { Some((c.get("id")?.as_str()?.to_string(), c.get("objectives").and_then(Json::as_array).into_iter().flatten().filter_map(|o| o.get("id")?.as_str().map(str::to_string)).collect())) };
+        let seed_facts = index
+            .seed_facts
+            .iter()
+            .map(|f| (f.relation.clone(), f.args.clone()))
+            .collect();
+        let run_relations = index
+            .relations
+            .iter()
+            .filter(|r| r.tier.as_deref() == Some("run"))
+            .map(|r| r.name.clone())
+            .collect();
+        let quest_docs = artifacts
+            .iter()
+            .filter(|(_, a)| a.get("kind").and_then(Json::as_str) == Some("quest"))
+            .map(|(r, _)| r.clone())
+            .collect::<Vec<_>>();
+        let quest_cmds = || {
+            quest_docs
+                .iter()
+                .filter_map(|r| artifacts.get(r))
+                .flat_map(|a| {
+                    a.get("commands")
+                        .and_then(Json::as_array)
+                        .into_iter()
+                        .flatten()
+                })
+                .filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest"))
+        };
+        let objectives_of = |c: &Json| -> Option<(String, Vec<String>)> {
+            Some((
+                c.get("id")?.as_str()?.to_string(),
+                c.get("objectives")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|o| o.get("id")?.as_str().map(str::to_string))
+                    .collect(),
+            ))
+        };
         let quest_objectives = quest_cmds().filter_map(objectives_of).collect();
-        let objective_occasions = quest_cmds().flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten()).filter_map(|o| o.get("on")?.as_str().map(str::to_string)).collect();
-        let run_quests = quest_cmds().filter(|c| c.get("tier").and_then(Json::as_str) == Some("run")).filter_map(objectives_of).collect();
-        let children = quest_cmds().flat_map(|c| c.get("objectives").and_then(Json::as_array).into_iter().flatten()).filter_map(|o| o.get("quest")?.as_str()).collect::<BTreeSet<_>>();
-        let accept_driven = quest_cmds().filter(|c| c.get("start").is_none_or(Json::is_null)).filter_map(|c| c.get("id")?.as_str().map(|id| (c, id))).filter(|(c, id)| !children.contains(id) || c.get("activate").and_then(Json::as_str) == Some("accept")).map(|(_, id)| id.to_string()).collect();
-        let parent_of = quest_cmds().flat_map(|c| { let parent = c.get("id").and_then(Json::as_str).unwrap_or(""); c.get("objectives").and_then(Json::as_array).into_iter().flatten().filter_map(move |o| o.get("quest")?.as_str().map(|child| (child, parent))) }).collect::<BTreeMap<_, _>>();
-        let accept_children = quest_docs.iter().filter_map(|r| artifacts.get(r).map(|a| (r, a))).flat_map(|(r, a)| a.get("commands").and_then(Json::as_array).into_iter().flatten().filter(|c| c.get("kind").and_then(Json::as_str) == Some("quest") && c.get("activate").and_then(Json::as_str) == Some("accept")).filter_map(|c| c.get("id").and_then(Json::as_str)).filter_map(|id| parent_of.get(id).map(|p| (id.to_string(), (p.to_string(), r.clone())))).collect::<Vec<_>>()).collect();
-        let scene_ids = artifacts.values().filter(|a| a.get("kind").and_then(Json::as_str) == Some("scene")).filter_map(|a| a.pointer("/meta/id")?.as_str().map(str::to_string)).chain(index.beats.iter().filter(|b| b.kind == BeatKind::Bundle).map(|b| b.id.clone())).collect();
+        let objective_occasions = quest_cmds()
+            .flat_map(|c| {
+                c.get("objectives")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+            })
+            .filter_map(|o| o.get("on")?.as_str().map(str::to_string))
+            .collect();
+        let run_quests = quest_cmds()
+            .filter(|c| c.get("tier").and_then(Json::as_str) == Some("run"))
+            .filter_map(objectives_of)
+            .collect();
+        let children = quest_cmds()
+            .flat_map(|c| {
+                c.get("objectives")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+            })
+            .filter_map(|o| o.get("quest")?.as_str())
+            .collect::<BTreeSet<_>>();
+        let accept_driven = quest_cmds()
+            .filter(|c| c.get("start").is_none_or(Json::is_null))
+            .filter_map(|c| c.get("id")?.as_str().map(|id| (c, id)))
+            .filter(|(c, id)| {
+                !children.contains(id) || c.get("activate").and_then(Json::as_str) == Some("accept")
+            })
+            .map(|(_, id)| id.to_string())
+            .collect();
+        let parent_of = quest_cmds()
+            .flat_map(|c| {
+                let parent = c.get("id").and_then(Json::as_str).unwrap_or("");
+                c.get("objectives")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(move |o| o.get("quest")?.as_str().map(|child| (child, parent)))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let accept_children = quest_docs
+            .iter()
+            .filter_map(|r| artifacts.get(r).map(|a| (r, a)))
+            .flat_map(|(r, a)| {
+                a.get("commands")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter(|c| {
+                        c.get("kind").and_then(Json::as_str) == Some("quest")
+                            && c.get("activate").and_then(Json::as_str) == Some("accept")
+                    })
+                    .filter_map(|c| c.get("id").and_then(Json::as_str))
+                    .filter_map(|id| {
+                        parent_of
+                            .get(id)
+                            .map(|p| (id.to_string(), (p.to_string(), r.clone())))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let scene_ids = artifacts
+            .values()
+            .filter(|a| a.get("kind").and_then(Json::as_str) == Some("scene"))
+            .filter_map(|a| a.pointer("/meta/id")?.as_str().map(str::to_string))
+            .chain(
+                index
+                    .beats
+                    .iter()
+                    .filter(|b| b.kind == BeatKind::Bundle)
+                    .map(|b| b.id.clone()),
+            )
+            .collect();
         let entry_ids = index.entries.iter().map(|e| e.id.clone()).collect();
-        let entry_aliases = index.entries.iter().filter_map(|e| { let d = index.documents.iter().find(|d| d.path == e.document)?; Some((format!("{}.{}", d.key, e.id), e.id.clone())) }).collect();
-        let kinds = index.entities.iter().map(|k| { let shape = match &k.members { Some(m) if !k.open => KindShape::Members(m.clone()), _ => KindShape::Open }; let labels = k.labels.iter().map(|(m, text)| { let f = k.label_forms.get(m); (m.clone(), lute_manifest::relations::KindLabel { text: text.clone(), start: f.and_then(|f| f.start.clone()), indefinite: f.and_then(|f| f.indefinite.clone()) }) }).collect(); (k.name.clone(), EntityKindDecl { shape, subset_of: None, labels }) }).collect();
+        let entry_aliases = index
+            .entries
+            .iter()
+            .filter_map(|e| {
+                let d = index.documents.iter().find(|d| d.path == e.document)?;
+                Some((format!("{}.{}", d.key, e.id), e.id.clone()))
+            })
+            .collect();
+        let kinds = index
+            .entities
+            .iter()
+            .map(|k| {
+                let shape = match &k.members {
+                    Some(m) if !k.open => KindShape::Members(m.clone()),
+                    _ => KindShape::Open,
+                };
+                let labels = k
+                    .labels
+                    .iter()
+                    .map(|(m, text)| {
+                        let f = k.label_forms.get(m);
+                        (
+                            m.clone(),
+                            lute_manifest::relations::KindLabel {
+                                text: text.clone(),
+                                start: f.and_then(|f| f.start.clone()),
+                                indefinite: f.and_then(|f| f.indefinite.clone()),
+                            },
+                        )
+                    })
+                    .collect();
+                (
+                    k.name.clone(),
+                    EntityKindDecl {
+                        shape,
+                        subset_of: None,
+                        labels,
+                    },
+                )
+            })
+            .collect();
         let mut eval_json = json!({ "kind": "scene", "commands": [], "rules": rules.clone(), "entities": index.entities, "relations": index.relations, "state": state_table.values().cloned().collect::<Vec<_>>() });
-        if let Some(clock) = &index.clock { eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null); }
-        let store_schemas = [Store::schema_for_project(&eval_json, false, &rules, &state_table), Store::schema_for_project(&eval_json, true, &rules, &state_table)];
-        let codes = artifacts.iter().map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a)))).collect();
+        if let Some(clock) = &index.clock {
+            eval_json["clock"] = serde_json::to_value(clock).unwrap_or(Json::Null);
+        }
+        let store_schemas = [
+            Store::schema_for_project(&eval_json, false, &rules, &state_table),
+            Store::schema_for_project(&eval_json, true, &rules, &state_table),
+        ];
+        let codes = artifacts
+            .iter()
+            .map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a))))
+            .collect();
         let bridge_reads = Arc::new(BridgeReads {
             result_types: index.bridge_results.clone(),
             ..BridgeReads::of(artifacts.values())
         });
         let conds = Conds::of(&index, &artifacts);
-        let cadence = crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
+        let cadence =
+            crate::cadence::CadencePlan::of(&index, &artifacts, &quest_docs, &state_table, &conds);
         let world_events = index.world_events.iter().cloned().collect();
         let display_names = index.cast.clone();
-        Ok(ExecProject { artifacts, authored: BTreeMap::new(), index, occasions, state_table, state_domains, rules, seed_facts, run_relations, quest_docs, quest_objectives, objective_occasions, eval_json, store_schemas, codes, world_events, scene_ids, entry_ids, entry_aliases, run_quests, accept_driven, accept_children, kinds, bridge_reads, display_names, cadence, chapter_afters: Default::default(), conds })
+        Ok(ExecProject {
+            artifacts,
+            authored: BTreeMap::new(),
+            index,
+            occasions,
+            state_table,
+            state_domains,
+            rules,
+            seed_facts,
+            run_relations,
+            quest_docs,
+            quest_objectives,
+            objective_occasions,
+            eval_json,
+            store_schemas,
+            codes,
+            world_events,
+            scene_ids,
+            entry_ids,
+            entry_aliases,
+            run_quests,
+            accept_driven,
+            accept_children,
+            kinds,
+            bridge_reads,
+            display_names,
+            cadence,
+            chapter_afters: Default::default(),
+            conds,
+        })
     }
 
     /// The occasion's declared `select:` (default `first`).

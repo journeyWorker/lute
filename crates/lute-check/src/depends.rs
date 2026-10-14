@@ -38,7 +38,11 @@ pub fn depends_diag(dependant: &str, cause: &InvalidDecl, span: Span, layer: Lay
 }
 
 /// The invalid plugin declaration of `kind` named `name`, if any.
-pub fn invalid<'a>(snapshot: &'a CapabilitySnapshot, kind: &str, name: &str) -> Option<&'a InvalidDecl> {
+pub fn invalid<'a>(
+    snapshot: &'a CapabilitySnapshot,
+    kind: &str,
+    name: &str,
+) -> Option<&'a InvalidDecl> {
     snapshot.invalid.get(&(kind.to_string(), name.to_string()))
 }
 
@@ -86,7 +90,11 @@ pub fn attribute_unknown(diags: &mut [Diagnostic], snapshot: &CapabilitySnapshot
 pub fn fold_dependants(diags: &mut Vec<Diagnostic>) {
     let cause_of = |d: &Diagnostic| -> Option<String> {
         (d.code == W_DEPENDS_ON_INVALID)
-            .then(|| d.message.split_once(DEPENDS_ON).map(|(_, tail)| tail.to_string()))
+            .then(|| {
+                d.message
+                    .split_once(DEPENDS_ON)
+                    .map(|(_, tail)| tail.to_string())
+            })
             .flatten()
     };
     let mut first: Vec<(String, usize, usize)> = Vec::new();
@@ -124,10 +132,15 @@ pub fn fold_project_dependants(results: &mut [(std::path::PathBuf, crate::CheckR
             return None;
         }
         let (_, rest) = d.message.split_once(DEPENDS_ON)?;
-        Some(match rest.strip_suffix(" more dependant(s))").and_then(|r| r.rsplit_once(" (")) {
-            Some((cause, n)) => (cause.to_string(), n.parse().unwrap_or(0)),
-            None => (rest.to_string(), 0),
-        })
+        Some(
+            match rest
+                .strip_suffix(" more dependant(s))")
+                .and_then(|r| r.rsplit_once(" ("))
+            {
+                Some((cause, n)) => (cause.to_string(), n.parse().unwrap_or(0)),
+                None => (rest.to_string(), 0),
+            },
+        )
     };
     // cause -> (file index, diagnostic index, dependants beyond the first)
     let mut first: Vec<(String, usize, usize, usize)> = Vec::new();

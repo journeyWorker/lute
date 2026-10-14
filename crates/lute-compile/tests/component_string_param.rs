@@ -125,7 +125,10 @@ fn a_string_argument_never_becomes_inline_modifier_syntax() {
     assert_eq!(lines.len(), 2, "{lines:#?}");
     assert_eq!(lines[0]["text"], ":emphasis[x] {y} a]b");
     assert!(lines[0].get("segments").is_none(), "{:#?}", lines[0]);
-    assert_eq!(lines[1]["text"], ":emphasis[x] {y} a]b then :emphasis[x] {y} a]b");
+    assert_eq!(
+        lines[1]["text"],
+        ":emphasis[x] {y} a]b then :emphasis[x] {y} a]b"
+    );
     assert_eq!(
         lines[1]["segments"],
         serde_json::json!([

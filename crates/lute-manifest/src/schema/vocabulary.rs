@@ -36,7 +36,10 @@ where
                     return Err(D::Error::custom(crate::types::NUMBER_TYPE_REMOVED));
                 }
                 if let Ok(ty) = serde_yaml::from_value::<Type>(value) {
-                    params.push(DefParam { name: name.to_string(), ty });
+                    params.push(DefParam {
+                        name: name.to_string(),
+                        ty,
+                    });
                 }
             }
             params
@@ -384,4 +387,3 @@ impl std::fmt::Debug for CastMember {
         s.finish()
     }
 }
-

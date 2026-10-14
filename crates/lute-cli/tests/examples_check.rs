@@ -180,9 +180,13 @@ fn check_project(dir: &Path) -> &'static ProjectRun {
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .unwrap();
-        let json = serde_json::from_slice(&out.stdout)
-            .unwrap_or_else(|e| panic!("{}: invalid JSON from `check-project`: {e}", dir.display()));
-        ProjectRun { status: out.status.code(), json }
+        let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
+            panic!("{}: invalid JSON from `check-project`: {e}", dir.display())
+        });
+        ProjectRun {
+            status: out.status.code(),
+            json,
+        }
     })
 }
 

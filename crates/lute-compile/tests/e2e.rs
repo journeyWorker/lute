@@ -31,8 +31,16 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
         .unwrap_or_default();
     let mut uses = meta0.uses.clone();
     if uses.is_empty() {
-        if let Some(values) = defaults.get("uses").and_then(serde_yaml::Value::as_sequence) {
-            uses.extend(values.iter().filter_map(serde_yaml::Value::as_str).map(str::to_owned));
+        if let Some(values) = defaults
+            .get("uses")
+            .and_then(serde_yaml::Value::as_sequence)
+        {
+            uses.extend(
+                values
+                    .iter()
+                    .filter_map(serde_yaml::Value::as_str)
+                    .map(str::to_owned),
+            );
         }
     }
     let imports = lute_check::resolve_imports(base, &uses, &meta0.extends, doc.meta.span);
@@ -137,7 +145,9 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 );
                 assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
             }
-            Some("match") => assert_cel_clean("match.subject", c["subject"]["cel"].as_str().unwrap()),
+            Some("match") => {
+                assert_cel_clean("match.subject", c["subject"]["cel"].as_str().unwrap())
+            }
             Some("set") => assert_cel_clean("set.value", c["value"]["cel"].as_str().unwrap()),
             // Quest/on records carry CEL slot objects with `cel` and `expr`.
             Some("quest") => {
@@ -569,7 +579,10 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
             field_is_registered(field),
             "E-SEMANTICS-FIELD: serialized field `{field}` at {path} has no registry field-table row"
         );
-        if matches!(field.as_str(), "extra" | "plugin" | "fields" | "texts" | "localeSegments" | "labels" | "labelForms") {
+        if matches!(
+            field.as_str(),
+            "extra" | "plugin" | "fields" | "texts" | "localeSegments" | "labels" | "labelForms"
+        ) {
             continue;
         }
         semantic_field_coverage_walk(child, &format!("{path}.{field}"));
@@ -582,7 +595,9 @@ fn source_files(root: &Path, out: &mut Vec<PathBuf>) {
         if path.is_dir() {
             source_files(&path, out);
         } else if path.extension().is_some_and(|ext| ext == "lute")
-            && !path.file_name().is_some_and(|name| name.to_string_lossy().ends_with(".component.lute"))
+            && !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".component.lute"))
         {
             out.push(path);
         }
@@ -610,7 +625,9 @@ fn every_corpus_serialized_field_is_registry_covered() {
     // conformance directories participate until that slice lands its artifacts.
     files.retain(|path| {
         !path.starts_with(root.join("conformance"))
-            || path.parent().is_some_and(|dir| dir.join("artifact.json").is_file())
+            || path
+                .parent()
+                .is_some_and(|dir| dir.join("artifact.json").is_file())
     });
     files.retain(|path| !path.starts_with(root.join("conformance/invalid")));
     files.sort();

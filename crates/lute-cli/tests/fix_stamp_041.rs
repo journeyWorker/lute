@@ -52,7 +52,10 @@ fn fix_raises_project_and_document_stamps() {
 
     let (code, out) = run(&["fix"], &dir);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("lute: applied 4 fix(es) in 3 of 4 file(s)"), "{out}");
+    assert!(
+        out.contains("lute: applied 4 fix(es) in 3 of 4 file(s)"),
+        "{out}"
+    );
     assert_eq!(
         read(&dir, "lute.project.yaml"),
         MANIFEST.replace("\"0.40.0\"", &format!("\"{CURRENT}\""))
@@ -69,7 +72,10 @@ fn fix_raises_project_and_document_stamps() {
 
     let (code, again) = run(&["fix"], &dir);
     assert_eq!(code, 0, "{again}");
-    assert!(again.contains("lute: applied 0 fix(es) in 0 of 4 file(s)"), "{again}");
+    assert!(
+        again.contains("lute: applied 0 fix(es) in 0 of 4 file(s)"),
+        "{again}"
+    );
 
     let (code, after) = run(&["check-project"], &dir);
     assert_eq!(code, 0, "{after}");
@@ -86,8 +92,14 @@ fn fix_raises_a_flow_mapping_and_a_plain_scalar() {
     write(&dir, "a.lute", doc);
     let (code, out) = run(&["fix"], &dir);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("lute: applied 2 fix(es) in 2 of 2 file(s)"), "{out}");
-    assert_eq!(read(&dir, "lute.project.yaml"), manifest.replace("0.40.0", CURRENT));
+    assert!(
+        out.contains("lute: applied 2 fix(es) in 2 of 2 file(s)"),
+        "{out}"
+    );
+    assert_eq!(
+        read(&dir, "lute.project.yaml"),
+        manifest.replace("0.40.0", CURRENT)
+    );
     assert_eq!(read(&dir, "a.lute"), doc.replace("0.40.0", CURRENT));
 }
 
@@ -101,8 +113,14 @@ fn fix_raises_stamps_under_quoted_keys() {
     write(&dir, "a.lute", doc);
     let (code, out) = run(&["fix"], &dir);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("lute: applied 2 fix(es) in 2 of 2 file(s)"), "{out}");
-    assert_eq!(read(&dir, "lute.project.yaml"), manifest.replace("0.40.0", CURRENT));
+    assert!(
+        out.contains("lute: applied 2 fix(es) in 2 of 2 file(s)"),
+        "{out}"
+    );
+    assert_eq!(
+        read(&dir, "lute.project.yaml"),
+        manifest.replace("0.40.0", CURRENT)
+    );
     assert_eq!(read(&dir, "a.lute"), doc.replace("0.40.0", CURRENT));
 }
 
@@ -112,9 +130,11 @@ fn fix_raises_stamps_under_quoted_keys() {
 fn fix_leaves_future_current_and_unrelated_values_alone() {
     let dir = lute_scratch::ScratchDir::named("fix-stamp-041-keep");
     let manifest = "defaults:\n  luteVersion: \"999.0.0\"\n";
-    let current = format!("---\nkind: scene\nid: c\nluteVersion: \"{CURRENT}\"\n---\n## C\n@narrator: Hi.\n");
+    let current =
+        format!("---\nkind: scene\nid: c\nluteVersion: \"{CURRENT}\"\n---\n## C\n@narrator: Hi.\n");
     let odd = "---\nkind: scene\nid: d\nluteVersion: \"0.40\"\n---\n## D\n@narrator: Hi.\n";
-    let nested = "---\nkind: scene\nid: e\nmeta:\n  luteVersion: \"0.40.0\"\n---\n## E\n@narrator: Hi.\n";
+    let nested =
+        "---\nkind: scene\nid: e\nmeta:\n  luteVersion: \"0.40.0\"\n---\n## E\n@narrator: Hi.\n";
     let plugin = "id: game.x\nversion: 0.1.0\nkind: capability\nluteVersion: \"0.40.0\"\n";
     write(&dir, "lute.project.yaml", manifest);
     write(&dir, "c.lute", &current);
@@ -123,7 +143,10 @@ fn fix_leaves_future_current_and_unrelated_values_alone() {
     write(&dir, "plugins/game.x/plugin.yaml", plugin);
     let (code, out) = run(&["fix"], &dir);
     assert_eq!(code, 0, "{out}");
-    assert!(out.contains("lute: applied 0 fix(es) in 0 of 5 file(s)"), "{out}");
+    assert!(
+        out.contains("lute: applied 0 fix(es) in 0 of 5 file(s)"),
+        "{out}"
+    );
     assert_eq!(read(&dir, "lute.project.yaml"), manifest);
     assert_eq!(read(&dir, "c.lute"), current);
     assert_eq!(read(&dir, "d.lute"), odd);

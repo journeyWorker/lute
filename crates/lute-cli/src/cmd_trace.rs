@@ -9,10 +9,10 @@ use lute_runtime::MockSet;
 use lute_trace::{merge, parse_mock_yaml, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
-use lute_load::{build_input, BuiltInput};
 use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
-use lute_model::project_gate_result_in;
 use crate::project::{discover_project, project_assert_relations_in, project_quest_ids_in};
+use lute_load::{build_input, BuiltInput};
+use lute_model::project_gate_result_in;
 
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
@@ -261,7 +261,8 @@ pub(crate) fn run_trace(
     // T3-15: the project knows every quest — settle the
     // "existence is unverified" notes instead of repeating them.
     if !report.foreign_quests.is_empty() {
-        if let Some(declared) = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers)) {
+        if let Some(declared) = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers))
+        {
             report.verify_quests(&declared);
         }
     }

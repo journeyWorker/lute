@@ -748,7 +748,8 @@ mod tests {
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
         );
-        let nodes = doc.sections
+        let nodes = doc
+            .sections
             .into_iter()
             .next()
             .map(|s| s.body)

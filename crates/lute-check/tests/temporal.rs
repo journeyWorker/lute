@@ -216,7 +216,9 @@ fn validat_against_quest_activated_at_is_clean() {
     // implicitly-declared reserved quest field), no E-MAYBE-UNSET (narrative
     // time admits no `isSet`/`has` guard — that would itself be
     // E-TEMPORAL-ARG — so the engine-populated anchor is definite).
-    let cs = codes(&quest_done("validAt('sawClue', ['map'], quest.q1.activatedAt)"));
+    let cs = codes(&quest_done(
+        "validAt('sawClue', ['map'], quest.q1.activatedAt)",
+    ));
     for code in [
         "E-TEMPORAL-ARG",
         "E-UNDECLARED",

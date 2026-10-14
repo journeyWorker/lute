@@ -27,10 +27,13 @@ pub struct IdentityAt {
 /// joins; untagged constructs are explicitly marked unstable.
 pub fn identity_at(doc: &Document, off: usize) -> Option<IdentityAt> {
     fn attrs(attrs: &[lute_syntax::ast::Attr], key: &str) -> Option<(String, Span)> {
-        attrs.iter().find(|attr| attr.key == key).and_then(|attr| match &attr.value {
-            AttrValue::Str(value) => Some((value.clone(), attr.value_span)),
-            _ => None,
-        })
+        attrs
+            .iter()
+            .find(|attr| attr.key == key)
+            .and_then(|attr| match &attr.value {
+                AttrValue::Str(value) => Some((value.clone(), attr.value_span)),
+                _ => None,
+            })
     }
     fn scan(nodes: &[Node], off: usize) -> Option<IdentityAt> {
         for node in nodes {
@@ -38,54 +41,104 @@ pub fn identity_at(doc: &Document, off: usize) -> Option<IdentityAt> {
                 Node::Line(line) if line.span.byte_start <= off && off <= line.span.byte_end => {
                     let code = attrs(&line.attrs, "code");
                     let (computed, source, stable) = match code {
-                        Some((code, _)) => (format!("{}.{}", line.speaker, code), IdentitySource::Authored, true),
-                        None => (format!("{}.untagged", line.speaker), IdentitySource::Fallback, false),
+                        Some((code, _)) => (
+                            format!("{}.{}", line.speaker, code),
+                            IdentitySource::Authored,
+                            true,
+                        ),
+                        None => (
+                            format!("{}.untagged", line.speaker),
+                            IdentitySource::Fallback,
+                            false,
+                        ),
                     };
                     return Some(IdentityAt {
                         span: line.span,
-                        identity: IdentityMetadata { kind: "line".into(), source, computed, stable },
+                        identity: IdentityMetadata {
+                            kind: "line".into(),
+                            source,
+                            computed,
+                            stable,
+                        },
                         component_scope: None,
                     });
                 }
-                Node::Directive(d) if d.span.byte_start <= off && off <= d.span.byte_end && d.tag == "use" => {
-                    let component = attrs(&d.attrs, "component").map(|(v, _)| v).unwrap_or_default();
+                Node::Directive(d)
+                    if d.span.byte_start <= off && off <= d.span.byte_end && d.tag == "use" =>
+                {
+                    let component = attrs(&d.attrs, "component")
+                        .map(|(v, _)| v)
+                        .unwrap_or_default();
                     let instance = attrs(&d.attrs, "instance");
                     let (computed, source, stable) = match instance {
-                        Some((key, _)) => (format!("{component}#{key}"), IdentitySource::Authored, true),
-                        None => (format!("{component}#untagged"), IdentitySource::Fallback, false),
+                        Some((key, _)) => {
+                            (format!("{component}#{key}"), IdentitySource::Authored, true)
+                        }
+                        None => (
+                            format!("{component}#untagged"),
+                            IdentitySource::Fallback,
+                            false,
+                        ),
                     };
                     return Some(IdentityAt {
                         span: d.span,
-                        identity: IdentityMetadata { kind: "componentInstance".into(), source, computed: computed.clone(), stable },
+                        identity: IdentityMetadata {
+                            kind: "componentInstance".into(),
+                            source,
+                            computed: computed.clone(),
+                            stable,
+                        },
                         component_scope: Some(computed),
                     });
                 }
                 Node::Branch(branch) => {
                     for choice in &branch.choices {
-                        if let Some(found) = scan(&choice.body, off) { return Some(found); }
+                        if let Some(found) = scan(&choice.body, off) {
+                            return Some(found);
+                        }
                     }
                 }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         let body = match arm {
-                            lute_syntax::ast::Arm::When { body, .. } | lute_syntax::ast::Arm::Otherwise { body, .. } => body,
+                            lute_syntax::ast::Arm::When { body, .. }
+                            | lute_syntax::ast::Arm::Otherwise { body, .. } => body,
                         };
-                        if let Some(found) = scan(body, off) { return Some(found); }
+                        if let Some(found) = scan(body, off) {
+                            return Some(found);
+                        }
                     }
                 }
                 Node::Hub(hub) => {
                     for body in hub.bodies() {
-                        if let Some(found) = scan(body, off) { return Some(found); }
+                        if let Some(found) = scan(body, off) {
+                            return Some(found);
+                        }
                     }
                 }
-                Node::Objective(objective) => if let Some(found) = scan(&objective.body, off) { return Some(found); },
-                Node::On(on) => if let Some(found) = scan(&on.body, off) { return Some(found); },
-                Node::Line(_) | Node::Timeline(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) | Node::Directive(_) => {}
+                Node::Objective(objective) => {
+                    if let Some(found) = scan(&objective.body, off) {
+                        return Some(found);
+                    }
+                }
+                Node::On(on) => {
+                    if let Some(found) = scan(&on.body, off) {
+                        return Some(found);
+                    }
+                }
+                Node::Line(_)
+                | Node::Timeline(_)
+                | Node::Set(_)
+                | Node::Assert(_)
+                | Node::Retract(_)
+                | Node::Directive(_) => {}
             }
         }
         None
     }
-    doc.sections.iter().find_map(|section| scan(&section.body, off))
+    doc.sections
+        .iter()
+        .find_map(|section| scan(&section.body, off))
         .or_else(|| doc.quests.iter().find_map(|quest| scan(&quest.body, off)))
         .or_else(|| doc.entries.iter().find_map(|entry| scan(&entry.body, off)))
         .or_else(|| doc.beats.iter().find_map(|beat| scan(&beat.body, off)))
@@ -163,10 +216,13 @@ pub fn line_at(doc: &Document, off: usize) -> Option<&Line> {
 
 /// The quoted string value of `d`'s `key` attribute with its value span.
 fn str_attr<'a>(d: &'a Directive, key: &str) -> Option<(&'a str, Span)> {
-    d.attrs.iter().find(|a| a.key == key).and_then(|a| match &a.value {
-        AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
-        _ => None,
-    })
+    d.attrs
+        .iter()
+        .find(|a| a.key == key)
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+            _ => None,
+        })
 }
 
 /// Every `::label{name}` declaration (dsl 0.37.0 §3.5): the label name and

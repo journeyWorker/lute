@@ -131,7 +131,14 @@ impl<D: Driver> Machine<D> {
         rules: &Json,
         state: &BTreeMap<String, Json>,
     ) -> Self {
-        Self::resume_over(art, None, seed, carry, driver, StoreSource::Project { rules, state })
+        Self::resume_over(
+            art,
+            None,
+            seed,
+            carry,
+            driver,
+            StoreSource::Project { rules, state },
+        )
     }
 
     /// [`Machine::resume_with_project`] over a project's decoded schema and
@@ -144,7 +151,14 @@ impl<D: Driver> Machine<D> {
         driver: D,
         schema: Arc<StoreSchema>,
     ) -> Self {
-        Self::resume_over(art, Some(code), seed, carry, driver, StoreSource::Schema(schema))
+        Self::resume_over(
+            art,
+            Some(code),
+            seed,
+            carry,
+            driver,
+            StoreSource::Schema(schema),
+        )
     }
 
     fn resume_over(

@@ -10,9 +10,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::types::{type_str, Literal, Owner, Type};
-use crate::ProjectDoc;
 
 use crate::check::FoldedEnv;
 use crate::meta::StateDecl;

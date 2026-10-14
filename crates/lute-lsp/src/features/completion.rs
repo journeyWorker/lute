@@ -39,7 +39,7 @@ use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node, ACCEPT_DIRECTIVE};
 use tower_lsp_server::ls_types::{CompletionItem, CompletionItemKind};
 
 use lute_resolve::cursor::{
-    attr_enum_values, asset_kind_for, asset_segment_index, attr_at, span_contains, subject_domain,
+    asset_kind_for, asset_segment_index, attr_at, attr_enum_values, span_contains, subject_domain,
     type_label, Cursor, QuestConstruct,
 };
 
@@ -68,8 +68,13 @@ pub fn complete_at(
     // typed: its value span is its key span, so the resolver reports a value.
     let bare = attr_at(doc, off).is_some_and(|a| matches!(a.value, AttrValue::BoolTrue));
     let tag_key_position = match cursor {
-        None | Some(Cursor::AttrKey { directive: None, .. }) => true,
-        Some(Cursor::AttrValue { directive: None, .. }) => bare,
+        None
+        | Some(Cursor::AttrKey {
+            directive: None, ..
+        }) => true,
+        Some(Cursor::AttrValue {
+            directive: None, ..
+        }) => bare,
         // A `<match>` without `subject=` gets an empty subject slot spanning
         // its whole open tag.
         Some(Cursor::Cel {
@@ -320,7 +325,13 @@ fn branch_default_items(doc: &Document, off: usize) -> Vec<CompletionItem> {
                             }
                         }
                     }
-                    return Some(branch.choices.iter().map(|choice| choice.id.clone()).collect());
+                    return Some(
+                        branch
+                            .choices
+                            .iter()
+                            .map(|choice| choice.id.clone())
+                            .collect(),
+                    );
                 }
                 Node::Hub(hub) => {
                     for choice in &hub.choices {
@@ -378,7 +389,6 @@ fn branch_default_items(doc: &Document, off: usize) -> Vec<CompletionItem> {
         })
         .collect()
 }
-
 
 /// The keys of `tag` not yet written in its open-tag `interior`, kind `FIELD`.
 fn open_tag_items(tag: OpenTag, interior: &str) -> Vec<CompletionItem> {
@@ -504,7 +514,10 @@ fn label_items(doc: &Document) -> Vec<CompletionItem> {
 
 /// Jump targets no `::label` declares yet, for a `::label{name=…}` value.
 fn unlabeled_target_items(doc: &Document) -> Vec<CompletionItem> {
-    let declared: BTreeSet<&str> = super::label_decls(doc).into_iter().map(|(n, _)| n).collect();
+    let declared: BTreeSet<&str> = super::label_decls(doc)
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
     let targets: BTreeSet<&str> = super::jump_targets(doc)
         .into_iter()
         .map(|(n, _)| n)
@@ -1009,7 +1022,10 @@ fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionI
     const HOSTS: &[(&str, &str)] = &[
         ("holds", "holds(string, list(dyn)) -> bool"),
         ("count", "count(string, list(dyn)) -> int"),
-        ("countDistinct", "countDistinct(string, list(dyn), int) -> int"),
+        (
+            "countDistinct",
+            "countDistinct(string, list(dyn), int) -> int",
+        ),
         ("validAt", "validAt(string, list(dyn), int) -> bool"),
         ("now", "now() -> int"),
         ("visited", "visited(string) -> bool"),
@@ -1019,7 +1035,9 @@ fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionI
     ];
     let before = &raw[..local.min(raw.len())];
     let open = before.rfind('(')?;
-    let name = before[..open].split(|c: char| !c.is_ascii_alphanumeric()).next_back()?;
+    let name = before[..open]
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .next_back()?;
     if !HOSTS.iter().any(|(n, _)| *n == name) {
         return None;
     }
@@ -1040,19 +1058,29 @@ fn host_items(raw: &str, local: usize, doc: &Document) -> Option<Vec<CompletionI
                 }
             }
         }
-        return Some(names.into_iter().map(|label| CompletionItem {
-            label,
-            kind: Some(CompletionItemKind::FUNCTION),
-            detail: Some("relation name".into()),
-            ..Default::default()
-        }).collect());
+        return Some(
+            names
+                .into_iter()
+                .map(|label| CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::FUNCTION),
+                    detail: Some("relation name".into()),
+                    ..Default::default()
+                })
+                .collect(),
+        );
     }
-    Some(HOSTS.iter().map(|(label, detail)| CompletionItem {
-        label: (*label).into(),
-        kind: Some(CompletionItemKind::FUNCTION),
-        detail: Some((*detail).into()),
-        ..Default::default()
-    }).collect())
+    Some(
+        HOSTS
+            .iter()
+            .map(|(label, detail)| CompletionItem {
+                label: (*label).into(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some((*detail).into()),
+                ..Default::default()
+            })
+            .collect(),
+    )
 }
 
 /// Declared state paths (`scene.*`, `run.*`, …), kind `PROPERTY`.
@@ -1191,7 +1219,7 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                     for track in &t.tracks {
                         for clip in &track.clips {
                             if let lute_syntax::ast::ClipNode::Directive(d) = &clip.node {
-                            if span_contains(d.span, off) {
+                                if span_contains(d.span, off) {
                                     out.extend(d.attrs.iter().map(|a| a.key.clone()));
                                 }
                             }
@@ -1199,9 +1227,7 @@ fn present_attr_keys(doc: &Document, off: usize) -> Vec<String> {
                     }
                 }
                 Node::On(o) if span_contains(o.span, off) => scan(&o.body, off, out),
-                Node::Objective(ob) if span_contains(ob.span, off) => {
-                    scan(&ob.body, off, out)
-                }
+                Node::Objective(ob) if span_contains(ob.span, off) => scan(&ob.body, off, out),
                 _ => {}
             }
         }
@@ -1260,7 +1286,14 @@ mod tests {
         let text = "## Shot 1.\n::";
         let doc = parsed(text);
         let off = text.find("::").unwrap() + 2; // just past `::`
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(items.iter().any(|i| i.label == "camera"));
         assert!(items.iter().any(|i| i.label == "bg"));
     }
@@ -1285,7 +1318,14 @@ mod tests {
             },
         );
         let text = "## Shot 1.\n::";
-        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), text.len());
+        let items = complete_at(
+            &parsed(text),
+            text,
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            text.len(),
+        );
         assert_eq!(labels(&items), vec!["camera"]);
     }
 
@@ -1305,7 +1345,14 @@ mod tests {
             },
         );
         let text = "## Shot 1.\n::";
-        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), text.len());
+        let items = complete_at(
+            &parsed(text),
+            text,
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            text.len(),
+        );
         assert!(!labels(&items).contains(&"camera"));
     }
 
@@ -1320,7 +1367,14 @@ mod tests {
         );
         let text = "---\nkind: \n---\n";
         let off = text.find("kind: ").unwrap() + "kind: ".len();
-        let items = complete_at(&parsed(text), text, &snapshot, &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &parsed(text),
+            text,
+            &snapshot,
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         // Only `quest` is permission-gated; `lore` is not quest authoring.
         assert_eq!(labels(&items), vec!["scene", "lore"]);
     }
@@ -1330,7 +1384,14 @@ mod tests {
         let text = "## Shot 1.\n::camera{}\n";
         let doc = parsed(text);
         let off = text.find("{}").unwrap() + 1; // between the braces
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(ls.contains(&"focus"), "has focus: {ls:?}");
         assert!(ls.contains(&"framing"), "has framing: {ls:?}");
@@ -1342,7 +1403,14 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -1357,7 +1425,14 @@ mod tests {
         let doc = parsed(text);
         // Cursor inside the empty `anchor=""` value.
         let off = text.find("anchor=\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(&doc, text, &lute_test_vocab::vocab_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &lute_test_vocab::vocab_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"left") && ls.contains(&"center") && ls.contains(&"right"),
@@ -1377,7 +1452,14 @@ mod tests {
                     ::actor{character=\"b\" anchor=\"\"}\n";
         let doc = parsed(text);
         let off = text.find("anchor=\"\"").unwrap() + "anchor=\"".len();
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"portside") && ls.contains(&"midships") && ls.contains(&"starboard"),
@@ -1390,7 +1472,14 @@ mod tests {
         let text = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\ndefs:\n  fond: { type: bool, cel: \"scene.x >= 1\" }\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3; // just past `@`
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "fond"),
             "offers def name: {:?}",
@@ -1403,7 +1492,14 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"number\">\n  <choice id=\"a\" text=\"A\">\n    @f: a.\n  </choice>\n</branch>\n<match subject=\"\">\n  <otherwise>\n    @f: x.\n  </otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "scene.choices.number"),
             "offers the choice path: {:?}",
@@ -1419,7 +1515,14 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"ask\" text=\"Ask\" once>\n<branch id=\"inner\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n</branch>\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "scene.choices.inner"),
             "offers the hub-nested branch choice path: {:?}",
@@ -1435,7 +1538,14 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chatWithMarina\">\n<choice id=\"ask\" text=\"Ask\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"\">\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("subject=\"").unwrap() + "subject=\"".len(); // inside the empty subject
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items
                 .iter()
@@ -1454,7 +1564,14 @@ mod tests {
         let doc = parsed(text);
         // Cursor in the whitespace after the first attr (still the attr area).
         let off = text.find("\" }").unwrap() + 2;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             !ls.contains(&"focus"),
@@ -1469,7 +1586,14 @@ mod tests {
         let doc = parsed(text);
         // Cursor after the `=` (expr slot) — state paths are offered.
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "scene.affect.marina"),
             "offers declared state path: {:?}",
@@ -1555,7 +1679,14 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.marina.waitress.\"}\n";
         let doc = parsed(text);
         let off = text.find("waitress.").unwrap() + "waitress.".len();
-        let items = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"delighted") && ls.contains(&"content") && ls.contains(&"neutral"),
@@ -1569,7 +1700,14 @@ mod tests {
         let text = "## Shot 1.\n::portrait{assetId=\"CH.marina.waitress.delighted.3\"}\n";
         let doc = parsed(text);
         let off = text.find("CH.marina").unwrap() + 1; // on the `H` of `CH`
-        let items = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(ls.contains(&"CH"), "const prefix offered: {ls:?}");
     }
@@ -1592,14 +1730,28 @@ mod tests {
             )]),
             stale: false,
         });
-        let items = complete_at(&doc, text, &asset_snapshot(), &providers, &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &asset_snapshot(),
+            &providers,
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"marina") && ls.contains(&"ren"),
             "providerRef segment offers pinned ids: {ls:?}"
         );
         // An empty ProviderSet offers nothing for that segment (honest §6.9).
-        let empty = complete_at(&doc, text, &asset_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let empty = complete_at(
+            &doc,
+            text,
+            &asset_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             empty.is_empty(),
             "empty ProviderSet -> no provider ids: {:?}",
@@ -1637,7 +1789,14 @@ mod tests {
             "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{run.gold = }\n";
         let doc = parsed(text);
         let off = text.rfind("= }").unwrap() + 2;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &schema_imports(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &schema_imports(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "run.gold"),
             "offers imported state path: {:?}",
@@ -1652,7 +1811,14 @@ mod tests {
             "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\n---\n## Shot 1.\n::set{scene.y = @}\n";
         let doc = parsed(text);
         let off = text.find("= @").unwrap() + 3;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &schema_imports(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &schema_imports(),
+            off,
+        );
         assert!(
             items.iter().any(|i| i.label == "helped"),
             "offers imported def name: {:?}",
@@ -1668,7 +1834,14 @@ mod tests {
         let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when is=\"gold\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"gold\"").unwrap() + "is=\"".len() + 1; // inside "gold"
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"gold")
@@ -1687,7 +1860,14 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.choices.chat\">\n<when is=\"askCoffee\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"askCoffee\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"askCoffee") && ls.contains(&"leave") && ls.contains(&"unset"),
@@ -1703,7 +1883,14 @@ mod tests {
         let text = "## Shot 1.\n<hub id=\"chat\">\n<choice id=\"askCoffee\" text=\"Coffee?\" once>\n@f: a.\n</choice>\n<choice id=\"leave\" text=\"Bye\" exit>\n@f: bye.\n</choice>\n</hub>\n<match subject=\"scene.visited.chat.askCoffee\">\n<when is=\"true\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"true\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"true") && ls.contains(&"false") && ls.contains(&"unset"),
@@ -1718,7 +1905,14 @@ mod tests {
         let text = "---\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  scene.serve.debut.rank: { type: { enum: [gold, silver, bronze] } }\ndefs:\n  warm: { type: bool, cel: \"true\" }\n---\n## Shot 1.\n<match subject=\"scene.serve.debut.rank\">\n<when test=\"@warm\">\n@fixer: nice.\n</when>\n<otherwise>\n@fixer: ok.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("@warm").unwrap() + 1; // just past `@`
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"warm"),
@@ -1742,7 +1936,14 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"pick-one\">\n<choice id=\"a\" text=\"A\">\n@f: a.\n</choice>\n<choice id=\"b\" text=\"B\">\n@f: b.\n</choice>\n</branch>\n<match subject=\"scene.choices.pick-one\">\n<when is=\"a\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"a\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         assert!(
             items.is_empty(),
             "a non-path (hyphenated) subject has no finite domain, so `is=` offers nothing: {:?}",
@@ -1760,7 +1961,14 @@ mod tests {
         let text = "## Shot 1.\n<branch id=\"dup\">\n<choice id=\"first1\" text=\"F1\">\n@f: a.\n</choice>\n<choice id=\"first2\" text=\"F2\">\n@f: b.\n</choice>\n</branch>\n<branch id=\"dup\">\n<choice id=\"last1\" text=\"L1\">\n@f: c.\n</choice>\n<choice id=\"last2\" text=\"L2\">\n@f: d.\n</choice>\n</branch>\n<match subject=\"scene.choices.dup\">\n<when is=\"last1\">\n@f: x.\n</when>\n<otherwise>\n@f: y.\n</otherwise>\n</match>\n";
         let doc = parsed(text);
         let off = text.find("is=\"last1\"").unwrap() + "is=\"".len() + 1;
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"last1") && ls.contains(&"last2") && ls.contains(&"unset"),
@@ -1776,7 +1984,14 @@ mod tests {
 
     fn complete(text: &str, off: usize) -> Vec<CompletionItem> {
         let doc = parsed(text);
-        complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &SchemaImports::default(), off)
+        complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &SchemaImports::default(),
+            off,
+        )
     }
 
     #[test]
@@ -2011,7 +2226,14 @@ mod tests {
             )]),
             stale: false,
         });
-        let items = complete_at(&doc, text, &load_core_snapshot(), &providers, &SchemaImports::default(), off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &providers,
+            &SchemaImports::default(),
+            off,
+        );
         let ls = labels(&items);
         assert!(
             ls.contains(&"marina") && ls.contains(&"ren") && ls.contains(&"narrator"),
@@ -2035,7 +2257,14 @@ mod tests {
                 ..Default::default()
             },
         );
-        let items = complete_at(&doc, text, &load_core_snapshot(), &ProviderSet::default(), &imports, off);
+        let items = complete_at(
+            &doc,
+            text,
+            &load_core_snapshot(),
+            &ProviderSet::default(),
+            &imports,
+            off,
+        );
         assert_eq!(labels(&items), vec!["maud", "narrator"]);
         assert_eq!(items[0].detail.as_deref(), Some("Maud"));
     }
@@ -2064,7 +2293,10 @@ mod tests {
             assert!(ls.iter().any(|l| l == key), "missing {key}: {ls:?}");
         }
         for gone in ["id", "voiceKey", "delivery"] {
-            assert!(!ls.iter().any(|l| l == gone), "{gone} must not be offered: {ls:?}");
+            assert!(
+                !ls.iter().any(|l| l == gone),
+                "{gone} must not be offered: {ls:?}"
+            );
         }
     }
 
@@ -2074,9 +2306,17 @@ mod tests {
     fn content_line_delivery_flags_respect_narrator_and_exclusivity() {
         let text = "## Shot 1.\n@narrator{code=\"a\"}: hi\n@mira{os code=\"b\"}: hi\n";
         let narrator = complete_vocab(text, text.find("code=\"a\"").unwrap() + 1);
-        assert!(!narrator.iter().any(|l| ["mono", "os", "vo"].contains(&l.as_str())), "{narrator:?}");
+        assert!(
+            !narrator
+                .iter()
+                .any(|l| ["mono", "os", "vo"].contains(&l.as_str())),
+            "{narrator:?}"
+        );
         let flagged = complete_vocab(text, text.find("code=\"b\"").unwrap() + 1);
-        assert!(!flagged.iter().any(|l| ["mono", "vo"].contains(&l.as_str())), "{flagged:?}");
+        assert!(
+            !flagged.iter().any(|l| ["mono", "vo"].contains(&l.as_str())),
+            "{flagged:?}"
+        );
     }
 
     /// A content line's `emotion` value offers the merged `emotion` domain.
@@ -2098,7 +2338,9 @@ mod tests {
     fn directive_names_are_the_037_set() {
         let text = "## Shot 1.\n::";
         let ls = complete_vocab(text, text.len());
-        for name in ["actor", "bg", "cg", "sequence", "jump", "label", "camera", "music"] {
+        for name in [
+            "actor", "bg", "cg", "sequence", "jump", "label", "camera", "music",
+        ] {
             assert!(ls.iter().any(|l| l == name), "missing {name}: {ls:?}");
         }
         for gone in ["auto", "cut", "next", "mark"] {
@@ -2112,7 +2354,15 @@ mod tests {
     fn camera_keys_are_domain_slots_and_timing() {
         let text = "## Shot 1.\n::camera{}\n";
         let ls = complete_vocab(text, text.find("{}").unwrap() + 1);
-        for key in ["focus", "framing", "move", "transition", "duration", "delay", "wait"] {
+        for key in [
+            "focus",
+            "framing",
+            "move",
+            "transition",
+            "duration",
+            "delay",
+            "wait",
+        ] {
             assert!(ls.iter().any(|l| l == key), "missing {key}: {ls:?}");
         }
         for gone in ["zoom", "moveX", "moveY", "shake", "reset", "easing"] {
@@ -2146,7 +2396,10 @@ mod tests {
         for (needle, want) in cases {
             let ls = complete_vocab(text, at(needle));
             for member in want {
-                assert!(ls.iter().any(|l| l == member), "{needle} missing {member}: {ls:?}");
+                assert!(
+                    ls.iter().any(|l| l == member),
+                    "{needle} missing {member}: {ls:?}"
+                );
             }
         }
     }
@@ -2186,8 +2439,14 @@ mod tests {
         let hub_choice = complete_vocab(text, text.find("\"X\" >").unwrap() + 4);
         assert_eq!(hub_choice, ["when", "into", "value", "once", "exit"]);
         let body = complete_vocab(text, text.find("@f: a.").unwrap());
-        assert!(!body.iter().any(|l| l == "text"), "the body is not the open tag: {body:?}");
+        assert!(
+            !body.iter().any(|l| l == "text"),
+            "the body is not the open tag: {body:?}"
+        );
         let m = "## Shot 1.\n<match >\n<otherwise>\n@f: x.\n</otherwise>\n</match>\n";
-        assert_eq!(complete_vocab(m, m.find("<match ").unwrap() + 7), ["subject"]);
+        assert_eq!(
+            complete_vocab(m, m.find("<match ").unwrap() + 7),
+            ["subject"]
+        );
     }
 }

@@ -31,12 +31,21 @@ fn fix_renames_domain_keys_and_references_in_place() {
                   run.last:\n    type:\n      domain: \"musicAction\"\n";
     write(&dir, "world.schema.yaml", schema);
     let (stdout, _) = fix(&dir);
-    assert!(stdout.contains("lute: applied 3 fix(es) in 1 of 1 file(s)"), "{stdout}");
+    assert!(
+        stdout.contains("lute: applied 3 fix(es) in 1 of 1 file(s)"),
+        "{stdout}"
+    );
     let fixed = std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap();
     assert_eq!(fixed, schema.replace("musicAction", "musicPlayback"));
     let (again, _) = fix(&dir);
-    assert!(again.contains("lute: applied 0 fix(es) in 0 of 1 file(s)"), "{again}");
-    assert_eq!(std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap(), fixed);
+    assert!(
+        again.contains("lute: applied 0 fix(es) in 0 of 1 file(s)"),
+        "{again}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.join("world.schema.yaml")).unwrap(),
+        fixed
+    );
 }
 
 #[test]
@@ -46,10 +55,13 @@ fn fix_keeps_an_old_key_whose_mapping_declares_the_new_one() {
     write(&dir, "v.yaml", text);
     let (_, stderr) = fix(&dir.join("v.yaml"));
     let file = dir.join("v.yaml");
-    assert!(stderr.contains(&format!(
-        "lute fix: {}:2: kept `musicAction:` — `musicPlayback:` is already declared",
-        file.display()
-    )), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "lute fix: {}:2: kept `musicAction:` — `musicPlayback:` is already declared",
+            file.display()
+        )),
+        "{stderr}"
+    );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
 }
 
@@ -61,7 +73,11 @@ fn domain_unknown_names_the_rename() {
         "a.lute",
         "---\nkind: scene\nid: a\nenums:\n  musicAction: [start]\n---\n## A\n::music{playback=\"start\"}\n",
     );
-    let out = Command::new(BIN).arg("check").arg(dir.join("a.lute")).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check")
+        .arg(dir.join("a.lute"))
+        .output()
+        .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains(
         "[E-DOMAIN-UNKNOWN] `musicPlayback` is not a declared domain"
@@ -75,7 +91,8 @@ fn domain_unknown_names_the_rename() {
 /// no renamed domain, so their messages never carry one.
 #[test]
 fn every_domain_unknown_site_names_the_rename() {
-    const HINT: &str = "this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix`";
+    const HINT: &str =
+        "this project declares `musicAction`, renamed `musicPlayback` in 0.37.0; run `lute fix`";
     // (case, files written, whether the hint is expected)
     type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], bool);
     let cases: [Case<'_>; 4] = [
@@ -134,11 +151,22 @@ fn every_domain_unknown_site_names_the_rename() {
         for (rel, text) in files {
             write(&dir, rel, text);
         }
-        let out = Command::new(BIN).arg("check-project").arg(&*dir).output().unwrap();
+        let out = Command::new(BIN)
+            .arg("check-project")
+            .arg(&*dir)
+            .output()
+            .unwrap();
         let text = String::from_utf8_lossy(&out.stdout);
-        let unknown: Vec<&str> = text.lines().filter(|l| l.contains("[E-DOMAIN-UNKNOWN]")).collect();
+        let unknown: Vec<&str> = text
+            .lines()
+            .filter(|l| l.contains("[E-DOMAIN-UNKNOWN]"))
+            .collect();
         assert!(!unknown.is_empty(), "{tag}: no E-DOMAIN-UNKNOWN:\n{text}");
-        assert_eq!(unknown.iter().all(|l| l.contains(HINT)), hinted, "{tag}:\n{text}");
+        assert_eq!(
+            unknown.iter().all(|l| l.contains(HINT)),
+            hinted,
+            "{tag}:\n{text}"
+        );
     }
 }
 
@@ -164,9 +192,12 @@ fn fix_renames_flow_map_keys_at_the_first_level_only() {
     write(&dir, "b.yaml", conflict);
     let file = dir.join("b.yaml");
     let (_, stderr) = fix(&file);
-    assert!(stderr.contains(&format!(
-        "lute fix: {}:1: kept `musicAction:` — `musicPlayback:` is already declared",
-        file.display()
-    )), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "lute fix: {}:1: kept `musicAction:` — `musicPlayback:` is already declared",
+            file.display()
+        )),
+        "{stderr}"
+    );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), conflict);
 }

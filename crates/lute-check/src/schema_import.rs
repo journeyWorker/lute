@@ -659,7 +659,10 @@ fn resolve_imports_in(
     state.clock_rejected = parsed.values().any(|d| d.clock_rejected);
     for d in parsed.values() {
         for (path, decl) in &d.invalid {
-            state.invalid.entry(path.clone()).or_insert_with(|| decl.clone());
+            state
+                .invalid
+                .entry(path.clone())
+                .or_insert_with(|| decl.clone());
         }
     }
 

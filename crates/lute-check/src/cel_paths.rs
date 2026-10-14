@@ -77,7 +77,6 @@ pub struct PathUse {
     pub local: Vec<String>,
 }
 
-
 /// `true` when `path`'s leading segment is a state tier (`scene`/`run`/…).
 pub(crate) fn is_state_path(path: &str) -> bool {
     path.split('.')
@@ -364,7 +363,6 @@ impl Walk {
         }
     }
 }
-
 
 /// The static state path of a legacy 0.31 `isSet(p)` call, or `None`.
 fn is_set_arg(call: &CallExpr) -> Option<String> {

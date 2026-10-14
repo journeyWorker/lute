@@ -4,15 +4,15 @@ use cel_parser::ast::Expr;
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{CelKind, CelSlot};
 use lute_manifest::fact::{FactArg, FactTerm};
+use lute_syntax::ast::{CelKind, CelSlot};
 use lute_syntax::datalog::BodyLiteral;
 
 use crate::cel_paths::collect_path_uses;
-use lute_manifest::semantics::cel_paths::{is_reserved_entry_read, is_reserved_quest_path};
 use crate::ctx::ExpectedType;
 use crate::rel_schema::{check_atom, RelVocab};
 use crate::Ctx;
+use lute_manifest::semantics::cel_paths::{is_reserved_entry_read, is_reserved_quest_path};
 use lute_manifest::types::Type;
 
 mod core;
@@ -27,8 +27,7 @@ pub use core::{
 };
 pub use profile::{visited_call_target, visited_targets, VISITED_FN};
 pub use rules::{
-    check_rule_guards, expand_rule_guard, expand_rule_guards, E_RULE_GUARD_DEF,
-    W_QUEST_STATE_HAS,
+    check_rule_guards, expand_rule_guard, expand_rule_guards, E_RULE_GUARD_DEF, W_QUEST_STATE_HAS,
 };
 
 pub(crate) use core::group_per_member;

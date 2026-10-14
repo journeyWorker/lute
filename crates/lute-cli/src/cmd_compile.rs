@@ -9,12 +9,12 @@ use lute_core_span::Severity;
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
-use lute_load::{build_input, BuiltInput};
-use lute_model::{ModelError, ModelOptions, ProjectModel};
 use crate::loc;
 use crate::output::{pretty_json, render_diagnostics, severity_str, write_stdout, DenyPolicy};
 use crate::project::resolve_project;
+use lute_load::{build_input, BuiltInput};
 use lute_model::project_gate_result;
+use lute_model::{ModelError, ModelOptions, ProjectModel};
 
 /// Route `lute compile` to the single-file ([`run_compile`]) or whole-project
 /// ([`compile_all::run`]) path, rejecting every flag combination that means
@@ -112,7 +112,10 @@ pub(crate) fn dispatch_compile(
 /// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the execution IR —
 /// and, when `--deny` promotes it, flips the verdict to `1` with NO execution IR
 /// written.
-#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI flags are kept explicit at the command boundary"
+)]
 fn run_compile(
     file: &Path,
     json: bool,
@@ -325,7 +328,10 @@ fn stamp_project_identity_renames(
             return Err(ExitCode::FAILURE);
         }
         Err(error) => {
-            eprintln!("lute: cannot resolve identity ledger for {}: {error}", root.display());
+            eprintln!(
+                "lute: cannot resolve identity ledger for {}: {error}",
+                root.display()
+            );
             return Err(ExitCode::from(2));
         }
     };
@@ -333,7 +339,10 @@ fn stamp_project_identity_renames(
         let mut emitted = false;
         for (path, diagnostic) in model.project_diagnostics() {
             if diagnostic.code.starts_with("E-RENAME-") {
-                eprint!("{}", render_diagnostics(path, std::slice::from_ref(diagnostic), policy));
+                eprint!(
+                    "{}",
+                    render_diagnostics(path, std::slice::from_ref(diagnostic), policy)
+                );
                 emitted = true;
             }
         }

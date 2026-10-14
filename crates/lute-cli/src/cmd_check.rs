@@ -9,9 +9,11 @@ use lute_check::{check, fold_env, CheckInput, Mode};
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-use lute_load::{build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput};
 use crate::output::{check_result_json, pretty_json, print_human, DenyPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
+use lute_load::{
+    build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput,
+};
 
 /// Every document under `root` whose `::use` names component `name`
 /// (dsl 0.10.0 §9 rule 4).
@@ -334,7 +336,12 @@ pub(crate) fn engine_semantic_diags(
     let (doc, _) = lute_syntax::parse(&input.text);
     let own: serde_yaml::Mapping = serde_yaml::from_str(&doc.meta.raw_yaml).unwrap_or_default();
     let mut diags = Vec::new();
-    for id in collected.ids.iter().copied().filter(|id| !supported.contains(id)) {
+    for id in collected
+        .ids
+        .iter()
+        .copied()
+        .filter(|id| !supported.contains(id))
+    {
         let mut sites = std::collections::BTreeSet::new();
         let mut add = |span: Span, origin: Option<&lute_check::rel_schema::DeclOrigin>| {
             let site = origin.map_or((None, span.byte_start, span.byte_end), |o| {
@@ -346,18 +353,28 @@ pub(crate) fn engine_semantic_diags(
             let diagnostic = Diagnostic {
                 code: "E-CHECK-ENGINE-SEMANTICS".into(),
                 severity: Severity::Error,
-                message: format!("engine `{}` does not support semantic id `{id}`", matrix.engine),
+                message: format!(
+                    "engine `{}` does not support semantic id `{id}`",
+                    matrix.engine
+                ),
                 span,
                 layer: lute_core_span::Layer::Content,
                 evidence: None,
-                fixits: Vec::new(), provenance: None, covered: Vec::new(), related: Vec::new(),
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
             };
             let mut diagnostic = lute_check::rel_schema::at_origin(diagnostic, origin);
             diagnostic.span = span;
             diags.push(diagnostic);
         };
         for provenance in &collected.provenance[id] {
-            if let Some(source) = provenance.addr.as_deref().and_then(|addr| source_map.by_addr.get(addr)) {
+            if let Some(source) = provenance
+                .addr
+                .as_deref()
+                .and_then(|addr| source_map.by_addr.get(addr))
+            {
                 add(normalize_span_from_text(&input.text, source.span), None);
                 continue;
             }
@@ -389,7 +406,9 @@ pub(crate) fn engine_semantic_diags(
             let meta_span = normalize_span_from_text(&input.text, doc.meta.span);
             let origins = &input.imports.rel.origins;
             let imported: Vec<lute_check::rel_schema::DeclOrigin> = match id {
-                "lute.knowledge.facts/1" => origins.relations.values()
+                "lute.knowledge.facts/1" => origins
+                    .relations
+                    .values()
                     .chain(origins.kinds.values())
                     .chain(origins.facts.values())
                     .cloned()
@@ -406,10 +425,11 @@ pub(crate) fn engine_semantic_diags(
             }
         }
     }
-    diags.sort_by(|a, b| (a.span.byte_start, &a.code, &a.message).cmp(&(b.span.byte_start, &b.code, &b.message)));
+    diags.sort_by(|a, b| {
+        (a.span.byte_start, &a.code, &a.message).cmp(&(b.span.byte_start, &b.code, &b.message))
+    });
     diags
 }
-
 
 /// Check a `.yaml`/`.yml` state-schema declaration file as a SCHEMA: no
 /// `kind:`, no frontmatter envelope, no body. The whole file IS the
@@ -596,8 +616,13 @@ pub(crate) fn run_check(
         }
     };
     if _engine.is_some() && result.ok {
-        if let Ok((artifact, source_map)) = lute_compile::compile_mapped(&input, check(&input), &identity) {
-            merge_gate_diags(&mut result, engine_semantic_diags(&input, &artifact, &source_map, &matrix));
+        if let Ok((artifact, source_map)) =
+            lute_compile::compile_mapped(&input, check(&input), &identity)
+        {
+            merge_gate_diags(
+                &mut result,
+                engine_semantic_diags(&input, &artifact, &source_map, &matrix),
+            );
         }
     }
 
@@ -622,7 +647,10 @@ pub(crate) fn run_check(
     // and found nothing. The next step differs — supply a project, versus
     // discover the component is unused — so the verdict names which one it is.
     if let Some((component, at)) = component_name_of(file) {
-        match project.as_deref().map(|root| (root, callers_of_component(root, &component))) {
+        match project
+            .as_deref()
+            .map(|root| (root, callers_of_component(root, &component)))
+        {
             // Report only what holds at EVERY call site: a diagnostic holding at
             // some but not all callers is caller-specific and stays with
             // `check-project`, where the caller is visible. Anchored inside the

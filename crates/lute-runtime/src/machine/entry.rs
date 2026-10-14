@@ -7,11 +7,9 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::{addr, Machine, Site};
-use crate::eval::Read;
 use crate::driver::{Driver, SiteKind};
+use crate::eval::Read;
 use crate::Value;
-
-
 
 impl<D: Driver> Machine<D> {
     /// Present ONE lore entry (dsl 0.19.0 §6, `docs/runtime/lore-entries.md`
@@ -46,7 +44,10 @@ impl<D: Driver> Machine<D> {
         let cmd = &code.commands[at];
         // dsl 0.28.0 (T1-6): a `for="kind:<kind>"` entry is read per member
         // — the member bound as `occasion.target` has its own first read.
-        let member = match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
+        let member = match self
+            .store
+            .read(lute_manifest::semantics::beats::OCCASION_TARGET)
+        {
             Read::Value(Value::Str(m)) if cmd.get("forKind").is_some() => Some(m),
             _ => None,
         };
@@ -60,7 +61,9 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::EntryWhen, &id, addr(cmd));
-                self.judge(&when, site).map(Json::Bool).unwrap_or(Json::Null)
+                self.judge(&when, site)
+                    .map(Json::Bool)
+                    .unwrap_or(Json::Null)
             }
         };
         if self.stopped() {
@@ -149,7 +152,9 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::BeatWhen, &canonical, addr(cmd));
-                self.judge(&when, site).map(Json::Bool).unwrap_or(Json::Null)
+                self.judge(&when, site)
+                    .map(Json::Bool)
+                    .unwrap_or(Json::Null)
             }
         };
         if self.stopped() {

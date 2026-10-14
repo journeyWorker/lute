@@ -81,7 +81,11 @@ fn mono_flag(line: &Line) -> Option<Span> {
 }
 
 /// Visit every content line and every `::use` of `nodes`, at any depth.
-fn walk<'a>(nodes: &'a [Node], line: &mut impl FnMut(&'a Line), uses: &mut impl FnMut(&'a Directive)) {
+fn walk<'a>(
+    nodes: &'a [Node],
+    line: &mut impl FnMut(&'a Line),
+    uses: &mut impl FnMut(&'a Directive),
+) {
     for node in nodes {
         match node {
             Node::Line(l) => line(l),
@@ -215,7 +219,11 @@ fn component_mono_lines(
 /// `::use` (the one position this document's diagnostic surface can hold),
 /// naming the component and its line, with the component line itself as the
 /// `related` location.
-pub(super) fn check_mono(doc: &Document, meta: &TypedMeta, components: &ComponentSet) -> Vec<Diagnostic> {
+pub(super) fn check_mono(
+    doc: &Document,
+    meta: &TypedMeta,
+    components: &ComponentSet,
+) -> Vec<Diagnostic> {
     if meta.component.is_some() {
         return Vec::new();
     }

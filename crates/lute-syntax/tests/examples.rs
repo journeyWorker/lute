@@ -27,7 +27,10 @@ fn marina_block_assembly_is_correct() {
     let (doc, _diags) = lute_syntax::parse(&text);
 
     // dsl 0.37.0 §3.1: the title is frontmatter `title:`; no `# ` heading.
-    assert!(doc.meta.raw_yaml.contains("title: Behold the Performance of All-Purpose Marina"));
+    assert!(doc
+        .meta
+        .raw_yaml
+        .contains("title: Behold the Performance of All-Purpose Marina"));
     // Five sections assembled in document order (0.6.0 §3.2: a section's number is
     // its 1-based position; the `Section.number` field is gone).
     assert_eq!(doc.sections.len(), 5);

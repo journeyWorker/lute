@@ -680,7 +680,9 @@ impl Walker<'_> {
                     self.diags
                         .extend(crate::cel_resolve::group_per_member(members, |m| {
                             judge(&lute_syntax::ast::Set {
-                                path: lute_manifest::semantics::target_writes::member_path(&s.path, m),
+                                path: lute_manifest::semantics::target_writes::member_path(
+                                    &s.path, m,
+                                ),
                                 ..s.clone()
                             })
                         }));

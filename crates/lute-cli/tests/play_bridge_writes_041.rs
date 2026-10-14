@@ -26,7 +26,11 @@ fn play(script: &str, extra: &[&str]) -> (i32, String, String) {
         .output()
         .unwrap();
     let text = |b: &[u8]| String::from_utf8_lossy(b).replace(&*path.to_string_lossy(), "<script>");
-    (out.status.code().unwrap(), text(&out.stdout), text(&out.stderr))
+    (
+        out.status.code().unwrap(),
+        text(&out.stdout),
+        text(&out.stderr),
+    )
 }
 
 const STEPS: &str = "choose:\n  after: [rest]\nsteps:\n  - occasion: duel\n    target: foe.kato\n";
@@ -45,11 +49,15 @@ const EFFECTS: &str = "::battle{foe=occasion.target mode=\"ambush\" resultKey=\"
 /// before the lines after it read them — and the play's end state has them.
 #[test]
 fn top_level_long_form_writes_land_at_the_call() {
-    let script = format!("{LONG}{STEPS}expect:\n  state: {{ run.score: 1 }}\n  facts: [pulled(rope)]\n");
+    let script =
+        format!("{LONG}{STEPS}expect:\n  state: {{ run.score: 1 }}\n  facts: [pulled(rope)]\n");
     let (code, stdout, stderr) = play(&script, &[]);
     assert_eq!(code, 0, "{stdout}{stderr}");
     assert!(stdout.contains(EFFECTS), "{stdout}");
-    assert!(stdout.contains("@narrator: Floor 3, score 1.\n"), "{stdout}");
+    assert!(
+        stdout.contains("@narrator: Floor 3, score 1.\n"),
+        "{stdout}"
+    );
 }
 
 /// The same long form on a step, with an `add`, beside the flat form.
@@ -61,8 +69,14 @@ fn step_long_form_and_flat_answers_share_a_queue() {
         expect:\n  state: { run.score: 2 }\n";
     let (code, stdout, stderr) = play(script, &[]);
     assert_eq!(code, 0, "{stdout}{stderr}");
-    assert!(stdout.contains("@narrator: Floor 0, score 2.\n"), "{stdout}");
-    assert!(stdout.contains("@narrator: Floor 1, score 2.\n"), "{stdout}");
+    assert!(
+        stdout.contains("@narrator: Floor 0, score 2.\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("@narrator: Floor 1, score 2.\n"),
+        "{stdout}"
+    );
 }
 
 /// A flat answer writes nothing beyond its result fields.
@@ -72,7 +86,10 @@ fn flat_answers_are_unchanged() {
     let (code, stdout, stderr) = play(&script, &[]);
     assert_eq!(code, 0, "{stdout}{stderr}");
     assert!(!stdout.contains("set run.score"), "{stdout}");
-    assert!(stdout.contains("@narrator: Floor 3, score 0.\n"), "{stdout}");
+    assert!(
+        stdout.contains("@narrator: Floor 3, score 0.\n"),
+        "{stdout}"
+    );
 }
 
 /// `--events` answers the runtime's `awaitBridge` with the writes as

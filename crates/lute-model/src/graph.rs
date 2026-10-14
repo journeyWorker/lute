@@ -1,9 +1,9 @@
 //! Deterministic project semantic dependency graph.
 use crate::{ModelDocument, ProjectModel};
 use lute_core_span::{Evidence, Span};
+use lute_manifest::fact::FactTerm;
 use lute_semantic::{fact_node, IdentityMetadata, NodeKey, NodeKind, SemanticGraph};
 use lute_syntax::ast::{Arm, Node};
-use lute_manifest::fact::FactTerm;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Build the deterministic graph for one project model.
@@ -19,7 +19,6 @@ pub fn build(model: &ProjectModel) -> SemanticGraph {
     graph.rebuild_adjacency();
     graph
 }
-
 
 fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, project: &NodeKey) {
     let doc_id = d.folded.typed.id.clone().unwrap_or_else(|| {
@@ -280,10 +279,9 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
                         } else {
                             IdentityMetadata::fallback("line", line.line_id.clone())
                         }
-                    } else if authored_line_spans.contains(&(
-                        info.span.byte_start,
-                        info.span.byte_end,
-                    )) {
+                    } else if authored_line_spans
+                        .contains(&(info.span.byte_start, info.span.byte_end))
+                    {
                         IdentityMetadata::authored("line", line.line_id.clone())
                     } else {
                         IdentityMetadata::fallback("line", line.line_id.clone())
@@ -594,7 +592,10 @@ fn add_choice_nodes(
                         NodeKind::Choice,
                         format!("{doc_id}:{}.{}", branch.id, choice.id),
                     );
-                    if g.nodes.get(&key).is_some_and(|node| node.span != Some(choice.span)) {
+                    if g.nodes
+                        .get(&key)
+                        .is_some_and(|node| node.span != Some(choice.span))
+                    {
                         g.ambiguous.insert(key.clone());
                     }
                     g.node(key.clone(), Some(d.path.clone()), Some(choice.span));
@@ -612,19 +613,25 @@ fn add_choice_nodes(
                 }
             }
             Node::Hub(hub) => {
-                let hub_id = hub.attrs.iter().find(|attr| attr.key == "id").and_then(|attr| match &attr.value {
-                    lute_syntax::ast::AttrValue::Str(value) => Some(value.as_str()),
-                    _ => None,
-                }).unwrap_or("hub");
+                let hub_id = hub
+                    .attrs
+                    .iter()
+                    .find(|attr| attr.key == "id")
+                    .and_then(|attr| match &attr.value {
+                        lute_syntax::ast::AttrValue::Str(value) => Some(value.as_str()),
+                        _ => None,
+                    })
+                    .unwrap_or("hub");
                 for choice in &hub.choices {
                     if choice.id.is_empty() {
                         continue;
                     }
-                    let key = NodeKey::new(
-                        NodeKind::Choice,
-                        format!("{doc_id}:{hub_id}.{}", choice.id),
-                    );
-                    if g.nodes.get(&key).is_some_and(|node| node.span != Some(choice.span)) {
+                    let key =
+                        NodeKey::new(NodeKind::Choice, format!("{doc_id}:{hub_id}.{}", choice.id));
+                    if g.nodes
+                        .get(&key)
+                        .is_some_and(|node| node.span != Some(choice.span))
+                    {
                         g.ambiguous.insert(key.clone());
                     }
                     g.node(key.clone(), Some(d.path.clone()), Some(choice.span));
@@ -650,7 +657,9 @@ fn add_choice_nodes(
                     add_choice_nodes(g, d, doc_id, parent, body, owners);
                 }
             }
-            Node::Objective(objective) => add_choice_nodes(g, d, doc_id, parent, &objective.body, owners),
+            Node::Objective(objective) => {
+                add_choice_nodes(g, d, doc_id, parent, &objective.body, owners)
+            }
             Node::On(on) => add_choice_nodes(g, d, doc_id, parent, &on.body, owners),
             _ => {}
         }
@@ -687,9 +696,7 @@ fn add_slot_dependency_edges(
             .iter()
             .map(|a| a.term.clone())
             .collect::<Vec<_>>();
-        let evidence = if query.negated
-            || terms.iter().any(|a| matches!(a, FactTerm::Param(_)))
-        {
+        let evidence = if query.negated || terms.iter().any(|a| matches!(a, FactTerm::Param(_))) {
             Evidence::Heuristic
         } else {
             Evidence::Proven
@@ -846,11 +853,7 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
         let Some(origin) = config.chapter_origins.get(index) else {
             continue;
         };
-        g.node(
-            occasion.clone(),
-            Some(origin.file.clone()),
-            origin.on,
-        );
+        g.node(occasion.clone(), Some(origin.file.clone()), origin.on);
         for scene_id in &chain.scenes {
             let scene = NodeKey::new(NodeKind::Scene, scene_id.clone());
             let Some(span) = origin.scenes.get(scene_id).copied() else {
@@ -952,12 +955,18 @@ fn component_use_sites(
                     let host = stack.first().map_or(marker.span, |(span, _)| *span);
                     stack.push((host, false));
                 }
-                Some(ComponentBoundary::End) => { stack.pop(); }
+                Some(ComponentBoundary::End) => {
+                    stack.pop();
+                }
                 Some(ComponentBoundary::Body) => {
-                    if let Some((_, body)) = stack.last_mut() { *body = true; }
+                    if let Some((_, body)) = stack.last_mut() {
+                        *body = true;
+                    }
                 }
                 Some(ComponentBoundary::BodyEnd) => {
-                    if let Some((_, body)) = stack.last_mut() { *body = false; }
+                    if let Some((_, body)) = stack.last_mut() {
+                        *body = false;
+                    }
                 }
                 None => {}
             }
@@ -978,13 +987,12 @@ fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> Node
         .map(|(_, key)| key.clone())
         .unwrap_or_else(|| fallback.clone())
 }
- 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use lute_semantic::fact_overlap;
+    use std::path::PathBuf;
 
     #[test]
     fn component_source_offsets_do_not_steal_host_dependency_owners() {
@@ -1006,16 +1014,32 @@ mod tests {
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/seven-days"),
             &root,
         );
-        let before = ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
+        let before =
+            ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
         let file = root.join("lore/post.lute");
         let source = std::fs::read_to_string(&file).unwrap();
-        let shifted = source.replacen("\n<beat ", &format!("\n// {}\n<beat ", "layout".repeat(64)), 1);
+        let shifted = source.replacen(
+            "\n<beat ",
+            &format!("\n// {}\n<beat ", "layout".repeat(64)),
+            1,
+        );
         std::fs::write(&file, shifted).unwrap();
-        let after = ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
+        let after =
+            ProjectModel::build_single_root(&root, &crate::ModelOptions::default()).unwrap();
         let projection = |model: &ProjectModel| {
-            model.graph().edges.iter().map(|edge| {
-                (edge.source.clone(), edge.target.clone(), edge.kind.clone(), edge.reason.clone())
-            }).collect::<BTreeSet<_>>()
+            model
+                .graph()
+                .edges
+                .iter()
+                .map(|edge| {
+                    (
+                        edge.source.clone(),
+                        edge.target.clone(),
+                        edge.kind.clone(),
+                        edge.reason.clone(),
+                    )
+                })
+                .collect::<BTreeSet<_>>()
         };
         assert_eq!(projection(&before), projection(&after));
         let graph = after.graph();
@@ -1027,7 +1051,8 @@ mod tests {
         assert!(graph.edges.iter().any(|edge| {
             edge.kind == "contains"
                 && edge.source == NodeKey::new(NodeKind::Beat, "post.mum")
-                && edge.target == NodeKey::new(NodeKind::Line, "post.mum.postcard#use-001.narrator_0010")
+                && edge.target
+                    == NodeKey::new(NodeKind::Line, "post.mum.postcard#use-001.narrator_0010")
         }));
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -1112,7 +1137,7 @@ mod tests {
             Some(before)
         );
     }
- 
+
     #[test]
     fn duplicate_authored_key_is_marked_ambiguous() {
         let key = NodeKey::new(NodeKind::Choice, "scene:branch.coffee");

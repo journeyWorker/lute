@@ -3,12 +3,12 @@
 //! 0.24.0 §1, 0.27.0 T3-22), and each step parsed and validated — located
 //! at the file line it was written on (round-5 T3-13).
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use lute_runtime::session::{Pick, SaveSeed, QUEST_STATES};
 use lute_runtime::{BridgeAnswer, WritesInput};
 use lute_trace::mock::MockSet;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 /// One authored play-script bridge answer. The runtime's public field alias
 /// remains the carrier for result fields; writes retain their public input
@@ -594,7 +594,8 @@ fn long_form_answer(answer: &serde_yaml::Value) -> bool {
         return false;
     };
     m.get("fields").is_some_and(serde_yaml::Value::is_mapping)
-        || m.get("writes").is_some_and(|w| w.is_mapping() || w.is_sequence())
+        || m.get("writes")
+            .is_some_and(|w| w.is_mapping() || w.is_sequence())
 }
 
 /// Whether any answer of a `bridges:` mapping is the long form.
@@ -629,13 +630,15 @@ fn parse_play_bridges(
     }
     let flat = |tag: &str, n: usize, what: &str, m: &serde_yaml::Mapping| {
         m.iter()
-            .map(|(field, value)| match (field.as_str(), scalar_text(value)) {
-                (Some(field), Some(value)) => Ok((field.to_string(), value)),
-                _ => Err(format!(
-                    "`bridges.{tag}` answer {n}{what} must map field names to scalar literals \
+            .map(
+                |(field, value)| match (field.as_str(), scalar_text(value)) {
+                    (Some(field), Some(value)) => Ok((field.to_string(), value)),
+                    _ => Err(format!(
+                        "`bridges.{tag}` answer {n}{what} must map field names to scalar literals \
                      (bool/number/string)"
-                )),
-            })
+                    )),
+                },
+            )
             .collect::<Result<BridgeAnswer, String>>()
     };
     let mut out = BTreeMap::new();
@@ -660,7 +663,10 @@ fn parse_play_bridges(
                 parsed.push(legacy(flat(tag, n, "", m)?));
                 continue;
             }
-            if let Some(key) = m.keys().find(|k| !matches!(k.as_str(), Some("fields" | "writes"))) {
+            if let Some(key) = m
+                .keys()
+                .find(|k| !matches!(k.as_str(), Some("fields" | "writes")))
+            {
                 return Err(format!(
                     "`bridges.{tag}` answer {n} has unknown key `{}` — a long-form answer is \
                      `{{ fields: {{ … }}, writes: {{ … }} }}`",
@@ -694,7 +700,6 @@ fn parse_play_bridges(
     }
     Ok(out)
 }
-
 
 /// A play script's top level, `steps:` left as written, and every usage
 /// error of its other keys, located. `Err` when it is no mapping at all.
@@ -787,7 +792,10 @@ fn parse_top<'v>(
                 };
                 for (id, count) in m {
                     let Some(id) = id.as_str() else {
-                        refuse(&[key], "`questInstances:` keys must be quest ids".to_string());
+                        refuse(
+                            &[key],
+                            "`questInstances:` keys must be quest ids".to_string(),
+                        );
                         continue;
                     };
                     let Some(count) = count.as_u64().filter(|n| *n > 0) else {
@@ -1118,8 +1126,10 @@ fn parse_pick(
     value: &serde_yaml::Value,
     item: Option<usize>,
 ) -> Result<ScriptedPick, String> {
-    let where_ =
-        item.map_or_else(|| format!("`choose.{id}`"), |i| format!("`choose.{id}` list item {i}"));
+    let where_ = item.map_or_else(
+        || format!("`choose.{id}`"),
+        |i| format!("`choose.{id}` list item {i}"),
+    );
     match value {
         serde_yaml::Value::String(option) if !option.trim().is_empty() => {
             Ok(ScriptedPick::Option(option.trim().to_string()))
@@ -1127,14 +1137,20 @@ fn parse_pick(
         serde_yaml::Value::Mapping(fields) => {
             let timeout = fields.get(serde_yaml::Value::String("timeout".into()));
             if fields.len() != 1 || timeout.is_none() {
-                return Err(format!("{where_} mapping must be exactly `{{ timeout: true }}`"));
+                return Err(format!(
+                    "{where_} mapping must be exactly `{{ timeout: true }}`"
+                ));
             }
             if timeout.and_then(serde_yaml::Value::as_bool) != Some(true) {
-                return Err(format!("{where_} timeout mapping must set `timeout` to `true`"));
+                return Err(format!(
+                    "{where_} timeout mapping must set `timeout` to `true`"
+                ));
             }
             Ok(ScriptedPick::Timeout)
         }
-        _ => Err(format!("{where_} must be a choice id or `{{ timeout: true }}`")),
+        _ => Err(format!(
+            "{where_} must be a choice id or `{{ timeout: true }}`"
+        )),
     }
 }
 
@@ -1324,9 +1340,7 @@ fn parse_step_keys(
                 occasion_only.push(key);
                 choose = parse_choose(v).map_err(|e| format!("step {n}: `choose`: {e}"))?;
             }
-            "bridges" => {
-                bridges = parse_play_bridges(v).map_err(|e| format!("step {n}: {e}"))?
-            }
+            "bridges" => bridges = parse_play_bridges(v).map_err(|e| format!("step {n}: {e}"))?,
             "expect" => {
                 for e in crate::play_expect::validate(v, false) {
                     let keys: Vec<&str> = std::iter::once("expect")
@@ -1575,6 +1589,9 @@ mod tests {
             Ok(_) => panic!("expected invalid timeout mapping"),
             Err(error) => error,
         };
-        assert!(error.contains("timeout mapping must set `timeout` to `true`"), "{error}");
+        assert!(
+            error.contains("timeout mapping must set `timeout` to `true`"),
+            "{error}"
+        );
     }
 }

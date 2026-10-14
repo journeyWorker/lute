@@ -10,12 +10,18 @@ fn write(root: &Path, rel: &str, text: &str) {
 }
 
 fn manifest(constraints: &str) -> String {
-    format!("defaultProfile: core\nprofiles:\n  core:\n    plugins: {{}}\nconstraints:\n{constraints}")
+    format!(
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {{}}\nconstraints:\n{constraints}"
+    )
 }
 
 fn run(root: &Path, args: &[&str]) -> (i32, String) {
     let output = Command::new(BIN).args(args).arg(root).output().unwrap();
-    let text = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     (output.status.code().unwrap_or(2), text)
 }
 
@@ -39,15 +45,27 @@ fn reachable_reports_holds_and_unknown_without_false_violation() {
 #[test]
 fn completable_violation_and_run_witness_are_distinct() {
     let root = lute_scratch::ScratchDir::named("completable");
-    write(&root, "lute.project.yaml", &manifest("  - id: c\n    kind: completable\n    quest: q\n"));
+    write(
+        &root,
+        "lute.project.yaml",
+        &manifest("  - id: c\n    kind: completable\n    quest: q\n"),
+    );
     write(&root, "q.lute", "---\nkind: quest\nid: q\nstate:\n  run.done: { type: bool, default: false }\n---\n<quest id=\"q\" start=\"false\">\n  <objective id=\"o\" done=\"run.done\"/>\n</quest>\n");
     let (code, out) = run(&root, &["constraints"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("c: completable violated [proven]"), "{out}");
-    write(&root, "plays/q.play.yaml", "steps: []\n# mentions complete but never executes a completion transition\n");
+    write(
+        &root,
+        "plays/q.play.yaml",
+        "steps: []\n# mentions complete but never executes a completion transition\n",
+    );
     let (code, out) = run(&root, &["constraints", "--run"]);
     assert_eq!(code, 1, "{out}");
-    assert!(out.contains("c: completable violated [proven]") || out.contains("c: completable unknown [unknown]"), "{out}");
+    assert!(
+        out.contains("c: completable violated [proven]")
+            || out.contains("c: completable unknown [unknown]"),
+        "{out}"
+    );
     assert!(!out.contains("witness:"), "{out}");
     write(
         &root,
@@ -77,7 +95,11 @@ fn completable_violation_and_run_witness_are_distinct() {
 fn speaks_only_when_uses_full_guard_context_and_voice_over_lines() {
     let root = lute_scratch::ScratchDir::named("speaks");
     write(&root, "lute.project.yaml", &manifest("  - id: h\n    kind: speaksOnlyWhen\n    speaker: brann\n    when: \"holds('ok', ['brann'])\"\n"));
-    write(&root, "world.schema.yaml", "entities:\n  npc: { members: [brann] }\nrelations:\n  ok: { args: [npc], tier: run }\n");
+    write(
+        &root,
+        "world.schema.yaml",
+        "entities:\n  npc: { members: [brann] }\nrelations:\n  ok: { args: [npc], tier: run }\n",
+    );
     write(&root, "scene.lute", "---\nkind: scene\nid: test\nuses: [world.schema.yaml]\n---\n<beat id=\"b\" when=\"holds('ok', ['brann'])\">\n  <branch id=\"x\"><choice id=\"y\" when=\"holds('ok', ['brann'])\">\n    @brann{vo}: guarded\n  </choice></branch>\n</beat>\n");
     let (code, out) = run(&root, &["constraints"]);
     assert_eq!(code, 0, "{out}");
@@ -100,20 +122,35 @@ fn speaks_only_when_uses_full_guard_context_and_voice_over_lines() {
 #[test]
 fn no_single_slot_progress_is_bounded_and_scoped() {
     let root = lute_scratch::ScratchDir::named("slots");
-    write(&root, "lute.project.yaml", &manifest("  - id: n\n    kind: noSingleSlotProgress\n    quest: '*'\n"));
+    write(
+        &root,
+        "lute.project.yaml",
+        &manifest("  - id: n\n    kind: noSingleSlotProgress\n    quest: '*'\n"),
+    );
     write(&root, "world.schema.yaml", "state:\n  run.day: { type: int, default: 1, owner: engine }\n  run.slot: { type: { enum: [morning, night] }, default: morning, owner: engine }\nclock:\n  day: run.day\n  slot: run.slot\n  slots: [morning, night]\n");
     write(&root, "q.lute", "---\nkind: quest\nid: q\nuses: [world.schema.yaml]\n---\n<quest id=\"q\" start=\"true\">\n  <objective id=\"o\" done=\"false\"/>\n</quest>\n");
     let (code, out) = run(&root, &["constraints", "--json"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("\"verdict\": \"holds\""), "{out}");
-    assert!(out.contains("declared clock windows; no path search"), "{out}");
+    assert!(
+        out.contains("declared clock windows; no path search"),
+        "{out}"
+    );
 }
 
 #[test]
 fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
     let root = lute_scratch::ScratchDir::named("decl");
-    write(&root, "lute.project.yaml", &manifest("  - id: bad\n    kind: nope\n    unknown: x\n"));
-    write(&root, "scene.lute", "---\nkind: scene\nid: test\n---\n@narrator: hi\n");
+    write(
+        &root,
+        "lute.project.yaml",
+        &manifest("  - id: bad\n    kind: nope\n    unknown: x\n"),
+    );
+    write(
+        &root,
+        "scene.lute",
+        "---\nkind: scene\nid: test\n---\n@narrator: hi\n",
+    );
     let (code, out) = run(&root, &["check-project"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
@@ -121,7 +158,11 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
 
     write(&root, "lute.project.yaml", &manifest("  - id: bad\n    kind: speaksOnlyWhen\n    speaker: brann\n    when: \"holds('felled', ['brann'])\"\n"));
     write(&root, "world.schema.yaml", "relations:\n  felled: { args: [foe], kind: fact }\nentities:\n  foe: { members: [regent] }\n  npc: { members: [brann] }\n");
-    write(&root, "scene.lute", "---\nkind: scene\nuses: [world.schema.yaml]\n---\n@brann: hi\n");
+    write(
+        &root,
+        "scene.lute",
+        "---\nkind: scene\nuses: [world.schema.yaml]\n---\n@brann: hi\n",
+    );
     let (code, out) = run(&root, &["check-project"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");

@@ -23,12 +23,12 @@ use std::path::PathBuf;
 use cel_parser::ast::{operators as op, Expr};
 use lute_syntax::datalog::{BodyLiteral, RuleTerm};
 
-use crate::ProjectDoc;
 use crate::cast::FactProducers;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::connectivity::{ConnGraph, NodeId};
 use crate::rel_schema::RelVocab;
+use crate::ProjectDoc;
 
 /// How many rules deep a derived gate is followed to the facts it needs.
 const RULE_DEPTH: u8 = 4;
@@ -103,10 +103,7 @@ pub fn fact_edges(
 /// Each asserting unit's node: `(document, unit key)` as
 /// [`FactProducers`] keys a site (`0` a scene's shots, else the quest's,
 /// entry's or bundle beat's span start).
-fn unit_nodes(
-    docs: &[ProjectDoc<'_>],
-    graph: &ConnGraph,
-) -> BTreeMap<(PathBuf, usize), NodeId> {
+fn unit_nodes(docs: &[ProjectDoc<'_>], graph: &ConnGraph) -> BTreeMap<(PathBuf, usize), NodeId> {
     let mut out = BTreeMap::new();
     for (id, info) in &graph.nodes {
         if matches!(id, NodeId::Scene(_)) {
@@ -143,11 +140,7 @@ fn unit_nodes(
 
 /// The gate conditions of `doc`'s graph nodes: each one's own `when` /
 /// `start`, and the gate of the occasion it answers ([`occasion_gate`]).
-fn gates(
-    item: &ProjectDoc<'_>,
-    folded: &FoldedEnv,
-    graph: &ConnGraph,
-) -> Vec<(NodeId, String)> {
+fn gates(item: &ProjectDoc<'_>, folded: &FoldedEnv, graph: &ConnGraph) -> Vec<(NodeId, String)> {
     let path = item.path;
     let doc = item.doc;
     let node = |id: NodeId| graph.nodes.get(&id).filter(|i| i.path == path).map(|_| id);
@@ -201,7 +194,8 @@ fn occasion_gate(folded: &FoldedEnv, on: &str, target: Option<&str>) -> Option<S
     if !lute_manifest::semantics::occasion_bind::mentions_target(gate) {
         return Some(gate.to_string());
     }
-    let member = lute_manifest::semantics::gates::target_member(folded.occasions.get(on)?, target?)?;
+    let member =
+        lute_manifest::semantics::gates::target_member(folded.occasions.get(on)?, target?)?;
     Some(crate::occasion_bind::instantiate(gate, &member))
 }
 
@@ -340,7 +334,10 @@ mod tests {
             params: &BTreeMap::new(),
         };
         let atoms = required_holds("holds('met', ['maud'])", &defs);
-        assert_eq!(atoms, vec![("met".to_string(), vec![Some("maud".to_string())])]);
+        assert_eq!(
+            atoms,
+            vec![("met".to_string(), vec![Some("maud".to_string())])]
+        );
 
         let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\
                    ## One\n::assert{met(maud)}\n";

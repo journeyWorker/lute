@@ -1,8 +1,8 @@
 //! Reverse dependency impact queries over [`lute_semantic::SemanticGraph`].
-use lute_semantic::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
 use crate::ProjectModel;
 use lute_core_span::{Evidence, Span};
 use lute_manifest::fact::parse_fact;
+use lute_semantic::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
@@ -134,7 +134,11 @@ pub struct ImpactReport {
 
 /// Build an impact report from the model's semantic graph.
 pub fn query(model: &ProjectModel, target: &ImpactTarget) -> ImpactReport {
-    query_graph(model.graph(), model.root().to_string_lossy().to_string(), target)
+    query_graph(
+        model.graph(),
+        model.root().to_string_lossy().to_string(),
+        target,
+    )
 }
 /// Traverse a graph from `target`, retaining the strongest explanation paths.
 pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -> ImpactReport {
@@ -166,9 +170,10 @@ pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -
         for &idx in adj {
             let edge = &graph.edges[idx];
             if edge.source.kind == NodeKind::Fact
-                && fact_overlap(&edge.source.key, &node.key).is_none() {
-                    continue;
-                }
+                && fact_overlap(&edge.source.key, &node.key).is_none()
+            {
+                continue;
+            }
             if edge.target == edge.source {
                 continue;
             }
@@ -221,7 +226,10 @@ pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -
             .map(|p| display_file(p, &root));
         let line = declaration.and_then(|n| n.span.map(|s| s.line));
         let (line_id, speaker) = if node.kind == NodeKind::Line {
-            (Some(node.key.clone()), declaration.and_then(|n| n.speaker.clone()))
+            (
+                Some(node.key.clone()),
+                declaration.and_then(|n| n.speaker.clone()),
+            )
         } else {
             (None, None)
         };

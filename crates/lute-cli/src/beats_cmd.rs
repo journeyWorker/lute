@@ -31,8 +31,8 @@ use std::process::ExitCode;
 
 use crate::output::pretty_json;
 use lute_check::{ProjectBeat, ProjectBeatKind};
-use lute_ir::BeatOnce;
 use lute_core_span::Diagnostic;
+use lute_ir::BeatOnce;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use serde_json::{json, Value as Json};
 
@@ -478,9 +478,7 @@ fn verdict_words(
             _ => w.to_string(),
         })
         .collect();
-    if let Some(by) =
-        shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed")))
-    {
+    if let Some(by) = shadowed_by.filter(|_| !words.iter().any(|w| w.starts_with("shadowed"))) {
         words.insert(0, format!("shadowed by {} [heuristic]", by.join(" / ")));
     }
     if !never_for.is_empty() {
@@ -701,7 +699,10 @@ fn root_json(root: &Path, cells: &Cells<'_, '_>, ladders: &[Ladder<'_>]) -> Json
                                 .map(|d| {
                                     let mut v = serde_json::Map::new();
                                     v.insert("code".into(), json!(d.code));
-                                    v.insert("severity".into(), json!(crate::severity_str(d.severity)));
+                                    v.insert(
+                                        "severity".into(),
+                                        json!(crate::severity_str(d.severity)),
+                                    );
                                     v.insert("message".into(), json!(d.text()));
                                     if let Some(Json::Object(fields)) =
                                         evidence_json(d.evidence.as_ref())

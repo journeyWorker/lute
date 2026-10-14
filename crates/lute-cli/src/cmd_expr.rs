@@ -91,7 +91,11 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
     let params: BTreeMap<String, Vec<(String, lute_manifest::types::Type)>> = index_defs
         .iter()
         .map(|(name, def)| {
-            let params = def.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect();
+            let params = def
+                .params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect();
             (name.clone(), params)
         })
         .collect();
@@ -101,13 +105,15 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
     };
     let checked = lute_check::check_host_condition(&built.input, &defs, raw);
     diagnostics.extend(checked.diagnostics);
-    let lowered = checked.cel.and_then(|cel| match lute_compile::expr::lower_expr(&cel) {
-        Some(expr) => Some((cel, expr)),
-        None => {
-            diagnostics.push(unlowered(raw, &cel));
-            None
-        }
-    });
+    let lowered = checked
+        .cel
+        .and_then(|cel| match lute_compile::expr::lower_expr(&cel) {
+            Some(expr) => Some((cel, expr)),
+            None => {
+                diagnostics.push(unlowered(raw, &cel));
+                None
+            }
+        });
     finish(json, lowered.as_ref(), raw, &diagnostics)
 }
 
@@ -236,15 +242,30 @@ fn project_diagnostics(cache: &InputCache, project: &Path, built: &BuiltInput) -
     if let Err(error) = cache.project(project).as_ref() {
         let message = match error {
             ProjectLoadError::Io { .. } => error.to_string(),
-            ProjectLoadError::Yaml { path, line, column, message, .. }
-            | ProjectLoadError::Invalid { path, line, column, reason: message } => {
+            ProjectLoadError::Yaml {
+                path,
+                line,
+                column,
+                message,
+                ..
+            }
+            | ProjectLoadError::Invalid {
+                path,
+                line,
+                column,
+                reason: message,
+            } => {
                 format!("{}:{line}:{column}: {message}", path.display())
             }
         };
         out.push(placeless(E_MANIFEST, Severity::Error, message));
     }
     for d in &built.resolve_diags {
-        let severity = if d.code.starts_with("W-") { Severity::Warning } else { Severity::Error };
+        let severity = if d.code.starts_with("W-") {
+            Severity::Warning
+        } else {
+            Severity::Error
+        };
         let message = lute_core_span::plain_message(&d.message).into_owned();
         out.push(placeless(&d.code, severity, message));
     }

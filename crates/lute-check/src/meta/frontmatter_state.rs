@@ -190,16 +190,17 @@ pub(super) fn parse_state(
                                                 key_span,
                                             ));
                                             None
-                                        },
+                                        }
                                         other => {
                                             let authored = other.is_some();
-                                            let value =
-                                                scalar_default(path, &decl.ty, other, diags, key_span);
+                                            let value = scalar_default(
+                                                path, &decl.ty, other, diags, key_span,
+                                            );
                                             if authored && value.is_none() {
                                                 typed.state.faulty.insert(path.to_string());
                                             }
                                             value
-                                        },
+                                        }
                                     };
                                     // dsl 0.28.0 §1 (T1-2): an inline enum's
                                     // `default:` must be one of its members —

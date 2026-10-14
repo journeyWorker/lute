@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// Which beats' unknown `when` leaves a cell undecided, in words
 /// (inn.oldFriend's `when` is unknown).
 pub(super) fn undecided_why(unknown: &[(String, String)]) -> String {
@@ -100,11 +99,7 @@ pub(super) fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, 
             } => {
                 match day {
                     None => varies.push("clock.day".to_string()),
-                    Some(d) => held.push((
-                        "clock.day".to_string(),
-                        d.to_string(),
-                        Value::Int(*d),
-                    )),
+                    Some(d) => held.push(("clock.day".to_string(), d.to_string(), Value::Int(*d))),
                 }
                 match slot {
                     None if !slotted => {}

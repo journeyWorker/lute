@@ -385,11 +385,7 @@ type RecordLiteral<'a> = dyn FnMut(Option<String>, u32, Option<&str>) + 'a;
 /// literal param `default:`) its component passes whole to that attribute,
 /// recorded at the `::use` with the component. A CEL (`@…`) value names no
 /// literal id and is not listed.
-fn attr_values(
-    nodes: &[Node],
-    sink: &Sink<'_>,
-    record: &mut RecordLiteral<'_>,
-) {
+fn attr_values(nodes: &[Node], sink: &Sink<'_>, record: &mut RecordLiteral<'_>) {
     for_each_directive(nodes, &mut |d| {
         if d.tag == sink.directive {
             for a in d.attrs.iter().filter(|a| a.key == sink.attr) {

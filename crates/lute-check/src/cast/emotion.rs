@@ -1,10 +1,10 @@
 // ── dsl 0.24.0 §4: presence (`W-CAST-ABSENT`) and per-speaker emotions ──────
 
-use std::collections::BTreeMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::{Arm, AttrValue, CelKind, ClipNode, Document, Line, Node};
+use std::collections::BTreeMap;
 
 /// Conservative public guard-implication decider for project constraints.
 /// Exact guards are sufficient proof; an exact negated guard proves the
@@ -169,7 +169,10 @@ pub(crate) fn visit<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     }
 }
 
-pub(crate) fn literal_attr<'a>(attrs: &'a [lute_syntax::ast::Attr], key: &str) -> Option<(&'a str, Span)> {
+pub(crate) fn literal_attr<'a>(
+    attrs: &'a [lute_syntax::ast::Attr],
+    key: &str,
+) -> Option<(&'a str, Span)> {
     attrs
         .iter()
         .find(|a| a.key == key)

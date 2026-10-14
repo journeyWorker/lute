@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Node;
-use crate::ProjectDoc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 /// Two documents of one project declare the same `<branch id>` / `<hub id>`.
 /// Each document is its own episode, so the ids are legal, but a play's or
@@ -77,7 +77,8 @@ pub fn check_project_branch_ids(
         let path = item.path;
         let doc = item.doc;
         let mut found = Vec::new();
-        let bodies = doc.sections
+        let bodies = doc
+            .sections
             .iter()
             .map(|s| &s.body)
             .chain(doc.quests.iter().map(|q| &q.body))

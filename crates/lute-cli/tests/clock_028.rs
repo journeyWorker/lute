@@ -43,7 +43,12 @@ fn play(dir: &Path, script: &str) -> Output {
 
 /// A project whose schema is `schema` and whose plugin `p` declares
 /// `occasions` (a YAML mapping body), plus `docs`.
-fn project(tag: &str, schema: &str, occasions: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+fn project(
+    tag: &str,
+    schema: &str,
+    occasions: &str,
+    docs: &[(&str, &str)],
+) -> lute_scratch::ScratchDir {
     let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,

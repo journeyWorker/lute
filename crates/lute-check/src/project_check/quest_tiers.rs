@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use super::quest_tree::tree_diag;
 use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Document, Node};
-use super::quest_tree::tree_diag;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// dsl 0.23.0 §6 (0.23.1): a subquest's `tier` must equal its parent's.
 /// A run-tier quest resets to `unset` at every `newRun`; a user-tier one

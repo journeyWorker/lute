@@ -10,8 +10,8 @@ use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
 use super::{addr, fold_op, Code, Machine, Site};
-use crate::eval::Read;
 use crate::driver::{Driver, SiteKind};
+use crate::eval::Read;
 use crate::expr::{Expr, Slot};
 use crate::Value;
 
@@ -247,7 +247,10 @@ impl<D: Driver> Machine<D> {
             {
                 continue;
             }
-            let started = q.start.as_ref().map(|cond| self.judge(cond, Site::quest(SiteKind::QuestStart, &q.id, &q.id)));
+            let started = q
+                .start
+                .as_ref()
+                .map(|cond| self.judge(cond, Site::quest(SiteKind::QuestStart, &q.id, &q.id)));
             if self.stopped() {
                 return;
             }
@@ -970,7 +973,10 @@ impl<D: Driver> Machine<D> {
         rewards: &[RewardRec],
         event: GrantEvent,
     ) {
-        let instance = *self.quest_instances.entry(quest_id.to_string()).or_insert(1);
+        let instance = *self
+            .quest_instances
+            .entry(quest_id.to_string())
+            .or_insert(1);
         for (index, r) in rewards.iter().enumerate() {
             if r.kind.trim().is_empty() {
                 continue;
@@ -1143,9 +1149,9 @@ fn parse_quest(code: &Code, cmd: &Json) -> QuestDecl {
             arr.iter()
                 .map(|o| Obj {
                     id: o.get("id").and_then(Json::as_str).unwrap_or("").to_string(),
-                    done: code.slot(o.get("done")).unwrap_or_else(|| {
-                        Arc::new(Slot::synthetic(String::new(), Expr::Invalid))
-                    }),
+                    done: code
+                        .slot(o.get("done"))
+                        .unwrap_or_else(|| Arc::new(Slot::synthetic(String::new(), Expr::Invalid))),
                     optional: o.get("optional").and_then(Json::as_bool).unwrap_or(false),
                     body: o.get("body").and_then(Json::as_str).map(str::to_string),
                     quest: o.get("quest").and_then(Json::as_str).map(str::to_string),

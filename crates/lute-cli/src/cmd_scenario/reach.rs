@@ -17,7 +17,9 @@ use crate::project::ByRoot;
 /// review: routes must never be flattened away).
 pub(crate) fn format_prereq(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
     match f {
-        lute_manifest::semantics::prereq::PrereqFormula::Visited(key) => format!("visited({})", quote_cel_string(key)),
+        lute_manifest::semantics::prereq::PrereqFormula::Visited(key) => {
+            format!("visited({})", quote_cel_string(key))
+        }
         lute_manifest::semantics::prereq::PrereqFormula::Completed(id) => {
             format!("completed({})", quote_cel_string(id))
         }
@@ -351,7 +353,9 @@ pub(crate) fn run_scenario_reach(
     };
     let node_id = node_ref_to_id(&node_ref);
     let docs = lute_model::project_docs(
-        by_root.get(root).expect("resolved scenario root must have documents"),
+        by_root
+            .get(root)
+            .expect("resolved scenario root must have documents"),
     );
     outln!(out, "project root: {}", root.display());
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {

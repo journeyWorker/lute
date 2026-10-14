@@ -1,43 +1,87 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use serde_yaml::Value;
 use crate::yaml_text::{yaml_span, YamlStep};
+use serde_yaml::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConstraintSeverity { Error, Warning, Info }
+pub enum ConstraintSeverity {
+    Error,
+    Warning,
+    Info,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConstraintKind { Reachable, Completable, SpeaksOnlyWhen, NoSingleSlotProgress }
-impl ConstraintKind { pub fn as_str(self) -> &'static str { match self { Self::Reachable => "reachable", Self::Completable => "completable", Self::SpeaksOnlyWhen => "speaksOnlyWhen", Self::NoSingleSlotProgress => "noSingleSlotProgress" } } }
+pub enum ConstraintKind {
+    Reachable,
+    Completable,
+    SpeaksOnlyWhen,
+    NoSingleSlotProgress,
+}
+impl ConstraintKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Reachable => "reachable",
+            Self::Completable => "completable",
+            Self::SpeaksOnlyWhen => "speaksOnlyWhen",
+            Self::NoSingleSlotProgress => "noSingleSlotProgress",
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConstraintDecl {
     pub id: String,
     pub kind: ConstraintKind,
     pub severity: ConstraintSeverity,
-    pub node: Option<String>, pub quest: Option<String>, pub speaker: Option<String>, pub when: Option<String>,
-    pub span: Range<usize>, pub field_spans: BTreeMap<String, Range<usize>>,
+    pub node: Option<String>,
+    pub quest: Option<String>,
+    pub speaker: Option<String>,
+    pub when: Option<String>,
+    pub span: Range<usize>,
+    pub field_spans: BTreeMap<String, Range<usize>>,
 }
 
-pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl>, Vec<super::project::ResolveDiag>) {
-    let mut out = Vec::new(); let mut diags = Vec::new();
+pub fn parse_constraints(
+    raw: Option<&Value>,
+    text: &str,
+) -> (Vec<ConstraintDecl>, Vec<super::project::ResolveDiag>) {
+    let mut out = Vec::new();
+    let mut diags = Vec::new();
     let Some(raw) = raw else { return (out, diags) };
-    let Some(items) = raw.as_sequence() else { diags.push(err("`constraints:` must be a list", field_span(text, "constraints"))); return (out, diags); };
+    let Some(items) = raw.as_sequence() else {
+        diags.push(err(
+            "`constraints:` must be a list",
+            field_span(text, "constraints"),
+        ));
+        return (out, diags);
+    };
     let mut ids = std::collections::BTreeSet::new();
     for (idx, item) in items.iter().enumerate() {
         let item_path = [YamlStep::Key("constraints"), YamlStep::Item(idx)];
         let mut decl_span = yaml_span(text, &item_path)
             .map(|span| span.byte_start..span.byte_end)
             .unwrap_or_else(|| field_span(text, "constraints"));
-        let Some(map) = item.as_mapping() else { diags.push(err("constraint declaration must be a mapping", decl_span)); continue; };
+        let Some(map) = item.as_mapping() else {
+            diags.push(err("constraint declaration must be a mapping", decl_span));
+            continue;
+        };
         let mut fields = BTreeMap::new();
         for (k, _) in map {
             if let Some(k) = k.as_str() {
-                let key_path = [YamlStep::Key("constraints"), YamlStep::Item(idx), YamlStep::Key(k)];
+                let key_path = [
+                    YamlStep::Key("constraints"),
+                    YamlStep::Item(idx),
+                    YamlStep::Key(k),
+                ];
                 let span = yaml_span(text, &key_path)
                     .map(|span| span.byte_start..span.byte_end)
                     .unwrap_or_else(|| decl_span.clone());
-                let value_path = [YamlStep::Key("constraints"), YamlStep::Item(idx), YamlStep::Key(k), YamlStep::Value];
+                let value_path = [
+                    YamlStep::Key("constraints"),
+                    YamlStep::Item(idx),
+                    YamlStep::Key(k),
+                    YamlStep::Value,
+                ];
                 if let Some(value) = yaml_span(text, &value_path) {
                     decl_span.end = decl_span.end.max(value.byte_end);
                 }
@@ -45,12 +89,19 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             }
         }
         let get = |name: &str| map.get(Value::String(name.into()));
-        let id = match get("id").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+        let id = match get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(v) => v.to_string(),
             None => {
                 diags.push(err(
                     "constraint declaration requires a non-empty `id`",
-                    fields.get("id").cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get("id")
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 continue;
             }
@@ -58,7 +109,10 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
         if !ids.insert(id.clone()) {
             diags.push(err(
                 format!("duplicate constraint id `{id}`"),
-                fields.get("id").cloned().unwrap_or_else(|| decl_span.clone()),
+                fields
+                    .get("id")
+                    .cloned()
+                    .unwrap_or_else(|| decl_span.clone()),
             ));
             continue;
         }
@@ -70,14 +124,20 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             Some(other) => {
                 diags.push(err(
                     format!("unknown constraint kind `{other}`"),
-                    fields.get("kind").cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get("kind")
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 continue;
             }
             None => {
                 diags.push(err(
                     "constraint declaration requires `kind`",
-                    fields.get("kind").cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get("kind")
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 continue;
             }
@@ -89,7 +149,10 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             other => {
                 diags.push(err(
                     format!("invalid constraint severity `{other}`"),
-                    fields.get("severity").cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get("severity")
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 continue;
             }
@@ -102,11 +165,18 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             ConstraintKind::SpeaksOnlyWhen => &["id", "kind", "severity", "speaker", "when"][..],
         };
         let mut malformed = false;
-        for key in map.keys().filter_map(Value::as_str).filter(|key| !allowed.contains(key)) {
+        for key in map
+            .keys()
+            .filter_map(Value::as_str)
+            .filter(|key| !allowed.contains(key))
+        {
             malformed = true;
             diags.push(err(
                 format!("unknown key `{key}` in constraint declaration"),
-                fields.get(key).cloned().unwrap_or_else(|| decl_span.clone()),
+                fields
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_else(|| decl_span.clone()),
             ));
         }
         if malformed {
@@ -133,7 +203,10 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             if get(field).is_some() && req(field).is_none() {
                 diags.push(err(
                     format!("constraint field `{field}` must be a non-empty string"),
-                    fields.get(*field).cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get(*field)
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 malformed = true;
             }
@@ -157,7 +230,10 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
             if !valid_node_ref(n) {
                 diags.push(err(
                     format!("bad constraint node reference `{n}`"),
-                    fields.get("node").cloned().unwrap_or_else(|| decl_span.clone()),
+                    fields
+                        .get("node")
+                        .cloned()
+                        .unwrap_or_else(|| decl_span.clone()),
                 ));
                 continue;
             }
@@ -176,8 +252,22 @@ pub fn parse_constraints(raw: Option<&Value>, text: &str) -> (Vec<ConstraintDecl
     }
     (out, diags)
 }
-fn valid_node_ref(s: &str) -> bool { let Some((kind, id)) = s.split_once(':') else { return false }; matches!(kind, "scene"|"beat"|"entry"|"quest"|"objective"|"line") && !id.trim().is_empty() }
-fn err(message: impl Into<String>, span: Range<usize>) -> super::project::ResolveDiag { super::project::ResolveDiag { code: "E-CONSTRAINT-DECL".into(), message: message.into(), span: Some(span) } }
+fn valid_node_ref(s: &str) -> bool {
+    let Some((kind, id)) = s.split_once(':') else {
+        return false;
+    };
+    matches!(
+        kind,
+        "scene" | "beat" | "entry" | "quest" | "objective" | "line"
+    ) && !id.trim().is_empty()
+}
+fn err(message: impl Into<String>, span: Range<usize>) -> super::project::ResolveDiag {
+    super::project::ResolveDiag {
+        code: "E-CONSTRAINT-DECL".into(),
+        message: message.into(),
+        span: Some(span),
+    }
+}
 fn field_span(text: &str, key: &str) -> Range<usize> {
     yaml_span(text, &[YamlStep::Key(key)])
         .map(|span| span.byte_start..span.byte_end)
@@ -212,7 +302,13 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(&text[items[0].field_spans["node"].clone()], "node");
         assert_eq!(items[1].span.start, text.find("{id: b").unwrap());
-        assert_eq!(items[1].field_spans["node"].start, text.find("node: scene:second").unwrap());
-        assert_eq!(diags[0].span.as_ref().unwrap().start, text.find("kind: nope").unwrap());
+        assert_eq!(
+            items[1].field_spans["node"].start,
+            text.find("node: scene:second").unwrap()
+        );
+        assert_eq!(
+            diags[0].span.as_ref().unwrap().start,
+            text.find("kind: nope").unwrap()
+        );
     }
 }

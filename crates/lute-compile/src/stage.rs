@@ -12,7 +12,6 @@ use lute_syntax::ast::{
 
 use crate::cfg::{Emitter, Label};
 use crate::ir::*;
-use lute_ir::*;
 use crate::lower::{
     attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
     lower_set,
@@ -20,6 +19,7 @@ use crate::lower::{
 use crate::normalize::{component_scope, is_body_split, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
 use crate::source_map::{ArmSource, ComponentBoundary, ComponentUse, SourceInfo, SourceMarker};
+use lute_ir::*;
 
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven: each open expansion's name and its
@@ -89,7 +89,8 @@ pub fn walk_seq(
                 // (`entry-emotion-lookahead`); build the CFG-reachable
                 // continuation just for it and pass nothing otherwise, so the
                 // common line/set path never clones the tail.
-                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
+                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
+                {
                     reachable_after(&nodes[i + 1..], tail)
                 } else {
                     Vec::new()
@@ -161,7 +162,8 @@ fn walk_timeline(
         // continuation for `entry-emotion-lookahead`, exactly like a linear
         // `::actor` (T9): clips carry no prose `:line`s, so the post-timeline
         // continuation is the whole lookahead. Every other clip takes none.
-        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
+        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
+        {
             cont
         } else {
             &[]
@@ -233,7 +235,8 @@ fn emit_primitive(
     // Placement (plan spec-gap note 4): an `::actor`'s injections (anchor,
     // preload) FOLLOW the authored show (§4.5); a line's posReset and a
     // scene-change's hides PRECEDE theirs.
-    let auto_first = matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE);
+    let auto_first =
+        matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE);
     if auto_first {
         if let Some(cmd) = authored {
             emit_authored(em, cmd, node, cx, clip);
@@ -778,7 +781,12 @@ fn arm_diag(code: &str, message: String, span: lute_core_span::Span) -> Diagnost
 /// `source { component }` from the sentinel-driven stack (§4.3, D8), plus
 /// the identity scope the addressing pass mints the record's ids under.
 fn apply_source(cmd: &mut Command, cx: &WalkCx<'_>) {
-    if let Some(ComponentUse { name, scope, stable }) = component_use(cx) {
+    if let Some(ComponentUse {
+        name,
+        scope,
+        stable,
+    }) = component_use(cx)
+    {
         if let Some(stamp) = cmd.stamp_mut() {
             stamp.source = Some(Source {
                 component: name,
@@ -1009,7 +1017,8 @@ pub fn walk_quest(
             | Node::Set(_)
             | Node::Assert(_)
             | Node::Retract(_) => {
-                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE) {
+                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
+                {
                     reachable_after(&quest.body[i + 1..], &[])
                 } else {
                     Vec::new()
@@ -1089,10 +1098,7 @@ pub fn walk_entry(
         // written — recorded, as a bundle beat's is.
         once: match entry.once.as_ref() {
             Some((o, _)) => lute_ir::BeatOnce::parse(o),
-            None => entry
-                .spent_by
-                .as_ref()
-                .map(|_| lute_ir::BeatOnce::Run),
+            None => entry.spent_by.as_ref().map(|_| lute_ir::BeatOnce::Run),
         },
         share: text(&entry.share),
         target_kind: entry.on.as_ref().and_then(|(on, _)| {

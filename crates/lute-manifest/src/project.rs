@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::constraints::{parse_constraints, ConstraintDecl};
 use crate::core::load_core_snapshot;
 use crate::loader::load_plugins_dir;
 use crate::permissions::{PermissionSet, Permissions};
@@ -24,7 +25,6 @@ use crate::resolve::{
 };
 use crate::snapshot::CapabilitySnapshot;
 use crate::types::Literal;
-use crate::constraints::{parse_constraints, ConstraintDecl};
 
 /// A resolved canonical identity migration entry. The manifest loader keeps
 /// source spans separately; this wire DTO is intentionally only the two
@@ -117,7 +117,9 @@ pub struct ProjectConfig {
 
 impl ProjectConfig {
     /// Whether stable identity warnings are enabled for this project.
-    pub fn identity_require_stable(&self) -> bool { self.identity_require_stable }
+    pub fn identity_require_stable(&self) -> bool {
+        self.identity_require_stable
+    }
 }
 
 /// Source locations for one manifest `chapters:` chain.
@@ -743,12 +745,16 @@ fn resolve_identity_renames(
     let text_index = lute_core_span::TextIndex::new(text);
     let mut entries = Vec::new();
     let mut diags = Vec::new();
-    let Some(raw) = raw else { return (entries, diags) };
+    let Some(raw) = raw else {
+        return (entries, diags);
+    };
     let serde_yaml::Value::Mapping(map) = raw else {
         diags.push(ResolveDiag {
             span: locate(&["identity", "renames"]),
             code: "E-RENAME-LEDGER".into(),
-            message: "`identity.renames` must be a mapping from canonical NodeKey to canonical NodeKey".into(),
+            message:
+                "`identity.renames` must be a mapping from canonical NodeKey to canonical NodeKey"
+                    .into(),
         });
         return (entries, diags);
     };
@@ -766,12 +772,17 @@ fn resolve_identity_renames(
             diags.push(ResolveDiag {
                 span,
                 code: "E-RENAME-LEDGER".into(),
-                message: format!("rename destination for `{from}` must be a canonical NodeKey string"),
+                message: format!(
+                    "rename destination for `{from}` must be a canonical NodeKey string"
+                ),
             });
             continue;
         };
         entries.push(IdentityRenameDecl {
-            rename: IdentityRename { from: from.to_string(), to: to.to_string() },
+            rename: IdentityRename {
+                from: from.to_string(),
+                to: to.to_string(),
+            },
             span: span.map(|r| lute_core_span::Span::from_bytes(&text_index, r.start, r.end)),
         });
     }
@@ -1324,27 +1335,35 @@ fn drop_unknown_keys(
     }
 }
 
-fn chapter_origins(
-    text: &str,
-    raw: Option<&serde_yaml::Value>,
-    path: &Path,
-) -> Vec<ChapterOrigin> {
+fn chapter_origins(text: &str, raw: Option<&serde_yaml::Value>, path: &Path) -> Vec<ChapterOrigin> {
     let Some(serde_yaml::Value::Sequence(items)) = raw else {
         return Vec::new();
     };
     let file = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    use crate::yaml_text::{yaml_span, YamlStep::{Item, Key, Value}};
+    use crate::yaml_text::{
+        yaml_span,
+        YamlStep::{Item, Key, Value},
+    };
     items
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let on = item.get("on").and_then(serde_yaml::Value::as_str)
+            let on = item
+                .get("on")
+                .and_then(serde_yaml::Value::as_str)
                 .and_then(|_| yaml_span(text, &[Key("chapters"), Item(i), Key("on"), Value]));
             let mut scenes = BTreeMap::new();
             if let Some(values) = item.get("scenes").and_then(serde_yaml::Value::as_sequence) {
                 for (j, value) in values.iter().enumerate() {
-                    let Some(value) = value.as_str() else { continue };
-                    let Some(span) = yaml_span(text, &[Key("chapters"), Item(i), Key("scenes"), Item(j), Value]) else { continue };
+                    let Some(value) = value.as_str() else {
+                        continue;
+                    };
+                    let Some(span) = yaml_span(
+                        text,
+                        &[Key("chapters"), Item(i), Key("scenes"), Item(j), Value],
+                    ) else {
+                        continue;
+                    };
                     scenes.entry(value.to_string()).or_insert(span);
                 }
             }
@@ -1356,7 +1375,6 @@ fn chapter_origins(
         })
         .collect()
 }
-
 
 /// An error loading a project manifest.
 #[derive(Debug)]
@@ -1384,15 +1402,21 @@ impl std::fmt::Display for ProjectLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io { path, source } => {
-                write!(f, "cannot read {}: {}", path.display(), crate::io_reason(source))
+                write!(
+                    f,
+                    "cannot read {}: {}",
+                    path.display(),
+                    crate::io_reason(source)
+                )
             }
             Self::Yaml {
                 path,
                 line,
                 column,
                 message,
-                .. } |
-            Self::Invalid {
+                ..
+            }
+            | Self::Invalid {
                 path,
                 line,
                 column,
@@ -1539,7 +1563,10 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     // Through text, not `from_value`: `Value`'s deserializer reads a `null`
     // as an empty mapping, which would accept `permissions: null`.
     let cleaned = serde_yaml::to_string(&serde_yaml::Value::Mapping(map)).map_err(|e| {
-        fail(0, &format!("could not normalize manifest: {}", plain_serde(&e)))
+        fail(
+            0,
+            &format!("could not normalize manifest: {}", plain_serde(&e)),
+        )
     })?;
     let raw: RawProject = serde_yaml::from_str(&cleaned).map_err(|e| {
         fail(
@@ -1763,11 +1790,7 @@ mod tests {
     fn chapter_origins_anchor_flow_style_values() {
         let text = "defaultProfile: core\nprofiles: {core: {plugins: {}}}\nchapters: [{on: open, scenes: [first, second]}]\n";
         let value: serde_yaml::Value = serde_yaml::from_str(text).unwrap();
-        let origins = chapter_origins(
-            text,
-            value.get("chapters"),
-            Path::new("lute.project.yaml"),
-        );
+        let origins = chapter_origins(text, value.get("chapters"), Path::new("lute.project.yaml"));
         assert_eq!(origins.len(), 1);
         let on = origins[0].on.expect("flow `on` span");
         assert_eq!(&text[on.byte_start..on.byte_end], "open");

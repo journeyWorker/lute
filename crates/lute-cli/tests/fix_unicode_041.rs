@@ -40,7 +40,8 @@ fn an_unquoted_korean_scalar_is_ordinary_input() {
 #[test]
 fn unicode_yaml_renames_domains_in_place_idempotently() {
     let source = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fix-unicode-041/world.schema.yaml"),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/fix-unicode-041/world.schema.yaml"),
     )
     .unwrap();
     let dir = lute_scratch::ScratchDir::named("fix-unicode-041");
@@ -54,7 +55,10 @@ fn unicode_yaml_renames_domains_in_place_idempotently() {
         stdout(&out)
     );
     let expected = source
-        .replace("  musicAction: [start, stop]", "  musicPlayback: [start, stop]")
+        .replace(
+            "  musicAction: [start, stop]",
+            "  musicPlayback: [start, stop]",
+        )
         .replace("{ domain: musicAction }", "{ domain: musicPlayback }");
     assert_ne!(expected, source);
     assert!(expected.contains("'domain: musicAction는 그대로'"));
@@ -76,10 +80,15 @@ fn unicode_yaml_renames_domains_in_place_idempotently() {
 fn a_multibyte_character_touching_domain_is_scanned_by_bytes() {
     let dir = lute_scratch::ScratchDir::named("fix-unicode-041-touch");
     let file = dir.join("v.yaml");
-    let text = "state:\n  run.a: { type: { domain: musicAction }, default: 아domain: x }\n  run.b: 'é'\n";
+    let text =
+        "state:\n  run.a: { type: { domain: musicAction }, default: 아domain: x }\n  run.b: 'é'\n";
     std::fs::write(&file, text).unwrap();
     let out = fix(&file);
-    assert!(stdout(&out).contains("applied 1 fix(es)"), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("applied 1 fix(es)"),
+        "{}",
+        stdout(&out)
+    );
     assert_eq!(
         std::fs::read_to_string(&file).unwrap(),
         text.replace("{ domain: musicAction }", "{ domain: musicPlayback }")

@@ -138,7 +138,11 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
             use lute_manifest::yaml_text::{yaml_span, YamlStep};
             let span = yaml_span(
                 &text,
-                &[YamlStep::Key("volumes"), YamlStep::Key(member), YamlStep::Value],
+                &[
+                    YamlStep::Key("volumes"),
+                    YamlStep::Key(member),
+                    YamlStep::Value,
+                ],
             )
             .unwrap_or_else(|| anchor(member));
             out.push((
@@ -764,12 +768,10 @@ fn line_offset(text: &str, line: usize, column: usize) -> usize {
 mod tests {
     #[test]
     fn effect_validation_distinguishes_unknown_effect_and_parameter() {
-        assert!(super::effect_shape_error(
-            "actions:\n  hop: {effect: hop, strength: 2}\n"
-        ).is_some());
-        assert!(super::effect_shape_error(
-            "actions:\n  hop: {effect: teleport}\n"
-        ).is_some());
+        assert!(
+            super::effect_shape_error("actions:\n  hop: {effect: hop, strength: 2}\n").is_some()
+        );
+        assert!(super::effect_shape_error("actions:\n  hop: {effect: teleport}\n").is_some());
     }
 
     #[test]
@@ -781,12 +783,16 @@ mod tests {
             None
         );
         for section in ["actions", "transitions", "cameraMove"] {
-            let message = super::effect_shape_error(&format!("{section}:\n  x: {{effect: custom}}\n"))
-                .expect("custom outside vfx is rejected");
+            let message =
+                super::effect_shape_error(&format!("{section}:\n  x: {{effect: custom}}\n"))
+                    .expect("custom outside vfx is rejected");
             assert!(message.contains("only under `vfx`"), "{message}");
         }
         let message = super::effect_shape_error("vfx:\n  x: {effect: custom, color: red}\n")
             .expect("custom keeps a closed parameter set");
-        assert!(message.contains("does not accept parameter `color`"), "{message}");
+        assert!(
+            message.contains("does not accept parameter `color`"),
+            "{message}"
+        );
     }
 }

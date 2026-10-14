@@ -109,7 +109,10 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
         s.contains("\n  scenes/report.lute\n    choice `fate.tobias` (line 10)\n"),
         "{s}"
     );
-    assert!(s.contains("      when: holds('alibied', ['tobias'])\n"), "{s}");
+    assert!(
+        s.contains("      when: holds('alibied', ['tobias'])\n"),
+        "{s}"
+    );
     assert!(s.contains("    choice `fate.ada` (line 13)\n"), "{s}");
     assert!(s.contains("    line `@narrator` (line 21)\n"), "{s}");
     assert!(s.contains("    line `@tobias` (line 22)\n"), "{s}");
@@ -142,7 +145,10 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
         q.contains("      start: holds('saw', ['hollis', 'tobias'])\n"),
         "{q}"
     );
-    assert!(q.contains("      fail: holds('departed', ['tobias'])\n"), "{q}");
+    assert!(
+        q.contains("      fail: holds('departed', ['tobias'])\n"),
+        "{q}"
+    );
     assert!(q.contains("    objective `case.clear`\n"), "{q}");
 
     let miss = lute(&[

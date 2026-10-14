@@ -2,15 +2,15 @@ use super::identity::scene_identity;
 use super::*;
 use crate::ProjectDoc;
 
+use crate::check::CheckResult;
+use crate::meta::{resolve_doc_kind, DocKind};
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::fact::FactPattern;
+use lute_manifest::semantics::prereq::{atoms, PrereqFormula};
+use lute_syntax::ast::{Arm, Assert, Node};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, Assert, Node};
-use lute_manifest::fact::FactPattern;
-use crate::check::CheckResult;
-use crate::meta::{resolve_doc_kind, DocKind};
-use lute_manifest::semantics::prereq::{atoms, PrereqFormula};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reachability {
@@ -493,8 +493,8 @@ pub fn live_assert_sites<'d>(
         let doc = item.doc;
         let mut sites = Vec::new();
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Scene) {
-            let node_reach =
-                scene_identity(item.meta).and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
+            let node_reach = scene_identity(item.meta)
+                .and_then(|ident| reach.get(&NodeId::Scene(ident.key)).copied());
             if assert_site_is_live(node_reach) {
                 for shot in &doc.sections {
                     collect_asserted(&shot.body, effects, &mut sites);

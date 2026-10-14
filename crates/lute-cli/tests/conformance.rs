@@ -66,7 +66,9 @@ fn fixtures() -> Vec<(String, PathBuf)> {
             let path = entry.expect("corpus dir entry").path();
             if path.join("artifact.json").is_file() {
                 let rel = path.strip_prefix(root).unwrap();
-                let name = rel.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+                let name = rel
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/");
                 found.insert(name, path);
             } else if path.is_dir() {
                 visit(root, &path, found);
@@ -87,7 +89,6 @@ fn json_at(path: &Path) -> serde_json::Value {
     serde_json::from_str(&read(path))
         .unwrap_or_else(|e| panic!("cannot parse {} as JSON: {e}", path.display()))
 }
-
 
 /// The README's exit-code table, plus numeric codes for invalid-fixture
 /// transcripts that intentionally exercise runner rejection.
@@ -391,18 +392,45 @@ fn grant_identity_fields_are_recorded() {
 fn invalid_engine_matrices_are_rejected() {
     let root = corpus_dir().join("invalid");
     let cases = [
-        ("missing-required-id", root.join("../staging-all-directives/artifact.json"), "E-ENGINE-SEMANTICS"),
-        ("unsupported-ir-line", root.join("stale-minor/artifact.json"), "E-ENGINE-IR-VERSION"),
-        ("malformed-matrix", root.join("stale-minor/artifact.json"), "E-ENGINE-MATRIX"),
+        (
+            "missing-required-id",
+            root.join("../staging-all-directives/artifact.json"),
+            "E-ENGINE-SEMANTICS",
+        ),
+        (
+            "unsupported-ir-line",
+            root.join("stale-minor/artifact.json"),
+            "E-ENGINE-IR-VERSION",
+        ),
+        (
+            "malformed-matrix",
+            root.join("stale-minor/artifact.json"),
+            "E-ENGINE-MATRIX",
+        ),
     ];
     for (name, artifact, diagnostic) in cases {
         let matrix = root.join(name).join("engine.yaml");
         let out = Command::new(BIN)
-            .args(["run", &path_arg(&artifact), "--engine", &path_arg(&matrix), "--json"])
+            .args([
+                "run",
+                &path_arg(&artifact),
+                "--engine",
+                &path_arg(&matrix),
+                "--json",
+            ])
             .output()
             .unwrap_or_else(|e| panic!("{name}: cannot spawn {BIN}: {e}"));
-        assert_eq!(out.status.code(), Some(2), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
-        assert!(String::from_utf8_lossy(&out.stderr).contains(diagnostic), "{name}: stderr: {}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{name}: stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains(diagnostic),
+            "{name}: stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 }
 
@@ -423,7 +451,11 @@ fn every_diagnostic_fixture_reproduces() {
         .filter(|path| path.join("expected.json").is_file())
         .collect();
     dirs.sort();
-    assert!(!dirs.is_empty(), "no diagnostic fixtures under {}", root.display());
+    assert!(
+        !dirs.is_empty(),
+        "no diagnostic fixtures under {}",
+        root.display()
+    );
 
     let mut failures: Vec<String> = Vec::new();
     for dir in &dirs {
@@ -431,7 +463,13 @@ fn every_diagnostic_fixture_reproduces() {
         let args: &[&str] = if dir.join("lute.project.yaml").is_file() {
             &["check-project", ".", "--json"]
         } else if dir.join("loc").is_dir() {
-            &["compile", "source.lute", "--locales", "locales.json", "--json"]
+            &[
+                "compile",
+                "source.lute",
+                "--locales",
+                "locales.json",
+                "--json",
+            ]
         } else {
             &["check", "source.lute", "--json"]
         };
@@ -451,7 +489,9 @@ fn every_diagnostic_fixture_reproduces() {
         let prefix = format!("{}/", dir.canonicalize().unwrap().display());
         let got = format!(
             "{}\n",
-            String::from_utf8_lossy(&out.stdout).trim_end().replace(&prefix, "")
+            String::from_utf8_lossy(&out.stdout)
+                .trim_end()
+                .replace(&prefix, "")
         );
         let want = read(&dir.join("expected.json"));
         if got != want {
@@ -576,7 +616,9 @@ fn identity_rename_and_save_report_match_artifact() {
             let from = pair["from"].as_str().unwrap();
             let to = pair["to"].as_str().unwrap();
             if let (Some(old), Some(new)) = (before.get(from), before.get(to)) {
-                if old != new { refused = true; }
+                if old != new {
+                    refused = true;
+                }
             }
             if !refused {
                 if let Some(value) = before.get(from) {
@@ -585,9 +627,14 @@ fn identity_rename_and_save_report_match_artifact() {
                 }
             }
         }
-        assert_eq!(case["result"], if refused { "refused" } else { "coalesced" });
+        assert_eq!(
+            case["result"],
+            if refused { "refused" } else { "coalesced" }
+        );
         assert_eq!(case["mutated"], !refused);
-        if !refused { assert_eq!(case["expected"], serde_json::Value::Object(after)); }
+        if !refused {
+            assert_eq!(case["expected"], serde_json::Value::Object(after));
+        }
     }
 }
 
@@ -617,7 +664,6 @@ fn source_lute_version(src: &str) -> Option<String> {
                 .to_string()
         })
 }
-
 
 fn path_arg(p: &Path) -> String {
     p.to_str()

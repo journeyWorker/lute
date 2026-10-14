@@ -32,7 +32,11 @@ fn runtime(scratch: &str) -> Runtime {
         .arg(&out)
         .output()
         .unwrap();
-    assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
     let read = |path: &Path| -> Json {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     };
@@ -63,11 +67,19 @@ fn snapshot(runtime: &Runtime, state: &State) -> String {
 fn rejected(runtime: &Runtime, state: &State, value: Json) -> Rejected {
     let before = snapshot(runtime, state);
     let (after, rejected) = runtime.step(state.clone(), input(value)).unwrap_err();
-    assert_eq!(snapshot(runtime, &after), before, "the rejection changed the state");
+    assert_eq!(
+        snapshot(runtime, &after),
+        before,
+        "the rejection changed the state"
+    );
     rejected
 }
 
-fn accepted(runtime: &Runtime, state: &State, value: Json) -> (State, lute_runtime::runtime::Output) {
+fn accepted(
+    runtime: &Runtime,
+    state: &State,
+    value: Json,
+) -> (State, lute_runtime::runtime::Output) {
     runtime
         .step(state.clone(), input(value))
         .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message))
@@ -125,7 +137,9 @@ fn a_raise_whose_gate_is_false_is_rejected_with_the_state_unchanged() {
     );
     assert!(matches!(output.await_, Await::Idle), "{:?}", output.await_);
     assert!(
-        serde_json::to_string(&output.events).unwrap().contains("The office door gives."),
+        serde_json::to_string(&output.events)
+            .unwrap()
+            .contains("The office door gives."),
         "{:?}",
         output.events
     );
@@ -135,16 +149,39 @@ fn a_raise_whose_gate_is_false_is_rejected_with_the_state_unchanged() {
 fn a_raise_after_the_game_is_over_is_rejected_unless_outside_run() {
     let runtime = runtime("gate041-terminal");
     let (start, _) = runtime.begin(Seed::default()).unwrap();
-    let (over, output) = accepted(&runtime, &start, json!({"type": "raiseOccasion", "occasion": "verdict"}));
-    assert!(matches!(output.await_, Await::Ended { .. }), "{:?}", output.await_);
-
-    let r = rejected(&runtime, &over, json!({"type": "raiseOccasion", "occasion": "gallery"}));
-    assert_eq!(r.code, "E-OCCASION-GATE");
-    assert!(r.message.contains("the game is over — `terminal: run.over` holds"), "{}", r.message);
-
-    let (_, output) = accepted(&runtime, &over, json!({"type": "raiseOccasion", "occasion": "title"}));
+    let (over, output) = accepted(
+        &runtime,
+        &start,
+        json!({"type": "raiseOccasion", "occasion": "verdict"}),
+    );
     assert!(
-        serde_json::to_string(&output.events).unwrap().contains("The title screen."),
+        matches!(output.await_, Await::Ended { .. }),
+        "{:?}",
+        output.await_
+    );
+
+    let r = rejected(
+        &runtime,
+        &over,
+        json!({"type": "raiseOccasion", "occasion": "gallery"}),
+    );
+    assert_eq!(r.code, "E-OCCASION-GATE");
+    assert!(
+        r.message
+            .contains("the game is over — `terminal: run.over` holds"),
+        "{}",
+        r.message
+    );
+
+    let (_, output) = accepted(
+        &runtime,
+        &over,
+        json!({"type": "raiseOccasion", "occasion": "title"}),
+    );
+    assert!(
+        serde_json::to_string(&output.events)
+            .unwrap()
+            .contains("The title screen."),
         "{:?}",
         output.events
     );
@@ -159,7 +196,11 @@ fn a_raise_after_the_game_is_over_is_rejected_unless_outside_run() {
 fn an_undecided_gate_still_halts_incomplete() {
     let runtime = runtime("gate041-undecided");
     let (start, _) = runtime.begin(Seed::default()).unwrap();
-    let (_, output) = accepted(&runtime, &start, json!({"type": "raiseOccasion", "occasion": "listen"}));
+    let (_, output) = accepted(
+        &runtime,
+        &start,
+        json!({"type": "raiseOccasion", "occasion": "listen"}),
+    );
     match output.await_ {
         Await::Halted { kind, message, .. } => {
             assert_eq!(kind, "incomplete");
@@ -194,7 +235,10 @@ fn the_gate_query_answers_the_raise_rule_and_changes_nothing() {
     assert_eq!(snapshot(&runtime, &start), before);
 
     // A decided-closed gate serializes without `unresolved`.
-    assert_eq!(serde_json::to_value(CLOSED).unwrap(), json!({"open": false}));
+    assert_eq!(
+        serde_json::to_value(CLOSED).unwrap(),
+        json!({"open": false})
+    );
 }
 
 fn play(script: &str, events: bool) -> std::process::Output {

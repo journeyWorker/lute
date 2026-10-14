@@ -30,7 +30,10 @@ pub fn check_host_condition(input: &CheckInput, defs: &DefTable<'_>, raw: &str) 
     let (mut folded, _, _) = fold_env(&doc, input);
     folded.env.defs = defs.bodies.keys().cloned().collect();
     folded.env.def_params = defs.params.clone();
-    folded.env.def_types.retain(|name, _| defs.bodies.contains_key(name));
+    folded
+        .env
+        .def_types
+        .retain(|name, _| defs.bodies.contains_key(name));
     folded.def_bodies = defs.bodies.clone();
     let scope = crate::defassign::Scope::of(&folded);
     let ctx = Ctx {

@@ -576,7 +576,10 @@ pub fn number_type_sites(value: &serde_yaml::Value) -> Vec<NumberSite> {
 /// the declaration decodes and the rest of it is still read; the caller has
 /// reported each site and marks its declaration invalid.
 pub fn patch_number_sites(value: &mut serde_yaml::Value, sites: &[NumberSite]) {
-    fn node<'a>(v: &'a mut serde_yaml::Value, path: &[YamlKey]) -> Option<&'a mut serde_yaml::Value> {
+    fn node<'a>(
+        v: &'a mut serde_yaml::Value,
+        path: &[YamlKey],
+    ) -> Option<&'a mut serde_yaml::Value> {
         let Some((step, rest)) = path.split_first() else {
             return Some(v);
         };

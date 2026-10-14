@@ -30,13 +30,14 @@ mod directives;
 mod files;
 mod manifest;
 mod occasions;
-mod vocabulary;
 #[cfg(test)]
 mod tests;
+mod vocabulary;
 
 pub use directives::{
-    AttrDecl, BridgeRef, BUILTIN_LOWERING_HOOKS, DirectiveDecl, DirectiveEffects, DirectiveState,
-    FactEffect, FactEffectArg, Lowering, OpBy, SlotDecl, WriteDecl, WriteValue, WRITE_OPS,
+    AttrDecl, BridgeRef, DirectiveDecl, DirectiveEffects, DirectiveState, FactEffect,
+    FactEffectArg, Lowering, OpBy, SlotDecl, WriteDecl, WriteValue, BUILTIN_LOWERING_HOOKS,
+    WRITE_OPS,
 };
 pub use files::{
     BridgeFile, DefsFile, DirectivesFile, EnumDecl, EnumsFile, EventsFile, FrontmatterDecl,
@@ -53,8 +54,3 @@ pub use vocabulary::{
     BridgeCapability, CastBody, CastFile, CastMember, DefDecl, DefParam, EventDecl, ProviderDecl,
     RewardKindBody, RewardKindDecl, RewardKindsFile, RewardTarget, StateShape, StateTemplate,
 };
-
-
-
-
-

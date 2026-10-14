@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Span, TextIndex};
-use lute_load::nearest_manifest_dir;
-use lute_model::assemble_root_scenario;
 /// (`PathBuf`'s `Ord` is byte-lexicographic) for deterministic output
 /// regardless of the OS's directory-iteration order. Symlinked directories
 /// are not followed (`read_dir`'s default — avoids an infinite walk on a
@@ -32,7 +30,8 @@ use lute_model::assemble_root_scenario;
 /// failure (e.g. a dangling symlink) is surfaced exactly like every other
 /// walk I/O error above, never silently skipped or panicked on.
 pub(crate) use lute_load::find_lute_files;
-
+use lute_load::nearest_manifest_dir;
+use lute_model::assemble_root_scenario;
 
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
@@ -63,7 +62,12 @@ pub(crate) fn collect_project_docs(
     providers: Option<&Path>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
-    collect_project_docs_in(&lute_model::ModelMemo::default(), dir, providers, single_root)
+    collect_project_docs_in(
+        &lute_model::ModelMemo::default(),
+        dir,
+        providers,
+        single_root,
+    )
 }
 
 /// [`collect_project_docs`] over `memo`'s models.
@@ -84,7 +88,10 @@ pub(crate) fn collect_project_docs_in(
         let mut file_results = Vec::new();
         let mut by_root = BTreeMap::new();
         for model in memo.roots_under(dir, &opts).map_err(|error| {
-            eprintln!("lute: cannot build project under {}: {error}", dir.display());
+            eprintln!(
+                "lute: cannot build project under {}: {error}",
+                dir.display()
+            );
             ExitCode::from(2)
         })? {
             let root = model.root().to_path_buf();
@@ -128,7 +135,13 @@ pub(crate) fn collect_project_inputs(
     ),
     ExitCode,
 > {
-    collect_project_inputs_in(&lute_model::ModelMemo::default(), dir, providers, single_root, wip)
+    collect_project_inputs_in(
+        &lute_model::ModelMemo::default(),
+        dir,
+        providers,
+        single_root,
+        wip,
+    )
 }
 
 /// [`collect_project_inputs`] over `memo`'s models.
@@ -162,7 +175,10 @@ pub(crate) fn collect_project_inputs_in(
         })?]
     } else {
         memo.roots_under(dir, &opts).map_err(|error| {
-            eprintln!("lute: cannot build project under {}: {error}", dir.display());
+            eprintln!(
+                "lute: cannot build project under {}: {error}",
+                dir.display()
+            );
             ExitCode::from(2)
         })?
     };
@@ -174,14 +190,15 @@ pub(crate) fn collect_project_inputs_in(
         for doc in model.documents() {
             for message in &doc.project_diags {
                 if reported.insert(message.clone()) {
-                eprintln!("{}", lute_load::project_diag_line(message));
+                    eprintln!("{}", lute_load::project_diag_line(message));
                 }
             }
             file_results.push((doc.path.clone(), doc.check.clone()));
-            by_root
-                .entry(root.clone())
-                .or_insert_with(Vec::new)
-                .push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
+            by_root.entry(root.clone()).or_insert_with(Vec::new).push((
+                doc.path.clone(),
+                doc.doc.clone(),
+                doc.folded.clone(),
+            ));
         }
     }
     let mut resolve_messages = BTreeSet::new();
@@ -237,7 +254,6 @@ pub(crate) fn normalize_span_from_text(text: &str, span: Span) -> Span {
     Span::from_bytes(&idx, start, end)
 }
 
-
 /// The manifest a single-file command (`check`, `trace`, `compile`,
 /// `compile-stream`, `context`) resolves `file` against when no `--project`
 /// was passed: [`nearest_manifest_dir`], announced once on stderr. `None`
@@ -292,7 +308,12 @@ pub(crate) fn project_assert_relations(
     single_root: bool,
     providers: Option<&Path>,
 ) -> Option<BTreeSet<String>> {
-    project_assert_relations_in(&lute_model::ModelMemo::default(), root, single_root, providers)
+    project_assert_relations_in(
+        &lute_model::ModelMemo::default(),
+        root,
+        single_root,
+        providers,
+    )
 }
 
 /// [`project_assert_relations`] over `memo`'s models.
@@ -302,7 +323,8 @@ pub(crate) fn project_assert_relations_in(
     single_root: bool,
     providers: Option<&Path>,
 ) -> Option<BTreeSet<String>> {
-    let (file_results, by_root) = collect_project_docs_in(memo, root, providers, single_root).ok()?;
+    let (file_results, by_root) =
+        collect_project_docs_in(memo, root, providers, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
     let docs = lute_model::project_docs(group);

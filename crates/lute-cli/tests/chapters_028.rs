@@ -110,7 +110,9 @@ fn the_removed_sequence_key_is_refused_and_never_read() {
     let (code, out) = run(&dir, &["check-project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
-        out.contains("lute.project.yaml:8:1: error [E-REMOVED-PROJECT-KEY] `sequence:` was removed"),
+        out.contains(
+            "lute.project.yaml:8:1: error [E-REMOVED-PROJECT-KEY] `sequence:` was removed"
+        ),
         "{out}"
     );
     assert!(out.contains("`chapters: [{ on: <occasion>"), "{out}");

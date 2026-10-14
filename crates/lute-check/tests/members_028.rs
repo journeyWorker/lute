@@ -15,7 +15,6 @@ use lute_check::{
 use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 
-
 fn input(text: &str) -> CheckInput {
     let mut snapshot = lute_manifest::core::load_core_snapshot();
     for (name, entity) in [("talk", "villager"), ("landed", "fish"), ("visit", "place")] {

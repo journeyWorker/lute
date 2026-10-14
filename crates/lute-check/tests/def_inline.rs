@@ -49,13 +49,19 @@ fn count(c: &[String], code: &str) -> usize {
 
 #[test]
 fn constant_def_in_attr_is_accepted() {
-    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" duration=@closeUp}\n"));
+    let c = codes_in(
+        None,
+        &scene("", "::camera{focus=\"demo\" duration=@closeUp}\n"),
+    );
     assert_eq!(count(&c, "E-ATTR-DEF-DYNAMIC"), 0, "got {c:?}");
 }
 
 #[test]
 fn state_dependent_def_in_attr_is_rejected() {
-    let c = codes_in(None, &scene("", "::camera{focus=\"demo\" duration=@zoomDyn}\n"));
+    let c = codes_in(
+        None,
+        &scene("", "::camera{focus=\"demo\" duration=@zoomDyn}\n"),
+    );
     assert_eq!(count(&c, "E-ATTR-DEF-DYNAMIC"), 1, "got {c:?}");
 }
 

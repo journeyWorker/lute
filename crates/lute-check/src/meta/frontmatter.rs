@@ -1,5 +1,5 @@
-use super::*;
 use super::diagnostic_helpers::unrepresentable_yaml;
+use super::*;
 
 /// dsl 0.15.0 §3: lift one authored `extra:` YAML value into the JSON-ready
 /// `extra_block` on `TypedMeta`. The value MUST be a mapping with string keys
@@ -413,9 +413,12 @@ pub fn parse_meta_kind_with_defaults(
     // POV that may speak `mono`. A list of strings; anything else is
     // `E-META-VALUE` and lifts nothing.
     if let Some(value) = map.get(yaml_key("monoSpeakers")) {
-        let ids: Option<Vec<String>> = value
-            .as_sequence()
-            .and_then(|items| items.iter().map(|i| i.as_str().map(str::to_string)).collect());
+        let ids: Option<Vec<String>> = value.as_sequence().and_then(|items| {
+            items
+                .iter()
+                .map(|i| i.as_str().map(str::to_string))
+                .collect()
+        });
         match ids {
             Some(ids) => typed.mono_speakers = ids,
             None => diags.push(err_at(

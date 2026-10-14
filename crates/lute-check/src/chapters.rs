@@ -29,9 +29,9 @@ use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_manifest::semantics::chapters::PROVENANCE;
 use lute_syntax::ast::Document;
 
+use crate::check::FoldedEnv;
 use crate::project_doc::ProjectDoc;
 use crate::DocKind;
-use crate::check::FoldedEnv;
 
 /// The line that separates a scene's authored frontmatter from the keys
 /// [`apply_chapters`] derived. A YAML comment, so the frontmatter still
@@ -306,10 +306,11 @@ fn chain_ranges(text: &str, body: usize, end: usize) -> Vec<(usize, usize)> {
         let trimmed = line.trim_start_matches([' ', '\t']);
         let lead = line.len() - trimmed.len();
         if (trimmed.starts_with("- ") || trimmed.trim_end() == "-")
-            && indent.is_none_or(|i| i == lead) {
-                indent = Some(lead);
-                starts.push(offset + lead);
-            }
+            && indent.is_none_or(|i| i == lead)
+        {
+            indent = Some(lead);
+            starts.push(offset + lead);
+        }
         offset += line.len();
     }
     if starts.is_empty() {
@@ -441,7 +442,9 @@ fn answered_occasions(scope: &ProjectScope<'_>) -> BTreeMap<String, usize> {
     for (item, folded) in scope.docs.iter().zip(scope.foldeds) {
         let doc = item.doc;
         let scene_on = folded.typed.beat.as_ref().map(|b| b.on.clone());
-        let ons = scene_on.into_iter().chain(
+        let ons = scene_on
+            .into_iter()
+            .chain(
                 doc.entries
                     .iter()
                     .filter_map(|e| Some(e.on.as_ref()?.0.clone())),
@@ -520,7 +523,11 @@ fn own(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
 
 /// A frontmatter's effective (authored or derived) top-level string `key`.
 fn effective(typed: &crate::meta::TypedMeta, key: &str) -> Option<String> {
-    typed.yaml()?.get(key)?.as_str().map(|s| s.trim().to_string())
+    typed
+        .yaml()?
+        .get(key)?
+        .as_str()
+        .map(|s| s.trim().to_string())
 }
 
 /// Whether the `after:` formula cannot hold until `visited("<id>")` does.
@@ -537,10 +544,7 @@ fn requires_visited(f: &lute_manifest::semantics::prereq::PrereqFormula, id: &st
 /// Whether a chain waits on scene `id`: some scene's `after:` the chain
 /// derived cannot hold until `visited("<id>")` does — so a stop there is
 /// [`W_CHAPTER_STALL`]'s to report.
-pub fn waited_on(
-    docs: &[ProjectDoc<'_>],
-    id: &str,
-) -> bool {
+pub fn waited_on(docs: &[ProjectDoc<'_>], id: &str) -> bool {
     docs.iter().any(|item| {
         derived(&item.doc.meta, "after")
             && effective(item.meta, "after")
@@ -735,7 +739,9 @@ fn check_chain(
             // T1-14: a scene without `target:` on a targeted occasion
             // answers every target — the chapter would replay at each one.
             if decl.is_some_and(|d| d.target.takes_target())
-                && scope.typed_of(path).is_none_or(|typed| own(typed, "target").is_none())
+                && scope
+                    .typed_of(path)
+                    .is_none_or(|typed| own(typed, "target").is_none())
             {
                 out.push((
                     Some(path.clone()),
@@ -955,11 +961,7 @@ mod tests {
     }
 
     fn typed(doc: &Document) -> crate::meta::TypedMeta {
-        crate::meta::parse_meta(
-            &doc.meta,
-            &lute_manifest::core::load_core_snapshot(),
-        )
-        .0
+        crate::meta::parse_meta(&doc.meta, &lute_manifest::core::load_core_snapshot()).0
     }
 
     #[test]

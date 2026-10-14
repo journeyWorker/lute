@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_ir::*;
 use crate::ir::*;
+use lute_ir::*;
 /// A stable semantic capability identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticId(&'static str);
 
 impl SemanticId {
-    pub const fn as_str(self) -> &'static str { self.0 }
+    pub const fn as_str(self) -> &'static str {
+        self.0
+    }
 }
 
 /// One registered engine-visible behavior.
@@ -35,48 +37,310 @@ const LORE: SemanticId = SemanticId("lute.lore/1");
 const IDENTITY_RENAMES: SemanticId = SemanticId("lute.identity.renames/1");
 
 pub const REGISTRY: &[SemanticEntry] = &[
-    SemanticEntry { id: CORE, module: "core", behavior: "baseline execution" },
-    SemanticEntry { id: STAGING, module: "staging", behavior: "presentation requests" },
-    SemanticEntry { id: TIMELINE, module: "timeline", behavior: "timeline ordering and joins" },
-    SemanticEntry { id: QUEST_LIFECYCLE, module: "quest", behavior: "quest lifecycle" },
-    SemanticEntry { id: QUEST_REWARDS, module: "quest", behavior: "quest rewards and grants" },
-    SemanticEntry { id: CLOCK, module: "time", behavior: "narrative clock" },
-    SemanticEntry { id: CADENCE, module: "time", behavior: "cadence spending" },
-    SemanticEntry { id: SEASONS, module: "time", behavior: "season resets" },
-    SemanticEntry { id: SELECTION, module: "occasions", behavior: "occasion selection" },
-    SemanticEntry { id: GATES, module: "occasions", behavior: "occasion gates" },
-    SemanticEntry { id: FACTS, module: "knowledge", behavior: "facts and queries" },
-    SemanticEntry { id: RULES, module: "knowledge", behavior: "Datalog rules" },
-    SemanticEntry { id: TEMPORAL, module: "knowledge", behavior: "temporal fact queries" },
-    SemanticEntry { id: LORE, module: "lore", behavior: "lore disclosure and read state" },
-    SemanticEntry { id: IDENTITY_RENAMES, module: "identity", behavior: "save identity migrations" },
+    SemanticEntry {
+        id: CORE,
+        module: "core",
+        behavior: "baseline execution",
+    },
+    SemanticEntry {
+        id: STAGING,
+        module: "staging",
+        behavior: "presentation requests",
+    },
+    SemanticEntry {
+        id: TIMELINE,
+        module: "timeline",
+        behavior: "timeline ordering and joins",
+    },
+    SemanticEntry {
+        id: QUEST_LIFECYCLE,
+        module: "quest",
+        behavior: "quest lifecycle",
+    },
+    SemanticEntry {
+        id: QUEST_REWARDS,
+        module: "quest",
+        behavior: "quest rewards and grants",
+    },
+    SemanticEntry {
+        id: CLOCK,
+        module: "time",
+        behavior: "narrative clock",
+    },
+    SemanticEntry {
+        id: CADENCE,
+        module: "time",
+        behavior: "cadence spending",
+    },
+    SemanticEntry {
+        id: SEASONS,
+        module: "time",
+        behavior: "season resets",
+    },
+    SemanticEntry {
+        id: SELECTION,
+        module: "occasions",
+        behavior: "occasion selection",
+    },
+    SemanticEntry {
+        id: GATES,
+        module: "occasions",
+        behavior: "occasion gates",
+    },
+    SemanticEntry {
+        id: FACTS,
+        module: "knowledge",
+        behavior: "facts and queries",
+    },
+    SemanticEntry {
+        id: RULES,
+        module: "knowledge",
+        behavior: "Datalog rules",
+    },
+    SemanticEntry {
+        id: TEMPORAL,
+        module: "knowledge",
+        behavior: "temporal fact queries",
+    },
+    SemanticEntry {
+        id: LORE,
+        module: "lore",
+        behavior: "lore disclosure and read state",
+    },
+    SemanticEntry {
+        id: IDENTITY_RENAMES,
+        module: "identity",
+        behavior: "save identity migrations",
+    },
 ];
 /// Serialized keys covered by the semantic-field invariant. Dynamic maps
 /// (`extra`, plugin `fields`, labels, and locale text) are intentionally
 /// traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
-    "accept","action","activate","active","advances","after","also","amount","amountMax","amountMin",
-    "anchor","and","applies","args","arms","as","asserts","assetId","at","atom","authored","beat","body",
-    "bool","branchId","bridgeResult","by","call","capabilitySnapshot","category","cel","celEnv",
-    "character","clock","commands","complete","completed","component","cond","contentLang","converge","costume",
-    "credits","day","dayEnd","dayStart","days","default","delay","derive","dialogMotion","display",
-    "distinct","document","domain","done","double","duration","effects","else","emotion","entities",
-    "entityKind","enums","episode","episodeId","event","excludes","exit","explanation","expr",
-    "extra","fail","family","fields","first","focus","follows","forKind","format","forms","formula","framing",
-    "from","functions","gates","has","head","heading","id","identityRenames","indefinite","index",
-    "int","irVersion","is","key","kind","l","label","labelForms","labels","last","layout","length",
-    "lhs","lineId","list","live","localeSegments","location","lute","members","meta","mood","move",
-    "n","name","negated","node","objectives","occasion","on","once","op","open","optional",
-    "options","or","order","otherwise","outcome","outsideRun","overloads","owner","param","params","path",
-    "pause","placeholders","playback","plugin","posReset","position","prefix","preload",
-    "prereqEdges","priority","prompt","provenance","quest","r","raise","raiseAtStart","raisedWhen",
-    "rate","raw","rearm","reason","ref","relation","relations","requiredSemantics","reserved",
-    "result","retracts","return","rewards","rhs","role","rules","season","seasons","section",
-    "sections","seedFacts","segments","selectionKey","series","share","slot","slots","sound",
-    "source","speaker","spentBy","start","state","stop","string","styles","subject","tag","target",
-    "targetKind","terminal","terminalPersists","terms","test","text","texts","then","tier","time",
-    "timeline","timeout","timing","title","titleLineId","to","token","transition","type","until","value",
-    "variables","variant","visibleWhen","visited","voiceKey","volume","wait","week","when",
+    "accept",
+    "action",
+    "activate",
+    "active",
+    "advances",
+    "after",
+    "also",
+    "amount",
+    "amountMax",
+    "amountMin",
+    "anchor",
+    "and",
+    "applies",
+    "args",
+    "arms",
+    "as",
+    "asserts",
+    "assetId",
+    "at",
+    "atom",
+    "authored",
+    "beat",
+    "body",
+    "bool",
+    "branchId",
+    "bridgeResult",
+    "by",
+    "call",
+    "capabilitySnapshot",
+    "category",
+    "cel",
+    "celEnv",
+    "character",
+    "clock",
+    "commands",
+    "complete",
+    "completed",
+    "component",
+    "cond",
+    "contentLang",
+    "converge",
+    "costume",
+    "credits",
+    "day",
+    "dayEnd",
+    "dayStart",
+    "days",
+    "default",
+    "delay",
+    "derive",
+    "dialogMotion",
+    "display",
+    "distinct",
+    "document",
+    "domain",
+    "done",
+    "double",
+    "duration",
+    "effects",
+    "else",
+    "emotion",
+    "entities",
+    "entityKind",
+    "enums",
+    "episode",
+    "episodeId",
+    "event",
+    "excludes",
+    "exit",
+    "explanation",
+    "expr",
+    "extra",
+    "fail",
+    "family",
+    "fields",
+    "first",
+    "focus",
+    "follows",
+    "forKind",
+    "format",
+    "forms",
+    "formula",
+    "framing",
+    "from",
+    "functions",
+    "gates",
+    "has",
+    "head",
+    "heading",
+    "id",
+    "identityRenames",
+    "indefinite",
+    "index",
+    "int",
+    "irVersion",
+    "is",
+    "key",
+    "kind",
+    "l",
+    "label",
+    "labelForms",
+    "labels",
+    "last",
+    "layout",
+    "length",
+    "lhs",
+    "lineId",
+    "list",
+    "live",
+    "localeSegments",
+    "location",
+    "lute",
+    "members",
+    "meta",
+    "mood",
+    "move",
+    "n",
+    "name",
+    "negated",
+    "node",
+    "objectives",
+    "occasion",
+    "on",
+    "once",
+    "op",
+    "open",
+    "optional",
+    "options",
+    "or",
+    "order",
+    "otherwise",
+    "outcome",
+    "outsideRun",
+    "overloads",
+    "owner",
+    "param",
+    "params",
+    "path",
+    "pause",
+    "placeholders",
+    "playback",
+    "plugin",
+    "posReset",
+    "position",
+    "prefix",
+    "preload",
+    "prereqEdges",
+    "priority",
+    "prompt",
+    "provenance",
+    "quest",
+    "r",
+    "raise",
+    "raiseAtStart",
+    "raisedWhen",
+    "rate",
+    "raw",
+    "rearm",
+    "reason",
+    "ref",
+    "relation",
+    "relations",
+    "requiredSemantics",
+    "reserved",
+    "result",
+    "retracts",
+    "return",
+    "rewards",
+    "rhs",
+    "role",
+    "rules",
+    "season",
+    "seasons",
+    "section",
+    "sections",
+    "seedFacts",
+    "segments",
+    "selectionKey",
+    "series",
+    "share",
+    "slot",
+    "slots",
+    "sound",
+    "source",
+    "speaker",
+    "spentBy",
+    "start",
+    "state",
+    "stop",
+    "string",
+    "styles",
+    "subject",
+    "tag",
+    "target",
+    "targetKind",
+    "terminal",
+    "terminalPersists",
+    "terms",
+    "test",
+    "text",
+    "texts",
+    "then",
+    "tier",
+    "time",
+    "timeline",
+    "timeout",
+    "timing",
+    "title",
+    "titleLineId",
+    "to",
+    "token",
+    "transition",
+    "type",
+    "until",
+    "value",
+    "variables",
+    "variant",
+    "visibleWhen",
+    "visited",
+    "voiceKey",
+    "volume",
+    "wait",
+    "week",
+    "when",
 ];
 
 pub fn field_is_registered(field: &str) -> bool {
@@ -148,28 +412,50 @@ pub fn collect(ir: &ExecutionIr) -> Collected {
     if ir.clock.is_some() {
         out.add(CLOCK, None, "clock declaration");
     }
-    if !ir.gates.is_empty() || ir.terminal.is_some() || ir.terminal_persists || !ir.outside_run.is_empty() {
+    if !ir.gates.is_empty()
+        || ir.terminal.is_some()
+        || ir.terminal_persists
+        || !ir.outside_run.is_empty()
+    {
         out.add(GATES, None, "occasion gate or terminal policy");
     }
     if !ir.seasons.is_empty() {
         out.add(SEASONS, None, "season declaration");
     }
     for gate in &ir.gates {
-        scan_cel(&mut out, &gate.raised_when, Some(&gate.occasion), "gate condition");
+        scan_cel(
+            &mut out,
+            &gate.raised_when,
+            Some(&gate.occasion),
+            "gate condition",
+        );
     }
     if let Some(terminal) = &ir.terminal {
         scan_cel(&mut out, terminal, None, "terminal condition");
     }
     for season in &ir.seasons {
-        scan_cel(&mut out, &season.live, Some(&season.name), "season live condition");
+        scan_cel(
+            &mut out,
+            &season.live,
+            Some(&season.name),
+            "season live condition",
+        );
     }
 
     for state in &ir.state {
-        if state.path.starts_with("entry.") && (state.path.ends_with(".read") || state.path.ends_with(".everRead")) {
+        if state.path.starts_with("entry.")
+            && (state.path.ends_with(".read") || state.path.ends_with(".everRead"))
+        {
             out.add(LORE, Some(&state.path), "lore read state");
         }
-        if state.owner == Some(lute_manifest::types::Owner::Engine) && state.path.starts_with("quest.") {
-            out.add(QUEST_LIFECYCLE, Some(&state.path), "engine-owned quest state");
+        if state.owner == Some(lute_manifest::types::Owner::Engine)
+            && state.path.starts_with("quest.")
+        {
+            out.add(
+                QUEST_LIFECYCLE,
+                Some(&state.path),
+                "engine-owned quest state",
+            );
         }
     }
 
@@ -192,8 +478,15 @@ fn add_stamp(out: &mut Collected, stamp: &Stamp, addr: Option<&str>, owner: Sema
     if stamp.timing.timeline.is_some() || stamp.timing.at.is_some() {
         out.add(TIMELINE, addr, "timeline clip placement");
     }
-    if stamp.timing.wait.is_some() || stamp.timing.duration.is_some() || stamp.timing.delay.is_some() {
-        out.add(if owner == STAGING { STAGING } else { CORE }, addr, "command timing");
+    if stamp.timing.wait.is_some()
+        || stamp.timing.duration.is_some()
+        || stamp.timing.delay.is_some()
+    {
+        out.add(
+            if owner == STAGING { STAGING } else { CORE },
+            addr,
+            "command timing",
+        );
     }
     if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.extra.is_empty() {
         out.add(CORE, addr, "record provenance or plugin stamp data");
@@ -212,19 +505,29 @@ fn scan_expr(out: &mut Collected, expr: &ExprNode, addr: Option<&str>, what: &st
                 "validAt" | "now" => out.add(TEMPORAL, addr, what),
                 _ => {}
             }
-            for arg in args { scan_expr(out, arg, addr, what); }
+            for arg in args {
+                scan_expr(out, arg, addr, what);
+            }
         }
         ExprNode::Unary { l, .. } => scan_expr(out, l, addr, what),
         ExprNode::Binary { l, r, .. } => {
             scan_expr(out, l, addr, what);
             scan_expr(out, r, addr, what);
         }
-        ExprNode::Cond { cond, then, otherwise } => {
+        ExprNode::Cond {
+            cond,
+            then,
+            otherwise,
+        } => {
             scan_expr(out, cond, addr, what);
             scan_expr(out, then, addr, what);
             scan_expr(out, otherwise, addr, what);
         }
-        ExprNode::List { list } => for item in list { scan_expr(out, item, addr, what) },
+        ExprNode::List { list } => {
+            for item in list {
+                scan_expr(out, item, addr, what)
+            }
+        }
         ExprNode::Index { index, key } => {
             scan_expr(out, index, addr, what);
             scan_expr(out, key, addr, what);
@@ -237,13 +540,18 @@ fn scan_expr(out: &mut Collected, expr: &ExprNode, addr: Option<&str>, what: &st
 }
 
 fn scan_placeholder(out: &mut Collected, placeholder: &Placeholder, addr: Option<&str>) {
-    if let Placeholder::Ref { expr: Some(pair), .. } = placeholder {
+    if let Placeholder::Ref {
+        expr: Some(pair), ..
+    } = placeholder
+    {
         scan_cel(out, pair, addr, "placeholder expression");
     }
 }
 
 fn scan_placeholders(out: &mut Collected, placeholders: &[Placeholder], addr: Option<&str>) {
-    for placeholder in placeholders { scan_placeholder(out, placeholder, addr); }
+    for placeholder in placeholders {
+        scan_placeholder(out, placeholder, addr);
+    }
 }
 
 fn collect_command(out: &mut Collected, command: &Command) {
@@ -253,83 +561,176 @@ fn collect_command(out: &mut Collected, command: &Command) {
             scan_placeholders(out, &c.placeholders, Some(&c.position));
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
-        Command::Bg(c) => { out.add(STAGING, Some(&c.position), "bg command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Music(c) => { out.add(STAGING, Some(&c.position), "music command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Sfx(c) => { out.add(STAGING, Some(&c.position), "sfx command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Vfx(c) => { out.add(STAGING, Some(&c.position), "vfx command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Actor(c) => { out.add(STAGING, Some(&c.position), "actor command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Camera(c) => { out.add(STAGING, Some(&c.position), "camera command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Cg(c) => { out.add(STAGING, Some(&c.position), "cg command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Video(c) => { out.add(STAGING, Some(&c.position), "video command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Sequence(c) => { out.add(STAGING, Some(&c.position), "sequence command"); add_stamp(out, &c.stamp, Some(&c.position), STAGING); }
-        Command::Set(c) => { out.add(CORE, Some(&c.position), "set command"); scan_cel(out, &c.value, Some(&c.position), "set value"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
-        Command::Assert(c) => { out.add(FACTS, Some(&c.position), "assert command"); add_stamp(out, &c.stamp, Some(&c.position), FACTS); }
-        Command::Retract(c) => { out.add(FACTS, Some(&c.position), "retract command"); add_stamp(out, &c.stamp, Some(&c.position), FACTS); }
+        Command::Bg(c) => {
+            out.add(STAGING, Some(&c.position), "bg command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Music(c) => {
+            out.add(STAGING, Some(&c.position), "music command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Sfx(c) => {
+            out.add(STAGING, Some(&c.position), "sfx command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Vfx(c) => {
+            out.add(STAGING, Some(&c.position), "vfx command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Actor(c) => {
+            out.add(STAGING, Some(&c.position), "actor command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Camera(c) => {
+            out.add(STAGING, Some(&c.position), "camera command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Cg(c) => {
+            out.add(STAGING, Some(&c.position), "cg command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Video(c) => {
+            out.add(STAGING, Some(&c.position), "video command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Sequence(c) => {
+            out.add(STAGING, Some(&c.position), "sequence command");
+            add_stamp(out, &c.stamp, Some(&c.position), STAGING);
+        }
+        Command::Set(c) => {
+            out.add(CORE, Some(&c.position), "set command");
+            scan_cel(out, &c.value, Some(&c.position), "set value");
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
+        }
+        Command::Assert(c) => {
+            out.add(FACTS, Some(&c.position), "assert command");
+            add_stamp(out, &c.stamp, Some(&c.position), FACTS);
+        }
+        Command::Retract(c) => {
+            out.add(FACTS, Some(&c.position), "retract command");
+            add_stamp(out, &c.stamp, Some(&c.position), FACTS);
+        }
         Command::Choice(c) => {
             out.add(CORE, Some(&c.position), "choice command");
-            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.position), "choice option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.position)); }
+            for option in &c.options {
+                if let Some(pair) = &option.when {
+                    scan_cel(out, pair, Some(&c.position), "choice option guard");
+                }
+                scan_placeholders(out, &option.placeholders, Some(&c.position));
+            }
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Match(c) => {
             out.add(CORE, Some(&c.position), "match command");
-            if let Some(pair) = &c.subject { scan_cel(out, pair, Some(&c.position), "match subject"); }
-            for arm in &c.arms { scan_cel(out, &arm.test, Some(&c.position), "match arm test"); }
+            if let Some(pair) = &c.subject {
+                scan_cel(out, pair, Some(&c.position), "match subject");
+            }
+            for arm in &c.arms {
+                scan_cel(out, &arm.test, Some(&c.position), "match arm test");
+            }
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Hub(c) => {
             out.add(CORE, Some(&c.position), "hub command");
-            for option in &c.options { if let Some(pair) = &option.when { scan_cel(out, pair, Some(&c.position), "hub option guard"); } scan_placeholders(out, &option.placeholders, Some(&c.position)); }
+            for option in &c.options {
+                if let Some(pair) = &option.when {
+                    scan_cel(out, pair, Some(&c.position), "hub option guard");
+                }
+                scan_placeholders(out, &option.placeholders, Some(&c.position));
+            }
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Jump(c) => out.add(CORE, Some(&c.position), "jump command"),
-        Command::End(c) => { out.add(CORE, Some(&c.position), "end command"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
+        Command::End(c) => {
+            out.add(CORE, Some(&c.position), "end command");
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
+        }
         Command::Barrier(c) => out.add(TIMELINE, Some(&c.position), "timeline barrier"),
         Command::Quest(c) => collect_quest(out, c),
         Command::On(c) => {
             out.add(QUEST_LIFECYCLE, Some(&c.position), "quest handler");
-            if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "handler condition"); }
+            if let Some(pair) = &c.when {
+                scan_cel(out, pair, Some(&c.position), "handler condition");
+            }
             add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE);
         }
-        Command::Plugin(c) => { out.add(CORE, Some(&c.position), "plugin record"); add_stamp(out, &c.stamp, Some(&c.position), CORE); }
+        Command::Plugin(c) => {
+            out.add(CORE, Some(&c.position), "plugin record");
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
+        }
         Command::Entry(c) => collect_entry(out, c),
-        Command::Accept(c) => { out.add(QUEST_LIFECYCLE, Some(&c.position), "accept command"); add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE); }
+        Command::Accept(c) => {
+            out.add(QUEST_LIFECYCLE, Some(&c.position), "accept command");
+            add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE);
+        }
         Command::Beat(c) => collect_beat(out, c),
     }
 }
 
 fn collect_quest(out: &mut Collected, c: &QuestCmd) {
     out.add(QUEST_LIFECYCLE, Some(&c.position), "quest command");
-    if let Some(pair) = &c.start { scan_cel(out, pair, Some(&c.position), "quest start"); }
-    if let Some(pair) = &c.fail { scan_cel(out, pair, Some(&c.position), "quest fail"); }
-    if c.tier.as_ref().is_some_and(|tier| matches!(tier, QuestTier::Season(_))) { out.add(SEASONS, Some(&c.position), "season quest tier"); }
-    if c.rearm.is_some() { out.add(SEASONS, Some(&c.position), "quest rearm"); }
+    if let Some(pair) = &c.start {
+        scan_cel(out, pair, Some(&c.position), "quest start");
+    }
+    if let Some(pair) = &c.fail {
+        scan_cel(out, pair, Some(&c.position), "quest fail");
+    }
+    if c.tier
+        .as_ref()
+        .is_some_and(|tier| matches!(tier, QuestTier::Season(_)))
+    {
+        out.add(SEASONS, Some(&c.position), "season quest tier");
+    }
+    if c.rearm.is_some() {
+        out.add(SEASONS, Some(&c.position), "quest rearm");
+    }
     collect_rewards(out, &c.rewards, Some(&c.position));
     for objective in &c.objectives {
         out.add(QUEST_LIFECYCLE, Some(&c.position), "objective lifecycle");
         scan_cel(out, &objective.done, Some(&c.position), "objective done");
-        if let Some(pair) = &objective.visible_when { scan_cel(out, pair, Some(&c.position), "objective visibility"); }
-        if let Some(pair) = &objective.by { scan_cel(out, pair, Some(&c.position), "objective deadline"); }
-        if let Some(pair) = &objective.until { scan_cel(out, pair, Some(&c.position), "objective deadline"); }
+        if let Some(pair) = &objective.visible_when {
+            scan_cel(out, pair, Some(&c.position), "objective visibility");
+        }
+        if let Some(pair) = &objective.by {
+            scan_cel(out, pair, Some(&c.position), "objective deadline");
+        }
+        if let Some(pair) = &objective.until {
+            scan_cel(out, pair, Some(&c.position), "objective deadline");
+        }
         collect_rewards(out, &objective.rewards, Some(&c.position));
     }
     add_stamp(out, &c.stamp, Some(&c.position), QUEST_LIFECYCLE);
 }
 
 fn collect_rewards(out: &mut Collected, rewards: &[RewardEntry], addr: Option<&str>) {
-    if rewards.is_empty() { return; }
+    if rewards.is_empty() {
+        return;
+    }
     out.add(QUEST_REWARDS, addr, "reward declarations");
     for reward in rewards {
-        if let Some(pair) = &reward.when { scan_cel(out, pair, addr, "reward condition"); }
+        if let Some(pair) = &reward.when {
+            scan_cel(out, pair, addr, "reward condition");
+        }
     }
 }
 
 fn collect_entry(out: &mut Collected, c: &EntryCmd) {
     out.add(LORE, Some(&c.position), "entry command");
-    if c.on.is_some() || c.priority.is_some() || c.target_kind.is_some() || c.for_kind.is_some() { out.add(SELECTION, Some(&c.position), "entry occasion selection"); }
-    if c.once.is_some() || c.share.is_some() || c.spent_by.is_some() { out.add(CADENCE, Some(&c.position), "entry cadence"); }
-    if c.advances.is_some() { out.add(CLOCK, Some(&c.position), "entry clock advance"); }
-    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "entry condition"); }
-    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.position), "entry spentBy"); }
+    if c.on.is_some() || c.priority.is_some() || c.target_kind.is_some() || c.for_kind.is_some() {
+        out.add(SELECTION, Some(&c.position), "entry occasion selection");
+    }
+    if c.once.is_some() || c.share.is_some() || c.spent_by.is_some() {
+        out.add(CADENCE, Some(&c.position), "entry cadence");
+    }
+    if c.advances.is_some() {
+        out.add(CLOCK, Some(&c.position), "entry clock advance");
+    }
+    if let Some(pair) = &c.when {
+        scan_cel(out, pair, Some(&c.position), "entry condition");
+    }
+    if let Some(pair) = &c.spent_by {
+        scan_cel(out, pair, Some(&c.position), "entry spentBy");
+    }
     add_stamp(out, &c.stamp, Some(&c.position), LORE);
 }
 
@@ -337,17 +738,29 @@ fn collect_beat(out: &mut Collected, c: &BeatCmd) {
     out.add(LORE, Some(&c.position), "bundle beat command");
     out.add(SELECTION, Some(&c.position), "bundle beat candidate");
     out.add(CADENCE, Some(&c.position), "bundle beat cadence");
-    if c.advances.is_some() { out.add(CLOCK, Some(&c.position), "bundle beat clock advance"); }
-    if let Some(pair) = &c.when { scan_cel(out, pair, Some(&c.position), "bundle beat condition"); }
-    if let Some(pair) = &c.spent_by { scan_cel(out, pair, Some(&c.position), "bundle beat spentBy"); }
+    if c.advances.is_some() {
+        out.add(CLOCK, Some(&c.position), "bundle beat clock advance");
+    }
+    if let Some(pair) = &c.when {
+        scan_cel(out, pair, Some(&c.position), "bundle beat condition");
+    }
+    if let Some(pair) = &c.spent_by {
+        scan_cel(out, pair, Some(&c.position), "bundle beat spentBy");
+    }
     add_stamp(out, &c.stamp, Some(&c.position), LORE);
 }
 
 fn scan_beat_ir(out: &mut Collected, beat: &BeatIr) {
     out.add(CADENCE, None, "scene beat cadence");
-    if let Some(pair) = &beat.when { scan_cel(out, pair, None, "scene beat condition"); }
-    if let Some(pair) = &beat.spent_by { scan_cel(out, pair, None, "scene beat spentBy"); }
-    if beat.advances.is_some() { out.add(CLOCK, None, "scene beat clock advance"); }
+    if let Some(pair) = &beat.when {
+        scan_cel(out, pair, None, "scene beat condition");
+    }
+    if let Some(pair) = &beat.spent_by {
+        scan_cel(out, pair, None, "scene beat spentBy");
+    }
+    if beat.advances.is_some() {
+        out.add(CLOCK, None, "scene beat clock advance");
+    }
 }
 
 #[cfg(test)]
@@ -357,13 +770,19 @@ mod tests {
     #[test]
     fn registry_has_all_fifteen_ids() {
         assert_eq!(REGISTRY.len(), 15);
-        assert!(REGISTRY.iter().all(|entry| is_registered(entry.id.as_str())));
+        assert!(REGISTRY
+            .iter()
+            .all(|entry| is_registered(entry.id.as_str())));
     }
 
     #[test]
     fn follows_is_not_selection() {
         let mut ir = test_ir();
-        ir.prereq_edges.push(PrereqEdgeEntry { node: "q".into(), edge: PrereqEdge::Follows("p".into()), formula: None });
+        ir.prereq_edges.push(PrereqEdgeEntry {
+            node: "q".into(),
+            edge: PrereqEdge::Follows("p".into()),
+            formula: None,
+        });
         assert!(!collect(&ir).ids.contains(SELECTION.as_str()));
     }
 
@@ -371,9 +790,20 @@ mod tests {
     fn rewardless_quest_is_not_rewards() {
         let mut ir = test_ir();
         ir.commands.push(Command::Quest(QuestCmd {
-            position: "q".into(), id: "q".into(), title: None, title_line_id: None,
-            start: None, fail: None, objectives: vec![], rewards: vec![], tier: None,
-            activate: None, complete: None, accept: None, rearm: None, stamp: Stamp::default(),
+            position: "q".into(),
+            id: "q".into(),
+            title: None,
+            title_line_id: None,
+            start: None,
+            fail: None,
+            objectives: vec![],
+            rewards: vec![],
+            tier: None,
+            activate: None,
+            complete: None,
+            accept: None,
+            rearm: None,
+            stamp: Stamp::default(),
         }));
         let got = collect(&ir);
         assert!(got.ids.contains(QUEST_LIFECYCLE.as_str()));
@@ -410,7 +840,9 @@ mod tests {
                     for (key, sub) in map {
                         // 0.41.0 §4.4: the generated index `$defs` describe
                         // `project.index.json`, never an artifact.
-                        if key != "properties" && !(path == "/$defs" && INDEX_ONLY.contains(&key.as_str())) {
+                        if key != "properties"
+                            && !(path == "/$defs" && INDEX_ONLY.contains(&key.as_str()))
+                        {
                             walk(sub, &format!("{path}/{key}"), missing);
                         }
                     }
@@ -424,8 +856,14 @@ mod tests {
             }
         }
         const INDEX_ONLY: [&str; 8] = [
-            "projectIndex", "indexDocument", "indexEntry", "indexBeat", "indexOccasion",
-            "indexStateDomain", "indexDef", "fieldType",
+            "projectIndex",
+            "indexDocument",
+            "indexEntry",
+            "indexBeat",
+            "indexOccasion",
+            "indexStateDomain",
+            "indexDef",
+            "fieldType",
         ];
         let minor = crate::LUTE_IR_VERSION.rsplit_once('.').expect("x.y.z").0;
         let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -435,29 +873,65 @@ mod tests {
         let schema: serde_json::Value = serde_json::from_str(&text).expect("schema parses");
         let mut missing = Vec::new();
         walk(&schema, "", &mut missing);
-        assert!(missing.is_empty(), "schema properties without a field-table row: {missing:#?}");
+        assert!(
+            missing.is_empty(),
+            "schema properties without a field-table row: {missing:#?}"
+        );
     }
 
     #[test]
     fn field_table_is_sorted_for_binary_search() {
-        assert!(FIELD_TABLE.windows(2).all(|w| w[0] < w[1]), "FIELD_TABLE must be sorted and unique");
+        assert!(
+            FIELD_TABLE.windows(2).all(|w| w[0] < w[1]),
+            "FIELD_TABLE must be sorted and unique"
+        );
     }
 
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
-            kind: DocKind::Scene, lute: "0.42.0".into(), ir_version: "0.42.0".into(),
-            capability_snapshot: "cap".into(), identity_renames: vec![], required_semantics: vec![],
-            meta: ArtifactMeta::Scene(SceneMeta { id: "s".into(), character: None, season: None, episode: None, episode_id: None, title: None, extra: BTreeMap::new(), plugin: BTreeMap::new(), beat: None }),
-            state: vec![], entities: vec![], enums: vec![], relations: vec![], seed_facts: vec![], rules: vec![], commands: vec![], prereq_edges: vec![], sections: vec![], clock: None, gates: vec![], terminal: None, terminal_persists: false, seasons: vec![], outside_run: vec![], cel_env: CelEnv::default(),
+            kind: DocKind::Scene,
+            lute: "0.42.0".into(),
+            ir_version: "0.42.0".into(),
+            capability_snapshot: "cap".into(),
+            identity_renames: vec![],
+            required_semantics: vec![],
+            meta: ArtifactMeta::Scene(SceneMeta {
+                id: "s".into(),
+                character: None,
+                season: None,
+                episode: None,
+                episode_id: None,
+                title: None,
+                extra: BTreeMap::new(),
+                plugin: BTreeMap::new(),
+                beat: None,
+            }),
+            state: vec![],
+            entities: vec![],
+            enums: vec![],
+            relations: vec![],
+            seed_facts: vec![],
+            rules: vec![],
+            commands: vec![],
+            prereq_edges: vec![],
+            sections: vec![],
+            clock: None,
+            gates: vec![],
+            terminal: None,
+            terminal_persists: false,
+            seasons: vec![],
+            outside_run: vec![],
+            cel_env: CelEnv::default(),
         }
     }
     #[test]
     fn identity_rename_ledger_requires_registered_semantic() {
         let mut ir = test_ir();
-        ir.identity_renames.push(lute_manifest::project::IdentityRename {
-            from: "quest:old".into(),
-            to: "quest:new".into(),
-        });
+        ir.identity_renames
+            .push(lute_manifest::project::IdentityRename {
+                from: "quest:old".into(),
+                to: "quest:new".into(),
+            });
         let collected = collect(&ir);
         assert!(collected.ids.contains("lute.identity.renames/1"));
         assert!(is_registered("lute.identity.renames/1"));

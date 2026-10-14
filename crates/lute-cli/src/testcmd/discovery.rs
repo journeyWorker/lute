@@ -40,7 +40,11 @@ fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
 /// Every closed-key violation in one test file, both levels, in document
 /// order, each at `file:line:col` of the key (or value) it names. Empty
 /// when the file is well-keyed.
-pub(super) fn closed_key_violations(map: &serde_yaml::Mapping, text: &str, file: &Path) -> Vec<String> {
+pub(super) fn closed_key_violations(
+    map: &serde_yaml::Mapping,
+    text: &str,
+    file: &Path,
+) -> Vec<String> {
     use lute_trace::YamlStep::{Key, Value};
     let at = |path: &[lute_trace::YamlStep<'_>]| {
         let s = (1..=path.len())
@@ -131,7 +135,11 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
         refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
     }
     if let Some(quests) = map.get("quests").and_then(serde_yaml::Value::as_mapping) {
-        refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+        refs.extend(
+            quests
+                .keys()
+                .filter_map(|id| id.as_str().map(str::to_string)),
+        );
     }
     if let Some(id) = map.get("beat").and_then(serde_yaml::Value::as_str) {
         refs.insert(id.to_string());
@@ -151,7 +159,9 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
 }
 
 fn collect_test_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
-    let Some(map) = value.as_mapping() else { return };
+    let Some(map) = value.as_mapping() else {
+        return;
+    };
     for (key, value) in map {
         let Some(key) = key.as_str() else { continue };
         match key {
@@ -162,7 +172,11 @@ fn collect_test_expect_context_references(value: &serde_yaml::Value, refs: &mut 
             }
             "quests" => {
                 if let Some(quests) = value.as_mapping() {
-                    refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+                    refs.extend(
+                        quests
+                            .keys()
+                            .filter_map(|id| id.as_str().map(str::to_string)),
+                    );
                 }
             }
             _ => {}

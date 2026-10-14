@@ -32,7 +32,11 @@ fn compiled(scratch: &str) -> (lute_scratch::ScratchDir, PathBuf) {
         .arg(&out)
         .output()
         .unwrap();
-    assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
     (scratch, out)
 }
 
@@ -59,16 +63,25 @@ fn runtime(scratch: &str) -> Runtime {
 
 fn step(runtime: &Runtime, state: &State, value: Json) -> (State, Output) {
     runtime
-        .step(state.clone(), serde_json::from_value::<Input>(value).unwrap())
+        .step(
+            state.clone(),
+            serde_json::from_value::<Input>(value).unwrap(),
+        )
         .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message))
 }
 
 fn refused(runtime: &Runtime, state: &State, value: Json) -> Rejected {
     let before = serde_json::to_string(&runtime.snapshot(state)).unwrap();
     let (after, rejected) = runtime
-        .step(state.clone(), serde_json::from_value::<Input>(value).unwrap())
+        .step(
+            state.clone(),
+            serde_json::from_value::<Input>(value).unwrap(),
+        )
         .unwrap_err();
-    assert_eq!(serde_json::to_string(&runtime.snapshot(&after)).unwrap(), before);
+    assert_eq!(
+        serde_json::to_string(&runtime.snapshot(&after)).unwrap(),
+        before
+    );
     rejected
 }
 
@@ -170,7 +183,10 @@ fn answer_writes_land_at_the_call_before_the_lines_after_it() {
     );
     // After the call's own effects, before anything the walk does next.
     let first_host = recs.iter().position(|r| r["by"] == "host").unwrap();
-    let between: Vec<&Json> = recs[plugin + 1..first_host].iter().map(|r| &r["bridgeResult"]).collect();
+    let between: Vec<&Json> = recs[plugin + 1..first_host]
+        .iter()
+        .map(|r| &r["bridgeResult"])
+        .collect();
     assert_eq!(between, [&json!("outcome"), &json!("hpFloor")]);
     assert_eq!(lines(&output), ["Won.", "Floor 3, score 5."]);
 
@@ -254,8 +270,15 @@ fn unresolved_or_clock_answer_writes_are_refused() {
 fn every_plugin_record_carries_attrs() {
     let runtime = runtime("bridge041-attrs");
     let (start, _) = runtime.begin(Seed::default()).unwrap();
-    let (_, output) = step(&runtime, &start, json!({"type": "raiseOccasion", "occasion": "give"}));
-    let plugin = records(&output).into_iter().find(|r| r["kind"] == "plugin").unwrap();
+    let (_, output) = step(
+        &runtime,
+        &start,
+        json!({"type": "raiseOccasion", "occasion": "give"}),
+    );
+    let plugin = records(&output)
+        .into_iter()
+        .find(|r| r["kind"] == "plugin")
+        .unwrap();
     assert_eq!(plugin["tag"], "handOver");
     assert_eq!(
         plugin["attrs"],
@@ -302,7 +325,11 @@ fn check_edited(scratch: &str, edits: &[(&str, &str, &str)]) -> (bool, String) {
         assert!(text.contains(from), "{file} has no `{from}`");
         std::fs::write(&path, text.replace(from, to)).unwrap();
     }
-    let out = Command::new(BIN).arg("check-project").arg(&*project).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&*project)
+        .output()
+        .unwrap();
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),

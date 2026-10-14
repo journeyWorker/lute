@@ -672,4 +672,3 @@ pub(crate) fn beat_unreachable_message(scene: &str, when: &str, reasons: Option<
 pub(crate) fn scene_beat_name(folded: &FoldedEnv) -> String {
     crate::meta::canonical_scene_key(&folded.typed).unwrap_or_else(|| "this scene".to_string())
 }
-

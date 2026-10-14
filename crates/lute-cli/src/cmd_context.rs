@@ -11,8 +11,8 @@ use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
 use crate::context;
-use crate::project::{discover_project, resolve_project};
 use crate::output::{pretty_json, write_stdout};
+use crate::project::{discover_project, resolve_project};
 use lute_load::{build_input, BuiltInput};
 use lute_model::{ModelOptions, ProjectModel};
 use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
@@ -30,7 +30,10 @@ use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 /// capability QUERY, not validation: it emits the surface regardless of any
 /// document diagnostics (`fold_env` is pure/total). Exit `0` on success, `2` on
 /// an I/O failure (unreadable file), matching `run_check`.
-#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI flags are kept explicit at the command boundary"
+)]
 pub(crate) fn run_context(
     file: &Path,
     json: bool,
@@ -130,7 +133,10 @@ fn run_authoring_context(
     }
     ExitCode::SUCCESS
 }
-#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI flags are kept explicit at the command boundary"
+)]
 fn run_task_context(
     file: &Path,
     json: bool,
@@ -251,13 +257,20 @@ fn run_task_context(
     let identity = {
         let mut value = serde_json::to_value(&node.identity).unwrap_or_default();
         if key.kind == NodeKind::Line {
-            if let Some(scope) = model.documents().iter().filter_map(|document| document.artifact.as_ref())
+            if let Some(scope) = model
+                .documents()
+                .iter()
+                .filter_map(|document| document.artifact.as_ref())
                 .flat_map(|artifact| artifact.commands.iter())
                 .find_map(|command| match command {
-                    lute_compile::Command::Line(line) if line.line_id == key.key =>
-                        line.stamp.source.as_ref().map(|source| source.scope.clone()),
+                    lute_compile::Command::Line(line) if line.line_id == key.key => line
+                        .stamp
+                        .source
+                        .as_ref()
+                        .map(|source| source.scope.clone()),
                     _ => None,
-                }) {
+                })
+            {
                 if let serde_json::Value::Object(map) = &mut value {
                     map.insert("componentScope".into(), serde_json::Value::String(scope));
                 }
@@ -316,11 +329,17 @@ fn run_position_context(
 ) -> ExitCode {
     let (path, line, column) = match parse_position(spec) {
         Ok(value) => value,
-        Err(error) => { eprintln!("lute: invalid --at: {error}"); return ExitCode::from(2); }
+        Err(error) => {
+            eprintln!("lute: invalid --at: {error}");
+            return ExitCode::from(2);
+        }
     };
     let source = match std::fs::read_to_string(&path) {
         Ok(source) => source,
-        Err(error) => { eprintln!("lute: cannot read {}: {error}", path.display()); return ExitCode::from(2); }
+        Err(error) => {
+            eprintln!("lute: cannot read {}: {error}", path.display());
+            return ExitCode::from(2);
+        }
     };
     // Preserve the legacy `--at` note: this path probed the nearest manifest
     // even when an explicit project was supplied, while the project still won.
@@ -330,19 +349,28 @@ fn run_position_context(
     } else {
         resolve_project(&path, None)
     };
-    let Some(built) = build_input(&path, providers, root.as_deref(), permission_profile) else { return ExitCode::from(2); };
+    let Some(built) = build_input(&path, providers, root.as_deref(), permission_profile) else {
+        return ExitCode::from(2);
+    };
     let (doc, _) = lute_syntax::parse(&source);
     let Some(offset) = line_column_offset(&source, line, column) else {
         eprintln!("lute: --at coordinate is outside the source");
         return ExitCode::from(2);
     };
     let resolution = match lute_resolve::resolve_position(
-        lute_resolve::PositionQuery { document: &doc, source: &source, byte_offset: offset },
+        lute_resolve::PositionQuery {
+            document: &doc,
+            source: &source,
+            byte_offset: offset,
+        },
         &built.input.imports,
         &built.input.snapshot,
     ) {
         Ok(resolution) => resolution,
-        Err(error) => { eprintln!("lute: position query refused: {error:?}"); return ExitCode::from(1); }
+        Err(error) => {
+            eprintln!("lute: position query refused: {error:?}");
+            return ExitCode::from(1);
+        }
     };
     let value = serde_json::json!({
         "schemaVersion": "0.36.0.position",
@@ -355,24 +383,46 @@ fn run_position_context(
 
 fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
     let text = if json {
-        match pretty_json(&value) { Ok(s) => format!("{s}\n"), Err(error) => { eprintln!("lute: failed to serialize context: {error}"); return ExitCode::from(2); } }
+        match pretty_json(&value) {
+            Ok(s) => format!("{s}\n"),
+            Err(error) => {
+                eprintln!("lute: failed to serialize context: {error}");
+                return ExitCode::from(2);
+            }
+        }
     } else {
         format!("{}\n", value)
     };
-    write_stdout(&text).map(|_| ExitCode::SUCCESS).unwrap_or_else(|_| ExitCode::from(2))
+    write_stdout(&text)
+        .map(|_| ExitCode::SUCCESS)
+        .unwrap_or_else(|_| ExitCode::from(2))
 }
 
 fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
-    let (ty, members) = symbol.ty.as_ref().map(attr_type_str).map_or((None, None), |(label, members)| (Some(label), members));
+    let (ty, members) = symbol
+        .ty
+        .as_ref()
+        .map(attr_type_str)
+        .map_or((None, None), |(label, members)| (Some(label), members));
     serde_json::json!({"name":symbol.name,"kind":symbol.kind,"type":ty,"members":members,"declaration":symbol.declaration.as_ref().map(|d| serde_json::json!({"file":d.file,"span":d.span}))})
 }
 
 fn parse_position(raw: &str) -> Result<(PathBuf, usize, usize), String> {
     let mut fields = raw.rsplitn(3, ':');
-    let column = fields.next().ok_or("missing column")?.parse().map_err(|_| "column must be a positive integer")?;
-    let line = fields.next().ok_or("missing line")?.parse().map_err(|_| "line must be a positive integer")?;
+    let column = fields
+        .next()
+        .ok_or("missing column")?
+        .parse()
+        .map_err(|_| "column must be a positive integer")?;
+    let line = fields
+        .next()
+        .ok_or("missing line")?
+        .parse()
+        .map_err(|_| "line must be a positive integer")?;
     let path = fields.next().ok_or("missing file")?;
-    if line == 0 || column == 0 { return Err("line and column are one-based".into()); }
+    if line == 0 || column == 0 {
+        return Err("line and column are one-based".into());
+    }
     Ok((PathBuf::from(path), line, column))
 }
 
@@ -406,23 +456,35 @@ fn line_column_offset(source: &str, line: usize, column: usize) -> Option<usize>
         units = next;
     }
     (units == wanted).then_some(start + line_text.len())
-
 }
 fn relative(model: &ProjectModel, path: &Path) -> String {
-    path.strip_prefix(model.root()).unwrap_or(path).to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
+    path.strip_prefix(model.root())
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 fn excerpt(source: &str, span: lute_core_span::Span) -> String {
     let start = span.byte_start.min(source.len());
     let end = span.byte_end.min(source.len());
-    source.get(start..end).unwrap_or_default().chars().take(512).collect()
+    source
+        .get(start..end)
+        .unwrap_or_default()
+        .chars()
+        .take(512)
+        .collect()
 }
 
 fn edge_json(edge: &GraphEdge, model: &ProjectModel, neighbor: &NodeKey) -> serde_json::Value {
     serde_json::json!({"node":neighbor.canonical(),"kind":edge.kind,"reason":edge.reason,"evidence":edge.evidence,"file":edge.file.as_ref().map(|p|relative(model,p)),"span":edge.span})
 }
 
-fn sort_and_truncate(items: &mut Vec<serde_json::Value>, limit: usize, kind: &str, not_included: &mut Vec<serde_json::Value>) {
+fn sort_and_truncate(
+    items: &mut Vec<serde_json::Value>,
+    limit: usize,
+    kind: &str,
+    not_included: &mut Vec<serde_json::Value>,
+) {
     items.sort_by_key(|item| item.to_string());
     let available = items.len();
     if available > limit {
@@ -432,7 +494,10 @@ fn sort_and_truncate(items: &mut Vec<serde_json::Value>, limit: usize, kind: &st
     }
 }
 
-struct Scripts { tests: Vec<serde_json::Value>, plays: Vec<serde_json::Value> }
+struct Scripts {
+    tests: Vec<serde_json::Value>,
+    plays: Vec<serde_json::Value>,
+}
 
 fn related_scripts(
     model: &ProjectModel,
@@ -447,14 +512,19 @@ fn related_scripts(
     let mut all = Vec::new();
     let mut stack = vec![model.root().to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
                 continue;
             }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
             if name.ends_with(".play.yaml") || name.ends_with(".test.yaml") {
                 all.push(path);
             }
@@ -463,7 +533,10 @@ fn related_scripts(
     all.sort();
     let mut omitted = 0usize;
     for path in all {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
         let static_match = if name.ends_with(".test.yaml") {
             crate::testcmd::static_context_references(&path)
         } else {
@@ -474,14 +547,18 @@ fn related_scripts(
         let selected = run.is_some_and(|selector| {
             selector == path || (selector.is_dir() && path.strip_prefix(selector).is_ok())
         });
-        let witnessed = selected
-            && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
+        let witnessed =
+            selected && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
         if !static_match && !witnessed {
             omitted += 1;
             continue;
         }
         let classification = if witnessed { "witnessed" } else { "static" };
-        let evidence = if witnessed { "witnessed" } else { "typed-id-or-lineId" };
+        let evidence = if witnessed {
+            "witnessed"
+        } else {
+            "typed-id-or-lineId"
+        };
         let value = serde_json::json!({
             "file": relative(model, &path),
             "classification": classification,
@@ -505,7 +582,6 @@ fn related_scripts(
     sort_and_truncate(&mut plays, limit, "plays", not_included);
     Scripts { tests, plays }
 }
-
 
 fn vocabulary(
     model: &ProjectModel,
@@ -562,7 +638,6 @@ fn vocabulary(
     sort_and_truncate(&mut enums, limit, "vocabulary.enums", not_included);
     serde_json::json!({"relations":relations,"state":state,"defs":defs,"enums":enums})
 }
-
 
 /// Assemble the deterministic JSON authoring surface: every map is a BTreeMap
 /// (key-sorted by construction) and every array is emitted in a stable order
@@ -659,7 +734,8 @@ fn authoring_surface(
         .decls
         .iter()
         .filter(|(path, _)| {
-            lute_manifest::semantics::cel_paths::reserved_path(path).is_none() && !path.starts_with("occasion.")
+            lute_manifest::semantics::cel_paths::reserved_path(path).is_none()
+                && !path.starts_with("occasion.")
         })
         .map(|(path, decl)| {
             // A path folded from a real `<branch>`/`<hub>` is an implicit choice
@@ -1150,10 +1226,14 @@ fn permissions_outline(p: &serde_json::Value) -> String {
 fn context_outline(surface: &serde_json::Value) -> String {
     let mut out = String::new();
     out.push_str("\nCEL conditions (standard CEL profile):\n");
-    out.push_str("  numbers: int and double are distinct; arithmetic/comparison do not mix them; \
-use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only\n");
-    out.push_str("  presence: has(path) tests whether path has an effective value; \
-\"key\" in map tests key presence\n");
+    out.push_str(
+        "  numbers: int and double are distinct; arithmetic/comparison do not mix them; \
+use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-only\n",
+    );
+    out.push_str(
+        "  presence: has(path) tests whether path has an effective value; \
+\"key\" in map tests key presence\n",
+    );
     out.push_str("  host functions:\n");
     out.push_str("    holds(string, list(dyn)) -> bool\n");
     out.push_str("    count(string, list(dyn)) -> int\n");
@@ -1161,8 +1241,10 @@ use int(x) or double(x) explicitly; int / int truncates toward zero; % is int-on
     out.push_str("    validAt(string, list(dyn), int) -> bool\n");
     out.push_str("    now() -> int\n");
     out.push_str("    visited(string) -> bool\n");
-    out.push_str("  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); \
-single quotes are required inside double-quoted attributes\n");
+    out.push_str(
+        "  relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); \
+single quotes are required inside double-quoted attributes\n",
+    );
     let _ = writeln!(
         out,
         "capabilitySnapshot: {}",
@@ -1414,7 +1496,10 @@ single quotes are required inside double-quoted attributes\n");
                 let _ = writeln!(out, "  textStyle spans (no attrs): {}", spans.join(", "));
             }
             None => {
-                let _ = writeln!(out, "  textStyle: not declared (declare `textStyle` in `enums:` for style spans)");
+                let _ = writeln!(
+                    out,
+                    "  textStyle: not declared (declare `textStyle` in `enums:` for style spans)"
+                );
             }
         }
         let _ = writeln!(out, "  {}", mods["lowering"].as_str().unwrap_or(""));

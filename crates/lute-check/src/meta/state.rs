@@ -74,7 +74,10 @@ pub(super) fn get_ref_list(map: &serde_yaml::Mapping, key: &str) -> Vec<String> 
     }
 }
 
-pub(super) fn get_sub_map(map: &serde_yaml::Mapping, key: &str) -> BTreeMap<String, serde_yaml::Value> {
+pub(super) fn get_sub_map(
+    map: &serde_yaml::Mapping,
+    key: &str,
+) -> BTreeMap<String, serde_yaml::Value> {
     match map.get(yaml_key(key)) {
         Some(serde_yaml::Value::Mapping(m)) => m
             .iter()

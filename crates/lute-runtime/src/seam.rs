@@ -212,11 +212,7 @@ fn judge_in<D: Driver>(
         Ok(true) => Judged::Open,
         Ok(false) => {
             let mut reads: Vec<GuardRead> = Vec::new();
-            for r in eval
-                .false_conjuncts(cond)
-                .into_iter()
-                .flat_map(|(_, r)| r)
-            {
+            for r in eval.false_conjuncts(cond).into_iter().flat_map(|(_, r)| r) {
                 if !reads.contains(&r) {
                     reads.push(r);
                 }
@@ -256,7 +252,10 @@ pub fn refusal(
         Closed::Gate { raw, reads } => {
             // A payload read is changed by this step's own `payload:`,
             // anything else before the raise.
-            let payload = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
+            let payload = format!(
+                "{}.",
+                lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD
+            );
             let by_payload =
                 |r: &GuardRead| matches!(r, GuardRead::Path(p, _) if p.starts_with(&payload));
             let by_clock = |r: &GuardRead| {
@@ -374,11 +373,16 @@ fn collect_persistent(
         return;
     }
     match expr {
-        Expr::Call(Func::Visited, args) if matches!(args.as_slice(), [Expr::Lit(Value::Str(_))]) => {
+        Expr::Call(Func::Visited, args)
+            if matches!(args.as_slice(), [Expr::Lit(Value::Str(_))]) =>
+        {
             keep(out, show(expr));
         }
         Expr::Call(Func::Holds | Func::Count | Func::CountDistinct, args)
-            if matches!(args.as_slice(), [Expr::Lit(Value::Str(_)), Expr::List(_), ..]) =>
+            if matches!(
+                args.as_slice(),
+                [Expr::Lit(Value::Str(_)), Expr::List(_), ..]
+            ) =>
         {
             if let [Expr::Lit(Value::Str(rel)), ..] = args.as_slice() {
                 if relation_kept(rel) == Some(true) {
@@ -481,7 +485,12 @@ mod tests {
                    && holds('owned', ['k', '_']) && quest.q.state == 'complete'";
         assert_eq!(
             reads(raw, None),
-            ["user.x", "visited('h')", "entry.lamp.everRead", "user.flags.a"]
+            [
+                "user.x",
+                "visited('h')",
+                "entry.lamp.everRead",
+                "user.flags.a"
+            ]
         );
         assert_eq!(
             reads(raw, Some(true)),

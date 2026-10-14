@@ -314,9 +314,9 @@ impl Shared {
                 eprintln!("lute: cannot build project {}: {error}", root.display());
                 match *error {
                     ModelError::Io(_) | ModelError::Input(_) => ExitCode::from(2),
-                    ModelError::Resolve(_)
-                    | ModelError::Compile { .. }
-                    | ModelError::Index(_) => ExitCode::from(1),
+                    ModelError::Resolve(_) | ModelError::Compile { .. } | ModelError::Index(_) => {
+                        ExitCode::from(1)
+                    }
                 }
             })?;
             if model.has_resolution_errors() {
@@ -336,7 +336,8 @@ impl Shared {
             shared.models.insert(canonical_key(&root), model);
         }
         for (root, single_root) in producer_roots {
-            let set = crate::project::project_assert_relations_in(memo, &root, single_root, providers);
+            let set =
+                crate::project::project_assert_relations_in(memo, &root, single_root, providers);
             shared.producers.insert(root, set);
         }
         for root in quest_roots {
@@ -361,15 +362,20 @@ impl Shared {
 
     /// Compile, once per project, what the expect-carrying `play_files`
     /// run over, from `memo`'s models.
-    fn compile_plays(&mut self, memo: &lute_model::ModelMemo, play_files: &[PathBuf], project: Option<&Path>) {
+    fn compile_plays(
+        &mut self,
+        memo: &lute_model::ModelMemo,
+        play_files: &[PathBuf],
+        project: Option<&Path>,
+    ) {
         for play_file in play_files {
             if !matches!(scan_play(play_file), PlayScan::Expect { .. }) {
                 continue;
             }
             if let Some(dir) = project_dir_of(play_file, project) {
-                self.plays.entry(dir.clone()).or_insert_with(|| {
-                    crate::play::PlayProject::compile_in(memo, &dir)
-                });
+                self.plays
+                    .entry(dir.clone())
+                    .or_insert_with(|| crate::play::PlayProject::compile_in(memo, &dir));
             }
         }
     }
@@ -431,7 +437,8 @@ impl Shared {
 /// transition observed by its trace. Seeded `complete` status is not enough.
 pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None)
+    else {
         return false;
     };
     let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
@@ -443,13 +450,10 @@ pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -
 /// Execute one scenario test in-process and report whether its trace visited a
 /// graph target. This deliberately uses the same trace runner as
 /// `constraints --run`; static YAML mentions are never treated as witnesses.
-pub(crate) fn run_test_for_context(
-    root: &Path,
-    script: &Path,
-    target: &NodeKey,
-) -> bool {
+pub(crate) fn run_test_for_context(root: &Path, script: &Path, target: &NodeKey) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None)
+    else {
         return false;
     };
     let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
@@ -459,9 +463,7 @@ pub(crate) fn run_test_for_context(
 }
 
 fn result_visits_target(result: &TestResult, target: &NodeKey) -> bool {
-    if target.kind == NodeKind::Quest
-        && result.completed_quests.contains(&target.key)
-    {
+    if target.kind == NodeKind::Quest && result.completed_quests.contains(&target.key) {
         return true;
     }
     if target.kind == NodeKind::Choice {
@@ -481,9 +483,10 @@ fn result_visits_target(result: &TestResult, target: &NodeKey) -> bool {
         return result.visited.iter().any(|entry| entry.ends_with(&suffix));
     }
     let suffix = format!(":{}", target.key);
-    result.visited.iter().any(|entry| {
-        entry == &target.canonical() || entry.ends_with(&suffix)
-    })
+    result
+        .visited
+        .iter()
+        .any(|entry| entry == &target.canonical() || entry.ends_with(&suffix))
 }
 
 fn traced_document_id(path: &str) -> Option<String> {
@@ -714,7 +717,10 @@ fn run_one_test(
     }
     let resolve_with = project.or(discovered.as_deref());
     if let Some(root) = resolve_with {
-        if let Some(faults) = shared.schema_faults(root).filter(|faults| !faults.is_empty()) {
+        if let Some(faults) = shared
+            .schema_faults(root)
+            .filter(|faults| !faults.is_empty())
+        {
             return Ok(TestResult::refused(
                 test_file,
                 display_path(root),
@@ -762,9 +768,16 @@ fn run_one_test(
             let built = standalone.as_ref().expect("standalone input is present");
             (
                 &built.input,
-                standalone_doc.as_ref().expect("standalone document is present"),
-                standalone_folded.as_ref().expect("standalone fold is present"),
-                &standalone_folded.as_ref().expect("standalone fold is present").typed,
+                standalone_doc
+                    .as_ref()
+                    .expect("standalone document is present"),
+                standalone_folded
+                    .as_ref()
+                    .expect("standalone fold is present"),
+                &standalone_folded
+                    .as_ref()
+                    .expect("standalone fold is present")
+                    .typed,
                 built.resolve_error,
             )
         }
@@ -916,7 +929,9 @@ fn run_one_test(
                 let doc_id = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
                     .ok()
                     .and_then(|v: serde_yaml::Value| {
-                        v.get("id").and_then(serde_yaml::Value::as_str).map(str::to_string)
+                        v.get("id")
+                            .and_then(serde_yaml::Value::as_str)
+                            .map(str::to_string)
                     });
                 serde_yaml::Value::Mapping(
                     m.iter()
@@ -1074,7 +1089,8 @@ fn run_one_test(
                 } else if d.span.line > 0 {
                     format!("{lute_display}:{}:{}", d.span.line, d.span.column)
                 } else {
-                    let key = (d.code == lute_manifest::semantics::gates::E_OCCASION_GATE).then_some("occasions");
+                    let key = (d.code == lute_manifest::semantics::gates::E_OCCASION_GATE)
+                        .then_some("occasions");
                     match key
                         .and_then(|k| lute_trace::yaml_span(&text, &[lute_trace::YamlStep::Key(k)]))
                     {
@@ -1357,8 +1373,14 @@ fn run_one_test(
                 if matched.is_empty() {
                     if let (Some(id), Some((mocks, checked))) = (id.as_deref(), &eligibility_mocks)
                     {
-                        alone =
-                            eligibility_alone(doc, input, checked, mocks, id, project_asserts.as_ref());
+                        alone = eligibility_alone(
+                            doc,
+                            input,
+                            checked,
+                            mocks,
+                            id,
+                            project_asserts.as_ref(),
+                        );
                         matched = alone
                             .as_ref()
                             .map(presented_eligibility)
@@ -1550,7 +1572,10 @@ fn run_one_test(
             .flat_map(|decision| {
                 [
                     format!("{}:{}", decision.construct, decision.id),
-                    format!("{}:{}:{}", decision.construct, decision.id, decision.outcome),
+                    format!(
+                        "{}:{}:{}",
+                        decision.construct, decision.id, decision.outcome
+                    ),
                 ]
             })
             .collect(),
@@ -1656,7 +1681,10 @@ fn run_one_play(
     };
     let project_display = display_path(&project_dir);
     let Some(play_project) = shared.plays.get(&project_dir) else {
-        return refused(project_display, "the project's compiled play input is unavailable");
+        return refused(
+            project_display,
+            "the project's compiled play input is unavailable",
+        );
     };
     let run = match crate::play::run_play_for_test(play_project, play_file, !no_derive) {
         Ok(run) => run,
@@ -1857,7 +1885,6 @@ fn names_presented(p: &str, id: &str) -> bool {
     p == id || p.ends_with(&format!(".{id}"))
 }
 
-
 /// `checked` (dsl 0.24.0, T3-5): the entry / bundle beat of `input`'s
 /// document is presented alone, from the mocked start, and its head's
 /// verdict read back. Empty when the document declares no such entry or
@@ -1912,7 +1939,10 @@ fn ineligible_notes(report: &TraceReport, asserted: Option<&serde_yaml::Value>) 
 /// awaited an accept, or that was never decided at all never left `unset`.
 /// Read off the transcript's decisions, the same record the human report
 /// prints, never a second lifecycle model.
-fn final_quests(report: &TraceReport, doc: &lute_syntax::ast::Document) -> BTreeMap<String, String> {
+fn final_quests(
+    report: &TraceReport,
+    doc: &lute_syntax::ast::Document,
+) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = doc
         .quests
         .iter()
@@ -2060,7 +2090,6 @@ fn yaml_key_spelling(message: &str) -> String {
     }
     out
 }
-
 
 /// Render a YAML scalar to its literal TEXT form, matching the shape
 /// `lute-trace`'s mock parser coerces `state:` values through (bool/number/

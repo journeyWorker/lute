@@ -1,6 +1,6 @@
 use lute_core_span::Evidence;
-use lute_semantic::{NodeKey, NodeKind, SemanticGraph};
 use lute_model::impact::{query_graph, ImpactTarget};
+use lute_semantic::{NodeKey, NodeKind, SemanticGraph};
 
 fn graph_with(edges: &[(NodeKey, NodeKey, &str, Evidence)]) -> SemanticGraph {
     let mut graph = SemanticGraph::default();
@@ -17,14 +17,16 @@ fn graph_with(edges: &[(NodeKey, NodeKey, &str, Evidence)]) -> SemanticGraph {
     }
     graph.outgoing.clear();
     for (index, edge) in graph.edges.iter().enumerate() {
-        graph.outgoing.entry(edge.source.clone()).or_default().push(index);
+        graph
+            .outgoing
+            .entry(edge.source.clone())
+            .or_default()
+            .push(index);
     }
     graph
 }
 
-fn graph_with_reasons(
-    edges: &[(NodeKey, NodeKey, &str, &str, Evidence)],
-) -> SemanticGraph {
+fn graph_with_reasons(edges: &[(NodeKey, NodeKey, &str, &str, Evidence)]) -> SemanticGraph {
     let mut graph = SemanticGraph::default();
     for (source, target, kind, reason, evidence) in edges {
         graph.edge(
@@ -39,7 +41,11 @@ fn graph_with_reasons(
     }
     graph.outgoing.clear();
     for (index, edge) in graph.edges.iter().enumerate() {
-        graph.outgoing.entry(edge.source.clone()).or_default().push(index);
+        graph
+            .outgoing
+            .entry(edge.source.clone())
+            .or_default()
+            .push(index);
     }
     graph
 }
@@ -78,7 +84,11 @@ fn reverse_closure_terminates_on_cycles_and_excludes_a_self_read() {
         &ImpactTarget::parse("state:a").unwrap(),
     );
     assert_eq!(item(&report, "state:b").evidence, Evidence::Proven);
-    assert!(report.items.values().flatten().all(|candidate| candidate.key != "state:a"));
+    assert!(report
+        .items
+        .values()
+        .flatten()
+        .all(|candidate| candidate.key != "state:a"));
 }
 
 #[test]
@@ -91,13 +101,34 @@ fn fact_overlap_accepts_wildcards_and_unbound_parameters_but_not_different_groun
     let different_line = line("different");
     let graph = graph_with(&[
         (wildcard, wildcard_line.clone(), "queries", Evidence::Proven),
-        (parameter, parameter_line.clone(), "queries", Evidence::Heuristic),
-        (different, different_line.clone(), "queries", Evidence::Proven),
+        (
+            parameter,
+            parameter_line.clone(),
+            "queries",
+            Evidence::Heuristic,
+        ),
+        (
+            different,
+            different_line.clone(),
+            "queries",
+            Evidence::Proven,
+        ),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:slew(regent)").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:slew(regent)").unwrap(),
+    );
     assert_eq!(item(&report, "line:wildcard").evidence, Evidence::Proven);
-    assert_eq!(item(&report, "line:parameter").evidence, Evidence::Heuristic);
-    assert!(report.items.values().flatten().all(|candidate| candidate.key != "line:different"));
+    assert_eq!(
+        item(&report, "line:parameter").evidence,
+        Evidence::Heuristic
+    );
+    assert!(report
+        .items
+        .values()
+        .flatten()
+        .all(|candidate| candidate.key != "line:different"));
 }
 
 #[test]
@@ -108,12 +139,40 @@ fn negated_count_count_distinct_and_valid_at_queries_remain_dependencies() {
     let distinct = line("distinct");
     let valid_at = line("valid-at");
     let graph = graph_with_reasons(&[
-        (target.clone(), negated.clone(), "queries", "!holds('knows', ['kai'])", Evidence::Proven),
-        (target.clone(), counted.clone(), "queries", "count('knows', ['kai'])", Evidence::Proven),
-        (target.clone(), distinct.clone(), "queries", "countDistinct('knows', ['kai'])", Evidence::Proven),
-        (target, valid_at.clone(), "queries", "validAt('knows', ['kai'], clock.index)", Evidence::Proven),
+        (
+            target.clone(),
+            negated.clone(),
+            "queries",
+            "!holds('knows', ['kai'])",
+            Evidence::Proven,
+        ),
+        (
+            target.clone(),
+            counted.clone(),
+            "queries",
+            "count('knows', ['kai'])",
+            Evidence::Proven,
+        ),
+        (
+            target.clone(),
+            distinct.clone(),
+            "queries",
+            "countDistinct('knows', ['kai'])",
+            Evidence::Proven,
+        ),
+        (
+            target,
+            valid_at.clone(),
+            "queries",
+            "validAt('knows', ['kai'], clock.index)",
+            Evidence::Proven,
+        ),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:knows(kai)").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:knows(kai)").unwrap(),
+    );
     for (key, reason) in [
         ("line:negated", "!holds('knows', ['kai'])"),
         ("line:count", "count('knows', ['kai'])"),
@@ -137,15 +196,41 @@ fn after_visited_and_lifecycle_gates_are_proven_edges() {
     let graph = graph_with(&[
         (visited.clone(), beat.clone(), "gates", Evidence::Proven),
         (after_scene, after_beat.clone(), "gates", Evidence::Proven),
-        (objective_done, quest_state.clone(), "writes", Evidence::Proven),
+        (
+            objective_done,
+            quest_state.clone(),
+            "writes",
+            Evidence::Proven,
+        ),
         (quest_state, reader.clone(), "reads", Evidence::Proven),
     ]);
-    let visited_report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("scene:hub.regentFell").unwrap());
-    assert_eq!(item(&visited_report, "beat:lore.regentTold").evidence, Evidence::Proven);
-    let after_report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("scene:hub.after").unwrap());
-    assert_eq!(item(&after_report, "beat:lore.after").evidence, Evidence::Proven);
-    let lifecycle_report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("state:quest.q.objectives.o.done").unwrap());
-    assert_eq!(item(&lifecycle_report, "line:quest-reader").evidence, Evidence::Proven);
+    let visited_report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("scene:hub.regentFell").unwrap(),
+    );
+    assert_eq!(
+        item(&visited_report, "beat:lore.regentTold").evidence,
+        Evidence::Proven
+    );
+    let after_report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("scene:hub.after").unwrap(),
+    );
+    assert_eq!(
+        item(&after_report, "beat:lore.after").evidence,
+        Evidence::Proven
+    );
+    let lifecycle_report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("state:quest.q.objectives.o.done").unwrap(),
+    );
+    assert_eq!(
+        item(&lifecycle_report, "line:quest-reader").evidence,
+        Evidence::Proven
+    );
 }
 
 #[test]
@@ -154,12 +239,24 @@ fn entry_read_and_ever_read_are_disclosure_dependencies() {
     let read_line = line("read-line");
     let ever_read_line = line("ever-read-line");
     let graph = graph_with(&[
-        (entry.clone(), read_line.clone(), "discloses", Evidence::Proven),
+        (
+            entry.clone(),
+            read_line.clone(),
+            "discloses",
+            Evidence::Proven,
+        ),
         (entry, ever_read_line.clone(), "discloses", Evidence::Proven),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("entry:codexThrone").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("entry:codexThrone").unwrap(),
+    );
     assert_eq!(item(&report, "line:read-line").evidence, Evidence::Proven);
-    assert_eq!(item(&report, "line:ever-read-line").evidence, Evidence::Proven);
+    assert_eq!(
+        item(&report, "line:ever-read-line").evidence,
+        Evidence::Proven
+    );
 }
 
 #[test]
@@ -171,15 +268,44 @@ fn definitions_and_components_expand_to_their_consumers() {
     let def_line = line("def-line");
     let component_line = line("component-line");
     let graph = graph_with(&[
-        (def.clone(), expanded_def.clone(), "expands", Evidence::Proven),
+        (
+            def.clone(),
+            expanded_def.clone(),
+            "expands",
+            Evidence::Proven,
+        ),
         (expanded_def, def_line.clone(), "reads", Evidence::Proven),
-        (component.clone(), expanded_component.clone(), "expands", Evidence::Proven),
-        (expanded_component, component_line.clone(), "reads", Evidence::Proven),
+        (
+            component.clone(),
+            expanded_component.clone(),
+            "expands",
+            Evidence::Proven,
+        ),
+        (
+            expanded_component,
+            component_line.clone(),
+            "reads",
+            Evidence::Proven,
+        ),
     ]);
-    let def_report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("def:readyForCrown").unwrap());
-    assert_eq!(item(&def_report, "line:def-line").evidence, Evidence::Proven);
-    let component_report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("component:greeting").unwrap());
-    assert_eq!(item(&component_report, "line:component-line").evidence, Evidence::Proven);
+    let def_report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("def:readyForCrown").unwrap(),
+    );
+    assert_eq!(
+        item(&def_report, "line:def-line").evidence,
+        Evidence::Proven
+    );
+    let component_report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("component:greeting").unwrap(),
+    );
+    assert_eq!(
+        item(&component_report, "line:component-line").evidence,
+        Evidence::Proven
+    );
 }
 
 #[test]
@@ -187,8 +313,15 @@ fn engine_owned_paths_are_listed_as_unknown() {
     let engine_path = state("quest.q.state");
     let reader = line("quest-state-reader");
     let graph = graph_with(&[(engine_path, reader.clone(), "reads", Evidence::Unknown)]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("state:quest.q.state").unwrap());
-    assert_eq!(item(&report, "line:quest-state-reader").evidence, Evidence::Unknown);
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("state:quest.q.state").unwrap(),
+    );
+    assert_eq!(
+        item(&report, "line:quest-state-reader").evidence,
+        Evidence::Unknown
+    );
 }
 
 #[test]
@@ -200,10 +333,16 @@ fn unbound_rule_variable_is_heuristic() {
         (target, derived.clone(), "derives", Evidence::Heuristic),
         (derived, reader.clone(), "queries", Evidence::Heuristic),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:told(regent)").unwrap());
-    assert_eq!(item(&report, "line:derived-reader").evidence, Evidence::Heuristic);
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:told(regent)").unwrap(),
+    );
+    assert_eq!(
+        item(&report, "line:derived-reader").evidence,
+        Evidence::Heuristic
+    );
 }
-
 
 #[test]
 fn def_raised_when_reaches_occasion_answering_scene() {
@@ -213,15 +352,49 @@ fn def_raised_when_reaches_occasion_answering_scene() {
     let scene = NodeKey::new(NodeKind::Scene, "last.rail");
     let scene_line = line("last.rail.brann");
     let graph = graph_with_reasons(&[
-        (target, def, "queries", "holds('felled', ['regent'])", Evidence::Proven),
-        (NodeKey::new(NodeKind::Def, "readyForCrown"), occasion.clone(), "gates", "@readyForCrown", Evidence::Proven),
-        (occasion, scene, "raises", "occasion lastDive raises answering scene", Evidence::Proven),
-        (NodeKey::new(NodeKind::Scene, "last.rail"), scene_line.clone(), "contains", "containing node contains line", Evidence::Proven),
+        (
+            target,
+            def,
+            "queries",
+            "holds('felled', ['regent'])",
+            Evidence::Proven,
+        ),
+        (
+            NodeKey::new(NodeKind::Def, "readyForCrown"),
+            occasion.clone(),
+            "gates",
+            "@readyForCrown",
+            Evidence::Proven,
+        ),
+        (
+            occasion,
+            scene,
+            "raises",
+            "occasion lastDive raises answering scene",
+            Evidence::Proven,
+        ),
+        (
+            NodeKey::new(NodeKind::Scene, "last.rail"),
+            scene_line.clone(),
+            "contains",
+            "containing node contains line",
+            Evidence::Proven,
+        ),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:felled(regent)").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:felled(regent)").unwrap(),
+    );
     let item = item(&report, "line:last.rail.brann");
     assert_eq!(item.evidence, Evidence::Proven);
-    assert_eq!(item.reasons.iter().map(|reason| reason.edge.as_str()).collect::<Vec<_>>(), ["queries", "gates", "raises", "contains"]);
+    assert_eq!(
+        item.reasons
+            .iter()
+            .map(|reason| reason.edge.as_str())
+            .collect::<Vec<_>>(),
+        ["queries", "gates", "raises", "contains"]
+    );
 }
 
 #[test]
@@ -233,7 +406,11 @@ fn objective_reward_is_reached_through_objective_containment() {
         (target, objective.clone(), "queries", Evidence::Proven),
         (objective, reward.clone(), "contains", Evidence::Proven),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:done(q)").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:done(q)").unwrap(),
+    );
     assert_eq!(item(&report, "reward:q.o#0").evidence, Evidence::Proven);
 }
 
@@ -246,9 +423,17 @@ fn objective_reward_when_attaches_to_reward_not_quest() {
         (target, reward.clone(), "reads", Evidence::Proven),
         (quest.clone(), reward, "contains", Evidence::Proven),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("state:run.active").unwrap());
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("state:run.active").unwrap(),
+    );
     assert_eq!(item(&report, "reward:q.o#0").evidence, Evidence::Proven);
-    assert!(report.items.values().flatten().all(|candidate| candidate.key != "quest:q"));
+    assert!(report
+        .items
+        .values()
+        .flatten()
+        .all(|candidate| candidate.key != "quest:q"));
 }
 
 #[test]
@@ -262,13 +447,26 @@ fn directive_effects_propagate_bound_fact_and_state_writes() {
         (owner, state_path, "writes", Evidence::Proven),
         (target, reader.clone(), "queries", Evidence::Proven),
     ]);
-    let report = query_graph(&graph, "fixture".into(), &ImpactTarget::parse("fact:gifted(brann,lantern)").unwrap());
-    assert_eq!(item(&report, "line:directive-consumer").evidence, Evidence::Proven);
+    let report = query_graph(
+        &graph,
+        "fixture".into(),
+        &ImpactTarget::parse("fact:gifted(brann,lantern)").unwrap(),
+    );
+    assert_eq!(
+        item(&report, "line:directive-consumer").evidence,
+        Evidence::Proven
+    );
 }
 
 #[test]
 fn rule_guard_fact_string_is_not_a_state_path() {
-    let span = lute_core_span::Span { byte_start: 0, byte_end: 32, line: 1, column: 1, utf16_range: (0, 32) };
+    let span = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 32,
+        line: 1,
+        column: 1,
+        utf16_range: (0, 32),
+    };
     let feed = lute_check::deps::slot_dependencies("holds('seen', ['run.enemy'])", span);
     assert!(feed.reads.is_empty());
     assert_eq!(feed.queries.len(), 1);

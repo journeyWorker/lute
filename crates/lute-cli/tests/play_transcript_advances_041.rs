@@ -62,7 +62,9 @@ fn events_are_unchanged() {
     let (code, events) = play(&["--events"]);
     assert_eq!(code, 0, "{events}");
     assert!(
-        events.contains("{\"from\":{\"day\":1,\"slot\":1},\"to\":{\"day\":2,\"slot\":0},\"type\":\"clock\"}"),
+        events.contains(
+            "{\"from\":{\"day\":1,\"slot\":1},\"to\":{\"day\":2,\"slot\":0},\"type\":\"clock\"}"
+        ),
         "{events}"
     );
     assert!(!events.contains("↻"), "{events}");

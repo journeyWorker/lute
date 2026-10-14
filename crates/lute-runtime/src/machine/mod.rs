@@ -92,7 +92,8 @@ enum Step {
 /// The `line` record fields that carry a line's identity and delivery —
 /// what a play transcript shows and `lute run --json` (the conformance
 /// contract) leaves out.
-pub const LINE_DELIVERY_KEYS: [&str; 6] = ["role", "lineId", "voiceKey", "as", "emotion", "segments"];
+pub const LINE_DELIVERY_KEYS: [&str; 6] =
+    ["role", "lineId", "voiceKey", "as", "emotion", "segments"];
 
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and
@@ -211,9 +212,9 @@ impl Carry {
 /// `Runtime::load` accepts (spec 0.38.0 §4.1). Keep in step with the
 /// `match kind` of the step dispatch.
 pub(crate) const COMMAND_KINDS: &[&str] = &[
-    "accept", "actor", "assert", "barrier", "beat", "bg", "camera", "cg", "choice", "end",
-    "entry", "hub", "jump", "line", "match", "music", "on", "plugin", "quest", "retract",
-    "sequence", "set", "sfx", "vfx", "video",
+    "accept", "actor", "assert", "barrier", "beat", "bg", "camera", "cg", "choice", "end", "entry",
+    "hub", "jump", "line", "match", "music", "on", "plugin", "quest", "retract", "sequence", "set",
+    "sfx", "vfx", "video",
 ];
 
 /// An artifact's command stream as a [`Machine`] walks it: read-only, so the
@@ -325,8 +326,7 @@ pub struct EvalSnapshot<'a> {
 }
 
 /// A callback invoked for every CEL evaluation performed by a machine.
-pub type EvalObserver =
-    Box<dyn for<'a> FnMut(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
+pub type EvalObserver = Box<dyn for<'a> FnMut(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 pub struct Machine<D: Driver> {
     driver: D,
     /// The artifact's command stream, shared by every Machine over it.
@@ -828,10 +828,22 @@ impl<'a> Site<'a> {
 fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
     match (cur, by) {
         (Value::Int(a), Value::Int(b)) => match op {
-            "+=" => a.checked_add(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
-            "-=" => a.checked_sub(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
-            "*=" => a.checked_mul(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
-            "/=" if *b != 0 => a.checked_div(*b).map(Value::Int).unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "+=" => a
+                .checked_add(*b)
+                .map(Value::Int)
+                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "-=" => a
+                .checked_sub(*b)
+                .map(Value::Int)
+                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "*=" => a
+                .checked_mul(*b)
+                .map(Value::Int)
+                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+            "/=" if *b != 0 => a
+                .checked_div(*b)
+                .map(Value::Int)
+                .unwrap_or_else(|| Value::Error("integer overflow".into())),
             "/=" => Value::Error("division by zero".into()),
             _ => Value::Error("invalid compound assignment".into()),
         },

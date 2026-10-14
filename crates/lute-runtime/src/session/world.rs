@@ -15,8 +15,8 @@ use super::project::ExecProject;
 use super::resolve::{ever_read_path, resolve_fact, resolve_state};
 use crate::datalog::Fact;
 use crate::{
-    BridgeCall, BridgeReply, Carry, Driver, EvalSnapshot, Forced, Machine, Menu, MockSet, OnUnknown,
-    Pick, Seed, UnknownSite, UnresolvedAtom, Value,
+    BridgeCall, BridgeReply, Carry, Driver, EvalSnapshot, Forced, Machine, Menu, MockSet,
+    OnUnknown, Pick, Seed, UnknownSite, UnresolvedAtom, Value,
 };
 
 /// A shared observer for every CEL evaluation made during a play.
@@ -171,7 +171,10 @@ impl World {
 pub fn json_to_value(j: &Json) -> Option<Value> {
     match j {
         Json::Bool(b) => Some(Value::Bool(*b)),
-        Json::Number(n) => n.as_i64().map(Value::Int).or_else(|| n.as_f64().map(Value::Double)),
+        Json::Number(n) => n
+            .as_i64()
+            .map(Value::Int)
+            .or_else(|| n.as_f64().map(Value::Double)),
         Json::String(s) => Some(Value::Str(s.clone())),
         _ => None,
     }
@@ -695,7 +698,8 @@ mod wire_tests {
             quests: BTreeMap::from([("main".into(), "active".into())]),
             clock: None,
         };
-        let expected = r#"{"state":{"run.ready":{"kind":"bool","value":true}},"quests":{"main":"active"}}"#;
+        let expected =
+            r#"{"state":{"run.ready":{"kind":"bool","value":true}},"quests":{"main":"active"}}"#;
         assert_eq!(serde_json::to_string(&view).unwrap(), expected);
         let decoded: WorldView = serde_json::from_str(expected).unwrap();
         assert_eq!(decoded.state, view.state);
@@ -721,8 +725,12 @@ mod wire_tests {
 
     #[test]
     fn day_granular_clock_view_json_example() {
-        let clock = ClockView { day: 3, ..ClockView::default() };
-        let expected = r#"{"day":3,"slot":null,"weekday":null,"weekdayLabel":null,"ended":null,"last":null}"#;
+        let clock = ClockView {
+            day: 3,
+            ..ClockView::default()
+        };
+        let expected =
+            r#"{"day":3,"slot":null,"weekday":null,"weekdayLabel":null,"ended":null,"last":null}"#;
         assert_eq!(serde_json::to_string(&clock).unwrap(), expected);
         assert_eq!(serde_json::from_str::<ClockView>(expected).unwrap(), clock);
     }

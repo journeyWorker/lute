@@ -171,10 +171,8 @@ fn print_facts_section(
         &vocab.effect_directives,
     );
     let producible = lute_check::producible::producible(vocab, &live);
-    let per_doc = lute_check::connectivity::assert_relations_per_doc(
-        docs,
-        &vocab.effect_directives,
-    );
+    let per_doc =
+        lute_check::connectivity::assert_relations_per_doc(docs, &vocab.effect_directives);
 
     outln!(
         out,
@@ -202,7 +200,6 @@ fn print_facts_section(
         }
     }
 }
-
 
 /// Print the explicit per-node `E-CONN-CYCLE` degradation note (C-honesty,
 /// persona review), mirroring [`reach_verdict_text`]'s cycle wording so a
@@ -413,7 +410,9 @@ pub(crate) fn run_scenario_envelope(
         Err(code) => return code,
     };
     let docs = lute_model::project_docs(
-        by_root.get(root).expect("resolved scenario root must have documents"),
+        by_root
+            .get(root)
+            .expect("resolved scenario root must have documents"),
     );
     if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
         let node_id = node_ref_to_id(&node_ref);

@@ -14,10 +14,14 @@ pub(super) fn judging_project(
         artifact: &artifact,
     }];
     let unions = lute_compile::index::IndexUnions {
-        occasions: occasions.iter().map(|(name, decl)| (name.clone(), decl.into())).collect(),
+        occasions: occasions
+            .iter()
+            .map(|(name, decl)| (name.clone(), decl.into()))
+            .collect(),
         ..Default::default()
     };
-    let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
+    let index =
+        lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions).ok()?;
     let artifacts = BTreeMap::from([(format!("{uri}.json"), serde_json::to_value(artifact).ok()?)]);
     ExecProject::from_index(index, artifacts).ok()
 }
@@ -53,8 +57,13 @@ pub(super) fn judge(
         .artifacts
         .get(&row.document)
         .and_then(|d| exec::session::beat_prereq(d, &row.id));
-    for atom in prereq.iter().flat_map(lute_manifest::semantics::prereq::atoms) {
-        if let lute_manifest::semantics::prereq::Atom::Completed(q) | lute_manifest::semantics::prereq::Atom::Active(q) = atom {
+    for atom in prereq
+        .iter()
+        .flat_map(lute_manifest::semantics::prereq::atoms)
+    {
+        if let lute_manifest::semantics::prereq::Atom::Completed(q)
+        | lute_manifest::semantics::prereq::Atom::Active(q) = atom
+        {
             if let lute_runtime::eval::Read::Value(Value::Str(s)) =
                 m.read(&format!("quest.{q}.state"))
             {
@@ -202,7 +211,12 @@ pub(super) fn when_text(
 /// Record the false premise of presented `id` ([`TraceReport::premises`]),
 /// and when it is a closed seam — the engine would not raise the beat's
 /// occasion — its structured form ([`TraceReport::not_raised`], HW27-04).
-pub(super) fn note_premise(m: &mut Machine<&mut TraceDriver<'_>>, id: &str, prem: &Premise, why: String) {
+pub(super) fn note_premise(
+    m: &mut Machine<&mut TraceDriver<'_>>,
+    id: &str,
+    prem: &Premise,
+    why: String,
+) {
     let d = m.driver_mut();
     d.premises.insert(id.to_string(), why);
     d.ineligible_by.insert(id.to_string(), prem.kind());

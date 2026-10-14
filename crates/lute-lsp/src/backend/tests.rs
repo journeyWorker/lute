@@ -1,32 +1,42 @@
+use super::document::{claimed_declaration_yaml, uri_to_path};
+use super::positions::position_to_byte;
+use super::yaml_spans::find_key_span;
 use super::*;
 use lute_core_span::{Span, TextIndex};
 use tower_lsp_server::ls_types::{Position, Range, TextEdit as LspTextEdit};
-use super::document::{uri_to_path, claimed_declaration_yaml};
-use super::positions::position_to_byte;
-use super::yaml_spans::find_key_span;
 
 mod declarations;
 
 #[test]
 fn formatting_edit_uses_cli_formatter_and_full_document_range() {
     let text = "## S\r\n@narrator: hi  \r\n";
-    let cli = lute_syntax::format_source(text, &lute_syntax::FormatOptions::default())
-        .unwrap();
+    let cli = lute_syntax::format_source(text, &lute_syntax::FormatOptions::default()).unwrap();
     let idx = TextIndex::new(text);
     let end = idx.position(text.len());
     let edit = LspTextEdit {
         range: Range {
-            start: Position { line: 0, character: 0 },
-            end: Position { line: end.line - 1, character: end.utf16_col },
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: end.line - 1,
+                character: end.utf16_col,
+            },
         },
         new_text: cli.text.clone(),
     };
     assert_eq!(edit.new_text, cli.text);
-    assert_eq!(edit.range.start, Position { line: 0, character: 0 });
+    assert_eq!(
+        edit.range.start,
+        Position {
+            line: 0,
+            character: 0
+        }
+    );
     assert_eq!(edit.range.end.line, 2);
     assert_eq!(edit.range.end.character, 0);
 }
-
 
 /// `position_to_byte` is the exact inverse of `TextIndex::position` on a
 /// multibyte document: every byte offset round-trips through its own Position.

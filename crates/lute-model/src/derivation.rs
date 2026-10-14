@@ -11,12 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use lute_core_span::{Evidence, Span};
-use lute_manifest::relations::KindShape;
 use lute_manifest::fact::{FactPattern, FactTerm};
+use lute_manifest::relations::KindShape;
 use lute_syntax::datalog::{BodyLiteral, RuleAtom, RuleTerm};
 
-use lute_semantic::{fact_node, format_fact, NodeKey, NodeKind, SemanticGraph};
 use crate::{ModelDocument, ProjectModel};
+use lute_semantic::{fact_node, format_fact, NodeKey, NodeKind, SemanticGraph};
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Value {
@@ -507,7 +507,10 @@ fn expand_pattern(
         })
         .collect()
 }
-#[expect(clippy::too_many_arguments, reason = "edge construction keeps the rule provenance fields explicit")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "edge construction keeps the rule provenance fields explicit"
+)]
 fn add_atom_edge(
     graph: &mut SemanticGraph,
     seen: &mut BTreeSet<EdgeKey>,
@@ -652,7 +655,10 @@ struct EdgeKey {
     end: usize,
 }
 
-#[expect(clippy::too_many_arguments, reason = "edge construction keeps the graph provenance fields explicit")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "edge construction keeps the graph provenance fields explicit"
+)]
 fn add_edge(
     graph: &mut SemanticGraph,
     seen: &mut BTreeSet<EdgeKey>,

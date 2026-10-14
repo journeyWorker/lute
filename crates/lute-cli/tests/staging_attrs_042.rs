@@ -14,8 +14,8 @@ const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
 /// `lute run --json` over the conformance staging fixture: its records.
 fn records() -> Vec<Value> {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../conformance/staging-sequence-camera");
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/staging-sequence-camera");
     let dir = lute_scratch::ScratchDir::named("staging-attrs-042");
     let artifact = dir.join("a.json");
     let compiled = Command::new(BIN)
@@ -25,7 +25,11 @@ fn records() -> Vec<Value> {
         .arg(&artifact)
         .output()
         .unwrap();
-    assert!(compiled.status.success(), "{}", String::from_utf8_lossy(&compiled.stderr));
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
     let run = Command::new(BIN)
         .arg("run")
         .arg(&artifact)
@@ -34,14 +38,20 @@ fn records() -> Vec<Value> {
         .arg("--json")
         .output()
         .unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
     let out: Value = serde_json::from_slice(&run.stdout).unwrap();
     out["commands"].as_array().unwrap().clone()
 }
 
 #[test]
 fn every_staging_record_carries_its_resolved_attrs() {
-    let staging = ["bg", "music", "sfx", "vfx", "actor", "camera", "cg", "video", "sequence"];
+    let staging = [
+        "bg", "music", "sfx", "vfx", "actor", "camera", "cg", "video", "sequence",
+    ];
     let got: Vec<Value> = records()
         .into_iter()
         .filter(|r| staging.contains(&r["kind"].as_str().unwrap()))

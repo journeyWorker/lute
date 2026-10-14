@@ -52,7 +52,6 @@ impl<B, C> MockSet<B, C> {
 /// One bridge answer: `(bridgeResult field, literal text)` pairs in source order.
 pub type BridgeAnswer = Vec<(String, String)>;
 
-
 /// Whether an occasion raise `raw` judges an objective with `on` and `target`.
 pub fn raise_judges(raw: &str, on: &str, target: Option<&str>) -> bool {
     let (name, raised) = split_occasion(raw);

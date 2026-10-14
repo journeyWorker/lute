@@ -91,7 +91,10 @@ pub fn occasions_before(
 /// entry or bundle beat) and its arguments (`None` for anything but a
 /// constant — a component param, `_`).
 #[derive(Default)]
-#[expect(clippy::type_complexity, reason = "producer records retain document, unit, and optional arguments")]
+#[expect(
+    clippy::type_complexity,
+    reason = "producer records retain document, unit, and optional arguments"
+)]
 pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
 
 impl FactProducers {
@@ -122,22 +125,25 @@ pub fn fact_producers(
         {
             continue;
         }
-        let units = std::iter::once((0, doc.sections.iter().map(|s| &s.body[..]).collect::<Vec<_>>()))
-            .chain(
-                doc.quests
-                    .iter()
-                    .map(|q| (q.span.byte_start, vec![&q.body[..]])),
-            )
-            .chain(
-                doc.entries
-                    .iter()
-                    .map(|e| (e.span.byte_start, vec![&e.body[..]])),
-            )
-            .chain(
-                doc.beats
-                    .iter()
-                    .map(|b| (b.span.byte_start, vec![&b.body[..]])),
-            );
+        let units = std::iter::once((
+            0,
+            doc.sections.iter().map(|s| &s.body[..]).collect::<Vec<_>>(),
+        ))
+        .chain(
+            doc.quests
+                .iter()
+                .map(|q| (q.span.byte_start, vec![&q.body[..]])),
+        )
+        .chain(
+            doc.entries
+                .iter()
+                .map(|e| (e.span.byte_start, vec![&e.body[..]])),
+        )
+        .chain(
+            doc.beats
+                .iter()
+                .map(|b| (b.span.byte_start, vec![&b.body[..]])),
+        );
         for (key, bodies) in units {
             for body in bodies {
                 visit(body, &mut |node| match node {

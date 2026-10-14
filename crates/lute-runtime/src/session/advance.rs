@@ -369,7 +369,16 @@ pub fn run_advance<F: super::WalkDriver>(
             Err(e) => {
                 let at = clock.describe(from);
                 return (
-                    body(at.clone(), at, writes, settled, Vec::new(), None, false, Vec::new()),
+                    body(
+                        at.clone(),
+                        at,
+                        writes,
+                        settled,
+                        Vec::new(),
+                        None,
+                        false,
+                        Vec::new(),
+                    ),
                     Vec::new(),
                     Some(PlayHalt::Error(format!("step {n}: {e}"))),
                 );
@@ -382,7 +391,16 @@ pub fn run_advance<F: super::WalkDriver>(
         if halt.is_some() || matches!(crate::seam::terminal_holds(p, w, None), Ok(true)) {
             let at = clock.describe(from);
             return (
-                body(at.clone(), at, writes, settled, Vec::new(), None, false, Vec::new()),
+                body(
+                    at.clone(),
+                    at,
+                    writes,
+                    settled,
+                    Vec::new(),
+                    None,
+                    false,
+                    Vec::new(),
+                ),
                 Vec::new(),
                 halt,
             );
@@ -485,8 +503,7 @@ pub fn run_advance<F: super::WalkDriver>(
             w.defer_by = None;
             continue;
         }
-        let (occasion, quests, halt) =
-            run_occasion(p, w, n, start, &None, &None, choose, factory);
+        let (occasion, quests, halt) = run_occasion(p, w, n, start, &None, &None, choose, factory);
         days.push(DayRaise {
             at: clock.describe(at),
             writes: std::mem::take(&mut writes),
@@ -530,8 +547,7 @@ pub fn run_advance<F: super::WalkDriver>(
                     factory.observer(),
                 )
             {
-                let (occasion, q, halt) =
-                    run_occasion(p, w, n, end, &None, &None, choose, factory);
+                let (occasion, q, halt) = run_occasion(p, w, n, end, &None, &None, choose, factory);
                 days.push(DayRaise {
                     at: clock.describe(at),
                     writes: std::mem::take(&mut writes),
@@ -566,8 +582,7 @@ pub fn run_advance<F: super::WalkDriver>(
             w.defer_by = None;
         }
         if let (Some(occasion), None) = (open, &stop) {
-            let (b, q, halt) =
-                run_occasion(p, w, n, occasion, &None, pick, choose, factory);
+            let (b, q, halt) = run_occasion(p, w, n, occasion, &None, pick, choose, factory);
             raised = Some(Box::new(b));
             quests = q;
             stop = halt;

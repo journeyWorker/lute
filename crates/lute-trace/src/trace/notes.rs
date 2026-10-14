@@ -99,7 +99,10 @@ pub(super) fn seeds_summary(mocks: &MockSet) -> Seeds {
 /// order, `rel_schema::build_rel_vocab`'s own "imports first, then
 /// inline" order) — informational only, never an error and never a
 /// reachability claim; never consulted by the exit-code decision below.
-pub(super) fn seed_fact_notes(mocks: &MockSet, seed_facts: &[lute_check::meta::FactDecl]) -> Vec<String> {
+pub(super) fn seed_fact_notes(
+    mocks: &MockSet,
+    seed_facts: &[lute_check::meta::FactDecl],
+) -> Vec<String> {
     if seed_facts.is_empty() {
         return Vec::new();
     }

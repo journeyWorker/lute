@@ -22,7 +22,6 @@ pub(super) fn template_component(raw_yaml: &str) -> Option<String> {
         .flatten()
 }
 
-
 /// The source span used when a document has no frontmatter envelope.
 pub(super) fn zero_span() -> lute_core_span::Span {
     lute_core_span::Span {

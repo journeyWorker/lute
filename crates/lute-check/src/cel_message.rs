@@ -36,8 +36,8 @@
 //! looks like a real position inside this slot, else the whole slot.
 
 use lute_cel::CelParseError;
-use lute_manifest::text::cel_string_mask;
 use lute_core_span::{Fixit, Span, TextEdit};
+use lute_manifest::text::cel_string_mask;
 use lute_syntax::ast::CelKind;
 
 /// The §8.1 translation of one failed CEL slot: the writer-voiced message, any

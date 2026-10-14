@@ -300,15 +300,13 @@ fn check_branch_value_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
         (Some(timeout), None) => push_logic_error(
             diags,
             E_BRANCH_DEFAULT,
-            "`<branch timeout>` requires `default=` so timeout always names an outcome"
-                .to_string(),
+            "`<branch timeout>` requires `default=` so timeout always names an outcome".to_string(),
             timeout,
         ),
         (None, Some(default)) => push_logic_error(
             diags,
             E_BRANCH_DEFAULT,
-            "`<branch default>` requires `timeout=` because it only applies on timeout"
-                .to_string(),
+            "`<branch default>` requires `timeout=` because it only applies on timeout".to_string(),
             default,
         ),
         (Some(_), Some(default)) => {
@@ -465,7 +463,10 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
     );
 }
 
-#[expect(clippy::type_complexity, reason = "quest attribute validation keeps each declaration's legal values and evidence")]
+#[expect(
+    clippy::type_complexity,
+    reason = "quest attribute validation keeps each declaration's legal values and evidence"
+)]
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
     close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
     // Each enumerated `<quest>` attribute is a quoted string from a fixed

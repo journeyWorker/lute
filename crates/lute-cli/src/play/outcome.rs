@@ -61,11 +61,8 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                     .map(candidate_label)
                     .collect();
                 for pr in presented {
-                    row.presented.push(presented_label(
-                        candidates,
-                        &pr.id,
-                        pr.member.as_deref(),
-                    ));
+                    row.presented
+                        .push(presented_label(candidates, &pr.id, pr.member.as_deref()));
                     offered_options(p, &pr.document, &pr.transcript, &mut row.options);
                     append_raised(p, pr, &mut row.presented, &mut row.options);
                 }
@@ -161,8 +158,7 @@ fn append_raised(
     presented: &mut Vec<String>,
     options: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
-    let mut pending: Vec<&lute_runtime::session::Presented> =
-        beat.raised.iter().rev().collect();
+    let mut pending: Vec<&lute_runtime::session::Presented> = beat.raised.iter().rev().collect();
     while let Some(raised) = pending.pop() {
         presented.push(raised.id.clone());
         offered_options(p, &raised.document, &raised.transcript, options);

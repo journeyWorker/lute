@@ -23,10 +23,12 @@ use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintOutcome, LintScope};
+use lute_load::{
+    build_input, find_lute_files, nearest_manifest_dir, project_root_for, read_document, BuiltInput,
+};
 use lute_manifest::lint::namespace_active_lints;
 use lute_manifest::loader::load_plugins_dir;
 use lute_manifest::project::{project_providers, ProjectConfig};
-use lute_load::{build_input, find_lute_files, nearest_manifest_dir, project_root_for, read_document, BuiltInput};
 use lute_manifest::resolve::resolve_activation;
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
@@ -86,9 +88,6 @@ impl LintDenyPolicy {
             && (self.codes.contains(&d.code) || (self.warnings && d.severity == Severity::Warning))
     }
 }
-
-
-
 
 /// Resolve `<root>/lute.lint.yaml` (or `explicit` when the user passed
 /// `--config`). Returns `Ok(None)` on an absent file (defaults are fine);
@@ -230,13 +229,17 @@ fn project_for_root(root: &Path) -> Result<Option<ProjectConfig>, ExitCode> {
         eprintln!("lute: cannot load project {}: {error}", root.display());
         ExitCode::from(2)
     })?;
-    model.manifest().cloned().ok_or_else(|| {
-        eprintln!(
-            "lute: cannot load project manifest {}",
-            root.join("lute.project.yaml").display()
-        );
-        ExitCode::from(2)
-    }).map(Some)
+    model
+        .manifest()
+        .cloned()
+        .ok_or_else(|| {
+            eprintln!(
+                "lute: cannot load project manifest {}",
+                root.join("lute.project.yaml").display()
+            );
+            ExitCode::from(2)
+        })
+        .map(Some)
 }
 
 /// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.

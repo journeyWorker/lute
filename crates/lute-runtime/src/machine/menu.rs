@@ -9,10 +9,10 @@ use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
 use super::{addr, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED};
-use crate::eval::Read;
 use crate::driver::{
     guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
 };
+use crate::eval::Read;
 use crate::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
 use crate::{UnresolvedAtom, Value};
 
@@ -378,7 +378,10 @@ impl<D: Driver> Machine<D> {
             addr: addr(cmd),
             presentation: 0,
             options: &judged,
-            timeout: cmd.get("timeout").and_then(Json::as_u64).and_then(|n| u32::try_from(n).ok()),
+            timeout: cmd
+                .get("timeout")
+                .and_then(Json::as_u64)
+                .and_then(|n| u32::try_from(n).ok()),
             default: cmd.get("default").and_then(Json::as_str),
         };
         let pick = self.driver.choose(&menu);
@@ -695,8 +698,7 @@ impl<D: Driver> Machine<D> {
                             Forced::Take => {}
                             Forced::Skip => continue,
                             Forced::Refuse => {
-                                let msg =
-                                    self.refusal("hub", &id, &choice_id, &when.raw, &verdict);
+                                let msg = self.refusal("hub", &id, &choice_id, &when.raw, &verdict);
                                 self.refuse(msg);
                                 return Step::Halt;
                             }
@@ -817,10 +819,13 @@ impl<D: Driver> Machine<D> {
                 _ if subject_unset
                     && !self.driver.is_preview()
                     && subject_path.as_deref().is_some_and(|path| {
-                        atoms.iter().any(|a| {
-                            matches!(a, UnresolvedAtom::Path(p) if p == path)
-                        })
-                    }) => false,
+                        atoms
+                            .iter()
+                            .any(|a| matches!(a, UnresolvedAtom::Path(p) if p == path))
+                    }) =>
+                {
+                    false
+                }
                 _ => {
                     let target_unbound = atoms.iter().any(|a| {
                         matches!(a, UnresolvedAtom::Path(p) if p == lute_manifest::semantics::beats::OCCASION_TARGET)

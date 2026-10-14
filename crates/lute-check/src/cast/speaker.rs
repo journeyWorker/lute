@@ -9,7 +9,6 @@ use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Line, Node
 
 use crate::schema_import::SchemaImports;
 
-
 /// The cast a document is checked against: the active plugins' `cast`
 /// exports, the import-reachable schemas' `cast:` and — for a schema
 /// document itself — its own `cast:`. A plugin entry wins a same-id clash
@@ -40,7 +39,8 @@ pub fn check_speakers(doc: &Document, cast: &BTreeMap<String, CastMember>) -> Ve
     }
     let mut lines: Vec<&Line> = Vec::new();
     let mut staged: Vec<(&str, &str, Span)> = Vec::new();
-    let bodies = doc.sections
+    let bodies = doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

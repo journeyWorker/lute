@@ -27,7 +27,12 @@ fn text(o: &Output) -> String {
 
 /// A project with one plugin declaring `occasions` (the body of its
 /// `occasions:` map), the schema `schema`, and `docs` (path, text).
-fn project(tag: &str, occasions: &str, schema: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+fn project(
+    tag: &str,
+    occasions: &str,
+    schema: &str,
+    docs: &[(&str, &str)],
+) -> lute_scratch::ScratchDir {
     let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,

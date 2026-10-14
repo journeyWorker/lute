@@ -5,10 +5,10 @@
 
 use std::collections::{BTreeMap, VecDeque};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value as Json;
 use crate::input::BridgeAnswer;
 use crate::value::UnresolvedAtom;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as Json;
 
 /// What a runtime decides for the walk the [`crate::Machine`] drives.
 pub trait Driver {

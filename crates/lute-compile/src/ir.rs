@@ -228,7 +228,10 @@ pub struct SectionEntry {
 /// 0.15.0 §2 wire contract).
 #[derive(Clone, Debug, Serialize)]
 #[serde(untagged)]
-#[expect(clippy::large_enum_variant, reason = "serialized IR metadata remains inline to preserve its wire shape")]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "serialized IR metadata remains inline to preserve its wire shape"
+)]
 pub enum ArtifactMeta {
     Scene(SceneMeta),
     Quest(QuestMeta),
@@ -585,7 +588,12 @@ impl Serialize for Command {
             record: &T,
             s: S,
         ) -> Result<S::Ok, S::Error> {
-            TaggedRecord { kind: cmd.kind(), family: cmd.family(), record }.serialize(s)
+            TaggedRecord {
+                kind: cmd.kind(),
+                family: cmd.family(),
+                record,
+            }
+            .serialize(s)
         }
         match self {
             Command::Line(c) => tagged(self, c, s),
@@ -712,8 +720,10 @@ pub(crate) fn placeholder_from_interp(i: &lute_syntax::ast::Interp) -> Placehold
         }
         // `{{run.visits["lab-b2"]}}` ships its canonical dotted path.
         InterpKind::Path => Placeholder::Path {
-            path: lute_cel::path::parse_path_text(&i.raw)
-                .map_or_else(|| i.raw.clone(), |segs| lute_manifest::text::render_path(&segs)),
+            path: lute_cel::path::parse_path_text(&i.raw).map_or_else(
+                || i.raw.clone(),
+                |segs| lute_manifest::text::render_path(&segs),
+            ),
             format: i.format.clone(),
             forms: i.forms.clone(),
         },
@@ -743,7 +753,9 @@ pub enum Segment {
         #[serde(skip_serializing_if = "Option::is_none")]
         rate: Option<f64>,
     },
-    Pause { pause: f64 },
+    Pause {
+        pause: f64,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1520,7 +1532,6 @@ pub struct BeatCmd {
     pub stamp: Stamp,
 }
 
-
 /// Compiler-side constructors of a [`CelPair`]: they lower CEL.
 pub trait CelPairExt {
     /// Build a pair from a checked, possibly expanded syntax slot.
@@ -1623,7 +1634,6 @@ fn cel_quote(value: &str) -> String {
     out.push('"');
     out
 }
-
 
 /// One `<reward/>` entry inlined in `QuestCmd.rewards` / `ObjectiveEntry.rewards`
 /// (dsl 0.16.0 §2/§3). Pure declaration data — the engine grants at the

@@ -11,8 +11,8 @@ use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
 use crate::ir::*;
-use lute_ir::CelPair;
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
+use lute_ir::CelPair;
 
 /// Bare-ident delivery flag (dsl 0.2.2 §D7: `mono`/`os`/`vo`, `AttrValue::
 /// BoolTrue` by grammar convention — the checker (`content_line.rs`) gates
@@ -76,7 +76,12 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
 /// the active styles (outermost first) and innermost `speed` rate stay the
 /// same; `pause{s}` is a leaf of its own; empty text never appears.
 pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
-    fn walk(nodes: &[InlineNode], styles: &mut Vec<String>, rate: Option<f64>, out: &mut Vec<Segment>) {
+    fn walk(
+        nodes: &[InlineNode],
+        styles: &mut Vec<String>,
+        rate: Option<f64>,
+        out: &mut Vec<Segment>,
+    ) {
         for node in nodes {
             match node {
                 InlineNode::Text { text, .. } => push_text(out, text, styles, rate),
@@ -85,10 +90,15 @@ pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
                 }
                 InlineNode::Modifier(m) => {
                     let attr = |k: &str| {
-                        m.attrs.iter().find(|a| a.key == k).and_then(|a| a.value.parse::<f64>().ok())
+                        m.attrs
+                            .iter()
+                            .find(|a| a.key == k)
+                            .and_then(|a| a.value.parse::<f64>().ok())
                     };
                     match m.name.as_str() {
-                        "pause" => out.push(Segment::Pause { pause: attr("s").unwrap_or(0.0) }),
+                        "pause" => out.push(Segment::Pause {
+                            pause: attr("s").unwrap_or(0.0),
+                        }),
                         "speed" => walk(&m.children, styles, attr("rate").or(rate), out),
                         style => {
                             styles.push(style.to_string());
@@ -104,13 +114,22 @@ pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
         if text.is_empty() {
             return;
         }
-        if let Some(Segment::Text { text: last, styles: s, rate: r }) = out.last_mut() {
+        if let Some(Segment::Text {
+            text: last,
+            styles: s,
+            rate: r,
+        }) = out.last_mut()
+        {
             if s.as_slice() == styles && *r == rate {
                 last.push_str(text);
                 return;
             }
         }
-        out.push(Segment::Text { text: text.to_string(), styles: styles.to_vec(), rate });
+        out.push(Segment::Text {
+            text: text.to_string(),
+            styles: styles.to_vec(),
+            rate,
+        });
     }
     if !nodes.iter().any(|n| matches!(n, InlineNode::Modifier(_))) {
         return Vec::new();
@@ -259,7 +278,7 @@ pub fn lower_directive(
                 asset_id: get("assetId"),
                 stamp,
             })
-        },
+        }
         "sfx" => Command::Sfx(SfxCmd {
             position: String::new(),
             sound: get("sound"),
@@ -422,7 +441,11 @@ pub fn lower_directive(
             // that default, typed as the authored value would be — the
             // runtime has no directive declarations to fill it from.
             for ad in decl.map(|d| d.attrs.as_slice()).unwrap_or_default() {
-                if let Some(default) = ad.default.as_ref().filter(|_| !is_stamp_timing_attr(&ad.name)) {
+                if let Some(default) = ad
+                    .default
+                    .as_ref()
+                    .filter(|_| !is_stamp_timing_attr(&ad.name))
+                {
                     fields
                         .entry(ad.name.clone())
                         .or_insert_with(|| default_json(default, &ad.ty));
@@ -600,7 +623,7 @@ fn lower_record(
                 asset_id: s("assetId"),
                 stamp,
             })
-        },
+        }
         "sfx" => Command::Sfx(SfxCmd {
             position: String::new(),
             sound: s("sound"),
@@ -857,9 +880,7 @@ pub fn resolve_effect(
         Some(Type::Int) if n.is_finite() && n.fract() == 0.0 => {
             Some(crate::literal_json(&Literal::Int(n as i64)))
         }
-        Some(Type::Double) if n.is_finite() => {
-            Some(crate::literal_json(&Literal::Double(n)))
-        }
+        Some(Type::Double) if n.is_finite() => Some(crate::literal_json(&Literal::Double(n))),
         _ if n.is_finite() && n.fract() == 0.0 => {
             Some(crate::literal_json(&Literal::Int(n as i64)))
         }
@@ -879,9 +900,7 @@ pub fn resolve_effect(
         },
         WriteValue::FromAttr { from_attr } => EffectSource::Literal(attr_value(from_attr)?),
         WriteValue::Literal(lit) => EffectSource::Literal(match (target_ty, lit) {
-            (Some(Type::Int), Literal::Double(n))
-                if n.is_finite() && n.fract() == 0.0 =>
-            {
+            (Some(Type::Int), Literal::Double(n)) if n.is_finite() && n.fract() == 0.0 => {
                 crate::literal_json(&Literal::Int(*n as i64))
             }
             (Some(Type::Double), Literal::Int(n)) => {
@@ -917,7 +936,11 @@ fn effect_target_type<'a>(
                 }
                 PathSegment::FromAttr { from_attr } => {
                     base.push('.');
-                    base.push_str(attr_string(&dir.attrs, &from_attr.name).unwrap_or_default().as_str());
+                    base.push_str(
+                        attr_string(&dir.attrs, &from_attr.name)
+                            .unwrap_or_default()
+                            .as_str(),
+                    );
                 }
             }
         }
@@ -1057,7 +1080,10 @@ mod tests {
             lower_first("::video{assetId=\"MOVIE.x\" display=\"show\"}")["timing"]["wait"],
             true
         );
-        assert_eq!(lower_first("::camera{move=\"shake\"}")["timing"]["wait"], false);
+        assert_eq!(
+            lower_first("::camera{move=\"shake\"}")["timing"]["wait"],
+            false
+        );
         // Non-wait families (§4.4) carry NO `timing` key.
         assert!(lower_first("::music{playback=\"start\"}")
             .get("timing")
@@ -1227,7 +1253,10 @@ mod tests {
         );
         let v = lower_with("::backdrop{img=\"BG.x\"}", &snapshot);
         assert_eq!(v["kind"], "bg");
-        assert_eq!(v["timing"]["wait"], true, "the bg kind's wait default applies");
+        assert_eq!(
+            v["timing"]["wait"], true,
+            "the bg kind's wait default applies"
+        );
         assert_eq!(v["assetId"], "BG.x");
         assert!(v.get("tag").is_none(), "must not be a passthrough: {v}");
         // Unbound target fields stay absent (skip-if-none), so the record is

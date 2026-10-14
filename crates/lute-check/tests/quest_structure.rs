@@ -16,7 +16,6 @@ use lute_core_span::{Diagnostic, Severity};
 use lute_manifest::schema::{EventDecl, OccasionDecl, OccasionSelect, OccasionTarget};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-
 /// The core snapshot plus an occasion vocabulary — `bossDefeated` raised
 /// for one of two bosses, `examine` for any target, `hubVisit` for none —
 /// and the world events a handler may name.

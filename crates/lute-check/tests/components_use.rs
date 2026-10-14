@@ -8,8 +8,6 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use std::path::Path;
 
-
-
 fn write_lute(dir: &Path, name: &str, body: &str) {
     std::fs::write(dir.join(name), body).unwrap();
 }
@@ -112,7 +110,11 @@ fn unknown_arg_is_component_arg() {
 #[test]
 fn component_instance_identity_diagnostics_are_strict() {
     let dir = lute_scratch::ScratchDir::new();
-    write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
+    write_lute(
+        &dir,
+        "greet.lute",
+        "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n",
+    );
 
     let duplicate = scene(
         "greet.lute",
@@ -127,7 +129,10 @@ fn component_instance_identity_diagnostics_are_strict() {
     assert!(codes(&dir, &invalid).contains(&"E-COMPONENT-INSTANCE-INVALID".to_string()));
     let long = scene(
         "greet.lute",
-        &format!("::use{{component=\"greet\" instance=\"{}\"}}", "a".repeat(65)),
+        &format!(
+            "::use{{component=\"greet\" instance=\"{}\"}}",
+            "a".repeat(65)
+        ),
     );
     assert!(codes(&dir, &long).contains(&"E-COMPONENT-INSTANCE-INVALID".to_string()));
 
@@ -144,11 +149,14 @@ fn component_instance_identity_diagnostics_are_strict() {
     assert!(!codes(&dir, &parameter).contains(&"E-COMPONENT-ARG".to_string()));
 }
 
-
 #[test]
 fn component_instance_duplicate_in_exclusive_branches_still_conflicts() {
     let dir = lute_scratch::ScratchDir::new();
-    write_lute(&dir, "greet.lute", "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n");
+    write_lute(
+        &dir,
+        "greet.lute",
+        "---\ncomponent: greet\n---\n## Body\n@narrator: hi\n",
+    );
     let source = scene(
         "greet.lute",
         "<branch id=\"route\">\n\

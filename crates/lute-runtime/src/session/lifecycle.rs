@@ -126,9 +126,16 @@ pub fn run_deferred_handlers<F: super::WalkDriver>(
         rest = &rest[len..];
         let doc_json = &p.artifacts[doc];
         let no_script = BTreeMap::new();
-        let mut m =
-            play_machine(p, w, doc, Seed::from(&w.mock()), w.carry(), &no_script, factory)
-            .with_failed_objectives(&w.failed_objectives);
+        let mut m = play_machine(
+            p,
+            w,
+            doc,
+            Seed::from(&w.mock()),
+            w.carry(),
+            &no_script,
+            factory,
+        )
+        .with_failed_objectives(&w.failed_objectives);
         let result = m.run_deferred_handlers(&bodies);
         let outcome = factory.finish(m);
         absorb(w, &outcome);
@@ -179,8 +186,7 @@ pub fn advance_pass<F: super::WalkDriver>(
         }
         let skipped = handlers_skipped(doc_json, &w.quests, moment);
         let no_script = BTreeMap::new();
-        let mut m =
-            play_machine(p, w, doc, Seed::from(&mock), w.carry(), &no_script, factory)
+        let mut m = play_machine(p, w, doc, Seed::from(&mock), w.carry(), &no_script, factory)
             .with_failed_objectives(&w.failed_objectives)
             .with_deferred_by(w.defer_by.as_deref())
             .with_deferred_handlers(w.defer_handlers);

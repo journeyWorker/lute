@@ -32,9 +32,7 @@
 //! symbol positions carry the same UTF-16-correct ranges as every other surface.
 
 use lute_core_span::TextIndex;
-use lute_syntax::ast::{
-    Arm, AttrValue, BundleBeat, Document, Entry, Match, Node, Quest, Section,
-};
+use lute_syntax::ast::{Arm, AttrValue, BundleBeat, Document, Entry, Match, Node, Quest, Section};
 use tower_lsp_server::ls_types::{DocumentSymbol, Range, SymbolKind};
 
 use crate::backend::{byte_to_position, span_to_range};
@@ -43,7 +41,11 @@ use lute_resolve::cursor::byte_span;
 /// The document outline: one symbol per section, with its `<branch>`/`<match>`
 /// blocks and `::label`s nested as children.
 pub fn document_symbols(doc: &Document, idx: &TextIndex) -> Vec<DocumentSymbol> {
-    let mut out: Vec<DocumentSymbol> = doc.sections.iter().map(|s| section_symbol(s, idx)).collect();
+    let mut out: Vec<DocumentSymbol> = doc
+        .sections
+        .iter()
+        .map(|s| section_symbol(s, idx))
+        .collect();
     out.extend(doc.quests.iter().map(|q| quest_symbol(q, idx)));
     let mut lore: Vec<(usize, DocumentSymbol)> = doc
         .entries
@@ -478,10 +480,16 @@ mod tests {
         let text = "## One\n::label{name=\"top\"}\n@narrator: a.\n<branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n::label{name=\"deep\"}\n@narrator: b.\n</choice>\n</branch>\n";
         let syms = symbols(text);
         let kids = syms[0].children.as_ref().expect("section has children");
-        let top = kids.iter().find(|k| k.kind == SymbolKind::KEY).expect("top label");
+        let top = kids
+            .iter()
+            .find(|k| k.kind == SymbolKind::KEY)
+            .expect("top label");
         assert_eq!(top.name, "top");
         assert_eq!(top.selection_range.start.line, 1);
-        let branch = kids.iter().find(|k| k.kind == SymbolKind::ENUM).expect("branch");
+        let branch = kids
+            .iter()
+            .find(|k| k.kind == SymbolKind::ENUM)
+            .expect("branch");
         let deep = branch.children.as_ref().expect("branch children");
         assert_eq!(deep[0].name, "deep");
         assert_eq!(deep[0].kind, SymbolKind::KEY);

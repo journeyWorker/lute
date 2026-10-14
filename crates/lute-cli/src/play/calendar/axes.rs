@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// The most cells one invocation evaluates — a typo'd range (`1..70000`)
 /// is refused rather than ground through.
 pub(super) const MAX_CELLS: usize = 10_000;
@@ -433,10 +432,7 @@ pub(super) fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axi
                 .slot_name(slot)
                 .map(|n| format!(" {n}"))
                 .unwrap_or_default();
-            values.push((
-                format!("{day}{label}{name}"),
-                Value::Int(clock.index(at)),
-            ));
+            values.push((format!("{day}{label}{name}"), Value::Int(clock.index(at))));
         }
     }
     Ok(Axis {
@@ -591,4 +587,3 @@ pub(super) fn settled_away(
         }
     }
 }
-

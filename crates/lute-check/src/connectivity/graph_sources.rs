@@ -1,16 +1,16 @@
-use super::graph_nodes::*;
 use super::graph_assembly::*;
+use super::graph_nodes::*;
 use super::*;
 use crate::ProjectDoc;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use crate::meta::{resolve_doc_kind, DocKind};
 use cel_parser::ast::{operators as op, Expr};
 use cel_parser::reference::Val;
 use lute_core_span::Diagnostic;
-use lute_syntax::ast::Node;
-use crate::meta::{resolve_doc_kind, DocKind};
 use lute_manifest::semantics::prereq::{atoms, Atom};
+use lute_syntax::ast::Node;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 pub(super) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
     if let Expr::Call(c) = e {
@@ -33,9 +33,7 @@ pub(super) fn start_sources(
 ) -> Option<Vec<NodeId>> {
     match e {
         Expr::Call(c)
-            if c.func_name == op::LOGICAL_OR
-                && c.target.is_none()
-                && c.args.len() == 2 =>
+            if c.func_name == op::LOGICAL_OR && c.target.is_none() && c.args.len() == 2 =>
         {
             let mut from = start_sources(&c.args[0].expr, own, decls, nodes)?;
             for n in start_sources(&c.args[1].expr, own, decls, nodes)? {
@@ -381,4 +379,3 @@ pub(super) fn topo_sort(
     }
     order
 }
-

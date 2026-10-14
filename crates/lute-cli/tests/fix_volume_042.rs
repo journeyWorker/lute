@@ -21,7 +21,11 @@ fn read(dir: &Path, rel: &str) -> String {
 
 fn fix(path: &Path) -> String {
     let out = Command::new(BIN).arg("fix").arg(path).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -50,26 +54,46 @@ fn the_exact_old_scale_is_migrated_in_place() {
     let vocabulary = "enums:\n  mood: [calm]\n  musicPlayback: [start, change]\n  # absolute levels\n  volume: [silent, down, normal, up, full]   # the old scale\n";
     let dir = project("fix-volume-042", vocabulary);
     let out = fix(&dir);
-    assert!(out.contains("lute: applied 6 fix(es) in 3 of 4 file(s)"), "{out}");
+    assert!(
+        out.contains("lute: applied 6 fix(es) in 3 of 4 file(s)"),
+        "{out}"
+    );
     assert_eq!(
         read(&dir, "vocabulary.schema.yaml"),
-        vocabulary.replace("silent, down, normal, up, full", "silent, quiet, normal, loud, full")
+        vocabulary.replace(
+            "silent, down, normal, up, full",
+            "silent, quiet, normal, loud, full"
+        )
     );
     assert_eq!(
         read(&dir, "scenes/start.lute"),
-        SCENE.replace("volume=\"down\"", "volume=\"quiet\"").replace("volume=\"up\"", "volume=\"loud\"")
+        SCENE
+            .replace("volume=\"down\"", "volume=\"quiet\"")
+            .replace("volume=\"up\"", "volume=\"loud\"")
     );
     assert_eq!(
         read(&dir, "player.bindings.yaml"),
-        BINDINGS.replace("  down: 0.25", "  quiet: 0.25").replace("\"up\": 0.75", "\"loud\": 0.75")
+        BINDINGS
+            .replace("  down: 0.25", "  quiet: 0.25")
+            .replace("\"up\": 0.75", "\"loud\": 0.75")
     );
     let again = fix(&dir);
-    assert!(again.contains("lute: applied 0 fix(es) in 0 of 4 file(s)"), "{again}");
+    assert!(
+        again.contains("lute: applied 0 fix(es) in 0 of 4 file(s)"),
+        "{again}"
+    );
 
-    let check = Command::new(BIN).arg("check-project").arg(&*dir).output().unwrap();
+    let check = Command::new(BIN)
+        .arg("check-project")
+        .arg(&*dir)
+        .output()
+        .unwrap();
     let text = String::from_utf8_lossy(&check.stdout);
     assert!(check.status.success(), "{text}");
-    assert!(!text.contains("volume member") && !text.contains("volume binding"), "{text}");
+    assert!(
+        !text.contains("volume member") && !text.contains("volume binding"),
+        "{text}"
+    );
 }
 
 /// The long form and a block list are the same declaration; a prose value
@@ -89,7 +113,9 @@ fn long_form_and_block_declarations_are_migrated() {
     fix(&dir);
     assert_eq!(
         read(&dir, "vocabulary.schema.yaml"),
-        block.replace("- down", "- quiet").replace("- up\n", "- loud\n")
+        block
+            .replace("- down", "- quiet")
+            .replace("- up\n", "- loud\n")
     );
 }
 
@@ -123,7 +149,8 @@ fn conflicting_declarations_are_untouched() {
         "fix-volume-042-conflict",
         "enums:\n  volume: [silent, down, normal, up, full]\n",
     );
-    let other = "---\nkind: scene\nid: other\non: start\nenums:\n  volume: [low, high]\n---\n## Other\n\
+    let other =
+        "---\nkind: scene\nid: other\non: start\nenums:\n  volume: [low, high]\n---\n## Other\n\
         ::music{playback=\"start\" volume=\"low\"}\n";
     write(&dir, "scenes/other.lute", other);
     let out = fix(&dir);
@@ -135,14 +162,18 @@ fn conflicting_declarations_are_untouched() {
 #[test]
 fn a_standalone_document_with_the_old_scale_is_migrated() {
     let dir = lute_scratch::ScratchDir::named("fix-volume-042-standalone");
-    let doc = "---\nkind: scene\nid: s\nenums:\n  volume: [silent, down, normal, up, full]\n---\n## S\n\
+    let doc =
+        "---\nkind: scene\nid: s\nenums:\n  volume: [silent, down, normal, up, full]\n---\n## S\n\
         ::music{playback=\"start\" volume=\"up\"}\n";
     write(&dir, "s.lute", doc);
     let out = fix(&dir.join("s.lute"));
     assert_eq!(out, "lute: applied 3 fix(es)\n");
     assert_eq!(
         read(&dir, "s.lute"),
-        doc.replace("silent, down, normal, up, full", "silent, quiet, normal, loud, full")
-            .replace("volume=\"up\"", "volume=\"loud\"")
+        doc.replace(
+            "silent, down, normal, up, full",
+            "silent, quiet, normal, loud, full"
+        )
+        .replace("volume=\"up\"", "volume=\"loud\"")
     );
 }

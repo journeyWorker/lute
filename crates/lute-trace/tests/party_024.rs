@@ -13,8 +13,8 @@ use lute_runtime::{
     eval::EffectiveState,
     value::Value,
 };
-use lute_trace::{trace_document, TraceExit};
 use lute_trace::mock::MockSet;
+use lute_trace::{trace_document, TraceExit};
 
 const PARTY: &str = r#"---
 kind: scene

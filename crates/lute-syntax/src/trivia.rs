@@ -31,9 +31,18 @@ fn span(idx: &TextIndex<'_>, start: usize, end: usize) -> Span {
     Span::from_bytes(idx, start, end)
 }
 
-fn push(tokens: &mut Vec<SourceToken>, idx: &TextIndex<'_>, kind: TokenKind, start: usize, end: usize) {
+fn push(
+    tokens: &mut Vec<SourceToken>,
+    idx: &TextIndex<'_>,
+    kind: TokenKind,
+    start: usize,
+    end: usize,
+) {
     if start < end {
-        tokens.push(SourceToken { kind, span: span(idx, start, end) });
+        tokens.push(SourceToken {
+            kind,
+            span: span(idx, start, end),
+        });
     }
 }
 
@@ -43,8 +52,11 @@ fn line_kind(line: &str) -> TokenKind {
         TokenKind::Whitespace
     } else if trimmed.starts_with("//") || trimmed.starts_with("/*") {
         TokenKind::Comment
-    } else if trimmed.starts_with("@") || trimmed.starts_with("::") || trimmed.starts_with('<')
-        || trimmed.starts_with('#') {
+    } else if trimmed.starts_with("@")
+        || trimmed.starts_with("::")
+        || trimmed.starts_with('<')
+        || trimmed.starts_with('#')
+    {
         TokenKind::Structure
     } else {
         TokenKind::Prose
@@ -72,7 +84,9 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
                 yaml_end = if end < source.len() { end + 1 } else { end };
                 break;
             }
-            if end == source.len() { break; }
+            if end == source.len() {
+                break;
+            }
             at = end + 1;
         }
     }
@@ -83,11 +97,19 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
     let mut line_start = yaml_end;
     let mut in_block_comment = false;
     while line_start < source.len() {
-        let line_end = source[line_start..].find('\n').map_or(source.len(), |n| line_start + n);
+        let line_end = source[line_start..]
+            .find('\n')
+            .map_or(source.len(), |n| line_start + n);
         let full_content_end = line_end;
         let line = &source[line_start..full_content_end];
         let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
-        push(&mut tokens, &idx, TokenKind::Whitespace, line_start, line_start + indent);
+        push(
+            &mut tokens,
+            &idx,
+            TokenKind::Whitespace,
+            line_start,
+            line_start + indent,
+        );
         let body_start = line_start + indent;
         let body = &source[body_start..full_content_end];
         // Comments following a directive or payload are separate trivia tokens.
@@ -99,7 +121,11 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
         while p + 1 < bytes.len() {
             let c = bytes[p] as char;
             if c == '"' || c == '\'' {
-                if quote == Some(c) { quote = None; } else if quote.is_none() { quote = Some(c); }
+                if quote == Some(c) {
+                    quote = None;
+                } else if quote.is_none() {
+                    quote = Some(c);
+                }
                 p += 1;
                 continue;
             }
@@ -114,28 +140,70 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
         let kind = line_kind(line);
         let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
         if in_block_comment || kind == TokenKind::Comment {
-            push(&mut tokens, &idx, TokenKind::Comment, line_start + indent, content_end);
+            push(
+                &mut tokens,
+                &idx,
+                TokenKind::Comment,
+                line_start + indent,
+                content_end,
+            );
             if in_block_comment || line.trim_start_matches([' ', '\t']).starts_with("/*") {
                 in_block_comment = !line.contains("*/");
             }
         } else if kind == TokenKind::Whitespace {
-            push(&mut tokens, &idx, TokenKind::Whitespace, line_start + indent, content_end);
+            push(
+                &mut tokens,
+                &idx,
+                TokenKind::Whitespace,
+                line_start + indent,
+                content_end,
+            );
         } else {
             let body_start = line_start + indent;
             let body = &source[body_start..content_end];
             if kind == TokenKind::Structure {
                 if let Some(open) = body.find('{') {
-                    push(&mut tokens, &idx, TokenKind::Structure, body_start, body_start + open + 1);
+                    push(
+                        &mut tokens,
+                        &idx,
+                        TokenKind::Structure,
+                        body_start,
+                        body_start + open + 1,
+                    );
                     if let Some(close_rel) = body[open + 1..].rfind('}') {
                         let close = body_start + open + 1 + close_rel;
-                        push(&mut tokens, &idx, TokenKind::Attribute, body_start + open + 1, close);
+                        push(
+                            &mut tokens,
+                            &idx,
+                            TokenKind::Attribute,
+                            body_start + open + 1,
+                            close,
+                        );
                         push(&mut tokens, &idx, TokenKind::Structure, close, content_end);
                     } else {
-                        push(&mut tokens, &idx, TokenKind::Attribute, body_start + open + 1, content_end);
+                        push(
+                            &mut tokens,
+                            &idx,
+                            TokenKind::Attribute,
+                            body_start + open + 1,
+                            content_end,
+                        );
                     }
                 } else if let Some(colon) = body.find(':') {
-                    push(&mut tokens, &idx, TokenKind::Structure, body_start, body_start + colon + 1);
-                    push(&mut tokens, &idx, TokenKind::Prose, body_start + colon + 1, content_end);
+                    push(
+                        &mut tokens,
+                        &idx,
+                        TokenKind::Structure,
+                        body_start,
+                        body_start + colon + 1,
+                    );
+                    push(
+                        &mut tokens,
+                        &idx,
+                        TokenKind::Prose,
+                        body_start + colon + 1,
+                        content_end,
+                    );
                 } else {
                     push(&mut tokens, &idx, kind, body_start, content_end);
                 }
@@ -144,11 +212,25 @@ pub fn source_stream(source: &str) -> SourceStream<'_> {
             }
         }
         if let Some(offset) = comment_at {
-            push(&mut tokens, &idx, TokenKind::Comment, body_start + offset, full_content_end);
-            if body[offset..].starts_with("/*") && !body[offset..].contains("*/") { in_block_comment = true; }
+            push(
+                &mut tokens,
+                &idx,
+                TokenKind::Comment,
+                body_start + offset,
+                full_content_end,
+            );
+            if body[offset..].starts_with("/*") && !body[offset..].contains("*/") {
+                in_block_comment = true;
+            }
         }
         if line_end < source.len() {
-            push(&mut tokens, &idx, TokenKind::Whitespace, line_end, line_end + 1);
+            push(
+                &mut tokens,
+                &idx,
+                TokenKind::Whitespace,
+                line_end,
+                line_end + 1,
+            );
             line_start = line_end + 1;
         } else {
             line_start = source.len();

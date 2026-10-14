@@ -57,7 +57,12 @@ fn eval(expr: &Value, state: &Map<String, Value>) -> Value {
         .as_object()
         .unwrap_or_else(|| panic!("expr node must be a JSON object, got: {expr}"));
 
-    if let Some(v) = obj.get("int").or_else(|| obj.get("double")).or_else(|| obj.get("bool")).or_else(|| obj.get("string")) {
+    if let Some(v) = obj
+        .get("int")
+        .or_else(|| obj.get("double"))
+        .or_else(|| obj.get("bool"))
+        .or_else(|| obj.get("string"))
+    {
         return v.clone();
     }
     if let Some(p) = obj.get("path") {

@@ -1,5 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::path::{Path, PathBuf};
 fn annotate_diagnostic(diagnostic: &mut Diagnostic) {
@@ -12,14 +12,14 @@ fn annotate_diagnostic(diagnostic: &mut Diagnostic) {
 use lute_check::{fold_env, CheckInput, CheckResult, FoldedEnv, Mode};
 use lute_compile::index::{build_index, IndexInput};
 use lute_compile::{compile_mapped_parsed, ExecutionIr, SourceMap};
-use lute_ir::ProjectIndex;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_ir::ProjectIndex;
 use rayon::prelude::*;
 
+use crate::revision::{project_revision, ProjectRevision};
 use lute_load::{
     assemble_input_with_mode, find_lute_files, project_root_for, read_document, InputCache,
 };
-use crate::revision::{project_revision, ProjectRevision};
 
 pub type DocGroup = Vec<(PathBuf, lute_syntax::ast::Document, FoldedEnv)>;
 pub type ByRoot = BTreeMap<PathBuf, DocGroup>;
@@ -35,7 +35,13 @@ pub struct ModelOptions {
 
 impl Default for ModelOptions {
     fn default() -> Self {
-        Self { providers: None, permission_profile: None, mode: Mode::Ci, compile: true, wip: false }
+        Self {
+            providers: None,
+            permission_profile: None,
+            mode: Mode::Ci,
+            compile: true,
+            wip: false,
+        }
     }
 }
 
@@ -44,7 +50,10 @@ pub enum ModelError {
     Io(String),
     Input(String),
     Resolve(String),
-    Compile { path: PathBuf, diagnostics: Vec<Diagnostic> },
+    Compile {
+        path: PathBuf,
+        diagnostics: Vec<Diagnostic>,
+    },
     Index(Vec<lute_compile::index::IndexError>),
 }
 
@@ -52,8 +61,15 @@ impl fmt::Display for ModelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(s) | Self::Input(s) | Self::Resolve(s) => f.write_str(s),
-            Self::Compile { path, diagnostics } => write!(f, "cannot compile {} ({} diagnostics)", path.display(), diagnostics.len()),
-            Self::Index(errors) => write!(f, "cannot build project index ({} conflicts)", errors.len()),
+            Self::Compile { path, diagnostics } => write!(
+                f,
+                "cannot compile {} ({} diagnostics)",
+                path.display(),
+                diagnostics.len()
+            ),
+            Self::Index(errors) => {
+                write!(f, "cannot build project index ({} conflicts)", errors.len())
+            }
         }
     }
 }
@@ -112,57 +128,95 @@ impl ProjectModel {
         Self::build_impl(root, opts, true)
     }
 
-    fn build_impl(root: &Path, opts: &ModelOptions, own_root_only: bool) -> Result<Self, ModelError> {
+    fn build_impl(
+        root: &Path,
+        opts: &ModelOptions,
+        own_root_only: bool,
+    ) -> Result<Self, ModelError> {
         let root = root.to_path_buf();
-        let files = find_lute_files(&root).map_err(|e| ModelError::Io(format!("lute: cannot walk {}: {}", root.display(), lute_manifest::io_reason(&e))))?;
+        let files = find_lute_files(&root).map_err(|e| {
+            ModelError::Io(format!(
+                "lute: cannot walk {}: {}",
+                root.display(),
+                lute_manifest::io_reason(&e)
+            ))
+        })?;
         let files: Vec<PathBuf> = if own_root_only {
-            files.into_iter().filter(|p| project_root_for(p, &root) == root).collect()
+            files
+                .into_iter()
+                .filter(|p| project_root_for(p, &root) == root)
+                .collect()
         } else {
             files
         };
         let cache = InputCache::default();
-        let manifest = cache.project(&root).as_ref().as_ref().ok().and_then(|p| p.clone());
+        let manifest = cache
+            .project(&root)
+            .as_ref()
+            .as_ref()
+            .ok()
+            .and_then(|p| p.clone());
         let providers = opts.providers.as_deref();
         let permission_profile = opts.permission_profile.as_deref();
         let mut documents: Vec<ModelDocument> = files
             .into_par_iter()
             .map(|path| {
-            let text = read_document(&path).map_err(ModelError::Input)?;
-            let (built, parsed) = assemble_input_with_mode(&cache, &path, text, providers, Some(&root), permission_profile, opts.mode);
-            let resolve_error = built.resolve_error;
-            let resolve_blocks = built.resolve_blocks;
-            let resolve_diags = built.resolve_diags.clone();
-            let project_diags = built.project_diags.clone();
-            let input = built.input;
-            let mut doc = parsed.0.clone();
-            let _ = lute_check::desugar_document(&mut doc, &input);
-            let compile_doc = opts.compile.then(|| doc.clone());
-            lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
-            let (folded, _, _) = fold_env(&doc, &input);
-            let check = lute_check::check_parsed(&input, parsed);
-            Ok(ModelDocument {
-                path,
-                input,
-                doc,
-                compile_doc,
-                folded,
-                check,
-                artifact: None,
-                source_map: None,
-                resolve_error,
-                resolve_blocks,
-                resolve_diags,
-                project_diags,
-            })
+                let text = read_document(&path).map_err(ModelError::Input)?;
+                let (built, parsed) = assemble_input_with_mode(
+                    &cache,
+                    &path,
+                    text,
+                    providers,
+                    Some(&root),
+                    permission_profile,
+                    opts.mode,
+                );
+                let resolve_error = built.resolve_error;
+                let resolve_blocks = built.resolve_blocks;
+                let resolve_diags = built.resolve_diags.clone();
+                let project_diags = built.project_diags.clone();
+                let input = built.input;
+                let mut doc = parsed.0.clone();
+                let _ = lute_check::desugar_document(&mut doc, &input);
+                let compile_doc = opts.compile.then(|| doc.clone());
+                lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
+                let (folded, _, _) = fold_env(&doc, &input);
+                let check = lute_check::check_parsed(&input, parsed);
+                Ok(ModelDocument {
+                    path,
+                    input,
+                    doc,
+                    compile_doc,
+                    folded,
+                    check,
+                    artifact: None,
+                    source_map: None,
+                    resolve_error,
+                    resolve_blocks,
+                    resolve_diags,
+                    project_diags,
+                })
             })
             .collect::<Result<Vec<_>, ModelError>>()?;
-        let initial_checks: Vec<_> = documents.iter().map(|d| (d.path.clone(), d.check.clone())).collect();
-        let group: DocGroup = documents.iter().map(|d| (d.path.clone(), d.doc.clone(), d.folded.clone())).collect();
+        let initial_checks: Vec<_> = documents
+            .iter()
+            .map(|d| (d.path.clone(), d.check.clone()))
+            .collect();
+        let group: DocGroup = documents
+            .iter()
+            .map(|d| (d.path.clone(), d.doc.clone(), d.folded.clone()))
+            .collect();
         let mut by_root = ByRoot::new();
         by_root.insert(root.clone(), group);
-        let scenarios = by_root.iter().map(|(root, group)| {
-            (root.clone(), crate::scenario::assemble_root_scenario(group, &initial_checks))
-        }).collect();
+        let scenarios = by_root
+            .iter()
+            .map(|(root, group)| {
+                (
+                    root.clone(),
+                    crate::scenario::assemble_root_scenario(group, &initial_checks),
+                )
+            })
+            .collect();
         let (mut checks, mut project_diagnostics, nodes_by_path, fact_envs) =
             crate::reconcile::reconcile_collected(initial_checks, &by_root, opts.wip);
         crate::reconcile::rollup_component_body_diags(&mut checks);
@@ -174,8 +228,7 @@ impl ProjectModel {
                 let mut diagnostic =
                     resolution_diagnostic(&format!("{}: {}", item.code, item.message));
                 if let Some(span) = &item.span {
-                    diagnostic.span =
-                        lute_core_span::Span::from_bytes(&idx, span.start, span.end);
+                    diagnostic.span = lute_core_span::Span::from_bytes(&idx, span.start, span.end);
                 }
                 project_diagnostics.push((manifest_path.clone(), diagnostic));
             }
@@ -204,7 +257,10 @@ impl ProjectModel {
             check_indices.insert(path.as_path(), index);
         }
         if opts.compile {
-            let identity = manifest.as_ref().map(|p| p.identity.clone()).unwrap_or_default();
+            let identity = manifest
+                .as_ref()
+                .map(|p| p.identity.clone())
+                .unwrap_or_default();
             for document in &mut documents {
                 let Some(&check_index) = check_indices.get(document.path.as_path()) else {
                     continue;
@@ -224,8 +280,16 @@ impl ProjectModel {
                     continue;
                 }
                 let mut gate = raw_check.clone();
-                gate.diagnostics.extend(project_diagnostics.iter().filter(|(path, _)| path == &document.path).map(|(_, d)| d.clone()));
-                gate.ok = !gate.diagnostics.iter().any(|d| d.severity == Severity::Error);
+                gate.diagnostics.extend(
+                    project_diagnostics
+                        .iter()
+                        .filter(|(path, _)| path == &document.path)
+                        .map(|(_, d)| d.clone()),
+                );
+                gate.ok = !gate
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.severity == Severity::Error);
                 if !gate.ok {
                     continue;
                 }
@@ -297,7 +361,8 @@ impl ProjectModel {
             let text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
             let idx = lute_core_span::TextIndex::new(&text);
             for item in &config.constraint_diags {
-                let mut diagnostic = resolution_diagnostic(&format!("{}: {}", item.code, item.message));
+                let mut diagnostic =
+                    resolution_diagnostic(&format!("{}: {}", item.code, item.message));
                 if let Some(span) = &item.span {
                     diagnostic.span = lute_core_span::Span::from_bytes(&idx, span.start, span.end);
                 }
@@ -312,7 +377,10 @@ impl ProjectModel {
         for (_, diagnostic) in &mut project_diagnostics {
             annotate_diagnostic(diagnostic);
         }
-        let checks = documents.iter().map(|d| (d.path.clone(), d.check.clone())).collect();
+        let checks = documents
+            .iter()
+            .map(|d| (d.path.clone(), d.check.clone()))
+            .collect();
         let revisions = build_revisions(&root, &documents, manifest.as_ref(), opts)
             .map_err(|error| ModelError::Io(error.to_string()))?;
         let reconciled = ReconciledOutputs {
@@ -360,7 +428,12 @@ impl ProjectModel {
                                 })
                             })
                             .collect();
-                        model.index = build_index(lute_compile::LUTE_IR_VERSION, &inputs, &Default::default()).ok();
+                        model.index = build_index(
+                            lute_compile::LUTE_IR_VERSION,
+                            &inputs,
+                            &Default::default(),
+                        )
+                        .ok();
                     }
                 }
                 Err(errors) => {
@@ -370,10 +443,9 @@ impl ProjectModel {
                         if let Some(span) = error.span {
                             diagnostic.span = span;
                         }
-                        model.project_diagnostics.push((
-                            model.root.join("lute.project.yaml"),
-                            diagnostic,
-                        ));
+                        model
+                            .project_diagnostics
+                            .push((model.root.join("lute.project.yaml"), diagnostic));
                     }
                     model.index = None;
                     for document in &mut model.documents {
@@ -400,13 +472,28 @@ impl ProjectModel {
     /// The project roots of the `.lute` files under `dir`, in order: each
     /// file's nearest manifest at or below `dir` ([`project_root_for`]).
     pub fn project_roots(dir: &Path) -> Result<BTreeSet<PathBuf>, ModelError> {
-        let files = find_lute_files(dir).map_err(|e| ModelError::Io(format!("lute: cannot walk {}: {}", dir.display(), lute_manifest::io_reason(&e))))?;
-        Ok(files.iter().map(|file| project_root_for(file, dir)).collect())
+        let files = find_lute_files(dir).map_err(|e| {
+            ModelError::Io(format!(
+                "lute: cannot walk {}: {}",
+                dir.display(),
+                lute_manifest::io_reason(&e)
+            ))
+        })?;
+        Ok(files
+            .iter()
+            .map(|file| project_root_for(file, dir))
+            .collect())
     }
 
-    pub fn root(&self) -> &Path { &self.root }
-    pub fn manifest(&self) -> Option<&lute_manifest::project::ProjectConfig> { self.manifest.as_ref() }
-    pub fn documents(&self) -> &[ModelDocument] { &self.documents }
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+    pub fn manifest(&self) -> Option<&lute_manifest::project::ProjectConfig> {
+        self.manifest.as_ref()
+    }
+    pub fn documents(&self) -> &[ModelDocument] {
+        &self.documents
+    }
     /// Every document as a project view (path, AST, typed frontmatter),
     /// borrowed from the model.
     pub fn project_docs(&self) -> Vec<lute_check::ProjectDoc<'_>> {
@@ -415,11 +502,21 @@ impl ProjectModel {
             .map(|d| lute_check::ProjectDoc::new(&d.path, &d.doc, &d.folded.typed))
             .collect()
     }
-    pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] { &self.project_diagnostics }
-    pub fn index(&self) -> Option<&ProjectIndex> { self.index.as_ref() }
-    pub fn identity_renames(&self) -> &[lute_manifest::project::IdentityRename] { &self.identity_renames }
-    pub fn reconciled(&self) -> &ReconciledOutputs { &self.reconciled }
-    pub fn revisions(&self) -> &ProjectRevision { &self.revisions }
+    pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] {
+        &self.project_diagnostics
+    }
+    pub fn index(&self) -> Option<&ProjectIndex> {
+        self.index.as_ref()
+    }
+    pub fn identity_renames(&self) -> &[lute_manifest::project::IdentityRename] {
+        &self.identity_renames
+    }
+    pub fn reconciled(&self) -> &ReconciledOutputs {
+        &self.reconciled
+    }
+    pub fn revisions(&self) -> &ProjectRevision {
+        &self.revisions
+    }
     pub fn graph(&self) -> &lute_semantic::SemanticGraph {
         self.graph.get_or_init(|| crate::graph::build(self))
     }
@@ -442,7 +539,9 @@ fn build_revisions(
         paths.extend(imports.seasons.iter().map(|(path, _, _)| path.clone()));
     }
     let manifest_path = root.join("lute.project.yaml");
-    if manifest_path.is_file() { paths.insert(manifest_path); }
+    if manifest_path.is_file() {
+        paths.insert(manifest_path);
+    }
     if let Some(config) = manifest {
         paths.extend(yaml_files(&config.plugins_dir));
         paths.extend(yaml_files(&config.catalog_dir));
@@ -460,16 +559,23 @@ fn build_revisions(
 }
 
 fn yaml_files(dir: &Path) -> Vec<PathBuf> {
-    if dir.is_file() { return vec![dir.to_path_buf()]; }
+    if dir.is_file() {
+        return vec![dir.to_path_buf()];
+    }
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(path) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(path) else { continue };
+        let Ok(entries) = std::fs::read_dir(path) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
                 stack.push(path);
-            } else if matches!(path.extension().and_then(|ext| ext.to_str()), Some("yaml" | "yml")) {
+            } else if matches!(
+                path.extension().and_then(|ext| ext.to_str()),
+                Some("yaml" | "yml")
+            ) {
                 out.push(path);
             }
         }
@@ -478,14 +584,23 @@ fn yaml_files(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-
 fn resolution_diagnostic(raw: &str) -> Diagnostic {
     let (code, message) = raw.split_once(": ").unwrap_or(("E-PROJECT-CONFIG", raw));
     Diagnostic {
         code: code.to_string(),
-        severity: if code.starts_with("W-") { Severity::Warning } else { Severity::Error },
+        severity: if code.starts_with("W-") {
+            Severity::Warning
+        } else {
+            Severity::Error
+        },
         message: message.to_string(),
-        span: Span { byte_start: 0, byte_end: 0, line: 0, column: 0, utf16_range: (0, 0) },
+        span: Span {
+            byte_start: 0,
+            byte_end: 0,
+            line: 0,
+            column: 0,
+            utf16_range: (0, 0),
+        },
         layer: Layer::Logic,
         evidence: None,
         fixits: Vec::new(),
@@ -495,7 +610,10 @@ fn resolution_diagnostic(raw: &str) -> Diagnostic {
     }
 }
 fn relative_path(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/")
 }
 
 fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
@@ -515,17 +633,21 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
     let bodies = if folded.typed.component.is_some() {
         let mut bodies = folded.def_bodies.clone();
         for param in &folded.typed.params {
-            bodies.entry(param.name.clone()).or_insert_with(|| param.name.clone());
+            bodies
+                .entry(param.name.clone())
+                .or_insert_with(|| param.name.clone());
         }
         Cow::Owned(bodies)
     } else {
         Cow::Borrowed(&folded.def_bodies)
     };
-    let table = lute_check::DefTable { bodies: &bodies, params: &folded.env.def_params };
+    let table = lute_check::DefTable {
+        bodies: &bodies,
+        params: &folded.env.def_params,
+    };
     diags.extend(lute_compile::expand::expand_document(&mut doc, &table));
     diags
 }
-
 
 #[cfg(test)]
 mod compile_equivalence_tests {
@@ -572,7 +694,10 @@ mod compile_equivalence_tests {
     #[test]
     fn precompiled_project_artifacts_match_standalone_compile() {
         let roots = project_roots();
-        assert!(!roots.is_empty(), "compile equivalence corpus must not be empty");
+        assert!(
+            !roots.is_empty(),
+            "compile equivalence corpus must not be empty"
+        );
         let options = ModelOptions {
             compile: true,
             ..ModelOptions::default()
@@ -605,10 +730,7 @@ mod compile_equivalence_tests {
                     )
                 });
                 if !model.identity_renames().is_empty() {
-                    lute_compile::stamp_identity_renames(
-                        &mut expected,
-                        model.identity_renames(),
-                    );
+                    lute_compile::stamp_identity_renames(&mut expected, model.identity_renames());
                 }
                 let actual_json = serde_json::to_value(actual)
                     .expect("ExecutionIr must serialize in equivalence test");

@@ -98,10 +98,7 @@ fn assemble_with(lower: Lowering) -> Vec<AssembleError> {
 
 #[test]
 fn valid_record_lowering_assembles_clean() {
-    let errs = assemble_with(record_lowering(
-        "bg",
-        "{ assetId: { fromAttr: img } }",
-    ));
+    let errs = assemble_with(record_lowering("bg", "{ assetId: { fromAttr: img } }"));
     assert!(errs.is_empty(), "{errs:?}");
 }
 
@@ -139,20 +136,14 @@ fn bad_record_name_reaches_assembly_with_its_own_code() {
 
 #[test]
 fn bad_field_name_reaches_assembly_with_its_own_code() {
-    let errs = assemble_with(record_lowering(
-        "bg",
-        "{ backdropId: { fromAttr: img } }",
-    ));
+    let errs = assemble_with(record_lowering("bg", "{ backdropId: { fromAttr: img } }"));
     let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
     assert_eq!(codes, vec!["E-LOWER-RECORD-FIELD"], "{errs:?}");
 }
 
 #[test]
 fn bad_from_attr_reaches_assembly_with_its_own_code() {
-    let errs = assemble_with(record_lowering(
-        "bg",
-        "{ assetId: { fromAttr: missing } }",
-    ));
+    let errs = assemble_with(record_lowering("bg", "{ assetId: { fromAttr: missing } }"));
     let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
     assert_eq!(codes, vec!["E-LOWER-RECORD-FIELD"], "{errs:?}");
 }

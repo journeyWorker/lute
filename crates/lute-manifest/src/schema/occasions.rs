@@ -247,10 +247,7 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
     fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
         use serde_yaml::Value;
         let shown = |v: &Value| {
-            serde_yaml::to_string(v).map_or_else(
-                |_| String::new(),
-                |s| s.trim().to_string(),
-            )
+            serde_yaml::to_string(v).map_or_else(|_| String::new(), |s| s.trim().to_string())
         };
         let name = |key: &str| -> Result<String, SchemaError> {
             match v.get(key) {
@@ -305,7 +302,9 @@ impl TryFrom<serde_yaml::Value> for OccasionTarget {
                     members,
                 })
             }
-            Value::Null => Err(SchemaError::OccasionTarget(format!("`target:` is empty; {OCCASION_TARGET_SHAPES}"))),
+            Value::Null => Err(SchemaError::OccasionTarget(format!(
+                "`target:` is empty; {OCCASION_TARGET_SHAPES}"
+            ))),
             other => Err(SchemaError::OccasionTarget(format!(
                 "`target: {}` is not a target; {OCCASION_TARGET_SHAPES}",
                 shown(other)
@@ -405,7 +404,10 @@ fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
     let forms = SCALARS.iter().chain(FORMS.iter()).copied();
     let refuse = |name: &str| -> String {
         if name == "number" {
-            format!("payload field `{field}`: {}", crate::types::NUMBER_TYPE_REMOVED)
+            format!(
+                "payload field `{field}`: {}",
+                crate::types::NUMBER_TYPE_REMOVED
+            )
         } else if FORMS.contains(&name) {
             let arg = if name == "enum" {
                 "[<member>, …]"

@@ -505,10 +505,16 @@ fn numeric_disjunction_is_a_union_of_intervals() {
 /// its negation exclude each other with no fact envelope in scope.
 #[test]
 fn relational_queries_are_paths() {
-    assert_eq!(d("holds('inParty', ['x']) && !holds('inParty', ['x'])"), f());
+    assert_eq!(
+        d("holds('inParty', ['x']) && !holds('inParty', ['x'])"),
+        f()
+    );
     assert_eq!(d("visited('a') || !visited('a')"), t());
     assert_eq!(d("count('r', ['_']) > 2 && count('r', ['_']) < 1"), f());
-    assert_eq!(d("holds('inParty', ['x']) && !holds('inParty', ['y'])"), None);
+    assert_eq!(
+        d("holds('inParty', ['x']) && !holds('inParty', ['y'])"),
+        None
+    );
 }
 
 /// The `$` subject and component params are paths too.

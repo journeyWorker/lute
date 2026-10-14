@@ -8,8 +8,8 @@ use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
 use super::{addr, fold_op, Machine, Site};
-use crate::eval::Read;
 use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
+use crate::eval::Read;
 use crate::store::{json_arg_to_string, json_to_value, render_fact};
 use crate::Value;
 
@@ -256,10 +256,15 @@ impl<D: Driver> Machine<D> {
                     from.get("by").and_then(Json::as_str),
                     from.get("by").and_then(Json::as_f64),
                 ) {
-                    (Some("int"), Some(raw), _) => raw.parse::<i64>().map(Value::Int)
-                        .unwrap_or_else(|_| Value::Error(format!("bridge increment `{raw}` is not an int"))),
+                    (Some("int"), Some(raw), _) => {
+                        raw.parse::<i64>().map(Value::Int).unwrap_or_else(|_| {
+                            Value::Error(format!("bridge increment `{raw}` is not an int"))
+                        })
+                    }
                     (Some("int"), None, Some(n)) if n.fract() == 0.0 => Value::Int(n as i64),
-                    (Some("int"), None, Some(n)) => Value::Error(format!("bridge increment `{n}` is not an int")),
+                    (Some("int"), None, Some(n)) => {
+                        Value::Error(format!("bridge increment `{n}` is not an int"))
+                    }
                     (Some("double"), _, Some(n)) | (_, _, Some(n)) => Value::Double(n),
                     _ => Value::Unknown,
                 };

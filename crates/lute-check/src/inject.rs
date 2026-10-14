@@ -941,7 +941,9 @@ mod tests {
         assert!(injected
             .iter()
             .any(|c| c.provenance.by == "auto-anchor-on-show"));
-        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(injected
+            .iter()
+            .any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
         assert!(st2.on_stage.contains_key("marina"));
     }
 
@@ -1192,7 +1194,9 @@ mod tests {
         let doms = anchor_domain("middle");
         let (st, injected) =
             lower_node(StageState::default(), &show_marina_no_anchor(), &[], &doms);
-        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "middle")));
+        assert!(injected
+            .iter()
+            .any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "middle")));
         assert_eq!(st.on_stage["marina"].anchor.as_deref(), Some("middle"));
     }
 
@@ -1283,7 +1287,9 @@ mod tests {
             &[],
             &anchor_domain("center"),
         );
-        assert!(injected.iter().any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
+        assert!(injected
+            .iter()
+            .any(|c| matches!(&c.kind, InjectKind::Anchor { anchor, .. } if anchor == "center")));
         assert!(st.diags.is_empty(), "got {:?}", st.diags);
         assert_eq!(st.on_stage["marina"].anchor.as_deref(), Some("center"));
     }

@@ -10,9 +10,9 @@ use serde_json::Value as Json;
 use super::eligibility::kind_label;
 use super::project::ExecProject;
 use super::resolve::ever_read_path;
+use super::step::StepBody;
 use super::walk::{absorb, play_machine, walk_stop, PlayHalt};
 use super::world::{clock_at, json_to_value, World};
-use super::step::StepBody;
 use crate::datalog::Fact;
 use crate::{Carry, Seed};
 use crate::{MockSet, Value};
@@ -186,7 +186,12 @@ pub fn present<B, C, F: super::WalkDriver>(
         target: member.map(str::to_string),
         beat: beat.id.clone(),
         document: beat.document.clone(),
-        kind: match beat.kind { BeatKind::Scene => "scene", BeatKind::Entry => "entry", BeatKind::Bundle => "bundle" }.into(),
+        kind: match beat.kind {
+            BeatKind::Scene => "scene",
+            BeatKind::Entry => "entry",
+            BeatKind::Bundle => "bundle",
+        }
+        .into(),
     });
     let doc_json = &p.artifacts[&beat.document];
     let state_before = w.state.clone();
@@ -295,7 +300,11 @@ pub fn present<B, C, F: super::WalkDriver>(
                 w.advance_cascade_depth -= 1;
                 if let (Some(from), Some(to)) = (clock_before, clock_at(p, w)) {
                     if from != to {
-                        factory.event(crate::runtime::Event::Clock { from: serde_json::json!({ "day": from.day, "slot": from.slot }), to: serde_json::json!({ "day": to.day, "slot": to.slot }), passed: None });
+                        factory.event(crate::runtime::Event::Clock {
+                            from: serde_json::json!({ "day": from.day, "slot": from.slot }),
+                            to: serde_json::json!({ "day": to.day, "slot": to.slot }),
+                            passed: None,
+                        });
                     }
                 }
                 if let StepBody::Advance {
@@ -323,7 +332,9 @@ pub fn present<B, C, F: super::WalkDriver>(
                         taken = day.closed_before;
                         if let StepBody::Occasion { presented, .. } = *day.occasion {
                             raises.extend(
-                                presented.into_iter().map(|b| ClockRaise::Raised(Box::new(b))),
+                                presented
+                                    .into_iter()
+                                    .map(|b| ClockRaise::Raised(Box::new(b))),
                             );
                         }
                     }

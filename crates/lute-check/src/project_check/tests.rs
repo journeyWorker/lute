@@ -1,9 +1,9 @@
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use super::*;
 use lute_core_span::{Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
-use super::*;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 mod test_cases {
     use super::*;
     use lute_syntax::ast::{Meta, Quest};
@@ -162,7 +162,10 @@ mod test_cases {
             (PathBuf::from("a.lute"), doc(vec![quest("alpha", 1)])),
             (PathBuf::from("b.lute"), doc(vec![quest("beta", 1)])),
         ];
-        assert!(colliding_occurrences(&project(docs.clone()).views()).is_empty(), "{docs:?}");
+        assert!(
+            colliding_occurrences(&project(docs.clone()).views()).is_empty(),
+            "{docs:?}"
+        );
     }
 
     #[test]
@@ -187,7 +190,10 @@ mod test_cases {
             (PathBuf::from("a.lute"), doc(vec![quest("", 1)])),
             (PathBuf::from("b.lute"), doc(vec![quest("", 1)])),
         ];
-        assert!(colliding_occurrences(&project(docs.clone()).views()).is_empty(), "{docs:?}");
+        assert!(
+            colliding_occurrences(&project(docs.clone()).views()).is_empty(),
+            "{docs:?}"
+        );
     }
 
     // --- `check_project_quest_refs` (dsl 0.5.1 §1.4) ------------------------
@@ -838,7 +844,8 @@ mod test_cases {
             "{}",
             per_file[0].message
         );
-        let project = check_project_quest_tree(&project(vec![(PathBuf::from("a.lute"), same)]).views());
+        let project =
+            check_project_quest_tree(&project(vec![(PathBuf::from("a.lute"), same)]).views());
         assert!(
             !project.iter().any(|(_, d)| d.code == E_QUEST_TIER_MIX),
             "{project:?}"

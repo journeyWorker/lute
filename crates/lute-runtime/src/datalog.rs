@@ -1118,7 +1118,11 @@ mod tests {
             ("run.stalker".to_string(), Value::Str("ren".to_string())),
         ]);
         let closure = program.fixpoint(&base, &EffectiveState::over(&schema, &state));
-        let holds = |rel: &str, a: &str| closure.facts.contains(&(rel.to_string(), vec![a.to_string()]));
+        let holds = |rel: &str, a: &str| {
+            closure
+                .facts
+                .contains(&(rel.to_string(), vec![a.to_string()]))
+        };
         assert!(holds("liked", "mira") && !holds("liked", "ren"));
         assert!(holds("stalked", "ren") && !holds("stalked", "mira"));
     }

@@ -6,7 +6,9 @@
 use std::path::PathBuf;
 
 use lute_check::beats::ReportedErrors;
-use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDoc, SchemaImports};
+use lute_check::{
+    check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDoc, SchemaImports,
+};
 use lute_core_span::Diagnostic;
 use lute_syntax::ast::Document;
 
@@ -317,9 +319,11 @@ fn on_one_position_the_cause_comes_first() {
         covered: Vec::new(),
         related: Vec::new(),
     };
-    let mut ds = [at("E-ARM-DEAD"),
+    let mut ds = [
+        at("E-ARM-DEAD"),
         at("E-BEAT-UNREACHABLE"),
-        at("E-WHEN-LITERAL-DOMAIN")];
+        at("E-WHEN-LITERAL-DOMAIN"),
+    ];
     ds.sort_by(lute_check::diagnostic_order);
     assert_eq!(ds[0].code, "E-WHEN-LITERAL-DOMAIN");
 }

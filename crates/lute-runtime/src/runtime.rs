@@ -381,8 +381,12 @@ impl Snapshot {
                 format!("snapshot version {version} is not {EVENT_VERSION}'s major.minor"),
             ));
         }
-        serde_json::from_value(value)
-            .map_err(|e| reject("E-RUNTIME-SNAPSHOT-VERSION", format!("invalid snapshot: {e}")))
+        serde_json::from_value(value).map_err(|e| {
+            reject(
+                "E-RUNTIME-SNAPSHOT-VERSION",
+                format!("invalid snapshot: {e}"),
+            )
+        })
     }
 }
 
@@ -635,7 +639,10 @@ impl Runtime {
         self.run_input(world, seed_input(), Vec::new(), 0, 0)
     }
 
-    #[expect(clippy::result_large_err, reason = "rejection returns the pre-step state required for deterministic recovery")]
+    #[expect(
+        clippy::result_large_err,
+        reason = "rejection returns the pre-step state required for deterministic recovery"
+    )]
     pub fn step(
         &self,
         mut state: State,
@@ -674,7 +681,10 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject("E-RUNTIME-REQUEST", "choose request does not match the pending await"),
+                            reject(
+                                "E-RUNTIME-REQUEST",
+                                "choose request does not match the pending await",
+                            ),
                         ));
                     }
                     let Some(item) = menu.options.iter().find(|o| o.id == *option) else {
@@ -709,19 +719,28 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject("E-RUNTIME-REQUEST", "timeout request does not match the pending await"),
+                            reject(
+                                "E-RUNTIME-REQUEST",
+                                "timeout request does not match the pending await",
+                            ),
                         ));
                     }
                     let Some(default) = menu.default.clone() else {
                         return Err((
                             unchanged.clone(),
-                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                            reject(
+                                "E-RUNTIME-TIMEOUT",
+                                "the pending await is not a timed choice",
+                            ),
                         ));
                     };
                     if menu.timeout.is_none() {
                         return Err((
                             unchanged.clone(),
-                            reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                            reject(
+                                "E-RUNTIME-TIMEOUT",
+                                "the pending await is not a timed choice",
+                            ),
                         ));
                     }
                     let mut a = c.answers;
@@ -734,7 +753,10 @@ impl Runtime {
                 (Input::Timeout { .. }, _) => {
                     return Err((
                         unchanged.clone(),
-                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        reject(
+                            "E-RUNTIME-TIMEOUT",
+                            "the pending await is not a timed choice",
+                        ),
                     ))
                 }
                 (
@@ -753,7 +775,10 @@ impl Runtime {
                     if request != expected {
                         return Err((
                             unchanged.clone(),
-                            reject("E-RUNTIME-REQUEST", "bridge request does not match the pending await"),
+                            reject(
+                                "E-RUNTIME-REQUEST",
+                                "bridge request does not match the pending await",
+                            ),
                         ));
                     }
                     if let Err(m) = validate_bridge(results, fields) {
@@ -789,7 +814,10 @@ impl Runtime {
                 if matches!(input, Input::Timeout { .. }) {
                     return Err((
                         unchanged.clone(),
-                        reject("E-RUNTIME-TIMEOUT", "the pending await is not a timed choice"),
+                        reject(
+                            "E-RUNTIME-TIMEOUT",
+                            "the pending await is not a timed choice",
+                        ),
                     ));
                 }
                 ((*state.world).clone(), input.clone(), Vec::new(), 0)
@@ -866,7 +894,10 @@ impl Runtime {
         let bound = def_args(&self.project, name, &def.params, args)
             .map_err(|m| reject("E-RUNTIME-INPUT", m))?;
         let expr = serde_json::to_value(&def.expr).map_err(|e| {
-            reject("E-RUNTIME-INPUT", format!("def `{name}` does not encode: {e}"))
+            reject(
+                "E-RUNTIME-INPUT",
+                format!("def `{name}` does not encode: {e}"),
+            )
         })?;
         let expr = crate::expr::bind_params(&expr, &bound);
         let slot = crate::Slot::of(&serde_json::json!({ "cel": def.cel, "expr": expr }))
@@ -878,7 +909,12 @@ impl Runtime {
     /// `target`) with no writes would pass the seam now — the raise rule of
     /// `step` exactly. `E-RUNTIME-INPUT` when the bundle declares no such
     /// occasion. The state is read as `view` reads it and not changed.
-    pub fn gate(&self, state: &State, occasion: &str, target: Option<&str>) -> Result<Gate, Rejected> {
+    pub fn gate(
+        &self,
+        state: &State,
+        occasion: &str,
+        target: Option<&str>,
+    ) -> Result<Gate, Rejected> {
         if !self.project.occasions.contains_key(occasion) {
             return Err(reject(
                 "E-RUNTIME-INPUT",
@@ -1094,7 +1130,14 @@ fn reject(code: impl Into<String>, message: impl Into<String>) -> Rejected {
 fn set_request(await_: Await, request: u64) -> Await {
     match await_ {
         Await::Choice { menu, .. } => Await::Choice { request, menu },
-        Await::Bridge { request: _, tag, document, position, attrs, results } => Await::Bridge {
+        Await::Bridge {
+            request: _,
+            tag,
+            document,
+            position,
+            attrs,
+            results,
+        } => Await::Bridge {
             request,
             tag,
             document,

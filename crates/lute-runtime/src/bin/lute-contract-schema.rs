@@ -2,13 +2,15 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use lute_runtime::runtime::{Await, Evaluation, Event, Gate, Input, Output, Rejected, Seed, Snapshot, StreamLine};
-use lute_runtime::session::{Candidate, ClockView, Premise, Verdict, WorldView};
-use lute_runtime::GuardRead;
+use lute_ir::{BeatOnce, ProjectIndex};
 use lute_manifest::bindings::Bindings;
 use lute_manifest::clock::ClockAt;
 use lute_manifest::semantics::prereq::Atom;
-use lute_ir::{BeatOnce, ProjectIndex};
+use lute_runtime::runtime::{
+    Await, Evaluation, Event, Gate, Input, Output, Rejected, Seed, Snapshot, StreamLine,
+};
+use lute_runtime::session::{Candidate, ClockView, Premise, Verdict, WorldView};
+use lute_runtime::GuardRead;
 use schemars::generate::SchemaSettings;
 use schemars::schema_for;
 use serde_json::{json, Map, Value};
@@ -41,7 +43,8 @@ fn release_line() -> String {
 
 fn main() {
     let line = release_line();
-    let id = |name: &str| format!("https://lute-lang.vercel.app/schemas/lute-{name}-{line}.schema.json");
+    let id =
+        |name: &str| format!("https://lute-lang.vercel.app/schemas/lute-{name}-{line}.schema.json");
     let mut defs = BTreeMap::new();
     collect::<Input>("Input", &mut defs);
     collect::<Seed>("Seed", &mut defs);
@@ -62,8 +65,14 @@ fn main() {
     collect::<BeatOnce>("BeatOnce", &mut defs);
     collect::<ClockAt>("ClockAt", &mut defs);
     let mut bindings = schema::<Bindings>();
-    bindings.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
-    bindings.as_object_mut().unwrap().insert("$id".into(), json!(id("player-bindings")));
+    bindings.as_object_mut().unwrap().insert(
+        "$schema".into(),
+        json!("https://json-schema.org/draft/2020-12/schema"),
+    );
+    bindings
+        .as_object_mut()
+        .unwrap()
+        .insert("$id".into(), json!(id("player-bindings")));
     let event = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": id("events"),
@@ -78,16 +87,28 @@ fn main() {
     let mut snap = schema::<Snapshot>();
     let mut snap_defs = BTreeMap::new();
     if let Some(found) = snap.get_mut("$defs").and_then(Value::as_object_mut) {
-        for (key, value) in std::mem::take(found) { snap_defs.insert(key, value); }
+        for (key, value) in std::mem::take(found) {
+            snap_defs.insert(key, value);
+        }
     }
-    snap.as_object_mut().unwrap().insert("$schema".into(), json!("https://json-schema.org/draft/2020-12/schema"));
-    snap.as_object_mut().unwrap().insert("$id".into(), json!(id("snapshot")));
-    snap.as_object_mut().unwrap().insert("$defs".into(), serde_json::to_value(snap_defs).unwrap());
+    snap.as_object_mut().unwrap().insert(
+        "$schema".into(),
+        json!("https://json-schema.org/draft/2020-12/schema"),
+    );
+    snap.as_object_mut()
+        .unwrap()
+        .insert("$id".into(), json!(id("snapshot")));
+    snap.as_object_mut()
+        .unwrap()
+        .insert("$defs".into(), serde_json::to_value(snap_defs).unwrap());
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
     fs::create_dir_all(&root).unwrap();
     write(root.join(format!("lute-events-{line}.schema.json")), event);
     write(root.join(format!("lute-snapshot-{line}.schema.json")), snap);
-    write(root.join(format!("lute-player-bindings-{line}.schema.json")), bindings);
+    write(
+        root.join(format!("lute-player-bindings-{line}.schema.json")),
+        bindings,
+    );
     let ir = root.join(format!("lute-ir-{line}.schema.json"));
     let text = fs::read_to_string(&ir).expect("read the IR schema");
     fs::write(&ir, splice_ir_defs(&text, &index_defs())).expect("write the IR schema");
@@ -135,7 +156,9 @@ fn index_defs() -> BTreeMap<String, Value> {
         strip_numeric_formats(value);
     }
     assert_eq!(
-        defs.keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>(),
+        defs.keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
         INDEX_DEFS.into_iter().collect(),
         "the index types define exactly the generator-owned $defs"
     );
@@ -180,7 +203,12 @@ fn drop_null_options(value: &mut Value) {
             let required: Vec<String> = object
                 .get("required")
                 .and_then(Value::as_array)
-                .map(|r| r.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .map(|r| {
+                    r.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
                 .unwrap_or_default();
             if let Some(Value::Object(properties)) = object.get_mut("properties") {
                 for (name, property) in properties.iter_mut() {
@@ -315,9 +343,16 @@ fn write(path: impl AsRef<Path>, mut value: Value) {
 fn strip_numeric_formats(value: &mut Value) {
     match value {
         Value::Object(object) => {
-            if object.get("format").and_then(Value::as_str).is_some_and(|format| {
-                matches!(format, "uint" | "uint32" | "uint64" | "int32" | "int64" | "float" | "double")
-            }) {
+            if object
+                .get("format")
+                .and_then(Value::as_str)
+                .is_some_and(|format| {
+                    matches!(
+                        format,
+                        "uint" | "uint32" | "uint64" | "int32" | "int64" | "float" | "double"
+                    )
+                })
+            {
                 object.remove("format");
             }
             for child in object.values_mut() {

@@ -224,9 +224,11 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             occasion,
             target.as_deref(),
             self.driver.observer(),
-        )
-        {
-            let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
+        ) {
+            let prefix = format!(
+                "{}.",
+                lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD
+            );
             self.world.state.retain(|k, _| !k.starts_with(&prefix));
             let body = StepBody::Occasion {
                 occasion: occasion.clone(),
@@ -258,7 +260,10 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             self.driver,
         );
         // dsl 0.27.0 §3: a payload lives only for the raise it came with.
-        let prefix = format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD);
+        let prefix = format!(
+            "{}.",
+            lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD
+        );
         self.world.state.retain(|k, _| !k.starts_with(&prefix));
         out
     }
@@ -298,7 +303,11 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
         let to = clock_at(self.project, &self.world);
         if let (Some(from), Some(to)) = (from, to) {
             if from != to {
-                self.driver.event(crate::runtime::Event::Clock { from: json!({ "day": from.day, "slot": from.slot }), to: json!({ "day": to.day, "slot": to.slot }), passed: None });
+                self.driver.event(crate::runtime::Event::Clock {
+                    from: json!({ "day": from.day, "slot": from.slot }),
+                    to: json!({ "day": to.day, "slot": to.slot }),
+                    passed: None,
+                });
             }
         }
         out
@@ -387,8 +396,12 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
 
     /// Fire a declared world event (dsl 0.22.0 §9): the quests answer it.
     pub fn event(&mut self, event: &str) -> StepOutcome {
-        let (quests, stop) =
-            raise(self.project, &mut self.world, Raise::Event(event), self.driver);
+        let (quests, stop) = raise(
+            self.project,
+            &mut self.world,
+            Raise::Event(event),
+            self.driver,
+        );
         (
             StepBody::Event {
                 event: event.to_string(),

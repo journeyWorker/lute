@@ -2,20 +2,21 @@ use super::graph_nodes::*;
 use super::{graph_sources::*, identity::*};
 use crate::ProjectDoc;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
-use lute_core_span::{Diagnostic, Span};
-use lute_syntax::ast::{Quest, Node};
 use crate::meta::meta_key_span;
 use crate::prereq::parse_prereq;
+use lute_core_span::{Diagnostic, Span};
 use lute_manifest::semantics::prereq::atoms;
+use lute_syntax::ast::{Node, Quest};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 pub fn assemble_graph(
     docs: &[ProjectDoc<'_>],
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
     _quest_ids: &BTreeSet<String>,
 ) -> (ConnGraph, Vec<(PathBuf, Diagnostic)>) {
-    let by_path: BTreeMap<&Path, &ProjectDoc<'_>> = docs.iter().map(|item| (item.path, item)).collect();
+    let by_path: BTreeMap<&Path, &ProjectDoc<'_>> =
+        docs.iter().map(|item| (item.path, item)).collect();
 
     let mut nodes: BTreeMap<NodeId, NodeInfo> = BTreeMap::new();
 
@@ -26,21 +27,20 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.first() else {
             continue;
         };
-        let prereq =
-            by_path
-                .get(path.as_path())
-                .map_or(PrereqState::Absent, |item| match scene_after(item.meta) {
-                    SceneAfter::Absent => PrereqState::Absent,
-                    SceneAfter::NonString => PrereqState::Invalid,
-                    SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
-                    SceneAfter::String(after) => {
-                        let after_span = meta_key_span(&item.doc.meta, "after");
-                        match parse_prereq(&after, after_span).0 {
-                            Some(f) => PrereqState::Valid(f),
-                            None => PrereqState::Invalid,
-                        }
+        let prereq = by_path
+            .get(path.as_path())
+            .map_or(PrereqState::Absent, |item| match scene_after(item.meta) {
+                SceneAfter::Absent => PrereqState::Absent,
+                SceneAfter::NonString => PrereqState::Invalid,
+                SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
+                SceneAfter::String(after) => {
+                    let after_span = meta_key_span(&item.doc.meta, "after");
+                    match parse_prereq(&after, after_span).0 {
+                        Some(f) => PrereqState::Valid(f),
+                        None => PrereqState::Invalid,
                     }
-                });
+                }
+            });
         nodes.insert(
             NodeId::Scene(key.clone()),
             NodeInfo {
@@ -279,7 +279,11 @@ pub(super) fn add_edge(
 }
 
 /// Whether `to` is `from` or reachable from it along `edges`.
-pub(super) fn reaches(edges: &BTreeMap<NodeId, BTreeSet<NodeId>>, from: &NodeId, to: &NodeId) -> bool {
+pub(super) fn reaches(
+    edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    from: &NodeId,
+    to: &NodeId,
+) -> bool {
     let mut seen = BTreeSet::new();
     let mut stack = vec![from];
     while let Some(n) = stack.pop() {
@@ -318,9 +322,7 @@ impl<'a> QuestDecls<'a> {
             let path = item.path;
             let doc = item.doc;
             for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
-                first
-                    .entry(quest.id.as_str())
-                    .or_insert((path, quest));
+                first.entry(quest.id.as_str()).or_insert((path, quest));
                 if quest.follows.is_some() {
                     with_after.insert(quest.id.as_str());
                 }
@@ -425,4 +427,3 @@ pub(super) fn start_anchors(
         })
         .collect()
 }
-

@@ -188,7 +188,11 @@ impl Store {
             .into_iter()
             .flatten()
             .flat_map(|r| {
-                let name = r.get("name").and_then(Json::as_str).unwrap_or("").to_string();
+                let name = r
+                    .get("name")
+                    .and_then(Json::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 r.get("excludes")
                     .and_then(Json::as_array)
                     .into_iter()
@@ -201,8 +205,7 @@ impl Store {
             .collect();
         std::sync::Arc::new(StoreSchema {
             kind_label_forms: std::sync::Arc::new(
-                art
-                    .get("entities")
+                art.get("entities")
                     .and_then(Json::as_array)
                     .into_iter()
                     .flatten()
@@ -213,8 +216,7 @@ impl Store {
                     .collect(),
             ),
             kind_labels: std::sync::Arc::new(
-                art
-                    .get("entities")
+                art.get("entities")
                     .and_then(Json::as_array)
                     .into_iter()
                     .flatten()
@@ -324,7 +326,6 @@ impl Store {
         self.capture_reads = true;
     }
 
-
     /// Coerce a raw seed literal against the declared value-type. `prev.*`
     /// is the previous-run view of the corresponding `run.*` declaration.
     pub(crate) fn coerce_literal(&self, path: &str, lit: &str) -> Value {
@@ -335,8 +336,14 @@ impl Store {
                 "false" => Value::Bool(false),
                 _ => Value::Str(lit.to_string()),
             },
-            Some("int") => lit.parse::<i64>().map(Value::Int).unwrap_or_else(|_| Value::Str(lit.to_string())),
-            Some("double") => lit.parse::<f64>().map(Value::Double).unwrap_or_else(|_| Value::Str(lit.to_string())),
+            Some("int") => lit
+                .parse::<i64>()
+                .map(Value::Int)
+                .unwrap_or_else(|_| Value::Str(lit.to_string())),
+            Some("double") => lit
+                .parse::<f64>()
+                .map(Value::Double)
+                .unwrap_or_else(|_| Value::Str(lit.to_string())),
             _ => match lit {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),
@@ -350,7 +357,9 @@ impl Store {
         if let Some(v) = self.values.get(path) {
             return Read::Value(v.clone());
         }
-        if lute_manifest::semantics::cel_paths::is_reserved_entry_read(path) || is_entry_ever_read(path) {
+        if lute_manifest::semantics::cel_paths::is_reserved_entry_read(path)
+            || is_entry_ever_read(path)
+        {
             return Read::Value(Value::Bool(false));
         }
         if crate::eval::is_reserved_quest_path(path) {
@@ -363,15 +372,16 @@ impl Store {
     pub(crate) fn put(&mut self, path: String, v: Value) {
         let is_occasion_target = path == lute_manifest::semantics::beats::OCCASION_TARGET;
         self.values.insert(path, v);
-        self.dirty |= self.rules_read_state
-            && (!is_occasion_target || self.rules_read_occasion_target);
+        self.dirty |=
+            self.rules_read_state && (!is_occasion_target || self.rules_read_occasion_target);
     }
 
     /// Forget a value (an unbound `occasion.target`).
     pub(crate) fn remove(&mut self, path: &str) {
         if self.values.remove(path).is_some() {
             self.dirty |= self.rules_read_state
-                && (path != lute_manifest::semantics::beats::OCCASION_TARGET || self.rules_read_occasion_target);
+                && (path != lute_manifest::semantics::beats::OCCASION_TARGET
+                    || self.rules_read_occasion_target);
         }
     }
 
@@ -390,7 +400,8 @@ impl Store {
     pub(crate) fn write(&mut self, path: &str, v: Value) {
         self.values.insert(path.to_string(), v);
         self.dirty |= self.rules_read_state
-            && (path != lute_manifest::semantics::beats::OCCASION_TARGET || self.rules_read_occasion_target);
+            && (path != lute_manifest::semantics::beats::OCCASION_TARGET
+                || self.rules_read_occasion_target);
         if self
             .clock
             .as_ref()
@@ -572,7 +583,10 @@ fn typed_json_to_value(j: &Json, ty: &str) -> Option<Value> {
 pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
     match j {
         Json::Bool(b) => Some(Value::Bool(*b)),
-        Json::Number(n) => n.as_i64().map(Value::Int).or_else(|| n.as_f64().map(Value::Double)),
+        Json::Number(n) => n
+            .as_i64()
+            .map(Value::Int)
+            .or_else(|| n.as_f64().map(Value::Double)),
         Json::String(s) => Some(Value::Str(s.clone())),
         _ => None,
     }
@@ -611,9 +625,14 @@ impl LastClosure {
     /// on other threads (`lute test` runs plays in parallel) do not wait on it.
     fn get_or_derive(
         store: &Store,
-    ) -> (std::sync::Arc<BTreeSet<Fact>>, BTreeMap<String, Vec<UnresolvedAtom>>) {
+    ) -> (
+        std::sync::Arc<BTreeSet<Fact>>,
+        BTreeMap<String, Vec<UnresolvedAtom>>,
+    ) {
         let memo = &store.store_schema.last_closure;
-        let last = memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let last = memo
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(hit) = last.as_ref().filter(|l| l.matches(store)) {
             return (std::sync::Arc::clone(&hit.all), hit.undecided.clone());
         }
@@ -621,7 +640,9 @@ impl LastClosure {
         let eff = EffectiveState::over(&store.store_schema.state, &store.values);
         let closure = store.program.fixpoint(&store.base, &eff);
         let all = std::sync::Arc::new(closure.facts);
-        *memo.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(LastClosure {
+        *memo
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(LastClosure {
             base: store.base.clone(),
             values: store.values.clone(),
             all: std::sync::Arc::clone(&all),

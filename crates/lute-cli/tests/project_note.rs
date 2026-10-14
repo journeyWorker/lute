@@ -30,20 +30,34 @@ fn note_of(cwd: &Path, args: &[&str], stdin: Option<&str>) -> String {
     let mut child = Command::new(BIN)
         .args(args)
         .current_dir(cwd)
-        .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .expect("run lute");
     if let Some(text) = stdin {
-        child.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(text.as_bytes())
+            .unwrap();
     }
     let out = child.wait_with_output().unwrap();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     stderr
         .lines()
         .find(|l| l.contains("(nearest lute.project.yaml)"))
-        .unwrap_or_else(|| panic!("`lute {}` printed no project note:\n{stderr}", args.join(" ")))
+        .unwrap_or_else(|| {
+            panic!(
+                "`lute {}` printed no project note:\n{stderr}",
+                args.join(" ")
+            )
+        })
         .to_string()
 }
 
@@ -61,8 +75,16 @@ fn trace_context_and_compile_stream_name_the_project_relative_to_cwd() {
         (&["compile-stream", "proj/scene.lute"], Some("")),
     ];
     for (args, stdin) in cases {
-        assert_eq!(note_of(&parent, args, stdin), RELATIVE, "lute {}", args.join(" "));
+        assert_eq!(
+            note_of(&parent, args, stdin),
+            RELATIVE,
+            "lute {}",
+            args.join(" ")
+        );
     }
     // Run from inside the project, the note names it `.`.
-    assert_eq!(note_of(&parent.join("proj"), &["trace", "scene.lute"], None), HERE);
+    assert_eq!(
+        note_of(&parent.join("proj"), &["trace", "scene.lute"], None),
+        HERE
+    );
 }

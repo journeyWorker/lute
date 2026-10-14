@@ -12,7 +12,11 @@ use super::{
     W_DEADLINE_BEFORE_DONE, W_DEADLINE_NEVER, W_OBJECTIVE_HIDDEN,
 };
 
-pub(super) fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Vec<Diagnostic> {
+pub(super) fn check_quest_reach(
+    quest: &Quest,
+    defs: &DefTable<'_>,
+    ctx: &DecideCtx<'_>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     // dsl 0.5.2 §2.1: `<quest start/fail>` are listed guard slots too — the
     // lint fires independently of `E-QUEST-UNREACHABLE`, which this spec
@@ -58,7 +62,10 @@ pub(super) fn check_quest_reach(quest: &Quest, defs: &DefTable<'_>, ctx: &Decide
 /// `quest=` child), and implication is conjunct containment after `@def`
 /// expansion — each top-level `&&` conjunct of `done` is literally a
 /// conjunct of `G`.
-pub(super) fn check_handler_after_completion(quest: &Quest, defs: &DefTable<'_>) -> Vec<Diagnostic> {
+pub(super) fn check_handler_after_completion(
+    quest: &Quest,
+    defs: &DefTable<'_>,
+) -> Vec<Diagnostic> {
     let required: Vec<&Objective> = quest
         .body
         .iter()
@@ -407,7 +414,10 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
 /// `expr` as ONE in-domain comparison `<declared scalar state path> <op>
 /// <literal>` (either operand order) with its solution set over the path's
 /// declared type; `None` for anything else.
-pub(super) fn comparison_set(expr: &Expr, schema: &crate::meta::StateSchema) -> Option<(String, SolutionSet)> {
+pub(super) fn comparison_set(
+    expr: &Expr,
+    schema: &crate::meta::StateSchema,
+) -> Option<(String, SolutionSet)> {
     comparison_set_polar(expr, schema, false)
 }
 
@@ -548,4 +558,3 @@ fn complement(func_name: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
-

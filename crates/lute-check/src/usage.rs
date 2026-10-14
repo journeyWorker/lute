@@ -95,7 +95,8 @@ pub fn check_project_usage(
             def_bodies.entry(name.as_str()).or_insert(body.as_str());
         }
         let bodies = d
-            .doc.sections
+            .doc
+            .sections
             .iter()
             .map(|s| &s.body)
             .chain(d.doc.quests.iter().map(|q| &q.body))
@@ -390,7 +391,9 @@ pub fn number_row_values(docs: &[UsageDoc<'_>]) -> BTreeMap<String, Vec<f64>> {
         for body in bodies {
             scan(body, &mut |n| {
                 let Node::Set(set) = n else { return };
-                let Some((_, seen)) = rows.get_mut(set.path.as_str()) else { return };
+                let Some((_, seen)) = rows.get_mut(set.path.as_str()) else {
+                    return;
+                };
                 if let Ok(v) = set.expr.raw.trim().parse::<f64>() {
                     seen.push(v);
                 }

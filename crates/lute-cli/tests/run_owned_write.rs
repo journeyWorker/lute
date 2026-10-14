@@ -12,7 +12,10 @@ fn artifact(tag: &str, ir: serde_json::Value) -> (lute_scratch::ScratchDir, Path
 
 fn run(ir: serde_json::Value) -> std::process::Output {
     let (_dir, path) = artifact("test", ir);
-    Command::new(BIN).args(["run", path.to_str().unwrap()]).output().unwrap()
+    Command::new(BIN)
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .unwrap()
 }
 
 fn base() -> serde_json::Value {

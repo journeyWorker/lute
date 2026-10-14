@@ -25,11 +25,11 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use lute_core_span::Span;
+use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
-use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// Why a component argument cannot be used as a ground fact term.
@@ -47,14 +47,16 @@ impl fmt::Display for FactArgError {
                 "`{value}` is not a name: letters, digits, `_` and `-`, not starting with `-`"
             ),
             Self::RuntimeExpression { expression } => {
-                write!(f, "`{expression}` is an expression, decided only at runtime")
+                write!(
+                    f,
+                    "`{expression}` is an expression, decided only at runtime"
+                )
             }
         }
     }
 }
 
 impl std::error::Error for FactArgError {}
-
 
 use crate::cel_expand::DefTable;
 use crate::component_import::{ComponentDef, ComponentSet};
@@ -437,7 +439,8 @@ pub fn splice_component_effects(
     {
         return;
     }
-    let bodies = doc.sections
+    let bodies = doc
+        .sections
         .iter_mut()
         .map(|s| &mut s.body)
         .chain(doc.quests.iter_mut().map(|q| &mut q.body))
@@ -836,7 +839,10 @@ pub fn bind_set_path(path: &mut String, args: &BTreeMap<String, AttrValue>) -> b
         }
         // dsl 0.28.0 §3: the member the enclosing kind or `for=` beat runs for.
         Some(Ok(FactTerm::Target)) => {
-            *path = format!("{family}{}", lute_manifest::semantics::target_writes::TARGET_INDEX);
+            *path = format!(
+                "{family}{}",
+                lute_manifest::semantics::target_writes::TARGET_INDEX
+            );
             true
         }
         _ => false,

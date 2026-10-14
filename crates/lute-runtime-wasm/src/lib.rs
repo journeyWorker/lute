@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use lute_runtime::index::Bundle;
-use lute_runtime::runtime::{Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState};
+use lute_runtime::runtime::{
+    Input, Output, Rejected, Runtime, Seed, Snapshot, State as RuntimeState,
+};
 use serde_json::Value;
 use wasm_bindgen::prelude::*;
 
@@ -134,12 +136,20 @@ impl Program {
     /// The candidates of `occasion` (for `target`) in selection order, as a
     /// JSON array of `Candidate`.
     pub fn candidates(&self, state: &State, occasion: &str, target: Option<String>) -> String {
-        canonical(&self.runtime.candidates(&state.inner, occasion, target.as_deref()))
+        canonical(
+            &self
+                .runtime
+                .candidates(&state.inner, occasion, target.as_deref()),
+        )
     }
 
     /// The verdict of `beat` (for `member`), as `Candidate` JSON or `null`.
     pub fn eligibility(&self, state: &State, beat: &str, member: Option<String>) -> String {
-        canonical(&self.runtime.eligibility(&state.inner, beat, member.as_deref()))
+        canonical(
+            &self
+                .runtime
+                .eligibility(&state.inner, beat, member.as_deref()),
+        )
     }
 
     /// The clock position, as `ClockAt` JSON or `null` without a clock.
@@ -428,7 +438,10 @@ mod tests {
         let rejected = program.step(&state, "{");
         assert!(!rejected.ok);
         assert_eq!(
-            rejected.rejected.as_deref().map(|s| s.contains("E-RUNTIME-INPUT")),
+            rejected
+                .rejected
+                .as_deref()
+                .map(|s| s.contains("E-RUNTIME-INPUT")),
             Some(true)
         );
         let returned = rejected.state.expect("rejected step keeps state");
@@ -469,18 +482,30 @@ mod tests {
             rejected.code
         };
         assert_eq!(code(program.evaluate(&state, "{")), "E-RUNTIME-INPUT");
-        assert_eq!(code(program.evaluate(&state, r#"{"nope":1}"#)), "E-RUNTIME-INPUT");
-        assert_eq!(code(program.evaluate(&state, r#"{"param":"n"}"#)), "E-RUNTIME-INPUT");
+        assert_eq!(
+            code(program.evaluate(&state, r#"{"nope":1}"#)),
+            "E-RUNTIME-INPUT"
+        );
+        assert_eq!(
+            code(program.evaluate(&state, r#"{"param":"n"}"#)),
+            "E-RUNTIME-INPUT"
+        );
         assert_eq!(
             code(program.evaluate(&state, r#"{"op":"/","l":{"int":1},"r":{"int":0}}"#)),
             "E-RUNTIME-EVAL"
         );
-        assert_eq!(code(program.def(&state, "missing", None)), "E-RUNTIME-INPUT");
+        assert_eq!(
+            code(program.def(&state, "missing", None)),
+            "E-RUNTIME-INPUT"
+        );
         assert_eq!(
             code(program.def(&state, "missing", Some("{".into()))),
             "E-RUNTIME-INPUT"
         );
-        assert_eq!(code(program.gate(&state, "missing", None)), "E-RUNTIME-INPUT");
+        assert_eq!(
+            code(program.gate(&state, "missing", None)),
+            "E-RUNTIME-INPUT"
+        );
     }
 
     #[test]

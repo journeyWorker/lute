@@ -19,7 +19,10 @@ pub enum ProjectBeatKind {
 /// `target`, `priority` or `once` is malformed is `E-BEAT-ATTR`'s and is not
 /// listed.
 #[derive(Clone, Debug)]
-#[expect(clippy::type_complexity, reason = "project beat metadata preserves authored kind and members together")]
+#[expect(
+    clippy::type_complexity,
+    reason = "project beat metadata preserves authored kind and members together"
+)]
 pub struct ProjectBeat<'a> {
     pub path: &'a Path,
     pub kind: ProjectBeatKind,
@@ -429,4 +432,3 @@ pub fn project_beats<'a>(
     }
     beats
 }
-

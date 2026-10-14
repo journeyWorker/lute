@@ -560,8 +560,7 @@ fn once_run_beat_gated_only_on_user_state_is_advised() {
         .find(|(_, d)| d.code == "W-BEAT-ONCE-RUN-USER")
         .unwrap();
     assert!(
-        d.message
-            .contains("it may replay on later runs"),
+        d.message.contains("it may replay on later runs"),
         "{}",
         d.message
     );

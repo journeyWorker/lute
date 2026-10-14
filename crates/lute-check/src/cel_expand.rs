@@ -65,7 +65,6 @@ impl fmt::Display for ExpandError {
 
 impl std::error::Error for ExpandError {}
 
-
 /// The merged def table (plugin < imported < inline), borrowed from
 /// `FoldedEnv { def_bodies, env.def_params }` (`crate::check::FoldedEnv`).
 pub struct DefTable<'a> {
@@ -133,9 +132,7 @@ fn expand_ref(
 ) -> Result<String, ExpandError> {
     let name = &r.name;
     let Some(body) = defs.bodies.get(name) else {
-        return Err(ExpandError::UnknownDef {
-            name: name.clone(),
-        });
+        return Err(ExpandError::UnknownDef { name: name.clone() });
     };
     // Args expand in the CALLER's scope, BEFORE the cycle push — `@f(@f(1))`
     // is nesting, not a cycle.

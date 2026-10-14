@@ -13,11 +13,11 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::Diagnostic;
+use lute_manifest::fact::{FactArg, FactPattern, FactTerm};
 use lute_manifest::schema::{DirectiveDecl, FactEffect, FactEffectArg};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{Attr, Directive, Node};
-use lute_manifest::fact::{FactArg, FactPattern, FactTerm};
 
 use crate::rel_schema::RelVocab;
 use crate::Ctx;
@@ -273,14 +273,11 @@ pub fn check_call_writes(dir: &Directive, decl: &DirectiveDecl, ctx: &Ctx<'_>) -
                 related: Vec::new(),
             });
         }
-        if let Some((code, message)) = crate::set_op::write_fault(
-            &path,
-            &ctx.env.state,
-            &writer,
-        )
-        .filter(|(code, _)| {
-            *code != crate::set_op::E_ENGINE_OWNED_WRITE && *code != "E-APP-READONLY"
-        }) {
+        if let Some((code, message)) = crate::set_op::write_fault(&path, &ctx.env.state, &writer)
+            .filter(|(code, _)| {
+                *code != crate::set_op::E_ENGINE_OWNED_WRITE && *code != "E-APP-READONLY"
+            })
+        {
             out.push(Diagnostic {
                 code: code.to_string(),
                 severity: lute_core_span::Severity::Error,
@@ -307,7 +304,9 @@ fn effect_literal_fault(
     use lute_manifest::types::{Literal, Type};
     let ty = &ctx.env.state.decls.get(path)?.ty;
     let lit = match &write.value {
-        WriteValue::Op { by: OpBy::Num(n), .. } => Literal::Double(*n),
+        WriteValue::Op {
+            by: OpBy::Num(n), ..
+        } => Literal::Double(*n),
         WriteValue::Literal(lit) => lit.clone(),
         _ => return None,
     };

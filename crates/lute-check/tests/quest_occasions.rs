@@ -177,11 +177,7 @@ fn malformed_visited_is_out_of_profile_and_the_message_lists_it() {
         quest_doc("<quest id=\"q\">\n<objective id=\"o\" done=\"visited(run.d)\"/>\n</quest>\n");
     let ds = diags(&src);
     let d = only(&ds, "E-CEL-PROFILE");
-    assert!(
-        d.message.contains("`visited(string)`"),
-        "{}",
-        d.message
-    );
+    assert!(d.message.contains("`visited(string)`"), "{}", d.message);
 }
 
 #[test]

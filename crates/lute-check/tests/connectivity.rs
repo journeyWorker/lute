@@ -129,7 +129,10 @@ fn docs_for(texts: &[(&str, &str)]) -> ProjectDocs {
             (PathBuf::from(*path), doc)
         })
         .collect();
-    ProjectDocs::parse(docs, &lute_manifest::snapshot::CapabilitySnapshot::default())
+    ProjectDocs::parse(
+        docs,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    )
 }
 
 #[test]
@@ -304,10 +307,9 @@ fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
     };
     let a = lore("id: haven.captainsLog\n", "log1");
     let b = lore("id: haven.captainsLog\n", "log2");
-    let dups = lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
-        ("a.lute", &a),
-        ("b.lute", &b),
-    ]).views());
+    let dups = lute_check::connectivity::check_conn_episode_dup(
+        &docs_for(&[("a.lute", &a), ("b.lute", &b)]).views(),
+    );
     assert_eq!(dups.len(), 1, "{dups:?}");
     assert_eq!(dups[0].0, PathBuf::from("b.lute"));
 
@@ -316,13 +318,10 @@ fn lore_document_ids_collide_and_unauthored_bundles_do_not() {
     // nothing.
     let scene = "---\nkind: scene\nid: log1\n---\n## Shot 1.\n@a: hi\n";
     let unauthored = lore("", "log1");
-    assert!(
-        lute_check::connectivity::check_conn_episode_dup(&docs_for(&[
-            ("a.lute", scene),
-            ("b.lute", &unauthored),
-        ]).views())
-        .is_empty()
-    );
+    assert!(lute_check::connectivity::check_conn_episode_dup(
+        &docs_for(&[("a.lute", scene), ("b.lute", &unauthored),]).views()
+    )
+    .is_empty());
 }
 
 #[test]
@@ -1341,7 +1340,8 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         &lute_check::stable_seeds(&docs.views(), &root_vocab),
     );
     let folded_refs: Vec<&lute_check::FoldedEnv> = foldeds.iter().collect();
-    let must = lute_check::compute_must(&docs.views(), &folded_refs, &conn_graph, &root_vocab, &may);
+    let must =
+        lute_check::compute_must(&docs.views(), &folded_refs, &conn_graph, &root_vocab, &may);
     let fact_env = lute_check::FactEnv::new(may, must.slots);
     let mut out = Vec::new();
     for (idx, (path, doc)) in docs.documents().iter().enumerate() {
@@ -1383,7 +1383,8 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         };
         let (_, doc) = &docs.documents()[idx];
         let folded = &foldeds[idx];
-        let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
+        let all_nodes: Vec<lute_syntax::ast::Node> = doc
+            .sections
             .iter()
             .flat_map(|s| s.body.iter().cloned())
             .collect();
@@ -2038,7 +2039,8 @@ fn parsed_scene(text: &str) -> (Vec<lute_syntax::ast::Node>, lute_check::FoldedE
     let input = input_for(text);
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, _, _) = fold_env(&doc, &input);
-    let nodes: Vec<lute_syntax::ast::Node> = doc.sections
+    let nodes: Vec<lute_syntax::ast::Node> = doc
+        .sections
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
@@ -2503,14 +2505,22 @@ fn an_unreadable_frontmatter_does_not_cascade_unknown_node_into_other_files() {
     let broken = "---\nkind: scene\nid: probe.bad\nwhen: 'run.day == 4 && run.slot == 'night''\n---\n## Shot 1.\n@a: hi\n";
     let referrer = "---\nkind: scene\nid: probe.ref\nafter: 'visited(\"probe.bad\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("bad.lute", broken), ("ref.lute", referrer)]);
-    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
+    let res = resolve_nodes(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "no cascade from an unreadable frontmatter: {res:?}"
     );
 
     let docs = docs_for(&[("ref.lute", referrer)]);
-    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
+    let res = resolve_nodes(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
     assert!(
         res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "with every id readable the miss is real: {res:?}"
@@ -2648,7 +2658,11 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
         ("q.lute", quest),
         ("s.lute", scene),
     ]);
-    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
+    let res = resolve_nodes(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
     assert!(
         !res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
         "a bundle beat resolves in `after`: {res:?}"
@@ -2660,8 +2674,12 @@ fn a_bundle_beat_is_a_legal_after_predecessor_of_a_quest_and_a_scene() {
     let s = NodeId::Scene("camp.after".into());
     assert_eq!(kinds(&g, &beat, &q), Some(vec![EdgeKind::Visited]), "{g:?}");
     assert_eq!(kinds(&g, &beat, &s), Some(vec![EdgeKind::Visited]), "{g:?}");
-    let (reach, diags) =
-        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, diags) = check_reachability(
+        &g,
+        &quest_id_set(&docs.views()),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
     assert!(diags.is_empty(), "{diags:?}");
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&s), Some(&Reachability::Reachable));
@@ -2701,8 +2719,12 @@ fn an_accept_driven_quest_is_anchored_at_every_accepting_node() {
             "{anchor}: {g:?}"
         );
     }
-    let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, _) = check_reachability(
+        &g,
+        &quest_id_set(&docs.views()),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2737,8 +2759,12 @@ fn every_subquest_child_hangs_off_its_parent_and_an_accept_child_also_off_its_ac
         None,
         "an auto child is not accept-driven: {g:?}"
     );
-    let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, _) = check_reachability(
+        &g,
+        &quest_id_set(&docs.views()),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
     assert_eq!(reach.get(&auto), Some(&Reachability::Reachable));
     assert_eq!(reach.get(&side), Some(&Reachability::Reachable));
 }
@@ -2751,7 +2777,8 @@ fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dea
     let docs = docs_for(&[("q.lute", quest), ("s.lute", &scene)]);
     let g = graph_of(&docs.views());
     let dead = BTreeSet::from(["deadQ".to_string()]);
-    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &dead);
+    let (reach, diags) =
+        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &dead);
     assert_eq!(
         reach.get(&NodeId::Scene("camp.night".into())),
         Some(&Reachability::Unreachable)
@@ -2818,7 +2845,11 @@ fn an_unresolvable_quest_after_suggests_dropping_after_not_when() {
         "---\nkind: quest\n---\n<quest id=\"scheme\" follows=\"visited('camp.talks.nope')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let docs = docs_for(&[("camp.lute", CAMP_TALKS), ("q.lute", quest)]);
-    let res = resolve_nodes(&docs.views(), &scene_key_set(&docs.views()), &quest_id_set(&docs.views()));
+    let res = resolve_nodes(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
     let [(_, d)] = res.as_slice() else {
         panic!("one miss: {res:?}")
     };
@@ -2878,8 +2909,12 @@ fn start_conjuncts_that_read_a_node_anchor_the_quest() {
     assert!(matches!(g.nodes[&entry].prereq, PrereqState::Absent));
     assert_eq!(g.nodes[&entry].path, PathBuf::from("l.lute"));
     assert!(matches!(g.nodes[&pro].prereq, PrereqState::Absent));
-    let (reach, _) =
-        check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &BTreeSet::new());
+    let (reach, _) = check_reachability(
+        &g,
+        &quest_id_set(&docs.views()),
+        &BTreeSet::new(),
+        &BTreeSet::new(),
+    );
     assert_eq!(reach.get(&q), Some(&Reachability::Reachable));
 }
 
@@ -2968,7 +3003,12 @@ fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     let docs = docs_for(&[("s.lute", dead), ("q.lute", &road), ("d.lute", &dead_q)]);
     let g = graph_of(&docs.views());
     let dead_ids = BTreeSet::from(["deadQ".to_string()]);
-    let (reach, diags) = check_reachability(&g, &quest_id_set(&docs.views()), &BTreeSet::new(), &dead_ids);
+    let (reach, diags) = check_reachability(
+        &g,
+        &quest_id_set(&docs.views()),
+        &BTreeSet::new(),
+        &dead_ids,
+    );
     assert_eq!(reach.get(&s), Some(&Reachability::Unreachable));
     assert_eq!(reach.get(&q), Some(&Reachability::Unknown));
     assert_eq!(diags.len(), 1, "only the dead scene: {diags:?}");

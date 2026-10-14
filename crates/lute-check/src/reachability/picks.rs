@@ -13,7 +13,10 @@ use crate::match_check::{CoverItem, DomainValue};
 
 use super::context::{Assumption, Reach};
 use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
-#[expect(clippy::too_many_arguments, reason = "reachability verdicts need the complete checker context")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "reachability verdicts need the complete checker context"
+)]
 pub(crate) fn member_arm_verdicts(
     doc: &Document,
     body: &[Node],
@@ -295,7 +298,11 @@ fn pin_picks(e: &mut cel_parser::ast::IdedExpr, picks: &[Pick], used: &mut Vec<u
 /// Every state path a `::set` / `<choice into>` in `nodes` writes (at any
 /// depth), into `out`; `true` when the body also runs something whose writes
 /// are not spelled out here — a `::use` or a directive that writes state.
-pub(super) fn scan_writes(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut BTreeSet<String>) -> bool {
+pub(super) fn scan_writes(
+    nodes: &[Node],
+    snapshot: &CapabilitySnapshot,
+    out: &mut BTreeSet<String>,
+) -> bool {
     let opaque_directive =
         |tag: &str| tag == "use" || crate::check::directive_writes_state(snapshot, tag);
     let mut opaque = false;
@@ -357,4 +364,3 @@ fn scan_choice_writes(
     }
     scan_writes(&choice.body, snapshot, out)
 }
-

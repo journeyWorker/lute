@@ -1,11 +1,14 @@
+use super::paths::{did_you_mean, referenced_paths};
+use crate::lore::{
+    document_series, resolve_entry_series, series_order_message, E_ENTRY_ID_DUP,
+    E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN,
+};
+use crate::ProjectDoc;
+use lute_core_span::{Diagnostic, Severity, Span};
+use lute_manifest::semantics::cel_paths::reserved_entry_id;
+use lute_syntax::ast::Document;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use lute_core_span::{Diagnostic, Severity, Span};
-use lute_syntax::ast::Document;
-use crate::ProjectDoc;
-use lute_manifest::semantics::cel_paths::reserved_entry_id;
-use crate::lore::{document_series, resolve_entry_series, series_order_message, E_ENTRY_ID_DUP, E_ENTRY_SERIES_ORDER, W_ENTRY_REF_UNKNOWN};
-use super::paths::{did_you_mean, referenced_paths};
 
 /// Every non-empty `<entry id>` occurrence in `docs`, grouped by id — the
 /// lore mirror of [`group_by_id`] (dsl 0.19.0 §3: entry ids are unique across
@@ -59,9 +62,7 @@ fn group_entries_by_position<'a>(
 /// Each document's validated `series:` ([`document_series`]), index-aligned
 /// with `docs` — the owner [`group_entries_by_position`] borrows from.
 fn documents_series(docs: &[ProjectDoc<'_>]) -> Vec<Option<String>> {
-    docs.iter()
-        .map(|item| document_series(item.meta))
-        .collect()
+    docs.iter().map(|item| document_series(item.meta)).collect()
 }
 
 /// dsl 0.19.0 §3, project-wide: [`E_ENTRY_ID_DUP`] for every `<entry id>`
@@ -152,10 +153,7 @@ pub fn colliding_entry_occurrences(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Spa
 /// references, paired with where it was first found — the lore twin of
 /// [`referenced_reserved_paths`] ([`referenced_paths`]: the scene beat's
 /// frontmatter `when:` included, anchored on the id).
-fn referenced_entry_reads(
-    doc: &Document,
-    meta: &crate::meta::TypedMeta,
-) -> BTreeMap<String, Span> {
+fn referenced_entry_reads(doc: &Document, meta: &crate::meta::TypedMeta) -> BTreeMap<String, Span> {
     referenced_paths(
         doc,
         meta,

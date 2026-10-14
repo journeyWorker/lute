@@ -1,12 +1,12 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Node;
-use crate::ProjectDoc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 pub const E_OBJECTIVE_UNSATISFIABLE_SUBQUEST: &str = "E-OBJECTIVE-UNSATISFIABLE";
 
 use super::quest_refs::defined_quests;
-use super::quest_tiers::{quest_tier, tier_mix_diag, subquest_rearm_diag};
+use super::quest_tiers::{quest_tier, subquest_rearm_diag, tier_mix_diag};
 
 /// dsl 2026-08-31 §4 (subquest design): the child quest a
 /// `<objective quest="c">` names is not declared by any quest document in
@@ -317,9 +317,7 @@ pub fn check_project_quest_tree(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagno
         let path = item.path;
         let doc = item.doc;
         for q in &doc.quests {
-            tiers
-                .entry(q.id.as_str())
-                .or_insert((path, quest_tier(q)));
+            tiers.entry(q.id.as_str()).or_insert((path, quest_tier(q)));
         }
     }
     for e in &edges {
@@ -340,9 +338,10 @@ pub fn check_project_quest_tree(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagno
     let rearms: BTreeMap<&str, (&Path, Span)> = docs
         .iter()
         .flat_map(|item| {
-            item.doc.quests.iter().filter_map(move |q| {
-                Some((q.id.as_str(), (item.path, q.rearm.as_ref()?.span)))
-            })
+            item.doc
+                .quests
+                .iter()
+                .filter_map(move |q| Some((q.id.as_str(), (item.path, q.rearm.as_ref()?.span))))
         })
         .collect();
     let mut seen_children = BTreeSet::new();

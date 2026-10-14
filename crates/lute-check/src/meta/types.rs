@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_manifest::snapshot::Domain;
 
-
 /// State lifetime tier (dsl §9.1), keyed by the declared path's leading segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Namespace {
@@ -321,4 +320,3 @@ impl TypedMeta {
         self.yaml.as_ref()
     }
 }
-

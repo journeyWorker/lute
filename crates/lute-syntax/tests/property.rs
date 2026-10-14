@@ -52,7 +52,10 @@ fn generated_source(bytes: &[u8]) -> String {
                 })
                 .take(room)
                 .collect();
-            format!("{header}{}\n", if payload.is_empty() { "text" } else { &payload })
+            format!(
+                "{header}{}\n",
+                if payload.is_empty() { "text" } else { &payload }
+            )
         }
         // This is intentionally malformed; formatter errors are accepted.
         1 => bounded_lossy(b"<match\n>"),
@@ -131,7 +134,13 @@ fn formatter_property() {
             Ok(()) => Ok(()),
             Err(error) => Err(TestCaseError::fail(error)),
         });
-        assert!(replay.is_err(), "fixed-seed formatter failure did not replay");
-        panic!("formatter property failed with seed 0x{SEED:016x}; replay: {}\n{error}", replay_path.display());
+        assert!(
+            replay.is_err(),
+            "fixed-seed formatter failure did not replay"
+        );
+        panic!(
+            "formatter property failed with seed 0x{SEED:016x}; replay: {}\n{error}",
+            replay_path.display()
+        );
     }
 }

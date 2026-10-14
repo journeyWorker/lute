@@ -396,19 +396,17 @@ fn chain_literals<'e>(
     out: &mut Vec<(&'e Expr, bool)>,
 ) {
     match expr {
-        Expr::Call(c) if c.target.is_none() => {
-            match (c.func_name.as_str(), c.args.as_slice()) {
-                (op::LOGICAL_NOT, [a]) => return chain_literals(&a.expr, !positive, chain, out),
-                (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [a, b])
-                    if connective(n, positive) == chain =>
-                {
-                    chain_literals(&a.expr, positive, chain, out);
-                    chain_literals(&b.expr, positive, chain, out);
-                    return;
-                }
-                _ => {}
+        Expr::Call(c) if c.target.is_none() => match (c.func_name.as_str(), c.args.as_slice()) {
+            (op::LOGICAL_NOT, [a]) => return chain_literals(&a.expr, !positive, chain, out),
+            (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [a, b])
+                if connective(n, positive) == chain =>
+            {
+                chain_literals(&a.expr, positive, chain, out);
+                chain_literals(&b.expr, positive, chain, out);
+                return;
             }
-        }
+            _ => {}
+        },
         Expr::Call(_)
         | Expr::Comprehension(_)
         | Expr::Ident(_)
@@ -449,27 +447,25 @@ pub(crate) fn literal_truth(
             };
             return Some((path, dom, truth));
         }
-        Expr::Call(c) if c.target.is_none() => {
-            match (c.func_name.as_str(), c.args.as_slice()) {
-                (op::LOGICAL_NOT, [a]) => return literal_truth(&a.expr, !positive, ctx),
-                (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [_, _]) => {
-                    return nested_truth(expr, connective(n, positive), positive, ctx)
-                }
-                (n, [a, b]) if flip_comparison(n).is_some() => {
-                    return comparison_truth(n, &a.expr, &b.expr, positive, ctx)
-                }
-                (op::IN, [a, b]) => return in_truth(&a.expr, &b.expr, positive, ctx),
-                (n, [a]) if n.eq_ignore_ascii_case("isSet") => {
-                    let (key, dom) = subject(&a.expr, ctx)?;
-                    let truth = Truth {
-                        set: (!positive).then(|| SolutionSet::Values(Default::default())),
-                        unset: !positive,
-                    };
-                    return Some((key, dom, truth));
-                }
-                _ => {}
+        Expr::Call(c) if c.target.is_none() => match (c.func_name.as_str(), c.args.as_slice()) {
+            (op::LOGICAL_NOT, [a]) => return literal_truth(&a.expr, !positive, ctx),
+            (n @ (op::LOGICAL_AND | op::LOGICAL_OR), [_, _]) => {
+                return nested_truth(expr, connective(n, positive), positive, ctx)
             }
-        }
+            (n, [a, b]) if flip_comparison(n).is_some() => {
+                return comparison_truth(n, &a.expr, &b.expr, positive, ctx)
+            }
+            (op::IN, [a, b]) => return in_truth(&a.expr, &b.expr, positive, ctx),
+            (n, [a]) if n.eq_ignore_ascii_case("isSet") => {
+                let (key, dom) = subject(&a.expr, ctx)?;
+                let truth = Truth {
+                    set: (!positive).then(|| SolutionSet::Values(Default::default())),
+                    unset: !positive,
+                };
+                return Some((key, dom, truth));
+            }
+            _ => {}
+        },
         Expr::Call(_)
         | Expr::Comprehension(_)
         | Expr::Ident(_)
@@ -747,10 +743,8 @@ fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
 /// spellings use one key throughout decidability.
 fn ground_text(expr: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
     if let Expr::Call(c) = expr {
-        if matches!(
-            c.func_name.as_str(),
-            "holds" | "count" | "countDistinct"
-        ) && crate::cel_resolve::is_profile_fact_query(c)
+        if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct")
+            && crate::cel_resolve::is_profile_fact_query(c)
         {
             return QueryPattern::from_call(c).map(|q| q.to_string());
         }

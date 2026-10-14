@@ -72,7 +72,10 @@ impl<'a> EffectiveState<'a> {
         Self::with_seed(schema, std::borrow::Cow::Borrowed(seed))
     }
 
-    fn with_seed(schema: &'a StateSchema, seed: std::borrow::Cow<'a, BTreeMap<String, Value>>) -> Self {
+    fn with_seed(
+        schema: &'a StateSchema,
+        seed: std::borrow::Cow<'a, BTreeMap<String, Value>>,
+    ) -> Self {
         Self {
             schema,
             seed,
@@ -89,7 +92,6 @@ impl<'a> EffectiveState<'a> {
         self.read_log = Some(Rc::new(RefCell::new(Vec::new())));
         self
     }
-
 
     /// §4.3 read order: trace write → mock seed → RESERVED default (dsl
     /// 0.5.1 §1.2) → schema `default:` → unset. A RESERVED quest path
@@ -802,7 +804,8 @@ mod tests {
         let mut state = EffectiveState::new(&schema, seed);
 
         // default only
-        let schema_no_seed = schema_with(&[("run.other", Type::Double, Some(Literal::Double(9.0)))]);
+        let schema_no_seed =
+            schema_with(&[("run.other", Type::Double, Some(Literal::Double(9.0)))]);
         let state_default = EffectiveState::new(&schema_no_seed, BTreeMap::new());
         assert_eq!(
             state_default.read("run.other"),
@@ -1076,8 +1079,10 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) =
-            eval_str("holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])", &env);
+        let (v, unresolved) = eval_str(
+            "holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])",
+            &env,
+        );
         assert_eq!(v, Value::Unknown);
         assert_eq!(
             unresolved,
@@ -1109,8 +1114,10 @@ mod tests {
             facts: &facts,
         };
 
-        let (v, unresolved) =
-            eval_str("holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])", &env);
+        let (v, unresolved) = eval_str(
+            "holds(\"believesLocation\", [\"player\", \"halsin\", \"grove\"])",
+            &env,
+        );
         assert_eq!(v, Value::Bool(true));
         assert!(unresolved.is_empty());
     }
@@ -1353,7 +1360,10 @@ mod tests {
         let vocab = rel_vocab_with(&[("at", false)]);
         let mut facts = FactStore::new(&vocab);
         facts.assert("at", &["hall".into()]);
-        let env = EvalEnv { state: &state, facts: &facts };
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
         assert_eq!(eval_str("3 + 2", &env).0, Value::Int(5));
         assert_eq!(eval_str("3.0 + 2.0", &env).0, Value::Double(5.0));
         assert_eq!(eval_str("int(3.7)", &env).0, Value::Int(3));
@@ -1364,7 +1374,10 @@ mod tests {
         assert_eq!(eval_str("1.0 / 0.0", &env).0, Value::Double(f64::INFINITY));
         assert!(matches!(eval_str("0.0 / 0.0", &env).0, Value::Double(v) if v.is_nan()));
         assert!(matches!(eval_str("1 / 0", &env).0, Value::Error(_)));
-        assert_eq!(eval_str("false && (1 / 0 == 0)", &env).0, Value::Bool(false));
+        assert_eq!(
+            eval_str("false && (1 / 0 == 0)", &env).0,
+            Value::Bool(false)
+        );
         assert_eq!(eval_str("true || (1 / 0 == 0)", &env).0, Value::Bool(true));
         assert_eq!(eval_str("holds('at', ['hall'])", &env).0, Value::Bool(true));
         assert_eq!(eval_str("count('at', ['_'])", &env).0, Value::Int(1));
@@ -1373,16 +1386,25 @@ mod tests {
         assert_eq!(eval_str("run.visits['hall']", &env).0, Value::Int(1));
         assert_eq!(eval_str("visited('hall')", &env).0, Value::Bool(false));
         assert!(matches!(eval_str("now()", &env).0, Value::Unknown));
-        assert!(matches!(eval_str("validAt('at', ['hall'], 1)", &env).0, Value::Unknown));
+        assert!(matches!(
+            eval_str("validAt('at', ['hall'], 1)", &env).0,
+            Value::Unknown
+        ));
     }
     #[test]
     fn derived_list_query_ignores_empty_undecided_bookkeeping() {
         let schema = schema_with(&[]);
         let state = EffectiveState::new(&schema, BTreeMap::new());
         let vocab = RelVocab::default();
-        let facts = FactStore::new(&vocab)
-            .with_undecided(BTreeMap::from([("prime".into(), Vec::new())]));
-        let env = EvalEnv { state: &state, facts: &facts };
-        assert_eq!(eval_str("holds('prime', ['solt'])", &env).0, Value::Bool(false));
+        let facts =
+            FactStore::new(&vocab).with_undecided(BTreeMap::from([("prime".into(), Vec::new())]));
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        assert_eq!(
+            eval_str("holds('prime', ['solt'])", &env).0,
+            Value::Bool(false)
+        );
     }
 }

@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_check::ident_from_name;
-use lute_manifest::project::MetaDefaults;
 use lute_load::{build_input, manifest_context};
+use lute_manifest::project::MetaDefaults;
 
 /// One scaffolded file: a path RELATIVE to the target directory and its
 /// verbatim contents.
@@ -1012,9 +1012,10 @@ fn title_case(name: &str) -> String {
     let mut prev_lower = false;
     for ch in stem.chars() {
         if (matches!(ch, '-' | '_' | '.' | ' ') || (ch.is_uppercase() && prev_lower))
-            && !word.is_empty() {
-                words.push(std::mem::take(&mut word));
-            }
+            && !word.is_empty()
+        {
+            words.push(std::mem::take(&mut word));
+        }
         if !matches!(ch, '-' | '_' | '.' | ' ') {
             if word.is_empty() {
                 word.extend(ch.to_uppercase());
@@ -1069,7 +1070,10 @@ impl Destination {
     fn find(dir: &Path) -> Result<Self, PathBuf> {
         if dir.join("lute.project.yaml").is_file() {
             let defaults = match manifest_context(dir) {
-                Ok(context) => context.project.map(|project| project.defaults).unwrap_or_default(),
+                Ok(context) => context
+                    .project
+                    .map(|project| project.defaults)
+                    .unwrap_or_default(),
                 Err(e) => {
                     eprintln!("lute new: warning: {e} — writing without its `defaults:`");
                     MetaDefaults::default()
@@ -1373,12 +1377,7 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
         }
     }
     let head = dest.head("scene", &id, &title);
-    let chapter = on.filter(|on| {
-        dest.defaults
-            .chapters()
-            .iter()
-            .any(|c| c.on == *on)
-    });
+    let chapter = on.filter(|on| dest.defaults.chapters().iter().any(|c| c.on == *on));
     let target_line = target.map_or_else(String::new, |t| format!("target: {t}\n"));
     let raised_for = target.map_or_else(String::new, |t| format!(" for `{t}`"));
     let (front, body) = match on {

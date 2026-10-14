@@ -1,12 +1,12 @@
-use std::path::Path;
+use super::diagnostics::resolve_diag_to_lsp;
+use super::yaml_spans::{find_def_cel_value_span, find_key_span};
+use super::{Backend, DocumentSnapshot};
+use crate::convert::to_lsp_diagnostic;
 use lute_check::{check_cel_slot, parse_meta_kind, translate_cel_parse, MetaKind, Mode};
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_load::{assemble_input_with_mode, InputCache};
+use std::path::Path;
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
-use crate::convert::to_lsp_diagnostic;
-use super::{Backend, DocumentSnapshot};
-use super::diagnostics::resolve_diag_to_lsp;
-use super::yaml_spans::{find_key_span, find_def_cel_value_span};
 
 impl Backend {
     /// Analyze an open project declaration `.yaml`/`.yml` — state/defs/enums/

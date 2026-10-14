@@ -78,14 +78,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use lute_load::nearest_manifest_dir;
+use lute_model::{ModelDocument, ModelError, ModelOptions, ProjectModel};
+use lute_semantic::{NodeKey, NodeKind};
 use lute_trace::{
     parse_mock_surfaces, trace_beat_with_check, trace_entries_with_check, trace_with_check,
     TraceExit, TraceReport, UnresolvedEntry,
 };
 use rayon::prelude::*;
-use lute_load::nearest_manifest_dir;
-use lute_model::{ModelDocument, ModelError, ModelOptions, ProjectModel};
-use lute_semantic::{NodeKey, NodeKind};
 
 use crate::play_expect::ExpectMiss;
 
@@ -163,8 +163,8 @@ use render::{render_human, render_json};
 use runner::{yaml_atom_hint, yaml_atom_hints, IMPLICIT_ELIGIBLE, IMPLICIT_EXIT};
 
 pub(crate) use discovery::static_context_references;
-pub(crate) use runner::{run_test_for_constraint, run_test_for_context};
 pub use runner::run_test;
+pub(crate) use runner::{run_test_for_constraint, run_test_for_context};
 
 /// The complete legal top-level key set of a `*.test.yaml` (module docs).
 /// [`HARNESS_KEYS`] are the harness's own; every other key is exactly
@@ -528,10 +528,6 @@ impl CoverageUnit {
         }
     }
 }
-
-
-
-
 
 #[cfg(test)]
 mod tests {

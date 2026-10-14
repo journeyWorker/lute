@@ -198,7 +198,9 @@ fn calendar_evaluates_every_cell_with_winner_shadowed_and_holes() {
     assert_eq!(never.len(), 1, "{never:?}");
     assert_eq!(never[0]["id"], "inn.again");
     assert_eq!(never[0]["evidence"], "bounded");
-    assert!(never[0]["scope"].as_str().is_some_and(|s| s.contains("where:")));
+    assert!(never[0]["scope"]
+        .as_str()
+        .is_some_and(|s| s.contains("where:")));
     assert_eq!(
         never[0]["reasons"][0],
         "after: visited(\"inn.ada\") is not satisfied"
@@ -259,8 +261,14 @@ fn calendar_text_csv_and_usage_errors() {
         ),
         "{s}"
     );
-    assert!(s.contains("never eligible in any cell [bounded: axes:"), "{s}");
-    assert!(s.contains("inn.again [scene, scenes/inn-again.lute] placeVisit@place.inn"), "{s}");
+    assert!(
+        s.contains("never eligible in any cell [bounded: axes:"),
+        "{s}"
+    );
+    assert!(
+        s.contains("inn.again [scene, scenes/inn-again.lute] placeVisit@place.inn"),
+        "{s}"
+    );
 
     let csv = lute(&[
         "calendar",

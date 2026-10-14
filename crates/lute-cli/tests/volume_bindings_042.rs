@@ -29,16 +29,27 @@ fn check(tag: &str, declared: bool, volumes: &str) -> (i32, String) {
         "enums:\n  mood: [calm]\n"
     };
     write(&dir, "world.schema.yaml", enums);
-    write(&dir, "scenes/start.lute", "---\nkind: scene\nid: start\non: start\n---\n## Start\n@narrator: Hello.\n");
+    write(
+        &dir,
+        "scenes/start.lute",
+        "---\nkind: scene\nid: start\non: start\n---\n## Start\n@narrator: Hello.\n",
+    );
     write(
         &dir,
         "player.bindings.yaml",
         &format!("bindingsVersion: \"0.42\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
     );
-    let out = Command::new(BIN).arg("check-project").arg(&*dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&*dir)
+        .output()
+        .unwrap();
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
-    (out.status.code().unwrap(), text.replace(&*dir.to_string_lossy(), "."))
+    (
+        out.status.code().unwrap(),
+        text.replace(&*dir.to_string_lossy(), "."),
+    )
 }
 
 #[test]
@@ -85,7 +96,12 @@ fn gains_outside_the_unit_interval_are_shape_errors_at_the_value() {
         "volumes:\n  silent: -0.1\n  quiet: .nan\n  normal: 0.5\n  loud: 1.5\n  full: .inf\n",
     );
     assert_eq!(code, 1, "{text}");
-    for (at, member, got) in [("4:11", "silent", "-0.1"), ("5:10", "quiet", "NaN"), ("7:9", "loud", "1.5"), ("8:9", "full", "inf")] {
+    for (at, member, got) in [
+        ("4:11", "silent", "-0.1"),
+        ("5:10", "quiet", "NaN"),
+        ("7:9", "loud", "1.5"),
+        ("8:9", "full", "inf"),
+    ] {
         assert!(
             text.contains(&format!(
                 "./player.bindings.yaml:{at}: error [E-BINDING-SHAPE] volume binding `{member}` gain \

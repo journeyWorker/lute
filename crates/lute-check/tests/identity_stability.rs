@@ -9,7 +9,11 @@ fn diagnostics(require_stable: bool) -> Vec<lute_core_span::Diagnostic> {
     let dir = lute_scratch::ScratchDir::new();
     std::fs::write(dir.join("c.lute"), COMPONENT).unwrap();
     let (doc, _) = lute_syntax::parse(SCENE);
-    let typed = lute_check::parse_meta(&doc.meta, &lute_manifest::snapshot::CapabilitySnapshot::default()).0;
+    let typed = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    )
+    .0;
     let components = resolve_components(&dir, &typed.components, doc.meta.span);
     let mut snapshot = vocab_snapshot();
     snapshot.identity_require_stable = require_stable;
@@ -70,7 +74,8 @@ fn project_without_stable_identity_reports_neither_warning() {
 
 #[test]
 fn standalone_check_without_project_reports_neither_warning() {
-    let text = "---\nkind: scene\ncharacter: n\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@n: uncoded\n";
+    let text =
+        "---\nkind: scene\ncharacter: n\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@n: uncoded\n";
     let input = CheckInput {
         text: text.into(),
         uri: "standalone.lute".into(),

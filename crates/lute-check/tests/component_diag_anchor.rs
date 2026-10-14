@@ -48,7 +48,10 @@ fn check_scene(scene_dir: &Path, scene: &str) -> Vec<Diagnostic> {
 /// A project: `lute.project.yaml` at the root, the component under
 /// `components/`, the scene under `scenes/` importing it by relative path.
 /// The `::use` sits on scene line 10.
-fn project_with_component(component_body: &str, params: &str) -> (lute_scratch::ScratchDir, String) {
+fn project_with_component(
+    component_body: &str,
+    params: &str,
+) -> (lute_scratch::ScratchDir, String) {
     let root = lute_scratch::ScratchDir::new();
     std::fs::create_dir_all(root.join("components")).unwrap();
     std::fs::create_dir_all(root.join("scenes")).unwrap();

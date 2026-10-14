@@ -113,7 +113,10 @@ pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Scr
 }
 
 /// How [`drive_events`] stopped.
-#[expect(clippy::large_enum_variant, reason = "rejected input retains the full state needed for diagnostics")]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "rejected input retains the full state needed for diagnostics"
+)]
 pub enum DriveEnd {
     /// Every input ran.
     Done,
@@ -221,7 +224,10 @@ pub fn drive_events(
 /// an answer the script lacks, 1 on a rejected input, an error halt or a
 /// divergence — and a message for stderr.
 fn json_line<T: serde::Serialize>(value: &T) -> String {
-    serde_json::to_value(value).expect("runtime JSON serializes").to_string() + "\n"
+    serde_json::to_value(value)
+        .expect("runtime JSON serializes")
+        .to_string()
+        + "\n"
 }
 
 /// `lute play --events`: the JSON Lines stream, exit code and stderr message.
@@ -230,8 +236,14 @@ pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
     let seed = &run.seed;
     let driven = drive_events(run, |input, _, output| {
         let stream = match input {
-            Some(input) => StreamLine::Input { input: input.clone(), output: output.clone() },
-            None => StreamLine::Seed { seed: seed.clone(), output: output.clone() },
+            Some(input) => StreamLine::Input {
+                input: input.clone(),
+                output: output.clone(),
+            },
+            None => StreamLine::Seed {
+                seed: seed.clone(),
+                output: output.clone(),
+            },
         };
         out.push_str(&json_line(&stream));
     });
@@ -400,7 +412,10 @@ fn seed(script: &PlayScript, no_derive: bool) -> Seed {
 
 /// A literal as written, as a JSON scalar: a number or boolean when its
 /// JSON form reads back as the same text, else a string.
-#[expect(clippy::cmp_owned, reason = "compares the JSON spelling with the text, not the value with a string")]
+#[expect(
+    clippy::cmp_owned,
+    reason = "compares the JSON spelling with the text, not the value with a string"
+)]
 fn scalar(text: &str) -> Value {
     match serde_json::from_str::<Value>(text) {
         Ok(v @ (Value::Bool(_) | Value::Number(_))) if v.to_string() == text => v,

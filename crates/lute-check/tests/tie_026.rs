@@ -4,7 +4,9 @@
 
 use std::path::PathBuf;
 
-use lute_check::{check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports};
+use lute_check::{
+    check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports,
+};
 use lute_core_span::Diagnostic;
 fn input(text: &str) -> CheckInput {
     CheckInput {

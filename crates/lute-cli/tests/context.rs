@@ -639,8 +639,8 @@ fn nested_duplicate_choice_key_is_ambiguous() {
 
 #[test]
 fn drowned_crown_target_context_golden() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/examples/games/drowned-crown");
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/drowned-crown");
     let output = Command::new(BIN)
         .args([
             "context",
@@ -677,8 +677,14 @@ fn drowned_crown_target_context_golden() {
         })
     );
     assert_eq!(value["declared"]["writes"][0]["node"], "state:user.crowned");
-    assert_eq!(value["vocabulary"]["state"], serde_json::json!(["user.crowned"]));
-    assert_eq!(value["references"]["in"][0]["node"], "shot:last.crown:Throne");
+    assert_eq!(
+        value["vocabulary"]["state"],
+        serde_json::json!(["user.crowned"])
+    );
+    assert_eq!(
+        value["references"]["in"][0]["node"],
+        "shot:last.crown:Throne"
+    );
     assert_eq!(value["notIncluded"][0]["kind"], "scripts");
 }
 

@@ -836,7 +836,11 @@ mod tests {
         let slot = Slot::of_expr(&lowered("holds('owned', ['key']) && run.n[0] > 1"))
             .expect("a lowered expression");
         assert!(slot.raw().contains("\"holds\""), "{}", slot.raw());
-        for cel in ["now() > 0 ? -run.n : 2.5", "'a' in ['a'] || !has(run.x)", "visited('hall')"] {
+        for cel in [
+            "now() > 0 ? -run.n : 2.5",
+            "'a' in ['a'] || !has(run.x)",
+            "visited('hall')",
+        ] {
             assert!(Slot::of_expr(&lowered(cel)).is_some(), "{cel}");
         }
         let rejected = [

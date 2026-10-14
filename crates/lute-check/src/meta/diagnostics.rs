@@ -1,7 +1,7 @@
-use super::*;
 use super::diagnostic_helpers::yaml_key;
-pub use super::diagnostic_helpers::{ident_from_name, infer_meta_kind_from_shape};
 pub(crate) use super::diagnostic_helpers::yaml_shape;
+pub use super::diagnostic_helpers::{ident_from_name, infer_meta_kind_from_shape};
+use super::*;
 /// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
 /// declaration and what the legal shape is, written from the YAML the author
 /// typed rather than from `serde_yaml`'s report of how it failed to
@@ -107,8 +107,6 @@ pub(super) fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String
          inside `type:`, as `{{ type: {{ enum: [...] }} }}` (dsl 0.8.0 §4)"
     )
 }
-
-
 
 pub fn meta_key_span(meta: &Meta, needle: &str) -> Span {
     // `raw_yaml` is usually the frontmatter interior sliced verbatim after the
@@ -558,7 +556,10 @@ pub struct PendingPer {
 /// declares over `kinds` (sub-kind members already implied — the merged
 /// vocabulary's), and an `E-STATE-DECL` at its key for one whose kind is
 /// still unknown, `open:` or malformed, or whose `default:` map is wrong.
-#[expect(clippy::type_complexity, reason = "pending metadata expansion returns declarations, indexes, and diagnostics")]
+#[expect(
+    clippy::type_complexity,
+    reason = "pending metadata expansion returns declarations, indexes, and diagnostics"
+)]
 pub(crate) fn expand_per_pending(
     pending: &[PendingPer],
     kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
@@ -752,7 +753,6 @@ pub(super) fn per_member_defaults(
         })
         .collect()
 }
-
 
 pub(super) fn map_prefix(path: &str) -> &str {
     path.split_once('.').map_or(path, |(head, _)| head)

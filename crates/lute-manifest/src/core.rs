@@ -238,7 +238,15 @@ mod tests {
         let names: Vec<_> = cam.attrs.iter().map(|a| a.name.as_str()).collect();
         assert_eq!(
             names,
-            ["focus", "framing", "move", "transition", "duration", "delay", "wait"]
+            [
+                "focus",
+                "framing",
+                "move",
+                "transition",
+                "duration",
+                "delay",
+                "wait"
+            ]
         );
     }
 
@@ -330,11 +338,20 @@ mod tests {
         };
         assert_eq!(ty(ACTOR_DIRECTIVE, "action"), Type::Domain("action".into()));
         assert_eq!(ty(ACTOR_DIRECTIVE, "anchor"), Type::Domain("anchor".into()));
-        assert_eq!(ty(ACTOR_DIRECTIVE, "emotion"), Type::Domain("emotion".into()));
-        assert_eq!(ty(ACTOR_DIRECTIVE, "costume"), Type::Domain("costume".into()));
+        assert_eq!(
+            ty(ACTOR_DIRECTIVE, "emotion"),
+            Type::Domain("emotion".into())
+        );
+        assert_eq!(
+            ty(ACTOR_DIRECTIVE, "costume"),
+            Type::Domain("costume".into())
+        );
         assert_eq!(ty("camera", "move"), Type::Domain("cameraMove".into()));
         assert_eq!(ty("cg", "layout"), Type::Domain("cgLayout".into()));
-        assert_eq!(ty(SEQUENCE_DIRECTIVE, "name"), Type::Domain("sequence".into()));
+        assert_eq!(
+            ty(SEQUENCE_DIRECTIVE, "name"),
+            Type::Domain("sequence".into())
+        );
         assert_eq!(ty("music", "mood"), Type::Domain("mood".into()));
         assert_eq!(ty("vfx", "type"), Type::Domain("vfxType".into()));
     }

@@ -89,7 +89,10 @@ fn anchor_and_preload_inject_after_authored_auto() {
         panic!()
     };
     assert_eq!(anchor.anchor.as_deref(), Some("center"));
-    assert!(anchor.stamp.provenance.is_some(), "an injected record carries provenance");
+    assert!(
+        anchor.stamp.provenance.is_some(),
+        "an injected record carries provenance"
+    );
 }
 
 #[test]
@@ -316,10 +319,7 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
             _ => "other",
         })
         .collect();
-    assert_eq!(
-        kinds,
-        ["actor", "actor", "line", "actor", "actor", "line"]
-    );
+    assert_eq!(kinds, ["actor", "actor", "line", "actor", "actor", "line"]);
     let authored: Vec<Option<&str>> = recs[3..5]
         .iter()
         .map(|r| r.cmd.authored().map(|(_, text)| text))

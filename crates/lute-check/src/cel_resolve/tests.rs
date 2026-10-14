@@ -515,8 +515,6 @@ mod test_cases {
         );
     }
 
-
-
     #[test]
     fn isset_in_any_shape_is_out_of_profile() {
         // `isSet` is not part of the 0.32 CEL profile; presence is `has()`.

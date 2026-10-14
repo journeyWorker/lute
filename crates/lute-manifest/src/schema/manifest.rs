@@ -92,4 +92,3 @@ pub struct AssetKindsFile {
 fn default_sep() -> String {
     ".".to_string()
 }
-

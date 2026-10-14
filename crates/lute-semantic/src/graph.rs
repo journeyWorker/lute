@@ -1,8 +1,8 @@
 //! Deterministic project semantic dependency graph.
 
 use lute_core_span::{Evidence, Span};
-use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use crate::IdentityMetadata;
@@ -111,7 +111,11 @@ impl<'de> Deserialize<'de> for NodeKey {
             "fact" => NodeKind::Fact,
             "clock" => NodeKind::Clock,
             "engine" => NodeKind::Engine,
-            _ => return Err(serde::de::Error::custom(format!("unknown node kind `{kind}`"))),
+            _ => {
+                return Err(serde::de::Error::custom(format!(
+                    "unknown node kind `{kind}`"
+                )))
+            }
         };
         if key.is_empty() {
             return Err(serde::de::Error::custom("node key is empty"));
@@ -163,17 +167,23 @@ impl SemanticGraph {
             }
             return;
         }
-        self.nodes.insert(id.clone(), GraphNode {
-            identity: IdentityMetadata::computed(id.kind.as_str(), id.key.clone()),
-            id,
-            file,
-            span,
-            speaker: None,
-        });
+        self.nodes.insert(
+            id.clone(),
+            GraphNode {
+                identity: IdentityMetadata::computed(id.kind.as_str(), id.key.clone()),
+                id,
+                file,
+                span,
+                speaker: None,
+            },
+        );
     }
 
     /// Add a dependency edge and register both endpoint nodes.
-    #[expect(clippy::too_many_arguments, reason = "graph edges expose each provenance field explicitly")]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "graph edges expose each provenance field explicitly"
+    )]
     pub fn edge(
         &mut self,
         source: NodeKey,

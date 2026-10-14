@@ -58,16 +58,27 @@ fn invalid_declarations_report_once_and_dependants_carry_one_note_each() {
         .filter(|l| l.contains("[W-DEPENDS-ON-INVALID]"))
         .collect();
     assert_eq!(notes.len(), 3, "{stdout}");
-    assert!(notes.iter().any(|l| l.contains(
-        "info [W-DEPENDS-ON-INVALID] `clock:` depends on `run.day`, which is invalid \
+    assert!(
+        notes.iter().any(|l| l.contains(
+            "info [W-DEPENDS-ON-INVALID] `clock:` depends on `run.day`, which is invalid \
          (E-TYPE-NUMBER at world.schema.yaml:7); it is not checked until that declaration is fixed"
-    )), "{stdout}");
-    assert!(notes.iter().any(|l| l.contains(
-        "`::check` depends on `check`, which is invalid (E-TYPE-NUMBER at \
+        )),
+        "{stdout}"
+    );
+    assert!(
+        notes.iter().any(|l| l.contains(
+            "`::check` depends on `check`, which is invalid (E-TYPE-NUMBER at \
          game.occasions/directives/check.yaml:9); it is not checked until that declaration \
          is fixed (1 more dependant(s))"
-    )), "{stdout}");
+        )),
+        "{stdout}"
+    );
     // The occasion's three answering beats (three documents) share one note.
-    assert!(notes.iter().any(|l| l.contains("`on: townVisit` depends on `townVisit`")
-        && l.ends_with("(2 more dependant(s))")), "{stdout}");
+    assert!(
+        notes
+            .iter()
+            .any(|l| l.contains("`on: townVisit` depends on `townVisit`")
+                && l.ends_with("(2 more dependant(s))")),
+        "{stdout}"
+    );
 }

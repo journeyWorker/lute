@@ -534,8 +534,8 @@ fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
 
 #[test]
 fn all_indexes_capability_unions_from_starfall_example() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/examples/games/starfall-gacha");
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/starfall-gacha");
     let out = lute_scratch::ScratchDir::named("starfall-unions-out");
     let result = support::run_cli([
         "compile",
@@ -592,8 +592,8 @@ fn all_indexes_capability_unions_from_starfall_example() {
 /// occasion-payload form — an enum result its members.
 #[test]
 fn all_types_bridge_results_as_declared() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/examples/games/lantern-academy");
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/lantern-academy");
     let out = lute_scratch::ScratchDir::named("lantern-bridge-results-out");
     let result = support::run_cli([
         "compile",

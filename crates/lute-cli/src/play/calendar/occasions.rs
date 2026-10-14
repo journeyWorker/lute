@@ -1,5 +1,5 @@
-use super::*;
 use super::axes::split_top;
+use super::*;
 
 /// One `--occasion`: its name and, after `@`, the axes it varies over
 /// (`path`) or is held at (`path=value`); every axis it does not name is
@@ -276,7 +276,11 @@ impl RaiseRule {
     }
 
     /// Where the clock raises `occasion`, in words.
-    pub(super) fn describe(&self, clock: &lute_manifest::clock::ClockDecl, occasion: &str) -> String {
+    pub(super) fn describe(
+        &self,
+        clock: &lute_manifest::clock::ClockDecl,
+        occasion: &str,
+    ) -> String {
         self.rule.describe(clock, occasion, self.start)
     }
 }

@@ -5,8 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use lute_compile::*;
 use lute_compile::ir::CelPairExt;
+use lute_compile::*;
 use lute_ir::*;
 fn j(cmd: &Command) -> String {
     serde_json::to_string(cmd).unwrap()
@@ -313,7 +313,10 @@ fn bg_serializes_per_spec() {
         time: None,
         asset_id: Some("bg_cafe_evening".into()),
         stamp: Stamp {
-            timing: Timing { wait: Some(true), ..Timing::default() },
+            timing: Timing {
+                wait: Some(true),
+                ..Timing::default()
+            },
             ..Stamp::default()
         },
     });
@@ -365,7 +368,10 @@ fn cg_serializes_per_spec() {
         display: "show".into(),
         layout: Some("full".into()),
         stamp: Stamp {
-            timing: Timing { wait: Some(false), ..Timing::default() },
+            timing: Timing {
+                wait: Some(false),
+                ..Timing::default()
+            },
             ..Stamp::default()
         },
     });
@@ -383,7 +389,10 @@ fn video_serializes_per_spec() {
         asset_id: "vid_ending".into(),
         display: "show".into(),
         stamp: Stamp {
-            timing: Timing { wait: Some(true), ..Timing::default() },
+            timing: Timing {
+                wait: Some(true),
+                ..Timing::default()
+            },
             ..Stamp::default()
         },
     });
@@ -794,7 +803,10 @@ fn sequence_serializes_per_spec() {
         position: "002-0700".into(),
         name: "harborArrival".into(),
         stamp: Stamp {
-            timing: Timing { wait: Some(true), ..Timing::default() },
+            timing: Timing {
+                wait: Some(true),
+                ..Timing::default()
+            },
             ..Stamp::default()
         },
     });
@@ -815,66 +827,284 @@ fn every_kind_has_its_spec_family() {
     let cases: Vec<(Command, &str, &str)> = vec![
         (
             Command::Line(LineCmd {
-                position: p(), role: Role::Mono, speaker: "wren".into(), text: "Hm.".into(),
-                emotion: None, variant: None, action: None, dialog_motion: None, as_label: None,
-                line_id: p(), voice_key: p(), placeholders: vec![], segments: vec![], texts: BTreeMap::new(),
-                locale_segments: BTreeMap::new(), modifiers: BTreeMap::new(),
-                code: None, stamp: stamp(),
+                position: p(),
+                role: Role::Mono,
+                speaker: "wren".into(),
+                text: "Hm.".into(),
+                emotion: None,
+                variant: None,
+                action: None,
+                dialog_motion: None,
+                as_label: None,
+                line_id: p(),
+                voice_key: p(),
+                placeholders: vec![],
+                segments: vec![],
+                texts: BTreeMap::new(),
+                locale_segments: BTreeMap::new(),
+                modifiers: BTreeMap::new(),
+                code: None,
+                stamp: stamp(),
             }),
-            "line", "content",
+            "line",
+            "content",
         ),
-        (Command::Bg(BgCmd { position: p(), location: None, time: None, asset_id: None, stamp: stamp() }), "bg", "staging"),
-        (Command::Music(MusicCmd { position: p(), playback: None, stop: None, mood: None, volume: None, asset_id: None, stamp: stamp() }), "music", "staging"),
-        (Command::Sfx(SfxCmd { position: p(), sound: None, asset_id: None, stamp: stamp() }), "sfx", "staging"),
-        (Command::Vfx(VfxCmd { position: p(), r#type: "flash".into(), label: None, transition: None, stamp: stamp() }), "vfx", "staging"),
+        (
+            Command::Bg(BgCmd {
+                position: p(),
+                location: None,
+                time: None,
+                asset_id: None,
+                stamp: stamp(),
+            }),
+            "bg",
+            "staging",
+        ),
+        (
+            Command::Music(MusicCmd {
+                position: p(),
+                playback: None,
+                stop: None,
+                mood: None,
+                volume: None,
+                asset_id: None,
+                stamp: stamp(),
+            }),
+            "music",
+            "staging",
+        ),
+        (
+            Command::Sfx(SfxCmd {
+                position: p(),
+                sound: None,
+                asset_id: None,
+                stamp: stamp(),
+            }),
+            "sfx",
+            "staging",
+        ),
+        (
+            Command::Vfx(VfxCmd {
+                position: p(),
+                r#type: "flash".into(),
+                label: None,
+                transition: None,
+                stamp: stamp(),
+            }),
+            "vfx",
+            "staging",
+        ),
         (
             Command::Actor(ActorCmd {
-                position: p(), character: "wren".into(), anchor: None, action: None, exit: None,
-                emotion: None, costume: None, pos_reset: None, preload: None, stamp: stamp(),
+                position: p(),
+                character: "wren".into(),
+                anchor: None,
+                action: None,
+                exit: None,
+                emotion: None,
+                costume: None,
+                pos_reset: None,
+                preload: None,
+                stamp: stamp(),
             }),
-            "actor", "staging",
+            "actor",
+            "staging",
         ),
-        (Command::Camera(CameraCmd { position: p(), focus: None, framing: None, camera_move: Some("shake".into()), transition: None, stamp: stamp() }), "camera", "staging"),
-        (Command::Cg(CgCmd { position: p(), asset_id: "a".into(), display: "show".into(), layout: None, stamp: stamp() }), "cg", "staging"),
-        (Command::Video(VideoCmd { position: p(), asset_id: "v".into(), display: "show".into(), stamp: stamp() }), "video", "staging"),
-        (Command::Sequence(SequenceCmd { position: p(), name: "s".into(), stamp: stamp() }), "sequence", "staging"),
-        (Command::Set(SetCmd { position: p(), path: "scene.x".into(), op: "=".into(), value: cel(), stamp: stamp() }), "set", "state"),
-        (Command::Assert(AssertCmd { position: p(), relation: "r".into(), args: vec![], stamp: stamp() }), "assert", "state"),
-        (Command::Retract(RetractCmd { position: p(), relation: "r".into(), args: vec![], stamp: stamp() }), "retract", "state"),
+        (
+            Command::Camera(CameraCmd {
+                position: p(),
+                focus: None,
+                framing: None,
+                camera_move: Some("shake".into()),
+                transition: None,
+                stamp: stamp(),
+            }),
+            "camera",
+            "staging",
+        ),
+        (
+            Command::Cg(CgCmd {
+                position: p(),
+                asset_id: "a".into(),
+                display: "show".into(),
+                layout: None,
+                stamp: stamp(),
+            }),
+            "cg",
+            "staging",
+        ),
+        (
+            Command::Video(VideoCmd {
+                position: p(),
+                asset_id: "v".into(),
+                display: "show".into(),
+                stamp: stamp(),
+            }),
+            "video",
+            "staging",
+        ),
+        (
+            Command::Sequence(SequenceCmd {
+                position: p(),
+                name: "s".into(),
+                stamp: stamp(),
+            }),
+            "sequence",
+            "staging",
+        ),
+        (
+            Command::Set(SetCmd {
+                position: p(),
+                path: "scene.x".into(),
+                op: "=".into(),
+                value: cel(),
+                stamp: stamp(),
+            }),
+            "set",
+            "state",
+        ),
+        (
+            Command::Assert(AssertCmd {
+                position: p(),
+                relation: "r".into(),
+                args: vec![],
+                stamp: stamp(),
+            }),
+            "assert",
+            "state",
+        ),
+        (
+            Command::Retract(RetractCmd {
+                position: p(),
+                relation: "r".into(),
+                args: vec![],
+                stamp: stamp(),
+            }),
+            "retract",
+            "state",
+        ),
         (
             Command::Choice(ChoiceCmd {
-                position: p(), branch_id: "b".into(), selection_key: "scene.choices.b".into(),
-                options: vec![], converge: p(), prompt: None, timeout: Some(5), default: None, stamp: stamp(),
+                position: p(),
+                branch_id: "b".into(),
+                selection_key: "scene.choices.b".into(),
+                options: vec![],
+                converge: p(),
+                prompt: None,
+                timeout: Some(5),
+                default: None,
+                stamp: stamp(),
             }),
-            "choice", "control",
+            "choice",
+            "control",
         ),
-        (Command::Match(MatchCmd { position: p(), subject: None, arms: vec![], otherwise: None, converge: p(), stamp: stamp() }), "match", "control"),
+        (
+            Command::Match(MatchCmd {
+                position: p(),
+                subject: None,
+                arms: vec![],
+                otherwise: None,
+                converge: p(),
+                stamp: stamp(),
+            }),
+            "match",
+            "control",
+        ),
         (
             Command::Hub(HubCmd {
-                position: p(), id: "h".into(), selection_key: "scene.choices.h".into(), options: vec![],
-                converge: p(), prompt: None, on_return: None, stamp: stamp(),
+                position: p(),
+                id: "h".into(),
+                selection_key: "scene.choices.h".into(),
+                options: vec![],
+                converge: p(),
+                prompt: None,
+                on_return: None,
+                stamp: stamp(),
             }),
-            "hub", "control",
+            "hub",
+            "control",
         ),
-        (Command::Jump(JumpCmd { position: p(), target: p() }), "jump", "control"),
-        (Command::End(EndCmd { position: p(), reason: None, stamp: stamp() }), "end", "control"),
-        (Command::Barrier(BarrierCmd { position: p(), timeline: 0, at: 1.0 }), "barrier", "control"),
+        (
+            Command::Jump(JumpCmd {
+                position: p(),
+                target: p(),
+            }),
+            "jump",
+            "control",
+        ),
+        (
+            Command::End(EndCmd {
+                position: p(),
+                reason: None,
+                stamp: stamp(),
+            }),
+            "end",
+            "control",
+        ),
+        (
+            Command::Barrier(BarrierCmd {
+                position: p(),
+                timeline: 0,
+                at: 1.0,
+            }),
+            "barrier",
+            "control",
+        ),
         (
             Command::Quest(QuestCmd {
-                position: p(), id: "q".into(), title: None, title_line_id: None, start: None, fail: None,
-                objectives: vec![], rewards: vec![], tier: None, activate: None, complete: None,
-                accept: None, rearm: None, stamp: stamp(),
+                position: p(),
+                id: "q".into(),
+                title: None,
+                title_line_id: None,
+                start: None,
+                fail: None,
+                objectives: vec![],
+                rewards: vec![],
+                tier: None,
+                activate: None,
+                complete: None,
+                accept: None,
+                rearm: None,
+                stamp: stamp(),
             }),
-            "quest", "declaration",
+            "quest",
+            "declaration",
         ),
-        (Command::On(OnCmd { position: p(), event: "e".into(), when: None, body: p(), target: None, stamp: stamp() }), "on", "declaration"),
-        (Command::Accept(lute_compile::ir::AcceptCmd { position: p(), quest: "q".into(), applies: None, stamp: stamp() }), "accept", "declaration"),
+        (
+            Command::On(OnCmd {
+                position: p(),
+                event: "e".into(),
+                when: None,
+                body: p(),
+                target: None,
+                stamp: stamp(),
+            }),
+            "on",
+            "declaration",
+        ),
+        (
+            Command::Accept(lute_compile::ir::AcceptCmd {
+                position: p(),
+                quest: "q".into(),
+                applies: None,
+                stamp: stamp(),
+            }),
+            "accept",
+            "declaration",
+        ),
         (
             Command::Plugin(PluginCmd {
-                position: p(), tag: "minigame".into(), plugin: None, fields: BTreeMap::new(),
-                effects: vec![], retracts: vec![], asserts: vec![], stamp: stamp(),
+                position: p(),
+                tag: "minigame".into(),
+                plugin: None,
+                fields: BTreeMap::new(),
+                effects: vec![],
+                retracts: vec![],
+                asserts: vec![],
+                stamp: stamp(),
             }),
-            "plugin", "plugin",
+            "plugin",
+            "plugin",
         ),
     ];
     for (cmd, kind, family) in cases {

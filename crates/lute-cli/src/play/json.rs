@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use lute_runtime::session::{
     kind_label, value_to_json, Candidate, Presented, QuestAdvance, StepBody, Verdict,
 };
-use serde_json::{json, Value as Json};
 use lute_runtime::Value;
+use serde_json::{json, Value as Json};
 
 use super::human::pick_label;
 use super::run::Playthrough;
@@ -176,7 +176,11 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
     }
     root.insert(
         "evidence".into(),
-        json!(if play.outcome.is_ok() { "witnessed" } else { "unknown" }),
+        json!(if play.outcome.is_ok() {
+            "witnessed"
+        } else {
+            "unknown"
+        }),
     );
     root.insert(
         "start".into(),
@@ -252,7 +256,9 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
             let (eligible, reason, evidence) = match &c.verdict {
                 Verdict::Eligible => (json!(true), None, "witnessed"),
                 Verdict::Ineligible(r) => (json!(false), Some(r.to_string()), "witnessed"),
-                Verdict::Unknown(d) => (Json::Null, Some(format!("when: unknown ({d})")), "unknown"),
+                Verdict::Unknown(d) => {
+                    (Json::Null, Some(format!("when: unknown ({d})")), "unknown")
+                }
             };
             m.insert("eligible".into(), eligible);
             m.insert("evidence".into(), json!(evidence));

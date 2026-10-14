@@ -344,7 +344,8 @@ fn param_attr_use(
         return None;
     }
     let def = set.table.get(component)?;
-    def.body.sections
+    def.body
+        .sections
         .iter()
         .find_map(|s| body_attr_use(set, &s.body, param, seen))
 }

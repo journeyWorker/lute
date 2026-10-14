@@ -341,7 +341,12 @@ fn walk_nodes(nodes: &[Node], src: &str, out: &mut Vec<RawTok>) {
 /// locate each referent within its `{{…}}`.
 fn line_text_tokens(l: &Line, src: &str, out: &mut Vec<RawTok>) {
     if l.inline.is_empty() {
-        push(out, l.text_span.byte_start, l.text_span.byte_end, TokType::Content);
+        push(
+            out,
+            l.text_span.byte_start,
+            l.text_span.byte_end,
+            TokType::Content,
+        );
         return;
     }
     inline_tokens(&l.inline, src, out);
@@ -879,9 +884,15 @@ mod tests {
         let close = text.find("]{}").unwrap();
         assert_eq!(token_at(text, close), Some(("]{}".len() as u32, staging)));
         let pause = text.find(":pause").unwrap();
-        assert_eq!(token_at(text, pause), Some((":pause".len() as u32, staging)));
+        assert_eq!(
+            token_at(text, pause),
+            Some((":pause".len() as u32, staging))
+        );
         let attrs = text.find("{s=0.5}").unwrap();
-        assert_eq!(token_at(text, attrs), Some(("{s=0.5}".len() as u32, staging)));
+        assert_eq!(
+            token_at(text, attrs),
+            Some(("{s=0.5}".len() as u32, staging))
+        );
         let hi = text.find("Hi ").unwrap();
         assert_eq!(token_at(text, hi), Some(("Hi ".len() as u32, content)));
     }

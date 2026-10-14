@@ -22,16 +22,16 @@
 //! span is optional and would require the document text this pure fn does not hold.
 
 use lute_check::{parse_meta, SchemaImports};
+use lute_core_span::Span;
 use lute_manifest::asset;
+use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_core_span::Span;
-use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
 use lute_syntax::ast::{AttrValue, Document, InlineModifier, InlineNode, InterpKind, Line};
 use tower_lsp_server::ls_types::{Hover, HoverContents, MarkupContent, MarkupKind};
 
 use lute_resolve::cursor::{
-    attr_at, attr_enum_values, asset_kind_for, asset_segment_index, choice_id, def_info,
+    asset_kind_for, asset_segment_index, attr_at, attr_enum_values, choice_id, def_info,
     interp_path, interp_ref_name, is_state_path, literal_label, path_at, ref_at, subject_domain,
     subject_is_number, type_label, Cursor, QuestConstruct,
 };
@@ -166,7 +166,10 @@ fn hover_with_identity(doc: &Document, off: usize, mut md: Option<String>) -> Op
             "**identity** `{}` — source `{source}`, stable `{}`{}",
             identity.identity.computed,
             identity.identity.stable,
-            identity.component_scope.as_deref().map_or(String::new(), |scope| format!(", componentScope `{scope}`")),
+            identity
+                .component_scope
+                .as_deref()
+                .map_or(String::new(), |scope| format!(", componentScope `{scope}`")),
         );
         if let Some(existing) = md.as_mut() {
             existing.push_str(&format!("\n\n{suffix}"));
@@ -191,10 +194,13 @@ fn markdown(value: String) -> Hover {
 /// §3.4): `narration` for the narrator, `mono`/`os`/`vo` for those flags,
 /// `dialogue` otherwise.
 fn speaker_hover(line: &Line) -> String {
-    let flag = line.attrs.iter().find_map(|a| match (a.key.as_str(), &a.value) {
-        (flag @ ("mono" | "os" | "vo"), AttrValue::BoolTrue) => Some(flag),
-        _ => None,
-    });
+    let flag = line
+        .attrs
+        .iter()
+        .find_map(|a| match (a.key.as_str(), &a.value) {
+            (flag @ ("mono" | "os" | "vo"), AttrValue::BoolTrue) => Some(flag),
+            _ => None,
+        });
     let role = match flag {
         _ if line.speaker == "narrator" => "narration",
         Some(flag) => flag,
@@ -263,7 +269,10 @@ fn host_hover(raw: &str, local: usize) -> Option<String> {
     const SIGS: &[(&str, &str)] = &[
         ("holds", "holds(string, list(dyn)) -> bool"),
         ("count", "count(string, list(dyn)) -> int"),
-        ("countDistinct", "countDistinct(string, list(dyn), int) -> int"),
+        (
+            "countDistinct",
+            "countDistinct(string, list(dyn), int) -> int",
+        ),
         ("validAt", "validAt(string, list(dyn), int) -> bool"),
         ("now", "now() -> int"),
         ("visited", "visited(string) -> bool"),
@@ -274,7 +283,10 @@ fn host_hover(raw: &str, local: usize) -> Option<String> {
     let end = local.min(raw.len());
     for (name, sig) in SIGS {
         if raw[..end].ends_with(name)
-            && raw[end..].chars().next().is_none_or(|c| !c.is_ascii_alphanumeric())
+            && raw[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_ascii_alphanumeric())
         {
             return Some(format!("**{name}** — `{sig}`"));
         }
@@ -1030,8 +1042,13 @@ mod tests {
     }
 
     fn hover_text(text: &str, off: usize) -> Option<String> {
-        hover_at(&parsed(text), &load_core_snapshot(), &SchemaImports::default(), off)
-            .map(|h| contents_text(&h).to_string())
+        hover_at(
+            &parsed(text),
+            &load_core_snapshot(),
+            &SchemaImports::default(),
+            off,
+        )
+        .map(|h| contents_text(&h).to_string())
     }
 
     /// dsl 0.37.0 §3.5: a `::jump{to}` value names its label, where the label
@@ -1056,7 +1073,10 @@ mod tests {
             assert!(cg.contains(attr), "{cg}");
         }
         let seq = hover_text(text, text.find("::sequence").unwrap() + 2).unwrap();
-        assert!(seq.contains("`name`: domain `sequence`") || seq.contains("`name`"), "{seq}");
+        assert!(
+            seq.contains("`name`: domain `sequence`") || seq.contains("`name`"),
+            "{seq}"
+        );
         let jump = hover_text(text, text.find("::jump").unwrap() + 2).unwrap();
         assert!(jump.contains("jump forward"), "{jump}");
     }
@@ -1067,7 +1087,10 @@ mod tests {
     fn hover_on_camera_and_music_attr_keys() {
         let text = "## Shot 1.\n::camera{framing=\"close\" duration=\"1\"}\n::music{playback=\"start\"}\n::cg{assetId=\"a\" delay=\"1\"}\n";
         let framing = hover_text(text, text.find("framing").unwrap() + 1).unwrap();
-        assert!(framing.contains("**`framing`**") && framing.contains("framing"), "{framing}");
+        assert!(
+            framing.contains("**`framing`**") && framing.contains("framing"),
+            "{framing}"
+        );
         let playback = hover_text(text, text.find("playback").unwrap() + 1).unwrap();
         assert!(playback.contains("musicPlayback"), "{playback}");
         let delay = hover_text(text, text.find("delay").unwrap() + 1).unwrap();

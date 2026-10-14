@@ -8,7 +8,6 @@ use lute_semantic::{NodeKey, NodeKind, RenameError, SemanticGraph};
 /// A resolved, deterministic project identity migration sequence.
 pub type ResolvedRenames = Vec<IdentityRename>;
 
-
 fn kind(name: &str) -> Option<NodeKind> {
     Some(match name {
         "project" => NodeKind::Project,

@@ -11,8 +11,8 @@
 //! scope the write names no one: one `E-UNDECLARED` at the write.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::AttrValue;
 use lute_manifest::fact::{FactPattern, FactTerm};
+use lute_syntax::ast::AttrValue;
 
 use lute_manifest::semantics::beats::OCCASION_TARGET;
 use lute_manifest::semantics::target_writes::TARGET_INDEX;
@@ -54,7 +54,10 @@ pub fn instantiate_pattern(pattern: &FactPattern, member: &str) -> FactPattern {
 
 /// The members `occasion.target` names at `span`, or the one `E-UNDECLARED`
 /// for a write outside every kind or `for=` beat.
-#[expect(clippy::result_large_err, reason = "diagnostics remain unboxed across the checker API")]
+#[expect(
+    clippy::result_large_err,
+    reason = "diagnostics remain unboxed across the checker API"
+)]
 pub(crate) fn scope_members<'c>(ctx: &'c Ctx<'_>, span: Span) -> Result<&'c [String], Diagnostic> {
     ctx.env
         .occasion_scopes

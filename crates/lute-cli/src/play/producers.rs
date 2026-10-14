@@ -262,4 +262,3 @@ pub struct Premises {
     pub document: String,
     pub step: usize,
 }
-

@@ -6,23 +6,23 @@
 //! character a staging directive names — `::actor{character}` and
 //! `::camera{focus}` — is held to the same cast.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
-use cel_parser::ast::{operators as op, CallExpr, Expr, IdedExpr};
-use cel_parser::reference::Val;
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::relations::KindShape;
-use lute_syntax::ast::{Arm, CelSlot, ClipNode, Directive, Document, Line, Match, Node};
-use lute_manifest::fact::{is_anonymous_var, FactPattern, FactTerm};
-use lute_syntax::datalog::{BodyLiteral, RuleTerm};
-use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
-use lute_ir::BeatOnce;
 use crate::cel_expand::{expand_cel, subject_text, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, DecideCtx, Decided};
 use crate::fact_env::{FactEnv, FactScope};
 use crate::match_check::DomainInfo;
 use crate::rel_schema::RelVocab;
+use cel_parser::ast::{operators as op, CallExpr, Expr, IdedExpr};
+use cel_parser::reference::Val;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_ir::BeatOnce;
+use lute_manifest::fact::{is_anonymous_var, FactPattern, FactTerm};
+use lute_manifest::relations::KindShape;
+use lute_syntax::ast::{Arm, CelSlot, ClipNode, Directive, Document, Line, Match, Node};
+use lute_syntax::datalog::{BodyLiteral, RuleTerm};
+use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 mod emotion;
 mod facts;
 mod presence;
@@ -36,7 +36,9 @@ pub use facts::{fact_producers, occasions_before, FactProducers};
 pub use presence::{check_presence, reconcile_presence, PresenceProject};
 pub use speaker::{check_speakers, declared_cast};
 
-pub(crate) use emotion::{cast_diag, doc_bodies, literal_attr, present_faults, validate_member, visit};
+pub(crate) use emotion::{
+    cast_diag, doc_bodies, literal_attr, present_faults, validate_member, visit,
+};
 pub(crate) use facts::{fact_writes, pattern_args, unit_facts, FactWrite};
 pub(crate) use presence::{write_effects, Atom, Effect, Pol};
 pub(crate) use speaker::unknown;

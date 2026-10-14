@@ -243,7 +243,10 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
     for (locale, text) in entry.into_iter().flatten() {
         let (nodes, parse_diags) = lute_syntax::parse_inline_text(text);
         if let Some(bad) = parse_diags.iter().find(|d| d.severity == Severity::Error) {
-            let why = format!("its inline markup does not parse ({}: {})", bad.code, bad.message);
+            let why = format!(
+                "its inline markup does not parse ({}: {})",
+                bad.code, bad.message
+            );
             diags.push(modifiers_diag(locale, &l.line_id, &why));
             continue;
         }
@@ -257,9 +260,11 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
             diags.push(modifiers_diag(locale, &l.line_id, &why));
             continue;
         }
-        l.texts.insert(locale.clone(), lute_syntax::ast::inline_plain_text(&nodes));
+        l.texts
+            .insert(locale.clone(), lute_syntax::ast::inline_plain_text(&nodes));
         if !l.modifiers.is_empty() {
-            l.locale_segments.insert(locale.clone(), crate::lower::inline_segments(&nodes));
+            l.locale_segments
+                .insert(locale.clone(), crate::lower::inline_segments(&nodes));
         }
     }
     for locale in &bundle.locales {
@@ -273,7 +278,13 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
 fn render_multiset(set: &BTreeMap<String, usize>) -> String {
     let items: Vec<String> = set
         .iter()
-        .map(|(k, n)| if *n == 1 { k.clone() } else { format!("{k}×{n}") })
+        .map(|(k, n)| {
+            if *n == 1 {
+                k.clone()
+            } else {
+                format!("{k}×{n}")
+            }
+        })
         .collect();
     format!("[{}]", items.join(", "))
 }

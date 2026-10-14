@@ -73,11 +73,17 @@ fn run_tier_grants_increment_instance_and_count_filtered_rewards() {
     );
     let repeat = grants(&v, "repeat");
     assert_eq!(
-        repeat.iter().map(|g| g["instance"].as_u64().unwrap()).collect::<Vec<_>>(),
+        repeat
+            .iter()
+            .map(|g| g["instance"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
         [1, 1, 1, 2, 2, 2]
     );
     assert_eq!(
-        repeat.iter().map(|g| g["index"].as_u64().unwrap()).collect::<Vec<_>>(),
+        repeat
+            .iter()
+            .map(|g| g["index"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
         [0, 2, 0, 0, 2, 0]
     );
     assert!(repeat.iter().all(|g| g["reward"]["kind"] != "FILTERED"));
@@ -133,7 +139,10 @@ fn a_save_file_preserves_instance_counter_when_resuming() {
 #[test]
 fn replaying_a_save_produces_identical_grant_keys() {
     let script = "quests: { repeat: complete }\nstate: { run.ready: true, run.finished: true }\nsteps:\n  - newRun: { state: { run.ready: true, run.finished: true } }\n";
-    assert_eq!(keys(&play("replay-a", script), "repeat"), keys(&play("replay-b", script), "repeat"));
+    assert_eq!(
+        keys(&play("replay-a", script), "repeat"),
+        keys(&play("replay-b", script), "repeat")
+    );
 }
 
 #[test]

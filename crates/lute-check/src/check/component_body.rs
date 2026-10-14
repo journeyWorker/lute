@@ -23,7 +23,10 @@ use super::*;
 /// Each body ALSO gets its own isolated run of the whole-document
 /// duplicate-line-code pass ([`check_line_codes`], dsl §12) — see the comment
 /// at that call for the scope boundary.
-#[expect(clippy::too_many_arguments, reason = "component checking receives each independent environment explicitly")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "component checking receives each independent environment explicitly"
+)]
 pub(super) fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
@@ -291,7 +294,8 @@ pub(super) fn component_use_sites(
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {
     let mut sites = std::collections::BTreeMap::new();
-    let roots = doc.sections
+    let roots = doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

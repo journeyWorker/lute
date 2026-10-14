@@ -14,7 +14,7 @@ use lute_syntax::incremental::{ContinuationUnit, IncrementalContinuationParser};
 
 pub use lute_syntax::incremental::NeedMoreInput;
 
-use crate::{compile_with_check, stamp_identity_renames, ExecutionIr, Command};
+use crate::{compile_with_check, stamp_identity_renames, Command, ExecutionIr};
 use lute_ir::DocKind;
 
 pub const E_STREAM_TEMPLATE: &str = "E-STREAM-TEMPLATE";
@@ -91,7 +91,6 @@ impl ContinuationCompiler {
         self.identity_renames = renames.to_vec();
         stamp_identity_renames(&mut self.artifact, renames);
     }
-
 
     /// Append a UTF-8 text chunk and compile every newly completed unit.
     pub fn push(&mut self, chunk: &str) -> ContinuationCompilation {

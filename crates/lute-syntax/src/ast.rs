@@ -28,7 +28,10 @@ pub struct Section {
 }
 
 #[derive(Clone, Debug)]
-#[expect(clippy::large_enum_variant, reason = "AST nodes stay inline to preserve parser hot-path performance")]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "AST nodes stay inline to preserve parser hot-path performance"
+)]
 pub enum Node {
     Line(Line),
     Directive(Directive),
@@ -117,7 +120,11 @@ pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTree
                     })
                     .collect();
                 attrs.sort();
-                let span = if m.content_span.is_some() || !m.children.is_empty() { "[]" } else { "" };
+                let span = if m.content_span.is_some() || !m.children.is_empty() {
+                    "[]"
+                } else {
+                    ""
+                };
                 let key = if attrs.is_empty() {
                     format!("{}{span}", m.name)
                 } else {

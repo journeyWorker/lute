@@ -34,18 +34,13 @@ fn clean_quest_doc(quest_id: &str, state_path: &str) -> String {
     )
 }
 
-#[path = "cross_file.rs"]
-mod cross_file;
 #[path = "connectivity.rs"]
 mod connectivity;
+#[path = "cross_file.rs"]
+mod cross_file;
+#[path = "late.rs"]
+mod late;
 #[path = "liveness.rs"]
 mod liveness;
 #[path = "schema.rs"]
 mod schema;
-#[path = "late.rs"]
-mod late;
-
-
-
-
-

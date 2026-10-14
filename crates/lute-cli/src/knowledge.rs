@@ -170,10 +170,7 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                     } else {
                         Vec::new()
                     };
-                    if let (
-                        Some(Expr::Literal(Val::String(rel))),
-                        Some(Expr::List(list)),
-                    ) = (
+                    if let (Some(Expr::Literal(Val::String(rel))), Some(Expr::List(list))) = (
                         c.args.first().map(|a| &a.expr),
                         c.args.get(1).map(|a| &a.expr),
                     ) {
@@ -188,7 +185,10 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                             })
                             .collect();
                         out.insert(Read {
-                            pattern: Pattern { rel: rel.clone(), args },
+                            pattern: Pattern {
+                                rel: rel.clone(),
+                                args,
+                            },
                             negated: negated && name == "holds",
                         });
                     } else if let Some(Expr::Call(pattern)) = c.args.first().map(|a| &a.expr) {
@@ -538,8 +538,8 @@ pub(crate) fn component_asserts(
         depth: u8,
         out: &mut Vec<(String, lute_manifest::fact::FactPattern)>,
     ) {
-        use lute_syntax::ast::AttrValue;
         use lute_manifest::fact::FactTerm;
+        use lute_syntax::ast::AttrValue;
         if depth > 8 {
             return;
         }

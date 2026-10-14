@@ -226,7 +226,6 @@ fn parse_node<E: de::Error>(value: Option<&Value>, name: &str) -> Result<NodeKey
     parse_node_key(&text).map_err(de::Error::custom)
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Preserve {
     Ids(Vec<NodeKey>),

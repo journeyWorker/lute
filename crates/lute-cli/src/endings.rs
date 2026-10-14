@@ -32,11 +32,11 @@ use cel_parser::ast::operators as op;
 use lute_check::connectivity::{NodeId, Reachability};
 use lute_check::{ProjectBeat, ProjectBeatKind};
 use lute_core_span::Diagnostic;
+use lute_load::resolve_snapshot;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::PathSegment;
 use lute_syntax::ast::{Arm, AttrValue, ClipNode, Directive, Document, Node, Reward};
 use serde_json::{json, Value as Json};
-use lute_load::resolve_snapshot;
 
 use crate::{ByRoot, DocGroup};
 
@@ -302,17 +302,19 @@ fn rows(
     for (root, group) in by_root {
         let scenario = crate::assemble_root_scenario(group, file_results);
         let docs = lute_model::project_docs(group);
-        let beats = lute_check::beats::in_selection_order(
-            lute_check::project_beats(&docs, &group.iter().map(|(_, _, f)| f).collect::<Vec<_>>()),
-        );
+        let beats = lute_check::beats::in_selection_order(lute_check::project_beats(
+            &docs,
+            &group.iter().map(|(_, _, f)| f).collect::<Vec<_>>(),
+        ));
         known.extend(beats.iter().map(|b| b.on.to_string()));
         let producers = Producers::of(root, group);
         let terminal = Terminal::of(root, group);
         let mut rows = Vec::new();
         for b in &beats {
             let item = docs.iter().find(|item| item.path == b.path);
-            let runs_end = item
-                .is_some_and(|item| beat_body(item, b).is_some_and(|body| producers.can_end(body, 0)));
+            let runs_end = item.is_some_and(|item| {
+                beat_body(item, b).is_some_and(|body| producers.can_end(body, 0))
+            });
             let writes_terminal = terminal
                 .as_ref()
                 .map(|t| t.written_by(root, &producers, b))
@@ -373,7 +375,10 @@ fn rows(
 }
 
 /// The body a beat presents.
-fn beat_body<'d>(item: &lute_check::ProjectDoc<'d>, b: &ProjectBeat<'_>) -> Option<Vec<&'d [Node]>> {
+fn beat_body<'d>(
+    item: &lute_check::ProjectDoc<'d>,
+    b: &ProjectBeat<'_>,
+) -> Option<Vec<&'d [Node]>> {
     let doc = item.doc;
     match b.kind {
         ProjectBeatKind::Scene => Some(doc.sections.iter().map(|s| s.body.as_slice()).collect()),

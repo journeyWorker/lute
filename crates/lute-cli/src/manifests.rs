@@ -22,8 +22,8 @@
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::project::{load_project, ProjectConfig};
 use lute_load::resolve_snapshot;
+use lute_manifest::project::{load_project, ProjectConfig};
 
 /// The manifest file name, in one place.
 pub const MANIFEST_FILE: &str = "lute.project.yaml";

@@ -217,4 +217,3 @@ fn ordinary_component_body_stays_clean() {
         codes(&diags)
     );
 }
-

@@ -7,13 +7,16 @@ use lute_model::{ModelOptions, ProjectModel};
 fn assert_diagnostic(diagnostic: &Diagnostic) {
     match classification(&diagnostic.code) {
         Some(DiagnosticClass::Analysis { evidence }) => {
-            let actual = diagnostic
-                .evidence
-                .as_ref()
-                .unwrap_or_else(|| panic!("analysis diagnostic {} lacks evidence", diagnostic.code));
+            let actual = diagnostic.evidence.as_ref().unwrap_or_else(|| {
+                panic!("analysis diagnostic {} lacks evidence", diagnostic.code)
+            });
             assert_eq!(actual, &evidence, "wrong evidence for {}", diagnostic.code);
             if let Evidence::Bounded { scope } = actual {
-                assert!(!scope.is_empty(), "bounded diagnostic {} lacks scope", diagnostic.code);
+                assert!(
+                    !scope.is_empty(),
+                    "bounded diagnostic {} lacks scope",
+                    diagnostic.code
+                );
             }
         }
         Some(DiagnosticClass::SourceError) => assert!(
@@ -68,25 +71,24 @@ fn docs_examples_and_reconciliation_diagnostics_have_evidence_contract() {
     .unwrap();
     let model = ProjectModel::build(&root, &ModelOptions::default()).unwrap();
     assert_model(&model);
-    let fixture_has_unsat = model
-        .documents()
-        .iter()
-        .any(|document| {
-            document
-                .check
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.code == "E-OBJECTIVE-UNSATISFIABLE")
-        })
-        || model
-            .project_diagnostics()
+    let fixture_has_unsat = model.documents().iter().any(|document| {
+        document
+            .check
+            .diagnostics
             .iter()
-            .any(|(_, diagnostic)| diagnostic.code == "E-OBJECTIVE-UNSATISFIABLE")
+            .any(|diagnostic| diagnostic.code == "E-OBJECTIVE-UNSATISFIABLE")
+    }) || model
+        .project_diagnostics()
+        .iter()
+        .any(|(_, diagnostic)| diagnostic.code == "E-OBJECTIVE-UNSATISFIABLE")
         || model
             .reconciled()
             .diagnostics
             .iter()
             .any(|(_, diagnostic)| diagnostic.code == "E-OBJECTIVE-UNSATISFIABLE");
-    assert!(fixture_has_unsat, "fixture did not exercise unreachable child objective");
+    assert!(
+        fixture_has_unsat,
+        "fixture did not exercise unreachable child objective"
+    );
     std::fs::remove_dir_all(root).unwrap();
 }

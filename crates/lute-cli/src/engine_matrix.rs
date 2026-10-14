@@ -20,14 +20,21 @@ impl EngineMatrix {
         Self {
             engine: "reference".into(),
             ir_version: lute_compile::LUTE_IR_VERSION.into(),
-            supported_ids: lute_compile::semantics::REGISTRY.iter().map(|e| e.id.as_str().to_string()).collect(),
+            supported_ids: lute_compile::semantics::REGISTRY
+                .iter()
+                .map(|e| e.id.as_str().to_string())
+                .collect(),
         }
     }
 
     pub(crate) fn load(path: Option<&Path>) -> Result<Self, String> {
-        let Some(path) = path else { return Ok(Self::reference()); };
-        let text = std::fs::read_to_string(path).map_err(|e| format!("E-ENGINE-MATRIX: cannot read {}: {}", path.display(), e))?;
-        let matrix: Self = serde_yaml::from_str(&text).map_err(|e| format!("E-ENGINE-MATRIX: {}", e))?;
+        let Some(path) = path else {
+            return Ok(Self::reference());
+        };
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("E-ENGINE-MATRIX: cannot read {}: {}", path.display(), e))?;
+        let matrix: Self =
+            serde_yaml::from_str(&text).map_err(|e| format!("E-ENGINE-MATRIX: {}", e))?;
         if matrix.engine.trim().is_empty() || parse_version(&matrix.ir_version).is_none() {
             return Err("E-ENGINE-MATRIX: `engine` must be non-empty and `irVersion` must be MAJOR.MINOR.PATCH".into());
         }
@@ -47,24 +54,45 @@ impl EngineMatrix {
     }
 
     pub(crate) fn negotiate(&self, artifact: &Json) -> Result<(), String> {
-        let ir = artifact.get("irVersion").and_then(Json::as_str).unwrap_or("");
+        let ir = artifact
+            .get("irVersion")
+            .and_then(Json::as_str)
+            .unwrap_or("");
         let accepted = major_minor_match(&self.ir_version, ir);
         if !accepted {
-            return Err(format!("E-ENGINE-IR-VERSION: engine `{}` accepts `{}`, artifact has `{}`", self.engine, self.ir_version, ir));
+            return Err(format!(
+                "E-ENGINE-IR-VERSION: engine `{}` accepts `{}`, artifact has `{}`",
+                self.engine, self.ir_version, ir
+            ));
         }
         let supported: BTreeSet<&str> = self.supported_ids.iter().map(String::as_str).collect();
-        let required = artifact.get("requiredSemantics").and_then(Json::as_array).ok_or_else(|| "E-SEMANTICS-UNKNOWN: artifact has no valid `requiredSemantics`".to_string())?;
+        let required = artifact
+            .get("requiredSemantics")
+            .and_then(Json::as_array)
+            .ok_or_else(|| {
+                "E-SEMANTICS-UNKNOWN: artifact has no valid `requiredSemantics`".to_string()
+            })?;
         let mut missing = BTreeSet::new();
         for value in required {
-            let id = value.as_str().ok_or_else(|| "E-SEMANTICS-UNKNOWN: requiredSemantics contains a non-string".to_string())?;
-            if !lute_compile::semantics::is_registered(id) { return Err(format!("E-SEMANTICS-UNKNOWN: unknown semantic id `{id}`")); }
-            if !supported.contains(id) { missing.insert(id); }
+            let id = value.as_str().ok_or_else(|| {
+                "E-SEMANTICS-UNKNOWN: requiredSemantics contains a non-string".to_string()
+            })?;
+            if !lute_compile::semantics::is_registered(id) {
+                return Err(format!("E-SEMANTICS-UNKNOWN: unknown semantic id `{id}`"));
+            }
+            if !supported.contains(id) {
+                missing.insert(id);
+            }
         }
         if !missing.is_empty() {
             return Err(format!(
                 "E-ENGINE-SEMANTICS: engine `{}` does not support semantic ids: {}",
                 self.engine,
-                missing.into_iter().map(|id| format!("`{id}`")).collect::<Vec<_>>().join(", "),
+                missing
+                    .into_iter()
+                    .map(|id| format!("`{id}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
             ));
         }
         Ok(())
@@ -72,25 +100,37 @@ impl EngineMatrix {
 }
 
 fn well_formed_id(id: &str) -> bool {
-    let Some((name, major)) = id.rsplit_once('/') else { return false };
+    let Some((name, major)) = id.rsplit_once('/') else {
+        return false;
+    };
     if major.is_empty() || !major.bytes().all(|b| b.is_ascii_digit()) || major == "0" {
         return false;
     }
     if name == "lute.core" {
         return true;
     }
-    let Some(rest) = name.strip_prefix("lute.") else { return false };
+    let Some(rest) = name.strip_prefix("lute.") else {
+        return false;
+    };
     let mut parts = rest.split('.');
     parts.next().is_some_and(|module| !module.is_empty())
         && parts.all(|feature| !feature.is_empty())
-    }
+}
 
 fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
     let parts: Vec<_> = v.split('.').collect();
-    if parts.len() != 3 || parts.iter().any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit())) {
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()))
+    {
         return None;
     }
-    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+    ))
 }
 
 fn major_minor_match(expected: &str, actual: &str) -> bool {

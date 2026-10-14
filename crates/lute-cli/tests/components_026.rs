@@ -94,7 +94,12 @@ const DIRECTIVES: &str = r#"directives:
 
 /// A project with a `talk` occasion, `::give` (passthrough) and `::battle`
 /// (bridge) directives, a cast, a world schema and the given components.
-fn project(tag: &str, cast: &str, schema: &str, components: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+fn project(
+    tag: &str,
+    cast: &str,
+    schema: &str,
+    components: &[(&str, &str)],
+) -> lute_scratch::ScratchDir {
     let dir = lute_scratch::ScratchDir::named(tag);
     write(&dir, "plugins/p/plugin.yaml", PLUGIN);
     write(
@@ -448,7 +453,10 @@ fn a_guarded_directive_compiles_to_a_one_arm_match() {
     let cmds = commands(&dir, "scenes/a.lute");
     let first = &cmds[0];
     assert_eq!(first["kind"], "match", "{cmds:#?}");
-    assert_eq!(first["subject"], serde_json::json!({"cel": "run.gate", "expr": {"path": "run.gate"}}));
+    assert_eq!(
+        first["subject"],
+        serde_json::json!({"cel": "run.gate", "expr": {"path": "run.gate"}})
+    );
     assert_eq!(first["arms"].as_array().unwrap().len(), 1);
     let target = first["arms"][0]["target"].as_str().unwrap();
     let leaf = cmds.iter().find(|c| c["position"] == target).unwrap();

@@ -9,8 +9,8 @@ use lute_core_span::{Diagnostic, Severity, Span};
 
 use crate::reconcile::relocate_imported_diags;
 use crate::scenario::node_cycle_degraded;
-use lute_load::normalize_span_from_text;
 use crate::{ModelOptions, ProjectModel};
+use lute_load::normalize_span_from_text;
 
 /// The reconciled project analysis for the compile/trace project-aware gate
 /// (connectivity design spec §5): per-document reconciled `CheckResult`s
@@ -61,7 +61,11 @@ impl ReconciledProject {
             })
             .map(|(path, mut d)| {
                 let count = per_doc.len();
-                let message = d.message.split(" (imported by ").next().unwrap_or(&d.message);
+                let message = d
+                    .message
+                    .split(" (imported by ")
+                    .next()
+                    .unwrap_or(&d.message);
                 d.message = format!(
                     "{message} (imported by {count} document{})",
                     if count == 1 { "" } else { "s" }

@@ -1,7 +1,13 @@
 use super::*;
 
-#[expect(clippy::type_complexity, reason = "tie grouping keeps member and pair indexes together")]
-pub(super) fn tie_warnings(beats: &[Beat<'_>], ties: &[(usize, usize)]) -> Vec<(PathBuf, Diagnostic)> {
+#[expect(
+    clippy::type_complexity,
+    reason = "tie grouping keeps member and pair indexes together"
+)]
+pub(super) fn tie_warnings(
+    beats: &[Beat<'_>],
+    ties: &[(usize, usize)],
+) -> Vec<(PathBuf, Diagnostic)> {
     let mut root: Vec<usize> = (0..beats.len()).collect();
     fn find(root: &mut [usize], mut x: usize) -> usize {
         while root[x] != x {
@@ -602,18 +608,19 @@ pub(crate) fn read_tier(expr: &cel_parser::ast::Expr, tiers: &UserTier<'_>) -> O
             )
         }
         Expr::Call(c) if matches!(c.func_name.as_str(), "holds" | "count" | "countDistinct") => {
-            let relation = crate::fact_env::QueryPattern::from_call(c)
-                .map(|q| q.relation);
-            Some(match relation
-                .as_deref()
-                .and_then(|name| tiers.relations.get(name))
-                .map(|r| r.tier.as_deref())
-            {
-                Some(None | Some("run")) => ReadTier::Run,
-                Some(Some("user")) => ReadTier::User,
-                Some(Some("app")) => ReadTier::App,
-                _ => ReadTier::Other,
-            })
+            let relation = crate::fact_env::QueryPattern::from_call(c).map(|q| q.relation);
+            Some(
+                match relation
+                    .as_deref()
+                    .and_then(|name| tiers.relations.get(name))
+                    .map(|r| r.tier.as_deref())
+                {
+                    Some(None | Some("run")) => ReadTier::Run,
+                    Some(Some("user")) => ReadTier::User,
+                    Some(Some("app")) => ReadTier::App,
+                    _ => ReadTier::Other,
+                },
+            )
         }
         _ => None,
     }
@@ -776,4 +783,3 @@ pub(crate) fn top_key_span(meta: &Meta, key: &str) -> Span {
         None => crate::meta::meta_key_span(meta, key),
     }
 }
-

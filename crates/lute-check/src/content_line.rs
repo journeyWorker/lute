@@ -315,7 +315,14 @@ pub fn check_inline_modifiers(
                         m.span,
                     ));
                 }
-                check_core_number(m, "s", "seconds", |v| v >= 0.0, "a non-negative number", diags);
+                check_core_number(
+                    m,
+                    "s",
+                    "seconds",
+                    |v| v >= 0.0,
+                    "a non-negative number",
+                    diags,
+                );
             }
             "speed" => {
                 if !is_span {

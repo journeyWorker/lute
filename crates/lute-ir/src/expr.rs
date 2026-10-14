@@ -26,7 +26,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 #[serde(untagged)]
 pub enum ExprNode {
     /// Typed scalar literal, flattened to `{int}`, `{double}`, `{bool}` or `{string}`.
-    Lit { #[serde(flatten)] lit: LitVal },
+    Lit {
+        #[serde(flatten)]
+        lit: LitVal,
+    },
     /// Static state/subject path: `{"path": "a.b.c"}`.
     Path { path: String },
     /// Unary operator (`!`/`-`): `{"op": "<sym>", "l": <node>}`.
@@ -47,7 +50,10 @@ pub enum ExprNode {
     /// List literal.
     List { list: Vec<ExprNode> },
     /// Computed map/list index.
-    Index { index: Box<ExprNode>, key: Box<ExprNode> },
+    Index {
+        index: Box<ExprNode>,
+        key: Box<ExprNode>,
+    },
     /// Numeric conversion or engine host function.
     Call { call: String, args: Vec<ExprNode> },
     /// Presence test over a canonical path.
@@ -93,10 +99,30 @@ impl<'de> Deserialize<'de> for LitVal {
             string: Option<String>,
         }
         match Raw::deserialize(d)? {
-            Raw { int: Some(v), double: None, bool: None, string: None } => Ok(Self::Int(v)),
-            Raw { int: None, double: Some(v), bool: None, string: None } => Ok(Self::Num(v)),
-            Raw { int: None, double: None, bool: Some(v), string: None } => Ok(Self::Bool(v)),
-            Raw { int: None, double: None, bool: None, string: Some(v) } => Ok(Self::Str(v)),
+            Raw {
+                int: Some(v),
+                double: None,
+                bool: None,
+                string: None,
+            } => Ok(Self::Int(v)),
+            Raw {
+                int: None,
+                double: Some(v),
+                bool: None,
+                string: None,
+            } => Ok(Self::Num(v)),
+            Raw {
+                int: None,
+                double: None,
+                bool: Some(v),
+                string: None,
+            } => Ok(Self::Bool(v)),
+            Raw {
+                int: None,
+                double: None,
+                bool: None,
+                string: Some(v),
+            } => Ok(Self::Str(v)),
             _ => Err(serde::de::Error::custom("invalid expression literal")),
         }
     }
@@ -168,13 +194,20 @@ impl<'de> Deserialize<'de> for ExprNode {
             Ok(match raw {
                 Raw::Lit { lit } => ExprNode::Lit { lit },
                 Raw::Path { path } => ExprNode::Path { path },
-                Raw::Unary { op: o, l } => ExprNode::Unary { op: op(o)?, l: boxed(l)? },
+                Raw::Unary { op: o, l } => ExprNode::Unary {
+                    op: op(o)?,
+                    l: boxed(l)?,
+                },
                 Raw::Binary { op: o, l, r } => ExprNode::Binary {
                     op: op(o)?,
                     l: boxed(l)?,
                     r: boxed(r)?,
                 },
-                Raw::Cond { cond, then, otherwise } => ExprNode::Cond {
+                Raw::Cond {
+                    cond,
+                    then,
+                    otherwise,
+                } => ExprNode::Cond {
                     cond: boxed(cond)?,
                     then: boxed(then)?,
                     otherwise: boxed(otherwise)?,
@@ -184,7 +217,10 @@ impl<'de> Deserialize<'de> for ExprNode {
                     index: boxed(index)?,
                     key: boxed(key)?,
                 },
-                Raw::Call { call, args } => ExprNode::Call { call, args: all(args)? },
+                Raw::Call { call, args } => ExprNode::Call {
+                    call,
+                    args: all(args)?,
+                },
                 Raw::Has { has } => ExprNode::Has { has },
                 Raw::Param { param } => ExprNode::Param { param },
             })
@@ -210,18 +246,31 @@ mod tests {
         let node = ExprNode::Cond {
             cond: b(ExprNode::Binary {
                 op: "&&",
-                l: b(ExprNode::Unary { op: "!", l: b(ExprNode::Has { has: "run.a".into() }) }),
+                l: b(ExprNode::Unary {
+                    op: "!",
+                    l: b(ExprNode::Has {
+                        has: "run.a".into(),
+                    }),
+                }),
                 r: b(ExprNode::Binary {
                     op: "in",
                     l: b(lit(LitVal::Str("x".into()))),
-                    r: b(ExprNode::List { list: vec![lit(LitVal::Int(3)), lit(LitVal::Bool(true))] }),
+                    r: b(ExprNode::List {
+                        list: vec![lit(LitVal::Int(3)), lit(LitVal::Bool(true))],
+                    }),
                 }),
             }),
             then: b(ExprNode::Index {
                 index: b(path("user.map")),
-                key: b(ExprNode::Call { call: "int".into(), args: vec![lit(LitVal::Num(2.5))] }),
+                key: b(ExprNode::Call {
+                    call: "int".into(),
+                    args: vec![lit(LitVal::Num(2.5))],
+                }),
             }),
-            otherwise: b(ExprNode::Unary { op: "-", l: b(path("run.n")) }),
+            otherwise: b(ExprNode::Unary {
+                op: "-",
+                l: b(path("run.n")),
+            }),
         };
         let json = serde_json::to_value(&node).unwrap();
         assert_eq!(serde_json::from_value::<ExprNode>(json).unwrap(), node);
@@ -237,7 +286,9 @@ mod tests {
     fn a_param_node_reads_back_as_written() {
         let node = ExprNode::Binary {
             op: ">=",
-            l: b(ExprNode::Path { path: "run.gold".into() }),
+            l: b(ExprNode::Path {
+                path: "run.gold".into(),
+            }),
             r: b(ExprNode::Param { param: "n".into() }),
         };
         let json = serde_json::to_value(&node).unwrap();

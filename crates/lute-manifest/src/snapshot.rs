@@ -694,7 +694,6 @@ mod tests {
         assert_ne!(base, marked);
     }
 
-
     #[test]
     fn domain_labels_fold_into_the_stamp_only_when_declared() {
         // A label-less, stop-less domain keeps the exact pre-existing `Debug`;

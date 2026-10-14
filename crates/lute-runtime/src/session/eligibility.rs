@@ -5,11 +5,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::ser::SerializeStruct;
-use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
 use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 use lute_manifest::schema::OccasionSelect;
+use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value as Json;
 
 use super::project::ExecProject;
@@ -87,19 +87,37 @@ enum PremiseWire {
         once: Option<BeatOnce>,
         reason: String,
     },
-    After { raw: String, unmet: Vec<Atom>, chapters: bool },
-    SpentBy { raw: String },
-    When { raw: String },
-    Gate { occasion: String, raw: String, reads: Vec<crate::GuardRead> },
-    Terminal { occasion: String, raw: String },
+    After {
+        raw: String,
+        unmet: Vec<Atom>,
+        chapters: bool,
+    },
+    SpentBy {
+        raw: String,
+    },
+    When {
+        raw: String,
+    },
+    Gate {
+        occasion: String,
+        raw: String,
+        reads: Vec<crate::GuardRead>,
+    },
+    Terminal {
+        occasion: String,
+        raw: String,
+    },
 }
 
 impl Serialize for Verdict {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut wire = serializer.serialize_struct("Verdict", match self {
-            Self::Eligible => 1,
-            Self::Ineligible(_) | Self::Unknown(_) => 2,
-        })?;
+        let mut wire = serializer.serialize_struct(
+            "Verdict",
+            match self {
+                Self::Eligible => 1,
+                Self::Ineligible(_) | Self::Unknown(_) => 2,
+            },
+        )?;
         match self {
             Self::Eligible => wire.serialize_field("verdict", "eligible")?,
             Self::Ineligible(premise) => {
@@ -142,7 +160,11 @@ impl Serialize for Premise {
                 }
                 wire.serialize_field("reason", reason)?;
             }
-            Self::After { raw, unmet, chapters } => {
+            Self::After {
+                raw,
+                unmet,
+                chapters,
+            } => {
                 wire.serialize_field("premise", "after")?;
                 wire.serialize_field("raw", raw)?;
                 wire.serialize_field("unmet", unmet)?;
@@ -156,7 +178,11 @@ impl Serialize for Premise {
                 wire.serialize_field("premise", "when")?;
                 wire.serialize_field("raw", raw)?;
             }
-            Self::Gate { occasion, raw, reads } => {
+            Self::Gate {
+                occasion,
+                raw,
+                reads,
+            } => {
                 wire.serialize_field("premise", "gate")?;
                 wire.serialize_field("occasion", occasion)?;
                 wire.serialize_field("raw", raw)?;
@@ -176,10 +202,26 @@ impl<'de> Deserialize<'de> for Premise {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Ok(match PremiseWire::deserialize(deserializer)? {
             PremiseWire::Spent { once, reason } => Self::Spent { once, reason },
-            PremiseWire::After { raw, unmet, chapters } => Self::After { raw, unmet, chapters },
+            PremiseWire::After {
+                raw,
+                unmet,
+                chapters,
+            } => Self::After {
+                raw,
+                unmet,
+                chapters,
+            },
             PremiseWire::SpentBy { raw } => Self::SpentBy(raw),
             PremiseWire::When { raw } => Self::When { raw },
-            PremiseWire::Gate { occasion, raw, reads } => Self::Gate { occasion, raw, reads },
+            PremiseWire::Gate {
+                occasion,
+                raw,
+                reads,
+            } => Self::Gate {
+                occasion,
+                raw,
+                reads,
+            },
             PremiseWire::Terminal { occasion, raw } => Self::Terminal { occasion, raw },
         })
     }
@@ -187,7 +229,9 @@ impl<'de> Deserialize<'de> for Premise {
 
 #[cfg(feature = "json-schema")]
 impl schemars::JsonSchema for Premise {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "Premise".into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Premise".into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         PremiseWire::json_schema(generator)
     }
@@ -195,7 +239,9 @@ impl schemars::JsonSchema for Premise {
 
 #[cfg(feature = "json-schema")]
 impl schemars::JsonSchema for Verdict {
-    fn schema_name() -> std::borrow::Cow<'static, str> { "Verdict".into() }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Verdict".into()
+    }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         VerdictWire::json_schema(generator)
     }
@@ -493,7 +539,6 @@ pub(super) fn candidates(
 /// does not close the beats of the raise already made.
 pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::seam::Closed>>);
 impl RaiseSeam {
-
     pub fn decide(
         p: &ExecProject,
         w: &World,
@@ -693,8 +738,7 @@ fn judge_with<D: Driver>(
         document: beat.document.clone(),
         priority: beat.priority,
         verdict,
-        read: beat.kind == BeatKind::Entry
-            && flag(crate::cadence::entry_read_flag(beat, member)),
+        read: beat.kind == BeatKind::Entry && flag(crate::cadence::entry_read_flag(beat, member)),
         also: beat_also(p, beat),
         for_member: None,
         rejudged: false,
@@ -759,7 +803,9 @@ mod wire_tests {
     fn verdict_json_examples() {
         example(Verdict::Eligible, r#"{"verdict":"eligible"}"#);
         example(
-            Verdict::Ineligible(Premise::When { raw: "run.ready".into() }),
+            Verdict::Ineligible(Premise::When {
+                raw: "run.ready".into(),
+            }),
             r#"{"verdict":"ineligible","premise":{"premise":"when","raw":"run.ready"}}"#,
         );
         example(
@@ -771,17 +817,27 @@ mod wire_tests {
     #[test]
     fn premise_json_examples() {
         example(
-            Premise::Spent { once: Some(BeatOnce::Run), reason: "already presented this run".into() },
+            Premise::Spent {
+                once: Some(BeatOnce::Run),
+                reason: "already presented this run".into(),
+            },
             r#"{"premise":"spent","once":"run","reason":"already presented this run"}"#,
         );
         example(
-            Premise::Spent { once: None, reason: "already read".into() },
+            Premise::Spent {
+                once: None,
+                reason: "already read".into(),
+            },
             r#"{"premise":"spent","reason":"already read"}"#,
         );
         example(
             Premise::After {
                 raw: "visited(\"intro\") && completed(\"main\") && active(\"side\")".into(),
-                unmet: vec![Atom::Visited("intro".into()), Atom::Completed("main".into()), Atom::Active("side".into())],
+                unmet: vec![
+                    Atom::Visited("intro".into()),
+                    Atom::Completed("main".into()),
+                    Atom::Active("side".into()),
+                ],
                 chapters: true,
             },
             r#"{"premise":"after","raw":"visited(\"intro\") && completed(\"main\") && active(\"side\")","unmet":[{"visited":"intro"},{"completed":"main"},{"active":"side"}],"chapters":true}"#,
@@ -791,19 +847,27 @@ mod wire_tests {
             r#"{"premise":"spentBy","raw":"run.finished"}"#,
         );
         example(
-            Premise::When { raw: "run.ready".into() },
+            Premise::When {
+                raw: "run.ready".into(),
+            },
             r#"{"premise":"when","raw":"run.ready"}"#,
         );
         example(
             Premise::Gate {
                 occasion: "visit".into(),
                 raw: "run.ready".into(),
-                reads: vec![crate::GuardRead::Path("run.ready".into(), Value::Bool(false))],
+                reads: vec![crate::GuardRead::Path(
+                    "run.ready".into(),
+                    Value::Bool(false),
+                )],
             },
             r#"{"premise":"gate","occasion":"visit","raw":"run.ready","reads":[{"kind":"path","value":["run.ready",{"kind":"bool","value":false}]}]}"#,
         );
         example(
-            Premise::Terminal { occasion: "visit".into(), raw: "run.finished".into() },
+            Premise::Terminal {
+                occasion: "visit".into(),
+                raw: "run.finished".into(),
+            },
             r#"{"premise":"terminal","occasion":"visit","raw":"run.finished"}"#,
         );
     }

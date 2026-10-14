@@ -41,11 +41,11 @@ use std::sync::Arc;
 use lute_ir::{BeatKind, BeatOnce, IndexBeat, ProjectIndex};
 use serde_json::{json, Value as Json};
 
+use crate::expr::Slot;
 use crate::session::{
     ever_read_path, json_to_value, spend_group, value_to_json, Conds, ExecProject, QuestAdvance,
     SessionEvalObserver, World,
 };
-use crate::expr::Slot;
 use crate::Value;
 
 /// One declared season, resolved against the project.
@@ -120,7 +120,9 @@ impl CadencePlan {
                         .and_then(lute_manifest::season::season_ref)
                         == Some(s.name.as_str())
                 };
-                let live = serde_json::to_value(&s.live).ok().and_then(|j| Slot::of(&j))?;
+                let live = serde_json::to_value(&s.live)
+                    .ok()
+                    .and_then(|j| Slot::of(&j))?;
                 Some(SeasonPlan {
                     name: s.name.clone(),
                     live,
@@ -624,11 +626,7 @@ pub fn observe(
 /// doc): a world mid-settle (a quest its `start` is about to activate) is
 /// never latched on. Its clock position is recorded for a `day` / `slot` /
 /// `week` period; an undecided condition latches nothing.
-pub fn observe_latches(
-    p: &ExecProject,
-    w: &mut World,
-    observer: Option<SessionEvalObserver>,
-) {
+pub fn observe_latches(p: &ExecProject, w: &mut World, observer: Option<SessionEvalObserver>) {
     if p.cadence.latches.is_empty() {
         return;
     }

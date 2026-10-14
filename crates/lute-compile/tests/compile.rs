@@ -160,8 +160,16 @@ state:
 @narrator: Hello.
 "#;
     let ir = compile(&input(text)).expect("owner declaration compiles");
-    let day = ir.state.iter().find(|entry| entry.path == "run.day").unwrap();
-    let mood = ir.state.iter().find(|entry| entry.path == "run.mood").unwrap();
+    let day = ir
+        .state
+        .iter()
+        .find(|entry| entry.path == "run.day")
+        .unwrap();
+    let mood = ir
+        .state
+        .iter()
+        .find(|entry| entry.path == "run.mood")
+        .unwrap();
     assert_eq!(
         day.owner,
         Some(lute_manifest::types::Owner::Engine),
@@ -235,7 +243,10 @@ state:
         "guarded option carries one CEL slot object"
     );
     assert!(
-        curious.when.as_ref().is_some_and(|slot| !slot.raw.is_empty()),
+        curious
+            .when
+            .as_ref()
+            .is_some_and(|slot| !slot.raw.is_empty()),
         "guarded option slot carries CEL"
     );
     let leave = opt("leave");
@@ -328,7 +339,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
         "capabilitySnapshot must be a non-empty snapshot stamp"
     );
     let envelope = serde_json::to_value(&artifact).unwrap();
-    assert!(envelope["celEnv"].is_object(), "compiled envelope carries celEnv");
+    assert!(
+        envelope["celEnv"].is_object(),
+        "compiled envelope carries celEnv"
+    );
     assert_eq!(scene_meta(&artifact).character.as_deref(), Some("marina"));
     // A4/A9: episodeId normalized lowercase to match the lineId episode segment.
     assert_eq!(scene_meta(&artifact).episode_id.as_deref(), Some("s01ep02"));
@@ -399,9 +413,18 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     assert_eq!(
         thoughts,
         vec![
-            ("marina.s01ep02.fixer_0020", Some("marina.s01ep02.fixer-0020")),
-            ("marina.s01ep02.fixer_0030", Some("marina.s01ep02.fixer-0030")),
-            ("marina.s01ep02.fixer_0040", Some("marina.s01ep02.fixer-0040")),
+            (
+                "marina.s01ep02.fixer_0020",
+                Some("marina.s01ep02.fixer-0020")
+            ),
+            (
+                "marina.s01ep02.fixer_0030",
+                Some("marina.s01ep02.fixer-0030")
+            ),
+            (
+                "marina.s01ep02.fixer_0040",
+                Some("marina.s01ep02.fixer-0040")
+            ),
         ]
     );
 
@@ -1429,12 +1452,16 @@ state:
     let assert_rec = &cmds[assert_i];
     assert_eq!(assert_rec["relation"], "inParty");
     assert_eq!(assert_rec["args"], serde_json::json!(["ana"]));
-    assert!(assert_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(assert_rec["position"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
 
     let retract_rec = &cmds[retract_i];
     assert_eq!(retract_rec["relation"], "atLoc");
     assert_eq!(retract_rec["args"], serde_json::json!(["ana", "_"]));
-    assert!(retract_rec["position"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(retract_rec["position"]
+        .as_str()
+        .is_some_and(|s| !s.is_empty()));
 }
 
 // -- dsl 0.12.0 / 0.37.0: forward jump (`::label`/`::jump`) -------------------
@@ -1889,7 +1916,10 @@ title: Legacy
     let art = compile(&input(DOC)).expect("legacy doc compiles");
     let capability_version = art.capability_snapshot.clone();
     let actual = serde_json::to_value(&art).unwrap();
-    assert!(actual["celEnv"].is_object(), "compiled envelope carries celEnv");
+    assert!(
+        actual["celEnv"].is_object(),
+        "compiled envelope carries celEnv"
+    );
 
     // What a 0.14 emit would have produced for the SAME document: the same
     // envelope, minus `meta.id`, with `lute`/`irVersion` pinned to 0.14.0.
@@ -1902,7 +1932,10 @@ title: Legacy
     expected.as_object_mut().unwrap().remove("celEnv");
     // `requiredSemantics` is the 0.33 compiler-derived envelope addition and
     // is excluded from this historical 0.14 shape comparison.
-    expected.as_object_mut().unwrap().remove("requiredSemantics");
+    expected
+        .as_object_mut()
+        .unwrap()
+        .remove("requiredSemantics");
 
     // Reconstruct the pinned 0.14 shape from the ground up (not from the
     // 0.15 output) to prove `expected` isn't tautologically = actual.
@@ -1931,7 +1964,10 @@ title: Legacy
     // The core §7 claim: exactly three keys differ (`meta.id` added, two
     // version strings bumped) — nothing else moved.
     assert_eq!(actual["kind"], pinned_014["kind"]);
-    assert_eq!(actual["capabilitySnapshot"], pinned_014["capabilitySnapshot"]);
+    assert_eq!(
+        actual["capabilitySnapshot"],
+        pinned_014["capabilitySnapshot"]
+    );
     assert_eq!(actual["commands"], pinned_014["commands"]);
     assert_eq!(actual["meta"]["character"], pinned_014["meta"]["character"]);
     assert_eq!(actual["meta"]["season"], pinned_014["meta"]["season"]);
@@ -2113,10 +2149,7 @@ defs:
             assert!(when.is_object() && when.get("expr").is_some(), "{option}");
         }
     }
-    let expanded = options
-        .iter()
-        .find(|o| o["id"] == "expanded")
-        .unwrap();
+    let expanded = options.iter().find(|o| o["id"] == "expanded").unwrap();
     assert_eq!(expanded["when"]["authored"], "@threshold");
     let plain = options.iter().find(|o| o["id"] == "plain").unwrap();
     assert!(plain["when"].get("authored").is_none(), "{plain}");

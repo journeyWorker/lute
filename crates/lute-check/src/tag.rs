@@ -24,7 +24,10 @@ pub struct TagOutcome {
 pub fn tag_document(text: &str) -> TagOutcome {
     let (doc, diags) = parse(text);
     if diags.iter().any(|d| d.severity == Severity::Error) {
-        return TagOutcome { text: text.to_string(), added: 0 };
+        return TagOutcome {
+            text: text.to_string(),
+            added: 0,
+        };
     }
     let bytes = text.as_bytes();
     let mut inserts: Vec<(usize, String)> = Vec::new();
@@ -50,22 +53,26 @@ pub fn tag_document(text: &str) -> TagOutcome {
     }
     tag_components(text, &mut inserts);
     if inserts.is_empty() {
-        return TagOutcome { text: text.to_string(), added: 0 };
+        return TagOutcome {
+            text: text.to_string(),
+            added: 0,
+        };
     }
     inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
     let mut out = text.to_string();
     for (at, inserted) in &inserts {
         out.insert_str(*at, inserted);
     }
-    TagOutcome { text: out, added: inserts.len() }
+    TagOutcome {
+        text: out,
+        added: inserts.len(),
+    }
 }
 
 fn tag_components(text: &str, inserts: &mut Vec<(usize, String)>) {
     let owner = "document".to_string();
-    let mut used: std::collections::BTreeMap<
-        (String, String),
-        std::collections::BTreeSet<u32>,
-    > = std::collections::BTreeMap::new();
+    let mut used: std::collections::BTreeMap<(String, String), std::collections::BTreeSet<u32>> =
+        std::collections::BTreeMap::new();
     let mut missing = Vec::new();
     let mut offset = 0usize;
     for line in text.split_inclusive('\n') {
@@ -77,11 +84,16 @@ fn tag_components(text: &str, inserts: &mut Vec<(usize, String)>) {
                 let Some(close_rel) = close_rel else { break };
                 let close = start + close_rel;
                 let raw = &line[start..=close];
-                let key = if marker == "::use{" { "component" } else { "use" };
+                let key = if marker == "::use{" {
+                    "component"
+                } else {
+                    "use"
+                };
                 if let Some(component) = quoted_attr(raw, key) {
                     let scope = (owner.clone(), component);
                     if let Some(instance) = quoted_attr(raw, "instance") {
-                        if let Some(n) = instance.strip_prefix("use-").and_then(|s| s.parse().ok()) {
+                        if let Some(n) = instance.strip_prefix("use-").and_then(|s| s.parse().ok())
+                        {
                             used.entry(scope).or_default().insert(n);
                         }
                     } else {
@@ -96,7 +108,9 @@ fn tag_components(text: &str, inserts: &mut Vec<(usize, String)>) {
     for (start, close, directive, scope) in missing {
         let occupied = used.entry(scope).or_default();
         let mut n = 1;
-        while occupied.contains(&n) { n += 1; }
+        while occupied.contains(&n) {
+            n += 1;
+        }
         occupied.insert(n);
         let at = if directive {
             close
@@ -242,7 +256,6 @@ fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
     }
 }
 
-
 /// FORCE-renumber every content line's `code` (`lute tag --force`): each
 /// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7 — then each
 /// `<entry>`, dsl 0.19.0 §4, then each `<beat>` bundle, dsl 0.23.0 §4) restarts a
@@ -270,7 +283,10 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         return if added == 0 {
             RetagOutcome::Locked
         } else {
-            RetagOutcome::LockedInstances { text: tagged, added }
+            RetagOutcome::LockedInstances {
+                text: tagged,
+                added,
+            }
         };
     }
 
