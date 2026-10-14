@@ -1,4 +1,4 @@
-bindingsVersion: "0.43"
+bindingsVersion: "0.44"
 canvas: {width: 1920, height: 1080}
 assetsBase: media
 assets:

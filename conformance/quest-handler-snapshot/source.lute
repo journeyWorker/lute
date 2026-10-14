@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.43.0"
+luteVersion: "0.44.0"
 uses: ./schema.yaml
 title: Quest Complete
 ---

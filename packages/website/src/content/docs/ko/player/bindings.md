@@ -6,7 +6,7 @@ description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로�
 `player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. `lute check-project`가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.43"
+bindingsVersion: "0.44"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -44,7 +44,7 @@ flow:
 
 ## 최상위 섹션
 
-- `bindingsVersion`는 정확히 `"0.43"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
+- `bindingsVersion`는 정확히 `"0.44"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
 - `assets`는 컴파일된 `assetId`를 파일에 연결합니다.
 - `backgrounds`는 `bg.location`을 `image`에 연결하고 `times`는 `bg.time`별 대체 파일을 연결합니다.
 - `characters`는 cast id를 키로 합니다. 각 값에는 `sprite.default`, 선택적 `sprite.emotions`, 같은 sprite 형태의 선택적 `costumes`, 선택적 `nameColor`가 있습니다.

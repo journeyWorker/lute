@@ -106,13 +106,18 @@ fn a_write_for_the_ending_rides_on_the_input_that_ends_the_run() {
          that belongs to the ending rides as `writes` on the input that ends the run"
     );
 
-    let (_, code, message) = step(
+    let (after, code, message) = step(
         &runtime,
         &over,
         json!({"type": "advanceClock", "by": "slot"}),
     )
     .expect_err("advanceClock after the ending was accepted");
     assert_eq!(code, "E-RUNTIME-BUSY");
+    assert_eq!(
+        snapshot(&runtime, &after),
+        before,
+        "the refusal changed the state"
+    );
     assert_eq!(
         message,
         "the runtime has ended; only newRun or an outsideRun raise is accepted"

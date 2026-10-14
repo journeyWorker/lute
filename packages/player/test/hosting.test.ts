@@ -9,7 +9,7 @@ import * as Stores from "../src/stores/index.js"
 import type { AssetLoader, AudioPort, Presenter } from "../src/ports/index.js"
 import { flush } from "./director/support.js"
 
-const bindings = { bindingsVersion: "0.43", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+const bindings = { bindingsVersion: "0.44", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 const presenter: Presenter = {
   stage: () => Effect.void, showLine: () => Effect.void, revealLine: Effect.void, clearLine: Effect.void, restore: () => Effect.void,
   showChoice: () => Effect.never, hideChoice: Effect.void, showScreen: () => Effect.void, hideScreen: Effect.void,
@@ -48,7 +48,9 @@ describe("external hosting checkpoint", () => {
       yield* player.restore(save)
       const current = yield* SubscriptionRef.get(freshRuntime.current)
       expect(current.await).toEqual(save.snapshot.await)
-      expect((yield* player.snapshot).backlog).toEqual(save.backlog)
+      const restored = yield* player.snapshot
+      expect(restored.backlog).toEqual(save.backlog)
+      expect(restored.log).toEqual(save.log)
     }).pipe(Effect.provide(Layer.mergeAll(LuteBun.bundle(hubFixtureRoot), Stores.memory))))
   })))
 })
