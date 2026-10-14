@@ -129,6 +129,26 @@ Each of the following examples is an `Input`:
 {"type": "newRun", "writes": {"accept": ["findTheKey"]}}
 ```
 
+### Writes that belong to the ending (0.44)
+
+Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun`
+raise. A host write that belongs to the ending run — ending metadata, a final
+score — MUST therefore ride as `writes` on the input that causes the terminal
+transition, when that input carries writes: `raiseOccasion`, `advanceClock`,
+`bridgeResult` or `hostWrite`, whose writes land before the transition. For
+example, the dawn raise that ends a game carries the ending's name:
+
+```json
+{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}
+```
+
+`choose`, `timeout` and `worldEvent` carry no writes: an ending they cause
+records its state in the story (a `::set` in the branch that ends) or in a
+`hostWrite` sent before them. `newRun`'s writes seed the run it starts, where
+the ended run's `run.*` values are readable as `prev.run.*`; they never write
+into the ended run. A `hostWrite` after the ending is refused `E-RUNTIME-BUSY`
+with the state unchanged, and its message says where the write belongs.
+
 The host measures wall-clock time and sends `timeout`; wall-clock time never
 enters the runtime. Timeout is accepted only for a timed `awaitChoice` whose
 request matches. Its continuation records a choice of the menu's `default`,

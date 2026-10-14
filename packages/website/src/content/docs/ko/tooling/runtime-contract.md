@@ -44,6 +44,10 @@ Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스�
 [로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
 참고하세요.
  
+## 0.44 런타임 추가 사항
+
+**엔딩에 속한 쓰기.** 런타임이 `ended`로 응답한 뒤에는 `newRun`이나 `outsideRun` 계기만 받습니다. 그래서 끝난 런에 속한 호스트 쓰기(엔딩 메타데이터, 최종 점수)는 종료를 일으키는 입력이 쓰기를 실을 수 있다면 그 입력의 `writes`에 실어야 합니다. `raiseOccasion`, `advanceClock`, `bridgeResult`, `hostWrite`가 그런 입력이며, 이들의 쓰기는 종료 전환보다 먼저 적용됩니다(`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout`, `worldEvent`는 쓰기를 싣지 않으므로, 이들이 일으키는 엔딩은 그 상태를 스토리(끝나는 갈래의 `::set`)나 그 전에 보낸 `hostWrite`에 기록합니다. `newRun`의 쓰기는 새로 시작하는 런의 초기값이며, 그 런에서 끝난 런의 `run.*` 값은 `prev.run.*`로 읽힙니다. 엔딩 뒤의 `hostWrite`는 여전히 상태를 바꾸지 않고 `E-RUNTIME-BUSY`로 거절되며, 이제 메시지가 그 쓰기가 어디에 실려야 하는지 알려 줍니다.
+
 ## 0.42 런타임 추가 사항
 
 모든 스테이징 레코드 — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` — 는 `plugin` 레코드의 `attrs`처럼 명령의 해석된 필드를 `attrs`로 담습니다. 작성한 값과 lowering이 채운 기본값이 들어가고(`cg`의 `display: "show"`, actor의 선언된 기본 `anchor`), 없는 선택 필드는 생략되며 `attrs`는 항상 객체입니다. 레코드 엔벨로프(`kind`, `position`), `timing`, provenance, 플러그인 `stampAttrs`는 원래 자리에 있으므로 호스트는 아티팩트에서 명령을 찾지 않고 스테이징 레코드를 읽습니다. `volume`은 여전히 프로젝트 `volume` 도메인의 멤버이며, 플레이어가 [`volumes`](/ko/player/bindings/)로 gain으로 바꿉니다.
