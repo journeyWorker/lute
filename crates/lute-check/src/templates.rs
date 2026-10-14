@@ -450,12 +450,12 @@ fn substitute_condition(raw: &str, args: &BTreeMap<String, String>) -> String {
 /// one (in `when:`/`spentBy:` it may also be a `@def` of the host).
 pub fn parse_beat_template(
     meta: &Meta,
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     params: &[DefParam],
 ) -> (Option<BeatTemplate>, Vec<Diagnostic>) {
     let span = crate::meta::meta_key_span(meta, "beat");
     let mut diags = Vec::new();
-    let serde_yaml::Value::Mapping(map) = value else {
+    let yaml_serde::Value::Mapping(map) = value else {
         diags.push(diag(
             "`beat:` must be a mapping of beat header keys, e.g. `beat: { on: bondStory, \
              once: user }` (dsl 0.27.0 §6)"
@@ -499,7 +499,7 @@ pub fn parse_beat_template(
         }
         let text = match v {
             // `also` is a flag: `also: true` makes every use ride along.
-            serde_yaml::Value::Bool(b) if key == "also" => b.to_string(),
+            yaml_serde::Value::Bool(b) if key == "also" => b.to_string(),
             _ if key == "also" => {
                 diags.push(diag(
                     "`beat.also` takes `true` or `false`, unquoted — `also: true` makes every \
@@ -509,9 +509,9 @@ pub fn parse_beat_template(
                 ));
                 continue;
             }
-            serde_yaml::Value::String(s) => s.clone(),
-            serde_yaml::Value::Number(n) => n.to_string(),
-            serde_yaml::Value::Bool(b) => b.to_string(),
+            yaml_serde::Value::String(s) => s.clone(),
+            yaml_serde::Value::Number(n) => n.to_string(),
+            yaml_serde::Value::Bool(b) => b.to_string(),
             _ => {
                 diags.push(diag(
                     format!(

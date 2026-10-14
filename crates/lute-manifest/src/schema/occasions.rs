@@ -184,7 +184,7 @@ impl std::fmt::Debug for OccasionDecl {
 /// misshapen target names the bad key and the legal shape, never serde's
 /// "did not match any variant".
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged, try_from = "serde_yaml::Value")]
+#[serde(untagged, try_from = "yaml_serde::Value")]
 pub enum OccasionTarget {
     Shape(bool),
     Domain {
@@ -241,13 +241,13 @@ const OCCASION_TARGET_SHAPES: &str = "an occasion's `target:` is `true` (any dot
      domain `{ prefix: <id prefix>, entity: <entity kind>, members: [<member>, …] }` \
      (`members` optional)";
 
-impl TryFrom<serde_yaml::Value> for OccasionTarget {
+impl TryFrom<yaml_serde::Value> for OccasionTarget {
     type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
-        use serde_yaml::Value;
+    fn try_from(v: yaml_serde::Value) -> Result<Self, SchemaError> {
+        use yaml_serde::Value;
         let shown = |v: &Value| {
-            serde_yaml::to_string(v).map_or_else(|_| String::new(), |s| s.trim().to_string())
+            yaml_serde::to_string(v).map_or_else(|_| String::new(), |s| s.trim().to_string())
         };
         let name = |key: &str| -> Result<String, SchemaError> {
             match v.get(key) {
@@ -327,7 +327,7 @@ fn payload_fields<'de, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<std::collections::BTreeMap<String, Type>, D::Error> {
     use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
-    use serde_yaml::Value;
+    use yaml_serde::Value;
 
     /// One field's type, judged inside the value's own visit.
     struct FieldType<'f>(&'f str);
@@ -395,8 +395,8 @@ fn payload_fields<'de, D: serde::Deserializer<'de>>(
 }
 
 /// One payload field's type; `Err` is the author-facing sentence.
-fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
-    use serde_yaml::Value;
+fn payload_type(field: &str, v: &yaml_serde::Value) -> Result<Type, String> {
+    use yaml_serde::Value;
     const SCALARS: [&str; 4] = ["bool", "int", "double", "string"];
     const FORMS: [&str; 3] = ["enum", "domain", "entity"];
     /// `Type` forms a single literal cannot carry.
@@ -487,8 +487,8 @@ fn payload_type(field: &str, v: &serde_yaml::Value) -> Result<Type, String> {
 }
 
 /// A YAML value as an author wrote it, on one line (`[a, b]`, `3`).
-fn shown_yaml(v: &serde_yaml::Value) -> String {
-    serde_yaml::to_string(v)
+fn shown_yaml(v: &yaml_serde::Value) -> String {
+    yaml_serde::to_string(v)
         .unwrap_or_default()
         .trim()
         .replace('\n', " ")

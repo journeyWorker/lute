@@ -13,13 +13,13 @@ use super::*;
 /// still contributes its clean keys downstream.
 fn lift_extra_block(
     meta: &Meta,
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     into: &mut BTreeMap<String, serde_json::Value>,
     diags: &mut Vec<Diagnostic>,
 ) {
     let map = match value {
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => return,
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::Null => return,
         _ => {
             diags.push(Diagnostic {
                 code: "E-META-VALUE".to_string(),
@@ -83,12 +83,12 @@ fn lift_extra_block(
 /// if it is a scalar or a flat sequence of scalars. `None` for a nested
 /// mapping, a sequence containing a non-scalar, a `!tag`, or a mapping with
 /// non-string keys. `null` is a scalar (it round-trips to JSON `null`).
-fn scalar_or_flat_seq_to_json(value: &serde_yaml::Value) -> Option<serde_json::Value> {
-    fn scalar_to_json(value: &serde_yaml::Value) -> Option<serde_json::Value> {
+fn scalar_or_flat_seq_to_json(value: &yaml_serde::Value) -> Option<serde_json::Value> {
+    fn scalar_to_json(value: &yaml_serde::Value) -> Option<serde_json::Value> {
         match value {
-            serde_yaml::Value::Null => Some(serde_json::Value::Null),
-            serde_yaml::Value::Bool(b) => Some(serde_json::Value::Bool(*b)),
-            serde_yaml::Value::Number(n) => {
+            yaml_serde::Value::Null => Some(serde_json::Value::Null),
+            yaml_serde::Value::Bool(b) => Some(serde_json::Value::Bool(*b)),
+            yaml_serde::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Some(serde_json::Value::Number(i.into()))
                 } else if let Some(u) = n.as_u64() {
@@ -99,12 +99,12 @@ fn scalar_or_flat_seq_to_json(value: &serde_yaml::Value) -> Option<serde_json::V
                     None
                 }
             }
-            serde_yaml::Value::String(s) => Some(serde_json::Value::String(s.clone())),
+            yaml_serde::Value::String(s) => Some(serde_json::Value::String(s.clone())),
             _ => None,
         }
     }
     match value {
-        serde_yaml::Value::Sequence(items) => {
+        yaml_serde::Value::Sequence(items) => {
             let mut out = Vec::with_capacity(items.len());
             for item in items {
                 out.push(scalar_to_json(item)?);
@@ -122,11 +122,11 @@ fn scalar_or_flat_seq_to_json(value: &serde_yaml::Value) -> Option<serde_json::V
 /// "this document declares no such id" from "this document's ids are
 /// unreadable" (0.21.1 T3-8).
 pub fn frontmatter_parses(meta: &Meta) -> bool {
-    let value = serde_yaml::from_str::<serde_yaml::Value>(&meta.raw_yaml)
-        .or_else(|_| serde_yaml::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)));
+    let value = yaml_serde::from_str::<yaml_serde::Value>(&meta.raw_yaml)
+        .or_else(|_| yaml_serde::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)));
     matches!(
         value,
-        Ok(serde_yaml::Value::Mapping(_) | serde_yaml::Value::Null)
+        Ok(yaml_serde::Value::Mapping(_) | yaml_serde::Value::Null)
     )
 }
 
@@ -206,13 +206,13 @@ pub fn parse_meta_kind_with_defaults(
         related: Vec::new(),
     };
 
-    let raw_parse = serde_yaml::from_str::<serde_yaml::Value>(&meta.raw_yaml);
+    let raw_parse = yaml_serde::from_str::<yaml_serde::Value>(&meta.raw_yaml);
     let raw_yaml = raw_parse.as_ref().ok().cloned();
-    let mut value: serde_yaml::Value = match raw_parse {
+    let mut value: yaml_serde::Value = match raw_parse {
         Ok(v) => v,
         Err(e) => {
             // A literal duplicate key inside `entities:`/`relations:`
-            // (same-block dup, dsl 0.3.0 T5/T7) makes `serde_yaml::from_str`
+            // (same-block dup, dsl 0.3.0 T5/T7) makes `yaml_serde::from_str`
             // reject the ENTIRE frontmatter — it does NOT silently collapse
             // the repeat, despite an earlier assumption in this codebase.
             // Retry against a text-sanitized copy (every occurrence after the
@@ -221,7 +221,7 @@ pub fn parse_meta_kind_with_defaults(
             // the authoritative dup NAME still comes from
             // `scan_block_dup_names` against the UNMODIFIED `meta.raw_yaml`
             // below, never this sanitized copy.
-            match serde_yaml::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)) {
+            match yaml_serde::from_str(&sanitize_dup_block_keys(&meta.raw_yaml)) {
                 Ok(v) => v,
                 Err(_) => {
                     let (message, at) = yaml_parse_error(meta, &e);
@@ -248,10 +248,10 @@ pub fn parse_meta_kind_with_defaults(
 
     // An empty frontmatter deserializes to Null; treat as an empty mapping so the
     // required-key checks still fire.
-    let empty = serde_yaml::Mapping::new();
+    let empty = yaml_serde::Mapping::new();
     let map = match &value {
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => &empty,
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::Null => &empty,
         _ => {
             diags.push(err(
                 "E-META-PARSE",
@@ -277,7 +277,7 @@ pub fn parse_meta_kind_with_defaults(
     // to keys legal on THIS kind. Borrowed when there is nothing to overlay,
     // which is every project written before 0.10.0 — no allocation on the
     // path every existing document takes.
-    let map: std::borrow::Cow<'_, serde_yaml::Mapping> = if defaults.is_empty() {
+    let map: std::borrow::Cow<'_, yaml_serde::Mapping> = if defaults.is_empty() {
         std::borrow::Cow::Borrowed(map)
     } else {
         let mut merged = map.clone();
@@ -316,7 +316,7 @@ pub fn parse_meta_kind_with_defaults(
             // the id it spells.
             let title = map
                 .get(yaml_key("title"))
-                .and_then(serde_yaml::Value::as_str)
+                .and_then(yaml_serde::Value::as_str)
                 .map(|t| ident_from_name(t, "opening"));
             diags.push(match title {
                 Some(id) => err_at(
@@ -540,7 +540,7 @@ pub fn parse_meta_kind_with_defaults(
     // comment).
     let enums_val = map
         .get(yaml_key("enums"))
-        .unwrap_or(&serde_yaml::Value::Null);
+        .unwrap_or(&yaml_serde::Value::Null);
     let project_enums = lute_manifest::entities::parse_enums(enums_val);
     // dsl 0.24.0 §1 / 0.28.0 §1: `parse_enums` is total; the long-form shape
     // mistakes it drops (an unknown key, no `members:`, a non-string label)
@@ -553,7 +553,7 @@ pub fn parse_meta_kind_with_defaults(
     typed.domains = project_enums.clone();
     typed.rel_kinds = lute_manifest::relations::parse_entity_kinds(
         map.get(yaml_key("entities"))
-            .unwrap_or(&serde_yaml::Value::Null),
+            .unwrap_or(&yaml_serde::Value::Null),
     );
     // dsl 0.28.0 (T3-45): an `enums:` name this document also declares as an
     // entity kind (a clash across documents is `build_rel_vocab`'s).
@@ -568,7 +568,7 @@ pub fn parse_meta_kind_with_defaults(
     }
     typed.rel_relations = lute_manifest::relations::parse_relations(
         map.get(yaml_key("relations"))
-            .unwrap_or(&serde_yaml::Value::Null),
+            .unwrap_or(&yaml_serde::Value::Null),
     );
     // dsl 0.23.0 §7: `cast: { <id>: { name: "…" } }` (schema documents only;
     // elsewhere the key was already `E-META-UNKNOWN-KEY` above). dsl 0.24.0
@@ -576,7 +576,7 @@ pub fn parse_meta_kind_with_defaults(
     // each checked here at the entry's key.
     if kind == MetaKind::Schema {
         if let Some(v) = map.get(yaml_key("cast")) {
-            match serde_yaml::from_value::<
+            match yaml_serde::from_value::<
                 std::collections::BTreeMap<String, lute_manifest::schema::CastBody>,
             >(v.clone())
             {
@@ -672,7 +672,7 @@ pub fn parse_meta_kind_with_defaults(
     }
 
     // Authoritative same-block duplicate detection (0.3.0 T4/T5):
-    // `serde_yaml::Mapping` collapses a repeated YAML key before
+    // `yaml_serde::Mapping` collapses a repeated YAML key before
     // `parse_entity_kinds`/`parse_relations` ever see it, so their own
     // `dups` field is best-effort. This raw-text scan is the authoritative
     // source consumed by the checker (Task 7).
@@ -685,8 +685,8 @@ pub fn parse_meta_kind_with_defaults(
     // does not cascade to `E-UNDECLARED-REF`. Imported schemas pass through
     // this same parse (`MetaKind::Schema`), so the rule holds across `uses:`.
     match map.get(yaml_key("defs")) {
-        None | Some(serde_yaml::Value::Null) => {}
-        Some(serde_yaml::Value::Mapping(defs)) => {
+        None | Some(yaml_serde::Value::Null) => {}
+        Some(yaml_serde::Value::Mapping(defs)) => {
             if defs.keys().any(|k| k.as_str().is_none()) {
                 diags.push(err(
                     crate::def_decl::E_DEF_DECL,
@@ -760,7 +760,7 @@ pub fn parse_meta_kind_with_defaults(
     typed.params_malformed = params_malformed;
     match map.get(yaml_key("effects")) {
         None => {}
-        Some(serde_yaml::Value::Bool(b)) => typed.effects = *b,
+        Some(yaml_serde::Value::Bool(b)) => typed.effects = *b,
         Some(v) => diags.push(err_at(
             "E-META-VALUE",
             format!(

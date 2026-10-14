@@ -45,7 +45,7 @@ fn at_schema(what: &str) -> String {
 /// clock (HW27-13), else at the `clock:` key; the paths are checked later,
 /// against the folded schema ([`check_clock`]).
 pub fn parse_clock(
-    value: &serde_yaml::Value,
+    value: &yaml_serde::Value,
     meta: &lute_syntax::ast::Meta,
 ) -> (Option<ClockDecl>, Vec<Diagnostic>) {
     let clock_span = crate::meta::meta_key_span(meta, "clock");
@@ -58,7 +58,7 @@ pub fn parse_clock(
             .collect();
         return (None, diags);
     }
-    match serde_yaml::from_value::<ClockDecl>(value.clone()) {
+    match yaml_serde::from_value::<ClockDecl>(value.clone()) {
         Ok(clock) => {
             let diags = clock
                 .shape_problems()
@@ -118,7 +118,7 @@ const CLOCK_KEYS: [(&str, &[&str]); 4] = [
 /// and a number field holding anything but a whole number, named in the
 /// writer's terms rather than the YAML library's. Empty for a value that is
 /// not a mapping (the shape message covers it).
-fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
+fn key_problems(value: &yaml_serde::Value) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let Some(clock) = value.as_mapping() else {
         return out;
@@ -188,7 +188,7 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
             ),
         ));
     }
-    let whole = |v: &serde_yaml::Value, min: u64| {
+    let whole = |v: &yaml_serde::Value, min: u64| {
         v.as_u64().is_some_and(|n| n >= min && n <= u32::MAX as u64)
     };
     for (dotted, min, example) in [
@@ -206,8 +206,8 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
         };
         if let Some(v) = v.filter(|v| !whole(v, min)) {
             let shown = match v {
-                serde_yaml::Value::String(s) => format!("\"{s}\""),
-                other => serde_yaml::to_string(other)
+                yaml_serde::Value::String(s) => format!("\"{s}\""),
+                other => yaml_serde::to_string(other)
                     .map_or_else(|_| "?".into(), |s| s.trim().to_string()),
             };
             out.push((
@@ -218,9 +218,9 @@ fn key_problems(value: &serde_yaml::Value) -> Vec<(String, String)> {
     }
     if let Some(v) = clock.get("raiseAtStart").filter(|v| !v.is_bool()) {
         let shown = match v {
-            serde_yaml::Value::String(s) => format!("\"{s}\""),
+            yaml_serde::Value::String(s) => format!("\"{s}\""),
             other => {
-                serde_yaml::to_string(other).map_or_else(|_| "?".into(), |s| s.trim().to_string())
+                yaml_serde::to_string(other).map_or_else(|_| "?".into(), |s| s.trim().to_string())
             }
         };
         out.push((

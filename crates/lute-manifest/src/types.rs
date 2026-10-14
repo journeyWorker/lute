@@ -3,9 +3,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// plugin §7 Type. Serde uses YAML's tagged-map forms
 /// ({ enum: [...] }, { list: T }, { providerRef: name }, ...).
 ///
-/// serde_yaml 0.9 serializes externally-tagged enums as YAML `!tags`, not the
+/// yaml_serde serializes externally-tagged enums as YAML `!tags`, not the
 /// single-key maps the spec mandates, so `Type` (de)serializes through
-/// `serde_yaml::with::singleton_map_recursive` via the private `TypeDef` shadow
+/// `yaml_serde::with::singleton_map_recursive` via the private `TypeDef` shadow
 /// below. The public shape here is authoritative for all manifest tasks.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
@@ -68,8 +68,8 @@ pub enum Literal {
 
 impl Literal {
     /// Convert a YAML value (e.g. a scene `plugins:` option) into a `Literal`.
-    pub fn from_yaml(v: &serde_yaml::Value) -> Option<Literal> {
-        use serde_yaml::Value;
+    pub fn from_yaml(v: &yaml_serde::Value) -> Option<Literal> {
+        use yaml_serde::Value;
         match v {
             Value::Bool(b) => Some(Literal::Bool(*b)),
             Value::Number(n) => n
@@ -367,17 +367,17 @@ impl From<&Field> for FieldDef {
 
 impl Serialize for Type {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serde_yaml::with::singleton_map_recursive::serialize(&TypeDef::from(self), serializer)
+        yaml_serde::with::singleton_map_recursive::serialize(&TypeDef::from(self), serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for Type {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_yaml::Value::deserialize(deserializer)?;
+        let value = yaml_serde::Value::deserialize(deserializer)?;
         if value.as_str() == Some("number") {
             return Err(serde::de::Error::custom(NUMBER_TYPE_REMOVED));
         }
-        let def: TypeDef = serde_yaml::with::singleton_map_recursive::deserialize(value)
+        let def: TypeDef = yaml_serde::with::singleton_map_recursive::deserialize(value)
             .map_err(serde::de::Error::custom)?;
         Ok(def.into())
     }
@@ -519,20 +519,20 @@ impl NumberSite {
 }
 
 /// Every [`NumberSite`] of `value`, in document order.
-pub fn number_type_sites(value: &serde_yaml::Value) -> Vec<NumberSite> {
-    fn is_number(v: &serde_yaml::Value) -> bool {
+pub fn number_type_sites(value: &yaml_serde::Value) -> Vec<NumberSite> {
+    fn is_number(v: &yaml_serde::Value) -> bool {
         v.as_str() == Some("number")
     }
-    fn walk(v: &serde_yaml::Value, path: &mut Vec<YamlKey>, out: &mut Vec<NumberSite>) {
+    fn walk(v: &yaml_serde::Value, path: &mut Vec<YamlKey>, out: &mut Vec<NumberSite>) {
         match v {
-            serde_yaml::Value::Mapping(m) => {
+            yaml_serde::Value::Mapping(m) => {
                 for (k, child) in m {
                     let Some(key) = k.as_str() else { continue };
                     path.push(YamlKey::Key(key.to_string()));
                     if key == "type" && is_number(child) {
                         out.push(NumberSite {
                             path: path.clone(),
-                            default: m.get("default").and_then(serde_yaml::Value::as_f64),
+                            default: m.get("default").and_then(yaml_serde::Value::as_f64),
                         });
                     } else if let (true, Some(shorthand)) =
                         (matches!(key, "params" | "payload"), child.as_mapping())
@@ -556,14 +556,14 @@ pub fn number_type_sites(value: &serde_yaml::Value) -> Vec<NumberSite> {
                     path.pop();
                 }
             }
-            serde_yaml::Value::Sequence(items) => {
+            yaml_serde::Value::Sequence(items) => {
                 for (i, item) in items.iter().enumerate() {
                     path.push(YamlKey::Item(i));
                     walk(item, path, out);
                     path.pop();
                 }
             }
-            serde_yaml::Value::Tagged(t) => walk(&t.value, path, out),
+            yaml_serde::Value::Tagged(t) => walk(&t.value, path, out),
             _ => {}
         }
     }
@@ -575,11 +575,11 @@ pub fn number_type_sites(value: &serde_yaml::Value) -> Vec<NumberSite> {
 /// Replace the `number` scalar at every site of `value` with `double`, so
 /// the declaration decodes and the rest of it is still read; the caller has
 /// reported each site and marks its declaration invalid.
-pub fn patch_number_sites(value: &mut serde_yaml::Value, sites: &[NumberSite]) {
+pub fn patch_number_sites(value: &mut yaml_serde::Value, sites: &[NumberSite]) {
     fn node<'a>(
-        v: &'a mut serde_yaml::Value,
+        v: &'a mut yaml_serde::Value,
         path: &[YamlKey],
-    ) -> Option<&'a mut serde_yaml::Value> {
+    ) -> Option<&'a mut yaml_serde::Value> {
         let Some((step, rest)) = path.split_first() else {
             return Some(v);
         };
@@ -591,7 +591,7 @@ pub fn patch_number_sites(value: &mut serde_yaml::Value, sites: &[NumberSite]) {
     }
     for site in sites {
         if let Some(at) = node(value, &site.path).filter(|at| at.as_str() == Some("number")) {
-            *at = serde_yaml::Value::String("double".into());
+            *at = yaml_serde::Value::String("double".into());
         }
     }
 }
@@ -623,16 +623,16 @@ mod tests {
     #[test]
     fn yaml_roundtrips_provider_ref_type() {
         let y = "providerRef: character";
-        let t: Type = serde_yaml::from_str(y).unwrap();
+        let t: Type = yaml_serde::from_str(y).unwrap();
         assert!(matches!(&t, Type::ProviderRef(n) if n == "character"));
     }
 
     #[test]
     fn domain_type_roundtrips_and_accepts_string() {
-        let ty: Type = serde_yaml::from_str("{ domain: emotion }").unwrap();
+        let ty: Type = yaml_serde::from_str("{ domain: emotion }").unwrap();
         assert_eq!(ty, Type::Domain("emotion".into()));
         assert_eq!(
-            serde_yaml::to_string(&ty).unwrap().trim(),
+            yaml_serde::to_string(&ty).unwrap().trim(),
             "domain: emotion"
         );
         assert!(type_accepts(&ty, &Literal::Str("neutral".into()))); // structural: any string
@@ -642,10 +642,10 @@ mod tests {
     /// dsl 0.26.0 §2.5: the `{ entity: <kind> }` attr type.
     #[test]
     fn entity_type_roundtrips() {
-        let ty: Type = serde_yaml::from_str("{ entity: bagItem }").unwrap();
+        let ty: Type = yaml_serde::from_str("{ entity: bagItem }").unwrap();
         assert_eq!(ty, Type::Entity("bagItem".into()));
         assert_eq!(
-            serde_yaml::to_string(&ty).unwrap().trim(),
+            yaml_serde::to_string(&ty).unwrap().trim(),
             "entity: bagItem"
         );
         assert!(!type_accepts(&ty, &Literal::Int(1)));
@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn from_attr_binds_camelcase_slottype() {
         let y = "fromAttr:\n  name: resultKey\n  slotType: localId";
-        let seg: PathSegment = serde_yaml::from_str(y).unwrap();
+        let seg: PathSegment = yaml_serde::from_str(y).unwrap();
         match seg {
             PathSegment::FromAttr { from_attr } => {
                 assert_eq!(from_attr.name, "resultKey");
@@ -681,9 +681,9 @@ mod tests {
         ];
         for src in cases {
             let t: Type =
-                serde_yaml::from_str(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
-            let out = serde_yaml::to_string(&t).unwrap();
-            let t2: Type = serde_yaml::from_str(&out)
+                yaml_serde::from_str(src).unwrap_or_else(|e| panic!("parse {src:?}: {e}"));
+            let out = yaml_serde::to_string(&t).unwrap();
+            let t2: Type = yaml_serde::from_str(&out)
                 .unwrap_or_else(|e| panic!("reparse {src:?} -> {out:?}: {e}"));
             assert_eq!(t, t2, "roundtrip mismatch for {src:?}");
         }
@@ -758,19 +758,19 @@ mod tests {
     fn assetkind_wire_roundtrip() {
         // Wire form is `{ assetKind: <name> }` (camelCase), like providerRef/slotId.
         let y = "assetKind: CH";
-        let t: Type = serde_yaml::from_str(y).unwrap();
+        let t: Type = yaml_serde::from_str(y).unwrap();
         assert!(matches!(&t, Type::AssetKind(n) if n == "CH"));
-        let out = serde_yaml::to_string(&t).unwrap();
-        let t2: Type = serde_yaml::from_str(&out).unwrap();
+        let out = yaml_serde::to_string(&t).unwrap();
+        let t2: Type = yaml_serde::from_str(&out).unwrap();
         assert_eq!(t, t2, "roundtrip mismatch for {y:?}");
         assert_eq!(out.trim_end(), "assetKind: CH");
     }
 
     #[test]
     fn narrative_time_roundtrips_and_accepts_nothing() {
-        let ty: Type = serde_yaml::from_str("narrativeTime").unwrap();
+        let ty: Type = yaml_serde::from_str("narrativeTime").unwrap();
         assert_eq!(ty, Type::NarrativeTime);
-        assert_eq!(serde_yaml::to_string(&ty).unwrap().trim(), "narrativeTime");
+        assert_eq!(yaml_serde::to_string(&ty).unwrap().trim(), "narrativeTime");
         assert!(!type_accepts(&ty, &Literal::Str("x".into())));
         assert!(!type_accepts(&ty, &Literal::Int(1)));
         assert!(!type_accepts(&ty, &Literal::Double(1.0)));
@@ -779,7 +779,7 @@ mod tests {
 
     #[test]
     fn literal_from_yaml_scalars_list_map() {
-        let y: serde_yaml::Value = serde_yaml::from_str("[rhythm, timing]").unwrap();
+        let y: yaml_serde::Value = yaml_serde::from_str("[rhythm, timing]").unwrap();
         assert_eq!(
             Literal::from_yaml(&y),
             Some(Literal::List(vec![
@@ -787,9 +787,9 @@ mod tests {
                 Literal::Str("timing".into())
             ]))
         );
-        let y2: serde_yaml::Value = serde_yaml::from_str("scene").unwrap();
+        let y2: yaml_serde::Value = yaml_serde::from_str("scene").unwrap();
         assert_eq!(Literal::from_yaml(&y2), Some(Literal::Str("scene".into())));
-        let y3: serde_yaml::Value = serde_yaml::from_str("{ a: 1, b: 2.0 }").unwrap();
+        let y3: yaml_serde::Value = yaml_serde::from_str("{ a: 1, b: 2.0 }").unwrap();
         match Literal::from_yaml(&y3).unwrap() {
             Literal::Map(m) => {
                 assert_eq!(m.get("a"), Some(&Literal::Int(1)));

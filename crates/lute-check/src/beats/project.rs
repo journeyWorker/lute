@@ -231,9 +231,9 @@ pub fn project_beats<'a>(
             let title = folded
                 .typed
                 .yaml()
-                .and_then(serde_yaml::Value::as_mapping)
-                .and_then(|m| m.get(serde_yaml::Value::String("title".into())))
-                .and_then(serde_yaml::Value::as_str)
+                .and_then(yaml_serde::Value::as_mapping)
+                .and_then(|m| m.get(yaml_serde::Value::String("title".into())))
+                .and_then(yaml_serde::Value::as_str)
                 .map(str::to_string);
             beats.push(ProjectBeat {
                 path,

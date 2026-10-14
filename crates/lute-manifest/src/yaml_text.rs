@@ -2,7 +2,7 @@
 //! document's frontmatter, a schema file, `lute.project.yaml`, a plugin's
 //! `plugin.yaml` and its export files.
 //!
-//! `serde_yaml` keeps no per-node positions and words its errors for the
+//! `yaml_serde` keeps no per-node positions and words its errors for the
 //! library's own reader. These helpers give a diagnostic the two things it
 //! needs instead: where a key sits in the text ([`key_span`]), and a plain
 //! sentence with a fix for a file that does not parse ([`yaml_fault`]).
@@ -19,16 +19,16 @@ pub enum YamlStep<'a> {
 /// The span of the node `path` names in `text` — a final key's own scalar,
 /// a final item's first token — or `None` when `text` has no such node.
 ///
-/// A `serde_yaml::Value` keeps no position, but `serde_yaml` stamps an error
+/// A `yaml_serde::Value` keeps no position, but `yaml_serde` stamps an error
 /// a visitor raises with the start mark of the node being visited: this
 /// deserializes along `path` and raises one AT the target, so the position
 /// is libyaml's own (flow or block style, quoted keys and all).
 pub fn yaml_span(text: &str, path: &[YamlStep<'_>]) -> Option<Span> {
     use serde::de::DeserializeSeed;
     let err = YamlSeek(path)
-        .deserialize(serde_yaml::Deserializer::from_str(text))
+        .deserialize(yaml_serde::Deserializer::from_str(text))
         .err()?;
-    // `serde_yaml` prefixes the message with the node's path (`bridges.check[0]: …`).
+    // `yaml_serde` prefixes the message with the node's path (`bridges.check[0]: …`).
     if !err.to_string().contains(YAML_FOUND) {
         return None;
     }
@@ -346,13 +346,13 @@ pub struct YamlFault {
     pub message: String,
 }
 
-/// Rewrite a `serde_yaml` syntax error of `text` as a [`YamlFault`]: the
+/// Rewrite a `yaml_serde` syntax error of `text` as a [`YamlFault`]: the
 /// common slips get the fix (a value holding `: `, a quote inside a quoted
 /// value, a quote never closed, `key:value`, a tab in the indentation, a
 /// value starting with a reserved character, a key written twice); anything
 /// else is the library's problem sentence without its line/column marks
 /// (the offset carries the position).
-pub fn yaml_fault(text: &str, e: &serde_yaml::Error) -> YamlFault {
+pub fn yaml_fault(text: &str, e: &yaml_serde::Error) -> YamlFault {
     let problem = strip_marks(&e.to_string());
     let Some(loc) = e.location() else {
         return YamlFault {
@@ -747,7 +747,7 @@ mod tests {
             ),
             ("on: talk\ntarget: kind: crew\n", "`target: \"kind:crew\"`"),
         ] {
-            let e = serde_yaml::from_str::<serde_yaml::Value>(text).unwrap_err();
+            let e = yaml_serde::from_str::<yaml_serde::Value>(text).unwrap_err();
             let f = yaml_fault(text, &e);
             assert!(f.message.contains(fix), "{}", f.message);
             assert!(!f.message.contains("mapping values"), "{}", f.message);
@@ -782,7 +782,7 @@ mod tests {
                 (3, 3),
             ),
         ] {
-            let e = serde_yaml::from_str::<serde_yaml::Value>(text).unwrap_err();
+            let e = yaml_serde::from_str::<yaml_serde::Value>(text).unwrap_err();
             let f = yaml_fault(text, &e);
             assert!(f.message.contains(fix), "{}", f.message);
             assert_eq!(line_col(text, f.offset), pos, "{f:?}");

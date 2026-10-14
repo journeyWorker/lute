@@ -241,10 +241,10 @@ fn fold_document(
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
-    let meta = typed_meta.yaml().and_then(serde_yaml::Value::as_mapping);
+    let meta = typed_meta.yaml().and_then(yaml_serde::Value::as_mapping);
     let field = |k: &str| {
         meta.as_ref()?
-            .get(serde_yaml::Value::String(k.to_string()))?
+            .get(yaml_serde::Value::String(k.to_string()))?
             .as_str()
             .map(str::to_string)
     };

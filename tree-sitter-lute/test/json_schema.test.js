@@ -236,7 +236,7 @@ entities:
 
   test("broken declaration: a Type tagged-map with two keys is ambiguous", () => {
     const { ajv, declSchema } = loadAjv();
-    // `serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to
+    // `yaml_serde::with::singleton_map_recursive` requires EXACTLY one key to
     // resolve the `Type` tag (types.rs) — `{ enum: [...], list: int }` has
     // two, so real Rust deserialization fails too.
     const doc = Bun.YAML.parse(

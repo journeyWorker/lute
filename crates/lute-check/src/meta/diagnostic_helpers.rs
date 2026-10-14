@@ -17,15 +17,15 @@ pub(crate) fn err_at(code: &str, message: String, span: Span) -> Diagnostic {
 
 /// The YAML shape of `v`, for the "but this is …" half of
 /// [`state_decl_message`] and of `E-DEF-DECL` ([`crate::def_decl`]).
-pub(crate) fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
+pub(crate) fn yaml_shape(v: &yaml_serde::Value) -> &'static str {
     match v {
-        serde_yaml::Value::Null => "an empty value",
-        serde_yaml::Value::Bool(_) => "a boolean",
-        serde_yaml::Value::Number(_) => "a number",
-        serde_yaml::Value::String(_) => "a bare string",
-        serde_yaml::Value::Sequence(_) => "a list",
-        serde_yaml::Value::Tagged(_) => "a tagged value",
-        serde_yaml::Value::Mapping(_) => "a mapping",
+        yaml_serde::Value::Null => "an empty value",
+        yaml_serde::Value::Bool(_) => "a boolean",
+        yaml_serde::Value::Number(_) => "a number",
+        yaml_serde::Value::String(_) => "a bare string",
+        yaml_serde::Value::Sequence(_) => "a list",
+        yaml_serde::Value::Tagged(_) => "a tagged value",
+        yaml_serde::Value::Mapping(_) => "a mapping",
     }
 }
 
@@ -33,7 +33,7 @@ pub(crate) fn yaml_shape(v: &serde_yaml::Value) -> &'static str {
 /// shape (dsl §9.2/§13): a document opened standalone that is actually a Schema
 /// or Component fragment. Returns None for a genuine scene missing `kind:`.
 pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKind> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&meta.raw_yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(&meta.raw_yaml).ok()?;
     let map = value.as_mapping()?;
     let has = |k: &str| map.contains_key(yaml_key(k));
     if has("kind") {
@@ -49,12 +49,12 @@ pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKin
 }
 
 /// Describe a frontmatter value that has NO [`Literal`] representation.
-pub(super) fn unrepresentable_yaml(v: &serde_yaml::Value) -> &'static str {
+pub(super) fn unrepresentable_yaml(v: &yaml_serde::Value) -> &'static str {
     match v {
-        serde_yaml::Value::Null => "null",
-        serde_yaml::Value::Tagged(_) => "a tagged value",
-        serde_yaml::Value::Sequence(_) => "a sequence with an unrepresentable element",
-        serde_yaml::Value::Mapping(_) => {
+        yaml_serde::Value::Null => "null",
+        yaml_serde::Value::Tagged(_) => "a tagged value",
+        yaml_serde::Value::Sequence(_) => "a sequence with an unrepresentable element",
+        yaml_serde::Value::Mapping(_) => {
             "a mapping with a non-string key or an unrepresentable value"
         }
         _ => "an unrepresentable value",
@@ -99,6 +99,6 @@ pub fn ident_from_name(name: &str, fallback: &str) -> String {
     out
 }
 
-pub(crate) fn yaml_key(k: &str) -> serde_yaml::Value {
-    serde_yaml::Value::String(k.to_string())
+pub(crate) fn yaml_key(k: &str) -> yaml_serde::Value {
+    yaml_serde::Value::String(k.to_string())
 }

@@ -18,7 +18,7 @@ pub type ResolvedSnapshot = Arc<(CapabilitySnapshot, Vec<ResolveDiag>)>;
 type SnapshotKey = (
     Option<PathBuf>,
     Option<String>,
-    BTreeMap<String, serde_yaml::Value>,
+    BTreeMap<String, yaml_serde::Value>,
 );
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -67,7 +67,7 @@ impl InputCache {
         root: Option<&Path>,
         project: Option<&ProjectConfig>,
         profile: Option<&str>,
-        plugins: &BTreeMap<String, serde_yaml::Value>,
+        plugins: &BTreeMap<String, yaml_serde::Value>,
     ) -> ResolvedSnapshot {
         let key = (
             root.map(Path::to_path_buf),
@@ -93,7 +93,7 @@ fn plugin_origins(plugins_dir: &Path) -> lute_check::rel_schema::PluginOrigins {
         let Ok(text) = std::fs::read_to_string(&file) else {
             continue;
         };
-        let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
             continue;
         };
         let Some(occasions) = value.get("occasions").and_then(|o| o.as_mapping()) else {
@@ -140,7 +140,7 @@ fn plugin_origins(plugins_dir: &Path) -> lute_check::rel_schema::PluginOrigins {
         let Ok(text) = std::fs::read_to_string(&file) else {
             continue;
         };
-        let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
             continue;
         };
         let Some(directives) = value.get("directives").and_then(|d| d.as_sequence()) else {
@@ -224,13 +224,13 @@ fn export_files(plugins_dir: &Path, export: &str) -> Vec<PathBuf> {
         let Ok(text) = std::fs::read_to_string(sub.join("plugin.yaml")) else {
             continue;
         };
-        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        let Ok(manifest) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
             continue;
         };
         let Some(rel) = manifest
             .get("exports")
             .and_then(|e| e.get(export))
-            .and_then(serde_yaml::Value::as_str)
+            .and_then(yaml_serde::Value::as_str)
         else {
             continue;
         };

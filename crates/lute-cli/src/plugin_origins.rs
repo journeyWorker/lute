@@ -36,13 +36,13 @@ pub(crate) fn export_files(plugins_dir: &Path, export: &str) -> Vec<PathBuf> {
         let Ok(text) = std::fs::read_to_string(sub.join("plugin.yaml")) else {
             continue;
         };
-        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        let Ok(manifest) = yaml_serde::from_str::<yaml_serde::Value>(&text) else {
             continue;
         };
         let Some(rel) = manifest
             .get("exports")
             .and_then(|e| e.get(export))
-            .and_then(serde_yaml::Value::as_str)
+            .and_then(yaml_serde::Value::as_str)
         else {
             continue;
         };

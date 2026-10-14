@@ -98,7 +98,7 @@ fn refresh_stamps_resolved_version_under_project() {
         .expect("refresh");
     assert_eq!(out.status.code(), Some(0));
     let after = std::fs::read_to_string(tmp.join("minigame.yaml")).unwrap();
-    let snap: serde_yaml::Value = serde_yaml::from_str(&after).unwrap();
+    let snap: yaml_serde::Value = yaml_serde::from_str(&after).unwrap();
     let stamped = snap
         .get("manifestVersion")
         .and_then(|v| v.as_str())

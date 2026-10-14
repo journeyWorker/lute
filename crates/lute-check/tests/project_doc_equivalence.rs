@@ -33,9 +33,9 @@ fn manifest_defaults_never_mint_a_scene_key() {
     // supplies `character`/`season`/`episode`. The canonical key is derived
     // from authored keys only, so the scene has none.
     let defaults: MetaDefaults = [
-        ("character".to_string(), serde_yaml::Value::from("mira")),
-        ("season".to_string(), serde_yaml::Value::from(1)),
-        ("episode".to_string(), serde_yaml::Value::from(2)),
+        ("character".to_string(), yaml_serde::Value::from("mira")),
+        ("season".to_string(), yaml_serde::Value::from(1)),
+        ("episode".to_string(), yaml_serde::Value::from(2)),
     ]
     .into_iter()
     .collect();

@@ -158,7 +158,7 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
     Ok(refs.into_iter().collect())
 }
 
-fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
+fn collect_expect_context_references(value: &yaml_serde::Value, refs: &mut BTreeSet<String>) {
     let Some(map) = value.as_mapping() else {
         return;
     };
@@ -176,10 +176,10 @@ fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTree
                 }
             }
             "presented" => match value {
-                serde_yaml::Value::Sequence(ids) => {
+                yaml_serde::Value::Sequence(ids) => {
                     refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
                 }
-                serde_yaml::Value::Mapping(occasions) => {
+                yaml_serde::Value::Mapping(occasions) => {
                     for ids in occasions.values() {
                         if let Some(ids) = ids.as_sequence() {
                             refs.extend(

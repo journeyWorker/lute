@@ -137,10 +137,10 @@ fn defaults_inherited_legacy_beside_id_is_silent() {
     let defaults: lute_manifest::project::MetaDefaults = [
         (
             "character".to_string(),
-            serde_yaml::Value::String("marina".into()),
+            yaml_serde::Value::String("marina".into()),
         ),
-        ("season".to_string(), serde_yaml::Value::Number(1.into())),
-        ("episode".to_string(), serde_yaml::Value::Number(2.into())),
+        ("season".to_string(), yaml_serde::Value::Number(1.into())),
+        ("episode".to_string(), yaml_serde::Value::Number(2.into())),
     ]
     .into_iter()
     .collect();

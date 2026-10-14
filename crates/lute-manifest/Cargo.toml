@@ -11,7 +11,7 @@ json-schema = ["dep:schemars", "dep:serde_json"]
 [dependencies]
 lute-core-span = { path = "../lute-core-span" }
 serde = { workspace = true }
-serde_yaml = { workspace = true }
+yaml_serde = { workspace = true }
 sha2 = "0.10"
 schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }

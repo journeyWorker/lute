@@ -319,7 +319,7 @@ pub const E_STATE_COLLECTION: &str = "E-STATE-COLLECTION";
 /// The document kind an AUTHORED frontmatter declares — [`resolve_doc_kind`]'s
 /// verdict without its diagnostics, over an already-parsed frontmatter (`None`
 /// when it did not parse, is not a mapping, or names no known kind).
-pub fn authored_doc_kind(yaml: Option<&serde_yaml::Value>) -> Option<DocKind> {
+pub fn authored_doc_kind(yaml: Option<&yaml_serde::Value>) -> Option<DocKind> {
     match yaml?.as_mapping()?.get(yaml_key("kind"))?.as_str()? {
         "scene" => Some(DocKind::Scene),
         "quest" => Some(DocKind::Quest),
@@ -329,14 +329,14 @@ pub fn authored_doc_kind(yaml: Option<&serde_yaml::Value>) -> Option<DocKind> {
 }
 
 pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
-    let value: serde_yaml::Value = match serde_yaml::from_str(&meta.raw_yaml) {
+    let value: yaml_serde::Value = match yaml_serde::from_str(&meta.raw_yaml) {
         Ok(v) => v,
         Err(_) => return (None, Vec::new()),
     };
-    let empty = serde_yaml::Mapping::new();
+    let empty = yaml_serde::Mapping::new();
     let map = match &value {
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => &empty,
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::Null => &empty,
         _ => return (None, Vec::new()),
     };
     let span = meta.span;

@@ -1032,7 +1032,7 @@ fn read_input(path: &Path) -> Option<(PathBuf, Input)> {
     } else {
         lute_trace::parse_mock_yaml(&text).ok()?
     };
-    let yaml: serde_yaml::Value = serde_yaml::from_str(&text).ok()?;
+    let yaml: yaml_serde::Value = yaml_serde::from_str(&text).ok()?;
     let present = match (yaml.get("entry"), yaml.get("entries"), yaml.get("beat")) {
         (Some(e), _, _) => Some(Present::Entries(vec![e.as_str()?.to_string()])),
         (_, Some(es), _) => Some(Present::Entries(

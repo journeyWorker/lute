@@ -117,11 +117,11 @@ pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> 
         let file = display_path(path);
         let canonical = canonical_key(path);
         if doc.entries.is_empty() && doc.beats.is_empty() {
-            let meta = item.meta.yaml().and_then(serde_yaml::Value::as_mapping);
+            let meta = item.meta.yaml().and_then(yaml_serde::Value::as_mapping);
             let scene = lute_check::connectivity::scene_key(item.meta);
             let doc_id = scene.clone().or_else(|| {
                 meta.and_then(|m| m.get("id"))
-                    .and_then(serde_yaml::Value::as_str)
+                    .and_then(yaml_serde::Value::as_str)
                     .map(str::to_string)
             });
             out.push(CoverageUnit {

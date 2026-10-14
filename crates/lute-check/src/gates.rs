@@ -93,11 +93,11 @@ const TERMINAL_EXAMPLE: &str = "`terminal: \"@dead\"`, or `terminal: { when: \"@
 /// `persists` (with the key it likely meant), a `when` that is no
 /// condition string, a `persists` that is not `true` / `false`.
 pub(crate) fn parse_terminal(
-    v: &serde_yaml::Value,
+    v: &yaml_serde::Value,
     meta: &lute_syntax::ast::Meta,
 ) -> (Option<TerminalDecl>, Vec<Diagnostic>) {
-    let shown = |v: &serde_yaml::Value| {
-        serde_yaml::to_string(v)
+    let shown = |v: &yaml_serde::Value| {
+        yaml_serde::to_string(v)
             .unwrap_or_default()
             .trim()
             .to_string()
@@ -109,7 +109,7 @@ pub(crate) fn parse_terminal(
     let mut fault = |message: String, span: Span| diags.push(meta_value(message, span));
     let key_at = || crate::meta::meta_key_span(meta, "terminal");
     let m = match v {
-        serde_yaml::Value::String(s) if !s.trim().is_empty() => {
+        yaml_serde::Value::String(s) if !s.trim().is_empty() => {
             let when = slot(s, crate::beats::top_value_span(meta, "terminal"));
             return (
                 Some(TerminalDecl {
@@ -119,8 +119,8 @@ pub(crate) fn parse_terminal(
                 diags,
             );
         }
-        serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::String(_) | serde_yaml::Value::Null => {
+        yaml_serde::Value::Mapping(m) => m,
+        yaml_serde::Value::String(_) | yaml_serde::Value::Null => {
             fault(
                 format!(
                     "`terminal:` names no condition — write the condition under which the game \
@@ -159,8 +159,8 @@ pub(crate) fn parse_terminal(
     }
     let persists = match m.get("persists") {
         _ if faulty => Persists::Faulty,
-        None | Some(serde_yaml::Value::Bool(false)) => Persists::No,
-        Some(serde_yaml::Value::Bool(true)) => Persists::Yes(crate::beats::nested_value_span(
+        None | Some(yaml_serde::Value::Bool(false)) => Persists::No,
+        Some(yaml_serde::Value::Bool(true)) => Persists::Yes(crate::beats::nested_value_span(
             meta,
             &["terminal", "persists"],
         )),
@@ -177,8 +177,8 @@ pub(crate) fn parse_terminal(
         }
     };
     let when = match m.get("when") {
-        Some(serde_yaml::Value::String(s)) if !s.trim().is_empty() => s,
-        None | Some(serde_yaml::Value::Null) | Some(serde_yaml::Value::String(_)) => {
+        Some(yaml_serde::Value::String(s)) if !s.trim().is_empty() => s,
+        None | Some(yaml_serde::Value::Null) | Some(yaml_serde::Value::String(_)) => {
             fault(
                 "`terminal:` names no condition — write `when: \"<condition>\"`, the condition \
                  under which the game is over"

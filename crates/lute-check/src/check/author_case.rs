@@ -111,10 +111,10 @@ fn nodes(list: &[Node], out: &mut Vec<Diagnostic>) {
 /// frontmatter keys.
 pub(super) fn check_author_case(doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    if let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(
+    if let Ok(yaml_serde::Value::Mapping(map)) = yaml_serde::from_str::<yaml_serde::Value>(
         crate::chapters::authored_yaml(&doc.meta.raw_yaml),
     ) {
-        for key in map.keys().filter_map(serde_yaml::Value::as_str) {
+        for key in map.keys().filter_map(yaml_serde::Value::as_str) {
             if key.contains('_') {
                 out.push(diag(
                     "frontmatter key",

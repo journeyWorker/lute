@@ -157,11 +157,11 @@ fn catalog_refresh_then_load_round_trips() {
     // The rewritten file must still parse as a snapshot, with stale cleared and
     // the manifest re-stamped to the current capabilitySnapshot.
     let refreshed = std::fs::read_to_string(dir.join("core.yaml")).unwrap();
-    let snap: serde_yaml::Value = serde_yaml::from_str(&refreshed).unwrap();
-    assert_eq!(snap["stale"], serde_yaml::Value::Bool(false));
+    let snap: yaml_serde::Value = yaml_serde::from_str(&refreshed).unwrap();
+    assert_eq!(snap["stale"], yaml_serde::Value::Bool(false));
     assert_ne!(
         snap["manifestVersion"],
-        serde_yaml::Value::String("old-stamp".into())
+        yaml_serde::Value::String("old-stamp".into())
     );
 
     // And `ProviderSet::load` reads the refreshed dir back (the load consumer).

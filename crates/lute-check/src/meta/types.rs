@@ -160,7 +160,7 @@ pub struct RuleDecl {
 /// passes can inspect uncommon keys without reparsing `Meta::raw_yaml`.
 #[derive(Clone, Debug, Default)]
 pub struct TypedMeta {
-    pub(crate) yaml: Option<serde_yaml::Value>,
+    pub(crate) yaml: Option<yaml_serde::Value>,
     pub character: Option<String>,
     pub season: Option<i64>,
     pub episode: Option<i64>,
@@ -220,11 +220,11 @@ pub struct TypedMeta {
     /// out of this map and draws `E-META-VALUE`.
     pub extra_block: BTreeMap<String, serde_json::Value>,
     pub profile: Option<String>,
-    pub plugins: BTreeMap<String, serde_yaml::Value>,
+    pub plugins: BTreeMap<String, yaml_serde::Value>,
     pub uses: Vec<String>,
     pub extends: Vec<String>,
     pub state: StateSchema,
-    pub defs: BTreeMap<String, serde_yaml::Value>,
+    pub defs: BTreeMap<String, yaml_serde::Value>,
     /// Project-authored `enums:`/`entities:` declarations (dsl data-catalog
     /// foundation A3; 0.3.0 draft §3.1), parsed via
     /// `lute_manifest::entities::parse_enums` /
@@ -316,7 +316,7 @@ pub struct TypedMeta {
 impl TypedMeta {
     /// Parsed authored frontmatter, retained as the one source of truth for
     /// project-wide passes that need keys not lifted into a typed field.
-    pub fn yaml(&self) -> Option<&serde_yaml::Value> {
+    pub fn yaml(&self) -> Option<&yaml_serde::Value> {
         self.yaml.as_ref()
     }
 }

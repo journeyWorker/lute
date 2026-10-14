@@ -14,7 +14,7 @@ lute-ir = { path = "../lute-ir" }
 cel-parser = "0.10.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
+yaml_serde = { workspace = true }
 
 [dev-dependencies]
 lute-scratch = { path = "../lute-scratch" }

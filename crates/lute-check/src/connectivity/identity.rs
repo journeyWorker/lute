@@ -63,7 +63,7 @@ pub(super) fn scene_identity(meta: &crate::meta::TypedMeta) -> Option<SceneIdent
     // manifest default must not mint a scene key, and a malformed `id:` gives
     // no identity (its own `E-META-ID` anchors).
     let map = meta.yaml()?.as_mapping()?;
-    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    let key = |k: &str| yaml_serde::Value::String(k.to_string());
     if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
         return lute_manifest::ident::is_dotted_name(raw).then(|| SceneIdentity {
             key: raw.to_string(),
@@ -120,7 +120,7 @@ pub fn scene_key(meta: &crate::meta::TypedMeta) -> Option<String> {
         return None;
     }
     let map = meta.yaml()?.as_mapping()?;
-    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    let key = |k: &str| yaml_serde::Value::String(k.to_string());
     if let Some(raw) = map.get(key("id")).and_then(|v| v.as_str()) {
         return lute_manifest::ident::is_dotted_name(raw).then(|| raw.to_string());
     }
@@ -141,7 +141,7 @@ pub fn scene_key(meta: &crate::meta::TypedMeta) -> Option<String> {
 /// document id.
 pub fn bundle_id(meta: &crate::meta::TypedMeta) -> Option<String> {
     let map = meta.yaml()?.as_mapping()?;
-    map.get(serde_yaml::Value::String("id".to_string()))?
+    map.get(yaml_serde::Value::String("id".to_string()))?
         .as_str()
         .filter(|raw| lute_manifest::ident::is_dotted_name(raw))
         .map(str::to_string)

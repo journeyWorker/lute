@@ -4,7 +4,7 @@ pub use super::diagnostic_helpers::{ident_from_name, infer_meta_kind_from_shape}
 use super::*;
 /// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
 /// declaration and what the legal shape is, written from the YAML the author
-/// typed rather than from `serde_yaml`'s report of how it failed to
+/// typed rather than from `yaml_serde`'s report of how it failed to
 /// deserialize into `StateDeclRaw`.
 ///
 /// The library error cannot be forwarded and cannot be replaced by one fixed
@@ -22,7 +22,7 @@ use super::*;
 /// scraped literals in `crates/*/src` and measures that they still reproduce
 /// real output. A message assembled from shared `const` fragments resolves to
 /// no literal and drops that floor.
-pub(super) fn state_decl_message(path: &str, decl: &serde_yaml::Value) -> String {
+pub(super) fn state_decl_message(path: &str, decl: &yaml_serde::Value) -> String {
     let Some(map) = decl.as_mapping() else {
         return format!(
             "invalid state declaration for `{path}`: a declaration is a mapping with a \
@@ -189,7 +189,7 @@ pub fn meta_path_span(meta: &Meta, path: &[&str]) -> Span {
 /// 1-based line in the file; the caller marks what it declares invalid.
 pub(crate) fn take_number_types(
     meta: &Meta,
-    value: &mut serde_yaml::Value,
+    value: &mut yaml_serde::Value,
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<(lute_manifest::types::NumberSite, usize)> {
     let sites = lute_manifest::types::number_type_sites(value);
@@ -243,14 +243,14 @@ pub(crate) fn take_number_types(
     }
     out
 }
-/// `E-META-PARSE` for a frontmatter serde_yaml rejects: the message and the
-/// span of the offending character in the FILE (round-5 T3-2). serde_yaml
+/// `E-META-PARSE` for a frontmatter yaml_serde rejects: the message and the
+/// span of the offending character in the FILE (round-5 T3-2). yaml_serde
 /// counts lines from the first line after the `---` opener, so its own
 /// `at line N column M` was one line short and the diagnostic sat at `1:1`.
 /// The anchor now carries the position, so the problem mark is dropped from
 /// the message and any other mark (a context's) is renumbered to file lines.
 /// The fix and its anchor come from [`lute_manifest::yaml_text::yaml_fault`].
-pub(super) fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, Span) {
+pub(super) fn yaml_parse_error(meta: &Meta, e: &yaml_serde::Error) -> (String, Span) {
     // [`meta_key_span`]'s envelope rule: a `.lute` frontmatter's interior
     // starts after the 4-byte `"---\n"` opener; a bare `.yaml` has none.
     let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
@@ -323,7 +323,7 @@ pub(super) fn yaml_parse_error(meta: &Meta, e: &serde_yaml::Error) -> (String, S
 }
 
 /// Authoritative same-block duplicate-key scan for `relations:`/`entities:`
-/// (dsl 0.3.0 T5): `serde_yaml::Mapping` silently collapses a repeated
+/// (dsl 0.3.0 T5): `yaml_serde::Mapping` silently collapses a repeated
 /// mapping key before [`lute_manifest::relations::parse_relations`]/
 /// `parse_entity_kinds` ever see it, so their own `dups` field is
 /// best-effort. This is a dumb, total line scan over the RAW frontmatter
@@ -375,7 +375,7 @@ pub(super) fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<Strin
 }
 
 /// Recovery helper for [`parse_meta_kind`]'s initial whole-document YAML
-/// parse (dsl 0.3.0 T5/T7): `serde_yaml` REJECTS a literal duplicate key
+/// parse (dsl 0.3.0 T5/T7): `yaml_serde` REJECTS a literal duplicate key
 /// anywhere in the document (it does not silently collapse a repeat, contra
 /// [`scan_block_dup_names`]'s original assumption), which would otherwise
 /// take down the ENTIRE frontmatter lift over a same-block
@@ -454,7 +454,7 @@ const STATE_ROW_KEYS: [&str; 4] = ["type", "default", "owner", "per"];
 /// state row's own spelling: `reserved:` (a relation's engine-ownership) and
 /// `tier:` (a quest's or relation's lifetime — a state path's tier is its
 /// first segment).
-pub(super) fn unknown_state_row_keys(path: &str, row: &serde_yaml::Value) -> Vec<(String, String)> {
+pub(super) fn unknown_state_row_keys(path: &str, row: &yaml_serde::Value) -> Vec<(String, String)> {
     let Some(row) = row.as_mapping() else {
         return Vec::new();
     };

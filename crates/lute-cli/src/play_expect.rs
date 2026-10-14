@@ -26,7 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use lute_runtime::Value;
-use serde_yaml::Value as Yaml;
+use yaml_serde::Value as Yaml;
 
 /// The complete legal key set of a STEP `expect:`.
 pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
@@ -855,7 +855,7 @@ fn names(want: &str, actual: &str) -> bool {
 /// of one `expect:` against `world`.
 fn check_world(
     world: &WorldView,
-    m: &serde_yaml::Mapping,
+    m: &yaml_serde::Mapping,
     miss: &mut impl FnMut(String, String, String),
 ) {
     if let Some(Yaml::Mapping(want)) = m.get("clock") {
@@ -922,7 +922,7 @@ fn check_world(
 /// the boundary instead of silently skipping time-gated beats.
 fn check_clock(
     clock: Option<&ClockView>,
-    want: &serde_yaml::Mapping,
+    want: &yaml_serde::Mapping,
     miss: &mut impl FnMut(String, String, String),
 ) {
     for (key, want) in want {
@@ -1070,7 +1070,7 @@ mod tests {
     use super::*;
 
     fn y(s: &str) -> Yaml {
-        serde_yaml::from_str(s).unwrap()
+        yaml_serde::from_str(s).unwrap()
     }
 
     fn step(index: usize, winner: Option<&str>, offered: &[&str]) -> StepOutcome {

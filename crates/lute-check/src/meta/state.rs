@@ -51,22 +51,22 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
     }
 }
 
-pub(super) fn get_str(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
+pub(super) fn get_str(map: &yaml_serde::Mapping, key: &str) -> Option<String> {
     map.get(yaml_key(key))
         .and_then(|v| v.as_str())
         .map(str::to_string)
 }
 
-pub(super) fn get_i64(map: &serde_yaml::Mapping, key: &str) -> Option<i64> {
+pub(super) fn get_i64(map: &yaml_serde::Mapping, key: &str) -> Option<i64> {
     map.get(yaml_key(key)).and_then(|v| v.as_i64())
 }
 
 /// `uses`/`extends` (dsl §9.2) may each be a single ref or a list of refs;
 /// normalize to a Vec.
-pub(super) fn get_ref_list(map: &serde_yaml::Mapping, key: &str) -> Vec<String> {
+pub(super) fn get_ref_list(map: &yaml_serde::Mapping, key: &str) -> Vec<String> {
     match map.get(yaml_key(key)) {
-        Some(serde_yaml::Value::String(s)) => vec![s.clone()],
-        Some(serde_yaml::Value::Sequence(items)) => items
+        Some(yaml_serde::Value::String(s)) => vec![s.clone()],
+        Some(yaml_serde::Value::Sequence(items)) => items
             .iter()
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect(),
@@ -75,11 +75,11 @@ pub(super) fn get_ref_list(map: &serde_yaml::Mapping, key: &str) -> Vec<String> 
 }
 
 pub(super) fn get_sub_map(
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     key: &str,
-) -> BTreeMap<String, serde_yaml::Value> {
+) -> BTreeMap<String, yaml_serde::Value> {
     match map.get(yaml_key(key)) {
-        Some(serde_yaml::Value::Mapping(m)) => m
+        Some(yaml_serde::Value::Mapping(m)) => m
             .iter()
             .filter_map(|(k, v)| k.as_str().map(|k| (k.to_string(), v.clone())))
             .collect(),
@@ -88,7 +88,7 @@ pub(super) fn get_sub_map(
 }
 
 /// A component file's `params:` (dsl §13) is a YAML MAPPING (`{ who: <type> }`)
-/// read in SOURCE order (`serde_yaml::Mapping` is insertion-ordered), the same
+/// read in SOURCE order (`yaml_serde::Mapping` is insertion-ordered), the same
 /// spelling as a def's `params:` (dsl §8.1). Each value deserializes to a
 /// manifest [`Type`] via the same serde path `Type` uses.
 ///
@@ -119,7 +119,7 @@ pub(super) type ParsedParams = (
     BTreeMap<String, lute_syntax::ast::AttrValue>,
     bool,
 );
-pub(super) fn get_params(map: &serde_yaml::Mapping, key: &str) -> ParsedParams {
+pub(super) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
     let mut defaults = BTreeMap::new();
     let Some(raw) = map.get(yaml_key(key)) else {
         return (Vec::new(), Vec::new(), defaults, false); // absent — fine (no params)
@@ -155,7 +155,7 @@ pub(super) fn get_params(map: &serde_yaml::Mapping, key: &str) -> ParsedParams {
             });
             continue;
         }
-        match serde_yaml::from_value::<Type>(tv.clone()) {
+        match yaml_serde::from_value::<Type>(tv.clone()) {
             Ok(ty) => params.push(DefParam {
                 name: name.to_string(),
                 ty,
@@ -169,12 +169,12 @@ pub(super) fn get_params(map: &serde_yaml::Mapping, key: &str) -> ParsedParams {
 /// dsl 0.26.0 §3.3: a param `default:` as the `::use` argument it stands for:
 /// `"@name"` is a def reference (resolved in the host, like `p=@name`), any
 /// other scalar the literal `p="…"` would give. `None` for a non-scalar.
-pub(super) fn param_default(v: &serde_yaml::Value) -> Option<lute_syntax::ast::AttrValue> {
+pub(super) fn param_default(v: &yaml_serde::Value) -> Option<lute_syntax::ast::AttrValue> {
     use lute_syntax::ast::{AttrValue, CelKind, CelSlot};
     let text = match v {
-        serde_yaml::Value::String(s) => s.clone(),
-        serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Number(n) => n.to_string(),
+        yaml_serde::Value::String(s) => s.clone(),
+        yaml_serde::Value::Bool(b) => b.to_string(),
+        yaml_serde::Value::Number(n) => n.to_string(),
         _ => return None,
     };
     // The span is the component file's, meaningless in a host: every binding
@@ -204,8 +204,8 @@ pub(super) fn param_default(v: &serde_yaml::Value) -> Option<lute_syntax::ast::A
 /// (`lute-manifest/src/types.rs`), so `{ type: … }` is not already a legal
 /// spelling and this cannot shadow one.
 pub(super) fn unwrap_long_form(
-    tv: &serde_yaml::Value,
-) -> Option<(&serde_yaml::Value, Option<&serde_yaml::Value>)> {
+    tv: &yaml_serde::Value,
+) -> Option<(&yaml_serde::Value, Option<&yaml_serde::Value>)> {
     let m = tv.as_mapping()?;
     let ty = m.get(yaml_key("type"))?;
     let default = m.get(yaml_key("default"));

@@ -400,8 +400,8 @@ impl Walk<'_> {
 
 /// A scene document's frontmatter `when:` as authored.
 fn frontmatter_when(doc: &Document) -> Option<String> {
-    let meta = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok()?;
-    meta.get(serde_yaml::Value::String("when".into()))?
+    let meta = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok()?;
+    meta.get(yaml_serde::Value::String("when".into()))?
         .as_str()
         .map(|s| s.trim().to_string())
 }

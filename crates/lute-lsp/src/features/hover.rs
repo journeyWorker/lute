@@ -806,7 +806,7 @@ mod tests {
         );
         imports.defs.insert(
             "helped".to_string(),
-            serde_yaml::from_str("{ type: bool, cel: \"true\" }").unwrap(),
+            yaml_serde::from_str("{ type: bool, cel: \"true\" }").unwrap(),
         );
         imports
     }

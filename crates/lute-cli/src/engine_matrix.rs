@@ -34,7 +34,7 @@ impl EngineMatrix {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("E-ENGINE-MATRIX: cannot read {}: {}", path.display(), e))?;
         let matrix: Self =
-            serde_yaml::from_str(&text).map_err(|e| format!("E-ENGINE-MATRIX: {}", e))?;
+            yaml_serde::from_str(&text).map_err(|e| format!("E-ENGINE-MATRIX: {}", e))?;
         if matrix.engine.trim().is_empty() || parse_version(&matrix.ir_version).is_none() {
             return Err("E-ENGINE-MATRIX: `engine` must be non-empty and `irVersion` must be MAJOR.MINOR.PATCH".into());
         }

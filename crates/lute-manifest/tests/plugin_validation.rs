@@ -69,7 +69,7 @@ fn backdrop_plugin(lower: Lowering) -> LoadedPlugin {
 fn record_lowering(record: &str, fields_yaml: &str) -> Lowering {
     Lowering::Record {
         record: record.into(),
-        fields: serde_yaml::from_str(fields_yaml).expect("fixture yaml"),
+        fields: yaml_serde::from_str(fields_yaml).expect("fixture yaml"),
     }
 }
 

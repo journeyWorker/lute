@@ -1156,16 +1156,16 @@ fn artifact_meta(
     snapshot: &CapabilitySnapshot,
     beat: Option<BeatIr>,
 ) -> SceneMeta {
-    let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let raw = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup_str = |key: &str| -> Option<String> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_str()
             .map(String::from)
     };
     let lookup_i64 = |key: &str| -> Option<i64> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_i64()
     };
     let title = lookup_str("title");
@@ -1287,7 +1287,7 @@ fn scene_beat(
 /// (deterministic, plugin §11.3 "first owner wins" does not apply here — this
 /// reads the ALREADY-merged snapshot, never resolves ownership itself).
 fn plugin_frontmatter(
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     snapshot: &CapabilitySnapshot,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut out = BTreeMap::new();
@@ -1394,10 +1394,10 @@ fn prereq_edge_entries(doc: &Document, folded: &FoldedEnv) -> Vec<PrereqEdgeEntr
 /// serialize as `{}` when none of id/title/contentLang/extra/plugin are
 /// authored (all five carry `skip_serializing_if`).
 fn quest_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) -> QuestMeta {
-    let raw = serde_yaml::from_str::<serde_yaml::Mapping>(&doc.meta.raw_yaml).ok();
+    let raw = yaml_serde::from_str::<yaml_serde::Mapping>(&doc.meta.raw_yaml).ok();
     let lookup = |key: &str| -> Option<String> {
         raw.as_ref()?
-            .get(serde_yaml::Value::String(key.to_string()))?
+            .get(yaml_serde::Value::String(key.to_string()))?
             .as_str()
             .map(String::from)
     };

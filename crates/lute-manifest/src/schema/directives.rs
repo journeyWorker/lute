@@ -219,7 +219,7 @@ pub struct WriteDecl {
 /// [`Literal`] used to take ANY mapping as a literal record, so a
 /// `{ fromAttr: amount }` loaded clean and wrote nothing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(untagged, try_from = "serde_yaml::Value")]
+#[serde(untagged, try_from = "yaml_serde::Value")]
 pub enum WriteValue {
     /// `{ fromBridgeResult: <field> }` — the bridge answer's field.
     FromBridgeResult {
@@ -273,11 +273,11 @@ const WRITE_VALUE_SHAPES: &str = "a bool/number/string literal, `{ fromAttr: <at
      `{ fromBridgeResult: <field> }`, or `{ op: increment|decrement, by: <number> | \
      { fromAttr: <attr> } }`";
 
-impl TryFrom<serde_yaml::Value> for WriteValue {
+impl TryFrom<yaml_serde::Value> for WriteValue {
     type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
-        use serde_yaml::Value;
+    fn try_from(v: yaml_serde::Value) -> Result<Self, SchemaError> {
+        use yaml_serde::Value;
         let bad = |what: String| {
             Err(SchemaError::Write(format!(
                 "effects.writes value {what}; a write's value is {WRITE_VALUE_SHAPES}"
@@ -403,7 +403,7 @@ pub struct BridgeRef {
 pub enum Lowering {
     Record {
         record: String,
-        fields: serde_yaml::Value,
+        fields: yaml_serde::Value,
     },
     Builtin {
         kind: String,
@@ -438,7 +438,7 @@ pub const BUILTIN_LOWERING_HOOKS: &[&str] = &[
 #[serde(deny_unknown_fields)]
 struct RawLowering {
     record: Option<String>,
-    fields: Option<serde_yaml::Value>,
+    fields: Option<yaml_serde::Value>,
     kind: Option<String>,
     name: Option<String>,
 }

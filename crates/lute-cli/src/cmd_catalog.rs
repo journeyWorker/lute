@@ -70,7 +70,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
                 return ExitCode::from(2);
             }
         };
-        let mut snap: ProviderSnapshot = match serde_yaml::from_str(&raw) {
+        let mut snap: ProviderSnapshot = match yaml_serde::from_str(&raw) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!(
@@ -82,7 +82,7 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
         };
         snap.manifest_version = version.clone();
         snap.stale = false;
-        let out = match serde_yaml::to_string(&snap) {
+        let out = match yaml_serde::to_string(&snap) {
             Ok(o) => o,
             Err(e) => {
                 eprintln!("lute: cannot serialize {}: {e}", path.display());

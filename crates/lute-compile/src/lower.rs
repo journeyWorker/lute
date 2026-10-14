@@ -534,7 +534,7 @@ enum FieldSrc<'a> {
     /// `{ fromAttr: <attrName> }` — read the authored attr off the directive.
     Attr(&'a str),
     /// A YAML literal baked into the manifest.
-    Lit(&'a serde_yaml::Value),
+    Lit(&'a yaml_serde::Value),
 }
 
 /// Build the CORE staging command a plugin directive declares via
@@ -553,7 +553,7 @@ enum FieldSrc<'a> {
 /// `None`/default — never a panic.
 fn lower_record(
     record: &str,
-    fields: &serde_yaml::Value,
+    fields: &yaml_serde::Value,
     dir: &Directive,
     stamp: &Stamp,
     domains: &BTreeMap<String, Domain>,
@@ -563,7 +563,7 @@ fn lower_record(
     lute_manifest::validate::lower_record_fields(record)?;
 
     let mut srcs: BTreeMap<&str, FieldSrc> = BTreeMap::new();
-    if let serde_yaml::Value::Mapping(m) = fields {
+    if let yaml_serde::Value::Mapping(m) = fields {
         for (k, v) in m {
             let Some(target) = k.as_str() else { continue };
             let src = match v.get("fromAttr").and_then(|a| a.as_str()) {
@@ -580,9 +580,9 @@ fn lower_record(
         match srcs.get(target)? {
             FieldSrc::Attr(a) => attr_string(&dir.attrs, a),
             FieldSrc::Lit(v) => match v {
-                serde_yaml::Value::String(s) => Some(s.clone()),
-                serde_yaml::Value::Bool(b) => Some(b.to_string()),
-                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                yaml_serde::Value::String(s) => Some(s.clone()),
+                yaml_serde::Value::Bool(b) => Some(b.to_string()),
+                yaml_serde::Value::Number(n) => Some(n.to_string()),
                 _ => None,
             },
         }
@@ -1229,7 +1229,7 @@ mod tests {
     fn record_lowering(record: &str, fields_yaml: &str) -> Lowering {
         Lowering::Record {
             record: record.into(),
-            fields: serde_yaml::from_str(fields_yaml).expect("fixture yaml"),
+            fields: yaml_serde::from_str(fields_yaml).expect("fixture yaml"),
         }
     }
 

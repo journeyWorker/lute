@@ -355,12 +355,12 @@ fn scene_prefix(doc: &Document) -> Option<String> {
     if let Some(id) = authored_doc_id(doc) {
         return Some(id);
     }
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
     let map = match value {
-        serde_yaml::Value::Mapping(m) => m,
+        yaml_serde::Value::Mapping(m) => m,
         _ => return None,
     };
-    let key = |k: &str| serde_yaml::Value::String(k.to_string());
+    let key = |k: &str| yaml_serde::Value::String(k.to_string());
     let character = map.get(key("character"))?.as_str()?.to_string();
     if character.is_empty() {
         return None;
@@ -379,7 +379,7 @@ fn scene_prefix(doc: &Document) -> Option<String> {
 /// stamping an id `lute compile` would refuse). `None` when absent or
 /// invalid; [`scene_prefix`] then falls through to the triad derivation.
 fn authored_doc_id(doc: &Document) -> Option<String> {
-    let value: serde_yaml::Value = serde_yaml::from_str(&doc.meta.raw_yaml).ok()?;
+    let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
     let id = value.get("id")?.as_str()?.trim();
     let valid = !id.is_empty()
         && id
@@ -452,7 +452,7 @@ fn document_units(
 /// so it is not a document for export purposes — its lines are exported once
 /// per `::use` expansion, under the caller's prefix (#3, T6.10).
 fn is_component_document(doc: &Document) -> bool {
-    serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+    yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
         .ok()
         .and_then(|v| v.get("component").cloned())
         .is_some()

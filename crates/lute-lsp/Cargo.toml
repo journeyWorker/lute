@@ -26,7 +26,7 @@ cel-parser = "0.10.1"
 tower-lsp-server = "0.23.0"
 tokio = { version = "1.52.3", features = ["full"] }
 dashmap = "6.2.1"
-serde_yaml = { workspace = true }
+yaml_serde = { workspace = true }
 
 serde_json = "1.0.150"
 [dev-dependencies]

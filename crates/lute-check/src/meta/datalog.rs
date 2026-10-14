@@ -7,7 +7,7 @@ use super::*;
 /// head so downstream checks can distinguish failed derivations.
 pub(super) fn lift_datalog(
     meta: &Meta,
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     typed: &mut TypedMeta,
     diags: &mut Vec<Diagnostic>,
     span: Span,
@@ -15,8 +15,8 @@ pub(super) fn lift_datalog(
     // dsl 0.3.0 §4/§7.1, T5: entries are quoted strings. An unquoted
     // `head :- body` is a YAML mapping rather than a scalar.
     match map.get(yaml_key("facts")) {
-        None | Some(serde_yaml::Value::Null) => {}
-        Some(serde_yaml::Value::Sequence(seq)) => {
+        None | Some(yaml_serde::Value::Null) => {}
+        Some(yaml_serde::Value::Sequence(seq)) => {
             for entry in seq {
                 let Some(raw) = entry.as_str() else {
                     diags.push(err_at(
@@ -60,8 +60,8 @@ pub(super) fn lift_datalog(
         )),
     }
     match map.get(yaml_key("rules")) {
-        None | Some(serde_yaml::Value::Null) => {}
-        Some(serde_yaml::Value::Sequence(seq)) => {
+        None | Some(yaml_serde::Value::Null) => {}
+        Some(yaml_serde::Value::Sequence(seq)) => {
             for entry in seq {
                 let Some(raw) = entry.as_str() else {
                     diags.push(err_at(

@@ -29,7 +29,7 @@ pub(super) fn binary_id(path: &Path) -> Option<BinaryId> {
 
 /// A `luteVersion:` YAML value as its string (a stamp is a quoted or plain
 /// `x.y.z` string).
-fn yaml_version(v: &serde_yaml::Value) -> Option<String> {
+fn yaml_version(v: &yaml_serde::Value) -> Option<String> {
     v.as_str().map(|s| s.trim().to_string())
 }
 
@@ -92,7 +92,7 @@ impl Backend {
             return;
         }
         let (doc, _) = lute_syntax::parse(text);
-        let own = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+        let own = yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
             .ok()
             .and_then(|m| m.get("luteVersion").and_then(yaml_version));
         let Some(stamp) = own.or_else(|| defaults.get("luteVersion").and_then(yaml_version)) else {

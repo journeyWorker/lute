@@ -14,7 +14,7 @@
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::reserved::{refusal, Slot};
 use lute_syntax::ast::{Arm, AttrValue, Document, Meta, Node};
-use serde_yaml::Value;
+use yaml_serde::Value;
 
 use crate::meta::{meta_path_span, TypedMeta};
 
@@ -147,7 +147,7 @@ fn member_lists<'v>(name: &'v str, body: &'v Value) -> Vec<(Vec<&'v str>, &'v [V
 /// `typed.state.faulty`.
 pub(crate) fn check_frontmatter(
     meta: &Meta,
-    map: &serde_yaml::Mapping,
+    map: &yaml_serde::Mapping,
     typed: &mut TypedMeta,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();

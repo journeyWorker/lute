@@ -66,7 +66,7 @@ pub struct FrontmatterDecl {
 /// label fails this deserialization. Deserialized through
 /// shapes an enum takes rather than serde's "did not match any variant".
 #[derive(Clone, Debug, Deserialize)]
-#[serde(try_from = "serde_yaml::Value")]
+#[serde(try_from = "yaml_serde::Value")]
 pub enum EnumDecl {
     Members(Vec<String>),
     Long {
@@ -82,11 +82,11 @@ pub enum EnumDecl {
     },
 }
 
-impl TryFrom<serde_yaml::Value> for EnumDecl {
+impl TryFrom<yaml_serde::Value> for EnumDecl {
     type Error = SchemaError;
 
-    fn try_from(v: serde_yaml::Value) -> Result<Self, SchemaError> {
-        use serde_yaml::Value;
+    fn try_from(v: yaml_serde::Value) -> Result<Self, SchemaError> {
+        use yaml_serde::Value;
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Long {
@@ -103,7 +103,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
         const SHAPES: &str = "an enum is a list of members `[calm, tense]` or \
              `{ members: [calm, tense], default: calm, exits: [tense], stops: [stop], labels: { calm: Calm } }`";
         match &v {
-            Value::Sequence(_) => serde_yaml::from_value::<Vec<String>>(v)
+            Value::Sequence(_) => yaml_serde::from_value::<Vec<String>>(v)
                 .map(EnumDecl::Members)
                 .map_err(|_| {
                     SchemaError::Enum(format!(
@@ -116,7 +116,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                     .keys()
                     .find(|k| !k.as_str().is_some_and(|k| keys.contains(&k)))
                 {
-                    let key = serde_yaml::to_string(key).unwrap_or_else(|_| String::new());
+                    let key = yaml_serde::to_string(key).unwrap_or_else(|_| String::new());
                     let key = key.trim();
                     return Err(SchemaError::Enum(format!(
                         "has no key `{key}`{}; {SHAPES}",
@@ -126,7 +126,7 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
                 if !m.contains_key("members") {
                     return Err(SchemaError::Enum(format!("needs `members:`; {SHAPES}")));
                 }
-                let long = serde_yaml::from_value::<Long>(v).map_err(|_| {
+                let long = yaml_serde::from_value::<Long>(v).map_err(|_| {
                     SchemaError::Enum(format!(
                         "is misshapen: `members:` and `exits:`/`stops:` list member names and `labels:` \
                          maps each member to its text; {SHAPES}"

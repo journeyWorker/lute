@@ -334,7 +334,7 @@ pub(crate) fn engine_semantic_diags(
     let supported: std::collections::BTreeSet<&str> =
         matrix.supported_ids.iter().map(String::as_str).collect();
     let (doc, _) = lute_syntax::parse(&input.text);
-    let own: serde_yaml::Mapping = serde_yaml::from_str(&doc.meta.raw_yaml).unwrap_or_default();
+    let own: yaml_serde::Mapping = yaml_serde::from_str(&doc.meta.raw_yaml).unwrap_or_default();
     let mut diags = Vec::new();
     for id in collected
         .ids
@@ -397,7 +397,7 @@ pub(crate) fn engine_semantic_diags(
             if let Some(key) = keys
                 .iter()
                 .copied()
-                .find(|key| own.contains_key(serde_yaml::Value::String((*key).into())))
+                .find(|key| own.contains_key(yaml_serde::Value::String((*key).into())))
             {
                 let span = lute_check::meta::meta_key_span(&doc.meta, key);
                 add(normalize_span_from_text(&input.text, span), None);

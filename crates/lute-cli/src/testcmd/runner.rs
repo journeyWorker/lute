@@ -492,10 +492,10 @@ fn result_visits_target(result: &TestResult, target: &NodeKey) -> bool {
 fn traced_document_id(path: &str) -> Option<String> {
     let source = std::fs::read_to_string(path).ok()?;
     let (document, _) = lute_syntax::parse(&source);
-    serde_yaml::from_str::<serde_yaml::Value>(&document.meta.raw_yaml)
+    yaml_serde::from_str::<yaml_serde::Value>(&document.meta.raw_yaml)
         .ok()?
         .get("id")
-        .and_then(serde_yaml::Value::as_str)
+        .and_then(yaml_serde::Value::as_str)
         .map(str::to_string)
 }
 
@@ -536,7 +536,7 @@ fn run_one_test(
     // Parse `file:` and `expect:` from the same document as a YAML value,
     // mirroring `parse_mock_yaml`'s hand-rolled navigation (no serde derive
     // dependency added to this crate).
-    let top: serde_yaml::Value = match serde_yaml::from_str(&text) {
+    let top: yaml_serde::Value = match yaml_serde::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             eprintln!("lute: {}: malformed test yaml: {e}", test_file.display());
@@ -613,8 +613,8 @@ fn run_one_test(
     // or canonical `<document id>.<beat id>`), as `lute trace --beat`.
     let entries: Vec<String> = match (map.get("entry"), map.get("entries")) {
         (None, None) => Vec::new(),
-        (Some(serde_yaml::Value::String(id)), None) => vec![id.clone()],
-        (None, Some(serde_yaml::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => ids
+        (Some(yaml_serde::Value::String(id)), None) => vec![id.clone()],
+        (None, Some(yaml_serde::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => ids
             .iter()
             .filter_map(|i| i.as_str().map(str::to_string))
             .collect(),
@@ -636,7 +636,7 @@ fn run_one_test(
     };
     let beat: Option<String> = match map.get("beat") {
         None => None,
-        Some(serde_yaml::Value::String(id)) if !id.trim().is_empty() => Some(id.clone()),
+        Some(yaml_serde::Value::String(id)) if !id.trim().is_empty() => Some(id.clone()),
         Some(_) => {
             eprintln!(
                 "lute: {}: `beat:` must be one bundle beat id (`<beat id>` or \
@@ -921,23 +921,23 @@ fn run_one_test(
 
     // `expect.eligible`, a map key naming an entry by its `<document
     // id>.<entry id>` alias resolved to the entry id (dsl 0.26.0 §7, T3-10).
-    let eligible_want: Option<serde_yaml::Value> = map
+    let eligible_want: Option<yaml_serde::Value> = map
         .get("expect")
         .and_then(|e| e.get("eligible"))
         .map(|want| match want {
-            serde_yaml::Value::Mapping(m) => {
-                let doc_id = serde_yaml::from_str::<serde_yaml::Value>(&doc.meta.raw_yaml)
+            yaml_serde::Value::Mapping(m) => {
+                let doc_id = yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml)
                     .ok()
-                    .and_then(|v: serde_yaml::Value| {
+                    .and_then(|v: yaml_serde::Value| {
                         v.get("id")
-                            .and_then(serde_yaml::Value::as_str)
+                            .and_then(yaml_serde::Value::as_str)
                             .map(str::to_string)
                     });
-                serde_yaml::Value::Mapping(
+                yaml_serde::Value::Mapping(
                     m.iter()
                         .map(|(k, v)| {
                             let k = match k.as_str() {
-                                Some(id) => serde_yaml::Value::String(
+                                Some(id) => yaml_serde::Value::String(
                                     lute_trace::entry_local_id(doc, doc_id.as_deref(), id)
                                         .to_string(),
                                 ),
@@ -955,7 +955,7 @@ fn run_one_test(
     // T3-5) — so a lore test may carry it alone, presenting nothing.
     let judges_eligibility_by_id = eligible_want
         .as_ref()
-        .is_some_and(serde_yaml::Value::is_mapping);
+        .is_some_and(yaml_serde::Value::is_mapping);
     let mut lore_lookup_only = false;
     // dsl 0.26.0 §7 (T1-7): a test asserting `eligible:` judges the
     // presentation, not a walk the engine would never make — an entry,
@@ -1342,10 +1342,10 @@ fn run_one_test(
             // dsl 0.28.0 (T1-25): `{ <id>: { false: <reason> } }` also
             // names the premise that must close it (`spentBy`, `when`, …) —
             // so a beat closed by something else does not pass vacuously.
-            let parse = |v: &serde_yaml::Value| -> (Option<bool>, Option<String>) {
+            let parse = |v: &yaml_serde::Value| -> (Option<bool>, Option<String>) {
                 match v {
-                    serde_yaml::Value::Mapping(m) if m.len() == 1 => {
-                        match m.get(serde_yaml::Value::Bool(false)).map(yaml_scalar_text) {
+                    yaml_serde::Value::Mapping(m) if m.len() == 1 => {
+                        match m.get(yaml_serde::Value::Bool(false)).map(yaml_scalar_text) {
                             Some(reason) => (Some(false), Some(reason.unwrap_or_default())),
                             None => (None, None),
                         }
@@ -1354,7 +1354,7 @@ fn run_one_test(
                 }
             };
             let wants: Vec<(Option<String>, Option<bool>, Option<String>)> = match want {
-                serde_yaml::Value::Mapping(m) => m
+                yaml_serde::Value::Mapping(m) => m
                     .iter()
                     .map(|(k, v)| {
                         let (b, reason) = parse(v);
@@ -1625,7 +1625,7 @@ fn scan_play(play_file: &Path) -> PlayScan {
             ))
         }
     };
-    let top: serde_yaml::Value = match serde_yaml::from_str(&text) {
+    let top: yaml_serde::Value = match yaml_serde::from_str(&text) {
         Ok(v) => v,
         Err(e) => return PlayScan::Broken(format!("malformed play YAML: {e}")),
     };
@@ -1868,12 +1868,12 @@ fn presented_eligibility(report: &TraceReport) -> Vec<(String, Option<bool>)> {
 /// Does the test's `expect.eligible` assert the verdict of the presented
 /// `id`? The scalar form covers every presented one, the map form the ids
 /// it names (dsl 0.24.0, T3-5).
-fn eligibility_asserted(id: &str, asserted: Option<&serde_yaml::Value>) -> bool {
+fn eligibility_asserted(id: &str, asserted: Option<&yaml_serde::Value>) -> bool {
     match asserted {
         None => false,
-        Some(serde_yaml::Value::Mapping(m)) => m
+        Some(yaml_serde::Value::Mapping(m)) => m
             .keys()
-            .filter_map(serde_yaml::Value::as_str)
+            .filter_map(yaml_serde::Value::as_str)
             .any(|k| names_presented(id, k)),
         Some(_) => true,
     }
@@ -1916,7 +1916,7 @@ fn eligibility_alone(
 /// undecided under the test's mocks — trace presents it anyway — unless the
 /// test's `expect.eligible` asserts that verdict. A `when` that is false is
 /// no note: the test fails on it (dsl 0.26.0 §7, T1-7).
-fn ineligible_notes(report: &TraceReport, asserted: Option<&serde_yaml::Value>) -> Vec<String> {
+fn ineligible_notes(report: &TraceReport, asserted: Option<&yaml_serde::Value>) -> Vec<String> {
     presented_eligibility(report)
         .into_iter()
         // A scene's undecided `when` is the trace's own beat-`when` note.
@@ -2094,11 +2094,11 @@ fn yaml_key_spelling(message: &str) -> String {
 /// Render a YAML scalar to its literal TEXT form, matching the shape
 /// `lute-trace`'s mock parser coerces `state:` values through (bool/number/
 /// string). A non-scalar yields `None`.
-fn yaml_scalar_text(v: &serde_yaml::Value) -> Option<String> {
+fn yaml_scalar_text(v: &yaml_serde::Value) -> Option<String> {
     match v {
-        serde_yaml::Value::Bool(b) => Some(b.to_string()),
-        serde_yaml::Value::Number(n) => Some(n.to_string()),
-        serde_yaml::Value::String(s) => Some(s.clone()),
+        yaml_serde::Value::Bool(b) => Some(b.to_string()),
+        yaml_serde::Value::Number(n) => Some(n.to_string()),
+        yaml_serde::Value::String(s) => Some(s.clone()),
         _ => None,
     }
 }

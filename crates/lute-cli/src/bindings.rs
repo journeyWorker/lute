@@ -37,7 +37,7 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
             diag("E-BINDING-EFFECT", message, locate(&text, "effect")),
         )];
     }
-    let bindings = match serde_yaml::from_str::<Bindings>(&text) {
+    let bindings = match yaml_serde::from_str::<Bindings>(&text) {
         Ok(value) => value,
         Err(error) => {
             let span = error.location().map_or_else(
@@ -653,16 +653,16 @@ fn suggest<'a>(key: &str, values: impl Iterator<Item = &'a String>) -> String {
 }
 
 fn effect_shape_error(text: &str) -> Option<String> {
-    let value = serde_yaml::from_str::<serde_yaml::Value>(text).ok()?;
+    let value = yaml_serde::from_str::<yaml_serde::Value>(text).ok()?;
     for section in ["actions", "transitions", "cameraMove", "vfx"] {
-        let Some(map) = value.get(section).and_then(serde_yaml::Value::as_mapping) else {
+        let Some(map) = value.get(section).and_then(yaml_serde::Value::as_mapping) else {
             continue;
         };
         for (name, item) in map {
             let Some(item) = item.as_mapping() else {
                 continue;
             };
-            let effect = item.get("effect").and_then(serde_yaml::Value::as_str)?;
+            let effect = item.get("effect").and_then(yaml_serde::Value::as_str)?;
             let custom = effect == "custom";
             if custom && section != "vfx" {
                 return Some(format!(
@@ -679,7 +679,7 @@ fn effect_shape_error(text: &str) -> Option<String> {
             } else {
                 effect_params(effect)
             };
-            for key in item.keys().filter_map(serde_yaml::Value::as_str) {
+            for key in item.keys().filter_map(yaml_serde::Value::as_str) {
                 if key != "effect" && !allowed.contains(&key) {
                     return Some(format!(
                         "effect `{effect}` does not accept parameter `{key}` on binding `{name:?}`"

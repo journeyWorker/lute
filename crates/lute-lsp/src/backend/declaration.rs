@@ -118,7 +118,7 @@ impl Backend {
             if let Some(t) = v
                 .get("type")
                 .cloned()
-                .and_then(|t| serde_yaml::from_value(t).ok())
+                .and_then(|t| yaml_serde::from_value(t).ok())
             {
                 def_types.insert(name.clone(), t);
             }
@@ -205,7 +205,7 @@ impl Backend {
             let expected = val
                 .get("type")
                 .cloned()
-                .and_then(|t| serde_yaml::from_value::<lute_manifest::types::Type>(t).ok())
+                .and_then(|t| yaml_serde::from_value::<lute_manifest::types::Type>(t).ok())
                 .map(lute_check::ctx::ExpectedType::Ty);
             diags.extend(check_cel_slot(&slot, &arena, &ctx, expected.as_ref()));
         }

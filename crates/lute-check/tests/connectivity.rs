@@ -2543,7 +2543,7 @@ fn meta_parse_failure_stops_semantic_checks() {
     assert_eq!(codes, vec!["E-META-PARSE".to_string()], "{codes:?}");
 }
 
-/// Round-5 T3-2: `E-META-PARSE` sat at `1:1` and quoted serde_yaml's line,
+/// Round-5 T3-2: `E-META-PARSE` sat at `1:1` and quoted yaml_serde's line,
 /// counted from the line after `---` (one short). It now anchors at the
 /// offending character's real file line and column, and the two common
 /// causes carry their fix: a quote nested in a same-quoted value, and a tab
@@ -2573,7 +2573,7 @@ fn meta_parse_error_is_anchored_at_the_file_line_with_a_fix() {
     );
     assert!(
         !msg.contains("line 5"),
-        "serde_yaml's own line is gone: {msg}"
+        "yaml_serde's own line is gone: {msg}"
     );
 
     let (line, _, msg) = parse_error(

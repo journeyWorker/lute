@@ -454,7 +454,7 @@
       ]
     },
     "type": {
-      "description": "types.rs::TypeDef — the plugin §7 Type wire form. Bare unit tags (`bool`/`int`/`double`/`string`) or a SINGLE-key tagged map (`serde_yaml::with::singleton_map_recursive` requires EXACTLY one key to resolve the variant, hence `additionalProperties: false` + `required` per branch below).",
+      "description": "types.rs::TypeDef — the plugin §7 Type wire form. Bare unit tags (`bool`/`int`/`double`/`string`) or a SINGLE-key tagged map (`yaml_serde::with::singleton_map_recursive` requires EXACTLY one key to resolve the variant, hence `additionalProperties: false` + `required` per branch below).",
       "oneOf": [
         {
           "const": "bool"

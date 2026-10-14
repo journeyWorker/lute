@@ -19,7 +19,7 @@
 //!    it runs in `fold_env` where that schema exists.
 
 use lute_manifest::types::Type;
-use serde_yaml::Value;
+use yaml_serde::Value;
 
 use crate::cel_resolve::{compatible, ty_desc};
 use crate::ctx::ExpectedType;
@@ -66,7 +66,7 @@ pub fn is_host(def: &Value) -> bool {
 pub(crate) fn lift_def(name: &str, v: &Value, schema: bool) -> Result<Value, String> {
     let map = match v {
         Value::String(cel) => {
-            let mut m = serde_yaml::Mapping::new();
+            let mut m = yaml_serde::Mapping::new();
             m.insert(Value::String("cel".into()), Value::String(cel.clone()));
             return Ok(Value::Mapping(m));
         }
@@ -126,7 +126,7 @@ pub(crate) fn lift_def(name: &str, v: &Value, schema: bool) -> Result<Value, Str
         }
     }
     match v.get("type") {
-        Some(t) if serde_yaml::from_value::<Type>(t.clone()).is_err() => Err(format!(
+        Some(t) if yaml_serde::from_value::<Type>(t.clone()).is_err() => Err(format!(
             "invalid def `{name}`: `type:` is not a type; a def produces `bool`, `number`, \
              `string` or an `enum`, as `{{ type: bool, cel: \"…\" }}` or \
              `{{ type: {{ enum: [...] }}, cel: \"…\" }}` — or drop `type:` and let the body's \
@@ -163,7 +163,7 @@ pub(crate) fn settle_def_type(
     }
     let cel = def.get("cel")?.as_str()?.to_string();
     let declared = match def.get("type") {
-        Some(t) => Some(serde_yaml::from_value::<Type>(t.clone()).ok()?),
+        Some(t) => Some(yaml_serde::from_value::<Type>(t.clone()).ok()?),
         None => None,
     };
     let decision = decide_raw(&cel, schema, defs)?;
@@ -184,7 +184,7 @@ pub(crate) fn settle_def_type(
         // `lift_def` rejects `params:` without `type:`; nothing to settle.
         (None, _) if def.get("params").is_some() => None,
         (None, Decision::Ty(produced)) => {
-            let ty = serde_yaml::to_value(&produced).ok()?;
+            let ty = yaml_serde::to_value(&produced).ok()?;
             if let Value::Mapping(m) = def {
                 m.insert(Value::String("type".into()), ty);
             }
@@ -209,7 +209,7 @@ fn def_type(def: &Value) -> Option<Type> {
     if is_invalid(def) {
         return None;
     }
-    serde_yaml::from_value(def.get("type")?.clone()).ok()
+    yaml_serde::from_value(def.get("type")?.clone()).ok()
 }
 
 /// Round-5 T3-14: settle every imported and inline def ([`settle_def_type`])

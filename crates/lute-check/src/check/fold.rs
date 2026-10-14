@@ -6,17 +6,17 @@ use super::*;
 
 /// Extract ordered `(param name, Type)` pairs from an inline/imported def's raw
 /// YAML value (dsl §8.1). Reads the def's `params:` sub-MAPPING in SOURCE order
-/// (`serde_yaml::Mapping` is insertion-ordered), deserializing each value to a
+/// (`yaml_serde::Mapping` is insertion-ordered), deserializing each value to a
 /// `Type` via the same serde path `Type` uses. An absent/non-mapping `params:`
 /// or a malformed entry yields no pair — never a panic.
-pub fn params_from_yaml(v: &serde_yaml::Value) -> Vec<(String, lute_manifest::types::Type)> {
+pub fn params_from_yaml(v: &yaml_serde::Value) -> Vec<(String, lute_manifest::types::Type)> {
     let Some(map) = v.get("params").and_then(|p| p.as_mapping()) else {
         return Vec::new();
     };
     map.iter()
         .filter_map(|(k, tv)| {
             let name = k.as_str()?.to_string();
-            let ty = serde_yaml::from_value::<lute_manifest::types::Type>(tv.clone()).ok()?;
+            let ty = yaml_serde::from_value::<lute_manifest::types::Type>(tv.clone()).ok()?;
             Some((name, ty))
         })
         .collect()
@@ -697,7 +697,7 @@ pub fn fold_env(
             .get("type")
             .filter(|_| !crate::def_decl::is_invalid(v))
             .cloned()
-            .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
+            .and_then(|tv| yaml_serde::from_value::<lute_manifest::types::Type>(tv).ok())
         {
             def_types.insert(name.clone(), t);
         }
@@ -711,7 +711,7 @@ pub fn fold_env(
             .get("type")
             .filter(|_| !crate::def_decl::is_invalid(v))
             .cloned()
-            .and_then(|tv| serde_yaml::from_value::<lute_manifest::types::Type>(tv).ok())
+            .and_then(|tv| yaml_serde::from_value::<lute_manifest::types::Type>(tv).ok())
         {
             def_types.insert(name.clone(), t);
         }

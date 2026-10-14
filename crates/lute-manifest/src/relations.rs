@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_yaml::Value;
+use yaml_serde::Value;
 
 use crate::snapshot::Domain;
 
@@ -106,7 +106,7 @@ pub struct ParsedKinds {
     /// sub-kinds in, so a union kind's members follow the schema.
     pub order: Vec<String>,
     /// Names declared more than once IN THIS BLOCK, in encounter order
-    /// (checker → `E-KIND-NAME-CLASH`). `serde_yaml::Value::as_mapping()`
+    /// (checker → `E-KIND-NAME-CLASH`). `yaml_serde::Value::as_mapping()`
     /// collapses duplicate YAML keys before this function ever sees them, so
     /// this is best-effort over the (already-deduped) mapping iterator; the
     /// authoritative raw-text occurrence scan lives at the meta lift layer.
@@ -618,8 +618,8 @@ pub fn kinds_to_domains(kinds: &BTreeMap<String, EntityKindDecl>) -> BTreeMap<St
 mod tests {
     use super::*;
 
-    fn yaml(s: &str) -> serde_yaml::Value {
-        serde_yaml::from_str(s).unwrap()
+    fn yaml(s: &str) -> yaml_serde::Value {
+        yaml_serde::from_str(s).unwrap()
     }
 
     #[test]

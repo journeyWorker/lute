@@ -495,7 +495,7 @@ fn asset_segment_type_file_names_the_yaml() {
 /// Pins the `Display` rendering of a PRE-EXISTING variant (`Parse`), so the
 /// new `impl Display for LoadError` is exercised for more than just the one
 /// variant this defect report cares about. Malformed YAML syntax (not just a
-/// shape mismatch) so `serde_yaml::from_str` fails before `merge` ever runs.
+/// shape mismatch) so `yaml_serde::from_str` fails before `merge` ever runs.
 #[test]
 fn parse_error_message_is_prose() {
     let tmp_scratch = lute_scratch::ScratchDir::new();
@@ -563,10 +563,10 @@ fn loads_lints_export_round_trip() {
     assert_eq!(r0.when, "scene.choices > options.max");
     assert_eq!(r0.level, Some(LintLevel::Warn));
     assert_eq!(r0.message, "scene has {scene.choices} choices");
-    // options are the raw serde_yaml::Mapping — { max: 6 } is present.
+    // options are the raw yaml_serde::Mapping — { max: 6 } is present.
     assert_eq!(
         r0.options
-            .get(serde_yaml::Value::String("max".into()))
+            .get(yaml_serde::Value::String("max".into()))
             .and_then(|v| v.as_i64()),
         Some(6)
     );

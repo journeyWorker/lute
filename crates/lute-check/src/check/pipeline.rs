@@ -69,12 +69,12 @@ pub(super) fn cel_parse_diagnostics(
 /// naming its schema file — schema files are not checked on their own.
 fn def_body_diagnostics(
     doc: &Document,
-    inline: &std::collections::BTreeMap<String, serde_yaml::Value>,
+    inline: &std::collections::BTreeMap<String, yaml_serde::Value>,
     imports: &SchemaImports,
     schema: &crate::meta::StateSchema,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    let mut check_one = |name: &str, def: &serde_yaml::Value, span: Span, prefix: &str| {
+    let mut check_one = |name: &str, def: &yaml_serde::Value, span: Span, prefix: &str| {
         if crate::def_decl::is_invalid(def) {
             return; // 0.41.0 §3.2: `E-TYPE-NUMBER` is its one report
         }

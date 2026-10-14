@@ -66,12 +66,12 @@ pub struct LintRuleDecl {
     /// Rule-specific option DEFAULTS. An opaque YAML mapping the rule's
     /// own logic interprets; the consumer's `lute.lint.yaml` deep-merges
     /// per-project overrides on top (design §3). Kept as
-    /// [`serde_yaml::Mapping`] so the loader neither validates nor
-    /// re-shapes the interior — `serde_yaml` is already the workspace's
+    /// [`yaml_serde::Mapping`] so the loader neither validates nor
+    /// re-shapes the interior — `yaml_serde` is already the workspace's
     /// YAML crate, and using its ordered `Mapping` keeps declaration
     /// order stable for consumers that render options back.
     #[serde(default)]
-    pub options: serde_yaml::Mapping,
+    pub options: yaml_serde::Mapping,
 }
 
 /// Metric-table target a lint rule binds over (design §4). Serialized
