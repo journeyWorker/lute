@@ -49,7 +49,8 @@ fn runtime() -> Runtime {
     Runtime::load(Bundle::new(artifacts, index)).unwrap()
 }
 
-fn step(runtime: &Runtime, state: &State, value: Json) -> Result<State, (State, String, String)> {
+/// Steps `value`; a refusal yields the refused state's snapshot, code and message.
+fn step(runtime: &Runtime, state: &State, value: Json) -> Result<State, (Json, String, String)> {
     let input: Input = serde_json::from_value(value).unwrap();
     match runtime.step(state.clone(), input) {
         Ok((state, output)) => {
@@ -60,7 +61,7 @@ fn step(runtime: &Runtime, state: &State, value: Json) -> Result<State, (State, 
             );
             Ok(state)
         }
-        Err((state, rejected)) => Err((state, rejected.code, rejected.message)),
+        Err((state, rejected)) => Err((snapshot(runtime, &state), rejected.code, rejected.message)),
     }
 }
 
@@ -95,11 +96,7 @@ fn a_write_for_the_ending_rides_on_the_input_that_ends_the_run() {
     )
     .expect_err("a hostWrite after the ending was accepted");
     assert_eq!(code, "E-RUNTIME-BUSY");
-    assert_eq!(
-        snapshot(&runtime, &after),
-        before,
-        "the refusal changed the state"
-    );
+    assert_eq!(after, before, "the refusal changed the state");
     assert_eq!(
         message,
         "the runtime has ended; only newRun or an outsideRun raise is accepted \u{2014} a write \
@@ -113,11 +110,7 @@ fn a_write_for_the_ending_rides_on_the_input_that_ends_the_run() {
     )
     .expect_err("advanceClock after the ending was accepted");
     assert_eq!(code, "E-RUNTIME-BUSY");
-    assert_eq!(
-        snapshot(&runtime, &after),
-        before,
-        "the refusal changed the state"
-    );
+    assert_eq!(after, before, "the refusal changed the state");
     assert_eq!(
         message,
         "the runtime has ended; only newRun or an outsideRun raise is accepted"
