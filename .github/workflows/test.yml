@@ -396,9 +396,6 @@ jobs:
       - name: Typecheck runtime
         working-directory: packages/runtime
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare runtime Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/runtime
 
       - name: Check runtime contract
         working-directory: packages/runtime
@@ -467,9 +464,6 @@ jobs:
       - name: Typecheck player core
         working-directory: packages/player
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare player Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/player
 
       - name: Test player core
         working-directory: packages/player
@@ -486,9 +480,6 @@ jobs:
       - name: Typecheck web player
         working-directory: packages/player-web
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare player-web Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/player-web
 
       - name: Test web player
         working-directory: packages/player-web

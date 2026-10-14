@@ -304,12 +304,6 @@ loader and audio port resolve files against `assetsBase`.
 
 ## Package checks
 
-From each package directory, `bun run typecheck` is the package typecheck.
-For the 0.42 release it invokes `bun check`; `bun run build` remains the
-declaration-emitting path through `scripts/build.ts` and `tsc`.
-
-CI pins Bun 1.4.3 and runs `scripts/compare-typecheck.sh <package-dir>` once
-during 0.42.0 to compare normalized Bun and `tsc --noEmit` diagnostics.
-Identical non-empty diagnostic sets may accompany identical command failures; a
-failed command with no extracted diagnostics fails the comparison. This
-temporary comparison is removed after 0.42.0.
+From each package directory, `bun run typecheck` is the package typecheck; it
+runs `bun check`. `bun run build` remains the declaration-emitting path through
+`scripts/build.ts` and `tsc`. CI pins Bun 1.4.3.
