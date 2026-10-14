@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.43.0 runtime contract.**
+**Status: 0.44.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.43.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.43.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.44.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.44.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -129,6 +129,26 @@ Each of the following examples is an `Input`:
 {"type": "newRun", "writes": {"accept": ["findTheKey"]}}
 ```
 
+### Writes that belong to the ending (0.44)
+
+Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun`
+raise. A host write that belongs to the ending run — ending metadata, a final
+score — MUST therefore ride as `writes` on the input that causes the terminal
+transition, when that input carries writes: `raiseOccasion`, `advanceClock`,
+`bridgeResult` or `hostWrite`, whose writes land before the transition. For
+example, the dawn raise that ends a game carries the ending's name:
+
+```json
+{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}
+```
+
+`choose`, `timeout` and `worldEvent` carry no writes: an ending they cause
+records its state in the story (a `::set` in the branch that ends) or in a
+`hostWrite` sent before them. `newRun`'s writes seed the run it starts, where
+the ended run's `run.*` values are readable as `prev.run.*`; they never write
+into the ended run. A `hostWrite` after the ending is refused `E-RUNTIME-BUSY`
+with the state unchanged, and its message says where the write belongs.
+
 The host measures wall-clock time and sends `timeout`; wall-clock time never
 enters the runtime. Timeout is accepted only for a timed `awaitChoice` whose
 request matches. Its continuation records a choice of the menu's `default`,
@@ -139,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.43.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.44.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -214,7 +234,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.43.schema.json` and in
+definitions in `lute-events-0.44.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -325,7 +345,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.43.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.44.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

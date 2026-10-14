@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.43.0";
+pub const EVENT_VERSION: &str = "0.44.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.43.0";
+pub const IR_VERSION: &str = "0.44.0";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -661,13 +661,16 @@ impl Runtime {
         if matches!(state.phase, Phase::Ended)
             && !matches!(input, Input::NewRun { .. } | Input::RaiseOccasion { .. })
         {
-            return Err((
-                unchanged.clone(),
-                reject(
-                    "E-RUNTIME-BUSY",
-                    "the runtime has ended; only newRun or an outsideRun raise is accepted",
-                ),
-            ));
+            // dsl 0.44.0 §3.2: a host write cannot follow the ending; the
+            // refusal says where such a write belongs.
+            let message = if matches!(input, Input::HostWrite { .. }) {
+                "the runtime has ended; only newRun or an outsideRun raise is accepted \
+                 \u{2014} a write that belongs to the ending rides as `writes` on the input \
+                 that ends the run"
+            } else {
+                "the runtime has ended; only newRun or an outsideRun raise is accepted"
+            };
+            return Err((unchanged.clone(), reject("E-RUNTIME-BUSY", message)));
         }
         let (base, original, answers, delivered) = match state.continuation.take() {
             Some(c) => match (&input, &c.pending) {

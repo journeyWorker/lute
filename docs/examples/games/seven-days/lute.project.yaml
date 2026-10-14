@@ -9,7 +9,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.43.0"
+  luteVersion: "0.44.0"
   contentLang: en-US
   pov: sol
   uses: [world.schema.yaml, vocabulary.schema.yaml]

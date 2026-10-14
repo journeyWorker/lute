@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.43.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.43.schema.json)
+[`schemas/lute-ir-0.44.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.44.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -47,6 +47,10 @@ host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
 `effect`, giving the host two `effect` instances. See
 [Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
  
+## 0.44 runtime additions
+
+**Writes that belong to the ending.** Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun` raise. A host write that belongs to the ending run — ending metadata, a final score — rides as `writes` on the input that causes the terminal transition, when that input carries writes: `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite`, whose writes land before the transition (`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout` and `worldEvent` carry no writes: an ending they cause records its state in the story (a `::set` in the branch that ends) or in a `hostWrite` sent before them. `newRun`'s writes seed the run it starts, where the ended run's `run.*` values read as `prev.run.*`. A `hostWrite` after the ending is still refused `E-RUNTIME-BUSY` with the state unchanged; its message now says where the write belongs.
+
 ## 0.42 runtime additions
 
 Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and plugin `stampAttrs` stay where they were, so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
@@ -293,8 +297,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.43` engine accepts only `0.43.*` artifacts and refuses `0.42.*`
-   and `0.44.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.44` engine accepts only `0.44.*` artifacts and refuses `0.43.*`
+   and `0.45.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -306,7 +310,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.43.0"
+irVersion: "0.44.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -322,7 +326,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.43.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.44.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

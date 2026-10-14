@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.43.0`, the grammar and semantics the checker
+- **Language** — currently `0.44.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.43.0`) and gated on by consuming engines.
+  artifact (currently `0.44.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,94 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.44.0]
+
+**Hosting the player** (spec
+[`0.44.0.md`](docs/proposals/scenario-dsl/0.44.0.md); plan
+[`2026-10-15-lute-0.44.0-hosting.md`](docs/superpowers/plans/2026-10-15-lute-0.44.0-hosting.md);
+decisions
+[`2026-10-15-lute-0.44-decisions.md`](docs/superpowers/notes/2026-10-15-lute-0.44-decisions.md)).
+Issues #94–#97. Host-facing documentation and one runtime message; **no
+language, IR, Event, snapshot, bindings, CLI or TypeScript API shape
+changes**. The stamps read `0.44.0`, the contract schemas move to the `0.44`
+line (`schemas/lute-{ir,events,snapshot,player-bindings}-0.44.schema.json`,
+bodies unchanged apart from `$id`/title), `bindingsVersion` is `"0.44"` and
+the player's save/profile format version is `"0.44"`. The npm packages
+publish `0.44.0`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None. The rule for host writes that belong to an ending is now stated
+  normatively (#97): once the runtime answers `ended` it accepts only `newRun`
+  or an `outsideRun` raise, so such a write rides as `writes` on the input
+  that causes the terminal transition (`raiseOccasion`, `advanceClock`,
+  `bridgeResult`, `hostWrite`); `choose`, `timeout` and `worldEvent` carry no
+  writes; `newRun`'s writes seed the next run (the ended run reads as
+  `prev.run.*`). No new input kind and no contract extension.
+
+### IR
+
+- None (stamp and schema line only).
+
+### Plugin
+
+- None. Documented: a plugin directive lowered to `bg` changes the
+  background only — the scene-change auto-hide and pose reset follow the core
+  `::bg`/`::clear` directives, so exit characters or write `::clear` before a
+  plugin scene change. Making the lowered record kind drive the stage reducer
+  is a 0.45 candidate. The `lower:` grammar has been closed since 0.24.0; the
+  staging-tag-dispatch note is `Superseded`.
+
+### CLI
+
+- None. Human output is unchanged apart from the stamps.
+
+### Runtime
+
+- A `hostWrite` sent at `ended` is still `E-RUNTIME-BUSY` with the state
+  unchanged; its message now says where the write belongs: `the runtime has
+  ended; only newRun or an outsideRun raise is accepted — a write that belongs
+  to the ending rides as \`writes\` on the input that ends the run`. Other
+  refusals keep their message. The TypeScript runtime's `RuntimeBusy`
+  forwards it.
+
+### Player
+
+- Hosting recipes (#94, #95, #96) in the player README,
+  `docs/player/architecture.md` and the website's custom-hosts page (EN/KO):
+  composing `Director.make` with `bundle`, `host.plugin` and a `cueFactory`
+  wrapper; `LutePlayer.make` over an external runtime session with
+  `BundleSource` and a memory or persistent `KeyValueStore`; runtime
+  `Contract.Snapshot` versus player `SaveRuntime`, and checkpoint/restore in
+  a running or fresh player. The save/profile version prose follows the
+  release line.
+
+### Diagnostics
+
+- None (no new or renamed codes).
+
+### Identity
+
+- None.
+
+### Fixed
+
+- The TypeScript test support and the player-web demo build spawned `lute`
+  with telemetry on, so a local `bun run test` appended to the developer's
+  telemetry file despite 0.43.0's "tests, scripts and CI run with it off".
+  They now set `LUTE_TELEMETRY=0`.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| Runtime | The `E-RUNTIME-BUSY` message for a `hostWrite` at `ended` changed. | Match on the code, not the message; move ending writes onto the input that ends the run. |
+| Release | All axes and packages stamp `0.44.0`; schemas move to the `0.44` line; `bindingsVersion: "0.44"`; saves and profiles read `"0.44"`, so a 0.43 save is refused `SaveIncompatible` (as every release line's is: the project fingerprint carries the toolchain version). | Widen version gates to 0.44; update `bindingsVersion`. |
 
 ## [0.43.0]
 

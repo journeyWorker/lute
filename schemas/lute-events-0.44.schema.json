@@ -1700,7 +1700,7 @@
       ]
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.43.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.44.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {
@@ -1719,5 +1719,5 @@
       "$ref": "#/$defs/StreamLine"
     }
   ],
-  "title": "Lute runtime events (eventVersion 0.43.x)"
+  "title": "Lute runtime events (eventVersion 0.44.x)"
 }

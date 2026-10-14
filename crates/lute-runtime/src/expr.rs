@@ -132,7 +132,7 @@ impl Func {
 }
 
 impl Expr {
-    /// Decode one `exprNode` (`schemas/lute-ir-0.43.schema.json`
+    /// Decode one `exprNode` (`schemas/lute-ir-0.44.schema.json`
     /// `$defs/exprNode`). A shape outside the schema decodes to
     /// [`Expr::Invalid`].
     pub(crate) fn decode(node: &Json) -> Expr {
@@ -254,7 +254,7 @@ pub(crate) fn host_int(v: &Json) -> Option<i64> {
     v.as_i64().filter(|n| (-INT_BOUND..=INT_BOUND).contains(n))
 }
 
-/// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.43.schema.json`,
+/// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.44.schema.json`,
 /// recursively: one variant's key set and no other key, each field of its
 /// schema type, `int` within `±2^53`, `op` in its arity's set. Stricter than
 /// [`Expr::decode`], which reads the IR the compiler wrote and tolerates

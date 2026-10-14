@@ -19,7 +19,8 @@ const binCandidates = [
 const lute = binCandidates.find((candidate) => candidate === "lute" || existsSync(candidate))
 if (lute === undefined) throw new Error("cannot find lute; set LUTE_BIN or build target/{release,debug}/lute")
 
-const compile = Bun.spawnSync([lute, "compile", "--all", project, "-o", bundle], { cwd: repo, stdout: "inherit", stderr: "inherit" })
+// The demo build never writes the developer's telemetry (dsl 0.43.0 §6).
+const compile = Bun.spawnSync([lute, "compile", "--all", project, "-o", bundle], { cwd: repo, env: { ...process.env, LUTE_TELEMETRY: "0" }, stdout: "inherit", stderr: "inherit" })
 if (compile.exitCode !== 0) process.exit(compile.exitCode ?? 1)
 
 const built = await Bun.build({

@@ -16,6 +16,8 @@ let cliBuilt = false
 const command = (args: ReadonlyArray<string>, cwd: string) => {
   const result = Bun.spawnSync([...args], {
     cwd,
+    // Tests never write the developer's telemetry (dsl 0.43.0 §6).
+    env: { ...process.env, LUTE_TELEMETRY: "0" },
     stdout: "pipe",
     stderr: "pipe"
   })
