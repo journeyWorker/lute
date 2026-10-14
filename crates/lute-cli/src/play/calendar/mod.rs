@@ -79,12 +79,12 @@ use axes::{
     apply_axis, clock_axis_at, resolve_axis, settled_away, tied_outside, written_paths, Apply,
     Axis, MAX_CELLS,
 };
+use cells::{cell_facts, columns, evaluate};
 use occasions::{
     describe_positions, occasion_pins, parse_occasion, OccasionSpec, Outcome, Pin, RaiseRule,
 };
 use render::{render_csv, render_json, render_text, undecided_why};
 use run::{holds_at, start_world};
-use cells::{cell_facts, columns, evaluate};
 
 /// One evaluated occasion (and target).
 struct Column {

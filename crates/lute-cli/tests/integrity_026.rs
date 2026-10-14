@@ -105,10 +105,7 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
         lines[0].contains("q.lute:5") && lines[0].contains("a.lute:6"),
         "names both declarations by file and line: {s}"
     );
-    assert!(
-        lines[0].contains("bool") && lines[0].contains("int"),
-        "{s}"
-    );
+    assert!(lines[0].contains("bool") && lines[0].contains("int"), "{s}");
 
     // Play keys state by declared type: it refuses the project rather than
     // read one document's number as the other's bool.
@@ -633,7 +630,8 @@ fn refs_lists_every_value_with_the_documents_using_it() {
     );
 
     let json = run(&dir, &["refs", ".", "--reward", "ITEM", "--json"]);
-    let v: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap_or_else(|_| panic!("{}", text(&json)));
+    let v: serde_json::Value =
+        serde_json::from_slice(&json.stdout).unwrap_or_else(|_| panic!("{}", text(&json)));
     let q = &v["queries"][0];
     assert_eq!(
         (q["kind"].as_str(), q["name"].as_str()),

@@ -9,7 +9,6 @@ use std::process::{Command, Output};
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 
 fn project(tag: &str, schema: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
-    
     let dir = lute_scratch::ScratchDir::named(tag);
     let write = |rel: &str, text: &str| {
         let p = dir.join(rel);

@@ -15,8 +15,8 @@ use lute_check::{
     check, check_fact_guards, check_project_beats, compute_must, fold_env, CheckInput, FactEnv,
     FoldedEnv, MaySet, Mode, ProjectDoc, RootVocab, SchemaImports,
 };
-use lute_ir::BeatOnce;
 use lute_core_span::{Diagnostic, Severity};
+use lute_ir::BeatOnce;
 use lute_manifest::schema::{OccasionDecl, OccasionSelect};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
@@ -546,7 +546,10 @@ impl Project {
 
 #[test]
 fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(\"found\", [\"toma\"])'\n");
+    let src = fact_scene(
+        "haven.a",
+        "on: talk\nwhen: 'holds(\"found\", [\"toma\"])'\n",
+    );
     let p = project(&[("a.lute", &src)], core());
     assert!(
         with_code(&p.per_file[0], "E-BEAT-UNREACHABLE").is_empty(),
@@ -566,12 +569,16 @@ fn when_over_an_impossible_fact_is_beat_unreachable_in_the_project() {
 
 #[test]
 fn when_over_a_guaranteed_fact_is_fact_guaranteed() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'holds(\"awake\", [\"vesna\"])'\n");
+    let src = fact_scene(
+        "haven.a",
+        "on: talk\nwhen: 'holds(\"awake\", [\"vesna\"])'\n",
+    );
     let p = project(&[("a.lute", &src)], core());
     let ds = p.guards("a.lute");
     let w = only(&ds, "W-FACT-GUARANTEED");
     assert!(
-        w.message.contains("`holds('awake', ['vesna'])` is a `facts:` seed"),
+        w.message
+            .contains("`holds('awake', ['vesna'])` is a `facts:` seed"),
         "{}",
         w.message
     );
@@ -579,7 +586,10 @@ fn when_over_a_guaranteed_fact_is_fact_guaranteed() {
 
 #[test]
 fn a_scalar_dead_when_is_reported_once_per_file() {
-    let src = fact_scene("haven.a", "on: talk\nwhen: 'false && holds(\"found\", [\"toma\"])'\n");
+    let src = fact_scene(
+        "haven.a",
+        "on: talk\nwhen: 'false && holds(\"found\", [\"toma\"])'\n",
+    );
     let p = project(&[("a.lute", &src)], core());
     only(&p.per_file[0], "E-BEAT-UNREACHABLE");
     assert!(p.guards("a.lute").is_empty(), "{:?}", p.guards("a.lute"));

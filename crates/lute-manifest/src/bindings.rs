@@ -441,8 +441,12 @@ mod tests {
             "transitions: {x: {effect: custom}}",
             "cameraMove: {x: {effect: custom}}",
         ] {
-            let text = format!("bindingsVersion: '0.42'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
-            assert!(serde_yaml::from_str::<Bindings>(&text).is_err(), "{rejected}");
+            let text =
+                format!("bindingsVersion: '0.42'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
+            assert!(
+                serde_yaml::from_str::<Bindings>(&text).is_err(),
+                "{rejected}"
+            );
         }
     }
 

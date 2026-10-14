@@ -10,7 +10,6 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-
 use crate::cli::ScenarioCommand;
 use crate::cmd_scenario::graph::run_scenario_graph;
 use crate::cmd_scenario::node_envelope::run_scenario_envelope;
@@ -18,8 +17,8 @@ use crate::cmd_scenario::reach::run_scenario_reach;
 use crate::endings;
 use crate::knowledge;
 use crate::output::write_stdout;
-use lute_model::{assemble_root_scenario, RootScenario};
 use crate::project::{collect_project_docs, ByRoot};
+use lute_model::{assemble_root_scenario, RootScenario};
 
 pub(crate) mod graph;
 pub(crate) mod node_envelope;
@@ -64,7 +63,6 @@ pub(crate) fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId
         NodeRef::Beat(key) => lute_check::connectivity::NodeId::Beat(key.clone()),
     }
 }
-
 
 /// Find EVERY resolved root (sorted, deterministic — [`ByRoot`] is a
 /// `BTreeMap`) whose docs declare `node` (a scene key in `scene_key_set` or

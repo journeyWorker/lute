@@ -1,20 +1,29 @@
 //! `lute fmt`: deterministic, lossless canonical formatting for source inputs.
 
+use lute_load::manifest_context;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use lute_load::manifest_context;
 fn is_yaml(path: &Path) -> bool {
-    matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("yaml" | "yml")
+    )
 }
 
 fn is_selected(path: &Path) -> bool {
     if path.extension().and_then(|e| e.to_str()) == Some("lute") {
         return true;
     }
-    if !is_yaml(path) { return false; }
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    if !is_yaml(path) {
+        return false;
+    }
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
     if (name == "lute.project.yaml" || name == "lute.project.yml")
-        || name.ends_with(".schema.yaml") || name.ends_with(".schema.yml")
+        || name.ends_with(".schema.yaml")
+        || name.ends_with(".schema.yml")
     {
         return true;
     }
@@ -41,10 +50,14 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
         return Ok(());
     }
     if meta.is_file() {
-        if is_selected(path) { out.push(path.to_path_buf()); }
+        if is_selected(path) {
+            out.push(path.to_path_buf());
+        }
         return Ok(());
     }
-    if !meta.is_dir() { return Ok(()); }
+    if !meta.is_dir() {
+        return Ok(());
+    }
     let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
     entries.sort_by_key(|e| e.path());
     for entry in entries {
@@ -59,7 +72,11 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 /// 1 when at least one selected input is noncanonical; I/O, UTF-8, and parser
 /// failures use exit 2.
 pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
-    let roots: Vec<PathBuf> = if paths.is_empty() { vec![PathBuf::from(".")] } else { paths.to_vec() };
+    let roots: Vec<PathBuf> = if paths.is_empty() {
+        vec![PathBuf::from(".")]
+    } else {
+        paths.to_vec()
+    };
     let mut files = Vec::new();
     for root in roots {
         if let Err(err) = collect(&root, &mut files) {
@@ -96,7 +113,9 @@ pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
                 }
             }
         };
-        if !result.changed { continue; }
+        if !result.changed {
+            continue;
+        }
         changed = true;
         if check {
             println!("{}", path.display());
@@ -105,7 +124,11 @@ pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
             return ExitCode::from(2);
         }
     }
-    if check && changed { ExitCode::from(1) } else { ExitCode::SUCCESS }
+    if check && changed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
 }
 
 #[cfg(test)]
@@ -154,7 +177,8 @@ mod tests {
         std::fs::write(
             root.join("lute.project.yaml"),
             "defaultProfile: core\npluginsDir: extensions\nprofiles:\n  core:\n    plugins: {}\n",
-        ).unwrap();
+        )
+        .unwrap();
         let configured = root.join("extensions/pkg/plugin.yaml");
         let legacy = root.join("plugins/pkg/plugin.yaml");
         std::fs::write(&configured, "id: pkg\n").unwrap();

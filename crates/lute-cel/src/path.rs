@@ -14,9 +14,7 @@ use cel_parser::reference::Val;
 
 use lute_manifest::text::{bracket_spelling, render_path};
 
-pub use lute_syntax::path::{
-    glued_message, parse_path as parse_path_text, read_index, scan_path,
-};
+pub use lute_syntax::path::{glued_message, parse_path as parse_path_text, read_index, scan_path};
 
 /// The segments of a static path expression: an `Ident`, then `.field`
 /// selections and string-literal indexes (`a.b["c-d"].e` → `[a, b, c-d,

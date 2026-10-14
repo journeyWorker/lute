@@ -130,7 +130,6 @@ pub(crate) fn pretty_json<T: Serialize>(value: &T) -> Result<String, serde_json:
     serde_json::to_string_pretty(value)
 }
 
-
 /// Write `s` to stdout as raw bytes, returning any I/O error instead of
 /// panicking the way `print!`/`println!` do when the pipe is closed (EPIPE,
 /// e.g. `lute compile f.lute | head`). Callers map `Err` to exit `2`, matching
@@ -250,7 +249,10 @@ pub(crate) fn print_human(file: &Path, result: &lute_check::CheckResult, policy:
         .filter(|d| d.severity == Severity::Error || policy.denied(d))
         .count();
     let warnings = count_severity(&result.diagnostics, Severity::Warning, policy);
-    let infos = info_tail(count_severity(&result.diagnostics, Severity::Info, policy), "info");
+    let infos = info_tail(
+        count_severity(&result.diagnostics, Severity::Info, policy),
+        "info",
+    );
     let ok = result.ok && !policy.any_denied(&result.diagnostics);
     if ok {
         println!("ok: {path} ({warnings} warning(s){infos})");

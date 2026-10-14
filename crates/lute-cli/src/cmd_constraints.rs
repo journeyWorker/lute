@@ -185,11 +185,7 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
 
 /// Run one discovered script through the same in-process machinery used by
 /// `constraints --run`, and report whether it observed the target node.
-pub(crate) fn run_script_for_context(
-    root: &Path,
-    script: &Path,
-    target: &NodeKey,
-) -> bool {
+pub(crate) fn run_script_for_context(root: &Path, script: &Path, target: &NodeKey) -> bool {
     let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
@@ -203,9 +199,7 @@ pub(crate) fn run_script_for_context(
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };
-    if target.kind == NodeKind::Quest
-        && run.completed_quests.contains(&target.key)
-    {
+    if target.kind == NodeKind::Quest && run.completed_quests.contains(&target.key) {
         return true;
     }
     if target.kind == NodeKind::Choice {
@@ -221,9 +215,9 @@ pub(crate) fn run_script_for_context(
                 && choice.chose.as_deref() == Some(option)
         });
     }
-    run.presented.iter().any(|(document, id)| {
-        format!("{document}:{id}") == target.key
-    })
+    run.presented
+        .iter()
+        .any(|(document, id)| format!("{document}:{id}") == target.key)
 }
 
 fn collect_scripts(dir: &Path, out: &mut Vec<PathBuf>) {

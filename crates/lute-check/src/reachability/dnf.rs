@@ -524,4 +524,3 @@ pub(crate) fn implies(b: &Dnf, a: &Dnf) -> bool {
         })
     })
 }
-

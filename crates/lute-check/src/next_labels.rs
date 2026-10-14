@@ -301,7 +301,8 @@ fn not_a_mark(doc: &Document, to: &str) -> Option<String> {
                 })
         })
     }
-    let bodies = doc.sections
+    let bodies = doc
+        .sections
         .iter()
         .map(|s| s.body.as_slice())
         .chain(doc.quests.iter().map(|q| q.body.as_slice()))

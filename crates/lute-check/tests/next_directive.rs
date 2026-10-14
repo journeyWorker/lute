@@ -118,7 +118,8 @@ fn only_the_first_unreachable_node_warns() {
 
 #[test]
 fn unguarded_next_as_the_last_node_is_clean() {
-    let text = format!("{HDR}@narrator: a\n::jump{{to=\"x\"}}\n## Shot 2.\n::label{{name=\"x\"}}\n");
+    let text =
+        format!("{HDR}@narrator: a\n::jump{{to=\"x\"}}\n## Shot 2.\n::label{{name=\"x\"}}\n");
     assert_eq!(count(&text, W), 0, "{:?}", codes(&text));
 }
 

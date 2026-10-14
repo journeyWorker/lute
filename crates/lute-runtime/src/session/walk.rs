@@ -8,8 +8,8 @@ use serde_json::Value as Json;
 
 use super::project::ExecProject;
 use super::world::World;
-use crate::{BridgeQueues, Carry, Machine, Seed};
 use crate::UnresolvedAtom;
+use crate::{BridgeQueues, Carry, Machine, Seed};
 
 /// A finished walk: its carry and host-collected transcript.
 pub struct Walked {
@@ -102,7 +102,9 @@ pub fn describe_atom(atom: &UnresolvedAtom) -> String {
         UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
             format!("fact `{f}` is undetermined")
         }
-        UnresolvedAtom::Time => "now()/validAt(...) has no reference-runtime resolution".to_string(),
+        UnresolvedAtom::Time => {
+            "now()/validAt(...) has no reference-runtime resolution".to_string()
+        }
     }
 }
 
@@ -129,7 +131,6 @@ pub fn walk_stop<F: super::WalkDriver>(
         Ok(()) => factory.halt(Ok(()), outcome, what, doc_json),
     }
 }
-
 
 /// Build one walk from a caller-owned driver factory.
 pub fn play_machine<F: super::WalkDriver>(

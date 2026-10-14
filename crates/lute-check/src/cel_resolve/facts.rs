@@ -1,7 +1,12 @@
 use super::*;
 use super::{core::*, profile::*, state::*};
 /// pattern to check).
-pub(crate) fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_fact_queries(
+    expr: &Expr,
+    slot: &CelSlot,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     match expr {
         Expr::Call(c) => {
             if is_fact_query_name(c) {
@@ -46,7 +51,11 @@ pub(crate) fn check_fact_queries(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, dia
 /// the query in (dsl 0.27.0 §2, T1-5a); `query` is the text holding the query
 /// itself (the subject, or its expansion through `via`). A number-valued
 /// subject (`count(…)`, arithmetic) gets a comparison in its example arm.
-pub(crate) fn match_relation_subject_message(subject: &str, via: Option<&str>, query: &str) -> String {
+pub(crate) fn match_relation_subject_message(
+    subject: &str,
+    via: Option<&str>,
+    query: &str,
+) -> String {
     use cel_parser::ast::operators as op;
     let mut arena = CelArena::default();
     let root = lute_cel::parse_slot_marked_refs(&mut arena, query).and_then(|h| arena.get(h));
@@ -97,8 +106,12 @@ pub(crate) fn first_relation_query(expr: &Expr) -> Option<&str> {
             .iter()
             .find_map(|e| first_relation_query(&e.expr)),
         Expr::Select(sel) => first_relation_query(&sel.operand.expr),
-        Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-        | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => None,
+        Expr::Comprehension(_)
+        | Expr::Map(_)
+        | Expr::Struct(_)
+        | Expr::Ident(_)
+        | Expr::Literal(_)
+        | Expr::Unspecified => None,
     }
 }
 
@@ -203,7 +216,8 @@ pub(crate) fn check_fact_query_call(
     if name == "countDistinct" && count_distinct_column(c).is_none() {
         diags.push(diag(
             "E-FACT-QUERY",
-            "countDistinct requires an in-range int column whose query position is \"_\"".to_string(),
+            "countDistinct requires an in-range int column whose query position is \"_\""
+                .to_string(),
             slot.span,
         ));
     }
@@ -265,24 +279,29 @@ pub(crate) fn pattern_terms(c: &cel_parser::ast::CallExpr) -> Option<Vec<FactArg
     let Expr::List(list) = &c.args.get(1)?.expr else {
         return None;
     };
-    list.elements.iter().map(|a| {
-        let term = match &a.expr {
-            Expr::Literal(Val::String(name)) if name == "_" => FactTerm::Wildcard,
-            Expr::Literal(Val::String(name)) => FactTerm::Ident(name.clone()),
-            Expr::Literal(Val::Boolean(b)) => FactTerm::Bool(*b),
-            Expr::Ident(name) if name.starts_with(lute_cel::REF_MARKER) => {
-                FactTerm::Param(name[lute_cel::REF_MARKER.len()..].to_string())
-            }
-            Expr::Call(call) if call.func_name.starts_with(lute_cel::REF_MARKER) => {
-                FactTerm::Param(call.func_name[lute_cel::REF_MARKER.len()..].to_string())
-            }
-            e if crate::cel_paths::select_path(e).as_deref() == Some(lute_manifest::semantics::beats::OCCASION_TARGET) => {
-                FactTerm::Target
-            }
-            _ => return None,
-        };
-        Some(FactArg { term, span: (0, 0) })
-    }).collect()
+    list.elements
+        .iter()
+        .map(|a| {
+            let term = match &a.expr {
+                Expr::Literal(Val::String(name)) if name == "_" => FactTerm::Wildcard,
+                Expr::Literal(Val::String(name)) => FactTerm::Ident(name.clone()),
+                Expr::Literal(Val::Boolean(b)) => FactTerm::Bool(*b),
+                Expr::Ident(name) if name.starts_with(lute_cel::REF_MARKER) => {
+                    FactTerm::Param(name[lute_cel::REF_MARKER.len()..].to_string())
+                }
+                Expr::Call(call) if call.func_name.starts_with(lute_cel::REF_MARKER) => {
+                    FactTerm::Param(call.func_name[lute_cel::REF_MARKER.len()..].to_string())
+                }
+                e if crate::cel_paths::select_path(e).as_deref()
+                    == Some(lute_manifest::semantics::beats::OCCASION_TARGET) =>
+                {
+                    FactTerm::Target
+                }
+                _ => return None,
+            };
+            Some(FactArg { term, span: (0, 0) })
+        })
+        .collect()
 }
 
 /// The bare identifiers the Lute-CEL profile admits as an expression root (dsl

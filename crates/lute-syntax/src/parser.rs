@@ -14,12 +14,12 @@
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
 use crate::ast::*;
-use lute_manifest::fact::{parse_fact, DatalogError, FactPattern};
 use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
     unclosed_frontmatter_end, CommentError,
 };
 use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextIndex};
+use lute_manifest::fact::{parse_fact, DatalogError, FactPattern};
 
 mod attrs;
 mod blocks;
@@ -125,13 +125,7 @@ pub fn parse(text: &str) -> (Document, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let frame = parse_frontmatter(text, &idx, &mut diags);
     let body = parse_body(text, frame.body_start, &idx, &mut diags);
-    let mut p = initialize_parser(
-        idx,
-        body,
-        frame.body_start,
-        &frame.raw_yaml,
-        diags,
-    );
+    let mut p = initialize_parser(idx, body, frame.body_start, &frame.raw_yaml, diags);
     let (sections, quests, entries, beats) = p.parse_document_inner();
     let doc = Document {
         meta: Meta {
@@ -153,11 +147,7 @@ struct ParseFrame {
     body_start: usize,
 }
 
-fn parse_frontmatter(
-    text: &str,
-    idx: &TextIndex,
-    diags: &mut Vec<Diagnostic>,
-) -> ParseFrame {
+fn parse_frontmatter(text: &str, idx: &TextIndex, diags: &mut Vec<Diagnostic>) -> ParseFrame {
     let (mut fm, mut body_start) = peel_frontmatter(text).unwrap_or((None, 0));
     if let Some(open) = unclosed_frontmatter_end(text) {
         let at = Span::from_bytes(idx, 0, 3);
@@ -410,7 +400,6 @@ pub(crate) enum Hoisted {
     Quest(Quest),
 }
 
-
 impl Parser<'_> {
     // -- span / offset helpers -------------------------------------------------
 
@@ -501,9 +490,7 @@ impl Parser<'_> {
     }
 
     #[allow(clippy::type_complexity)]
-    fn parse_document_inner(
-        &mut self,
-    ) -> (Vec<Section>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
+    fn parse_document_inner(&mut self) -> (Vec<Section>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
         let mut sections = Vec::new();
         let mut quests = Vec::new();
         let mut entries = Vec::new();
@@ -553,7 +540,8 @@ impl Parser<'_> {
             } else if trimmed.starts_with("# ") {
                 self.report_inert_title(self.cursor, false);
                 self.cursor += 1;
-            } else if trimmed.starts_with('<') && open_tag_name(&trimmed).as_deref() == Some("scene")
+            } else if trimmed.starts_with('<')
+                && open_tag_name(&trimmed).as_deref() == Some("scene")
             {
                 self.report_removed_scene_tag(self.cursor);
                 self.cursor += 1;
@@ -685,7 +673,10 @@ impl Parser<'_> {
                 if valid {
                     heading = heading_source[..open].trim_end().to_string();
                     let id_start = cstart + 3 + open + 3;
-                    id = Some((token.to_string(), self.span(id_start, id_start + token.len())));
+                    id = Some((
+                        token.to_string(),
+                        self.span(id_start, id_start + token.len()),
+                    ));
                 } else {
                     let suffix_start = cstart + 3 + open;
                     self.emit_o(
@@ -1287,11 +1278,8 @@ impl Parser<'_> {
 
         build_fact_node(retract, pattern, pattern_base, raw, span, when)
     }
-
-
 }
 // -- free helpers -------------------------------------------------------------
-
 
 /// Whether the `-` at `at` in a `::set` body joins its path segment
 /// (`run.lab-b2`, `run.zero-coke-001 = 1`) rather than opening the author's

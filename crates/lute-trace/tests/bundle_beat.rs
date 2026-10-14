@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::{trace_beat, trace_beat_with_check, trace_entry, Step, TraceExit, E_TRACE_BEAT};
 use lute_trace::mock::MockSet;
+use lute_trace::{trace_beat, trace_beat_with_check, trace_entry, Step, TraceExit, E_TRACE_BEAT};
 
 fn input_for(text: &str) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);

@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
+use super::Backend;
 use lute_check::Mode;
 use lute_load::{assemble_input_with_mode, BuiltInput, InputCache};
+use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::Uri;
-use super::Backend;
 
 /// The last-known text of an open document plus the LSP version that produced it.
 /// Republished diagnostics are stamped with `version` so the client can discard

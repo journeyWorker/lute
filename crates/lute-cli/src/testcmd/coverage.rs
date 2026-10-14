@@ -65,7 +65,11 @@ pub(super) fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport)
 /// `::use` (SD-15) — the component's own `file:line:column` and which use
 /// in which document, so a component's match never merges into its host's
 /// construct at the same position, nor into another use's.
-pub(super) fn arm_row_key(file: &str, site: &str, component: Option<&lute_trace::ComponentSite>) -> String {
+pub(super) fn arm_row_key(
+    file: &str,
+    site: &str,
+    component: Option<&lute_trace::ComponentSite>,
+) -> String {
     match component {
         None => format!("{file}:{site}"),
         Some(c) => {

@@ -158,7 +158,10 @@ pub(super) fn present_beat(
 /// binds `cod` (a bare `landed@cod` too), as the engine binds it presenting
 /// the unit. `None` when no raise of `on` names a target; a target that is
 /// none of `members` is refused.
-#[expect(clippy::result_large_err, reason = "trace diagnostics are returned directly for source reporting")]
+#[expect(
+    clippy::result_large_err,
+    reason = "trace diagnostics are returned directly for source reporting"
+)]
 pub(super) fn raised_member(
     mocks: &MockSet,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,

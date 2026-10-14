@@ -691,7 +691,6 @@ fn lints_do_not_participate_in_capability_version() {
         snap_a.version, snap_b.version,
         "capabilitySnapshot must be byte-identical whether a plugin ships lints or not"
     );
-
 }
 
 /// [`lute_manifest::lint::namespace_active_lints`] pairs an activation
@@ -745,7 +744,6 @@ fn namespace_active_lints_pairs_activation_with_registry() {
     let keys: Vec<&str> = ns.iter().map(|(k, _)| k.as_str()).collect();
     // Activation order preserved; inactive.plug is not emitted; ghost.plug is skipped.
     assert_eq!(keys, vec!["b.plug/r1", "a.plug/r1"]);
-
 }
 
 /// dsl 0.16.0 §4: the `rewardkinds` export loads off disk exactly like its

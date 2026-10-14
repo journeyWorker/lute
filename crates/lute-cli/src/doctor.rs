@@ -9,10 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use lute_load::{build_input, find_lute_files, project_root_for};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::Domain;
 use lute_manifest::validate::{SLOT_REQUIRES_DEFAULT, SLOT_REQUIRES_EXITS};
-use lute_load::{build_input, find_lute_files, project_root_for};
 /// The seven vocabulary slots the language declares (dsl 0.9.0 D-A): six typed
 /// by `lute.core`'s staging directives, plus the content-line `emotion`. The
 /// core ships NO members for any of them, so each is declared by a document's

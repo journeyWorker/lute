@@ -39,9 +39,9 @@ use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
 use crate::cel_paths::is_entry_path;
-use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 use crate::meta::{namespace_of, Namespace, StateSchema};
 use crate::Ctx;
+use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 
 /// A content `::set` of a path declared `owner: engine` (dsl 0.22.0 §1.2).
 pub const E_ENGINE_OWNED_WRITE: &str = "E-ENGINE-OWNED-WRITE";

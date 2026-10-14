@@ -347,7 +347,9 @@ pub fn check_directive(
             span: dir.span,
         };
         let mut ds = Vec::new();
-        check_attr_value(&owner, adecl, &filled, snapshot, providers, domains, &mut ds);
+        check_attr_value(
+            &owner, adecl, &filled, snapshot, providers, domains, &mut ds,
+        );
         diags.extend(ds.into_iter().map(|mut d| {
             d.message.push_str(&format!(
                 " — this is the declared `default:` of `{}`, used because the call omits it",
@@ -1038,24 +1040,38 @@ mod tests {
     #[test]
     fn option_domain_prefers_any_profile_value_over_defaults() {
         use lute_manifest::snapshot::ResolvedPlugin;
-        let list = |xs: &[&str]| Literal::List(xs.iter().map(|x| Literal::Str(x.to_string())).collect());
-        let plugin = |options: Vec<(&str, Literal)>, defaults: Vec<(&str, Literal)>| ResolvedPlugin {
-            version: "0.1.0".into(),
-            options: options.into_iter().map(|(k, v)| (k.into(), v)).collect(),
-            option_defaults: defaults.into_iter().map(|(k, v)| (k.into(), v)).collect(),
-        };
+        let list =
+            |xs: &[&str]| Literal::List(xs.iter().map(|x| Literal::Str(x.to_string())).collect());
+        let plugin =
+            |options: Vec<(&str, Literal)>, defaults: Vec<(&str, Literal)>| ResolvedPlugin {
+                version: "0.1.0".into(),
+                options: options.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+                option_defaults: defaults.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+            };
         let mut snap = CapabilitySnapshot::default();
-        snap.plugins.insert("a.levels".into(), plugin(vec![], vec![("levels", list(&["easy", "hard"]))]));
+        snap.plugins.insert(
+            "a.levels".into(),
+            plugin(vec![], vec![("levels", list(&["easy", "hard"]))]),
+        );
         assert_eq!(
             resolve_option_domain(&snap, "levels"),
             Some(vec!["easy".to_string(), "hard".to_string()])
         );
         assert_eq!(resolve_option_domain(&snap, "tiers"), None);
 
-        snap.plugins.insert("b.levels".into(), plugin(vec![("levels", list(&["hard"]))], vec![]));
-        assert_eq!(resolve_option_domain(&snap, "levels"), Some(vec!["hard".to_string()]));
+        snap.plugins.insert(
+            "b.levels".into(),
+            plugin(vec![("levels", list(&["hard"]))], vec![]),
+        );
+        assert_eq!(
+            resolve_option_domain(&snap, "levels"),
+            Some(vec!["hard".to_string()])
+        );
 
-        snap.plugins.insert("b.levels".into(), plugin(vec![("levels", Literal::Bool(true))], vec![]));
+        snap.plugins.insert(
+            "b.levels".into(),
+            plugin(vec![("levels", Literal::Bool(true))], vec![]),
+        );
         assert_eq!(resolve_option_domain(&snap, "levels"), None);
     }
 
@@ -1483,7 +1499,10 @@ mod tests {
         // Regression guard: core `camera` DECLARES duration/delay/wait
         // (staging.yaml) -- the declared path must keep taking precedence
         // over the fallback and stay clean.
-        let d = directive("camera", &[("focus", "hero"), ("duration", "0.5"), ("wait", "false")]);
+        let d = directive(
+            "camera",
+            &[("focus", "hero"), ("duration", "0.5"), ("wait", "false")],
+        );
         let errs = check_directive(
             &d,
             &load_core_snapshot(),

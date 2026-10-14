@@ -1,4 +1,4 @@
-use super::{profile::*, facts::*, state::*};
+use super::{facts::*, profile::*, state::*};
 //
 // Two independent passes feed one diagnostic list, forced apart by the
 // cel-parser 0.10.1 carry-forward (T3.1): a SUCCESSFUL CEL parse drops every
@@ -19,8 +19,8 @@ use super::{profile::*, facts::*, state::*};
 // `scan_refs` pass still runs on the raw.
 
 use cel_parser::ast::Expr;
-use lute_core_span::{Diagnostic, Span};
 use lute_cel::CelArena;
+use lute_core_span::{Diagnostic, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 
 use crate::cel_paths::collect_path_uses;
@@ -46,7 +46,8 @@ pub const E_CEL_TYPE: &str = "E-CEL-TYPE";
 /// CEL guard (`cel("...")` in a `rules:` entry). `now` is D7's deliberate
 /// extension beyond the spec's `holds`/`count`/`validAt` — a guard has no
 /// business reading the clock either.
-pub(crate) const GUARD_FIREWALL_CALLS: &[&str] = &["holds", "count", "countDistinct", "validAt", "now"];
+pub(crate) const GUARD_FIREWALL_CALLS: &[&str] =
+    &["holds", "count", "countDistinct", "validAt", "now"];
 
 /// `E-DATALOG-GUARD-FACT` (0.3.0, §7.2/§7.3 + D7): a rule-body guard reads
 /// the fact store or narrative time via `holds`/`count`/`validAt`/`now`.
@@ -274,7 +275,12 @@ pub fn check_cel_slot(
 
 /// [`check_cel_slot`]'s passes over the parsed slot `expr`: state-path
 /// reads, the CEL profile, fact queries, narrative time, `%` operands.
-pub(crate) fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_parsed_slot(
+    expr: &Expr,
+    slot: &CelSlot,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     // A name that is not an identifier after a `.` (`quest.zero-coke-001
     // .state`) parses as a subtraction; report the path once, with its
     // quoted-index spelling, not the findings the subtraction trips.
@@ -365,7 +371,11 @@ pub(crate) fn check_parsed_slot(expr: &Expr, slot: &CelSlot, ctx: &Ctx<'_>, diag
 /// it reads `occasion.target` where the member stood and lists the members.
 /// A finding only one member hits names it (`… (for occasion.target = bram)`),
 /// since the beat is still raised for the others.
-pub(crate) fn check_per_member(slot: &CelSlot, ctx: &Ctx<'_>, members: &[String]) -> Vec<Diagnostic> {
+pub(crate) fn check_per_member(
+    slot: &CelSlot,
+    ctx: &Ctx<'_>,
+    members: &[String],
+) -> Vec<Diagnostic> {
     group_per_member(members, |m| {
         let raw = crate::occasion_bind::instantiate_bound(&slot.raw, m);
         let inst = CelSlot::raw(slot.kind, raw, slot.span);

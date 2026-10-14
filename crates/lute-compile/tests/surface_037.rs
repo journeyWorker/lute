@@ -110,10 +110,16 @@ fn cg_and_video_emit_their_resolved_display() {
     let art = compile_json(SCENE);
     let cg = first(&art, "cg");
     assert_eq!(cg["assetId"], "CG.pier.01");
-    assert_eq!(cg["display"], "show", "unauthored display resolves to `show`");
+    assert_eq!(
+        cg["display"], "show",
+        "unauthored display resolves to `show`"
+    );
     assert_eq!(cg["layout"], "full");
     let video = first(&art, "video");
-    assert_eq!(video["display"], "show", "unauthored display resolves to `show`");
+    assert_eq!(
+        video["display"], "show",
+        "unauthored display resolves to `show`"
+    );
     assert!(video.get("action").is_none());
 }
 
@@ -131,7 +137,10 @@ fn authored_actor_emits_emotion_and_costume() {
 #[test]
 fn every_line_role_carries_a_voice_key() {
     let art = compile_json(SCENE);
-    let lines: Vec<&Value> = commands(&art).iter().filter(|c| c["kind"] == "line").collect();
+    let lines: Vec<&Value> = commands(&art)
+        .iter()
+        .filter(|c| c["kind"] == "line")
+        .collect();
     let roles: Vec<&str> = lines.iter().map(|l| l["role"].as_str().unwrap()).collect();
     assert_eq!(roles, ["narration", "mono", "dialogue"]);
     for line in lines {
@@ -225,7 +234,10 @@ pov: marina
 "#;
 
 fn lines(art: &Value) -> Vec<&Value> {
-    commands(art).iter().filter(|c| c["kind"] == "line").collect()
+    commands(art)
+        .iter()
+        .filter(|c| c["kind"] == "line")
+        .collect()
 }
 
 /// dsl 0.37.0 §3.6: `text` is the plain derivation; `segments` carry the
@@ -288,9 +300,7 @@ fn line_ids(ir: &lute_compile::ExecutionIr) -> Vec<String> {
         .collect()
 }
 
-fn merged(
-    translations: &[(usize, &str)],
-) -> (Value, Vec<lute_core_span::Diagnostic>) {
+fn merged(translations: &[(usize, &str)]) -> (Value, Vec<lute_core_span::Diagnostic>) {
     let mut ir = compile_ir(MODIFIED);
     let ids = line_ids(&ir);
     let bundle = lute_compile::locale::LocaleBundle::from_triples(
@@ -308,11 +318,20 @@ fn merged(
 #[test]
 fn a_matching_translation_merges_texts_and_locale_segments() {
     let (art, diags) = merged(&[
-        (0, ":pause{s=0.5}:speed[やあ :emphasis[大きな :whisper[世界]] {{userName}}]{rate=1.25}"),
+        (
+            0,
+            ":pause{s=0.5}:speed[やあ :emphasis[大きな :whisper[世界]] {{userName}}]{rate=1.25}",
+        ),
         (1, "ふつう"),
-        (2, ":speed[:speed[d]{rate=2.0}]{rate=0.5} c :emphasis[a]:emphasis[b]"),
+        (
+            2,
+            ":speed[:speed[d]{rate=2.0}]{rate=0.5} c :emphasis[a]:emphasis[b]",
+        ),
     ]);
-    assert!(diags.iter().all(|d| d.code != "E-L10N-MODIFIERS"), "{diags:#?}");
+    assert!(
+        diags.iter().all(|d| d.code != "E-L10N-MODIFIERS"),
+        "{diags:#?}"
+    );
     let lines = lines(&art);
     assert_eq!(lines[0]["texts"]["ja-JP"], "やあ 大きな 世界 {{userName}}");
     assert_eq!(
@@ -327,7 +346,10 @@ fn a_matching_translation_merges_texts_and_locale_segments() {
     );
     assert_eq!(lines[1]["texts"]["ja-JP"], "ふつう");
     assert!(lines[1].get("localeSegments").is_none(), "{}", lines[1]);
-    assert_eq!(lines[2]["texts"]["ja-JP"], "d c ab", "rate=2.0 normalizes to rate=2");
+    assert_eq!(
+        lines[2]["texts"]["ja-JP"], "d c ab",
+        "rate=2.0 normalizes to rate=2"
+    );
 }
 
 /// A missing, extra or differently parameterized modifier — or one on a
@@ -357,7 +379,9 @@ fn a_translation_with_other_modifiers_is_refused() {
 /// `E-DUP-VOICEKEY` compares plain text: markup alone is not a difference.
 #[test]
 fn voice_key_collision_compares_plain_text() {
-    let doc = |line: &str| format!("---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\npov: marina\n---\n\n## A\n\n@marina{{code=\"0010\"}}: {line}\n");
+    let doc = |line: &str| {
+        format!("---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 2\npov: marina\n---\n\n## A\n\n@marina{{code=\"0010\"}}: {line}\n")
+    };
     let plain = compile_ir(&doc("Hello world."));
     let marked = compile_ir(&doc("Hello :emphasis[world]:pause{s=1}."));
     let other = compile_ir(&doc("Hello there."));

@@ -18,7 +18,13 @@ fn parse(text: &str) -> Document {
 
 /// The typed metadata a project with manifest `defaults:` gives `doc`.
 fn typed_with_defaults(doc: &Document, defaults: &MetaDefaults) -> TypedMeta {
-    parse_meta_kind_with_defaults(&doc.meta, &CapabilitySnapshot::default(), MetaKind::Scene, defaults).0
+    parse_meta_kind_with_defaults(
+        &doc.meta,
+        &CapabilitySnapshot::default(),
+        MetaKind::Scene,
+        defaults,
+    )
+    .0
 }
 
 #[test]
@@ -37,7 +43,11 @@ fn manifest_defaults_never_mint_a_scene_key() {
     let typed = typed_with_defaults(&doc, &defaults);
     assert_eq!(scene_key(&typed), None);
     let views = [ProjectDoc::new(Path::new("a.lute"), &doc, &typed)];
-    assert!(scene_key_set(&views).is_empty(), "{:?}", scene_key_set(&views));
+    assert!(
+        scene_key_set(&views).is_empty(),
+        "{:?}",
+        scene_key_set(&views)
+    );
 }
 
 #[test]
@@ -52,7 +62,10 @@ fn a_malformed_authored_id_gives_no_scene_key() {
 #[test]
 fn a_quest_document_id_is_not_a_scene_key() {
     let doc = parse("---\nkind: quest\nid: errands\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n");
-    let docs = ProjectDocs::parse(vec![(PathBuf::from("q.lute"), doc)], &CapabilitySnapshot::default());
+    let docs = ProjectDocs::parse(
+        vec![(PathBuf::from("q.lute"), doc)],
+        &CapabilitySnapshot::default(),
+    );
     let views = docs.views();
     assert_eq!(scene_key(views[0].meta), None);
     assert!(scene_key_set(&views).is_empty());
@@ -66,10 +79,16 @@ fn a_duplicate_block_frontmatter_keeps_reference_checks_on() {
     let dup = "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\nrelations:\n  knows: {args: [a]}\n  knows: {args: [a]}\n---\n## Shot 1.\n@b: hi\n";
     let scene = "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nafter: 'visited(\"nope.s99ep99\")'\n---\n## Shot 1.\n@a: hi\n";
     let docs = ProjectDocs::parse(
-        vec![(PathBuf::from("b.lute"), parse(dup)), (PathBuf::from("a.lute"), parse(scene))],
+        vec![
+            (PathBuf::from("b.lute"), parse(dup)),
+            (PathBuf::from("a.lute"), parse(scene)),
+        ],
         &CapabilitySnapshot::default(),
     );
     let views = docs.views();
     let res = resolve_nodes(&views, &scene_key_set(&views), &quest_id_set(&views));
-    assert!(res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"), "{res:?}");
+    assert!(
+        res.iter().any(|(_, d)| d.code == "E-CONN-UNKNOWN-NODE"),
+        "{res:?}"
+    );
 }

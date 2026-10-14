@@ -72,24 +72,24 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use serde_json::{json, Value as Json};
 use lute_runtime::session::{
     domain_members, entry_flag, is_candidate, json_to_value, kind_label, resolve_fact,
     resolve_state, value_to_json, ExecProject, PlayHalt, Played, Presented, Session,
     SessionEvalObserver, StepBody, Verdict, World,
 };
 use lute_runtime::BridgeQueues;
+use serde_json::{json, Value as Json};
 
 use crate::play_expect::ExpectMiss;
 
 pub(crate) mod calendar;
 mod driver;
 pub mod events;
-mod producers;
 mod human;
 mod json;
 mod outcome;
 mod plan;
+mod producers;
 mod project;
 mod provenance;
 mod run;
@@ -99,9 +99,9 @@ use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
 use plan::{bridge_queues, locate_step_error, plan_script, plan_steps, Step};
-use project::{compile_play_project, compile_project};
 #[cfg(test)]
 pub(crate) use project::{assemble_project_from_model, build_project_model, manifest_gate, PLAY};
+use project::{compile_play_project, compile_project};
 use provenance::fact_origins;
 use run::execute;
 use script::{parse_script, parse_script_with, PlayScript, ScriptStep};
@@ -159,7 +159,9 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
 }
 
 fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTreeSet<String>) {
-    let Some(map) = value.as_mapping() else { return };
+    let Some(map) = value.as_mapping() else {
+        return;
+    };
     for (key, value) in map {
         let Some(key) = key.as_str() else { continue };
         match key {
@@ -180,7 +182,9 @@ fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTree
                 serde_yaml::Value::Mapping(occasions) => {
                     for ids in occasions.values() {
                         if let Some(ids) = ids.as_sequence() {
-                            refs.extend(ids.iter().filter_map(|id| id.as_str().map(str::to_string)));
+                            refs.extend(
+                                ids.iter().filter_map(|id| id.as_str().map(str::to_string)),
+                            );
                         }
                     }
                 }
@@ -188,7 +192,11 @@ fn collect_expect_context_references(value: &serde_yaml::Value, refs: &mut BTree
             },
             "quests" => {
                 if let Some(quests) = value.as_mapping() {
-                    refs.extend(quests.keys().filter_map(|id| id.as_str().map(str::to_string)));
+                    refs.extend(
+                        quests
+                            .keys()
+                            .filter_map(|id| id.as_str().map(str::to_string)),
+                    );
                 }
             }
             _ => {}
@@ -220,10 +228,8 @@ fn driver_for(
         top: bridge_queues(project, "top level", &script.bridges)
             .expect("the top-level bridge writes were resolved before the walk"),
     };
-    PlayDriverState::for_project(project, script.choose.clone(), bridges)
-        .with_observer(observer)
+    PlayDriverState::for_project(project, script.choose.clone(), bridges).with_observer(observer)
 }
-
 
 /// Load a play. `Err((code, message))`: exit 2 with the usage error, or the
 /// compile gate's exit code (its diagnostics already printed, `message`
@@ -235,8 +241,12 @@ fn load(
     matrix: &crate::EngineMatrix,
 ) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
-    let (project, needles) =
-        compile_play_project(&lute_model::ModelMemo::default(), dir, project::PLAY, matrix)?;
+    let (project, needles) = compile_play_project(
+        &lute_model::ModelMemo::default(),
+        dir,
+        project::PLAY,
+        matrix,
+    )?;
     let (plan, world) = plan_script(&project, &needles, &script, script_path, no_derive)?;
     Ok(Loaded {
         script,
@@ -277,13 +287,20 @@ fn install_condition_dump(
         .keys()
         .filter_map(|path| path.split('.').next())
         .map(str::to_string)
-        .chain(["prev", "occasion", "clock", "entry"].into_iter().map(str::to_string))
+        .chain(
+            ["prev", "occasion", "clock", "entry"]
+                .into_iter()
+                .map(str::to_string),
+        )
         .collect();
     if let Json::Object(map) = &mut env {
         let variables = map.entry("variables").or_insert_with(|| json!([]));
         if let Json::Array(variables) = variables {
             for root in roots {
-                if !variables.iter().any(|v| v.get("name").and_then(Json::as_str) == Some(&root)) {
+                if !variables
+                    .iter()
+                    .any(|v| v.get("name").and_then(Json::as_str) == Some(&root))
+                {
                     variables.push(json!({"name": root, "type": "map(string, dyn)"}));
                 }
             }
@@ -299,7 +316,10 @@ fn install_condition_dump(
         .state_table
         .iter()
         .filter_map(|(path, entry)| {
-            entry.get("default").and_then(json_to_value).map(|v| (path.clone(), v))
+            entry
+                .get("default")
+                .and_then(json_to_value)
+                .map(|v| (path.clone(), v))
         })
         .collect();
     let exprs = crate::runner::ExprIndex::new(project.artifacts.values());
@@ -307,8 +327,9 @@ fn install_condition_dump(
         let condition = exprs.get(raw);
         let expr = condition.map_or(Json::Null, |condition| condition.expr.clone());
         let no_relations = BTreeSet::new();
-        let (relations, needs_visited) = condition
-            .map_or((&no_relations, false), |condition| (&condition.relations, condition.needs_visited));
+        let (relations, needs_visited) = condition.map_or((&no_relations, false), |condition| {
+            (&condition.relations, condition.needs_visited)
+        });
         let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
         // Only paths `activation_json_paths` can emit: cloning the whole state
         // and every default per evaluation dominated large dumps.
@@ -383,7 +404,10 @@ fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode 
 }
 
 /// See [`crate::Command::Play`].
-#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI flags are kept explicit at the command boundary"
+)]
 pub fn run_play(
     dir: &Path,
     script_path: &Path,
@@ -408,7 +432,10 @@ pub fn run_play(
     }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
-        Err(e) => { eprintln!("lute play: {e}"); return ExitCode::from(2); }
+        Err(e) => {
+            eprintln!("lute play: {e}");
+            return ExitCode::from(2);
+        }
     };
     let Loaded {
         script,
@@ -436,7 +463,11 @@ pub fn run_play(
     } else {
         world.facts.clone()
     };
-    let play = execute(&script, &plan, Session::resume(&project, world, &mut driver));
+    let play = execute(
+        &script,
+        &plan,
+        Session::resume(&project, world, &mut driver),
+    );
     // Expectations judge the presented content (`said`); `--ir` changes
     // only what is printed.
     let explained = if explain.is_empty() {
@@ -558,13 +589,14 @@ impl PlayProject {
     /// [`PlayProject::compile`] over `memo`'s model of the project.
     pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path) -> Self {
         PlayProject(
-            compile_play_project(memo, dir, project::TEST, &crate::EngineMatrix::reference()).map_err(|(_, msg)| {
-                if msg.is_empty() {
-                    "the project does not compile (diagnostics above)".to_string()
-                } else {
-                    msg
-                }
-            }),
+            compile_play_project(memo, dir, project::TEST, &crate::EngineMatrix::reference())
+                .map_err(|(_, msg)| {
+                    if msg.is_empty() {
+                        "the project does not compile (diagnostics above)".to_string()
+                    } else {
+                        msg
+                    }
+                }),
         )
     }
 
@@ -674,25 +706,33 @@ pub(crate) fn run_play_for_test(
     })
 }
 
-
-
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
     fn walk(value: &Json, out: &mut BTreeSet<String>) {
         match value {
             Json::Object(map) => {
                 if let Some(quests) = map.get("quests").and_then(Json::as_object) {
                     for (id, state) in quests {
-                        if state.as_str() == Some("complete") { out.insert(id.clone()); }
+                        if state.as_str() == Some("complete") {
+                            out.insert(id.clone());
+                        }
                     }
                 }
-                for value in map.values() { walk(value, out); }
+                for value in map.values() {
+                    walk(value, out);
+                }
             }
-            Json::Array(values) => for value in values { walk(value, out); },
+            Json::Array(values) => {
+                for value in values {
+                    walk(value, out);
+                }
+            }
             _ => {}
         }
     }
     let mut out = BTreeSet::new();
-    for value in transcript { walk(value, &mut out); }
+    for value in transcript {
+        walk(value, &mut out);
+    }
     out
 }
 

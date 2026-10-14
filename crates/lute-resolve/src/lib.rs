@@ -1,4 +1,3 @@
-
 //! Protocol-neutral cursor and symbol resolution shared by LSP and CLI.
 //!
 //! This crate deliberately has no editor or command-line dependencies. Byte
@@ -13,9 +12,9 @@ use lute_check::schema_import::SchemaImports;
 use lute_core_span::{Span, TextIndex};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
+use lute_semantic::{NodeKey, NodeKind, SourceLocation};
 use lute_syntax::ast::{Attr, AttrValue, CelKind, CelSlot, Document, Node};
 use lute_syntax::walk::for_each_cel_slot;
-use lute_semantic::{NodeKey, NodeKind, SourceLocation};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PositionQuery<'a> {
@@ -59,9 +58,7 @@ pub fn resolve_position(
     imports: &SchemaImports,
     snapshot: &CapabilitySnapshot,
 ) -> Result<Resolution, ResolveError> {
-    if query.byte_offset > query.source.len()
-        || !query.source.is_char_boundary(query.byte_offset)
-    {
+    if query.byte_offset > query.source.len() || !query.source.is_char_boundary(query.byte_offset) {
         return Err(ResolveError::OutOfBounds);
     }
     let (mut meta, _) = lute_check::parse_meta(&query.document.meta, snapshot);
@@ -72,7 +69,9 @@ pub fn resolve_position(
         meta.state.decls.insert(path.clone(), decl.clone());
     }
     for (name, value) in &imports.defs {
-        meta.defs.entry(name.clone()).or_insert_with(|| value.clone());
+        meta.defs
+            .entry(name.clone())
+            .or_insert_with(|| value.clone());
     }
 
     let slot = find_slot(query.document, query.byte_offset);
@@ -91,7 +90,10 @@ pub fn resolve_position(
     // `::set` targets are outside the RHS CelSlot. Resolve their authored span
     // before the generic structural fallback.
     if let Some((span, path)) = find_set_path(query.document, query.byte_offset) {
-        cursor = Some(Cursor { kind: "state-path".into(), span });
+        cursor = Some(Cursor {
+            kind: "state-path".into(),
+            span,
+        });
         expected = resolve_state_type(&meta.state.decls, &path);
     }
     if cursor.is_none() {
@@ -143,7 +145,9 @@ fn resolve_state_type(
     while parts.len() > 1 {
         parts.pop();
         let parent = parts.join(".");
-        let Some(decl) = decls.get(&parent) else { continue };
+        let Some(decl) = decls.get(&parent) else {
+            continue;
+        };
         let mut ty = decl.ty.clone();
         for segment in path.split('.').skip(parts.len()) {
             ty = match ty {
@@ -182,7 +186,10 @@ fn expected_for_slot(
 
 fn path_type(raw: &str, decls: &BTreeMap<String, lute_check::meta::StateDecl>) -> Option<Type> {
     let path = raw.trim().trim_matches('"');
-    if path.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.') {
+    if path
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.')
+    {
         resolve_state_type(decls, path)
     } else {
         None
@@ -235,33 +242,51 @@ fn visit_nodes(doc: &Document, f: &mut impl FnMut(&Node)) {
                 Node::Branch(b) => b.choices.iter().for_each(|c| body(&c.body, f)),
                 Node::Hub(h) => {
                     h.choices.iter().for_each(|c| body(&c.body, f));
-                    if let Some(r) = &h.on_return { body(&r.body, f); }
+                    if let Some(r) = &h.on_return {
+                        body(&r.body, f);
+                    }
                 }
                 Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
                     lute_syntax::ast::Arm::When { body: arm_body, .. } => body(arm_body, f),
                     lute_syntax::ast::Arm::Otherwise { body: arm_body, .. } => body(arm_body, f),
                 }),
-                Node::Timeline(t) => t.tracks.iter().for_each(|tr| tr.clips.iter().for_each(|c| {
-                    if let lute_syntax::ast::ClipNode::Directive(d) = &c.node { f(&Node::Directive(d.clone())); }
-                    if let lute_syntax::ast::ClipNode::Set(s) = &c.node { f(&Node::Set(s.clone())); }
-                })),
+                Node::Timeline(t) => t.tracks.iter().for_each(|tr| {
+                    tr.clips.iter().for_each(|c| {
+                        if let lute_syntax::ast::ClipNode::Directive(d) = &c.node {
+                            f(&Node::Directive(d.clone()));
+                        }
+                        if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
+                            f(&Node::Set(s.clone()));
+                        }
+                    })
+                }),
                 Node::Objective(o) => body(&o.body, f),
                 Node::On(o) => body(&o.body, f),
                 _ => {}
             }
         }
     }
-    for shot in &doc.sections { body(&shot.body, f); }
-    for q in &doc.quests { body(&q.body, f); }
-    for e in &doc.entries { body(&e.body, f); }
-    for b in &doc.beats { body(&b.body, f); }
+    for shot in &doc.sections {
+        body(&shot.body, f);
+    }
+    for q in &doc.quests {
+        body(&q.body, f);
+    }
+    for e in &doc.entries {
+        body(&e.body, f);
+    }
+    for b in &doc.beats {
+        body(&b.body, f);
+    }
 }
 
 fn find_set_path(doc: &Document, off: usize) -> Option<(Span, String)> {
     let mut out = None;
-    visit_nodes(doc, &mut |n| if let Node::Set(s) = n {
-        if s.path_span.byte_start <= off && off <= s.path_span.byte_end {
-            out = Some((s.path_span, s.path.clone()));
+    visit_nodes(doc, &mut |n| {
+        if let Node::Set(s) = n {
+            if s.path_span.byte_start <= off && off <= s.path_span.byte_end {
+                out = Some((s.path_span, s.path.clone()));
+            }
         }
     });
     out
@@ -281,8 +306,18 @@ fn find_attribute_or_construct(doc: &Document, off: usize) -> Option<Cursor> {
             _ => return,
         };
         if span.byte_start <= off && off <= span.byte_end {
-            let replace = out.as_ref().map(|c: &Cursor| span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start).unwrap_or(true);
-            if replace { out = Some(Cursor { kind: kind.into(), span }); }
+            let replace = out
+                .as_ref()
+                .map(|c: &Cursor| {
+                    span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start
+                })
+                .unwrap_or(true);
+            if replace {
+                out = Some(Cursor {
+                    kind: kind.into(),
+                    span,
+                });
+            }
         }
     });
     out
@@ -315,21 +350,42 @@ fn symbols_for_cursor(
     }
     if defs_only || slot.is_none() {
         let mut def_values = imports.defs.clone();
-        for (name, value) in &meta.defs { def_values.insert(name.clone(), value.clone()); }
+        for (name, value) in &meta.defs {
+            def_values.insert(name.clone(), value.clone());
+        }
         for (name, value) in def_values {
-            let ty = value.get("type").cloned().and_then(|v| serde_yaml::from_value(v).ok());
-            symbols.push(Symbol { name: name.clone(), kind: "def".into(), ty, declaration: declaration(source, &name) });
+            let ty = value
+                .get("type")
+                .cloned()
+                .and_then(|v| serde_yaml::from_value(v).ok());
+            symbols.push(Symbol {
+                name: name.clone(),
+                kind: "def".into(),
+                ty,
+                declaration: declaration(source, &name),
+            });
         }
         for (name, decl) in &snapshot.defs {
             if !symbols.iter().any(|s| s.name == *name) {
-                symbols.push(Symbol { name: name.clone(), kind: "def".into(), ty: Some(decl.ty.clone()), declaration: declaration(source, name) });
+                symbols.push(Symbol {
+                    name: name.clone(),
+                    kind: "def".into(),
+                    ty: Some(decl.ty.clone()),
+                    declaration: declaration(source, name),
+                });
             }
         }
     }
     symbols.sort_by(|a, b| {
-        a.kind.cmp(&b.kind).then_with(|| a.name.cmp(&b.name)).then_with(|| {
-            a.declaration.as_ref().map(|d| d.file.clone()).cmp(&b.declaration.as_ref().map(|d| d.file.clone()))
-        })
+        a.kind
+            .cmp(&b.kind)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| {
+                a.declaration
+                    .as_ref()
+                    .map(|d| d.file.clone())
+                    .cmp(&b.declaration.as_ref().map(|d| d.file.clone()))
+            })
     });
     symbols
 }
@@ -338,13 +394,18 @@ fn declaration(source: &str, key: &str) -> Option<SourceLocation> {
     let needle = format!("{key}:");
     let start = source.find(&needle)?;
     let idx = TextIndex::new(source);
-    Some(SourceLocation { file: PathBuf::new(), span: Span::from_bytes(&idx, start, start + key.len()) })
+    Some(SourceLocation {
+        file: PathBuf::new(),
+        span: Span::from_bytes(&idx, start, start + key.len()),
+    })
 }
 
 /// Parse the canonical `kind:key` form without coupling callers to graph
 /// construction. Kept here so context and patch consumers share validation.
 pub fn parse_node_key(raw: &str) -> Result<NodeKey, ResolveError> {
-    let (kind, key) = raw.split_once(':').ok_or_else(|| ResolveError::Invalid("target must be kind:key".into()))?;
+    let (kind, key) = raw
+        .split_once(':')
+        .ok_or_else(|| ResolveError::Invalid("target must be kind:key".into()))?;
     let kind = match kind {
         "project" => NodeKind::Project,
         "document" => NodeKind::Document,
@@ -368,6 +429,8 @@ pub fn parse_node_key(raw: &str) -> Result<NodeKey, ResolveError> {
         "engine" => NodeKind::Engine,
         _ => return Err(ResolveError::Invalid(format!("unknown node kind `{kind}`"))),
     };
-    if key.is_empty() { return Err(ResolveError::Invalid("target key is empty".into())); }
+    if key.is_empty() {
+        return Err(ResolveError::Invalid("target key is empty".into()));
+    }
     Ok(NodeKey::new(kind, key))
 }

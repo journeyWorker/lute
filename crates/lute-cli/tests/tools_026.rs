@@ -66,7 +66,11 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
     write(
         &dir,
         "scenes/tower.lute",
-        &scene("tower", "on: climb\nwhen: \"holds('canPass', ['lens'])\"\n", ""),
+        &scene(
+            "tower",
+            "on: climb\nwhen: \"holds('canPass', ['lens'])\"\n",
+            "",
+        ),
     );
     dir
 }

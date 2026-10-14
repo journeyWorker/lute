@@ -54,7 +54,11 @@ uses: [{vocab}]\ncomponents: [../{COMPONENT_REL}]\n---\n\
     )
 }
 
-fn write_project(tag: &str, vocabs: &[(&str, &str)], scenes: &[(&str, String)]) -> lute_scratch::ScratchDir {
+fn write_project(
+    tag: &str,
+    vocabs: &[(&str, &str)],
+    scenes: &[(&str, String)],
+) -> lute_scratch::ScratchDir {
     let dir = temp_dir(tag);
     std::fs::create_dir_all(dir.join("components")).unwrap();
     std::fs::create_dir_all(dir.join("scenes")).unwrap();

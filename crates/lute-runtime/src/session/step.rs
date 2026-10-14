@@ -185,23 +185,12 @@ pub fn run_occasion<F: super::WalkDriver>(
     // dsl 0.28.0 (T1-22): the seam (`terminal:`, the gate) is decided when
     // the occasion is raised — before a `judge: before` judgement — and the
     // raise's own beats are judged under it.
-    let seam = RaiseSeam::decide(
-        p,
-        w,
-        occasion,
-        target.as_deref(),
-        factory.observer(),
-    );
+    let seam = RaiseSeam::decide(p, w, occasion, target.as_deref(), factory.observer());
     if before {
         // dsl 0.24.0 §2: the quests are judged and settled before the beats;
         // the `<on>` handlers that answer run after them.
         w.defer_handlers = true;
-        let (more, s) = raise(
-            p,
-            w,
-            Raise::Occasion(occasion, target.as_deref()),
-            factory,
-        );
+        let (more, s) = raise(p, w, Raise::Occasion(occasion, target.as_deref()), factory);
         w.defer_handlers = false;
         judged = more;
         if s.is_some() {
@@ -420,7 +409,9 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
     let ended: Vec<(String, Value)> = w
         .state
         .iter()
-        .filter_map(|(k, v)| lute_manifest::semantics::cel_paths::prev_run_path(k).map(|prev| (prev, v.clone())))
+        .filter_map(|(k, v)| {
+            lute_manifest::semantics::cel_paths::prev_run_path(k).map(|prev| (prev, v.clone()))
+        })
         .collect();
     let prev_run = ended.clone();
     w.state

@@ -698,9 +698,7 @@ fn has_on_quest_state_warns() {
     assert_eq!(w.len(), 1, "{:?}", r.diagnostics);
     assert!(w[0].message.contains("== 'unset'"), "{}", w[0].message);
     assert!(
-        r.diagnostics
-            .iter()
-            .all(|d| d.code == "W-QUEST-STATE-HAS"),
+        r.diagnostics.iter().all(|d| d.code == "W-QUEST-STATE-HAS"),
         "{:?}",
         r.diagnostics
     );

@@ -18,9 +18,9 @@
 //! publishes match the headless CLI byte-for-byte — the property Task 6.2's
 //! golden asserts.
 
-use std::path::PathBuf;
 use dashmap::DashMap;
 use lute_core_span::Diagnostic;
+use std::path::PathBuf;
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
 use tower_lsp_server::Client;
 

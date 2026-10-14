@@ -68,22 +68,22 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 
-use cel_parser::ast::{operators as op, Expr};
-use lute_core_span::Span;
-use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
-};
-use lute_manifest::fact::{FactPattern, FactTerm};
-use crate::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
-use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::check::FoldedEnv;
+use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::meta::StateSchema;
-use lute_manifest::semantics::prereq::PrereqFormula;
 use crate::rel_schema::RelVocab;
+use crate::ProjectDoc;
+use cel_parser::ast::{operators as op, Expr};
+use lute_core_span::Span;
+use lute_manifest::fact::{FactPattern, FactTerm};
+use lute_manifest::semantics::prereq::PrereqFormula;
+use lute_syntax::ast::{
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
+};
 
 /// Guaranteed facts, each with where it is established.
 type FactMap = BTreeMap<GroundFact, Provenance>;
@@ -433,7 +433,8 @@ impl<'a> Root<'a> {
         }
         for item in docs {
             let doc = item.doc;
-            let bodies = doc.sections
+            let bodies = doc
+                .sections
                 .iter()
                 .map(|s| &s.body)
                 .chain(doc.quests.iter().map(|q| &q.body))
@@ -952,7 +953,7 @@ impl<'a> Walk<'a> {
     }
 
     fn directive(&mut self, d: &Directive, flow: &mut Flow) {
-        use lute_manifest::core::{END_DIRECTIVE, LABEL_DIRECTIVE, JUMP_DIRECTIVE};
+        use lute_manifest::core::{END_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE};
         match d.tag.as_str() {
             END_DIRECTIVE => meet(&mut self.exit, flow.take()),
             LABEL_DIRECTIVE => {

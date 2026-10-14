@@ -40,7 +40,11 @@ fn copy(from: &Path, to: &Path) {
 }
 
 fn run(dir: &Path, args: &[&str]) -> (i32, String, String) {
-    let out = Command::new(BIN).current_dir(dir).args(args).output().unwrap();
+    let out = Command::new(BIN)
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .unwrap();
     (
         out.status.code().unwrap(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -53,7 +57,10 @@ fn check_project_reports_the_declaration() {
     let dir = project("bridge-decl-041-project", None);
     let (code, stdout, stderr) = run(&dir, &["check-project", "."]);
     assert_eq!(code, 1, "{stdout}{stderr}");
-    assert_eq!(stderr, format!("./plugins/arena/directives/d.yaml:2:11: {MESSAGE}"));
+    assert_eq!(
+        stderr,
+        format!("./plugins/arena/directives/d.yaml:2:11: {MESSAGE}")
+    );
     assert_eq!(
         stdout,
         "ok: ./odds.lute (0 warning(s))\n\

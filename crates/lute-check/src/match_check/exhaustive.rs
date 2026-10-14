@@ -51,8 +51,10 @@ pub(crate) fn check_match_has_subject(m: &Match, schema: &StateSchema) -> Vec<Di
     if patterns.is_empty() {
         return Vec::new();
     }
-    let subject = subject_for(&patterns, schema)
-        .map_or_else(|| "subject=\"…\"".to_string(), |p| format!("subject=\"{p}\""));
+    let subject = subject_for(&patterns, schema).map_or_else(
+        || "subject=\"…\"".to_string(),
+        |p| format!("subject=\"{p}\""),
+    );
     patterns
         .iter()
         .map(|p| {

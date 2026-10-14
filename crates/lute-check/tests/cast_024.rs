@@ -9,8 +9,8 @@ use lute_check::connectivity::{
     scene_key_set, unreachable_quest_ids,
 };
 use lute_check::{
-    check, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv,
-    MaySet, MetaKind, Mode, ProjectDoc, RootVocab, SchemaImports,
+    check, compute_must, fold_env, stable_seeds, CheckInput, FactEnv, FoldedEnv, MaySet, MetaKind,
+    Mode, ProjectDoc, RootVocab, SchemaImports,
 };
 use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::schema::{CastMember, OccasionDecl, OccasionSelect};
@@ -123,7 +123,10 @@ fn an_unguarded_line_by_a_present_speaker_warns_once() {
     assert_eq!(hits[0].severity, Severity::Warning);
     assert_eq!(anchored(&src, hits[0]), "isolde");
     let msg = &hits[0].message;
-    assert!(msg.contains("present: \"holds('inParty', ['isolde'])\""), "{msg}");
+    assert!(
+        msg.contains("present: \"holds('inParty', ['isolde'])\""),
+        "{msg}"
+    );
     assert!(
         msg.contains("@isolde{when=\"holds('inParty', ['isolde'])\"}"),
         "{msg}"
@@ -144,7 +147,9 @@ fn the_lines_own_when_implies_presence() {
         1,
         "only the line guarded by someone else's presence: {ds:?}"
     );
-    assert!(src[hits[0].span.byte_start..].starts_with("isolde{when=\"holds('inParty', ['corvin'])"));
+    assert!(
+        src[hits[0].span.byte_start..].starts_with("isolde{when=\"holds('inParty', ['corvin'])")
+    );
 }
 
 #[test]
@@ -691,7 +696,8 @@ fn battle_scene(id: &str, fm: &str, body: &str) -> String {
 }
 
 /// A `tomas` line guarded by every premise of his `present` but `fell`.
-const TOMAS: &str = "@tomas{when=\"holds('recruited', ['tomas']) && !holds('departed', ['tomas'])\"}";
+const TOMAS: &str =
+    "@tomas{when=\"holds('recruited', ['tomas']) && !holds('departed', ['tomas'])\"}";
 
 /// The spoken text of every `W-CAST-ABSENT` line of `ds`.
 fn absent_said<'s>(src: &'s str, ds: &[Diagnostic]) -> Vec<&'s str> {

@@ -33,7 +33,8 @@ pub(crate) fn resolve_kinds(
     defaults: &lute_manifest::project::MetaDefaults,
 ) -> (crate::meta::DocKind, crate::meta::MetaKind, Vec<Diagnostic>) {
     use crate::meta::{DocKind, MetaKind};
-    let (resolved_kind, kind_diags) = crate::meta::resolve_doc_kind_with_defaults(&doc.meta, defaults);
+    let (resolved_kind, kind_diags) =
+        crate::meta::resolve_doc_kind_with_defaults(&doc.meta, defaults);
     let has_body = !doc.sections.is_empty()
         || !doc.quests.is_empty()
         || !doc.entries.is_empty()
@@ -980,7 +981,11 @@ fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
             let mut sorted = ms.clone();
             sorted.sort();
             sorted.dedup();
-            if let Some(decl) = scoped.state.decls.get_mut(lute_manifest::semantics::beats::OCCASION_TARGET) {
+            if let Some(decl) = scoped
+                .state
+                .decls
+                .get_mut(lute_manifest::semantics::beats::OCCASION_TARGET)
+            {
                 decl.ty = lute_manifest::types::Type::Enum(sorted);
             }
             (ms.clone(), scoped)
@@ -1100,7 +1105,8 @@ pub(super) fn fold_directive_slots(
         schema,
         stack: Vec::new(),
     };
-    let bodies = doc.sections
+    let bodies = doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

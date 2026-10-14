@@ -26,9 +26,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::fact::{FactArg, FactTerm};
 use lute_manifest::relations::{EntityKindDecl, KindShape};
 use lute_manifest::snapshot::Domain;
-use lute_manifest::fact::{FactArg, FactTerm};
 use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 
 use crate::rel_schema::{

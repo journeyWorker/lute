@@ -28,17 +28,23 @@ pub struct ModelMemo {
 impl ModelMemo {
     /// [`ProjectModel::build_single_root`], once per `(root, opts)`.
     pub fn single_root(&self, root: &Path, opts: &ModelOptions) -> Built {
-        let built = self.built.get_or_init((root.to_path_buf(), opts.clone()), || {
-            ProjectModel::build_single_root(root, opts)
-                .map(Arc::new)
-                .map_err(Arc::new)
-        });
+        let built = self
+            .built
+            .get_or_init((root.to_path_buf(), opts.clone()), || {
+                ProjectModel::build_single_root(root, opts)
+                    .map(Arc::new)
+                    .map_err(Arc::new)
+            });
         (*built).clone()
     }
 
     /// [`ProjectModel::roots_under`], each root's model built once per
     /// `opts`. Like it, the first root that fails to build is the error.
-    pub fn roots_under(&self, dir: &Path, opts: &ModelOptions) -> Result<Vec<Arc<ProjectModel>>, Arc<ModelError>> {
+    pub fn roots_under(
+        &self,
+        dir: &Path,
+        opts: &ModelOptions,
+    ) -> Result<Vec<Arc<ProjectModel>>, Arc<ModelError>> {
         ProjectModel::project_roots(dir)
             .map_err(Arc::new)?
             .iter()

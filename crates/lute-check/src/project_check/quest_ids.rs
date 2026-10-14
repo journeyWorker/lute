@@ -1,7 +1,7 @@
+use crate::ProjectDoc;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use crate::ProjectDoc;
 
 /// `E-QUEST-ID-DUP`, [`Layer::Logic`] (matching `check_quest`'s own in-document
 /// diagnostic — quest-id identity is a §9/§11-style logic concern regardless of
@@ -27,7 +27,9 @@ pub(crate) fn diag(message: String, span: Span) -> Diagnostic {
 /// (which needs every MEMBER of a colliding group, first occurrence
 /// included). An empty id is skipped here too (see
 /// [`check_project_quest_ids`]'s own doc comment on why).
-pub(crate) fn group_by_id<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeMap<&'a str, Vec<(&'a Path, Span)>> {
+pub(crate) fn group_by_id<'a>(
+    docs: &'a [ProjectDoc<'a>],
+) -> BTreeMap<&'a str, Vec<(&'a Path, Span)>> {
     let mut by_id: BTreeMap<&str, Vec<(&Path, Span)>> = BTreeMap::new();
     for item in docs {
         let path = item.path;

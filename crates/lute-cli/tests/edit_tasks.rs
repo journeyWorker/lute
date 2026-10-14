@@ -8,9 +8,15 @@ use std::{
 
 use lute_model::{apply_patch_to, project_revision, PatchRefusal, PatchRequest, ProjectModel};
 
-fn workspace() -> PathBuf { PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..") }
-fn root() -> PathBuf { workspace().join("conformance/edit-tasks") }
-fn readj(path: &Path) -> Value { serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap() }
+fn workspace() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+fn root() -> PathBuf {
+    workspace().join("conformance/edit-tasks")
+}
+fn readj(path: &Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
 
 fn build_base(base: &str) -> ProjectModel {
     let path = workspace().join(base);
@@ -18,11 +24,16 @@ fn build_base(base: &str) -> ProjectModel {
         .unwrap_or_else(|error| panic!("cannot build {base}: {error}"))
 }
 
-static SUMMER: LazyLock<ProjectModel> = LazyLock::new(|| build_base("docs/examples/games/summer-station"));
-static ASHEN: LazyLock<ProjectModel> = LazyLock::new(|| build_base("docs/examples/games/ashen-stair"));
-static MONSTER: LazyLock<ProjectModel> = LazyLock::new(|| build_base("docs/examples/games/monster-league"));
-static HOLLOW: LazyLock<ProjectModel> = LazyLock::new(|| build_base("docs/examples/games/hollow-ward"));
-static JOB_RESTRICTION: LazyLock<ProjectModel> = LazyLock::new(|| build_base("conformance/edit-tasks/_games/job-restriction"));
+static SUMMER: LazyLock<ProjectModel> =
+    LazyLock::new(|| build_base("docs/examples/games/summer-station"));
+static ASHEN: LazyLock<ProjectModel> =
+    LazyLock::new(|| build_base("docs/examples/games/ashen-stair"));
+static MONSTER: LazyLock<ProjectModel> =
+    LazyLock::new(|| build_base("docs/examples/games/monster-league"));
+static HOLLOW: LazyLock<ProjectModel> =
+    LazyLock::new(|| build_base("docs/examples/games/hollow-ward"));
+static JOB_RESTRICTION: LazyLock<ProjectModel> =
+    LazyLock::new(|| build_base("conformance/edit-tasks/_games/job-restriction"));
 
 fn model(base: &str) -> &'static ProjectModel {
     match base {
@@ -35,9 +46,11 @@ fn model(base: &str) -> &'static ProjectModel {
     }
 }
 
-
 fn base_path(task: &Path) -> String {
-    readj(&task.join("task.json"))["base"].as_str().unwrap().to_owned()
+    readj(&task.join("task.json"))["base"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 fn fill(value: &mut Value, project: &str, files: &BTreeMap<String, String>) {
@@ -45,12 +58,20 @@ fn fill(value: &mut Value, project: &str, files: &BTreeMap<String, String>) {
         Value::String(text) => {
             if text == "@BASE@" {
                 *text = project.to_owned();
-            } else if let Some(key) = text.strip_prefix("@BASE_FILE:").and_then(|x| x.strip_suffix('@')) {
-                *text = files.get(key).unwrap_or_else(|| panic!("missing base file {key}")).clone();
+            } else if let Some(key) = text
+                .strip_prefix("@BASE_FILE:")
+                .and_then(|x| x.strip_suffix('@'))
+            {
+                *text = files
+                    .get(key)
+                    .unwrap_or_else(|| panic!("missing base file {key}"))
+                    .clone();
             }
         }
         Value::Array(items) => items.iter_mut().for_each(|item| fill(item, project, files)),
-        Value::Object(items) => items.values_mut().for_each(|item| fill(item, project, files)),
+        Value::Object(items) => items
+            .values_mut()
+            .for_each(|item| fill(item, project, files)),
         _ => {}
     }
 }
@@ -83,14 +104,20 @@ fn refusal_json(refusal: &PatchRefusal) -> Value {
             value["reason"] = Value::String(reason.clone());
         }
         PatchRefusal::Check(diagnostics) => {
-            value["diagnostics"] = serde_json::to_value(diagnostics).unwrap_or_else(|_| Value::Array(Vec::new()));
+            value["diagnostics"] =
+                serde_json::to_value(diagnostics).unwrap_or_else(|_| Value::Array(Vec::new()));
         }
         PatchRefusal::Preserve(changes) => {
-            value["changes"] = Value::Array(changes.iter().map(|(preserve, change)| {
-                let mut item = serde_json::to_value(change).unwrap_or_else(|_| json!({}));
-                item["preserve"] = Value::String(preserve.clone());
-                item
-            }).collect());
+            value["changes"] = Value::Array(
+                changes
+                    .iter()
+                    .map(|(preserve, change)| {
+                        let mut item = serde_json::to_value(change).unwrap_or_else(|_| json!({}));
+                        item["preserve"] = Value::String(preserve.clone());
+                        item
+                    })
+                    .collect(),
+            );
         }
         PatchRefusal::Io { .. } => unreachable!(),
     }
@@ -104,22 +131,38 @@ fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
             let mut output = serde_json::to_value(report).unwrap();
             output["schemaVersion"] = Value::String("0.36.0.patch".into());
             output["ok"] = Value::Bool(true);
-            let status = if output["diff"]["changes"].as_array().is_some_and(|changes| changes.is_empty()) { 0 } else { 1 };
+            let status = if output["diff"]["changes"]
+                .as_array()
+                .is_some_and(|changes| changes.is_empty())
+            {
+                0
+            } else {
+                1
+            };
             (status, output)
         }
         Err(refusal) => (2, refusal_json(&refusal)),
     }
 }
 
-fn changes(value: &Value) -> &[Value] { value["diff"]["changes"].as_array().map(Vec::as_slice).unwrap_or(&[]) }
+fn changes(value: &Value) -> &[Value] {
+    value["diff"]["changes"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
 fn item(changes: &[Value], expected: &Value) -> bool {
     let node = expected["node"].as_str().unwrap_or("");
     let kind = expected["kind"].as_str().unwrap_or("");
-    changes.iter().any(|change| change["node"].as_str() == Some(node) && change["kind"].as_str() == Some(kind))
+    changes.iter().any(|change| {
+        change["node"].as_str() == Some(node) && change["kind"].as_str() == Some(kind)
+    })
 }
 fn forbidden(changes: &[Value], expected: &Value) -> bool {
     match expected {
-        Value::String(node) => changes.iter().any(|change| change["node"].as_str() == Some(node)),
+        Value::String(node) => changes
+            .iter()
+            .any(|change| change["node"].as_str() == Some(node)),
         Value::Object(_) => item(changes, expected),
         _ => false,
     }
@@ -130,7 +173,9 @@ fn preserved(changes: &[Value], expected: &Value) -> Vec<String> {
     for change in changes {
         let node = change["node"].as_str().unwrap_or("");
         let kind = change["kind"].as_str().unwrap_or("");
-        if ids.iter().any(|id| id.as_str() == Some(node)) && (kind == "added" || kind == "removed" || kind.to_ascii_lowercase().contains("id")) {
+        if ids.iter().any(|id| id.as_str() == Some(node))
+            && (kind == "added" || kind == "removed" || kind.to_ascii_lowercase().contains("id"))
+        {
             output.push(format!("{node}:{kind}"));
         }
         if expected["lineIds"] == true && kind.to_ascii_lowercase().contains("lineid") {
@@ -140,7 +185,11 @@ fn preserved(changes: &[Value], expected: &Value) -> Vec<String> {
             output.push(format!("{node}:{kind}"));
         }
         if let Some(reachability) = expected["reachability"].as_array() {
-            if reachability.iter().any(|value| value.as_str() == Some(node)) && kind == "reachability" {
+            if reachability
+                .iter()
+                .any(|value| value.as_str() == Some(node))
+                && kind == "reachability"
+            {
                 output.push(format!("{node}:{kind}"));
             }
         }
@@ -151,19 +200,30 @@ fn preserved(changes: &[Value], expected: &Value) -> Vec<String> {
 }
 
 fn revision(model: &ProjectModel) -> lute_model::ProjectRevision {
-    let inputs = model.revisions().files.keys().map(|path| {
-        (path.clone(), fs::read(model.root().join(path)).unwrap())
-    }).collect::<Vec<_>>();
+    let inputs = model
+        .revisions()
+        .files
+        .keys()
+        .map(|path| (path.clone(), fs::read(model.root().join(path)).unwrap()))
+        .collect::<Vec<_>>();
     project_revision(model.root(), &inputs).unwrap()
 }
 
 fn record(task: &str, result: Value) {
-    static RESULTS: LazyLock<Mutex<BTreeMap<String, Value>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
-    let mut results = match RESULTS.lock() { Ok(guard) => guard, Err(poisoned) => poisoned.into_inner() };
+    static RESULTS: LazyLock<Mutex<BTreeMap<String, Value>>> =
+        LazyLock::new(|| Mutex::new(BTreeMap::new()));
+    let mut results = match RESULTS.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     if std::env::var_os("LUTE_BLESS_EDIT_TASKS").is_some() {
         results.insert(task.to_owned(), result);
         if results.len() == 12 {
-            fs::write(root().join("REPORT.json"), serde_json::to_vec_pretty(&*results).unwrap()).unwrap();
+            fs::write(
+                root().join("REPORT.json"),
+                serde_json::to_vec_pretty(&*results).unwrap(),
+            )
+            .unwrap();
         }
     } else {
         let expected = readj(&root().join("REPORT.json"));
@@ -177,7 +237,11 @@ fn run_task(task_name: &str) {
     let model = model(&base_name);
     let before = model.revisions().clone();
     let project = before.sha256.clone();
-    let files = before.files.iter().map(|(path, revision)| (path.to_string_lossy().into_owned(), revision.sha256.clone())).collect::<BTreeMap<_, _>>();
+    let files = before
+        .files
+        .iter()
+        .map(|(path, revision)| (path.to_string_lossy().into_owned(), revision.sha256.clone()))
+        .collect::<BTreeMap<_, _>>();
 
     let mut patch = readj(&task.join("patch.json"));
     fill(&mut patch, &project, &files);
@@ -186,22 +250,42 @@ fn run_task(task_name: &str) {
     let intended = expected["intended"].as_array().unwrap();
     let valid = status != 2 && report["ok"] == true;
     let intended_present = intended.iter().all(|change| item(changes(&report), change));
-    let forbidden_changed = expected["forbidden"].as_array().is_some_and(|items| items.iter().any(|item| forbidden(changes(&report), item)));
+    let forbidden_changed = expected["forbidden"]
+        .as_array()
+        .is_some_and(|items| items.iter().any(|item| forbidden(changes(&report), item)));
     let moved = intended.iter().any(|change| change["kind"] == "moved");
     let unintended = if valid {
-        changes(&report).iter().filter(|change| {
-            change["kind"] != "vocabulary"
-                && !(moved && change["kind"] == "moved")
-                && !intended.iter().any(|expected| item(std::slice::from_ref(change), expected))
-        }).cloned().collect::<Vec<_>>()
+        changes(&report)
+            .iter()
+            .filter(|change| {
+                change["kind"] != "vocabulary"
+                    && !(moved && change["kind"] == "moved")
+                    && !intended
+                        .iter()
+                        .any(|expected| item(std::slice::from_ref(change), expected))
+            })
+            .cloned()
+            .collect::<Vec<_>>()
     } else {
         vec![json!({"error":"reference refused","report":report})]
     };
-    let preserved_ids = if valid { preserved(changes(&report), &expected["preserve"]) } else { vec!["reference refused".into()] };
+    let preserved_ids = if valid {
+        preserved(changes(&report), &expected["preserve"])
+    } else {
+        vec!["reference refused".into()]
+    };
 
     let mut trap_verdicts = Vec::new();
-    let mut traps = fs::read_dir(&task).unwrap().flatten().map(|entry| entry.path())
-        .filter(|path| path.file_name().unwrap().to_string_lossy().starts_with("trap-"))
+    let mut traps = fs::read_dir(&task)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("trap-")
+        })
         .collect::<Vec<_>>();
     traps.sort();
     for trap in traps {
@@ -209,17 +293,37 @@ fn run_task(task_name: &str) {
         let trap_expect = value.as_object_mut().unwrap().remove("trapExpect").unwrap();
         fill(&mut value, &project, &files);
         let (trap_status, trap_report) = apply(model, value);
-        let code_ok = trap_expect.get("code").is_some_and(|code| trap_report["code"] == *code && trap_status == 2);
+        let code_ok = trap_expect
+            .get("code")
+            .is_some_and(|code| trap_report["code"] == *code && trap_status == 2);
         let specific = if let Some(preserve) = trap_expect.get("preserve").and_then(Value::as_str) {
-            let node = trap_expect.get("node").and_then(Value::as_str).unwrap_or("");
-            trap_report["changes"].as_array().is_some_and(|items| items.iter().any(|change| change["node"] == node && change["preserve"] == preserve))
+            let node = trap_expect
+                .get("node")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            trap_report["changes"].as_array().is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|change| change["node"] == node && change["preserve"] == preserve)
+            })
         } else if let Some(diagnostic) = trap_expect.get("diagnostic").and_then(Value::as_str) {
-            trap_report["diagnostics"].as_array().is_some_and(|items| items.iter().any(|item| item["code"] == diagnostic))
+            trap_report["diagnostics"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item["code"] == diagnostic))
         } else if let Some(node) = trap_expect.get("node").and_then(Value::as_str) {
-            trap_report["changes"].as_array().is_some_and(|items| items.iter().any(|change| change["node"] == node))
-        } else { true };
-        let diff_ok = trap_expect.get("diff").is_some_and(|expected_diff| trap_status == 1 && item(changes(&trap_report), expected_diff));
-        let caught = specific && ((code_ok && trap_expect.get("diff").is_none()) || (diff_ok && trap_expect.get("code").is_none()) || (code_ok && diff_ok));
+            trap_report["changes"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|change| change["node"] == node))
+        } else {
+            true
+        };
+        let diff_ok = trap_expect.get("diff").is_some_and(|expected_diff| {
+            trap_status == 1 && item(changes(&trap_report), expected_diff)
+        });
+        let caught = specific
+            && ((code_ok && trap_expect.get("diff").is_none())
+                || (diff_ok && trap_expect.get("code").is_none())
+                || (code_ok && diff_ok));
         trap_verdicts.push(json!({
             "name": trap.file_name().unwrap().to_string_lossy(),
             "caught": caught,
@@ -228,24 +332,40 @@ fn run_task(task_name: &str) {
             "expected": trap_expect,
         }));
     }
-    let traps_ok = trap_verdicts.iter().all(|verdict| verdict["caught"] == true);
-    let ok = valid && intended_present && !forbidden_changed && unintended.is_empty() && preserved_ids.is_empty() && traps_ok;
-    assert!(revision(model) == before, "dry-run changed {}", model.root().display());
-    record(task_name, json!({
-        "validity": valid,
-        "intendedPresent": intended_present,
-        "unintendedDiff": unintended,
-        "preservedIdChanges": preserved_ids,
-        "trapVerdicts": trap_verdicts,
-        "ok": ok,
-    }));
+    let traps_ok = trap_verdicts
+        .iter()
+        .all(|verdict| verdict["caught"] == true);
+    let ok = valid
+        && intended_present
+        && !forbidden_changed
+        && unintended.is_empty()
+        && preserved_ids.is_empty()
+        && traps_ok;
+    assert!(
+        revision(model) == before,
+        "dry-run changed {}",
+        model.root().display()
+    );
+    record(
+        task_name,
+        json!({
+            "validity": valid,
+            "intendedPresent": intended_present,
+            "unintendedDiff": unintended,
+            "preservedIdChanges": preserved_ids,
+            "trapVerdicts": trap_verdicts,
+            "ok": ok,
+        }),
+    );
     assert!(ok, "edit-task {task_name} failed");
 }
 
 macro_rules! edit_task_test {
     ($name:ident, $task:literal) => {
         #[test]
-        fn $name() { run_task($task); }
+        fn $name() {
+            run_task($task);
+        }
     };
 }
 
@@ -266,7 +386,11 @@ fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for entry in fs::read_dir(from).unwrap().flatten() {
         let (source, target) = (entry.path(), to.join(entry.file_name()));
-        if source.is_dir() { copy_tree(&source, &target) } else { fs::copy(&source, &target).unwrap(); }
+        if source.is_dir() {
+            copy_tree(&source, &target)
+        } else {
+            fs::copy(&source, &target).unwrap();
+        }
     }
 }
 
@@ -280,7 +404,11 @@ fn write_matches_dry_run(task_name: &str) {
     let base_name = base_path(&task);
     let model = model(&base_name);
     let before = model.revisions();
-    let files = before.files.iter().map(|(path, revision)| (path.to_string_lossy().into_owned(), revision.sha256.clone())).collect();
+    let files = before
+        .files
+        .iter()
+        .map(|(path, revision)| (path.to_string_lossy().into_owned(), revision.sha256.clone()))
+        .collect();
     let mut patch = readj(&task.join("patch.json"));
     fill(&mut patch, &before.sha256, &files);
     let (dry_status, dry) = apply(model, patch.clone());
@@ -291,20 +419,48 @@ fn write_matches_dry_run(task_name: &str) {
     let patch_file = scratch.join("patch.json");
     fs::write(&patch_file, serde_json::to_vec(&patch).unwrap()).unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_lute"))
-        .arg("patch").arg(&copy).arg(&patch_file).arg("--json")
-        .output().unwrap();
-    let written: Value = serde_json::from_slice(&output.stdout)
-        .unwrap_or_else(|e| panic!("{task_name}: {e}: {}", String::from_utf8_lossy(&output.stderr)));
-    assert_eq!(output.status.code(), Some(dry_status), "{task_name}: {written}");
-    assert_eq!(written["after"]["sha256"], dry["after"]["sha256"], "{task_name}: written tree differs from the dry-run");
-    let kinds = |report: &Value| changes(report).iter().map(|c| (c["node"].clone(), c["kind"].clone())).collect::<Vec<_>>();
+        .arg("patch")
+        .arg(&copy)
+        .arg(&patch_file)
+        .arg("--json")
+        .output()
+        .unwrap();
+    let written: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|e| {
+        panic!(
+            "{task_name}: {e}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    assert_eq!(
+        output.status.code(),
+        Some(dry_status),
+        "{task_name}: {written}"
+    );
+    assert_eq!(
+        written["after"]["sha256"], dry["after"]["sha256"],
+        "{task_name}: written tree differs from the dry-run"
+    );
+    let kinds = |report: &Value| {
+        changes(report)
+            .iter()
+            .map(|c| (c["node"].clone(), c["kind"].clone()))
+            .collect::<Vec<_>>()
+    };
     assert_eq!(kinds(&written), kinds(&dry), "{task_name}");
     let rebuilt = ProjectModel::build_single_root(&copy, &Default::default()).unwrap();
-    assert_eq!(Value::String(rebuilt.revisions().sha256.clone()), written["after"]["sha256"], "{task_name}: report does not describe the tree on disk");
+    assert_eq!(
+        Value::String(rebuilt.revisions().sha256.clone()),
+        written["after"]["sha256"],
+        "{task_name}: report does not describe the tree on disk"
+    );
 }
 
 #[test]
-fn edit_task_write_path_matches_dry_run_on_a_game() { write_matches_dry_run("01-new-choice"); }
+fn edit_task_write_path_matches_dry_run_on_a_game() {
+    write_matches_dry_run("01-new-choice");
+}
 
 #[test]
-fn edit_task_write_path_matches_dry_run_standalone() { write_matches_dry_run("10-job-restriction"); }
+fn edit_task_write_path_matches_dry_run_standalone() {
+    write_matches_dry_run("10-job-restriction");
+}

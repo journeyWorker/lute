@@ -24,11 +24,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::{check_atom, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::fact::{parse_fact, DatalogError};
 use lute_manifest::types::{type_accepts, Literal, Type};
 pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
-use lute_manifest::fact::{parse_fact, DatalogError};
-
 
 /// Runtime mock data with trace-local YAML source metadata.
 pub type MockSet = lute_runtime::MockSet<BridgeSpans, ChooseSpans>;
@@ -39,7 +38,10 @@ type BridgeAnswer = lute_runtime::BridgeAnswer;
 /// each of its field keys. Empty for answers with no text behind them; a
 /// diagnostic about one then renders at [`synthetic_span`].
 #[derive(Clone, Debug, Default, PartialEq)]
-#[expect(clippy::type_complexity, reason = "bridge span storage mirrors the nested bridge/answer/field structure")]
+#[expect(
+    clippy::type_complexity,
+    reason = "bridge span storage mirrors the nested bridge/answer/field structure"
+)]
 pub struct BridgeSpans(BTreeMap<String, (Span, Vec<(Span, BTreeMap<String, Span>)>)>);
 
 impl BridgeSpans {
@@ -117,8 +119,6 @@ impl ChooseSpans {
     }
 }
 
-
-
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
 /// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
 /// is the reason, unprefixed.
@@ -160,7 +160,6 @@ pub fn parse_bridges(v: &serde_yaml::Value) -> Result<BTreeMap<String, Vec<Bridg
     Ok(out)
 }
 
-
 /// A state path as a seed or expectation writes it — bare
 /// (`run.visits.lab2`) or quoted (`run.visits["lab-b2"]`) — in its canonical
 /// dotted form, the one spelling the store keys on. Text that is not a
@@ -171,7 +170,6 @@ pub fn state_key(raw: &str) -> String {
         .map(|segs| lute_manifest::text::render_path(&segs))
         .unwrap_or_else(|| raw.to_string())
 }
-
 
 /// `--state`/`--mock` literals and `--choose` targets carry no real source
 /// text — every diagnostic [`validate`]/[`parse_mock_yaml`] produces is
@@ -1008,7 +1006,10 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
                     .get_or_insert_with(|| {
                         crate::quest_refs::collect_referenced_entry_read_paths(doc)
                             .iter()
-                            .filter_map(|p| lute_manifest::semantics::cel_paths::reserved_entry_id(p).map(str::to_string))
+                            .filter_map(|p| {
+                                lute_manifest::semantics::cel_paths::reserved_entry_id(p)
+                                    .map(str::to_string)
+                            })
                             .collect()
                     })
                     .contains(id);
@@ -1475,7 +1476,10 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
 /// canonical id `<document id>.<beat id>` is `id`. Returns the beat's index
 /// in `doc.beats` and its canonical id; [`E_TRACE_BEAT`] otherwise, naming
 /// the declared canonical ids so the fix is one copy away.
-#[expect(clippy::result_large_err, reason = "trace diagnostics are returned directly for source reporting")]
+#[expect(
+    clippy::result_large_err,
+    reason = "trace diagnostics are returned directly for source reporting"
+)]
 pub(crate) fn resolve_beat(
     folded: &FoldedEnv,
     doc: &Document,
@@ -1537,7 +1541,6 @@ pub fn validate(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Diag
     diags.extend(validate_accept(mocks, doc));
     diags
 }
-
 
 /// dsl 0.25.0 §7: the state paths a document's content may read — every
 /// dotted identifier chain (`scene.check.guards.margin`) in its source

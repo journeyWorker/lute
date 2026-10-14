@@ -84,7 +84,10 @@ fn impl_ir_line() -> (u64, u64) {
 /// required for `kind: "lore"`, either is refused for any other kind.
 /// `occasions` are the `--occasion` flags, raised after the mock's own
 /// `occasions:` (dsl 0.21.0 §7a.2).
-#[expect(clippy::too_many_arguments, reason = "CLI flags are kept explicit at the command boundary")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "CLI flags are kept explicit at the command boundary"
+)]
 pub fn run_artifact(
     artifact: &Path,
     engine: Option<&Path>,
@@ -112,7 +115,10 @@ pub fn run_artifact(
     };
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
-        Err(e) => { eprintln!("lute run: {e}"); return ExitCode::from(2); }
+        Err(e) => {
+            eprintln!("lute run: {e}");
+            return ExitCode::from(2);
+        }
     };
     if let Err(e) = matrix.negotiate(&art) {
         eprintln!("lute run: {e}");
@@ -124,8 +130,7 @@ pub fn run_artifact(
     let (impl_major, impl_minor) = impl_ir_line();
     let ir_version = art.get("irVersion").and_then(Json::as_str).unwrap_or("");
     match parse_ir_version(ir_version) {
-        Some((maj, min, _))
-            if maj == impl_major && (impl_major != 0 || min == impl_minor) => {}
+        Some((maj, min, _)) if maj == impl_major && (impl_major != 0 || min == impl_minor) => {}
         _ => {
             let rule = if impl_major == 0 {
                 format!("pre-1.0 engines require exact major.minor {impl_major}.{impl_minor}")
@@ -167,7 +172,7 @@ pub fn run_artifact(
     match (is_lore, presented) {
         (true, None) => {
             eprintln!(
-                 "lute run: {} is a lore execution IR — there is no sequence to play; pass \
+                "lute run: {} is a lore execution IR — there is no sequence to play; pass \
                  `--entry <id>` to present one entry or `--beat <id>` to present one bundle beat",
                 artifact.display()
             );
@@ -209,7 +214,10 @@ pub fn run_artifact(
         let file = match std::fs::File::create(path) {
             Ok(file) => std::rc::Rc::new(std::cell::RefCell::new(file)),
             Err(e) => {
-                eprintln!("lute run: cannot create condition dump {}: {e}", path.display());
+                eprintln!(
+                    "lute run: cannot create condition dump {}: {e}",
+                    path.display()
+                );
                 return ExitCode::from(2);
             }
         };
@@ -218,7 +226,10 @@ pub fn run_artifact(
             let vars = map.entry("variables").or_insert_with(|| json!([]));
             if let Json::Array(vars) = vars {
                 for root in ["prev", "occasion", "clock", "entry"] {
-                    if !vars.iter().any(|v| v.get("name").and_then(Json::as_str) == Some(root)) {
+                    if !vars
+                        .iter()
+                        .any(|v| v.get("name").and_then(Json::as_str) == Some(root))
+                    {
                         vars.push(json!({"name": root, "type": "map(string, dyn)"}));
                     }
                 }
@@ -238,7 +249,9 @@ pub fn run_artifact(
             let expr = condition.map_or(Json::Null, |condition| condition.expr.clone());
             let no_relations = BTreeSet::new();
             let (relations, needs_visited) = condition
-                .map_or((&no_relations, false), |condition| (&condition.relations, condition.needs_visited));
+                .map_or((&no_relations, false), |condition| {
+                    (&condition.relations, condition.needs_visited)
+                });
             let paths: BTreeSet<String> = snapshot.reads.iter().map(|(p, _)| p.clone()).collect();
             let mut dump_state = snapshot.state.clone();
             for (path, read) in snapshot.reads {
@@ -302,7 +315,9 @@ pub(crate) fn typed_value(value: &lute_runtime::Value) -> Json {
     match value {
         lute_runtime::Value::Bool(v) => json!({"bool": v}),
         lute_runtime::Value::Int(v) => json!({"int": v}),
-        lute_runtime::Value::Double(v) => json!({"double": if v.is_nan() { json!("nan") } else if v.is_infinite() { json!(if *v > 0.0 { "inf" } else { "-inf" }) } else { json!(v) }}),
+        lute_runtime::Value::Double(v) => {
+            json!({"double": if v.is_nan() { json!("nan") } else if v.is_infinite() { json!(if *v > 0.0 { "inf" } else { "-inf" }) } else { json!(v) }})
+        }
         lute_runtime::Value::Str(v) => json!({"string": v}),
         lute_runtime::Value::Unknown => json!({"error": "unknown"}),
         lute_runtime::Value::Error(v) => json!({"error": v}),
@@ -343,7 +358,9 @@ pub(crate) fn activation_json_scoped_with_defaults(
             map.insert(parts[0].to_string(), value);
             return;
         }
-        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        let child = map
+            .entry(parts[0].to_string())
+            .or_insert_with(|| json!({"map": {}}));
         insert(child, &parts[1..], value);
     }
     fn ensure_maps(node: &mut Json, parts: &[&str]) {
@@ -354,11 +371,14 @@ pub(crate) fn activation_json_scoped_with_defaults(
             *node = json!({"map": {}});
         }
         let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
-        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        let child = map
+            .entry(parts[0].to_string())
+            .or_insert_with(|| json!({"map": {}}));
         ensure_maps(child, &parts[1..]);
     }
     let all = selected_roots.is_empty();
-    let allowed = |path: &str| all || selected_roots.contains(path.split('.').next().unwrap_or(path));
+    let allowed =
+        |path: &str| all || selected_roots.contains(path.split('.').next().unwrap_or(path));
     let mut roots = json!({"map": {}});
     for (path, value) in state {
         if allowed(path) {
@@ -374,8 +394,10 @@ pub(crate) fn activation_json_scoped_with_defaults(
     }
     for (path, _ty) in types {
         let root = path.split('.').next().unwrap_or(path);
-        if !all && !selected_roots.contains(root) && !(selected_roots.contains("prev")
-            && (path.starts_with("run.") || path.starts_with("season.")))
+        if !all
+            && !selected_roots.contains(root)
+            && !(selected_roots.contains("prev")
+                && (path.starts_with("run.") || path.starts_with("season.")))
         {
             continue;
         }
@@ -384,11 +406,12 @@ pub(crate) fn activation_json_scoped_with_defaults(
             ensure_maps(&mut roots, &parts);
         }
         if (path.starts_with("run.") || path.starts_with("season."))
-            && (all || selected_roots.contains("prev")) {
-                let prev = format!("prev.{path}");
-                let prev_parts: Vec<_> = prev.split('.').collect();
-                ensure_maps(&mut roots, &prev_parts);
-            }
+            && (all || selected_roots.contains("prev"))
+        {
+            let prev = format!("prev.{path}");
+            let prev_parts: Vec<_> = prev.split('.').collect();
+            ensure_maps(&mut roots, &prev_parts);
+        }
         if state.contains_key(path) || defaults.contains_key(path) {
             continue;
         }
@@ -419,20 +442,41 @@ pub(crate) fn activation_json_scoped_with_defaults(
 }
 
 pub(crate) fn condition_scope(expr: &Json) -> (BTreeSet<String>, BTreeSet<String>, bool) {
-    fn visit(node: &Json, roots: &mut BTreeSet<String>, relations: &mut BTreeSet<String>, visited: &mut bool) {
+    fn visit(
+        node: &Json,
+        roots: &mut BTreeSet<String>,
+        relations: &mut BTreeSet<String>,
+        visited: &mut bool,
+    ) {
         let Json::Object(map) = node else { return };
-        if let Some(path) = map.get("path").and_then(Json::as_str).or_else(|| map.get("has").and_then(Json::as_str)) {
-            if let Some(root) = path.split('.').next() { roots.insert(root.to_string()); }
+        if let Some(path) = map
+            .get("path")
+            .and_then(Json::as_str)
+            .or_else(|| map.get("has").and_then(Json::as_str))
+        {
+            if let Some(root) = path.split('.').next() {
+                roots.insert(root.to_string());
+            }
         }
         if let Some(call) = map.get("call").and_then(Json::as_str) {
-            if call == "visited" { *visited = true; }
+            if call == "visited" {
+                *visited = true;
+            }
             if matches!(call, "holds" | "count" | "countDistinct" | "validAt") {
-                if let Some(rel) = map.get("args").and_then(Json::as_array).and_then(|a| a.first()).and_then(|v| v.get("string")).and_then(Json::as_str) {
+                if let Some(rel) = map
+                    .get("args")
+                    .and_then(Json::as_array)
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.get("string"))
+                    .and_then(Json::as_str)
+                {
                     relations.insert(rel.to_string());
                 }
             }
         }
-        for child in map.values() { visit(child, roots, relations, visited); }
+        for child in map.values() {
+            visit(child, roots, relations, visited);
+        }
     }
     let mut roots = BTreeSet::new();
     let mut relations = BTreeSet::new();
@@ -441,22 +485,31 @@ pub(crate) fn condition_scope(expr: &Json) -> (BTreeSet<String>, BTreeSet<String
     (roots, relations, visited)
 }
 
-
 pub(crate) fn activation_json_paths(
     state: &BTreeMap<String, lute_runtime::Value>,
     types: &BTreeMap<String, String>,
     selected_paths: &BTreeSet<String>,
 ) -> Json {
     fn insert(node: &mut Json, parts: &[&str], value: Option<Json>) {
-        if parts.is_empty() { return; }
-        if !node.get("map").is_some_and(Json::is_object) { *node = json!({"map": {}}); }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
-        if parts.len() == 1 {
-            if let Some(value) = value { map.insert(parts[0].to_string(), value); }
-            else { map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}})); }
+        if parts.is_empty() {
             return;
         }
-        let child = map.entry(parts[0].to_string()).or_insert_with(|| json!({"map": {}}));
+        if !node.get("map").is_some_and(Json::is_object) {
+            *node = json!({"map": {}});
+        }
+        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        if parts.len() == 1 {
+            if let Some(value) = value {
+                map.insert(parts[0].to_string(), value);
+            } else {
+                map.entry(parts[0].to_string())
+                    .or_insert_with(|| json!({"map": {}}));
+            }
+            return;
+        }
+        let child = map
+            .entry(parts[0].to_string())
+            .or_insert_with(|| json!({"map": {}}));
         insert(child, &parts[1..], value);
     }
     let wanted = |candidate: &str| path_wanted(selected_paths, candidate);
@@ -466,10 +519,18 @@ pub(crate) fn activation_json_paths(
         insert(&mut out, &[root], None);
     }
     for (path, value) in state {
-        if wanted(path) { insert(&mut out, &path.split('.').collect::<Vec<_>>(), Some(typed_value(value))); }
+        if wanted(path) {
+            insert(
+                &mut out,
+                &path.split('.').collect::<Vec<_>>(),
+                Some(typed_value(value)),
+            );
+        }
     }
     for path in types.keys() {
-        if !wanted(path) || state.contains_key(path) { continue; }
+        if !wanted(path) || state.contains_key(path) {
+            continue;
+        }
         let parts: Vec<_> = path.split('.').collect();
         if parts.len() > 1 {
             insert(&mut out, &parts[..parts.len() - 1], None);
@@ -490,21 +551,29 @@ pub(crate) fn activation_json_paths(
 /// the only state entries a condition-dump activation can contain.
 pub(crate) fn path_wanted(selected_paths: &BTreeSet<String>, candidate: &str) -> bool {
     fn below(path: &str, parent: &str) -> bool {
-        path.len() > parent.len() && path.starts_with(parent) && path.as_bytes()[parent.len()] == b'.'
+        path.len() > parent.len()
+            && path.starts_with(parent)
+            && path.as_bytes()[parent.len()] == b'.'
     }
-    selected_paths
-        .iter()
-        .any(|selected| selected == candidate || below(selected, candidate) || below(candidate, selected))
+    selected_paths.iter().any(|selected| {
+        selected == candidate || below(selected, candidate) || below(candidate, selected)
+    })
 }
 
 pub(crate) fn condition_facts(
     facts: &std::collections::BTreeSet<lute_runtime::datalog::Fact>,
     relations: &BTreeSet<String>,
 ) -> Json {
-    facts.iter().filter(|(rel, _)| relations.contains(rel)).map(|(rel, args)| json!({
-        "rel": rel,
-        "args": args.iter().map(|a| json!({"string": a})).collect::<Vec<_>>()
-    })).collect()
+    facts
+        .iter()
+        .filter(|(rel, _)| relations.contains(rel))
+        .map(|(rel, args)| {
+            json!({
+                "rel": rel,
+                "args": args.iter().map(|a| json!({"string": a})).collect::<Vec<_>>()
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -514,8 +583,14 @@ mod dump_tests {
     #[test]
     fn typed_encoder_preserves_numeric_kinds_and_errors() {
         assert_eq!(typed_value(&lute_runtime::Value::Int(3)), json!({"int": 3}));
-        assert_eq!(typed_value(&lute_runtime::Value::Double(3.5)), json!({"double": 3.5}));
-        assert_eq!(typed_value(&lute_runtime::Value::Error("division by zero".into())), json!({"error": "division by zero"}));
+        assert_eq!(
+            typed_value(&lute_runtime::Value::Double(3.5)),
+            json!({"double": 3.5})
+        );
+        assert_eq!(
+            typed_value(&lute_runtime::Value::Error("division by zero".into())),
+            json!({"error": "division by zero"})
+        );
     }
 
     #[test]
@@ -532,14 +607,23 @@ mod dump_tests {
         let activation = activation_json(&state, &types);
         assert_eq!(activation["run"]["map"]["visits"], json!({"bool": true}));
         assert!(activation["run"]["map"].get("tip").is_none());
-        assert_eq!(activation["quest"]["map"]["demo"]["map"]["state"], json!({"string": "unset"}));
+        assert_eq!(
+            activation["quest"]["map"]["demo"]["map"]["state"],
+            json!({"string": "unset"})
+        );
     }
 
     #[test]
     fn path_activation_omits_unset_leaf_but_keeps_read_list() {
         let state = BTreeMap::from([
-            ("run.visits.0".to_string(), lute_runtime::Value::Str("zero".into())),
-            ("run.visits.1".to_string(), lute_runtime::Value::Str("one".into())),
+            (
+                "run.visits.0".to_string(),
+                lute_runtime::Value::Str("zero".into()),
+            ),
+            (
+                "run.visits.1".to_string(),
+                lute_runtime::Value::Str("one".into()),
+            ),
         ]);
         let types = BTreeMap::new();
         let paths = BTreeSet::from(["run.lantern.wish".to_string(), "run.visits".to_string()]);
@@ -585,8 +669,12 @@ mod dump_tests {
             .transcript
             .iter()
             .any(|record| record["text"] == "You land a cod."));
-        let mut unraised =
-            run_machine(&art, &lute_runtime::MockSet::<(), ()>::default(), None, Some("catch.land"));
+        let mut unraised = run_machine(
+            &art,
+            &lute_runtime::MockSet::<(), ()>::default(),
+            None,
+            Some("catch.land"),
+        );
         unraised.run().unwrap();
         assert!(unraised
             .driver()
@@ -594,7 +682,6 @@ mod dump_tests {
             .iter()
             .any(|record| record["text"] == "You land a kind:fish."));
     }
-
 }
 
 #[cfg(test)]
@@ -602,7 +689,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.42.0", "commands": [command]})
+        json!({"irVersion": "0.42.1", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is
@@ -610,48 +697,162 @@ mod removed_field_tests {
     #[test]
     fn every_removed_spelling_is_refused_with_its_replacement() {
         let cases: Vec<(Json, &str, &str)> = vec![
-            (json!({"capabilityVersion": "x", "commands": []}), "`capabilityVersion`", "`capabilitySnapshot`"),
-            (json!({"shots": [], "commands": []}), "`shots`", "`sections`"),
-            (json!({"sections": [{"shot": 1, "heading": "A"}], "commands": []}), "`shot`", "`section`"),
-            (one(json!({"kind": "line", "addr": "001"})), "`addr`", "`position`"),
-            (one(json!({"kind": "choice", "position": "001", "recordKey": "k"})), "`recordKey`", "`selectionKey`"),
-            (one(json!({"kind": "choice", "position": "001", "timeoutSec": 3})), "`timeoutSec`", "`timeout`"),
-            (one(json!({"kind": "vfx", "position": "001", "vfxType": "flash"})), "`vfxType`", "`type`"),
-            (one(json!({"kind": "bg", "position": "001", "wait": true})), "`wait`", "`timing.wait`"),
-            (one(json!({"kind": "bg", "position": "001", "duration": 1.0})), "`duration`", "`timing.duration`"),
-            (one(json!({"kind": "bg", "position": "001", "delay": 1.0})), "`delay`", "`timing.delay`"),
-            (one(json!({"kind": "bg", "position": "001", "at": 1.0})), "`at`", "`timing.at`"),
-            (one(json!({"kind": "bg", "position": "001", "timeline": 0})), "`timeline`", "`timing.timeline`"),
-            (one(json!({"kind": "camera", "position": "001", "zoom": 1.2})), "`zoom`", "`framing`"),
-            (one(json!({"kind": "camera", "position": "001", "moveX": 1})), "`moveX`", "`move`"),
-            (one(json!({"kind": "camera", "position": "001", "moveY": 1})), "`moveY`", "`move`"),
-            (one(json!({"kind": "camera", "position": "001", "shake": true})), "`shake`", "`move`"),
-            (one(json!({"kind": "camera", "position": "001", "reset": true})), "`reset`", "`transition`"),
-            (one(json!({"kind": "camera", "position": "001", "easing": "in"})), "`easing`", "`transition`"),
-            (one(json!({"kind": "cg", "position": "001", "action": "show"})), "`action`", "`display`"),
-            (one(json!({"kind": "cg", "position": "001", "full": true})), "`full`", "`layout`"),
-            (one(json!({"kind": "video", "position": "001", "action": "show"})), "`action`", "`display`"),
-            (one(json!({"kind": "music", "position": "001", "action": "play"})), "`action`", "`playback`"),
-            (one(json!({"kind": "music", "position": "001", "track": "t"})), "`track`", "`assetId`"),
-            (one(json!({"kind": "sfx", "position": "001", "name": "n"})), "`name`", "`sound`"),
             (
-                one(json!({"kind": "choice", "position": "001", "options": [{"id": "a", "label": "A"}]})),
+                json!({"capabilityVersion": "x", "commands": []}),
+                "`capabilityVersion`",
+                "`capabilitySnapshot`",
+            ),
+            (
+                json!({"shots": [], "commands": []}),
+                "`shots`",
+                "`sections`",
+            ),
+            (
+                json!({"sections": [{"shot": 1, "heading": "A"}], "commands": []}),
+                "`shot`",
+                "`section`",
+            ),
+            (
+                one(json!({"kind": "line", "addr": "001"})),
+                "`addr`",
+                "`position`",
+            ),
+            (
+                one(json!({"kind": "choice", "position": "001", "recordKey": "k"})),
+                "`recordKey`",
+                "`selectionKey`",
+            ),
+            (
+                one(json!({"kind": "choice", "position": "001", "timeoutSec": 3})),
+                "`timeoutSec`",
+                "`timeout`",
+            ),
+            (
+                one(json!({"kind": "vfx", "position": "001", "vfxType": "flash"})),
+                "`vfxType`",
+                "`type`",
+            ),
+            (
+                one(json!({"kind": "bg", "position": "001", "wait": true})),
+                "`wait`",
+                "`timing.wait`",
+            ),
+            (
+                one(json!({"kind": "bg", "position": "001", "duration": 1.0})),
+                "`duration`",
+                "`timing.duration`",
+            ),
+            (
+                one(json!({"kind": "bg", "position": "001", "delay": 1.0})),
+                "`delay`",
+                "`timing.delay`",
+            ),
+            (
+                one(json!({"kind": "bg", "position": "001", "at": 1.0})),
+                "`at`",
+                "`timing.at`",
+            ),
+            (
+                one(json!({"kind": "bg", "position": "001", "timeline": 0})),
+                "`timeline`",
+                "`timing.timeline`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "zoom": 1.2})),
+                "`zoom`",
+                "`framing`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "moveX": 1})),
+                "`moveX`",
+                "`move`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "moveY": 1})),
+                "`moveY`",
+                "`move`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "shake": true})),
+                "`shake`",
+                "`move`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "reset": true})),
+                "`reset`",
+                "`transition`",
+            ),
+            (
+                one(json!({"kind": "camera", "position": "001", "easing": "in"})),
+                "`easing`",
+                "`transition`",
+            ),
+            (
+                one(json!({"kind": "cg", "position": "001", "action": "show"})),
+                "`action`",
+                "`display`",
+            ),
+            (
+                one(json!({"kind": "cg", "position": "001", "full": true})),
+                "`full`",
+                "`layout`",
+            ),
+            (
+                one(json!({"kind": "video", "position": "001", "action": "show"})),
+                "`action`",
+                "`display`",
+            ),
+            (
+                one(json!({"kind": "music", "position": "001", "action": "play"})),
+                "`action`",
+                "`playback`",
+            ),
+            (
+                one(json!({"kind": "music", "position": "001", "track": "t"})),
+                "`track`",
+                "`assetId`",
+            ),
+            (
+                one(json!({"kind": "sfx", "position": "001", "name": "n"})),
+                "`name`",
+                "`sound`",
+            ),
+            (
+                one(
+                    json!({"kind": "choice", "position": "001", "options": [{"id": "a", "label": "A"}]}),
+                ),
                 "`options[].label`",
                 "`options[].text`",
             ),
             (
-                one(json!({"kind": "hub", "position": "001", "options": [{"id": "a", "label": "A"}]})),
+                one(
+                    json!({"kind": "hub", "position": "001", "options": [{"id": "a", "label": "A"}]}),
+                ),
                 "`options[].label`",
                 "`options[].text`",
             ),
             (
-                one(json!({"kind": "choice", "position": "001", "options": [{"id": "a", "labels": {"ko": "가"}}]})),
+                one(
+                    json!({"kind": "choice", "position": "001", "options": [{"id": "a", "labels": {"ko": "가"}}]}),
+                ),
                 "`options[].labels`",
                 "`options[].texts`",
             ),
-            (one(json!({"kind": "line", "position": "001", "role": "monologue"})), "`monologue`", "`mono`"),
-            (one(json!({"kind": "line", "position": "001", "role": "offscreen"})), "`offscreen`", "`os`"),
-            (one(json!({"kind": "line", "position": "001", "role": "voiceover"})), "`voiceover`", "`vo`"),
+            (
+                one(json!({"kind": "line", "position": "001", "role": "monologue"})),
+                "`monologue`",
+                "`mono`",
+            ),
+            (
+                one(json!({"kind": "line", "position": "001", "role": "offscreen"})),
+                "`offscreen`",
+                "`os`",
+            ),
+            (
+                one(json!({"kind": "line", "position": "001", "role": "voiceover"})),
+                "`voiceover`",
+                "`vo`",
+            ),
             (
                 one(json!({"kind": "actor", "position": "001", "provenance": {"injected": true}})),
                 "`provenance.injected`",
@@ -663,7 +864,10 @@ mod removed_field_tests {
             let message = removed_ir_field(&art).unwrap_or_else(|| panic!("accepted: {art}"));
             assert!(message.starts_with("E-IR-REMOVED-FIELD: "), "{message}");
             assert!(message.contains(field), "{field} not named: {message}");
-            assert!(message.contains(replacement), "{replacement} not named: {message}");
+            assert!(
+                message.contains(replacement),
+                "{replacement} not named: {message}"
+            );
         }
     }
 
@@ -690,7 +894,9 @@ mod removed_field_tests {
         let mut seen = 0;
         for entry in std::fs::read_dir(&root).unwrap() {
             let path = entry.unwrap().path().join("artifact.json");
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
             let art: Json = serde_json::from_str(&text).unwrap();
             assert_eq!(removed_ir_field(&art), None, "{}", path.display());
             seen += 1;
@@ -732,7 +938,10 @@ pub(crate) struct ExprIndex(std::collections::HashMap<String, DumpCondition>);
 
 impl ExprIndex {
     pub(crate) fn new<'a>(artifacts: impl IntoIterator<Item = &'a Json>) -> Self {
-        fn collect<'a>(value: &'a Json, first: &mut std::collections::HashMap<&'a str, Option<&'a Json>>) {
+        fn collect<'a>(
+            value: &'a Json,
+            first: &mut std::collections::HashMap<&'a str, Option<&'a Json>>,
+        ) {
             match value {
                 Json::Object(map) => {
                     if let Some(cel) = map.get("cel").and_then(Json::as_str) {
@@ -752,7 +961,11 @@ impl ExprIndex {
                 let Some(expr) = expr else { continue };
                 index.entry(cel.to_owned()).or_insert_with(|| {
                     let (_roots, relations, needs_visited) = condition_scope(expr);
-                    DumpCondition { expr: expr.clone(), relations, needs_visited }
+                    DumpCondition {
+                        expr: expr.clone(),
+                        relations,
+                        needs_visited,
+                    }
                 });
             }
         }
@@ -763,7 +976,6 @@ impl ExprIndex {
         self.0.get(cel)
     }
 }
-
 
 /// Envelope keys 0.37 removed or renamed (dsl 0.37.0 §2.2), each with the
 /// spelling an engine reads instead.
@@ -791,12 +1003,36 @@ const REMOVED_COMMAND_FIELDS: [(&str, &str); 9] = [
 /// (dsl 0.37.0 §2.2, §3.3, §5.3). The same name stays legal on other kinds —
 /// `actor.action` and `line.action` are current fields, `cg.action` is not.
 const REMOVED_KIND_FIELDS: [(&str, &str, &str); 12] = [
-    ("camera", "zoom", "the `framing`/`move`/`transition` domain members"),
-    ("camera", "moveX", "the `framing`/`move`/`transition` domain members"),
-    ("camera", "moveY", "the `framing`/`move`/`transition` domain members"),
-    ("camera", "shake", "the `framing`/`move`/`transition` domain members"),
-    ("camera", "reset", "the `framing`/`move`/`transition` domain members"),
-    ("camera", "easing", "the `framing`/`move`/`transition` domain members"),
+    (
+        "camera",
+        "zoom",
+        "the `framing`/`move`/`transition` domain members",
+    ),
+    (
+        "camera",
+        "moveX",
+        "the `framing`/`move`/`transition` domain members",
+    ),
+    (
+        "camera",
+        "moveY",
+        "the `framing`/`move`/`transition` domain members",
+    ),
+    (
+        "camera",
+        "shake",
+        "the `framing`/`move`/`transition` domain members",
+    ),
+    (
+        "camera",
+        "reset",
+        "the `framing`/`move`/`transition` domain members",
+    ),
+    (
+        "camera",
+        "easing",
+        "the `framing`/`move`/`transition` domain members",
+    ),
     ("cg", "action", "`display`"),
     ("cg", "full", "`layout`"),
     ("video", "action", "`display`"),
@@ -807,8 +1043,11 @@ const REMOVED_KIND_FIELDS: [(&str, &str, &str); 12] = [
 
 /// `(old, new)`: line `role` values 0.37 renamed (dsl 0.37.0 §2.2); the old
 /// spelling is not an accepted IR alias.
-const REMOVED_LINE_ROLES: [(&str, &str); 3] =
-    [("monologue", "mono"), ("offscreen", "os"), ("voiceover", "vo")];
+const REMOVED_LINE_ROLES: [(&str, &str); 3] = [
+    ("monologue", "mono"),
+    ("offscreen", "os"),
+    ("voiceover", "vo"),
+];
 
 /// `E-IR-REMOVED-FIELD` (dsl 0.37.0 §4): refuse an execution IR that still
 /// carries a field 0.37 removed or renamed, or a command with no `position`.
@@ -825,7 +1064,11 @@ fn removed_ir_field(art: &Json) -> Option<String> {
             ));
         }
     }
-    let sections = art.get("sections").and_then(Json::as_array).into_iter().flatten();
+    let sections = art
+        .get("sections")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten();
     for (index, section) in sections.enumerate() {
         if section.get("shot").is_some() {
             return Some(format!(
@@ -857,11 +1100,16 @@ fn removed_ir_field(art: &Json) -> Option<String> {
             }
         }
         if matches!(kind, "choice" | "hub") {
-            let options = command.get("options").and_then(Json::as_array).into_iter().flatten();
+            let options = command
+                .get("options")
+                .and_then(Json::as_array)
+                .into_iter()
+                .flatten();
             for option in options {
-                for (field, replacement) in
-                    [("label", "`options[].text`"), ("labels", "`options[].texts`")]
-                {
+                for (field, replacement) in [
+                    ("label", "`options[].text`"),
+                    ("labels", "`options[].texts`"),
+                ] {
                     if option.get(field).is_some() {
                         return Some(removed(&format!("options[].{field}"), replacement));
                     }
@@ -870,7 +1118,10 @@ fn removed_ir_field(art: &Json) -> Option<String> {
         }
         if kind == "line" {
             let role = command.get("role").and_then(Json::as_str);
-            if let Some((old, new)) = REMOVED_LINE_ROLES.iter().find(|(old, _)| Some(*old) == role) {
+            if let Some((old, new)) = REMOVED_LINE_ROLES
+                .iter()
+                .find(|(old, _)| Some(*old) == role)
+            {
                 return Some(format!(
                     "{CODE}: command {index} (`line`) carries removed role `{old}`; 0.37 reads \
                      role `{new}` — {RECOMPILE}"
@@ -922,7 +1173,8 @@ fn owned_write_refusal(art: &Json) -> Option<String> {
             || lute_manifest::semantics::target_writes::indexed_family(path).is_some_and(|family| {
                 owned.contains(family)
                     || owned.iter().any(|p| {
-                        p.strip_prefix(family).is_some_and(|rest| rest.starts_with('.'))
+                        p.strip_prefix(family)
+                            .is_some_and(|rest| rest.starts_with('.'))
                     })
             })
     };
@@ -1008,10 +1260,13 @@ fn direct_occasion_member<B, C>(
     let commands = art.get("commands")?.as_array()?;
     let command = commands.iter().find(|command| {
         command.get("kind").and_then(Json::as_str) == Some(kind)
-            && command.get("id").and_then(Json::as_str).is_some_and(|declared| {
-                declared == id
-                    || (kind == "beat" && declared.strip_suffix(&format!(".{id}")).is_some())
-            })
+            && command
+                .get("id")
+                .and_then(Json::as_str)
+                .is_some_and(|declared| {
+                    declared == id
+                        || (kind == "beat" && declared.strip_suffix(&format!(".{id}")).is_some())
+                })
     })?;
     let occasion = command.get("on").and_then(Json::as_str)?;
     let target = mock.occasions.iter().find_map(|raise| {
@@ -1039,7 +1294,10 @@ fn direct_occasion_member<B, C>(
                     .and_then(|target| target.strip_prefix('.'))
                     .unwrap_or(target)
             } else {
-                target.rsplit_once('.').map(|(_, member)| member).unwrap_or(target)
+                target
+                    .rsplit_once('.')
+                    .map(|(_, member)| member)
+                    .unwrap_or(target)
             }
         }
         None => {
@@ -1049,8 +1307,7 @@ fn direct_occasion_member<B, C>(
                 .map(|k| format!("kind:{k}"))
         }
     };
-    members.contains(&candidate)
-        .then(|| candidate.to_string())
+    members.contains(&candidate).then(|| candidate.to_string())
 }
 
 /// Bind a direct lore presentation's occasion target, unless the mock seeded
@@ -1095,10 +1352,18 @@ pub(crate) fn run_machine<B, C>(
 /// Parse a full numeric `MAJOR.MINOR.PATCH` IR version.
 fn parse_ir_version(v: &str) -> Option<(u64, u64, u64)> {
     let parts: Vec<_> = v.split('.').collect();
-    if parts.len() != 3 || parts.iter().any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit())) {
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()))
+    {
         return None;
     }
-    Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+    ))
 }
 
 /// `lute run`'s [`Driver`]: the mock's `choose:` and `bridges:`, a spent

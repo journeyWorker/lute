@@ -314,7 +314,6 @@ pub fn judge(said: &str, steps: &[usize], needle: &str, want_present: bool) -> O
 /// The delivery flags a line head shows for its role ([`line_head`]).
 const HEAD_FLAGS: [&str; 3] = ["mono", "os", "vo"];
 
-
 /// Authored content-line attributes a line head never shows: `code` feeds
 /// the line's identity and `id` is a `::jump` label.
 const HEAD_SKIP_AUTHORED: [&str; 2] = ["code", "id"];
@@ -418,10 +417,7 @@ impl NeedleVocab {
 }
 
 /// Build a vocabulary from one checked document.
-pub fn needle_vocab(
-    input: &lute_check::CheckInput,
-    meta: &lute_check::TypedMeta,
-) -> NeedleVocab {
+pub fn needle_vocab(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta) -> NeedleVocab {
     let nowhere = lute_core_span::Span {
         byte_start: 0,
         byte_end: 0,
@@ -429,12 +425,8 @@ pub fn needle_vocab(
         column: 0,
         utf16_range: (0, 0),
     };
-    let (domains, _) = lute_check::schema_import::merge_domains(
-        &input.snapshot,
-        &input.imports,
-        meta,
-        nowhere,
-    );
+    let (domains, _) =
+        lute_check::schema_import::merge_domains(&input.snapshot, &input.imports, meta, nowhere);
     let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &meta.cast);
     NeedleVocab {
         members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
@@ -542,9 +534,9 @@ pub fn needle_problem(needle: &str, vocab: &NeedleVocab) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{find, judge, needle_problem, nearest, said_line, NeedleVocab};
-    use std::collections::{BTreeMap, BTreeSet};
+    use super::{find, judge, nearest, needle_problem, said_line, NeedleVocab};
     use serde_json::json;
+    use std::collections::{BTreeMap, BTreeSet};
 
     const SAID: &str =
         "@sol{emotion=\"happy\"}: Vega, Deneb, Altair.\n@wren{mono}: Quiet.\n@narrator: Night.\n";

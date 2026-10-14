@@ -82,7 +82,10 @@ const LOWER_RECORDS: &[(&str, &[(&str, LowerFieldKind)])] = &[
     ),
     (
         "sfx",
-        &[("sound", LowerFieldKind::Str), ("assetId", LowerFieldKind::Str)],
+        &[
+            ("sound", LowerFieldKind::Str),
+            ("assetId", LowerFieldKind::Str),
+        ],
     ),
     (
         "vfx",
@@ -124,7 +127,10 @@ const LOWER_RECORDS: &[(&str, &[(&str, LowerFieldKind)])] = &[
     ),
     (
         "video",
-        &[("assetId", LowerFieldKind::Str), ("display", LowerFieldKind::Str)],
+        &[
+            ("assetId", LowerFieldKind::Str),
+            ("display", LowerFieldKind::Str),
+        ],
     ),
     ("sequence", &[("name", LowerFieldKind::Str)]),
 ];
@@ -277,7 +283,11 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
                 attr: a.name.clone(),
             });
         }
-        if let Some(default) = a.default.as_ref().filter(|v| !attr_default_accepts(&a.ty, v)) {
+        if let Some(default) = a
+            .default
+            .as_ref()
+            .filter(|v| !attr_default_accepts(&a.ty, v))
+        {
             errs.push(ManifestError::AttrDefaultType {
                 directive: d.name.clone(),
                 attr: a.name.clone(),
@@ -313,10 +323,13 @@ pub const E_BRIDGE_NO_RESULT_WRITE: &str = "E-BRIDGE-NO-RESULT-WRITE";
 /// The [`E_BRIDGE_NO_RESULT_WRITE`] message for `d`, when `d` is such a
 /// declaration. The loader reports it at the declaration's `name:`.
 pub fn bridge_without_result_write(d: &DirectiveDecl) -> Option<String> {
-    let nominal = d.layer.as_deref() == Some("bridge") && d.semantics.iter().any(|s| s == "bridgeCall");
-    let reads_result = d.effects.iter().flat_map(|e| &e.writes).any(|w| {
-        matches!(w.value, WriteValue::FromBridgeResult { .. })
-    });
+    let nominal =
+        d.layer.as_deref() == Some("bridge") && d.semantics.iter().any(|s| s == "bridgeCall");
+    let reads_result = d
+        .effects
+        .iter()
+        .flat_map(|e| &e.writes)
+        .any(|w| matches!(w.value, WriteValue::FromBridgeResult { .. }));
     (nominal && !reads_result).then(|| {
         format!(
             "bridge directive `{}` declares `layer: bridge` but no `effects.writes` reads a \
@@ -983,10 +996,7 @@ mod tests {
 
     #[test]
     fn unknown_target_field_is_rejected() {
-        let errs = validate_directive(&record_dir(
-            "bg",
-            "{ backdropId: { fromAttr: img } }",
-        ));
+        let errs = validate_directive(&record_dir("bg", "{ backdropId: { fromAttr: img } }"));
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
         assert_eq!(

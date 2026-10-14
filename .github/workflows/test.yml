@@ -148,16 +148,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Pinned, unlike the other jobs' `stable`: every Rust release adds lints,
-      # and a floating toolchain would fail this gate on a release day with no
-      # change in the repo. Bump it deliberately: set the new version here,
-      # run the two commands below locally with it, fix or `#[expect]` (with a
-      # reason) what it reports, and land both together.
-      - name: Install Rust 1.96.1 with clippy
+      # Pinned, unlike the other jobs' `stable`: every Rust release adds lints
+      # and may change rustfmt output, and a floating toolchain would fail
+      # these gates on a release day with no change in the repo. Bump it
+      # deliberately: set the new version here, run the commands below locally
+      # with it, fix or `#[expect]` (with a reason) what clippy reports, commit
+      # any `cargo fmt --all` change on its own (and list it in
+      # `.git-blame-ignore-revs`), and land them together.
+      - name: Install Rust 1.96.1 with clippy and rustfmt
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.96.1
-          components: clippy
+          components: clippy, rustfmt
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo
@@ -169,6 +171,9 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: lute-test-clippy-1.96.1-${{ hashFiles('Cargo.lock') }}
+
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
 
       - name: cargo clippy --workspace --all-targets
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -391,9 +396,6 @@ jobs:
       - name: Typecheck runtime
         working-directory: packages/runtime
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare runtime Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/runtime
 
       - name: Check runtime contract
         working-directory: packages/runtime
@@ -462,9 +464,6 @@ jobs:
       - name: Typecheck player core
         working-directory: packages/player
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare player Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/player
 
       - name: Test player core
         working-directory: packages/player
@@ -481,9 +480,6 @@ jobs:
       - name: Typecheck web player
         working-directory: packages/player-web
         run: bun run typecheck
-      # Temporary 0.42.0 compatibility check; remove after this release.
-      - name: Compare player-web Bun and TypeScript diagnostics
-        run: bash scripts/compare-typecheck.sh packages/player-web
 
       - name: Test web player
         working-directory: packages/player-web

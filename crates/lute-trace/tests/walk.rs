@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::{trace_document, TraceExit};
 use lute_trace::mock::MockSet;
+use lute_trace::{trace_document, TraceExit};
 
 /// Assemble a [`CheckInput`] for `text` exactly as `lute check`/`lute
 /// compile`/`lute trace` do (no `--project`; `base` resolves any `uses:`/
@@ -1271,7 +1271,8 @@ fn a_handler_accept_activates_its_quest() {
     let (report, _) = trace_document(&input, MockSet::default());
     let last = report
         .decisions
-        .iter().rfind(|d| d.construct == "quest" && d.id == "second")
+        .iter()
+        .rfind(|d| d.construct == "quest" && d.id == "second")
         .map(|d| d.outcome.as_str());
     assert_eq!(last, Some("active"), "{:#?}", report.decisions);
 }

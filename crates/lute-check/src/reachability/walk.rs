@@ -5,8 +5,11 @@ use lute_syntax::ast::{Arm, AttrValue, CelSlot, Match, Node};
 
 use crate::cel_expand::DefTable;
 use crate::decide::{analyze_literal_comparisons, decide_slot, DecideCtx, Decided, DollarBinding};
-use crate::match_check::{is_pattern_literals, literal_is_foreign, quest_state_is_literal, subject_path, CoverItem, Domain, DomainInfo, DomainValue, Interval, NumCoverage};
- 
+use crate::match_check::{
+    is_pattern_literals, literal_is_foreign, quest_state_is_literal, subject_path, CoverItem,
+    Domain, DomainInfo, DomainValue, Interval, NumCoverage,
+};
+
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 use super::context::{Assumption, Reach};
@@ -14,9 +17,9 @@ use super::diagnostics::{
     assumed_dead_message, check_code_after_end, check_code_after_next, dead_guard_message, diag,
     push_literal_cmp_diags, subsumption_message,
 };
-use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
 use super::objective::check_objective_reach;
 use super::picks::Pick;
+use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
 
 pub(super) fn walk_reach(
     nodes: &[Node],
@@ -719,4 +722,3 @@ pub(crate) fn check_choices_reach<'a>(
     }
     diags
 }
-

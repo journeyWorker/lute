@@ -32,7 +32,11 @@ fn compiled(project: &Path, scratch: &str) -> Bundle {
         .arg(&out)
         .output()
         .unwrap();
-    assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
     let read = |path: &Path| -> Json {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     };
@@ -107,7 +111,10 @@ fn the_index_carries_project_defs_expanded_with_params_and_host() {
             "params": [{"name": "n", "type": "int"}]
         })
     );
-    assert_eq!(defs["atLeastTwice"]["cel"], "(run.count >= m) && run.count >= m * 2");
+    assert_eq!(
+        defs["atLeastTwice"]["cel"],
+        "(run.count >= m) && run.count >= m * 2"
+    );
     assert_eq!(
         defs["atLeastTwice"]["expr"],
         json!({"op": "&&",
@@ -131,17 +138,35 @@ fn evaluate_reads_state_facts_visited_and_defs() {
     assert_eq!(value(&runtime, &start, "run.count == 0"), Value::Bool(true));
     assert_eq!(value(&runtime, &start, "user.flag"), Value::Bool(false));
     assert_eq!(value(&runtime, &start, "run.count + 3"), Value::Int(3));
-    assert_eq!(value(&runtime, &start, "holds('owned', ['key'])"), Value::Bool(true));
-    assert_eq!(value(&runtime, &start, "holds('owned', ['map'])"), Value::Bool(false));
-    assert_eq!(value(&runtime, &start, "count('owned', ['_'])"), Value::Int(1));
-    assert_eq!(value(&runtime, &start, "visited('hall')"), Value::Bool(false));
+    assert_eq!(
+        value(&runtime, &start, "holds('owned', ['key'])"),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        value(&runtime, &start, "holds('owned', ['map'])"),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        value(&runtime, &start, "count('owned', ['_'])"),
+        Value::Int(1)
+    );
+    assert_eq!(
+        value(&runtime, &start, "visited('hall')"),
+        Value::Bool(false)
+    );
     assert_eq!(def(&runtime, &start, "ready"), Value::Bool(false));
     assert_eq!(def(&runtime, &start, "score"), Value::Int(1));
 
-    let visit: Input = serde_json::from_value(json!({"type": "raiseOccasion", "occasion": "visit"}))
+    let visit: Input =
+        serde_json::from_value(json!({"type": "raiseOccasion", "occasion": "visit"})).unwrap();
+    let (visited, _) = runtime
+        .step(start.clone(), visit)
+        .map_err(|(_, r)| r)
         .unwrap();
-    let (visited, _) = runtime.step(start.clone(), visit).map_err(|(_, r)| r).unwrap();
-    assert_eq!(value(&runtime, &visited, "visited('hall')"), Value::Bool(true));
+    assert_eq!(
+        value(&runtime, &visited, "visited('hall')"),
+        Value::Bool(true)
+    );
     assert_eq!(def(&runtime, &visited, "ready"), Value::Bool(true));
     assert_eq!(def(&runtime, &visited, "readyTwice"), Value::Bool(false));
     assert_eq!(def(&runtime, &visited, "score"), Value::Int(11));
@@ -163,12 +188,30 @@ fn def_binds_arguments_and_refuses_misfits() {
         ..Seed::default()
     };
     let (state, _) = runtime.begin(seed).unwrap();
-    assert_eq!(def_with(&runtime, &state, "atLeast", &[json!(0)]), Value::Bool(true));
-    assert_eq!(def_with(&runtime, &state, "atLeast", &[json!(1)]), Value::Bool(false));
-    assert_eq!(def_with(&runtime, &state, "atLeastTwice", &[json!(0)]), Value::Bool(true));
-    assert_eq!(def_with(&runtime, &state, "owns", &[json!("key")]), Value::Bool(true));
-    assert_eq!(def_with(&runtime, &state, "owns", &[json!("map")]), Value::Bool(false));
-    assert_eq!(def_with(&runtime, &state, "flagIs", &[json!(false)]), Value::Bool(true));
+    assert_eq!(
+        def_with(&runtime, &state, "atLeast", &[json!(0)]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        def_with(&runtime, &state, "atLeast", &[json!(1)]),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        def_with(&runtime, &state, "atLeastTwice", &[json!(0)]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        def_with(&runtime, &state, "owns", &[json!("key")]),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        def_with(&runtime, &state, "owns", &[json!("map")]),
+        Value::Bool(false)
+    );
+    assert_eq!(
+        def_with(&runtime, &state, "flagIs", &[json!(false)]),
+        Value::Bool(true)
+    );
 
     for (name, args) in [
         ("atLeast", vec![]),
@@ -185,7 +228,11 @@ fn def_binds_arguments_and_refuses_misfits() {
         assert_eq!(r.code, "E-RUNTIME-INPUT", "{name}({args:?}): {}", r.message);
     }
     let r = runtime.def(&state, "owns", &[json!("sword")]).unwrap_err();
-    assert!(r.message.contains("not a member of `item`"), "{}", r.message);
+    assert!(
+        r.message.contains("not a member of `item`"),
+        "{}",
+        r.message
+    );
 }
 
 /// 0.41.0 §5.1 rule 5: a `param` node is admitted only in an index def's
@@ -208,7 +255,9 @@ fn unknowns_errors_and_bad_queries() {
     let runtime = Runtime::load(compiled_bundle("evaluate-errors")).unwrap();
     let (state, _) = runtime.begin(Seed::default()).unwrap();
 
-    let unknown = runtime.evaluate(&state, &expr("run.undeclared > 1")).unwrap();
+    let unknown = runtime
+        .evaluate(&state, &expr("run.undeclared > 1"))
+        .unwrap();
     assert_eq!(
         unknown,
         Evaluation {
@@ -219,7 +268,11 @@ fn unknowns_errors_and_bad_queries() {
 
     let error = runtime.def(&state, "perCount", &[]).unwrap_err();
     assert_eq!(error.code, "E-RUNTIME-EVAL", "{}", error.message);
-    assert!(error.message.contains("division by zero"), "{}", error.message);
+    assert!(
+        error.message.contains("division by zero"),
+        "{}",
+        error.message
+    );
     let error = runtime.evaluate(&state, &expr("int('x')")).unwrap_err();
     assert_eq!(error.code, "E-RUNTIME-EVAL", "{}", error.message);
 
@@ -264,6 +317,9 @@ fn defs_documents_see_differently_are_exported_by_expanded_body_and_params() {
     let (state, _) = runtime.begin(Seed::default()).unwrap();
     assert_eq!(def(&runtime, &state, "gated"), Value::Bool(false));
     for name in ["split", "within"] {
-        assert_eq!(runtime.def(&state, name, &[]).unwrap_err().code, "E-RUNTIME-INPUT");
+        assert_eq!(
+            runtime.def(&state, name, &[]).unwrap_err().code,
+            "E-RUNTIME-INPUT"
+        );
     }
 }

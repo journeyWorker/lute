@@ -3,9 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use lute_load::manifest_context;
 use lute_manifest::core::load_core_snapshot;
 use lute_manifest::provider::ProviderSnapshot;
-use lute_load::manifest_context;
 
 /// Re-stamp every provider snapshot in `dir` to the current `capabilitySnapshot`
 /// and clear `stale`, rewriting each file in place (plugin §10). A missing dir is
@@ -29,15 +29,13 @@ pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
     // malformed project must not silently mis-stamp: surface it and fall back to
     // the core-only version rather than pretending it loaded.
     let version = match project {
-        Some(p) => {
-            match manifest_context(p) {
-                Ok(context) => context.snapshot.version,
-                Err(e) => {
-                    eprintln!("lute: {e}");
-                    load_core_snapshot().version
-                }
+        Some(p) => match manifest_context(p) {
+            Ok(context) => context.snapshot.version,
+            Err(e) => {
+                eprintln!("lute: {e}");
+                load_core_snapshot().version
             }
-        }
+        },
         None => load_core_snapshot().version,
     };
 

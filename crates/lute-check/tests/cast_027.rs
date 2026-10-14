@@ -19,7 +19,10 @@ const VOCAB: &str = "entities:\n  person: { members: [tobias] }\n\
 
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
-    for (id, present) in [("tobias", Some("holds('following', ['tobias'])")), ("nell", None)] {
+    for (id, present) in [
+        ("tobias", Some("holds('following', ['tobias'])")),
+        ("nell", None),
+    ] {
         snap.cast.insert(
             id.into(),
             CastMember {

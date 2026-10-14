@@ -25,7 +25,8 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
 
-const HDR: &str = "---\nkind: scene\ncharacter: x\npov: marina\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
+const HDR: &str =
+    "---\nkind: scene\ncharacter: x\npov: marina\nseason: 1\nepisode: 1\n---\n## Shot 1.\n";
 
 /// The importing scene: nothing but a `::use` of the paramless component, so
 /// the ONLY diagnostics it can contribute are the component body's own.

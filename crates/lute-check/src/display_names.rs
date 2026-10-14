@@ -147,9 +147,10 @@ pub fn check_display_names(
                     .chain(&speakers[..1])
                     .find_map(|s| s.id.as_deref().and_then(cast_home))
             });
-        let Some((path, span)) =
-            anchor.or_else(|| docs.first().map(|item| (item.path.to_path_buf(), item.doc.meta.span)))
-        else {
+        let Some((path, span)) = anchor.or_else(|| {
+            docs.first()
+                .map(|item| (item.path.to_path_buf(), item.doc.meta.span))
+        }) else {
             continue;
         };
         let related = speakers
@@ -204,7 +205,8 @@ enum Visit<'d> {
 /// Every content line and directive of `doc`, in document order: shots,
 /// quests, entries, bundle beats, and every nested body and timeline clip.
 fn for_each_node<'d>(doc: &'d Document, f: &mut dyn FnMut(Visit<'d>)) {
-    let bodies = doc.sections
+    let bodies = doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

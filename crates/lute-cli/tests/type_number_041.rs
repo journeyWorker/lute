@@ -15,8 +15,16 @@ fn write(dir: &Path, rel: &str, text: &str) {
 }
 
 fn check(dir: &Path, file: &str) -> String {
-    let out = Command::new(BIN).arg("check").arg(dir.join(file)).output().unwrap();
-    format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr))
+    let out = Command::new(BIN)
+        .arg("check")
+        .arg(dir.join(file))
+        .output()
+        .unwrap();
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    )
 }
 
 #[test]
@@ -25,17 +33,23 @@ fn frontmatter_number_declarations_name_the_choice() {
     write(
         &dir,
         "a.lute",
-        "---\nkind: scene\nid: a\nluteVersion: \"0.42.0\"\nstate:\n  \
+        "---\nkind: scene\nid: a\nluteVersion: \"0.42.1\"\nstate:\n  \
          run.coins: { type: number, default: 3 }\n  run.rate: { type: number, default: 0.5 }\n  \
          run.bare: { type: number }\ndefs:\n  rich: { type: bool, params: { n: number }, cel: \"run.coins > n\" }\n---\n\
          ## A\n@narrator: {{run.coins}} {{run.rate}} {{run.bare}}\n",
     );
     let text = check(&dir, "a.lute");
-    let lines: Vec<&str> = text.lines().filter(|l| l.contains("[E-TYPE-NUMBER]")).collect();
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("[E-TYPE-NUMBER]"))
+        .collect();
     assert_eq!(lines.len(), 4, "{text}");
-    assert!(lines[0].contains(&format!(
-        "{BASE}; every value it takes here is whole (3), so `int` fits"
-    )), "{text}");
+    assert!(
+        lines[0].contains(&format!(
+            "{BASE}; every value it takes here is whole (3), so `int` fits"
+        )),
+        "{text}"
+    );
     for line in &lines[1..] {
         assert!(line.ends_with(BASE), "{text}");
     }

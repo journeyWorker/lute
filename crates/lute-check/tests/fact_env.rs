@@ -130,13 +130,7 @@ impl Root {
     fn guards(&self, path: &str) -> Vec<Diagnostic> {
         let i = self.index(path);
         let (path, doc) = &self.docs.documents()[i];
-        check_fact_guards(
-            path,
-            doc,
-            &self.foldeds[i],
-            &self.env,
-            &self.per_file[i],
-        )
+        check_fact_guards(path, doc, &self.foldeds[i], &self.env, &self.per_file[i])
     }
 
     fn index(&self, path: &str) -> usize {
@@ -202,7 +196,10 @@ fn line_guard_over_never_asserted_fact_is_arm_dead() {
 fn line_guard_over_relation_asserted_nowhere_is_arm_dead() {
     let r = root(&[(
         "a.lute",
-        &scene(1, "@vesna{when=\"holds('found', ['toma'])\"}: You found him."),
+        &scene(
+            1,
+            "@vesna{when=\"holds('found', ['toma'])\"}: You found him.",
+        ),
     )]);
     assert_eq!(codes(&r.guards("a.lute")), ["E-ARM-DEAD"]);
 }
@@ -407,7 +404,9 @@ fn count_above_the_may_upper_bound_is_dead() {
     let ds = r.guards("b.lute");
     assert_eq!(codes(&ds), ["E-ARM-DEAD", "E-ARM-DEAD"], "{ds:?}");
     assert!(
-        ds[0].message.contains("`count('knows', ['_', '_'])` is at most 2"),
+        ds[0]
+            .message
+            .contains("`count('knows', ['_', '_'])` is at most 2"),
         "{}",
         ds[0].message
     );
@@ -582,7 +581,9 @@ fn quest_fail_over_impossible_fact_is_silent() {
 fn entry_when_over_impossible_fact_is_entry_unreachable() {
     let r = root(&[(
         "notes.lute",
-        &lore("<entry id=\"bark\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>"),
+        &lore(
+            "<entry id=\"bark\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>",
+        ),
     )]);
     let ds = r.guards("notes.lute");
     let d = only(&ds, "E-ENTRY-UNREACHABLE");
@@ -614,7 +615,10 @@ fn query_outside_the_documents_vocabulary_is_never_decided() {
 fn non_member_argument_is_left_to_fact_domain() {
     let r = root(&[(
         "a.lute",
-        &scene(1, "@vesna{when=\"holds('knows', ['toma', 'heding'])\"}: typo."),
+        &scene(
+            1,
+            "@vesna{when=\"holds('knows', ['toma', 'heding'])\"}: typo.",
+        ),
     )]);
     assert!(r.per_file[0].iter().any(|d| d.code == "E-FACT-DOMAIN"));
     assert!(r.guards("a.lute").is_empty(), "{:?}", r.guards("a.lute"));
@@ -1098,8 +1102,9 @@ fn negated_atom_over_a_derived_fact_with_a_retractable_premise_stays_possible() 
 #[test]
 fn a_root_with_an_unparseable_frontmatter_decides_no_fact_impossible() {
     let broken = "---\nkind: scene\nid: a\nwhen: 'x == 'y''\n---\n## Shot 1.\n::assert{found(toma)}\n@vesna: hi.\n";
-    let guard =
-        lore("<entry id=\"found\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>");
+    let guard = lore(
+        "<entry id=\"found\" when=\"holds('found', ['toma'])\">\n  @vesna: Found him.\n</entry>",
+    );
     let r = root(&[("a.lute", broken), ("notes.lute", &guard)]);
     assert!(
         r.guards("notes.lute").is_empty(),
@@ -1187,8 +1192,9 @@ fn wip_downgrades_only_a_guard_dead_for_want_of_any_producer() {
 fn wip_follows_rules_to_the_missing_producer() {
     // `can_halt(vesna)` needs `knows(vesna, shed_sequence)`; with `knows`
     // produced nowhere, only the unwritten content makes the query dead.
-    let text =
-        lore("<entry id=\"halt\" when=\"holds('can_halt', ['vesna'])\">\n  @vesna: Halt.\n</entry>");
+    let text = lore(
+        "<entry id=\"halt\" when=\"holds('can_halt', ['vesna'])\">\n  @vesna: Halt.\n</entry>",
+    );
     let plain = root(&[("notes.lute", &text)]).guards("notes.lute");
     assert_eq!(
         only(&plain, "E-ENTRY-UNREACHABLE").severity,

@@ -52,12 +52,15 @@ pub fn component_scope(d: &Directive) -> &str {
 /// Whether a component scope is authored. Missing/invalid uses use the
 /// transition ordinal only as a warning-bearing fallback.
 pub fn component_stable(d: &Directive) -> bool {
-    d.attrs.iter().find_map(|a| {
-        (a.key == COMPONENT_STABLE_ATTR).then(|| match &a.value {
-            AttrValue::Str(s) => s == "true",
-            _ => false,
+    d.attrs
+        .iter()
+        .find_map(|a| {
+            (a.key == COMPONENT_STABLE_ATTR).then(|| match &a.value {
+                AttrValue::Str(s) => s == "true",
+                _ => false,
+            })
         })
-    }).unwrap_or(false)
+        .unwrap_or(false)
 }
 
 /// dsl 0.27.0 §6: carried by the two sentinels a template's `::body` split
@@ -798,7 +801,6 @@ fn valid_instance_token(value: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || *b == b'_' || *b == b'-')
 }
 
-
 /// `::use{component="name" <arg>=…}` → `[begin, …bound body…, end]`.
 fn expand_use(
     d: &Directive,
@@ -930,7 +932,8 @@ fn expand_use(
         return Vec::new();
     }
     let mut body: Vec<Node> = def
-        .body.sections
+        .body
+        .sections
         .iter()
         .flat_map(|s| s.body.iter().cloned())
         .collect();
@@ -1269,7 +1272,9 @@ fn escape_inline_literal(lit: &str) -> String {
         while let Some(ch) = chars.next() {
             let escape = match ch {
                 ':' | '[' | ']' | '{' | '}' => true,
-                '\\' => chars.peek().is_none_or(|n| matches!(n, '\\' | ':' | '[' | ']' | '{' | '}')),
+                '\\' => chars
+                    .peek()
+                    .is_none_or(|n| matches!(n, '\\' | ':' | '[' | ']' | '{' | '}')),
                 _ => false,
             };
             if escape {

@@ -34,23 +34,15 @@ player-web: mount ─► PixiApp ─► World/PixiPresenter
 
 | 패키지 | 책임 | 공개 진입점 |
 | --- | --- | --- |
-| `@lute-lang/player@0.42.0` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.42.0` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
-| `@lute-lang/runtime@0.42.0` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.42.1` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.42.1` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
+| `@lute-lang/runtime@0.42.1` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
 
 ## 패키지 검사
 
 각 패키지 디렉터리에서 `bun run typecheck`를 실행해 패키지 타입을
-검사합니다. 0.42 릴리스에서 이 스크립트는 `bun check`이며 일반적인
-패키지 타입 검사입니다. `scripts/build.ts` 경로가 `tsc`를 호출해 선언
-파일을 생성하는 `bun run build`와는 구별됩니다.
-
-이번 릴리스에 한해 CI는 Bun 1.4.3을 고정하고
-`scripts/compare-typecheck.sh <package-dir>`도 실행합니다. 이 도구는
-Bun 진단과 `bunx tsc --noEmit` 진단을 파일, 줄, 열, 진단 코드로
-정규화한 뒤 비교합니다. 두 명령이 실패했더라도 동일한 진단 집합이
-비어 있지 않으면 비교 결과는 같다고 봅니다. 추출된 진단이 없는 실패는
-여전히 실패입니다. 이 비교는 0.42.0 이후 제거되지만 `bun check`는
-패키지 타입 검사로 유지됩니다.
+검사합니다. 이 스크립트는 `bun check`입니다. `scripts/build.ts` 경로가
+`tsc`를 호출해 선언 파일을 생성하는 `bun run build`와는 구별됩니다. CI는
+Bun 1.4.3을 고정합니다.
 
 코어 API는 호스트에 종속되지 않습니다. 다른 렌더러를 사용하려면 `Presenter`, `AudioPort`, `AssetLoader`를 구현하고, 브리지 호출, plugin 레코드, idle 정책에는 `PlayerHost`를 사용합니다. 플레이어 핸들은 idle이나 엔딩에서 런타임 입력을 보내고(`send`), 호스트 체크포인트에서 이어 가며(`restore`), 호스트 질의를 위해 런타임 `session`과 그 `program`을 노출합니다. 플레이어는 seed, 스냅숏, 호스트가 만든 런타임 세션 중 하나에서 시작할 수 있습니다. 자세한 내용은 [커스텀 호스트](/ko/player/custom-hosts/)를 참고하세요. 전체 staging 어휘는 [바인딩](/ko/player/bindings/)에서, 브라우저 경로는 [시작하기](/ko/player/getting-started/)에서 설명합니다.

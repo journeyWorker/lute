@@ -28,15 +28,25 @@ fn write_lute(dir: &Path, name: &str, body: &str) {
 fn number_component_params_are_not_silently_dropped() {
     for ty in ["number", "{ type: number }"] {
         let dir = lute_scratch::ScratchDir::new();
-        write_lute(&dir, "depth.lute", &format!(
-            "---\ncomponent: depth\nparams:\n  depth: {ty}\n---\n## Depth\n@narrator: Down.\n"
-        ));
+        write_lute(
+            &dir,
+            "depth.lute",
+            &format!(
+                "---\ncomponent: depth\nparams:\n  depth: {ty}\n---\n## Depth\n@narrator: Down.\n"
+            ),
+        );
         let result = resolve_components(&dir, &["depth.lute".into()], zero_span());
-        assert!(result.diags.iter().any(|d| {
-            d.message.contains("type: int") && d.message.contains("type: double")
-                || d.related.iter().any(|r| r.diagnostic.message.contains("type: int")
-                    && r.diagnostic.message.contains("type: double"))
-        }), "{:?}", result.diags);
+        assert!(
+            result.diags.iter().any(|d| {
+                d.message.contains("type: int") && d.message.contains("type: double")
+                    || d.related.iter().any(|r| {
+                        r.diagnostic.message.contains("type: int")
+                            && r.diagnostic.message.contains("type: double")
+                    })
+            }),
+            "{:?}",
+            result.diags
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

@@ -11,9 +11,9 @@ use lute_runtime::session::{
     kind_label, value_to_json, Candidate, ClockRaise, ExecProject, Pick, Played, Presented,
     StepBody, Verdict,
 };
-use serde_json::Value as Json;
-use lute_trace::exec::record::{line_head, render_attrs, said_line};
 pub(super) use lute_runtime::str_of;
+use lute_trace::exec::record::{line_head, render_attrs, said_line};
+use serde_json::Value as Json;
 
 use super::run::Playthrough;
 
@@ -165,7 +165,12 @@ fn skipped(g: Guarded<'_>, cmds: &DocCmds<'_>) -> String {
                 .get("value")
                 .and_then(|v| v.get("cel").and_then(Json::as_str))
                 .unwrap_or("");
-            format!("set {} {} {}", str_of(leaf, "path"), str_of(leaf, "op"), value)
+            format!(
+                "set {} {} {}",
+                str_of(leaf, "path"),
+                str_of(leaf, "op"),
+                value
+            )
         }
         "line" => format!(
             "{} \"{}\"",
@@ -271,10 +276,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             if let Some(prompt) = orig.and_then(|c| c.get("prompt")).and_then(Json::as_str) {
                 label.push_str(&format!(" \"{prompt}\""));
             }
-            if let Some(t) = orig
-                .and_then(|c| c.get("timeout"))
-                .and_then(Json::as_u64)
-            {
+            if let Some(t) = orig.and_then(|c| c.get("timeout")).and_then(Json::as_u64) {
                 label.push_str(&format!(" ({t}s)"));
             }
             let rendered = render_options(&opts, rec);
@@ -977,10 +979,8 @@ pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) 
     let push = |acc: &mut (String, usize), document: &str, records: &[Json]| {
         let cmds = DocCmds::new(p, document, false);
         for rec in records.iter().filter(|r| str_of(r, "kind") == "line") {
-            acc.0.push_str(&said_line(
-                rec,
-                cmds.get(str_of(rec, "position")),
-            ));
+            acc.0
+                .push_str(&said_line(rec, cmds.get(str_of(rec, "position"))));
             acc.0.push('\n');
             acc.1 += 1;
         }
@@ -1021,10 +1021,8 @@ fn said_raised(p: &ExecProject, acc: &mut (String, usize), beat: &Presented) {
             .iter()
             .filter(|r| str_of(r, "kind") == "line")
         {
-            acc.0.push_str(&said_line(
-                rec,
-                cmds.get(str_of(rec, "position")),
-            ));
+            acc.0
+                .push_str(&said_line(rec, cmds.get(str_of(rec, "position"))));
             acc.0.push('\n');
             acc.1 += 1;
         }

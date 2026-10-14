@@ -126,7 +126,9 @@ fn play_scripts_match_resumable_runtime() {
             .flat_map(|(_, _, output)| records(output))
             .collect();
         let expected = &run.reference.records;
-        if let Some(i) = (0..actual.len().max(expected.len())).find(|&i| actual.get(i) != expected.get(i)) {
+        if let Some(i) =
+            (0..actual.len().max(expected.len())).find(|&i| actual.get(i) != expected.get(i))
+        {
             panic!(
                 "{}: record {i} differs\n runtime: {:?}\n    play: {:?}",
                 script.display(),
@@ -305,7 +307,6 @@ fn a_snapshot_from_another_project_or_minor_is_refused() {
     assert_eq!(r.code, "E-RUNTIME-SNAPSHOT-VERSION");
 }
 
-
 /// A case's first raise, suspended at its first choice.
 fn first_choice(run: &ScriptRun) -> (State, u64, lute_runtime::runtime::MenuAwait) {
     let (state, _) = run.runtime.begin(run.seed.clone()).unwrap();
@@ -342,7 +343,8 @@ fn a_timeout_chooses_the_default() {
         )
         .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
     assert_eq!(json(&by_timeout), json(&by_choice));
-    let world = |state: &State| serde_json::to_value(run.runtime.snapshot(state)).unwrap()["world"].clone();
+    let world =
+        |state: &State| serde_json::to_value(run.runtime.snapshot(state)).unwrap()["world"].clone();
     assert_eq!(world(&timed_out), world(&chosen));
 }
 
@@ -355,7 +357,12 @@ fn a_timeout_is_refused_off_a_timed_choice() {
     let timed = session_run("timed-choice");
     let (waiting, timed_request, _) = first_choice(&timed);
     let cases = [
-        (&hub, &untimed, Input::Timeout { request }, "E-RUNTIME-TIMEOUT"),
+        (
+            &hub,
+            &untimed,
+            Input::Timeout { request },
+            "E-RUNTIME-TIMEOUT",
+        ),
         (
             &timed,
             &waiting,
@@ -389,12 +396,20 @@ fn the_stage_follows_the_staging_records() {
     let stage = runtime.stage(&state);
     let bg = stage.bg.as_ref().expect("a background");
     assert_eq!(
-        (bg.location.as_deref(), bg.time.as_deref(), bg.asset_id.as_deref()),
+        (
+            bg.location.as_deref(),
+            bg.time.as_deref(),
+            bg.asset_id.as_deref()
+        ),
         (Some("parlor"), Some("evening"), Some("BG.parlor.evening"))
     );
     let music = stage.music.as_ref().expect("music");
     assert_eq!(
-        (music.playback.as_deref(), music.mood.as_deref(), music.asset_id.as_deref()),
+        (
+            music.playback.as_deref(),
+            music.mood.as_deref(),
+            music.asset_id.as_deref()
+        ),
         (Some("start"), Some("calm"), Some("BGM.parlor"))
     );
     let actors: Vec<_> = stage
@@ -409,9 +424,15 @@ fn the_stage_follows_the_staging_records() {
             )
         })
         .collect();
-    assert_eq!(actors, [("mira", Some("left"), Some("smile"), Some("casual"))]);
+    assert_eq!(
+        actors,
+        [("mira", Some("left"), Some("smile"), Some("casual"))]
+    );
     let cg = stage.cg.as_ref().expect("a CG");
-    assert_eq!((cg.asset_id.as_str(), cg.layout.as_deref()), ("CG.parlor", Some("full")));
+    assert_eq!(
+        (cg.asset_id.as_str(), cg.layout.as_deref()),
+        ("CG.parlor", Some("full"))
+    );
     assert!(stage.video.is_none());
 
     let text = serde_json::to_string(&runtime.snapshot(&state)).unwrap();
@@ -432,6 +453,9 @@ fn the_stage_follows_the_staging_records() {
     let end = runtime.stage(&after);
     assert_eq!(end.bg, stage.bg, "the background stays");
     assert!(end.music.is_none(), "a `stops` member ends the music");
-    assert!(end.actors.is_empty(), "an `exits` action takes the actor off");
+    assert!(
+        end.actors.is_empty(),
+        "an `exits` action takes the actor off"
+    );
     assert!(end.cg.is_none(), "`display=\"hide\"` clears the CG");
 }

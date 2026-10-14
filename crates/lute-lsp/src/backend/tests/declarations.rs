@@ -555,7 +555,6 @@ async fn analyze_declaration_cel_parse_error_escaped_scalar_whole_span_no_fixit(
                 .unwrap_or(false),
         "an E-CEL-PARSE diagnostic must carry no fixit-derived code action: {actions:?}"
     );
-
 }
 
 /// A `cel: |` literal block scalar resolves to its OWN content-lines

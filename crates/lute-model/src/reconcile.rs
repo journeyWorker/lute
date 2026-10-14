@@ -13,8 +13,8 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::project::load_project;
 use rayon::prelude::*;
 
-use lute_load::normalize_span_from_text;
 use crate::{ByRoot, DocGroup};
+use lute_load::normalize_span_from_text;
 
 /// The converged result of [`compute_conn_fixpoint`]'s monotone iteration
 /// (dsl 0.4.0 §4.2's relational-objective-liveness CLOSURE, connectivity
@@ -24,8 +24,7 @@ use crate::{ByRoot, DocGroup};
 /// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
 /// quest's required objective dies -> repeat).
 pub struct ConnFixpoint {
-    pub reach:
-        BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
+    pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     pub reach_diags: Vec<(PathBuf, Diagnostic)>,
     /// dsl 0.20.0 §3/§4: the root's fact envelope at the converged `reach` —
     /// the one the project-level relational guard pass decides with.
@@ -354,16 +353,11 @@ pub fn reconcile_collected(
             // A repeatable beat must not answer a clock raise and advance
             // itself into the next raised position.
             Box::new(|| {
-                lute_check::clock_positions::check_project_advance_cascades(
-                    &group,
-                    &beat_foldeds,
-                )
+                lute_check::clock_positions::check_project_advance_cascades(&group, &beat_foldeds)
             }),
             // dsl 0.31.0: required objective windows and same-slot
             // advancement contention.
-            Box::new(|| {
-                lute_check::check_project_objective_clock_windows(&group, &beat_foldeds)
-            }),
+            Box::new(|| lute_check::check_project_objective_clock_windows(&group, &beat_foldeds)),
             // A `spentBy` another document's quest spends at the start, or
             // one whose condition can turn false again after it has held.
             Box::new(|| lute_check::spent_by::check_project_spent_by(root, &group, &beat_foldeds)),
@@ -683,7 +677,8 @@ pub fn reconcile_collected(
             else {
                 continue;
             };
-            let all_nodes: Vec<lute_syntax::ast::Node> = doc.sections
+            let all_nodes: Vec<lute_syntax::ast::Node> = doc
+                .sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
@@ -1057,7 +1052,11 @@ fn is_component_body_diag(d: &Diagnostic, path: &Path) -> bool {
 }
 
 fn plural(n: usize) -> &'static str {
-    if n == 1 { "" } else { "s" }
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
 }
 
 /// Collect acceptance declarations from mocks and scenario test metadata.
@@ -1065,28 +1064,49 @@ fn mocked_accepts_under(root: &Path) -> BTreeMap<String, Vec<PathBuf>> {
     let mut out = BTreeMap::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
-                if !path.join("lute.project.yaml").is_file() { stack.push(path); }
+                if !path.join("lute.project.yaml").is_file() {
+                    stack.push(path);
+                }
                 continue;
             }
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            let in_mocks = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) == Some("mocks");
-            if !(name.ends_with(".test.yaml") || (in_mocks && name.ends_with(".yaml"))) { continue; }
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
-            let Ok(serde_yaml::Value::Mapping(top)) = serde_yaml::from_str(&text) else { continue };
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            let in_mocks = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                == Some("mocks");
+            if !(name.ends_with(".test.yaml") || (in_mocks && name.ends_with(".yaml"))) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(serde_yaml::Value::Mapping(top)) = serde_yaml::from_str(&text) else {
+                continue;
+            };
             let rel = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             if let Some(serde_yaml::Value::Sequence(items)) = top.get("accepts") {
                 for id in items.iter().filter_map(|item| item.as_str()) {
                     let files = out.entry(id.to_string()).or_insert_with(Vec::new);
-                    if !files.iter().any(|file| file == &rel) { files.push(rel.clone()); }
+                    if !files.iter().any(|file| file == &rel) {
+                        files.push(rel.clone());
+                    }
                 }
             }
         }
     }
-    for files in out.values_mut() { files.sort(); }
+    for files in out.values_mut() {
+        files.sort();
+    }
     out
 }
 
@@ -1096,33 +1116,74 @@ fn cast_home(
     origins: &[&BTreeMap<String, lute_check::rel_schema::DeclOrigin>],
     id: &str,
 ) -> Option<(PathBuf, Span)> {
-    if let Some(found) = plugins_dir.and_then(|dir| plugin_cast_home(dir, id)) { return Some(found); }
+    if let Some(found) = plugins_dir.and_then(|dir| plugin_cast_home(dir, id)) {
+        return Some(found);
+    }
     let origin = origins.iter().find_map(|origin| origin.get(id))?;
     let canon_root = std::fs::canonicalize(root).ok();
-    let shown = canon_root.as_deref().and_then(|canon| origin.file.strip_prefix(canon).ok())
+    let shown = canon_root
+        .as_deref()
+        .and_then(|canon| origin.file.strip_prefix(canon).ok())
         .map_or_else(|| origin.file.clone(), |relative| root.join(relative));
     Some((shown, origin.span))
 }
 
 fn plugin_cast_home(plugins_dir: &Path, id: &str) -> Option<(PathBuf, Span)> {
-    let mut packages: Vec<PathBuf> = std::fs::read_dir(plugins_dir).ok()?.flatten()
-        .map(|entry| entry.path()).filter(|path| path.join("plugin.yaml").is_file()).collect();
+    let mut packages: Vec<PathBuf> = std::fs::read_dir(plugins_dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.join("plugin.yaml").is_file())
+        .collect();
     packages.sort();
     for package in packages {
-        let Ok(text) = std::fs::read_to_string(package.join("plugin.yaml")) else { continue };
-        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else { continue };
-        let Some(rel) = manifest.get("exports").and_then(|v| v.get("cast")).and_then(|v| v.as_str()) else { continue };
+        let Ok(text) = std::fs::read_to_string(package.join("plugin.yaml")) else {
+            continue;
+        };
+        let Ok(manifest) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+            continue;
+        };
+        let Some(rel) = manifest
+            .get("exports")
+            .and_then(|v| v.get("cast"))
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
         let export = package.join(rel);
         let mut files: Vec<PathBuf> = if export.is_dir() {
-            let Ok(entries) = std::fs::read_dir(export) else { continue };
-            entries.flatten().map(|entry| entry.path())
-                .filter(|path| matches!(path.extension().and_then(|e| e.to_str()), Some("yaml" | "yml"))).collect()
-        } else { vec![export] };
+            let Ok(entries) = std::fs::read_dir(export) else {
+                continue;
+            };
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    matches!(
+                        path.extension().and_then(|e| e.to_str()),
+                        Some("yaml" | "yml")
+                    )
+                })
+                .collect()
+        } else {
+            vec![export]
+        };
         files.sort();
         for file in files {
-            let Ok(text) = std::fs::read_to_string(&file) else { continue };
-            let Some(offset) = lute_check::rel_schema::cast_entry_offset(&text, id) else { continue };
-            return Some((file, Span::from_bytes(&lute_core_span::TextIndex::new(&text), offset, offset + id.len())));
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let Some(offset) = lute_check::rel_schema::cast_entry_offset(&text, id) else {
+                continue;
+            };
+            return Some((
+                file,
+                Span::from_bytes(
+                    &lute_core_span::TextIndex::new(&text),
+                    offset,
+                    offset + id.len(),
+                ),
+            ));
         }
     }
     None

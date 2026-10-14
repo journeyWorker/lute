@@ -97,7 +97,7 @@ mod tests {
             "::set{scene.b = 2}\n", // Set inside choice body
             "</choice>\n",
             "</branch>\n",
-            "<match subject=\"scene.a\">\n",       // Match.subject
+            "<match subject=\"scene.a\">\n",  // Match.subject
             "<when test=\"scene.a == 1\">\n", // Arm::When test
             "::set{scene.c = 3}\n",           // Set inside when body
             "</when>\n",
@@ -108,7 +108,7 @@ mod tests {
             "<timeline duration=\"1.4\">\n", // Timeline.duration
             "<track channel=\"fg\">\n",
             "::cg{assetId=\"x\" cue=@joy}\n", // clip Directive.attrs Ref
-            "::set{scene.e = 5}\n",            // clip Set.expr (ClipNode::Set)
+            "::set{scene.e = 5}\n",           // clip Set.expr (ClipNode::Set)
             "</track>\n",
             "</timeline>\n",
         );

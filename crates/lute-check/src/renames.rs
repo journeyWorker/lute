@@ -39,7 +39,11 @@ pub const RENAMED_DIRECTIVE_ATTRS: &[(&str, &str, &str)] = &[
     ("music", "action", "playback"),
     ("video", "action", "display"),
     ("cg", "action", "display"),
-    (lute_manifest::core::LABEL_DIRECTIVE, "id", lute_manifest::core::LABEL_NAME_ATTR),
+    (
+        lute_manifest::core::LABEL_DIRECTIVE,
+        "id",
+        lute_manifest::core::LABEL_NAME_ATTR,
+    ),
 ];
 
 /// A domain (enum or entity kind) renamed by a clean cutover.
@@ -64,7 +68,10 @@ pub const RENAMED_DOMAINS: &[RenamedDomain] = &[RenamedDomain {
 /// The tail an `E-DOMAIN-UNKNOWN` for `name` appends when `name` is a renamed
 /// domain's new name and the document's folded vocabulary `declared` still
 /// declares its old name (0.41.0 §3.1); empty otherwise.
-pub fn renamed_domain_hint<V>(name: &str, declared: &std::collections::BTreeMap<String, V>) -> String {
+pub fn renamed_domain_hint<V>(
+    name: &str,
+    declared: &std::collections::BTreeMap<String, V>,
+) -> String {
     RENAMED_DOMAINS
         .iter()
         .find(|r| r.new == name && declared.contains_key(r.old))

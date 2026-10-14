@@ -175,7 +175,7 @@ pub fn check_fact_guards(
         let g = g.over(&folded.env_at(beat.span).state);
         if let Some(when) = &beat.when {
             if let Some(v) = g.eval(when, None) {
-            let per_member = g.members_never(when, members_at(beat.span));
+                let per_member = g.members_never(when, members_at(beat.span));
                 if let Some((why, graded)) = per_member.unreachable() {
                     out.push(graded.grade(diag(
                         crate::beats::E_BEAT_UNREACHABLE,
@@ -289,7 +289,10 @@ pub fn check_fact_guards(
 /// out may be: the match's `E-NONEXHAUSTIVE` in `diags` (the document's
 /// per-file report) is dropped once every member still uncovered is one of
 /// them, and names only the rest otherwise.
-#[expect(clippy::type_complexity, reason = "fact reconciliation keeps each beat's guard, span, and bodies together")]
+#[expect(
+    clippy::type_complexity,
+    reason = "fact reconciliation keeps each beat's guard, span, and bodies together"
+)]
 pub fn reconcile_member_matches(
     diags: &mut Vec<Diagnostic>,
     path: &Path,
@@ -416,7 +419,9 @@ fn target_matches<'n>(nodes: &'n [Node], out: &mut Vec<&'n lute_syntax::ast::Mat
     for node in nodes {
         match node {
             Node::Match(m) => {
-                if subject_path(m).as_deref() == Some(lute_manifest::semantics::beats::OCCASION_TARGET) {
+                if subject_path(m).as_deref()
+                    == Some(lute_manifest::semantics::beats::OCCASION_TARGET)
+                {
                     out.push(m);
                 }
                 for arm in &m.arms {
@@ -763,7 +768,10 @@ fn guaranteed_reason(m: &MustFact) -> String {
     let shown = format!("holds{query}");
     match &m.provenance {
         Provenance::Assert { .. } => {
-            format!("`{shown}` is asserted on every route to here ({})", m.provenance)
+            format!(
+                "`{shown}` is asserted on every route to here ({})",
+                m.provenance
+            )
         }
         Provenance::Guard { .. } => format!(
             "`{shown}` already holds here: the enclosing guard at {} requires it",

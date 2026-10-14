@@ -278,7 +278,9 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
                     Decision::Ty(t) if matches!(t, Type::Int | Type::Double) => {
                         if let Some(prev) = &numeric {
                             if prev != &t {
-                                return Decision::Ill("integer and double arithmetic cannot be mixed".to_string());
+                                return Decision::Ill(
+                                    "integer and double arithmetic cannot be mixed".to_string(),
+                                );
                             }
                         } else {
                             numeric = Some(t);
@@ -384,7 +386,6 @@ fn decide_add(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
         _ => Decision::Undecidable,
     }
 }
-
 
 /// The namespaced id types — value-level strings whose membership validity is
 /// a separate concern (`cel_resolve.rs:748-753`).

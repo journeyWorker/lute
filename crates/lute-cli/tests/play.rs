@@ -64,10 +64,29 @@ fn a_project_with_an_invalid_plugin_configuration_refuses_to_play() {
         "scenes/start.lute",
         "---\nkind: scene\nid: start\non: visit\n---\n\n## Start\n\n@narrator: This must not run.\n",
     );
-    let out = play_in(&dir, "invalid-plugin-config-script", "steps:\n  - occasion: visit\n", false);
-    assert_eq!(out.status.code(), Some(1), "{}{}", stdout(&out), stderr(&out));
-    assert!(stderr(&out).contains("refusing to play"), "{}", stderr(&out));
-    assert!(!stdout(&out).contains("This must not run."), "{}", stdout(&out));
+    let out = play_in(
+        &dir,
+        "invalid-plugin-config-script",
+        "steps:\n  - occasion: visit\n",
+        false,
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("refusing to play"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(
+        !stdout(&out).contains("This must not run."),
+        "{}",
+        stdout(&out)
+    );
 }
 
 /// Play `script` over the hub fixture with `--json`; asserts the exit code.
@@ -126,8 +145,16 @@ fn a_choice_beat_advance_presents_the_lifecycle_beat() {
         false,
     );
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
-    assert!(stdout(&out).contains("↻ b (clock raise)"), "{}", stdout(&out));
-    assert!(stdout(&out).contains("↻ c (clock raise)"), "{}", stdout(&out));
+    assert!(
+        stdout(&out).contains("↻ b (clock raise)"),
+        "{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("↻ c (clock raise)"),
+        "{}",
+        stdout(&out)
+    );
     assert!(
         stdout(&out).contains("@narrator: B lifecycle line."),
         "{}",
@@ -147,10 +174,12 @@ fn a_choice_beat_advance_presents_the_lifecycle_beat() {
     );
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
     let json: Json = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(json["steps"][0]["presented"]["raised"][0]["id"], "b", "{json}");
     assert_eq!(
-        json["steps"][0]["presented"]["raised"][0]["raised"][0]["id"],
-        "c",
+        json["steps"][0]["presented"]["raised"][0]["id"], "b",
+        "{json}"
+    );
+    assert_eq!(
+        json["steps"][0]["presented"]["raised"][0]["raised"][0]["id"], "c",
         "{json}"
     );
 }
@@ -1052,11 +1081,7 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
         stderr(&out)
     );
     let ir = stdout(&out);
-    assert!(
-        ir.lines()
-            .any(|l| l == "::bg{location=\"parlor\"}"),
-        "{ir}"
-    );
+    assert!(ir.lines().any(|l| l == "::bg{location=\"parlor\"}"), "{ir}");
     assert!(
         ir.contains("(injected: "),
         "the lowered view shows injected staging: {ir}"
@@ -2437,7 +2462,8 @@ fn an_ordinal_word_placeholder_renders_a_word_up_to_twenty() {
         .args(["--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
-    let ir: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", stderr(&out)));
+    let ir: serde_json::Value =
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|_| panic!("{}", stderr(&out)));
     let line = ir["commands"]
         .as_array()
         .unwrap()
@@ -2770,11 +2796,7 @@ fn quiet_leaves_out_the_candidates_that_were_not_eligible() {
 fn an_include_choose_is_local_to_each_repetition() {
     let dir = stage_project("include-choose");
     let steps_scratch = lute_scratch::ScratchDir::named("include-choose-steps");
-    let steps = write(
-        &steps_scratch,
-        "t.steps.yaml",
-        "- occasion: talk\n",
-    );
+    let steps = write(&steps_scratch, "t.steps.yaml", "- occasion: talk\n");
     let v = play_project_json(
         &dir,
         "include-choose",
@@ -2804,11 +2826,7 @@ fn an_include_choose_is_local_to_each_repetition() {
 fn an_include_choose_its_steps_never_present_is_noted() {
     let dir = stage_project("include-leftover");
     let steps_scratch = lute_scratch::ScratchDir::named("include-leftover-steps");
-    let steps = write(
-        &steps_scratch,
-        "v.steps.yaml",
-        "- occasion: visit\n",
-    );
+    let steps = write(&steps_scratch, "v.steps.yaml", "- occasion: visit\n");
     let out = play_in(
         &dir,
         "include-leftover",
@@ -2838,11 +2856,7 @@ fn an_include_choose_its_steps_never_present_is_noted() {
 fn a_halt_names_the_include_that_scripted_its_choice_and_a_step_choose_is_noted() {
     let dir = stage_project("include-halt");
     let steps_scratch = lute_scratch::ScratchDir::named("include-halt-steps");
-    let steps = write(
-        &steps_scratch,
-        "v.steps.yaml",
-        "- occasion: visit\n",
-    );
+    let steps = write(&steps_scratch, "v.steps.yaml", "- occasion: visit\n");
     let out = play_in(
         &dir,
         "include-halt",

@@ -26,7 +26,11 @@ fn text(bytes: &[u8]) -> String {
 
 fn json_report(out: &Output) -> Value {
     let stdout = text(&out.stdout);
-    assert_eq!(stdout.lines().count(), 1, "one JSON object on one line: {stdout}");
+    assert_eq!(
+        stdout.lines().count(),
+        1,
+        "one JSON object on one line: {stdout}"
+    );
     serde_json::from_str(&stdout).unwrap()
 }
 
@@ -50,7 +54,12 @@ fn the_json_report_carries_the_cel_slot_a_compiled_beat_carries() {
         .arg(&*dir)
         .output()
         .unwrap();
-    assert_eq!(compiled.status.code(), Some(0), "{}", text(&compiled.stderr));
+    assert_eq!(
+        compiled.status.code(),
+        Some(0),
+        "{}",
+        text(&compiled.stderr)
+    );
     let artifact: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.join("scenes/market.lute.json")).unwrap(),
     )
@@ -91,7 +100,10 @@ fn the_json_report_carries_the_cel_slot_a_compiled_beat_carries() {
 fn the_vocabulary_is_every_imported_schema_the_plugins_and_the_index_defs() {
     // `run.reputation` and `@respected` come from a schema only the guild
     // scene imports; `@marketOpen` is the plugin's host def.
-    let report = json_report(&expr(&["--json", "@respected && @marketOpen && run.reputation < 9"]));
+    let report = json_report(&expr(&[
+        "--json",
+        "@respected && @marketOpen && run.reputation < 9",
+    ]));
     assert_eq!(report["ok"], true, "{report}");
     assert_eq!(
         report["cel"],
@@ -105,7 +117,10 @@ fn the_vocabulary_is_every_imported_schema_the_plugins_and_the_index_defs() {
     let report = json_report(&out);
     assert_eq!(report["ok"], false);
     assert_eq!(report.as_object().unwrap().len(), 2, "{report}");
-    assert_eq!(report["diagnostics"][0]["code"], "E-UNDECLARED-REF", "{report}");
+    assert_eq!(
+        report["diagnostics"][0]["code"], "E-UNDECLARED-REF",
+        "{report}"
+    );
 }
 
 #[test]
@@ -170,8 +185,11 @@ fn a_project_that_does_not_resolve_reports_in_the_json_report_alone() {
         "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
     )
     .unwrap();
-    std::fs::write(dir.join("world.schema.yaml"), "state:\n  run.gold: { type: int, default: 0 }\n")
-        .unwrap();
+    std::fs::write(
+        dir.join("world.schema.yaml"),
+        "state:\n  run.gold: { type: int, default: 0 }\n",
+    )
+    .unwrap();
     std::fs::create_dir_all(dir.join("scenes")).unwrap();
     std::fs::write(
         dir.join("scenes/a.lute"),
@@ -180,7 +198,9 @@ fn a_project_that_does_not_resolve_reports_in_the_json_report_alone() {
     .unwrap();
     let run = |json: bool| {
         let mut command = Command::new(BIN);
-        command.args(["expr", "run.gold > 0", "--project"]).arg(&*dir);
+        command
+            .args(["expr", "run.gold > 0", "--project"])
+            .arg(&*dir);
         if json {
             command.arg("--json");
         }
@@ -198,7 +218,10 @@ fn a_project_that_does_not_resolve_reports_in_the_json_report_alone() {
     assert_eq!(diagnostics[0]["code"], "E-USES-NOT-FOUND");
     assert_eq!(diagnostics[0]["severity"], "error");
     assert!(
-        diagnostics[0]["message"].as_str().unwrap().contains("`missing.schema.yaml`"),
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("`missing.schema.yaml`"),
         "{report}"
     );
 
@@ -222,7 +245,10 @@ fn the_project_defaults_to_the_current_directory_and_must_have_a_manifest() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
-    assert_eq!(text(&out.stdout), "{\"op\":\">\",\"l\":{\"path\":\"run.gold\"},\"r\":{\"int\":0}}\n");
+    assert_eq!(
+        text(&out.stdout),
+        "{\"op\":\">\",\"l\":{\"path\":\"run.gold\"},\"r\":{\"int\":0}}\n"
+    );
 
     let scenes = Path::new(FIXTURE).join("scenes");
     for args in [vec!["run.gold > 0"], vec!["--json", "run.gold > 0"]] {
@@ -235,6 +261,10 @@ fn the_project_defaults_to_the_current_directory_and_must_have_a_manifest() {
             .unwrap();
         assert_eq!(out.status.code(), Some(2), "{args:?}");
         assert_eq!(text(&out.stdout), "");
-        assert!(text(&out.stderr).contains("no lute.project.yaml"), "{}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).contains("no lute.project.yaml"),
+            "{}",
+            text(&out.stderr)
+        );
     }
 }

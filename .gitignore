@@ -7,6 +7,7 @@ packages/website/.astro/
 packages/*/dist/
 packages/core-*/bin/
 dist/local/
+__pycache__/
 .DS_Store
 
 # git-worktree checkouts

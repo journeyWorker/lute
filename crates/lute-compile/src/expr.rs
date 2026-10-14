@@ -33,9 +33,8 @@
 use cel_parser::ast::{CallExpr, Expr};
 use cel_parser::reference::Val;
 use lute_cel::CelArena;
-use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, NumRange};
 use lute_ir::{ExprNode, LitVal};
-
+use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, NumRange};
 
 /// Parse a raw CEL fragment and lower it to a portable [`ExprNode`].
 ///
@@ -190,11 +189,7 @@ enum IsSynth {
 /// reaches compile in a checked document; should one slip through it is a
 /// malformed pattern, so the whole `is` expr lowers to `None` (the arm carries
 /// no `expr`, exactly like any other unlowerable pattern — see [`ArmExpr`]).
-fn synth_is_expr(
-    is_raw: &str,
-    subject: Option<&ExprNode>,
-    subject_is_double: bool,
-) -> IsSynth {
+fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>, subject_is_double: bool) -> IsSynth {
     let mut nodes: Vec<ExprNode> = Vec::new();
     for lit in is_alternatives(is_raw) {
         let Ok(class) = classify_is_literal(lit) else {
@@ -241,7 +236,6 @@ fn synth_is_expr(
     IsSynth::Expr(Some(folded))
 }
 
-
 /// `quest.<id>.state` exactly (a non-empty id; `quest.<id>.objectives.…` and
 /// `activatedAt` are not the lifecycle enum).
 fn is_quest_state_path(path: &str) -> bool {
@@ -269,11 +263,7 @@ fn subject_cmp(subject: Option<&ExprNode>, op: &'static str, lit: LitVal) -> Opt
 
 /// A numeric pattern bound keeps CEL's integer/double distinction.
 fn pattern_num(n: f64, subject_is_double: bool) -> LitVal {
-    if !subject_is_double
-        && n.is_finite()
-        && n.fract() == 0.0
-        && n.abs() <= (1u64 << 53) as f64
-    {
+    if !subject_is_double && n.is_finite() && n.fract() == 0.0 && n.abs() <= (1u64 << 53) as f64 {
         LitVal::Int(n as i64)
     } else {
         LitVal::Num(n)
@@ -384,7 +374,11 @@ fn lower_call(c: &CallExpr) -> Option<ExprNode> {
     }
     Some(ExprNode::Call {
         call: name.to_string(),
-        args: c.args.iter().map(|arg| lower(&arg.expr)).collect::<Option<_>>()?,
+        args: c
+            .args
+            .iter()
+            .map(|arg| lower(&arg.expr))
+            .collect::<Option<_>>()?,
     })
 }
 
@@ -735,5 +729,4 @@ mod tests {
             );
         }
     }
-
 }

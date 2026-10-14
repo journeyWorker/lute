@@ -7,10 +7,10 @@
 use std::fs;
 use std::path::Path;
 
-use proptest::prelude::*;
-use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
 use lute_check::{CheckInput, Mode};
 use lute_compile::compile;
+use proptest::prelude::*;
+use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
 use serde_json::Value;
 
 const SEED: u64 = 0x0360_2026_1005;
@@ -79,7 +79,12 @@ fn assert_artifact_round_trip(path: &Path) {
     let value: Value = serde_json::from_str(&source).expect("parse IR corpus artifact");
     let wire = serde_json::to_string(&value).expect("serialize IR corpus value");
     let round_trip: Value = serde_json::from_str(&wire).expect("deserialize IR corpus value");
-    assert_eq!(value, round_trip, "semantic artifact changed: {}", path.display());
+    assert_eq!(
+        value,
+        round_trip,
+        "semantic artifact changed: {}",
+        path.display()
+    );
 }
 
 fn persist_failure(name: &str, error: &TestError<Vec<u8>>) -> std::path::PathBuf {
@@ -121,6 +126,9 @@ fn round_trip_property() {
             Err(error) => Err(TestCaseError::fail(error)),
         });
         assert!(replay.is_err(), "fixed-seed IR failure did not replay");
-        panic!("IR round-trip property failed with seed 0x{SEED:016x}; replay: {}\n{error}", replay_path.display());
+        panic!(
+            "IR round-trip property failed with seed 0x{SEED:016x}; replay: {}\n{error}",
+            replay_path.display()
+        );
     }
 }

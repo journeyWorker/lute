@@ -6,8 +6,8 @@ use serde_json::{json, Value as Json};
 
 use super::format::{substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
-use crate::eval::Read;
 use crate::driver::{Driver, SiteKind};
+use crate::eval::Read;
 use crate::store::{json_arg_to_string, render_fact};
 use crate::{UnresolvedAtom, Value};
 
@@ -143,7 +143,14 @@ fn staging_fields(kind: &str) -> &'static [&'static str] {
         "sfx" => &["sound", "assetId"],
         "vfx" => &["type", "label", "transition"],
         "actor" => &[
-            "character", "anchor", "action", "exit", "emotion", "costume", "posReset", "preload",
+            "character",
+            "anchor",
+            "action",
+            "exit",
+            "emotion",
+            "costume",
+            "posReset",
+            "preload",
         ],
         "camera" => &["focus", "framing", "move", "transition"],
         "cg" => &["assetId", "display", "layout"],
@@ -249,7 +256,10 @@ impl<D: Driver> Machine<D> {
     ///
     /// [`UnknownSite`]: crate::driver::UnknownSite
     pub(super) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
-        match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
+        match self
+            .store
+            .read(lute_manifest::semantics::beats::OCCASION_TARGET)
+        {
             Read::Value(Value::Str(member)) => Some(member),
             _ => {
                 let atoms = [UnresolvedAtom::Path(
@@ -276,7 +286,10 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map(|a| a.iter().map(json_arg_to_string).collect())
             .unwrap_or_default();
-        if args.iter().any(|a| a == lute_manifest::semantics::beats::OCCASION_TARGET) {
+        if args
+            .iter()
+            .any(|a| a == lute_manifest::semantics::beats::OCCASION_TARGET)
+        {
             let written = render_fact(&rel, &args);
             let site = Site::new(SiteKind::OccasionTarget, &written, addr(cmd));
             let member = self.bound_target(site, &written)?;
@@ -354,7 +367,10 @@ impl<D: Driver> Machine<D> {
         rec.insert("effect".into(), Json::String(kind.to_string()));
         // A write through `occasion.target` names the member it would have
         // written, when one is bound.
-        let member = match self.store.read(lute_manifest::semantics::beats::OCCASION_TARGET) {
+        let member = match self
+            .store
+            .read(lute_manifest::semantics::beats::OCCASION_TARGET)
+        {
             Read::Value(Value::Str(m)) => Some(m),
             _ => None,
         };

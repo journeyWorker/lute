@@ -12,11 +12,14 @@ fn artifact(tag: &str, ir: serde_json::Value) -> (lute_scratch::ScratchDir, Path
 
 fn run(ir: serde_json::Value) -> std::process::Output {
     let (_dir, path) = artifact("test", ir);
-    Command::new(BIN).args(["run", path.to_str().unwrap()]).output().unwrap()
+    Command::new(BIN)
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .unwrap()
 }
 
 fn base() -> serde_json::Value {
-    serde_json::json!({"irVersion":"0.42.0", "kind":"scene", "requiredSemantics":["lute.core/1"], "commands":[]})
+    serde_json::json!({"irVersion":"0.42.1", "kind":"scene", "requiredSemantics":["lute.core/1"], "commands":[]})
 }
 
 #[test]

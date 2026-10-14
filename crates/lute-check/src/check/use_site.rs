@@ -593,7 +593,8 @@ pub(super) fn check_use_speaker_args(
     enclosing: &[String],
 ) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
-    for body in doc.sections
+    for body in doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -988,7 +989,10 @@ fn typed_param_sinks(
                 }
             }
         };
-    #[expect(clippy::type_complexity, reason = "recursive walker callback carries directive attributes and output")]
+    #[expect(
+        clippy::type_complexity,
+        reason = "recursive walker callback carries directive attributes and output"
+    )]
     fn walk(
         nodes: &[Node],
         f: &mut dyn FnMut(&Directive, &mut Vec<(String, lute_manifest::schema::AttrDecl)>),
@@ -1040,7 +1044,8 @@ fn component_interpolates(
     let Some(def) = components.table.get(comp) else {
         return false;
     };
-    def.body.sections
+    def.body
+        .sections
         .iter()
         .any(|s| body_interpolates(&s.body, components, param, seen))
 }
@@ -1088,7 +1093,8 @@ fn body_interpolates(
 /// judged by both (a header `when` and a body `::assert`) is one report.
 pub(super) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
-    for body in doc.sections
+    for body in doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1135,14 +1141,18 @@ pub fn use_speaker_lines(
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<usize, Vec<lute_syntax::ast::Line>> {
     let speaks = |def: &crate::component_import::ComponentDef| {
-        def.body.sections.iter().any(|s| body_speaks_as_param(&s.body))
+        def.body
+            .sections
+            .iter()
+            .any(|s| body_speaks_as_param(&s.body))
     };
     let mut out = std::collections::BTreeMap::new();
     if !components.table.values().any(speaks) {
         return out;
     }
     let mut dirs = Vec::new();
-    for body in doc.sections
+    for body in doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))
@@ -1229,7 +1239,8 @@ pub(super) fn check_use_def_enum_args(
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut dirs = Vec::new();
-    for body in doc.sections
+    for body in doc
+        .sections
         .iter()
         .map(|s| &s.body)
         .chain(doc.quests.iter().map(|q| &q.body))

@@ -15,12 +15,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::fact::{FactArg, FactTerm};
 use lute_manifest::relations::{
     EntityKindDecl, KindShape, ParsedKinds, ParsedRelations, RelationDecl,
 };
 use lute_manifest::snapshot::Domain;
 use lute_syntax::ast::Meta;
-use lute_manifest::fact::{FactArg, FactTerm};
 
 use crate::meta::{meta_key_span, FactDecl, RuleDecl, TypedMeta};
 use crate::schema_import::{

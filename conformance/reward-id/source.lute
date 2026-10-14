@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.42.0"
+luteVersion: "0.42.1"
 uses: ./schema.yaml
 title: Reward id
 ---

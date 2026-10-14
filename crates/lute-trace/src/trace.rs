@@ -28,25 +28,25 @@ use lute_check::{CheckInput, CheckResult, FoldedEnv};
 use lute_compile::source_map::{ArmSource, SourceInfo, SourceMarker};
 use lute_compile::SourceMap;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
 use lute_manifest::fact::FactTerm;
+use lute_syntax::ast::{Arm, AttrValue, Document, Line, Node};
 use serde_json::Value as Json;
 
-use lute_runtime::session::{
-    ExecProject, Premise, Verdict as SessionVerdict, World as SessionWorld,
-};
-use lute_runtime::{
-    self as exec, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine,
-    Menu, MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
-};
-use lute_runtime::BridgeAnswer;
 use crate::mock::{self, MockSet, W_TRACE_MOCK_UNPRODUCIBLE};
 use crate::report::{
     self, ComponentBoundary, ComponentSite, Coverage, CoverageCount, Decision, GrantCredit,
     GrantReward, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
-use lute_runtime::value::{UnresolvedAtom, Value};
 use lute_ir::BeatKind;
+use lute_runtime::session::{
+    ExecProject, Premise, Verdict as SessionVerdict, World as SessionWorld,
+};
+use lute_runtime::value::{UnresolvedAtom, Value};
+use lute_runtime::BridgeAnswer;
+use lute_runtime::{
+    self as exec, guard_premise, BridgeCall, BridgeReply, Driver, Forced, GuardRead, Machine, Menu,
+    MenuKind, OnUnknown, Pick, Seed, SiteKind, UnknownSite, Verdict,
+};
 
 mod ast;
 mod driver_core;

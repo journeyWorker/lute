@@ -15,13 +15,11 @@ pub mod chapters;
 pub mod check;
 pub mod clock;
 pub mod clock_positions;
-pub mod deps;
 pub mod component_effects;
 pub mod component_import;
 pub mod connectivity;
 pub mod content_line;
 pub mod ctx;
-pub mod evidence;
 pub mod datalog_check;
 pub mod decide;
 pub mod def_decl;
@@ -29,10 +27,12 @@ pub mod def_inline;
 pub mod defassign;
 pub(crate) mod defaults_note;
 pub mod depends;
+pub mod deps;
 pub mod directive_facts;
 pub mod directives;
 pub mod display_names;
 pub mod envelope;
+pub mod evidence;
 pub mod fact_check;
 pub mod fact_edges;
 pub mod fact_env;
@@ -80,7 +80,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.42.0";
+pub const LUTE_LANG_VERSION: &str = "0.42.1";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -124,8 +124,9 @@ pub fn desugar_document(
             host.cast.insert(id.to_string(), name.to_string());
         }
     }
-    let own_vocab =
-        inline.as_ref().is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
+    let own_vocab = inline
+        .as_ref()
+        .is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
     if !own_vocab {
         let mut domains = input.snapshot.domains.clone();
         domains.extend(input.imports.domains.clone());
@@ -159,10 +160,10 @@ pub use accept::{
 };
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
-    advances_from_attr, check_project_beats, occasion_target_ok,
-    parse_beat_priority, project_beats, BeatMeta, ProjectBeat,
-    ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR, E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN,
-    W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE, W_BEAT_SHADOWED,
+    advances_from_attr, check_project_beats, occasion_target_ok, parse_beat_priority,
+    project_beats, BeatMeta, ProjectBeat, ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR,
+    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
+    W_BEAT_SHADOWED,
 };
 pub use bundles::{
     bundle_beat_also, bundle_beat_key, bundle_beat_once, bundle_beat_priority, check_bundle_beats,
@@ -221,6 +222,11 @@ pub use meta::{
 };
 pub use project_doc::{ProjectDoc, ProjectDocs};
 
+pub use clock_positions::{
+    check_project_advance_cascades, check_project_objective_clock_windows,
+    project_objective_slot_results, ObjectiveSlotResult, E_ADVANCE_CASCADE, W_OBJECTIVE_STRANDED,
+    W_SLOT_CONTENTION,
+};
 pub use on::{check_on_event, E_ON_NO_EVENT, E_UNKNOWN_EVENT};
 pub use permissions::{
     check_permissions, E_PERMISSION_BRIDGE, E_PERMISSION_DIRECTIVE, E_PERMISSION_FACT,
@@ -236,11 +242,6 @@ pub use project_check::{
     E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED, W_COMPONENT_UNVERIFIED,
     W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
 };
-pub use clock_positions::{
-    check_project_advance_cascades, check_project_objective_clock_windows, E_ADVANCE_CASCADE,
-    W_OBJECTIVE_STRANDED, W_SLOT_CONTENTION,
-    project_objective_slot_results, ObjectiveSlotResult,
-};
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
 pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
@@ -254,7 +255,6 @@ pub use timeline::{
 };
 pub use usage::{
     check_project_usage, document_read_view, number_row_values, schema_sources, yaml_read_view,
-    UsageDoc,
-    W_DEF_UNUSED, W_RELATION_UNREAD,
+    UsageDoc, W_DEF_UNUSED, W_RELATION_UNREAD,
 };
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

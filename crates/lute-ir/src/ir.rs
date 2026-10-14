@@ -454,7 +454,10 @@ pub enum PrereqEdge {
 #[serde(rename_all = "camelCase")]
 pub struct GateEntry {
     pub occasion: String,
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::cel_slot")
+    )]
     pub raised_when: CelPair,
 }
 
@@ -464,6 +467,9 @@ pub struct GateEntry {
 #[serde(rename_all = "camelCase")]
 pub struct SeasonEntry {
     pub name: String,
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::cel_slot")
+    )]
     pub live: CelPair,
 }

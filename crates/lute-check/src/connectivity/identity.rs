@@ -10,10 +10,9 @@ use super::graph_nodes::*;
 // two unrelated subprojects reusing the same `character`/`episodeId` is not
 // a collision.
 
+use crate::ProjectDoc;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use crate::ProjectDoc;
-
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::Document;
@@ -105,7 +104,10 @@ pub fn scene_key_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, 
             continue;
         };
         let span = meta_key_span(&doc.meta, anchor);
-        by_key.entry(key).or_default().push((path.to_path_buf(), span));
+        by_key
+            .entry(key)
+            .or_default()
+            .push((path.to_path_buf(), span));
     }
     by_key
 }
@@ -126,7 +128,9 @@ pub fn scene_key(meta: &crate::meta::TypedMeta) -> Option<String> {
     let season = map.get(key("season"))?.as_i64()?;
     let episode = map.get(key("episode"))?.as_i64()?;
     let episode_id = map.get(key("episodeId")).and_then(|v| v.as_str());
-    Some(canonical_episode_key(character, season, episode, episode_id))
+    Some(canonical_episode_key(
+        character, season, episode, episode_id,
+    ))
 }
 
 /// A quest or lore document's authored, well-formed `id:` (dsl 0.19.0
@@ -192,7 +196,9 @@ pub(super) fn bundle_beat<'d>(
     key: &str,
 ) -> Option<&'d lute_syntax::ast::BundleBeat> {
     let doc_id = bundle_id(meta)?;
-    doc.beats.iter().find(|b| crate::bundles::bundle_beat_key(&doc_id, &b.id) == key)
+    doc.beats
+        .iter()
+        .find(|b| crate::bundles::bundle_beat_key(&doc_id, &b.id) == key)
 }
 
 /// dsl 0.25.0 §3: every beat node of `graph` (a scene beat or a bundle
@@ -337,4 +343,3 @@ pub fn check_conn_episode_dup(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnost
     }
     out
 }
-

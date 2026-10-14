@@ -335,9 +335,9 @@ impl PermissionChecker<'_> {
                             .get(&slot.shape)
                             .is_some_and(|shape| {
                                 shape_has_defaults(shape, self.snapshot, &mut BTreeSet::new())
-                            })
-                        => {
-                            self.diagnostics.push(permission_diag(
+                            }) =>
+                    {
+                        self.diagnostics.push(permission_diag(
                                 E_PERMISSION_STATE,
                                 format!(
                                     "plugin `::{}` initializes state through a path that cannot be resolved under the effective `stateWrites` permission ceiling",
@@ -345,7 +345,7 @@ impl PermissionChecker<'_> {
                                 ),
                                 directive.span,
                             ));
-                        }
+                    }
                     None => {}
                 }
             }
@@ -429,10 +429,9 @@ impl PermissionChecker<'_> {
     fn check_state_write(&mut self, path: &str, span: Span, source: &str) {
         // dsl 0.28.0 §3: `F[occasion.target]` writes a member of `F` — judged
         // like any `F.<member>` write.
-        if !self
-            .permissions
-            .allows_state_write(&lute_manifest::semantics::target_writes::member_path(path, "_"))
-        {
+        if !self.permissions.allows_state_write(
+            &lute_manifest::semantics::target_writes::member_path(path, "_"),
+        ) {
             self.diagnostics.push(permission_diag(
                 E_PERMISSION_STATE,
                 format!(

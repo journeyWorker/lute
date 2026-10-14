@@ -281,7 +281,11 @@ mod tests {
     fn leaf_nodes_do_not_fold() {
         let text = "## Shot 1.\n@narrator: only prose.\n";
         let all = folds(text);
-        assert_eq!(all.len(), 1, "only the section folds; the lone :line does not");
+        assert_eq!(
+            all.len(),
+            1,
+            "only the section folds; the lone :line does not"
+        );
     }
 
     /// dsl 0.37.0 §3.1: a section carrying a `{#id}` suffix folds from its

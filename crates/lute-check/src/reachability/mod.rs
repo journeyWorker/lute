@@ -62,27 +62,24 @@ use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
 use crate::decide::{analyze_literal_comparisons, DecideCtx};
 use crate::match_check::{param_domain, DomainInfo};
- 
+
 mod diagnostics;
 
- 
+pub use diagnostics::E_ENTRY_UNREACHABLE;
 pub(crate) use diagnostics::{
     diag, push_literal_cmp_diags, E_ARM_DEAD, E_OBJECTIVE_CONTRADICTION, E_OBJECTIVE_UNSATISFIABLE,
     E_QUEST_UNREACHABLE, W_DEADLINE_BEFORE_DONE, W_DEADLINE_NEVER, W_OBJECTIVE_HIDDEN,
     W_OTHERWISE_DEAD,
 };
-pub use diagnostics::E_ENTRY_UNREACHABLE;
 
-mod dnf;
 mod context;
+mod dnf;
+mod objective;
 mod picks;
 mod walk;
-mod objective;
 
-use objective::{
-    check_handler_after_completion, check_objective_contradiction, check_quest_reach,
-};
 pub(crate) use objective::REQUIRED_QUEST_NOTE;
+use objective::{check_handler_after_completion, check_objective_contradiction, check_quest_reach};
 use objective::{comparison_set, comparison_set_polar};
 use walk::walk_reach;
 pub(crate) use walk::{arm_has_foreign_literal, check_choices_reach};
@@ -95,7 +92,6 @@ use context::{never_holds, Reach};
 pub(crate) use dnf::{
     implies, non_exclusive_witness, provably_exclusive, when_conjuncts, when_dnf, Disjunct, Dnf,
 };
-
 
 /// §5.2/§5.3 whole-document pass. Walks `doc.shots` + `doc.quests` +
 /// `doc.entries` (dsl 0.19.0 §4)
@@ -361,5 +357,3 @@ pub(crate) fn check_reachability_in(
     }
     diags
 }
-
-

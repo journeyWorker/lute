@@ -98,7 +98,6 @@ pub(super) fn parse_advances_text(raw: &str) -> Option<AdvanceSpec> {
     }
 }
 
-
 /// A scene's validated beat declaration (dsl 0.21.0 §3.1), lifted onto
 /// [`crate::meta::TypedMeta::beat`] only when `on:` is present and a name.
 /// A malformed sibling key draws [`E_BEAT_ATTR`] and falls back
@@ -418,7 +417,8 @@ pub(crate) fn lift_scene_beat(
     if crate::chapters::derived(meta, "on") {
         occasion_diags.retain(|d| d.code != E_OCCASION_UNKNOWN);
         for d in &mut occasion_diags {
-            d.message.push_str(lute_manifest::semantics::chapters::PROVENANCE);
+            d.message
+                .push_str(lute_manifest::semantics::chapters::PROVENANCE);
         }
     }
     diags.extend(occasion_diags);
@@ -466,8 +466,10 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
     let mut residual_on = false;
     let mut residual_once = false;
     for attr in &entry.attrs {
-        if matches!(attr.key.as_str(), "on" | "priority" | "once" | "share" | "advances")
-            && !matches!(attr.value, AttrValue::Str(_))
+        if matches!(
+            attr.key.as_str(),
+            "on" | "priority" | "once" | "share" | "advances"
+        ) && !matches!(attr.value, AttrValue::Str(_))
         {
             residual_on |= attr.key == "on";
             residual_once |= attr.key == "once";
@@ -557,8 +559,8 @@ pub(crate) fn check_entry_beat_attrs(entry: &Entry, diags: &mut Vec<Diagnostic>)
         }
     }
     if let Some((raw, span)) = &entry.advances {
-        let valid = matches!(raw.as_str(), "slot" | "day")
-            || raw.parse::<u32>().is_ok_and(|n| n >= 1);
+        let valid =
+            matches!(raw.as_str(), "slot" | "day") || raw.parse::<u32>().is_ok_and(|n| n >= 1);
         if !valid {
             push(
                 format!(
@@ -612,4 +614,3 @@ pub(crate) fn check_entry_occasions(
     }
     diags
 }
-

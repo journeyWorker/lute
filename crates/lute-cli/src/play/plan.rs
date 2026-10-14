@@ -17,7 +17,7 @@ use serde_json::Value as Json;
 
 use super::script::{
     in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptBridgeAnswer,
-    ScriptedPick, ScriptStep, Segment, StepAction,
+    ScriptStep, ScriptedPick, Segment, StepAction,
 };
 
 /// One planned `bridges:` answer (0.41.1 §4.1): the field map the runtime
@@ -181,7 +181,9 @@ fn resolve_writes(
                     _ if path.starts_with("scene.") => resolve_state(p, path, "").err(),
                     None if entry_flag(path).is_none() => resolve_state(p, path, "").err(),
                     Some(Some("int" | "double" | "number")) => None,
-                    _ => Some("is not an `int` or `double` path, so it takes no `{ add: … }`".to_string()),
+                    _ => Some(
+                        "is not an `int` or `double` path, so it takes no `{ add: … }`".to_string(),
+                    ),
                 };
                 why.map_or(Ok(Write::Add(*d)), Err)
             }
@@ -1107,7 +1109,11 @@ pub(super) fn plan_script(
 /// ([`lute_trace::exec::record::needle_problem`]) — otherwise the needle can
 /// never match, and a `transcriptLacks` holds although the line was said. A
 /// usage error (exit 2) before anything plays, located at the needle.
-fn check_needles(vocab: &lute_trace::exec::record::NeedleVocab, script: &PlayScript, errs: &mut Vec<String>) {
+fn check_needles(
+    vocab: &lute_trace::exec::record::NeedleVocab,
+    script: &PlayScript,
+    errs: &mut Vec<String>,
+) {
     let Some(expect) = &script.expect else {
         return;
     };

@@ -20,7 +20,11 @@ fn run(args: &[&str]) -> Output {
 }
 
 fn text(o: &Output) -> String {
-    format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
 }
 
 const LINE_ID: &str = "rock.arrival.inspector_0020";
@@ -30,7 +34,10 @@ fn loc_export_keeps_the_authored_markup() {
     let out = run(&["loc", "export", game().to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let all = text(&out);
-    assert!(all.contains("A lamp does :emphasis[not] relight itself."), "{all}");
+    assert!(
+        all.contains("A lamp does :emphasis[not] relight itself."),
+        "{all}"
+    );
 }
 
 fn compile_with(tag: &str, translation: &str) -> Output {
@@ -43,7 +50,12 @@ fn compile_with(tag: &str, translation: &str) -> Output {
     });
     std::fs::write(&bundle, body.to_string()).unwrap();
     let scene = game().join("scenes/arrival.lute");
-    run(&["compile", scene.to_str().unwrap(), "--locales", bundle.to_str().unwrap()])
+    run(&[
+        "compile",
+        scene.to_str().unwrap(),
+        "--locales",
+        bundle.to_str().unwrap(),
+    ])
 }
 
 #[test]
@@ -73,26 +85,42 @@ fn compile_locales_refuses_a_translation_with_other_modifiers() {
     let out = compile_with("bad", "ランプは :whisper[ひとりでに] 灯らない。");
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(text(&out).contains("E-L10N-MODIFIERS"), "{}", text(&out));
-    assert!(out.stdout.is_empty(), "no execution IR on a refused translation");
+    assert!(
+        out.stdout.is_empty(),
+        "no execution IR on a refused translation"
+    );
 }
 
 #[test]
 fn play_json_line_events_carry_segments_and_plain_text() {
     let g = game();
     let script = g.join("plays/true-account.play.yaml");
-    let out = run(&["play", g.to_str().unwrap(), "--script", script.to_str().unwrap(), "--json"]);
+    let out = run(&[
+        "play",
+        g.to_str().unwrap(),
+        "--script",
+        script.to_str().unwrap(),
+        "--json",
+    ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let v: Json = serde_json::from_slice(&out.stdout).unwrap();
     let mut found = None;
     for step in v["steps"].as_array().unwrap() {
-        for r in step["presented"]["commands"].as_array().into_iter().flatten() {
+        for r in step["presented"]["commands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
             if r["lineId"] == LINE_ID {
                 found = Some(r.clone());
             }
         }
     }
     let line = found.expect("the modified line is presented");
-    assert_eq!(line["text"], "Dark, then lit again. A lamp does not relight itself.");
+    assert_eq!(
+        line["text"],
+        "Dark, then lit again. A lamp does not relight itself."
+    );
     assert_eq!(
         line["segments"],
         json!([
@@ -150,7 +178,11 @@ fn play_json_segments_render_each_marker_by_its_global_index() {
         "id: g.o\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } ]\n\
          exports:\n  occasions: occasions/\n",
     );
-    write(&dir, "plugins/g.o/occasions/o.yaml", "occasions:\n  visit: {}\n");
+    write(
+        &dir,
+        "plugins/g.o/occasions/o.yaml",
+        "occasions:\n  visit: {}\n",
+    );
     write(
         &dir,
         "world.schema.yaml",
@@ -165,7 +197,13 @@ fn play_json_segments_render_each_marker_by_its_global_index() {
     );
     write(&dir, "s.play.yaml", "steps:\n  - occasion: visit\n");
     let script = dir.join("s.play.yaml");
-    let out = run(&["play", dir.to_str().unwrap(), "--script", script.to_str().unwrap(), "--json"]);
+    let out = run(&[
+        "play",
+        dir.to_str().unwrap(),
+        "--script",
+        script.to_str().unwrap(),
+        "--json",
+    ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let v: Json = serde_json::from_slice(&out.stdout).unwrap();
     let line = v["steps"][0]["presented"]["commands"]

@@ -7,8 +7,8 @@ use std::process::ExitCode;
 use lute_compile::streaming::{ContinuationCompilation, ContinuationCompiler};
 use lute_compile::ExecutionIr;
 use lute_core_span::Diagnostic;
-use serde::Serialize;
 use lute_load::build_input;
+use serde::Serialize;
 
 use crate::project::discover_project;
 
@@ -105,14 +105,18 @@ pub fn run(
         if model.identity_renames().is_empty() {
             for (path, diagnostic) in model.project_diagnostics() {
                 if diagnostic.code.starts_with("E-RENAME-") {
-                    eprintln!("{}: [{}] {}", path.display(), diagnostic.code, diagnostic.text());
+                    eprintln!(
+                        "{}: [{}] {}",
+                        path.display(),
+                        diagnostic.code,
+                        diagnostic.text()
+                    );
                 }
             }
             return ExitCode::FAILURE;
         }
         compiler.set_identity_renames(model.identity_renames());
     }
-
 
     let stdin = io::stdin();
     let stdout = io::stdout();

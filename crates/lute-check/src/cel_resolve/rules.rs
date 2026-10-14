@@ -224,4 +224,3 @@ pub(crate) fn check_def_body(
 /// quest before it activates — so `has(quest.<id>.state)` is always true.
 /// The warning names the comparison that means what the author wanted.
 pub const W_QUEST_STATE_HAS: &str = "W-QUEST-STATE-HAS";
-

@@ -26,7 +26,9 @@ pub enum RevisionError {
 impl fmt::Display for RevisionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidPath(path) => write!(f, "invalid project-relative path `{}`", path.display()),
+            Self::InvalidPath(path) => {
+                write!(f, "invalid project-relative path `{}`", path.display())
+            }
             Self::Io { path, message } => write!(f, "cannot read {}: {message}", path.display()),
         }
     }
@@ -44,7 +46,9 @@ fn normalized(path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::ParentDir => { out.pop(); }
+            Component::ParentDir => {
+                out.pop();
+            }
             _ => out.push(component.as_os_str()),
         }
     }
@@ -53,7 +57,8 @@ fn normalized(path: &Path) -> PathBuf {
 
 fn canonical_path(root: &Path, input: &Path) -> Result<PathBuf, RevisionError> {
     let cwd = std::env::current_dir().map_err(|error| RevisionError::Io {
-        path: root.to_path_buf(), message: error.to_string(),
+        path: root.to_path_buf(),
+        message: error.to_string(),
     })?;
     let root_abs = std::fs::canonicalize(root).unwrap_or_else(|_| normalized(&cwd.join(root)));
     // Directory-walk paths can already carry a relative root prefix; bare
@@ -69,20 +74,41 @@ fn canonical_path(root: &Path, input: &Path) -> Result<PathBuf, RevisionError> {
     let root_parts: Vec<_> = root_abs.components().collect();
     let path_parts: Vec<_> = path.components().collect();
     if root_parts.first() != path_parts.first() {
-        return Ok(PathBuf::from(format!("abs:{}", path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"))));
+        return Ok(PathBuf::from(format!(
+            "abs:{}",
+            path.to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "/")
+        )));
     }
-    let common = root_parts.iter().zip(&path_parts).take_while(|(a, b)| a == b).count();
+    let common = root_parts
+        .iter()
+        .zip(&path_parts)
+        .take_while(|(a, b)| a == b)
+        .count();
     let mut relative = PathBuf::new();
-    for _ in common..root_parts.len() { relative.push(".."); }
-    for part in &path_parts[common..] { relative.push(part.as_os_str()); }
-    if relative.as_os_str().is_empty() { return Err(RevisionError::InvalidPath(input.to_path_buf())); }
-    Ok(PathBuf::from(relative.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/")))
+    for _ in common..root_parts.len() {
+        relative.push("..");
+    }
+    for part in &path_parts[common..] {
+        relative.push(part.as_os_str());
+    }
+    if relative.as_os_str().is_empty() {
+        return Err(RevisionError::InvalidPath(input.to_path_buf()));
+    }
+    Ok(PathBuf::from(
+        relative
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/"),
+    ))
 }
 
 /// Hash an explicit closure of exact input bytes. `inputs` is intentionally
 /// supplied by the model boundary: revisions never derive their contents from
 /// cache keys or from a directory walk.
-pub fn project_revision(root: &Path, inputs: &[(PathBuf, Vec<u8>)]) -> Result<ProjectRevision, RevisionError> {
+pub fn project_revision(
+    root: &Path,
+    inputs: &[(PathBuf, Vec<u8>)],
+) -> Result<ProjectRevision, RevisionError> {
     let mut files = BTreeMap::<PathBuf, FileRevision>::new();
     for (path, bytes) in inputs {
         let path = canonical_path(root, path)?;
@@ -97,7 +123,9 @@ pub fn project_revision(root: &Path, inputs: &[(PathBuf, Vec<u8>)]) -> Result<Pr
     }
     let mut encoded = Vec::new();
     for (path, file) in &files {
-        let path = path.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
+        let path = path
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
         let path = path.as_bytes();
         let rev = file.sha256.as_bytes();
         encoded.extend_from_slice(&(path.len() as u64).to_le_bytes());
@@ -105,27 +133,58 @@ pub fn project_revision(root: &Path, inputs: &[(PathBuf, Vec<u8>)]) -> Result<Pr
         encoded.extend_from_slice(&(rev.len() as u64).to_le_bytes());
         encoded.extend_from_slice(rev);
     }
-    Ok(ProjectRevision { sha256: digest(&encoded), files })
+    Ok(ProjectRevision {
+        sha256: digest(&encoded),
+        files,
+    })
 }
-
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn exact_file_and_stable_project_hash() {
-        let a = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("b.lute"), b"b".to_vec()), (PathBuf::from("a.lute"), b"a".to_vec())]).unwrap();
-        let b = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("a.lute"), b"a".to_vec()), (PathBuf::from("b.lute"), b"b".to_vec())]).unwrap();
+        let a = project_revision(
+            Path::new("/tmp/p"),
+            &[
+                (PathBuf::from("b.lute"), b"b".to_vec()),
+                (PathBuf::from("a.lute"), b"a".to_vec()),
+            ],
+        )
+        .unwrap();
+        let b = project_revision(
+            Path::new("/tmp/p"),
+            &[
+                (PathBuf::from("a.lute"), b"a".to_vec()),
+                (PathBuf::from("b.lute"), b"b".to_vec()),
+            ],
+        )
+        .unwrap();
         assert_eq!(a, b);
-        assert_eq!(a.files[Path::new("a.lute")].sha256, "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");
+        assert_eq!(
+            a.files[Path::new("a.lute")].sha256,
+            "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+        );
     }
     #[test]
     fn normalizes_external_inputs() {
-        let a = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("../shared/./schema.yaml"), b"a".to_vec())]).unwrap();
-        let b = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("/tmp/shared/schema.yaml"), b"a".to_vec())]).unwrap();
+        let a = project_revision(
+            Path::new("/tmp/p"),
+            &[(PathBuf::from("../shared/./schema.yaml"), b"a".to_vec())],
+        )
+        .unwrap();
+        let b = project_revision(
+            Path::new("/tmp/p"),
+            &[(PathBuf::from("/tmp/shared/schema.yaml"), b"a".to_vec())],
+        )
+        .unwrap();
         assert_eq!(a, b);
         assert!(a.files.contains_key(Path::new("../shared/schema.yaml")));
-        let changed = project_revision(Path::new("/tmp/p"), &[(PathBuf::from("../shared/schema.yaml"), b"b".to_vec())]).unwrap();
+        let changed = project_revision(
+            Path::new("/tmp/p"),
+            &[(PathBuf::from("../shared/schema.yaml"), b"b".to_vec())],
+        )
+        .unwrap();
         assert_ne!(a.sha256, changed.sha256);
     }
 }

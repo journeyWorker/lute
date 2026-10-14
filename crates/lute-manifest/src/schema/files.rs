@@ -106,7 +106,9 @@ impl TryFrom<serde_yaml::Value> for EnumDecl {
             Value::Sequence(_) => serde_yaml::from_value::<Vec<String>>(v)
                 .map(EnumDecl::Members)
                 .map_err(|_| {
-                    SchemaError::Enum(format!("lists something that is not a member name; {SHAPES}"))
+                    SchemaError::Enum(format!(
+                        "lists something that is not a member name; {SHAPES}"
+                    ))
                 }),
             Value::Mapping(m) => {
                 let keys = crate::entities::ENUM_LONG_FORM_KEYS;
@@ -226,4 +228,3 @@ pub struct StampAttrsFile {
 pub struct LintsFile {
     pub lints: Vec<crate::lint::LintRuleDecl>,
 }
-

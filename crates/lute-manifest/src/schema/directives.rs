@@ -339,7 +339,7 @@ impl TryFrom<serde_yaml::Value> for WriteValue {
                             Some(Value::Number(n)) => {
                                 let Some(value) = n.as_f64() else {
                                     return bad(
-                                        "`by:` must be a number or `{ fromAttr: <attr> }`".into(),
+                                        "`by:` must be a number or `{ fromAttr: <attr> }`".into()
                                     );
                                 };
                                 OpBy::Num(value)
@@ -505,4 +505,3 @@ impl TryFrom<RawLowering> for Lowering {
         }
     }
 }
-

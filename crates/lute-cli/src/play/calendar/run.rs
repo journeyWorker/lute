@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// The index of the `--until` step in `steps`: a 1-based step number or a
 /// step `label:`.
 pub(super) fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, String> {
@@ -85,6 +84,6 @@ pub(super) fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, St
         return Err(describe_atoms(&[]));
     };
     let mut eval = w.evaluator(&p.eval_json).with_visited(&w.visited);
-    eval.eval_guard(&cond).map_err(|atoms| describe_atoms(&atoms))
+    eval.eval_guard(&cond)
+        .map_err(|atoms| describe_atoms(&atoms))
 }
-

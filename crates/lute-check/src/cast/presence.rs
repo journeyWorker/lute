@@ -3,8 +3,8 @@ mod guards;
 mod lines;
 mod walk;
 
-pub(crate) use guards::{write_effects, Atom, Effect, Pol};
 use guards::*;
+pub(crate) use guards::{write_effects, Atom, Effect, Pol};
 
 use super::*;
 
@@ -497,5 +497,4 @@ pub(super) fn is_condition(raw: &str, s: &str, path: Option<&str>) -> Option<Str
     })
 }
 
-impl Presence<'_> {
-}
+impl Presence<'_> {}

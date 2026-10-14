@@ -318,7 +318,10 @@ fn defaulted_engine_clock_weekday_is_not_maybe_unset() {
         },
     );
     let info = infer_domain(Some(lute_manifest::clock::CLOCK_WEEKDAY), &schema);
-    assert!(!info.maybe_unset, "defaulted engine clock is assigned: {info:?}");
+    assert!(
+        !info.maybe_unset,
+        "defaulted engine clock is assigned: {info:?}"
+    );
 }
 
 // ---- RC3: foreign reserved quest path domain (dsl 0.2.0 §5.2) ----------

@@ -36,8 +36,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::snapshot::Domain;
 use lute_manifest::semantics::templates::{top_level_and, top_level_split, unparen};
+use lute_manifest::snapshot::Domain;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
     Attr, AttrValue, BundleBeat, CelKind, CelSlot, Directive, Document, Meta, Node,
@@ -411,14 +411,12 @@ fn substitute(raw: &str, args: &BTreeMap<String, String>) -> String {
         if indexed && member && !list_context {
             out.replace_range(s - 1..e + 1, &format!(".{text}"));
         } else {
-            let replacement = if list_context
-                && member
-                && !matches!(text.as_str(), "true" | "false")
-            {
-                crate::component_effects::cel_string_literal(text)
-            } else {
-                text.clone()
-            };
+            let replacement =
+                if list_context && member && !matches!(text.as_str(), "true" | "false") {
+                    crate::component_effects::cel_string_literal(text)
+                } else {
+                    text.clone()
+                };
             out.replace_range(s..e, &replacement);
         }
     }
@@ -580,7 +578,8 @@ fn arg_text(value: &AttrValue) -> (String, bool) {
 
 /// Does `def`'s body hold a top-level `::body` (the use's body's place)?
 pub fn has_body_marker(def: &ComponentDef) -> bool {
-    def.body.sections
+    def.body
+        .sections
         .iter()
         .flat_map(|s| &s.body)
         .any(|n| matches!(n, Node::Directive(d) if d.tag == BODY_DIRECTIVE))

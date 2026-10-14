@@ -30,31 +30,24 @@ use helpers::*;
 use ordering::*;
 
 pub use collection::{
-    advances_from_attr, parse_beat_priority, BeatMeta, BEAT_KEYS, E_BEAT_ATTR,
-    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, ENTRY_ONCE_VALUES, ONCE_VALUES, W_BEAT_SHADOWED,
+    advances_from_attr, parse_beat_priority, BeatMeta, BEAT_KEYS, ENTRY_ONCE_VALUES, E_BEAT_ATTR,
+    E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, ONCE_VALUES, W_BEAT_SHADOWED,
 };
+pub(crate) use collection::{check_entry_beat_attrs, check_entry_occasions, lift_scene_beat};
 pub use diagnostics::{always_eligible, presence_ladder, shadowers_at};
+pub(crate) use diagnostics::{read_tiers, top_key_span, ReadTier, UserTier};
 pub use helpers::{coverers, SPENDING_ONCE};
-pub use ordering::{
-    check_project_beats, ReportedErrors, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
-};
-pub use project::{
-    in_selection_order, project_beats, BeatCells, ProjectBeat,
-    ProjectBeatKind,
-};
-pub use validation::{
-    kind_target_members, occasion_target_members, occasion_target_ok,
-};
-pub(crate) use collection::{
-    check_entry_beat_attrs, check_entry_occasions, lift_scene_beat,
-};
-pub(crate) use diagnostics::{read_tiers, ReadTier, UserTier, top_key_span};
 pub(crate) use helpers::{
     malformed_target, nested_value_span, occasion_malformed, share_malformed, share_with_spent_by,
     share_without_once, spent_by_once_false, top_value_span, top_value_text,
 };
-pub(crate) use validation::{beat_unreachable_message, scene_beat_name};
+pub use ordering::{
+    check_project_beats, ReportedErrors, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
+};
+pub use project::{in_selection_order, project_beats, BeatCells, ProjectBeat, ProjectBeatKind};
 pub(crate) use validation::{
     also_fault, check_beat_target_domains, check_objective_occasions, check_occasion,
     check_occasion_target_scope, occasion_target_scope_message, scene_when_scene_reads,
 };
+pub(crate) use validation::{beat_unreachable_message, scene_beat_name};
+pub use validation::{kind_target_members, occasion_target_members, occasion_target_ok};

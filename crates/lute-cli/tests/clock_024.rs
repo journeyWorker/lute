@@ -32,7 +32,12 @@ fn project(tag: &str, state_owner: &str, docs: &[(&str, &str)]) -> lute_scratch:
 }
 
 /// [`project`] with the schema's `clock:` text (`""` for none).
-fn project_with(tag: &str, state_owner: &str, clock: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
+fn project_with(
+    tag: &str,
+    state_owner: &str,
+    clock: &str,
+    docs: &[(&str, &str)],
+) -> lute_scratch::ScratchDir {
     let dir = lute_scratch::ScratchDir::named(tag);
     write(
         &dir,

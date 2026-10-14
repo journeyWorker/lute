@@ -911,7 +911,9 @@ fn line_value(l: &LineRow) -> Value {
     m.insert("chars".into(), int(l.chars));
     m.insert("speaker".into(), Value::Str(l.speaker.clone()));
     let mut attrs = BTreeMap::new();
-    for (k, v) in &l.attrs { attrs.insert(k.clone(), Value::Str(v.clone())); }
+    for (k, v) in &l.attrs {
+        attrs.insert(k.clone(), Value::Str(v.clone()));
+    }
     m.insert("attrs".into(), Value::Map(attrs));
     Value::Map(m)
 }
@@ -922,7 +924,10 @@ fn section_value(s: &SectionRow) -> Value {
     m.insert("title".into(), Value::Str(s.title.clone()));
     m.insert("dialogueLines".into(), int(s.dialogueLines));
     m.insert("words".into(), int(s.words));
-    m.insert("firstStagingTag".into(), Value::Str(s.firstStagingTag.clone()));
+    m.insert(
+        "firstStagingTag".into(),
+        Value::Str(s.firstStagingTag.clone()),
+    );
     m.insert("kind".into(), Value::Str(s.kind.clone()));
     Value::Map(m)
 }
@@ -949,10 +954,14 @@ fn speaker_value(s: &SpeakerRow) -> Value {
     m.insert("lines".into(), int(s.lines));
     m.insert("words".into(), int(s.words));
     let mut axis = BTreeMap::new();
-    for (k, v) in &s.axis { axis.insert(k.clone(), axis_value(v)); }
+    for (k, v) in &s.axis {
+        axis.insert(k.clone(), axis_value(v));
+    }
     m.insert("axis".into(), Value::Map(axis));
     let mut share = BTreeMap::new();
-    for (k, v) in &s.attrShare { share.insert(k.clone(), num(*v)); }
+    for (k, v) in &s.attrShare {
+        share.insert(k.clone(), num(*v));
+    }
     m.insert("attrShare".into(), Value::Map(share));
     Value::Map(m)
 }
@@ -1014,8 +1023,12 @@ fn yaml_to_value(v: &serde_yaml::Value) -> Value {
         serde_yaml::Value::Null => Value::Null,
         serde_yaml::Value::Bool(b) => Value::Bool(*b),
         serde_yaml::Value::Number(n) => {
-            if let Some(i) = n.as_i64() { Value::Int(i) } else { n.as_f64().map(Value::Double).unwrap_or(Value::Null) }
-        },
+            if let Some(i) = n.as_i64() {
+                Value::Int(i)
+            } else {
+                n.as_f64().map(Value::Double).unwrap_or(Value::Null)
+            }
+        }
         serde_yaml::Value::String(s) => Value::Str(s.clone()),
         serde_yaml::Value::Sequence(seq) => Value::List(seq.iter().map(yaml_to_value).collect()),
         serde_yaml::Value::Mapping(m) => mapping_to_value(m),

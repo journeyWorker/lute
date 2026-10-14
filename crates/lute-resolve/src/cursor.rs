@@ -1027,7 +1027,12 @@ pub fn subject_domain(
 /// one path). Drives hover only: completion has no finite menu to offer.
 pub fn subject_is_number(meta: &lute_check::TypedMeta, subject_path: &str) -> bool {
     subject_reconstructed_path(subject_path)
-        .and_then(|path| meta.state.decls.get(&path).map(|d| matches!(d.ty, Type::Int | Type::Double)))
+        .and_then(|path| {
+            meta.state
+                .decls
+                .get(&path)
+                .map(|d| matches!(d.ty, Type::Int | Type::Double))
+        })
         .unwrap_or(false)
 }
 

@@ -76,7 +76,10 @@ pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDe
         bodies.insert(name.clone(), d.cel.clone());
         params.insert(
             name.clone(),
-            d.params.iter().map(|p| (p.name.clone(), p.ty.clone())).collect(),
+            d.params
+                .iter()
+                .map(|p| (p.name.clone(), p.ty.clone()))
+                .collect(),
         );
         host.insert(name.clone(), d.host);
     }
@@ -288,7 +291,8 @@ pub fn build_index(
     let mut seed_facts: BTreeMap<(String, Vec<String>), SeedFactEntry> = BTreeMap::new();
     let mut outside_run: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let mut rules: BTreeMap<(String, String), RuleEntry> = BTreeMap::new();
-    let mut identity_renames: BTreeMap<String, lute_manifest::project::IdentityRename> = BTreeMap::new();
+    let mut identity_renames: BTreeMap<String, lute_manifest::project::IdentityRename> =
+        BTreeMap::new();
     let mut required_semantics: BTreeSet<String> = BTreeSet::new();
     let mut state_domains: BTreeMap<String, StateDomain> = BTreeMap::new();
     let mut state_docs: Vec<&IndexInput<'_>> = docs.iter().collect();
@@ -296,10 +300,12 @@ pub fn build_index(
     for d in state_docs {
         for entry in &d.artifact.state {
             if let Some((kind, members)) = &entry.member_domain {
-                state_domains.entry(entry.path.clone()).or_insert_with(|| StateDomain {
-                    kind: kind.clone(),
-                    members: members.clone(),
-                });
+                state_domains
+                    .entry(entry.path.clone())
+                    .or_insert_with(|| StateDomain {
+                        kind: kind.clone(),
+                        members: members.clone(),
+                    });
             }
         }
     }
@@ -310,7 +316,9 @@ pub fn build_index(
             required_semantics.insert("lute.identity.renames/1".to_string());
         }
         for rename in &a.identity_renames {
-            identity_renames.entry(rename.from.clone()).or_insert_with(|| rename.clone());
+            identity_renames
+                .entry(rename.from.clone())
+                .or_insert_with(|| rename.clone());
         }
         required_semantics.extend(a.required_semantics.iter().cloned());
         for e in &a.entities {
@@ -719,7 +727,8 @@ mod tests {
 
         // Deliberately UNSORTED input: `documents` must still come out sorted.
         let docs = [("z/b.lute", b), ("a/a.lute", a)];
-        let index = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
+        let index =
+            build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
 
         assert_eq!(
             index
@@ -762,7 +771,8 @@ mod tests {
         let mut b = scene("kai", "cap-1");
         b.relations = vec![relation("knows", &["npc", "item"])];
         let docs = [("a.lute", a), ("b.lute", b)];
-        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("arity differs");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default())
+            .expect_err("arity differs");
         assert_eq!(
             errors,
             vec![IndexError::Conflict {
@@ -785,7 +795,8 @@ mod tests {
             ("a.lute", scene("marina", "cap-1")),
             ("b.lute", scene("kai", "cap-2")),
         ];
-        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default()).expect_err("two profiles");
+        let errors = build_index("0.9.0", &inputs(&docs), &IndexUnions::default())
+            .expect_err("two profiles");
         assert!(
             matches!(errors[0], IndexError::CapabilityMismatch { .. }),
             "{errors:?}"
@@ -887,7 +898,8 @@ mod tests {
                 ),
             ),
         ];
-        let index = build_index("0.19.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
+        let index =
+            build_index("0.19.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, &str)> = index
             .entries
             .iter()
@@ -1003,7 +1015,8 @@ mod tests {
                 beat_scene("dawn", beat("dayStart", None, 0, BeatOnce::None)),
             ),
         ];
-        let index = build_index("0.21.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
+        let index =
+            build_index("0.21.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let rows: Vec<(&str, BeatKind, &str)> = index
             .beats
             .iter()
@@ -1065,9 +1078,7 @@ mod tests {
     fn beats_rows_carry_when_and_title() {
         let mut scene_beat = beat("dayStart", None, 5, BeatOnce::Run);
         if let Some(b) = &mut scene_beat {
-            b.when = Some(CelPair::from_raw(
-                "run.day == 3 && run.slot == \"night\"",
-            ));
+            b.when = Some(CelPair::from_raw("run.day == 3 && run.slot == \"night\""));
         }
         let mut titled = beat_scene("wed.night", scene_beat);
         if let ArtifactMeta::Scene(m) = &mut titled.meta {
@@ -1086,7 +1097,8 @@ mod tests {
                 beat_scene("plain", beat("dayStart", None, 0, BeatOnce::Run)),
             ),
         ];
-        let index = build_index("0.23.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
+        let index =
+            build_index("0.23.0", &inputs(&docs), &IndexUnions::default()).expect("no conflicts");
         let v: serde_json::Value = serde_json::from_str(&index.to_json().unwrap()).unwrap();
         assert_eq!(v["beats"][0]["when"], "run.slot != \"night\"");
         assert_eq!(v["beats"][0]["title"], "At the shop");
@@ -1096,7 +1108,10 @@ mod tests {
             "unauthored `when`/`title` are omitted: {}",
             v["beats"][1]
         );
-        assert_eq!(v["beats"][2]["when"], "run.day == 3 && run.slot == \"night\"");
+        assert_eq!(
+            v["beats"][2]["when"],
+            "run.day == 3 && run.slot == \"night\""
+        );
         assert_eq!(v["beats"][2]["title"], "Wednesday night");
     }
 }

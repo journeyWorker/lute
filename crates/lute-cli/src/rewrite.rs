@@ -269,7 +269,9 @@ fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
             let p = entry.path();
             if p.is_dir() {
                 visit(&p, out)?;
-            } else if p.extension().is_some_and(|ext| ext == "lute" || ext == "yaml" || ext == "yml")
+            } else if p
+                .extension()
+                .is_some_and(|ext| ext == "lute" || ext == "yaml" || ext == "yml")
             {
                 out.push(p);
             }
@@ -287,7 +289,9 @@ fn fix_file(file: &Path, scope: Scope<'_>, volume: bool) -> (Outcome, usize) {
     };
     let legacy = lute_check::fix_document(&text);
     let (mut out, mut changed) = (legacy.text, legacy.changed);
-    let yaml = file.extension().is_some_and(|ext| ext == "yaml" || ext == "yml");
+    let yaml = file
+        .extension()
+        .is_some_and(|ext| ext == "yaml" || ext == "yml");
     let cel = if yaml {
         rewrite_yaml_cel(&out)
     } else {
@@ -347,7 +351,10 @@ fn rewrite_cel_with_quote(raw: &str, quote: char) -> Rewrite {
     for (start, end) in call_spans(raw) {
         let name_end = raw[start..].find('(').unwrap_or(0) + start;
         let name = raw[start..name_end].trim();
-        if !matches!(name, "holds" | "count" | "countDistinct" | "validAt" | "isSet") {
+        if !matches!(
+            name,
+            "holds" | "count" | "countDistinct" | "validAt" | "isSet"
+        ) {
             continue;
         }
         let call = &raw[start..end];
@@ -371,7 +378,9 @@ fn rewrite_cel_with_quote(raw: &str, quote: char) -> Rewrite {
     for candidate in candidates {
         if selected
             .iter()
-            .any(|(start, end, _): &(usize, usize, String)| candidate.0 < *end && candidate.1 > *start)
+            .any(|(start, end, _): &(usize, usize, String)| {
+                candidate.0 < *end && candidate.1 > *start
+            })
         {
             continue;
         }
@@ -467,7 +476,9 @@ fn rewrite_call(
             let Expr::Call(pattern) = &call.args.first()?.expr else {
                 return None;
             };
-            if pattern.target.is_some() || pattern.args.len() != split_inner_args(&args_text[0]).len() {
+            if pattern.target.is_some()
+                || pattern.args.len() != split_inner_args(&args_text[0]).len()
+            {
                 return None;
             }
             let relation = pattern.func_name.as_str();
@@ -503,7 +514,9 @@ fn rewrite_call(
             let Expr::Call(pattern) = &call.args.first()?.expr else {
                 return None;
             };
-            if pattern.target.is_some() || pattern.args.len() != split_inner_args(&args_text[0]).len() {
+            if pattern.target.is_some()
+                || pattern.args.len() != split_inner_args(&args_text[0]).len()
+            {
                 return None;
             }
             let Expr::Ident(variable) = &call.args[1].expr else {
@@ -514,7 +527,12 @@ fn rewrite_call(
             }
             let mut column = None;
             let mut values = Vec::new();
-            for (idx, (arg, source)) in pattern.args.iter().zip(split_inner_args(&args_text[0])).enumerate() {
+            for (idx, (arg, source)) in pattern
+                .args
+                .iter()
+                .zip(split_inner_args(&args_text[0]))
+                .enumerate()
+            {
                 if matches!(&arg.expr, Expr::Ident(name) if name == variable) {
                     if column.replace(idx).is_some() {
                         return None;
@@ -592,11 +610,7 @@ fn split_inner_args(call: &str) -> Vec<String> {
     split_call_args(call).unwrap_or_default()
 }
 
-fn rewrite_fact_arg(
-    expr: &cel_parser::ast::IdedExpr,
-    source: &str,
-    quote: char,
-) -> Option<String> {
+fn rewrite_fact_arg(expr: &cel_parser::ast::IdedExpr, source: &str, quote: char) -> Option<String> {
     use cel_parser::ast::Expr;
     use cel_parser::reference::Val;
     if matches!(source.trim(), "true" | "false") {
@@ -606,9 +620,7 @@ fn rewrite_fact_arg(
         Expr::Ident(_) if source.starts_with('@') => Some(source.to_string()),
         Expr::Ident(name) if matches!(name.as_str(), "true" | "false") => Some(name.clone()),
         Expr::Literal(Val::String(value)) => Some(cel_string(value, quote)),
-        Expr::Select(_) | Expr::Call(_)
-            if lute_cel::path::static_path(&expr.expr).is_some() =>
-        {
+        Expr::Select(_) | Expr::Call(_) if lute_cel::path::static_path(&expr.expr).is_some() => {
             Some(source.to_string())
         }
         _ if source
@@ -625,18 +637,24 @@ fn cel_string(value: &str, quote: char) -> String {
     format!("{quote}{value}{quote}")
 }
 
-
 fn quoted_final_index(source: &str) -> Option<(String, String)> {
     let source = source.trim();
     if !source.ends_with(']') {
         return None;
     }
     let mask = lute_manifest::text::cel_string_mask(source);
-    let open = source.bytes().enumerate().rev().find(|(i, b)| *b == b'[' && !mask[*i])?.0;
+    let open = source
+        .bytes()
+        .enumerate()
+        .rev()
+        .find(|(i, b)| *b == b'[' && !mask[*i])?
+        .0;
     let key_text = source[open + 1..source.len() - 1].trim();
     let mut arena = lute_cel::CelArena::default();
     let handle = lute_cel::parse_slot(&mut arena, key_text, 0).ok()?;
-    let cel_parser::ast::Expr::Literal(cel_parser::reference::Val::String(key)) = &arena.get(handle)?.expr else {
+    let cel_parser::ast::Expr::Literal(cel_parser::reference::Val::String(key)) =
+        &arena.get(handle)?.expr
+    else {
         return None;
     };
     Some((key.to_string(), source[..open].trim().to_string()))
@@ -675,7 +693,10 @@ fn rewrite_lute_cel(text: &str) -> Rewrite {
     });
     let mut edits = Vec::new();
     for (start, end, raw) in slots {
-        let quote = match (text.as_bytes().get(start.wrapping_sub(1)), text.as_bytes().get(end)) {
+        let quote = match (
+            text.as_bytes().get(start.wrapping_sub(1)),
+            text.as_bytes().get(end),
+        ) {
             (Some(&b'\''), Some(&b'\'')) => '"',
             (Some(&b'"'), Some(&b'"')) => '\'',
             _ => '"',
@@ -690,7 +711,12 @@ fn rewrite_lute_cel(text: &str) -> Rewrite {
         let old = result.text[start..end].to_string();
         let fm = rewrite_yaml_cel(&old);
         if fm.text != old {
-            result.text = format!("{}{}{}", &result.text[..start], fm.text, &result.text[end..]);
+            result.text = format!(
+                "{}{}{}",
+                &result.text[..start],
+                fm.text,
+                &result.text[end..]
+            );
             result.changed += fm.changed;
         }
     }
@@ -702,7 +728,9 @@ fn rewrite_lute_attribute(mut result: Rewrite) -> Rewrite {
     let mut offset = 0;
     while let Some(rel) = text[offset..].find(" only=") {
         let start = offset + rel + 6;
-        let Some(q) = text.as_bytes().get(start).copied() else { break };
+        let Some(q) = text.as_bytes().get(start).copied() else {
+            break;
+        };
         if q != b'\'' && q != b'"' {
             offset = start;
             continue;
@@ -743,7 +771,10 @@ fn frontmatter_range(text: &str) -> Option<(usize, usize)> {
 /// non-`MAJOR.MINOR.PATCH` stamp is left alone, so a second run changes
 /// nothing.
 fn rewrite_lute_version(text: &str, file: &Path) -> Rewrite {
-    let span = if file.file_name().is_some_and(|name| name == "lute.project.yaml") {
+    let span = if file
+        .file_name()
+        .is_some_and(|name| name == "lute.project.yaml")
+    {
         manifest_stamp_span(text)
     } else if file.extension().is_some_and(|ext| ext == "lute") {
         frontmatter_range(text).and_then(|(start, end)| {
@@ -797,12 +828,16 @@ fn manifest_stamp_span(text: &str) -> Option<(usize, usize)> {
             Some((at, line.strip_suffix('\n').unwrap_or(line)))
         })
         .collect();
-    let (i, (line_at, body, value)) = lines.iter().enumerate().find_map(|(i, &(at, body))| {
-        match yaml_key_value(body) {
-            Some((0, end, value)) if yaml_key_is(&body[..end], "defaults") => Some((i, (at, body, value))),
-            _ => None,
-        }
-    })?;
+    let (i, (line_at, body, value)) =
+        lines
+            .iter()
+            .enumerate()
+            .find_map(|(i, &(at, body))| match yaml_key_value(body) {
+                Some((0, end, value)) if yaml_key_is(&body[..end], "defaults") => {
+                    Some((i, (at, body, value)))
+                }
+                _ => None,
+            })?;
     if body[value..].starts_with('{') {
         let (at, key) = flow_map_keys(text, line_at + value)
             .into_iter()
@@ -827,7 +862,9 @@ fn manifest_stamp_span(text: &str) -> Option<(usize, usize)> {
             }
             _ => {
                 let mut e = v;
-                while e < b.len() && !matches!(b[e], b',' | b'}' | b'#' | b'\n' | b'\r' | b' ' | b'\t') {
+                while e < b.len()
+                    && !matches!(b[e], b',' | b'}' | b'#' | b'\n' | b'\r' | b' ' | b'\t')
+                {
                     e += 1;
                 }
                 (e > v).then_some((v, e))
@@ -909,7 +946,8 @@ fn volume_eligibility(files: &[PathBuf]) -> Vec<bool> {
                 .or_insert_with_key(|root| project_has_old_volume(root)),
             None => {
                 file.extension().is_some_and(|ext| ext == "lute")
-                    && read(file).is_some_and(|text| frontmatter_volume(&text).is_some_and(is_old_volume))
+                    && read(file)
+                        .is_some_and(|text| frontmatter_volume(&text).is_some_and(is_old_volume))
             }
         })
         .collect()
@@ -956,7 +994,9 @@ fn project_has_old_volume(root: &Path) -> bool {
 /// A `.lute` document's own frontmatter `enums: volume:` members.
 fn frontmatter_volume(text: &str) -> Option<Vec<String>> {
     let (start, end) = frontmatter_range(text)?;
-    let yaml = text[start..end].strip_suffix("\n---").unwrap_or(&text[start..end]);
+    let yaml = text[start..end]
+        .strip_suffix("\n---")
+        .unwrap_or(&text[start..end]);
     let value: serde_yaml::Value = serde_yaml::from_str(yaml).ok()?;
     let volume = value.get("enums")?.get("volume")?;
     let members = volume.get("members").unwrap_or(volume);
@@ -1006,7 +1046,10 @@ fn volume_attr_edits(line: &str, offset: usize) -> Vec<(usize, usize, String)> {
         if at > 0 && (is_ident_continue(bytes[at - 1]) || bytes[at - 1] == b'-') {
             continue;
         }
-        let quote = bytes.get(from).copied().filter(|c| *c == b'"' || *c == b'\'');
+        let quote = bytes
+            .get(from)
+            .copied()
+            .filter(|c| *c == b'"' || *c == b'\'');
         let start = from + usize::from(quote.is_some());
         let mut end = start;
         while end < bytes.len() && is_ident_continue(bytes[end]) {
@@ -1014,7 +1057,9 @@ fn volume_attr_edits(line: &str, offset: usize) -> Vec<(usize, usize, String)> {
         }
         let closes = match quote {
             Some(q) => bytes.get(end) == Some(&q),
-            None => bytes.get(end).is_none_or(|c| !is_ident_continue(*c) && *c != b'-'),
+            None => bytes
+                .get(end)
+                .is_none_or(|c| !is_ident_continue(*c) && *c != b'-'),
         };
         if let (true, Some(new)) = (closes, new_volume_member(&line[start..end])) {
             edits.push((offset + start, offset + end, new.to_string()));
@@ -1082,7 +1127,9 @@ fn volume_yaml_edits(text: &str, base: usize) -> Vec<(usize, usize, String)> {
                 };
                 let raw = &child[start..end];
                 let (key, inner) = match raw.as_bytes() {
-                    [q @ (b'"' | b'\''), .., last] if last == q => (&raw[1..raw.len() - 1], start + 1),
+                    [q @ (b'"' | b'\''), .., last] if last == q => {
+                        (&raw[1..raw.len() - 1], start + 1)
+                    }
                     _ => (raw, start),
                 };
                 // The entry's value: the rest of its line and every deeper line.
@@ -1157,7 +1204,11 @@ fn member_tokens(region: &str) -> Vec<(usize, &str)> {
         let next = b.get(n).copied();
         let ends_item = matches!(next, None | Some(b',' | b']' | b'#' | b'\n' | b'\r'));
         let dash_item = prev == Some(b'-')
-            && region[..p - 1].bytes().rev().take_while(|c| *c != b'\n').all(blank);
+            && region[..p - 1]
+                .bytes()
+                .rev()
+                .take_while(|c| *c != b'\n')
+                .all(blank);
         let default_value = prev == Some(b':') && region[..p - 1].trim_end().ends_with("default");
         next == Some(b':')
             || (ends_item && (matches!(prev, Some(b'[' | b',')) || dash_item))
@@ -1273,7 +1324,9 @@ fn rewrite_yaml_cel(text: &str) -> Rewrite {
                     }
                 }
             }
-            if value_start < value_end && (key_cel || body[value_start..value_end].contains("cel(\"")) {
+            if value_start < value_end
+                && (key_cel || body[value_start..value_end].contains("cel(\""))
+            {
                 if let Some(replacement) =
                     rewrite_yaml_scalar(&body[value_start..value_end], key_cel)
                 {
@@ -1382,7 +1435,9 @@ fn rewrite_yaml_domains(text: &str) -> DomainRewrite {
             if let Some((start, end, _)) = yaml_key_value(body) {
                 let raw = &body[start..end];
                 let (key, inner) = match raw.as_bytes() {
-                    [q @ (b'"' | b'\''), .., last] if last == q => (&raw[1..raw.len() - 1], start + 1),
+                    [q @ (b'"' | b'\''), .., last] if last == q => {
+                        (&raw[1..raw.len() - 1], start + 1)
+                    }
                     _ => (raw, start),
                 };
                 keys.push((i, key, offset + inner));
@@ -1418,12 +1473,14 @@ fn rewrite_yaml_domains(text: &str) -> DomainRewrite {
                     }
                     let closes = match quoted {
                         Some(q) => bytes.get(end) == Some(&q),
-                        None => bytes
-                            .get(end)
-                            .is_none_or(|c| matches!(c, b' ' | b'\t' | b',' | b'}' | b']' | b'#' | b'\r')),
+                        None => bytes.get(end).is_none_or(|c| {
+                            matches!(c, b' ' | b'\t' | b',' | b'}' | b']' | b'#' | b'\r')
+                        }),
                     };
                     if closes {
-                        if let Some(renamed) = RENAMED_DOMAINS.iter().find(|r| r.old == &body[start..end]) {
+                        if let Some(renamed) =
+                            RENAMED_DOMAINS.iter().find(|r| r.old == &body[start..end])
+                        {
                             edits.push((offset + start, offset + end, renamed.new.to_string()));
                         }
                     }
@@ -1484,7 +1541,10 @@ fn flow_map_keys(text: &str, open: usize) -> Vec<(usize, &str)> {
             c if c.is_ascii_whitespace() => {}
             _ if expect_key && depth == 1 => {
                 let start = i;
-                while i < b.len() && !matches!(b[i], b':' | b',' | b'}') && !b[i].is_ascii_whitespace() {
+                while i < b.len()
+                    && !matches!(b[i], b':' | b',' | b'}')
+                    && !b[i].is_ascii_whitespace()
+                {
                     i += 1;
                 }
                 keys.push((start, &text[start..i]));
@@ -1521,7 +1581,13 @@ fn rewrite_yaml_quoted_segments(line: &str) -> Option<String> {
                 } else {
                     serde_yaml::from_str::<String>(raw).ok()?
                 };
-                let cel_quote = if decoded.contains("cel(\"") { '\'' } else if quote == b'\'' { '"' } else { '\'' };
+                let cel_quote = if decoded.contains("cel(\"") {
+                    '\''
+                } else if quote == b'\'' {
+                    '"'
+                } else {
+                    '\''
+                };
                 let rewritten = if decoded.contains("cel(\"") {
                     rewrite_rule_guards(&decoded, cel_quote).unwrap_or(decoded.clone())
                 } else {
@@ -1531,7 +1597,10 @@ fn rewrite_yaml_quoted_segments(line: &str) -> Option<String> {
                     let value = if quote == b'\'' {
                         format!("'{}'", rewritten.replace('\'', "''"))
                     } else {
-                        format!("\"{}\"", rewritten.replace('\\', "\\\\").replace('"', "\\\""))
+                        format!(
+                            "\"{}\"",
+                            rewritten.replace('\\', "\\\\").replace('"', "\\\"")
+                        )
                     };
                     edits.push((start, end, value));
                 }
@@ -1621,11 +1690,23 @@ fn rewrite_yaml_scalar(raw: &str, cel_key: bool) -> Option<String> {
     let rewritten = if cel_key {
         rewrite_cel_with_quote(&decoded, cel_quote)
     } else {
-        rewrite_rule_guards(&decoded, cel_quote).map_or(Rewrite { text: decoded.clone(), changed: 0 }, |s| Rewrite { changed: usize::from(s != decoded), text: s })
+        rewrite_rule_guards(&decoded, cel_quote).map_or(
+            Rewrite {
+                text: decoded.clone(),
+                changed: 0,
+            },
+            |s| Rewrite {
+                changed: usize::from(s != decoded),
+                text: s,
+            },
+        )
     };
     (rewritten.text != decoded).then(|| match quote {
         Some(b'\'') => format!("'{}'", rewritten.text.replace('\'', "''")),
-        Some(b'"') => format!("\"{}\"", rewritten.text.replace('\\', "\\\\").replace('"', "\\\"")),
+        Some(b'"') => format!(
+            "\"{}\"",
+            rewritten.text.replace('\\', "\\\\").replace('"', "\\\"")
+        ),
         _ => format!("'{}'", rewritten.text.replace('\'', "''")),
     })
 }
@@ -1660,14 +1741,8 @@ mod tests {
 
     #[test]
     fn rewrites_already_quoted_fact_args_once() {
-        assert_eq!(
-            cel("holds(rel('edith'))"),
-            "holds(\"rel\", [\"edith\"])"
-        );
-        assert_eq!(
-            cel("holds(rel(\"edith\"))"),
-            "holds(\"rel\", [\"edith\"])"
-        );
+        assert_eq!(cel("holds(rel('edith'))"), "holds(\"rel\", [\"edith\"])");
+        assert_eq!(cel("holds(rel(\"edith\"))"), "holds(\"rel\", [\"edith\"])");
     }
 
     #[test]
@@ -1676,7 +1751,10 @@ mod tests {
             cel("holds(rel(elena, '001', true, occasion.target, _)) && count(rel(_))"),
             "holds(\"rel\", [\"elena\", \"001\", true, occasion.target, \"_\"]) && count(\"rel\", [\"_\"])"
         );
-        assert_eq!(cel("!(holds(rel(a, b)))"), "!(holds(\"rel\", [\"a\", \"b\"]))");
+        assert_eq!(
+            cel("!(holds(rel(a, b)))"),
+            "!(holds(\"rel\", [\"a\", \"b\"]))"
+        );
     }
     #[test]
     fn rewrites_count_distinct_column_and_valid_at_expression() {

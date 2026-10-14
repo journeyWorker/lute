@@ -49,7 +49,14 @@ impl Presence<'_> {
     /// engine-`reserved` relation reads `false` — unless (dsl 0.25.0 §6) the
     /// relation is in [`Self::changed`].
     /// The rule `cel()`s read are pushed onto `cels`.
-    pub(super) fn expand(&self, e: &Expr, pol: Pol, side: Side, depth: u8, cels: &mut Vec<String>) -> Expr {
+    pub(super) fn expand(
+        &self,
+        e: &Expr,
+        pol: Pol,
+        side: Side,
+        depth: u8,
+        cels: &mut Vec<String>,
+    ) -> Expr {
         let Expr::Call(c) = e else { return e.clone() };
         if c.target.is_some() {
             return e.clone();
@@ -367,5 +374,4 @@ impl Presence<'_> {
             .collect();
         out.into_iter().collect()
     }
-
 }

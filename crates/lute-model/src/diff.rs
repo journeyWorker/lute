@@ -79,7 +79,6 @@ use crate::revision::{ProjectRevision, RevisionError};
 use crate::ProjectModel;
 use lute_semantic::{NodeKey, NodeKind, SemanticGraph, SourceLocation};
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChangeKind {
     Added,

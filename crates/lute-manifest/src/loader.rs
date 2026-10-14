@@ -450,7 +450,10 @@ fn load_package(
                     }
                     if let Some(msg) = crate::validate::bridge_without_result_write(d) {
                         // At this declaration's own `name:` when a name repeats.
-                        let nth = f.directives[..i].iter().filter(|o| o.name == d.name).count();
+                        let nth = f.directives[..i]
+                            .iter()
+                            .filter(|o| o.name == d.name)
+                            .count();
                         e.push(LoadError::BridgeNoResultWrite {
                             file: file.display().to_string(),
                             at: field_value_at(text, "name", &d.name, nth)
@@ -785,7 +788,11 @@ fn drop_invalid(dir: &Path, out: &mut LoadedPlugin, errs: &[LoadError]) {
             continue;
         }
         let bridge = d.bridge.as_ref().and_then(|b| {
-            find(&out.invalid, "bridge", &format!("{}.{}", b.service, b.operation))
+            find(
+                &out.invalid,
+                "bridge",
+                &format!("{}.{}", b.service, b.operation),
+            )
         });
         let shape = || {
             d.state

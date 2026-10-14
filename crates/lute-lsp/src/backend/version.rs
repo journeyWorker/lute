@@ -1,7 +1,9 @@
-use std::path::Path;
-use lute_manifest::project::MetaDefaults;
-use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, DiagnosticSeverity, MessageType, Range, Uri};
 use super::Backend;
+use lute_manifest::project::MetaDefaults;
+use std::path::Path;
+use tower_lsp_server::ls_types::{
+    Diagnostic as LspDiagnostic, DiagnosticSeverity, MessageType, Range, Uri,
+};
 
 /// What identifies one build of a binary file: its length, mtime and (on
 /// unix) inode — a reinstall writes a new file or renames one over it.

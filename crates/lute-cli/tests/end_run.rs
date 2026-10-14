@@ -102,7 +102,11 @@ fn run_gates_on_pre_one_exact_minor() {
         .args(["run", art.to_str().unwrap()])
         .output()
         .unwrap();
-    assert!(ok.status.success(), "patch drift must run: {}", String::from_utf8_lossy(&ok.stderr));
+    assert!(
+        ok.status.success(),
+        "patch drift must run: {}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
 
     // A different pre-1.0 minor -> refused with the exact-minor rule.
     v["irVersion"] = serde_json::json!(format!("0.{}.0", minor - 1));
@@ -125,7 +129,6 @@ fn run_gates_on_pre_one_exact_minor() {
     assert_eq!(no.status.code(), Some(2));
     let err = String::from_utf8_lossy(&no.stderr);
     assert!(err.contains("E-ENGINE-IR-VERSION"), "{err}");
-
 }
 
 #[test]

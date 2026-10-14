@@ -67,11 +67,7 @@ pub(crate) fn check_line_codes_with_policy(
 /// Flag every repeated `(speaker, code)` pair WITHIN `lines` — the caller
 /// decides the identity scope (whole document for a scene, per-`<quest>` for
 /// a quest, dsl 0.2.0 §7) by choosing which lines to pass in one call.
-fn check_dup_line_codes<'a>(
-    lines: &[&'a Line],
-    require_stable: bool,
-    diags: &mut Vec<Diagnostic>,
-) {
+fn check_dup_line_codes<'a>(lines: &[&'a Line], require_stable: bool, diags: &mut Vec<Diagnostic>) {
     let mut seen: BTreeSet<(&'a str, String)> = BTreeSet::new();
     for line in lines {
         let Some(code) = authored_code(line) else {

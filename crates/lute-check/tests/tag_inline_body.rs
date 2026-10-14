@@ -27,7 +27,8 @@ fn codes(text: &str) -> Vec<String> {
         .collect()
 }
 
-const HDR: &str = "---\nkind: scene\ncharacter: fixer\npov: fixer\nseason: 1\nepisode: 1\nstate:\n  \
+const HDR: &str =
+    "---\nkind: scene\ncharacter: fixer\npov: fixer\nseason: 1\nepisode: 1\nstate:\n  \
     run.mood: { type: { enum: [calm, tense] }, default: calm }\n---\n## Shot 1.\n";
 
 /// The measured case: the author's real mistake is "the body shares the

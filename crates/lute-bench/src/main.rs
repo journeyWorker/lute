@@ -172,7 +172,8 @@ fn parse_args() -> Result<Config, String> {
 
     while let Some(arg) = args.next() {
         let value = |name: &str, args: &mut std::iter::Skip<std::env::Args>| {
-            args.next().ok_or_else(|| format!("{name} requires a value"))
+            args.next()
+                .ok_or_else(|| format!("{name} requires a value"))
         };
         match arg.as_str() {
             "--root" => root = PathBuf::from(value("--root", &mut args)?),
@@ -237,13 +238,7 @@ fn run(config: Config) -> Report {
         );
         for phase in &config.phases {
             for sample in 0..config.samples {
-                samples.push(run_sample(
-                    tier,
-                    project,
-                    &project_root,
-                    *phase,
-                    sample,
-                ));
+                samples.push(run_sample(tier, project, &project_root, *phase, sample));
             }
         }
     }
@@ -269,13 +264,7 @@ fn run(config: Config) -> Report {
     }
 }
 
-fn run_sample(
-    tier: &str,
-    project: &str,
-    root: &Path,
-    phase: Phase,
-    sample: usize,
-) -> Sample {
+fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usize) -> Sample {
     let test_count = match count_tests(root) {
         Ok(count) => Some(count),
         Err(error) => {
@@ -284,19 +273,27 @@ fn run_sample(
     };
     let mut iterations = 0u64;
     let result = match phase {
-        Phase::ColdLoad => loop_until(root, || {
-            let model = build_model(root, false)?;
-            black_box(model);
-            Ok(())
-        }, &mut iterations),
+        Phase::ColdLoad => loop_until(
+            root,
+            || {
+                let model = build_model(root, false)?;
+                black_box(model);
+                Ok(())
+            },
+            &mut iterations,
+        ),
         // Resolution intentionally includes ProjectModel's discovery/read,
         // fold, and reconcile boundary; cold-load repeats that construction
         // with a fresh input cache to expose uncached filesystem behavior.
-        Phase::Resolution => loop_until(root, || {
-            let model = build_model(root, false)?;
-            black_box(model.reconciled());
-            Ok(())
-        }, &mut iterations),
+        Phase::Resolution => loop_until(
+            root,
+            || {
+                let model = build_model(root, false)?;
+                black_box(model.reconciled());
+                Ok(())
+            },
+            &mut iterations,
+        ),
         Phase::Analysis => {
             let model = match build_model(root, false) {
                 Ok(model) => model,
@@ -374,10 +371,14 @@ fn run_sample(
         }
         // The project `lute play` / `lute test` compile for play: model build,
         // manifest gate and `ExecProject` assembly.
-        Phase::PlayAssembly => loop_until(root, || {
-            black_box(lute_cli::bench::compile(root)?);
-            Ok(())
-        }, &mut iterations),
+        Phase::PlayAssembly => loop_until(
+            root,
+            || {
+                black_box(lute_cli::bench::compile(root)?);
+                Ok(())
+            },
+            &mut iterations,
+        ),
         // Every `*.play.yaml` of the project over one compiled project, as
         // `lute test` runs them; a missed expectation is a failed sample.
         Phase::PlayReplay => {
@@ -403,7 +404,10 @@ fn run_sample(
                     for play in &plays {
                         let misses = lute_cli::bench::play(&compiled, play)?;
                         if misses > 0 {
-                            return Err(format!("{}: {misses} missed expectation(s)", play.display()));
+                            return Err(format!(
+                                "{}: {misses} missed expectation(s)",
+                                play.display()
+                            ));
                         }
                     }
                     Ok(())
@@ -486,7 +490,11 @@ fn count_tests(root: &Path) -> Result<usize, String> {
 fn load_test_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     visit_files(root, &mut |path| {
-        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".test.yaml")) {
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".test.yaml"))
+        {
             paths.push(path.to_path_buf());
         }
         Ok(())
@@ -498,7 +506,11 @@ fn load_test_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
 fn load_play_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut paths = Vec::new();
     visit_files(root, &mut |path| {
-        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(".play.yaml")) {
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(".play.yaml"))
+        {
             paths.push(path.to_path_buf());
         }
         Ok(())
@@ -527,20 +539,40 @@ fn prepare_tests(model: &ProjectModel, root: &Path) -> Result<Vec<PreparedTest>,
                 .get("file")
                 .and_then(Yaml::as_str)
                 .ok_or_else(|| format!("{}: test has no file", test.path.display()))?;
-            let document_path = test.path.parent().unwrap_or_else(|| Path::new(".")).join(file);
-            let canonical = std::fs::canonicalize(&document_path)
-                .map_err(|error| format!("{}: cannot resolve {file}: {error}", test.path.display()))?;
+            let document_path = test
+                .path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(file);
+            let canonical = std::fs::canonicalize(&document_path).map_err(|error| {
+                format!("{}: cannot resolve {file}: {error}", test.path.display())
+            })?;
             let document_index = model
                 .documents()
                 .iter()
-                .position(|document| std::fs::canonicalize(&document.path).ok().as_ref() == Some(&canonical))
-                .ok_or_else(|| format!("{}: document {file} is not in the project", test.path.display()))?;
+                .position(|document| {
+                    std::fs::canonicalize(&document.path).ok().as_ref() == Some(&canonical)
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "{}: document {file} is not in the project",
+                        test.path.display()
+                    )
+                })?;
             let mut mocks = lute_trace::parse_mock_surfaces(&test.text)
                 .map_err(|diagnostic| format!("{}: {}", test.path.display(), diagnostic.message))?;
-            if yaml.get("expect").and_then(|expect| expect.get("eligible")).is_some() {
+            if yaml
+                .get("expect")
+                .and_then(|expect| expect.get("eligible"))
+                .is_some()
+            {
                 mocks.gate_eligibility = true;
             }
-            if mocks.state.iter().any(|(path, _, _)| path.starts_with("quest.")) {
+            if mocks
+                .state
+                .iter()
+                .any(|(path, _, _)| path.starts_with("quest."))
+            {
                 let quests = model
                     .reconciled()
                     .scenarios
@@ -576,8 +608,6 @@ fn prepare_tests(model: &ProjectModel, root: &Path) -> Result<Vec<PreparedTest>,
         })
         .collect()
 }
-
-
 
 fn run_tests(
     model: &ProjectModel,
@@ -637,11 +667,18 @@ fn run_tests(
     }
     Ok(())
 }
-fn visit_files(root: &Path, callback: &mut impl FnMut(&Path) -> Result<(), String>) -> Result<(), String> {
+fn visit_files(
+    root: &Path,
+    callback: &mut impl FnMut(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     let entries = std::fs::read_dir(root)
         .map_err(|error| format!("cannot read {}: {error}", root.display()))?;
     let mut paths = entries
-        .map(|entry| entry.map(|entry| entry.path()).map_err(|error| error.to_string()))
+        .map(|entry| {
+            entry
+                .map(|entry| entry.path())
+                .map_err(|error| error.to_string())
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("cannot walk {}: {error}", root.display()))?;
     paths.sort();

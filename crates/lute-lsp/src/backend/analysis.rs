@@ -1,10 +1,10 @@
+use super::diagnostics::resolve_diag_to_lsp;
+use super::document::{claimed_declaration_yaml, find_project_root, is_yaml, uri_to_path};
+use super::{Backend, DocumentSnapshot};
+use crate::convert::to_lsp_diagnostic;
 use lute_check::{check, Mode};
 use lute_load::{assemble_input_with_mode, InputCache};
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
-use crate::convert::to_lsp_diagnostic;
-use super::{Backend, DocumentSnapshot};
-use super::diagnostics::resolve_diag_to_lsp;
-use super::document::{uri_to_path, claimed_declaration_yaml, is_yaml, find_project_root};
 
 impl Backend {
     /// Run `check()` over `snapshot`'s text and publish the converted diagnostics

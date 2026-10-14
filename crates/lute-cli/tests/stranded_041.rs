@@ -18,7 +18,7 @@ fn project(tag: &str, quest_attrs: &str, same_doc: bool) -> String {
     write(
         &dir,
         "lute.project.yaml",
-        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.42.0\"\n  uses: [world.schema.yaml]\n",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.42.1\"\n  uses: [world.schema.yaml]\n",
     );
     write(
         &dir,
@@ -31,14 +31,31 @@ fn project(tag: &str, quest_attrs: &str, same_doc: bool) -> String {
     let quest = format!(
         "<quest id=\"main\" {quest_attrs} start=\"true\">\n<objective id=\"done\" done=\"run.done\"/>\n</quest>\n"
     );
-    let scene = "---\nkind: scene\nid: main\non: tick\nwhen: \"clock.index == 1\"\nadvances: slot\n---\n";
+    let scene =
+        "---\nkind: scene\nid: main\non: tick\nwhen: \"clock.index == 1\"\nadvances: slot\n---\n";
     if same_doc {
-        write(&dir, "scenes/main.lute", &format!("{scene}{quest}\n## Main\n@narrator: Main.\n::set{{run.done = true}}\n"));
+        write(
+            &dir,
+            "scenes/main.lute",
+            &format!("{scene}{quest}\n## Main\n@narrator: Main.\n::set{{run.done = true}}\n"),
+        );
     } else {
-        write(&dir, "quests/main.lute", &format!("---\nkind: quest\nid: main\n---\n{quest}"));
-        write(&dir, "scenes/main.lute", &format!("{scene}## Main\n@narrator: Main.\n::set{{run.done = true}}\n"));
+        write(
+            &dir,
+            "quests/main.lute",
+            &format!("---\nkind: quest\nid: main\n---\n{quest}"),
+        );
+        write(
+            &dir,
+            "scenes/main.lute",
+            &format!("{scene}## Main\n@narrator: Main.\n::set{{run.done = true}}\n"),
+        );
     }
-    let out = Command::new(BIN).arg("check-project").arg(&*dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("check-project")
+        .arg(&*dir)
+        .output()
+        .unwrap();
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -53,7 +70,11 @@ fn stranded_fires_only_on_this_documents_beats_of_a_quest_that_does_not_rearm() 
     ), "{fired}");
     for (tag, attrs, same) in [
         ("stranded-041-run", "tier=\"run\"", true),
-        ("stranded-041-rearm", "tier=\"user\" rearm=\"run.day > 1\"", true),
+        (
+            "stranded-041-rearm",
+            "tier=\"user\" rearm=\"run.day > 1\"",
+            true,
+        ),
         ("stranded-041-outside", "tier=\"user\"", false),
     ] {
         let text = project(tag, attrs, same);

@@ -109,7 +109,12 @@ pub(crate) fn resolve_arg_type(arg_raw: &str, ctx: &Ctx<'_>) -> Option<Type> {
 }
 
 /// Classify one reconstructed state path and emit its diagnostic, if any.
-pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_state_path(
+    path: &str,
+    slot: &CelSlot,
+    ctx: &Ctx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     // Reserved `run.choiceLog.*` read inside a guard/condition (dsl §9.6).
     if is_guard(slot.kind) && (path == "run.choiceLog" || path.starts_with("run.choiceLog.")) {
         diags.push(diag(
@@ -122,9 +127,7 @@ pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags:
     // A namespace root is a map in the membership form (`'k' in run`).
     // It is not itself a scalar state declaration, so do not report the
     // synthetic root as undeclared.
-    if crate::cel_paths::STATE_ROOTS.contains(&path)
-        && slot.raw.contains(&format!("in {path}"))
-    {
+    if crate::cel_paths::STATE_ROOTS.contains(&path) && slot.raw.contains(&format!("in {path}")) {
         return;
     }
     // dsl 0.24.0 §3/§4: `run.approval[@who]` in a component body reads the
@@ -167,7 +170,9 @@ pub(crate) fn check_state_path(path: &str, slot: &CelSlot, ctx: &Ctx<'_>, diags:
                  answers, so declare `{field}` under that occasion's `payload:` (dsl 0.27.0 §3)"
             );
             if let Some(sugg) = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2)
-                .filter(|s| s.starts_with(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD))
+                .filter(|s| {
+                    s.starts_with(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD)
+                })
             {
                 msg.push_str(&format!(" — did you mean `{sugg}`?"));
             }
@@ -245,4 +250,3 @@ pub(crate) fn diag(code: &str, message: String, span: Span) -> Diagnostic {
         related: Vec::new(),
     }
 }
-

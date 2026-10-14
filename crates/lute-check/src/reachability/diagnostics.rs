@@ -6,7 +6,6 @@ use lute_syntax::ast::Node;
 use crate::decide::{LiteralCmpHit, LiteralCmpKind};
 use crate::match_check::E_WHEN_LITERAL_DOMAIN;
 
-
 /// `E-ARM-DEAD` (dsl 0.4.0 §5.2): a `<when>` arm or `<choice>` that can
 /// provably never fire — a decided-false guard, or an `is` pattern subsumed
 /// by earlier unguarded sibling arms (first-match-wins, dsl §11.2).
@@ -28,7 +27,12 @@ pub(super) fn dead_guard_message(kind: &str, raw: &str) -> String {
 /// first-match-wins (dsl 0.4 §5.2) ``. When no single earlier arm covers
 /// the pattern but several together do (`joint`), the earliest of them is
 /// cited as the first of several.
-pub(super) fn subsumption_message(pattern: &str, cov_span: Span, cov_pattern: &str, joint: bool) -> String {
+pub(super) fn subsumption_message(
+    pattern: &str,
+    cov_span: Span,
+    cov_pattern: &str,
+    joint: bool,
+) -> String {
     let by = if joint {
         "earlier unguarded arms together, the first at"
     } else {
@@ -234,7 +238,11 @@ pub(crate) const W_CODE_AFTER_END: &str = "W-CODE-AFTER-END";
 /// key `lower_directive` lowers on — see the `terminatesWalk` note in
 /// `lute_manifest::validate::SEMANTICS_VOCAB` for why the flag declares
 /// the semantics but never drives the dispatch.
-pub(crate) fn check_code_after_end(nodes: &[Node], targets: &BTreeSet<String>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_code_after_end(
+    nodes: &[Node],
+    targets: &BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let is_end =
         |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::END_DIRECTIVE);
     for dead in dead_stretches(nodes, is_end, targets) {
@@ -286,7 +294,11 @@ pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-JUMP";
 /// `W-CODE-AFTER-JUMP` for `nodes`, mirroring [`check_code_after_end`]
 /// verbatim except the terminator predicate (unguarded `::jump` — dispatch
 /// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
-pub(crate) fn check_code_after_next(nodes: &[Node], targets: &BTreeSet<String>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_code_after_next(
+    nodes: &[Node],
+    targets: &BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE && d.when.is_none());
     for dead in dead_stretches(nodes, is_unguarded_next, targets) {
         diags.push(diag(

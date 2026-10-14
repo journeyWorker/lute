@@ -23,7 +23,8 @@ fn binary_emits_schema_and_200ms_sample() {
         .status()
         .unwrap();
     assert!(status.success());
-    let report: serde_json::Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
     assert_eq!(report["schemaVersion"], "0.36.0.bench");
     let sample = &report["samples"][0];
     assert_eq!(sample["exit"], "ok");
@@ -54,13 +55,21 @@ fn comparator_accepts_110_and_rejects_111() {
     fixture(&head, 110.0);
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/compare-bench.py");
     let accepted = Command::new("python3")
-        .args([script.to_str().unwrap(), base.to_str().unwrap(), head.to_str().unwrap()])
+        .args([
+            script.to_str().unwrap(),
+            base.to_str().unwrap(),
+            head.to_str().unwrap(),
+        ])
         .status()
         .unwrap();
     assert!(accepted.success());
     fixture(&head, 111.0);
     let rejected = Command::new("python3")
-        .args([script.to_str().unwrap(), base.to_str().unwrap(), head.to_str().unwrap()])
+        .args([
+            script.to_str().unwrap(),
+            base.to_str().unwrap(),
+            head.to_str().unwrap(),
+        ])
         .status()
         .unwrap();
     assert_eq!(rejected.code(), Some(1));

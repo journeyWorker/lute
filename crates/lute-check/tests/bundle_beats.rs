@@ -7,8 +7,7 @@ use std::path::PathBuf;
 
 use lute_check::connectivity::{quest_id_set, resolve_nodes, scene_key_set};
 use lute_check::{
-    check, check_project_beats, fold_env, CheckInput, CheckResult, Mode, ProjectDocs,
-    SchemaImports,
+    check, check_project_beats, fold_env, CheckInput, CheckResult, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;

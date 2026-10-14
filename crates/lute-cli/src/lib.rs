@@ -59,24 +59,23 @@ macro_rules! outln {
 }
 
 mod beats_cmd;
+pub mod bench;
 mod bindings;
 mod bundle;
-pub mod bench;
 mod cli;
 mod cmd_catalog;
-mod engine_matrix;
 mod cmd_check;
 mod cmd_check_project;
 mod cmd_compile;
-mod cmd_diff;
-mod cmd_fmt;
-mod cmd_patch;
-mod cmd_expr;
+mod cmd_constraints;
 mod cmd_context;
+mod cmd_diff;
+mod cmd_expr;
+mod cmd_fmt;
+mod cmd_impact;
+mod cmd_patch;
 mod cmd_scenario;
 mod cmd_trace;
-mod cmd_constraints;
-mod cmd_impact;
 mod cmd_version;
 mod codes;
 mod compile_all;
@@ -85,6 +84,7 @@ mod context;
 mod differential;
 mod doctor;
 mod endings;
+mod engine_matrix;
 mod explain;
 mod knowledge;
 mod lint;
@@ -111,8 +111,8 @@ use cmd_catalog::run_refresh;
 use cmd_check::run_check;
 use cmd_check_project::run_check_project;
 use cmd_compile::dispatch_compile;
-use cmd_context::run_context;
 use cmd_constraints::run_constraints;
+use cmd_context::run_context;
 use cmd_impact::run_impact;
 use cmd_scenario::run_scenario;
 use cmd_trace::run_trace;
@@ -122,16 +122,16 @@ use cmd_version::run_version;
 pub(crate) use cli::ScenarioCommand;
 pub(crate) use cmd_context::attr_type_str;
 pub(crate) use cmd_scenario::graph::{fact_edge_label, topo_layers, when_visited_hint, FactGraph};
-pub(crate) use cmd_scenario::reach::{format_prereq, reach_evidence, reach_verdict_text, unanchored_quests};
+pub(crate) use cmd_scenario::reach::{
+    format_prereq, reach_evidence, reach_verdict_text, unanchored_quests,
+};
 pub(crate) use cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
 };
-pub(crate) use lute_model::{
-    assemble_root_scenario, node_cycle_degraded, RootScenario,
-};
 pub(crate) use lute_load::BuiltInput;
-pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
+pub(crate) use lute_model::{assemble_root_scenario, node_cycle_degraded, RootScenario};
 pub(crate) use lute_model::{reconcile_collected, ReconciledProject};
+pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
 pub(crate) use project::{
     collect_project_docs, find_lute_files, parse_project_docs, project_assert_relations,
     project_quest_ids, ByRoot, DocGroup,
@@ -192,12 +192,18 @@ pub fn run() -> ExitCode {
             wip,
             engine.as_deref(),
         ),
-        Command::Impact { dir, target, json, providers } => {
-            run_impact(&dir, &target, json, providers.as_deref())
-        }
-        Command::Constraints { dir, json, run, providers } => {
-            run_constraints(&dir, json, run, providers.as_deref())
-        }
+        Command::Impact {
+            dir,
+            target,
+            json,
+            providers,
+        } => run_impact(&dir, &target, json, providers.as_deref()),
+        Command::Constraints {
+            dir,
+            json,
+            run,
+            providers,
+        } => run_constraints(&dir, json, run, providers.as_deref()),
         Command::Lint {
             path,
             json,
@@ -240,7 +246,11 @@ pub fn run() -> ExitCode {
         ),
         Command::Expr { cel, project, json } => cmd_expr::run_expr(&cel, &project, json),
         Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
-        Command::Diff { before, after, json } => cmd_diff::run(&before, &after, json),
+        Command::Diff {
+            before,
+            after,
+            json,
+        } => cmd_diff::run(&before, &after, json),
         Command::Patch {
             dir,
             patch,

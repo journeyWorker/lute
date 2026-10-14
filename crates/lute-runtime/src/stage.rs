@@ -100,7 +100,11 @@ impl Stage {
                     self.actors.retain(|actor| actor.character != character);
                     return;
                 }
-                if let Some(actor) = self.actors.iter_mut().find(|actor| actor.character == character) {
+                if let Some(actor) = self
+                    .actors
+                    .iter_mut()
+                    .find(|actor| actor.character == character)
+                {
                     if let Some(anchor) = string(record, "anchor") {
                         actor.anchor = Some(anchor);
                     }

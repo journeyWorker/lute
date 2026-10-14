@@ -111,12 +111,18 @@ pub struct IndexBeat {
     /// dsl 0.26.0 §5: a `target="kind:<kind>"` beat's members, as the
     /// artifact's `targetKind`. Omitted for any other target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::target_kind"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::target_kind")
+    )]
     pub target_kind: Option<TargetKind>,
     /// dsl 0.27.0 §3 (T2-10): a `for="kind:<kind>"` beat's members, as the
     /// artifact's `forKind`. Omitted when not authored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::for_kind"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::for_kind")
+    )]
     pub for_kind: Option<ForKind>,
     /// dsl 0.27.0 §5, 0.28.0 §6: the beat's `spentBy` condition (raw,
     /// `@def`-expanded) — once it has held the beat is spent for its `once`
@@ -174,34 +180,58 @@ pub struct ProjectIndex {
     #[serde(default)]
     pub documents: Vec<IndexDocument>,
     #[serde(default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::entity_kinds"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::entity_kinds")
+    )]
     pub entities: Vec<EntityKindEntry>,
     #[serde(default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::enums"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::enums")
+    )]
     pub enums: Vec<EnumEntry>,
     #[serde(default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::relations"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::relations")
+    )]
     pub relations: Vec<RelationEntry>,
     #[serde(rename = "seedFacts", default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::seed_facts"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::seed_facts")
+    )]
     pub seed_facts: Vec<SeedFactEntry>,
     #[serde(default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::rules"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::rules")
+    )]
     pub rules: Vec<RuleEntry>,
     #[serde(rename = "prereqEdges", default)]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::prereq_edges"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::prereq_edges")
+    )]
     pub prereq_edges: Vec<PrereqEdgeEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<IndexEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beats: Vec<IndexBeat>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::clock_decl"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::clock_decl")
+    )]
     pub clock: Option<lute_manifest::clock::ClockDecl>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gates: Vec<GateEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::cel_slot"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::cel_slot")
+    )]
     pub terminal: Option<CelPair>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub terminal_persists: bool,
@@ -216,11 +246,19 @@ pub struct ProjectIndex {
     /// 0.41.0 §4.1: per bridge directive tag, the declared result type of
     /// each field an effect of the tag writes (the capability's `result:`
     /// shape), as occasion payloads carry theirs. Omitted when empty.
-    #[serde(rename = "bridgeResults", default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        rename = "bridgeResults",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
     pub bridge_results: BTreeMap<String, BTreeMap<String, lute_manifest::types::Type>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub cast: BTreeMap<String, String>,
-    #[serde(rename = "stateDomains", default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[serde(
+        rename = "stateDomains",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
     pub state_domains: BTreeMap<String, StateDomain>,
     /// dsl 0.41.0 §4.3: the project defs a host evaluates by name
     /// (`Program.def`) — plugin `defs:` and the `uses:` schema imports,
@@ -241,7 +279,10 @@ pub struct IndexDef {
     /// The body after `@def` expansion (standard CEL text).
     pub cel: String,
     /// The lowered body.
-    #[cfg_attr(feature = "json-schema", schemars(schema_with = "crate::schema::expr_node"))]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(schema_with = "crate::schema::expr_node")
+    )]
     pub expr: ExprNode,
     /// The body as declared, when expansion changed it.
     #[serde(default, skip_serializing_if = "Option::is_none")]

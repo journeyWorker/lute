@@ -40,13 +40,13 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{CelSlot, Document, Node, Quest};
 
-use crate::ProjectDoc;
 use crate::cast::{Atom, FactWrite, Pol};
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, decide_slot, DecideCtx, Decided};
 use crate::match_check::DomainInfo;
 use crate::meta::Namespace;
+use crate::ProjectDoc;
 
 /// `W-BEAT-SPENT-AT-START`: a beat's `spentBy` already holds at the start
 /// of play, so the beat is spent before it can ever be presented.
@@ -121,7 +121,10 @@ fn spent_beats<'d>(doc: &'d Document, folded: &'d FoldedEnv) -> Vec<SpentBeat<'d
 /// The verdicts a beat's own document decides before the start of play is
 /// judged: `Err(diagnostic)` for an unreachable beat, `Err(None)` when a
 /// reported literal or a `when` already false alone is the verdict.
-#[expect(clippy::result_large_err, reason = "diagnostic ownership is part of this checker result contract")]
+#[expect(
+    clippy::result_large_err,
+    reason = "diagnostic ownership is part of this checker result contract"
+)]
 fn own_verdict(
     b: &SpentBeat<'_>,
     defs: &DefTable<'_>,
@@ -437,7 +440,10 @@ pub fn check_project_spent_by(
                 continue;
             }
             if world.holds(folded, raw, b.at, b.spent.span, &project_quests, &params) {
-                out.push((path.to_path_buf(), spent_at_start(&b.name, raw, b.spent.span)));
+                out.push((
+                    path.to_path_buf(),
+                    spent_at_start(&b.name, raw, b.spent.span),
+                ));
                 continue;
             }
             if b.once_written {

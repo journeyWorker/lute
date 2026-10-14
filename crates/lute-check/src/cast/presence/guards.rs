@@ -143,7 +143,9 @@ pub(super) fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
                 fact_atoms(&a.expr, pol, out);
                 return fact_atoms(&b.expr, pol, out);
             }
-            ("holds" | "count" | "countDistinct", _) if crate::cel_resolve::is_profile_fact_query(c) => {
+            ("holds" | "count" | "countDistinct", _)
+                if crate::cel_resolve::is_profile_fact_query(c) =>
+            {
                 if let Some(query) = crate::fact_env::QueryPattern::from_call(c) {
                     out.push(Atom {
                         rel: query.relation,
@@ -326,7 +328,11 @@ pub(super) struct Definition {
 /// and an anonymous `_`, which read as `_`. An entity-kind premise and a
 /// ground comparison decide statically; a `cel()` guard is kept only in a
 /// rule without variables (it may read one).
-pub(super) fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -> Option<Definition> {
+pub(super) fn definition(
+    vocab: &RelVocab,
+    rel: &str,
+    args: &[Option<String>],
+) -> Option<Definition> {
     let decl = vocab.relations.get(rel)?;
     if !decl.derive || decl.reserved || vocab.unparsed_heads.contains(rel) {
         return None;
@@ -438,7 +444,11 @@ pub(super) fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -
                         "{}holds(\"{}\", [{}])",
                         if neg { "!" } else { "" },
                         a.relation,
-                        texts.iter().map(|t| query_term_text(t)).collect::<Vec<_>>().join(", ")
+                        texts
+                            .iter()
+                            .map(|t| query_term_text(t))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ));
                 }
                 BodyLiteral::Guard { cel, .. } => {
@@ -524,4 +534,3 @@ pub(super) fn definition(vocab: &RelVocab, rel: &str, args: &[Option<String>]) -
     }
     unified.then_some(def)
 }
-

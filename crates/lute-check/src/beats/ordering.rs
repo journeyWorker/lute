@@ -316,11 +316,7 @@ pub fn check_project_beats(
                 pb.when_slot.map(|w| w.raw.as_str()),
                 |c| {
                     let span = pb.when_slot.map_or(pb.anchor, |w| w.span);
-                    crate::gates::provably_false(
-                        c,
-                        folded,
-                        env.map(|e| (e, pb.path, span)),
-                    )
+                    crate::gates::provably_false(c, folded, env.map(|e| (e, pb.path, span)))
                 },
             );
             let dnf_of = |e: Option<&str>| {
@@ -500,4 +496,3 @@ pub fn check_project_beats(
     out.extend(tie_warnings(&beats, &ties));
     out
 }
-

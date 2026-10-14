@@ -89,7 +89,10 @@ pub fn walk(expr: &Expr, visit: &mut impl FnMut(Node<'_>) -> Flow) -> Flow {
     }
 }
 
-fn walk_entries(entries: &[cel_parser::ast::IdedEntryExpr], visit: &mut impl FnMut(Node<'_>) -> Flow) -> Flow {
+fn walk_entries(
+    entries: &[cel_parser::ast::IdedEntryExpr],
+    visit: &mut impl FnMut(Node<'_>) -> Flow,
+) -> Flow {
     for ided in entries {
         let flow = visit(Node::Entry(&ided.expr));
         if flow == Flow::Stop {
@@ -117,11 +120,13 @@ fn walk_entries(entries: &[cel_parser::ast::IdedEntryExpr], visit: &mut impl FnM
     Flow::Continue
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cel_parser::ast::{CallExpr, ComprehensionExpr, IdedEntryExpr, IdedExpr, MapEntryExpr, MapExpr, SelectExpr, StructExpr, StructFieldExpr};
+    use cel_parser::ast::{
+        CallExpr, ComprehensionExpr, IdedEntryExpr, IdedExpr, MapEntryExpr, MapExpr, SelectExpr,
+        StructExpr, StructFieldExpr,
+    };
     use cel_parser::reference::Val;
 
     fn id(expr: Expr) -> IdedExpr {
@@ -189,20 +194,35 @@ mod tests {
     #[test]
     fn skip_and_stop_are_explicit() {
         let expr = Expr::List(cel_parser::ast::ListExpr {
-            elements: vec![id(Expr::Ident("a".to_string())), id(Expr::Ident("b".to_string()))],
+            elements: vec![
+                id(Expr::Ident("a".to_string())),
+                id(Expr::Ident("b".to_string())),
+            ],
         });
         let mut seen = Vec::new();
         walk(&expr, &mut |node| {
-            let Node::Expr(expr) = node else { return Flow::Continue };
+            let Node::Expr(expr) = node else {
+                return Flow::Continue;
+            };
             if let Expr::Ident(name) = expr {
                 seen.push(name.clone());
             }
-            if matches!(expr, Expr::List(_)) { Flow::Skip } else { Flow::Continue }
+            if matches!(expr, Expr::List(_)) {
+                Flow::Skip
+            } else {
+                Flow::Continue
+            }
         });
         assert!(seen.is_empty());
 
         let mut seen = 0;
-        assert_eq!(walk(&expr, &mut |_| { seen += 1; Flow::Stop }), Flow::Stop);
+        assert_eq!(
+            walk(&expr, &mut |_| {
+                seen += 1;
+                Flow::Stop
+            }),
+            Flow::Stop
+        );
         assert_eq!(seen, 1);
     }
 }

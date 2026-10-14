@@ -19,19 +19,19 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use cel_parser::ast::{operators as op, Expr, IdedExpr};
-use cel_parser::reference::Val;
-use lute_core_span::{Diagnostic, Severity, Span};
-use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
-use lute_syntax::ast::{Node, Objective};
-use lute_ir::BeatOnce;
-use crate::project_doc::ProjectDoc;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, literal_truth, DecideCtx, Decided};
 use crate::meta::StateSchema;
+use crate::project_doc::ProjectDoc;
 use crate::rel_schema::RelVocab;
 use crate::solution::{contains, number_spans, Truth};
+use cel_parser::ast::{operators as op, Expr, IdedExpr};
+use cel_parser::reference::Val;
+use lute_core_span::{Diagnostic, Severity, Span};
+use lute_ir::BeatOnce;
+use lute_manifest::clock::{Advance, ClockAt, ClockDecl, ClockValue};
+use lute_syntax::ast::{Node, Objective};
 
 /// `W-DEADLINE-BEFORE-WINDOW`: an objective's `done` can only hold at clock
 /// positions where its `by=` deadline already holds, so the deadline fails
@@ -74,7 +74,10 @@ enum Settle {
 }
 
 /// How relational calls read while building a formula.
-#[expect(clippy::type_complexity, reason = "clock readers carry optional schedule and visitor callbacks")]
+#[expect(
+    clippy::type_complexity,
+    reason = "clock readers carry optional schedule and visitor callbacks"
+)]
 struct Reads<'r> {
     /// A pure-schedule derived list-form `holds('rel', [c…])` reads as its
     /// rules' `cel()` guards.
@@ -206,7 +209,11 @@ fn schedule(
     use lute_manifest::fact::FactTerm;
     use lute_syntax::datalog::{BodyLiteral, RuleTerm};
     let query = crate::fact_env::QueryPattern::from_call(query)?;
-    let consts = query.args.iter().cloned().collect::<Option<Vec<String>>>()?;
+    let consts = query
+        .args
+        .iter()
+        .cloned()
+        .collect::<Option<Vec<String>>>()?;
     let rel = query.relation.as_str();
     if !vocab
         .relations
@@ -1200,25 +1207,44 @@ pub fn project_objective_slot_results(
     for (item, folded) in docs.iter().zip(foldeds) {
         let path = item.path;
         let doc = item.doc;
-        let Some(clock) = folded.env.state.clock.as_ref() else { continue };
+        let Some(clock) = folded.env.state.clock.as_ref() else {
+            continue;
+        };
         for q in &doc.quests {
             for node in &q.body {
                 let Node::Objective(o) = node else { continue };
-                if o.optional || o.id.is_empty() { continue; }
+                if o.optional || o.id.is_empty() {
+                    continue;
+                }
                 let candidates = objective_completion_beats(o, folded, &beats, &beat_paths);
                 let mut windows = Vec::new();
                 let mut candidate_beats = Vec::new();
                 let mut bounded = true;
                 for beat in candidates {
-                    let Some(window) = bounded_window(beat, clock) else { bounded = false; break };
+                    let Some(window) = bounded_window(beat, clock) else {
+                        bounded = false;
+                        break;
+                    };
                     windows.extend(window);
                     candidate_beats.push((beat.id.clone(), beat.anchor));
                 }
                 windows.sort();
                 windows.dedup();
-                let verdict = if !bounded || windows.is_empty() { None } else if o.until.is_none() && o.by.is_none() { Some(W_OBJECTIVE_STRANDED) } else { Some("holds") };
+                let verdict = if !bounded || windows.is_empty() {
+                    None
+                } else if o.until.is_none() && o.by.is_none() {
+                    Some(W_OBJECTIVE_STRANDED)
+                } else {
+                    Some("holds")
+                };
                 let _ = path;
-                out.push(ObjectiveSlotResult { quest: q.id.clone(), objective: o.id.clone(), declared_windows: windows, candidate_beats, verdict });
+                out.push(ObjectiveSlotResult {
+                    quest: q.id.clone(),
+                    objective: o.id.clone(),
+                    declared_windows: windows,
+                    candidate_beats,
+                    verdict,
+                });
             }
         }
     }
@@ -1230,7 +1256,6 @@ pub fn project_objective_slot_results(
 /// The runtime still bounds every cascade, but this is an authoring error: a
 /// clock raise should hand off to another beat or have a guard/spend policy.
 pub const E_ADVANCE_CASCADE: &str = "E-ADVANCE-CASCADE";
-
 
 fn visited_ids(raw: &str, defs: &DefTable<'_>) -> BTreeSet<String> {
     let mut arena = lute_cel::CelArena::default();
@@ -1303,10 +1328,7 @@ fn collect_set_paths(nodes: &[Node], out: &mut BTreeSet<String>) {
     }
 }
 
-fn beat_set_paths(
-    pb: &crate::beats::ProjectBeat<'_>,
-    docs: &[ProjectDoc<'_>],
-) -> BTreeSet<String> {
+fn beat_set_paths(pb: &crate::beats::ProjectBeat<'_>, docs: &[ProjectDoc<'_>]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for item in docs {
         let path = item.path;
@@ -1321,11 +1343,7 @@ fn beat_set_paths(
                 }
             }
             crate::beats::ProjectBeatKind::Entry => {
-                if let Some(entry) = doc
-                    .entries
-                    .iter()
-                    .find(|e| e.span.byte_start == pb.unit)
-                {
+                if let Some(entry) = doc.entries.iter().find(|e| e.span.byte_start == pb.unit) {
                     collect_set_paths(&entry.body, &mut out);
                 }
             }
@@ -1385,9 +1403,7 @@ fn objective_completion_beats<'a>(
         .iter()
         .zip(beat_paths)
         .filter(|(pb, set)| {
-            o.on
-                .as_ref()
-                .is_some_and(|(on, _)| pb.on == on)
+            o.on.as_ref().is_some_and(|(on, _)| pb.on == on)
                 || visited.contains(&pb.id)
                 || !paths.is_disjoint(set)
         })
@@ -1428,12 +1444,10 @@ pub fn check_project_advance_cascades(
                         lute_ir::AdvanceSpec::Slots(n) => Advance::Slots(n),
                     };
                     model.all.iter().any(|at| {
-                        model.open(*at)
-                            && model.may(*at)
-                            && {
-                                let next = clock.advance(*at, by);
-                                model.open(next) && model.may(next)
-                            }
+                        model.open(*at) && model.may(*at) && {
+                            let next = clock.advance(*at, by);
+                            model.open(next) && model.may(next)
+                        }
                     })
                 }
                 None => false,
@@ -1470,7 +1484,6 @@ pub fn check_project_advance_cascades(
     }
     out
 }
-
 
 fn run_tier(q: &lute_syntax::ast::Quest) -> bool {
     q.tier
@@ -1544,8 +1557,10 @@ pub fn check_project_objective_clock_windows(
                 if !bounded || windows.is_empty() {
                     continue;
                 }
-                let positions: BTreeSet<ClockAt> =
-                    windows.iter().flat_map(|(_, w)| w.iter().copied()).collect();
+                let positions: BTreeSet<ClockAt> = windows
+                    .iter()
+                    .flat_map(|(_, w)| w.iter().copied())
+                    .collect();
                 let Some(first) = positions.iter().next().copied() else {
                     continue;
                 };
@@ -1579,7 +1594,9 @@ pub fn check_project_objective_clock_windows(
                     out.push((path.to_path_buf(), diagnostic));
                 }
                 if positions.len() == 1
-                    && windows.iter().all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
+                    && windows
+                        .iter()
+                        .all(|(pb, w)| pb.advances.is_some() && w.len() == 1)
                 {
                     singletons.push((path.to_path_buf(), q.id.clone(), reset, o.span, first));
                 }
@@ -1593,10 +1610,7 @@ pub fn check_project_objective_clock_windows(
             if tree_root(quest_a) != tree_root(quest_b) || !run_a || !run_b || pos_a != pos_b {
                 continue;
             }
-            let Some(clock) = foldeds
-                .iter()
-                .find_map(|f| f.env.state.clock.as_ref())
-            else {
+            let Some(clock) = foldeds.iter().find_map(|f| f.env.state.clock.as_ref()) else {
                 continue;
             };
             let message = format!(

@@ -588,7 +588,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut exhaustive_subject_spans: Vec<Span> = Vec::new();
     let defassign_diags: Vec<Diagnostic> = match folded.doc_kind {
         crate::meta::DocKind::Scene => {
-            let all_nodes: Vec<Node> = doc.sections
+            let all_nodes: Vec<Node> = doc
+                .sections
                 .iter()
                 .flat_map(|s| s.body.iter().cloned())
                 .collect();
@@ -689,8 +690,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     //     on. Whole-document, per-speaker; owns `E-DUP-LINE-CODE`. The ROOT
     //     document only: each imported component body gets its OWN isolated
     //     run of this same pass in `validate_components` (Task 7c).
-    let line_code_diags =
-        crate::match_check::check_line_codes_with_policy(&doc, input.snapshot.identity_require_stable);
+    let line_code_diags = crate::match_check::check_line_codes_with_policy(
+        &doc,
+        input.snapshot.identity_require_stable,
+    );
     let mut instance_diags = Vec::new();
     for shot in &doc.sections {
         super::use_site::check_instance_scope(&shot.body, &mut instance_diags);
@@ -763,7 +766,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
     // identically.
     let commands_preview: Vec<String> = match folded.doc_kind {
-        crate::meta::DocKind::Scene => doc.sections
+        crate::meta::DocKind::Scene => doc
+            .sections
             .iter()
             .flat_map(|s| s.body.iter().map(node_summary))
             .collect(),
@@ -861,7 +865,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(state_merge_diags);
     // dsl 0.37.0 §3.4: who may speak `mono` — this document's lines, then
     // every component line each `::use` site brings in.
-    diags.extend(super::mono::check_mono(&doc, &folded.typed, &input.components));
+    diags.extend(super::mono::check_mono(
+        &doc,
+        &folded.typed,
+        &input.components,
+    ));
     diags.extend(super::section_ids::check_section_ids(&doc));
     diags.extend(super::author_case::check_author_case(&doc));
     diags.extend(std::mem::take(&mut walker.diags));
@@ -1029,8 +1037,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let diags = collapse_same_root(diags);
     // A name the manifest's `defaults.uses` declares, missing because this
     // document's own `uses:` replaced that list: the error says so.
-    let mut diags =
-        crate::defaults_note::note_replaced_uses(&doc, &folded.typed, input, diags);
+    let mut diags = crate::defaults_note::note_replaced_uses(&doc, &folded.typed, input, diags);
     // 0.41.0 §3.2: a use of an invalid plugin declaration is one note per
     // cause, not an "unknown" report per use.
     crate::depends::attribute_unknown(&mut diags, &input.snapshot);
@@ -1135,7 +1142,11 @@ fn node_summary(node: &Node) -> String {
         Node::Directive(d) => format!("::{}", d.tag),
         Node::Set(s) => format!("::set{{{} {} …}}", s.path, s.op),
         Node::Branch(b) => format!("<branch id=\"{}\"> ({} choices)", b.id, b.choices.len()),
-        Node::Match(m) => format!("<match subject=\"{}\"> ({} arms)", m.subject.raw, m.arms.len()),
+        Node::Match(m) => format!(
+            "<match subject=\"{}\"> ({} arms)",
+            m.subject.raw,
+            m.arms.len()
+        ),
         Node::Timeline(tl) => format!("<timeline> ({} tracks)", tl.tracks.len()),
         Node::Hub(h) => format!("<hub> ({} choices)", h.choices.len()),
         Node::On(o) => format!("<on event=\"{}\">", o.event),

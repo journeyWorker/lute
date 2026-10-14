@@ -61,6 +61,8 @@ pub(crate) enum Command {
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
     },
+    /// Statically validate every `.lute` document under a directory, plus project-wide checks.
+    ///
     /// Statically validate EVERY `.lute` document under a directory
     /// (recursively, deterministic sorted order), like `check` on each file,
     /// PLUS project-wide `<quest id>` uniqueness for quest docs `check`'s
@@ -129,6 +131,8 @@ pub(crate) enum Command {
         #[arg(long, value_name = "DIR")]
         providers: Option<PathBuf>,
     },
+    /// Run configurable advisory content and metric lints (`L-*`) over documents or a tree.
+    ///
     /// Run configurable content/metric advisory lints over a `.lute`
     /// document or a directory tree (https://lute-lang.vercel.app/tooling/linting/).
     /// Distinct from `lute check`: this surface publishes advisory `L-*`
@@ -163,6 +167,8 @@ pub(crate) enum Command {
         #[arg(long = "config", value_name = "PATH")]
         config: Option<PathBuf>,
     },
+    /// Compile a checked `.lute` document, or a whole project with `--all`, to execution IR.
+    ///
     /// Compile a checked `.lute` document to its JSON command-record execution IR,
     /// or — with `--all` — every document in a project plus a
     /// `project.index.json` unioning their vocabularies.
@@ -217,6 +223,8 @@ pub(crate) enum Command {
         #[arg(long = "deny-warnings")]
         deny_warnings: bool,
     },
+    /// Incrementally compile scene body text from stdin, streaming IR snapshots as NDJSON.
+    ///
     /// Incrementally compile body text from stdin against a checked scene
     /// prefix, flushing ordinary execution IR snapshots as newline-delimited JSON.
     CompileStream {
@@ -235,6 +243,8 @@ pub(crate) enum Command {
         #[arg(long = "permission-profile", value_name = "NAME")]
         permission_profile: Option<String>,
     },
+    /// Lower a host CEL condition to an IR `exprNode` against a project.
+    ///
     /// Lower a host condition (a CEL expression a game evaluates over a run
     /// state through the runtime's `evaluate` query) to an IR `exprNode`
     /// against a project. The condition is checked as the `when:` of a scene
@@ -259,6 +269,8 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Back-fill missing stable identity attributes (line `code`, `::use` `instance`).
+    ///
     /// Back-fill missing stable identity attributes in the corpus: per-speaker
     /// line `code` values and `::use` component `instance` keys. Existing
     /// authored codes and instances are preserved byte-for-byte; only changed
@@ -275,10 +287,17 @@ pub(crate) enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Apply mechanical, meaning-preserving migrations in place —
-    /// legacy line/choice syntax, literal `<when>` comparisons, and 0.31 CEL
+    /// Apply mechanical, meaning-preserving source migrations in place.
+    ///
+    /// Apply mechanical, meaning-preserving migrations in place: legacy
+    /// line/choice syntax; literal `<when>` comparisons; 0.31 CEL
     /// fact-query/presence calls (`holds`/`count`/`countDistinct`/`validAt`/
-    /// `isSet`) to their standard-CEL 0.32 forms. Byte-exact and
+    /// `isSet`) to their standard-CEL 0.32 forms; renamed domains in project,
+    /// schema and plugin YAML (0.41.0); existing `luteVersion` stamps older
+    /// than the toolchain, raised to it (0.41.1); and, when the project's
+    /// `volume` domain is exactly the old `[silent, down, normal, up, full]`,
+    /// `down`/`up` to `quiet`/`loud` in commands, YAML references and
+    /// `volumes` keys (0.42.0). Byte-exact and
     /// comment-preserving; writes back only when something changed. A
     /// directory migrates `.lute` and project/schema YAML files recursively,
     /// sorted; several paths migrate in the order given. Exit `0` on success,
@@ -288,6 +307,8 @@ pub(crate) enum Command {
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
+    /// Emit the project-resolved authoring surface for a `.lute` file.
+    ///
     /// Emit the project-resolved AUTHORING SURFACE for a `.lute` file — the
     /// directives/attrs/enums/asset-kinds/providers/state-schema/components +
     /// capabilitySnapshot an AI needs to WRITE valid Lute against THIS file's
@@ -358,6 +379,8 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Preview a document's behaviour against author-supplied mocks.
+    ///
     /// Preview a `.lute` document's behavior against author-supplied mocks —
     /// an authoring evaluator, not the runtime. Resolves the document
     /// identically to `check`, refuses (exit 1) a
@@ -457,6 +480,8 @@ pub(crate) enum Command {
     /// Provider-catalog maintenance.
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// Scaffold a new Lute project directory.
+    ///
     /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
     /// schema, a starter vocabulary, starter documents, and ways to exercise
     /// them — ready for `lute check-project`.
@@ -471,6 +496,8 @@ pub(crate) enum Command {
         #[arg(long, value_name = "NAME")]
         template: Option<String>,
     },
+    /// Scaffold one new document (scene, quest, lore, schema) into an existing project.
+    ///
     /// Scaffold one new document into an existing project: `lute new scene
     /// <name> [--occasion <occasion> [--target <target>]]` / `lute new quest
     /// <name> [--start]` / `lute new lore <name>` / `lute new schema <name>`.
@@ -506,6 +533,8 @@ pub(crate) enum Command {
         #[arg(long)]
         start: bool,
     },
+    /// Diagnose the local toolchain and project setup.
+    ///
     /// Diagnose the local toolchain + project setup: versions, project
     /// manifest, provider snapshots, vocabulary slots, and editor integration
     /// hints. Exit `0` (it reports, never gates) unless `--strict`.
@@ -522,6 +551,8 @@ pub(crate) enum Command {
         #[arg(long)]
         strict: bool,
     },
+    /// Execute compiled execution IR headlessly against a mock playthrough.
+    ///
     /// Execute a COMPILED execution IR (`lute compile` output) headlessly against
     /// a mock playthrough — the reference consumer of the runtime contract
     /// (docs/runtime/): command dispatch, CEL guards, facts + Datalog
@@ -561,8 +592,9 @@ pub(crate) enum Command {
         #[arg(long, value_name = "FILE")]
         dump_conditions: Option<PathBuf>,
     },
-    /// Play a story through a whole project as a sequence of raised
-    /// occasions. Compiles the WHOLE project in memory
+    /// Play a story through a whole project as a sequence of raised occasions.
+    ///
+    /// Compiles the WHOLE project in memory
     /// (scene, quest and lore documents — the gate and declaration union
     /// `compile --all` uses), then for every script step computes the beats
     /// answering the occasion, each candidate's verdict (`once` spending,
@@ -623,6 +655,8 @@ pub(crate) enum Command {
         #[arg(long, value_name = "FILE")]
         dump_conditions: Option<PathBuf>,
     },
+    /// Run the project's scenario tests (`*.test.yaml`) and expectation plays (`*.play.yaml`).
+    ///
     /// Run the project's scenario tests: every `*.test.yaml` under `dir`
     /// traces its scene (or, with `entry:`/`entries:`, presents its lore
     /// entries) against the declared mocks and asserts the declared
@@ -665,6 +699,8 @@ pub(crate) enum Command {
     /// Localization & production reporting over a project's content lines.
     #[command(subcommand)]
     Loc(LocCommand),
+    /// Map the project's lore entries and which facts lore, scenes and quests reveal.
+    ///
     /// The project's world-narrative map: lore entries
     /// grouped by `target` and by `series` (in `order`), and for every
     /// relation asserted anywhere, which ground facts lore entries reveal,
@@ -677,6 +713,8 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// List who uses which engine content id: directive attribute values or reward targets.
+    ///
     /// Who uses which engine content id: every value of a
     /// directive attribute (`--attr give.item`) or every target of a reward
     /// kind (`--reward ITEM`), with the documents and lines using it — so a
@@ -696,6 +734,8 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Report project connectivity: the node graph, reachability and envelope tables.
+    ///
     /// Project-wide, read-only reporting surface over everything the
     /// connectivity layer computes: the assembled node/edge
     /// graph, per-node reachability plus its declared `after` structure, and
@@ -730,6 +770,8 @@ pub(crate) enum Command {
         #[command(subcommand)]
         command: Option<ScenarioCommand>,
     },
+    /// List every beat per occasion and target in selection order, with static verdicts.
+    ///
     /// Every beat of the project, per occasion and target, in selection
     /// order (priority descending, then project order) with its priority,
     /// `once`, `after:`, `when` and the static verdicts `check-project`
@@ -757,6 +799,8 @@ pub(crate) enum Command {
         #[arg(long)]
         expand: bool,
     },
+    /// Evaluate beat eligibility over a grid of state values.
+    ///
     /// Evaluate beat eligibility over a grid of state values: for every
     /// cell of the `--axis` product, starting from the
     /// `--script` (its save, then its steps replayed) or the declared
@@ -827,6 +871,8 @@ pub(crate) enum Command {
         #[arg(long)]
         csv: bool,
     },
+    /// Print the toolchain, language and IR version axes.
+    ///
     /// Print the three independent version axes (docs/versioning.md): the
     /// TOOLCHAIN version (this CLI + workspace crates), the LANGUAGE version
     /// (the grammar/semantics the checker enforces), and the IR schema
@@ -844,6 +890,8 @@ pub(crate) enum Command {
 /// See [`Command::Scenario`].
 #[derive(Subcommand)]
 pub(crate) enum ScenarioCommand {
+    /// Report a node's reachability verdict and its `after` prerequisite structure.
+    ///
     /// Report a node's reachability verdict (Reachable/Unreachable/Unknown)
     /// plus its declared `after` prerequisite structure — or, with
     /// `--endings`, one row per ending.
@@ -862,6 +910,8 @@ pub(crate) enum ScenarioCommand {
         #[arg(long, value_name = "OCCASION", num_args = 0..=1, default_missing_value = "", require_equals = true)]
         endings: Option<String>,
     },
+    /// Report the Guaranteed/Possible envelope tables for a node.
+    ///
     /// Report the Guaranteed/Possible envelope tables for a node — full
     /// tables for a scene or a quest with `follows=`; defaults-only `D`
     /// plus an enrichment note for a bare quest. Also prints the
@@ -872,6 +922,8 @@ pub(crate) enum ScenarioCommand {
         /// id>`, or `quest:<id>` for a quest.
         node_id: String,
     },
+    /// Trace every fact-guarded condition, grouped by document.
+    ///
     /// Trace every fact-guarded condition — beat, entry, quest, objective,
     /// line, choice, arm, handler — grouped by document, to the relations it
     /// reads, and each relation to its producers through the rules:
@@ -888,6 +940,8 @@ pub(crate) enum ScenarioCommand {
 /// See [`Command::Loc`].
 #[derive(Subcommand)]
 pub(crate) enum LocCommand {
+    /// Extract every translatable content line across a project to a locale file.
+    ///
     /// Extract every translatable content line (stable `code`, speaker,
     /// text, choice labels) across a project to a localization export.
     Export {
@@ -900,6 +954,8 @@ pub(crate) enum LocCommand {
         #[arg(short = 'o', long = "out", value_name = "FILE")]
         out: Option<PathBuf>,
     },
+    /// Canonicalize translated `loc export` files into one locale bundle.
+    ///
     /// Canonicalize translated `loc export` files into ONE locale bundle —
     /// the reverse direction, consumed by
     /// `lute compile --locales <bundle.json>`.

@@ -38,13 +38,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use cel_parser::ast::CallExpr;
 use lute_core_span::Span;
+use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::relations::{KindShape, RelationDecl};
 use lute_manifest::snapshot::Domain;
-use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_syntax::datalog::{BodyLiteral, Rule, RuleAtom, RuleTerm};
 
-use crate::ProjectDoc;
 use crate::rel_schema::RelVocab;
+use crate::ProjectDoc;
 
 /// A relation applied to members of its argument domains (§2):
 /// `knows(vesna, manifest)`. A `bool` argument is stored as `true`/`false`.
@@ -333,7 +333,8 @@ impl RootVocab {
         self.incomplete |= docs.iter().any(|item| item.meta.yaml().is_none());
         fn body_asserts(d: &lute_syntax::ast::Document) -> Vec<&lute_syntax::ast::Assert> {
             let mut asserts = Vec::new();
-            let bodies = d.sections
+            let bodies = d
+                .sections
                 .iter()
                 .map(|s| &s.body)
                 .chain(d.quests.iter().map(|q| &q.body))

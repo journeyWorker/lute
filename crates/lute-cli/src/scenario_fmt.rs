@@ -148,8 +148,8 @@ fn run_json(
                 .map(|(root, group_full)| {
                     let scenario = assemble_root_scenario(group_full, &file_results);
                     let docs = lute_model::project_docs(group_full);
-                    let facts = facts
-                        .then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
+                    let facts =
+                        facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
                     root_graph_json(root, &scenario, &docs, facts.as_ref())
                 })
                 .collect();
@@ -311,8 +311,7 @@ fn root_graph_json(
         obj.insert("factEdges".to_string(), Value::Array(edges));
     }
     let unanchored = unanchored_quests(&scenario.quest_ids, &scenario.graph);
-    let when_visited =
-        lute_check::connectivity::when_visited_unanchored(docs, &scenario.graph);
+    let when_visited = lute_check::connectivity::when_visited_unanchored(docs, &scenario.graph);
     if !unanchored.is_empty() || !when_visited.is_empty() {
         obj.insert(
             "unanchored".to_string(),
@@ -341,11 +340,8 @@ fn root_graph_json(
             ),
         );
     }
-    let omitted = lute_check::connectivity::omitted_refs(
-        docs,
-        &scenario.graph,
-        &scenario.quest_ids,
-    );
+    let omitted =
+        lute_check::connectivity::omitted_refs(docs, &scenario.graph, &scenario.quest_ids);
     if !omitted.is_empty() {
         use lute_check::connectivity::OmittedRef;
         let refs = omitted
@@ -478,7 +474,9 @@ fn envelope_json(
         Err(code) => return code,
     };
     let docs = lute_model::project_docs(
-        by_root.get(root).expect("resolved scenario root must have documents"),
+        by_root
+            .get(root)
+            .expect("resolved scenario root must have documents"),
     );
     let node_id = node_ref_to_id(&node_ref);
     let mut obj = Map::new();
@@ -631,8 +629,7 @@ fn run_dot(
     for (root, group_full) in &by_root {
         let scenario = assemble_root_scenario(group_full, &file_results);
         let docs = lute_model::project_docs(group_full);
-        let facts =
-            facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
+        let facts = facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
         out.push_str(&root_dot(root, &scenario, facts.as_ref()));
     }
     write_or_io_error(&out)

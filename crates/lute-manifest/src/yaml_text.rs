@@ -196,7 +196,6 @@ impl<'de> serde::de::Visitor<'de> for YamlKey<'_> {
 }
 use lute_core_span::Span;
 
-
 /// One line of `text`: its byte offset, its indentation (a `- ` list marker
 /// counts as indentation, so `- on: x` has the key `on` two columns in), and
 /// its content after that indentation.

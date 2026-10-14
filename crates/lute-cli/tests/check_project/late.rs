@@ -659,7 +659,10 @@ fn check_project_reports_sera_kato_contention_without_stranded() {
         .filter(|line| line.contains("[W-SLOT-CONTENTION]"))
         .collect();
     assert_eq!(contention.len(), 2, "{text}");
-    assert!(contention.iter().all(|line| line.contains("day 1 evening")), "{text}");
+    assert!(
+        contention.iter().all(|line| line.contains("day 1 evening")),
+        "{text}"
+    );
 
     let clean = temp_dir("objective-clock-deadline");
     write(
@@ -690,10 +693,7 @@ fn check_project_reports_sera_kato_contention_without_stranded() {
     );
     let clean_out = run(&["check-project", clean.to_str().unwrap()]);
     let clean_text = String::from_utf8_lossy(&clean_out.stdout);
-    assert!(
-        !clean_text.contains("W-OBJECTIVE-STRANDED"),
-        "{clean_text}"
-    );
+    assert!(!clean_text.contains("W-OBJECTIVE-STRANDED"), "{clean_text}");
 }
 
 /// An unguarded repeatable beat on the clock's own raise must be rejected

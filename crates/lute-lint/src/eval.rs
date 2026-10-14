@@ -229,7 +229,10 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
                 Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
                 Value::List(l) => Ok(Value::Int(l.len() as i64)),
                 Value::Map(m) => Ok(Value::Int(m.len() as i64)),
-                other => Err(EvalError::new(format!("size() on {} value", other.type_name()))),
+                other => Err(EvalError::new(format!(
+                    "size() on {} value",
+                    other.type_name()
+                ))),
             }
         }
         // Scalar arithmetic/comparison/equality via apply_op.
@@ -284,29 +287,46 @@ fn apply_scalar(name: &str, args: &[Value]) -> Result<Value, EvalError> {
             Ok(Value::Bool(if name == op::EQUALS { eq } else { !eq }))
         }
         (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Int(a), Value::Int(b)]) => {
-            let r = match name { op::ADD => a.checked_add(*b), op::SUBSTRACT => a.checked_sub(*b), _ => a.checked_mul(*b) };
+            let r = match name {
+                op::ADD => a.checked_add(*b),
+                op::SUBSTRACT => a.checked_sub(*b),
+                _ => a.checked_mul(*b),
+            };
             r.map(Value::Int).ok_or_else(bad)
         }
         (op::ADD | op::SUBSTRACT | op::MULTIPLY, [Value::Double(a), Value::Double(b)]) => {
-            let r = match name { op::ADD => a + b, op::SUBSTRACT => a - b, _ => a * b };
+            let r = match name {
+                op::ADD => a + b,
+                op::SUBSTRACT => a - b,
+                _ => a * b,
+            };
             Ok(Value::Double(r))
         }
-        (op::DIVIDE, [Value::Int(a), Value::Int(b)]) if *b != 0 => a.checked_div(*b).map(Value::Int).ok_or_else(bad),
+        (op::DIVIDE, [Value::Int(a), Value::Int(b)]) if *b != 0 => {
+            a.checked_div(*b).map(Value::Int).ok_or_else(bad)
+        }
         (op::DIVIDE, [Value::Double(a), Value::Double(b)]) if *b != 0.0 => Ok(Value::Double(a / b)),
-        (op::MODULO, [Value::Int(a), Value::Int(b)]) if *b != 0 => a.checked_rem(*b).map(Value::Int).ok_or_else(bad),
+        (op::MODULO, [Value::Int(a), Value::Int(b)]) if *b != 0 => {
+            a.checked_rem(*b).map(Value::Int).ok_or_else(bad)
+        }
         (op::GREATER | op::GREATER_EQUALS | op::LESS | op::LESS_EQUALS, [a, b]) => {
             let ord = match (a, b) {
                 (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
                 (Value::Double(a), Value::Double(b)) => a.partial_cmp(b),
                 (Value::Str(a), Value::Str(b)) => a.partial_cmp(b),
                 _ => None,
-            }.ok_or_else(bad)?;
-            Ok(Value::Bool(match name { op::GREATER => ord.is_gt(), op::GREATER_EQUALS => !ord.is_lt(), op::LESS => ord.is_lt(), _ => !ord.is_gt() }))
+            }
+            .ok_or_else(bad)?;
+            Ok(Value::Bool(match name {
+                op::GREATER => ord.is_gt(),
+                op::GREATER_EQUALS => !ord.is_lt(),
+                op::LESS => ord.is_lt(),
+                _ => !ord.is_gt(),
+            }))
         }
         _ => Err(bad()),
     }
 }
-
 
 fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
     match (base, key) {
@@ -317,14 +337,20 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
         (Value::List(l), Value::Int(n)) => {
             let i = *n as isize;
             if i < 0 || (i as usize) >= l.len() {
-                return Err(EvalError::new(format!("list index {i} out of bounds (size {})", l.len())));
+                return Err(EvalError::new(format!(
+                    "list index {i} out of bounds (size {})",
+                    l.len()
+                )));
             }
             Ok(l[i as usize].clone())
         }
         (Value::List(l), Value::Double(n)) if n.fract() == 0.0 && *n >= 0.0 => {
             let i = *n as usize;
             if i >= l.len() {
-                return Err(EvalError::new(format!("list index {i} out of bounds (size {})", l.len())));
+                return Err(EvalError::new(format!(
+                    "list index {i} out of bounds (size {})",
+                    l.len()
+                )));
             }
             Ok(l[i].clone())
         }

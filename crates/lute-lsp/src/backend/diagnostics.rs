@@ -1,9 +1,12 @@
-use std::path::PathBuf;
-use lute_core_span::{Diagnostic, TextIndex};
-use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location, Position, Range, Uri};
-use crate::convert::to_lsp_diagnostic;
-use super::Backend;
 use super::document::canonical_path_of;
+use super::Backend;
+use crate::convert::to_lsp_diagnostic;
+use lute_core_span::{Diagnostic, TextIndex};
+use std::path::PathBuf;
+use tower_lsp_server::ls_types::{
+    Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location,
+    Position, Range, Uri,
+};
 
 impl Backend {
     /// Round-6 T3-68: `d`'s sub-diagnostics located in another file (the

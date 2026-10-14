@@ -443,7 +443,10 @@ fn reserved_quest_paths(
 
 /// The documents of `project` (the same `.lute` walk `check-project` does),
 /// else `file` alone, parsed.
-fn project_docs(file: &Path, project: Option<&Path>) -> Vec<(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)> {
+fn project_docs(
+    file: &Path,
+    project: Option<&Path>,
+) -> Vec<(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)> {
     let files: Vec<PathBuf> = match project {
         Some(dir) => crate::find_lute_files(dir).unwrap_or_default(),
         None => vec![file.to_path_buf()],

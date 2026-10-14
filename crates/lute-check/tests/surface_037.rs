@@ -45,12 +45,18 @@ fn with(diags: &[Diagnostic], code: &str) -> Vec<String> {
 #[test]
 fn mono_by_the_pov_is_clean() {
     let d = scene("pov: mira\n", "@mira{mono}: I should leave.\n");
-    assert!(with(&d, "E-MONO-POV").is_empty() && with(&d, "E-MONO-NO-POV").is_empty(), "{d:?}");
+    assert!(
+        with(&d, "E-MONO-POV").is_empty() && with(&d, "E-MONO-NO-POV").is_empty(),
+        "{d:?}"
+    );
 }
 
 #[test]
 fn mono_by_an_allow_listed_speaker_is_clean() {
-    let d = scene("pov: fixer\nmonoSpeakers: [mira]\n", "@mira{mono}: I should leave.\n");
+    let d = scene(
+        "pov: fixer\nmonoSpeakers: [mira]\n",
+        "@mira{mono}: I should leave.\n",
+    );
     assert!(with(&d, "E-MONO-POV").is_empty(), "{d:?}");
 }
 
@@ -59,7 +65,11 @@ fn mono_by_another_speaker_is_mono_pov() {
     let d = scene("pov: fixer\n", "@mira{mono}: I should leave.\n");
     let m = with(&d, "E-MONO-POV");
     assert_eq!(m.len(), 1, "{d:?}");
-    assert!(m[0].contains("`fixer`") && m[0].contains("monoSpeakers"), "{}", m[0]);
+    assert!(
+        m[0].contains("`fixer`") && m[0].contains("monoSpeakers"),
+        "{}",
+        m[0]
+    );
 }
 
 #[test]
@@ -96,7 +106,11 @@ fn component_mono_is_judged_per_caller() {
     let bad = caller("fixer");
     let hits: Vec<&Diagnostic> = bad.iter().filter(|d| d.code == "E-MONO-POV").collect();
     assert_eq!(hits.len(), 1, "{bad:?}");
-    assert!(hits[0].message.starts_with("component `c`"), "{}", hits[0].message);
+    assert!(
+        hits[0].message.starts_with("component `c`"),
+        "{}",
+        hits[0].message
+    );
     assert_eq!(hits[0].related.len(), 1, "the component line rides along");
     assert_eq!(hits[0].span.line, 8, "anchored at the `::use`");
 }
@@ -130,7 +144,10 @@ fn quest(rewards: &str) -> Vec<Diagnostic> {
 #[test]
 fn distinct_reward_ids_are_clean() {
     let d = quest("<reward id=\"pay\" kind=\"gold\" amount=\"5\"/>\n");
-    assert!(with(&d, "E-REWARD-DUP").is_empty() && with(&d, "E-UNKNOWN-ATTR").is_empty(), "{d:?}");
+    assert!(
+        with(&d, "E-REWARD-DUP").is_empty() && with(&d, "E-UNKNOWN-ATTR").is_empty(),
+        "{d:?}"
+    );
 }
 
 #[test]
@@ -152,26 +169,50 @@ fn core_modifiers_well_formed_are_clean() {
 
 #[test]
 fn pause_faults() {
-    assert_eq!(modifier("", "a :pause{s=-1} b").len(), 1, "negative seconds");
-    assert_eq!(modifier("", "a :pause{x=1} b").len(), 2, "unknown attr + missing s");
+    assert_eq!(
+        modifier("", "a :pause{s=-1} b").len(),
+        1,
+        "negative seconds"
+    );
+    assert_eq!(
+        modifier("", "a :pause{x=1} b").len(),
+        2,
+        "unknown attr + missing s"
+    );
     assert_eq!(modifier("", "a :pause[b]{s=1}").len(), 1, "pause is a leaf");
 }
 
 #[test]
 fn speed_faults() {
-    assert_eq!(modifier("", "a :speed[b]{rate=0}").len(), 1, "rate must be positive");
+    assert_eq!(
+        modifier("", "a :speed[b]{rate=0}").len(),
+        1,
+        "rate must be positive"
+    );
     assert_eq!(modifier("", "a :speed[b]{}").len(), 1, "rate is required");
-    assert_eq!(modifier("", "a :speed{rate=2} b").len(), 1, "speed is a span");
+    assert_eq!(
+        modifier("", "a :speed{rate=2} b").len(),
+        1,
+        "speed is a span"
+    );
 }
 
 #[test]
 fn text_style_members() {
     let front = "enums:\n  textStyle: [emphasis]\n";
     assert!(modifier(front, ":emphasis[Hello]").is_empty());
-    assert_eq!(modifier(front, ":emphasis[Hello]{loud}").len(), 1, "a style takes no attrs");
+    assert_eq!(
+        modifier(front, ":emphasis[Hello]{loud}").len(),
+        1,
+        "a style takes no attrs"
+    );
     assert_eq!(modifier(front, ":emphasys[Hello]").len(), 1, "not a member");
     let d = scene("", "@a: :emphasis[Hello]\n");
-    assert_eq!(with(&d, "E-DOMAIN-UNKNOWN").len(), 1, "no textStyle domain: {d:?}");
+    assert_eq!(
+        with(&d, "E-DOMAIN-UNKNOWN").len(),
+        1,
+        "no textStyle domain: {d:?}"
+    );
 }
 
 // -- lowerCamelCase (§2.1, D14) ---------------------------------------------

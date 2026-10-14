@@ -587,13 +587,24 @@ mod tests {
         let snap = load_core_snapshot();
         let off = LABELS.find("name=\"detail\"").unwrap() + "name=\"".len() + 1;
         let refs = references_at(&doc, &snap, &SchemaImports::default(), off, false);
-        assert_eq!(refs.len(), 2, "both jumps to `detail`, nested one included: {refs:?}");
+        assert_eq!(
+            refs.len(),
+            2,
+            "both jumps to `detail`, nested one included: {refs:?}"
+        );
         for r in &refs {
             assert_eq!(unquoted(LABELS, *r), "detail");
-            assert!(LABELS[..r.byte_start].ends_with("to=") || LABELS[..r.byte_start].ends_with("to=\""));
+            assert!(
+                LABELS[..r.byte_start].ends_with("to=")
+                    || LABELS[..r.byte_start].ends_with("to=\"")
+            );
         }
         let with_decl = references_at(&doc, &snap, &SchemaImports::default(), off, true);
-        assert_eq!(with_decl.len(), 3, "jumps + the label declaration: {with_decl:?}");
+        assert_eq!(
+            with_decl.len(),
+            3,
+            "jumps + the label declaration: {with_decl:?}"
+        );
     }
 
     #[test]
@@ -603,6 +614,10 @@ mod tests {
         let off = LABELS.find("to=\"other\"").unwrap() + "to=\"".len() + 1;
         let refs = references_at(&doc, &snap, &SchemaImports::default(), off, true);
         let names: Vec<&str> = refs.iter().map(|r| unquoted(LABELS, *r)).collect();
-        assert_eq!(names, ["other", "other"], "one jump + the declaration: {refs:?}");
+        assert_eq!(
+            names,
+            ["other", "other"],
+            "one jump + the declaration: {refs:?}"
+        );
     }
 }

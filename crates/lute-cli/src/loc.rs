@@ -100,9 +100,9 @@ use std::process::ExitCode;
 use lute_check::meta::canonical_episode_key;
 use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
+use lute_load::{build_input, find_lute_files, project_root_for};
 use lute_manifest::project::IdentityTemplates;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, Document, Node};
-use lute_load::{build_input, find_lute_files, project_root_for};
 
 /// One translatable unit extracted from a document, carrying the byte offset
 /// used to sort the export deterministically.
@@ -457,7 +457,6 @@ fn is_component_document(doc: &Document) -> bool {
         .and_then(|v| v.get("component").cloned())
         .is_some()
 }
-
 
 /// Parse every `.lute` under `dir` (skipping — with a stderr note — any file
 /// whose parse produces an `Error`-severity diagnostic) and collect all

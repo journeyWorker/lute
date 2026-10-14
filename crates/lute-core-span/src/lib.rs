@@ -131,7 +131,6 @@ impl Evidence {
     }
 }
 
-
 impl Serialize for Evidence {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         let value = match self {
@@ -160,7 +159,6 @@ impl<'de> Deserialize<'de> for Evidence {
         }
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Fixit {

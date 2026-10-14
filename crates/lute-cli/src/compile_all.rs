@@ -21,16 +21,16 @@
 //! directory is worse than no output, because a build system would happily ship
 //! it.
 
+use lute_compile::locale::LocaleBundle;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use lute_compile::locale::LocaleBundle;
 
 use lute_compile::index::{build_index, voice_key_collisions, IndexInput, E_DUP_VOICEKEY};
 use lute_compile::ExecutionIr;
 
-use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
 use crate::{render_diagnostics, DenyPolicy};
+use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
 
 /// The project index's fixed file name inside the output directory.
 const INDEX_FILE: &str = "project.index.json";
@@ -231,8 +231,14 @@ pub fn run(
             let merged = lute_compile::locale::merge_locales(&mut artifact, bundle);
             // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
             // fails its document like a check error.
-            if merged.iter().any(|d| d.severity == lute_core_span::Severity::Error) {
-                failures.insert(doc.path.clone(), render_diagnostics(&doc.path, &merged, policy));
+            if merged
+                .iter()
+                .any(|d| d.severity == lute_core_span::Severity::Error)
+            {
+                failures.insert(
+                    doc.path.clone(),
+                    render_diagnostics(&doc.path, &merged, policy),
+                );
                 continue;
             }
             denied += merged.iter().filter(|d| policy.denied(d)).count();

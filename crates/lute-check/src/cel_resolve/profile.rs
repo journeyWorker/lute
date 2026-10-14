@@ -1,5 +1,5 @@
 use super::*;
-use super::{core::*, rules::*, facts::*, state::*};
+use super::{core::*, facts::*, rules::*, state::*};
 pub(crate) fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
     lute_cel::walk(expr, &mut |node| {
         let lute_cel::Node::Expr(expr) = node else {
@@ -28,8 +28,12 @@ pub(crate) fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<D
             }
             Expr::Call(_) | Expr::Select(_) => lute_cel::Flow::Continue,
             Expr::List(_) => lute_cel::Flow::Continue,
-            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Ident(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => lute_cel::Flow::Skip,
         }
     });
 }
@@ -62,8 +66,12 @@ pub(crate) fn check_guard_fact_access(expr: &Expr, span: Span, diags: &mut Vec<D
                 }
             }
             Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
-            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Ident(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => lute_cel::Flow::Skip,
         }
     });
 }
@@ -115,8 +123,7 @@ pub(crate) fn check_cel_profile(
     match expr {
         Expr::Call(c) => {
             let name = c.func_name.as_str();
-            let visited =
-                slot.kind == CelKind::Condition && visited_call_target(c).is_some();
+            let visited = slot.kind == CelKind::Condition && visited_call_target(c).is_some();
             if name.starts_with(lute_cel::REF_MARKER)
                 || is_profile_operator(name)
                 || is_fact_query_name(c)
@@ -195,7 +202,8 @@ pub(crate) fn check_cel_profile(
                         )
                     ),
                     None if matches!(name.as_str(), "once" | "always")
-                        && slot.raw.trim() == name.as_str() => {
+                        && slot.raw.trim() == name.as_str() =>
+                    {
                         format!(
                             "`{name}` is not a condition: how often a beat plays is its own key, \
                              `once` — `once: run` (once per run, the default), `once: user` \
@@ -307,7 +315,11 @@ pub(crate) fn call_hint(c: &cel_parser::ast::CallExpr, scope: &ProfileScope<'_>)
         (Some(m @ ("completed" | "active")), Some(id)) => format!(
             " — `{m}()`{not} belongs to `after:`; a condition reads the quest's state: \
              `quest.{id}.state == '{}'`",
-            if m == "completed" { "complete" } else { "active" }
+            if m == "completed" {
+                "complete"
+            } else {
+                "active"
+            }
         ),
         (Some(VISITED_FN), Some(id)) if meant == Some(name) => {
             format!(" — the scene id is quoted: `visited('{id}')`")
@@ -328,9 +340,7 @@ pub(crate) fn isset_hint(c: &cel_parser::ast::CallExpr) -> String {
                 crate::cel_paths::select_path(&index.args[0].expr),
                 &index.args[1].expr,
             ) {
-                return format!(
-                    " — `isSet` was removed; use `'{key}' in {path}`"
-                );
+                return format!(" — `isSet` was removed; use `'{key}' in {path}`");
             }
         }
     }
@@ -353,9 +363,10 @@ pub(crate) fn legacy_fact_hint(c: &cel_parser::ast::CallExpr) -> Option<String> 
             .unwrap_or_default(),
         "countDistinct" => {
             let column = c.args.get(1).and_then(|arg| match &arg.expr {
-                Expr::Ident(name) => pattern.args.iter().position(|p| {
-                    matches!(&p.expr, Expr::Ident(candidate) if candidate == name)
-                }),
+                Expr::Ident(name) => pattern
+                    .args
+                    .iter()
+                    .position(|p| matches!(&p.expr, Expr::Ident(candidate) if candidate == name)),
                 _ => None,
             });
             format!(", {}", column.unwrap_or(0))
@@ -464,9 +475,7 @@ pub(crate) fn check_modulo_operands(
 
 /// Standard CEL numeric conversions, with one argument and no receiver.
 pub(crate) fn is_profile_conversion(c: &cel_parser::ast::CallExpr) -> bool {
-    matches!(c.func_name.as_str(), "int" | "double")
-        && c.target.is_none()
-        && c.args.len() == 1
+    matches!(c.func_name.as_str(), "int" | "double") && c.target.is_none() && c.args.len() == 1
 }
 
 /// The Lute-CEL name of the presentation-history query (dsl 0.21.0 §7a.1).
@@ -513,8 +522,12 @@ pub fn visited_targets(expr: &Expr) -> Vec<String> {
                 }
             }
             Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
-            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Ident(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => lute_cel::Flow::Skip,
         }
     });
     out
@@ -556,8 +569,8 @@ pub(crate) fn count_distinct_column(c: &cel_parser::ast::CallExpr) -> Option<usi
     if c.target.is_some() || c.func_name != "countDistinct" || c.args.len() != 3 {
         return None;
     }
-    let (Expr::List(list), Expr::Literal(Val::Int(column))) =
-        (&c.args[1].expr, &c.args[2].expr) else {
+    let (Expr::List(list), Expr::Literal(Val::Int(column))) = (&c.args[1].expr, &c.args[2].expr)
+    else {
         return None;
     };
     let column = usize::try_from(*column).ok()?;

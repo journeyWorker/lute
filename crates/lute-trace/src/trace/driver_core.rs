@@ -88,7 +88,11 @@ impl<'a> TraceDriver<'a> {
             .unwrap_or_else(|| self.span_at(addr))
     }
 
-    pub(super) fn option_guard(&self, addr: &str, option: &str) -> (Option<String>, Option<String>) {
+    pub(super) fn option_guard(
+        &self,
+        addr: &str,
+        option: &str,
+    ) -> (Option<String>, Option<String>) {
         match self
             .option_index(addr, option)
             .and_then(|i| self.arm(addr, i))
@@ -109,7 +113,9 @@ impl<'a> TraceDriver<'a> {
                     "bridges: {{ {tag}: [ {shape} ] }} (plugin `{tag}` call unanswered; `{p}` \
                      reads its `{field}` result)"
                 ),
-                None if p == lute_manifest::semantics::beats::OCCASION_TARGET && !self.cx.members.is_empty() => {
+                None if p == lute_manifest::semantics::beats::OCCASION_TARGET
+                    && !self.cx.members.is_empty() =>
+                {
                     format!("--state {p}=<{}>", self.cx.members.join("|"))
                 }
                 None => render_atom(a),

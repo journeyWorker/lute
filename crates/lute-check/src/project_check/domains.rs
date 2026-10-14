@@ -1,8 +1,8 @@
-use std::collections::BTreeSet;
-use std::path::PathBuf;
 use lute_core_span::{Diagnostic, Layer, Severity};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 /// `W-DOMAIN-UNREAD`: a domain the project declares that no active construct
 /// reads (dsl 0.10.0 §11.1). Project-wide only (**D-V**).

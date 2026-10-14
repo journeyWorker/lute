@@ -74,6 +74,9 @@ fn parser_property() {
             Err(error) => Err(TestCaseError::fail(error)),
         });
         assert!(replay.is_err(), "fixed-seed parser failure did not replay");
-        panic!("parser property failed with seed 0x{SEED:016x}; replay: {}\n{error}", replay_path.display());
+        panic!(
+            "parser property failed with seed 0x{SEED:016x}; replay: {}\n{error}",
+            replay_path.display()
+        );
     }
 }

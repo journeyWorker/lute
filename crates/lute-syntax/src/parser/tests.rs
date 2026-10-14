@@ -220,7 +220,11 @@ fn every_hash_heading_before_a_section_is_inert_title() {
     let (_doc, diags) = parse("# First\n# Second\n## Shot 1.\n@narrator: hi.\n");
     let inert: Vec<_> = diags.iter().filter(|d| d.code == E_INERT_TITLE).collect();
     assert_eq!(inert.len(), 2, "{diags:?}");
-    assert!(inert[0].message.contains("frontmatter"), "{}", inert[0].message);
+    assert!(
+        inert[0].message.contains("frontmatter"),
+        "{}",
+        inert[0].message
+    );
 }
 
 #[test]
@@ -228,9 +232,15 @@ fn removed_scene_tag_names_sections() {
     let (_doc, diags) = parse("## A\n<scene id=\"x\">\n@narrator: hi.\n</scene>\n");
     let removed: Vec<_> = diags.iter().filter(|d| d.code == E_REMOVED_TAG).collect();
     assert_eq!(removed.len(), 2, "open and close: {diags:?}");
-    assert!(removed[0].message.contains("`## `"), "{}", removed[0].message);
     assert!(
-        !diags.iter().any(|d| d.code == E_UNCLASSIFIED || d.code == "E-UNCLOSED-TAG"),
+        removed[0].message.contains("`## `"),
+        "{}",
+        removed[0].message
+    );
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.code == E_UNCLASSIFIED || d.code == "E-UNCLOSED-TAG"),
         "{diags:?}"
     );
 }
@@ -320,8 +330,7 @@ fn match_when_otherwise_retain_residual_attrs() {
 
 #[test]
 fn attr_quote_protects_structural_chars() {
-    let (doc, _) =
-        parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
+    let (doc, _) = parse("---\ncharacter: x\n---\n## Shot 1.\n::sfx{sound=\"a } b\" name=\"n\"}\n");
     if let Node::Directive(d) = &doc.sections[0].body[0] {
         assert_eq!(d.attrs.len(), 2);
         assert_eq!(d.attrs[0].key, "sound");
@@ -1146,7 +1155,10 @@ fn section_suffix_is_parsed_and_heading_is_preserved_without_it() {
     let (doc, diags) = parse("## The Alley {#stable-id}\n@n: hi\n## No Suffix\n");
     assert!(diags.is_empty(), "{diags:?}");
     assert_eq!(doc.sections[0].heading, "The Alley");
-    assert_eq!(doc.sections[0].id.as_ref().map(|(id, _)| id.as_str()), Some("stable-id"));
+    assert_eq!(
+        doc.sections[0].id.as_ref().map(|(id, _)| id.as_str()),
+        Some("stable-id")
+    );
     assert_eq!(doc.sections[1].heading, "No Suffix");
     assert!(doc.sections[1].id.is_none());
 }
@@ -1154,7 +1166,10 @@ fn section_suffix_is_parsed_and_heading_is_preserved_without_it() {
 #[test]
 fn malformed_section_suffix_is_diagnosed() {
     let (_, diags) = parse("## Alley {#not valid}\n");
-    assert!(diags.iter().any(|d| d.code == E_SECTION_SUFFIX), "{diags:?}");
+    assert!(
+        diags.iter().any(|d| d.code == E_SECTION_SUFFIX),
+        "{diags:?}"
+    );
 }
 
 #[test]
@@ -1163,7 +1178,9 @@ fn inline_modifiers_nest_and_derive_plain_text() {
         "## Section\n@n: :speed[Hello :emphasis[world] {{user.name}}]{rate=1.25}:pause{s=0.5}!\n",
     );
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
     assert_eq!(line.plain_text(), "Hello world {{user.name}}!");
     assert_eq!(line.inline.len(), 3);
 }
@@ -1172,9 +1189,14 @@ fn inline_modifiers_nest_and_derive_plain_text() {
 fn inline_escapes_and_non_modifying_colons_are_plain_text() {
     let (doc, diags) = parse("## Section\n@n: \\: \\[x\\] \\{y\\} \\\\ http://host:8080\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
     assert_eq!(line.plain_text(), ": [x] {y} \\ http://host:8080");
-    assert!(line.inline.iter().all(|n| !matches!(n, InlineNode::Modifier(_))));
+    assert!(line
+        .inline
+        .iter()
+        .all(|n| !matches!(n, InlineNode::Modifier(_))));
 }
 
 #[test]
@@ -1203,14 +1225,19 @@ fn block_form_tag_body_stays_clean() {
 #[test]
 fn suffix_fragment_must_be_final() {
     let (_, diags) = parse("## Alley {#ok} trailing\n");
-    assert!(diags.iter().any(|d| d.code == E_SECTION_SUFFIX), "{diags:?}");
+    assert!(
+        diags.iter().any(|d| d.code == E_SECTION_SUFFIX),
+        "{diags:?}"
+    );
 }
 
 #[test]
 fn plain_text_preserves_interpolation_source_bytes() {
     let (doc, diags) = parse("## Section\n@n: :speed[{{ user.name : ordinal }}]{rate=2}\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
     assert_eq!(line.plain_text(), "{{ user.name : ordinal }}");
 }
 
@@ -1241,7 +1268,9 @@ fn section_id_span_excludes_heading_whitespace() {
 fn escaped_interpolation_matches_legacy_scan() {
     let (doc, diags) = parse("## Section\n@n: \\{{x}} and \\\\{{y}}\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
     assert_eq!(line.interps.len(), 0);
 }
 
@@ -1342,7 +1371,9 @@ fn legacy_sigil_diagnostic_mentions_lute_fix() {
 fn escaped_punctuation_never_opens_or_closes_a_modifier() {
     let (doc, diags) = parse("## Section\n@n: \\:emphasis[x] :emphasis[a\\]b] \\:pause{s=1}\n");
     assert!(diags.is_empty(), "{diags:?}");
-    let Node::Line(line) = &doc.sections[0].body[0] else { panic!() };
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
     assert_eq!(line.plain_text(), ":emphasis[x] a]b :pause{s=1}");
     let mods = line.modifier_multiset();
     assert_eq!(mods.len(), 1, "{mods:?}");

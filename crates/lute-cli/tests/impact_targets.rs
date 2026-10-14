@@ -139,7 +139,13 @@ fn impact_component_target() {
 #[test]
 fn malformed_impact_targets_are_usage_errors() {
     let dir = fixture("malformed");
-    for target in ["", "unknown:value", "state:", "state:run..score", "fact:knows(kai"] {
+    for target in [
+        "",
+        "unknown:value",
+        "state:",
+        "state:run..score",
+        "fact:knows(kai",
+    ] {
         let output = run(&dir, target);
         let combined = format!(
             "{}{}",

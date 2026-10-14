@@ -31,7 +31,11 @@ fn runtime(scratch: &str) -> Runtime {
         .arg(&out)
         .output()
         .unwrap();
-    assert!(status.status.success(), "{}", String::from_utf8_lossy(&status.stderr));
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
     let read = |path: &Path| -> Json {
         serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
     };
@@ -51,7 +55,10 @@ fn runtime(scratch: &str) -> Runtime {
 
 fn step(runtime: &Runtime, state: &State, value: Json) -> (State, Output) {
     runtime
-        .step(state.clone(), serde_json::from_value::<Input>(value).unwrap())
+        .step(
+            state.clone(),
+            serde_json::from_value::<Input>(value).unwrap(),
+        )
         .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message))
 }
 
@@ -118,7 +125,11 @@ fn writes_that_end_the_game_stop_the_clock() {
         json!({"type": "advanceClock", "by": "day",
                "writes": {"state": [{"path": "run.over", "value": true}]}}),
     );
-    assert!(matches!(output.await_, Await::Ended { .. }), "{:?}", output.await_);
+    assert!(
+        matches!(output.await_, Await::Ended { .. }),
+        "{:?}",
+        output.await_
+    );
     assert!(brief(&output).is_empty(), "{:?}", brief(&output));
     assert_eq!(state_of(&runtime, &state, "run.day"), json!(1));
     assert_eq!(state_of(&runtime, &state, "run.over"), json!(true));
@@ -128,7 +139,11 @@ fn writes_that_end_the_game_stop_the_clock() {
 fn a_beat_advance_moves_the_clock_after_its_presentation_ends() {
     let runtime = runtime("clock041-advances");
     let (start, _) = runtime.begin(Seed::default()).unwrap();
-    let (_, output) = step(&runtime, &start, json!({"type": "raiseOccasion", "occasion": "work"}));
+    let (_, output) = step(
+        &runtime,
+        &start,
+        json!({"type": "raiseOccasion", "occasion": "work"}),
+    );
     assert_eq!(
         brief(&output),
         [
@@ -163,8 +178,14 @@ fn play_prints_advance_writes_before_the_move() {
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "{text}{}", String::from_utf8_lossy(&out.stderr));
-    let write = text.find("set run.ready = true").expect("the write is printed");
+    assert!(
+        out.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let write = text
+        .find("set run.ready = true")
+        .expect("the write is printed");
     let moved = text.find("set run.day = 2").expect("the move is printed");
     assert!(write < moved, "{text}");
     assert!(text.contains("Morning reads the write."), "{text}");

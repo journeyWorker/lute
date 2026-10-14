@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_compile::ExecutionIr;
+use lute_load::nearest_manifest_dir;
+use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
 use lute_runtime::session::ExecProject;
 use lute_trace::exec::record::NeedleVocab;
-use lute_model::{relocate_imported_diags, ModelMemo, ModelOptions, ProjectModel};
-use lute_load::nearest_manifest_dir;
 
 /// `path` relative to `root`, forward-slash joined — the project-relative
 /// artifact identity `compile_all.rs`'s private `rel_slash` uses.
@@ -68,13 +68,19 @@ fn compile_bundle(
     gate: Gate,
     matrix: &crate::EngineMatrix,
 ) -> Result<PlayBundle, ExitCode> {
-    let project_dir = nearest_manifest_dir(project_dir)
-        .unwrap_or_else(|| project_dir.to_path_buf());
+    let project_dir =
+        nearest_manifest_dir(project_dir).unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
-    let source_model = memo.single_root(&project_dir, &model_options()).map_err(|error| {
-        eprintln!("{}: cannot build {}: {error}", gate.cmd, project_dir.display());
-        ExitCode::from(1)
-    })?;
+    let source_model = memo
+        .single_root(&project_dir, &model_options())
+        .map_err(|error| {
+            eprintln!(
+                "{}: cannot build {}: {error}",
+                gate.cmd,
+                project_dir.display()
+            );
+            ExitCode::from(1)
+        })?;
     assemble_bundle_from_model(&project_dir, gate, matrix, &source_model)
 }
 
@@ -106,8 +112,8 @@ pub(crate) fn manifest_gate(project_dir: &Path, cmd: &str) -> Result<(), ExitCod
 /// manifest gate, for the differential oracle that drives the gates itself.
 #[cfg(test)]
 pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, ExitCode> {
-    let project_dir = nearest_manifest_dir(project_dir)
-        .unwrap_or_else(|| project_dir.to_path_buf());
+    let project_dir =
+        nearest_manifest_dir(project_dir).unwrap_or_else(|| project_dir.to_path_buf());
     ProjectModel::build_single_root(&project_dir, &model_options()).map_err(|error| {
         eprintln!("lute: cannot build {}: {error}", project_dir.display());
         ExitCode::from(1)
@@ -170,7 +176,11 @@ fn assemble_bundle_from_model(
         if path.extension().and_then(|extension| extension.to_str()) == Some("lute") {
             continue;
         }
-        let message = diagnostic.message.split(" (imported by ").next().unwrap_or(&diagnostic.message);
+        let message = diagnostic
+            .message
+            .split(" (imported by ")
+            .next()
+            .unwrap_or(&diagnostic.message);
         let count = per_doc.len();
         diagnostic.message = format!(
             "{message} (imported by {count} document{})",
@@ -213,7 +223,10 @@ fn assemble_bundle_from_model(
             return Err(ExitCode::from(2));
         };
         let input = &source.input;
-        needles.union(lute_trace::exec::record::needle_vocab(input, &source.folded.typed));
+        needles.union(lute_trace::exec::record::needle_vocab(
+            input,
+            &source.folded.typed,
+        ));
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,
@@ -255,16 +268,29 @@ fn assemble_bundle_from_model(
 
     let unions = crate::bundle::collect_index_unions(source_model);
     let bundle = crate::bundle::build_bundle(&compiled, &unions).map_err(|(code, lines)| {
-        for line in &lines { eprintln!("{line}"); }
+        for line in &lines {
+            eprintln!("{line}");
+        }
         ExitCode::from(code)
     })?;
-    let authored = compiled.iter().filter_map(|(path, artifact)| {
-        let authored = artifact.commands.iter().filter_map(|command| command.authored())
-            .map(|(position, text)| (position.to_string(), text.to_string()))
-            .collect::<BTreeMap<_, _>>();
-        (!authored.is_empty()).then(|| (path.clone(), authored))
-    }).collect();
-    Ok(PlayBundle { bundle, authored, chapter_afters, needles })
+    let authored = compiled
+        .iter()
+        .filter_map(|(path, artifact)| {
+            let authored = artifact
+                .commands
+                .iter()
+                .filter_map(|command| command.authored())
+                .map(|(position, text)| (position.to_string(), text.to_string()))
+                .collect::<BTreeMap<_, _>>();
+            (!authored.is_empty()).then(|| (path.clone(), authored))
+        })
+        .collect();
+    Ok(PlayBundle {
+        bundle,
+        authored,
+        chapter_afters,
+        needles,
+    })
 }
 
 /// A compiled project as the runtime loads it (spec 0.38.0 §4.1), plus what

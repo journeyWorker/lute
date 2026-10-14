@@ -151,8 +151,12 @@ pub(crate) fn check_types(
             Expr::List(_) | Expr::Select(_) => lute_cel::Flow::Continue,
             // The closed profile rejects these containers before nested typing
             // (docs/runtime/cel-and-facts.md:12-16).
-            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-            | Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Ident(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => lute_cel::Flow::Skip,
         }
     });
 }
@@ -167,7 +171,6 @@ fn is_whole_ref_or_path(expr: &Expr) -> bool {
         _ => false,
     }
 }
-
 
 fn check_call(whole: &Expr, c: &CallExpr, span: Span, t: &Typing<'_>, diags: &mut Vec<Diagnostic>) {
     let name = c.func_name.as_str();
@@ -400,7 +403,10 @@ fn equality_hint(x: &Expr, tx: &Type, y: &Expr, name: &str, t: &Typing<'_>) -> O
                 }
             }
             if s.trim().parse::<f64>().is_ok() {
-                if let Some(p) = path.as_deref().map(lute_manifest::text::bracket_spelling_of) {
+                if let Some(p) = path
+                    .as_deref()
+                    .map(lute_manifest::text::bracket_spelling_of)
+                {
                     return Some(format!(
                         " — write the number without quotes: `{p} {sym} {}`",
                         s.trim()
@@ -445,9 +451,12 @@ fn ordering_hint(
     let path = select_path(bad);
     match ty {
         Type::Bool => match path.as_deref() {
-            Some(p) if p.starts_with("scene.visited.") => " — `scene.visited.<hub>.<choice>` is whether that choice was ever taken, not \
+            Some(p) if p.starts_with("scene.visited.") => {
+                " — `scene.visited.<hub>.<choice>` is whether that choice was ever taken, not \
                  how often; count picks in an `int` path you `::set` (for example \
-                 `::set{run.picks += 1}`)".to_string(),
+                 `::set{run.picks += 1}`)"
+                    .to_string()
+            }
             Some(p) => {
                 let p = lute_manifest::text::bracket_spelling_of(p);
                 format!(" — a bool is `true` or `false`: test it directly (`{p}` or `!{p}`)")
@@ -588,7 +597,9 @@ pub(crate) fn show(e: &Expr) -> String {
         Expr::Ident(n) if n == "_" => "$".to_string(),
         Expr::Ident(n) => n.replace(lute_cel::REF_MARKER, "@"),
         Expr::Select(_) => select_path(e)
-            .map(|p| lute_manifest::text::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@"))
+            .map(|p| {
+                lute_manifest::text::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@")
+            })
             .unwrap_or_else(|| "…".to_string()),
         Expr::Call(_) if crate::cel_paths::is_path_index(e) => select_path(e)
             .map(|p| lute_manifest::text::bracket_spelling_of(&p))

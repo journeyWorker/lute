@@ -755,9 +755,13 @@ pub fn persistent_reads(
                 let kept = match c.func_name.as_str() {
                     "visited" => lit().is_some(),
                     "completed" | "active" => lit().is_some_and(|q| quest_kept(&q) == Some(true)),
-                    "holds" | "count" | "countDistinct" => crate::fact_env::QueryPattern::from_call(c)
-                        .and_then(|q| (relation_kept(&q.relation) == Some(true)).then_some(true))
-                        .unwrap_or(false),
+                    "holds" | "count" | "countDistinct" => {
+                        crate::fact_env::QueryPattern::from_call(c)
+                            .and_then(|q| {
+                                (relation_kept(&q.relation) == Some(true)).then_some(true)
+                            })
+                            .unwrap_or(false)
+                    }
                     _ => return lute_cel::Flow::Continue,
                 };
                 if kept {
@@ -766,8 +770,11 @@ pub fn persistent_reads(
                 lute_cel::Flow::Skip
             }
             Expr::Call(_) | Expr::List(_) => lute_cel::Flow::Continue,
-            Expr::Comprehension(_) | Expr::Map(_) | Expr::Struct(_)
-            | Expr::Literal(_) | Expr::Unspecified => lute_cel::Flow::Skip,
+            Expr::Comprehension(_)
+            | Expr::Map(_)
+            | Expr::Struct(_)
+            | Expr::Literal(_)
+            | Expr::Unspecified => lute_cel::Flow::Skip,
         }
     });
     out

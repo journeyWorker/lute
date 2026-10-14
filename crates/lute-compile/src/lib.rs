@@ -29,8 +29,8 @@ pub mod stage;
 pub mod streaming;
 
 pub use ir::*;
-pub use source_map::SourceMap;
 pub use semantics::*;
+pub use source_map::SourceMap;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,11 +38,11 @@ use lute_cel::CelArena;
 use lute_check::meta::{canonical_episode_id, canonical_scene_key, StateSchema};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
+use lute_ir::*;
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{type_accepts, Literal, Type};
-use lute_ir::*;
 use lute_syntax::ast::{Arm, Document, Node};
 /// Attach the expanded project identity ledger to one artifact and refresh its
 /// derived semantic capability list. Every artifact-producing path uses this
@@ -52,10 +52,12 @@ pub fn stamp_identity_renames(
     renames: &[lute_manifest::project::IdentityRename],
 ) {
     artifact.identity_renames = renames.to_vec();
-    artifact.required_semantics =
-        semantics::collect(artifact).ids.into_iter().map(str::to_string).collect();
+    artifact.required_semantics = semantics::collect(artifact)
+        .ids
+        .into_iter()
+        .map(str::to_string)
+        .collect();
 }
-
 
 /// Language-version pin stamped into the artifact envelope's `lute` field (DSL
 /// 0.7.0). Distinct from [`LUTE_IR_VERSION`], the IR schema version.
@@ -396,7 +398,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.42.0";
+pub const LUTE_IR_VERSION: &str = "0.42.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -734,8 +736,13 @@ fn compile_inner(
         identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
-        state: state_entries(&folded.env.state, &branch_paths, &reserved, &folded.domains,
-            &folded.env.rel_vocab.kinds),
+        state: state_entries(
+            &folded.env.state,
+            &branch_paths,
+            &reserved,
+            &folded.domains,
+            &folded.env.rel_vocab.kinds,
+        ),
         entities,
         enums,
         relations,
@@ -748,15 +755,29 @@ fn compile_inner(
         gates: seam_gates(&folded, &table),
         terminal: folded.env.terminal.as_deref().map(|t| seam_cel(t, &table)),
         terminal_persists: folded.env.terminal_persists,
-        seasons: folded.env.seasons.iter().map(|(name, decl)| SeasonEntry {
-            name: name.clone(), live: seam_cel(&decl.live, &table),
-        }).collect(),
-        outside_run: folded.occasions.iter().filter(|(_, d)| d.outside_run)
-            .map(|(name, _)| name.clone()).collect(),
+        seasons: folded
+            .env
+            .seasons
+            .iter()
+            .map(|(name, decl)| SeasonEntry {
+                name: name.clone(),
+                live: seam_cel(&decl.live, &table),
+            })
+            .collect(),
+        outside_run: folded
+            .occasions
+            .iter()
+            .filter(|(_, d)| d.outside_run)
+            .map(|(name, _)| name.clone())
+            .collect(),
         cel_env: ir::CelEnv::default(),
     };
     artifact.cel_env = collect_cel_env(&artifact);
-    artifact.required_semantics = semantics::collect(&artifact).ids.into_iter().map(str::to_string).collect();
+    artifact.required_semantics = semantics::collect(&artifact)
+        .ids
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     Ok(artifact)
 }
 
@@ -859,9 +880,14 @@ fn source_side_tables(
     for quest in &doc.quests {
         for (index, reward) in quest.rewards.iter().enumerate() {
             let owner = format!("quest:{}", quest.id);
-            map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
-                owner, declaration_index: index, span: reward.span,
-            });
+            map.rewards.insert(
+                format!("{owner}#{}", reward.key_segment(index)),
+                RewardSource {
+                    owner,
+                    declaration_index: index,
+                    span: reward.span,
+                },
+            );
         }
         for objective in quest.body.iter().filter_map(|node| match node {
             Node::Objective(objective) => Some(objective),
@@ -869,9 +895,14 @@ fn source_side_tables(
         }) {
             for (index, reward) in objective.rewards.iter().enumerate() {
                 let owner = format!("{}.{}", quest.id, objective.id);
-                map.rewards.insert(format!("{owner}#{}", reward.key_segment(index)), RewardSource {
-                    owner, declaration_index: index, span: reward.span,
-                });
+                map.rewards.insert(
+                    format!("{owner}#{}", reward.key_segment(index)),
+                    RewardSource {
+                        owner,
+                        declaration_index: index,
+                        span: reward.span,
+                    },
+                );
             }
         }
     }
@@ -1454,7 +1485,8 @@ fn state_entries(
         // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
         // table carries only what content declares or quests reserve.
         .filter(|(path, _)| {
-            !lute_manifest::semantics::cel_paths::is_prev_path(path) && !lute_manifest::clock::is_clock_path(path)
+            !lute_manifest::semantics::cel_paths::is_prev_path(path)
+                && !lute_manifest::clock::is_clock_path(path)
         })
         .map(|(path, decl)| {
             // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
@@ -1716,20 +1748,35 @@ fn collect_cel_env(ir: &ExecutionIr) -> ir::CelEnv {
         }
     }
     walk(&value, &mut roots, &mut funcs, false);
-    let variables = roots.into_iter().map(|name| ir::CelVariable { name, ty: "map(string, dyn)" }).collect();
-    let functions = funcs.into_iter().filter_map(|name| {
-        let (params, result) = match name.as_str() {
-            "holds" => (vec!["string", "list(dyn)"], "bool"),
-            "count" => (vec!["string", "list(dyn)"], "int"),
-            "countDistinct" => (vec!["string", "list(dyn)", "int"], "int"),
-            "validAt" => (vec!["string", "list(dyn)", "int"], "bool"),
-            "now" => (vec![], "int"),
-            "visited" => (vec!["string"], "bool"),
-            _ => return None,
-        };
-        Some(ir::CelFunction { name, overloads: vec![ir::CelOverload { params, result }] })
-    }).collect();
-    ir::CelEnv { variables, functions }
+    let variables = roots
+        .into_iter()
+        .map(|name| ir::CelVariable {
+            name,
+            ty: "map(string, dyn)",
+        })
+        .collect();
+    let functions = funcs
+        .into_iter()
+        .filter_map(|name| {
+            let (params, result) = match name.as_str() {
+                "holds" => (vec!["string", "list(dyn)"], "bool"),
+                "count" => (vec!["string", "list(dyn)"], "int"),
+                "countDistinct" => (vec!["string", "list(dyn)", "int"], "int"),
+                "validAt" => (vec!["string", "list(dyn)", "int"], "bool"),
+                "now" => (vec![], "int"),
+                "visited" => (vec!["string"], "bool"),
+                _ => return None,
+            };
+            Some(ir::CelFunction {
+                name,
+                overloads: vec![ir::CelOverload { params, result }],
+            })
+        })
+        .collect();
+    ir::CelEnv {
+        variables,
+        functions,
+    }
 }
 
 #[cfg(test)]
@@ -1753,7 +1800,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.42.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.42.1");
     }
 
     #[test]
@@ -1762,8 +1809,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.42.0");
-        assert_eq!(v["irVersion"], "0.42.0");
+        assert_eq!(v["lute"], "0.42.1");
+        assert_eq!(v["irVersion"], "0.42.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

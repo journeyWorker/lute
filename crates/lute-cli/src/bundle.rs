@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_ir::{IndexDef, IndexOccasion};
 use lute_compile::index::IndexUnions;
+use lute_ir::{IndexDef, IndexOccasion};
 use lute_manifest::schema::WriteValue;
 use lute_model::ProjectModel;
 
@@ -107,23 +107,48 @@ pub(crate) fn build_bundle(
     compiled: &std::collections::BTreeMap<String, lute_compile::ExecutionIr>,
     unions: &IndexUnions,
 ) -> Result<lute_runtime::index::Bundle, (u8, Vec<String>)> {
-    let inputs = compiled.iter().map(|(path, artifact)| lute_compile::index::IndexInput {
-        path: path.clone(),
-        artifact_path: format!("{path}.json"),
-        artifact,
-    }).collect::<Vec<_>>();
+    let inputs = compiled
+        .iter()
+        .map(|(path, artifact)| lute_compile::index::IndexInput {
+            path: path.clone(),
+            artifact_path: format!("{path}.json"),
+            artifact,
+        })
+        .collect::<Vec<_>>();
     let index = lute_compile::index::build_index(lute_compile::LUTE_IR_VERSION, &inputs, unions)
         .map_err(|errors| {
-            let mut lines = errors.iter().map(|e| format!("lute play: {e}")).collect::<Vec<_>>();
-            lines.push(format!("lute play: {} vocabulary conflict(s); refusing to play", errors.len()));
+            let mut lines = errors
+                .iter()
+                .map(|e| format!("lute play: {e}"))
+                .collect::<Vec<_>>();
+            lines.push(format!(
+                "lute play: {} vocabulary conflict(s); refusing to play",
+                errors.len()
+            ));
             (1, lines)
         })?;
-    let artifacts = compiled.iter().map(|(path, artifact)| {
-        serde_json::to_value(artifact).map(|value| (format!("{path}.json"), value))
-            .map_err(|e| (2, vec![format!("lute play: cannot serialize the artifact of {path}: {e}")]))
-    }).collect::<Result<_, _>>()?;
-    let index = serde_json::to_value(index)
-        .map_err(|e| (2, vec![format!("lute play: cannot serialize project.index.json: {e}")]))?;
+    let artifacts = compiled
+        .iter()
+        .map(|(path, artifact)| {
+            serde_json::to_value(artifact)
+                .map(|value| (format!("{path}.json"), value))
+                .map_err(|e| {
+                    (
+                        2,
+                        vec![format!(
+                            "lute play: cannot serialize the artifact of {path}: {e}"
+                        )],
+                    )
+                })
+        })
+        .collect::<Result<_, _>>()?;
+    let index = serde_json::to_value(index).map_err(|e| {
+        (
+            2,
+            vec![format!(
+                "lute play: cannot serialize project.index.json: {e}"
+            )],
+        )
+    })?;
     Ok(lute_runtime::index::Bundle::new(artifacts, index))
 }
-

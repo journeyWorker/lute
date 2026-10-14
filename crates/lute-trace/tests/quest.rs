@@ -13,8 +13,8 @@
 use std::path::Path;
 
 use lute_check::{CheckInput, Mode};
-use lute_trace::{trace_document, Decision, Step, TraceExit, UnresolvedEntry};
 use lute_trace::mock::MockSet;
+use lute_trace::{trace_document, Decision, Step, TraceExit, UnresolvedEntry};
 
 /// Assemble a [`CheckInput`] for `text` exactly as `lute check`/`lute
 /// compile`/`lute trace` do (no `--project`; `base` resolves any `uses:`/

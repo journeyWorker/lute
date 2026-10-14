@@ -1,24 +1,22 @@
+use super::positions::position_to_byte;
+use super::{span_to_range, Backend, DocumentSnapshot};
+use crate::code_action;
+use crate::features::{completion, folding, hover, nav, semtok, symbols};
 use lute_core_span::TextIndex;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
-    CompletionOptions, CompletionParams, CompletionResponse, 
-    DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentSymbolParams,
-    DocumentSymbolResponse, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability,
-    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
-    ReferenceParams, SemanticTokens, SemanticTokensFullOptions, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    DocumentFormattingParams, TextEdit as LspTextEdit,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    WorkDoneProgressOptions,
+    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
+    MessageType, OneOf, Position, Range, ReferenceParams, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit as LspTextEdit, WorkDoneProgressOptions,
 };
 use tower_lsp_server::LanguageServer;
-use crate::code_action;
-use crate::features::{completion, folding, hover, nav, semtok, symbols};
-use super::{Backend, DocumentSnapshot, span_to_range};
-use super::positions::position_to_byte;
 
 impl LanguageServer for Backend {
     async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
@@ -100,7 +98,10 @@ impl LanguageServer for Backend {
         let idx = TextIndex::new(&text);
         let end = idx.position(text.len());
         let full_range = Range {
-            start: Position { line: 0, character: 0 },
+            start: Position {
+                line: 0,
+                character: 0,
+            },
             end: Position {
                 line: end.line.saturating_sub(1),
                 character: end.utf16_col,

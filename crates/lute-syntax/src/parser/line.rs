@@ -31,13 +31,21 @@ impl Parser<'_> {
             let inner = self.body[inner_start..k].to_string();
             let has_close = k < e && b[k] == b']';
             let edit_span = self.span(cstart, if has_close { k + 1 } else { k });
-            self.emit_line(E_UNCLASSIFIED, "`:line[speaker]` was removed — write `@speaker{…}: text` (dsl §7.1, 0.2.2)", i, Layer::Content);
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "`:line[speaker]` was removed — write `@speaker{…}: text` (dsl §7.1, 0.2.2)",
+                i,
+                Layer::Content,
+            );
             if has_close {
                 if let Some(d) = self.diags.last_mut() {
                     d.fixits.push(Fixit {
                         title: "Migrate `:line[speaker]` to `@speaker`".to_string(),
                         kind: "migrate".to_string(),
-                        edit: vec![TextEdit { span: edit_span, new_text: format!("@{inner}") }],
+                        edit: vec![TextEdit {
+                            span: edit_span,
+                            new_text: format!("@{inner}"),
+                        }],
                         confidence: 100,
                     });
                 }
@@ -52,7 +60,10 @@ impl Parser<'_> {
                 d.fixits.push(Fixit {
                     title: "Migrate content-line sigil `:` to `@`".to_string(),
                     kind: "migrate".to_string(),
-                    edit: vec![TextEdit { span: sigil_span, new_text: "@".to_string() }],
+                    edit: vec![TextEdit {
+                        span: sigil_span,
+                        new_text: "@".to_string(),
+                    }],
                     confidence: 100,
                 });
             }
@@ -60,7 +71,12 @@ impl Parser<'_> {
             return None;
         }
         if j < e && b[j] == b'[' {
-            self.emit_line(E_CONTENT_LINE_BRACKET, "content-line attributes use `{…}`, not `[…]` (dsl 0.1 §7.1)", i, Layer::Content);
+            self.emit_line(
+                E_CONTENT_LINE_BRACKET,
+                "content-line attributes use `{…}`, not `[…]` (dsl 0.1 §7.1)",
+                i,
+                Layer::Content,
+            );
             self.cursor += 1;
             return None;
         }
@@ -73,12 +89,19 @@ impl Parser<'_> {
         let when = attrs::take_cel(&mut attrs, "when", CelKind::Condition);
         let b = self.body.as_bytes();
         if !(j < e && b[j] == b':') {
-            self.emit_line(E_UNCLASSIFIED, "content line needs a second `:` before its text (dsl §7.1)", i, Layer::Content);
+            self.emit_line(
+                E_UNCLASSIFIED,
+                "content line needs a second `:` before its text (dsl §7.1)",
+                i,
+                Layer::Content,
+            );
             self.cursor += 1;
             return None;
         }
         j += 1;
-        while j < e && (b[j] == b' ' || b[j] == b'\t') { j += 1; }
+        while j < e && (b[j] == b' ' || b[j] == b'\t') {
+            j += 1;
+        }
         let text_start = j;
         let text_raw = self.body[text_start..line_end.max(text_start)].trim_end();
         let text_end = text_start + text_raw.len();
@@ -88,7 +111,16 @@ impl Parser<'_> {
         let text = text_raw.to_string();
         let interps = self.scan_interps(&text, text_start);
         let inline = self.parse_inline(&text, text_start);
-        Some(Node::Line(Line { speaker, attrs, when, text, text_span, interps, inline, span }))
+        Some(Node::Line(Line {
+            speaker,
+            attrs,
+            when,
+            text,
+            text_span,
+            interps,
+            inline,
+            span,
+        }))
     }
     fn parse_inline(&mut self, text: &str, base: usize) -> Vec<InlineNode> {
         let (nodes, _) = self.parse_inline_nodes(text, base, 0, None, false);
@@ -189,11 +221,12 @@ impl Parser<'_> {
                         let content_start = k + 1;
                         let (children, after) =
                             self.parse_inline_nodes(text, base, content_start, Some(b']'), true);
-                        let content_span = if after > content_start && after <= b.len() && b[after - 1] == b']' {
-                            Some(self.span(base + content_start, base + after - 1))
-                        } else {
-                            None
-                        };
+                        let content_span =
+                            if after > content_start && after <= b.len() && b[after - 1] == b']' {
+                                Some(self.span(base + content_start, base + after - 1))
+                            } else {
+                                None
+                            };
                         (children, after, content_span)
                     } else {
                         (Vec::new(), k, None)
@@ -276,7 +309,8 @@ impl Parser<'_> {
                     j += 1;
                     while j < b.len() {
                         if b[j] == b'\\' && j + 1 < b.len() {
-                            if !matches!(b[j + 1], b':' | b'[' | b']' | b'{' | b'}' | b'\\' | b'"') {
+                            if !matches!(b[j + 1], b':' | b'[' | b']' | b'{' | b'}' | b'\\' | b'"')
+                            {
                                 self.emit_o(
                                     E_TEXT_ESCAPE,
                                     "unknown escape in inline modifier".into(),
@@ -331,18 +365,30 @@ impl Parser<'_> {
         let mut out = Vec::new();
         let mut j = 0;
         while j + 1 < b.len() {
-            if b[j] == b'\\' && text[j + 1..].starts_with("{{") { j += 3; continue; }
+            if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
+                j += 3;
+                continue;
+            }
             if b[j] == b'{' && b[j + 1] == b'{' {
                 match text[j + 2..].find("}}") {
                     None => {
                         let (s, e) = (text_start_body + j, text_start_body + text.len());
-                        self.emit_o(E_INTERP_UNTERMINATED, "`{{` has no closing `}}` before end of line (dsl §7.6)".into(), self.orig(s), self.orig(e), Layer::Content);
+                        self.emit_o(
+                            E_INTERP_UNTERMINATED,
+                            "`{{` has no closing `}}` before end of line (dsl §7.6)".into(),
+                            self.orig(s),
+                            self.orig(e),
+                            Layer::Content,
+                        );
                         break;
                     }
                     Some(rel) => {
                         let (s, e) = (text_start_body + j, text_start_body + j + 2 + rel + 2);
                         let span = self.span(s, e);
-                        out.push(crate::ast::interp_from_inner(&text[j + 2..j + 2 + rel], span));
+                        out.push(crate::ast::interp_from_inner(
+                            &text[j + 2..j + 2 + rel],
+                            span,
+                        ));
                         j = j + 2 + rel + 2;
                         continue;
                     }
@@ -362,7 +408,8 @@ fn decode_inline_text(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut j = 0;
     while j < bytes.len() {
-        if bytes[j] == b'\\' && j + 1 < bytes.len()
+        if bytes[j] == b'\\'
+            && j + 1 < bytes.len()
             && matches!(bytes[j + 1], b':' | b'[' | b']' | b'{' | b'}' | b'\\')
         {
             out.push(bytes[j + 1] as char);

@@ -286,7 +286,6 @@ fn a_declared_kind_used_as_a_fact_gets_the_categorical_hint_not_a_guess() {
 /// Every `code` diagnostic resolving `files` (all imported) reports, as
 /// (file name, line, column, message) at its place in the schema file.
 fn imported_at(files: &[(&str, &str)], code: &str) -> Vec<(String, u32, u32, String)> {
-    
     let dir = lute_scratch::ScratchDir::new();
     for (name, body) in files {
         std::fs::write(dir.join(name), body).unwrap();

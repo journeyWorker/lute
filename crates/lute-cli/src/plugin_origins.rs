@@ -8,7 +8,6 @@
 
 use std::path::{Path, PathBuf};
 
-
 /// Every YAML file of export `export` of every plugin package under
 /// `plugins_dir` (packages and files byte-sorted, as the loader reads them).
 pub(crate) fn export_files(plugins_dir: &Path, export: &str) -> Vec<PathBuf> {

@@ -110,8 +110,8 @@ mod use_site;
 mod version;
 mod walker;
 
-pub use mono::{E_MONO_NO_POV, E_MONO_POV};
 pub use author_case::{lower_camel, E_AUTHOR_CASE};
+pub use mono::{E_MONO_NO_POV, E_MONO_POV};
 pub use section_ids::E_SECTION_DUP;
 
 use choice_record::{check_choice_record, into_literal};
@@ -120,12 +120,12 @@ use component_body::{
     component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
     walk_component_body, BodyScope,
 };
-pub use fold::{fold_env, params_from_yaml};
-pub use host::{check_host_condition, HostCondition};
 pub(crate) use fold::resolve_kinds;
 use fold::{attr_str, fold_directive_slots};
+pub use fold::{fold_env, params_from_yaml};
 pub(crate) use guard::directive_when_refused;
 use guard::{check_beat_when, check_directive_when, check_guard};
+pub use host::{check_host_condition, HostCondition};
 use injections::fold_injections;
 pub use interp::W_TEXT_LOOKS_LIKE_REF;
 use interp::{

@@ -26,20 +26,20 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::runner::{bind_direct_occasion_target, RunDriver};
 use lute_check::{CheckInput, CheckResult};
 use lute_core_span::Severity;
-use lute_trace::{Step, TraceExit, TraceReport};
-use lute_trace::mock::MockSet;
+use lute_load::build_input;
+use lute_runtime::datalog::Fact;
+use lute_runtime::session::json_to_value;
 use lute_runtime::{
     BridgeCall, BridgeReply, Carry, Driver, Forced, Machine, Menu, OnUnknown, Pick, Seed,
     UnknownSite, Value, Verdict,
 };
-use lute_runtime::datalog::Fact;
+use lute_trace::mock::MockSet;
+use lute_trace::{Step, TraceExit, TraceReport};
 use rayon::prelude::*;
-use lute_load::build_input;
 use serde_json::Value as Json;
-use lute_runtime::session::json_to_value;
-use crate::runner::{bind_direct_occasion_target, RunDriver};
 /// than 90% of this fails: a broken enumerator must not pass vacuously.
 const COMPARED_FLOOR: usize = 201;
 
@@ -64,7 +64,10 @@ pub(crate) struct Observation {
 }
 
 /// One comparison (§4.3).
-#[expect(clippy::large_enum_variant, reason = "comparison cases are test-only and preserve their concrete payloads")]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "comparison cases are test-only and preserve their concrete payloads"
+)]
 pub(crate) enum Case {
     /// A document under one concrete input.
     Doc(DocCase),
@@ -239,7 +242,8 @@ pub(crate) fn observe_run(case: &Case) -> Observation {
         }
     }
     obs.quests.extend(quests);
-    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
+    obs.state
+        .remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
@@ -486,7 +490,9 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
         (">", Some(r)) => decided(cmp(&l, &r).map(|o| o == Greater)),
         (">=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Less)),
         ("+", Some(r)) => match (l, r) {
-            (Value::Int(a), Value::Int(b)) => a.checked_add(b).map(Value::Int).unwrap_or(Value::Unknown),
+            (Value::Int(a), Value::Int(b)) => {
+                a.checked_add(b).map(Value::Int).unwrap_or(Value::Unknown)
+            }
             (Value::Double(a), Value::Double(b)) => Value::Double(a + b),
             (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
             _ => Value::Unknown,
@@ -545,7 +551,8 @@ fn trace_observation((report, exit): &(TraceReport, TraceExit)) -> Observation {
             }
         }
     }
-    obs.state.remove(lute_manifest::semantics::beats::OCCASION_TARGET);
+    obs.state
+        .remove(lute_manifest::semantics::beats::OCCASION_TARGET);
     obs
 }
 
@@ -765,9 +772,13 @@ fn walk(dir: &Path, files: &mut Files) {
     for path in entries {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if path.is_dir() {
-            let excluded_edit_tasks =
-                name == "edit-tasks" && path.parent().and_then(Path::file_name) == Some("conformance".as_ref());
-            if !excluded_edit_tasks && !name.starts_with('.') && name != "node_modules" && name != "target" {
+            let excluded_edit_tasks = name == "edit-tasks"
+                && path.parent().and_then(Path::file_name) == Some("conformance".as_ref());
+            if !excluded_edit_tasks
+                && !name.starts_with('.')
+                && name != "node_modules"
+                && name != "target"
+            {
                 walk(&path, files);
             }
         } else if name.ends_with(".lute") && !crate::compile_all::is_component_file(&path) {
@@ -828,7 +839,10 @@ struct ProjectData {
     model: lute_model::ProjectModel,
     /// Canonical document path -> index into `model.documents()`.
     documents: HashMap<PathBuf, usize>,
-    exec: Option<(lute_runtime::session::ExecProject, lute_trace::exec::record::NeedleVocab)>,
+    exec: Option<(
+        lute_runtime::session::ExecProject,
+        lute_trace::exec::record::NeedleVocab,
+    )>,
     gate: crate::ReconciledProject,
 }
 
@@ -863,11 +877,20 @@ impl Gates {
                 .iter()
                 .enumerate()
                 .map(|(index, document)| {
-                    (std::fs::canonicalize(&document.path).unwrap_or_else(|_| document.path.clone()), index)
+                    (
+                        std::fs::canonicalize(&document.path)
+                            .unwrap_or_else(|_| document.path.clone()),
+                        index,
+                    )
                 })
                 .collect();
             let gate = lute_model::ReconciledProject::of(&model);
-            ProjectData { model, documents, exec, gate }
+            ProjectData {
+                model,
+                documents,
+                exec,
+                gate,
+            }
         });
         self.projects.insert(dir.to_path_buf(), data);
     }
@@ -890,7 +913,11 @@ impl Gates {
 /// The project's model document for `file`, when its root assembles for play.
 /// A root play refuses keeps the per-document path below, as `lute trace`
 /// and `lute run` see it.
-fn model_document<'a>(file: &Path, project: Option<&Path>, gates: &'a Gates) -> Option<(&'a ProjectData, &'a lute_model::ModelDocument)> {
+fn model_document<'a>(
+    file: &Path,
+    project: Option<&Path>,
+    gates: &'a Gates,
+) -> Option<(&'a ProjectData, &'a lute_model::ModelDocument)> {
     let data = gates.project(project?)?;
     data.exec.as_ref()?;
     let canon = std::fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
@@ -901,7 +928,10 @@ fn model_document<'a>(file: &Path, project: Option<&Path>, gates: &'a Gates) -> 
 fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> Option<Subject> {
     if let Some((data, document)) = model_document(file, project, gates) {
         let input = document.input.clone();
-        let gate = data.gate.gate(file).unwrap_or_else(|| lute_check::check(&input));
+        let gate = data
+            .gate
+            .gate(file)
+            .unwrap_or_else(|| lute_check::check(&input));
         let artifact = if gate.ok {
             document
                 .artifact
@@ -911,7 +941,14 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
         } else {
             Err(first_error(&gate.diagnostics))
         };
-        return Some(subject(rel, &document.doc, &document.folded, input, gate, artifact));
+        return Some(subject(
+            rel,
+            &document.doc,
+            &document.folded,
+            input,
+            gate,
+            artifact,
+        ));
     }
     let built = build_input(file, None, project, None)?;
     let crate::BuiltInput {
@@ -1155,7 +1192,10 @@ fn presentation_cases(
     let project = project_root(play, &root.dir).ok_or("no lute.project.yaml above the play")?;
     // A root `lute play` refuses refuses every play under it, with
     // `compile_play_project`'s empty message.
-    let (exec, needles) = gates.project(&project).and_then(|data| data.exec.as_ref()).ok_or("")?;
+    let (exec, needles) = gates
+        .project(&project)
+        .and_then(|data| data.exec.as_ref())
+        .ok_or("")?;
     let played = crate::play::presentations_for_diff(exec, needles, play)?;
     let stem = play
         .file_name()

@@ -260,7 +260,9 @@ fn headless_and_lsp_diagnostics_match_warning_bearing() {
     let mut text = std::fs::read_to_string("../../docs/examples/marina-s01ep02.lute").unwrap();
     text.push_str("\n## Shot 99.\n\n<timeline>\n<track subject=\"camera\">\n");
     for i in 0..13 {
-        text.push_str(&format!("::camera{{focus=\"marina\" duration=\"1.{i}\"}}\n"));
+        text.push_str(&format!(
+            "::camera{{focus=\"marina\" duration=\"1.{i}\"}}\n"
+        ));
     }
     text.push_str("</track>\n</timeline>\n");
     let res = check(&input_for_in(
@@ -545,7 +547,6 @@ fn divergence_holds_under_plugin_defs() {
         hb, lb,
         "E-REF-TYPE projection diverged between surfaces under a plugin-exported def"
     );
-
 }
 
 /// No-divergence under a `uses:` schema import (dsl §9.2). Two cases: (a) the

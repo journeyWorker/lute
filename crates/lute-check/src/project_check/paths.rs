@@ -1,14 +1,17 @@
-use std::collections::BTreeMap;
+use crate::cel_paths::collect_path_uses;
 use lute_cel::CelArena;
 use lute_core_span::Span;
 use lute_syntax::ast::Document;
-use crate::cel_paths::collect_path_uses;
+use std::collections::BTreeMap;
 
 /// dsl 0.24.0 (T1-6): a scene beat's frontmatter `when:` (a scene with
 /// `on:`) as a slot over its inline value's source span — the one condition
 /// slot [`lute_syntax::walk::for_each_cel_slot`] cannot see (the frontmatter
 /// is YAML, lifted by the checker, not the parser).
-fn scene_when_slot(doc: &Document, meta: &crate::meta::TypedMeta) -> Option<lute_syntax::ast::CelSlot> {
+fn scene_when_slot(
+    doc: &Document,
+    meta: &crate::meta::TypedMeta,
+) -> Option<lute_syntax::ast::CelSlot> {
     let map = meta.yaml()?.as_mapping()?;
     let key = |k: &str| map.get(serde_yaml::Value::String(k.to_string()));
     key("on")?;

@@ -20,8 +20,8 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, AttrValue, Directive, Node};
 
-use crate::ProjectDoc;
 use crate::content_line::E_UNKNOWN_ATTR;
+use crate::ProjectDoc;
 /// `::accept` names no quest, a malformed quest id, a bad `at`, or (at
 /// `check-project`) a quest that is not an accept-driven quest of the
 /// project (dsl 0.21.0 §7a.3, 0.24.0 §2); also `accept="external"` on a
@@ -325,10 +325,7 @@ fn check_target(
 
 /// Every `::accept` directive of `docs`, with its document's path: scene
 /// shots, quest bodies, lore entries, and bundle beats.
-fn for_each_accept<'a>(
-    docs: &'a [ProjectDoc<'a>],
-    mut f: impl FnMut(&'a Path, &'a Directive),
-) {
+fn for_each_accept<'a>(docs: &'a [ProjectDoc<'a>], mut f: impl FnMut(&'a Path, &'a Directive)) {
     for item in docs {
         let path = item.path;
         let doc = item.doc;

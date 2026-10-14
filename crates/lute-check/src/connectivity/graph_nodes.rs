@@ -1,14 +1,14 @@
 use super::*;
 use crate::ProjectDoc;
 
-use std::fmt;
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
-use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_syntax::ast::{CelKind, Document};
 use crate::meta::{meta_key_span, resolve_doc_kind, DocKind};
 use crate::prereq::parse_prereq;
+use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::semantics::prereq::{atoms, Atom, PrereqFormula};
+use lute_syntax::ast::{CelKind, Document};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+use std::path::{Path, PathBuf};
 
 /// silently paper over a real typo.
 pub const E_CONN_UNKNOWN_NODE: &str = "E-CONN-UNKNOWN-NODE";
@@ -137,7 +137,8 @@ pub(super) fn check_formula_atoms(
 /// The tail of an unresolvable `<quest follows=…>` miss (dsl 0.24.0 §2): a
 /// quest has no `when`, and an accept-driven quest needs no `follows=` to be
 /// drawn — it is anchored at every `::accept` of it.
-pub(super) const QUEST_AFTER_HINT: &str = "; if the quest is taken on by `::accept`, drop `follows=` — an \
+pub(super) const QUEST_AFTER_HINT: &str =
+    "; if the quest is taken on by `::accept`, drop `follows=` — an \
      accept-driven quest is anchored at every document that accepts it (dsl 0.24.0 §2)";
 
 /// One `visited(K)` target against the project's scene and bundle beat keys
@@ -617,4 +618,3 @@ pub fn cycle_diag(message: String, span: Span) -> Diagnostic {
         evidence: Some(lute_core_span::Evidence::Proven),
     }
 }
-

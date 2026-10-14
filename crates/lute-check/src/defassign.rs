@@ -97,10 +97,10 @@ use crate::cel_paths::{
     collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_state, is_state_path,
     PathRole,
 };
+use crate::meta::StateSchema;
 use lute_manifest::semantics::cel_paths::{
     is_reserved_entry_read, is_reserved_quest_objective_done, is_reserved_quest_path,
 };
-use crate::meta::StateSchema;
 // (no `Ctx` import — `check_definite_assignment`'s `_ctx` param was always
 // dead; connectivity T11 dropped it so `lute-cli`'s project-wide envelope
 // wiring needs no throwaway `Ctx`/`Env` construction at all.)
@@ -1180,7 +1180,10 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
             })
             .collect();
     };
-    let own: Vec<String> = parse_uses_cached(raw, cx).into_iter().map(|u| u.path).collect();
+    let own: Vec<String> = parse_uses_cached(raw, cx)
+        .into_iter()
+        .map(|u| u.path)
+        .collect();
     // Top-level refs only: a ref nested in another's `(args)` expands with it.
     let calls: Vec<(usize, usize)> = refs
         .iter()
@@ -1202,7 +1205,12 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
                 Some("$"),
                 &mut Vec::new(),
             )
-            .map(|text| parse_uses_cached(&text, cx).into_iter().map(|u| u.path).collect())
+            .map(|text| {
+                parse_uses_cached(&text, cx)
+                    .into_iter()
+                    .map(|u| u.path)
+                    .collect()
+            })
             .unwrap_or_default();
             (r.name.as_str(), paths)
         })
@@ -1215,8 +1223,11 @@ fn uses_of(raw: &str, span: Span, cx: &Scope<'_>) -> Vec<Use> {
                     top.iter()
                         .find(|(_, paths)| paths.contains(&u.path))
                         .map(|(name, _)| {
-                            let reads =
-                                |body: &str| parse_uses_cached(body, cx).iter().any(|own| own.path == u.path);
+                            let reads = |body: &str| {
+                                parse_uses_cached(body, cx)
+                                    .iter()
+                                    .any(|own| own.path == u.path)
+                            };
                             let chain = crate::cel_expand::def_chain_where(name, &cx.defs, &reads)
                                 .unwrap_or_else(|| vec![(*name).to_string()]);
                             crate::cel_expand::def_chain_label(&chain)
@@ -1424,7 +1435,8 @@ mod tests {
             &doc.meta,
             &lute_manifest::snapshot::CapabilitySnapshot::default(),
         );
-        let nodes = doc.sections
+        let nodes = doc
+            .sections
             .into_iter()
             .next()
             .map(|s| s.body)

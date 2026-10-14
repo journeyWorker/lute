@@ -11,8 +11,7 @@ use lute_check::connectivity::{
     NodeId, PrereqState,
 };
 use lute_check::{
-    check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs,
-    SchemaImports,
+    check, check_project_beats, fold_env, CheckInput, FoldedEnv, Mode, ProjectDocs, SchemaImports,
 };
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
@@ -47,7 +46,10 @@ fn scene(id: &str, fm: &str) -> String {
 }
 
 fn project(files: &[(&str, &str)]) -> ProjectDocs {
-    let docs = files.iter().map(|(p,t)| (PathBuf::from(p), lute_syntax::parse(t).0)).collect();
+    let docs = files
+        .iter()
+        .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
+        .collect();
     ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
 }
 

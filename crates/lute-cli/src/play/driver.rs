@@ -45,7 +45,12 @@ impl PlayDriverState {
         bridges: BridgeQueues<PlannedBridgeAnswer>,
         producers: Option<Arc<Producers>>,
     ) -> Self {
-        Self { choose, bridges, producers, ..Self::default() }
+        Self {
+            choose,
+            bridges,
+            producers,
+            ..Self::default()
+        }
     }
     pub(crate) fn for_project(
         project: &ExecProject,
@@ -82,7 +87,8 @@ impl PlayDriverState {
         bridges: &BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
     ) {
         self.step = step;
-        self.choose.extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
+        self.choose
+            .extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
         self.bridges.step = bridges.clone();
     }
 
@@ -103,7 +109,10 @@ pub(crate) struct PlayChoices {
 
 impl PlayChoices {
     fn new(choose: &BTreeMap<String, Vec<ScriptedPick>>, cursor: &BTreeMap<String, usize>) -> Self {
-        Self { choose: choose.clone(), cursor: cursor.clone() }
+        Self {
+            choose: choose.clone(),
+            cursor: cursor.clone(),
+        }
     }
 
     fn pick(&mut self, menu: &Menu<'_>) -> Option<ScriptedPick> {
@@ -164,7 +173,9 @@ impl Driver for PlayDriver {
                 let Some(default) = menu.default else {
                     return Pick::Unscripted { scripted: 1 };
                 };
-                self.answers.push(ScriptAnswer::Timeout { menu: menu.id.to_string() });
+                self.answers.push(ScriptAnswer::Timeout {
+                    menu: menu.id.to_string(),
+                });
                 Pick::Option(default.to_string())
             }
             Some(ScriptedPick::Option(option)) => {
@@ -204,14 +215,24 @@ impl Driver for PlayDriver {
         }
     }
 
-    fn unknown(&mut self, _site: &UnknownSite<'_>) -> OnUnknown { OnUnknown::Halt }
+    fn unknown(&mut self, _site: &UnknownSite<'_>) -> OnUnknown {
+        OnUnknown::Halt
+    }
 
-    fn emit(&mut self, rec: Json) { self.transcript.push(rec); }
+    fn emit(&mut self, rec: Json) {
+        self.transcript.push(rec);
+    }
 
     fn premise_hint(&self, read: &GuardRead) -> String {
-        let Some(producers) = &self.premises.producers else { return String::new() };
+        let Some(producers) = &self.premises.producers else {
+            return String::new();
+        };
         let mut decisions = self.premises.decisions.clone();
-        decisions.extend(decisions_of(&self.premises.document, self.premises.step, &self.transcript));
+        decisions.extend(decisions_of(
+            &self.premises.document,
+            self.premises.step,
+            &self.transcript,
+        ));
         producers.hint(read, &decisions)
     }
 }
@@ -252,7 +273,13 @@ impl WalkDriver for PlayDriverState {
             driver.premises.step,
             &driver.transcript,
         ));
-        self.records.extend(driver.transcript.iter().cloned().map(|record| (driver.premises.document.clone(), record)));
+        self.records.extend(
+            driver
+                .transcript
+                .iter()
+                .cloned()
+                .map(|record| (driver.premises.document.clone(), record)),
+        );
         self.answers.extend(driver.answers);
         Walked {
             carry,
@@ -260,47 +287,106 @@ impl WalkDriver for PlayDriverState {
             bridges: consumed_bridges(&before, &self.bridges),
         }
     }
-    fn halt(&self, result: Result<(), String>, outcome: &Walked, what: &str, doc_json: &Json) -> Option<PlayHalt> {
+    fn halt(
+        &self,
+        result: Result<(), String>,
+        outcome: &Walked,
+        what: &str,
+        doc_json: &Json,
+    ) -> Option<PlayHalt> {
         walk_stop(result, outcome, what, doc_json)
     }
 
-    fn observer(&self) -> Option<SessionEvalObserver> { self.observer.clone() }
+    fn observer(&self) -> Option<SessionEvalObserver> {
+        self.observer.clone()
+    }
 }
-
 
 pub(crate) fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Option<PlayHalt> {
     if outcome.carry.incomplete {
-        if let Some(rec) = outcome.transcript.iter().rev().find(|c| c.get("note").and_then(Json::as_str) == Some(lute_runtime::NOTE_NO_DECISION)) {
+        if let Some(rec) =
+            outcome.transcript.iter().rev().find(|c| {
+                c.get("note").and_then(Json::as_str) == Some(lute_runtime::NOTE_NO_DECISION)
+            })
+        {
             let kind = rec.get("kind").and_then(Json::as_str).unwrap_or("choice");
-            let id = rec.get("branch").or_else(|| rec.get("hub")).and_then(Json::as_str).unwrap_or("?");
+            let id = rec
+                .get("branch")
+                .or_else(|| rec.get("hub"))
+                .and_then(Json::as_str)
+                .unwrap_or("?");
             let options = decision_options(doc_json, id);
             let used_up = match (kind, rec.get("scripted").and_then(Json::as_u64)) {
-                ("hub", Some(n)) => format!(" — the hub is still open after the {n} scripted pick(s) of its `choose:` list"),
-                (_, Some(n)) => format!(" — all {n} decisions of its `choose:` list were used by earlier presentations"),
+                ("hub", Some(n)) => format!(
+                    " — the hub is still open after the {n} scripted pick(s) of its `choose:` list"
+                ),
+                (_, Some(n)) => format!(
+                    " — all {n} decisions of its `choose:` list were used by earlier presentations"
+                ),
                 (_, None) => String::new(),
             };
             return Some(PlayHalt::Incomplete(format!("{what} reached {kind} `{id}` with no scripted `choose:` decision{used_up} (options: {})", if options.is_empty() { "none".to_string() } else { options.join(", ") })));
         }
-        if let Some(rec) = outcome.transcript.iter().rev().find(|c| c.get("kind").and_then(Json::as_str) == Some("plugin") && c.get("unanswered").is_some()) {
+        if let Some(rec) = outcome.transcript.iter().rev().find(|c| {
+            c.get("kind").and_then(Json::as_str) == Some("plugin") && c.get("unanswered").is_some()
+        }) {
             let tag = rec.get("tag").and_then(Json::as_str).unwrap_or("?");
-            let strs = |key: &str| -> Vec<&str> { rec.get(key).and_then(Json::as_array).into_iter().flatten().filter_map(Json::as_str).collect() };
-            let types: Vec<Option<lute_manifest::types::Type>> = strs("unresolvedEffects").into_iter().map(|p| state_entry_type(doc_json, p)).collect();
-            let shape = lute_runtime::bridge_answer_shape(strs("unanswered").into_iter().zip(types.iter().map(Option::as_ref)));
+            let strs = |key: &str| -> Vec<&str> {
+                rec.get(key)
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Json::as_str)
+                    .collect()
+            };
+            let types: Vec<Option<lute_manifest::types::Type>> = strs("unresolvedEffects")
+                .into_iter()
+                .map(|p| state_entry_type(doc_json, p))
+                .collect();
+            let shape = lute_runtime::bridge_answer_shape(
+                strs("unanswered")
+                    .into_iter()
+                    .zip(types.iter().map(Option::as_ref)),
+            );
             return Some(PlayHalt::Incomplete(format!("{what}: plugin call `{tag}` reads a bridge result and has no answer — give one with `bridges: {{ {tag}: [ {shape} ] }}` (top level or on the step)")));
         }
-        if let Some(rec) = outcome.transcript.iter().find(|c| c.get("kind").and_then(Json::as_str) == Some("objective") && (c.get("done").is_some_and(Json::is_null) || c.get("failed").is_some_and(Json::is_null))) {
-            let slot = if rec.get("failed").is_some_and(Json::is_null) { "`by` condition" } else { "`done` condition" };
-            return Some(PlayHalt::Incomplete(format!("{what}: required objective `{}.{}` has a {slot} that evaluates unknown", rec.get("quest").and_then(Json::as_str).unwrap_or("?"), rec.get("objective").and_then(Json::as_str).unwrap_or("?"))));
+        if let Some(rec) = outcome.transcript.iter().find(|c| {
+            c.get("kind").and_then(Json::as_str) == Some("objective")
+                && (c.get("done").is_some_and(Json::is_null)
+                    || c.get("failed").is_some_and(Json::is_null))
+        }) {
+            let slot = if rec.get("failed").is_some_and(Json::is_null) {
+                "`by` condition"
+            } else {
+                "`done` condition"
+            };
+            return Some(PlayHalt::Incomplete(format!(
+                "{what}: required objective `{}.{}` has a {slot} that evaluates unknown",
+                rec.get("quest").and_then(Json::as_str).unwrap_or("?"),
+                rec.get("objective").and_then(Json::as_str).unwrap_or("?")
+            )));
         }
         return Some(PlayHalt::Incomplete(format!("{what} is incomplete")));
     }
-    if outcome.carry.unresolved.iter().any(|a| matches!(a, lute_runtime::UnresolvedAtom::Time)) {
-        return Some(PlayHalt::Incomplete(format!("{what} depends on now()/validAt(...), which the reference runner cannot resolve")));
+    if outcome
+        .carry
+        .unresolved
+        .iter()
+        .any(|a| matches!(a, lute_runtime::UnresolvedAtom::Time))
+    {
+        return Some(PlayHalt::Incomplete(format!(
+            "{what} depends on now()/validAt(...), which the reference runner cannot resolve"
+        )));
     }
     None
 }
 
-pub(crate) fn walk_stop(result: Result<(), String>, outcome: &Walked, what: &str, doc_json: &Json) -> Option<PlayHalt> {
+pub(crate) fn walk_stop(
+    result: Result<(), String>,
+    outcome: &Walked,
+    what: &str,
+    doc_json: &Json,
+) -> Option<PlayHalt> {
     match result {
         Err(msg) if outcome.carry.refused => Some(PlayHalt::Error(format!("{what}: {msg}"))),
         Err(msg) => Some(PlayHalt::Fatal(format!("{what}: {msg}"))),
