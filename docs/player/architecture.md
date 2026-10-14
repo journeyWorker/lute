@@ -307,3 +307,11 @@ loader and audio port resolve files against `assetsBase`.
 From each package directory, `bun run typecheck` is the package typecheck; it
 runs `bun check`. `bun run build` remains the declaration-emitting path through
 `scripts/build.ts` and `tsc`. CI pins Bun 1.4.3.
+
+## Hosting recipes
+
+The three supported compositions are:
+
+1. **Direct `Director.make`** — provide `bundle`, `session`, `bindings`, `presenter`, `audio`, `assets`, `profile`, `saves`, and `scheduler`. `host.plugin` reaches the default cue factory; a `cueFactory: (base) => ({ ...base, fromOutput: ... })` wrapper receives that default. A pre-composed factory must come from `Cues.make({ bundle, bindings })` for `host.plugin` to merge; an arbitrary factory makes `Director.make` die.
+2. **External runtime session** — obtain the bundle value and use `BundleSource.value(bundle)` (or `.directory(root)` / `.url(base)`). Build `Session.layer({ seed })` (or `{ snapshot }`) with `LuteRuntime`, the bundle source, and `InputLog.memory` or `InputLog.keyValueStore(key)`. Pass that session to `LutePlayer.make` with the same `BundleSource` and a `KeyValueStore`: `Stores.memory` for ephemeral use, `BrowserKeyValueStore.layerLocalStorage` in browsers, or a host-supplied store elsewhere. The session overload requires `Scope`, `BundleSource`, and `KeyValueStore`; the seed/snapshot overload may additionally construct runtime and input-log layers.
+3. **Checkpointing** — runtime `Contract.Snapshot` contains runtime state and is produced/consumed by runtime `save`/`restore`; player `SaveRuntime` contains `snapshot`, accepted-input `log`, and `backlog`, and is produced by `handle.snapshot` and consumed by `handle.restore`. On a running player, `handle.snapshot → store → handle.restore(save)`. For a fresh player use `LutePlayer.make({ snapshot: save.snapshot, ... })`, leave `boot` with `actions({ type: "newGame" })`, then call `restore(save)` to recover log and backlog. The bundle fingerprint must match or `SaveIncompatible` is raised.

@@ -52,8 +52,8 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 - `snapshot` is an `Effect<SaveRuntime, Errors.RuntimeRejection>` checkpoint. It takes the player session's lock, so it is linearized with `send` and `restore`; called while a batch is presenting, it does not wait for the presentation and returns the last committed runtime snapshot, accepted-input log, and backlog (each backlog entry includes its `voiceKey`). It does not capture presenter overlays, timers, profile state, or renderer fibers; pass the result directly to `restore(save)`.
 - `session` is the runtime session in use and `program` its `session.program`. Read `current`, subscribe to `events`, and run `view` / `evaluate` / `def` / `gate` / `candidates` without loading the bundle a second time.
-- `send(input)` hands the runtime an input while no batch runs and the story waits at `idle` or `ended` (a `newRun` or an outside-run raise at the ending plays on). Elsewhere it fails with `DirectorBusy { flow, story }` and changes nothing; a runtime rejection fails it with the runtime's error and the director stays at the same await. It completes when the input was accepted and its batch started — a handler that sends never waits on its own presentation. The `{ type: "send", input }` action does the same from a widget.
-- `restore(save)` continues from a host checkpoint (the handle's `snapshot` — runtime snapshot, input log, backlog) in every flow state but boot: the running presentation is abandoned, the read marks added after the checkpoint are removed, the `auto` slot is rewritten (unless autosave is off), the stage and its music are rebuilt, and the restored await is presented again (a choice shows its menu, a bridge calls its handler, idle runs the idle flow, an ending shows the ending).
+- `send(input)` hands the runtime an input while no batch runs and the story waits at `idle` or `ended` (at `ended`, only `newRun` or an outside-run raise is accepted). An input that ends the run carries host writes on `raiseOccasion`, `advanceClock`, `bridgeResult`, or `hostWrite`; `choose`, `timeout`, and `worldEvent` carry none, so write before them or author the write. `newRun` writes seed the next run and the ended run's `run.*` is readable as `prev.run.*`. A `hostWrite` after the ending fails `RuntimeBusy` with a message saying the run has ended. Elsewhere it fails with `DirectorBusy { flow, story }` and changes nothing; a runtime rejection fails it with the runtime's error and the director stays at the same await.
+`send` completes when the input was accepted and its batch started.
 
 ## Port contracts
 
@@ -118,7 +118,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.41",
+  "saveVersion": "the release line",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
