@@ -1,6 +1,6 @@
 {
   "name": "@lute-lang/player",
-  "version": "0.42.0",
+  "version": "0.42.1",
   "description": "The Lute visual-novel player core: progression statechart, cue scheduler, saves, read history, backlog and rollback over the Lute runtime (Effect 4 + XState v6). Renderer-free.",
   "license": "MIT",
   "type": "module",
@@ -30,12 +30,12 @@
     "yaml": "2.9.1"
   },
   "peerDependencies": {
-    "@lute-lang/runtime": "0.42.0",
+    "@lute-lang/runtime": "0.42.1",
     "effect": "4.0.2"
   },
   "devDependencies": {
     "@effect/vitest": "4.0.2",
-    "@lute-lang/runtime": "0.42.0",
+    "@lute-lang/runtime": "0.42.1",
     "@types/bun": "1.4.2",
     "effect": "4.0.2",
     "typescript": "7.0.2",

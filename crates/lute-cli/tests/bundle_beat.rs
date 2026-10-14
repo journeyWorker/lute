@@ -42,8 +42,8 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.42.0",
-  "irVersion": "0.42.0",
+  "lute": "0.42.1",
+  "irVersion": "0.42.1",
   "requiredSemantics": ["lute.core/1", "lute.lore/1", "lute.occasions.selection/1", "lute.time.cadence/1"],
   "meta": { "id": "interviews" },
   "state": [

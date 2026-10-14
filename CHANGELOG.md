@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.42.0`, the grammar and semantics the checker
+- **Language** — currently `0.42.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.42.0`) and gated on by consuming engines.
+  artifact (currently `0.42.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,72 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.42.1]
+
+**Tooling and hygiene patch on the 0.42 line** (spec
+[`0.42.1.md`](docs/proposals/scenario-dsl/0.42.1.md); plan
+[`2026-10-14-lute-0.42.1-tooling.md`](docs/superpowers/plans/2026-10-14-lute-0.42.1-tooling.md);
+decisions
+[`2026-10-14-lute-0.42.1-decisions.md`](docs/superpowers/notes/2026-10-14-lute-0.42.1-decisions.md)).
+Only the **toolchain** earns the release. **Language, IR, Event, snapshot and
+player bindings are stamp-only no-ops**: `luteVersion`, `irVersion`,
+`eventVersion` and `snapshotVersion` read `0.42.1` with no grammar, checker,
+artifact, event or snapshot change; `bindingsVersion` stays `"0.42"`;
+`schemas/lute-{ir,events,snapshot,player-bindings}-0.42.schema.json` and the
+generated TypeScript are byte-identical to 0.42.0, and every command output
+except `--help` text is byte-identical after stamp normalization. Engines and
+hosts gated on the 0.42 line accept 0.42.1 output unchanged.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp only).
+
+### Plugin
+
+- None.
+
+### CLI
+
+- `lute --help` lists each command with a one-sentence summary (10.4 KB →
+  2.8 KB); the previous detail is unchanged in `lute <command> --help`.
+- `lute fix --help` names every migration `fix` performs: legacy line/choice
+  syntax, literal `<when>` comparisons, 0.31 CEL calls, renamed domains
+  (0.41.0), stale `luteVersion` stamps (0.41.1) and the volume members
+  (0.42.0).
+
+### Diagnostics
+
+- None.
+
+### Identity
+
+- None.
+
+### Tooling and repository
+
+- The Rust workspace is formatted with rustfmt (default configuration) in one
+  formatting-only commit listed in `.git-blame-ignore-revs`; CI runs
+  `cargo fmt --all --check` on the pinned 1.96.1 toolchain.
+- The one-release Bun/`tsc --noEmit` diagnostic comparison of 0.42.0
+  (`scripts/compare-typecheck.sh`, its fixtures and CI steps) is removed;
+  `bun check` stays the package typecheck.
+- Python bytecode is no longer tracked; design, plan and note documents whose
+  work shipped or was replaced carry `Implemented`/`Superseded`.
+
+### Migration notes
+
+None. Contributors: format Rust changes with `cargo fmt --all` (CI checks it);
+`git config blame.ignoreRevsFile .git-blame-ignore-revs` keeps `git blame`
+past the formatting commit.
 
 ## [0.42.0]
 

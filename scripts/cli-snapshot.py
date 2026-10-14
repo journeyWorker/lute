@@ -290,16 +290,16 @@ def normalize_for_compare(data: bytes, label: str) -> bytes:
 # (label, 0.41 rendering, 0.42 rendering) for every stamp form the
 # normalizer owns; both renderings must normalize to the same text.
 SELF_TEST_STAMPS = (
-    ("compile", '{"irVersion": "0.41.1", "lute": "0.41.1"}', '{"irVersion": "0.42.0", "lute": "0.42.0"}'),
-    ("check", 'luteVersion: "0.41.1"', 'luteVersion: "0.42.0"'),
-    ("play", '{"eventVersion":"0.41.1","snapshotVersion":"0.41.1"}', '{"eventVersion":"0.42.0","snapshotVersion":"0.42.0"}'),
+    ("compile", '{"irVersion": "0.41.1", "lute": "0.41.1"}', '{"irVersion": "0.42.1", "lute": "0.42.1"}'),
+    ("check", 'luteVersion: "0.41.1"', 'luteVersion: "0.42.1"'),
+    ("play", '{"eventVersion":"0.41.1","snapshotVersion":"0.41.1"}', '{"eventVersion":"0.42.1","snapshotVersion":"0.42.1"}'),
     (
         "schema",
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.41.schema.json"',
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.42.schema.json"',
     ),
-    ("run", "the engine accepts `0.41.1` artifacts", "the engine accepts `0.42.0` artifacts"),
-    ("version", "lute toolchain 0.41.1\nlanguage      0.41.1\n", "lute toolchain 0.42.0\nlanguage      0.42.0\n"),
+    ("run", "the engine accepts `0.41.1` artifacts", "the engine accepts `0.42.1` artifacts"),
+    ("version", "lute toolchain 0.41.1\nlanguage      0.41.1\n", "lute toolchain 0.42.1\nlanguage      0.42.1\n"),
 )
 # (label, text) the normalizer must leave byte-identical.
 SELF_TEST_UNTOUCHED = (

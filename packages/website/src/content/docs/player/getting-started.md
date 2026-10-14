@@ -43,7 +43,7 @@ lute check-project examples/player-demo
 Install exact 0.42 packages:
 
 ```console
-bun add @lute-lang/player-web@0.42.0 @lute-lang/player@0.42.0 @lute-lang/runtime@0.42.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.42.1 @lute-lang/player@0.42.1 @lute-lang/runtime@0.42.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.

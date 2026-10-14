@@ -325,7 +325,7 @@ command and artifact shapes and, since 0.41, the `project.index.json` types
 
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
-line), and its output carries `eventVersion: "0.42.0"`. Schema regeneration is
+line), and its output carries `eventVersion: "0.42.1"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.
 
 ## Local dogfooding
