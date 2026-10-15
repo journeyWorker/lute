@@ -1,11 +1,11 @@
 ---
-title: "AI harness surface — 0.44.0"
+title: "AI harness surface — 0.45.0"
 status: Implemented
 ---
 # AI harness surface
 
-This page is the thin adapter contract for 0.44.0. The current language is
-0.44.0; the CLI's machine-readable reports use a common JSON envelope. The
+This page is the thin adapter contract for 0.45.0. The current language is
+0.45.0; the CLI's machine-readable reports use a common JSON envelope. The
 CLI is the boundary, not a chat app, session manager, MCP server, or
 Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).

@@ -6,5 +6,5 @@ profiles:
   game:
     plugins: { game.rules: true }
 defaults:
-  luteVersion: "0.44.0"
+  luteVersion: "0.45.0"
   uses: [world.schema.yaml]

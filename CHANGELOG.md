@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.44.0`, the grammar and semantics the checker
+- **Language** — currently `0.45.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.44.0`) and gated on by consuming engines.
+  artifact (currently `0.45.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,100 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.45.0]
+
+**Stage meaning follows the lowered record; background barks** (spec
+[`0.45.0.md`](docs/proposals/scenario-dsl/0.45.0.md); plan
+[`2026-10-15-lute-0.45.0-stage-barks.md`](docs/superpowers/plans/2026-10-15-lute-0.45.0-stage-barks.md);
+decisions
+[`2026-10-15-lute-0.45-decisions.md`](docs/superpowers/notes/2026-10-15-lute-0.45-decisions.md)).
+The **language** earns the release: implicit staging now keys on the staging
+record a directive lowers to, so plugin directives lowered to `bg` or `actor`
+get the same stage bookkeeping as `::bg` and `::actor` (shape 2 of the
+staging-tag-dispatch note). Documents that use only core directives compile,
+check, trace and play byte-identically. No IR, Event, snapshot or bindings
+shape changes: the stamps read `0.45.0`, the contract schemas move to the
+`0.45` line (`schemas/lute-{ir,events,snapshot,player-bindings}-0.45.schema.json`,
+bodies unchanged apart from `$id`/title), `bindingsVersion` is `"0.45"` and the
+player's save/profile format version is `"0.45"`. The npm packages publish
+`0.45.0` with no TypeScript API change.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- **Implicit staging follows the lowered record kind.** The stage reducer
+  (scene-change auto-hide, actor entrance anchor and first-emotion preload,
+  dirty-pose reset, `W-STAGE-ABSENT`, `W-EXIT-INERT`) classifies a directive by
+  the staging record it lowers to — a core directive by its own lowering, a
+  plugin directive by its `lower: { record, fields }` — instead of its source
+  tag. A plugin directive lowered to `bg` now changes the scene: characters on
+  stage get injected hides before it, later lines by them warn
+  `W-STAGE-ABSENT` (naming the plugin directive) until they are shown again,
+  and no spurious pose reset follows. One lowered to `actor` stages its
+  character like `::actor`; it leaves the stage when the record's `exit` is
+  `true`. `posReset`/`preload` fields do not change the stage model. `::clear`
+  and builtin hooks are unchanged. Amends base spec §11.5: implicit staging is
+  still a toolchain rule, but a function of the lowered records.
+- Authored records keep their order; only injected records appear or
+  disappear (with the positions after them renumbered). The corpus's only
+  plugin-lowering project (`docs/examples/typed-projection`) compiles
+  unchanged.
+
+### IR
+
+- None (stamp and schema line only).
+
+### Plugin
+
+- A declarative `actor` lowering must bind `character` to a **required**
+  attribute or a literal string; otherwise the plugin fails assembly with
+  `E-LOWER-RECORD-FIELD` (before, an unauthored `character` lowered to `""`,
+  which the runtime staged as an actor named `""`).
+
+### CLI
+
+- `lute trace` marks an `actor` record with `exit: true` as an exit whichever
+  directive produced it. Human output is otherwise unchanged apart from the
+  stamps and the staging change above (plugin-lowering projects only).
+
+### Runtime
+
+- None. The read-only queries (`candidates`, `evaluate`, `def`, `gate`,
+  `view`) are documented as answering at every await — `idle`,
+  `awaitChoice`, `awaitBridge`, `ended` — and, on a TypeScript session,
+  against the last committed state while an input runs; tests now pin it.
+
+### Player
+
+- Documented host pattern "background barks during a conversation"
+  (`player/custom-hosts`, `tooling/runtime-contract` EN/KO, event contract):
+  while the story waits at a choice or bridge, query `candidates`, read a
+  static bark's lines (text, speaker display name, `voiceKey`, `lineId`) from
+  the bundle and show them outside the presentation; a bark that records
+  (read, `once`, writes) or is dynamic is raised after `idle`. Concurrent
+  presentations are no longer planned (`docs/design/runtime-player.md` §6).
+
+### Diagnostics
+
+- `W-STAGE-ABSENT` after a scene change names the directive that caused it
+  (`::bg` text unchanged; a plugin's own tag otherwise). New
+  `E-LOWER-RECORD-FIELD` case above.
+
+### Identity
+
+- None.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| Semantics | Plugin directives lowered to `bg` change the scene (injected hides, `W-STAGE-ABSENT` until re-shown, no pose reset); ones lowered to `actor` get actor staging (anchor/preload injections, exit on `exit: true`, pose resets). | Re-show characters after a plugin scene change; manual exits or `::clear` added for 0.44 stay valid but may now be redundant. |
+| Plugin | An `actor` lowering whose `character` is not bound to a required attribute or a literal is `E-LOWER-RECORD-FIELD`. | Mark the source attribute `required: true` (or bind a literal). |
+| Release | All axes and packages stamp `0.45.0`; schemas move to the `0.45` line; `bindingsVersion: "0.45"`; saves and profiles read `"0.45"`, so a 0.44 save is refused `SaveIncompatible` (the project fingerprint carries the toolchain version). | Widen version gates to 0.45; update `bindingsVersion`. |
 
 ## [0.44.0]
 

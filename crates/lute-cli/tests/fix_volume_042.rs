@@ -34,7 +34,7 @@ const MANIFEST: &str =
 const SCENE: &str = "---\nkind: scene\nid: start\non: start\n---\n## Start\n\
     ::music{playback=\"start\" mood=\"calm\" volume=\"down\"}\n@narrator: Quiet, then up.\n\
     ::music{playback=\"change\" volume=\"up\"}\n";
-const BINDINGS: &str = "bindingsVersion: \"0.44\"\ncanvas: {width: 1920, height: 1080}\n\
+const BINDINGS: &str = "bindingsVersion: \"0.45\"\ncanvas: {width: 1920, height: 1080}\n\
     volumes:\n  silent: 0\n  down: 0.25   # was relative\n  normal: 0.5\n  \"up\": 0.75\n  full: 1\n";
 
 fn project(tag: &str, vocabulary: &str) -> lute_scratch::ScratchDir {

@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: rename-ledger
-luteVersion: "0.44.0"
+luteVersion: "0.45.0"
 ---
 
 <quest id="newQuest" tier="run" title="An old quest" start="true">

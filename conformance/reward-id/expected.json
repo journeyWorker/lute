@@ -50,7 +50,7 @@
   ],
   "exit": "complete",
   "facts": [],
-  "irVersion": "0.44",
+  "irVersion": "0.45",
   "kind": "quest",
   "quests": {
     "rescue": "complete"
