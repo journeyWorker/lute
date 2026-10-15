@@ -177,54 +177,77 @@ The clock remains engine-owned, but a presentation component can choose one
 static backdrop for each slot. Declare the slot vocabulary and a slot-typed
 state field in the schema, then expose a def that reads that field:
 
-```yaml
+```yaml check="docs/examples/quayside/world.schema.yaml"
 enums:
-  slot: [morning, afternoon, night]
+  slot: [morning, afternoon, evening]
+  ending: [none, restore, retire]
 state:
-  run.day:  { type: int, default: 1, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
   run.slot: { type: { domain: slot }, default: morning, owner: engine }
-defs:
-  currentSlot: { type: { domain: slot }, cel: "run.slot" }
+  run.ending: { type: { domain: ending }, default: none }
+  run.visits: { type: int, default: 0 }
 clock:
   day: run.day
   slot: run.slot
-  slots: [morning, afternoon, night]
+  slots: [morning, afternoon, evening]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+entities:
+  place: { members: [square, pier, bakery] }
+relations: {}
+defs:
+  currentSlot: "run.slot"
+terminal: "run.ending != 'none'"
+cast:
+  player: { name: You }
+  june: { name: June }
+  tom: { name: Tom }
 ```
 
 Put one `::bg` in each arm of a component. The component's `slot` parameter is
 the same closed domain, so the `<match>` is exhaustive and the directive values
 stay compile-time constants:
 
-```lute unverified="component and scene are checked together in the scratch project described below"
+```lute check="docs/examples/quayside/components/clock-backdrop.component.lute"
 ---
 component: clockBackdrop
 params:
   slot: { type: { domain: slot } }
 ---
+## Backdrop
 <match subject="@slot">
   <when is="morning">
-    ::bg{location="harbor" time="morning"}
+    ::bg{location="quayside" time="morning"}
   </when>
   <when is="afternoon">
-    ::bg{location="harbor" time="afternoon"}
+    ::bg{location="quayside" time="afternoon"}
   </when>
-  <when is="night">
-    ::bg{location="harbor" time="night"}
+  <when is="evening">
+    ::bg{location="quayside" time="evening"}
   </when>
 </match>
 ```
 
 Use the component in every scene that needs this policy:
 
-```lute unverified="component and scene are checked together in the scratch project described below"
+```lute check="docs/examples/quayside/scenes/opening.lute"
 ---
 kind: scene
-id: harbor.market
-components: [../components/clockBackdrop.component.lute]
+id: opening
+components: [../components/clock-backdrop.component.lute]
+on: start
+priority: 10
 ---
-## Opening
-::use{component="clockBackdrop" slot=@currentSlot}
-@narrator: The harbor follows the day.
+
+## Morning at Quayside
+
+::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
+@june: The tide is out, and Quayside is already awake.
+@narrator: A hand-painted sign points toward the square, the pier, and the bakery.
 ```
 
 The alternative is to write `time="morning"` (or another literal) directly

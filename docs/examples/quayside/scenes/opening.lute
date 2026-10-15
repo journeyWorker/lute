@@ -1,0 +1,13 @@
+---
+kind: scene
+id: opening
+components: [../components/clock-backdrop.component.lute]
+on: start
+priority: 10
+---
+
+## Morning at Quayside
+
+::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
+@june: The tide is out, and Quayside is already awake.
+@narrator: A hand-painted sign points toward the square, the pier, and the bakery.

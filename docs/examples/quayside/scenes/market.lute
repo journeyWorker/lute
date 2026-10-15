@@ -1,0 +1,37 @@
+---
+kind: scene
+id: market
+components: [../components/clock-backdrop.component.lute]
+on: visit
+target: place.square
+priority: 10
+---
+
+## The market square
+
+::use{component="clockBackdrop" slot=@currentSlot instance="market-backdrop"}
+@june: Every stall has something to mend, trade, or remember.
+::set{run.visits += 1}
+
+<branch id="closingBell" prompt="The harbor bell rings. What will you do with the old town hall?">
+  <choice id="restore" text="Restore it as a community hall">
+    ::set{run.ending = 'restore'}
+    @june: We will fill it with lanterns and neighbors.
+  </choice>
+  <choice id="retire" text="Let the building rest with the tide">
+    ::set{run.ending = 'retire'}
+    @june: Some doors close gently, and that is a kind of care.
+  </choice>
+</branch>
+
+<match subject="run.ending">
+  <when is="restore">
+    @narrator: The square keeps its lights on for the hall.
+  </when>
+  <when is="retire">
+    @narrator: The square grows quiet around the old hall.
+  </when>
+  <when is="none">
+    @narrator: The bell waits for your answer.
+  </when>
+</match>

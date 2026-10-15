@@ -20839,3 +20839,60 @@ The core ports are `Presenter`, `AudioPort`, and `AssetLoader`; `PlayerHost`
 handles bridge answers and idle flow. Runtime 0.41 carries `world.stage` and
 `continuation.stage` in snapshots, and timed choices use the `timeout` input
 with their declared `default`.
+
+# Build a town game
+
+This Lute 0.46 tutorial builds **Quayside**, a tiny Stardew-style town. The
+complete checked project is
+[`docs/examples/quayside/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/quayside):
+a named clock, clock-following backdrop component, gated occasion, static lore
+barks, two ending plays, `ui.ended` bindings, and a `player-web` host.
+
+The schema gives `run.slot` a named enum domain and `run.ending` the closed
+domain `[none, restore, retire]`. Its terminal condition is
+`run.ending != 'none'`. A component receives the slot through
+`slot=@currentSlot` and has one literal `::bg` arm per slot; directive fields
+remain build-time values. A lore document uses
+`<entry category="bark" on="visit" target="place.square">` for static
+background lines.
+
+The restore play demonstrates the 0.46 refusal assertion:
+
+```yaml
+steps:
+  - occasion: tide
+    expect: { refused: E-OCCASION-GATE, state: { run.ending: none } }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: restore }
+```
+
+`lute test --coverage docs/examples/quayside` merges match arms shown by plays.
+The bindings use `bindingsVersion: "0.46"`, resolve `ui.title.music` through an
+`assets:` key, and map `ui.ended.by: run.ending` to named screens.
+
+For a map-driven host, draw the town map in the host's own Pixi application:
+`player-web` owns a private asset loader and does not touch Pixi's global
+`Assets`. Mount with `{ bindings, bundleUrl, wasmUrl }`, query
+`program.gate(state, "tide")` before `send({ type: "raiseOccasion", occasion:
+"tide" })`, and use `program.candidates` plus the loaded `bundle` to show a
+placeholder-free bark during a wait. Save with `snapshot()`, resume a fresh
+mount with `{ snapshot: save.snapshot }`, then `restore(save)`. For a HUD,
+`program.clock` is numeric; display names come from
+`program.view(state).clock`.
+
+See [Build a town game](/getting-started/build-a-town-game/),
+[The clock](/language/clock/), [custom hosts](/player/custom-hosts/), and the
+[runtime contract](/tooling/runtime-contract/).
+
+The 0.46 reference updates are also reflected in the current pages:
+[components and extends](/language/components-and-extends/) documents
+reserved component-site names, [player bindings](/player/bindings/) documents
+`ui.ended` and UI asset-key resolution, [player getting started](/player/getting-started/)
+and [custom hosts](/player/custom-hosts/) document player-web mount parity,
+private assets, and save/resume, and [playing a story](/tooling/play/) documents
+refused occasion expectations and play coverage. The [runtime contract](/tooling/runtime-contract/)
+page documents the clock HUD view. [State schemas](/state/schemas/),
+[diagnostics](/reference/diagnostics/), [reserved names](/reference/reserved-names/),
+and [the CLI](/tooling/cli/) carry the corresponding 0.46 checker and command
+notes in their mirrored sections.

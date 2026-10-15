@@ -1,0 +1,11 @@
+---
+kind: scene
+id: tide
+components: [../components/clock-backdrop.component.lute]
+on: tide
+---
+
+## Evening tide
+
+::use{component="clockBackdrop" slot=@currentSlot instance="tide-backdrop"}
+@narrator: At evening tide, the town lights come on one by one.

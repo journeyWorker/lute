@@ -127,55 +127,78 @@ covered ``). `is="7"`은 `E-WHEN-LITERAL-DOMAIN`이고, `clock.weekday == 7` 가
 배경 하나를 선택할 수 있습니다. 스키마에 슬롯 어휘와 슬롯 타입 상태 필드를
 선언하고, 그 필드를 읽는 def를 노출합니다:
 
-```yaml
+```yaml check="docs/examples/quayside/world.schema.yaml"
 enums:
-  slot: [morning, afternoon, night]
+  slot: [morning, afternoon, evening]
+  ending: [none, restore, retire]
 state:
-  run.day:  { type: int, default: 1, owner: engine }
+  run.day: { type: int, default: 1, owner: engine }
   run.slot: { type: { domain: slot }, default: morning, owner: engine }
-defs:
-  currentSlot: { type: { domain: slot }, cel: "run.slot" }
+  run.ending: { type: { domain: ending }, default: none }
+  run.visits: { type: int, default: 0 }
 clock:
   day: run.day
   slot: run.slot
-  slots: [morning, afternoon, night]
+  slots: [morning, afternoon, evening]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+entities:
+  place: { members: [square, pier, bakery] }
+relations: {}
+defs:
+  currentSlot: "run.slot"
+terminal: "run.ending != 'none'"
+cast:
+  player: { name: You }
+  june: { name: June }
+  tom: { name: Tom }
 ```
 
 컴포넌트의 각 arm에 `::bg`를 하나씩 둡니다. 컴포넌트의 `slot` 파라미터도
 같은 폐쇄형 도메인이므로 `<match>`가 모든 경우를 다루며, 디렉티브 값은
 컴파일 시점 상수로 유지됩니다:
 
-```lute unverified="component and scene are checked together in the scratch project described below"
+```lute check="docs/examples/quayside/components/clock-backdrop.component.lute"
 ---
 component: clockBackdrop
 params:
   slot: { type: { domain: slot } }
 ---
+## Backdrop
 <match subject="@slot">
   <when is="morning">
-    ::bg{location="harbor" time="morning"}
+    ::bg{location="quayside" time="morning"}
   </when>
   <when is="afternoon">
-    ::bg{location="harbor" time="afternoon"}
+    ::bg{location="quayside" time="afternoon"}
   </when>
-  <when is="night">
-    ::bg{location="harbor" time="night"}
+  <when is="evening">
+    ::bg{location="quayside" time="evening"}
   </when>
 </match>
+```
+```lute check="docs/examples/quayside/scenes/opening.lute"
+---
+kind: scene
+id: opening
+components: [../components/clock-backdrop.component.lute]
+on: start
+priority: 10
+---
+
+## Morning at Quayside
+
+::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
+@june: The tide is out, and Quayside is already awake.
+@narrator: A hand-painted sign points toward the square, the pier, and the bakery.
 ```
 
 이 정책이 필요한 모든 씬에서 컴포넌트를 사용합니다:
 
-```lute unverified="component and scene are checked together in the scratch project described below"
----
-kind: scene
-id: harbor.market
-components: [../components/clockBackdrop.component.lute]
----
-## Opening
-::use{component="clockBackdrop" slot=@currentSlot}
-@narrator: The harbor follows the day.
-```
 
 대안은 각 씬의 `::bg`에 `time="morning"`(또는 다른 리터럴)을 직접 쓰는
 것입니다. 씬이 시계를 따르지 않고 의도적으로 시간을 고를 때 더 명확할 수

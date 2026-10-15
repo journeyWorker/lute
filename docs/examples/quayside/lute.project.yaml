@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { quayside.occasions: true }
+defaults:
+  uses: [world.schema.yaml]

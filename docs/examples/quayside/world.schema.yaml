@@ -1,0 +1,28 @@
+enums:
+  slot: [morning, afternoon, evening]
+  ending: [none, restore, retire]
+state:
+  run.day: { type: int, default: 1, owner: engine }
+  run.slot: { type: { domain: slot }, default: morning, owner: engine }
+  run.ending: { type: { domain: ending }, default: none }
+  run.visits: { type: int, default: 0 }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, evening]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+entities:
+  place: { members: [square, pier, bakery] }
+relations: {}
+defs:
+  currentSlot: "run.slot"
+terminal: "run.ending != 'none'"
+cast:
+  player: { name: You }
+  june: { name: June }
+  tom: { name: Tom }
