@@ -1980,7 +1980,8 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     write_at(
         &dir,
         "scenes/s.lute",
-        "---\nkind: scene\nid: s\non: visit\nonce: false\nstate:\n  run.flag: { type: bool, default: true }\n---\n\n## S\n\
+        "---\nkind: scene\nid: s\non: visit\nonce: false\nstate:\n  run.flag: { type: bool, default: true }\n  run.guard: { type: int, default: 0 }\n---\n\n## S\n\
+         ::set{run.guard = 1 when=\"run.flag\"}\n\
          <match subject=\"run.flag\">\n<when is=\"true\">\n@narrator: yes.\n</when>\n\
          <otherwise>\n@narrator: no.\n</otherwise>\n</match>\n",
     );
@@ -2008,4 +2009,22 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     );
     assert!(text.contains("match `run.flag`"), "{text}");
     assert!(text.contains("2/2 arm(s) executed"), "{text}");
+    let json_out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage", "--json"])
+        .output()
+        .unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&json_out.stdout).unwrap();
+    let arms = payload
+        .pointer("/coverage/arms")
+        .or_else(|| payload.pointer("/result/coverage/arms"))
+        .expect("coverage arms in JSON");
+    assert!(
+        arms.as_object().unwrap().values().any(|row| {
+            row["kind"] == "guard"
+                && row["executed"]
+                    .as_array()
+                    .is_some_and(|values| values.len() == 2)
+        }),
+        "{payload}"
+    );
 }

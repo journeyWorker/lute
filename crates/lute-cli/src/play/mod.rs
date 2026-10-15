@@ -804,7 +804,8 @@ fn run_play_for_test_inner(
 }
 fn collect_arms(p: &ExecProject, document: &str, transcript: &[Json], out: &mut Vec<PlayedArm>) {
     for record in transcript {
-        if record.get("kind").and_then(Json::as_str) != Some("match") {
+        let kind = record.get("kind").and_then(Json::as_str);
+        if kind != Some("match") && kind != Some("guard") {
             continue;
         }
         let (Some(position), Some(result)) = (

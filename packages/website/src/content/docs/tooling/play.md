@@ -1698,8 +1698,9 @@ If the occasion is accepted instead, the play continues but the expectation
 misses with `expected the raise to be refused with E-OCCASION-GATE; it was
 accepted`; `lute test` reports that play as FAIL. `refused` is not legal on
 `advance`, `engine`, `newRun`, `event`, or `end` steps. `--events` keeps the
-rejected raise in the output as the occasion step with no presentation, so a
-host sees the same rejected input/output pair.
+rejected raise in the output as the occasion step with no presentation, then
+continues with following inputs when `refused` matches, so a host sees the
+same rejected input/output pair without losing the rest of the stream.
 
 
 Five more judge the world **right after the step settled** — for an occasion step, after its presentations, its occasion's objective judging, and the settle that follows — and are legal on any step kind (not beside `end`). Each but `clock` means what it means at the top level, below, at that moment:

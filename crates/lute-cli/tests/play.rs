@@ -3016,6 +3016,47 @@ expect:
     );
     assert!(text.contains("step 3"), "{text}");
 }
+
+#[test]
+fn events_continue_after_an_expected_occasion_refusal() {
+    let script = r#"steps:
+  - engine: { state: { run.noise: 0 } }
+  - occasion: listen
+    expect: { refused: E-OCCASION-GATE, state: { run.mark: 0 } }
+  - engine: { state: { run.mark: 1 } }
+    expect: { state: { run.mark: 1 } }
+expect: { end: complete }
+"#;
+    let dir = fixture().join("..").join("runtime-gate-041");
+    let scratch = lute_scratch::ScratchDir::named("events-expected-refusal");
+    let path = scratch.join("script.play.yaml");
+    std::fs::write(&path, script).unwrap();
+    let out = Command::new(BIN)
+        .args([
+            "play",
+            dir.to_str().unwrap(),
+            "--script",
+            path.to_str().unwrap(),
+            "--events",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(out.status.success(), "{text}");
+    let lines: Vec<Json> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let rejected = lines
+        .iter()
+        .position(|line| line["rejected"]["code"] == "E-OCCASION-GATE")
+        .expect(&text);
+    assert!(rejected + 1 < lines.len(), "{text}");
+    assert!(
+        lines[rejected + 1]["input"]["type"] == "hostWrite",
+        "{text}"
+    );
+}
 #[test]
 fn refused_expectation_misses_when_occasion_is_accepted() {
     let script = r#"

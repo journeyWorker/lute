@@ -2194,8 +2194,9 @@ steps:
 `expected the raise to be refused with E-OCCASION-GATE; it was accepted`라는
 불일치가 생기며, `lute test`에서는 플레이가 FAIL입니다. `refused`는
 `advance`, `engine`, `newRun`, `event`, `end` 스텝에서 사용할 수 없습니다.
-`--events`에서는 제시가 없는 거부된 계기 스텝을 출력해 호스트가 본 거부
-입력/출력 쌍과 같은 이벤트 흐름을 유지합니다.
+`--events`에서는 제시가 없는 거부된 계기 스텝을 출력하고, `refused`가
+일치하면 다음 입력을 계속 처리합니다. 호스트는 거부 입력/출력 쌍을
+보면서도 스트림의 나머지를 잃지 않습니다.
 
 
 다섯 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
