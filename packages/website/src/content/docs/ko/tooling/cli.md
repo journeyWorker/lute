@@ -828,10 +828,10 @@ FAIL  ./tests/old-shed.test.yaml  (./scenes/old-shed.lute)
 
 `lute test`는 각 프로젝트를 **한 번만** 로드하고 검사하며(dsl 0.26.0 §1), 그 프로젝트 아래의 모든 테스트와 플레이가 공유합니다. producer 집합과 퀘스트 id를 한 번 수집하고, 플레이 프로젝트는 모든 플레이에 대해 한 번 컴파일합니다(컴파일 진단도 플레이마다가 아니라 한 번만 출력). 그런 다음 테스트와 플레이를 모든 논리 코어에서 병렬 실행합니다(`RAYON_NUM_THREADS`로 스레드 수 제한). 결과는 일반적인 파일 순서로 보고되며 각 표준 오류도 같은 순서로 재생됩니다.
 
-`--coverage`는 분기/arm 커버리지도 보고하고 **테스트되지 않은** 단위를 나열합니다. `--project` 아래에서, 또는 `<dir>` 위쪽에서 가장 가까운 `lute.project.yaml` 아래에서 측정하므로 `lute test tests --coverage`도 전체 프로젝트를 측정합니다. 단위는 파일이 아니라 비트입니다(0.27.0). 모든 번들 비트(`<document id>.<beat id>`)와 로어 엔트리는 각각 단위이고, 씬 또는 퀘스트 문서는 하나의 단위입니다. 컴포넌트는 테스트할 수 없으므로 나열되지 않습니다. 테스트가 단위를 제시하거나(씬 테스트는 씬을 추적하고 `beat:`, `entry:`, `entries:`는 해당 단위를 제시) 플레이가 제시하면 단위가 커버됩니다. 플레이는 `occasion:` 스텝을 통해, 또는 `advance:` 스텝 뒤 시계가 발생시키는 계기를 통해 제시합니다. branch/hub 행은 추적 경로가 선택한 옵션뿐 아니라 플레이가 선택한 옵션도 같은 `{file}:{id}` 행에서 셉니다. arm 행은 헤더가 말하듯 추적 경로에서만 나옵니다. 마지막에는 플레이가 제시하지 않은 비트를 보여 주는 종료 증명 관점이 나옵니다. 씬 테스트는 모의 상태에서 비트를 추적할 뿐 실행 중 도달함을 증명하지 않지만, 플레이는 증명합니다:
+`--coverage`는 분기/arm 커버리지도 보고하고 **테스트되지 않은** 단위를 나열합니다. `--project` 아래에서, 또는 `<dir>` 위쪽에서 가장 가까운 `lute.project.yaml` 아래에서 측정하므로 `lute test tests --coverage`도 전체 프로젝트를 측정합니다. 단위는 파일이 아니라 비트입니다(0.27.0). 모든 번들 비트(`<document id>.<beat id>`)와 로어 엔트리는 각각 단위이고, 씬 또는 퀘스트 문서는 하나의 단위입니다. 컴포넌트는 테스트할 수 없으므로 나열되지 않습니다. 테스트가 단위를 제시하거나(씬 테스트는 씬을 추적하고 `beat:`, `entry:`, `entries:`는 해당 단위를 제시) 플레이가 제시하면 단위가 커버됩니다. 플레이는 `occasion:` 스텝을 통해, 또는 `advance:` 스텝 뒤 시계가 발생시키는 계기를 통해 제시합니다. branch/hub 행은 추적 경로가 선택한 옵션뿐 아니라 플레이가 선택한 옵션도 같은 `{file}:{id}` 행에서 셉니다. match arm과 `when=` guard 결과도 expect가 있는 플레이에서 source site별로 합쳐지므로 플레이만 실행한 arm도 실행됨으로 보고합니다. 마지막에는 플레이가 제시하지 않은 비트를 보여 주는 종료 증명 관점이 나옵니다. 씬 테스트는 모의 상태에서 비트를 추적할 뿐 실행 중 도달함을 증명하지 않지만, 플레이는 증명합니다:
 
 ```console
-coverage over 2 traced path(s) and 1 play(s) (plays count toward what they presented and the choices they picked, not match arms):
+coverage over 2 traced path(s) and 1 play(s) (plays count toward what they presented, the choices they picked and the arms they executed):
   branch/hub maraAsk (scenes/talk/mara-first.lute:maraAsk): 2/2 chosen [lamp, leave]
   2 untested unit(s) under . — no *.test.yaml presents them and no play presents them:
     lore/endings/ren.lute: ember

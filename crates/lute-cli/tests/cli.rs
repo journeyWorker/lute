@@ -1969,3 +1969,43 @@ fn check_on_a_yaml_schema_checks_it_as_a_schema_not_as_a_scene() {
         "anchored at `app.rating`'s own line and column: {btext}"
     );
 }
+#[test]
+fn coverage_merges_match_arms_executed_only_by_a_play() {
+    let dir = lute_scratch::ScratchDir::named("coverage-play-arms");
+    write_at(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write_at(
+        &dir,
+        "scenes/s.lute",
+        "---\nkind: scene\nid: s\non: visit\nonce: false\n---\n\n## S\n\
+         <match subject=\"true\">\n<when is=\"true\">\n@narrator: yes.\n</when>\n\
+         <otherwise>\n@narrator: no.\n</otherwise>\n</match>\n",
+    );
+    write_at(
+        &dir,
+        "t.test.yaml",
+        "file: scenes/s.lute\nexpect:\n  end: complete\n",
+    );
+    write_at(
+        &dir,
+        "p.play.yaml",
+        "steps:\n  - occasion: visit\n    expect: { winner: s }\nexpect:\n  end: complete\n",
+    );
+    let out = Command::new(BIN)
+        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}");
+    assert!(
+        text.contains(
+            "coverage over 1 traced path(s) and 1 play(s) (plays count toward what they presented, the choices they picked and the arms they executed)"
+        ),
+        "{text}"
+    );
+    assert!(text.contains("match `true`"), "{text}");
+    assert!(text.contains("2/2 arm(s) executed"), "{text}");
+}

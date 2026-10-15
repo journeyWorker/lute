@@ -38,6 +38,7 @@ pub(crate) const STEP_EXPECT_KEYS: &[&str] = &[
     "options",
     "presented",
     "quests",
+    "refused",
     "state",
     "winner",
 ];
@@ -121,6 +122,8 @@ pub(crate) struct StepOutcome {
     /// `newRun`, `event <name>`).
     pub occasion: String,
     pub target: Option<String>,
+    /// The refusal code when an occasion was refused, otherwise `None`.
+    pub refused: Option<String>,
     /// The presented beat; `None` when the occasion passed (no eligible
     /// beat, or `pick: none`).
     pub winner: Option<String>,
@@ -231,6 +234,15 @@ impl ExpectMiss {
 
 impl fmt::Display for ExpectMiss {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.key == "refused" {
+            return write!(
+                f,
+                "{}: expected the raise to be refused with {}; it was {}",
+                self.place(),
+                self.expected,
+                self.actual
+            );
+        }
         write!(
             f,
             "{}: expect {}: expected {}, actual {}",
@@ -350,6 +362,13 @@ pub(crate) fn validate(expect: &Yaml, top_level: bool) -> Vec<ExpectError> {
 fn validate_value(key: &str, v: &Yaml) -> Vec<ExpectError> {
     let one = |msg: String| vec![ExpectError::at(&[key], msg)];
     match key {
+        "refused" => match scalar_text(v) {
+            Some(code) if code == "E-OCCASION-GATE" => Vec::new(),
+            Some(code) => one(format!(
+                "`expect.refused` accepts only `E-OCCASION-GATE` (got `{code}`)"
+            )),
+            None => one("`expect.refused` must be `E-OCCASION-GATE`".into()),
+        },
         "winner" => match scalar_text(v) {
             Some(_) => Vec::new(),
             None => one(format!(
@@ -729,6 +748,15 @@ fn check_step(
             actual,
         })
     };
+    if let Some(want) = m.get("refused").and_then(scalar_text) {
+        let actual = row
+            .refused
+            .clone()
+            .unwrap_or_else(|| "accepted".to_string());
+        if actual != want {
+            miss("refused".into(), want, actual);
+        }
+    }
     let actual_winner = row.winner.clone().unwrap_or_else(|| NO_WINNER.to_string());
     if let Some(want) = m.get("winner").and_then(scalar_text).map(resolve) {
         let holds = match (&row.winner, want.as_str()) {

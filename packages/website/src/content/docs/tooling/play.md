@@ -1686,6 +1686,21 @@ A step may carry `expect:`, judged against what that step did. Four keys judge a
 | `notOffered: [beat ids]` | none of the listed beats was eligible |
 | `presented: [beat ids]` | exactly these beats were presented, in this order (dsl 0.23.0): the whole list of a [`select: sequence`](#composing-occasions) step, or a winner followed by its `also` beats; `[]` — nothing was |
 | `presented: { <occasion>: [beat ids] }` | on an `advance` step: for each named occasion the clock raises, exactly these beats were presented by its raises in this step, in this order; occasions not named are not judged ([Advancing the clock](#advancing-the-clock)) |
+| `refused: E-OCCASION-GATE` | on an `occasion:` step only, holds when the occasion's gate refuses the raise; the state is unchanged and the play continues |
+
+`refused` is only accepted with `E-OCCASION-GATE`. It may be combined with
+`state`, `facts`, `notFacts`, `clock`, and `quests`, which are checked against
+the unchanged state. It cannot be combined with `winner`, `offered`,
+`notOffered`, `presented`, or `options`, because a refused raise presents
+nothing. On a refused step, `lute play` prints a note such as
+`note: the raise was refused with E-OCCASION-GATE — not raised: gate false`.
+If the occasion is accepted instead, the play continues but the expectation
+misses with `expected the raise to be refused with E-OCCASION-GATE; it was
+accepted`; `lute test` reports that play as FAIL. `refused` is not legal on
+`advance`, `engine`, `newRun`, `event`, or `end` steps. `--events` keeps the
+rejected raise in the output as the occasion step with no presentation, so a
+host sees the same rejected input/output pair.
+
 
 Five more judge the world **right after the step settled** — for an occasion step, after its presentations, its occasion's objective judging, and the settle that follows — and are legal on any step kind (not beside `end`). Each but `clock` means what it means at the top level, below, at that moment:
 

@@ -2182,6 +2182,21 @@ steps:
 | `notOffered: [beat ids]` | 나열된 비트 중 어느 것도 자격이 없었음 |
 | `presented: [beat ids]` | 정확히 이 비트들이 이 순서로 제시됨(dsl 0.23.0): [`select: sequence`](#계기-조합하기) 스텝의 목록 전체, 또는 승자와 그 뒤의 `also` 비트. `[]` — 아무것도 제시되지 않음 |
 | `presented: { <occasion>: [beat ids] }` | `advance` 스텝에서: 시계가 발생시키는 계기 가운데 이름을 댄 계기마다, 이 스텝의 그 발생들이 정확히 이 비트들을 이 순서로 제시함. 이름을 대지 않은 계기는 판정하지 않음([시계 앞으로 돌리기](#시계-앞으로-돌리기)) |
+| `refused: E-OCCASION-GATE` | `occasion:` 스텝에서만 사용하며, 계기의 관문이 발생을 거부하면 성립합니다. 상태는 바뀌지 않고 플레이는 계속됩니다 |
+
+`refused`는 `E-OCCASION-GATE`만 받습니다. `state`, `facts`, `notFacts`,
+`clock`, `quests`와 함께 쓸 수 있으며, 이 값들은 변경되지 않은 상태에서
+판정됩니다. `winner`, `offered`, `notOffered`, `presented`, `options`와는
+함께 쓸 수 없습니다. 거부된 발생은 아무것도 제시하지 않기 때문입니다.
+`lute play`는 해당 스텝에
+`note: the raise was refused with E-OCCASION-GATE — not raised: gate false`
+같은 note를 출력합니다. 계기가 실제로 받아들여지면 플레이는 계속되지만
+`expected the raise to be refused with E-OCCASION-GATE; it was accepted`라는
+불일치가 생기며, `lute test`에서는 플레이가 FAIL입니다. `refused`는
+`advance`, `engine`, `newRun`, `event`, `end` 스텝에서 사용할 수 없습니다.
+`--events`에서는 제시가 없는 거부된 계기 스텝을 출력해 호스트가 본 거부
+입력/출력 쌍과 같은 이벤트 흐름을 유지합니다.
+
 
 다섯 키가 더 있어 **스텝이 정착한 직후**의 월드를 판정합니다 — 계기 스텝이라면 제시, 계기의 목표 판정,
 그 뒤의 정착이 모두 끝난 다음 — 그리고 어떤 종류의 스텝에든 쓸 수 있습니다(`end` 옆은 안 됨). 각 키는

@@ -2987,3 +2987,83 @@ fn declared_advance_cascade_has_a_runtime_bound() {
     assert!(text.contains("E-ADVANCE-CASCADE"), "{text}");
     assert!(text.contains("loop"), "{text}");
 }
+#[test]
+fn a_gated_occasion_can_be_expected_refused_and_play_continues() {
+    let script = r#"
+steps:
+  - occasion: listen
+    expect:
+      refused: E-OCCASION-GATE
+      state: { run.mark: 0 }
+  - engine: { state: { run.mark: 1 } }
+    expect:
+      state: { run.mark: 1 }
+expect:
+  end: complete
+"#;
+    let out = play_in(
+        &fixture().join("..").join("runtime-gate-041"),
+        "refused-occasion",
+        script,
+        false,
+    );
+    let text = stdout(&out);
+    assert!(out.status.success(), "{text}");
+    assert!(
+        text.contains("note: the raise was refused with E-OCCASION-GATE"),
+        "{text}"
+    );
+    assert!(text.contains("step 2"), "{text}");
+}
+#[test]
+fn refused_expectation_misses_when_occasion_is_accepted() {
+    let script = r#"
+steps:
+  - engine: { state: { run.noise: 2 } }
+  - occasion: listen
+    expect: { refused: E-OCCASION-GATE }
+expect:
+  end: complete
+"#;
+    let out = play_in(
+        &fixture().join("..").join("runtime-gate-041"),
+        "accepted-refusal",
+        script,
+        false,
+    );
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("expected the raise to be refused with E-OCCASION-GATE; it was accepted"),
+        "{text}"
+    );
+}
+
+#[test]
+fn refused_expectation_rejects_bad_codes_and_presentation_keys() {
+    for (tag, expect, needle) in [
+        (
+            "bad-refusal-code",
+            "refused: E-OTHER",
+            "accepts only `E-OCCASION-GATE`",
+        ),
+        (
+            "refused-with-winner",
+            "refused: E-OCCASION-GATE\n      winner: none",
+            "cannot be combined with `expect.winner`",
+        ),
+    ] {
+        let script = format!(
+            "steps:\n  - occasion: listen\n    expect:\n      {expect}\nexpect:\n  end: complete\n"
+        );
+        let out = play_in(
+            &fixture().join("..").join("runtime-gate-041"),
+            tag,
+            &script,
+            false,
+        );
+        let text = stderr(&out);
+        assert_eq!(out.status.code(), Some(2), "{text}");
+        assert!(text.contains(needle), "{text}");
+    }
+}

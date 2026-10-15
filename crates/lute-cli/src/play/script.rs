@@ -1487,6 +1487,22 @@ fn parse_step_keys(
             ));
         }
     }
+    if expect.as_ref().is_some_and(|e| e.get("refused").is_some()) {
+        if action != "occasion" {
+            return Err(format!(
+                "step {n}: `expect.refused` applies only to an `occasion` step, not `{action}`"
+            ));
+        }
+        if let Some(key) = ["winner", "offered", "notOffered", "presented", "options"]
+            .into_iter()
+            .find(|key| expect.as_ref().is_some_and(|e| e.get(*key).is_some()))
+        {
+            return Err(format!(
+                "step {n}: `expect.refused` cannot be combined with `expect.{key}` — a refused \
+                 raise presents nothing"
+            ));
+        }
+    }
     // `presented` keyed by occasion names the raises of an `advance:`; an
     // `occasion` step raises one occasion.
     if action == "occasion"

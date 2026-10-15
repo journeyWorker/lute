@@ -1766,6 +1766,48 @@ fn run_one_play(
             row.eligible.extend(c.offered.iter().cloned());
             row.total = row.total.max(c.total);
         }
+        if let Some(maps) = play_project.coverage_maps() {
+            for arm in &run.arms {
+                let Some(source) = maps
+                    .documents
+                    .get(&arm.document)
+                    .and_then(|map| map.by_addr.get(&arm.position))
+                else {
+                    continue;
+                };
+                let component = source.component.as_ref().and_then(|c| {
+                    maps.components
+                        .get(&c.name)
+                        .map(|path| lute_trace::ComponentSite {
+                            name: c.name.clone(),
+                            file: project_dir.join(path).display().to_string(),
+                            scope: c.scope.clone(),
+                        })
+                });
+                let file = display_path(&project_dir.join(&arm.document));
+                let site = lute_trace::report::site_key_in(&source.span, component.as_ref());
+                let key = arm_row_key(&file, &site, component.as_ref());
+                let row = cov.arms.entry(key).or_insert_with(|| {
+                    ArmRow::new(
+                        source
+                            .authored_id
+                            .clone()
+                            .unwrap_or_else(|| arm.label.clone()),
+                        source.guard,
+                    )
+                });
+                row.total = row.total.max(arm.total);
+                row.chosen.insert(if source.guard {
+                    if arm.result.starts_with("arm ") {
+                        lute_trace::report::GUARD_TAKEN.to_string()
+                    } else {
+                        lute_trace::report::GUARD_SKIPPED.to_string()
+                    }
+                } else {
+                    arm.result.clone()
+                });
+            }
+        }
     }
     let mut misses = run.misses;
     if run.exit != "complete" && !declares_exit {

@@ -616,6 +616,15 @@ pub fn run_play(
     exit
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct PlayedArm {
+    pub(crate) document: String,
+    pub(crate) position: String,
+    pub(crate) result: String,
+    pub(crate) label: String,
+    pub(crate) total: usize,
+}
+
 pub(crate) struct PlayTestRun {
     pub misses: Vec<ExpectMiss>,
     /// `complete | incomplete | error`.
@@ -627,6 +636,7 @@ pub(crate) struct PlayTestRun {
     pub presented_docs: BTreeSet<String>,
     pub presented: BTreeSet<(String, String)>,
     pub choices: Vec<PlayedChoice>,
+    pub arms: Vec<PlayedArm>,
     pub notes: Vec<String>,
     /// Quest ids that transition to complete during a step, excluding quests
     /// already complete in the initial saved state.
@@ -636,7 +646,16 @@ pub(crate) struct PlayTestRun {
 /// A project compiled once for every play of one `lute test` run (T2-1):
 /// `Err` is why no play can run over it — the usage error, or that it does
 /// not compile (the compile gate's diagnostics are already printed).
-pub(crate) struct PlayProject(Result<(ExecProject, lute_trace::exec::record::NeedleVocab), String>);
+pub(crate) struct PlayProject(
+    Result<
+        (
+            ExecProject,
+            lute_trace::exec::record::NeedleVocab,
+            project::CoverageMaps,
+        ),
+        String,
+    >,
+);
 
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
@@ -644,21 +663,28 @@ impl PlayProject {
         Self::compile_in(&lute_model::ModelMemo::default(), dir)
     }
 
-    /// [`PlayProject::compile`] over `memo`'s model of the project.
+    /// [`PlayProject::compile`] over `memo`'s model.
     pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path) -> Self {
         PlayProject(
-            compile_play_project(memo, dir, project::TEST, &crate::EngineMatrix::reference())
-                .map_err(|(_, msg)| {
-                    if msg.is_empty() {
-                        "the project does not compile (diagnostics above)".to_string()
-                    } else {
-                        msg
-                    }
-                }),
+            project::compile_play_bundle(
+                memo,
+                dir,
+                project::TEST,
+                &crate::EngineMatrix::reference(),
+            )
+            .map_err(|_| "the project does not compile (diagnostics above)".to_string())
+            .and_then(|bundle| {
+                bundle
+                    .load_with_coverage()
+                    .map_err(|_| "the project does not compile (diagnostics above)".to_string())
+            }),
         )
     }
+    pub(crate) fn coverage_maps(&self) -> Option<&project::CoverageMaps> {
+        self.0.as_ref().ok().map(|(_, _, maps)| maps)
+    }
 
-    /// Why no play can run over this project, if it did not compile.
+    /// Why no play can run over it, if it did not compile.
     pub(crate) fn error(&self) -> Option<&str> {
         self.0.as_ref().err().map(String::as_str)
     }
@@ -671,9 +697,17 @@ pub(crate) fn run_play_for_test(
     script: &Path,
     derive: bool,
 ) -> Result<PlayTestRun, String> {
+    run_play_for_test_inner(project, script, derive)
+}
+
+fn run_play_for_test_inner(
+    project: &PlayProject,
+    script: &Path,
+    derive: bool,
+) -> Result<PlayTestRun, String> {
     let script_path = script;
     let script = load_script(script_path).map_err(|(_, msg)| msg)?;
-    let (p, needles) = project.0.as_ref().map_err(String::clone)?;
+    let (p, needles, _) = project.0.as_ref().map_err(String::clone)?;
     let (plan, world) =
         plan_script(p, needles, &script, script_path, !derive).map_err(|(_, msg)| msg)?;
     let mut driver = driver_for(p, &script, None);
@@ -732,6 +766,13 @@ pub(crate) fn run_play_for_test(
     {
         played_choices(p, document, transcript, &mut choices);
     }
+    let mut arms = Vec::new();
+    for pr in &beats {
+        collect_arms(p, &pr.document, &pr.transcript, &mut arms);
+    }
+    for (document, transcript) in &quests {
+        collect_arms(p, document, transcript, &mut arms);
+    }
     let initial_complete: BTreeSet<String> = play
         .start
         .iter()
@@ -753,6 +794,7 @@ pub(crate) fn run_play_for_test(
         presented_docs,
         presented,
         choices,
+        arms,
         notes: play
             .outcome
             .as_ref()
@@ -762,6 +804,50 @@ pub(crate) fn run_play_for_test(
             .collect(),
         completed_quests,
     })
+}
+fn collect_arms(p: &ExecProject, document: &str, transcript: &[Json], out: &mut Vec<PlayedArm>) {
+    for record in transcript {
+        if record.get("kind").and_then(Json::as_str) != Some("match") {
+            continue;
+        }
+        let (Some(position), Some(result)) = (
+            record.get("position").and_then(Json::as_str),
+            record.get("result").and_then(Json::as_str),
+        ) else {
+            continue;
+        };
+        let command = p
+            .artifacts
+            .get(document)
+            .and_then(|a| a.get("commands"))
+            .and_then(Json::as_array)
+            .and_then(|commands| {
+                commands.iter().find(|c| {
+                    c.get("kind").and_then(Json::as_str) == Some("match")
+                        && c.get("position").and_then(Json::as_str) == Some(position)
+                })
+            });
+        let Some(command) = command else {
+            continue;
+        };
+        let label = command
+            .pointer("/subject/cel")
+            .and_then(Json::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let total = command
+            .get("arms")
+            .and_then(Json::as_array)
+            .map_or(0, Vec::len)
+            + usize::from(command.get("otherwise").is_some());
+        out.push(PlayedArm {
+            document: document.to_string(),
+            position: position.to_string(),
+            result: result.to_string(),
+            label,
+            total,
+        });
+    }
 }
 
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
