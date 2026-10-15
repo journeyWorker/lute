@@ -36,6 +36,19 @@ TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로그램에 넘기면 결함(defect)입니다.
 `Bundle.index`의 타입은 `Ir.projectIndex`입니다.
 
+Bun 호스트는 선택적 플랫폼 peer도 같은 Effect 릴리스에 정확히 고정해
+런타임과 함께 설치해야 합니다:
+
+```sh
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+```
+
+로컬 tarball을 사용한다면 `scripts/pack-local.sh`가 출력한
+`file:<runtime-tarball>`로 `@lute-lang/runtime`을 바꾸고, 출력된
+`dependencies`와 `overrides` 항목을 붙여 넣으세요. 그 뒤에도
+`effect@4.0.2`, `@effect/platform-bun@4.0.2`,
+`@effect/platform-node-shared@4.0.2`를 함께 지정합니다.
+
 릴리스되지 않은 체크아웃을 호스트에서 시험하려면 Lute 저장소에서 `bash scripts/pack-local.sh
 [--web] [OUT_DIR]`를 실행하세요. 런타임과 player(`--web`이면 `player-web`도)를 `bun pm pack`으로 묶고,
 호스트의 `package.json`에 붙여 넣을 `dependencies`와 `overrides` 항목(`file:<tarball>`)을 출력합니다.
@@ -43,6 +56,29 @@ fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로
 Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스턴스가 두 개 생깁니다.
 [로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
 참고하세요.
+
+### 시계 값과 HUD 라벨
+
+`Program.clock(state)`은 숫자 값입니다. day와 0부터 시작하는 slot
+인덱스를 반환합니다. 슬롯 이름과 요일 라벨은
+`program.view(state).clock`에서 가져오며, `ClockView`는
+`{ day, slot, weekday, weekdayLabel, ended, last }` 필드를 가집니다.
+Effect 스타일 HUD는 다음처럼 작성할 수 있습니다:
+
+```ts
+import { Effect, Option } from "effect"
+
+const hud = Effect.gen(function* () {
+  const position = yield* program.clock(state)
+  const world = yield* program.view(state)
+  if (Option.isNone(position) || world.clock == null) return "No clock"
+  const clock = world.clock
+  return `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${clock.slot ?? `slot ${position.value.slot}`}`
+})
+```
+
+정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
+`ClockView.weekdayLabel`을 사용하세요.
  
 ## 0.44 런타임 추가 사항
 

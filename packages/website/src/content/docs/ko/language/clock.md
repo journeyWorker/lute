@@ -120,6 +120,69 @@ covered ``). `is="7"`은 `E-WHEN-LITERAL-DOMAIN`이고, `clock.weekday == 7` 가
 ```
 
 컴포넌트 본문은 자신의 파라미터만 읽으므로, 요일을 보여 주는 컴포넌트는 이를 파라미터로 받아야 합니다. 라벨을 enum에 복사하는 대신 파라미터를 `{ domain: clock.weekdayLabel }`(또는 슬롯에는 `{ domain: clock.slot }`)으로 타입 지정합니다. 호스트는 실시간 값(`defs:`에 `today: "clock.weekdayLabel"`를 둔 `day=@today`) 또는 리터럴 라벨을 전달하며, 검사기는 컴포넌트의 `<match>` 분기와 모든 리터럴 인자를 시계 자체의 라벨에 대조합니다. 오타인 `<when is="Wednesdy">`는 컴포넌트 위치에서 가장 가까운 라벨을 명시하는 `E-WHEN-LITERAL-DOMAIN` 하나가 됩니다.
+
+## 시계를 따라가는 배경
+
+시계의 소유권은 엔진에 있지만, 프레젠테이션 컴포넌트는 슬롯마다 정적인
+배경 하나를 선택할 수 있습니다. 스키마에 슬롯 어휘와 슬롯 타입 상태 필드를
+선언하고, 그 필드를 읽는 def를 노출합니다:
+
+```yaml
+enums:
+  slot: [morning, afternoon, night]
+state:
+  run.day:  { type: int, default: 1, owner: engine }
+  run.slot: { type: { domain: slot }, default: morning, owner: engine }
+defs:
+  currentSlot: { type: { domain: slot }, cel: "run.slot" }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, night]
+```
+
+컴포넌트의 각 arm에 `::bg`를 하나씩 둡니다. 컴포넌트의 `slot` 파라미터도
+같은 폐쇄형 도메인이므로 `<match>`가 모든 경우를 다루며, 디렉티브 값은
+컴파일 시점 상수로 유지됩니다:
+
+```lute unverified="component and scene are checked together in the scratch project described below"
+---
+component: clockBackdrop
+params:
+  slot: { type: { domain: slot } }
+---
+<match subject="@slot">
+  <when is="morning">
+    ::bg{location="harbor" time="morning"}
+  </when>
+  <when is="afternoon">
+    ::bg{location="harbor" time="afternoon"}
+  </when>
+  <when is="night">
+    ::bg{location="harbor" time="night"}
+  </when>
+</match>
+```
+
+이 정책이 필요한 모든 씬에서 컴포넌트를 사용합니다:
+
+```lute unverified="component and scene are checked together in the scratch project described below"
+---
+kind: scene
+id: harbor.market
+components: [../components/clockBackdrop.component.lute]
+---
+## Opening
+::use{component="clockBackdrop" slot=@currentSlot}
+@narrator: The harbor follows the day.
+```
+
+대안은 각 씬의 `::bg`에 `time="morning"`(또는 다른 리터럴)을 직접 쓰는
+것입니다. 씬이 시계를 따르지 않고 의도적으로 시간을 고를 때 더 명확할 수
+있습니다. 상태에서 파생된 `@def`를 디렉티브 필드에 넣지 마세요. 디렉티브
+필드는 빌드 시점 값이므로 검사기는 `E-ATTR-DEF-DYNAMIC`을 보고합니다.
+컴포넌트 본문은 주변 상태도 읽을 수 없으므로 파라미터로 값을 전달해야 하며,
+그렇지 않으면 `E-COMPONENT-STATE`가 보고됩니다.
 ## 하루에 한 번, 일주일에 한 번, 슬롯에 한 번
 
 시계가 있는 프로젝트에서는 비트의 `once`([비트](/ko/language/beats/) 참고)에 세 가지 값이 추가됩니다:
