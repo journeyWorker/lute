@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: bark
+profiles:
+  bark:
+    plugins: { bark: true }
+defaults:
+  uses: [world.schema.yaml]

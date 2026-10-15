@@ -1,0 +1,8 @@
+state:
+  run.finished: { type: bool, default: false }
+  run.bridgeOutcome: { type: { enum: [ok, no] }, default: no }
+defs:
+  ready: { type: bool, cel: "true", host: true }
+cast:
+  guide: { name: Guide }
+terminal: "run.finished"

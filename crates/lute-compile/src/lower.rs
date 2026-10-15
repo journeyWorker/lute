@@ -529,28 +529,10 @@ pub(crate) fn authored_directive(dir: &Directive, decl: Option<&DirectiveDecl>) 
     }
 }
 
-/// Where one declarative-lowering target field gets its value.
-enum FieldSrc<'a> {
-    /// `{ fromAttr: <attrName> }` — read the authored attr off the directive.
-    Attr(&'a str),
-    /// A YAML literal baked into the manifest.
-    Lit(&'a yaml_serde::Value),
-}
-
 /// Build the CORE staging command a plugin directive declares via
-/// `lower: { record, fields }` (`docs/plugin-system.md`), substituting each
-/// `fromAttr` binding from the authored attrs and carrying the caller's
-/// `stamp` unchanged. `None` when `record` is not one of the staging kinds —
-/// the caller then falls back to the `kind: "plugin"` passthrough.
-///
-/// TOTAL by construction: the declaration was already validated at ASSEMBLY
-/// (`lute_manifest::validate::validate_directive` → `E-LOWER-RECORD-UNKNOWN` /
-/// `E-LOWER-RECORD-FIELD`) against the SAME field table this reads, so a
-/// conforming project never lands here with a bad mapping. A non-conforming
-/// one still cannot produce garbage: an unknown record degrades to
-/// passthrough, an unknown target field is ignored, and an unresolvable
-/// binding (missing attr, wrong literal kind) leaves the target field at its
-/// `None`/default — never a panic.
+/// `lower: { record, fields }` (`docs/plugin-system.md`), using the shared
+/// checker field resolver so the artifact and stage reducer see identical
+/// values. `None` when `record` is not one of the staging kinds.
 fn lower_record(
     record: &str,
     fields: &yaml_serde::Value,
@@ -558,47 +540,24 @@ fn lower_record(
     stamp: &Stamp,
     domains: &BTreeMap<String, Domain>,
 ) -> Option<Command> {
-    // Gate on the shared table so an unknown record kind is a passthrough, not
-    // a silently-empty staging record.
     lute_manifest::validate::lower_record_fields(record)?;
-
-    let mut srcs: BTreeMap<&str, FieldSrc> = BTreeMap::new();
-    if let yaml_serde::Value::Mapping(m) = fields {
-        for (k, v) in m {
-            let Some(target) = k.as_str() else { continue };
-            let src = match v.get("fromAttr").and_then(|a| a.as_str()) {
-                Some(attr) => FieldSrc::Attr(attr),
-                None => FieldSrc::Lit(v),
-            };
-            srcs.insert(target, src);
-        }
-    }
-
-    // One resolver per target kind; a field with no binding, or a binding whose
-    // source is absent/uncoercible, yields `None` (the field's default).
-    let s = |target: &str| -> Option<String> {
-        match srcs.get(target)? {
-            FieldSrc::Attr(a) => attr_string(&dir.attrs, a),
-            FieldSrc::Lit(v) => match v {
-                yaml_serde::Value::String(s) => Some(s.clone()),
-                yaml_serde::Value::Bool(b) => Some(b.to_string()),
-                yaml_serde::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            },
-        }
+    let resolved = lute_check::inject::resolve_record_fields(record, fields, dir);
+    let s = |target: &str| {
+        resolved
+            .get(target)
+            .and_then(lute_check::inject::ResolvedRecordField::as_str)
+            .map(str::to_owned)
     };
-    let b = |target: &str| -> Option<bool> {
-        match srcs.get(target)? {
-            FieldSrc::Attr(a) => attr_bool(&dir.attrs, a),
-            FieldSrc::Lit(v) => v.as_bool(),
-        }
+    let b = |target: &str| {
+        resolved
+            .get(target)
+            .and_then(lute_check::inject::ResolvedRecordField::as_bool)
     };
 
     let stamp = stamp.clone();
     let display = || s("display").unwrap_or_else(|| "show".to_string());
     // Field names below are the SERIALIZED (camelCase) IR names, matching
-    // `lute_manifest::validate::lower_record_fields` entry-for-entry — the
-    // `record_field_table_matches_lowering` test holds the two in lockstep.
+    // `lute_manifest::validate::lower_record_fields` entry-for-entry.
     Some(match record {
         "bg" => Command::Bg(BgCmd {
             position: String::new(),

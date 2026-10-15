@@ -1,0 +1,24 @@
+---
+kind: scene
+character: marina
+season: 1
+episode: 1
+title: Stage record
+luteVersion: "0.44.0"
+enums:
+  anchor: { members: [center], default: center }
+  action: { members: [wave, leave], exits: [leave] }
+  emotion: { members: [happy, calm] }
+---
+
+## Stage record
+::actor{character="marina"}
+::portrait{character="marina"}
+@marina{emotion="happy"}: Stateful before scene.
+::backdrop{location="cafe"}
+@marina: Absent after scene.
+::portrait{character="marina"}
+@marina{emotion="calm"}: Stateful again.
+@marina: Plain after stateful.
+::portrait{character="marina" exit=true}
+@marina: Absent after exit.

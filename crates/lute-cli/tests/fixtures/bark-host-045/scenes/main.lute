@@ -1,0 +1,24 @@
+---
+kind: scene
+id: main
+on: arrival
+once: false
+plugins:
+  bark: {}
+state:
+  scene.bark.trial.outcome: { type: { enum: [ok, no] }, default: no }
+defs:
+  ready: "true"
+---
+## Main
+<branch id="answer" prompt="What now?">
+  <choice id="stay" text="Stay">
+    @narrator: You stay.
+  </choice>
+  <choice id="leave" text="Leave">
+    @narrator: You leave.
+    ::set{run.finished = true}
+  </choice>
+</branch>
+::check{resultKey="trial"}
+@narrator: The bridge answers.

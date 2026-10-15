@@ -10,6 +10,7 @@ export const hubFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm"
 export const evaluateFixtureRoot = join(repositoryRoot, "crates", "lute-runtime-wasm", "tests", "fixtures", "evaluate")
 /** dsl 0.41.0 §5.2: gated, terminal and `outsideRun` occasions (shared with the Rust gate tests). */
 export const gateFixtureRoot = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
+export const barkFixtureRoot = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "bark-host-045")
 
 let cliBuilt = false
 

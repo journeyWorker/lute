@@ -743,6 +743,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             &mut inject_state,
             &mut injections,
             domains,
+            &input.snapshot,
             &input.components,
             &mut using,
         );
@@ -756,6 +757,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             &mut beat_state,
             &mut injections,
             domains,
+            &input.snapshot,
             &input.components,
             &mut using,
         );

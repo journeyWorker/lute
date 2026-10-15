@@ -212,6 +212,27 @@ implementation-only report:
 | `def(name, args?)` (0.41) | `Evaluation` or a rejection, for a project def the bundle carries in `project.index.json` `defs`; `args` is one JSON scalar per declared parameter (absent = `[]`), bound to its `param` nodes. Arity or type misfits (an `enum`/closed `domain`/`entity` argument must be a member) are `E-RUNTIME-INPUT`. |
 | `gate(occasion, target?)` (0.41) | `Gate` `{ open: bool, unresolved?: string[] }`: whether a `raiseOccasion` with no writes would pass the seam now — `raisedWhen` false, or `terminal` holding for a non-`outsideRun` occasion, is `{open: false}`; an undecided seam lists its unresolved reads. An undeclared occasion is `E-RUNTIME-INPUT`. |
 
+### Queries at every await; background barks (0.45)
+
+The read-only queries `candidates`, `evaluate`, `def`, `gate` and `view` answer
+at every await (`idle`, `awaitChoice`, `awaitBridge` and `ended`) and MUST NOT
+change state. On a TypeScript `Session`, a query during a running input reads
+the last committed state. While a choice or bridge is pending, inputs are
+unchanged: only that await's answer is accepted.
+
+A host MAY use `candidates(occasion, target?)` while waiting at `awaitChoice`
+or `awaitBridge` to show a background bark outside the presentation: take an
+eligible `kind: "entry"` candidate, find its head in the document's artifact
+(`index.documents[].path == document`), and read the records from the head's
+`body` position up to the next `entry`/`beat` head. When every one is a `line`
+without `placeholders`, the bark is static: its lines give `text` (or
+`texts[locale]`), `speaker` (display name `index.cast[speaker]`), `voiceKey`
+and `lineId`, and showing them needs no step. A static bark shown this way
+records nothing: it does not mark the entry read, spend `once`, or apply
+writes. A bark that must record, or whose body is not static, MUST be raised
+as its occasion after the story returns to `idle`. The runtime keeps one open
+presentation; concurrent presentations are not planned.
+
 `evaluate` and `def` (spec 0.41.0 §5.1) evaluate a condition over the state
 exactly as a walk's guard does: the effective state (written, seeded, then
 declared default), the fact store with derivation under the run's `derive`

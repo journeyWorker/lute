@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: bark
+    operation: check
+    replay: recorded
+    result:
+      - { name: outcome, type: { enum: [ok, no] } }

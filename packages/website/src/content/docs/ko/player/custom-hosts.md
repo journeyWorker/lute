@@ -127,6 +127,81 @@ const resume = Effect.scoped(Effect.gen(function* () {
 
 직접 만든 런타임 세션을 쓴다면 `RuntimeSession.layer({ snapshot: save.snapshot })`로 만들어 `session`으로 넘깁니다. 저장은 같은 컴파일 번들에서 나온 것이어야 합니다(프로젝트 fingerprint를 검사). 아니면 `restore`가 `SaveIncompatible`로 실패합니다.
 
+## 대화 중 배경 bark (0.45)
+
+호스트는 이야기가 선택지나 브리지에서 기다리는 동안, 두 번째 프레젠테이션 없이 주변 대사를 보여 줄 수 있습니다(런타임은 열린 프레젠테이션을 하나만 유지하며, 동시 프레젠테이션은 계획하지 않습니다). 읽기 전용 질의 — `player.program`의 `candidates`, `evaluate`, `def`, `gate`, `view` — 는 모든 await에서 응답하고 상태를 바꾸지 않습니다. 그래서 대화가 멈춰 있는 동안 bark를 고르고, 그 대사를 번들에서 읽을 수 있습니다.
+
+```ts
+import { Effect, Schema, SubscriptionRef } from "effect"
+import type { LutePlayerHandle } from "@lute-lang/player"
+import type { Bundle, Contract } from "@lute-lang/runtime"
+
+interface AmbientLine { readonly text: string; readonly speaker?: string; readonly voiceKey: string; readonly lineId: string }
+declare const showAmbient: (lines: ReadonlyArray<AmbientLine>) => Effect.Effect<void>   // the host's own UI
+
+// The record fields the pattern reads; other fields are ignored.
+const Artifact = Schema.Struct({
+  commands: Schema.Array(Schema.Struct({
+    kind: Schema.String,
+    position: Schema.String,
+    id: Schema.optionalKey(Schema.String),
+    body: Schema.optionalKey(Schema.String),
+    speaker: Schema.optionalKey(Schema.String),
+    text: Schema.optionalKey(Schema.String),
+    texts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    voiceKey: Schema.optionalKey(Schema.String),
+    lineId: Schema.optionalKey(Schema.String),
+    placeholders: Schema.optionalKey(Schema.Unknown)
+  }))
+})
+
+/** A static entry's lines, or undefined when the bark must be raised instead. */
+const staticBarkLines = (bundle: Bundle.Bundle, candidate: Contract.Candidate, locale?: string): ReadonlyArray<AmbientLine> | undefined => {
+  if (candidate.kind !== "entry" || candidate.verdict.verdict !== "eligible") return undefined
+  const document = bundle.index.documents.find((item) => item.path === candidate.document)
+  if (document === undefined) return undefined
+  const { commands } = Schema.decodeUnknownSync(Artifact)(bundle.artifacts[document.artifact])
+  const head = commands.find((record) => record.kind === "entry" && record.id === candidate.id)
+  const start = commands.findIndex((record) => record.position === head?.body)
+  if (start < 0) return undefined
+  const next = commands.findIndex((record, index) => index > start && (record.kind === "entry" || record.kind === "beat"))
+  const body = commands.slice(start, next < 0 ? commands.length : next)
+  const lines: Array<AmbientLine> = []
+  for (const record of body) {
+    if (record.kind !== "line" || record.placeholders !== undefined) return undefined
+    if (record.text === undefined || record.voiceKey === undefined || record.lineId === undefined) return undefined
+    const speaker = record.speaker === undefined ? undefined : bundle.index.cast?.[record.speaker]
+    lines.push({
+      text: (locale === undefined ? undefined : record.texts?.[locale]) ?? record.text,
+      voiceKey: record.voiceKey,
+      lineId: record.lineId,
+      ...(speaker === undefined ? {} : { speaker })
+    })
+  }
+  return lines
+}
+
+// While the story waits at a choice or a bridge:
+const ambientBark = (player: LutePlayerHandle, bundle: Bundle.Bundle) => Effect.gen(function* () {
+  const { state } = yield* SubscriptionRef.get(player.session.current)
+  const candidates = yield* player.program.candidates(state, "ambient", "npc.guide")
+  for (const candidate of candidates) {
+    const lines = staticBarkLines(bundle, candidate)
+    if (lines !== undefined) return yield* showAmbient(lines)
+  }
+})
+```
+
+`candidates`는 비트를 선택 순서대로 돌려줍니다. 헬퍼는 eligible인 lore entry를 골라 문서의 아티팩트(`index.documents`)에서 그 head를 찾고, head의 `body` 위치부터 다음 `entry`나 `beat` head 전까지의 레코드를 읽습니다. 그 레코드가 모두 `placeholders` 없는 `line`이면 그 bark는 **static**입니다. 각 대사는 텍스트(번들에 그 로케일이 있으면 `texts[locale]`), `index.cast`의 화자 표시 이름(내레이션은 없음), `voiceKey`, `lineId`를 줍니다.
+
+이렇게 보여 준 bark는 아무것도 기록하지 않습니다. `entry.<id>.read`도, `once` 소비도, 쓰기도 없습니다. 기록해야 하는 bark — 첫 읽기, `once`, `::set` 같은 작성된 쓰기 — 나 본문이 동적인 bark(`{{…}}` placeholder, `match`)는 이야기가 `idle`로 돌아온 뒤 그 계기로 raise합니다.
+
+```ts
+yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
+```
+
+[0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern)을 참고하세요.
+
 ## 0.40에서 올리기
 
 화자 이름을 주는 플레이어 세션 옵션은 `cast`입니다(0.41.0부터). 세션을 `Session.layer`(`PlayerSession` 레이어)로 직접 조합하는 호스트는 0.40의 `castNames`(`ReadonlyMap`) 대신 `SessionOptions.cast`에 일반 레코드(cast id → 표시 이름), 즉 번들 인덱스의 `cast`를 넘깁니다. 예전 `castNamesFrom(artifacts)` 헬퍼는 없어졌으므로 이름은 `bundle.index.cast`에서 읽습니다.

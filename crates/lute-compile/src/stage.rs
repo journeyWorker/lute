@@ -2,7 +2,9 @@
 //! (Task 9, D9) + inline timelines (Task 10). ONE walk owns emission order.
 
 use lute_check::ctx::Env;
-use lute_check::{lower_node, Ctx, InjectKind, InjectedCommand, StageState};
+use lute_check::{
+    classify_node, lower_node_with_snapshot, Ctx, InjectKind, InjectedCommand, StageState,
+};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{
@@ -89,8 +91,7 @@ pub fn walk_seq(
                 // (`entry-emotion-lookahead`); build the CFG-reachable
                 // continuation just for it and pass nothing otherwise, so the
                 // common line/set path never clones the tail.
-                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
-                {
+                let look = if classify_node(node, cx.snapshot).is_actor() {
                     reachable_after(&nodes[i + 1..], tail)
                 } else {
                     Vec::new()
@@ -162,8 +163,7 @@ fn walk_timeline(
         // continuation for `entry-emotion-lookahead`, exactly like a linear
         // `::actor` (T9): clips carry no prose `:line`s, so the post-timeline
         // continuation is the whole lookahead. Every other clip takes none.
-        let look: &[Node] = if matches!(&node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
-        {
+        let look: &[Node] = if classify_node(&node, cx.snapshot).is_actor() {
             cont
         } else {
             &[]
@@ -217,7 +217,8 @@ fn emit_primitive(
     clip: Option<ClipStamp>,
 ) -> StageState {
     // Pure reducer step (arch #2): next stage state + this node's injections.
-    let (next, injected) = lower_node(state, node, lookahead, &cx.env.domains);
+    let (next, injected) =
+        lower_node_with_snapshot(state, node, lookahead, &cx.env.domains, cx.snapshot);
     let authored = match node {
         Node::Line(l) => Some(lower_line(l, cx.snapshot)),
         Node::Directive(d) => lower_directive(d, cx.snapshot, &cx.env.domains),
@@ -235,8 +236,7 @@ fn emit_primitive(
     // Placement (plan spec-gap note 4): an `::actor`'s injections (anchor,
     // preload) FOLLOW the authored show (§4.5); a line's posReset and a
     // scene-change's hides PRECEDE theirs.
-    let auto_first =
-        matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE);
+    let auto_first = classify_node(node, cx.snapshot).is_actor();
     if auto_first {
         if let Some(cmd) = authored {
             emit_authored(em, cmd, node, cx, clip);

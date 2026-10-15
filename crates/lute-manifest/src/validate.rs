@@ -484,6 +484,35 @@ fn validate_record_lowering(
             return;
         }
     };
+    if record == "actor" {
+        match map.get(yaml_serde::Value::from("character")) {
+            Some(yaml_serde::Value::String(_)) => {}
+            Some(yaml_serde::Value::Mapping(binding))
+                if binding
+                    .get(yaml_serde::Value::from("fromAttr"))
+                    .and_then(|value| value.as_str())
+                    .and_then(|name| d.attrs.iter().find(|attr| attr.name == name))
+                    .is_some_and(|attr| attr.required) => {}
+            Some(yaml_serde::Value::Mapping(binding)) => {
+                let attr = binding
+                    .get(yaml_serde::Value::from("fromAttr"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("<missing>");
+                bad(format!(
+                    "field `character` must bind `fromAttr: {attr}` to a required attribute \
+                     (`required: true`), or use a literal string; make `::{}`'s character \
+                     attribute required or bind a literal string",
+                    d.name
+                ));
+            }
+            Some(_) | None => bad(format!(
+                "field `character` must bind to a required attribute \
+                 (`fromAttr` with `required: true`) or a literal string; add a required \
+                 character attribute to `::{}` or bind a literal string",
+                d.name
+            )),
+        }
+    }
     for (k, v) in map {
         let Some(target) = k.as_str() else {
             bad("`fields` keys must be strings".to_string());
@@ -982,6 +1011,37 @@ mod tests {
     }
 
     #[test]
+    fn actor_character_must_bind_required_attr_or_literal() {
+        let errs = validate_directive(&record_dir("actor", "{ exit: false }"));
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
+        assert!(
+            errs[0].message().contains("character"),
+            "{}",
+            errs[0].message()
+        );
+        assert!(
+            errs[0].message().contains("required"),
+            "{}",
+            errs[0].message()
+        );
+    }
+
+    #[test]
+    fn actor_character_from_optional_attr_is_rejected() {
+        let mut d = record_dir("actor", "{ character: { fromAttr: img } }");
+        d.attrs[0].required = false;
+        let errs = validate_directive(&d);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
+        assert!(
+            errs[0].message().contains("required: true"),
+            "{}",
+            errs[0].message()
+        );
+    }
+
+    #[test]
     fn unknown_record_name_is_rejected() {
         // `line` is control-flow/structural — deliberately NOT a staging kind.
         let errs = validate_directive(&record_dir("line", "{ speaker: { fromAttr: img } }"));
@@ -1021,7 +1081,10 @@ mod tests {
     #[test]
     fn literal_of_the_wrong_kind_is_rejected() {
         // `actor.exit` is a bool; a bare string cannot fill it.
-        let errs = validate_directive(&record_dir("actor", "{ exit: wide }"));
+        let errs = validate_directive(&record_dir(
+            "actor",
+            "{ character: { fromAttr: img }, exit: wide }",
+        ));
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-LOWER-RECORD-FIELD");
         assert!(

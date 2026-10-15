@@ -47,17 +47,12 @@
 //! silently skip: skipping turns an undeclared slot into a behavior change.
 //!
 //! ## Data-vs-code boundary
-//! The arch doc's ideal is *manifest-driven, code-executed*: the manifest's
-//! per-directive `reads`/`writes`/`semantics` flags declare *which* directives
-//! touch stage state, and the resolver algorithm stays code. `lute.core`'s
-//! `::actor` already carries `["reads.onStage", "usesAnchor", "mayExitCharacter",
-//! "writes.characterState"]` (see `assets/lute.core/directives/staging.yaml`).
-//! At Task 4.8 the reducer hardcodes the *known* `lute.core` staging vocabulary
-//! (`::actor` = entrance/exit/pose, `::bg` = scene change, `::line` emotion/pose
-//! attrs) rather than reading those flags, because a stable, documented baseline
-//! is more valuable here than a premature flag-driven dispatch. Swapping the
-//! `is_*`/tag checks below for `semantics`-flag lookups is a mechanical follow-up
-//! once the resolver consumes a `CapabilitySnapshot`.
+//! The reducer classifies a node by the staging record it lowers to: core
+//! directives use their own lowering, while a declarative plugin directive is
+//! resolved through `lower: { record, fields }` and then dispatched by that
+//! record kind. The field bindings use the same resolver as compilation.
+//! Builtin hooks are canonicalized to core tags before the compiler/trace walk;
+//! `semantics:` flags still do not drive staging.
 //!
 //! ## Diagnostic channel
 //! The fixed reducer signature returns only `(StageState, Vec<InjectedCommand>)`,
@@ -73,8 +68,192 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::snapshot::Domain;
+use lute_manifest::schema::Lowering;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
+
+/// A resolved declarative-lowering field. Only string and boolean record
+/// fields are bindable; absent or malformed sources stay absent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResolvedRecordField {
+    String(String),
+    Bool(bool),
+}
+
+impl ResolvedRecordField {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value),
+            Self::Bool(_) => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            Self::String(_) => None,
+        }
+    }
+}
+
+pub type ResolvedRecordFields = BTreeMap<String, ResolvedRecordField>;
+
+/// Resolve a declarative lowering's `fromAttr`/literal fields. This is shared
+/// by the compiler's record construction and the staging reducer's view, so
+/// stage state cannot drift from the emitted artifact.
+pub fn resolve_record_fields(
+    record: &str,
+    fields: &yaml_serde::Value,
+    directive: &Directive,
+) -> ResolvedRecordFields {
+    let Some(table) = lute_manifest::validate::lower_record_fields(record) else {
+        return BTreeMap::new();
+    };
+    let map = match fields {
+        yaml_serde::Value::Mapping(map) => map,
+        _ => return BTreeMap::new(),
+    };
+    let mut resolved = BTreeMap::new();
+    for (key, source) in map {
+        let Some(target) = key.as_str() else { continue };
+        let Some((_, kind)) = table.iter().find(|(name, _)| *name == target) else {
+            continue;
+        };
+        let value = if let Some(attr_name) = source.get("fromAttr").and_then(|value| value.as_str())
+        {
+            directive
+                .attrs
+                .iter()
+                .find(|attr| attr.key == attr_name)
+                .and_then(|attr| match kind {
+                    lute_manifest::validate::LowerFieldKind::Str => {
+                        Some(ResolvedRecordField::String(attr_value_string(&attr.value)?))
+                    }
+                    lute_manifest::validate::LowerFieldKind::Bool => {
+                        Some(ResolvedRecordField::Bool(attr.value.flag()?))
+                    }
+                })
+        } else {
+            match (kind, source) {
+                (
+                    lute_manifest::validate::LowerFieldKind::Str,
+                    yaml_serde::Value::String(value),
+                ) => Some(ResolvedRecordField::String(value.clone())),
+                (lute_manifest::validate::LowerFieldKind::Bool, yaml_serde::Value::Bool(value)) => {
+                    Some(ResolvedRecordField::Bool(*value))
+                }
+                _ => None,
+            }
+        };
+        if let Some(value) = value {
+            resolved.insert(target.to_string(), value);
+        }
+    }
+    resolved
+}
+
+/// The staging meaning of one AST node. `core` distinguishes the core lowering
+/// rules (notably actor exits by the action domain) from plugin record fields
+/// (actor exits by the resolved `exit` field).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StageKind {
+    Actor {
+        fields: ResolvedRecordFields,
+        core: bool,
+    },
+    Bg {
+        fields: ResolvedRecordFields,
+        core: bool,
+    },
+    Music {
+        fields: ResolvedRecordFields,
+        core: bool,
+    },
+    Clear,
+    Other,
+}
+
+impl StageKind {
+    pub fn is_actor(&self) -> bool {
+        matches!(self, Self::Actor { .. })
+    }
+}
+
+/// Classify a directive by the record it lowers to, including resolved plugin
+/// fields. Builtin hooks are expected to have been canonicalized to core tags.
+pub fn classify_node(node: &Node, snapshot: &CapabilitySnapshot) -> StageKind {
+    let Node::Directive(directive) = node else {
+        return StageKind::Other;
+    };
+    let tag = match snapshot.directive(&directive.tag).map(|decl| &decl.lower) {
+        Some(Lowering::Builtin { name, .. }) => {
+            crate::builtin_lowering::core_tag(name).unwrap_or(directive.tag.as_str())
+        }
+        _ => directive.tag.as_str(),
+    };
+    match tag {
+        lute_manifest::core::ACTOR_DIRECTIVE => StageKind::Actor {
+            fields: core_fields(directive, &["character", "anchor", "action", "emotion"]),
+            core: true,
+        },
+        "bg" => StageKind::Bg {
+            fields: core_fields(directive, &["location", "assetId"]),
+            core: true,
+        },
+        "music" => StageKind::Music {
+            fields: core_fields(directive, &["mood", "playback"]),
+            core: true,
+        },
+        lute_manifest::core::CLEAR_DIRECTIVE => StageKind::Clear,
+        _ => match snapshot.directive(&directive.tag).map(|decl| &decl.lower) {
+            Some(Lowering::Record { record, fields }) => {
+                let fields = resolve_record_fields(record, fields, directive);
+                match record.as_str() {
+                    "actor" => StageKind::Actor {
+                        fields,
+                        core: false,
+                    },
+                    "bg" => StageKind::Bg {
+                        fields,
+                        core: false,
+                    },
+                    "music" => StageKind::Music {
+                        fields,
+                        core: false,
+                    },
+                    _ => StageKind::Other,
+                }
+            }
+            _ => StageKind::Other,
+        },
+    }
+}
+
+fn core_fields(directive: &Directive, names: &[&str]) -> ResolvedRecordFields {
+    names
+        .iter()
+        .filter_map(|name| {
+            directive
+                .attrs
+                .iter()
+                .find(|attr| attr.key == *name)
+                .and_then(|attr| {
+                    attr_value_string(&attr.value)
+                        .map(ResolvedRecordField::String)
+                        .or_else(|| attr.value.flag().map(ResolvedRecordField::Bool))
+                })
+                .map(|value| ((*name).to_string(), value))
+        })
+        .collect()
+}
+
+fn attr_value_string(value: &AttrValue) -> Option<String> {
+    match value {
+        AttrValue::Str(value) => Some(value.clone()),
+        AttrValue::Ref(slot) => Some(slot.raw.clone()),
+        AttrValue::BoolTrue => Some("true".to_string()),
+    }
+}
 
 /// Per-character stage entity: where the sprite stands and its current
 /// pose/emotion. `Default` = an as-yet-unpositioned sprite.
@@ -128,12 +307,12 @@ pub struct StageState {
 
 /// How a character in [`StageState::exited`] left the stage — names the cause
 /// in `W-STAGE-ABSENT`, with the 1-based line of the exit / `::bg` / `::clear`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Departure {
     /// An `::actor` whose `action` is a declared exit member.
     Exit { line: u32 },
-    /// Auto-hidden by a `::bg` scene change while on stage.
-    SceneChange { line: u32 },
+    /// Auto-hidden by a scene-change record while on stage.
+    SceneChange { line: u32, tag: String },
     /// Taken off stage by a `::clear` (dsl 0.24.0 §4).
     Clear { line: u32 },
 }
@@ -183,7 +362,10 @@ impl StageState {
         }
         for e in &exits {
             for (ch, how) in &e.exited {
-                joined.exited.entry(ch.clone()).or_insert(*how);
+                joined
+                    .exited
+                    .entry(ch.clone())
+                    .or_insert_with(|| how.clone());
             }
         }
         for e in &exits {
@@ -252,31 +434,77 @@ pub struct InjectedCommand {
 /// `domains` is the resolved vocabulary (dsl 0.9.0 D-D): the member-level facts
 /// this reducer needs — the `anchor` domain's `default:` and the `action`
 /// domain's `exits:` — are DECLARED there, never compiled in.
+///
+/// Core-only compatibility wrapper used by reducer unit tests and callers that
+/// have no capability snapshot. Pipeline/compiler callers use
+/// [`lower_node_with_snapshot`] so plugin record lowerings are visible.
 pub fn lower_node(
-    mut state: StageState,
+    state: StageState,
     node: &Node,
     lookahead: &[Node],
     domains: &BTreeMap<String, Domain>,
 ) -> (StageState, Vec<InjectedCommand>) {
+    lower_node_with_snapshot(
+        state,
+        node,
+        lookahead,
+        domains,
+        &CapabilitySnapshot::default(),
+    )
+}
+
+/// Pure reducer step with the resolved capability snapshot used to classify
+/// declarative plugin directives by their lowered record kind and fields.
+pub fn lower_node_with_snapshot(
+    mut state: StageState,
+    node: &Node,
+    lookahead: &[Node],
+    domains: &BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
+) -> (StageState, Vec<InjectedCommand>) {
     let mut emit = Vec::new();
-    match node {
-        Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE => {
-            lower_actor(&mut state, d, lookahead, &mut emit, domains)
+    match classify_node(node, snapshot) {
+        StageKind::Actor { fields, core } => lower_actor(
+            &mut state,
+            node_directive(node),
+            &fields,
+            core,
+            lookahead,
+            &mut emit,
+            domains,
+        ),
+        StageKind::Bg { fields, .. } => {
+            stage_bookkeeping_bg(&mut state, node_directive(node), &fields, &mut emit)
         }
-        Node::Directive(d) if d.tag == "bg" => stage_bookkeeping_bg(&mut state, d, &mut emit),
-        Node::Directive(d) if d.tag == lute_manifest::core::CLEAR_DIRECTIVE => {
-            stage_clear(&mut state, d, &mut emit)
+        StageKind::Clear => stage_clear(&mut state, node_directive(node), &mut emit),
+        StageKind::Music { fields, .. } => {
+            state.music = field_str(&fields, "mood").or_else(|| field_str(&fields, "playback"));
         }
-        Node::Directive(d) if d.tag == "music" => {
-            // Bookkeeping only: no implicit command.
-            state.music = attr_str(&d.attrs, "mood").or_else(|| attr_str(&d.attrs, "playback"));
+        StageKind::Other => {
+            if let Node::Line(line) = node {
+                lower_line(&mut state, line, lookahead, &mut emit, domains, snapshot);
+            }
         }
-        Node::Line(l) => lower_line(&mut state, l, lookahead, &mut emit, domains),
-        // Other leaf directives (sfx/vfx/cg/video/camera/sequence) and Set/Branch/Match/
-        // Timeline don't participate in stage-entity lifetime here.
-        _ => {}
     }
     (state, emit)
+}
+
+fn node_directive(node: &Node) -> &Directive {
+    match node {
+        Node::Directive(directive) => directive,
+        _ => unreachable!("stage classification only returns directive kinds"),
+    }
+}
+
+fn field_str(fields: &ResolvedRecordFields, key: &str) -> Option<String> {
+    fields
+        .get(key)
+        .and_then(ResolvedRecordField::as_str)
+        .map(str::to_owned)
+}
+
+fn field_bool(fields: &ResolvedRecordFields, key: &str) -> Option<bool> {
+    fields.get(key).and_then(ResolvedRecordField::as_bool)
 }
 
 /// Lower an `::actor` directive — the character entrance / exit / pose node.
@@ -287,26 +515,28 @@ pub fn lower_node(
 fn lower_actor(
     state: &mut StageState,
     d: &Directive,
+    fields: &ResolvedRecordFields,
+    core: bool,
     lookahead: &[Node],
     emit: &mut Vec<InjectedCommand>,
     domains: &BTreeMap<String, Domain>,
 ) {
-    let Some(character) = attr_str(&d.attrs, "character") else {
+    let Some(character) = field_str(fields, "character") else {
         return;
     };
-    let action = attr_str(&d.attrs, "action");
-    let authored_emotion = attr_str(&d.attrs, "emotion");
+    let action = field_str(fields, "action");
+    let authored_emotion = field_str(fields, "emotion");
+    let is_exit = if core {
+        action
+            .as_deref()
+            .is_some_and(|a| is_declared_exit(a, domains))
+    } else {
+        field_bool(fields, "exit") == Some(true)
+    };
 
-    // Exit: the `::actor` IS the hide command — bookkeeping just frees the slot.
-    if action
-        .as_deref()
-        .is_some_and(|a| is_declared_exit(a, domains))
-    {
-        // §11.2 position 2 (**D-X**): a declared exit for a character the
-        // threaded state already records as gone. Only after an EXPLICIT
-        // earlier exit — `exited`, never `!on_stage` — so a first-ever `::actor`
-        // exit for a character nothing staged is not the finding and is silent.
-        if let Some(how) = state.exited.get(&character).copied() {
+    // Exit: the `actor` record IS the hide command — bookkeeping just frees the slot.
+    if is_exit {
+        if let Some(how) = state.exited.get(&character).cloned() {
             state
                 .diags
                 .push(stage_absent_diag(&character, how, Staged::Exit, d.span));
@@ -324,7 +554,7 @@ fn lower_actor(
     if state.on_stage.contains_key(&character) {
         let mut mark_dirty = false;
         if let Some(sp) = state.on_stage.get_mut(&character) {
-            if let Some(a) = attr_str(&d.attrs, "anchor") {
+            if let Some(a) = field_str(fields, "anchor") {
                 sp.anchor = Some(a);
             }
             if let Some(p) = &action {
@@ -342,13 +572,25 @@ fn lower_actor(
         return;
     }
 
-    // Entrance / show.
-    auto_anchor_on_show(state, d, &character, emit, domains);
+    auto_anchor_on_show(
+        state,
+        d,
+        &character,
+        field_str(fields, "anchor"),
+        emit,
+        domains,
+    );
     let emotion = match authored_emotion {
         Some(e) => Some(e),
         None => entry_emotion_lookahead(&character, lookahead, emit),
     };
-    stage_bookkeeping_show(state, d, &character, emotion, domains);
+    stage_bookkeeping_show(
+        state,
+        &character,
+        field_str(fields, "anchor"),
+        emotion,
+        domains,
+    );
 }
 
 /// Rule `auto-anchor-on-show`: a character shown with **no** explicit anchor
@@ -378,12 +620,12 @@ fn auto_anchor_on_show(
     state: &mut StageState,
     d: &Directive,
     character: &str,
+    anchor: Option<String>,
     emit: &mut Vec<InjectedCommand>,
     domains: &BTreeMap<String, Domain>,
 ) {
-    // An AUTHORED `anchor` names the domain, so `check_domain_member` already
-    // validated both its membership and the domain's existence. Nothing to do.
-    if d.attrs.iter().any(|a| a.key == "anchor") {
+    // A resolved authored anchor (including a plugin field binding) is honored.
+    if anchor.is_some() {
         return;
     }
     match default_anchor(domains) {
@@ -453,6 +695,7 @@ fn lower_line(
     lookahead: &[Node],
     emit: &mut Vec<InjectedCommand>,
     domains: &BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
 ) {
     let speaker = &line.speaker;
     let stateful = line_is_stateful(line);
@@ -466,7 +709,7 @@ fn lower_line(
     if let Some(a) = line.attrs.iter().find(|a| a.key == "action") {
         if let Some(action) = attr_value_str(&a.value) {
             if is_declared_exit(&action, domains)
-                && !exit_is_written_next(speaker, lookahead, domains)
+                && !exit_is_written_next(speaker, lookahead, domains, snapshot)
             {
                 state
                     .diags
@@ -478,7 +721,7 @@ fn lower_line(
     // §11.2 position 1 (**D-X**): a spoken line whose speaker was taken off
     // stage earlier in the walk — a declared exit or a `::bg` auto-hide
     // (dsl 0.22.0 §12) — with no intervening show.
-    if let Some(how) = state.exited.get(speaker).copied() {
+    if let Some(how) = state.exited.get(speaker).cloned() {
         state
             .diags
             .push(stage_absent_diag(speaker, how, Staged::Line, line.span));
@@ -514,10 +757,18 @@ fn lower_line(
 /// without a re-show is `W-STAGE-ABSENT` like one after a declared exit. A
 /// character on stage on only SOME path here is hidden too (seven F7, dsl
 /// 0.23.1): on the paths where they are, their sprite must not survive the cut.
-fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<InjectedCommand>) {
+fn stage_bookkeeping_bg(
+    state: &mut StageState,
+    d: &Directive,
+    fields: &ResolvedRecordFields,
+    emit: &mut Vec<InjectedCommand>,
+) {
     hide_everyone(
         state,
-        Departure::SceneChange { line: d.span.line },
+        Departure::SceneChange {
+            line: d.span.line,
+            tag: d.tag.clone(),
+        },
         "stage-bookkeeping",
         |character, some_paths| {
             if some_paths {
@@ -531,7 +782,7 @@ fn stage_bookkeeping_bg(state: &mut StageState, d: &Directive, emit: &mut Vec<In
         },
         emit,
     );
-    state.bg = attr_str(&d.attrs, "location").or_else(|| attr_str(&d.attrs, "assetId"));
+    state.bg = field_str(fields, "location").or_else(|| field_str(fields, "assetId"));
 }
 
 /// Rule `stage-clear` (dsl 0.24.0 §4): `::clear` takes every character on
@@ -584,7 +835,7 @@ fn hide_everyone(
                 explanation: explain(&character, some_paths),
             },
         });
-        state.exited.entry(character).or_insert(how);
+        state.exited.entry(character).or_insert_with(|| how.clone());
     }
     state.dirty.clear();
 }
@@ -592,16 +843,14 @@ fn hide_everyone(
 /// Rule `stage-bookkeeping` (show arm): record the entering character on stage
 /// with its resolved anchor (explicit, else the `anchor` domain's declared
 /// `default:`, else none) and looked-ahead emotion. Pure state update — the
-/// anchor/emotion *commands* were already emitted by their rules.
 fn stage_bookkeeping_show(
     state: &mut StageState,
-    d: &Directive,
     character: &str,
+    anchor: Option<String>,
     emotion: Option<String>,
     domains: &BTreeMap<String, Domain>,
 ) {
-    let anchor =
-        attr_str(&d.attrs, "anchor").or_else(|| default_anchor(domains).map(str::to_string));
+    let anchor = anchor.or_else(|| default_anchor(domains).map(str::to_string));
     // A re-show ends the absence §11.2 warns about.
     state.exited.remove(character);
     state.maybe_on_stage.remove(character);
@@ -706,22 +955,27 @@ fn exit_is_written_next(
     speaker: &str,
     lookahead: &[Node],
     domains: &BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
 ) -> bool {
     for node in lookahead {
-        match node {
-            Node::Directive(d)
-                if d.tag == "bg" || d.tag == lute_manifest::core::CLEAR_DIRECTIVE =>
-            {
-                return false
-            }
-            Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE => {
-                if attr_str(&d.attrs, "character").as_deref() == Some(speaker) {
-                    return attr_str(&d.attrs, "action")
-                        .is_some_and(|a| is_declared_exit(&a, domains));
+        match classify_node(node, snapshot) {
+            StageKind::Clear | StageKind::Bg { .. } => return false,
+            StageKind::Actor { fields, core } => {
+                if field_str(&fields, "character").as_deref() == Some(speaker) {
+                    return if core {
+                        field_str(&fields, "action").is_some_and(|a| is_declared_exit(&a, domains))
+                    } else {
+                        field_bool(&fields, "exit") == Some(true)
+                    };
                 }
             }
-            Node::Line(l) if l.speaker == speaker => return false,
-            _ => {}
+            _ => {
+                if let Node::Line(line) = node {
+                    if line.speaker == speaker {
+                        return false;
+                    }
+                }
+            }
         }
     }
     false
@@ -792,10 +1046,10 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
              someone who is not present. Show them again with an `::actor` before this point, or \
              remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)"
         ),
-        (Staged::Line, Departure::SceneChange { line }) => format!(
-            "`{character}` was auto-hidden by an earlier `::bg` scene change (line {line}) on a \
+        (Staged::Line, Departure::SceneChange { line, tag }) => format!(
+            "`{character}` was auto-hidden by an earlier `::{tag}` scene change (line {line}) on a \
              path that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::actor` after the `::bg` (dsl \
+             someone who is not present. Show them again with an `::actor` after the `::{tag}` (dsl \
              0.10.0 §11.2, 0.22.0 §12)"
         ),
         (Staged::Exit, Departure::Exit { line }) => format!(
@@ -803,9 +1057,9 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
              reaches here and has not been shown again, so this exit does nothing. Delete it, \
              or show them again with an `::actor` before it (dsl 0.10.0 §11.2)"
         ),
-        (Staged::Exit, Departure::SceneChange { line }) => format!(
-            "`{character}` is already off stage (hidden by the `::bg` at line {line}) on a path \
-             that reaches here, so this exit does nothing. Move it before the `::bg`, or delete \
+        (Staged::Exit, Departure::SceneChange { line, tag }) => format!(
+            "`{character}` is already off stage (hidden by the `::{tag}` at line {line}) on a path \
+             that reaches here, so this exit does nothing. Move it before the `::{tag}`, or delete \
              it (dsl 0.10.0 §11.2, 0.22.0 §12)"
         ),
         (Staged::Line, Departure::Clear { line }) => format!(
@@ -1670,6 +1924,118 @@ mod tests {
         assert!(matches!(
             st.exited.get("pell"),
             Some(Departure::SceneChange { .. })
+        ));
+    }
+    #[test]
+    fn plugin_bg_uses_record_kind_for_scene_change() {
+        let mut snapshot = CapabilitySnapshot::default();
+        snapshot.directives.insert(
+            "backdrop".into(),
+            lute_manifest::schema::DirectiveDecl {
+                name: "backdrop".into(),
+                attrs: vec![lute_manifest::schema::AttrDecl {
+                    name: "location".into(),
+                    required: true,
+                    ty: lute_manifest::types::Type::Str,
+                    default: None,
+                }],
+                lower: Lowering::Record {
+                    record: "bg".into(),
+                    fields: yaml_serde::from_str("{ location: { fromAttr: location } }").unwrap(),
+                },
+                layer: None,
+                semantics: vec![],
+                state: None,
+                effects: None,
+                bridge: None,
+            },
+        );
+        let node = Node::Directive(Directive {
+            tag: "backdrop".into(),
+            attrs: vec![attr("location", "cafe")],
+            when: None,
+            span: span(),
+        });
+        let mut state = StageState::default();
+        state
+            .on_stage
+            .insert("marina".into(), SpriteState::default());
+        state.dirty.insert("marina".into());
+        let (next, injected) =
+            lower_node_with_snapshot(state, &node, &[], &anchor_domain("center"), &snapshot);
+        assert!(injected.iter().any(|command| {
+            command.provenance.by == "stage-bookkeeping"
+                && matches!(command.kind, InjectKind::Hide { ref character } if character == "marina")
+        }));
+        assert!(next.on_stage.is_empty());
+        assert_eq!(next.bg.as_deref(), Some("cafe"));
+    }
+
+    #[test]
+    fn plugin_actor_uses_resolved_fields_for_entrance_and_exit() {
+        let mut snapshot = CapabilitySnapshot::default();
+        snapshot.directives.insert(
+            "pose".into(),
+            lute_manifest::schema::DirectiveDecl {
+                name: "pose".into(),
+                attrs: vec![
+                    lute_manifest::schema::AttrDecl {
+                        name: "who".into(),
+                        required: true,
+                        ty: lute_manifest::types::Type::Str,
+                        default: None,
+                    },
+                    lute_manifest::schema::AttrDecl {
+                        name: "gone".into(),
+                        required: false,
+                        ty: lute_manifest::types::Type::Bool,
+                        default: None,
+                    },
+                ],
+                lower: Lowering::Record {
+                    record: "actor".into(),
+                    fields: yaml_serde::from_str(
+                        "{ character: { fromAttr: who }, exit: { fromAttr: gone } }",
+                    )
+                    .unwrap(),
+                },
+                layer: None,
+                semantics: vec![],
+                state: None,
+                effects: None,
+                bridge: None,
+            },
+        );
+        let show = Node::Directive(Directive {
+            tag: "pose".into(),
+            attrs: vec![attr("who", "marina")],
+            when: None,
+            span: span(),
+        });
+        let (staged, injected) = lower_node_with_snapshot(
+            StageState::default(),
+            &show,
+            &[],
+            &anchor_domain("center"),
+            &snapshot,
+        );
+        assert!(staged.on_stage.contains_key("marina"));
+        assert!(injected
+            .iter()
+            .any(|command| command.provenance.by == "auto-anchor-on-show"));
+        let exit = Node::Directive(Directive {
+            tag: "pose".into(),
+            attrs: vec![attr("who", "marina"), attr("gone", "true")],
+            when: None,
+            span: span(),
+        });
+        let (after, injected) =
+            lower_node_with_snapshot(staged, &exit, &[], &anchor_domain("center"), &snapshot);
+        assert!(injected.is_empty());
+        assert!(!after.on_stage.contains_key("marina"));
+        assert!(matches!(
+            after.exited.get("marina"),
+            Some(Departure::Exit { .. })
         ));
     }
 }
