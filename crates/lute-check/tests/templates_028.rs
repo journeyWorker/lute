@@ -99,6 +99,21 @@ fn a_component_param_named_when_or_component_is_refused_and_title_is_not() {
     assert!(!refused.iter().any(|m| m.contains("param `title`")));
 }
 
+#[test]
+fn component_at_and_instance_params_are_refused_once_with_the_use_reserved_list() {
+    let src = "---\ncomponent: greet\nparams:\n  at: string\n  instance: string\n---\n\n## A\n\n@narrator: {{@at}} {{@instance}}.\n";
+    let diags = component_diags(src);
+    let refused: Vec<&Diagnostic> = diags.iter().filter(|d| d.code == "E-TEMPLATE").collect();
+    assert_eq!(refused.len(), 2, "{diags:#?}");
+    for diagnostic in refused {
+        assert!(
+            diagnostic.message.contains("component, when, at, instance"),
+            "{diagnostic:#?}"
+        );
+        assert!(diagnostic.message.contains("rename it"), "{diagnostic:#?}");
+    }
+}
+
 const GIFT: &str = "---\ncomponent: gift\nparams:\n  who: string\n  need: int\n\
 beat:\n  on: talk\n  once: user\n  when: \"user.bond >= @need && @who != ''\"\n---\n\n## Gift\n\n@narrator: Here.\n";
 

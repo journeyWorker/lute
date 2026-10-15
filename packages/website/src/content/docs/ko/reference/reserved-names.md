@@ -40,7 +40,7 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 | `set` `assert` `retract` `accept` `use` `body` | plugin directive | core 문장(`::set{…}`, `::use{component=…}`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
 | `on` `quest` `objective` `match` `branch` `hub` `choice` `when` `otherwise` `entry` `beat` `timeline` `track` `reward` `return` | plugin directive | core 블록 태그(`<match>`, `<quest>`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
 | `id` `use` `on` `target` `for` `title` `priority` `once` `share` `after` `when` `spentBy` `also` | beat 템플릿 param | beat 머리 키. `<beat use=… when=…>`는 param이 아니라 beat 자신의 `when`을 정한다 | E-TEMPLATE |
-| `component` `when` | component param | `::use` 자신의 키(`::use{component=… when=…}`). 그 param은 넘길 수 없다 | E-TEMPLATE |
+| `component` `when` `at` `instance` | component param | `::use` 자체 키(`::use{component=… when=… at=… instance=…}`)이며 param으로 전달할 수 없다 | E-TEMPLATE |
 
 ## 참고
 

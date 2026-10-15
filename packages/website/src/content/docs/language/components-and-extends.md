@@ -71,6 +71,13 @@ argument count and type are checked (`E-COMPONENT-ARG`), and naming a component 
 file is `E-COMPONENT-UNDECLARED`. A literal argument is substituted into the expansion, so
 `{{@weather}}` in a component line compiles to `Outside: grey.` for `weather="grey"`.
 
+The names `component`, `when`, `at`, and `instance` are reserved by `::use` itself.
+They MUST NOT be component parameter names: `at` is the timeline clip offset and
+`instance` is the use identity. A declaration reports one `E-TEMPLATE` at that
+`params:` entry, naming the complete reserved list and suggesting a rename; uses
+of the component do not repeat that parameter diagnostic. Beat-template header
+keys keep their existing reservation rule.
+
 An argument may also be a **def of the calling document** — `::use{component="greet" tier=@mood}`.
 The component still reads no state itself; the caller's def is where the state read lives, and it
 is checked where it lands:

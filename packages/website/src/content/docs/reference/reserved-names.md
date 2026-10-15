@@ -41,7 +41,7 @@ names already mean, and the code that reports them.
 | `set` `assert` `retract` `accept` `use` `body` | plugin directive | a core statement (`::set{…}`, `::use{component=…}`), which content always reads as the core one | E-PLUGIN-RESERVED-NAME |
 | `on` `quest` `objective` `match` `branch` `hub` `choice` `when` `otherwise` `entry` `beat` `timeline` `track` `reward` `return` | plugin directive | a core block tag (`<match>`, `<quest>`), which content always reads as the core one | E-PLUGIN-RESERVED-NAME |
 | `id` `use` `on` `target` `for` `title` `priority` `once` `share` `after` `when` `spentBy` `also` | beat template param | a beat header key: `<beat use=… when=…>` sets the beat's own `when`, never the param | E-TEMPLATE |
-| `component` `when` | component param | a `::use` key of its own (`::use{component=… when=…}`), so the param could never be passed | E-TEMPLATE |
+| `component` `when` `at` `instance` | component param | a `::use` key of its own (`::use{component=… when=…}`), so the param could never be passed | E-TEMPLATE |
 <!-- reserved-names:end -->
 
 ## Notes

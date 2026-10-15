@@ -71,9 +71,9 @@ pub const TEMPLATE_KEYS: &[&str] = &[
 const CEL_KEYS: &[&str] = &["when", "spentBy"];
 
 /// Whether a component param may not be called `name`: a `::use`'s own keys
-/// (`component`, `when`) for every component, and a `<beat>` header key for
-/// a beat template (`template`) — an attribute of that name sets the use's
-/// own key, never the param. The names live in [`lute_manifest::reserved`].
+/// (`component`, `when`, `at`, `instance`) for every component, and a `<beat>`
+/// header key for a beat template (`template`) — an attribute of that name sets
+/// the use's own key, never the param. The names live in [`lute_manifest::reserved`].
 pub fn reserved_param(name: &str, template: bool) -> bool {
     lute_manifest::reserved::COMPONENT_PARAM_NAMES.contains(&name)
         || (template && lute_manifest::reserved::BEAT_TEMPLATE_PARAM_NAMES.contains(&name))
@@ -86,34 +86,52 @@ pub fn check_param_names(meta: &Meta, params: &[DefParam], template: bool) -> Ve
     let mut out = Vec::new();
     for p in params.iter().filter(|p| reserved_param(&p.name, template)) {
         let name = p.name.as_str();
-        let why = match name {
-            "component" => "`::use{component=…}` names the component with it".to_string(),
-            "when" if !template => "`::use{… when=…}` is the use's own guard".to_string(),
-            _ => format!(
-                "it is a `<beat>` header key: `<beat use=… {name}=…>` sets the beat's own \
-                 `{name}`"
-            ),
-        };
-        let instead = match name {
-            "id" => "key",
-            "use" => "usage",
-            "on" => "occasion",
-            "target" => "subject",
-            "for" => "kind",
-            "title" => "heading",
-            "priority" => "rank",
-            "once" => "repeat",
-            "share" => "pool",
-            "after" => "prev",
-            "when" => "condition",
-            "spentBy" => "doneWhen",
-            "also" => "extra",
-            _ => "part",
+        let (reserved, why, instead) = if lute_manifest::reserved::COMPONENT_PARAM_NAMES
+            .contains(&name)
+        {
+            let why = match name {
+                "component" => "`::use{component=…}` names the component with it",
+                "when" => "`::use{… when=…}` is the use's own guard",
+                "at" => "`::use{… at=…}` is the timeline clip's offset",
+                "instance" => "`::use{… instance=…}` is the use's identity",
+                _ => unreachable!(),
+            };
+            let instead = match name {
+                "when" => "condition",
+                "at" => "offset",
+                "instance" => "usage",
+                _ => "part",
+            };
+            ("component, when, at, instance", why.to_string(), instead)
+        } else {
+            let instead = match name {
+                "id" => "key",
+                "use" => "usage",
+                "on" => "occasion",
+                "target" => "subject",
+                "for" => "kind",
+                "title" => "heading",
+                "priority" => "rank",
+                "once" => "repeat",
+                "share" => "pool",
+                "after" => "prev",
+                "when" => "condition",
+                "spentBy" => "doneWhen",
+                "also" => "extra",
+                _ => "part",
+            };
+            (
+                    "component, when, at, instance",
+                    format!(
+                        "it is a `<beat>` header key: `<beat use=… {name}=…>` sets the beat's own `{name}`"
+                    ),
+                    instead,
+                )
         };
         out.push(diag(
             format!(
-                "param `{name}` can never be passed: {why}, never this param — rename it \
-                 (e.g. `{instead}`)"
+                "param `{name}` can never be passed: {why}; `::use` reserves \
+                 `{reserved}` — rename it (e.g. `{instead}`)"
             ),
             crate::meta::meta_path_span(meta, &["params", name]),
         ));

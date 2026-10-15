@@ -616,6 +616,48 @@
         }
       ]
     },
+    "Ended": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "screens": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EndedScreen"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "by",
+        "screens"
+      ],
+      "type": "object"
+    },
+    "EndedScreen": {
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "text"
+      ],
+      "type": "object"
+    },
     "Fit": {
       "enum": [
         "cover",
@@ -878,6 +920,17 @@
     "Ui": {
       "additionalProperties": false,
       "properties": {
+        "ended": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ended"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "font": {
           "default": null,
           "type": [
@@ -1045,6 +1098,7 @@
     "ui": {
       "$ref": "#/$defs/Ui",
       "default": {
+        "ended": null,
         "font": null,
         "theme": {},
         "title": null

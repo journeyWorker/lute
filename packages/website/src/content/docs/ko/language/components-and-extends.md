@@ -68,6 +68,12 @@ components: [greet.component.lute]
 인수 개수와 타입은 검사되며(`E-COMPONENT-ARG`), 가져온 파일에 없는 컴포넌트 이름 지정은 `E-COMPONENT-UNDECLARED`입니다.
 리터럴 인수는 확장에 치환되므로, 컴포넌트 줄의 `{{@weather}}`는 `weather="grey"`일 때 `Outside: grey.`로 컴파일됩니다.
 
+`component`, `when`, `at`, `instance`는 `::use` 자체가 예약한 이름입니다.
+컴포넌트 param에는 이 이름을 사용할 수 없습니다. `at`은 타임라인 클립 오프셋이고
+`instance`는 use의 식별자입니다. 선언의 해당 `params:` 항목에서 전체 예약 목록과
+이름 변경 제안을 포함한 `E-TEMPLATE` 하나가 보고되며, 컴포넌트 사용처에서는 같은
+param 진단을 반복하지 않습니다. beat-template 헤더 키의 기존 예약 규칙은 그대로입니다.
+
 인수는 **호출 문서의 def**일 수도 있습니다 — `::use{component="greet" tier=@mood}`처럼 씁니다.
 컴포넌트는 여전히 스스로 상태를 읽지 않습니다. 상태 읽기가 있는 곳은 호출자의 def이며, 그 def가 들어간 위치에서 검사됩니다.
 

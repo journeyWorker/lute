@@ -36,6 +36,11 @@ voice: { pattern: "voice/{voiceKey}.ogg" }
 ui:
   font: Noto Sans KR
   title: { background: bg/title.png, music: theme }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Bell Rings Again", text: "Brinewake keeps its light.", background: dawnHarbor }
+      retire: { title: "Quiet Water", text: "You hand the bell rope to Ivo." }
   theme: { text: "#ffffff", accent: "#e0c080" }
 flow:
   newGame: { occasion: start }
@@ -51,8 +56,9 @@ flow:
 - `anchors`, `actions`, `transitions`, `framing`, `cameraMove`, `cgLayouts`, `textStyles`, `sequences`는 선언된 staging domain을 키로 합니다. anchor는 `x`와 선택적 `y`, `scale`을 사용하고, framing은 `zoom`과 선택적 `x`, `y`를 사용하며, CG layout은 `fit: cover|contain`과 선택적 `scale`, `x`, `y`를 사용합니다. text style은 `fontWeight`, `fontStyle`, `color`, `alpha`, `scale`, `letterSpacing`을 받습니다.
 - `music.moods`, `sfx`, `vfx`는 컴파일 문서에서 사용하는 값을 키로 합니다. `sequences` 값에는 `video`가 있고 `voice.pattern`은 `{voiceKey}` 경로 템플릿입니다.
 - `volumes`(0.42)는 프로젝트 `volume` 도메인의 각 멤버를 gain, 즉 `0`에서 `1` 사이의 유한한 수에 대응시킵니다. 음악 큐의 `volume`은 절대 레벨이므로 플레이어는 그 멤버의 gain으로 재생하고 숫자를 해석하지 않습니다. `volume`이 없는 큐는 gain `1`로, gain이 없는 멤버는 전체 볼륨이 아니라 `0`으로 재생됩니다. 알 수 없는 키는 `E-BINDING-KEY`, 키가 없는 멤버는 `W-BINDING-MISSING`, `[0, 1]` 범위의 유한한 수가 아닌 gain은 그 값 위치의 `E-BINDING-SHAPE`입니다.
-- `ui`에는 `font`, title의 `background`와 `music`, 임의의 theme 색상 이름이 들어갑니다.
-- `flow.newGame`은 하나의 계기를 발생시키며 `flow.idle`은 `{label, occasion, target?}` 메뉴 목록 또는 `raise: {occasion, target?}`입니다.
+- `ui`에는 `font`, title의 `background`와 `music`, 선택적인 `ended`, 임의의 theme 색상 이름이 들어갑니다. 모든 UI asset 참조는 먼저 `assets:` 키를 확인합니다. 키이면 해당 asset 사용으로 계산되고, 아니면 `assetsBase` 아래 파일로 처리되어 반드시 존재해야 합니다.
+- `ui.ended`에는 닫힌 enum/entity domain을 가진 선언된 상태 경로인 `by`와 `screens`가 필요합니다. 각 screen에는 `title`과 `text`가 필요하고 `background`는 선택 사항입니다. 알 수 없는 screen 키는 `E-BINDING-KEY`이며, 화면이 없는 domain 구성원은 조용히 기본 화면으로 돌아갑니다.
+- 종료 화면을 표시할 때 player-web은 `program.view(state).state[by]`를 읽습니다. 매핑된 구성원은 title, text, 선택적 background를 사용하고, 값이 없거나 매핑되지 않았거나 질의가 실패했거나 `ui.ended`가 없으면 기본 종료 화면을 사용합니다.
 
 ## 효과
 

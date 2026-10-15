@@ -128,21 +128,21 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BINDING-FILE
 
-플레이어 바인딩이 `assetsBase`에 상대적인 위치에서 존재하지 않는 에셋 파일을 가리킵니다.
+플레이어 바인딩이 `assetsBase`에 상대적인 위치에서 존재하지 않는 파일을 가리킵니다(`ui` 참조는 먼저 `assets:` 키로 해석됩니다).
 
-명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-BINDING-KEY
 
-플레이어 바인딩 키가 선언된 도메인 구성원, cast id, occasion, target 또는 컴파일된 스테이징 값이 아닙니다.
+플레이어 바인딩 키가 선언된 도메인 구성원, cast id, occasion, target, 컴파일된 스테이징 값 또는 닫힌 domain 종료 화면 구성원이 아닙니다.
 
-명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-BINDING-SHAPE
 
 플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함합니다.
 
-명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 ### E-BRANCH-ALL-GUARDED
 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
@@ -611,9 +611,9 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 ### E-ENTITY-KIND-SHAPE
 
-엔티티 종류 선언이 잘못되었습니다 — `members:`/`open:` 중 어느 것도 또는 둘 다 선언했거나, 알 수 없는 키가 있거나, 멤버를 두 번 이상 나열했거나, `labels:`/`add:` 항목이 그 종류에 없는 멤버를 지정하거나 `open:`/알 수 없는 종류를 대상으로 합니다.
+엔티티 종류 선언이 잘못되었습니다 — `members:`/`open:` 중 어느 것도 또는 둘 다 선언했거나, 알 수 없는 키가 있거나, 멤버를 두 번 이상 나열했거나, `labels:`/`add:` 항목이 그 종류에 없는 멤버를 지정하거나 `open:`/알 수 없는 종류를 대상으로 합니다. YAML 목록은 `{ members: [...] }`로 고쳐 써야 합니다.
 
-명세: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.26.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+명세: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.26.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.46.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-ENTRY-ATTR
 
@@ -1593,9 +1593,9 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TEMPLATE
 
-비트 템플릿이 잘못 사용되었습니다: `<beat use=>`가 컴포넌트를 지정하지 않거나 `beat:` 헤더가 없는 컴포넌트를 지정했거나, 템플릿의 `beat:` 헤더가 형식에 맞지 않거나 헤더 매개변수에 허용되지 않는 값을 주었거나, 컴포넌트가 사용 자리의 키와 이름이 같아 어떤 사용도 넘길 수 없는 매개변수(`component`나 `when`, 비트 템플릿이면 `title`, `once`, `id` 같은 `<beat>` 머리 키)를 선언했거나, `::body`가 템플릿의 최상위 밖에 나타났습니다.
+비트 템플릿이 잘못 사용되었습니다: `<beat use=>`가 컴포넌트를 지정하지 않거나 `beat:` 헤더가 없는 컴포넌트를 지정했거나, 템플릿의 `beat:` 헤더가 형식에 맞지 않거나 헤더 매개변수에 허용되지 않는 값을 주었거나, 컴포넌트가 사용 자리의 키와 이름이 같아 어떤 사용도 넘길 수 없는 매개변수(`component`, `when`, `at` 또는 `instance`, 비트 템플릿이면 `title`, `once`, `id` 같은 `<beat>` 머리 키)를 선언했거나, `::body`가 템플릿의 최상위 밖에 나타났습니다.
 
-명세: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.46.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-TEMPORAL-ARG
 

@@ -67,6 +67,11 @@ cast:
 - **`per:`** on a state path declares `run.approval.isolde` and `run.approval.corvin`. Its `default:` may be one value for every member or a map with per-member values and a `_` fallback, `{ _: 0, isolde: 2 }`. See [One path per entity](/state/state-model/#one-path-per-entity-per).
 - **`present:`, `emotions:` and `assume:`** on a cast entry say when the character is with the player, which `emotion=` values their lines may use, and whether presence may take the engine's `reserved:` facts as absent. In a schema, a `present:` that does not parse is `E-CEL-PARSE`, one outside the CEL profile is `E-CEL-PROFILE`, and an `emotions:` member outside the schema's `emotion` enum is `E-BAD-ENUM`, each reported at the entry's key. See [The cast](/language/dialogue-and-cast/#the-cast).
 
+Entity kinds have one spelling: use `kind: { members: [a, b] }` for a closed
+kind or `kind: { open: true }` for an open kind. The YAML list shorthand
+`kind: [a, b]` is not accepted; `E-ENTITY-KIND-SHAPE` shows the exact
+`{ members: [a, b] }` rewrite using the members you wrote.
+
 ### Seasons
 
 A live game runs events that come and go: a harvest festival every autumn, a starfall week the

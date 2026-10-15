@@ -333,7 +333,27 @@ pub struct Ui {
     #[serde(default)]
     pub title: Option<Title>,
     #[serde(default)]
+    pub ended: Option<Ended>,
+    #[serde(default)]
     pub theme: BTreeMap<String, String>,
+}
+
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Ended {
+    pub by: String,
+    pub screens: BTreeMap<String, EndedScreen>,
+}
+
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EndedScreen {
+    pub title: String,
+    pub text: String,
+    #[serde(default)]
+    pub background: Option<String>,
 }
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -458,5 +478,19 @@ mod tests {
         .unwrap_err();
         let location = error.location().expect("yaml_serde reports a location");
         assert_eq!((location.line(), location.column()), (3, 1));
+    }
+    #[test]
+    fn decodes_ended_screens_and_rejects_unknown_keys() {
+        let value: Bindings = yaml_serde::from_str(
+            "bindingsVersion: '0.45'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n",
+        )
+        .unwrap();
+        let ended = value.ui.ended.unwrap();
+        assert_eq!(ended.by, "run.ending");
+        assert_eq!(ended.screens["restore"].background.as_deref(), Some("dawn"));
+        assert!(yaml_serde::from_str::<Bindings>(
+            "bindingsVersion: '0.45'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens: {restore: {title: Again, text: Welcome, nope: x}}\n",
+        )
+        .is_err());
     }
 }

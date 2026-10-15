@@ -128,21 +128,21 @@ Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-BINDING-FILE
 
-A player binding references an asset file that does not exist relative to `assetsBase`.
+A player binding references a file that does not exist relative to `assetsBase` (a `ui` reference uses an `assets:` key first).
 
-Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-BINDING-KEY
 
-A player binding key is not a declared domain member, cast id, occasion, target, or compiled staging value.
+A player binding key is not a declared domain member, cast id, occasion, target, compiled staging value, or closed-domain ending screen member.
 
-Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-BINDING-SHAPE
 
 The player bindings YAML is malformed or contains an unknown key.
 
-Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-BRANCH-ALL-GUARDED
 
@@ -612,9 +612,9 @@ Spec: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-ENTITY-KIND-SHAPE
 
-An entity kind declaration is malformed — it declares neither or both of `members:`/`open:`, has an unknown key, lists a member more than once, or a `labels:`/`add:` entry names a member the kind doesn't have or targets an `open:`/unknown kind.
+An entity kind declaration is malformed — it declares neither or both of `members:`/`open:`, has an unknown key, lists a member more than once, or a `labels:`/`add:` entry names a member the kind doesn't have or targets an `open:`/unknown kind; a YAML list must be rewritten as `{ members: [...] }`.
 
-Spec: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.26.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
+Spec: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.26.0 §2.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.46.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-ENTRY-ATTR
 
@@ -1598,9 +1598,9 @@ Spec: [dsl 0.36.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-TEMPLATE
 
-A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component` or `when`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.
+A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component`, `when`, `at`, or `instance`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.
 
-Spec: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.27.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.46.0 §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
 
 ### E-TEMPORAL-ARG
 

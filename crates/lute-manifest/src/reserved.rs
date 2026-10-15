@@ -177,7 +177,7 @@ pub const BEAT_TEMPLATE_PARAM_NAMES: &[&str] = &[
 
 /// A `::use` directive's own keys: a component param of the same name can
 /// never be passed.
-pub const COMPONENT_PARAM_NAMES: &[&str] = &["component", "when"];
+pub const COMPONENT_PARAM_NAMES: &[&str] = &["component", "when", "at", "instance"];
 
 /// The `once`/tier periods a season name would sit beside.
 const PERIODS: &[&str] = &["run", "user", "day", "week", "slot"];

@@ -98,18 +98,18 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BINDING-FILE",
-        summary: "A player binding references an asset file that does not exist relative to `assetsBase`.",
-        spec: &["dsl 0.40.0 §5"],
+        summary: "A player binding references a file that does not exist relative to `assetsBase` (a `ui` reference uses an `assets:` key first).",
+        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.1"],
     },
     Code {
         code: "E-BINDING-KEY",
-        summary: "A player binding key is not a declared domain member, cast id, occasion, target, or compiled staging value.",
-        spec: &["dsl 0.40.0 §5"],
+        summary: "A player binding key is not a declared domain member, cast id, occasion, target, compiled staging value, or closed-domain ending screen member.",
+        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2"],
     },
     Code {
         code: "E-BINDING-SHAPE",
         summary: "The player bindings YAML is malformed or contains an unknown key.",
-        spec: &["dsl 0.40.0 §5"],
+        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2"],
     },
     Code {
         code: "E-BRANCH-ALL-GUARDED",
@@ -518,8 +518,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-ENTITY-KIND-SHAPE",
-        summary: "An entity kind declaration is malformed — it declares neither or both of `members:`/`open:`, has an unknown key, lists a member more than once, or a `labels:`/`add:` entry names a member the kind doesn't have or targets an `open:`/unknown kind.",
-        spec: &["dsl 0.3.0 §3.1", "dsl 0.26.0 §2.3", "dsl 0.27.0 §2"],
+        summary: "An entity kind declaration is malformed — it declares neither or both of `members:`/`open:`, has an unknown key, lists a member more than once, or a `labels:`/`add:` entry names a member the kind doesn't have or targets an `open:`/unknown kind; a YAML list must be rewritten as `{ members: [...] }`.",
+        spec: &["dsl 0.3.0 §3.1", "dsl 0.26.0 §2.3", "dsl 0.27.0 §2", "dsl 0.46.0 §2.2"],
     },
     Code {
         code: "E-ENTRY-ATTR",
@@ -1403,8 +1403,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TEMPLATE",
-        summary: "A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component` or `when`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.",
-        spec: &["dsl 0.27.0 §6", "dsl 0.28.0 §1"],
+        summary: "A beat template is misused: `<beat use=>` names no component or one without a `beat:` header, a template `beat:` header is malformed or gives a header param a value it cannot take, a component declares a param named like a key of its use (`component`, `when`, `at`, or `instance`, or for a beat template a `<beat>` header key such as `title`, `once` or `id`) that no use could ever pass, or `::body` appears outside a template's top level.",
+        spec: &["dsl 0.27.0 §6", "dsl 0.28.0 §1", "dsl 0.46.0 §2.1"],
     },
     Code {
         code: "E-TEMPORAL-ARG",
