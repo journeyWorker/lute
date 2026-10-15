@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest"
 import { Effect, Stream } from "effect"
-import { Container, Text } from "pixi.js"
+import { Container, Sprite, Text, Texture } from "pixi.js"
 import type { PlayerAction, Settings } from "@lute-lang/player"
 import { layer } from "../../../src/input/map.js"
 import { BacklogScreen, HudScreen } from "../../../src/ui/screens/backlog.js"
 import { ConfirmScreen, EndedScreen, HaltedScreen, IdleScreen, LoadingScreen, MenuScreen, TitleScreen } from "../../../src/ui/screens/common.js"
 import { SaveLoadScreen } from "../../../src/ui/screens/save-load.js"
 import { SettingsScreen } from "../../../src/ui/screens/settings.js"
-import { Button, Segmented, Slider, Toggle } from "../../../src/ui/widgets/index.js"
+import { Button, Panel, Segmented, Slider, Toggle } from "../../../src/ui/widgets/index.js"
 const theme = { font: "sans-serif", text: 0xffffff, accent: 0xffcc66, panel: 0x111122, panelAlpha: 0.8, readText: 0xcccccc }
 const settings: Settings = { textSpeed: 60, autoDelay: 2, skipMode: "read", volumes: { master: 1, music: 0.8, sfx: 0.8, voice: 0.8 }, locale: "en", windowOpacity: 0.9, readColour: true, rollbackDepth: 20 }
 function actions(): { values: PlayerAction[]; emit: (action: PlayerAction) => void } { const values: PlayerAction[] = []; return { values, emit: (action) => values.push(action) } }
@@ -31,6 +31,23 @@ it("Loading renders progress bar", () => { expect(new LoadingScreen({ _tag: "Loa
 it("Halted back button emits toTitle", () => { const value = actions(); buttons(new HaltedScreen({ _tag: "Halted", message: "Error" }, theme, value.emit)).forEach((button) => button.activate()); expect(value.values).toEqual([{ type: "toTitle" }]) })
 it("Idle option emits pickIdle", () => { const value = actions(); buttons(new IdleScreen({ _tag: "Idle", options: [{ label: "One" }] }, theme, value.emit)).forEach((button) => button.activate()); expect(value.values).toEqual([{ type: "pickIdle", index: 0 }]) })
 it("Ended back button emits toTitle", () => { const value = actions(); buttons(new EndedScreen({ _tag: "Ended", reason: "Done" }, theme, value.emit)).forEach((button) => button.activate()); expect(value.values).toEqual([{ type: "toTitle" }]) })
+it("Ended renders a resolved title, text and background behind its panel", () => {
+  const texture = Texture.WHITE
+  const view = new EndedScreen({ _tag: "Ended", reason: "terminal", title: "Restored", text: "A new dawn", background: "ending.png" }, theme, () => {}, () => texture)
+  expect(view.children[0]).toBeInstanceOf(Sprite)
+  expect(view.children[1]).toBeInstanceOf(Panel)
+  const texts = view.children.filter((child) => child instanceof Text).map((child) => child.text)
+  expect(texts).toContain("Restored")
+  expect(texts).toContain("A new dawn")
+  expect(texts).not.toContain("The End")
+  expect(texts).not.toContain("Thank you for playing")
+})
+it("Ended without a resolved screen keeps stock title and text", () => {
+  const view = new EndedScreen({ _tag: "Ended", reason: "terminal" }, theme, () => {})
+  const texts = view.children.filter((child) => child instanceof Text).map((child) => child.text)
+  expect(texts).toContain("The End")
+  expect(texts).toContain("Thank you for playing")
+})
 it("Menu buttons emit resume save load settings title", () => { const value = actions(); buttons(new MenuScreen(theme, value.emit)).forEach((button) => button.activate()); expect(value.values.map((action) => action.type)).toEqual(["close", "openSave", "openLoad", "openSettings", "toTitle"]) })
 function settingControl(index: number): PlayerAction { const value = actions(); const view = new SettingsScreen({ _tag: "Settings", settings, locales: ["en", "ja"] }, theme, value.emit); const controls = view.children.filter((child) => child instanceof Slider || child instanceof Toggle || child instanceof Segmented); const control = controls[index]; if (control instanceof Slider || control instanceof Toggle || control instanceof Segmented) control.activate(); return value.values[0]! }
 it("Settings text speed emits setSettings", () => expect(settingControl(0)).toEqual({ type: "setSettings", settings: { textSpeed: 60 } }))
