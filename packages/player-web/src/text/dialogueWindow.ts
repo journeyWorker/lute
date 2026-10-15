@@ -51,11 +51,12 @@ export class DialogueWindow {
     this.target.label = "DialogueWindow"
     this.panel = new Graphics()
     this.namePlate = new Container()
+    const plate = new Graphics()
     this.nameText = new Text({ text: "", style: textStyle(theme.font, theme.text, options.fontSize ?? 24) })
     this.textArea = new Container()
     this.indicator = new Text({ text: "▼", style: textStyle(theme.font, theme.accent, 18) })
     this.indicator.visible = false
-    this.namePlate.addChild(this.nameText)
+    this.namePlate.addChild(plate, this.nameText)
     this.target.addChild(this.panel, this.namePlate, this.textArea, this.indicator)
     parent.addChild(this.target)
     this.target.visible = false
@@ -140,9 +141,8 @@ export class DialogueWindow {
     const x = (design.width - width) / 2
     const y = design.height - height - 30
     this.panel.clear().roundRect(x, y, width, height, 18).fill({ color: this.theme.panel, alpha: this.panelOpacity * this.theme.panelAlpha })
-    const existingPlate = this.namePlate.children[1]
-    const plate = existingPlate instanceof Graphics ? existingPlate : new Graphics()
-    if (!(existingPlate instanceof Graphics)) this.namePlate.addChild(plate)
+    const plate = this.namePlate.children[0]
+    if (!(plate instanceof Graphics)) throw new Error("dialogue name plate background is missing")
     plate.clear().roundRect(0, 0, 190, 38, 10).fill({ color: this.theme.panel, alpha: 0.92 })
     this.namePlate.x = x + 26
     this.namePlate.y = y - 40

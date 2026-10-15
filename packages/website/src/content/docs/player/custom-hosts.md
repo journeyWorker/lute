@@ -124,7 +124,40 @@ const resume = Effect.scoped(Effect.gen(function* () {
 }))
 ```
 
-With your own runtime session, build it with `RuntimeSession.layer({ snapshot: save.snapshot })` and pass it as `session`. The save must come from the same compiled bundle (the project fingerprint is checked); otherwise `restore` fails `SaveIncompatible`.
+
+### Resuming a fresh player-web mount
+
+The player-web Promise facade exposes the same save Effects as the scoped
+handle. Save the `SaveRuntime`, then start a fresh mount from its runtime
+snapshot and restore the complete save:
+
+```ts
+import { mountPlayer } from "@lute-lang/player-web"
+import type { SaveRuntime } from "@lute-lang/player"
+
+const mountOptions = {
+  bindings: { url: "/player.bindings.yaml" },
+  bundleUrl: "/bundle/",
+  wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm"
+} as const
+const player = await mountPlayer(document.querySelector("#player")!, mountOptions)
+const save: SaveRuntime = await player.snapshot()
+await player.unmount()
+
+const fresh = await mountPlayer(document.querySelector("#player")!, {
+  ...mountOptions,
+  snapshot: save.snapshot
+})
+await fresh.restore(save)
+await fresh.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
+const bundle = fresh.bundle
+await fresh.unmount()
+```
+
+`mountPlayer` also provides `program` directly and rejects `send`, `snapshot`,
+and `restore` with the same failures as the underlying Effects. Its `bundle`
+is the bundle loaded by that player, so hosts can inspect `index.documents`
+and `artifacts` without loading a second copy.
 
 ## Background barks during a conversation (0.45)
 

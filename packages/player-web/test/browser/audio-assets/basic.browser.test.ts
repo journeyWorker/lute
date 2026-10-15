@@ -1,9 +1,10 @@
 import { Effect, Exit, Scope } from "effect"
-import { describe, expect, it } from "vitest"
+import { Assets } from "pixi.js"
+import { describe, expect, it, vi } from "vitest"
 import { PixiAssets } from "../../../src/assets/pixiAssets.js"
 import { pixiAssetsBackend } from "../../../src/assets/pixiAssetsBackend.js"
-import { PixiAudio } from "../../../src/audio/pixiAudio.js"
 import { pixiSoundBackend } from "../../../src/audio/pixiSoundBackend.js"
+import { PixiAudio } from "../../../src/audio/pixiAudio.js"
 
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 
@@ -37,6 +38,13 @@ describe("browser audio and assets", () => {
     expect(assets.texture(png)).toBeDefined()
     await Effect.runPromise(Scope.close(scope, Exit.void))
     URL.revokeObjectURL(wavUrl.split("#")[0] ?? wavUrl)
+  })
+  it("leaves the host Pixi Assets manager available for its own base path", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    await Assets.init({ basePath: "forge/" })
+    expect(Assets.resolver.basePath).toBe("forge/")
+    expect(warning).not.toHaveBeenCalledWith(expect.stringContaining("already initialized"))
+    warning.mockRestore()
   })
 
   it("plays a generated WAV through PixiAudio", async () => {

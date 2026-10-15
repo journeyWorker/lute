@@ -125,7 +125,40 @@ const resume = Effect.scoped(Effect.gen(function* () {
 }))
 ```
 
-직접 만든 런타임 세션을 쓴다면 `RuntimeSession.layer({ snapshot: save.snapshot })`로 만들어 `session`으로 넘깁니다. 저장은 같은 컴파일 번들에서 나온 것이어야 합니다(프로젝트 fingerprint를 검사). 아니면 `restore`가 `SaveIncompatible`로 실패합니다.
+
+### 새 player-web 마운트에서 저장 재개
+
+player-web Promise facade는 scoped handle과 같은 저장 Effect를 제공합니다.
+`SaveRuntime`을 저장한 다음 runtime snapshot으로 새 마운트를 시작하고 전체
+save를 복원합니다.
+
+```ts
+import { mountPlayer } from "@lute-lang/player-web"
+import type { SaveRuntime } from "@lute-lang/player"
+
+const mountOptions = {
+  bindings: { url: "/player.bindings.yaml" },
+  bundleUrl: "/bundle/",
+  wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm"
+} as const
+const player = await mountPlayer(document.querySelector("#player")!, mountOptions)
+const save: SaveRuntime = await player.snapshot()
+await player.unmount()
+
+const fresh = await mountPlayer(document.querySelector("#player")!, {
+  ...mountOptions,
+  snapshot: save.snapshot
+})
+await fresh.restore(save)
+await fresh.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
+const bundle = fresh.bundle
+await fresh.unmount()
+```
+
+`mountPlayer`는 `program`도 직접 제공하며 `send`, `snapshot`, `restore`가
+실패하면 내부 Effect와 같은 실패를 reject합니다. `bundle`은 해당 플레이어가
+로드한 번들이므로 `index.documents`와 `artifacts`를 두 번 로드하지 않고
+확인할 수 있습니다.
 
 ## 대화 중 배경 bark (0.45)
 
