@@ -1,0 +1,13 @@
+---
+kind: lore
+id: barks
+title: Quayside background voices
+---
+
+<entry id="marketBark" category="bark" on="bark" priority="-1">
+  @june: Fresh bread, repaired nets, and one more story before sunset.
+</entry>
+
+<entry id="pierBark" category="bark" on="visit" target="place.pier" priority="-1">
+  @tom: Mind the loose board. The pier remembers every storm.
+</entry>

@@ -121,7 +121,7 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
     assert!(t.contains("`winer`"), "{t}");
     assert!(
         t.contains(
-            "facts, notFacts, notOffered, offered, options, presented, quests, state, winner"
+            "facts, notFacts, notOffered, offered, options, presented, quests, refused, state, winner"
         ),
         "{t}"
     );
@@ -292,7 +292,7 @@ fn coverage_counts_the_documents_an_advance_step_presented() {
     assert!(
         t.contains(
             "coverage over 0 traced path(s) and 1 play(s) (plays count toward what they \
-             presented and the choices they picked, not match arms):"
+             presented, the choices they picked and the arms they executed):"
         ),
         "{t}"
     );

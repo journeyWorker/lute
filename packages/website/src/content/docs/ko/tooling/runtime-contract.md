@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.45.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.45.schema.json)
+[`schemas/lute-ir-0.46.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.46.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -36,6 +36,19 @@ TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
 fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로그램에 넘기면 결함(defect)입니다.
 `Bundle.index`의 타입은 `Ir.projectIndex`입니다.
 
+Bun 호스트는 선택적 플랫폼 peer도 같은 Effect 릴리스에 정확히 고정해
+런타임과 함께 설치해야 합니다:
+
+```sh
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+```
+
+로컬 tarball을 사용한다면 `scripts/pack-local.sh`가 출력한
+`file:<runtime-tarball>`로 `@lute-lang/runtime`을 바꾸고, 출력된
+`dependencies`와 `overrides` 항목을 붙여 넣으세요. 그 뒤에도
+`effect@4.0.2`, `@effect/platform-bun@4.0.2`,
+`@effect/platform-node-shared@4.0.2`를 함께 지정합니다.
+
 릴리스되지 않은 체크아웃을 호스트에서 시험하려면 Lute 저장소에서 `bash scripts/pack-local.sh
 [--web] [OUT_DIR]`를 실행하세요. 런타임과 player(`--web`이면 `player-web`도)를 `bun pm pack`으로 묶고,
 호스트의 `package.json`에 붙여 넣을 `dependencies`와 `overrides` 항목(`file:<tarball>`)을 출력합니다.
@@ -43,6 +56,29 @@ fingerprint의 모든 `Program`에서 유효하며, 다른 fingerprint의 프로
 Lute 저장소 자신의 `effect`로 해석되어 호스트에 `effect` 인스턴스가 두 개 생깁니다.
 [로컬 도그푸딩](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding)을
 참고하세요.
+
+### 시계 값과 HUD 라벨
+
+`Program.clock(state)`은 숫자 값입니다. day와 0부터 시작하는 slot
+인덱스를 반환합니다. 슬롯 이름과 요일 라벨은
+`program.view(state).clock`에서 가져오며, `ClockView`는
+`{ day, slot, weekday, weekdayLabel, ended, last }` 필드를 가집니다.
+Effect 스타일 HUD는 다음처럼 작성할 수 있습니다:
+
+```ts
+import { Effect, Option } from "effect"
+
+const hud = Effect.gen(function* () {
+  const position = yield* program.clock(state)
+  const world = yield* program.view(state)
+  if (Option.isNone(position) || world.clock == null) return "No clock"
+  const clock = world.clock
+  return `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${clock.slot ?? `slot ${position.value.slot}`}`
+})
+```
+
+정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
+`ClockView.weekdayLabel`을 사용하세요.
  
 ## 0.44 런타임 추가 사항
 
@@ -257,14 +293,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.45` 엔진은 `0.45.*` 아티팩트만 받아들이고 `0.44.*` 및 `0.46.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.46` 엔진은 `0.46.*` 아티팩트만 받아들이고 `0.44.*` 및 `0.46.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.45.0"
+irVersion: "0.46.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -280,7 +316,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.45.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.46.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.

@@ -6,7 +6,7 @@ description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로�
 `player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. `lute check-project`가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -36,6 +36,11 @@ voice: { pattern: "voice/{voiceKey}.ogg" }
 ui:
   font: Noto Sans KR
   title: { background: bg/title.png, music: theme }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Bell Rings Again", text: "Brinewake keeps its light.", background: dawnHarbor }
+      retire: { title: "Quiet Water", text: "You hand the bell rope to Ivo." }
   theme: { text: "#ffffff", accent: "#e0c080" }
 flow:
   newGame: { occasion: start }
@@ -44,15 +49,16 @@ flow:
 
 ## 최상위 섹션
 
-- `bindingsVersion`는 정확히 `"0.45"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
+- `bindingsVersion`는 정확히 `"0.46"`입니다. `canvas`에는 양수 `width`와 `height`가 필요하고 `assetsBase`는 선택 사항입니다.
 - `assets`는 컴파일된 `assetId`를 파일에 연결합니다.
 - `backgrounds`는 `bg.location`을 `image`에 연결하고 `times`는 `bg.time`별 대체 파일을 연결합니다.
 - `characters`는 cast id를 키로 합니다. 각 값에는 `sprite.default`, 선택적 `sprite.emotions`, 같은 sprite 형태의 선택적 `costumes`, 선택적 `nameColor`가 있습니다.
 - `anchors`, `actions`, `transitions`, `framing`, `cameraMove`, `cgLayouts`, `textStyles`, `sequences`는 선언된 staging domain을 키로 합니다. anchor는 `x`와 선택적 `y`, `scale`을 사용하고, framing은 `zoom`과 선택적 `x`, `y`를 사용하며, CG layout은 `fit: cover|contain`과 선택적 `scale`, `x`, `y`를 사용합니다. text style은 `fontWeight`, `fontStyle`, `color`, `alpha`, `scale`, `letterSpacing`을 받습니다.
 - `music.moods`, `sfx`, `vfx`는 컴파일 문서에서 사용하는 값을 키로 합니다. `sequences` 값에는 `video`가 있고 `voice.pattern`은 `{voiceKey}` 경로 템플릿입니다.
 - `volumes`(0.42)는 프로젝트 `volume` 도메인의 각 멤버를 gain, 즉 `0`에서 `1` 사이의 유한한 수에 대응시킵니다. 음악 큐의 `volume`은 절대 레벨이므로 플레이어는 그 멤버의 gain으로 재생하고 숫자를 해석하지 않습니다. `volume`이 없는 큐는 gain `1`로, gain이 없는 멤버는 전체 볼륨이 아니라 `0`으로 재생됩니다. 알 수 없는 키는 `E-BINDING-KEY`, 키가 없는 멤버는 `W-BINDING-MISSING`, `[0, 1]` 범위의 유한한 수가 아닌 gain은 그 값 위치의 `E-BINDING-SHAPE`입니다.
-- `ui`에는 `font`, title의 `background`와 `music`, 임의의 theme 색상 이름이 들어갑니다.
-- `flow.newGame`은 하나의 계기를 발생시키며 `flow.idle`은 `{label, occasion, target?}` 메뉴 목록 또는 `raise: {occasion, target?}`입니다.
+- `ui`에는 `font`, title의 `background`와 `music`, 선택적인 `ended`, 임의의 theme 색상 이름이 들어갑니다. 모든 UI asset 참조는 먼저 `assets:` 키를 확인합니다. 키이면 해당 asset 사용으로 계산되고, 아니면 `assetsBase` 아래 파일로 처리되어 반드시 존재해야 합니다.
+- `ui.ended`에는 닫힌 enum/entity domain을 가진 선언된 상태 경로인 `by`와 `screens`가 필요합니다. 각 screen에는 `title`과 `text`가 필요하고 `background`는 선택 사항입니다. 알 수 없는 screen 키는 `E-BINDING-KEY`이며, 화면이 없는 domain 구성원은 조용히 기본 화면으로 돌아갑니다.
+- 종료 화면을 표시할 때 player-web은 `program.view(state).state[by]`를 읽습니다. 매핑된 구성원은 title, text, 선택적 background를 사용하고, 값이 없거나 매핑되지 않았거나 질의가 실패했거나 `ui.ended`가 없으면 기본 종료 화면을 사용합니다.
 
 ## 효과
 

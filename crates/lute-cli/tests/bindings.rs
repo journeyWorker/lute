@@ -106,3 +106,100 @@ fn custom_effect_outside_vfx_is_a_binding_effect_error() {
         "{value}"
     );
 }
+
+fn write_temp(dir: &Path, rel: &str, text: &str) {
+    let path = dir.join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+}
+
+fn check_ui_bindings(tag: &str, bindings: &str) -> serde_json::Value {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    write_temp(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write_temp(
+        &dir,
+        "world.schema.yaml",
+        "enums:\n  ending: [restore, retire]\nstate:\n  run.ending: {type: {domain: ending}, default: restore}\n",
+    );
+    write_temp(
+        &dir,
+        "scenes/start.lute",
+        "---\nkind: scene\nid: start\non: start\n---\n## Start\n@narrator: Hello.\n",
+    );
+    write_temp(&dir, "assets/title.png", "x");
+    write_temp(&dir, "assets/dawn.png", "x");
+    write_temp(&dir, "player.bindings.yaml", bindings);
+    let out = Command::new(bin())
+        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .output()
+        .unwrap();
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+#[test]
+fn ui_asset_keys_are_used_and_direct_music_paths_are_checked() {
+    let value = check_ui_bindings(
+        "bindings-ui-assets",
+        "bindingsVersion: '0.46'\ncanvas: {width: 1, height: 1}\nassets:\n  title: title.png\nui:\n  title: {background: title, music: missing.ogg}\n",
+    );
+    let diagnostics = value["project_diagnostics"].as_array().unwrap();
+    assert!(diagnostics.iter().any(|d| d["code"] == "E-BINDING-FILE"));
+    assert!(!diagnostics.iter().any(|d| {
+        d["code"] == "W-BINDING-UNUSED" && d["message"].as_str().unwrap().contains("title")
+    }));
+}
+
+#[test]
+fn ended_screens_validate_closed_state_domains_and_assets() {
+    let value = check_ui_bindings(
+        "bindings-ended",
+        "bindingsVersion: '0.46'\ncanvas: {width: 1, height: 1}\nassets:\n  dawn: dawn.png\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n      retire: {title: Quiet, text: Goodbye}\n",
+    );
+    assert_eq!(
+        value["project_diagnostics"].as_array().unwrap().len(),
+        0,
+        "{value}"
+    );
+}
+
+#[test]
+fn list_entity_kind_shape_suggests_members_mapping_with_authored_members() {
+    let dir = lute_scratch::ScratchDir::named("entity-kind-list-shape-046");
+    write_temp(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write_temp(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  spot: [bellRope, bellFooting]\n",
+    );
+    write_temp(
+        &dir,
+        "scenes/start.lute",
+        "---\nkind: scene\nid: start\non: start\n---\n## Start\n@narrator: Hello.\n",
+    );
+    let out = Command::new(bin())
+        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .output()
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let diagnostic = value["project_diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "E-ENTITY-KIND-SHAPE")
+        .unwrap_or_else(|| panic!("{value}"));
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .unwrap()
+            .contains("spot: { members: [bellRope, bellFooting] }"),
+        "{value}"
+    );
+}

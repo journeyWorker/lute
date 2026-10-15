@@ -200,7 +200,24 @@ pub(super) fn execute(
             }
             let previous_beat_advanced = std::mem::take(&mut s.world.clock_advanced_by_beat);
             let was_terminal = s.terminal();
+            let expects_refusal = script
+                .step_expects
+                .iter()
+                .find(|(i, _, _)| *i == step.n)
+                .is_some_and(|(_, _, expect)| expect.get("refused").is_some());
             let (body, quests, halt) = run_step(&mut s, step);
+            let refusal_held = expects_refusal
+                && matches!(
+                    (&body, &halt),
+                    (
+                        StepBody::Occasion {
+                            not_raised: Some(_),
+                            ..
+                        },
+                        Some(PlayHalt::Refused(_))
+                    )
+                );
+            let halt = if refusal_held { None } else { halt };
             let leftover = std::mem::take(&mut s.driver.bridges.step);
             let halt = halt.or_else(|| unconsumed_step_bridges(step.n, &leftover));
             // A halted step (a write-time exclusive refusal included, whose
@@ -243,6 +260,17 @@ pub(super) fn execute(
                 .chain(closed_raise_notes(&body))
                 .chain(passed_raise_note(&s, &body))
                 .collect();
+            if refusal_held {
+                if let StepBody::Occasion {
+                    not_raised: Some(why),
+                    ..
+                } = &body
+                {
+                    notes.push(format!(
+                        "the raise was refused with E-OCCASION-GATE — not raised: {why}"
+                    ));
+                }
+            }
             // dsl 0.27.0 §4: the step that ended the game says so; a new run
             // that did not reopen it says so too.
             let ended_game = halt.is_none() && s.terminal() && !was_terminal;

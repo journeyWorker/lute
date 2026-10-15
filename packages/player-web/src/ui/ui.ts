@@ -185,7 +185,7 @@ export class Ui implements UiShape {
       case "Halted": return new HaltedScreen(screen, this.theme, emit)
       case "Idle": return new IdleScreen(screen, this.theme, emit)
       case "Menu": return new MenuScreen(this.theme, emit)
-      case "Ended": return new EndedScreen(screen, this.theme, emit)
+      case "Ended": return new EndedScreen(screen, this.theme, emit, this.textureFor)
     }
   }
 }

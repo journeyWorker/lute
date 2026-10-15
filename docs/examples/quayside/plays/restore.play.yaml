@@ -1,0 +1,13 @@
+# Rebuild the old town hall and keep Quayside's doors open.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: tide
+    expect: { refused: E-OCCASION-GATE, state: { run.ending: none } }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: restore }
+    expect: { winner: market, state: { run.ending: restore } }
+expect:
+  end: terminal
+  state: { run.ending: restore }

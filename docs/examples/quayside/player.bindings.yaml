@@ -1,0 +1,27 @@
+bindingsVersion: "0.46"
+canvas: { width: 1280, height: 720 }
+assetsBase: assets/
+assets:
+  title-music: audio/title.wav
+backgrounds:
+  quayside:
+    image: bg/quayside-morning.png
+    times:
+      morning: bg/quayside-morning.png
+      afternoon: bg/quayside-afternoon.png
+      evening: bg/quayside-evening.png
+characters:
+  june:
+    sprite: { default: char/june.png }
+    nameColor: "#f2b56b"
+  tom:
+    sprite: { default: char/tom.png }
+    nameColor: "#78b5e8"
+ui:
+  font: "Georgia, serif"
+  title: { background: bg/title.png, music: title-music }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
+      retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }

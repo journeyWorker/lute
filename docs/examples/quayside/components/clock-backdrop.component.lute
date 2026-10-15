@@ -1,0 +1,17 @@
+---
+component: clockBackdrop
+params:
+  slot: { type: { domain: slot } }
+---
+## Backdrop
+<match subject="@slot">
+  <when is="morning">
+    ::bg{location="quayside" time="morning"}
+  </when>
+  <when is="afternoon">
+    ::bg{location="quayside" time="afternoon"}
+  </when>
+  <when is="evening">
+    ::bg{location="quayside" time="evening"}
+  </when>
+</match>

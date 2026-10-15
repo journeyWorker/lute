@@ -1,4 +1,4 @@
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: {width: 1920, height: 1080}
 vfx:
   flash: {effect: flash, color: "#fff", duration: 0.3}

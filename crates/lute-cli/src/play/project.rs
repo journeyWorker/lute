@@ -207,6 +207,18 @@ fn assemble_bundle_from_model(
     let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
     let mut needles = NeedleVocab::default();
+    let mut source_maps = CoverageMaps::default();
+    for source in source_model.documents() {
+        let Some(rel) = project_rel(&source.path, project_dir) else {
+            continue;
+        };
+        if let Some(map) = &source.source_map {
+            source_maps.documents.insert(rel.clone(), map.clone());
+        }
+        if let Some((name, _)) = crate::cmd_check::component_name_of(&source.path) {
+            source_maps.components.insert(name, rel);
+        }
+    }
     let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
     for source in source_model.documents() {
@@ -290,7 +302,15 @@ fn assemble_bundle_from_model(
         authored,
         chapter_afters,
         needles,
+        coverage_maps: source_maps,
     })
+}
+
+/// Source locations needed to merge play match/guard decisions into coverage.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CoverageMaps {
+    pub(crate) documents: BTreeMap<String, lute_compile::source_map::SourceMap>,
+    pub(crate) components: BTreeMap<String, String>,
 }
 
 /// A compiled project as the runtime loads it (spec 0.38.0 §4.1), plus what
@@ -302,12 +322,11 @@ pub(crate) struct PlayBundle {
     authored: BTreeMap<String, BTreeMap<String, String>>,
     chapter_afters: BTreeSet<String>,
     needles: NeedleVocab,
+    coverage_maps: CoverageMaps,
 }
 
 impl PlayBundle {
-    /// The project a command walks: the bundle loaded, with the report
-    /// data. `Err` carries the exit code after the messages.
-    pub(crate) fn load(self) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+    fn load_inner(self) -> Result<(ExecProject, NeedleVocab, CoverageMaps), ExitCode> {
         let mut project = ExecProject::load(self.bundle).map_err(|(code, lines)| {
             for line in &lines {
                 eprintln!("{line}");
@@ -316,7 +335,20 @@ impl PlayBundle {
         })?;
         project.authored = self.authored;
         project.chapter_afters = self.chapter_afters;
-        Ok((project, self.needles))
+        Ok((project, self.needles, self.coverage_maps))
+    }
+
+    /// The project a command walks: the runtime bundle plus report data.
+    pub(crate) fn load(self) -> Result<(ExecProject, NeedleVocab), ExitCode> {
+        let (project, needles, _) = self.load_inner()?;
+        Ok((project, needles))
+    }
+
+    /// The project plus source locations used by `lute test --coverage`.
+    pub(crate) fn load_with_coverage(
+        self,
+    ) -> Result<(ExecProject, NeedleVocab, CoverageMaps), ExitCode> {
+        self.load_inner()
     }
 }
 

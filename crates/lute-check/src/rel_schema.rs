@@ -385,17 +385,24 @@ pub fn validate_rel_decls(
     span_of: &dyn Fn(&str) -> Span,
     key_at: &dyn Fn(&str, &[&str]) -> Option<Span>,
     rel_key_at: &dyn Fn(&str, &str) -> Option<Span>,
+    list_members: &dyn Fn(&str) -> Vec<String>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     for (name, decl) in &kinds.kinds {
         if matches!(decl.shape, KindShape::Invalid) {
+            let members = list_members(name);
+            let correction = if members.is_empty() {
+                String::new()
+            } else {
+                format!(" — write `{name}: {{ members: [{}] }}`", members.join(", "))
+            };
             out.push(diag(
                 E_ENTITY_KIND_SHAPE,
                 format!(
                     "entity kind `{name}` must declare exactly one of `members:` or `open:` \
                      (`subsetOf:` and `labels:` may sit beside it), or be an `add:` list that \
                      extends a kind another schema declares, with at most `labels:` beside the \
-                     `add:` (dsl 0.3.0 §3.1, 0.26.0 §2.3, 0.27.0 §7)"
+                     `add:` (dsl 0.3.0 §3.1, 0.26.0 §2.3, 0.27.0 §7, 0.46.0 §2.2){correction}"
                 ),
                 span_of(name),
             ));
@@ -830,6 +837,12 @@ pub fn build_rel_vocab(
         &span_of,
         &|kind, path| kind_key_span(meta, kind, path),
         &|rel, key| Some(crate::meta::meta_path_span(meta, &["relations", rel, key])),
+        &|kind| {
+            kind_list_spans(meta, kind, "members:")
+                .into_iter()
+                .map(|(member, _)| member)
+                .collect()
+        },
     ));
     diags.extend(check_member_dups(
         meta,

@@ -194,6 +194,8 @@ impl Edge {
 /// during traversal).
 #[derive(Clone)]
 struct ParsedDoc {
+    /// Raw frontmatter for exact malformed entity-kind diagnostics.
+    raw_yaml: String,
     state: BTreeMap<String, StateDecl>,
     /// dsl 0.28.0 (T3-1): the state paths whose own row this doc reported
     /// ([`StateSchema::faulty`]).
@@ -522,12 +524,25 @@ fn resolve_imports_in(
             let key = crate::rel_schema::kind_key_origin(rel, &[k]);
             doc.origins.relation_keys.get(&key).map(|o| o.span)
         };
+        let list_members = |kind: &str| {
+            yaml_serde::from_str::<yaml_serde::Value>(&doc.raw_yaml)
+                .ok()
+                .and_then(|value| value.get("entities")?.get(kind)?.as_sequence().cloned())
+                .map(|values| {
+                    values
+                        .into_iter()
+                        .filter_map(|value| value.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
         for d in crate::rel_schema::validate_rel_decls(
             &doc.rel_kinds,
             &doc.rel_relations,
             &span_of,
             &key_at,
             &rel_key_at,
+            &list_members,
         ) {
             let origin = crate::rel_schema::DeclOrigin {
                 file: canon.clone(),
@@ -1322,6 +1337,7 @@ fn read_and_parse(
     at: Span,
 ) -> (ParsedDoc, Vec<String>, Vec<String>) {
     let empty = ParsedDoc {
+        raw_yaml: String::new(),
         state: BTreeMap::new(),
         faulty: BTreeSet::new(),
         clock_rejected: false,
@@ -1641,6 +1657,7 @@ fn read_and_parse(
     let extends = tm.extends;
     (
         ParsedDoc {
+            raw_yaml: meta.raw_yaml.clone(),
             state,
             faulty,
             clock_rejected,

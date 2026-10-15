@@ -6,7 +6,7 @@ fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -36,6 +36,11 @@ voice: { pattern: "voice/{voiceKey}.ogg" }
 ui:
   font: Noto Sans KR
   title: { background: bg/title.png, music: theme }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Bell Rings Again", text: "Brinewake keeps its light.", background: dawnHarbor }
+      retire: { title: "Quiet Water", text: "You hand the bell rope to Ivo." }
   theme: { text: "#ffffff", accent: "#e0c080" }
 flow:
   newGame: { occasion: start }
@@ -44,7 +49,7 @@ flow:
 
 ## Sections
 
-- `bindingsVersion` is `"0.45"`; `canvas` contains positive `width` and
+- `bindingsVersion` is `"0.46"`; `canvas` contains positive `width` and
   `height`. `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to an `image`; `times` maps
@@ -68,10 +73,9 @@ flow:
   unknown key (`E-BINDING-KEY`), a member without a key
   (`W-BINDING-MISSING`) and a gain outside `[0, 1]` or not finite
   (`E-BINDING-SHAPE`, at the value).
-- `ui` contains `font`, a title `background` and `music`, and arbitrary theme
-  colour names.
-- `flow.newGame` raises one `occasion`; `flow.idle` is either a `menu` list of
-  `{label, occasion, target?}` entries or a `raise: {occasion, target?}`.
+- `ui` contains `font`, a title `background` and `music`, optional `ended`, and arbitrary theme colour names. Every UI asset reference first checks `assets:`; a key counts as a use of that asset, while any other value is a file below `assetsBase` and must exist.
+- `ui.ended` requires `by`, a declared state path with a closed enum/entity domain, and `screens`. Each screen requires `title` and `text` and may set `background`; unknown screen keys are `E-BINDING-KEY`, while unmapped members silently use the stock screen.
+- When the ended screen is shown, player-web reads `program.view(state).state[by]`. A mapped member supplies title, text, and optional background; an absent or unmapped value, failed query, or absent `ui.ended` uses the stock screen.
 
 ## Effects
 

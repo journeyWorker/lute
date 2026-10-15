@@ -1,0 +1,11 @@
+# Let the old town hall rest with the tide.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }

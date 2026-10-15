@@ -1,0 +1,7 @@
+occasions:
+  start: { select: first }
+  slotStart: { select: sequence }
+  dayEnd: { select: first }
+  visit: { select: first, target: { prefix: place, entity: place } }
+  tide: { select: first, raisedWhen: "run.slot == 'evening'" }
+  bark: { select: first }

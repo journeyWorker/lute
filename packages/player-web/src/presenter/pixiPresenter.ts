@@ -25,6 +25,8 @@ export interface PresenterOptions {
   readonly bindings: Bindings
   readonly theme: Theme
   readonly titleBackground?: string
+  /** Resolve an ended screen against the session's current state. */
+  readonly resolveEnded?: (screen: Extract<ScreenModel, { _tag: "Ended" }>) => Effect.Effect<ScreenModel>
   readonly logger?: (message: string, error?: unknown) => void
   /** Debug-level log; defaults to `console.debug`. Receives one line per custom vfx name. */
   readonly debug?: (message: string) => void
@@ -72,6 +74,7 @@ export class PixiPresenter implements Presenter {
   private readonly video: VideoLayer
   private readonly camera: Camera
   private readonly vfx: Vfx
+  private readonly resolveEnded: PresenterOptions["resolveEnded"]
   private readonly dialogue: DialogueWindow
   private readonly choice: ChoiceMenu
   private readonly choiceActions: PubSub.PubSub<PlayerAction>
@@ -86,6 +89,7 @@ export class PixiPresenter implements Presenter {
     this.assets = options.assets
     this.bindings = options.bindings
     this.theme = options.theme
+    this.resolveEnded = options.resolveEnded
     this.logger = options.logger ?? ((message, error) => console.warn(message, error))
     this.debug = options.debug ?? ((message) => console.debug(message))
     const design = this.pixi.design
@@ -128,9 +132,13 @@ export class PixiPresenter implements Presenter {
         : Effect.andThen(this.dialogue.clear, Effect.sync(() => {
             this.dialogue.setHidden(true)
           }))
-      return Effect.andThen(hideDialogue, screen._tag === "Title" && options.titleBackground !== undefined
-        ? this.ui.show({ ...screen, background: options.titleBackground })
-        : this.ui.show(screen))
+      const resolved = screen._tag === "Ended" && this.resolveEnded !== undefined
+        ? this.resolveEnded(screen).pipe(Effect.catch(() => Effect.succeed(screen)))
+        : Effect.succeed(screen)
+      return Effect.andThen(hideDialogue, Effect.flatMap(resolved, (next) =>
+        next._tag === "Title" && options.titleBackground !== undefined
+          ? this.ui.show({ ...next, background: options.titleBackground })
+          : this.ui.show(next)))
     }
     this.hideScreen = Effect.andThen(this.ui.hide, Effect.sync(() => {
       this.dialogue.setHidden(this.uiHidden)

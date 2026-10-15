@@ -199,11 +199,58 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
         }
     }
     let mut used = Usage::default();
+    if let Some(title) = &bindings.ui.title {
+        for reference in [&title.background, &title.music] {
+            if bindings.assets.contains_key(reference.as_str()) {
+                used.assets.insert(reference.clone());
+            }
+        }
+    }
+    if let Some(ended) = &bindings.ui.ended {
+        for screen in ended.screens.values() {
+            if let Some(reference) = &screen.background {
+                if bindings.assets.contains_key(reference.as_str()) {
+                    used.assets.insert(reference.clone());
+                }
+            }
+        }
+    }
     for document in model.documents() {
         if let Some(artifact) = &document.artifact {
             for command in &artifact.commands {
                 used.add(command);
             }
+        }
+    }
+    if let Some(ended) = &bindings.ui.ended {
+        let members = model.documents().iter().find_map(|document| {
+            document
+                .folded
+                .env
+                .state
+                .string_members(&ended.by)
+                .map(|members| members.iter().cloned().collect::<BTreeSet<_>>())
+        });
+        match members {
+            Some(members) => check_domain_keys(
+                &ended.screens,
+                "ended screen",
+                Some(&members),
+                &anchor,
+                &mut out,
+            ),
+            None => out.push((
+                path.clone(),
+                diag(
+                    "E-BINDING-KEY",
+                    format!(
+                        "ended binding `by: {}` is not a declared state path with a \
+                         closed domain (enum or entity kind with `members:`)",
+                        ended.by
+                    ),
+                    anchor(&ended.by),
+                ),
+            )),
         }
     }
     usage_check(&path, &text, &bindings, &used, &anchor, &mut out);
@@ -479,7 +526,21 @@ fn files_check(
     files.extend(b.sfx.values());
     files.extend(b.sequences.values().map(|v| &v.video));
     if let Some(title) = &b.ui.title {
-        files.push(&title.background);
+        if !b.assets.contains_key(&title.background) {
+            files.push(&title.background);
+        }
+        if !b.assets.contains_key(&title.music) {
+            files.push(&title.music);
+        }
+    }
+    if let Some(ended) = &b.ui.ended {
+        for screen in ended.screens.values() {
+            if let Some(background) = &screen.background {
+                if !b.assets.contains_key(background) {
+                    files.push(background);
+                }
+            }
+        }
     }
     for file in files {
         if !base.join(file).is_file() {

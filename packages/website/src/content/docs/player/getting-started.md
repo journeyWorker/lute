@@ -1,6 +1,6 @@
 ---
 title: Player getting started
-description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.41 web player.
+description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.46 web player.
 ---
 
 This guide uses the repository's `examples/player-demo`; the same steps work for a project of your own.
@@ -20,7 +20,7 @@ The bundle directory must contain `project.index.json` and all referenced artifa
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. Mount in a page
 
-Install exact 0.45 packages:
+Install the exact 0.46 packages:
 
 ```console
-bun add @lute-lang/player-web@0.45.0 @lute-lang/player@0.45.0 @lute-lang/runtime@0.45.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.
@@ -69,7 +69,28 @@ const player = await mountPlayer(element, {
 await player.act({ type: "newGame" })
 ```
 
-`bundleUrl` points to the directory containing `project.index.json`; `wasmUrl` points to the browser wasm binding. `assetsUrl` overrides `assetsBase`. Omit it to resolve the configured base relative to the bindings URL or page URL. `mountPlayer` returns `act`, `view`, and `unmount`; call `unmount()` to release Pixi, runtime, audio, and storage resources.
+`bundleUrl` points to the directory containing `project.index.json`;
+`wasmUrl` points to the browser wasm binding. `assetsUrl` overrides
+`assetsBase`. `mountPlayer` returns `act`, `view`, `send`, `snapshot`, `restore`,
+`session`, `program`, `bundle`, and `unmount`; each Promise method is a thin wrapper
+around the corresponding Effect and rejects with its failure. `session`,
+`program` and `bundle` are the handle's values: `session.current` holds the
+state that `program`'s read-only queries take.
+
+To resume in a fresh player from a save, pass the save's runtime snapshot at
+mount time and restore the full save:
+
+```ts
+const save = await player.snapshot()
+await player.unmount()
+const fresh = await mountPlayer(element, {
+  bindings: { url: "/player.bindings.yaml" },
+  bundleUrl: "/bundle/",
+  wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm",
+  snapshot: save.snapshot
+})
+await fresh.restore(save)
+```
 
 ## 4. Serve all files
 

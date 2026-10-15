@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.45.0`, the grammar and semantics the checker
+- **Language** — currently `0.46.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.45.0`) and gated on by consuming engines.
+  artifact (currently `0.46.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,134 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.46.0]
+
+**Brinewake dogfood: player-web host parity, named endings, play refusals,
+checker fixes** (spec [`0.46.0.md`](docs/proposals/scenario-dsl/0.46.0.md);
+plan
+[`2026-10-16-lute-0.46.0-brinewake.md`](docs/superpowers/plans/2026-10-16-lute-0.46.0-brinewake.md);
+decisions
+[`2026-10-16-lute-0.46-decisions.md`](docs/superpowers/notes/2026-10-16-lute-0.46-decisions.md)).
+Inputs are issues #100–#112 from **The Last Bell at Brinewake**, the first game
+built on `@lute-lang/player-web`. The **bindings** and **player-web** surfaces
+earn the release (`ui.ended`, mount parity, private Pixi assets, the name-plate
+fix); the toolchain adds a play expectation for refused raises and counts play
+arms in coverage. No IR, Event or snapshot shape changes: the stamps read
+`0.46.0`, the contract schemas move to the `0.46` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.46.schema.json`; only
+the bindings body changes, by `ui.ended`), `bindingsVersion` is `"0.46"` and
+the player's save/profile format version is `"0.46"`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- **Reserved `::use` names (#100).** A `::use` site reserves `component`,
+  `when`, `at` and `instance`; a component (or beat template) param with one
+  of those names is refused once, at its `params:` entry, with `E-TEMPLATE`
+  naming the list (before, a param named `at` passed the component check and
+  every use failed `E-AT-CONTEXT`; one named `instance` could never be
+  passed).
+
+### IR
+
+- None (stamp and schema line only).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- **`ui.ended` (#112).** Optional per-member ending screens:
+  `ui.ended: { by: <state path>, screens: { <member>: { title, text, background? } } }`.
+  `by` must name a declared state field typed by a closed domain (an enum, or
+  an entity kind with `members:`); an unknown path, a non-domain field or an
+  unknown member is `E-BINDING-KEY`. A member without a screen falls back to
+  the stock screen (no warning).
+- **`ui` asset references resolve like the player (#104).**
+  `ui.title.background`, `ui.title.music` and ending backgrounds name an
+  `assets:` key (counted as a use for `W-BINDING-UNUSED`) or a file below
+  `assetsBase` (`E-BINDING-FILE` when missing). Before, `ui.title.background`
+  was read as a path only (an `assets:` key there was a false
+  `E-BINDING-FILE`) and `ui.title.music` was not checked.
+
+### CLI
+
+- **Plays can expect a refused raise (#107).** An `occasion:` step may carry
+  `expect: { refused: E-OCCASION-GATE }`: the refusal holds, the state is
+  unchanged, `lute play` notes it and continues (`--events` prints the
+  `rejected` line and continues); an accepted raise is a miss. Only
+  `E-OCCASION-GATE` is accepted; it combines with `state`, `facts`,
+  `notFacts`, `clock` and `quests`, not with presentation keys.
+- **Coverage counts play arms (#106).** `lute test --coverage` merges the
+  `match` arms and guard outcomes executed by expect-carrying plays into the
+  arm table. The header now reads `… (plays count toward what they
+  presented, the choices they picked and the arms they executed):`; the JSON
+  shape is unchanged.
+
+### Runtime
+
+- No contract change. `@lute-lang/runtime` declares
+  `@effect/platform-node-shared@4.0.2` as an optional exact peer, and the
+  docs give the Bun-host install line
+  `bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2`
+  (#105; Bun otherwise resolves `platform-node-shared@4.0.5`, which needs a
+  newer `effect`). `Program.clock` stays numeric; slot names and weekday
+  labels come from `program.view(state).clock` (documented, #109).
+
+### Player
+
+- **player-web mount parity (#102).** `MountOptions` takes `LutePlayer.make`'s
+  start union (`seed` | `snapshot` | `session`) and its `cueFactory`,
+  `linePacing` and `autosave` options; the Effect handle exposes `bundle` (the
+  bundle the player loaded); `mountPlayer` gains `send`, `snapshot`,
+  `restore` (thin Promise wrappers) and the handle's `session`, `program` and
+  `bundle`.
+- **Private Pixi assets (#103).** player-web owns a per-mount asset manager
+  and never touches Pixi's global `Assets`, so a host Pixi app on the same
+  page can `Assets.init` normally.
+- **Name plate (#111).** The plate background is drawn below the speaker name
+  (before, it covered the name on every line).
+- **Ending screens (#112).** With `ui.ended` bound, the ended screen shows the
+  mapped member's title, text and background (read through
+  `program.view(state).state[by]`); otherwise the stock screen.
+
+### Diagnostics
+
+- `E-ENTITY-KIND-SHAPE` shows the exact `{ members: [...] }` spelling with
+  the author's members when an entity kind is written as a list (#108; the
+  list form stays an error — one spelling per concept).
+- `E-TEMPLATE` (#100) and `E-BINDING-KEY`/`E-BINDING-FILE`/`E-BINDING-SHAPE`
+  (#104, #112) summaries cover the new cases.
+
+### Identity
+
+- None.
+
+### Documentation
+
+- New end-to-end tutorial **Build a town game** (EN/KO) over the checked
+  project `docs/examples/quayside/`: schema + clock, scenes/beats/barks, plays
+  with a refused raise and coverage, bindings with `ui.ended`, and a
+  player-web host (#110).
+- The clock page documents a backdrop that follows the clock slot (component
+  + enum domain + def + `match`, or `time` per scene); directive fields stay
+  build-time values (#101).
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| Semantics | A component param named `at` or `instance` is `E-TEMPLATE` at its declaration. | Rename the param. |
+| Bindings | `ui.title.background`/`ui.title.music`/ending backgrounds resolve `assets:` keys first; a non-key value must be an existing file below `assetsBase` (`ui.title.music` is now checked). | Fix the path or bind it through `assets:`. |
+| CLI | The coverage header text changed; play arms count. | Update tools that match the header. |
+| Player | player-web no longer fills Pixi's global `Assets` cache. | Hosts that relied on it load their own assets. |
+| Runtime | Optional exact peer `@effect/platform-node-shared@4.0.2`. | Bun hosts: use the documented install line. |
+| Release | All axes and packages stamp `0.46.0`; schemas move to the `0.46` line; `bindingsVersion: "0.46"`; saves and profiles read `"0.46"`, so a 0.45 save is refused `SaveIncompatible`. | Widen version gates to 0.46; update `bindingsVersion`. |
 
 ## [0.45.0]
 

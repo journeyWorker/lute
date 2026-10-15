@@ -157,7 +157,7 @@ mod discovery;
 mod render;
 mod runner;
 
-use coverage::{accumulate_coverage, canonical_key, coverage_units, display_path};
+use coverage::{accumulate_coverage, arm_row_key, canonical_key, coverage_units, display_path};
 use discovery::{closed_key_violations, find_files_with_suffix, fold_parent_dirs};
 use render::{render_human, render_json};
 use runner::{yaml_atom_hint, yaml_atom_hints, IMPLICIT_ELIGIBLE, IMPLICIT_EXIT};

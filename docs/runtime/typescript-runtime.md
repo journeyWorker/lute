@@ -17,19 +17,28 @@ wrapper around an imperative API.
 
 ## Install
 
-Install the runtime and Effect, plus the platform package for the host:
+Install the runtime and Effect, plus the platform packages for the host. Bun
+hosts need both platform peers on the same exact Effect release line:
 
 ```console
-bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2
-# or, for a browser application:
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+# For a local pack, use the runtime tarball path printed by scripts/pack-local.sh:
+# bun add @lute-lang/runtime@file:/path/to/lute-lang-runtime-<version>.tgz effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+```
+
+For a browser application:
+
+```console
 bun add @lute-lang/runtime effect@4.0.2 @effect/platform-browser@4.0.2
 ```
 
-`effect` is an exact peer dependency at `4.0.2`; the Bun and browser platform
-peers are optional, but the selected platform layer requires its matching
-package. `@lute-lang/runtime` is released in lockstep with the Lute toolchain.
-To run a host against an unreleased checkout, pack the packages as
-[Local dogfooding](#local-dogfooding) describes.
+`effect` is an exact peer dependency at `4.0.2`; the Bun, browser, and
+node-shared platform peers are optional, but the selected platform layer
+requires its matching packages. `@lute-lang/runtime` is released in lockstep
+with the Lute toolchain. To run a host against an unreleased checkout, pack
+the packages with `scripts/pack-local.sh`; it prints the tarball
+`dependencies` and `overrides` entries to paste into the host's
+`package.json`.
 
 ## Bun
 
@@ -180,6 +189,34 @@ A loaded `Program` has this platform-free interface:
 | `def(state, name, args?)` | `Effect<Evaluation, QueryRejection>` | Evaluate the index def `name`, its parameters bound to `args` (0.41). |
 | `gate(state, occasion, target?)` | `Effect<Gate, InvalidInput>` | Whether a `raiseOccasion` of `occasion` (for `target`) with no writes would pass the seam now (0.41). |
 
+### Clock values and labels
+
+`Program.clock(state)` is the numeric clock position: `day` and `slot`
+(the zero-based slot index). It does not return a slot name or a weekday label.
+Read those presentation values from `program.view(state).clock`, whose
+`ClockView` is `{ day, slot, weekday, weekdayLabel, ended, last }` (the
+optional fields are `null` or absent when that clock does not declare them).
+For example, a HUD can keep the numeric position for ordering while displaying
+the view's labels:
+
+```ts
+import { Effect, Option } from "effect"
+
+const hud = Effect.gen(function* () {
+  const position = yield* program.clock(state)
+  const world = yield* program.view(state)
+  if (Option.isNone(position) || world.clock == null) return "No clock"
+  const clock = world.clock
+  return `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${
+    clock.slot ?? `slot ${position.value.slot}`
+  }`
+})
+```
+
+Here `program` is a loaded `Program` and `state` is its `RuntimeState`; the
+snippet intentionally uses `ClockView.slot` for the authored slot name and
+`ClockView.weekdayLabel` for the display label.
+
 `Evaluation` is `{ value: Value, unresolved?: string[] }`: `value` is `bool`,
 `int`, `double`, `str`, or `unknown` (with `unresolved` naming why), never
 `error`. `Errors.QueryRejection` is `InvalidInput` (`E-RUNTIME-INPUT`) or
@@ -304,8 +341,8 @@ const replay = (program: Program.Program, text: string) =>
 
 `Contract` is the generated Effect-schema namespace. Rust types in
 `crates/lute-runtime` are the single definition of the event and snapshot
-contract; `schemars` emits `schemas/lute-events-0.45.schema.json` and
-`schemas/lute-snapshot-0.45.schema.json`, and the package's code generator
+contract; `schemars` emits `schemas/lute-events-0.46.schema.json` and
+`schemas/lute-snapshot-0.46.schema.json`, and the package's code generator
 emits `packages/runtime/src/generated/Contract.ts` from those schemas. Do not
 hand-edit the generated TypeScript.
 
@@ -325,7 +362,7 @@ command and artifact shapes and, since 0.41, the `project.index.json` types
 
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
-line), and its output carries `eventVersion: "0.45.0"`. Schema regeneration is
+line), and its output carries `eventVersion: "0.46.0"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.
 
 ## Local dogfooding

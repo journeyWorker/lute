@@ -2987,3 +2987,125 @@ fn declared_advance_cascade_has_a_runtime_bound() {
     assert!(text.contains("E-ADVANCE-CASCADE"), "{text}");
     assert!(text.contains("loop"), "{text}");
 }
+#[test]
+fn a_gated_occasion_can_be_expected_refused_and_play_continues() {
+    let script = r#"
+steps:
+  - engine: { state: { run.noise: 0 } }
+  - occasion: listen
+    expect:
+      refused: E-OCCASION-GATE
+      state: { run.mark: 0 }
+  - engine: { state: { run.mark: 1 } }
+    expect:
+      state: { run.mark: 1 }
+expect:
+  end: complete
+"#;
+    let out = play_in(
+        &fixture().join("..").join("runtime-gate-041"),
+        "refused-occasion",
+        script,
+        false,
+    );
+    let text = stdout(&out);
+    assert!(out.status.success(), "{text}");
+    assert!(
+        text.contains("note: the raise was refused with E-OCCASION-GATE"),
+        "{text}"
+    );
+    assert!(text.contains("step 3"), "{text}");
+}
+
+#[test]
+fn events_continue_after_an_expected_occasion_refusal() {
+    let script = r#"steps:
+  - engine: { state: { run.noise: 0 } }
+  - occasion: listen
+    expect: { refused: E-OCCASION-GATE, state: { run.mark: 0 } }
+  - engine: { state: { run.mark: 1 } }
+    expect: { state: { run.mark: 1 } }
+expect: { end: complete }
+"#;
+    let dir = fixture().join("..").join("runtime-gate-041");
+    let scratch = lute_scratch::ScratchDir::named("events-expected-refusal");
+    let path = scratch.join("script.play.yaml");
+    std::fs::write(&path, script).unwrap();
+    let out = Command::new(BIN)
+        .args([
+            "play",
+            dir.to_str().unwrap(),
+            "--script",
+            path.to_str().unwrap(),
+            "--events",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(out.status.success(), "{text}");
+    let lines: Vec<Json> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let rejected = lines
+        .iter()
+        .position(|line| line["rejected"]["code"] == "E-OCCASION-GATE")
+        .expect(&text);
+    assert!(rejected + 1 < lines.len(), "{text}");
+    assert!(
+        lines[rejected + 1]["input"]["type"] == "hostWrite",
+        "{text}"
+    );
+}
+#[test]
+fn refused_expectation_misses_when_occasion_is_accepted() {
+    let script = r#"
+steps:
+  - engine: { state: { run.noise: 2 } }
+  - occasion: listen
+    expect: { refused: E-OCCASION-GATE }
+expect:
+  end: complete
+"#;
+    let out = play_in(
+        &fixture().join("..").join("runtime-gate-041"),
+        "accepted-refusal",
+        script,
+        false,
+    );
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("expected the raise to be refused with E-OCCASION-GATE; it was accepted"),
+        "{text}"
+    );
+}
+
+#[test]
+fn refused_expectation_rejects_bad_codes_and_presentation_keys() {
+    for (tag, expect, needle) in [
+        (
+            "bad-refusal-code",
+            "refused: E-OTHER",
+            "accepts only `E-OCCASION-GATE`",
+        ),
+        (
+            "refused-with-winner",
+            "refused: E-OCCASION-GATE\n      winner: none",
+            "cannot be combined with `expect.winner`",
+        ),
+    ] {
+        let script = format!(
+            "steps:\n  - occasion: listen\n    expect:\n      {expect}\nexpect:\n  end: complete\n"
+        );
+        let out = play_in(
+            &fixture().join("..").join("runtime-gate-041"),
+            tag,
+            &script,
+            false,
+        );
+        let text = stderr(&out);
+        assert_eq!(out.status.code(), Some(2), "{text}");
+        assert!(text.contains(needle), "{text}");
+    }
+}

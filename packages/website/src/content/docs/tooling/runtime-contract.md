@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.45.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.45.schema.json)
+[`schemas/lute-ir-0.46.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.46.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -38,6 +38,19 @@ host queries `current`'s state without loading the bundle twice. A
 handing it to a program of another fingerprint is a defect. `Bundle.index` is
 typed `Ir.projectIndex`.
 
+For a Bun host, install the runtime with both optional platform peers pinned to
+the same Effect release:
+
+```sh
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+```
+
+For local packed tarballs, replace `@lute-lang/runtime` with the
+`file:<runtime-tarball>` printed by `scripts/pack-local.sh` (and paste its
+printed `dependencies` and `overrides` entries), then keep the same
+`effect@4.0.2`, `@effect/platform-bun@4.0.2`, and
+`@effect/platform-node-shared@4.0.2` arguments.
+
 To try an unreleased checkout in a host, run `bash scripts/pack-local.sh
 [--web] [OUT_DIR]` in the Lute repository: it packs the runtime and player
 (and `player-web` with `--web`) with `bun pm pack` and prints the
@@ -46,6 +59,28 @@ host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
 `file:../lute/packages/*` directories: they resolve the Lute repository's own
 `effect`, giving the host two `effect` instances. See
 [Local dogfooding](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md#local-dogfooding).
+
+### Clock values and HUD labels
+
+`Program.clock(state)` is numeric: it returns the day and the zero-based slot
+index. Slot names and weekday labels come from `program.view(state).clock`,
+whose `ClockView` has `{ day, slot, weekday, weekdayLabel, ended, last }`.
+For an Effect-style HUD:
+
+```ts
+import { Effect, Option } from "effect"
+
+const hud = Effect.gen(function* () {
+  const position = yield* program.clock(state)
+  const world = yield* program.view(state)
+  if (Option.isNone(position) || world.clock == null) return "No clock"
+  const clock = world.clock
+  return `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${clock.slot ?? `slot ${position.value.slot}`}`
+})
+```
+
+Keep the numeric position for ordering, and use `ClockView.slot` and
+`ClockView.weekdayLabel` for display text.
  
 ## 0.44 runtime additions
 
@@ -312,7 +347,7 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.45` engine accepts only `0.45.*` artifacts and refuses `0.44.*`
+   line: a `0.46` engine accepts only `0.46.*` artifacts and refuses `0.44.*`
    and `0.46.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
@@ -325,7 +360,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.45.0"
+irVersion: "0.46.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -341,7 +376,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.45.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.46.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

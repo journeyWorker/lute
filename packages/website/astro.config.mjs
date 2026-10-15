@@ -84,6 +84,11 @@ export default defineConfig({
             { slug: "getting-started/connect-scenes" },
             { slug: "getting-started/learning-paths" },
             { slug: "getting-started/build-an-investigation" },
+            {
+              slug: "getting-started/build-a-town-game",
+              label: "Build a town game",
+              translations: { ko: "마을 게임 만들기" },
+            },
             { slug: "getting-started/when-to-use" },
           ],
         },

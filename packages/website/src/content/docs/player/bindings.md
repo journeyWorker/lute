@@ -6,7 +6,7 @@ description: Complete player.bindings.yaml sections, effect catalogue, parameter
 `player.bindings.yaml` is optional and sits beside `lute.project.yaml`. `lute check-project` reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -36,6 +36,11 @@ voice: { pattern: "voice/{voiceKey}.ogg" }
 ui:
   font: Noto Sans KR
   title: { background: bg/title.png, music: theme }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Bell Rings Again", text: "Brinewake keeps its light.", background: dawnHarbor }
+      retire: { title: "Quiet Water", text: "You hand the bell rope to Ivo." }
   theme: { text: "#ffffff", accent: "#e0c080" }
 flow:
   newGame: { occasion: start }
@@ -44,15 +49,16 @@ flow:
 
 ## Top-level sections
 
-- `bindingsVersion` is exactly `"0.45"`. `canvas` requires positive `width` and `height`; `assetsBase` is optional.
+- `bindingsVersion` is exactly `"0.46"`. `canvas` requires positive `width` and `height`; `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to `image`; `times` maps `bg.time` values to alternate files.
 - `characters` is keyed by cast id. Each value has `sprite.default`, optional `sprite.emotions`, optional `costumes` (each with the same sprite shape), and optional `nameColor`.
 - `anchors`, `actions`, `transitions`, `framing`, `cameraMove`, `cgLayouts`, `textStyles`, and `sequences` are keyed by their declared staging domains. Anchors have `x` plus optional `y` and `scale`; framing has `zoom` plus optional `x` and `y`; CG layouts have `fit: cover|contain` plus optional `scale`, `x`, and `y`; text styles accept `fontWeight`, `fontStyle`, `color`, `alpha`, `scale`, and `letterSpacing`.
 - `music.moods`, `sfx`, and `vfx` are keyed by values used by compiled documents. `sequences` values contain `video`; `voice.pattern` is a `{voiceKey}` path template.
 - `volumes` (0.42) maps each member of the project's `volume` domain to a gain, a finite number from `0` to `1`. A music cue's `volume` is an absolute level: the player plays it at that member's gain and never parses a number. A cue with no `volume` plays at gain `1`; a member without a gain plays at `0`, never at full volume. An unknown key is `E-BINDING-KEY`, a member with no key is `W-BINDING-MISSING`, and a gain that is not a finite number in `[0, 1]` is `E-BINDING-SHAPE` at its value.
-- `ui` contains `font`, a title `background` and `music`, and arbitrary theme colour names.
-- `flow.newGame` raises one `occasion`; `flow.idle` is either a `menu` list of `{label, occasion, target?}` entries or `raise: {occasion, target?}`.
+- `ui` contains `font`, a title `background` and `music`, optional `ended`, and arbitrary theme colour names. Every UI asset reference first checks `assets:`: an asset key counts as a use of that key; any other value is a file below `assetsBase` and must exist.
+- `ui.ended` requires `by`, a declared state path with a closed enum/entity domain, and `screens`. Each screen requires `title` and `text` and may set `background`; unknown screen keys are `E-BINDING-KEY`, while members without screens fall back silently.
+- When the ended screen is shown, player-web reads `program.view(state).state[by]`. A mapped member supplies the screen title, text, and optional background; an absent or unmapped value, a failing query, or no `ui.ended` uses the stock ended screen.
 
 ## Effects
 

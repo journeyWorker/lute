@@ -1,12 +1,12 @@
 # @lute-lang/player-web
 
-The Lute 0.45 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
+The Lute 0.46 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
 
 ## Install
 
 ```sh
-bun add @lute-lang/player-web@0.45.0 @lute-lang/player@0.45.0 @lute-lang/runtime@0.45.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
-# npm install @lute-lang/player-web@0.45.0 @lute-lang/player@0.45.0 @lute-lang/runtime@0.45.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  # npm install @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 The package requires exact `effect@4.0.2` and `@effect/platform-browser@4.0.2` peers. Runtime and player packages are released in lockstep.
@@ -18,21 +18,29 @@ Serve a `lute compile --all` bundle, the runtime wasm file, the bindings file, a
 ```ts
 import { mountPlayer } from "@lute-lang/player-web"
 
-const player = await mountPlayer(document.querySelector("#player")!, {
+const options = {
   bindings: { url: "/player.bindings.yaml" },
   bundleUrl: "/bundle/",
   wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm",
   assetsUrl: "/assets/",
   storageKey: "my-game"
-})
+} as const
+const player = await mountPlayer(document.querySelector("#player")!, options)
 
 await player.act({ type: "newGame" })
 const view = await player.view()
-// Later:
+// A player save can resume a fresh player:
+const save = await player.snapshot()
 await player.unmount()
+const resumed = await mountPlayer(document.querySelector("#player")!, { ...options, snapshot: save.snapshot })
+await resumed.restore(save)
+// Later:
+await resumed.unmount()
 ```
 
-`bindings` accepts a decoded `Bindings` object, YAML text, or `{ url }`. `assetsUrl` overrides the file's `assetsBase`; `host` is the core's `PlayerHost`: `bridge` handlers return a `BridgeAnswer` (`{ fields, writes? }`), `plugin` handlers run as waiting cues, and `idle` answers idle waits. `mountPlayer` returns Promise methods `act`, `view`, and `unmount`. The Effect-native `LuteWeb.mount` is available when the application already manages an Effect scope; its handle is the core's `LutePlayerHandle` (`actions`, `view`, `send`, `restore`, `shutdown`, plus the runtime `session` and its `program`).
+`mountPlayer` returns Promise methods `act`, `view`, `send`, `snapshot`, `restore`, and `unmount`, plus the handle's `session`, `program`, and `bundle` values (`session.current` holds the state `program`'s read-only queries take). The methods run the same Effects as the scoped `LuteWeb.mount` handle and reject with the Effect failure. The handle's `bundle` is the exact compiled bundle loaded by the player, so hosts can inspect artifacts without loading it again. `MountOptions` accepts the same `seed`/`snapshot`/`session` start union and `cueFactory`, `linePacing`, and `autosave` options as `LutePlayer.make`. Textures use a private Pixi asset manager; player-web does not initialize Pixi's global `Assets`.
+
+When bindings define `ui.ended`, an ended state member selects a named ending screen. Player-web reads the member from the ended state, displays its configured title and text, and loads its optional background through the private asset manager; missing or unmapped values keep the stock ending screen.
 
 ## Cue handling
 

@@ -616,6 +616,48 @@
         }
       ]
     },
+    "Ended": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "type": "string"
+        },
+        "screens": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EndedScreen"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "by",
+        "screens"
+      ],
+      "type": "object"
+    },
+    "EndedScreen": {
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "text"
+      ],
+      "type": "object"
+    },
     "Fit": {
       "enum": [
         "cover",
@@ -878,6 +920,17 @@
     "Ui": {
       "additionalProperties": false,
       "properties": {
+        "ended": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ended"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "font": {
           "default": null,
           "type": [
@@ -931,7 +984,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.45.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.46.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
@@ -1045,6 +1098,7 @@
     "ui": {
       "$ref": "#/$defs/Ui",
       "default": {
+        "ended": null,
         "font": null,
         "theme": {},
         "title": null

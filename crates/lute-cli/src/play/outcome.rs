@@ -30,6 +30,15 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                 options: std::mem::take(&mut carried),
                 ..StepOutcome::default()
             };
+            if matches!(
+                &s.body,
+                StepBody::Occasion {
+                    not_raised: Some(_),
+                    ..
+                }
+            ) {
+                row.refused = Some("E-OCCASION-GATE".to_string());
+            }
             // dsl 0.27.0 (T3-8): `winner`, `offered` and `notOffered` judge
             // the step's last raise — an occasion step's own; an
             // `advance:`'s raise where the clock stops: the clock's slot

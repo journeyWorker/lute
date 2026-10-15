@@ -302,13 +302,12 @@ fn render_coverage_human(
     if cov.plays == 0 {
         outln!(out, "\ncoverage over {} traced path(s):", cov.paths);
     } else {
-        // T3-20: a play feeds the units it presented and the branch/hub
-        // picks it made; the arm rows below are the traced paths' alone
-        // (lighthouse N3).
+        // T3-20: a play feeds the units it presented, the branch/hub picks it
+        // made, and the match/guard outcomes it executed.
         outln!(
             out,
             "\ncoverage over {} traced path(s) and {} play(s) (plays count toward what they \
-             presented and the choices they picked, not match arms):",
+             presented, the choices they picked and the arms they executed):",
             cov.paths,
             cov.plays
         );

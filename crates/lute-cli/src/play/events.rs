@@ -47,12 +47,13 @@ pub struct Reference {
     pub world: World,
 }
 
-/// A play script ready for the public runtime.
 pub struct ScriptRun {
     pub runtime: Runtime,
     pub seed: Seed,
     /// One input per planned step repetition, up to an `end: true` step.
     pub inputs: Vec<Input>,
+    /// The expected refusal code for each planned input, when any.
+    pub expected_refusals: Vec<Option<String>>,
     /// The answers `lute play` gave, for the runtime's awaits.
     pub answers: Vec<ScriptAnswer>,
     pub reference: Reference,
@@ -94,16 +95,28 @@ pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<Scr
         Session::resume(&project, world, &mut driver),
     );
     let mut inputs = Vec::new();
+    let mut expected_refusals = Vec::new();
     for step in &plan {
         let Some(input) = step_input(&step.action, &project) else {
             break;
         };
-        inputs.extend(std::iter::repeat_n(input, step.repeat));
+        let refusal = script
+            .step_expects
+            .iter()
+            .find(|(n, _, _)| *n == step.n)
+            .and_then(|(_, _, expect)| expect.get("refused"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        for _ in 0..step.repeat {
+            inputs.push(input.clone());
+            expected_refusals.push(refusal.clone());
+        }
     }
     Ok(ScriptRun {
         runtime,
         seed: seed(&script, no_derive),
         inputs,
+        expected_refusals,
         answers: driver.answers,
         reference: Reference {
             records: driver.records,
@@ -135,6 +148,7 @@ pub struct Driven {
     pub state: State,
     pub output: Output,
     pub end: DriveEnd,
+    pub refusals: Vec<(usize, Input, Rejected)>,
 }
 
 /// Drive `run` through its runtime: `begin` with the seed, then each input,
@@ -150,14 +164,27 @@ pub fn drive_events(
     let (mut state, mut output) = runtime.begin(run.seed.clone())?;
     observe(None, &state, &output);
     let mut answers = run.answers.iter();
-    for input in &run.inputs {
+    let mut refusals = Vec::new();
+    for (index, input) in run.inputs.iter().enumerate() {
         let mut input = input.clone();
         loop {
             (state, output) = match runtime.step(state, input.clone()) {
                 Ok(next) => next,
-                Err((state, rejected)) => {
+                Err((next_state, rejected)) => {
+                    if run.expected_refusals.get(index).and_then(Option::as_deref)
+                        == Some(rejected.code.as_str())
+                    {
+                        state = next_state;
+                        refusals.push((index, input, rejected));
+                        break;
+                    }
                     let end = DriveEnd::Rejected { input, rejected };
-                    return Ok(Driven { state, output, end });
+                    return Ok(Driven {
+                        state: next_state,
+                        output,
+                        end,
+                        refusals,
+                    });
                 }
             };
             observe(Some(&input), &state, &output);
@@ -208,7 +235,14 @@ pub fn drive_events(
             };
             match answer {
                 Ok(answer) => input = answer,
-                Err(end) => return Ok(Driven { state, output, end }),
+                Err(end) => {
+                    return Ok(Driven {
+                        state,
+                        output,
+                        end,
+                        refusals,
+                    });
+                }
             }
         }
     }
@@ -216,6 +250,7 @@ pub fn drive_events(
         state,
         output,
         end: DriveEnd::Done,
+        refusals,
     })
 }
 
@@ -232,8 +267,8 @@ fn json_line<T: serde::Serialize>(value: &T) -> String {
 
 /// `lute play --events`: the JSON Lines stream, exit code and stderr message.
 pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
-    let mut out = String::new();
     let seed = &run.seed;
+    let mut observed: Vec<(Option<Input>, String)> = Vec::new();
     let driven = drive_events(run, |input, _, output| {
         let stream = match input {
             Some(input) => StreamLine::Input {
@@ -245,8 +280,9 @@ pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
                 output: output.clone(),
             },
         };
-        out.push_str(&json_line(&stream));
+        observed.push((input.cloned(), json_line(&stream)));
     });
+    let mut out = String::new();
     let (code, message) = match driven {
         Err(rejected) => {
             out.push_str(&json_line(&StreamLine::SeedRejected {
@@ -255,19 +291,56 @@ pub fn run_events(run: &ScriptRun) -> (String, u8, Option<String>) {
             }));
             (1, None)
         }
-        Ok(Driven { end, output, .. }) => match end {
-            DriveEnd::Rejected { input, rejected } => {
-                out.push_str(&json_line(&StreamLine::InputRejected { input, rejected }));
-                (1, None)
+        Ok(Driven {
+            end,
+            output,
+            refusals,
+            ..
+        }) => {
+            let mut next = 0;
+            for (input, line) in observed {
+                if let Some(input) = &input {
+                    if let Some(found) = (next..run.inputs.len()).find(|index| {
+                        serde_json::to_value(input).ok()
+                            == serde_json::to_value(&run.inputs[*index]).ok()
+                    }) {
+                        for index in next..=found {
+                            for (_, rejected_input, rejected) in
+                                refusals.iter().filter(|(at, _, _)| *at == index)
+                            {
+                                out.push_str(&json_line(&StreamLine::InputRejected {
+                                    input: rejected_input.clone(),
+                                    rejected: rejected.clone(),
+                                }));
+                            }
+                        }
+                        next = found + 1;
+                    }
+                }
+                out.push_str(&line);
             }
-            DriveEnd::Unanswered(what) => (3, Some(what)),
-            DriveEnd::Diverged(what) => (1, Some(what)),
-            DriveEnd::Done => match output.await_ {
-                Await::Halted { kind, .. } if kind == "incomplete" => (3, None),
-                Await::Halted { .. } => (1, None),
-                _ => (0, None),
-            },
-        },
+            for (index, rejected_input, rejected) in &refusals {
+                if *index >= next {
+                    out.push_str(&json_line(&StreamLine::InputRejected {
+                        input: rejected_input.clone(),
+                        rejected: rejected.clone(),
+                    }));
+                }
+            }
+            match end {
+                DriveEnd::Rejected { input, rejected } => {
+                    out.push_str(&json_line(&StreamLine::InputRejected { input, rejected }));
+                    (1, None)
+                }
+                DriveEnd::Unanswered(what) => (3, Some(what)),
+                DriveEnd::Diverged(what) => (1, Some(what)),
+                DriveEnd::Done => match output.await_ {
+                    Await::Halted { kind, .. } if kind == "incomplete" => (3, None),
+                    Await::Halted { .. } => (1, None),
+                    _ => (0, None),
+                },
+            }
+        }
     };
     (out, code, message)
 }
