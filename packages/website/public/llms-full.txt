@@ -2229,6 +2229,409 @@ not the source — is what an engine plays through the
 - Trace the machine-driven version of check → fix in the [AI harness guide](/tooling/ai-harness/).
 - Pick a role-first reading order from the [learning paths](/getting-started/learning-paths/).
 
+# Build a town game
+This tutorial builds **Quayside**, a tiny Stardew-style town. The complete project is
+[`docs/examples/quayside/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/quayside).
+The snippets below are the files in that project, so the documentation check compiles
+them as you read.
+
+## 1. Schema and clock
+
+Declare the state domains first. `run.slot` is a named `slot` domain, not an
+unrelated string, and `run.ending` is a closed domain that lets the player name
+an ending. The terminal expression ends the run as soon as a choice writes an
+ending other than `none`.
+
+```yaml check="docs/examples/quayside/world.schema.yaml"
+enums:
+  slot: [morning, afternoon, evening]
+  ending: [none, restore, retire]
+state:
+  run.day: { type: int, default: 1, owner: engine }
+  run.slot: { type: { domain: slot }, default: morning, owner: engine }
+  run.ending: { type: { domain: ending }, default: none }
+  run.visits: { type: int, default: 0 }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, evening]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+entities:
+  place: { members: [square, pier, bakery] }
+relations: {}
+defs:
+  currentSlot: "run.slot"
+terminal: "run.ending != 'none'"
+cast:
+  player: { name: You }
+  june: { name: June }
+  tom: { name: Tom }
+```
+
+`clock.index` remains numeric for ordering. For labels in a host HUD, use
+`program.view(state).clock` rather than converting the numeric slot yourself;
+the view supplies the slot and weekday labels.
+
+## 2. Scenes, beats, and barks
+
+The backdrop component has one arm per slot. Directive fields are build-time
+values, so pass the live slot into the component and keep each `::bg` literal.
+Use this component in every scene that follows the clock:
+
+```lute check="docs/examples/quayside/components/clock-backdrop.component.lute"
+---
+component: clockBackdrop
+params:
+  slot: { type: { domain: slot } }
+---
+## Backdrop
+<match subject="@slot">
+  <when is="morning">
+    ::bg{location="quayside" time="morning"}
+  </when>
+  <when is="afternoon">
+    ::bg{location="quayside" time="afternoon"}
+  </when>
+  <when is="evening">
+    ::bg{location="quayside" time="evening"}
+  </when>
+</match>
+```
+
+The `start` beat introduces the town:
+
+```lute check="docs/examples/quayside/scenes/opening.lute"
+---
+kind: scene
+id: opening
+components: [../components/clock-backdrop.component.lute]
+on: start
+priority: 10
+---
+
+## Morning at Quayside
+
+::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
+@june: The tide is out, and Quayside is already awake.
+@narrator: A hand-painted sign points toward the square, the pier, and the bakery.
+```
+
+A visit beat can offer a choice and write the ending:
+
+```lute check="docs/examples/quayside/scenes/market.lute"
+---
+kind: scene
+id: market
+components: [../components/clock-backdrop.component.lute]
+on: visit
+target: place.square
+priority: 10
+once: false
+---
+
+## The market square
+
+::use{component="clockBackdrop" slot=@currentSlot instance="market-backdrop"}
+@june: Every stall has something to mend, trade, or remember.
+::set{run.visits += 1}
+
+<branch id="closingBell" prompt="The harbor bell rings. What will you do with the old town hall?">
+  <choice id="restore" text="Restore it as a community hall">
+    ::set{run.ending = 'restore'}
+    @june: We will fill it with lanterns and neighbors.
+  </choice>
+  <choice id="wait" text="Wait for the bell to ring again">
+    @june: We can take one more evening before deciding.
+  </choice>
+  <choice id="retire" text="Let the building rest with the tide">
+    ::set{run.ending = 'retire'}
+    @june: Some doors close gently, and that is a kind of care.
+  </choice>
+</branch>
+
+<match subject="run.ending">
+  <when is="restore">
+    @narrator: The square keeps its lights on for the hall.
+  </when>
+  <when is="retire">
+    @narrator: The square grows quiet around the old hall.
+  </when>
+  <when is="none">
+    @narrator: The bell waits for your answer.
+  </when>
+</match>
+```
+
+The `tide` beat is gated until evening:
+
+
+```lute check="docs/examples/quayside/scenes/tide.lute"
+---
+kind: scene
+id: tide
+components: [../components/clock-backdrop.component.lute]
+on: tide
+---
+
+## Evening tide
+
+::use{component="clockBackdrop" slot=@currentSlot instance="tide-backdrop"}
+@narrator: At evening tide, the town lights come on one by one.
+```
+
+A lore document supplies static background barks. They do not write state or
+consume a presentation when a custom host displays them while a player waits:
+
+```lute check="docs/examples/quayside/lore/barks.lute"
+---
+kind: lore
+id: barks
+title: Quayside background voices
+---
+
+<entry id="marketBark" category="bark" on="bark" priority="-1">
+  @june: Fresh bread, repaired nets, and one more story before sunset.
+</entry>
+
+<entry id="pierBark" category="bark" on="visit" target="place.pier" priority="-1">
+  @tom: Mind the loose board. The pier remembers every storm.
+</entry>
+```
+
+## 3. Plays, refusals, and coverage
+
+Play both named endings. The first script deliberately raises `tide` in the
+morning. Its refusal is expected, the state remains unchanged, and the play
+continues to the market choice:
+
+```yaml check="docs/examples/quayside/plays/restore.play.yaml"
+# Rebuild the old town hall and keep Quayside's doors open.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: tide
+    expect: { refused: E-OCCASION-GATE, state: { run.ending: none } }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: restore }
+    expect: { winner: market, state: { run.ending: restore } }
+expect:
+  end: terminal
+  state: { run.ending: restore }
+```
+
+```yaml check="docs/examples/quayside/plays/retire.play.yaml"
+# Let the old town hall rest with the tide.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }
+```
+
+The coverage play also walks afternoon and evening, opens `tide`, and presents
+both static barks:
+
+```yaml check="docs/examples/quayside/plays/coverage.play.yaml"
+# Exercise every backdrop slot, the gated occasion, the static barks, and ending none.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: bark
+    expect: { winner: marketBark }
+  - occasion: visit
+    target: place.pier
+    expect: { winner: pierBark }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: evening }
+  - occasion: tide
+    expect: { winner: tide }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }
+```
+
+Coverage now reports the market backdrop match `3/3`, ending match `3/3`, all
+three branch choices, and both bark entries. The opening and tide components
+remain `1/3` by design: those scenes are only entered at run start (morning)
+and by the evening gate respectively. A gated raise is a play assertion, not
+a workaround in the host.
+
+## 4. Bindings and named ending screens
+
+Bindings resolve paths below `assetsBase`. `ui.title.music` uses the `assets:`
+key `title-music`; `ui.ended` reads `run.ending` and selects a screen for each
+named ending:
+
+```yaml check="docs/examples/quayside/player.bindings.yaml"
+bindingsVersion: "0.46"
+canvas: { width: 1280, height: 720 }
+assetsBase: assets/
+assets:
+  title-music: audio/title.wav
+backgrounds:
+  quayside:
+    image: bg/quayside-morning.png
+    times:
+      morning: bg/quayside-morning.png
+      afternoon: bg/quayside-afternoon.png
+      evening: bg/quayside-evening.png
+characters:
+  june:
+    sprite: { default: char/june.png }
+    nameColor: "#f2b56b"
+  tom:
+    sprite: { default: char/tom.png }
+    nameColor: "#78b5e8"
+ui:
+  font: "Georgia, serif"
+  title: { background: bg/title.png, music: title-music }
+  ended:
+    by: run.ending
+    screens:
+      restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
+      retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }
+```
+
+Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
+The manifest uses `bindingsVersion: "0.46"`; see the [bindings reference](/player/bindings/)
+for the complete catalogue.
+
+## 5. A player-web host
+
+Keep the walkable town map in the host's own Pixi application. `player-web`
+owns its player assets privately; it does not initialise Pixi's global `Assets`.
+That means the host may load its map before or after mounting:
+
+```ts
+import { Assets, Application, Sprite } from "pixi.js"
+import { mountPlayer } from "@lute-lang/player-web"
+
+const app = new Application()
+await app.init({ resizeTo: window })
+const map = Sprite.from(await Assets.load("/town-map.png"))
+app.stage.addChild(map) // The host map, outside the Lute player.
+
+// `Assets` belongs only to this map app; player-web has a private loader.
+const options = {
+  bindings: { url: "/quayside/player.bindings.yaml" },
+  bundleUrl: "/quayside/bundle/",
+  wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm"
+} as const
+
+// The Promise facade keeps the mounted scope alive until unmount.
+const player = await mountPlayer(document.querySelector("#player")!, options)
+```
+
+Keep that `player` for the page's lifetime and call `player.unmount()` when the
+page goes away. Its `program` queries take the session's current state
+(`player.session.current`). To open a gated occasion, query first and then send
+only when its gate is open:
+
+```ts
+import { Effect, SubscriptionRef } from "effect"
+
+const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+const gate = await Effect.runPromise(player.program.gate(current.state, "tide"))
+if (gate.open) await player.send({ type: "raiseOccasion", occasion: "tide" })
+```
+
+While a choice or bridge is waiting, a host can show one of Quayside's static
+barks without starting a second presentation. Ask `program.candidates`, find an
+eligible `entry`, and read its placeholder-free lines from `player.bundle`.
+The complete artifact-walking helper is in [custom hosts](/player/custom-hosts/);
+the essential 0.45 pattern is:
+
+```ts
+declare const showAmbientFromBundle: (bundle: unknown, candidate: unknown) => void
+const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+const candidates = await Effect.runPromise(
+  player.program.candidates(current.state, "visit", "place.pier")
+)
+const bark = candidates.find((candidate) => candidate.kind === "entry")
+if (bark !== undefined) {
+  showAmbientFromBundle(player.bundle, bark) // static lines; no read or once mark
+}
+```
+
+A bark that has placeholders, a `match`, a `once`, or a write must wait until
+idle and be raised with `send` instead.
+
+## 6. Save, resume, and the clock HUD
+
+The Promise facade exposes the same save operations as the Effect handle. Start
+a fresh mount from `save.snapshot`, then restore the full player save:
+
+```ts
+import { mountPlayer } from "@lute-lang/player-web"
+
+const player = await mountPlayer(document.querySelector("#player")!, options)
+const save = await player.snapshot()
+await player.unmount()
+
+const resumed = await mountPlayer(document.querySelector("#player")!, {
+  ...options,
+  snapshot: save.snapshot
+})
+await resumed.restore(save)
+```
+
+The Effect API uses the same option. `mount` needs a `Scope`, and the player
+lives exactly as long as that scope, so run this with the page's long-lived
+scope (not `Effect.scoped`, which would close it as soon as the effect returns):
+
+```ts
+import { Effect } from "effect"
+import { mount } from "@lute-lang/player-web"
+
+// Effect<void, unknown, Scope.Scope>: provide the page's scope when you run it.
+const resumeInPageScope = Effect.gen(function* () {
+  const resumed = yield* mount(document.querySelector("#player")!, {
+    ...options,
+    snapshot: save.snapshot
+  })
+  yield* resumed.restore(save)
+})
+```
+
+Use the read-only view for a HUD. `program.clock` is useful for ordering, but
+the view is the source of display names:
+
+```ts
+const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+const world = await Effect.runPromise(player.program.view(current.state))
+const clock = world.clock
+const label = clock == null
+  ? "No clock"
+  : `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${clock.slot ?? "slot"}`
+```
+
+Next, read [the clock](/language/clock/), [playing a story](/tooling/play/), and
+[the runtime contract](/tooling/runtime-contract/) for the language and host
+surfaces used here.
+
 # Is Lute right for you?
 
 Lute is a focused tool, not a general-purpose engine. It is the **author-time
@@ -3667,7 +4070,7 @@ command by its `kind` and `position`.
 | `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied; without `--project`, the project is the nearest `lute.project.yaml` above the file (0.27.0), as for `check`. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accept` also takes an `activate="accept"` child. Since 0.26.0 a taken `::jump` is followed to its label. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | Run a compiled artifact the way an engine would. A lore artifact needs exactly one of `--entry` and `--beat` (a bundle beat's canonical id, or its bare id when unambiguous). The mock's `bridges:` answers plugin calls (0.24.0). |
 | `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | Raise occasions through the whole project, advancing quests. A missed `expect:` exits `1`. Staging prints as authored; `--ir` prints the lowered records instead, injected ones marked. `--explain` (repeatable) prints, after the play, the derivation tree of a ground atom, or the failing premises of every rule that could conclude it; since 0.24.0 each asserted leaf names its source (``asserted by scene `cafe.open`, step 1``). |
-| `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | Run every `*.test.yaml`, and every `*.play.yaml` that carries an `expect:`, or the one test or play file given. Without `--project`, tests resolve against the nearest `lute.project.yaml` (noted on stderr). An incomplete walk fails, and so does a test whose `file:` is missing (`E-TEST-FILE`), without stopping the suite. `--coverage` lists the documents no test traced and no play presented, of `--project` or of the nearest `lute.project.yaml`; since 0.24.0 a document an `advance:` step's raise presented counts, and the header counts both: `coverage over N traced path(s) and M play(s) (…):`. Since 0.26.0 it loads each project once and runs the tests, then the plays, in parallel (`RAYON_NUM_THREADS` is respected), reporting in the usual order. Since 0.27.0 the unit is the beat: each bundle beat and entry is listed on its own (`lore/endings/ren.lute: ember`), a play's picks count in the branch/hub rows, the header reads `(plays count toward what they presented and the choices they picked, not match arms)`, and a last section lists the beats no play presented (`--json`: `untested`, `notPresentedByPlay`, each `{file, id, kind}`). |
+| `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | Run every `*.test.yaml`, and every `*.play.yaml` that carries an `expect:`, or the one test or play file given. Without `--project`, tests resolve against the nearest `lute.project.yaml` (noted on stderr). An incomplete walk fails, and so does a test whose `file:` is missing (`E-TEST-FILE`), without stopping the suite. `--coverage` lists the documents no test traced and no play presented, of `--project` or of the nearest `lute.project.yaml`; since 0.24.0 a document an `advance:` step's raise presented counts, and the header counts both: `coverage over N traced path(s) and M play(s) (…):`. Since 0.26.0 it loads each project once and runs the tests, then the plays, in parallel (`RAYON_NUM_THREADS` is respected), reporting in the usual order. Since 0.27.0 the unit is the beat: each bundle beat and entry is listed on its own (`lore/endings/ren.lute: ember`), a play's picks count in the branch/hub rows, the header reads `(plays count toward what they presented and the choices they picked and the arms they executed)`, and a last section lists the beats no play presented (`--json`: `untested`, `notPresentedByPlay`, each `{file, id, kind}`). |
 | `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | The `after:` graph, reachability, and guaranteed state and facts. A node is a scene id, `quest:<id>`, or a bundle beat's canonical id (bare or `beat:<doc>.<beat>`; drawn as an edgeless entry node). `knowledge` (0.23.0) traces every fact-guarded beat, entry, and objective to the relations it queries and each relation to its producers through the rules: asserting documents, seed facts, the engine (`reserved`), or no producer, and names what can defeat a negated premise. Its `--for` also takes an entry id or `<quest>.<objective>`. Since 0.24.0 it covers every guard slot, reads a kind atom as membership (``suitor(sol) — entity kind `suitor`; sol is a member``), and names what a rule's `cel()` premise reads; since 0.26.0 it traces a rule's `count(…)` premise to the producers of the facts it counts. `--facts` (0.26.0) also draws fact-producer edges (`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`; `--format json`: `factEdges`, `dot`: dotted). `reach --endings[=<occasion>]` (0.27.0) lists every ending — the beats answering the occasion, or bare, every beat whose content can run `::end` — with its `after:` verdict, its `when` verdict (never holds / never wins), what a satisfiable `when` reads and who writes it (`nothing writes it` when nothing does), and `N ending(s): A reachable, B unreachable, C unknown`. |
 | `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. Each occasion's (and target's) beat ladder in selection order, with priority, `once` (including bundle beats' `day` / `slot`), `also`, `after:`, `when` (a `@def` as written; `--expand` expands it), title, and the `check-project` verdicts (unreachable, shadowed, tied, once-run-user). The project need not check clean. Since 0.26.0 a fallback that an earlier, never-spent beat whose `when` it implies always beats shows `covered by <id>` (`--json`: `coveredBy`), a kind-target beat gets a `kind:<kind>` ladder, and `--target` takes any member. |
 | `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. Every value of a directive attribute (`give.item`) or every reward target of a kind, with the documents and lines using it; a value passed through a component is listed at its `::use` (`via component <name>`), a reward without a target as `(no target)`. Who gives what, before a merge. |
@@ -4255,7 +4658,6 @@ makes `@isolde: …` clean under `check-project`, which counts the facts that ho
 single-file check cannot, and its message says so.
 
 # Reserved names
-
 Some words already mean something in Lute: a state root such as `run`, the
 no-value word `unset`, a CEL literal or keyword, a play-script step. A name
 you declare cannot be one of them where it would be read as that word — an
@@ -4294,7 +4696,7 @@ names already mean, and the code that reports them.
 | `set` `assert` `retract` `accept` `use` `body` | plugin directive | a core statement (`::set{…}`, `::use{component=…}`), which content always reads as the core one | E-PLUGIN-RESERVED-NAME |
 | `on` `quest` `objective` `match` `branch` `hub` `choice` `when` `otherwise` `entry` `beat` `timeline` `track` `reward` `return` | plugin directive | a core block tag (`<match>`, `<quest>`), which content always reads as the core one | E-PLUGIN-RESERVED-NAME |
 | `id` `use` `on` `target` `for` `title` `priority` `once` `share` `after` `when` `spentBy` `also` | beat template param | a beat header key: `<beat use=… when=…>` sets the beat's own `when`, never the param | E-TEMPLATE |
-| `component` `when` | component param | a `::use` key of its own (`::use{component=… when=…}`), so the param could never be passed | E-TEMPLATE |
+| `component` `when` `at` `instance` | component param | a `::use` key of its own (`::use{component=… when=…}`), so the param could never be passed | E-TEMPLATE |
 <!-- reserved-names:end -->
 
 ## Notes
@@ -4309,7 +4711,6 @@ names already mean, and the code that reports them.
   because `once="season:week"` would sit beside `once="week"`.
 - A kind beat names its kind with a prefix (`target="kind:guest"`). The kind
   itself is declared without it (`entities: { guest: … }`).
-
 # Many authors, one project
 
 A game of any size is not written by one person. This guide is for a **lead** who owns the world
@@ -7370,7 +7771,6 @@ admitted in quest documents. The checker warns when a timeline grows unwieldy (p
 tracks, 12 clips per track, or 40 clips total).
 
 # Components & extends
-
 Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
 `uses`/`extends` reuse *schema*, and **components** reuse *content*. This page covers content
 components and schema `extends:` composition.
@@ -7439,6 +7839,13 @@ argument count and type are checked (`E-COMPONENT-ARG`), and naming a component 
 file is `E-COMPONENT-UNDECLARED`. A literal argument is substituted into the expansion, so
 `{{@weather}}` in a component line compiles to `Outside: grey.` for `weather="grey"`.
 
+The names `component`, `when`, `at`, and `instance` are reserved by `::use` itself.
+They MUST NOT be component parameter names: `at` is the timeline clip offset and
+`instance` is the use identity. A declaration reports one `E-TEMPLATE` at that
+`params:` entry, naming the complete reserved list and suggesting a rename; uses
+of the component do not repeat that parameter diagnostic. Beat-template header
+keys keep their existing reservation rule.
+
 An argument may also be a **def of the calling document** — `::use{component="greet" tier=@mood}`.
 The component still reads no state itself; the caller's def is where the state read lives, and it
 is checked where it lands:
@@ -7451,6 +7858,7 @@ is checked where it lands:
   literal, [below](#sentences-in-string-params));
 - in a directive attribute, it must fold to a constant, and a state-dependent def is
   `E-ATTR-DEF-DYNAMIC`.
+
 
 ### Sentences in string params
 
@@ -7894,7 +8302,6 @@ because persisted state must keep a stable type, an override that changes the de
 `E-EXTENDS-STATE-TYPE`; a `default`-only refinement (same type) is allowed silently. `extends` edges
 share the same DAG discipline as `uses:` — cycles, missing files, and parse errors reuse the
 `E-USES-*` diagnostics.
-
 # Definitions & params
 
 All conditions and `::set` right-hand sides in Lute are [CEL](https://cel.dev) expressions. Rather
@@ -10408,7 +10815,6 @@ clock-window findings are `bounded` with scope
 scope, not a universal impossibility.
 
 # The clock
-
 Plenty of games keep time as a day and a part of the day: morning, afternoon, night, then the next
 morning. A visual novel lets you visit one place per slot, a life sim opens the market on
 Saturdays, a shopkeeper greets you once a day and mutters something shorter the rest of it.
@@ -10576,6 +10982,93 @@ instead of copying the labels into an enum. The host passes the live value (`day
 `today: "clock.weekdayLabel"` in `defs:`) or a literal label, and the checker judges the body's
 `<match>` arms and every literal argument against the clock's own labels: a misspelled
 `<when is="Wednesdy">` is one `E-WHEN-LITERAL-DOMAIN` at the component, naming the nearest label.
+
+## A backdrop that follows the clock
+
+The clock remains engine-owned, but a presentation component can choose one
+static backdrop for each slot. Declare the slot vocabulary and a slot-typed
+state field in the schema, then expose a def that reads that field:
+
+```yaml check="docs/examples/quayside/world.schema.yaml"
+enums:
+  slot: [morning, afternoon, evening]
+  ending: [none, restore, retire]
+state:
+  run.day: { type: int, default: 1, owner: engine }
+  run.slot: { type: { domain: slot }, default: morning, owner: engine }
+  run.ending: { type: { domain: ending }, default: none }
+  run.visits: { type: int, default: 0 }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, afternoon, evening]
+  raise: { slot: slotStart, dayEnd: dayEnd }
+  raiseAtStart: true
+  week:
+    length: 7
+    first: 0
+    labels: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+entities:
+  place: { members: [square, pier, bakery] }
+relations: {}
+defs:
+  currentSlot: "run.slot"
+terminal: "run.ending != 'none'"
+cast:
+  player: { name: You }
+  june: { name: June }
+  tom: { name: Tom }
+```
+
+Put one `::bg` in each arm of a component. The component's `slot` parameter is
+the same closed domain, so the `<match>` is exhaustive and the directive values
+stay compile-time constants:
+
+```lute check="docs/examples/quayside/components/clock-backdrop.component.lute"
+---
+component: clockBackdrop
+params:
+  slot: { type: { domain: slot } }
+---
+## Backdrop
+<match subject="@slot">
+  <when is="morning">
+    ::bg{location="quayside" time="morning"}
+  </when>
+  <when is="afternoon">
+    ::bg{location="quayside" time="afternoon"}
+  </when>
+  <when is="evening">
+    ::bg{location="quayside" time="evening"}
+  </when>
+</match>
+```
+
+Use the component in every scene that needs this policy:
+
+```lute check="docs/examples/quayside/scenes/opening.lute"
+---
+kind: scene
+id: opening
+components: [../components/clock-backdrop.component.lute]
+on: start
+priority: 10
+---
+
+## Morning at Quayside
+
+::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
+@june: The tide is out, and Quayside is already awake.
+@narrator: A hand-painted sign points toward the square, the pier, and the bakery.
+```
+
+The alternative is to write `time="morning"` (or another literal) directly
+on each scene's `::bg`; that is often clearer when a scene intentionally
+chooses a time rather than following the clock. Do not put a state-derived
+`@def` into a directive field: directive fields are build-time values, so the
+checker reports `E-ATTR-DEF-DYNAMIC`. A component body also cannot read ambient
+state; pass the value as its parameter or the checker reports
+`E-COMPONENT-STATE`.
 
 ## Once a day, once a week, once a slot
 
@@ -11173,7 +11666,6 @@ The normative spec is
 §1, and the draft
 [`0.27.0.md`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md)
 §5 for `once: week`.
-
 # Imports (uses:)
 
 The `run`/`user`/`app` state schema is **game/season-global** — one persisted value cannot have a
@@ -12125,7 +12617,6 @@ numeric operations, and uses list-form host calls:
 three-valued result is a preview only.
 
 # State schemas
-
 The `run` / `user` / `app` tiers are game/season-global: one persisted value cannot carry per-scene types. So they live in a single **schema document**, the source of truth every scene imports with `uses:`. Scenes then declare only their own `scene.*` locals. Since 0.2.2 a declaration file is plain `.yaml` (no `---`/Lute envelope) — a pure declaration, not a scene.
 
 ## Schema shape
@@ -12189,6 +12680,11 @@ cast:
 - **`subsetOf:`** on an entity kind declares a sub-kind whose members all belong to the parent. See [Sub-kinds](/state/facts-and-datalog/#sub-kinds-subsetof).
 - **`per:`** on a state path declares `run.approval.isolde` and `run.approval.corvin`. Its `default:` may be one value for every member or a map with per-member values and a `_` fallback, `{ _: 0, isolde: 2 }`. See [One path per entity](/state/state-model/#one-path-per-entity-per).
 - **`present:`, `emotions:` and `assume:`** on a cast entry say when the character is with the player, which `emotion=` values their lines may use, and whether presence may take the engine's `reserved:` facts as absent. In a schema, a `present:` that does not parse is `E-CEL-PARSE`, one outside the CEL profile is `E-CEL-PROFILE`, and an `emotions:` member outside the schema's `emotion` enum is `E-BAD-ENUM`, each reported at the entry's key. See [The cast](/language/dialogue-and-cast/#the-cast).
+
+Entity kinds have one spelling: use `kind: { members: [a, b] }` for a closed
+kind or `kind: { open: true }` for an open kind. The YAML list shorthand
+`kind: [a, b]` is not accepted; `E-ENTITY-KIND-SHAPE` shows the exact
+`{ members: [a, b] }` rewrite using the members you wrote.
 
 ### Seasons
 
@@ -12404,7 +12900,6 @@ the schema line ending `(imported by N documents)` (dsl 0.26.0 §2.7), rather th
 document; the importers stay `ok`.
 
 The state schema is *game content* — separate from the engine **capability manifest** (engine vocabulary), which has its own owner and change cadence.
-
 # The scene graph and `after:`
 
 Scenes and quests declare their **prerequisites** — what must have happened before this node is available — and `check-project` assembles them into a project-wide graph. This closes the one asymmetry in the language: quests already had a declarative activation predicate (`<quest start>`), but scenes had no prerequisite surface at all. `after:` gives episodes what quests already had.
@@ -15404,6 +15899,22 @@ A step may carry `expect:`, judged against what that step did. Four keys judge a
 | `notOffered: [beat ids]` | none of the listed beats was eligible |
 | `presented: [beat ids]` | exactly these beats were presented, in this order (dsl 0.23.0): the whole list of a [`select: sequence`](#composing-occasions) step, or a winner followed by its `also` beats; `[]` — nothing was |
 | `presented: { <occasion>: [beat ids] }` | on an `advance` step: for each named occasion the clock raises, exactly these beats were presented by its raises in this step, in this order; occasions not named are not judged ([Advancing the clock](#advancing-the-clock)) |
+| `refused: E-OCCASION-GATE` | on an `occasion:` step only, holds when the occasion's gate refuses the raise; the state is unchanged and the play continues |
+
+`refused` is only accepted with `E-OCCASION-GATE`. It may be combined with
+`state`, `facts`, `notFacts`, `clock`, and `quests`, which are checked against
+the unchanged state. It cannot be combined with `winner`, `offered`,
+`notOffered`, `presented`, or `options`, because a refused raise presents
+nothing. On a refused step, `lute play` prints a note such as
+`note: the raise was refused with E-OCCASION-GATE — not raised: gate false`.
+If the occasion is accepted instead, the play continues but the expectation
+misses with `expected the raise to be refused with E-OCCASION-GATE; it was
+accepted`; `lute test` reports that play as FAIL. `refused` is not legal on
+`advance`, `engine`, `newRun`, `event`, or `end` steps. `--events` keeps the
+rejected raise in the output as the occasion step with no presentation, then
+continues with following inputs when `refused` matches, so a host sees the
+same rejected input/output pair without losing the rest of the stream.
+
 
 Five more judge the world **right after the step settled** — for an occasion step, after its presentations, its occasion's objective judging, and the settle that follows — and are legal on any step kind (not beside `end`). Each but `clock` means what it means at the top level, below, at that moment:
 
@@ -20839,48 +21350,3 @@ The core ports are `Presenter`, `AudioPort`, and `AssetLoader`; `PlayerHost`
 handles bridge answers and idle flow. Runtime 0.41 carries `world.stage` and
 `continuation.stage` in snapshots, and timed choices use the `timeout` input
 with their declared `default`.
-
-# Build a town game
-
-This Lute 0.46 tutorial builds **Quayside**, a tiny Stardew-style town. The
-complete checked project is
-[`docs/examples/quayside/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/quayside):
-a named clock, clock-following backdrop component, gated occasion, static lore
-barks, two ending plays, `ui.ended` bindings, and a `player-web` host.
-
-The schema gives `run.slot` a named enum domain and `run.ending` the closed
-domain `[none, restore, retire]`. Its terminal condition is
-`run.ending != 'none'`. A component receives the slot through
-`slot=@currentSlot` and has one literal `::bg` arm per slot; directive fields
-remain build-time values. A lore document uses a static bark entry on an
-occasion for background lines.
-
-The restore play demonstrates the 0.46 refusal assertion:
-
-```yaml
-steps:
-  - occasion: tide
-    expect: { refused: E-OCCASION-GATE, state: { run.ending: none } }
-  - occasion: visit
-    target: place.square
-    choose: { closingBell: restore }
-```
-
-`lute test --coverage docs/examples/quayside` merges match arms shown by plays.
-The bindings use `bindingsVersion: "0.46"`, resolve `ui.title.music` through an
-`assets:` key, and map `ui.ended.by: run.ending` to named screens.
-
-For a map-driven host, draw the town map in the host's own Pixi application:
-`player-web` owns a private asset loader and does not touch Pixi's global
-`Assets`. Mount with `{ bindings, bundleUrl, wasmUrl }`, query
-`program.gate(state, "tide")` before `send({ type: "raiseOccasion", occasion:
-"tide" })`, and use `program.candidates` plus the loaded `bundle` to show a
-placeholder-free bark during a wait. Save with `snapshot()`, resume a fresh
-mount with `{ snapshot: save.snapshot }`, then `restore(save)`. For a HUD,
-`program.clock` is numeric; display names come from
-`program.view(state).clock`.
-
-See [Build a town game](/getting-started/build-a-town-game/),
-[The clock](/language/clock/), [custom hosts](/player/custom-hosts/), and the
-[runtime contract](/tooling/runtime-contract/).
-
