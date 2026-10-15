@@ -51,18 +51,40 @@ fn plugin_bg_and_actor_follow_lowered_records_in_artifact() {
     assert!(!commands[bg + 1..=after_bg_line]
         .iter()
         .any(|command| command["provenance"]["by"] == "auto-pose-reset"));
-    assert!(commands
+    // The plugin re-show after the scene change is an entrance: its anchor
+    // and first-emotion preload follow it directly.
+    let reshow = commands
         .iter()
-        .any(|command| command["provenance"]["by"] == "auto-anchor-on-show"));
-    assert!(commands
+        .enumerate()
+        .skip(bg + 1)
+        .find(|(_, command)| command["kind"] == "actor" && command.get("provenance").is_none())
+        .map(|(index, _)| index)
+        .unwrap();
+    assert_eq!(
+        commands[reshow + 1]["provenance"]["by"],
+        "auto-anchor-on-show"
+    );
+    assert_eq!(commands[reshow + 1]["character"], "marina");
+    assert_eq!(
+        commands[reshow + 2]["provenance"]["by"],
+        "entry-emotion-lookahead"
+    );
+    assert_eq!(commands[reshow + 2]["emotion"], "calm");
+    // Its stateful line dirties the pose, so the plain line after it gets a
+    // reset placed directly before it.
+    let plain = commands
         .iter()
-        .any(|command| command["provenance"]["by"] == "entry-emotion-lookahead"));
-    assert!(commands
+        .position(|command| command["text"] == "Plain after stateful.")
+        .unwrap();
+    assert_eq!(commands[plain - 1]["provenance"]["by"], "auto-pose-reset");
+    assert_eq!(commands[plain - 1]["character"], "marina");
+    // The authored exit is the plugin record with `exit: true`.
+    let exit = commands
         .iter()
-        .any(|command| command["provenance"]["by"] == "auto-pose-reset"));
-    assert!(commands.iter().any(|command| {
-        command["kind"] == "actor" && command["exit"] == true && command.get("provenance").is_none()
-    }));
+        .rposition(|command| command["kind"] == "actor" && command.get("provenance").is_none())
+        .unwrap();
+    assert_eq!(commands[exit]["exit"], true);
+    assert_eq!(commands[exit + 1]["text"], "Absent after exit.");
 }
 
 #[test]
