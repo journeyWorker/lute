@@ -1,6 +1,6 @@
 ---
 title: 플레이어 시작하기
-description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.41 웹 플레이어를 마운트합니다.
+description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.46 웹 플레이어를 마운트합니다.
 ---
 
 이 가이드는 저장소의 `examples/player-demo`를 사용합니다. 자신의 프로젝트에도 같은 단계를 적용할 수 있습니다.
@@ -20,7 +20,7 @@ lute compile --all examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.45 패키지를 설치합니다.
+정확한 0.46 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.45.0 @lute-lang/player@0.45.0 @lute-lang/runtime@0.45.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
@@ -67,7 +67,21 @@ const player = await mountPlayer(element, {
 await player.act({ type: "newGame" })
 ```
 
-`bundleUrl`은 `project.index.json` 디렉터리를, `wasmUrl`은 브라우저 wasm을 가리킵니다. `assetsUrl`은 `assetsBase`를 덮어씁니다. `mountPlayer`는 `act`, `view`, `unmount`를 반환하므로 종료할 때 `unmount()`를 호출해야 합니다.
+`bundleUrl`은 `project.index.json` 디렉터리를, `wasmUrl`은 브라우저 wasm을 가리킵니다. `assetsUrl`은 `assetsBase`를 덮어씁니다. `mountPlayer`는 `act`, `view`, `send`, `snapshot`, `restore`, `program`, `bundle`, `unmount`를 반환하며, 각 Promise 메서드는 해당 Effect를 그대로 실행하고 같은 실패를 reject합니다.
+
+저장한 게임을 새 플레이어에서 재개하려면 마운트할 때 runtime snapshot을 전달하고 전체 save를 restore합니다.
+
+```ts
+const save = await player.snapshot()
+await player.unmount()
+const fresh = await mountPlayer(element, {
+  bindings: { url: "/player.bindings.yaml" },
+  bundleUrl: "/bundle/",
+  wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm",
+  snapshot: save.snapshot
+})
+await fresh.restore(save)
+```
 
 ## 4. 모든 파일 제공
 

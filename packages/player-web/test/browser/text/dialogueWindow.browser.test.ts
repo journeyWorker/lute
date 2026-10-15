@@ -1,5 +1,5 @@
 import { Effect } from "effect"
-import { Container, Text } from "pixi.js"
+import { Container, Graphics, Text } from "pixi.js"
 import { describe, expect, it } from "vitest"
 import type { LineView, Settings } from "@lute-lang/player"
 import type { Behaviour, Theme, WorldShape } from "../../../src/engine/types.js"
@@ -56,17 +56,24 @@ const worldFor = (): WorldShape => {
 
 describe("DialogueWindow browser scene", () => {
 
-  it("renders the speaker name plate", async () => {
+  it("renders the speaker name above a reusable plate background", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme)
     await Effect.runPromise(entity.show(line, settings, "skip"))
-    expect(entity.target.children[1]?.visible).toBe(true)
+    const plate = entity.target.children[1]?.children[0]
+    const name = entity.target.children[1]?.children[1]
+    expect(plate).toBeInstanceOf(Graphics)
+    expect(name).toBeInstanceOf(Text)
+    expect((name as Text).text).toBe("Alice")
+    entity.relayout({ width: 1920, height: 1080 })
+    expect(entity.target.children[1]?.children).toHaveLength(2)
+    expect(entity.target.children[1]?.children[0]).toBe(plate)
   })
 
   it("shows the cast display name, coloured by the speaker id, for a line with emotion and variant", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme, { nameColors: { edda: 0x66ccff } })
     const cast: LineView = { ...line, speaker: "edda", speakerName: "에다", emotion: "happy", variant: "wet" }
     await Effect.runPromise(entity.show(cast, settings, "skip"))
-    const name = entity.target.children[1]?.children[0]
+    const name = entity.target.children[1]?.children[1]
     expect(name).toBeInstanceOf(Text)
     expect((name as Text).text).toBe("에다")
     expect((name as Text).style.fill).toBe(0x66ccff)
@@ -88,7 +95,7 @@ describe("DialogueWindow browser scene", () => {
   it("applies the speaker name color", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme, { nameColors: { alice: 0x66ccff } })
     await Effect.runPromise(entity.show(line, settings, "skip"))
-    expect(entity.target.children[1]?.children[0]).toBeDefined()
+    expect(entity.target.children[1]?.children[1]).toBeDefined()
   })
   it("renders speaker and progressively reveals text, then reveals", async () => {
     const parent = new Container()
@@ -152,11 +159,11 @@ describe("DialogueWindow browser scene", () => {
   it("styles mono and parenthesizes os role names", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme)
     await Effect.runPromise(entity.show({ ...line, role: "mono" }, settings, "skip"))
-    const name = entity.target.children[1]?.children[0]
+    const name = entity.target.children[1]?.children[1]
     expect(name instanceof Text).toBe(true)
     if (name instanceof Text) expect(name.text).toBe("Alice")
     await Effect.runPromise(entity.show({ ...line, role: "os" }, settings, "skip"))
-    const osName = entity.target.children[1]?.children[0]
+    const osName = entity.target.children[1]?.children[1]
     expect(osName instanceof Text).toBe(true)
     if (osName instanceof Text) expect(osName.text).toBe("(Alice)")
   })
@@ -164,6 +171,6 @@ describe("DialogueWindow browser scene", () => {
   it("styles voice-over role", async () => {
     const entity = new DialogueWindow(new Container(), worldFor(), theme)
     await Effect.runPromise(entity.show({ ...line, role: "vo" }, settings, "skip"))
-    expect(entity.target.children[1]?.children[0]).toBeDefined()
+    expect(entity.target.children[1]?.children[1]).toBeDefined()
   })
 })

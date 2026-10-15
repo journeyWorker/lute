@@ -4,12 +4,12 @@ import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueS
 import * as FetchHttpClient from "effect/http/FetchHttpClient"
 import * as RuntimeBrowser from "@lute-lang/runtime/browser"
 import * as Runtime from "@lute-lang/runtime"
-import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type PlayerAction, type PlayerHost, type PlayerView } from "@lute-lang/player"
+import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type LutePlayerOptions, type LutePlayerStart, type PlayerAction, type PlayerHost, type PlayerView, type Input as PlayerInput, type SaveRuntime } from "@lute-lang/player"
 import { PixiApp } from "./engine/app.js"
 import { World } from "./engine/world.js"
 import { Ui } from "./ui/ui.js"
 import { PixiAssets, type PixiAssetsOptions } from "./assets/pixiAssets.js"
-import { pixiAssetsBackend } from "./assets/pixiAssetsBackend.js"
+import { createPixiAssetsBackend } from "./assets/pixiAssetsBackend.js"
 import { PixiAudio } from "./audio/pixiAudio.js"
 import { pixiSoundBackend } from "./audio/pixiSoundBackend.js"
 import { PixiPresenter } from "./presenter/pixiPresenter.js"
@@ -20,17 +20,22 @@ import { themeFromBindings } from "./theme.js"
 export type BindingsSource = Bindings | string | { readonly url: string }
 
 /** Options for mounting a browser player. */
-export interface MountOptions {
+export type MountOptions = LutePlayerStart & {
   readonly bindings: BindingsSource
   readonly bundleUrl: string
   readonly wasmUrl: string
   readonly assetsUrl?: string
   readonly storageKey?: string
   readonly host?: PlayerHost
+  readonly cueFactory?: LutePlayerOptions["cueFactory"]
+  readonly linePacing?: LutePlayerOptions["linePacing"]
+  readonly autosave?: LutePlayerOptions["autosave"]
 }
 
 /** A scoped web player handle. `view` is the live Effect subscription ref. */
-export interface WebPlayerHandle extends LutePlayerHandle {}
+export interface WebPlayerHandle extends LutePlayerHandle {
+  readonly bundle: Runtime.Bundle.Bundle
+}
 
 const slash = (value: string): string => value.endsWith("/") ? value : `${value}/`
 const isUrl = (value: string): boolean => /^[a-z][a-z\d+.-]*:/i.test(value)
@@ -86,7 +91,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     const services = yield* Layer.build(worldLayer)
     const pixi = Context.get(services, PixiApp)
     const world = Context.get(services, World)
-    const assetsOptions: PixiAssetsOptions = { assetsBase, backend: pixiAssetsBackend }
+    const assetsOptions: PixiAssetsOptions = { assetsBase, backend: createPixiAssetsBackend() }
     const assets = new PixiAssets(assetsOptions)
     const ui = new Ui(pixi.layers.overlay, theme, world, (file) => assets.texture(file))
     ui.setDesign(bindings.canvas, "Lute")
@@ -115,10 +120,28 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
       Runtime.InputLog.memory,
       storage
     )
-    const playerOptions = options.host === undefined
-      ? { bindings, presenter, audio, assets }
-      : { bindings, presenter, audio, assets, host: options.host }
-    const player = yield* LutePlayer.make(playerOptions).pipe(Effect.provide(requirements))
+    const requirementsContext = yield* Layer.build(requirements)
+    const bundle = yield* Context.get(requirementsContext, Runtime.BundleSource.BundleSource).load
+    const cachedRequirements = Context.add(requirementsContext, Runtime.BundleSource.BundleSource, {
+      load: Effect.succeed(bundle)
+    })
+    const start: LutePlayerStart = "snapshot" in options
+      ? { snapshot: options.snapshot }
+      : "session" in options
+        ? { session: options.session }
+        : options.seed === undefined ? {} : { seed: options.seed }
+    const playerOptions: LutePlayerOptions = {
+      ...start,
+      bindings,
+      presenter,
+      audio,
+      assets,
+      ...(options.host === undefined ? {} : { host: options.host }),
+      ...(options.cueFactory === undefined ? {} : { cueFactory: options.cueFactory }),
+      ...(options.linePacing === undefined ? {} : { linePacing: options.linePacing }),
+      ...(options.autosave === undefined ? {} : { autosave: options.autosave })
+    }
+    const player = yield* LutePlayer.make(playerOptions).pipe(Effect.provide(Layer.succeedContext(cachedRequirements)))
     let unlocked = false
     const dispatch = (action: PlayerAction): Effect.Effect<void> => Effect.gen(function* () {
       if (!unlocked) {
@@ -140,7 +163,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
       const file = resolveAsset(bindings, assetsBase, title.music)
       yield* Effect.forkScoped(audio.play("music", { file, loop: true, volume: 1, fade: 0, restart: true }).pipe(Effect.catch(() => Effect.void)))
     }
-    return player
+    return { ...player, bundle }
   })
 }
 
@@ -153,6 +176,11 @@ export const mountPlayer = async (element: HTMLElement, options: MountOptions): 
   readonly unmount: () => Promise<void>
   readonly view: () => Promise<PlayerView>
   readonly act: (action: PlayerAction) => Promise<void>
+  readonly send: (input: PlayerInput) => Promise<void>
+  readonly snapshot: () => Promise<SaveRuntime>
+  readonly restore: (save: SaveRuntime) => Promise<void>
+  readonly program: WebPlayerHandle["program"]
+  readonly bundle: Runtime.Bundle.Bundle
 }> => {
   const runtime = ManagedRuntime.make(Layer.empty)
   const scope = Scope.makeUnsafe("parallel")
@@ -168,7 +196,12 @@ export const mountPlayer = async (element: HTMLElement, options: MountOptions): 
         await runtime.dispose()
       },
       view: () => runtime.runPromise(SubscriptionRef.get(handle.view)),
-      act: (action) => runtime.runPromise(handle.actions(action))
+      act: (action) => runtime.runPromise(handle.actions(action)),
+      send: (input) => runtime.runPromise(handle.send(input)),
+      snapshot: () => runtime.runPromise(handle.snapshot),
+      restore: (save) => runtime.runPromise(handle.restore(save)),
+      program: handle.program,
+      bundle: handle.bundle
     }
   } catch (error) {
     await runtime.dispose()
