@@ -4,7 +4,7 @@ import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueS
 import * as FetchHttpClient from "effect/http/FetchHttpClient"
 import * as RuntimeBrowser from "@lute-lang/runtime/browser"
 import * as Runtime from "@lute-lang/runtime"
-import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type LutePlayerOptions, type LutePlayerStart, type PlayerAction, type PlayerHost, type PlayerView, type ScreenModel, type Input as PlayerInput, type SaveRuntime } from "@lute-lang/player"
+import { resolveEndedScreen } from "./ui/ended.js"
 import { PixiApp } from "./engine/app.js"
 import { World } from "./engine/world.js"
 import { Ui } from "./ui/ui.js"
@@ -15,6 +15,7 @@ import { pixiSoundBackend } from "./audio/pixiSoundBackend.js"
 import { PixiPresenter } from "./presenter/pixiPresenter.js"
 import { Input } from "./input/index.js"
 import { themeFromBindings } from "./theme.js"
+import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type LutePlayerOptions, type LutePlayerStart, type PlayerAction, type PlayerHost, type PlayerView, type ScreenModel, type Input as PlayerInput, type SaveRuntime } from "@lute-lang/player"
 
 /** A bindings source accepted by the web facade. */
 export type BindingsSource = Bindings | string | { readonly url: string }
@@ -112,22 +113,14 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     let player: LutePlayerHandle | undefined
     const resolveEnded = (screen: Extract<ScreenModel, { _tag: "Ended" }>): Effect.Effect<ScreenModel> =>
       Effect.gen(function* () {
-        const ended = (bindings.ui as (typeof bindings.ui & {
-          readonly ended?: { readonly by: string; readonly screens: Record<string, { readonly title: string; readonly text: string; readonly background?: string | null }> } | null
-        }) | undefined)?.ended
-        if (ended == null || player === undefined) return screen
+        const ended = (bindings.ui as (typeof bindings.ui & { readonly ended?: { readonly by: string; readonly screens: Record<string, { readonly title: string; readonly text: string; readonly background?: string | null }> } | null }) | undefined)?.ended
+        if (player === undefined) return screen
         const current = yield* SubscriptionRef.get(player.session.current)
-        const view = yield* player.program.view(current.state)
-        const value = view.state[ended.by]
-        if (typeof value !== "string") return screen
-        const selected = ended.screens[value]
-        if (selected === undefined) return screen
-        if (selected.background === undefined || selected.background === null) {
-          return { ...screen, title: selected.title, text: selected.text } as ScreenModel
-        }
+        const selected = yield* resolveEndedScreen(player.program, current.state, ended, screen)
+        if (selected === undefined || selected.background === undefined || selected.background === null) return selected ?? screen
         const background = resolveAsset(bindings, assetsBase, selected.background)
         yield* assets.ensure([background])
-        return { ...screen, title: selected.title, text: selected.text, background } as ScreenModel
+        return { ...selected, background }
       }).pipe(Effect.scoped, Effect.catch(() => Effect.succeed(screen)))
     const presenterOptions = titleBackground === undefined
       ? { pixi, world, ui, assets, bindings, theme, resolveEnded }
