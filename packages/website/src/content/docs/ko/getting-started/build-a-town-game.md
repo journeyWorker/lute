@@ -312,19 +312,17 @@ const options = {
 const player = await mountPlayer(document.querySelector("#player")!, options)
 ```
 
-`program.gate`로 먼저 확인한 뒤 열려 있을 때만 `send`로 계기를 발생시킵니다.
+그 `player`는 페이지가 살아 있는 동안 유지하고, 페이지를 떠날 때
+`player.unmount()`를 호출합니다. `program` 질의는 세션의 현재 상태
+(`player.session.current`)를 받습니다. `program.gate`로 먼저 확인한 뒤 열려 있을
+때만 `send`로 계기를 발생시킵니다.
 
 ```ts
 import { Effect, SubscriptionRef } from "effect"
-import { mount } from "@lute-lang/player-web"
 
-const raiseTide = Effect.scoped(Effect.gen(function* () {
-  const effectPlayer = yield* mount(document.querySelector("#player")!, options)
-  const current = yield* SubscriptionRef.get(effectPlayer.session.current)
-  const gate = yield* effectPlayer.program.gate(current.state, "tide")
-  if (gate.open) yield* effectPlayer.send({ type: "raiseOccasion", occasion: "tide" })
-}))
-await Effect.runPromise(raiseTide)
+const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+const gate = await Effect.runPromise(player.program.gate(current.state, "tide"))
+if (gate.open) await player.send({ type: "raiseOccasion", occasion: "tide" })
 ```
 
 선택지나 브리지에서 기다리는 동안에는 두 번째 프레젠테이션을 시작하지 않고
@@ -366,16 +364,23 @@ const resumed = await mountPlayer(document.querySelector("#player")!, {
 })
 await resumed.restore(save)
 ```
-Effect API에서도 같은 옵션을 사용합니다:
+
+Effect API에서도 같은 옵션을 사용합니다. `mount`는 `Scope`가 필요하고 플레이어는
+정확히 그 스코프만큼 살아 있으므로, 페이지 수명 동안 유지되는 스코프로 실행하세요
+(`Effect.scoped`는 이펙트가 끝나는 즉시 스코프를 닫습니다).
 
 ```ts
-const resumedEffect = Effect.gen(function* () {
+import { Effect } from "effect"
+import { mount } from "@lute-lang/player-web"
+
+// Effect<void, unknown, Scope.Scope>: 실행할 때 페이지의 스코프를 제공합니다.
+const resumeInPageScope = Effect.gen(function* () {
   const resumed = yield* mount(document.querySelector("#player")!, {
     ...options,
     snapshot: save.snapshot
   })
   yield* resumed.restore(save)
-}).pipe(Effect.scoped)
+})
 ```
 
 HUD는 읽기 전용 view를 사용합니다. 순서에는 `program.clock`을 사용할 수 있지만,

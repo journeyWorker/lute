@@ -192,6 +192,8 @@ export const mountPlayer = async (element: HTMLElement, options: MountOptions): 
   readonly send: (input: PlayerInput) => Promise<void>
   readonly snapshot: () => Promise<SaveRuntime>
   readonly restore: (save: SaveRuntime) => Promise<void>
+  /** The handle's runtime session: read `session.current` for the state the `program` queries take. */
+  readonly session: WebPlayerHandle["session"]
   readonly program: WebPlayerHandle["program"]
   readonly bundle: Runtime.Bundle.Bundle
 }> => {
@@ -213,6 +215,7 @@ export const mountPlayer = async (element: HTMLElement, options: MountOptions): 
       send: (input) => runtime.runPromise(handle.send(input)),
       snapshot: () => runtime.runPromise(handle.snapshot),
       restore: (save) => runtime.runPromise(handle.restore(save)),
+      session: handle.session,
       program: handle.program,
       bundle: handle.bundle
     }

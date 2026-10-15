@@ -318,21 +318,17 @@ const options = {
 const player = await mountPlayer(document.querySelector("#player")!, options)
 ```
 
-For a normal page, keep the `Scope` around your app lifecycle (or use the
-Promise facade). To open a gated occasion, query first and then send only when
-its gate is open:
+Keep that `player` for the page's lifetime and call `player.unmount()` when the
+page goes away. Its `program` queries take the session's current state
+(`player.session.current`). To open a gated occasion, query first and then send
+only when its gate is open:
 
 ```ts
 import { Effect, SubscriptionRef } from "effect"
-import { mount } from "@lute-lang/player-web"
 
-const raiseTide = Effect.scoped(Effect.gen(function* () {
-  const effectPlayer = yield* mount(document.querySelector("#player")!, options)
-  const current = yield* SubscriptionRef.get(effectPlayer.session.current)
-  const gate = yield* effectPlayer.program.gate(current.state, "tide")
-  if (gate.open) yield* effectPlayer.send({ type: "raiseOccasion", occasion: "tide" })
-}))
-await Effect.runPromise(raiseTide)
+const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+const gate = await Effect.runPromise(player.program.gate(current.state, "tide"))
+if (gate.open) await player.send({ type: "raiseOccasion", occasion: "tide" })
 ```
 
 While a choice or bridge is waiting, a host can show one of Quayside's static
@@ -374,16 +370,23 @@ const resumed = await mountPlayer(document.querySelector("#player")!, {
 })
 await resumed.restore(save)
 ```
-The Effect API uses the same option:
+
+The Effect API uses the same option. `mount` needs a `Scope`, and the player
+lives exactly as long as that scope, so run this with the page's long-lived
+scope (not `Effect.scoped`, which would close it as soon as the effect returns):
 
 ```ts
-const resumedEffect = Effect.gen(function* () {
+import { Effect } from "effect"
+import { mount } from "@lute-lang/player-web"
+
+// Effect<void, unknown, Scope.Scope>: provide the page's scope when you run it.
+const resumeInPageScope = Effect.gen(function* () {
   const resumed = yield* mount(document.querySelector("#player")!, {
     ...options,
     snapshot: save.snapshot
   })
   yield* resumed.restore(save)
-}).pipe(Effect.scoped)
+})
 ```
 
 Use the read-only view for a HUD. `program.clock` is useful for ordering, but

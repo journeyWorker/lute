@@ -67,7 +67,7 @@ const player = await mountPlayer(element, {
 await player.act({ type: "newGame" })
 ```
 
-`bundleUrl`은 `project.index.json` 디렉터리를, `wasmUrl`은 브라우저 wasm을 가리킵니다. `assetsUrl`은 `assetsBase`를 덮어씁니다. `mountPlayer`는 `act`, `view`, `send`, `snapshot`, `restore`, `program`, `bundle`, `unmount`를 반환하며, 각 Promise 메서드는 해당 Effect를 그대로 실행하고 같은 실패를 reject합니다.
+`bundleUrl`은 `project.index.json` 디렉터리를, `wasmUrl`은 브라우저 wasm을 가리킵니다. `assetsUrl`은 `assetsBase`를 덮어씁니다. `mountPlayer`는 `act`, `view`, `send`, `snapshot`, `restore`, `session`, `program`, `bundle`, `unmount`를 반환하며, 각 Promise 메서드는 해당 Effect를 그대로 실행하고 같은 실패를 reject합니다. `session`, `program`, `bundle`은 핸들의 값이며, `session.current`에는 `program`의 읽기 전용 질의가 받는 상태가 들어 있습니다.
 
 저장한 게임을 새 플레이어에서 재개하려면 마운트할 때 runtime snapshot을 전달하고 전체 save를 restore합니다.
 

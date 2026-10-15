@@ -105,6 +105,15 @@ window.mountParity = {
     send: (input: unknown) => facade.send(input as never),
     restore: (save: unknown) => facade.restore(save as never),
     bundleInfo: { index: facade.bundle.index, fingerprint: facade.program.fingerprint },
+    // The session's current state feeds the program's read-only queries.
+    queriedState: async () => {
+      const current = await Effect.runPromise(SubscriptionRef.get(facade.session.current))
+      return (await Effect.runPromise(facade.program.view(current.state))).state
+    },
+    snapshotState: async (snapshot: unknown) => {
+      const state = await Effect.runPromise(facade.program.restore(snapshot as never))
+      return (await Effect.runPromise(facade.program.view(state))).state
+    },
     unmount: () => facade.unmount(),
     error: describe
   },
@@ -266,6 +275,8 @@ window.mountParity = {
             restore: (save: unknown) => Promise<void>
             error: (error: unknown) => unknown
             bundleInfo: { readonly index: { readonly capabilitySnapshot: string }; readonly fingerprint: string }
+            queriedState: () => Promise<unknown>
+            snapshotState: (snapshot: unknown) => Promise<unknown>
             unmount: () => Promise<void>
           }
           closeEffect: () => Promise<void>
@@ -286,6 +297,8 @@ window.mountParity = {
       await api.facade.act({ type: "newGame" })
       await waitPlaying(api.facade.view)
       const facadeSave = await api.facade.snapshot()
+      const facadeQueried = await api.facade.queriedState()
+      const facadeSnapshotState = await api.facade.snapshotState(facadeSave.snapshot)
       const corrupt = JSON.parse(JSON.stringify(save)) as { snapshot: { project: string } }
       corrupt.snapshot.project = "wrong-project"
       const effectError = await api.effect.send({ type: "raiseOccasion", occasion: "start" }).catch(api.effect.error)
@@ -295,6 +308,8 @@ window.mountParity = {
       await api.closeEffect()
       return {
         saveState: JSON.stringify(save.snapshot.world.state),
+        facadeQueried: JSON.stringify(facadeQueried),
+        facadeSnapshotState: JSON.stringify(facadeSnapshotState),
         resumedState: JSON.stringify(resumed.snapshot.world.state),
         saveProject: save.snapshot.project,
         facadeProject: facadeSave.snapshot.project,
@@ -315,6 +330,8 @@ window.mountParity = {
     expect(result.effectCapability).toBe(result.facadeCapability)
     expect(result.facadeError).toEqual(result.effectError)
     expect(result.facadeRestoreError).toBeTruthy()
+    expect(result.facadeQueried).toBe(result.facadeSnapshotState)
+    expect(result.facadeQueried).not.toBe("undefined")
     expect(result.hostBasePath).toBe("forge/")
     expect(result.hostWarnings.some((warning: string) => warning.includes("already initialized"))).toBe(false)
     expect(bundleRequests).toBeGreaterThanOrEqual(1)

@@ -72,8 +72,10 @@ await player.act({ type: "newGame" })
 `bundleUrl` points to the directory containing `project.index.json`;
 `wasmUrl` points to the browser wasm binding. `assetsUrl` overrides
 `assetsBase`. `mountPlayer` returns `act`, `view`, `send`, `snapshot`, `restore`,
-`program`, `bundle`, and `unmount`; each Promise method is a thin wrapper around
-the corresponding Effect and rejects with its failure.
+`session`, `program`, `bundle`, and `unmount`; each Promise method is a thin wrapper
+around the corresponding Effect and rejects with its failure. `session`,
+`program` and `bundle` are the handle's values: `session.current` holds the
+state that `program`'s read-only queries take.
 
 To resume in a fresh player from a save, pass the save's runtime snapshot at
 mount time and restore the full save:
