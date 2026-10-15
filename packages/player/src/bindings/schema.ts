@@ -162,6 +162,19 @@ export const EffectSpec = Schema.Union([
 ]);
 export type EffectSpec = typeof EffectSpec.Type;
 
+export const Ended = Schema.Struct({
+  "by": Schema.String,
+  "screens": Schema.Record(Schema.String, Schema.suspend(() => EndedScreen))
+});
+export type Ended = typeof Ended.Type;
+
+export const EndedScreen = Schema.Struct({
+  "background": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "text": Schema.String,
+  "title": Schema.String
+});
+export type EndedScreen = typeof EndedScreen.Type;
+
 export const Fit = Schema.Literals([
   "cover",
   "contain"
@@ -243,6 +256,7 @@ export const Title = Schema.Struct({
 export type Title = typeof Title.Type;
 
 export const Ui = Schema.Struct({
+  "ended": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => Ended))),
   "font": Schema.optionalKey(Schema.NullOr(Schema.String)),
   "theme": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "title": Schema.optionalKey(Schema.NullOr(Schema.suspend(() => Title)))
