@@ -66,7 +66,7 @@ export function mountBook(book: HTMLElement): void {
   let frame = 0;
   const follow = () => {
     frame = 0;
-    const line = window.innerHeight * 0.46;
+    const line = window.innerHeight * 0.45;
     const inView = sections.filter((s) => s.getBoundingClientRect().top <= line).at(-1) ?? sections[0];
     if (inView) show(inView);
   };

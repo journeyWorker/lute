@@ -335,7 +335,7 @@ While a choice or bridge is waiting, a host can show one of Quayside's static
 barks without starting a second presentation. Ask `program.candidates`, find an
 eligible `entry`, and read its placeholder-free lines from `player.bundle`.
 The complete artifact-walking helper is in [custom hosts](/player/custom-hosts/);
-the essential 0.46 pattern is:
+the essential 0.45 pattern is:
 
 ```ts
 declare const showAmbientFromBundle: (bundle: unknown, candidate: unknown) => void

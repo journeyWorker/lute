@@ -1082,7 +1082,7 @@ html:has(.gb-book) main {
   .gb-nav a {
     grid-template-columns: auto auto;
     gap: 0.4rem;
-    padding: 0.46rem 0.7rem 0.55rem;
+    padding: 0.45rem 0.7rem 0.55rem;
     font-size: 1.15rem;
     white-space: nowrap;
     border: 1px solid color-mix(in srgb, var(--gb-on-ink) 45%, transparent);

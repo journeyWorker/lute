@@ -86,7 +86,7 @@ Keep the numeric position for ordering, and use `ClockView.slot` and
 
 **Writes that belong to the ending.** Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun` raise. A host write that belongs to the ending run — ending metadata, a final score — rides as `writes` on the input that causes the terminal transition, when that input carries writes: `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite`, whose writes land before the transition (`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout` and `worldEvent` carry no writes: an ending they cause records its state in the story (a `::set` in the branch that ends) or in a `hostWrite` sent before them. `newRun`'s writes seed the run it starts, where the ended run's `run.*` values read as `prev.run.*`. A `hostWrite` after the ending is still refused `E-RUNTIME-BUSY` with the state unchanged; its message now says where the write belongs.
 
-## 0.46 runtime additions
+## 0.45 runtime additions
 
 Read-only queries (`candidates`, `evaluate`, `def`, `gate`, and `view`) answer
 at every await (`idle`, `awaitChoice`, `awaitBridge`, and `ended`) without
@@ -98,7 +98,7 @@ locating its artifact body, and showing it only when every record is a
 placeholder-free `line`. This static bark records nothing (no read mark,
 `once` spending, or writes); a recording or dynamic bark MUST be raised after
 the story returns to `idle`. Concurrent presentations are not planned. See
-the [0.46 background-bark host pattern](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#32-the-pattern)
+the [0.45 background-bark host pattern](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#32-the-pattern)
 and the [full event contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md).
 
 ## 0.42 runtime additions

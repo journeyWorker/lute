@@ -16,7 +16,7 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 | **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.46.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.46.schema.json`](../schemas/lute-events-0.46.schema.json), [`schemas/lute-snapshot-0.46.schema.json`](../schemas/lute-snapshot-0.46.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
-| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.45.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
+| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.46.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
 
 
 The axes are **independent in meaning**: a toolchain release need not advance
@@ -1156,3 +1156,19 @@ field changes, but as a minor release the schema files move to the `0.45`
 line, `bindingsVersion` becomes `"0.45"` and player saves and profiles read
 `"0.45"`. Engines and hosts gated on `0.44` must widen their gates to `0.45`.
 See the [`0.45.0` proposal](proposals/scenario-dsl/0.45.0.md).
+
+**`0.46.0` aligns every visible axis at `0.46.0`; the bindings and the player
+packages earn it.** Bindings gain an optional `ui.ended` table that names the
+ending screen by a closed-domain state path, and `ui` asset references resolve
+through `assets:` keys like the player; player-web mounts with
+`LutePlayer.make`'s start and options, exposes the loaded bundle (and, on the
+Promise facade, `send`/`snapshot`/`restore` and the handle's
+`session`/`program`/`bundle`), uses a private Pixi asset manager, fixes the
+name plate and renders named ending screens. The checker refuses a component
+param named like a `::use` key (`at`, `instance` join `component`, `when`);
+`lute test --coverage` counts play arms and plays can expect a refused raise.
+IR, Event and snapshot are stamp-only: the schema files move to the `0.46`
+line (the bindings schema also gains `ui.ended`), `bindingsVersion` becomes
+`"0.46"` and player saves and profiles read `"0.46"`. Engines and hosts gated
+on `0.45` must widen their gates to `0.46`. See the
+[`0.46.0` proposal](proposals/scenario-dsl/0.46.0.md).

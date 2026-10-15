@@ -1,5 +1,5 @@
 /**
- * dsl 0.46.0 §3: the "background bark during a conversation" host pattern.
+ * dsl 0.45.0 §3: the "background bark during a conversation" host pattern.
  * Queries answer at every await without changing the state; a static bark's
  * lines are read from the bundle; a bark that records is raised after idle.
  */
@@ -74,7 +74,7 @@ const heldLog = (hold: Ref.Ref<Hold | undefined>) =>
 
 const raise = (occasion: string): Contract.Input => ({ type: "raiseOccasion", occasion })
 
-describe("dsl 0.46.0 §3 background barks", () => {
+describe("dsl 0.45.0 §3 background barks", () => {
   it.effect("queries answer at every await, mid-send included, and change nothing; a static bark reads from the bundle", () =>
     Effect.gen(function* () {
       const root = yield* compileBundle(barkFixtureRoot)

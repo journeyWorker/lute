@@ -159,7 +159,7 @@ and `restore` with the same failures as the underlying Effects. Its `bundle`
 is the bundle loaded by that player, so hosts can inspect `index.documents`
 and `artifacts` without loading a second copy.
 
-## Background barks during a conversation (0.46)
+## Background barks during a conversation (0.45)
 
 A host can show an ambient line while the story waits at a choice or a bridge,
 without a second presentation (the runtime keeps one open presentation, and
@@ -247,7 +247,7 @@ placeholders, `match`) is raised as its occasion once the story is back at
 yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
 ```
 
-See [0.46.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#3-background-barks-during-a-conversation-host-pattern).
+See [0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern).
 
 ## Upgrading from 0.40
 

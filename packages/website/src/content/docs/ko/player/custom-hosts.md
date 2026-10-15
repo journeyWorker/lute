@@ -160,7 +160,7 @@ await fresh.unmount()
 로드한 번들이므로 `index.documents`와 `artifacts`를 두 번 로드하지 않고
 확인할 수 있습니다.
 
-## 대화 중 배경 bark (0.46)
+## 대화 중 배경 bark (0.45)
 
 호스트는 이야기가 선택지나 브리지에서 기다리는 동안, 두 번째 프레젠테이션 없이 주변 대사를 보여 줄 수 있습니다(런타임은 열린 프레젠테이션을 하나만 유지하며, 동시 프레젠테이션은 계획하지 않습니다). 읽기 전용 질의 — `player.program`의 `candidates`, `evaluate`, `def`, `gate`, `view` — 는 모든 await에서 응답하고 상태를 바꾸지 않습니다. 그래서 대화가 멈춰 있는 동안 bark를 고르고, 그 대사를 번들에서 읽을 수 있습니다.
 
@@ -233,7 +233,7 @@ const ambientBark = (player: LutePlayerHandle, bundle: Bundle.Bundle) => Effect.
 yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
 ```
 
-[0.46.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#3-background-barks-during-a-conversation-host-pattern)을 참고하세요.
+[0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern)을 참고하세요.
 
 ## 0.40에서 올리기
 
