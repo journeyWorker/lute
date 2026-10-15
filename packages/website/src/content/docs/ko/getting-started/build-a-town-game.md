@@ -102,6 +102,7 @@ components: [../components/clock-backdrop.component.lute]
 on: visit
 target: place.square
 priority: 10
+once: false
 ---
 
 ## The market square
@@ -114,6 +115,9 @@ priority: 10
   <choice id="restore" text="Restore it as a community hall">
     ::set{run.ending = 'restore'}
     @june: We will fill it with lanterns and neighbors.
+  </choice>
+  <choice id="wait" text="Wait for the bell to ring again">
+    @june: We can take one more evening before deciding.
   </choice>
   <choice id="retire" text="Let the building rest with the tide">
     ::set{run.ending = 'retire'}
@@ -161,7 +165,7 @@ id: barks
 title: Quayside background voices
 ---
 
-<entry id="marketBark" category="bark" on="visit" target="place.square" priority="-1">
+<entry id="marketBark" category="bark" on="bark" priority="-1">
   @june: Fresh bread, repaired nets, and one more story before sunset.
 </entry>
 
@@ -205,15 +209,43 @@ expect:
   state: { run.ending: retire }
 ```
 
-저장소 루트에서 프로젝트를 검사하고 커버리지를 확인합니다.
+커버리지 플레이는 오후와 저녁까지 진행하고 `tide`를 열며 두 정적 바크도
+제시합니다:
 
-```sh
-target/debug/lute check-project --deny-warnings docs/examples/quayside
-target/debug/lute test --coverage docs/examples/quayside
+```yaml check="docs/examples/quayside/plays/coverage.play.yaml"
+# Exercise every backdrop slot, the gated occasion, the static barks, and ending none.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: bark
+    expect: { winner: marketBark }
+  - occasion: visit
+    target: place.pier
+    expect: { winner: pierBark }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: evening }
+  - occasion: tide
+    expect: { winner: tide }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }
 ```
 
-커버리지는 플레이 스크립트가 실제로 보여 준 match arm도 합칩니다. 따라서
-플레이만으로 실행된 배경 arm도 커버리지에 반영됩니다.
+이제 coverage는 market 배경 match `3/3`, ending match `3/3`, 세 branch
+선택지, 두 bark entry를 보고합니다. opening과 tide 컴포넌트는 의도적으로
+`1/3`입니다. 각각 런 시작(아침)과 저녁 게이트에서만 진입하기 때문입니다.
 
 ## 4. 바인딩과 이름 있는 결말 화면
 
@@ -262,9 +294,7 @@ ui:
 
 ```ts
 import { Assets, Application, Sprite } from "pixi.js"
-import { Effect } from "effect"
-import { SubscriptionRef } from "effect"
-import { mount } from "@lute-lang/player-web"
+import { mountPlayer } from "@lute-lang/player-web"
 
 const app = new Application()
 await app.init({ resizeTo: window })
@@ -278,21 +308,23 @@ const options = {
   wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm"
 } as const
 
-// `mount`는 Effect API입니다. 앱 수명 동안 Scope를 유지하세요.
-const player = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-  return yield* mount(document.querySelector("#player")!, options)
-})))
-const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+// Promise facade가 unmount까지 마운트 Scope를 유지합니다.
+const player = await mountPlayer(document.querySelector("#player")!, options)
 ```
 
 `program.gate`로 먼저 확인한 뒤 열려 있을 때만 `send`로 계기를 발생시킵니다.
 
 ```ts
-const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
-const gate = await Effect.runPromise(player.program.gate(current.state, "tide"))
-if (gate.open) {
-  await Effect.runPromise(player.send({ type: "raiseOccasion", occasion: "tide" }))
-}
+import { Effect, SubscriptionRef } from "effect"
+import { mount } from "@lute-lang/player-web"
+
+const raiseTide = Effect.scoped(Effect.gen(function* () {
+  const effectPlayer = yield* mount(document.querySelector("#player")!, options)
+  const current = yield* SubscriptionRef.get(effectPlayer.session.current)
+  const gate = yield* effectPlayer.program.gate(current.state, "tide")
+  if (gate.open) yield* effectPlayer.send({ type: "raiseOccasion", occasion: "tide" })
+}))
+await Effect.runPromise(raiseTide)
 ```
 
 선택지나 브리지에서 기다리는 동안에는 두 번째 프레젠테이션을 시작하지 않고

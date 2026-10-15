@@ -1,0 +1,28 @@
+# Exercise every backdrop slot, the gated occasion, the static barks, and ending none.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: bark
+    expect: { winner: marketBark }
+  - occasion: visit
+    target: place.pier
+    expect: { winner: pierBark }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: evening }
+  - occasion: tide
+    expect: { winner: tide }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }

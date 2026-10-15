@@ -20852,9 +20852,8 @@ The schema gives `run.slot` a named enum domain and `run.ending` the closed
 domain `[none, restore, retire]`. Its terminal condition is
 `run.ending != 'none'`. A component receives the slot through
 `slot=@currentSlot` and has one literal `::bg` arm per slot; directive fields
-remain build-time values. A lore document uses
-`<entry category="bark" on="visit" target="place.square">` for static
-background lines.
+remain build-time values. A lore document uses a static bark entry on an
+occasion for background lines.
 
 The restore play demonstrates the 0.46 refusal assertion:
 
@@ -20885,14 +20884,3 @@ See [Build a town game](/getting-started/build-a-town-game/),
 [The clock](/language/clock/), [custom hosts](/player/custom-hosts/), and the
 [runtime contract](/tooling/runtime-contract/).
 
-The 0.46 reference updates are also reflected in the current pages:
-[components and extends](/language/components-and-extends/) documents
-reserved component-site names, [player bindings](/player/bindings/) documents
-`ui.ended` and UI asset-key resolution, [player getting started](/player/getting-started/)
-and [custom hosts](/player/custom-hosts/) document player-web mount parity,
-private assets, and save/resume, and [playing a story](/tooling/play/) documents
-refused occasion expectations and play coverage. The [runtime contract](/tooling/runtime-contract/)
-page documents the clock HUD view. [State schemas](/state/schemas/),
-[diagnostics](/reference/diagnostics/), [reserved names](/reference/reserved-names/),
-and [the CLI](/tooling/cli/) carry the corresponding 0.46 checker and command
-notes in their mirrored sections.

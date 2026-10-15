@@ -104,6 +104,7 @@ components: [../components/clock-backdrop.component.lute]
 on: visit
 target: place.square
 priority: 10
+once: false
 ---
 
 ## The market square
@@ -116,6 +117,9 @@ priority: 10
   <choice id="restore" text="Restore it as a community hall">
     ::set{run.ending = 'restore'}
     @june: We will fill it with lanterns and neighbors.
+  </choice>
+  <choice id="wait" text="Wait for the bell to ring again">
+    @june: We can take one more evening before deciding.
   </choice>
   <choice id="retire" text="Let the building rest with the tide">
     ::set{run.ending = 'retire'}
@@ -163,7 +167,7 @@ id: barks
 title: Quayside background voices
 ---
 
-<entry id="marketBark" category="bark" on="visit" target="place.square" priority="-1">
+<entry id="marketBark" category="bark" on="bark" priority="-1">
   @june: Fresh bread, repaired nets, and one more story before sunset.
 </entry>
 
@@ -208,16 +212,45 @@ expect:
   state: { run.ending: retire }
 ```
 
-Run the checks from the repository root:
+The coverage play also walks afternoon and evening, opens `tide`, and presents
+both static barks:
 
-```sh
-target/debug/lute check-project --deny-warnings docs/examples/quayside
-target/debug/lute test --coverage docs/examples/quayside
+```yaml check="docs/examples/quayside/plays/coverage.play.yaml"
+# Exercise every backdrop slot, the gated occasion, the static barks, and ending none.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: bark
+    expect: { winner: marketBark }
+  - occasion: visit
+    target: place.pier
+    expect: { winner: pierBark }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: afternoon }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: wait }
+    expect: { winner: market, state: { run.ending: none } }
+  - advance: { to: evening }
+  - occasion: tide
+    expect: { winner: tide }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: retire }
+    expect: { winner: market, state: { run.ending: retire } }
+expect:
+  end: terminal
+  state: { run.ending: retire }
 ```
 
-Coverage merges the match arms presented by the play scripts, so the three
-clock backdrop arms are exercised by these plays as the project grows. A gated
-raise is a play assertion, not a workaround in the host.
+Coverage now reports the market backdrop match `3/3`, ending match `3/3`, all
+three branch choices, and both bark entries. The opening and tide components
+remain `1/3` by design: those scenes are only entered at run start (morning)
+and by the evening gate respectively. A gated raise is a play assertion, not
+a workaround in the host.
 
 ## 4. Bindings and named ending screens
 
@@ -267,9 +300,7 @@ That means the host may load its map before or after mounting:
 
 ```ts
 import { Assets, Application, Sprite } from "pixi.js"
-import { Effect } from "effect"
-import { SubscriptionRef } from "effect"
-import { mount } from "@lute-lang/player-web"
+import { mountPlayer } from "@lute-lang/player-web"
 
 const app = new Application()
 await app.init({ resizeTo: window })
@@ -283,11 +314,8 @@ const options = {
   wasmUrl: "/wasm/lute_runtime_wasm_bg.wasm"
 } as const
 
-// `mount` is the Effect API; keep its scope alive for the app lifecycle.
-const player = await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-  return yield* mount(document.querySelector("#player")!, options)
-})))
-const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
+// The Promise facade keeps the mounted scope alive until unmount.
+const player = await mountPlayer(document.querySelector("#player")!, options)
 ```
 
 For a normal page, keep the `Scope` around your app lifecycle (or use the
@@ -295,11 +323,16 @@ Promise facade). To open a gated occasion, query first and then send only when
 its gate is open:
 
 ```ts
-const current = await Effect.runPromise(SubscriptionRef.get(player.session.current))
-const gate = await Effect.runPromise(player.program.gate(current.state, "tide"))
-if (gate.open) {
-  await Effect.runPromise(player.send({ type: "raiseOccasion", occasion: "tide" }))
-}
+import { Effect, SubscriptionRef } from "effect"
+import { mount } from "@lute-lang/player-web"
+
+const raiseTide = Effect.scoped(Effect.gen(function* () {
+  const effectPlayer = yield* mount(document.querySelector("#player")!, options)
+  const current = yield* SubscriptionRef.get(effectPlayer.session.current)
+  const gate = yield* effectPlayer.program.gate(current.state, "tide")
+  if (gate.open) yield* effectPlayer.send({ type: "raiseOccasion", occasion: "tide" })
+}))
+await Effect.runPromise(raiseTide)
 ```
 
 While a choice or bridge is waiting, a host can show one of Quayside's static

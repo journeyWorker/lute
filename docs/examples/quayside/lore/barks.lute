@@ -4,7 +4,7 @@ id: barks
 title: Quayside background voices
 ---
 
-<entry id="marketBark" category="bark" on="visit" target="place.square" priority="-1">
+<entry id="marketBark" category="bark" on="bark" priority="-1">
   @june: Fresh bread, repaired nets, and one more story before sunset.
 </entry>
 
