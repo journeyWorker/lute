@@ -159,7 +159,7 @@ and `restore` with the same failures as the underlying Effects. Its `bundle`
 is the bundle loaded by that player, so hosts can inspect `index.documents`
 and `artifacts` without loading a second copy.
 
-## Background barks during a conversation (0.45)
+## Background barks during a conversation (0.46)
 
 A host can show an ambient line while the story waits at a choice or a bridge,
 without a second presentation (the runtime keeps one open presentation, and
@@ -247,7 +247,7 @@ placeholders, `match`) is raised as its occasion once the story is back at
 yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
 ```
 
-See [0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern).
+See [0.46.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#3-background-barks-during-a-conversation-host-pattern).
 
 ## Upgrading from 0.40
 
@@ -335,7 +335,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.45",
+  "saveVersion": "0.46",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -344,7 +344,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.45"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.46"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 ## Rollback and history
 

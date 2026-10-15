@@ -160,7 +160,7 @@ await fresh.unmount()
 로드한 번들이므로 `index.documents`와 `artifacts`를 두 번 로드하지 않고
 확인할 수 있습니다.
 
-## 대화 중 배경 bark (0.45)
+## 대화 중 배경 bark (0.46)
 
 호스트는 이야기가 선택지나 브리지에서 기다리는 동안, 두 번째 프레젠테이션 없이 주변 대사를 보여 줄 수 있습니다(런타임은 열린 프레젠테이션을 하나만 유지하며, 동시 프레젠테이션은 계획하지 않습니다). 읽기 전용 질의 — `player.program`의 `candidates`, `evaluate`, `def`, `gate`, `view` — 는 모든 await에서 응답하고 상태를 바꾸지 않습니다. 그래서 대화가 멈춰 있는 동안 bark를 고르고, 그 대사를 번들에서 읽을 수 있습니다.
 
@@ -233,7 +233,7 @@ const ambientBark = (player: LutePlayerHandle, bundle: Bundle.Bundle) => Effect.
 yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
 ```
 
-[0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern)을 참고하세요.
+[0.46.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#3-background-barks-during-a-conversation-host-pattern)을 참고하세요.
 
 ## 0.40에서 올리기
 
@@ -320,7 +320,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.45",
+  "saveVersion": "0.46",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -329,7 +329,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.45"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.46"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 ## 롤백과 기록
 

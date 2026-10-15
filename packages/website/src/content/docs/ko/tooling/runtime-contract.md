@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.45.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.45.schema.json)
+[`schemas/lute-ir-0.46.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.46.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -84,7 +84,7 @@ const hud = Effect.gen(function* () {
 
 **엔딩에 속한 쓰기.** 런타임이 `ended`로 응답한 뒤에는 `newRun`이나 `outsideRun` 계기만 받습니다. 그래서 끝난 런에 속한 호스트 쓰기(엔딩 메타데이터, 최종 점수)는 종료를 일으키는 입력이 쓰기를 실을 수 있다면 그 입력의 `writes`에 실어야 합니다. `raiseOccasion`, `advanceClock`, `bridgeResult`, `hostWrite`가 그런 입력이며, 이들의 쓰기는 종료 전환보다 먼저 적용됩니다(`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout`, `worldEvent`는 쓰기를 싣지 않으므로, 이들이 일으키는 엔딩은 그 상태를 스토리(끝나는 갈래의 `::set`)나 그 전에 보낸 `hostWrite`에 기록합니다. `newRun`의 쓰기는 새로 시작하는 런의 초기값이며, 그 런에서 끝난 런의 `run.*` 값은 `prev.run.*`로 읽힙니다. 엔딩 뒤의 `hostWrite`는 여전히 상태를 바꾸지 않고 `E-RUNTIME-BUSY`로 거절되며, 이제 메시지가 그 쓰기가 어디에 실려야 하는지 알려 줍니다.
 
-## 0.45 런타임 추가 사항
+## 0.46 런타임 추가 사항
 
 읽기 전용 질의(`candidates`, `evaluate`, `def`, `gate`, `view`)는 모든 await
 (`idle`, `awaitChoice`, `awaitBridge`, `ended`)에서 상태를 바꾸지 않고 답합니다. TypeScript
@@ -94,7 +94,7 @@ bridge가 대기 중일 때는 해당 응답만 받습니다. 호스트는 `cand
 `line`일 때에만 프레젠테이션 밖에서 background bark를 표시할 수 있습니다. 이 static bark는
 읽음 표시, `once` 소비, writes를 기록하지 않습니다. 기록이 필요하거나 동적인 bark는 이야기가
 `idle`로 돌아온 뒤 raise해야 합니다. 동시 프레젠테이션은 계획하지 않습니다. 자세한 내용은
-[0.45 background-bark 호스트 패턴](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#32-the-pattern)과
+[0.46 background-bark 호스트 패턴](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#32-the-pattern)과
 [전체 이벤트 계약](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md)을 참고하세요.
 
 ## 0.42 런타임 추가 사항
@@ -293,14 +293,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.45` 엔진은 `0.45.*` 아티팩트만 받아들이고 `0.44.*` 및 `0.46.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.46` 엔진은 `0.46.*` 아티팩트만 받아들이고 `0.44.*` 및 `0.46.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.45.0"
+irVersion: "0.46.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -316,7 +316,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.45.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.46.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.

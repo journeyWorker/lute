@@ -139,7 +139,7 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    is a player profile.
 4. **Non-blocking dialogue:** not in R1. One open presentation at a time; a
    `RaiseOccasion` while one is open is refused with a defined outcome.
-   Concurrent walks are not planned (0.45, below).
+   Concurrent walks are not planned (0.46, below).
 5. **IR inside the runtime:** R1 keeps `serde_json::Value` access; typed IR is
    a later slice.
 6. Which `lute-trace` parts move: settled in the spec.
@@ -194,7 +194,7 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    - **Timed choice is a language/runtime rule.** The author names the option
      a timeout takes; the runtime accepts a `timeout` input and picks it. It
      is part of replay and saves, not a player setting.
-   - **Concurrent presentations stay deferred** past R3 (dropped in 0.45,
+   - **Concurrent presentations stay deferred** past R3 (dropped in 0.46,
      §6).
    - **The web player is a real player, not a thin presenter:** Effect 4 +
      XState v6 (exact alpha pin) + PixiJS 8 (WebGL) + Web Audio, with proper
@@ -225,11 +225,11 @@ Work the way 0.32–0.37 were run: spec + plan under
 slice, one Rust owner at a time, `cargo clean` only by the orchestrator between
 slices.
 
-## 6. Concurrent presentations: not needed (owner, 0.45)
+## 6. Concurrent presentations: not needed (owner, 0.46)
 
 The runtime keeps one open presentation, and concurrent presentations are no
 longer planned
-([0.45 decisions §3](../superpowers/notes/2026-10-15-lute-0.45-decisions.md)).
+([0.46 decisions §3](../superpowers/notes/2026-10-15-lute-0.46-decisions.md)).
 Every case that asked for them has a single-presentation answer:
 
 - **A multi-speaker conversation is one scene**: one presentation with many
@@ -241,6 +241,6 @@ Every case that asked for them has a single-presentation answer:
   `candidates` (read-only, every await) and shows a static bark's lines from
   the bundle outside the presentation; a bark that must record (read, `once`,
   writes) is raised after the story is back at `idle`
-  ([0.45.0 §3](../proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern)).
+  ([0.46.0 §3](../proposals/scenario-dsl/0.46.0.md#3-background-barks-during-a-conversation-host-pattern)).
 
 Keeping one presentation keeps replay, saves and the event contract simple.

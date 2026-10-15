@@ -1,6 +1,6 @@
 # The Signal at Low Tide
 
-A short English visual novel for the Lute 0.45 web player. Mara, Elio, and the
+A short English visual novel for the Lute 0.46 web player. Mara, Elio, and the
 missing Liora follow a lighthouse signal through one foggy day. The story takes
 about 10–15 minutes and has dawn and dusk endings. The chapter-one route and the
 chapter-two timed crossing both affect trust and the final choice.

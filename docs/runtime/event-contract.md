@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.45.0 runtime contract.**
+**Status: 0.46.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.45.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.45.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.46.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.46.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -159,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.45.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.46.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -212,7 +212,7 @@ implementation-only report:
 | `def(name, args?)` (0.41) | `Evaluation` or a rejection, for a project def the bundle carries in `project.index.json` `defs`; `args` is one JSON scalar per declared parameter (absent = `[]`), bound to its `param` nodes. Arity or type misfits (an `enum`/closed `domain`/`entity` argument must be a member) are `E-RUNTIME-INPUT`. |
 | `gate(occasion, target?)` (0.41) | `Gate` `{ open: bool, unresolved?: string[] }`: whether a `raiseOccasion` with no writes would pass the seam now — `raisedWhen` false, or `terminal` holding for a non-`outsideRun` occasion, is `{open: false}`; an undecided seam lists its unresolved reads. An undeclared occasion is `E-RUNTIME-INPUT`. |
 
-### Queries at every await; background barks (0.45)
+### Queries at every await; background barks (0.46)
 
 The read-only queries `candidates`, `evaluate`, `def`, `gate` and `view` answer
 at every await (`idle`, `awaitChoice`, `awaitBridge` and `ended`) and MUST NOT
@@ -255,7 +255,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.45.schema.json` and in
+definitions in `lute-events-0.46.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -366,7 +366,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.45.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.46.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

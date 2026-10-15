@@ -137,7 +137,7 @@ export abstract class Widget extends Container implements Focusable {
   /** Set widget availability and pointer interaction. */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
-    this.alpha = enabled ? 1 : 0.45
+    this.alpha = enabled ? 1 : 0.46
     this.eventMode = enabled ? "static" : "none"
     this.hit.eventMode = enabled ? "static" : "none"
   }

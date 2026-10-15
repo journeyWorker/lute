@@ -6,7 +6,7 @@ description: Complete player.bindings.yaml sections, effect catalogue, parameter
 `player.bindings.yaml` is optional and sits beside `lute.project.yaml`. `lute check-project` reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
-bindingsVersion: "0.45"
+bindingsVersion: "0.46"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -49,7 +49,7 @@ flow:
 
 ## Top-level sections
 
-- `bindingsVersion` is exactly `"0.45"`. `canvas` requires positive `width` and `height`; `assetsBase` is optional.
+- `bindingsVersion` is exactly `"0.46"`. `canvas` requires positive `width` and `height`; `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to `image`; `times` maps `bg.time` values to alternate files.
 - `characters` is keyed by cast id. Each value has `sprite.default`, optional `sprite.emotions`, optional `costumes` (each with the same sprite shape), and optional `nameColor`.

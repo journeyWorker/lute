@@ -1,4 +1,4 @@
-//! Artifact-level staging dispatch tests for plugin lowerings in 0.45.
+//! Artifact-level staging dispatch tests for plugin lowerings in 0.46.
 
 use serde_json::Value;
 use std::process::Command;

@@ -111,7 +111,7 @@ fn every_domain_unknown_site_names_the_rename() {
                 (
                     "lute.project.yaml",
                     "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins: { game.occ: true }\n\
-                     defaults:\n  luteVersion: \"0.45.0\"\n",
+                     defaults:\n  luteVersion: \"0.46.0\"\n",
                 ),
                 (
                     "plugins/game.occ/plugin.yaml",

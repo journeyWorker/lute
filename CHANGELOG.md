@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.45.0`, the grammar and semantics the checker
+- **Language** — currently `0.46.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.45.0`) and gated on by consuming engines.
+  artifact (currently `0.46.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,38 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.46.0]
+
+**Brinewake dogfood: player-web host parity, named endings, and safer play refusals** (spec [`0.46.0.md`](docs/proposals/scenario-dsl/0.46.0.md); plan [`2026-10-16-lute-0.46.0-brinewake.md`](docs/superpowers/plans/2026-10-16-lute-0.46.0-brinewake.md); decisions [`2026-10-16-lute-0.46-decisions.md`](docs/superpowers/notes/2026-10-16-lute-0.46-decisions.md)).
+
+### Added
+- Named ending screens, player-web host parity, and the Promise facade `session` value (#100, #102, #103, #104, #105, #106, #107, #110, #111, #112).
+- Documented guidance and compatibility notes for #101, #108, and #109.
+
+### Changed
+- All release, language, IR, event, snapshot, bindings, save/profile, schema, and npm package stamps advance to `0.46.0` / `0.46`; schemas move to the `0.46` line.
+
+### Syntax
+- Component parameter and ending syntax fixes (#100, #102).
+
+### Semantics
+- Checker and runtime behavior fixes (#103, #104, #105).
+
+### IR
+- Contract stamps and generated schemas advance to 0.46.
+
+### Plugin
+- Player-web host parity and provider handling (#106, #107).
+
+### CLI
+- Safer play refusals and Promise facade session reporting (#110).
+
+### Diagnostics
+- Improved diagnostics for invalid component parameters and bindings (#111).
+
+### Identity
+- Named ending identity and session behavior (#112).
 
 ## [0.45.0]
 

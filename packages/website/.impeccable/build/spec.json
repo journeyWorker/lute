@@ -317,7 +317,7 @@
         },
         {
           "hex": "#ecf7f2",
-          "coverage": 0.4545
+          "coverage": 0.4645
         }
       ],
       "detail": {
@@ -1051,7 +1051,7 @@
           "contrast": 1.6843,
           "serif": 0.4782,
           "densTall": 0.4305,
-          "densX": 0.4551,
+          "densX": 0.4651,
           "weight": 0.4305
         },
         "widthClass": "normal",
@@ -1437,9 +1437,9 @@
           "stemW": 0.1553,
           "contrast": 1.6334,
           "serif": 1.0869,
-          "densTall": 0.4592,
+          "densTall": 0.4692,
           "densX": 0.5212,
-          "weight": 0.4592
+          "weight": 0.4692
         },
         "widthClass": "normal",
         "weightClass": "regular"
@@ -2648,7 +2648,7 @@
           "advance": 0.7713,
           "advTall": 0.7713,
           "advX": null,
-          "gap": 0.4557,
+          "gap": 0.4657,
           "xRatio": null,
           "stemW": 0.1901,
           "contrast": 1.1606,
