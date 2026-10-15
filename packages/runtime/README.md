@@ -6,7 +6,10 @@ function, query the state (`view`, `evaluate`, `def`, `gate`, `candidates`, …)
 and replay input logs, on Bun and in browsers.
 
 ```console
-bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+# For a local pack, replace @lute-lang/runtime with:
+# bun add @lute-lang/runtime@file:/tmp/lute-pack/lute-lang-runtime-0.46.0.tgz effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+# or use the dependencies and overrides printed by scripts/pack-local.sh.
 # or, for a browser application:
 bun add @lute-lang/runtime effect@4.0.2 @effect/platform-browser@4.0.2
 ```

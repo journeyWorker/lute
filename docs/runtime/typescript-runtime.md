@@ -17,19 +17,28 @@ wrapper around an imperative API.
 
 ## Install
 
-Install the runtime and Effect, plus the platform package for the host:
+Install the runtime and Effect, plus the platform packages for the host. Bun
+hosts need both platform peers on the same exact Effect release line:
 
 ```console
-bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2
-# or, for a browser application:
+bun add @lute-lang/runtime effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+# For a local pack, replace @lute-lang/runtime with:
+# bun add @lute-lang/runtime@file:/tmp/lute-pack/lute-lang-runtime-0.46.0.tgz effect@4.0.2 @effect/platform-bun@4.0.2 @effect/platform-node-shared@4.0.2
+```
+
+For a browser application:
+
+```console
 bun add @lute-lang/runtime effect@4.0.2 @effect/platform-browser@4.0.2
 ```
 
-`effect` is an exact peer dependency at `4.0.2`; the Bun and browser platform
-peers are optional, but the selected platform layer requires its matching
-package. `@lute-lang/runtime` is released in lockstep with the Lute toolchain.
-To run a host against an unreleased checkout, pack the packages as
-[Local dogfooding](#local-dogfooding) describes.
+`effect` is an exact peer dependency at `4.0.2`; the Bun, browser, and
+node-shared platform peers are optional, but the selected platform layer
+requires its matching packages. `@lute-lang/runtime` is released in lockstep
+with the Lute toolchain. To run a host against an unreleased checkout, pack
+the packages with `scripts/pack-local.sh`; it prints the tarball
+`dependencies` and `overrides` entries to paste into the host's
+`package.json`.
 
 ## Bun
 
@@ -179,6 +188,34 @@ A loaded `Program` has this platform-free interface:
 | `evaluate(state, expr)` | `Effect<Evaluation, QueryRejection>` | Evaluate an IR `exprNode` (the `expr` of a `{cel, expr}` pair, e.g. an objective's `visibleWhen.expr`, or the output of `lute expr`) as a walk's guard reads it. |
 | `def(state, name, args?)` | `Effect<Evaluation, QueryRejection>` | Evaluate the index def `name`, its parameters bound to `args` (0.41). |
 | `gate(state, occasion, target?)` | `Effect<Gate, InvalidInput>` | Whether a `raiseOccasion` of `occasion` (for `target`) with no writes would pass the seam now (0.41). |
+
+### Clock values and labels
+
+`Program.clock(state)` is the numeric clock position: `day` and `slot`
+(the zero-based slot index). It does not return a slot name or a weekday label.
+Read those presentation values from `program.view(state).clock`, whose
+`ClockView` is `{ day, slot, weekday, weekdayLabel, ended, last }` (the
+optional fields are `null` or absent when that clock does not declare them).
+For example, a HUD can keep the numeric position for ordering while displaying
+the view's labels:
+
+```ts
+import { Effect, Option } from "effect"
+
+const hud = Effect.gen(function* () {
+  const position = yield* program.clock(state)
+  const world = yield* program.view(state)
+  if (Option.isNone(position) || world.clock == null) return "No clock"
+  const clock = world.clock
+  return `${clock.weekdayLabel ?? `Day ${clock.day}`} — ${
+    clock.slot ?? `slot ${position.value.slot}`
+  }`
+})
+```
+
+Here `program` is a loaded `Program` and `state` is its `RuntimeState`; the
+snippet intentionally uses `ClockView.slot` for the authored slot name and
+`ClockView.weekdayLabel` for the display label.
 
 `Evaluation` is `{ value: Value, unresolved?: string[] }`: `value` is `bool`,
 `int`, `double`, `str`, or `unknown` (with `unresolved` naming why), never

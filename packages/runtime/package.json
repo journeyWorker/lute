@@ -40,13 +40,17 @@
   "peerDependencies": {
     "effect": "4.0.2",
     "@effect/platform-bun": "4.0.2",
-    "@effect/platform-browser": "4.0.2"
+    "@effect/platform-browser": "4.0.2",
+    "@effect/platform-node-shared": "4.0.2"
   },
   "peerDependenciesMeta": {
     "@effect/platform-bun": {
       "optional": true
     },
     "@effect/platform-browser": {
+      "optional": true
+    },
+    "@effect/platform-node-shared": {
       "optional": true
     }
   },
