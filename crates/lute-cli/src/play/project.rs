@@ -206,6 +206,7 @@ fn assemble_bundle_from_model(
     }
     let mut compiled: BTreeMap<String, ExecutionIr> = BTreeMap::new();
     let mut failures: BTreeMap<PathBuf, String> = BTreeMap::new();
+    let mut needles = NeedleVocab::default();
     let mut source_maps = CoverageMaps::default();
     for source in source_model.documents() {
         let Some(rel) = project_rel(&source.path, project_dir) else {

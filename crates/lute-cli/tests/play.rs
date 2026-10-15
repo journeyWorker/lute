@@ -2991,6 +2991,7 @@ fn declared_advance_cascade_has_a_runtime_bound() {
 fn a_gated_occasion_can_be_expected_refused_and_play_continues() {
     let script = r#"
 steps:
+  - engine: { state: { run.noise: 0 } }
   - occasion: listen
     expect:
       refused: E-OCCASION-GATE
@@ -3013,7 +3014,7 @@ expect:
         text.contains("note: the raise was refused with E-OCCASION-GATE"),
         "{text}"
     );
-    assert!(text.contains("step 2"), "{text}");
+    assert!(text.contains("step 3"), "{text}");
 }
 #[test]
 fn refused_expectation_misses_when_occasion_is_accepted() {

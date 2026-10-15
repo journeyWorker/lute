@@ -767,11 +767,8 @@ fn run_play_for_test_inner(
         played_choices(p, document, transcript, &mut choices);
     }
     let mut arms = Vec::new();
-    for pr in &beats {
-        collect_arms(p, &pr.document, &pr.transcript, &mut arms);
-    }
-    for (document, transcript) in &quests {
-        collect_arms(p, document, transcript, &mut arms);
+    for (document, record) in &driver.records {
+        collect_arms(p, document, std::slice::from_ref(record), &mut arms);
     }
     let initial_complete: BTreeSet<String> = play
         .start

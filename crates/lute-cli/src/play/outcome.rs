@@ -28,6 +28,7 @@ pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
                 label: s.label.clone(),
                 world: s.world.clone(),
                 options: std::mem::take(&mut carried),
+                ..StepOutcome::default()
             };
             if matches!(
                 &s.body,

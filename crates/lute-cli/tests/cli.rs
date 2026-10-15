@@ -1980,8 +1980,8 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     write_at(
         &dir,
         "scenes/s.lute",
-        "---\nkind: scene\nid: s\non: visit\nonce: false\n---\n\n## S\n\
-         <match subject=\"true\">\n<when is=\"true\">\n@narrator: yes.\n</when>\n\
+        "---\nkind: scene\nid: s\non: visit\nonce: false\nstate:\n  run.flag: { type: bool, default: true }\n---\n\n## S\n\
+         <match subject=\"run.flag\">\n<when is=\"true\">\n@narrator: yes.\n</when>\n\
          <otherwise>\n@narrator: no.\n</otherwise>\n</match>\n",
     );
     write_at(
@@ -1992,7 +1992,7 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     write_at(
         &dir,
         "p.play.yaml",
-        "steps:\n  - occasion: visit\n    expect: { winner: s }\nexpect:\n  end: complete\n",
+        "steps:\n  - engine: { state: { run.flag: false } }\n  - occasion: visit\n    expect: { winner: s }\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
         .args(["test", dir.to_str().unwrap(), "--coverage"])
@@ -2002,10 +2002,10 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     assert!(out.status.success(), "{text}");
     assert!(
         text.contains(
-            "coverage over 1 traced path(s) and 1 play(s) (plays count toward what they presented, the choices they picked and the arms they executed)"
+            "coverage over 1 traced path(s) and 1 play(s) (plays count toward what they presented, the choices they picked and the arms they executed):"
         ),
         "{text}"
     );
-    assert!(text.contains("match `true`"), "{text}");
+    assert!(text.contains("match `run.flag`"), "{text}");
     assert!(text.contains("2/2 arm(s) executed"), "{text}");
 }

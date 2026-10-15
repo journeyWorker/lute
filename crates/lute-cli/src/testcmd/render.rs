@@ -307,7 +307,7 @@ fn render_coverage_human(
         outln!(
             out,
             "\ncoverage over {} traced path(s) and {} play(s) (plays count toward what they \
-             presented, the choices they picked and the arms they executed)",
+             presented, the choices they picked and the arms they executed):",
             cov.paths,
             cov.plays
         );

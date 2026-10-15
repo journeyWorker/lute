@@ -1107,6 +1107,7 @@ mod tests {
             label: None,
             occasion: "hubVisit".into(),
             target: None,
+            refused: None,
             winner: winner.map(str::to_string),
             offered: offered.iter().map(|s| s.to_string()).collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
@@ -1328,7 +1329,7 @@ transcriptLacks: ["Welcome"]
         assert!(e.contains("`winer`"), "{e}");
         assert!(e.contains("did you mean `winner`"), "{e}");
         assert!(
-            e.contains("legal: clock, facts, notFacts, notOffered, offered, options, presented, quests, state, winner"),
+            e.contains("legal: clock, facts, notFacts, notOffered, offered, options, presented, quests, refused, state, winner"),
             "{e}"
         );
         let e = &messages(validate(&y("{transcriptContains: [x]}"), false))[0];
