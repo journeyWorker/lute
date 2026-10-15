@@ -4,7 +4,7 @@ import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueS
 import * as FetchHttpClient from "effect/http/FetchHttpClient"
 import * as RuntimeBrowser from "@lute-lang/runtime/browser"
 import * as Runtime from "@lute-lang/runtime"
-import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type LutePlayerOptions, type LutePlayerStart, type PlayerAction, type PlayerHost, type PlayerView, type Input as PlayerInput, type SaveRuntime } from "@lute-lang/player"
+import { LutePlayer, BindingsLoader, type Bindings, type LutePlayerHandle, type LutePlayerOptions, type LutePlayerStart, type PlayerAction, type PlayerHost, type PlayerView, type ScreenModel, type Input as PlayerInput, type SaveRuntime } from "@lute-lang/player"
 import { PixiApp } from "./engine/app.js"
 import { World } from "./engine/world.js"
 import { Ui } from "./ui/ui.js"
@@ -109,9 +109,29 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
       ? undefined
       : resolveAsset(bindings, assetsBase, title.background)
     if (titleBackground !== undefined) yield* assets.ensure([titleBackground])
+    let player: LutePlayerHandle | undefined
+    const resolveEnded = (screen: Extract<ScreenModel, { _tag: "Ended" }>): Effect.Effect<ScreenModel> =>
+      Effect.gen(function* () {
+        const ended = (bindings.ui as (typeof bindings.ui & {
+          readonly ended?: { readonly by: string; readonly screens: Record<string, { readonly title: string; readonly text: string; readonly background?: string | null }> } | null
+        }) | undefined)?.ended
+        if (ended == null || player === undefined) return screen
+        const current = yield* SubscriptionRef.get(player.session.current)
+        const view = yield* player.program.view(current.state)
+        const value = view.state[ended.by]
+        if (typeof value !== "string") return screen
+        const selected = ended.screens[value]
+        if (selected === undefined) return screen
+        if (selected.background === undefined || selected.background === null) {
+          return { ...screen, title: selected.title, text: selected.text } as ScreenModel
+        }
+        const background = resolveAsset(bindings, assetsBase, selected.background)
+        yield* assets.ensure([background])
+        return { ...screen, title: selected.title, text: selected.text, background } as ScreenModel
+      }).pipe(Effect.scoped, Effect.catch(() => Effect.succeed(screen)))
     const presenterOptions = titleBackground === undefined
-      ? { pixi, world, ui, assets, bindings, theme }
-      : { pixi, world, ui, assets, bindings, theme, titleBackground }
+      ? { pixi, world, ui, assets, bindings, theme, resolveEnded }
+      : { pixi, world, ui, assets, bindings, theme, titleBackground, resolveEnded }
     const presenter = new PixiPresenter(presenterOptions)
     const storage = yield* namespacedStorage(options.storageKey ?? "lute")
     const requirements = Layer.mergeAll(
@@ -141,7 +161,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
       ...(options.linePacing === undefined ? {} : { linePacing: options.linePacing }),
       ...(options.autosave === undefined ? {} : { autosave: options.autosave })
     }
-    const player = yield* LutePlayer.make(playerOptions).pipe(Effect.provide(Layer.succeedContext(cachedRequirements)))
+    player = yield* LutePlayer.make(playerOptions).pipe(Effect.provide(Layer.succeedContext(cachedRequirements)))
     let unlocked = false
     const dispatch = (action: PlayerAction): Effect.Effect<void> => Effect.gen(function* () {
       if (!unlocked) {

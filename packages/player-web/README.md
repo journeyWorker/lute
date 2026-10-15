@@ -40,6 +40,8 @@ await resumed.unmount()
 
 `mountPlayer` returns Promise methods `act`, `view`, `send`, `snapshot`, `restore`, `program`, `bundle`, and `unmount`. The methods run the same Effects as the scoped `LuteWeb.mount` handle and reject with the Effect failure. The handle's `bundle` is the exact compiled bundle loaded by the player, so hosts can inspect artifacts without loading it again. `MountOptions` accepts the same `seed`/`snapshot`/`session` start union and `cueFactory`, `linePacing`, and `autosave` options as `LutePlayer.make`. Textures use a private Pixi asset manager; player-web does not initialize Pixi's global `Assets`.
 
+When bindings define `ui.ended`, an ended state member selects a named ending screen. Player-web reads the member from the ended state, displays its configured title and text, and loads its optional background through the private asset manager; missing or unmapped values keep the stock ending screen.
+
 ## Cue handling
 
 - **Names.** The dialogue name plate and backlog rows show `speakerName`, the cast display name from the bundle index (`cast: { id: name }`); name colours stay keyed by the speaker id.

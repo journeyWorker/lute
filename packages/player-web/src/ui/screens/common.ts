@@ -119,12 +119,22 @@ export class ConfirmScreen extends ScreenView {
 
 /** End-of-story screen. */
 export class EndedScreen extends ScreenView {
-  constructor(model: Extract<ScreenModel, { _tag: "Ended" }>, theme: Theme, emit: EmitAction) {
-    super("The End", theme, emit)
+  constructor(model: Extract<ScreenModel, { _tag: "Ended" }> & Partial<{ title: string; text: string; background: string }>, theme: Theme, emit: EmitAction, textureFor?: (file: string) => Texture | undefined) {
+    super(model.title ?? "The End", theme, emit)
+    if (model.background !== undefined) {
+      const texture = textureFor?.(model.background)
+      if (texture !== undefined) {
+        const background = new Sprite(texture)
+        background.width = this.panelWidth
+        background.height = this.panelHeight
+        background.alpha = 0.95
+        this.addChildAt(background, 0)
+      }
+    }
     this.title.anchor.set(0.5)
     this.title.position.set(this.panelWidth / 2, 72)
     this.title.style = { ...this.title.style, fontSize: 56, fontWeight: "700", align: "center" }
-    const subtitle = model.reason === "terminal" ? "Thank you for playing" : model.reason
+    const subtitle = model.text ?? (model.reason === "terminal" ? "Thank you for playing" : model.reason)
     const text = new Text({ text: subtitle, style: { fontFamily: theme.font, fontSize: 26, fill: theme.text, align: "center", wordWrap: true, wordWrapWidth: 780 } })
     text.anchor.set(0.5)
     text.position.set(this.panelWidth / 2, 220)
