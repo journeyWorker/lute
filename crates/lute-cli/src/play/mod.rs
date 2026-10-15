@@ -663,8 +663,9 @@ impl PlayProject {
         Self::compile_in(&lute_model::ModelMemo::default(), dir)
     }
 
-    /// [`PlayProject::compile`] over `memo`'s model.
+    /// [`PlayProject::compile`] over `memo`'s model of the project.
     pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path) -> Self {
+        const NOT_COMPILED: &str = "the project does not compile (diagnostics above)";
         PlayProject(
             project::compile_play_bundle(
                 memo,
@@ -672,11 +673,17 @@ impl PlayProject {
                 project::TEST,
                 &crate::EngineMatrix::reference(),
             )
-            .map_err(|_| "the project does not compile (diagnostics above)".to_string())
+            .map_err(|(_, msg)| {
+                if msg.is_empty() {
+                    NOT_COMPILED.to_string()
+                } else {
+                    msg
+                }
+            })
             .and_then(|bundle| {
                 bundle
                     .load_with_coverage()
-                    .map_err(|_| "the project does not compile (diagnostics above)".to_string())
+                    .map_err(|_| NOT_COMPILED.to_string())
             }),
         )
     }
