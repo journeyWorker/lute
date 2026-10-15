@@ -86,3 +86,30 @@ fn plugin_stage_warnings_and_trace_exit_are_record_kind_driven() {
         step["kind"] == "directive" && step["tag"] == "portrait" && step["exit"] == true
     }));
 }
+
+#[test]
+fn plugin_actor_in_quest_gets_entry_emotion_preload() {
+    let output = run(&[
+        "compile",
+        "../../crates/lute-cli/tests/fixtures/stage-record-045/quests/stage.lute",
+        "--project",
+        PROJECT,
+        "--json",
+    ]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let artifact: Value = serde_json::from_slice(&output.stdout).expect("quest artifact JSON");
+    let commands = artifact["commands"].as_array().expect("quest commands");
+    let actor = commands
+        .iter()
+        .position(|command| command["kind"] == "actor" && command.get("provenance").is_none())
+        .unwrap();
+    assert_eq!(
+        commands[actor + 1]["provenance"]["by"],
+        "entry-emotion-lookahead"
+    );
+    assert_eq!(commands[actor + 1]["emotion"], "happy");
+}

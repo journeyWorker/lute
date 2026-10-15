@@ -1017,8 +1017,7 @@ pub fn walk_quest(
             | Node::Set(_)
             | Node::Assert(_)
             | Node::Retract(_) => {
-                let look = if matches!(node, Node::Directive(d) if d.tag == lute_manifest::core::ACTOR_DIRECTIVE)
-                {
+                let look = if classify_node(node, cx.snapshot).is_actor() {
                     reachable_after(&quest.body[i + 1..], &[])
                 } else {
                     Vec::new()
