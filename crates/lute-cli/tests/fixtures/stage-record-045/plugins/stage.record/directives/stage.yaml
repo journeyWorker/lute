@@ -1,0 +1,25 @@
+directives:
+  - name: backdrop
+    layer: staging
+    attrs:
+      - { name: location, required: true, type: string }
+    lower:
+      record: bg
+      fields:
+        location: { fromAttr: location }
+  - name: portrait
+    layer: staging
+    attrs:
+      - { name: character, required: true, type: string }
+      - { name: anchor, type: string }
+      - { name: action, type: string }
+      - { name: emotion, type: string }
+      - { name: exit, type: bool }
+    lower:
+      record: actor
+      fields:
+        character: { fromAttr: character }
+        anchor: { fromAttr: anchor }
+        action: { fromAttr: action }
+        emotion: { fromAttr: emotion }
+        exit: { fromAttr: exit }

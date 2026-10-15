@@ -126,6 +126,96 @@ const resume = Effect.scoped(Effect.gen(function* () {
 
 With your own runtime session, build it with `RuntimeSession.layer({ snapshot: save.snapshot })` and pass it as `session`. The save must come from the same compiled bundle (the project fingerprint is checked); otherwise `restore` fails `SaveIncompatible`.
 
+## Background barks during a conversation (0.45)
+
+A host can show an ambient line while the story waits at a choice or a bridge,
+without a second presentation (the runtime keeps one open presentation, and
+concurrent presentations are not planned). The read-only queries —
+`candidates`, `evaluate`, `def`, `gate`, `view` on `player.program` — answer at
+every await and never change the state, so the host can pick a bark while the
+conversation is suspended, then read its lines from the bundle:
+
+```ts
+import { Effect, Schema, SubscriptionRef } from "effect"
+import type { LutePlayerHandle } from "@lute-lang/player"
+import type { Bundle, Contract } from "@lute-lang/runtime"
+
+interface AmbientLine { readonly text: string; readonly speaker?: string; readonly voiceKey: string; readonly lineId: string }
+declare const showAmbient: (lines: ReadonlyArray<AmbientLine>) => Effect.Effect<void>   // the host's own UI
+
+// The record fields the pattern reads; other fields are ignored.
+const Artifact = Schema.Struct({
+  commands: Schema.Array(Schema.Struct({
+    kind: Schema.String,
+    position: Schema.String,
+    id: Schema.optionalKey(Schema.String),
+    body: Schema.optionalKey(Schema.String),
+    speaker: Schema.optionalKey(Schema.String),
+    text: Schema.optionalKey(Schema.String),
+    texts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    voiceKey: Schema.optionalKey(Schema.String),
+    lineId: Schema.optionalKey(Schema.String),
+    placeholders: Schema.optionalKey(Schema.Unknown)
+  }))
+})
+
+/** A static entry's lines, or undefined when the bark must be raised instead. */
+const staticBarkLines = (bundle: Bundle.Bundle, candidate: Contract.Candidate, locale?: string): ReadonlyArray<AmbientLine> | undefined => {
+  if (candidate.kind !== "entry" || candidate.verdict.verdict !== "eligible") return undefined
+  const document = bundle.index.documents.find((item) => item.path === candidate.document)
+  if (document === undefined) return undefined
+  const { commands } = Schema.decodeUnknownSync(Artifact)(bundle.artifacts[document.artifact])
+  const head = commands.find((record) => record.kind === "entry" && record.id === candidate.id)
+  const start = commands.findIndex((record) => record.position === head?.body)
+  if (start < 0) return undefined
+  const next = commands.findIndex((record, index) => index > start && (record.kind === "entry" || record.kind === "beat"))
+  const body = commands.slice(start, next < 0 ? commands.length : next)
+  const lines: Array<AmbientLine> = []
+  for (const record of body) {
+    if (record.kind !== "line" || record.placeholders !== undefined) return undefined
+    if (record.text === undefined || record.voiceKey === undefined || record.lineId === undefined) return undefined
+    const speaker = record.speaker === undefined ? undefined : bundle.index.cast?.[record.speaker]
+    lines.push({
+      text: (locale === undefined ? undefined : record.texts?.[locale]) ?? record.text,
+      voiceKey: record.voiceKey,
+      lineId: record.lineId,
+      ...(speaker === undefined ? {} : { speaker })
+    })
+  }
+  return lines
+}
+
+// While the story waits at a choice or a bridge:
+const ambientBark = (player: LutePlayerHandle, bundle: Bundle.Bundle) => Effect.gen(function* () {
+  const { state } = yield* SubscriptionRef.get(player.session.current)
+  const candidates = yield* player.program.candidates(state, "ambient", "npc.guide")
+  for (const candidate of candidates) {
+    const lines = staticBarkLines(bundle, candidate)
+    if (lines !== undefined) return yield* showAmbient(lines)
+  }
+})
+```
+
+`candidates` returns beats in selection order; the helper takes an eligible
+lore entry, finds its head in the document's artifact (`index.documents`), and
+reads the records from the head's `body` position up to the next `entry` or
+`beat` head. The bark is **static** when every one of them is a `line` without
+`placeholders`; each line gives its text (`texts[locale]` when the bundle has
+that locale), the speaker's display name from `index.cast` (none for
+narration), `voiceKey` and `lineId`.
+
+Showing a bark this way records nothing: no `entry.<id>.read`, no `once`
+spending, no writes. A bark that must record — a first read, `once`, an
+authored write such as `::set` — or whose body is dynamic (`{{…}}`
+placeholders, `match`) is raised as its occasion once the story is back at
+`idle`:
+
+```ts
+yield* player.send({ type: "raiseOccasion", occasion: "ambient", target: "npc.guide" })
+```
+
+See [0.45.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern).
+
 ## Upgrading from 0.40
 
 The player-session option that names speakers is `cast` (since 0.41.0). A host that composes the session itself with `Session.layer` (the `PlayerSession` layer) passes `SessionOptions.cast` — a plain record, cast id → display name, which is the bundle index's `cast` — where 0.40 took `castNames`, a `ReadonlyMap`. The old `castNamesFrom(artifacts)` helper is gone; read the names from `bundle.index.cast`:
@@ -212,7 +302,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.44",
+  "saveVersion": "0.45",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -221,7 +311,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.44"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.45"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 ## Rollback and history
 

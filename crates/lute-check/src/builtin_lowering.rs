@@ -10,7 +10,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, ClipNode, Directive, Document, Node};
 
 /// The core directive a builtin lowering hook belongs to.
-fn core_tag(hook: &str) -> Option<&'static str> {
+pub fn core_tag(hook: &str) -> Option<&'static str> {
     Some(match hook {
         "actorStage" => lute_manifest::core::ACTOR_DIRECTIVE,
         "cameraTransform" => "camera",

@@ -1,0 +1,8 @@
+pluginsDir: plugins/
+defaultProfile: stage
+profiles:
+  global:
+    plugins: { lute.core: true }
+  stage:
+    extends: global
+    plugins: { stage.record: true }

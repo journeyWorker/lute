@@ -9,7 +9,7 @@ import * as Stores from "../src/stores/index.js"
 import type { AssetLoader, AudioPort, Presenter } from "../src/ports/index.js"
 import { flush } from "./director/support.js"
 
-const bindings = { bindingsVersion: "0.44", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+const bindings = { bindingsVersion: "0.45", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 const presenter: Presenter = {
   stage: () => Effect.void, showLine: () => Effect.void, revealLine: Effect.void, clearLine: Effect.void, restore: () => Effect.void,
   showChoice: () => Effect.never, hideChoice: Effect.void, showScreen: () => Effect.void, hideScreen: Effect.void,

@@ -54,10 +54,11 @@ in double quotes (a `"` inside one is written `\"` or
 reads state is `E-ATTR-DEF-DYNAMIC`). There are no inline code expressions, which keeps staging
 non-Turing-complete.
 
-A `::bg` is a **scene change**. Every character still on stage is hidden just before it by an
-injected `::actor` record (`provenance.by: "stage-bookkeeping"`). A character who keeps speaking in
-the new place must enter again with `::actor`; a line from one before that is `W-STAGE-ABSENT`
-([below](#stage-state)), so re-enter them explicitly:
+A `bg` staging record is a **scene change**, whether authored as `::bg` or produced by a
+plugin directive's `lower: { record: bg, fields: ... }`. Every character still on stage is
+hidden just before it by an injected `actor` record (`provenance.by: "stage-bookkeeping"`). A
+character who keeps speaking in the new place must enter again with an `actor` record; a line
+from one before that is `W-STAGE-ABSENT` ([below](#stage-state)), so re-enter them explicitly:
 
 ```lute
 ::bg{location="station" time="night"}
@@ -203,10 +204,10 @@ works. Content text after the line's colon is not an attribute value and is neve
 The checker threads a **stage state** through the document — who is on stage, where, and in what
 pose — and `lute compile` injects its staging records from the same state. A character's first
 line needs no `::actor`: a speaker who has never been shown enters implicitly, and nothing warns.
-What warns is staging someone the state says has **left**: after a declared exit (an `::actor`
-whose `action` is in the `action` domain's `exits:` list), a `::bg` auto-hide, or a
-[`::clear`](#clear--emptying-the-stage), a line by that character — or another declared exit —
-before an `::actor` shows them again is `W-STAGE-ABSENT`.
+What warns is staging someone the state says has **left**: after a declared actor exit (an
+`actor` record with `exit: true`), a `bg` auto-hide — including one caused by a plugin directive
+lowered to `bg` — or a [`::clear`](#clear--emptying-the-stage), a line by that character — or
+another declared exit — before an `actor` record shows them again is `W-STAGE-ABSENT`.
 
 Since 0.22.0 the stage state follows paths:
 

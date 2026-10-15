@@ -21,12 +21,14 @@ pub(super) fn fold_injections(
     state: &mut StageState,
     out: &mut Vec<InjectedCommand>,
     domains: &std::collections::BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
     components: &ComponentSet,
     using: &mut Vec<String>,
 ) {
     for (i, node) in nodes.iter().enumerate() {
         let taken = std::mem::take(state);
-        let (next, emit) = lower_node(taken, node, &nodes[i + 1..], domains);
+        let (next, emit) =
+            lower_node_with_snapshot(taken, node, &nodes[i + 1..], domains, snapshot);
         *state = next;
         out.extend(emit);
         let arms: Vec<&[Node]> = match node {
@@ -40,7 +42,7 @@ pub(super) fn fold_injections(
                 })
                 .collect(),
             Node::Directive(d) if d.tag == "use" => {
-                fold_use(d, state, out, domains, components, using);
+                fold_use(d, state, out, domains, snapshot, components, using);
                 continue;
             }
             _ => continue,
@@ -51,7 +53,7 @@ pub(super) fn fold_injections(
             .into_iter()
             .map(|body| {
                 let mut arm = state.clone();
-                fold_injections(body, &mut arm, out, domains, components, using);
+                fold_injections(body, &mut arm, out, domains, snapshot, components, using);
                 arm
             })
             .collect();
@@ -103,6 +105,7 @@ fn fold_use(
     state: &mut StageState,
     out: &mut Vec<InjectedCommand>,
     domains: &std::collections::BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
     components: &ComponentSet,
     using: &mut Vec<String>,
 ) {
@@ -146,7 +149,7 @@ fn fold_use(
         bound.iter().map(Vec::as_slice).collect()
     };
     for body in bodies {
-        fold_injections(body, state, out, domains, components, using);
+        fold_injections(body, state, out, domains, snapshot, components, using);
     }
     let name = using.pop().expect("pushed above");
     for diag in &mut state.diags[mark..] {

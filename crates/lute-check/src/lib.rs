@@ -80,7 +80,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.44.0";
+pub const LUTE_LANG_VERSION: &str = "0.45.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -203,8 +203,9 @@ pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    is_declared_exit, lower_node, Departure, InjectKind, InjectedCommand, Provenance, SpriteState,
-    StageState,
+    classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, resolve_record_fields,
+    Departure, InjectKind, InjectedCommand, Provenance, ResolvedRecordField, ResolvedRecordFields,
+    SpriteState, StageKind, StageState,
 };
 pub use lore::{
     check_entries, document_series, entry_read_decl, entry_read_path, is_beat_target,

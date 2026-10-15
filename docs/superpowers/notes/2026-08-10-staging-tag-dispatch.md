@@ -573,3 +573,15 @@ rename; `record: background` is now `E-LOWER-RECORD-UNKNOWN`.
   lowered record kind driving the stage reducer — is the first 0.45 candidate in
   [`2026-10-15-lute-0.44-decisions.md`](2026-10-15-lute-0.44-decisions.md) §3,
   which now carries this note's open item.
+
+## Addendum, 2026-10-15 (Lute 0.45): implemented
+
+Lute 0.45 dispatches implicit staging by the lowered record kind, not by the
+authored directive tag. Core directives retain their existing lowering, while a
+declarative plugin directive resolves its `lower: { record, fields }` fields
+through the same resolver used by `lute compile`; `bg` changes the scene,
+`actor` stages its character and exits when `exit: true`, and `music` only
+updates music bookkeeping. `posReset` and `preload` remain neutral to the stage
+model. Declarative `actor` lowerings must bind `character` to a required
+`fromAttr` attribute or a literal string; otherwise assembly reports
+`E-LOWER-RECORD-FIELD`.

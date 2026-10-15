@@ -95,17 +95,16 @@ stripped), or `check-project` reports `E-DUP-VOICEKEY`.
 `action=` is the one line attribute with a **stage** consequence, and it is a
 small one: it sets the speaker's pose for that line and marks them dirty, so
 the next plain line from the same speaker gets a `posReset` injected ahead of
-it (`provenance.by: "auto-pose-reset"`). That is the whole of it — it is a
-delivery detail, not staging. **A character's entrance and exit are `::actor`**,
-and only `::actor` can end one character's presence; `::clear` (0.24.0) ends everyone's (see
-[Core directives](/language/directives/); `lute context` lists
-`mayExitCharacter` among `actor`'s semantics for exactly this reason). Writing a
-member of the `action` domain's `exits:` list on a content line is
-`W-EXIT-INERT`: the pose is honoured, the character stays on stage, and the
-artifact gets no `exit` record. Once a character has left — by a declared exit,
-a `::bg` scene change, or a `::clear` — a line from them before an `::actor` shows them again
-is `W-STAGE-ABSENT`, judged along every path through choices and `<match>` arms
-(see [Stage state](/language/directives/#stage-state)).
+it (`provenance.by: "auto-pose-reset"`). This is a delivery detail, not staging.
+**A character's entrance and exit are any staging record lowered to `actor` (including
+`::actor`)**; an `exit: true` field ends that character's presence. `::clear` (0.24.0) ends
+everyone's (see [Core directives](/language/directives/); `lute context` lists
+`mayExitCharacter` among `actor`'s semantics for the core directive). Writing a member of the
+`action` domain's `exits:` list on a content line is `W-EXIT-INERT`: the pose is honoured, the
+character stays on stage, and the artifact gets no `exit` record. Once a character has left — by
+a declared actor exit, a `bg` staging record (including a plugin directive lowered to `bg`), or a
+`::clear` — a line from them before an actor record stages them again is `W-STAGE-ABSENT`, judged
+along every path through choices and `<match>` arms (see [Stage state](/language/directives/#stage-state)).
 
 ```lute
 @marina{as="???"}: ...who's there?

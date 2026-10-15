@@ -82,7 +82,7 @@ use crate::component_import::ComponentSet;
 use crate::ctx::{Ctx, Env, ExpectedType, Mode};
 use crate::decide::DecideCtx;
 use crate::directives::{at_context, check_directive};
-use crate::inject::{lower_node, InjectedCommand, StageState};
+use crate::inject::{lower_node_with_snapshot, InjectedCommand, StageState};
 use crate::match_check::{check_param_match, param_domain};
 use crate::reachability::check_reachability;
 use crate::schema_import::{merge_domains, SchemaImports};

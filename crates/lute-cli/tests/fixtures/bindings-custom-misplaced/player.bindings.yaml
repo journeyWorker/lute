@@ -1,4 +1,4 @@
-bindingsVersion: "0.44"
+bindingsVersion: "0.45"
 canvas: {width: 1920, height: 1080}
 transitions:
   fade: {effect: custom}

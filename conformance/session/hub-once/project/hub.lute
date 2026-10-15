@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: hub
-luteVersion: "0.44.0"
+luteVersion: "0.45.0"
 title: hub
 on: visit
 priority: 0

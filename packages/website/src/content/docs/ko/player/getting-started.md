@@ -20,7 +20,7 @@ lute compile --all examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.44"
+bindingsVersion: "0.45"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.44 패키지를 설치합니다.
+정확한 0.45 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.44.0 @lute-lang/player@0.44.0 @lute-lang/runtime@0.44.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.45.0 @lute-lang/player@0.45.0 @lute-lang/runtime@0.45.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.

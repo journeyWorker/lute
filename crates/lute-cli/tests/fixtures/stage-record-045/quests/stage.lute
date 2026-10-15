@@ -1,0 +1,11 @@
+---
+kind: quest
+id: stage-quest
+enums:
+  emotion: { members: [happy] }
+---
+
+<quest id="stageQuest" title="Stage quest" start="true">
+::portrait{character="marina"}
+@marina{emotion="happy"}: Quest entrance.
+</quest>

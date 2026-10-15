@@ -1,0 +1,19 @@
+---
+kind: lore
+id: ambient
+plugins:
+  bark: {}
+---
+
+<entry id="staticBark" on="ambient" target="npc.guide" category="bark" priority="1" once="run">
+  @guide{code="ambient.static"}: The lantern is warm.
+</entry>
+
+<entry id="dynamicBark" on="ambient" target="npc.guide" category="bark" priority="0" once="run">
+  @guide{code="ambient.dynamic"}: The hour is {{run.finished}}.
+</entry>
+
+<entry id="writingBark" on="ambient" target="npc.guide" category="bark" priority="2" once="run">
+  @guide{code="ambient.writing"}: The mark is made.
+  ::set{run.finished = true}
+</entry>

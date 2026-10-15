@@ -90,13 +90,15 @@ voice key는 녹음을 위한 조인 키이지 녹음이 존재한다는 주장�
 
 `action=`은 **무대** 결과가 있는 유일한 줄 속성이며, 그것도 작습니다. 해당 줄에서 화자의 포즈를 설정하고
 화자를 변경된 상태(dirty)로 표시하므로, 같은 화자의 다음 일반 줄 앞에 `posReset`이 삽입됩니다
-(`provenance.by: "auto-pose-reset"`). 이것이 전부입니다 — 연출이 아니라 전달 세부사항입니다. **캐릭터의 등장과
-퇴장은 `::actor`**이며, 캐릭터 하나의 presence를 끝낼 수 있는 것도 `::actor`뿐입니다. `::clear`(0.24.0)는
-모두의 presence를 끝냅니다([코어 디렉티브](/ko/language/directives/) 참고). `lute context`가 정확히 이 이유로
-`actor` 의미론 중 `mayExitCharacter`를 나열합니다. 콘텐츠 줄에 `action` 도메인의 `exits:` 목록 멤버를 쓰면
-`W-EXIT-INERT`입니다. 포즈는 적용되지만 캐릭터는 무대에 남고 아티팩트에는 `exit` record가 생기지 않습니다.
-선언된 퇴장, `::bg` 씬 변경, `::clear`로 캐릭터가 떠난 뒤 `::actor`로 다시 등장시키기 전 그 캐릭터의 줄은
-`W-STAGE-ABSENT`입니다. 선택지와 `<match>` 갈래를 통하는 모든 경로에서 판정됩니다
+(`provenance.by: "auto-pose-reset"`). 이것은 무대 규칙이 아니라 전달 세부사항입니다.
+**캐릭터의 등장과 퇴장은 `actor`로 낮춰진 모든 스테이징 레코드(`::actor` 포함)**가 담당하며,
+`exit: true` 필드가 해당 캐릭터의 presence를 끝냅니다. `::clear`(0.24.0)는 모두의 presence를
+끝냅니다([코어 디렉티브](/ko/language/directives/) 참고). `lute context`가 코어 디렉티브의
+`actor` 의미론에 `mayExitCharacter`를 나열하는 이유도 이것입니다. 콘텐츠 줄에 `action` 도메인의
+`exits:` 목록 멤버를 쓰면 `W-EXIT-INERT`입니다. 포즈는 적용되지만 캐릭터는 무대에 남고 아티팩트에는
+`exit` record가 생기지 않습니다. 선언된 actor 퇴장, (플러그인 디렉티브를 포함해) `bg`로 낮춰진
+스테이징 레코드, 또는 `::clear`로 캐릭터가 떠난 뒤 actor 레코드로 다시 무대에 올리기 전 그
+캐릭터의 줄은 `W-STAGE-ABSENT`입니다. 선택지와 `<match>` 갈래를 통하는 모든 경로에서 판정됩니다
 ([무대 상태](/ko/language/directives/#무대-상태) 참고).
 
 ```lute

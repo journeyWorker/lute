@@ -5,12 +5,12 @@ import { describe, expect, it } from "@effect/vitest"
 import * as InputLog from "../../runtime/src/InputLog.js"
 import * as LuteBun from "../../runtime/src/bun.js"
 import * as RuntimeSession from "../../runtime/src/Session.js"
-import { hubFixtureRoot } from "../../runtime/test/support.js"
+import { canonical, hubFixtureRoot } from "../../runtime/test/support.js"
 import { LutePlayer } from "../src/LutePlayer.js"
 import type { AssetLoader, AudioPort, Presenter } from "../src/ports/index.js"
 import { flush } from "./director/support.js"
 
-const bindings = { bindingsVersion: "0.44", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+const bindings = { bindingsVersion: "0.45", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 const presenter: Presenter = {
   stage: () => Effect.void, showLine: () => Effect.void, revealLine: Effect.void, clearLine: Effect.void, restore: () => Effect.void,
   showChoice: () => Effect.never, hideChoice: Effect.void, showScreen: () => Effect.void, hideScreen: Effect.void,
@@ -42,6 +42,19 @@ describe("LutePlayer.make (§7.1)", () => {
     const { state, await: waiting } = yield* SubscriptionRef.get(player.session.current)
     expect(waiting.type).toBe("awaitChoice")
     expect((yield* player.program.view(state)).state).toBeDefined()
+  })).pipe(Effect.provide(host)))
+
+  it.effect("queries candidates and view at a shown choice without changing player state", () => Effect.scoped(Effect.gen(function* () {
+    const player = yield* LutePlayer.make({ ...ports, seed: { derive: true } })
+    yield* toChoice(player)
+    const beforeView = yield* SubscriptionRef.get(player.view)
+    const before = yield* SubscriptionRef.get(player.session.current)
+    const beforeSnapshot = yield* player.program.snapshot(before.state)
+    const candidates = yield* player.program.candidates(before.state, "visit")
+    yield* player.program.view(before.state)
+    expect(candidates[0]).toMatchObject({ id: "hub", kind: "scene", verdict: { verdict: "eligible" } })
+    expect(yield* SubscriptionRef.get(player.view)).toEqual(beforeView)
+    expect(canonical(yield* player.program.snapshot((yield* SubscriptionRef.get(player.session.current)).state))).toBe(canonical(beforeSnapshot))
   })).pipe(Effect.provide(host)))
 
   it.effect("starts from a snapshot", () => Effect.gen(function* () {

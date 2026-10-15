@@ -290,8 +290,16 @@ impl<'a> TraceDriver<'a> {
                     .as_ref()
                     .and_then(|i| i.directive.clone())
                     .unwrap_or(kind.clone());
+                let actor_exit = rec.get("exit").and_then(Json::as_bool).or_else(|| {
+                    self.cmds
+                        .get(&addr)
+                        .and_then(|c| c.get("exit").and_then(Json::as_bool))
+                });
                 let exit = tag == lute_manifest::core::CLEAR_DIRECTIVE
-                    || tag == lute_manifest::core::ACTOR_DIRECTIVE && self.auto_exits(&addr);
+                    || (kind == "actor"
+                        && (actor_exit == Some(true)
+                            || tag == lute_manifest::core::ACTOR_DIRECTIVE
+                                && self.auto_exits(&addr)));
                 let call = (!exit)
                     .then(|| self.cx.authored.get(&addr).cloned())
                     .flatten();

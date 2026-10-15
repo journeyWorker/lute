@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: identity.explicit
-luteVersion: "0.44.0"
+luteVersion: "0.45.0"
 components: [component.lute, nested.component.lute]
 ---
 

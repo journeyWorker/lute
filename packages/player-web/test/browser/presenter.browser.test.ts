@@ -11,7 +11,7 @@ import { themeFromBindings } from "../../src/theme.js"
 
 const theme: Theme = { font: "sans-serif", text: 0xffffff, accent: 0xe0c080, panel: 0x101018, panelAlpha: 0.82, readText: 0x9a9aaa }
 const bindings: Bindings = {
-  bindingsVersion: "0.44",
+  bindingsVersion: "0.45",
   canvas: { width: 320, height: 180 },
   assets: { bg: "bg.png", night: "night.png", guide: "guide.png", happy: "happy.png", cg: "cg.png", video: "video.png", sequence: "sequence.png" },
   backgrounds: { foyer: { image: "bg.png", times: { night: "night.png" } } },

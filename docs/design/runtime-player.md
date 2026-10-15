@@ -139,7 +139,7 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    is a player profile.
 4. **Non-blocking dialogue:** not in R1. One open presentation at a time; a
    `RaiseOccasion` while one is open is refused with a defined outcome.
-   Concurrent walks are a later spec.
+   Concurrent walks are not planned (0.45, below).
 5. **IR inside the runtime:** R1 keeps `serde_json::Value` access; typed IR is
    a later slice.
 6. Which `lute-trace` parts move: settled in the spec.
@@ -183,7 +183,7 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    implemented): 0.39 ships the wasm binding and Effect 4
    `@lute-lang/runtime` for Bun and browsers; contract types are generated
    from the Rust types, with scoped sessions, typed errors, and replay.
-   C ABI remains later, and concurrent presentations remain R3.
+   C ABI remains later.
 3. **R3:** `packages/player` — player-core statecharts, cue scheduler,
    bindings, 2D web reference presenter; driven by recorded runtime outputs.
    **Owner answers 2026-10-11** (release 0.40.0):
@@ -194,7 +194,8 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    - **Timed choice is a language/runtime rule.** The author names the option
      a timeout takes; the runtime accepts a `timeout` input and picks it. It
      is part of replay and saves, not a player setting.
-   - **Concurrent presentations stay deferred** past R3.
+   - **Concurrent presentations stay deferred** past R3 (dropped in 0.45,
+     §6).
    - **The web player is a real player, not a thin presenter:** Effect 4 +
      XState v6 (exact alpha pin) + PixiJS 8 (WebGL) + Web Audio, with proper
      state management and game patterns (commands for cues, behaviours for
@@ -216,10 +217,30 @@ Answered by the owner before the phase-1 spec; the spec makes them normative.
    player starts from a session or snapshot, takes `send` and `restore`,
    paces lines through the presenter, exposes plugin hooks, music playback
    and custom vfx, autosaves, and peer-depends on the runtime; local tarball
-   packs (`scripts/pack-local.sh`) for dogfooding. The C ABI and concurrent
-   presentations remain later.
+   packs (`scripts/pack-local.sh`) for dogfooding. The C ABI remains later
+   (when the first native game exists).
 
 Work the way 0.32–0.37 were run: spec + plan under
 `docs/proposals/scenario-dsl/` and `docs/superpowers/plans/`, reviewer pass per
 slice, one Rust owner at a time, `cargo clean` only by the orchestrator between
 slices.
+
+## 6. Concurrent presentations: not needed (owner, 0.45)
+
+The runtime keeps one open presentation, and concurrent presentations are no
+longer planned
+([0.45 decisions §3](../superpowers/notes/2026-10-15-lute-0.45-decisions.md)).
+Every case that asked for them has a single-presentation answer:
+
+- **A multi-speaker conversation is one scene**: one presentation with many
+  speakers, staged with `::actor`.
+- **Ambient lines are lore barks**: `<entry category="bark" on=…>` raised by
+  occasion at `idle`, selected by priority and `once`.
+- **A background line during a conversation** is a host pattern: while the
+  story waits at `awaitChoice` or `awaitBridge`, the host queries
+  `candidates` (read-only, every await) and shows a static bark's lines from
+  the bundle outside the presentation; a bark that must record (read, `once`,
+  writes) is raised after the story is back at `idle`
+  ([0.45.0 §3](../proposals/scenario-dsl/0.45.0.md#3-background-barks-during-a-conversation-host-pattern)).
+
+Keeping one presentation keeps replay, saves and the event contract simple.

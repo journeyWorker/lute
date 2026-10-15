@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.44.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.44.schema.json)
+[`schemas/lute-ir-0.45.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.45.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -50,6 +50,21 @@ host's `package.json`; the host keeps its own `effect` `4.0.2`. Do not link
 ## 0.44 runtime additions
 
 **Writes that belong to the ending.** Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun` raise. A host write that belongs to the ending run — ending metadata, a final score — rides as `writes` on the input that causes the terminal transition, when that input carries writes: `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite`, whose writes land before the transition (`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout` and `worldEvent` carry no writes: an ending they cause records its state in the story (a `::set` in the branch that ends) or in a `hostWrite` sent before them. `newRun`'s writes seed the run it starts, where the ended run's `run.*` values read as `prev.run.*`. A `hostWrite` after the ending is still refused `E-RUNTIME-BUSY` with the state unchanged; its message now says where the write belongs.
+
+## 0.45 runtime additions
+
+Read-only queries (`candidates`, `evaluate`, `def`, `gate`, and `view`) answer
+at every await (`idle`, `awaitChoice`, `awaitBridge`, and `ended`) without
+changing state. On a TypeScript `Session`, a query during a running input reads
+the last committed state. While a choice or bridge is pending, only its answer
+is accepted. A host MAY show a background bark outside the presentation by
+querying `candidates(occasion, target?)`, taking an eligible `entry`,
+locating its artifact body, and showing it only when every record is a
+placeholder-free `line`. This static bark records nothing (no read mark,
+`once` spending, or writes); a recording or dynamic bark MUST be raised after
+the story returns to `idle`. Concurrent presentations are not planned. See
+the [0.45 background-bark host pattern](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#32-the-pattern)
+and the [full event contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md).
 
 ## 0.42 runtime additions
 
@@ -297,8 +312,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.44` engine accepts only `0.44.*` artifacts and refuses `0.43.*`
-   and `0.45.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.45` engine accepts only `0.45.*` artifacts and refuses `0.44.*`
+   and `0.46.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -310,7 +325,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.44.0"
+irVersion: "0.45.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -326,7 +341,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.44.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.45.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

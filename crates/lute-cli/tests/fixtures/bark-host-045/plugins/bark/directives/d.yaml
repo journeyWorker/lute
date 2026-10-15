@@ -1,0 +1,13 @@
+directives:
+  - name: check
+    layer: bridge
+    attrs:
+      - { name: resultKey, required: true, type: { slotId: { namespace: scene.bark } } }
+    semantics: ["writes.sceneState", "bridgeCall"]
+    state:
+      declares:
+        - { scope: scene, path: [bark, { fromAttr: { name: resultKey, localId: true }}], shape: barkResult }
+    effects:
+      writes:
+        - { scope: scene, path: [bark, { fromAttr: { name: resultKey } }, outcome], value: { fromBridgeResult: outcome } }
+    bridge: { service: bark, operation: check }
