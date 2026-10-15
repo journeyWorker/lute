@@ -2631,7 +2631,6 @@ const label = clock == null
 Next, read [the clock](/language/clock/), [playing a story](/tooling/play/), and
 [the runtime contract](/tooling/runtime-contract/) for the language and host
 surfaces used here.
-
 # Is Lute right for you?
 
 Lute is a focused tool, not a general-purpose engine. It is the **author-time
