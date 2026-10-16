@@ -1115,7 +1115,8 @@ is a directory inside the current git work tree, a `git:` side is archived
 from that subtree only (`git archive <rev> -- <its path>`) and rooted there,
 so `lute diff git:HEAD story` from the repository root compares the `story/`
 project and a symlink elsewhere in the repository does not matter (one inside
-the compared tree is still refused); otherwise (the other side outside the
+the compared tree is still refused; the directory name is a literal path,
+and a directory missing at that revision is `E-CLI-IO` naming both); otherwise (the other side outside the
 repository, or both sides `git:`) the current directory's tree is archived
 (0.47). Exit 0 means a
 comparison was produced; exit 2 means invalid input, materialization, parse,

@@ -250,7 +250,7 @@ Lute is a deterministic CLI boundary, not a chat application or MCP server.
 
 ## The patch request (0.47)
 
-`lute patch <DIR> <PATCH> [--dry-run] [--json]` reads `PATCH`, one JSON object. `lute schema patch --json` describes it under `inputs` (`argument: "PATCH"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
+`lute patch <DIR> <PATCH> [--dry-run] [--json]` reads `PATCH`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "PATCH"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
@@ -268,7 +268,7 @@ Every edit is an object with `op` and the op's fields, all required:
 | `insertAfter` | `node`, `text` | Insert `text` at the end of the node's span. |
 | `replaceAttr` | `node`, `attr`, `value` | Replace one attribute's value inside the node (quotes are kept). |
 | `removeNode` | `node` | Delete the node's source span. |
-| `replaceText` | `file`, `rev`, `span`, `text` | Replace exactly `span` of `file`, whose revision must be `rev`. `span` is a source span object as `lute context --json` prints it (`byte_start`, `byte_end`, `line`, `column`, `utf16_range`); it must lie inside a target. |
+| `replaceText` | `file`, `rev`, `span`, `text` | Replace exactly `span` of `file`, whose revision must be `rev`. `span` is a source span object shaped like `affected[].reasons[].sourceSpan` in `lute context --json` (`byte_start`, `byte_end`, `line`, `column`, `utf16_range`); it must lie inside a target. |
 | `createFile` | `path`, `text` | Create a new file (formatted whole). |
 | `moveFile` | `from`, `to` | Move a file; refused while another file still references the old path. |
 
@@ -286,7 +286,7 @@ Paths are project-relative and may not leave the project. Each `preserve` item i
 | `reachability` | node keys | The nodes' reachability is unchanged. |
 | `constraints` | `true` | The project's constraint verdicts are unchanged. |
 
-A node key is `kind:key`. Take keys from `lute context <file> --target <kind:key> --json`: every entry of `affected[]` carries its `key` (and `reasons[].sourceSpan`), and `target.key` names the target itself. The kinds are `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`. A patch may target only nodes with an editable source span: `project`, `occasion`, `relation`, `state`, `expanded`, `fact` and `engine` are refused as targets (`E-PATCH-TARGET`; edit schema YAML with `replaceText` inside a targetable node instead). `nodeKinds[].targetable` in `lute schema patch --json` says the same.
+A node key is `kind:key`. Take keys from `lute context <file> --target <kind:key> --json`: every entry of `affected[]` carries its canonical `key` (and `reasons[].sourceSpan`); the target itself is `target.kind`:`target.key` (`target.key` alone is the bare key). The kinds are `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`. A patch may target only nodes with an editable source span: `project`, `occasion`, `relation`, `state`, `expanded`, `fact` and `engine` are refused as targets (`E-PATCH-TARGET`; edit schema YAML with `replaceText` inside a targetable node instead). `nodeKinds[].targetable` in `lute schema patch` says the same.
 
 ```json
 {

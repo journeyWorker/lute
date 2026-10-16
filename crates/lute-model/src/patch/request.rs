@@ -233,3 +233,108 @@ pub fn patch_request_description() -> Value {
             .collect::<Vec<_>>(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{PatchBase, PatchRequest};
+    use serde::de::DeserializeOwned;
+
+    /// The successor of each kind in `NODE_KINDS`. Exhaustive: a new
+    /// `NodeKind` variant does not compile until it gets an arm here, which
+    /// is where it is put in the chain, and the chain must equal `NODE_KINDS`.
+    fn next(kind: NodeKind) -> Option<NodeKind> {
+        match kind {
+            NodeKind::Project => Some(NodeKind::Document),
+            NodeKind::Document => Some(NodeKind::Scene),
+            NodeKind::Scene => Some(NodeKind::Beat),
+            NodeKind::Beat => Some(NodeKind::Shot),
+            NodeKind::Shot => Some(NodeKind::Line),
+            NodeKind::Line => Some(NodeKind::Choice),
+            NodeKind::Choice => Some(NodeKind::Quest),
+            NodeKind::Quest => Some(NodeKind::Objective),
+            NodeKind::Objective => Some(NodeKind::Reward),
+            NodeKind::Reward => Some(NodeKind::Entry),
+            NodeKind::Entry => Some(NodeKind::Occasion),
+            NodeKind::Occasion => Some(NodeKind::Relation),
+            NodeKind::Relation => Some(NodeKind::State),
+            NodeKind::State => Some(NodeKind::Def),
+            NodeKind::Def => Some(NodeKind::Component),
+            NodeKind::Component => Some(NodeKind::Expanded),
+            NodeKind::Expanded => Some(NodeKind::Fact),
+            NodeKind::Fact => Some(NodeKind::Clock),
+            NodeKind::Clock => Some(NodeKind::Engine),
+            NodeKind::Engine => None,
+        }
+    }
+
+    #[test]
+    fn node_kinds_lists_every_node_kind_once() {
+        let mut chain = vec![NodeKind::Project];
+        while let Some(kind) = next(*chain.last().unwrap()) {
+            assert!(!chain.contains(&kind), "{kind:?} twice in the chain");
+            chain.push(kind);
+        }
+        assert_eq!(chain, NODE_KINDS);
+        // Every listed kind round-trips through the node-key parser.
+        for kind in NODE_KINDS {
+            let key: lute_semantic::NodeKey =
+                serde_json::from_value(json!(format!("{}:k", kind.as_str()))).unwrap();
+            assert_eq!(key.kind, *kind);
+        }
+    }
+
+    /// The field names serde accepts for `T`, read from its
+    /// `deny_unknown_fields` error ("unknown field `…`, expected one of …").
+    fn serde_fields<T: DeserializeOwned + std::fmt::Debug>() -> Vec<String> {
+        let error = serde_json::from_value::<T>(json!({ "undescribedProbe": 0 }))
+            .unwrap_err()
+            .to_string();
+        let expected = error
+            .split_once("expected ")
+            .unwrap_or_else(|| panic!("not an unknown-field error: {error}"))
+            .1;
+        expected
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_owned)
+            .collect()
+    }
+
+    fn sample(ty: &str) -> Value {
+        match ty {
+            "object" => json!({ "project": "sha256:0" }),
+            "sha256" => json!("sha256:0"),
+            "map<path,sha256>" => json!({ "a.lute": "sha256:0" }),
+            _ => json!([]),
+        }
+    }
+
+    /// Required fields are exactly the ones serde cannot default.
+    fn check_table<T: DeserializeOwned + std::fmt::Debug>(table: &[RequestField]) {
+        let names: Vec<&str> = table.iter().map(|f| f.name).collect();
+        assert_eq!(serde_fields::<T>(), names);
+        let full: serde_json::Map<String, Value> = table
+            .iter()
+            .map(|f| (f.name.to_owned(), sample(f.ty)))
+            .collect();
+        serde_json::from_value::<T>(Value::Object(full.clone())).unwrap();
+        for field in table {
+            let mut without = full.clone();
+            without.remove(field.name);
+            assert_eq!(
+                serde_json::from_value::<T>(Value::Object(without)).is_err(),
+                field.required,
+                "without `{}`",
+                field.name
+            );
+        }
+    }
+
+    #[test]
+    fn request_and_base_fields_are_the_serde_fields() {
+        check_table::<PatchRequest>(REQUEST_FIELDS);
+        check_table::<PatchBase>(BASE_FIELDS);
+    }
+}

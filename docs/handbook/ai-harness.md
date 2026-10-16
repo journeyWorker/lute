@@ -84,13 +84,14 @@ used by LSP features; the CLI does not implement a second symbol/type resolver.
 }
 ```
 
-`lute schema patch --json` describes this request under `inputs`
+`lute schema patch` describes this request under `inputs`
 (`{argument: "PATCH", kind: "request", format: "json", fields, ops, preserve,
 nodeKinds}`), read from the same table as the request parser
 (`crates/lute-model/src/patch/request.rs`); the website's AI harness guide
 ("The patch request") documents every field, op, preserve key and node-key
 kind with an example. Node keys come from `lute context --json`
-(`affected[].key`, `target.key`); a `replaceText` `span` has the shape of
+(`affected[].key`, or `target.kind`:`target.key` for the target itself;
+`target.key` alone is the bare key); a `replaceText` `span` has the shape of
 `affected[].reasons[].sourceSpan`.
 
 Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
@@ -121,7 +122,8 @@ absolute paths, and `..` archive entries, and deletes its private temporary
 directory afterward. When the other side is a directory inside the current
 work tree, the git side is archived from that subtree only (`git -C <toplevel>
 archive <rev> -- <path>`) and rooted there, so special files elsewhere in the
-repository do not matter; otherwise (the other side outside the repository, or
+repository do not matter (the path is literal; a directory missing at that
+revision is `E-CLI-IO` naming both); otherwise (the other side outside the repository, or
 both sides `git:`) the current directory's tree is archived (0.47). The result includes both revisions and a sorted `changes`
 array. Changes match by NodeKey and report added, removed, moved, or per-node
 semantic fields; formatting-only changes produce an empty array. Guards compare

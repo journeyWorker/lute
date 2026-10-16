@@ -105,6 +105,40 @@ fn materialize(side: &Path, other: &Path) -> Result<Materialized, String> {
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "empty git revision".to_string())?;
     let source = git_source(other);
+    let pathspec = source
+        .subtree
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    let git = || {
+        let mut git = Command::new("git");
+        // Directory names are paths, never pathspec magic or globs.
+        git.arg("--literal-pathspecs");
+        if let Some(toplevel) = &source.toplevel {
+            git.arg("-C").arg(toplevel);
+        }
+        git
+    };
+    if !pathspec.is_empty() {
+        // A revision that resolves but lacks the compared directory gets a
+        // message naming both; an unknown revision is git archive's error.
+        let resolves = |object: &str| {
+            git()
+                .args(["cat-file", "-t", object])
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        };
+        if resolves(&format!("{revision}^{{tree}}")).is_some()
+            && resolves(&format!("{revision}:{pathspec}")).as_deref() != Some("tree")
+        {
+            return Err(format!(
+                "`{pathspec}` is not a directory at git revision `{revision}`"
+            ));
+        }
+    }
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -114,18 +148,9 @@ fn materialize(side: &Path, other: &Path) -> Result<Materialized, String> {
         .map_err(|e| format!("cannot create temporary directory: {e}"))?;
     let archive = root.with_extension("tar");
     let _archive_cleanup = ArchiveCleanup(archive.clone());
-    let mut git = Command::new("git");
-    if let Some(toplevel) = &source.toplevel {
-        git.arg("-C").arg(toplevel);
-    }
+    let mut git = git();
     git.args(["archive", "--format=tar", revision]);
-    if !source.subtree.as_os_str().is_empty() {
-        let pathspec = source
-            .subtree
-            .components()
-            .map(|c| c.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
+    if !pathspec.is_empty() {
         git.args(["--", &pathspec]);
     }
     let status = git

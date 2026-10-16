@@ -235,3 +235,48 @@ fn two_edits_in_one_file_leave_it_fmt_check_clean() {
             .replace("Paper and a frame.", "Paper, a frame, and a pencil.")
     );
 }
+
+/// dsl 0.47.0 §5.1: the format guard end to end. Wrapping three lines of a
+/// clean file in a new `<branch>` through two inserts formats only the two
+/// inserted runs; the untouched middle line would need re-indenting, so the
+/// written file would not be `fmt --check` clean. The patch is refused with
+/// `E-PATCH-FORMAT` naming the file, exit 2, and nothing is written.
+#[test]
+fn a_patch_that_would_leave_a_clean_file_unclean_is_refused_with_e_patch_format() {
+    let root = lute_scratch::ScratchDir::new();
+    let original = "---\nkind: scene\nid: fair\n---\n\n## Opening\n\n@narrator{code=\"0010\"}: One.\n@narrator{code=\"0020\"}: Two.\n@narrator{code=\"0030\"}: Three.\n";
+    std::fs::write(root.join("scene.lute"), original).unwrap();
+    let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
+    let request = serde_json::json!({
+        "base": {"project": format!("sha256:{}", model.revisions().sha256)},
+        "targets": ["line:fair.narrator_0010", "line:fair.narrator_0030"],
+        "edits": [
+            {"op": "insertBefore", "node": "line:fair.narrator_0010",
+             "text": "<branch id=\"w\">\n<choice id=\"a\" text=\"A\">\n"},
+            {"op": "insertAfter", "node": "line:fair.narrator_0030",
+             "text": "\n</choice>\n</branch>"}
+        ],
+        "preserve": []
+    });
+    let patch = root.join("patch.json");
+    std::fs::write(&patch, serde_json::to_vec(&request).unwrap()).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_lute"))
+        .args([
+            "patch",
+            root.to_str().unwrap(),
+            patch.to_str().unwrap(),
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["accepted"], false, "{report:#}");
+    assert_eq!(report["code"], "E-PATCH-FORMAT", "{report:#}");
+    assert_eq!(report["path"], "scene.lute");
+    assert!(report["message"].as_str().unwrap().contains("scene.lute"));
+    assert_eq!(
+        std::fs::read_to_string(root.join("scene.lute")).unwrap(),
+        original
+    );
+}

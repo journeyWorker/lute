@@ -220,7 +220,7 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 
 ## patch 요청 (0.47)
 
-`lute patch <DIR> <PATCH> [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch --json`이 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
+`lute patch <DIR> <PATCH> [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
 
 | 필드 | 필수 | 타입 | 의미 |
 |---|---|---|---|
@@ -238,7 +238,7 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 | `insertAfter` | `node`, `text` | 노드 span의 끝에 `text`를 넣습니다. |
 | `replaceAttr` | `node`, `attr`, `value` | 노드 안 속성 하나의 값을 바꿉니다(따옴표는 유지). |
 | `removeNode` | `node` | 노드의 소스 span을 지웁니다. |
-| `replaceText` | `file`, `rev`, `span`, `text` | revision이 `rev`인 `file`의 `span`을 정확히 바꿉니다. `span`은 `lute context --json`이 출력하는 소스 span 객체(`byte_start`, `byte_end`, `line`, `column`, `utf16_range`)이며 target 안에 있어야 합니다. |
+| `replaceText` | `file`, `rev`, `span`, `text` | revision이 `rev`인 `file`의 `span`을 정확히 바꿉니다. `span`은 `lute context --json`의 `affected[].reasons[].sourceSpan`과 같은 모양의 소스 span 객체(`byte_start`, `byte_end`, `line`, `column`, `utf16_range`)이며 target 안에 있어야 합니다. |
 | `createFile` | `path`, `text` | 새 파일을 만듭니다(파일 전체를 포맷). |
 | `moveFile` | `from`, `to` | 파일을 옮깁니다. 다른 파일이 옛 경로를 아직 참조하면 거부됩니다. |
 
@@ -256,7 +256,7 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 | `reachability` | 노드 키 | 노드의 도달 가능성이 그대로입니다. |
 | `constraints` | `true` | 프로젝트 제약 판정이 그대로입니다. |
 
-노드 키는 `kind:key`입니다. 키는 `lute context <file> --target <kind:key> --json`에서 가져오세요. `affected[]`의 모든 항목이 `key`(와 `reasons[].sourceSpan`)를 담고, `target.key`가 target 자신을 가리킵니다. 종류는 `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`입니다. patch는 편집 가능한 소스 span이 있는 노드만 target으로 삼을 수 있습니다. `project`, `occasion`, `relation`, `state`, `expanded`, `fact`, `engine`은 target으로 거부됩니다(`E-PATCH-TARGET`. 스키마 YAML은 target으로 삼을 수 있는 노드 안에서 `replaceText`로 편집하세요). `lute schema patch --json`의 `nodeKinds[].targetable`도 같은 내용을 알려 줍니다.
+노드 키는 `kind:key`입니다. 키는 `lute context <file> --target <kind:key> --json`에서 가져오세요. `affected[]`의 모든 항목이 정규 `key`(와 `reasons[].sourceSpan`)를 담고, target 자신은 `target.kind`:`target.key`입니다(`target.key`만으로는 kind 없는 키입니다). 종류는 `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`입니다. patch는 편집 가능한 소스 span이 있는 노드만 target으로 삼을 수 있습니다. `project`, `occasion`, `relation`, `state`, `expanded`, `fact`, `engine`은 target으로 거부됩니다(`E-PATCH-TARGET`. 스키마 YAML은 target으로 삼을 수 있는 노드 안에서 `replaceText`로 편집하세요). `lute schema patch`의 `nodeKinds[].targetable`도 같은 내용을 알려 줍니다.
 
 ```json
 {
