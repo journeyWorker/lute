@@ -1,4 +1,5 @@
-bindingsVersion: "0.46"
+# `ui.title.text` needs the 0.47 bindings line.
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -48,7 +49,7 @@ vfx:
   shake: { effect: shake, duration: 0.4, strength: 10 }
 ui:
   font: "Georgia, 'Times New Roman', serif"
-  title: { background: ui/title.png, music: ui/title.wav }
+  title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
   theme: { text: "#ffffff", accent: "#e88b9a", panel: "#141a35" }
   ended:
     by: run.path

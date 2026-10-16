@@ -106,7 +106,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-이 스크립트는 `examples/player-demo`를 컴파일하고 `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+
+Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export .`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
 
 ## 6. 스테이지 레이어
 
@@ -122,3 +124,13 @@ player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 
 8. `transition` — 장면 전환.
 
 따라서 `::cg`는 스테이지의 배우를 덮고, 대사 창과 UI 아래에 남습니다. `cgLayouts`는 레이어 안에서 CG의 배치(`fit`, `scale`, `x`, `y`)만 정하며 순서는 바꾸지 않습니다.
+
+## 7. 타이틀 화면
+
+타이틀 화면의 제목은 바인딩에 `ui.title.text`가 있으면 그 값입니다. 없으면 제목을 그리지 않습니다(player-web은 임시 이름을 표시하지 않습니다). `ui.title.background`와 `ui.title.music`은 선택 사항이며, 없으면 배경을 그리지 않고 음악도 재생하지 않습니다.
+
+```yaml
+bindingsVersion: "0.47"
+ui:
+  title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
+```

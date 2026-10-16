@@ -16,6 +16,7 @@ after: 'visited("chapter-two")'
 @narrator{code="0010"}: At midnight, the lantern opens like an eye. The lost sister stands inside its light.
 @mara{code="0010" emotion="sad"}: Liora. Come home.
 @elio{code="0010" emotion="worried"}: The tide is climbing the stairs.
+::set{user.voyages += 1}
 <branch id="lastLight" prompt="The lantern offers one final choice.">
   <choice id="release" text="Release the light to the sea" when="run.trust >= 1">
     ::set{run.path = "dawn"}
