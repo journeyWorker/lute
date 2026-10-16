@@ -25,7 +25,7 @@ fn schema(path: &[&str]) -> Value {
     assert_eq!(code, 0, "lute {args:?}: {stderr}");
     let value: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(value["command"], "schema");
-    assert_eq!(value["schemaVersion"], "0.43.0.schema");
+    assert_eq!(value["schemaVersion"], "0.47.0.schema");
     assert_eq!(value["ok"], true);
     value
 }
@@ -139,6 +139,17 @@ fn every_command_describes_every_option_its_help_lists() {
             subcommands,
             help_commands(&words),
             "subcommands of `{}`",
+            path.join(" ")
+        );
+        // dsl 0.47.0 §5.2: every description has `inputs`; only `patch`
+        // reads a structured request.
+        let inputs = described["inputs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("`{}` has no inputs list", path.join(" ")));
+        assert_eq!(
+            inputs.len(),
+            usize::from(path == ["patch"]),
+            "inputs of `{}`",
             path.join(" ")
         );
     }

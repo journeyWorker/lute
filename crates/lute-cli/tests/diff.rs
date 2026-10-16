@@ -103,3 +103,89 @@ fn git_head_vs_working_copy_smoke() {
     assert_eq!(report["changes"].as_array().unwrap().len(), 1);
     assert_eq!(report["changes"][0]["kind"], "lineText");
 }
+
+fn git(repo: &Path, args: &[&str]) {
+    let output = Command::new("git")
+        .args([
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "user.name=test",
+        ])
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// A repository whose Lute project lives in `story/`, beside a symlink
+/// outside it (the Brinewake layout of #126), committed once.
+fn story_repo(name: &str) -> lute_scratch::ScratchDir {
+    let repo = lute_scratch::ScratchDir::named(name);
+    std::fs::create_dir_all(repo.join("story")).unwrap();
+    std::fs::create_dir_all(repo.join(".cursor")).unwrap();
+    std::fs::write(repo.join("README.md"), "# game\n").unwrap();
+    std::fs::write(repo.join("story/scene.lute"), scene("Hello")).unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("../README.md", repo.join(".cursor/link")).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "base"]);
+    repo
+}
+
+/// dsl 0.47.0 §5.3 (#126): from the repository root, `git:HEAD story`
+/// archives only `story/` and roots the git side there, so a symlink outside
+/// it does not matter and both sides compare the same project root.
+#[cfg(unix)]
+#[test]
+fn git_head_vs_a_subproject_compares_the_subtree() {
+    let repo = story_repo("git-subtree");
+    std::fs::write(repo.join("story/scene.lute"), scene("Goodbye")).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_lute"))
+        .args(["diff", "git:HEAD", "story", "--json"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let before: Vec<&String> = report["before"]["files"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .collect();
+    assert_eq!(before, ["scene.lute"], "{report:#}");
+    assert_eq!(report["changes"].as_array().unwrap().len(), 1, "{report:#}");
+    assert_eq!(report["changes"][0]["kind"], "lineText");
+}
+
+/// A symlink inside the compared subtree is still refused.
+#[cfg(unix)]
+#[test]
+fn a_symlink_inside_the_compared_subtree_is_still_refused() {
+    let repo = story_repo("git-subtree-link");
+    std::os::unix::fs::symlink("scene.lute", repo.join("story/alias.lute")).unwrap();
+    git(&repo, &["add", "."]);
+    git(&repo, &["commit", "-qm", "link"]);
+    let output = Command::new(env!("CARGO_BIN_EXE_lute"))
+        .args(["diff", "git:HEAD", "story", "--json"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(text.contains("symlink"), "{text}");
+}

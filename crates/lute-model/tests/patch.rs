@@ -1036,3 +1036,47 @@ fn replace_node_adds_match_arm_with_plugin_directives() {
         "new match arm was lost from semantic diff"
     );
 }
+
+/// #123: two `replaceNode` edits in one file, the second after indented lines
+/// that the first edit's growth shifts (the Brinewake dogfood shape). The file
+/// stays `fmt --check` clean and only the two nodes' lines change.
+#[test]
+fn two_replace_node_edits_in_one_file_change_only_the_nodes_and_stay_canonical() {
+    let root = lute_scratch::ScratchDir::named("lute-model-patch-two-edits");
+    let original = "---\nkind: scene\nid: fair\n---\n\n## Opening\n\n@narrator{code=\"0010\"}: First line of the fair.\n@narrator{code=\"0020\"}: Someone runs past.\n\n<branch id=\"pick\">\n  <choice id=\"go\" text=\"Go\">\n    ::bg{location=\"square\"}\n    @pell{code=\"0010\"}: Paper and a frame.\n  </choice>\n</branch>\n";
+    let canonical = |text: &str| {
+        lute_syntax::format_source(text, &lute_syntax::FormatOptions::default())
+            .unwrap()
+            .text
+            == text
+    };
+    assert!(canonical(original), "fixture must start fmt-clean");
+    std::fs::write(root.join("scene.lute"), original).unwrap();
+    let narrator = node(&root, NodeKind::Line, "narrator_0020");
+    let pell = node(&root, NodeKind::Line, "pell_0010");
+    let request = patch(
+        &root,
+        vec![narrator.clone(), pell.clone()],
+        vec![
+            PatchEdit::ReplaceNode {
+                node: narrator,
+                text: "@narrator{code=\"0020\"}: Someone runs past, shouting loudly.".into(),
+            },
+            PatchEdit::ReplaceNode {
+                node: pell,
+                text: "@pell{code=\"0010\"}: Paper, a frame, and a pencil.".into(),
+            },
+        ],
+        vec![],
+    );
+    apply_patch(&root, request, false).unwrap();
+    let after = std::fs::read_to_string(root.join("scene.lute")).unwrap();
+    assert!(
+        canonical(&after),
+        "patched file is not fmt-clean: {after:?}"
+    );
+    let expected = original
+        .replace("Someone runs past.", "Someone runs past, shouting loudly.")
+        .replace("Paper and a frame.", "Paper, a frame, and a pencil.");
+    assert_eq!(after, expected);
+}
