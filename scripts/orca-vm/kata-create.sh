@@ -232,13 +232,23 @@ fi
 
 # Warm Flutter caches built by the forca-mirror job: Gradle reads the shared
 # dependency cache in place (GRADLE_RO_DEP_CACHE); pub and the Gradle wrapper
-# are copied because they need a writable home.
+# are copied because they need a writable home. The seed (one build made at
+# these same paths) adds Gradle transforms, Kotlin DSL and build cache plus
+# .dart_tool, so the first build skips configuration, build hooks and the
+# kernel when the sources match (eevee: 444 s -> about 210 s).
 warm="/forca/warm/$(key "$repo_url")/current"
 if has mirror && [ -d "$warm" ]; then
   warm="$(readlink -f "$warm")"
   [ -d "$warm/pub" ] && rsync -a "$warm/pub/" "$HOME/.pub-cache/" >&2
   [ -d "$warm/gradle/wrapper" ] && mkdir -p "$HOME/.gradle" && rsync -a "$warm/gradle/wrapper" "$HOME/.gradle/" >&2
   [ -d "$warm/gradle/caches/modules-2" ] && extra_env="$extra_env GRADLE_RO_DEP_CACHE=$warm/gradle/caches"
+  if [ -f "$warm/seed/.complete" ]; then
+    app="$project_root/flutter"; [ -f "$app/pubspec.yaml" ] || app="$project_root"
+    [ -d "$warm/seed/gradle-caches" ] && mkdir -p "$HOME/.gradle/caches" &&
+      rsync -a "$warm/seed/gradle-caches/" "$HOME/.gradle/caches/" >&2
+    [ -d "$warm/seed/dart_tool" ] && [ ! -e "$app/.dart_tool" ] &&
+      rsync -a "$warm/seed/dart_tool/" "$app/.dart_tool/" >&2
+  fi
 fi
 
 if [ -n "$emu_addr" ]; then
