@@ -4,7 +4,7 @@ description: Lute를 AI 작성 파이프라인에 연결하는 방법 — 신뢰
 ---
 ## 기계 판독 CLI 계약 (0.43)
 
-JSON을 지원하는 명령은 이제 배열이 아니라 `command`, `schemaVersion`, `ok`와 명령별 payload를 담은 하나의 객체를 출력합니다. 실패는 `ok: false`와 `error`(`code`, `message`, 선택적 `path`·`argument`·`hint`)로 표현됩니다. stdout을 파싱하기 전에 종료 코드를 확인하고, 프로젝트 해석·사용법 오류는 stderr도 보존하세요. 현재 명령 ID와 schema 버전은 `lute schema --json`으로 조회합니다. 재현 가능한 예에서는 `LUTE_TELEMETRY=0`을 사용하세요.
+JSON을 지원하는 명령은 이제 배열이 아니라 `command`, `schemaVersion`, `ok`와 명령별 payload를 담은 하나의 객체를 출력합니다. 실패는 `ok: false`와 `error`(`code`, `message`, 선택적 `path`·`argument`·`hint`)로 표현됩니다. stdout을 파싱하기 전에 종료 코드를 확인하고, 프로젝트 해석·사용법 오류는 stderr도 보존하세요. 현재 명령 ID와 schema 버전은 `lute schema <command>`(또는 `lute schema`, 출력은 항상 JSON)로 조회합니다. 재현 가능한 예에서는 `LUTE_TELEMETRY=0`을 사용하세요.
 
 Lute는 모델이나 다른 작성 도구로 구동할 수 있지만, 도구가 권위자가 되지는 않습니다. 하네스는 문장이 아니라 종료 코드와 JSON을 읽으며, 호스트가 프로젝트와 [capability-permission 상한](/ko/tooling/capability-permissions/)을 독립적으로 선택합니다. 작동하는 루프는 **신뢰된 context 입력 → 생성 → 같은 상한으로 검사 → 승격 → 태그**입니다. Lute 자체는 AI나 원격 서비스를 호출하지 않습니다.
 
