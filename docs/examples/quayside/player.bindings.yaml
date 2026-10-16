@@ -25,3 +25,5 @@ ui:
     screens:
       restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
       retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }
+flow:
+  newGame: { occasion: start }

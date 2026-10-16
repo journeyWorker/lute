@@ -266,7 +266,8 @@ a workaround in the host.
 
 Bindings resolve paths below `assetsBase`. `ui.title.music` uses the `assets:`
 key `title-music`; `ui.ended` reads `run.ending` and selects a screen for each
-named ending:
+named ending; `flow.newGame` raises `start` each time New game begins a run, so
+the host never raises it itself:
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
 bindingsVersion: "0.46"
@@ -296,6 +297,8 @@ ui:
     screens:
       restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
       retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }
+flow:
+  newGame: { occasion: start }
 ```
 
 Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
@@ -416,7 +419,8 @@ const label = clock == null
 An ending closes a run, not the game. A **new run** (`newRun`) resets every
 `run.*` path to its default — so `run.ending` is `none` again and `terminal`
 no longer holds — while the **user tier** carries over: `user.*` values,
-user-tier facts, `once: user` spends and the read marks of entries. Quayside
+user-tier facts, `once: user` spends and `entry.<id>.everRead` (the per-run
+`entry.<id>.read` resets). Quayside
 keeps one user-tier counter, `user.endings` (declared in step 1), and both
 ending choices in `market` add one to it (`::set{user.endings += 1}`).
 
@@ -457,7 +461,8 @@ expect:
 ```
 
 `lute play --script plays/second-run.play.yaml .` shows what the new run took
-from the old one and what the opening says this time:
+from the old one and what the opening says this time (steps 3–4 of the
+output):
 
 ```text
 ── step 3 · new run ──────────────
@@ -481,22 +486,31 @@ from the old one and what the opening says this time:
 
 `lute test docs/examples/quayside` runs it with the other plays.
 
-In player-web the same second run needs no host code, and it survives a
-reload:
+In player-web the second run needs no host code beyond step 5's raises, and it
+survives a reload. The host raises `visit` for `place.square` when the player
+walks onto the square on its map
+(`player.send({ type: "raiseOccasion", occasion: "visit", target: "place.square" })`);
+`newRun`, the lineage and the `start` raise (`flow.newGame`, step 4) happen
+inside the player:
 
-1. **Run 1.** Choose "Restore it as a community hall". `terminal` holds, and
-   the player shows the `restore` ending screen ("The Hall Opens").
+1. **Run 1.** New game raises `start`. Walk to the square and choose "Restore
+   it as a community hall". `terminal` holds, and the player shows the
+   `restore` ending screen ("The Hall Opens").
 2. **The lineage is written.** When the session presents that `ended` output,
    the player takes the runtime snapshot — the **lineage**: the user tier plus
    the ended run's values — and stores it in its profile at once, replacing
    the previous one.
 3. **New game.** Back to title (no confirm on an ended run), then New game.
-   The session is at `ended`, so New game sends `newRun`; the opening greets
-   you with the `prev.run` line and "Bell answers given so far: 1."
+   The session is at `ended`, so New game sends `newRun` and then raises
+   `start`; the opening greets you with the `prev.run` line and "Bell answers
+   given so far: 1."
 4. **Reload, then New game.** The fresh session is untouched and cannot send
-   `newRun`, so New game restores the profile's lineage first and then sends
-   `newRun`: the same two lines play. A run in progress is not part of the
-   lineage; only a save (quick, auto or a slot) keeps it.
+   `newRun`, so New game restores the profile's lineage first, sends `newRun`
+   and raises `start`: the same two lines play. A run in progress is not part
+   of the lineage; only a save (quick, auto or a slot) keeps it.
+5. **Abandon a run, then New game.** Abandoning a run through the menu and
+   starting New game does the same: the lineage is restored and `newRun` sent,
+   so anything that run changed, user tier included, is dropped.
 
 A host that mounts with `snapshot` or `session` has chosen its state: endings
 still write the lineage, but New game never restores it. A host `seed` is not

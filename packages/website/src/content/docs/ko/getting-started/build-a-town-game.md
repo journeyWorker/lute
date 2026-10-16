@@ -262,7 +262,8 @@ expect:
 
 바인딩 경로는 `assetsBase` 아래에서 해석됩니다. `ui.title.music`은 `assets:`의
 `title-music` 키를 사용하고, `ui.ended`는 `run.ending`을 읽어 각 결말 화면을
-선택합니다.
+선택합니다. `flow.newGame`은 새 게임이 런을 시작할 때마다 `start`를 발생시키므로
+호스트가 직접 발생시키지 않습니다.
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
 bindingsVersion: "0.46"
@@ -292,6 +293,8 @@ ui:
     screens:
       restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
       retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }
+flow:
+  newGame: { occasion: start }
 ```
 
 참조한 placeholder 파일은 모두 `docs/examples/quayside/assets/`에 커밋되어
@@ -411,7 +414,8 @@ const label = clock == null
 결말은 런을 끝낼 뿐 게임을 끝내지 않습니다. **새 런**(`newRun`)은 모든 `run.*`
 경로를 기본값으로 되돌리므로 `run.ending`은 다시 `none`이 되고 `terminal`도 더
 이상 성립하지 않습니다. 반면 **user tier**는 이어집니다. `user.*` 값, user tier
-사실, `once: user` 소모, entry 읽기 표시가 그렇습니다. Quayside는 user tier
+사실, `once: user` 소모, `entry.<id>.everRead`(런마다의 `entry.<id>.read`는
+초기화됩니다)가 그렇습니다. Quayside는 user tier
 카운터 `user.endings` 하나를 두고(1단계에서 선언), `market`의 두 결말 선택지가
 여기에 1을 더합니다(`::set{user.endings += 1}`).
 
@@ -453,7 +457,7 @@ expect:
 ```
 
 `lute play --script plays/second-run.play.yaml .`은 새 런이 이전 런에서 가져온
-값과 이번에 opening이 하는 말을 보여 줍니다.
+값과 이번에 opening이 하는 말을 보여 줍니다(출력의 3–4단계).
 
 ```text
 ── step 3 · new run ──────────────
@@ -477,21 +481,30 @@ expect:
 
 `lute test docs/examples/quayside`가 다른 플레이와 함께 실행합니다.
 
-player-web에서는 호스트 코드 없이 같은 두 번째 런이 일어나고, 새로 고침 뒤에도
-이어집니다.
+player-web에서는 5단계의 발생 외에 호스트 코드 없이 두 번째 런이 일어나고, 새로
+고침 뒤에도 이어집니다. 플레이어가 호스트 지도에서 광장으로 걸어가면 호스트가
+`place.square`에 대해 `visit`을 발생시킵니다
+(`player.send({ type: "raiseOccasion", occasion: "visit", target: "place.square" })`).
+`newRun`, lineage, `start` 발생(`flow.newGame`, 4단계)은 플레이어 안에서
+일어납니다.
 
-1. **첫 런.** "Restore it as a community hall"을 고릅니다. `terminal`이
-   성립하고 플레이어는 `restore` 결말 화면("The Hall Opens")을 보여 줍니다.
+1. **첫 런.** 새 게임이 `start`를 발생시킵니다. 광장으로 걸어가 "Restore it as
+   a community hall"을 고릅니다. `terminal`이 성립하고 플레이어는 `restore` 결말
+   화면("The Hall Opens")을 보여 줍니다.
 2. **lineage 기록.** 세션이 그 `ended` 출력을 제시하면 플레이어는 런타임
    스냅숏 — user tier와 끝난 런의 값을 담은 **lineage** — 을 떠서 프로필에 바로
    저장하고 이전 것을 대체합니다.
 3. **새 게임.** 타이틀로 돌아간 뒤(끝난 런에서는 확인 창이 없습니다) 새 게임을
-   누릅니다. 세션이 `ended`에 있으므로 새 게임은 `newRun`을 보내고, opening이
-   `prev.run` 줄과 "Bell answers given so far: 1."로 맞이합니다.
+   누릅니다. 세션이 `ended`에 있으므로 새 게임은 `newRun`을 보낸 뒤 `start`를
+   발생시키고, opening이 `prev.run` 줄과 "Bell answers given so far: 1."로
+   맞이합니다.
 4. **새로 고침 뒤 새 게임.** 새 세션은 손대지 않은 상태라 `newRun`을 보낼 수
-   없으므로, 새 게임은 먼저 프로필의 lineage를 복원한 뒤 `newRun`을 보냅니다.
-   같은 두 줄이 나옵니다. 진행 중인 런은 lineage에 들어가지 않으며 저장(퀵,
-   자동, 슬롯)으로만 남습니다.
+   없으므로, 새 게임은 먼저 프로필의 lineage를 복원하고 `newRun`을 보낸 뒤
+   `start`를 발생시킵니다. 같은 두 줄이 나옵니다. 진행 중인 런은 lineage에
+   들어가지 않으며 저장(퀵, 자동, 슬롯)으로만 남습니다.
+5. **런을 포기한 뒤 새 게임.** 메뉴에서 런을 포기하고 새 게임을 시작해도
+   같습니다. lineage를 복원한 뒤 `newRun`을 보내므로, user tier를 포함해 그 런이
+   바꾼 것은 모두 버려집니다.
 
 `snapshot`이나 `session`으로 마운트한 호스트는 상태를 스스로 고른 것입니다.
 결말은 여전히 lineage를 쓰지만 새 게임은 그것을 복원하지 않습니다. lineage가
