@@ -242,9 +242,9 @@ Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-CHOICE-DUP
 
-A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.
+A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub; or a branch or hub with `prompt=` has a `<choice id="prompt">`, whose lineId would be the prompt's (`{prefix}.{branchOrHubId}.prompt`) — rename the choice.
 
-Spec: [dsl §11.1](/spec/)
+Spec: [dsl §11.1](/spec/), [dsl 0.47.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-CHOICELOG-READ
 
@@ -2033,6 +2033,12 @@ Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 A compiled line record is missing text for a locale its localization bundle declares.
 
 Spec: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-L10N-STALE
+
+A merged translation was made from a different source text than the record's current one — the line, option label or prompt changed after the `lute loc export` the translator worked from (its stored `sourceHash` differs). The translation is still merged; re-export and update it.
+
+Spec: [dsl 0.47.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-LINE-CODE-UNTAGGED
 

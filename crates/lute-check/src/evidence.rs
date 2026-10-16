@@ -523,6 +523,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ),
         ("W-INTO-SET-DUP", DiagnosticClass::SourceError),
         ("W-L10N-MISSING", DiagnosticClass::SourceError),
+        ("W-L10N-STALE", DiagnosticClass::SourceError),
         ("W-LINE-CODE-UNTAGGED", DiagnosticClass::SourceError),
         ("W-LUTE-VERSION-STALE", DiagnosticClass::SourceError),
         ("W-META-LEGACY", DiagnosticClass::SourceError),

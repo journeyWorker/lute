@@ -260,7 +260,8 @@ fn addr_of(shot: i64, position: usize, shot_w: usize, idx_w: usize) -> String {
 /// a FRESH scope (its own Pass-1 max-code map, own back-fill counter — a
 /// quest's per-quest prefix change resets identity per quest, IR addendum §4).
 /// `identity` templates the per-line joins (0.8.0 §9); an option's structural
-/// `{prefix}.{branchOrHubId}.{optionId}` is NOT templated.
+/// `{prefix}.{branchOrHubId}.{optionId}` is NOT templated, nor is a prompted
+/// branch/hub's `{prefix}.{branchOrHubId}.prompt` (dsl 0.47.0 §3.1).
 fn assign_identity(
     cmds: &mut [Command],
     segments: &[(String, usize)],
@@ -349,10 +350,17 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                 for o in &mut c.options {
                     o.line_id = format!("{prefix}.{}.{}", c.branch_id, o.id);
                 }
+                // dsl 0.47.0 §3.1: the prompt shares the options' namespace.
+                if c.prompt.is_some() {
+                    c.prompt_line_id = Some(format!("{prefix}.{}.prompt", c.branch_id));
+                }
             }
             Command::Hub(h) => {
                 for o in &mut h.options {
                     o.line_id = format!("{prefix}.{}.{}", h.id, o.id);
+                }
+                if h.prompt.is_some() {
+                    h.prompt_line_id = Some(format!("{prefix}.{}.prompt", h.id));
                 }
             }
             _ => {}

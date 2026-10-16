@@ -532,3 +532,5 @@ diner.lute:13:26: error [E-TEXT-MODIFIER] text style `:emphasis` takes no attrib
 ```
 
 보이스 키는 평문을 비교하므로 줄의 스타일만 바꾸어도 녹음과 충돌하지 않습니다. [`lute loc export`](/ko/tooling/cli/#loc-export)는 소스 마크업을 내보내며, 번역은 동일한 수식자를 전달해야 합니다 — 이름, 형식, 속성이 같아야 하고 순서는 달라도 됩니다 — 그렇지 않으면 병합되지 않습니다(`E-L10N-MODIFIERS`). 번역된 로케일에는 항상 `texts`에 평문이 들어가며, 수식자가 있는 줄에는 해당 로케일의 `localeSegments`도 들어갑니다.
+
+export의 각 행에는 `sourceHash`도 있습니다 — 줄의 평문(마크업과 이스케이프를 제거한, 컴파일된 `text`), 선택지 텍스트 또는 프롬프트의 `"sha256:<hex>"`입니다. 번역 파일에 그대로 두세요. [`lute loc import`](/ko/tooling/cli/#loc-import)가 이를 lineId와 로케일별로 번들(`schemaVersion: 2`, `sourceHashes`)에 저장하고, `lute compile --locales`는 번역의 바탕이 된 export 이후 줄이 수정되었으면 `W-L10N-STALE`을 보고합니다 — 다시 내보내 그 번역을 갱신하세요. 갱신하기 전까지 오래된 번역도 그대로 병합됩니다.

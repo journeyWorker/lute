@@ -153,7 +153,7 @@ fn export_then_import_produces_a_stable_bundle() {
     assert_eq!(bundles[0], bundles[1], "the bundle must be byte-stable");
 
     let bundle: serde_json::Value = serde_json::from_str(&bundles[0]).unwrap();
-    assert_eq!(bundle["schemaVersion"], 1);
+    assert_eq!(bundle["schemaVersion"], 2);
     assert_eq!(
         bundle["locales"].as_array().unwrap(),
         &vec![
@@ -745,56 +745,148 @@ fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
     );
 }
 
+/// Every translatable record in `artifact` as `(lineId, plain source text)`:
+/// content lines (when `lines`), option labels and (dsl 0.47.0 §3.1)
+/// branch/hub prompts.
+fn translatable_records(artifact: &serde_json::Value, lines: bool) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let s = |v: &serde_json::Value| v.as_str().unwrap().to_string();
+    for c in artifact["commands"].as_array().expect("commands") {
+        match c["kind"].as_str() {
+            Some("line") if lines => out.push((s(&c["lineId"]), s(&c["text"]))),
+            Some("choice") | Some("hub") => {
+                if let Some(id) = c.get("promptLineId") {
+                    out.push((s(id), s(&c["prompt"])));
+                }
+                for o in c["options"].as_array().unwrap() {
+                    out.push((s(&o["lineId"]), s(&o["text"])));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The completeness claim itself, as a COUNT rather than an eyeball: every
-/// content line in the compiled artifact must have an export row under its
-/// own `lineId`. That is the property #3 broke — the component's line
-/// compiled under `haven.s01ep02.purser_0020` and no export contained it.
-#[test]
-fn every_content_line_the_compiler_emits_has_an_export_row() {
-    let root = haven_root();
-    let scene = root.join("scenes/cryobank.lute");
-    let dir = lute_scratch::ScratchDir::named("loc-completeness");
-    let artifact = dir.join("cryo.json");
+/// translatable record `compile --all` emits for `root` (in the artifacts
+/// `keep` selects) has an export row under its own `lineId`, and that row's
+/// `sourceHash` (dsl 0.47.0 §3.2) is the hash of the record's compiled text
+/// — so a fresh round trip is never `W-L10N-STALE`. Content lines are checked
+/// only when `lines`. Returns the number of records compiled per kind
+/// (`line`, option, prompt).
+fn assert_export_parity(
+    root: &Path,
+    tag: &str,
+    lines: bool,
+    keep: impl Fn(&str) -> bool,
+) -> [usize; 3] {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        scene.to_str().unwrap(),
-        "--project",
+        "--all",
         root.to_str().unwrap(),
         "-o",
-        artifact.to_str().unwrap(),
+        out_dir.to_str().unwrap(),
     ]);
     assert!(
         out.status.success(),
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let compiled = read_json(&artifact);
-    let compiled_ids: Vec<String> = compiled["commands"]
-        .as_array()
-        .expect("commands")
-        .iter()
-        .filter(|c| c["kind"] == "line")
-        .filter_map(|c| c["lineId"].as_str().map(str::to_string))
-        .collect();
-    assert!(!compiled_ids.is_empty(), "no compiled lines: {compiled}");
+    let index = read_json(&out_dir.join("project.index.json"));
+    let mut records = Vec::new();
+    let mut counts = [0usize; 3];
+    for doc in index["documents"].as_array().unwrap() {
+        let path = doc["path"].as_str().unwrap();
+        if !keep(path) {
+            continue;
+        }
+        let artifact = read_json(&out_dir.join(doc["artifact"].as_str().unwrap()));
+        for c in artifact["commands"].as_array().unwrap() {
+            match c["kind"].as_str() {
+                Some("line") => counts[0] += 1,
+                Some("choice") | Some("hub") => {
+                    counts[1] += c["options"].as_array().unwrap().len();
+                    counts[2] += usize::from(c.get("promptLineId").is_some());
+                }
+                _ => {}
+            }
+        }
+        records.extend(translatable_records(&artifact, lines));
+    }
+    assert!(!records.is_empty(), "no compiled records under {root:?}");
 
     let export = run(&["loc", "export", root.to_str().unwrap()]);
     let rows: serde_json::Value = serde_json::from_slice(&export.stdout).expect("export json");
-    let exported: std::collections::BTreeSet<String> = rows
+    let exported: std::collections::BTreeMap<String, String> = rows
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|r| r["lineId"].as_str().map(str::to_string))
+        .filter_map(|r| {
+            Some((
+                r["lineId"].as_str()?.to_string(),
+                r["sourceHash"].as_str().unwrap().to_string(),
+            ))
+        })
         .collect();
-    let missing: Vec<&String> = compiled_ids
+    let missing: Vec<&String> = records
         .iter()
-        .filter(|id| !exported.contains(*id))
+        .map(|(id, _)| id)
+        .filter(|id| !exported.contains_key(*id))
         .collect();
     assert!(
         missing.is_empty(),
-        "{} of {} compiled line ids have no export row: {missing:?}",
+        "{} of {} compiled record ids have no export row: {missing:?}",
         missing.len(),
-        compiled_ids.len()
+        records.len()
+    );
+    let stale: Vec<&String> = records
+        .iter()
+        .filter(|(id, text)| {
+            exported[id]
+                != format!(
+                    "sha256:{}",
+                    lute_manifest::snapshot::sha256_hex(text.as_bytes())
+                )
+        })
+        .map(|(id, _)| id)
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "export sourceHash differs from the compiled text's: {stale:?}"
+    );
+    counts
+}
+
+/// #3 broke this for a component line (compiled under
+/// `haven.s01ep02.purser_0020`, exported nowhere). Haven's scenes (one with a
+/// `::use` component) and lore entries; its quests carry deliberately
+/// untagged lines, which have no reproducible export id.
+#[test]
+fn every_content_line_the_compiler_emits_has_an_export_row() {
+    let [lines, options, _] = assert_export_parity(&haven_root(), "loc-completeness", true, |p| {
+        !p.starts_with("quests/")
+    });
+    assert!(lines > 0 && options > 0, "{lines} lines, {options} options");
+}
+
+/// dsl 0.47.0 §3.1/§3.2: the same parity for option labels and prompts over
+/// a whole game with lore beat bundles, components and prompted branches and
+/// hubs (scene, quest and lore) — every one is exported with the hash of its
+/// compiled text. Content lines are left out here: the lines a `<beat
+/// use="…"/>` shorthand expands from its component have no export row (a
+/// gap older than 0.47, outside its localization slice).
+#[test]
+fn every_option_and_prompt_the_compiler_emits_has_an_export_row() {
+    let root =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples/games/monster-league");
+    let [lines, options, prompts] =
+        assert_export_parity(&root, "loc-completeness-ml", false, |_| true);
+    assert!(
+        lines > 0 && options > 0 && prompts > 0,
+        "{lines} lines, {options} options, {prompts} prompts"
     );
 }
 
@@ -904,6 +996,7 @@ episode: 1
     "line": 10,
     "lineId": "marina.s01ep01.marina_0010",
     "source": null,
+    "sourceHash": "sha256:23ea498e82f4435b1c135324eedef4ba64061600897077bf76082a50b41a9c13",
     "speaker": "marina",
     "text": "Hello there."
   },
@@ -914,6 +1007,7 @@ episode: 1
     "line": 11,
     "lineId": "marina.s01ep01.kai_0010",
     "source": null,
+    "sourceHash": "sha256:17f4444f3932f8a1c554c7cdea92208dbecb03b0173a2b6a79cc2310a05c5fad",
     "speaker": "kai",
     "text": "Hi."
   },
@@ -924,6 +1018,7 @@ episode: 1
     "line": 14,
     "lineId": "marina.s01ep01.pick.go",
     "source": null,
+    "sourceHash": "sha256:97903f19edf6d60bdd7ff12d59408199c5bc409f950410f40dfb442f4e95d0ff",
     "text": "Go on"
   },
   {
@@ -933,6 +1028,7 @@ episode: 1
     "line": 15,
     "lineId": "marina.s01ep01.marina_0020",
     "source": null,
+    "sourceHash": "sha256:68841185b1acd789a7cf4e00f10e8e183f80c11c3afb626a8fc874adbb8115f9",
     "speaker": "marina",
     "text": "Onward."
   },
@@ -943,6 +1039,7 @@ episode: 1
     "line": 17,
     "lineId": "marina.s01ep01.pick.stay",
     "source": null,
+    "sourceHash": "sha256:ef8d633e03c42ae16b7858c51ecc587c2210b45d64515cce89c615749266f2fe",
     "text": "Stay here"
   },
   {
@@ -952,6 +1049,7 @@ episode: 1
     "line": 18,
     "lineId": "marina.s01ep01.marina_0030",
     "source": null,
+    "sourceHash": "sha256:06ddfbea2f6fd7ed52f3abb5bb3ba71486fe2c9504d7bd7ee1a859a5721a7cae",
     "speaker": "marina",
     "text": "Fine."
   }

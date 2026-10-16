@@ -292,7 +292,7 @@ lute compile --all: 1 vocabulary conflict(s); no output written
 
 ### `--locales` — 번역 번들 병합
 
-`--locales <bundle.json>`은 로케일 번들을([`loc import`](#loc-import) 참고) 아티팩트에 병합합니다. 모든 줄 레코드와 모든 choice/hub 옵션에 `lineId`를 키로 하는 `texts` 맵을 추가하고, 인라인 수정자를 사용하는 줄에는 `localeSegments`를 추가합니다. 소스 언어의 `text`는 덮어쓰지 않으며 맵이 비어 있으면 생략합니다. 따라서 `--locales` 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다. 이 문서와 일치하는 항목이 없는 번들 항목은 무시됩니다. 번들은 프로젝트 전체에 걸쳐도 됩니다. `--all`과 함께 사용하면 하나의 번들을 모든 아티팩트에 병합합니다. 인라인 수정자(이름, 형식, 속성의 멀티셋)가 소스 줄과 다른 번역은 병합하지 않습니다(`E-L10N-MODIFIERS`). 이 경우 아티팩트가 출력되지 않습니다.
+`--locales <bundle.json>`은 로케일 번들을([`loc import`](#loc-import) 참고) 아티팩트에 병합합니다. 모든 줄 레코드와 모든 choice/hub 옵션에 `lineId`를 키로 하는 `texts` 맵을, `prompt=`가 있는 branch/hub에는 `promptLineId`를 키로 하는 `promptTexts` 맵을 추가하고, 인라인 수정자를 사용하는 줄에는 `localeSegments`를 추가합니다. 소스 언어의 `text`는 덮어쓰지 않으며 맵이 비어 있으면 생략합니다. 따라서 `--locales` 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다. 이 문서와 일치하는 항목이 없는 번들 항목은 무시됩니다. 번들은 프로젝트 전체에 걸쳐도 됩니다. `--all`과 함께 사용하면 하나의 번들을 모든 아티팩트에 병합합니다. 인라인 수정자(이름, 형식, 속성의 멀티셋)가 소스 줄과 다른 번역은 병합하지 않습니다(`E-L10N-MODIFIERS`). 이 경우 아티팩트가 출력되지 않습니다.
 
 번들이 선언한 로케일 중 번역 가능한 레코드에 없는 로케일은 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-MISSING`으로 stderr에 기록됩니다. 이는 경고이므로 소스 언어 문자열을 담은 아티팩트는 여전히 출력됩니다. `--deny W-L10N-MISSING`(또는 `--deny-warnings`)을 사용하면 이를 승격하여, 아무것도 출시하기 전에 완전한 번역을 요구하도록 CI를 구성할 수 있습니다.
 
@@ -302,6 +302,8 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+병합된 번역에 저장된 `sourceHash`([`loc import`](#loc-import) 참고)가 레코드의 현재 원문 해시와 다르면 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-STALE`입니다. 번역자가 작업한 export 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었다는 뜻입니다. 메시지는 lineId와 로케일을 밝히고 `lute loc export`로 다시 내보내 번역을 갱신하라고 안내합니다. 번역은 그대로 병합됩니다. 다른 경고와 마찬가지로 단일 컴파일과 `--all` 모두에서 `--deny W-L10N-STALE` 또는 `--deny-warnings`로 승격됩니다. `schemaVersion: 1` 번들에는 해시가 없으므로 이 검사를 하지 않습니다.
 
 ## compile-stream
 
@@ -935,9 +937,15 @@ $ lute lint [<path>] [--json] [--config <FILE>] [--deny <CODE>]… [--deny-warni
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-프로젝트 전체에서 번역 가능한 모든 콘텐츠 줄(안정적인 `code`, 화자, 텍스트, 선택지 텍스트)을 추출해 로컬라이제이션 export로 만듭니다. export된 `text`는 소스 마크업을 유지합니다. 인라인 modifier(`:pause{s=0.5}`, `:speed[…]{rate=…}`, 텍스트 스타일 span)와 `{{…}}` interpolation을 포함하며, 번역은 같은 modifier 집합을 유지해야 합니다. `--format`은 `json`(기본값) 또는 `csv`이고, `-o`/`--out`은 stdout 대신 파일에 씁니다. 성공 시 종료 **0**, I/O 오류 시 **2**입니다.
+프로젝트 전체에서 번역 가능한 모든 콘텐츠 줄(안정적인 `code`, 화자, 텍스트, 선택지 텍스트, branch/hub 프롬프트)을 추출해 로컬라이제이션 export로 만듭니다. export된 `text`는 소스 마크업을 유지합니다. 인라인 modifier(`:pause{s=0.5}`, `:speed[…]{rate=…}`, 텍스트 스타일 span)와 `{{…}}` interpolation을 포함하며, 번역은 같은 modifier 집합을 유지해야 합니다. `--format`은 `json`(기본값) 또는 `csv`이고, `-o`/`--out`은 stdout 대신 파일에 씁니다. 성공 시 종료 **0**, I/O 오류 시 **2**입니다.
 
 각 행에는 컴파일러가 해당 레코드에 기록할 `lineId`도 들어가며, `loc import`와 `compile --locales`가 조인 키로 사용합니다. 작성된 `code`가 없는 줄은 JSON에서 `null`, CSV에서 빈 값입니다. 이 id는 확장 후 명령 스트림에서 컴파일러가 보완하며 소스만 걷는 것으로는 재현할 수 없습니다. 먼저 `lute tag`를 실행하면 stderr의 `N lines untagged — run lute tag` 안내가 사라집니다.
+
+행 종류는 `line`, `choice`(선택지 라벨, `key`는 `{branchOrHubId}.{choiceId}`), `prompt`(branch/hub의 `prompt=`, `key`는 `{branchOrHubId}.prompt`, lineId는 `{prefix}.{branchOrHubId}.prompt`)이며 문서 순서를 따릅니다. 프롬프트 행은 그 branch/hub의 선택지보다 앞에 옵니다. 모든 행에는 `sourceHash`가 있습니다. 컴파일러가 내보내는 레코드의 **평문** 원문 — 인라인 수정자와 이스케이프를 제거한 대사 텍스트, 선택지 텍스트, 프롬프트 — 의 `"sha256:<hex>"`입니다. 번역자는 이 값을 바꾸지 않습니다. `loc import`가 이를 저장해 두므로 `compile --locales`는 그 뒤 원문이 바뀌었는지 알 수 있습니다(`W-L10N-STALE`). CSV에서는 마지막 열입니다.
+
+```text
+kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
+```
 
 ## loc import
 
@@ -951,15 +959,21 @@ $ lute loc import <file>… [-o <FILE>]
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": ["en-US", "ja-JP"],
   "entries": {
     "marina.s01ep02.marina_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  },
+  "sourceHashes": {
+    "marina.s01ep02.marina_0010": {
+      "en-US": "sha256:23ea498e82f4…",
+      "ja-JP": "sha256:23ea498e82f4…"
+    }
   }
 }
 ```
 
-`locales`와 `entries`는 모두 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
+(위 해시는 줄여 표기했습니다.) `sourceHashes`는 각 행의 `sourceHash`를 lineId **와** 로케일별로 담습니다(두 로케일이 서로 다른 export에서 번역될 수 있기 때문입니다). 항상 기록되며, 해시를 가진 행이 없으면 `{}`입니다. 모든 맵이 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. `compile --locales`는 `schemaVersion: 1` 번들도 읽습니다(`sourceHashes`가 없고 stale 검사도 하지 않습니다). 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
 
 ## loc report
 

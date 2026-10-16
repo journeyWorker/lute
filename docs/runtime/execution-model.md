@@ -111,6 +111,10 @@ keys changed in 0.41:
   appears only in these rows; a host evaluates a row by name
   (`Program.def`).
 
+Since 0.47 the index carries an optional **`contentLang`** — the manifest's
+`defaults.contentLang`, the source language of the project's text — omitted
+when the manifest declares none (dsl 0.47.0 §2.2).
+
 ## Version negotiation
 
 An engine MUST negotiate in this order, before it opens a playback session or
@@ -618,6 +622,20 @@ source. Merging the `ja-JP` translation
 ```
 
 An unmodified line gets only its `texts` entry.
+
+Choice and hub option labels gain `texts` the same way. A `choice` or `hub`
+record with a `prompt` carries **`promptLineId`**
+(`{prefix}.{branchOrHubId}.prompt`, dsl 0.47.0 §3.1) whenever `prompt` is
+present, and, when the bundle translates it, **`promptTexts`**: locale tag →
+translated prompt. `prompt` stays the source string. Records without a prompt
+are unchanged.
+
+Each `lute loc export` row carries `sourceHash`, the `sha256:` of the record's
+plain source text (`text` of a line or option, `prompt`), and `lute loc import`
+stores it per lineId and locale in the bundle (`schemaVersion: 2`,
+`sourceHashes`). `compile --locales` reports `W-L10N-STALE` for a merged
+translation whose stored hash differs from the record's current source (dsl
+0.47.0 §3.2); the translation still merges.
 
 ## Dispatcher loop
 

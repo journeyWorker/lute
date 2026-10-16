@@ -2569,6 +2569,17 @@
           "type": "string",
           "description": "dsl 0.11.0: the choice-situation sentence shown by the UI. Present only when authored."
         },
+        "promptLineId": {
+          "type": "string",
+          "description": "dsl 0.47.0 §3.1: the prompt's lineId, `{prefix}.{branchId}.prompt` (the prefix the options' lineIds use). Present exactly when `prompt` is."
+        },
+        "promptTexts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
+        },
         "timeout": {
           "type": "integer",
           "minimum": 1,
@@ -2680,6 +2691,17 @@
         "prompt": {
           "type": "string",
           "description": "dsl 0.23.0 §4: the prompt line shown with the hub's options. Present only when authored."
+        },
+        "promptLineId": {
+          "type": "string",
+          "description": "dsl 0.47.0 §3.1: the prompt's lineId, `{prefix}.{hubId}.prompt` (the prefix the options' lineIds use). Present exactly when `prompt` is."
+        },
+        "promptTexts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
         },
         "return": {
           "$ref": "#/$defs/position",
@@ -3824,6 +3846,10 @@
         },
         "clock": {
           "$ref": "#/$defs/clockDecl"
+        },
+        "contentLang": {
+          "description": "dsl 0.47.0 §2.2: the manifest's `defaults.contentLang` — the source\nlanguage of every text in the project. Omitted when the manifest\ndeclares none.",
+          "type": "string"
         },
         "defs": {
           "additionalProperties": {

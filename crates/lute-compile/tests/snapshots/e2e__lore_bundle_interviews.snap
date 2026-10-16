@@ -219,7 +219,8 @@ expression: json
         }
       ],
       "converge": "003-0600",
-      "prompt": "Where do you look?"
+      "prompt": "Where do you look?",
+      "promptLineId": "interviews.lamps.look.prompt"
     },
     {
       "kind": "line",

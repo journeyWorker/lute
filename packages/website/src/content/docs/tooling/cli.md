@@ -327,7 +327,7 @@ An `E-`-severity capability-resolution diagnostic (a bad plugin option, identity
 
 ### `--locales` — merge a translation bundle
 
-`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: a `texts` map on every line record and on every choice/hub option, keyed by `lineId`, plus `localeSegments` on a line that uses inline modifiers. The source-language `text` is never overwritten, and the maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact. A translation whose inline modifiers (name, form, and attributes, as a multiset) differ from the source line's is not merged: `E-L10N-MODIFIERS`, and no artifact is emitted.
+`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: a `texts` map on every line record and on every choice/hub option, keyed by `lineId`, a `promptTexts` map on a branch or hub with `prompt=`, keyed by its `promptLineId`, plus `localeSegments` on a line that uses inline modifiers. The source-language `text` is never overwritten, and the maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact. A translation whose inline modifiers (name, form, and attributes, as a multiset) differ from the source line's is not merged: `E-L10N-MODIFIERS`, and no artifact is emitted.
 
 A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr. It is a warning: the artifact still emits, carrying the source-language string. `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it, so CI can require a complete translation before anything ships:
 
@@ -337,6 +337,8 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single compile and under `--all`. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
 
 ## compile-stream
 
@@ -988,9 +990,15 @@ Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory `check-pro
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-Extract every translatable content line — the stable `code`, speaker, text, and choice text — across a project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
+Extract every translatable content line — the stable `code`, speaker, text, choice text, and branch/hub prompt — across a project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
 
 Each row also carries the `lineId` the compiler will stamp on that record — the join `loc import` and `compile --locales` key on. It is `null` (JSON) or empty (CSV) for a line with no authored `code`, whose id the compiler back-fills from the post-expansion command stream and which no source-only walk can reproduce: run `lute tag` first, and the advisory `N lines untagged — run lute tag` on stderr goes away with it.
+
+Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceId}`) and `prompt` (a branch's or hub's `prompt=`, `key` `{branchOrHubId}.prompt`, lineId `{prefix}.{branchOrHubId}.prompt`), in document order; a prompt row comes before the options of its branch or hub. Every row carries `sourceHash`: `"sha256:<hex>"` of the record's **plain** source text as the compiler emits it — a line's text with inline modifiers and escapes removed, an option's text, a prompt. Translators leave it unchanged; `loc import` stores it so `compile --locales` can tell when the source changed since (`W-L10N-STALE`). In CSV it is the last column:
+
+```text
+kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
+```
 
 ## loc import
 
@@ -1004,15 +1012,21 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": ["en-US", "ja-JP"],
   "entries": {
     "marina.s01ep02.marina_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  },
+  "sourceHashes": {
+    "marina.s01ep02.marina_0010": {
+      "en-US": "sha256:23ea498e82f4…",
+      "ja-JP": "sha256:23ea498e82f4…"
+    }
   }
 }
 ```
 
-`locales` and `entries` are both sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
+(Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locales` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
 ## loc report
 

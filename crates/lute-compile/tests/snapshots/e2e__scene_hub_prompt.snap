@@ -73,7 +73,8 @@ expression: json
         }
       ],
       "converge": "001-0600",
-      "prompt": "Where do you look?"
+      "prompt": "Where do you look?",
+      "promptLineId": "haven.s01ep05.look.prompt"
     },
     {
       "kind": "line",

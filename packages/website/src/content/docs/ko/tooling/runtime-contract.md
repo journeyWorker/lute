@@ -360,6 +360,10 @@ match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이
   있거나, 본문이 낮춰지지 않거나, 두 문서에서 본문이나 파라미터 목록이 다른 def는
   빠집니다. `param` 노드는 다른 곳에는 나타나지 않습니다.
 
+0.47부터 인덱스에는 선택적인 **`contentLang`**도 들어갑니다. 매니페스트의
+`defaults.contentLang`, 즉 프로젝트 텍스트의 원본 언어이며 매니페스트에 없으면 생략됩니다.
+플레이어는 이를 로드한 번들의 원본 로케일로 쓰며, 문서의 `meta.contentLang`보다 먼저 봅니다.
+
 ### IR 0.37.0에서 변경된 내용
 
 **깨끗한 표면 전환: 이름이 바뀐 종류와 필드, 새 종류 하나, 제거된 필드.** 0.36 계열의
@@ -597,7 +601,7 @@ while (pc < artifact.commands.length) {
 
 ## 현지화 텍스트
 
-`line` 레코드의 `text`와 choice/hub 옵션의 `text`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locales`](/ko/tooling/cli/#--locales--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
+`line` 레코드의 `text`, choice/hub 옵션의 `text`, branch/hub의 `prompt`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locales`](/ko/tooling/cli/#--locales--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. `prompt`가 있는 `choice`/`hub` 레코드에는 `promptLineId`(`{prefix}.{branchOrHubId}.prompt`, `prompt`가 있으면 항상 존재, dsl 0.47.0)와, 번들이 번역했다면 `promptTexts`(locale 태그 → 번역된 프롬프트)도 들어갑니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
 
 ```json
 {
@@ -629,7 +633,7 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도)에서 locale을 조회해 제시하고 `text`로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
+locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
 
 ## 런타임 문서
 

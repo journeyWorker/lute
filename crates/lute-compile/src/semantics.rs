@@ -266,6 +266,8 @@ pub const FIELD_TABLE: &[&str] = &[
     "prereqEdges",
     "priority",
     "prompt",
+    "promptLineId",
+    "promptTexts",
     "provenance",
     "quest",
     "r",

@@ -12,8 +12,9 @@
 //! every byte a bundle-less compile emits, stay exactly as they were.
 //!
 //! ## What the merge does and does not touch
-//! - `LineCmd.texts`, `ChoiceOption.labels`, `HubOption.labels` are filled from
-//!   the bundle entry matching that record's own `lineId`. All three are
+//! - `LineCmd.texts`, `ChoiceOption.texts`, `HubOption.texts` and (dsl 0.47.0
+//!   §3.1) a prompted branch/hub's `promptTexts` are filled from the bundle
+//!   entry matching that record's own `lineId` / `promptLineId`. All are
 //!   `skip_serializing_if = "BTreeMap::is_empty"`, so a document with no
 //!   matching entry is byte-identical to 0.7.0.
 //! - `LineCmd.text` / the option `label` are NEVER overwritten. They remain the
@@ -29,6 +30,9 @@
 //!   carries a modifier also gets `localeSegments`. A translation whose
 //!   modifier multiset differs from the source's is [`E_L10N_MODIFIERS`]
 //!   and is not merged.
+//! - dsl 0.47.0 §3.2: a merged `(lineId, locale)` whose stored `sourceHashes`
+//!   value differs from [`source_hash`] of the record's current plain source
+//!   text is [`W_L10N_STALE`]. The translation is still merged.
 
 use std::collections::BTreeMap;
 
@@ -36,6 +40,11 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use serde::Serialize;
 
 use crate::ir::{Command, ExecutionIr, LineCmd};
+
+/// A merged translation was made from a different source text than the
+/// record's current one (dsl 0.47.0 §3.2): the source changed after the
+/// export the translator worked from. Warning-grade; the text still merges.
+pub const W_L10N_STALE: &str = "W-L10N-STALE";
 
 /// A translatable record carries no text for a locale the bundle declares
 /// (dsl 0.8.0 §7). Warning-grade: an untranslated build is still a valid
@@ -47,34 +56,55 @@ pub const W_L10N_MISSING: &str = "W-L10N-MISSING";
 /// parse (dsl 0.37.0 §6). Error-grade: the translation is not merged.
 pub const E_L10N_MODIFIERS: &str = "E-L10N-MODIFIERS";
 
-/// The only `schemaVersion` [`LocaleBundle::parse`] accepts. Bumped only for a
-/// breaking shape change; a bundle is a tool-produced artifact, so an unknown
-/// version is rejected rather than guessed at.
-pub const BUNDLE_SCHEMA_VERSION: i64 = 1;
+/// The `schemaVersion` [`LocaleBundle::to_json`] writes (dsl 0.47.0 §3.2:
+/// `sourceHashes` joined the shape). [`LocaleBundle::parse`] also reads
+/// [`LEGACY_BUNDLE_SCHEMA_VERSION`]; a bundle is a tool-produced artifact, so
+/// any other version is rejected rather than guessed at.
+pub const BUNDLE_SCHEMA_VERSION: i64 = 2;
+
+/// The 0.8.0 bundle shape: no `sourceHashes`, so no stale check.
+pub const LEGACY_BUNDLE_SCHEMA_VERSION: i64 = 1;
+
+/// The `sourceHash` of a record's plain source text (dsl 0.47.0 §3.2):
+/// `"sha256:<lowercase hex>"` over its UTF-8 bytes. `lute loc export` and the
+/// stale check both call this, so the two can never disagree on the digest.
+pub fn source_hash(text: &str) -> String {
+    format!(
+        "sha256:{}",
+        lute_manifest::snapshot::sha256_hex(text.as_bytes())
+    )
+}
 
 /// The canonical locale bundle (dsl 0.8.0 §7).
 ///
 /// `locales` is the DECLARED locale set — the axis the [`W_L10N_MISSING`]
 /// completeness check runs over — sorted and deduplicated. `entries` maps
-/// `lineId -> locale -> text`; both levels are [`BTreeMap`]s, so serialization
-/// is key-sorted and byte-stable by construction.
+/// `lineId -> locale -> text`; `source_hashes` maps `lineId -> locale ->
+/// sourceHash` (dsl 0.47.0 §3.2) for the pairs whose import row carried one.
+/// Every level is a [`BTreeMap`], so serialization is key-sorted and
+/// byte-stable by construction.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LocaleBundle {
     /// Every declared locale tag, sorted and deduplicated.
     pub locales: Vec<String>,
     /// `lineId -> (locale -> translated text)`.
     pub entries: BTreeMap<String, BTreeMap<String, String>>,
+    /// `lineId -> (locale -> "sha256:…")`: the source text each translation
+    /// was made from. Empty for a `schemaVersion: 1` bundle.
+    pub source_hashes: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 /// The wire shape, as a `Serialize` struct rather than a `serde_json::Value`
 /// so the object key order is the DECLARATION order (`schemaVersion`,
-/// `locales`, `entries`) instead of `serde_json`'s alphabetical `Map` order.
+/// `locales`, `entries`, `sourceHashes`) instead of `serde_json`'s
+/// alphabetical `Map` order.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BundleWire<'a> {
     schema_version: i64,
     locales: &'a [String],
     entries: &'a BTreeMap<String, BTreeMap<String, String>>,
+    source_hashes: &'a BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl LocaleBundle {
@@ -92,7 +122,11 @@ impl LocaleBundle {
             entries.entry(line_id).or_default().insert(locale, text);
         }
         locales.sort();
-        Self { locales, entries }
+        Self {
+            locales,
+            entries,
+            source_hashes: BTreeMap::new(),
+        }
     }
 
     /// Serialize to the canonical bundle JSON — pretty-printed and newline
@@ -104,6 +138,7 @@ impl LocaleBundle {
             schema_version: BUNDLE_SCHEMA_VERSION,
             locales: &self.locales,
             entries: &self.entries,
+            source_hashes: &self.source_hashes,
         })
         .expect("BundleWire -> JSON serialization is infallible (String/BTreeMap only)");
         s.push('\n');
@@ -121,15 +156,16 @@ impl LocaleBundle {
             .as_object()
             .ok_or_else(|| "root must be an object".to_string())?;
 
-        match obj.get("schemaVersion").and_then(serde_json::Value::as_i64) {
-            Some(BUNDLE_SCHEMA_VERSION) => {}
+        let version = match obj.get("schemaVersion").and_then(serde_json::Value::as_i64) {
+            Some(v @ (BUNDLE_SCHEMA_VERSION | LEGACY_BUNDLE_SCHEMA_VERSION)) => v,
             Some(other) => {
                 return Err(format!(
-                    "unsupported `schemaVersion` {other} (this toolchain reads {BUNDLE_SCHEMA_VERSION})"
+                    "unsupported `schemaVersion` {other} (this toolchain reads \
+                     {LEGACY_BUNDLE_SCHEMA_VERSION} and {BUNDLE_SCHEMA_VERSION})"
                 ))
             }
             None => return Err("missing or non-integer `schemaVersion`".to_string()),
-        }
+        };
 
         let mut locales = Vec::new();
         for (i, l) in obj
@@ -150,35 +186,58 @@ impl LocaleBundle {
         locales.sort();
         locales.dedup();
 
-        let mut entries: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
-        for (line_id, per_locale) in obj
-            .get("entries")
-            .and_then(serde_json::Value::as_object)
-            .ok_or_else(|| "missing or non-object `entries`".to_string())?
-        {
-            let map = per_locale
-                .as_object()
-                .ok_or_else(|| format!("`entries[{line_id}]` is not an object"))?;
-            let mut texts = BTreeMap::new();
-            for (locale, text) in map {
-                if locale.is_empty() {
-                    return Err(format!("`entries[{line_id}]` has an empty locale tag"));
-                }
-                let text = text
-                    .as_str()
-                    .ok_or_else(|| format!("`entries[{line_id}][{locale}]` is not a string"))?;
-                texts.insert(locale.clone(), text.to_string());
-            }
-            entries.insert(line_id.clone(), texts);
-        }
+        let entries = string_table(obj, "entries")?;
+        // A v1 bundle predates `sourceHashes`: whatever it carries, it has no
+        // stale check. A v2 bundle always writes the key.
+        let source_hashes = if version == BUNDLE_SCHEMA_VERSION {
+            string_table(obj, "sourceHashes")?
+        } else {
+            BTreeMap::new()
+        };
 
-        Ok(Self { locales, entries })
+        Ok(Self {
+            locales,
+            entries,
+            source_hashes,
+        })
     }
+}
+
+/// One `lineId -> locale -> string` table of a bundle (`entries`,
+/// `sourceHashes`), with the defect named exactly.
+fn string_table(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<BTreeMap<String, BTreeMap<String, String>>, String> {
+    let mut table: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for (line_id, per_locale) in obj
+        .get(key)
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| format!("missing or non-object `{key}`"))?
+    {
+        let map = per_locale
+            .as_object()
+            .ok_or_else(|| format!("`{key}[{line_id}]` is not an object"))?;
+        let mut values = BTreeMap::new();
+        for (locale, value) in map {
+            if locale.is_empty() {
+                return Err(format!("`{key}[{line_id}]` has an empty locale tag"));
+            }
+            let value = value
+                .as_str()
+                .ok_or_else(|| format!("`{key}[{line_id}][{locale}]` is not a string"))?;
+            values.insert(locale.clone(), value.to_string());
+        }
+        table.insert(line_id.clone(), values);
+    }
+    Ok(table)
 }
 
 /// Merge `bundle` into `artifact`, returning one [`W_L10N_MISSING`] warning per
 /// `(lineId, locale)` pair the document needs and the bundle does not carry,
-/// and one [`E_L10N_MODIFIERS`] error per refused line translation.
+/// one [`W_L10N_STALE`] warning per merged pair translated from a different
+/// source text, and one [`E_L10N_MODIFIERS`] error per refused line
+/// translation.
 ///
 /// Runs over the FINISHED execution IR, i.e. strictly downstream of
 /// [`crate::address::assign_addresses`] — every `lineId` is final. Iteration is
@@ -192,14 +251,21 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
     for cmd in &mut artifact.commands {
         match cmd {
             Command::Line(l) => bind_line(l, bundle, &mut diags),
+            // dsl 0.47.0 §3.1: the prompt first — the export's row order.
             Command::Choice(c) => {
+                if let (Some(id), Some(prompt)) = (&c.prompt_line_id, &c.prompt) {
+                    bind(id, prompt, &mut c.prompt_texts, bundle, &mut diags);
+                }
                 for o in &mut c.options {
-                    bind(&o.line_id, &mut o.texts, bundle, &mut diags);
+                    bind(&o.line_id, &o.text, &mut o.texts, bundle, &mut diags);
                 }
             }
             Command::Hub(h) => {
+                if let (Some(id), Some(prompt)) = (&h.prompt_line_id, &h.prompt) {
+                    bind(id, prompt, &mut h.prompt_texts, bundle, &mut diags);
+                }
                 for o in &mut h.options {
-                    bind(&o.line_id, &mut o.texts, bundle, &mut diags);
+                    bind(&o.line_id, &o.text, &mut o.texts, bundle, &mut diags);
                 }
             }
             _ => {}
@@ -208,22 +274,27 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
     diags
 }
 
-/// Fill ONE translatable record's locale map from the bundle and report its
-/// gaps. Shared by the line and option arms so the two can never diverge on
-/// either the merge rule or the diagnostic wording.
+/// Fill ONE option label's or prompt's locale map from the bundle and report
+/// its gaps and stale translations. `source` is the record's plain source
+/// text (the stale check's input). Shares [`missing_diag`] and
+/// [`StaleCheck`] with [`bind_line`], so the arms can never diverge on the
+/// diagnostic wording.
 fn bind(
     line_id: &str,
+    source: &str,
     target: &mut BTreeMap<String, String>,
     bundle: &LocaleBundle,
     diags: &mut Vec<Diagnostic>,
 ) {
     let entry = bundle.entries.get(line_id);
+    let mut stale = StaleCheck::new(bundle, line_id, source);
     // An entry MAY carry a locale outside `bundle.locales` (a hand-written
     // bundle); that text is still real data, so it merges. Only the
     // completeness CHECK is scoped to the declared axis.
     if let Some(texts) = entry {
         for (locale, text) in texts {
             target.insert(locale.clone(), text.clone());
+            stale.check(locale, diags);
         }
     }
     for locale in &bundle.locales {
@@ -240,6 +311,7 @@ fn bind(
 /// completeness check is [`bind`]'s.
 fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>) {
     let entry = bundle.entries.get(&l.line_id);
+    let mut stale = StaleCheck::new(bundle, &l.line_id, &l.text);
     for (locale, text) in entry.into_iter().flatten() {
         let (nodes, parse_diags) = lute_syntax::parse_inline_text(text);
         if let Some(bad) = parse_diags.iter().find(|d| d.severity == Severity::Error) {
@@ -266,10 +338,45 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
             l.locale_segments
                 .insert(locale.clone(), crate::lower::inline_segments(&nodes));
         }
+        stale.check(locale, diags);
     }
     for locale in &bundle.locales {
         if entry.is_none_or(|t| !t.contains_key(locale)) {
             diags.push(missing_diag(locale, &l.line_id));
+        }
+    }
+}
+
+/// The [`W_L10N_STALE`] check for one record: the stored hashes of its
+/// `lineId` and its current source hash, computed only when a stored hash
+/// exists to compare against.
+struct StaleCheck<'a> {
+    line_id: &'a str,
+    source: &'a str,
+    stored: Option<&'a BTreeMap<String, String>>,
+    current: Option<String>,
+}
+
+impl<'a> StaleCheck<'a> {
+    fn new(bundle: &'a LocaleBundle, line_id: &'a str, source: &'a str) -> Self {
+        Self {
+            line_id,
+            source,
+            stored: bundle.source_hashes.get(line_id),
+            current: None,
+        }
+    }
+
+    /// Report a merged `locale` translation whose stored hash differs from
+    /// the current source's. No stored hash, no check.
+    fn check(&mut self, locale: &str, diags: &mut Vec<Diagnostic>) {
+        let Some(stored) = self.stored.and_then(|m| m.get(locale)) else {
+            return;
+        };
+        let source = self.source;
+        let current = self.current.get_or_insert_with(|| source_hash(source));
+        if stored != current {
+            diags.push(stale_diag(locale, self.line_id));
         }
     }
 }
@@ -294,6 +401,18 @@ fn modifiers_diag(locale: &str, line_id: &str, why: &str) -> Diagnostic {
         code: E_L10N_MODIFIERS.to_string(),
         severity: Severity::Error,
         message: format!("`{locale}` text for `{line_id}` is not merged: {why}"),
+        ..missing_diag(locale, line_id)
+    }
+}
+
+/// One [`W_L10N_STALE`] warning (dsl 0.47.0 §3.2).
+fn stale_diag(locale: &str, line_id: &str) -> Diagnostic {
+    Diagnostic {
+        code: W_L10N_STALE.to_string(),
+        message: format!(
+            "`{locale}` text for `{line_id}` was translated from an older source text; \
+             re-export with `lute loc export` and update the translation"
+        ),
         ..missing_diag(locale, line_id)
     }
 }
@@ -364,7 +483,7 @@ mod tests {
         assert_eq!(back.to_json(), json, "round trip must be byte-stable");
         // Declaration order, not alphabetical: `schemaVersion` first.
         assert!(
-            json.starts_with("{\n  \"schemaVersion\": 1,\n  \"locales\": ["),
+            json.starts_with("{\n  \"schemaVersion\": 2,\n  \"locales\": ["),
             "{json}"
         );
         assert!(json.ends_with("\n"));
@@ -376,8 +495,19 @@ mod tests {
         assert!(LocaleBundle::parse("[]").is_err());
         assert!(LocaleBundle::parse(r#"{"locales":[],"entries":{}}"#).is_err());
         assert!(
-            LocaleBundle::parse(r#"{"schemaVersion":2,"locales":[],"entries":{}}"#).is_err(),
+            LocaleBundle::parse(r#"{"schemaVersion":3,"locales":[],"entries":{}}"#).is_err(),
             "an unknown schemaVersion is refused, never guessed at"
+        );
+        assert!(
+            LocaleBundle::parse(r#"{"schemaVersion":2,"locales":[],"entries":{}}"#).is_err(),
+            "a v2 bundle always carries `sourceHashes`"
+        );
+        assert!(
+            LocaleBundle::parse(
+                r#"{"schemaVersion":2,"locales":[],"entries":{},"sourceHashes":{"a":{"ja":1}}}"#
+            )
+            .is_err(),
+            "a non-string hash is a defect"
         );
         assert!(
             LocaleBundle::parse(r#"{"schemaVersion":1,"locales":[""],"entries":{}}"#).is_err(),
@@ -387,6 +517,40 @@ mod tests {
             LocaleBundle::parse(r#"{"schemaVersion":1,"locales":["ja"],"entries":{"a":{"ja":7}}}"#)
                 .is_err(),
             "a non-string translation is a defect"
+        );
+    }
+
+    /// dsl 0.47.0 §3.2: v2 writes `sourceHashes` last, always (`{}` when
+    /// empty); a v1 bundle still reads, with no hashes.
+    #[test]
+    fn v2_writes_source_hashes_and_v1_still_reads() {
+        let mut b = bundle();
+        let empty = b.to_json();
+        assert!(
+            empty.ends_with("  },\n  \"sourceHashes\": {}\n}\n"),
+            "{empty}"
+        );
+        b.source_hashes
+            .entry("x.b.pick".to_string())
+            .or_default()
+            .insert("ja-JP".to_string(), source_hash("Pick"));
+        let json = b.to_json();
+        let back = LocaleBundle::parse(&json).expect("v2 re-parses");
+        assert_eq!(back, b);
+        assert_eq!(back.to_json(), json);
+        let v1 = LocaleBundle::parse(
+            r#"{"schemaVersion":1,"locales":["ja-JP"],"entries":{"x.b.pick":{"ja-JP":"選ぶ"}}}"#,
+        )
+        .expect("a v1 bundle is still read");
+        assert!(v1.source_hashes.is_empty());
+        assert_eq!(v1.entries["x.b.pick"]["ja-JP"], "選ぶ");
+    }
+
+    #[test]
+    fn source_hash_is_prefixed_lowercase_sha256() {
+        assert_eq!(
+            source_hash(""),
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
     }
 }

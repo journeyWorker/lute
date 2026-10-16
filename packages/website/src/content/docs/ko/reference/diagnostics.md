@@ -241,9 +241,9 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 ### E-CHOICE-DUP
 
-`<branch>` 또는 `<hub>`가 같은 `id`를 가진 `<choice>`를 두 번 선언했습니다. 선택지 id는 같은 branch/hub 안에서 유일해야 합니다.
+`<branch>` 또는 `<hub>`가 같은 `id`를 가진 `<choice>`를 두 번 선언했습니다. 선택지 id는 같은 branch/hub 안에서 유일해야 합니다. 또는 `prompt=`가 있는 branch/hub에 `<choice id="prompt">`가 있어, 그 lineId가 프롬프트의 lineId(`{prefix}.{branchOrHubId}.prompt`)와 겹칩니다 — 선택지 이름을 바꾸세요.
 
-명세: [dsl §11.1](/ko/spec/)
+명세: [dsl §11.1](/ko/spec/), [dsl 0.47.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-CHOICELOG-READ
 
@@ -2028,6 +2028,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 컴파일된 대사 레코드에 로케일라이제이션 번들이 선언한 로케일의 텍스트가 빠져 있습니다.
 
 명세: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-L10N-STALE
+
+병합된 번역이 레코드의 현재 원문과 다른 원문으로 만들어졌습니다 — 번역자가 작업한 `lute loc export` 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었습니다(저장된 `sourceHash`가 다릅니다). 번역은 그대로 병합됩니다. 다시 내보내고 번역을 갱신하세요.
+
+명세: [dsl 0.47.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-LINE-CODE-UNTAGGED
 

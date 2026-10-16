@@ -559,3 +559,10 @@ Voice keys compare the plain text, so restyling a line never collides with its r
 the same modifiers — same names, forms and attributes, in any order — or it is not merged
 (`E-L10N-MODIFIERS`). A translated locale always gets its plain text in `texts`, and a modified
 line also gets `localeSegments` for that locale.
+
+Each export row also carries a `sourceHash` — `"sha256:<hex>"` of the line's plain text (markup
+and escapes removed, as `text` compiles), of an option's text, or of a prompt. Keep it in the
+translated file: [`lute loc import`](/tooling/cli/#loc-import) stores it per lineId and locale in
+the bundle (`schemaVersion: 2`, `sourceHashes`), and `lute compile --locales` reports
+`W-L10N-STALE` when a line was edited after the export its translation came from — re-export and
+update that translation. The stale translation is still merged until you do.

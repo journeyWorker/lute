@@ -441,6 +441,9 @@ fn walk_branch(
         options,
         converge: conv.sym(),
         prompt: attr_string(&b.attrs, "prompt"),
+        // dsl 0.47.0 §3.1: stamped by the addressing pass with the options'.
+        prompt_line_id: None,
+        prompt_texts: Default::default(),
         timeout,
         default: timeout.and_then(|_| attr_string(&b.attrs, "default")),
         stamp: Stamp::default(),
@@ -519,6 +522,8 @@ fn walk_hub(
         converge: conv.sym(),
         // dsl 0.23.0 §4: `<hub prompt>`, like `<branch prompt>`.
         prompt: attr_string(&h.attrs, "prompt"),
+        prompt_line_id: None,
+        prompt_texts: Default::default(),
         on_return: back.map(|l| l.sym()),
         stamp: Stamp::default(),
     });

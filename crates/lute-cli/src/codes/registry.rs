@@ -193,8 +193,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CHOICE-DUP",
-        summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.",
-        spec: &["dsl §11.1"],
+        summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub; or a branch or hub with `prompt=` has a `<choice id=\"prompt\">`, whose lineId would be the prompt's (`{prefix}.{branchOrHubId}.prompt`) — rename the choice.",
+        spec: &["dsl §11.1", "dsl 0.47.0 §3.1"],
     },
     Code {
         code: "E-CHOICELOG-READ",
@@ -1785,6 +1785,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-L10N-MISSING",
         summary: "A compiled line record is missing text for a locale its localization bundle declares.",
         spec: &["dsl 0.8.0 §7"],
+    },
+    Code {
+        code: "W-L10N-STALE",
+        summary: "A merged translation was made from a different source text than the record's current one — the line, option label or prompt changed after the `lute loc export` the translator worked from (its stored `sourceHash` differs). The translation is still merged; re-export and update it.",
+        spec: &["dsl 0.47.0 §3.2"],
     },
     Code {
         code: "W-LINE-CODE-UNTAGGED",

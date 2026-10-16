@@ -581,7 +581,14 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
         );
         if matches!(
             field.as_str(),
-            "extra" | "plugin" | "fields" | "texts" | "localeSegments" | "labels" | "labelForms"
+            "extra"
+                | "plugin"
+                | "fields"
+                | "texts"
+                | "promptTexts"
+                | "localeSegments"
+                | "labels"
+                | "labelForms"
         ) {
             continue;
         }
