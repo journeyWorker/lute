@@ -927,6 +927,8 @@ export const cmdChoice = Schema.Struct({
   "options": Schema.Array(Schema.suspend(() => choiceOption)),
   "converge": Schema.suspend(() => position),
   "prompt": Schema.optionalKey(Schema.String),
+  "promptLineId": Schema.optionalKey(Schema.String),
+  "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "timeout": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1))
@@ -967,6 +969,8 @@ export const cmdHub = Schema.Struct({
   "options": Schema.Array(Schema.suspend(() => hubOption)),
   "converge": Schema.suspend(() => position),
   "prompt": Schema.optionalKey(Schema.String),
+  "promptLineId": Schema.optionalKey(Schema.String),
+  "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "return": Schema.optionalKey(Schema.suspend(() => position)),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
@@ -1445,6 +1449,7 @@ export const projectIndex = Schema.Struct({
   "capabilitySnapshot": Schema.String,
   "cast": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "clock": Schema.optionalKey(Schema.suspend(() => clockDecl)),
+  "contentLang": Schema.optionalKey(Schema.String),
   "defs": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => indexDef))),
   "documents": Schema.Array(Schema.suspend(() => indexDocument)),
   "entities": Schema.Array(Schema.suspend(() => entityKindEntry)),

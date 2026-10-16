@@ -249,9 +249,15 @@ export const TextStyle = Schema.Struct({
 });
 export type TextStyle = typeof TextStyle.Type;
 
+/**
+ * `ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the
+ * title backdrop / music references, each optional; a written `ui.title`
+ * binds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).
+ */
 export const Title = Schema.Struct({
-  "background": Schema.String,
-  "music": Schema.String
+  "background": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "music": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "text": Schema.optionalKey(Schema.NullOr(Schema.String))
 });
 export type Title = typeof Title.Type;
 
