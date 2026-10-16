@@ -18942,8 +18942,12 @@ a bundle compiled with `--locales`) renders these maps for you (dsl 0.47.0): bes
 and `segments` with their `{{…}}` markers replaced, it carries `texts` and
 `localeSegments` (when the line command has them) with each translation's
 marker replaced by the value the source rendered for the marker with the same
-text — a translator may reorder markers, and a marker the source does not
-have stays as written. Show a runtime line from its record, not from the
+referent (the text inside `{{ }}`, trimmed, so `{{ user.voyages }}` matches
+`{{user.voyages}}`) — a translator may reorder markers, and a marker the source
+does not have stays as written. The translation maps hold plain text with
+escapes decoded, so a translation cannot show a literal `{{…}}` whose referent
+equals one of the source's markers: written `\{{user.voyages}}`, it still shows
+the value. Show a runtime line from its record, not from the
 artifact's templates. `lute run --json`, the conformance record, leaves them
 out like the other delivery fields. Option labels and prompts are not rendered.
 
