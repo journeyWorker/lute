@@ -168,19 +168,54 @@ impl<D: Driver> Machine<D> {
 /// of `text` has, advanced past every marker replaced. A marker past the
 /// list stays verbatim.
 pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usize) -> String {
-    let mut out = String::new();
-    let mut rest = text;
-    while let Some(open) = rest.find("{{") {
-        let Some(rel_close) = rest[open..].find("}}") else {
-            break;
-        };
-        let end = open + rel_close + 2;
-        out.push_str(&rest[..open]);
-        match rendered.get(*next) {
-            Some(r) => out.push_str(r),
-            None => out.push_str(&rest[open..end]),
-        }
+    splice_markers(text, |_| {
+        let value = rendered.get(*next).map(String::as_str);
         *next += 1;
+        value
+    })
+}
+
+/// `text` (a translation) with each `{{…}}` marker replaced by the value
+/// `by_marker` holds for the same marker text — the value the source line
+/// rendered for it (dsl 0.47.0 §2.2), so a translator's reordering keeps
+/// each value with its marker. A marker the source does not have stays as
+/// written.
+pub(super) fn substitute_by_marker(text: &str, by_marker: &[(&str, &str)]) -> String {
+    splice_markers(text, |marker| {
+        by_marker
+            .iter()
+            .find(|(source, _)| *source == marker)
+            .map(|(_, value)| *value)
+    })
+}
+
+/// The `{{…}}` markers of `text`, left to right, as written.
+pub(super) fn marker_texts(text: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some((open, end)) = next_marker(rest) {
+        out.push(&rest[open..end]);
+        rest = &rest[end..];
+    }
+    out
+}
+
+/// The byte range of `rest`'s first complete `{{…}}` marker.
+fn next_marker(rest: &str) -> Option<(usize, usize)> {
+    let open = rest.find("{{")?;
+    let rel_close = rest[open..].find("}}")?;
+    Some((open, open + rel_close + 2))
+}
+
+/// `text` with each marker, left to right, replaced by `value(marker)`; a
+/// marker with no value stays verbatim.
+fn splice_markers<'a>(text: &str, mut value: impl FnMut(&str) -> Option<&'a str>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some((open, end)) = next_marker(rest) {
+        out.push_str(&rest[..open]);
+        let marker = &rest[open..end];
+        out.push_str(value(marker).unwrap_or(marker));
         rest = &rest[end..];
     }
     out.push_str(rest);

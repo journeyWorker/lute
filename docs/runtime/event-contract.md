@@ -194,7 +194,14 @@ always an object, never `kind`, `position`, `timing`, provenance or plugin
 | `sequence` | `name` |
 
 `record.record` preserves the `lute run --json` execution-record shape plus
-play-only line `delivery` and menu markers that run strips. Grant records
+play-only line `delivery` and menu markers that run strips. A `line` record's
+delivery fields are `role`, `lineId`, `voiceKey`, `as`, `emotion`, `segments`,
+`texts` and `localeSegments`, each present when the line command has it.
+`text` and `segments` have their `{{…}}` markers replaced by the rendered
+values; `texts` and `localeSegments` (dsl 0.47.0 §2.2) are the command's
+translations with each marker replaced by the value the source rendered for
+the marker with the same text (translators may reorder markers; a marker the
+source does not have stays as written). Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
 machine's remaining fields; `instance` is the settlement key. The host
 settles the grant, not the runtime.

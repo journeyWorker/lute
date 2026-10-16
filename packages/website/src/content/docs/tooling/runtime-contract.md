@@ -984,6 +984,16 @@ falling back to `text` (`prompt`) — the
 compiler warns at build time (`W-L10N-MISSING`) about exactly those gaps, so a
 complete bundle leaves nothing to fall back to.
 
+The runtime's `line` record (`lute-runtime` / `@lute-lang/runtime` events over
+a bundle compiled with `--locales`) renders these maps for you (dsl 0.47.0): besides `text`
+and `segments` with their `{{…}}` markers replaced, it carries `texts` and
+`localeSegments` (when the line command has them) with each translation's
+marker replaced by the value the source rendered for the marker with the same
+text — a translator may reorder markers, and a marker the source does not
+have stays as written. Show a runtime line from its record, not from the
+artifact's templates. `lute run --json`, the conformance record, leaves them
+out like the other delivery fields. Option labels and prompts are not rendered.
+
 ## The runtime docs
 
 Each surface has its own contract document under

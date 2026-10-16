@@ -635,6 +635,8 @@ while (pc < artifact.commands.length) {
 
 locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
 
+런타임의 `line` 레코드(`--locales`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본이 같은 텍스트의 마커에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
+
 ## 런타임 문서
 
 각 표면에는 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime) 아래에 자체 계약 문서가 있습니다.
