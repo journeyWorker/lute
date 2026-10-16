@@ -9,6 +9,9 @@ characters:
   mara:
     sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png } }
 anchors: { center: { x: 0.5 } }
+actions:
+  fadeIn: { effect: fadeIn, duration: 0.4 }
+  fadeOut: { effect: fadeOut, duration: 0.4 }
 cgLayouts: { inset: { fit: contain, scale: 0.65, x: 0.5, y: 0.5 } }
 flow:
   newGame: { occasion: start }

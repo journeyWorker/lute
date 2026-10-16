@@ -48,8 +48,8 @@ export const mountProject = async (name: keyof ProvidedContext["luteProjects"], 
     bundleUrl: absolute(urls.bundleUrl),
     wasmUrl: absolute(urls.wasmUrl),
     assetsUrl: absolute(urls.assetsUrl),
-    storageKey: `lute-test-${crypto.randomUUID()}`,
-    ...options
+    ...options,
+    storageKey: options.storageKey ?? `lute-test-${crypto.randomUUID()}`
   }), Scope.Scope, scope))
   const pixi = pixiAppOf(element)
   if (pixi === undefined) throw new Error("player-web mounted no Pixi application")

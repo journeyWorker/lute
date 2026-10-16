@@ -26,7 +26,7 @@ const differs = (left: Uint8ClampedArray, right: Uint8ClampedArray): number => {
   return count
 }
 
-describe("CG layer over the compiled demo", () => {
+describe("CG layer over the compiled cg-stage fixture", () => {
   let player: RealPlayer | undefined
   afterEach(async () => {
     await player?.close()
