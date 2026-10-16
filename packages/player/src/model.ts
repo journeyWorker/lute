@@ -209,10 +209,14 @@ export type LogEntry = { readonly seed: Contract.Seed } | { readonly snapshot: S
 // ── Module service shapes ────────────────────────────────────────────────────
 
 export interface CueFactoryShape {
-  /** One runtime output → cues, in order. A record kind the factory does not know is a defect. */
-  readonly fromOutput: (output: Output, readLines: ReadonlySet<string>) => Effect.Effect<ReadonlyArray<Cue>>
-  /** Resolve authored choice text for a runtime await. */
-  readonly choiceView: (await_: ChoiceAwait, locale?: string) => ChoiceView
+  /**
+   * One runtime output → cues, in order, with line text for `locale` (a
+   * record's translation, else its source text). A record kind the factory
+   * does not know is a defect.
+   */
+  readonly fromOutput: (output: Output, readLines: ReadonlySet<string>, locale: string) => Effect.Effect<ReadonlyArray<Cue>>
+  /** Resolve authored choice text for a runtime await, in `locale` (translation, else source). */
+  readonly choiceView: (await_: ChoiceAwait, locale: string) => ChoiceView
 }
 export type CueFactoryWrapper = (base: CueFactoryShape) => CueFactoryShape
 export interface CueSchedulerShape {

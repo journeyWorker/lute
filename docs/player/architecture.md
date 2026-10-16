@@ -71,8 +71,10 @@ interface Cue {
 }
 
 interface CueFactory {
-  /** One output batch → cues (records in order + presentation events). Unknown record kind = defect. */
-  readonly fromOutput: (output: Output, locale: string, readLines: ReadonlySet<string>) => Effect.Effect<ReadonlyArray<Cue>>
+  /** One output batch → cues (records in order + presentation events), line text in `locale`. Unknown record kind = defect. */
+  readonly fromOutput: (output: Output, readLines: ReadonlySet<string>, locale: string) => Effect.Effect<ReadonlyArray<Cue>>
+  /** Authored branch/hub prompt and option labels for a runtime await, in `locale`. */
+  readonly choiceView: (await_: ChoiceAwait, locale: string) => ChoiceView
 }
 ```
 
@@ -86,6 +88,19 @@ the line command's values.
 **One cue per event (normative).** `CueFactory.fromOutput` returns exactly
 one cue per output event, in event order. A host MAY wrap the factory relying
 on it.
+
+**Locale per call (0.47).** The director passes the current
+`settings.locale` to every `fromOutput` and `choiceView` call (custom
+factories and `cueFactory` wrappers receive it and pass it on). A line reads
+`localeSegments[locale]`, else `texts[locale]`, else its source segments /
+text; an option label reads `texts[locale]`, else its source text. A bundle's
+locales come from `bundleLocales(bundle)`: the **source locale** is the
+`contentLang` of the first artifact (in `index.documents` order) whose meta
+declares one, else `"en"`; the **compiled locales** are the keys of every
+`texts` map. The `Settings` screen model's `locales` is the source locale
+followed by the compiled locales (sorted, without duplicates); a saved locale
+the bundle does not carry reads source text and Settings shows the source
+locale selected. `LutePlayer.make` starts a new profile at the source locale.
 
 **Music** (`MusicCue`) reads resolved media fields from the runtime record's
 `attrs` (`playback`, `volume`, `stop`, `mood`, `assetId`) rather than reopening
@@ -175,6 +190,9 @@ on an unread line, at choices, at bridges, at idle; overlays pause
 (`countdown.pause`, `auto.cancel`) and resume on close; a timed choice emits
 `countdown.start` and on `countdown.expired` emits
 `session.send {type:"timeout"}`; `choose` emits `session.send {type:"choose"}`.
+`toTitle` asks the discard-progress confirm while playing, from the in-game
+menu and in the error flow; with the flow at `ended` and no overlay open it
+goes to the title at once (0.47 §2.5: nothing is lost).
 
 ### session (`session/`)
 
@@ -201,21 +219,55 @@ interface PlayerSession {
 History keeps the last `settings.rollbackDepth` (default 100) input points.
 The input log starts with `{ seed }` (the `seed` option) or `{ snapshot }`
 (the runtime session's save when the player session is built). `begin`
-returns the runtime session's `started` output while the player session has
-accepted no input since it was built; afterwards it sends `newRun`. Either is
-followed by the bound `flow.newGame` raise, the events concatenated in order
-with the last await (so the first `begin` presents `started` before the
-raise). A session that waits where `newRun` is refused (halted, at a choice
-or a bridge) is first restored to the snapshot captured when the player
-session was built. Backlog names come from the `cast` option (the index
-`cast`).
+(0.47 §2.3):
+
+- at `ended` (also a session restored from an ended snapshot) sends `newRun`;
+  at `idle` once the session accepted an input, likewise;
+- an untouched session presents the runtime session's `started` output;
+- a session that cannot send `newRun` where it waits (untouched, halted, at a
+  choice or a bridge) is restored to the `lineage` option's snapshot when
+  there is one, then sends `newRun` (the log starts with
+  `{ snapshot: <lineage> }`); a lineage the runtime refuses is dropped
+  (`lineage.drop`). Without one, the session goes back to the snapshot
+  captured when it was built (and presents `started`, or sends `newRun` when
+  that start waits at `idle` / `ended`).
+
+Each start is followed by the bound `flow.newGame` raise, the events
+concatenated in order with the last await. Backlog names come from the `cast`
+option (the index `cast`); with the `bundle` option a backlog entry also keeps
+its line command's `texts` and `localeSegments` (runtime records carry source
+text only), and the director resolves them for the current locale when the
+`Backlog` screen opens (`localizedEntry`).
 
 ### stores (`stores/`)
 
 `SaveStore` (slots: `quick`, `auto`, `1..24`; list with metadata and
-thumbnails; save/load/delete) and `ProfileStore` (read lines, settings) over
-`effect/persistence/KeyValueStore`; formats per spec §6.7 with Effect Schemas
-and version checks (`SaveIncompatible`).
+thumbnails; save/load/delete) and `ProfileStore` (read lines, settings,
+lineage) over `effect/persistence/KeyValueStore`; formats per spec §6.7 with
+Effect Schemas and version checks (`SaveIncompatible`). Saved backlog entries
+keep `texts` / `localeSegments`. A profile of any `profileVersion` decodes:
+its read marks and settings are kept, and only a profile of the current
+version keeps its `lineage`. `setLineage` writes at once; settings changes are
+debounced.
+
+### Cross-run model (0.47)
+
+What survives a reload: the **user tier** (`user.*`, user-tier facts,
+`once: user` spends, entry read marks) and the **ended run's values** that
+`newRun` turns into `prev.run.*` — both in the runtime snapshot, kept as the
+profile's **lineage** — plus the profile's read history and settings. A run in
+progress survives only through a save.
+
+- **Written**: every time a batch settles at `ended`, the director stores
+  `PlayerSession.snapshot`'s runtime snapshot with `ProfileStore.setLineage`,
+  replacing the previous one (immediately; a failed write is logged).
+- **Used**: `LutePlayer.make` passes the profile's lineage to the player
+  session only when it starts without `snapshot` / `session` (the default or
+  a host `seed`). New game that cannot send `newRun` where the session waits —
+  an untouched session after a reload, or a run abandoned through the menu —
+  restores it instead of the start point and sends `newRun`; a host `seed` is
+  not used while a lineage exists. A lineage the runtime refuses is dropped
+  and New game starts from the start point.
 
 ### director (`director/`) and the facade
 
@@ -336,8 +388,8 @@ const director = Effect.gen(function* () {
     host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
     cueFactory: (base) => ({
       ...base,
-      fromOutput: (output, readLines) =>
-        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+      fromOutput: (output, readLines, locale) =>
+        base.fromOutput(output, readLines, locale).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
     })
   })
 })

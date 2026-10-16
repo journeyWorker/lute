@@ -7,7 +7,7 @@
  */
 import type { Effect, Scope, Stream } from "effect"
 import { Schema } from "effect"
-import type { Contract } from "@lute-lang/runtime"
+import type { Contract, Ir } from "@lute-lang/runtime"
 import type { Stage, MenuAwait, BridgeAwait, Input, Await } from "../model.js"
 
 /** One run of line text, or a pause, after locale and style resolution. */
@@ -209,12 +209,22 @@ export interface Settings {
   readonly rollbackDepth: number
 }
 
+/**
+ * One shown line. `text` is the record's source text; a line with
+ * translations keeps them (`texts`, `localeSegments`) so the backlog can be
+ * shown in the locale current when it opens (spec 0.47.0 §2.2). The `Backlog`
+ * screen model's entries carry `text` already resolved for that locale.
+ */
 export interface BacklogEntry {
   readonly lineId: string
   readonly voiceKey: string
   readonly speakerName: string
   readonly text: string
   readonly hasVoice: boolean
+  /** The line record's translations by locale. */
+  readonly texts?: Readonly<Record<string, string>>
+  /** The line record's localized segments by locale. */
+  readonly localeSegments?: Readonly<Record<string, Ir.segments>>
 }
 
 export interface SlotInfo {
@@ -229,6 +239,7 @@ export type ScreenModel =
   | { readonly _tag: "Title"; readonly canContinue: boolean; readonly background: string | undefined }
   | { readonly _tag: "Backlog"; readonly entries: ReadonlyArray<BacklogEntry> }
   | { readonly _tag: "SaveLoad"; readonly mode: "save" | "load"; readonly slots: ReadonlyArray<SlotInfo>; readonly page: number }
+  /** `locales`: the bundle's source locale, then its compiled locales; `settings.locale` is one of them. */
   | { readonly _tag: "Settings"; readonly settings: Settings; readonly locales: ReadonlyArray<string> }
   | { readonly _tag: "Confirm"; readonly message: string }
   | { readonly _tag: "Loading"; readonly progress: number }

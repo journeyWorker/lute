@@ -61,8 +61,8 @@ const director = Effect.gen(function* () {
     host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
     cueFactory: (base) => ({
       ...base,
-      fromOutput: (output, readLines) =>
-        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+      fromOutput: (output, readLines, locale) =>
+        base.fromOutput(output, readLines, locale).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
     })
   })
 })
@@ -325,6 +325,8 @@ rather than drop the handlers — pass a wrapper instead.
 
 `flow.newGame` raises the configured occasion after the runtime begins. The first new game presents the session's start (`started`) followed by that raise; a later new game from the title starts a new run (`newRun`, keeping `user.*` progress) instead of replaying the start. At `idle`, `flow.idle` may raise an input automatically, or expose a menu of labelled occasions. `PlayerHost.idle(await_)` runs first, on a fiber of its own, and may return an `Input` to override the bindings flow. Returning `undefined` delegates to `flow.idle`: an input is sent immediately, while a menu becomes an `Idle` screen and waits for `pickIdle`. A host that drives the story from its own game (a map, a HUD) returns `undefined` and calls `send` when the game acts; a `send` interrupts a pending `idle`.
 
+New game at the ending (`ended`, also on a session restored from an ended snapshot) sends `newRun`; it never presents `started` again. At the ending, `toTitle` goes to the title at once, without the discard-progress confirm (0.47: an ended run has nothing to lose, and its lineage is already stored). `toTitle` from the in-game menu and in the error flow still asks.
+
 ## Autosave
 
 `autosave` controls the `auto` slot: omitted, it is written at each presentation start and at every choice; `"presentation"` or `"choice"` writes only there; `false` never writes it (no snapshot, no `capture`). Quick saves and slot saves are unaffected.
@@ -346,13 +348,33 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.46"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
+Since 0.47 a profile also holds the **lineage** when one was written (see the cross-run model below). A profile of another `profileVersion` is never refused: its read marks and settings are kept, and it has no lineage.
+
+## Second play-throughs: the cross-run model (0.47)
+
+What survives a page reload:
+
+- **The user tier** — `user.*` values, user-tier facts, `once: user` spends and the read marks of entries — and **the ended run's values**, which `newRun` turns into `prev.run.*`. Both live in the runtime snapshot; they survive a reload through the lineage.
+- **Read history and settings** (`readLines`, `settings`) — in the profile.
+- **A run in progress** — only through a save (quick, auto or a slot).
+
+**When the lineage is written.** Each time the session presents an `ended` output, the player takes the runtime snapshot (`Session.save`) and stores it in the profile as `lineage`, replacing the previous one. It is written at once, not debounced like settings.
+
+**When it is used.** In a player started without `snapshot` / `session` (the default, or a host `seed`), New game that cannot send `newRun` where the session waits — an untouched session after a reload, or a run abandoned through the menu — restores the lineage instead of the start point, then sends `newRun`; the input log then starts with `{ snapshot: <lineage> }`. A host `seed` is not used on New game while a lineage exists. If the runtime refuses the lineage (for example a snapshot of another build), New game starts from the start point as without one and the lineage is dropped. A host that passes `snapshot` or `session` chose its state: endings still write the lineage, but New game never restores it. A host that carried `user.*` across reloads itself can drop that code.
+
+## Locale (0.47)
+
+The locale is a setting (`settings.locale`), not a mount option. A loaded bundle's **source locale** is the `contentLang` of the first artifact (in `index.documents` order) whose meta declares one, else `"en"`; its **compiled locales** are the keys of the artifacts' `texts` maps (`lute compile --locales`). The `Settings` screen model's `locales` is the source locale followed by the compiled locales (sorted, without duplicates). A new profile starts at the source locale; a saved locale the bundle does not carry (a 0.46 profile's `"en"` in an `en-US` project) reads source text, and `Settings` shows the source locale selected.
+
+For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (`texts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
+
 ## Rollback and history
 
 The session retains the last `settings.rollbackDepth` input points (default 100). Each point contains runtime state, await, stage, backlog length, and log length. `rollback` interrupts current cue fibers, restores the selected point's stage through `Presenter.restore`, restarts its music, and resumes from that await. If no earlier point remains, the core returns `NothingToRollback`. It never serializes an XState actor snapshot as a save.
 
 ## Read history and backlog
 
-Each line has a stable `lineId`. The profile's `readLines` set marks lines after they are shown. `LineView.read` controls read-aware skip behavior; the default read-only skip stops on unread lines, choices, bridges, and idle. Backlog entries retain line id, voice key, speaker name, text, and whether voice is available. Hosts can render the `Backlog` screen and replay voice with `replayVoice`.
+Each line has a stable `lineId`. The profile's `readLines` set marks lines after they are shown. `LineView.read` controls read-aware skip behavior; the default read-only skip stops on unread lines, choices, bridges, and idle. Backlog entries retain line id, voice key, speaker name, source text, whether voice is available, and the line's translations (`texts`, and `localeSegments` when present; saved backlogs keep them). The `Backlog` screen model's entries carry `text` resolved for the locale current when it opens. Hosts can render the `Backlog` screen and replay voice with `replayVoice`.
 
 For a complete architecture contract, see [`docs/player/architecture.md`](https://github.com/journeyWorker/lute/blob/main/docs/player/architecture.md). For browser implementations, see [the web architecture](/player/overview/).
 

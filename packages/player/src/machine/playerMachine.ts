@@ -264,9 +264,15 @@ export const playerMachine = initial.createMachine({
               emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
               return { target: "title", context: { pendingConfirm: undefined, overlayStack: [] } }
             },
-            toTitle: ({ context }, enq) => context.pendingConfirm === undefined
-              ? confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
-              : undefined,
+            // Spec 0.47.0 §2.5: leaving an ended run discards nothing — no confirm.
+            // An open overlay (the in-game menu) keeps its confirm.
+            toTitle: ({ context }, enq) => {
+              if (context.pendingConfirm !== undefined) return
+              if (context.overlayStack.length > 0) return confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
+              emit(enq, { type: "toTitle" })
+              emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
+              return { target: "title" }
+            },
           },
         },
         error: {
@@ -594,7 +600,8 @@ export const playerMachine = initial.createMachine({
               return { target: hidden ? "#playerOverlayHidden" : "#playerOverlayNone", context: { uiHidden: hidden } }
             },
             toTitle: ({ context }, enq) => {
-              if (context.overlayStack.length !== 0) return
+              // At `ended` the flow leaves for the title without a confirm (spec 0.47.0 §2.5).
+              if (context.overlayStack.length !== 0 || context.await?.type === "ended") return
               return confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
             },
           },

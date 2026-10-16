@@ -62,8 +62,8 @@ const director = Effect.gen(function* () {
     host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
     cueFactory: (base) => ({
       ...base,
-      fromOutput: (output, readLines) =>
-        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+      fromOutput: (output, readLines, locale) =>
+        base.fromOutput(output, readLines, locale).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
     })
   })
 })
@@ -310,6 +310,8 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 `flow.newGame`은 runtime 시작 뒤 설정한 계기를 발생시킵니다. 첫 새 게임은 세션 시작(`started`)에 이어 그 계기를 제시하고, 이후 타이틀에서 시작한 새 게임은 시작을 다시 재생하지 않고 새 run(`newRun`, `user.*` 진행 유지)을 시작합니다. `idle`에서 `flow.idle`은 입력을 자동으로 보내거나 이름 있는 계기 메뉴를 표시할 수 있습니다. `PlayerHost.idle(await_)`가 별도 fiber에서 먼저 실행되며 `Input`을 반환해 bindings flow를 덮어쓸 수 있습니다. `undefined`를 반환하면 `flow.idle`에 위임합니다. 자기 게임(맵, HUD)에서 이야기를 구동하는 호스트는 `undefined`를 반환하고 게임이 움직일 때 `send`를 호출합니다. `send`는 대기 중인 `idle`을 중단합니다.
 
+엔딩(`ended`, ended 스냅숏에서 복원한 세션 포함)에서의 새 게임은 `newRun`을 보내며 `started`를 다시 제시하지 않습니다. 엔딩에서 `toTitle`은 진행 상황 폐기 확인 없이 바로 타이틀로 갑니다(0.47: 끝난 run에는 잃을 것이 없고 lineage는 이미 저장되어 있습니다). 게임 내 메뉴와 오류 흐름의 `toTitle`은 여전히 확인을 묻습니다.
+
 ## 자동 저장
 
 `autosave`는 `auto` 슬롯을 제어합니다. 생략하면 presentation 시작과 모든 choice에서 쓰고, `"presentation"` 또는 `"choice"`는 그곳에서만, `false`는 쓰지 않습니다(스냅숏도 `capture`도 없음). 퀵 저장과 슬롯 저장은 영향을 받지 않습니다.
@@ -331,13 +333,33 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.46"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
+0.47부터 프로필은 기록된 **lineage**도 담습니다(아래 회차 간 모델 참고). 다른 `profileVersion`의 프로필도 거절되지 않습니다. 읽기 기록과 settings은 유지되고 lineage는 없습니다.
+
+## 두 번째 회차: 회차 간 모델 (0.47)
+
+페이지를 새로 고쳐도 남는 것:
+
+- **사용자 tier** — `user.*` 값, user tier 사실, `once: user` 소모, entry 읽기 표시 — 와 **끝난 run의 값**(`newRun`이 `prev.run.*`로 바꿉니다). 둘 다 런타임 스냅숏에 있으며 lineage를 통해 새로 고침 뒤에도 남습니다.
+- **읽기 기록과 settings**(`readLines`, `settings`) — 프로필에 있습니다.
+- **진행 중인 run** — 저장(퀵, 자동, 슬롯)으로만 남습니다.
+
+**lineage를 쓰는 때.** 세션이 `ended` 출력을 제시할 때마다 플레이어는 런타임 스냅숏(`Session.save`)을 떠서 프로필의 `lineage`로 저장하고 이전 것을 대체합니다. settings처럼 debounce하지 않고 바로 씁니다.
+
+**lineage를 쓰는 곳.** `snapshot` / `session` 없이 시작한 플레이어(기본, 또는 호스트 `seed`)에서, 세션이 기다리는 곳에서 `newRun`을 보낼 수 없는 새 게임 — 새로 고침 뒤 손대지 않은 세션, 또는 메뉴로 버린 run — 은 시작 지점 대신 lineage를 복원한 뒤 `newRun`을 보냅니다. 이때 input log는 `{ snapshot: <lineage> }`로 시작합니다. lineage가 있는 동안 새 게임은 호스트 `seed`를 쓰지 않습니다. 런타임이 lineage를 거절하면(예: 다른 빌드의 스냅숏) 새 게임은 lineage가 없을 때처럼 시작 지점에서 시작하고 lineage는 버려집니다. `snapshot`이나 `session`을 넘긴 호스트는 상태를 스스로 고른 것이므로, 엔딩은 lineage를 쓰지만 새 게임은 그것을 복원하지 않습니다. `user.*`를 새로 고침 너머로 직접 옮기던 호스트는 그 코드를 지워도 됩니다.
+
+## Locale (0.47)
+
+locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값이고, 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts` 맵의 키입니다(`lute compile --locales`). `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
+
+현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
+
 ## 롤백과 기록
 
 세션은 `settings.rollbackDepth`(기본 100)개의 input point를 보관합니다. 각 point에는 runtime state, await, stage, backlog 길이와 log 길이가 있습니다. rollback은 현재 cue fiber를 중단하고 선택한 point의 stage를 `Presenter.restore`로 복원한 뒤 음악을 재시작하고 해당 await에서 재개합니다. 이전 point가 없으면 `NothingToRollback`입니다. XState actor 스냅숏은 저장하지 않습니다.
 
 ## 읽기 기록과 백로그
 
-각 line에는 안정적인 `lineId`가 있습니다. profile의 `readLines` set은 line 표시 뒤 해당 id를 기록합니다. `LineView.read`가 읽기 인식 skip을 제어하며 기본 read-only skip은 읽지 않은 line, choice, bridge, idle에서 멈춥니다. backlog는 line id, voice key, speaker name, text, `hasVoice`를 보관합니다.
+각 line에는 안정적인 `lineId`가 있습니다. profile의 `readLines` set은 line 표시 뒤 해당 id를 기록합니다. `LineView.read`가 읽기 인식 skip을 제어하며 기본 read-only skip은 읽지 않은 line, choice, bridge, idle에서 멈춥니다. backlog는 line id, voice key, speaker name, 원본 text, `hasVoice`와 line의 번역(`texts`, 있으면 `localeSegments`; 저장된 backlog도 유지)을 보관합니다. `Backlog` 화면 모델의 항목 `text`는 화면을 여는 시점의 locale로 이미 해석되어 있습니다.
 
 ## ChoiceView와 복원된 자산
 
