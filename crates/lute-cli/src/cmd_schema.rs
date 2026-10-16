@@ -1,6 +1,7 @@
 //! `lute schema [COMMAND]...` (dsl 0.43.0 §5): the command tree as JSON,
 //! narrowing one level per path word. Arguments come from the clap command
-//! the parser uses; outputs from [`envelope::outputs`] — neither can drift
+//! the parser uses; outputs from [`envelope::outputs`]; structured inputs
+//! (dsl 0.47.0 §5.2) from the table the request parser reads — none can drift
 //! from the CLI.
 
 use std::process::ExitCode;
@@ -93,7 +94,30 @@ fn describe(id: &str, command: &Command) -> Value {
             "summary": summary(c),
         })).collect::<Vec<_>>(),
         "outputs": outputs,
+        "inputs": inputs(id),
     })
+}
+
+/// Structured inputs a command reads (dsl 0.47.0 §5.2): `patch`'s `PATCH`
+/// request, described from the table its parser reads; none elsewhere.
+fn inputs(id: &str) -> Vec<Value> {
+    match id {
+        "patch" => {
+            let mut request = json!({
+                "argument": "PATCH",
+                "kind": "request",
+                "format": "json",
+            });
+            if let (Value::Object(target), Value::Object(description)) = (
+                &mut request,
+                lute_model::patch::request::patch_request_description(),
+            ) {
+                target.extend(description);
+            }
+            vec![request]
+        }
+        _ => Vec::new(),
+    }
 }
 
 fn argument(arg: &Arg) -> Value {

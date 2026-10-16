@@ -37,7 +37,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `check-pr
 | `lore` | `--json` | `0.43.0.lore` |
 | `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
-| `schema` | always | `0.43.0.schema` |
+| `schema` | always | `0.47.0.schema` |
 
 Three reports that used to be bare arrays are objects now: `constraints` puts its rows under `constraints`; a `trace` refusal and a `compile` refusal put their diagnostics under `diagnostics`. `patch` reports whether the patch was accepted in `accepted` (its `ok` is the exit rule, see [`lute patch`](#lute-patch-0366)).
 
@@ -66,7 +66,7 @@ Three reports that used to be bare arrays are objects now: `constraints` puts it
 $ lute schema [COMMAND]...
 ```
 
-Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, and `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion`. The data comes from the parser's own definition, so it cannot drift from `--help`. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
+Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion` — and `inputs` (0.47): one entry per structured input the command reads, an empty list for every command but `patch`, whose `PATCH` request is described as `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }` (see [the patch request](/tooling/ai-harness/#the-patch-request-047)). The data comes from the parser's own definition, so it cannot drift from `--help` or the patch request parser. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
 
 ## Telemetry
 
@@ -1110,11 +1110,20 @@ parse failure.
 
 `diff` compares directories or `git:<revision>` sides and emits
 `schemaVersion: "0.36.0.diff"`, `before`, `after`, and sorted semantic
-`changes`; formatting-only changes yield an empty array. Exit 0 means a
+`changes`; formatting-only changes yield an empty array. When the other side
+is a directory inside the current git work tree, a `git:` side is archived
+from that subtree only (`git archive <rev> -- <its path>`) and rooted there,
+so `lute diff git:HEAD story` from the repository root compares the `story/`
+project and a symlink elsewhere in the repository does not matter (one inside
+the compared tree is still refused); otherwise (the other side outside the
+repository, or both sides `git:`) the current directory's tree is archived
+(0.47). Exit 0 means a
 comparison was produced; exit 2 means invalid input, materialization, parse,
 or I/O failure.
 
-`patch` accepts the strict request shape documented in the [AI harness guide](/tooling/ai-harness/).
+`patch` accepts the strict request shape documented in [the patch request](/tooling/ai-harness/#the-patch-request-047)
+(fields, ops, preserve keys, node-key kinds, an example); `lute schema patch`
+describes it under `inputs`.
 Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
 `removeNode`, `createFile`, `moveFile`, and revision-guarded `replaceText`.
 Preserve claims include `ids`, positional `lineIds`, `voiceKeys`,
@@ -1128,8 +1137,13 @@ the process exit rule. Thus an accepted patch with semantic changes has
 diff; an accepted, meaning-preserving patch has both `accepted: true` and
 `ok: true` with exit **0**. `--dry-run` uses the same decisions without
 writing. Refusals exit **2** and retain their patch codes
-(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`,
-`E-PATCH-PRESERVE`); an unreadable patch file uses the JSON error envelope.
+(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`,
+`E-PATCH-CHECK`, `E-PATCH-PRESERVE`); an unreadable patch file uses the JSON
+error envelope. Several edits in one file are resolved against the original
+text, and only the lines they touch are formatted. A `.lute` file that was
+`lute fmt --check` clean stays clean; in any other file the touched lines end
+up canonical. A patch that would break this is refused with `E-PATCH-FORMAT`
+naming the file, and nothing is written (0.47).
 
 `context` returns `schemaVersion`, `projectRevision`, `files`, `target`,
 `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, and

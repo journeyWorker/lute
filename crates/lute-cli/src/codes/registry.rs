@@ -882,6 +882,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.36.0 §5.1", "dsl 0.36.0 §5.2", "dsl 0.36.0 §8"],
     },
     Code {
+        code: "E-PATCH-FORMAT",
+        summary: "A patch would leave a `.lute` file it region-formatted non-canonical: a file that was `lute fmt --check` clean would not be, or formatting the touched lines again would change them. Nothing is written; the message names the file.",
+        spec: &["dsl 0.47.0 §5.1"],
+    },
+    Code {
         code: "E-PATCH-PRESERVE",
         summary: "A patch violates a requested preserve claim, including an ambiguous reward or component match.",
         spec: &["dsl 0.36.0 §5.3", "dsl 0.36.0 §8"],

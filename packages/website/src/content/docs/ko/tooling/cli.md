@@ -37,7 +37,7 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 | `lore` | `--json` | `0.43.0.lore` |
 | `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
-| `schema` | 항상 | `0.43.0.schema` |
+| `schema` | 항상 | `0.47.0.schema` |
 
 배열이던 보고서 세 개는 이제 객체입니다. `constraints`는 행을 `constraints` 필드에, `trace`와 `compile`의 거부는 진단을 `diagnostics` 필드에 담습니다. `patch`는 패치가 받아들여졌는지를 `accepted`로 알립니다(`ok`는 종료 코드 규칙을 따릅니다. [`lute patch`](#lute-patch-0366) 참고).
 
@@ -66,7 +66,7 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 $ lute schema [COMMAND]...
 ```
 
-명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, 그리고 `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion`입니다. 파서 자신의 정의에서 나오므로 `--help`와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
+명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion` — 그리고 `inputs`(0.47)입니다. `inputs`는 명령이 읽는 구조화된 입력마다 한 항목이며, `patch`를 뺀 모든 명령에서 빈 목록입니다. `patch`의 `PATCH` 요청은 `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }`로 설명됩니다([patch 요청](/ko/tooling/ai-harness/#patch-요청-047) 참고). 파서 자신의 정의에서 나오므로 `--help`나 patch 요청 파서와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
 
 ## Telemetry
 
@@ -1042,8 +1042,8 @@ id: cli-identity
 ```
 `fmt`는 `.lute`, project/schema YAML, 설정된 plugin YAML을 결정적 순서로 포맷합니다. YAML 값은 불투명하므로 임의의 YAML을 다시 포맷하지 않습니다. `--check`가 없으면 정규 텍스트를 쓰고, `--check`이면 아무것도 쓰지 않습니다. 선택한 파일이 다르면 1, 정규 형식이면 0, I/O·UTF-8·파싱 실패면 2로 종료합니다.
 
-`diff`는 디렉터리 또는 `git:<revision>` 양쪽을 비교하고 `schemaVersion: "0.36.0.diff"`, `before`, `after`, 정렬된 의미론적 `changes`를 출력합니다. 포맷만 달라진 경우 빈 배열입니다. 비교가 생성되면 종료 0, 입력·materialization·파싱·I/O 오류면 종료 2입니다.
+`diff`는 디렉터리 또는 `git:<revision>` 양쪽을 비교하고 `schemaVersion: "0.36.0.diff"`, `before`, `after`, 정렬된 의미론적 `changes`를 출력합니다. 포맷만 달라진 경우 빈 배열입니다. 다른 쪽이 현재 git 작업 트리 안의 디렉터리이면 `git:` 쪽은 그 하위 트리만 archive하고(`git archive <rev> -- <그 경로>`) 그곳을 루트로 삼습니다. 그래서 저장소 루트에서 `lute diff git:HEAD story`를 실행하면 `story/` 프로젝트끼리 비교하고, 저장소의 다른 곳에 있는 심볼릭 링크는 상관없습니다(비교하는 트리 안의 심볼릭 링크는 여전히 거부됩니다). 그 밖의 경우(다른 쪽이 저장소 밖에 있거나 양쪽이 모두 `git:`)에는 현재 디렉터리의 트리를 archive합니다(0.47). 비교가 생성되면 종료 0, 입력·materialization·파싱·I/O 오류면 종료 2입니다.
 
-`patch`는 [AI harness guide](/ko/tooling/ai-harness/)에 문서화된 엄격한 요청 형식을 받습니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. patch 보고서는 `schemaVersion: "0.43.0.patch"`와 `before`, `after`, `diff`, `writes`를 유지합니다. `accepted`는 patch 검증 통과 여부를 나타내고, envelope의 `ok`는 종료 코드 규칙을 따릅니다. 따라서 의미가 바뀐 승인 patch는 `accepted: true`, `ok: false`, 종료 **1**(검토용 diff 포함)이고, 의미를 보존한 patch는 `accepted: true`, `ok: true`, 종료 **0**입니다. `--dry-run`도 쓰기 없이 같은 판정을 사용합니다. 거부는 **2**로 종료하며 기존 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE` 코드를 유지합니다. 읽을 수 없는 patch 파일은 JSON error envelope을 사용합니다.
+`patch`는 [patch 요청](/ko/tooling/ai-harness/#patch-요청-047)에 문서화된 엄격한 요청 형식(필드, 연산, preserve 키, 노드 키 종류, 예시)을 받으며, `lute schema patch`가 이를 `inputs`로 설명합니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. patch 보고서는 `schemaVersion: "0.43.0.patch"`와 `before`, `after`, `diff`, `writes`를 유지합니다. `accepted`는 patch 검증 통과 여부를 나타내고, envelope의 `ok`는 종료 코드 규칙을 따릅니다. 따라서 의미가 바뀐 승인 patch는 `accepted: true`, `ok: false`, 종료 **1**(검토용 diff 포함)이고, 의미를 보존한 patch는 `accepted: true`, `ok: true`, 종료 **0**입니다. `--dry-run`도 쓰기 없이 같은 판정을 사용합니다. 거부는 **2**로 종료하며 기존 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE` 코드를 유지합니다. 읽을 수 없는 patch 파일은 JSON error envelope을 사용합니다. 한 파일의 여러 편집은 원래 텍스트를 기준으로 해석되고, 편집이 닿은 줄만 포맷합니다. `lute fmt --check`를 통과하던 `.lute` 파일은 계속 통과하고, 그 밖의 파일에서는 닿은 줄이 정규 형식이 됩니다. 이를 깨뜨릴 patch는 파일 이름을 담은 `E-PATCH-FORMAT`으로 거부되며 아무것도 쓰지 않습니다(0.47).
 
 `context`는 `schemaVersion`, `projectRevision`, `files`, `target`, `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, `notIncluded`를 반환합니다. 경계는 조용히 버리지 않고 보고합니다. `--run`에는 스크립트 경로가 필요하며 실행된 증거를 `witnessed`로 표시합니다.

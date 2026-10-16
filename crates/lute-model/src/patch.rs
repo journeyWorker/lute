@@ -17,9 +17,12 @@ use serde_json::Value;
 mod apply;
 mod decode;
 mod preserve;
+pub mod request;
 mod stage;
 
-use apply::{attr_range, format_touched, span_valid, TextEdit};
+use apply::{
+    attr_range, format_guard_holds, format_touched, span_valid, written_regions, TextEdit,
+};
 use decode::{parse_node_key, safe_relative};
 use stage::{all_files, changed_files, make_stage, rel};
 
@@ -133,67 +136,44 @@ impl<'de> Deserialize<'de> for PatchEdit {
             .get("op")
             .and_then(Value::as_str)
             .ok_or_else(|| de::Error::custom("edit requires string `op`"))?;
-        let known = |allowed: &[&str]| -> Result<(), D::Error> {
-            if object
-                .keys()
-                .any(|k| k != "op" && !allowed.contains(&k.as_str()))
-            {
-                return Err(de::Error::custom(format!("unknown field in {op}")));
-            }
-            Ok(())
-        };
+        let spec = request::edit_op(op)
+            .ok_or_else(|| de::Error::custom(format!("unknown patch operation `{op}`")))?;
+        if object
+            .keys()
+            .any(|k| k != "op" && !spec.fields.iter().any(|field| field.name == k))
+        {
+            return Err(de::Error::custom(format!("unknown field in {op}")));
+        }
         let node = || parse_node(object.get("node"), "node");
         let text = || required_string(object.get("text"), "text");
         match op {
-            "replaceNode" => {
-                known(&["node", "text"])?;
-                Ok(Self::ReplaceNode {
-                    node: node()?,
-                    text: text()?,
-                })
-            }
-            "insertBefore" => {
-                known(&["node", "text"])?;
-                Ok(Self::InsertBefore {
-                    node: node()?,
-                    text: text()?,
-                })
-            }
-            "insertAfter" => {
-                known(&["node", "text"])?;
-                Ok(Self::InsertAfter {
-                    node: node()?,
-                    text: text()?,
-                })
-            }
-            "replaceAttr" => {
-                known(&["node", "attr", "value"])?;
-                Ok(Self::ReplaceAttr {
-                    node: node()?,
-                    attr: required_string(object.get("attr"), "attr")?,
-                    value: required_string(object.get("value"), "value")?,
-                })
-            }
-            "removeNode" => {
-                known(&["node"])?;
-                Ok(Self::RemoveNode { node: node()? })
-            }
-            "createFile" => {
-                known(&["path", "text"])?;
-                Ok(Self::CreateFile {
-                    path: required_path(object.get("path"), "path")?,
-                    text: text()?,
-                })
-            }
-            "moveFile" => {
-                known(&["from", "to"])?;
-                Ok(Self::MoveFile {
-                    from: required_path(object.get("from"), "from")?,
-                    to: required_path(object.get("to"), "to")?,
-                })
-            }
+            "replaceNode" => Ok(Self::ReplaceNode {
+                node: node()?,
+                text: text()?,
+            }),
+            "insertBefore" => Ok(Self::InsertBefore {
+                node: node()?,
+                text: text()?,
+            }),
+            "insertAfter" => Ok(Self::InsertAfter {
+                node: node()?,
+                text: text()?,
+            }),
+            "replaceAttr" => Ok(Self::ReplaceAttr {
+                node: node()?,
+                attr: required_string(object.get("attr"), "attr")?,
+                value: required_string(object.get("value"), "value")?,
+            }),
+            "removeNode" => Ok(Self::RemoveNode { node: node()? }),
+            "createFile" => Ok(Self::CreateFile {
+                path: required_path(object.get("path"), "path")?,
+                text: text()?,
+            }),
+            "moveFile" => Ok(Self::MoveFile {
+                from: required_path(object.get("from"), "from")?,
+                to: required_path(object.get("to"), "to")?,
+            }),
             "replaceText" => {
-                known(&["file", "rev", "span", "text"])?;
                 let span = object
                     .get("span")
                     .cloned()
@@ -250,38 +230,33 @@ impl<'de> Deserialize<'de> for Preserve {
             ));
         }
         let (key, value) = object.iter().next().unwrap();
-        let nodes =
-            || serde_json::from_value::<Vec<NodeKey>>(value.clone()).map_err(de::Error::custom);
-        let strings =
-            || serde_json::from_value::<Vec<String>>(value.clone()).map_err(de::Error::custom);
-        match key.as_str() {
-            "ids" => Ok(Self::Ids(nodes()?)),
-            "lineIds" => {
-                strings()?;
-                Ok(Self::LineIds)
+        let spec = request::preserve_key(key)
+            .ok_or_else(|| de::Error::custom(format!("unknown preserve kind `{key}`")))?;
+        let mut nodes = Vec::new();
+        match spec.ty {
+            "nodeKey[]" => {
+                nodes = serde_json::from_value::<Vec<NodeKey>>(value.clone())
+                    .map_err(de::Error::custom)?;
             }
-            "voiceKeys" => {
-                strings()?;
-                Ok(Self::VoiceKeys)
+            "string[]" => {
+                serde_json::from_value::<Vec<String>>(value.clone()).map_err(de::Error::custom)?;
             }
-            "choiceEffects" => Ok(Self::ChoiceEffects(nodes()?)),
-            "rewards" => Ok(Self::Rewards(nodes()?)),
-            "hostContracts" => {
-                if value == &Value::Bool(true) {
-                    Ok(Self::HostContracts)
-                } else {
-                    Err(de::Error::custom("hostContracts must be true"))
+            _ => {
+                if value != &Value::Bool(true) {
+                    return Err(de::Error::custom(format!("{key} must be true")));
                 }
             }
-            "conditions" => Ok(Self::Conditions(nodes()?)),
-            "reachability" => Ok(Self::Reachability(nodes()?)),
-            "constraints" => {
-                if value == &Value::Bool(true) {
-                    Ok(Self::Constraints)
-                } else {
-                    Err(de::Error::custom("constraints must be true"))
-                }
-            }
+        }
+        match spec.key {
+            "ids" => Ok(Self::Ids(nodes)),
+            "lineIds" => Ok(Self::LineIds),
+            "voiceKeys" => Ok(Self::VoiceKeys),
+            "choiceEffects" => Ok(Self::ChoiceEffects(nodes)),
+            "rewards" => Ok(Self::Rewards(nodes)),
+            "hostContracts" => Ok(Self::HostContracts),
+            "conditions" => Ok(Self::Conditions(nodes)),
+            "reachability" => Ok(Self::Reachability(nodes)),
+            "constraints" => Ok(Self::Constraints),
             _ => Err(de::Error::custom(format!("unknown preserve kind `{key}`"))),
         }
     }
@@ -316,12 +291,28 @@ pub struct PatchRequest {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PatchRefusal {
-    Stale { expected: String, actual: String },
-    Target { node: NodeKey, reason: String },
-    Edit { index: usize, reason: String },
+    Stale {
+        expected: String,
+        actual: String,
+    },
+    Target {
+        node: NodeKey,
+        reason: String,
+    },
+    Edit {
+        index: usize,
+        reason: String,
+    },
     Check(Vec<Diagnostic>),
     Preserve(Vec<(String, SemanticChange)>),
-    Io { path: PathBuf, message: String },
+    /// A region-formatted `.lute` file would break the format guarantee.
+    Format {
+        path: PathBuf,
+    },
+    Io {
+        path: PathBuf,
+        message: String,
+    },
 }
 impl PatchRefusal {
     pub fn code(&self) -> &'static str {
@@ -331,6 +322,7 @@ impl PatchRefusal {
             Self::Edit { .. } => "E-PATCH-EDIT",
             Self::Check(_) => "E-PATCH-CHECK",
             Self::Preserve(_) => "E-PATCH-PRESERVE",
+            Self::Format { .. } => "E-PATCH-FORMAT",
             Self::Io { .. } => "",
         }
     }
@@ -343,6 +335,10 @@ impl PatchRefusal {
             Self::Edit { index, reason } => format!("edit {index}: {reason}"),
             Self::Check(ds) => format!("staged model has {} check error(s)", ds.len()),
             Self::Preserve(changes) => format!("{} preserve violation(s)", changes.len()),
+            Self::Format { path } => format!(
+                "{}: formatting the patched regions would leave the file non-canonical",
+                path.display()
+            ),
             Self::Io { path, message } => format!("{}: {message}", path.display()),
         }
     }
@@ -469,18 +465,7 @@ pub fn apply_patch_to(
                 reason: "ambiguous target".into(),
             });
         }
-        if matches!(
-            node.kind,
-            NodeKind::Project
-                | NodeKind::Fact
-                | NodeKind::State
-                | NodeKind::Relation
-                | NodeKind::Engine
-                | NodeKind::Occasion
-                | NodeKind::Expanded
-        ) || item.file.is_none()
-            || item.span.is_none()
-        {
+        if !request::patch_targetable(node.kind) || item.file.is_none() || item.span.is_none() {
             return Err(PatchRefusal::Target {
                 node: node.clone(),
                 reason: "target has no editable source anchor".into(),
@@ -714,11 +699,12 @@ pub fn apply_patch_to(
                 });
             }
         }
-        let mut source =
+        let original =
             std::fs::read_to_string(stage.root.join(file)).map_err(|e| PatchRefusal::Io {
                 path: file.clone(),
                 message: e.to_string(),
             })?;
+        let mut source = original.clone();
         for edit in list.iter().rev() {
             if !span_valid(
                 Span {
@@ -737,40 +723,19 @@ pub fn apply_patch_to(
             }
             source.replace_range(edit.start..edit.end, &edit.text);
         }
-        // Node spans come from the pre-edit model. Map each touched region through
-        // all replacements before formatting: otherwise an inserted/deleted line
-        // leaves the old end offset inside the replacement and the formatter
-        // splices a suffix from the wrong byte.
-        let map_offset = |offset: usize| {
-            let mut mapped = offset;
-            for edit in list.iter() {
-                if edit.end <= offset {
-                    mapped = (mapped as isize + edit.text.len() as isize
-                        - (edit.end - edit.start) as isize) as usize;
-                } else if edit.start <= offset && offset <= edit.end {
-                    mapped = edit.start + edit.text.len();
-                }
-            }
-            mapped
-        };
-        let regions: Vec<_> = list
-            .iter()
-            .map(|edit| Span {
-                byte_start: map_offset(edit.region.byte_start),
-                byte_end: map_offset(edit.region.byte_end),
-                ..edit.region
-            })
-            .collect();
-        source = format_touched(
-            &source,
-            &regions,
-            file.extension().is_none_or(|x| x != "lute"),
-        )
-        .map_err(|e| PatchRefusal::Edit {
-            index: list[0].index,
-            reason: e,
-        })?;
-        std::fs::write(stage.root.join(file), source).map_err(|e| PatchRefusal::Io {
+        // Node spans come from the pre-edit model: every region is mapped
+        // through all replacements of the file (dsl 0.47.0 §5.1).
+        let regions = written_regions(list);
+        let lute = file.extension().is_some_and(|x| x == "lute");
+        let formatted =
+            format_touched(&source, &regions, !lute).map_err(|e| PatchRefusal::Edit {
+                index: list[0].index,
+                reason: e,
+            })?;
+        if lute && !format_guard_holds(&original, &formatted) {
+            return Err(PatchRefusal::Format { path: file.clone() });
+        }
+        std::fs::write(stage.root.join(file), formatted.text).map_err(|e| PatchRefusal::Io {
             path: file.clone(),
             message: e.to_string(),
         })?;

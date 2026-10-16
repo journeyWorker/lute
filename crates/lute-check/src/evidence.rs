@@ -281,6 +281,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-ON-NO-EVENT", DiagnosticClass::SourceError),
         ("E-PATCH-CHECK", DiagnosticClass::SourceError),
         ("E-PATCH-EDIT", DiagnosticClass::SourceError),
+        ("E-PATCH-FORMAT", DiagnosticClass::SourceError),
         ("E-PATCH-PRESERVE", DiagnosticClass::SourceError),
         ("E-PATCH-STALE", DiagnosticClass::SourceError),
         ("E-PATCH-TARGET", DiagnosticClass::SourceError),

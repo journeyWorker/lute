@@ -1014,6 +1014,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
+### E-PATCH-FORMAT
+
+패치가 영역 포맷을 거친 `.lute` 파일을 정규 형식이 아닌 상태로 남기게 됩니다. `lute fmt --check`를 통과하던 파일이 통과하지 못하게 되거나, 건드린 줄을 다시 포맷하면 바뀝니다. 아무것도 쓰지 않으며, 메시지가 파일 이름을 알려 줍니다.
+
+명세: [dsl 0.47.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
 ### E-PATCH-PRESERVE
 
 패치가 요청된 보존 조건을 위반했습니다. 모호한 보상 또는 컴포넌트 일치도 포함됩니다.

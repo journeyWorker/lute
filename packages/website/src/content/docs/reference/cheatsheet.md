@@ -1957,8 +1957,9 @@ single-file check cannot, and its message says so.
 Agents should consume the JSON report envelope rather than scrape human output. For every
 JSON-capable report, stdout is one object with `command`, `schemaVersion`, and `ok`; `ok` is
 true exactly when the process exits 0. For example, `LUTE_TELEMETRY=0 target/debug/lute schema check`
-returns `schemaVersion: "0.43.0.schema"` and describes the `--json` check report
-(`0.43.0.check`). `lute schema` itself is always JSON and lists arguments, options, and outputs.
+returns `schemaVersion: "0.47.0.schema"` and describes the `--json` check report
+(`0.43.0.check`). `lute schema` itself is always JSON and lists arguments, options, outputs, and
+`inputs` (the `PATCH` request of `lute schema patch`; empty for every other command).
 
 In JSON mode, usage, I/O, and malformed-input failures are also one object:
 `error.code` is `E-CLI-USAGE`, `E-CLI-IO`, or `E-CLI-INPUT`; `error.path`, `error.argument`,

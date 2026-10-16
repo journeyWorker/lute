@@ -119,6 +119,9 @@ fn refusal_json(refusal: &PatchRefusal) -> Value {
                     .collect(),
             );
         }
+        PatchRefusal::Format { path } => {
+            value["path"] = json!(path);
+        }
         PatchRefusal::Io { .. } => unreachable!(),
     }
     value

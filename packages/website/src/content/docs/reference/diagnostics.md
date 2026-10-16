@@ -1016,6 +1016,12 @@ A patch edit is malformed, outside its target, overlaps another edit, or fails i
 
 Spec: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
 
+### E-PATCH-FORMAT
+
+A patch would leave a `.lute` file it region-formatted non-canonical: a file that was `lute fmt --check` clean would not be, or formatting the touched lines again would change them. Nothing is written; the message names the file.
+
+Spec: [dsl 0.47.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
 ### E-PATCH-PRESERVE
 
 A patch violates a requested preserve claim, including an ambiguous reward or component match.

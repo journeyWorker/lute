@@ -7,14 +7,56 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::envelope::{self, CliError};
 use lute_model::{diff, ModelOptions, ProjectModel};
 struct Materialized {
+    /// The project root the model is built from.
     root: PathBuf,
-    cleanup: bool,
+    /// The temporary directory a `git:` side was extracted into.
+    temp: Option<PathBuf>,
 }
 impl Drop for Materialized {
     fn drop(&mut self) {
-        if self.cleanup {
-            let _ = std::fs::remove_dir_all(&self.root);
+        if let Some(temp) = &self.temp {
+            let _ = std::fs::remove_dir_all(temp);
         }
+    }
+}
+
+/// Where a `git:` side is archived from (dsl 0.47.0 §5.3): when the other
+/// side is a directory inside the current work tree, that subtree of the
+/// work tree's top level; otherwise the current directory's tree (0.46).
+struct GitSource {
+    /// `git -C` directory; `None` archives from the current directory.
+    toplevel: Option<PathBuf>,
+    /// The other side's toplevel-relative path (empty: the whole tree).
+    subtree: PathBuf,
+}
+
+fn git_source(other: &Path) -> GitSource {
+    let cwd_tree = GitSource {
+        toplevel: None,
+        subtree: PathBuf::new(),
+    };
+    if other.to_string_lossy().starts_with("git:") {
+        return cwd_tree;
+    }
+    let Ok(output) = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+    else {
+        return cwd_tree;
+    };
+    if !output.status.success() {
+        return cwd_tree;
+    }
+    let toplevel = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim_end());
+    let (Ok(toplevel), Ok(other)) = (toplevel.canonicalize(), other.canonicalize()) else {
+        return cwd_tree;
+    };
+    match other.strip_prefix(&toplevel) {
+        Ok(subtree) if other.is_dir() => GitSource {
+            subtree: subtree.to_path_buf(),
+            toplevel: Some(toplevel),
+        },
+        _ => cwd_tree,
     }
 }
 struct ArchiveCleanup(PathBuf);
@@ -47,7 +89,7 @@ fn validate_archive_entries(listing: &[u8], detailed: &[u8]) -> Result<(), Strin
     Ok(())
 }
 
-fn materialize(side: &Path) -> Result<Materialized, String> {
+fn materialize(side: &Path, other: &Path) -> Result<Materialized, String> {
     let text = side.to_string_lossy();
     if !text.starts_with("git:") {
         if !side.is_dir() {
@@ -55,13 +97,14 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
         }
         return Ok(Materialized {
             root: side.to_path_buf(),
-            cleanup: false,
+            temp: None,
         });
     }
     let revision = text
         .strip_prefix("git:")
         .filter(|s| !s.is_empty())
         .ok_or_else(|| "empty git revision".to_string())?;
+    let source = git_source(other);
     let stamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -71,8 +114,21 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
         .map_err(|e| format!("cannot create temporary directory: {e}"))?;
     let archive = root.with_extension("tar");
     let _archive_cleanup = ArchiveCleanup(archive.clone());
-    let status = Command::new("git")
-        .args(["archive", "--format=tar", revision])
+    let mut git = Command::new("git");
+    if let Some(toplevel) = &source.toplevel {
+        git.arg("-C").arg(toplevel);
+    }
+    git.args(["archive", "--format=tar", revision]);
+    if !source.subtree.as_os_str().is_empty() {
+        let pathspec = source
+            .subtree
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        git.args(["--", &pathspec]);
+    }
+    let status = git
         .output()
         .map_err(|e| format!("cannot invoke git archive: {e}"))?;
     if !status.status.success() {
@@ -170,20 +226,21 @@ fn materialize(side: &Path) -> Result<Materialized, String> {
         }
     }
     Ok(Materialized {
-        root,
-        cleanup: true,
+        root: root.join(&source.subtree),
+        temp: Some(root),
     })
 }
 
 pub(crate) fn run(before: &Path, after: &Path, json: bool) -> ExitCode {
-    let before = match materialize(before) {
+    let before_side = match materialize(before, after) {
         Ok(side) => side,
         Err(e) => return envelope::fail(CliError::io(before, format!("lute diff: {e}"))),
     };
-    let after = match materialize(after) {
+    let after_side = match materialize(after, before) {
         Ok(side) => side,
         Err(e) => return envelope::fail(CliError::io(after, format!("lute diff: {e}"))),
     };
+    let (before, after) = (before_side, after_side);
     let opts = ModelOptions {
         compile: true,
         ..ModelOptions::default()
