@@ -5,6 +5,7 @@ use lute_compile::ir::Command;
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::bindings::{Bindings, Idle};
 use lute_manifest::schema::OccasionTarget;
+use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_model::ProjectModel;
 
 pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
@@ -56,6 +57,8 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
     };
     let mut out = Vec::new();
     let anchor = |needle: &str| locate(&text, needle);
+    check_title_shape(&path, &text, &bindings, &mut out);
+    check_bindings_version(&path, &text, &bindings, &mut out);
     let mut domains = BTreeMap::<String, BTreeSet<String>>::new();
     let mut cast = BTreeSet::new();
     let mut occasions = BTreeMap::new();
@@ -135,7 +138,6 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
     );
     for (member, gain) in &bindings.volumes {
         if !(gain.is_finite() && (0.0..=1.0).contains(gain)) {
-            use lute_manifest::yaml_text::{yaml_span, YamlStep};
             let span = yaml_span(
                 &text,
                 &[
@@ -200,7 +202,7 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
     }
     let mut used = Usage::default();
     if let Some(title) = &bindings.ui.title {
-        for reference in [&title.background, &title.music] {
+        for reference in [&title.background, &title.music].into_iter().flatten() {
             if bindings.assets.contains_key(reference.as_str()) {
                 used.assets.insert(reference.clone());
             }
@@ -276,6 +278,169 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
         }
     }
     out
+}
+
+/// 0.47.0 §4.2: the toolchain line — `MAJOR.MINOR` of
+/// [`lute_check::LUTE_LANG_VERSION`] — the `bindingsVersion` a current
+/// bindings file declares.
+pub(crate) fn toolchain_line() -> String {
+    let version = lute_check::LUTE_LANG_VERSION;
+    let mut parts = version.splitn(3, '.');
+    match (parts.next(), parts.next()) {
+        (Some(major), Some(minor)) => format!("{major}.{minor}"),
+        _ => version.to_string(),
+    }
+}
+
+/// A `bindingsVersion` of the form `MAJOR.MINOR` (ASCII digits) as a
+/// comparable pair; `None` for anything else.
+pub(crate) fn bindings_line(value: &str) -> Option<(u64, u64)> {
+    let (major, minor) = value.split_once('.')?;
+    let number = |part: &str| {
+        (!part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| part.parse().ok())
+            .flatten()
+    };
+    Some((number(major)?, number(minor)?))
+}
+
+/// 0.47.0 §4.1: a written `ui.title` binds at least one of `text`,
+/// `background`, `music`, and `text` is a non-empty string.
+fn check_title_shape(
+    path: &Path,
+    text: &str,
+    bindings: &Bindings,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    let Some(title) = &bindings.ui.title else {
+        return;
+    };
+    let at =
+        |steps: &[YamlStep<'_>]| yaml_span(text, steps).unwrap_or_else(|| locate(text, "title"));
+    if title.text.is_none() && title.background.is_none() && title.music.is_none() {
+        out.push((
+            path.to_path_buf(),
+            diag(
+                "E-BINDING-SHAPE",
+                "`ui.title` binds nothing — write at least one of `text`, `background`, `music`, \
+                 or remove `ui.title` (dsl 0.47.0 §4.1)"
+                    .to_string(),
+                at(&[YamlStep::Key("ui"), YamlStep::Key("title")]),
+            ),
+        ));
+    }
+    if title.text.as_deref() == Some("") {
+        out.push((
+            path.to_path_buf(),
+            diag(
+                "E-BINDING-SHAPE",
+                "`ui.title.text` is empty — it is the title heading and must be a non-empty \
+                 string; remove the key to draw no heading (dsl 0.47.0 §4.1)"
+                    .to_string(),
+                at(&[
+                    YamlStep::Key("ui"),
+                    YamlStep::Key("title"),
+                    YamlStep::Key("text"),
+                ]),
+            ),
+        ));
+    }
+}
+
+/// 0.47.0 §4.2: `W-BINDINGS-VERSION-STALE` at the `bindingsVersion` value
+/// when it is not the toolchain line, and `E-BINDINGS-VERSION` at each
+/// section newer than a `MAJOR.MINOR` declared line.
+fn check_bindings_version(
+    path: &Path,
+    text: &str,
+    bindings: &Bindings,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    let declared = bindings.bindings_version.as_str();
+    let line = toolchain_line();
+    let current = lute_check::LUTE_LANG_VERSION;
+    let parsed = bindings_line(declared);
+    if declared != line {
+        let message = match (parsed, bindings_line(&line)) {
+            (Some(d), Some(l)) if d > l => format!(
+                "`bindingsVersion: \"{declared}\"` is newer than this toolchain's bindings line \
+                 \"{line}\" (Lute {current}) — upgrade the toolchain; do not downgrade the stamp \
+                 (dsl 0.47.0 §4.2)"
+            ),
+            (Some(_), _) => format!(
+                "`bindingsVersion: \"{declared}\"` is stale — this toolchain's bindings line is \
+                 \"{line}\" (Lute {current}); update it to `bindingsVersion: \"{line}\"` \
+                 (`lute fix` does it) (dsl 0.47.0 §4.2)"
+            ),
+            (None, _) => format!(
+                "`bindingsVersion: \"{declared}\"` is not `MAJOR.MINOR` — restamp it as \
+                 `bindingsVersion: \"{line}\"`, this toolchain's bindings line (Lute {current}) \
+                 (dsl 0.47.0 §4.2)"
+            ),
+        };
+        let span = yaml_span(text, &[YamlStep::Key("bindingsVersion"), YamlStep::Value])
+            .unwrap_or_else(|| locate(text, "bindingsVersion"));
+        out.push((
+            path.to_path_buf(),
+            diag("W-BINDINGS-VERSION-STALE", message, span),
+        ));
+    }
+    let Some(declared_line) = parsed else {
+        return;
+    };
+    // (section, line it needs, key path of the span)
+    let mut sections: Vec<(String, (u64, u64), Vec<YamlStep<'_>>)> = Vec::new();
+    for (name, spec) in &bindings.vfx {
+        if matches!(spec, lute_manifest::bindings::VfxSpec::Custom(_)) {
+            sections.push((
+                format!("vfx.{name}` with `effect: custom"),
+                (0, 41),
+                vec![YamlStep::Key("vfx"), YamlStep::Key(name)],
+            ));
+        }
+    }
+    if !bindings.volumes.is_empty() {
+        sections.push(("volumes".into(), (0, 42), vec![YamlStep::Key("volumes")]));
+    }
+    if bindings.ui.ended.is_some() {
+        sections.push((
+            "ui.ended".into(),
+            (0, 46),
+            vec![YamlStep::Key("ui"), YamlStep::Key("ended")],
+        ));
+    }
+    if bindings.ui.title.as_ref().is_some_and(|t| t.text.is_some()) {
+        sections.push((
+            "ui.title.text".into(),
+            (0, 47),
+            vec![
+                YamlStep::Key("ui"),
+                YamlStep::Key("title"),
+                YamlStep::Key("text"),
+            ],
+        ));
+    }
+    for (section, (major, minor), steps) in sections {
+        if (major, minor) <= declared_line {
+            continue;
+        }
+        let last = match steps.last() {
+            Some(YamlStep::Key(key)) => *key,
+            _ => "bindingsVersion",
+        };
+        let span = yaml_span(text, &steps).unwrap_or_else(|| locate(text, last));
+        out.push((
+            path.to_path_buf(),
+            diag(
+                "E-BINDINGS-VERSION",
+                format!(
+                    "`{section}` needs bindingsVersion \"{major}.{minor}\" or newer; this file \
+                     declares \"{declared}\" (dsl 0.47.0 §4.2)"
+                ),
+                span,
+            ),
+        ));
+    }
 }
 
 #[derive(Default)]
@@ -526,11 +691,10 @@ fn files_check(
     files.extend(b.sfx.values());
     files.extend(b.sequences.values().map(|v| &v.video));
     if let Some(title) = &b.ui.title {
-        if !b.assets.contains_key(&title.background) {
-            files.push(&title.background);
-        }
-        if !b.assets.contains_key(&title.music) {
-            files.push(&title.music);
+        for reference in [&title.background, &title.music].into_iter().flatten() {
+            if !b.assets.contains_key(reference) {
+                files.push(reference);
+            }
         }
     }
     if let Some(ended) = &b.ui.ended {

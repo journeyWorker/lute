@@ -140,9 +140,15 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BINDING-SHAPE
 
-플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함합니다.
+플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함하거나, 작성된 `ui.title`이 `text`, `background`, `music` 중 아무것도 지정하지 않거나 빈 `text`를 가집니다.
 
-명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md), [dsl 0.47.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
+### E-BINDINGS-VERSION
+
+플레이어 바인딩 섹션이 파일에 선언한 `bindingsVersion` 라인보다 새롭습니다(`vfx`의 `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47). `bindingsVersion`을 그 섹션에 필요한 라인으로 올리세요.
+
+명세: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 ### E-BRANCH-ALL-GUARDED
 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
@@ -1890,6 +1896,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 플레이어 바인딩 키를 컴파일된 프로젝트 문서가 사용하지 않습니다.
 
 명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### W-BINDINGS-VERSION-STALE
+
+플레이어 바인딩의 `bindingsVersion`이 툴체인 라인(툴체인 버전의 `MAJOR.MINOR`)과 다릅니다. 더 오래되었으면 그 라인으로 올리고(`lute fix`가 수행), 더 새로우면 스탬프를 낮추지 말고 툴체인을 업그레이드하며, `MAJOR.MINOR` 형식이 아니면 다시 스탬프합니다.
+
+명세: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-BRANCH-ID-SHARED
 

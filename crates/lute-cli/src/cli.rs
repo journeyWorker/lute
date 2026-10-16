@@ -297,7 +297,9 @@ pub(crate) enum Command {
     /// fact-query/presence calls (`holds`/`count`/`countDistinct`/`validAt`/
     /// `isSet`) to their standard-CEL 0.32 forms; renamed domains in project,
     /// schema and plugin YAML (0.41.0); existing `luteVersion` stamps older
-    /// than the toolchain, raised to it (0.41.1); and, when the project's
+    /// than the toolchain, raised to it (0.41.1); a `player.bindings.yaml`
+    /// `bindingsVersion` older than the toolchain line, raised to it
+    /// (0.47.0); and, when the project's
     /// `volume` domain is exactly the old `[silent, down, normal, up, full]`,
     /// `down`/`up` to `quiet`/`loud` in commands, YAML references and
     /// `volumes` keys (0.42.0). Byte-exact and

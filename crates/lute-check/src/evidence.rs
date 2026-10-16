@@ -475,6 +475,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-BINDING-FILE", DiagnosticClass::SourceError),
         ("E-BINDING-KEY", DiagnosticClass::SourceError),
         ("E-BINDING-SHAPE", DiagnosticClass::SourceError),
+        ("E-BINDINGS-VERSION", DiagnosticClass::SourceError),
         (
             "W-BINDING-MISSING",
             DiagnosticClass::Analysis {
@@ -487,6 +488,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
                 evidence: lute_core_span::Evidence::Heuristic,
             },
         ),
+        ("W-BINDINGS-VERSION-STALE", DiagnosticClass::SourceError),
         ("W-BRANCH-ID-SHARED", DiagnosticClass::SourceError),
         (
             "W-CAST-ABSENT",

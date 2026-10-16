@@ -108,8 +108,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BINDING-SHAPE",
-        summary: "The player bindings YAML is malformed or contains an unknown key.",
-        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2"],
+        summary: "The player bindings YAML is malformed or contains an unknown key, or a written `ui.title` binds none of `text`, `background`, `music` or has an empty `text`.",
+        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2", "dsl 0.47.0 §4.1"],
+    },
+    Code {
+        code: "E-BINDINGS-VERSION",
+        summary: "A player bindings section is newer than the file's declared `bindingsVersion` line (`vfx` `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); raise `bindingsVersion` to the line the section needs.",
+        spec: &["dsl 0.47.0 §4.2"],
     },
     Code {
         code: "E-BRANCH-ALL-GUARDED",
@@ -1670,6 +1675,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-BINDING-UNUSED",
         summary: "A player binding key is not used by any compiled project document.",
         spec: &["dsl 0.40.0 §5"],
+    },
+    Code {
+        code: "W-BINDINGS-VERSION-STALE",
+        summary: "The player bindings' `bindingsVersion` is not the toolchain line (the toolchain version's `MAJOR.MINOR`): older — update it to the line (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the stamp; not `MAJOR.MINOR` — restamp it.",
+        spec: &["dsl 0.47.0 §4.2"],
     },
     Code {
         code: "W-BRANCH-ID-SHARED",

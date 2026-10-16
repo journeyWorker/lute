@@ -140,9 +140,15 @@ Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-BINDING-SHAPE
 
-The player bindings YAML is malformed or contains an unknown key.
+The player bindings YAML is malformed or contains an unknown key, or a written `ui.title` binds none of `text`, `background`, `music` or has an empty `text`.
 
-Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md), [dsl 0.47.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
+### E-BINDINGS-VERSION
+
+A player bindings section is newer than the file's declared `bindingsVersion` line (`vfx` `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); raise `bindingsVersion` to the line the section needs.
+
+Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-BRANCH-ALL-GUARDED
 
@@ -1895,6 +1901,12 @@ Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 A player binding key is not used by any compiled project document.
 
 Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
+
+### W-BINDINGS-VERSION-STALE
+
+The player bindings' `bindingsVersion` is not the toolchain line (the toolchain version's `MAJOR.MINOR`): older — update it to the line (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the stamp; not `MAJOR.MINOR` — restamp it.
+
+Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-BRANCH-ID-SHARED
 

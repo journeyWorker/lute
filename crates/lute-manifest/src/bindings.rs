@@ -356,12 +356,21 @@ pub struct EndedScreen {
     pub background: Option<String>,
 }
 
+/// `ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the
+/// title backdrop / music references, each optional; a written `ui.title`
+/// binds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "json-schema", schemars(extend("minProperties" = 1)))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Title {
-    pub background: String,
-    pub music: String,
+    #[serde(default)]
+    #[cfg_attr(feature = "json-schema", schemars(length(min = 1)))]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub background: Option<String>,
+    #[serde(default)]
+    pub music: Option<String>,
 }
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
@@ -490,6 +499,26 @@ mod tests {
         assert_eq!(ended.screens["restore"].background.as_deref(), Some("dawn"));
         assert!(yaml_serde::from_str::<Bindings>(
             "bindingsVersion: '0.46'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens: {restore: {title: Again, text: Welcome, nope: x}}\n",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn title_decodes_text_with_optional_assets() {
+        let value: Bindings = yaml_serde::from_str(
+            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  title: {text: Brinewake}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            value.ui.title,
+            Some(Title {
+                text: Some("Brinewake".into()),
+                background: None,
+                music: None,
+            })
+        );
+        assert!(yaml_serde::from_str::<Bindings>(
+            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  title: {heading: x}\n",
         )
         .is_err());
     }

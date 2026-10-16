@@ -315,6 +315,9 @@ fn fix_file(file: &Path, scope: Scope<'_>, volume: bool) -> (Outcome, usize) {
     let stamp = rewrite_lute_version(&out, file);
     changed += stamp.changed;
     out = stamp.text;
+    let bindings = rewrite_bindings_version(&out, file);
+    changed += bindings.changed;
+    out = bindings.text;
     if volume {
         let renamed = rewrite_volume(&out, yaml);
         changed += renamed.changed;
@@ -778,7 +781,7 @@ fn rewrite_lute_version(text: &str, file: &Path) -> Rewrite {
         manifest_stamp_span(text)
     } else if file.extension().is_some_and(|ext| ext == "lute") {
         frontmatter_range(text).and_then(|(start, end)| {
-            let (s, e) = document_stamp_span(&text[start..end])?;
+            let (s, e) = top_level_scalar_span(&text[start..end], "luteVersion")?;
             Some((start + s, start + e))
         })
     } else {
@@ -799,14 +802,40 @@ fn rewrite_lute_version(text: &str, file: &Path) -> Rewrite {
     apply_edits(text, edits)
 }
 
-/// The byte span of the scalar text of a top-level `luteVersion:` key in a
-/// document's frontmatter YAML (quotes excluded).
-fn document_stamp_span(yaml: &str) -> Option<(usize, usize)> {
+/// 0.47.0 §4.2: raise the `bindingsVersion` of a `player.bindings.yaml` that
+/// is an older `MAJOR.MINOR` than the toolchain line to that line. Only the
+/// scalar's text is spliced (quotes, comments and layout survive); a current,
+/// newer or non-`MAJOR.MINOR` value is left alone, so a second run changes
+/// nothing.
+fn rewrite_bindings_version(text: &str, file: &Path) -> Rewrite {
+    let line = crate::bindings::toolchain_line();
+    let span = file
+        .file_name()
+        .is_some_and(|name| name == "player.bindings.yaml")
+        .then(|| top_level_scalar_span(text, "bindingsVersion"))
+        .flatten();
+    let older = |value: &str| {
+        matches!(
+            (crate::bindings::bindings_line(value), crate::bindings::bindings_line(&line)),
+            (Some(v), Some(l)) if v < l
+        )
+    };
+    let edits = span
+        .filter(|&(s, e)| older(&text[s..e]))
+        .map(|(s, e)| (s, e, line.clone()))
+        .into_iter()
+        .collect();
+    apply_edits(text, edits)
+}
+
+/// The byte span of the scalar text of the top-level `key:` in a YAML
+/// mapping written in block style (quotes excluded).
+fn top_level_scalar_span(yaml: &str, key: &str) -> Option<(usize, usize)> {
     let mut offset = 0;
     for line in yaml.split_inclusive('\n') {
         let body = line.strip_suffix('\n').unwrap_or(line);
         if let Some((0, end, value)) = yaml_key_value(body) {
-            if yaml_key_is(&body[..end], "luteVersion") {
+            if yaml_key_is(&body[..end], key) {
                 let (s, e) = yaml_scalar_span(body, value)?;
                 return Some((offset + s, offset + e));
             }
