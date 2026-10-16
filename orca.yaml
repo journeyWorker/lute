@@ -1,7 +1,9 @@
+# Managed by KantoRegion/forca (recipe/orca.yaml). Edit it there and run
+# `forca sync`; local edits are overwritten.
+#
 # Orca per-workspace environments. "Kata Sandbox" runs the workspace in a
-# fresh Kata VM (Rust toolchain) on the intranet k3s dev pool (agent-sandbox warm pool) and
-# releases it when the workspace is deleted. Needs kubectl + intranet
-# kubeconfig on the desktop; see scripts/orca-vm/kata-create.sh.
+# fresh Kata VM from the intranet agent-sandbox warm pool (omp-kata-rust) and
+# releases it when the workspace is deleted.
 environmentRecipes:
   - id: kata
     name: Kata Sandbox

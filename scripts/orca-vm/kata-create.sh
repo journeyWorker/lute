@@ -4,8 +4,10 @@
 # `kubectl exec ... sshd -i` (no Service, no open port).
 #
 # Runs on the desktop from the repo root. stdout carries only the recipe JSON;
-# progress goes to stderr. Keep this file identical across bard, lute and canon
-# except for DEFAULT_POOL.
+# progress goes to stderr.
+#
+# Managed by KantoRegion/forca (recipe/kata-create.sh). Edit it there and run
+# `forca sync`; local edits in a consumer repo are overwritten.
 #
 # Desktop prerequisites: kubectl and a kubeconfig for the intranet cluster.
 #   ORCA_KATA_KUBECONFIG  kubeconfig path (default ~/.config/orca-kata/kubeconfig,

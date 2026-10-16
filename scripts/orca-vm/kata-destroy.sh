@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Orca per-workspace environment recipe: release the Kata sandbox claimed by
 # kata-create.sh. Orca passes the lifecycle payload (with recipeResult.userData)
-# on stdin. Keep identical across bard, lute and canon.
+# on stdin.
+#
+# Managed by KantoRegion/forca (recipe/kata-destroy.sh). Edit it there and run
+# `forca sync`; local edits in a consumer repo are overwritten.
 set -euo pipefail
 
 log() { printf '[kata-destroy] %s\n' "$*" >&2; }
