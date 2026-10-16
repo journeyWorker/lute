@@ -55,16 +55,21 @@ export abstract class ScreenView extends Container {
   protected clearContent(): void { while (this.children.length > 2) this.removeChildAt(2) }
 }
 
-/** Title screen with continue gating and optional preloaded background texture. */
+/**
+ * Title screen with continue gating and optional preloaded background
+ * texture. `gameTitle` is the bound `ui.title.text`; without it the screen
+ * draws no heading (spec 0.47.0 §2.6).
+ */
 export class TitleScreen extends ScreenView {
   constructor(
     model: Extract<ScreenModel, { _tag: "Title" }>,
     theme: Theme,
     emit: EmitAction,
-    gameTitle = "Lute",
+    gameTitle?: string,
     textureFor?: (file: string) => Texture | undefined
   ) {
-    super(gameTitle, theme, emit, 1280, 720)
+    super(gameTitle ?? "", theme, emit, 1280, 720)
+    this.title.visible = gameTitle !== undefined
     if (model.background !== undefined) {
       const texture = textureFor?.(model.background)
       if (texture !== undefined) {
