@@ -45,6 +45,11 @@ The handle:
 
 Options beyond the ports: `host` (`bridge` answers `{ fields, writes? }`, `plugin` runs a game action at a `plugin` record's place, `idle` overrides the idle flow — each on a fiber of its own), `linePacing: "presenter"` (the presenter types, pages and takes the confirm), `autosave` (`false`, `"presentation"`, `"choice"`; default both). A `Presenter` may set `confirmsLines: true` to have an `advance` that arrives while a line types kept as its release.
 
+Second play-throughs and locales (0.47):
+
+- **Lineage.** Each time the story presents `ended`, the player stores the runtime snapshot in its profile as the `lineage` (at once, not debounced): the user tier (`user.*`, user-tier facts, `once: user` spends) and the ended run that `newRun` turns into `prev.run.*`. New game at `ended` sends `newRun`. In a player started without `snapshot` / `session`, New game that cannot send `newRun` where the session waits (after a reload, or a run abandoned through the menu) restores the lineage instead of the start point and sends `newRun` — so a second play-through survives a reload; a host `seed` is not used while a lineage exists, and a lineage the runtime refuses is dropped. Older profiles keep their read marks and settings. Leaving the ending (`toTitle` at `ended`) asks no confirm.
+- **Locale.** `settings.locale` picks the text: lines, choice labels and the backlog read the record's translation (`lute compile --locales`) and fall back to source text; `setSettings` applies to the next text. The `Settings` screen lists the bundle's source locale then its compiled locales, and a new profile starts at the source locale. Custom cue factories take the locale per call: `fromOutput(output, readLines, locale)`, `choiceView(await, locale)`.
+
 ## Hosting recipes (0.44)
 
 Three ways a host composes the player, each checked against the published types (names such as `bundle`, `startMinigame` or `storeCheckpoint` stand for your own values). The imports they share:
@@ -73,8 +78,8 @@ const director = Effect.gen(function* () {
     host: { plugin: { minigame: (call) => startMinigame(call.attrs) } },
     cueFactory: (base) => ({
       ...base,
-      fromOutput: (output, readLines) =>
-        base.fromOutput(output, readLines).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
+      fromOutput: (output, readLines, locale) =>
+        base.fromOutput(output, readLines, locale).pipe(Effect.tap((cues) => Effect.log(`${cues.length} cues`)))
     })
   })
 })

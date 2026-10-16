@@ -1,10 +1,11 @@
 /** Versioned save slots and profile persistence for the player. */
-import { Clock, Context, Effect, Fiber, Layer, Ref, Schema, SubscriptionRef } from "effect"
+import { Clock, Context, Effect, Fiber, Layer, Option, Ref, Schema, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
-import { Contract } from "@lute-lang/runtime"
+import { Contract, Ir } from "@lute-lang/runtime"
 import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
 import type { SaveRuntime } from "../model.js"
 
+/** The save and profile format version (`saveVersion`, `profileVersion`): the release line. */
 const VERSION: "0.46" = "0.46"
 
 /** A malformed or unreadable persisted save. */
@@ -29,7 +30,9 @@ const Backlog = Schema.Struct({
   voiceKey: Schema.String,
   speakerName: Schema.String,
   text: Schema.String,
-  hasVoice: Schema.Boolean
+  hasVoice: Schema.Boolean,
+  texts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  localeSegments: Schema.optionalKey(Schema.Record(Schema.String, Ir.segments))
 })
 const Log = Schema.Union([
   Schema.Struct({ seed: Contract.Seed }),
@@ -205,14 +208,30 @@ const SettingsSchema = Schema.Struct({
   readColour: Schema.optionalKey(Schema.Boolean),
   rollbackDepth: Schema.optionalKey(Schema.Int)
 })
+/** The profile as this version writes it. */
 const Profile = Schema.Struct({
   profileVersion: Schema.Literal(VERSION),
   project: Schema.String,
   readLines: Schema.Array(Schema.String),
-  settings: SettingsSchema
+  settings: SettingsSchema,
+  lineage: Schema.optionalKey(Contract.Snapshot)
 })
+/**
+ * A stored profile of any version (spec 0.47.0 §2.3): read marks and
+ * settings are kept; the lineage only from a profile of this version, and
+ * only when it decodes (else the profile has none). A profile is never
+ * refused for its version.
+ */
+const StoredProfile = Schema.Struct({
+  profileVersion: Schema.String,
+  project: Schema.String,
+  readLines: Schema.Array(Schema.String),
+  settings: SettingsSchema,
+  lineage: Schema.optionalKey(Schema.Unknown)
+})
+const decodeLineage = Schema.decodeUnknownOption(Contract.Snapshot)
 
-/** Profile service containing read history and mutable player settings. */
+/** Profile service containing read history, mutable player settings and the lineage. */
 export interface ProfileStoreShape {
   readonly readLines: SubscriptionRef.SubscriptionRef<ReadonlySet<string>>
   readonly markRead: (lineId: string) => Effect.Effect<void, ProfileCorrupt>
@@ -220,9 +239,17 @@ export interface ProfileStoreShape {
   readonly unmarkRead: (lineIds: Iterable<string>) => Effect.Effect<void, ProfileCorrupt>
   readonly settings: SubscriptionRef.SubscriptionRef<Settings>
   readonly updateSettings: (settings: SettingsChanges) => Effect.Effect<void, ProfileCorrupt>
+  /**
+   * The lineage (spec 0.47.0 §2.3): the runtime snapshot taken when the
+   * session last presented an `ended` output — the user tier and the ended
+   * run that `newRun` turns into `prev.run.*`.
+   */
+  readonly lineage: SubscriptionRef.SubscriptionRef<Contract.Snapshot | undefined>
+  /** Replace (or, with `undefined`, drop) the lineage; written at once, not debounced. */
+  readonly setLineage: (lineage: Contract.Snapshot | undefined) => Effect.Effect<void, ProfileCorrupt>
 }
 
-/** Persisted read history and player preferences. */
+/** Persisted read history, player preferences and lineage. */
 export class ProfileStore extends Context.Service<ProfileStore, ProfileStoreShape>()(
   "@lute-lang/player/ProfileStore"
 ) {}
@@ -231,6 +258,7 @@ export class ProfileStore extends Context.Service<ProfileStore, ProfileStoreShap
 export interface ProfileStoreOptions {
   readonly project: string
   readonly key?: string
+  /** Settings of a new profile (`LutePlayer.make` sets `locale` to the bundle's source locale). */
   readonly defaults?: Partial<Omit<Settings, "volumes">> & { readonly volumes?: Partial<Settings["volumes"]> }
   /** Delay before coalesced settings changes are written. */
   readonly debounceMs?: number
@@ -255,29 +283,35 @@ export const profileLayer = (
     const raw = yield* Effect.mapError(store.get(key), (error) => new ProfileCorrupt({ message: error.message }))
     let read = new Set<string>()
     let settings = defaults
+    let lineage: Contract.Snapshot | undefined
     if (raw !== undefined) {
-      const decoded = yield* Effect.mapError(decode(Profile, raw), (error) => new ProfileCorrupt({ message: error.message }))
+      const decoded = yield* Effect.mapError(decode(StoredProfile, raw), (error) => new ProfileCorrupt({ message: error.message }))
       if (decoded.project !== options.project) return yield* Effect.fail(new ProfileCorrupt({ message: "profile project does not match" }))
       read = new Set(decoded.readLines)
       settings = mergeSettings(defaults, decoded.settings)
+      if (decoded.profileVersion === VERSION && decoded.lineage !== undefined) lineage = Option.getOrUndefined(decodeLineage(decoded.lineage))
     }
     const readRef = yield* SubscriptionRef.make<ReadonlySet<string>>(read)
     const settingsRef = yield* SubscriptionRef.make<Settings>(settings)
-    const persist = (nextRead: ReadonlySet<string>, nextSettings: Settings) => {
-      const profile: typeof Profile.Type = { profileVersion: VERSION, project: options.project, readLines: [...nextRead], settings: nextSettings }
-      return Effect.flatMap(encode(Profile, profile), (encoded) => store.set(key, encoded)).pipe(
-        Effect.mapError((error) => new ProfileCorrupt({ message: error.message }))
-      )
-    }
+    const lineageRef = yield* SubscriptionRef.make<Contract.Snapshot | undefined>(lineage)
+    const persist = Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(lineageRef)
+      const profile: typeof Profile.Type = {
+        profileVersion: VERSION,
+        project: options.project,
+        readLines: [...(yield* SubscriptionRef.get(readRef))],
+        settings: yield* SubscriptionRef.get(settingsRef),
+        ...(current === undefined ? {} : { lineage: current })
+      }
+      const encoded = yield* encode(Profile, profile)
+      yield* store.set(key, encoded)
+    }).pipe(Effect.mapError((error) => new ProfileCorrupt({ message: error.message })))
     const pending = yield* Ref.make<Fiber.Fiber<void, ProfileCorrupt> | undefined>(undefined)
     const debounceMs = options.debounceMs ?? 250
     const schedulePersist = Effect.fn("Lute.Profile.schedulePersist")(function* () {
       const current = yield* Ref.get(pending)
       if (current !== undefined) yield* Fiber.interrupt(current)
-      const fiber = yield* Effect.forkDetach(Effect.gen(function* () {
-        yield* Effect.sleep(debounceMs)
-        yield* persist(yield* SubscriptionRef.get(readRef), yield* SubscriptionRef.get(settingsRef))
-      }))
+      const fiber = yield* Effect.forkDetach(Effect.andThen(Effect.sleep(debounceMs), persist))
       yield* Ref.set(pending, fiber)
     })
     return {
@@ -286,19 +320,24 @@ export const profileLayer = (
         const next = new Set(yield* SubscriptionRef.get(readRef))
         next.add(lineId)
         yield* SubscriptionRef.set(readRef, next)
-        yield* persist(next, yield* SubscriptionRef.get(settingsRef))
+        yield* persist
       }),
       unmarkRead: (lineIds: Iterable<string>) => Effect.gen(function* () {
         const next = new Set(yield* SubscriptionRef.get(readRef))
         for (const lineId of lineIds) next.delete(lineId)
         yield* SubscriptionRef.set(readRef, next)
-        yield* persist(next, yield* SubscriptionRef.get(settingsRef))
+        yield* persist
       }),
       settings: settingsRef,
       updateSettings: (changes: SettingsChanges) => Effect.gen(function* () {
         const next = mergeSettings(yield* SubscriptionRef.get(settingsRef), changes)
         yield* SubscriptionRef.set(settingsRef, next)
         yield* schedulePersist()
+      }),
+      lineage: lineageRef,
+      setLineage: (next: Contract.Snapshot | undefined) => Effect.gen(function* () {
+        yield* SubscriptionRef.set(lineageRef, next)
+        yield* persist
       })
     }
   }))

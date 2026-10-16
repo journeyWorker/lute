@@ -1,0 +1,24 @@
+---
+kind: scene
+id: quay
+title: Quay
+on: visit
+once: false
+---
+
+## Quay
+
+@mara{code="0010" when="has(prev.run.route) && prev.run.route != 'none'"}: Back again, I see.
+@mara{code="0020"}: The bell is ringing.
+::set{user.runs += 1}
+<branch id="path" prompt="Where now?">
+  <choice id="dock" text="Walk to the dock">
+    ::set{run.route = "dock"}
+  </choice>
+  <choice id="hill" text="Climb the hill">
+    ::set{run.route = "hill"}
+  </choice>
+</branch>
+@mara{code="0040"}: Mind the tide.
+@narrator{code="0030"}: The tide goes out.
+::set{run.over = true}

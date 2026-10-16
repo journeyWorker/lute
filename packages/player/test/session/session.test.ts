@@ -66,7 +66,7 @@ describe("PlayerSession", () => {
     yield* session.rollback(1)
     const error = yield* Effect.flip(session.rollback(1))
     expect(error).toBeInstanceOf(NothingToRollback)
-  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings, settings: { locale: "en", rollbackDepth: 2 } }))))
+  })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings, settings: { rollbackDepth: 2 } }))))
 
   it.effect("rollback at the start fails with NothingToRollback", () => Effect.scoped(Effect.gen(function* () {
     const session = yield* PlayerSession

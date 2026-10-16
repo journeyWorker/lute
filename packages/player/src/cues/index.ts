@@ -105,17 +105,23 @@ const optionalStage = <T extends StageCue>(cue: T, duration: number | undefined,
   ...(transition === undefined ? {} : { transition })
 })
 
+/** A record's text for `locale`: its `texts[locale]` translation, else the source text. */
+export const localizedText = (texts: unknown, locale: string, source: string): string => {
+  const translated = isRecord(texts) ? texts[locale] : undefined
+  return string(translated) ? translated : source
+}
+
 const lineView = (value: JsonRecord, locale: string, readLines: ReadonlySet<string>, cast: Cast): LineView => {
   const lineId = string(value.lineId) ? value.lineId : ""
   const speaker = string(value.speaker) ? value.speaker : "narrator"
   const role = string(value.role) ? value.role : "narration"
-  const localizedSegments = record(value, "localeSegments")
-  const selected = localizedSegments?.[locale]
-  const fallbackSegments = field(value, "segments")
-  const rawSegments = Array.isArray(selected) ? selected : Array.isArray(fallbackSegments) ? fallbackSegments : []
+  const localizedSegments = record(value, "localeSegments")?.[locale]
   const texts = record(value, "texts")
-  const fallbackText = string(value.text) ? value.text : ""
-  const text = texts && string(texts[locale]) ? texts[locale] : fallbackText
+  const translated = texts !== undefined && string(texts[locale])
+  const sourceSegments = field(value, "segments")
+  // A translation replaces the source segments: its own segments, else its plain text.
+  const rawSegments = Array.isArray(localizedSegments) ? localizedSegments : !translated && Array.isArray(sourceSegments) ? sourceSegments : []
+  const text = localizedText(texts, locale, string(value.text) ? value.text : "")
   const segments: Segment[] = []
   for (const raw of rawSegments) {
     if (!isRecord(raw)) continue
@@ -167,6 +173,74 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
     result.set(document.key, commands)
   }
   return result
+}
+
+/** The locales a loaded bundle carries (spec 0.47.0 §2.2). */
+export interface BundleLocales {
+  /** The language the bundle's source text is written in. */
+  readonly source: string
+  /** The source locale, then every compiled locale (sorted, without duplicates). */
+  readonly locales: ReadonlyArray<string>
+}
+
+/**
+ * A bundle's source locale — the `contentLang` of the first artifact (in
+ * `index.documents` order) whose meta declares one, else `"en"` — and its
+ * compiled locales: the keys of every `texts` map in its artifacts.
+ */
+export const bundleLocales = (bundle: Bundle): BundleLocales => {
+  let source: string | undefined
+  const compiled = new Set<string>()
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) for (const child of value) visit(child)
+    else if (isRecord(value)) {
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "texts" && isRecord(child)) for (const locale of Object.keys(child)) compiled.add(locale)
+        else visit(child)
+      }
+    }
+  }
+  for (const document of bundle.index.documents) {
+    const artifact = bundle.artifacts[document.artifact]
+    const contentLang = field(record(artifact, "meta"), "contentLang")
+    if (source === undefined && string(contentLang) && contentLang.length > 0) source = contentLang
+    visit(artifact)
+  }
+  const sourceLocale = source ?? "en"
+  compiled.delete(sourceLocale)
+  return { source: sourceLocale, locales: [sourceLocale, ...[...compiled].sort()] }
+}
+
+/** A line record's translations, as a backlog entry keeps them. */
+export interface LineTranslations {
+  readonly texts?: Readonly<Record<string, string>>
+  readonly localeSegments?: Readonly<Record<string, Runtime.Ir.segments>>
+}
+
+const decodeTranslations = Schema.decodeUnknownOption(Schema.Struct({
+  texts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  localeSegments: Schema.optionalKey(Schema.Record(Schema.String, Runtime.Ir.segments))
+}))
+
+/**
+ * Looks up the translations of the line command a runtime record came from
+ * (by its document and position): the artifact's `texts` and
+ * `localeSegments`, when it has any. Runtime records carry source text only.
+ */
+export const lineTranslations = (bundle: Bundle): ((document: string, position: string) => LineTranslations | undefined) => {
+  const commands = commandIndexFrom(bundle)
+  return (document, position) => {
+    const source = commands.get(document)?.get(position)
+    if (source === undefined || kindOf(source) !== "line") return undefined
+    const decoded = decodeTranslations({
+      ...(source.texts === undefined ? {} : { texts: source.texts }),
+      ...(source.localeSegments === undefined ? {} : { localeSegments: source.localeSegments })
+    })
+    if (Option.isNone(decoded)) return undefined
+    const { texts, localeSegments } = decoded.value
+    if (texts === undefined && localeSegments === undefined) return undefined
+    return { ...(texts === undefined ? {} : { texts }), ...(localeSegments === undefined ? {} : { localeSegments }) }
+  }
 }
 
 const LINE_RUNTIME_FIELDS = ["lineId", "role", "speaker", "text", "voiceKey"] as const
@@ -363,25 +437,18 @@ const pluginCue = (
 const factoryOptions = new WeakMap<CueFactoryShape, CueFactoryOptions>()
 const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
   const { bundle, bindings } = options
-  const locale = options.locale ?? "en"
   const commands = commandIndexFrom(bundle)
   const cast: Cast = bundle.index.cast ?? {}
   const plugins = options.plugin ?? {}
-  const choiceView = (await_: ChoiceAwait, selectedLocale = locale): ChoiceView => {
+  const choiceView = (await_: ChoiceAwait, locale: string): ChoiceView => {
     const source = commands.get(await_.menu.document)?.get(await_.menu.position)
     const authoredOptions = Array.isArray(source?.options) ? source.options : []
     const authoredById: Record<string, JsonRecord> = {}
     for (const option of authoredOptions) if (isRecord(option) && string(option.id)) authoredById[option.id] = option
-    const textOf = (value: JsonRecord | undefined, fallback: string): string => {
-      const texts = record(value, "texts")
-      return texts && string(texts[selectedLocale]) ? texts[selectedLocale] : string(value?.text) ? value.text : fallback
-    }
+    const textOf = (value: JsonRecord | undefined, fallback: string): string =>
+      localizedText(field(value, "texts"), locale, string(value?.text) ? value.text : fallback)
     const sourcePrompt = field(source, "prompt")
-    const promptTexts = record(sourcePrompt, "texts")
-    const prompt = promptTexts && string(promptTexts[selectedLocale])
-      ? promptTexts[selectedLocale]
-      : string(sourcePrompt) ? sourcePrompt
-      : await_.menu.prompt ?? undefined
+    const prompt = string(sourcePrompt) ? sourcePrompt : await_.menu.prompt ?? undefined
     return {
       id: await_.menu.id,
       construct: await_.menu.construct === "hub" ? "hub" : "branch",
@@ -396,7 +463,7 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
   }
   return {
     choiceView,
-    fromOutput: Effect.fn("Lute.Player.CueFactory.fromOutput")(function* (output: Output, readLines: ReadonlySet<string>) {
+    fromOutput: Effect.fn("Lute.Player.CueFactory.fromOutput")(function* (output: Output, readLines: ReadonlySet<string>, locale: string) {
       const cues: Cue[] = []
       for (const event of output.events) {
         if (event.type !== "record") {
@@ -455,7 +522,6 @@ export class CueFactory extends Context.Service<CueFactory, CueFactoryShape>()("
 export interface CueFactoryOptions {
   readonly bundle: Bundle
   readonly bindings: Bindings
-  readonly locale?: string
   /** Host `plugin` handlers: their records become waiting cues (spec 0.41.0 §7.6). */
   readonly plugin?: PlayerHost["plugin"]
 }
