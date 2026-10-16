@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.46.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.47.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -89,11 +89,19 @@ enum Step {
     Halt,
 }
 
-/// The `line` record fields that carry a line's identity and delivery —
-/// what a play transcript shows and `lute run --json` (the conformance
-/// contract) leaves out.
-pub const LINE_DELIVERY_KEYS: [&str; 6] =
-    ["role", "lineId", "voiceKey", "as", "emotion", "segments"];
+/// The `line` record fields that carry a line's identity, delivery and
+/// rendered translations — what a play transcript shows and `lute run
+/// --json` (the conformance contract) leaves out.
+pub const LINE_DELIVERY_KEYS: [&str; 8] = [
+    "role",
+    "lineId",
+    "voiceKey",
+    "as",
+    "emotion",
+    "segments",
+    "texts",
+    "localeSegments",
+];
 
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and

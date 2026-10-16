@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "locales": [
+    "ko"
+  ],
+  "entries": {
+    "market.closingBell.prompt": {
+      "ko": "항구의 종이 울립니다. 옛 마을 회관을 어떻게 할까요?"
+    },
+    "market.closingBell.restore": {
+      "ko": "주민 회관으로 되살린다"
+    },
+    "market.closingBell.retire": {
+      "ko": "건물을 물때와 함께 쉬게 둔다"
+    },
+    "market.closingBell.wait": {
+      "ko": "종이 다시 울릴 때까지 기다린다"
+    },
+    "market.june_0010": {
+      "ko": "가게마다 고치거나, 바꾸거나, 기억할 것이 있어."
+    },
+    "market.june_0020": {
+      "ko": "등불과 이웃들로 가득 채우자."
+    },
+    "market.june_0030": {
+      "ko": "결정하기 전에 저녁 하나쯤은 더 보내도 돼."
+    },
+    "market.june_0040": {
+      "ko": "어떤 문은 조용히 닫혀. 그것도 돌봄의 한 방식이야."
+    },
+    "market.narrator_0010": {
+      "ko": "광장은 회관을 위해 불을 밝혀 둡니다."
+    },
+    "market.narrator_0020": {
+      "ko": "옛 회관 주위로 광장이 조용해집니다."
+    },
+    "market.narrator_0030": {
+      "ko": "종은 당신의 대답을 기다립니다."
+    },
+    "marketBark.june_0010": {
+      "ko": "갓 구운 빵, 손질한 그물, 그리고 해 지기 전 이야기 하나 더."
+    },
+    "opening.june_0010": {
+      "ko": "회관 등불이 밤새 타올랐어. 다시 와 줘서 반가워."
+    },
+    "opening.june_0020": {
+      "ko": "옛 회관은 잠들었지만, 마을은 너를 기억해."
+    },
+    "opening.june_0030": {
+      "ko": "물이 빠졌고, 키사이드는 벌써 깨어 있어."
+    },
+    "opening.narrator_0010": {
+      "ko": "지금까지 종에 답한 횟수: {{user.endings}}."
+    },
+    "opening.narrator_0020": {
+      "ko": "손으로 칠한 표지판이 광장과 부두와 빵집을 가리킵니다."
+    },
+    "pierBark.tom_0010": {
+      "ko": "헐거운 판자 조심해. 부두는 폭풍을 하나도 잊지 않아."
+    },
+    "tide.narrator_0010": {
+      "ko": "저녁 물때가 되자 마을 불빛이 하나씩 켜집니다."
+    }
+  },
+  "sourceHashes": {
+    "market.closingBell.prompt": {
+      "ko": "sha256:bbea0ecc733d04e9f54755fea202cbc10ca84bd1db4d2c67c540bcb21b0aaf77"
+    },
+    "market.closingBell.restore": {
+      "ko": "sha256:e868cf81de3bd4da09b8fbd3f6d6ffe9f3f488c91bf1a01a9c90f5aa9074681f"
+    },
+    "market.closingBell.retire": {
+      "ko": "sha256:6ea82876657ead262a66b075783d9d47f57edca4c3ca4ba2b9b5815f5929753c"
+    },
+    "market.closingBell.wait": {
+      "ko": "sha256:56161ca25ee3c3ff23a5ce56f074c83c387c0ce66bbad88e6a399c4fe6757a2a"
+    },
+    "market.june_0010": {
+      "ko": "sha256:058c1638703769ce9612a3055bfedb76d780b6b8fdbaa020eaed16ed03cc9efa"
+    },
+    "market.june_0020": {
+      "ko": "sha256:d288ce524fa14b700c6d01de8302add2298474467200e416eefad9f757d9cda0"
+    },
+    "market.june_0030": {
+      "ko": "sha256:cff7cde3e58b88d6ca2de96a4317bcc447a1892d78aade9adfce64c282fb0145"
+    },
+    "market.june_0040": {
+      "ko": "sha256:7b10e4cda9b34dfe10f62f88c226507ae995cbd83af57ea7ace0efc5a424f259"
+    },
+    "market.narrator_0010": {
+      "ko": "sha256:6e1696d9dff41d1c727decb7a7090e08c864a6d15753e329963d5b7a40ea59d0"
+    },
+    "market.narrator_0020": {
+      "ko": "sha256:878c0d07ffdcfafb50d0ad1d12683019b16a35e39b26822fee2ae5f6cd9668cb"
+    },
+    "market.narrator_0030": {
+      "ko": "sha256:a7f6116a8daed60bd74f9e30176545501bea86ad6f852ff7b304a7d2a7f24b77"
+    },
+    "marketBark.june_0010": {
+      "ko": "sha256:8a96911ad1e323b87db098b92f72163b5ab6e49cfb23c22626de55b92c9b591d"
+    },
+    "opening.june_0010": {
+      "ko": "sha256:8cd07b2914c79bb167dc461b0e748b7d55604cbe44dd7fc23ac04eac5c26db93"
+    },
+    "opening.june_0020": {
+      "ko": "sha256:5f18cb3869f38bccc87a668a4426d1983c057fee0d4b828f580d20db2064699a"
+    },
+    "opening.june_0030": {
+      "ko": "sha256:68dfe00a5d39c2923f65e4ae9e1563ccb320472aba2261da2a7f79f637ba7b94"
+    },
+    "opening.narrator_0010": {
+      "ko": "sha256:031ad05cdcdb488ec75feb543eb3b26cdc73a386f7bc292fb07c43c4d4868170"
+    },
+    "opening.narrator_0020": {
+      "ko": "sha256:0a75e06637f0b2a363e19b739c941affbe68cf1d3821db9a168f8854577105a4"
+    },
+    "pierBark.tom_0010": {
+      "ko": "sha256:2f288d877bc70794bbc4743a2297670cae10ffc4bb10c19274e382415756023d"
+    },
+    "tide.narrator_0010": {
+      "ko": "sha256:35927abc733084348b84d5b5049a7cad31fd944267ff8f75f7221136d58f2c5c"
+    }
+  }
+}

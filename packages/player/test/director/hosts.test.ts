@@ -15,7 +15,7 @@ import { flush, withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
 const canvas = { width: 1920, height: 1080 }
-const noFlow: Bindings = { bindingsVersion: "0.46", canvas }
+const noFlow: Bindings = { bindingsVersion: "0.47", canvas }
 const visit: Input = { type: "raiseOccasion", occasion: "visit" }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))
@@ -337,7 +337,7 @@ describe("cue factory composition (§5.3)", () => {
       ...bridgeHost,
       cueFactory: (base) => {
         wraps++
-        return { ...base, fromOutput: (output, read) => { outputs++; return base.fromOutput(output, read) } }
+        return { ...base, fromOutput: (output, read, locale) => { outputs++; return base.fromOutput(output, read, locale) } }
       },
       host: { plugin: { demo: () => Effect.sync(() => { calls.push("host") }) } }
     }, (h) => Effect.gen(function* () {

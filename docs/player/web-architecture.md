@@ -42,7 +42,7 @@ mount ─► WebPlayer layer ─┬─ PixiApp (scoped Application, layers, lett
 // app/
 interface PixiApp {
   readonly app: Application                      // initialized with preference "webgl"
-  readonly layers: Layers                        // background, cg, camera(actors), video, dialogue, choice, overlay, transition
+  readonly layers: Layers                        // bottom→top: background, camera(actors), cg, video, dialogue, choice, overlay, transition
   readonly design: { width: number; height: number }   // bindings.canvas
   readonly frames: Stream<number>                // dt seconds per tick
 }
@@ -104,8 +104,9 @@ interface Ui {                                    // renders ScreenModel; emits 
   readonly hide: Effect<void>
   readonly actions: Stream<PlayerAction>
 }
-// screens: Title, Backlog (scroll, voice replay), SaveLoad (slot grid, thumbnails, confirm overwrite/delete),
-//          Settings (sliders/toggles), Confirm, Loading (progress), Halted (message, back to title), Hud (quick menu buttons)
+// screens: Title (heading = bound ui.title.text, none when unbound; backdrop/music only when ui.title.background/music are bound),
+//          Backlog (scroll, voice replay), SaveLoad (slot grid, thumbnails, confirm overwrite/delete),
+//          Settings (sliders/toggles, locale), Confirm, Loading (progress), Halted (message, back to title), Hud (quick menu buttons)
 // widgets: Button, Slider, Toggle, ScrollList, Panel — keyboard focus ring + pointer
 
 // input/

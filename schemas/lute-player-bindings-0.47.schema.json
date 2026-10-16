@@ -903,18 +903,32 @@
     },
     "Title": {
       "additionalProperties": false,
+      "description": "`ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the\ntitle backdrop / music references, each optional; a written `ui.title`\nbinds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).",
+      "minProperties": 1,
       "properties": {
         "background": {
-          "type": "string"
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "music": {
-          "type": "string"
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "default": null,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "background",
-        "music"
-      ],
       "type": "object"
     },
     "Ui": {
@@ -984,7 +998,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.46.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.47.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {

@@ -6,7 +6,7 @@ fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
 ```yaml
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -35,7 +35,7 @@ sequences: { doorOpens: { video: video/door-opens.mp4 } }
 voice: { pattern: "voice/{voiceKey}.ogg" }
 ui:
   font: Noto Sans KR
-  title: { background: bg/title.png, music: theme }
+  title: { text: Brinewake, background: bg/title.png, music: theme }
   ended:
     by: run.ending
     screens:
@@ -49,8 +49,9 @@ flow:
 
 ## Sections
 
-- `bindingsVersion` is `"0.46"`; `canvas` contains positive `width` and
-  `height`. `assetsBase` is optional.
+- `bindingsVersion` is the toolchain line, `"MAJOR.MINOR"` (see
+  [`bindingsVersion`](#bindingsversion)); `canvas` contains positive `width`
+  and `height`. `assetsBase` is optional.
 - `assets` maps compiled `assetId` values to files.
 - `backgrounds` maps `bg.location` values to an `image`; `times` maps
   `bg.time` values to alternate files.
@@ -73,9 +74,50 @@ flow:
   unknown key (`E-BINDING-KEY`), a member without a key
   (`W-BINDING-MISSING`) and a gain outside `[0, 1]` or not finite
   (`E-BINDING-SHAPE`, at the value).
-- `ui` contains `font`, a title `background` and `music`, optional `ended`, and arbitrary theme colour names. Every UI asset reference first checks `assets:`; a key counts as a use of that asset, while any other value is a file below `assetsBase` and must exist.
+- `ui` contains `font`, optional `title`, optional `ended`, and arbitrary theme colour names. Every UI asset reference first checks `assets:`; a key counts as a use of that asset, while any other value is a file below `assetsBase` and must exist.
+- `ui.title` (0.47) has an optional `text` — the game's name, drawn as the
+  title screen's heading — and an optional `background` and `music`, resolved
+  like every UI asset reference. When written, it binds at least one of the
+  three, and `text` is a non-empty string; `ui.title: {}` or an empty `text` is
+  `E-BINDING-SHAPE`. Without `text` the title screen draws no heading; without
+  `background` or `music` it draws no title backdrop or plays no title music.
 - `ui.ended` requires `by`, a declared state path with a closed enum/entity domain, and `screens`. Each screen requires `title` and `text` and may set `background`; unknown screen keys are `E-BINDING-KEY`, while unmapped members silently use the stock screen.
-- When the ended screen is shown, player-web reads `program.view(state).state[by]`. A mapped member supplies title, text, and optional background; an absent or unmapped value, failed query, or absent `ui.ended` uses the stock screen.
+- When the ended screen is shown, player-web reads the entry at `by` in the
+  runtime view, `program.view(state).state[by]`. That entry is a runtime value
+  `{ kind, value }`, not a bare string: player-web uses its `value` only when it
+  is a `{ kind: "str" }` entry and `screens` maps that member, which then
+  supplies title, text, and optional background. An absent entry, an entry of
+  another kind, an unmapped member, a failed query, or an absent `ui.ended` uses
+  the stock screen.
+
+## `bindingsVersion`
+
+`bindingsVersion` follows the `luteVersion` rule. Its value is
+`"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain
+version (`"0.47"` for Lute 0.47.x).
+
+- `lute check-project` reports `W-BINDINGS-VERSION-STALE` at the value when it
+  differs from the toolchain line: older — update it to the toolchain line
+  (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the
+  stamp; not `MAJOR.MINOR` (such as `"0.47.0"`) — restamp it.
+- A section newer than the declared line is `E-BINDINGS-VERSION` at that
+  section's key, naming the line it needs:
+  `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``.
+  Sections are not checked when the value is not `MAJOR.MINOR`.
+- `lute fix` raises an older `MAJOR.MINOR` value in `player.bindings.yaml` to
+  the toolchain line, keeping the rest of the file byte for byte (quotes and
+  comments included); a newer or malformed value (leading zeros such as
+  `"0.046"` included) is left alone, and so is a file written as one flow
+  mapping (`{ bindingsVersion: …, … }`); the warning names `lute fix` only when
+  it raises the value.
+
+| Section | Needs `bindingsVersion` |
+| --- | --- |
+| `vfx.<name>` with `effect: custom` | `"0.41"` |
+| `volumes` | `"0.42"` |
+| `ui.ended` | `"0.46"` |
+| `ui.title.text` | `"0.47"` |
+| every other section | `"0.40"` |
 
 ## Effects
 

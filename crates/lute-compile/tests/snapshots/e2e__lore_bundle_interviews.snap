@@ -4,8 +4,8 @@ expression: json
 ---
 {
   "kind": "lore",
-  "lute": "0.46.0",
-  "irVersion": "0.46.0",
+  "lute": "0.47.0",
+  "irVersion": "0.47.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1",
@@ -219,7 +219,8 @@ expression: json
         }
       ],
       "converge": "003-0600",
-      "prompt": "Where do you look?"
+      "prompt": "Where do you look?",
+      "promptLineId": "interviews.lamps.look.prompt"
     },
     {
       "kind": "line",

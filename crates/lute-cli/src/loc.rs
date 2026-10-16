@@ -21,7 +21,18 @@
 //!   string attr, i.e. it has not been through `lute tag`), `speaker`, and
 //!   `text`.
 //! - **choice / hub labels** (dsl §7.3.1/§7.3.2) — `file`, `line`, `lineId`, the
-//!   `key` `{branchOrHubId}.{choiceId}`, and the `label` text.
+//!   `key` `{branchOrHubId}.{choiceId}`, and the label `text`.
+//! - **branch / hub prompts** (dsl 0.47.0 §3.1) — `kind: "prompt"`, `file`,
+//!   `line`, `lineId` `{prefix}.{branchOrHubId}.prompt`, `key`
+//!   `{branchOrHubId}.prompt` and the prompt `text`, before that branch's or
+//!   hub's options.
+//!
+//! Every row carries `sourceHash` (dsl 0.47.0 §3.2): `sha256:` of the plain
+//! source text the compiler emits for the record
+//! ([`lute_compile::locale::source_hash`]) — a line's text with inline markup
+//! and escapes removed, an option's text, a prompt. `loc import` stores it in
+//! the bundle and `compile --locales` reports `W-L10N-STALE` when the source
+//! has changed since.
 //!
 //! ### `lineId` — the join that makes the round trip possible
 //! `lineId` is the stable content join `lute-compile`'s addressing pass stamps
@@ -81,7 +92,8 @@
 //!
 //! ## Word/line report (`report`)
 //! Per-document and per-speaker word counts, total lines, tagged-vs-untagged
-//! line counts, and choice-label counts, plus project-wide totals. `--json`
+//! line counts, choice-label counts and branch/hub prompt counts (dsl 0.47.0
+//! §3.1), plus project-wide totals. `--json`
 //! emits a stable object; otherwise aligned human tables.
 //!
 //! ### Word-counting rule
@@ -91,7 +103,9 @@
 //! each maximal run of non-whitespace characters as one word. So
 //! `Hello {{@player.name}}!` counts as two words (`Hello`, `@player.name}}`→
 //! `@player.name!`). Choice/hub labels are counted as units (their count), not
-//! folded into the word totals.
+//! folded into the word totals. A branch/hub prompt is counted both ways: its
+//! words join the document and project word totals (not any speaker's), and
+//! `prompts` counts the prompts.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -119,7 +133,10 @@ enum Unit {
         code: Option<String>,
         speaker: String,
         text: String,
+        source_hash: String,
     },
+    /// A choice/hub option label, or (`prompt`) a branch/hub prompt — the
+    /// same row shape under `kind: "prompt"` (dsl 0.47.0 §3.1).
     Choice {
         file: String,
         line: u32,
@@ -129,6 +146,8 @@ enum Unit {
         line_id: Option<String>,
         key: String,
         text: String,
+        source_hash: String,
+        prompt: bool,
     },
 }
 
@@ -158,6 +177,12 @@ impl Unit {
     fn source(&self) -> Option<&(String, u32)> {
         match self {
             Unit::Line { source, .. } | Unit::Choice { source, .. } => source.as_ref(),
+        }
+    }
+    /// The `sourceHash` column (dsl 0.47.0 §3.2).
+    fn source_hash(&self) -> &str {
+        match self {
+            Unit::Line { source_hash, .. } | Unit::Choice { source_hash, .. } => source_hash,
         }
     }
 }
@@ -208,6 +233,36 @@ fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
         })
 }
 
+/// Push a branch's or hub's prompt unit (dsl 0.47.0 §3.1), when it has one.
+/// Its byte is the branch/hub's own, so it sorts before every option.
+fn walk_prompt<'a>(
+    cx: &Cx<'a>,
+    group_id: &str,
+    attrs: &[Attr],
+    span: lute_core_span::Span,
+    region: Region<'a>,
+    out: &mut Vec<Unit>,
+) {
+    // Exactly the value the compiler stages as the record's `prompt`.
+    let Some(text) = lute_compile::lower::attr_string(attrs, "prompt") else {
+        return;
+    };
+    let key = format!("{group_id}.prompt");
+    out.push(Unit::Choice {
+        file: cx.file.to_string(),
+        line: span.line,
+        byte: span.byte_start,
+        outer_byte: region.map_or(span.byte_start, |(_, at)| at),
+        source: region.map(|(f, _)| (f.to_string(), span.line)),
+        // The options' prefix (`walk_choice`): the document scope's.
+        line_id: cx.prefix.map(|p| format!("{p}.{key}")),
+        key,
+        source_hash: lute_compile::locale::source_hash(&text),
+        text,
+        prompt: true,
+    });
+}
+
 /// Push one choice/hub label unit plus recurse into its body. An option's
 /// identity is the STRUCTURAL `{prefix}.{branchOrHubId}.{optionId}` the
 /// addressing pass writes verbatim (`address.rs`'s `Choice`/`Hub` arms) — dsl
@@ -229,6 +284,8 @@ fn walk_choice<'a>(
         line_id: cx.prefix.map(|p| format!("{p}.{key}")),
         key,
         text: choice.text.clone(),
+        source_hash: lute_compile::locale::source_hash(&choice.text),
+        prompt: false,
     });
     walk_nodes(cx, &choice.body, region, cx.prefix, out);
 }
@@ -308,15 +365,20 @@ fn walk_nodes<'a>(
                     code,
                     speaker: l.speaker.clone(),
                     text: l.text.clone(),
+                    // dsl 0.47.0 §3.2: the compiled `LineCmd.text` — inline
+                    // markup and escapes removed.
+                    source_hash: lute_compile::locale::source_hash(&l.plain_text()),
                 });
             }
             Node::Branch(b) => {
+                walk_prompt(cx, &b.id, &b.attrs, b.span, region, out);
                 for choice in &b.choices {
                     walk_choice(cx, &b.id, choice, region, out);
                 }
             }
             Node::Hub(h) => {
                 let id = attr_str(&h.attrs, "id").unwrap_or("");
+                walk_prompt(cx, id, &h.attrs, h.span, region, out);
                 for choice in &h.choices {
                     walk_choice(cx, id, choice, region, out);
                 }
@@ -623,6 +685,7 @@ fn render_json(units: &[Unit]) -> String {
                 "speaker": speaker,
                 "text": text,
                 "source": source_of(u),
+                "sourceHash": u.source_hash(),
             }),
             Unit::Choice {
                 file,
@@ -630,15 +693,17 @@ fn render_json(units: &[Unit]) -> String {
                 line_id,
                 key,
                 text,
+                prompt,
                 ..
             } => serde_json::json!({
-                "kind": "choice",
+                "kind": if *prompt { "prompt" } else { "choice" },
                 "file": file,
                 "line": line,
                 "lineId": line_id,
                 "key": key,
                 "text": text,
                 "source": source_of(u),
+                "sourceHash": u.source_hash(),
             }),
         })
         .collect();
@@ -660,10 +725,11 @@ fn csv_field(s: &str) -> String {
 
 /// The RFC-4180 column schema, shared by [`render_csv`] and the import parser
 /// so a header rename can never desynchronize the two directions. ONE schema
-/// covers both unit kinds: a line row leaves `key` empty, a choice row leaves
-/// `code`/`speaker` empty and carries its label in `text`. The two `source*`
-/// columns are empty for a line the document authored itself.
-pub(crate) const CSV_COLUMNS: [&str; 10] = [
+/// covers every unit kind: a line row leaves `key` empty, a choice or prompt
+/// row leaves `code`/`speaker` empty and carries its label in `text`. The two
+/// `source*` columns are empty for a line the document authored itself;
+/// `sourceHash` (dsl 0.47.0 §3.2) is last and always filled.
+pub(crate) const CSV_COLUMNS: [&str; 11] = [
     "kind",
     "file",
     "line",
@@ -674,6 +740,7 @@ pub(crate) const CSV_COLUMNS: [&str; 10] = [
     "text",
     "sourceFile",
     "sourceLine",
+    "sourceHash",
 ];
 
 /// Serialize the export as RFC-4180 CSV over [`CSV_COLUMNS`]. `lineId` is empty
@@ -708,6 +775,7 @@ fn render_csv(units: &[Unit]) -> String {
                 text.clone(),
                 source_file,
                 source_line,
+                u.source_hash().to_string(),
             ],
             Unit::Choice {
                 file,
@@ -715,9 +783,10 @@ fn render_csv(units: &[Unit]) -> String {
                 line_id,
                 key,
                 text,
+                prompt,
                 ..
             } => [
-                "choice".to_string(),
+                if *prompt { "prompt" } else { "choice" }.to_string(),
                 file.clone(),
                 line.to_string(),
                 line_id.clone().unwrap_or_default(),
@@ -727,6 +796,7 @@ fn render_csv(units: &[Unit]) -> String {
                 text.clone(),
                 source_file,
                 source_line,
+                u.source_hash().to_string(),
             ],
         };
         let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();
@@ -761,6 +831,8 @@ struct DocStat {
     untagged: usize,
     words: usize,
     choices: usize,
+    /// Branch/hub prompts (dsl 0.47.0 §3.1); their words are in `words`.
+    prompts: usize,
     speakers: BTreeMap<String, SpeakerStat>,
 }
 
@@ -805,6 +877,18 @@ pub fn run_report(dir: &Path, json: bool) -> ExitCode {
                 let tsp = totals.speakers.entry(speaker.clone()).or_default();
                 tsp.lines += 1;
                 tsp.words += words;
+            }
+            // A prompt is narration-like text with no speaker: its words
+            // count toward the document and project totals, and it has its
+            // own count (it is not a choice label).
+            Unit::Choice {
+                prompt: true, text, ..
+            } => {
+                let words = word_count(text);
+                stat.prompts += 1;
+                stat.words += words;
+                totals.prompts += 1;
+                totals.words += words;
             }
             Unit::Choice { .. } => {
                 stat.choices += 1;
@@ -851,6 +935,7 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
                 "untagged": d.untagged,
                 "words": d.words,
                 "choices": d.choices,
+                "prompts": d.prompts,
                 "speakers": speakers_json(&d.speakers),
             })
         })
@@ -864,6 +949,7 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
             "untagged": totals.untagged,
             "words": totals.words,
             "choices": totals.choices,
+            "prompts": totals.prompts,
             "speakers": speakers_json(&totals.speakers),
         },
     });
@@ -886,18 +972,24 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
         .max()
         .unwrap_or(8);
     s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-        "document", "lines", "words", "untagged", "tagged", "choices"
+        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+        "document", "lines", "words", "untagged", "tagged", "choices", "prompts"
     ));
     for (file, d) in docs {
         s.push_str(&format!(
-            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-            file, d.lines, d.words, d.untagged, d.tagged, d.choices
+            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+            file, d.lines, d.words, d.untagged, d.tagged, d.choices, d.prompts
         ));
     }
     s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-        "TOTAL", totals.lines, totals.words, totals.untagged, totals.tagged, totals.choices
+        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+        "TOTAL",
+        totals.lines,
+        totals.words,
+        totals.untagged,
+        totals.tagged,
+        totals.choices,
+        totals.prompts
     ));
 
     // Per-speaker (project-wide) table.
@@ -923,11 +1015,12 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
     }
 
     s.push_str(&format!(
-        "\n{} document(s), {} line(s), {} word(s), {} choice(s)\n",
+        "\n{} document(s), {} line(s), {} word(s), {} choice(s), {} prompt(s)\n",
         docs.len(),
         totals.lines,
         totals.words,
-        totals.choices
+        totals.choices,
+        totals.prompts
     ));
     s
 }
@@ -948,6 +1041,8 @@ struct ImportRow {
     /// A per-row locale override; `None` falls back to the file's own tag.
     locale: Option<String>,
     text: String,
+    /// The row's `sourceHash` (dsl 0.47.0 §3.2); `None` when absent/empty.
+    source_hash: Option<String>,
     /// 1-based position for error messages (a CSV record index including the
     /// header row, or a JSON array index + 1).
     row: usize,
@@ -959,11 +1054,18 @@ struct ImportRow {
 /// ## Accepted input — exactly what `export` emits
 /// Both of `loc export`'s own output formats, chosen by file extension
 /// (`.csv` → CSV, anything else → JSON):
-/// - **JSON** — the array [`render_json`] writes. A `line` row's translation is
-///   its `text`, a `choice` row's is its `label`; the join key is `lineId`.
+/// - **JSON** — the array [`render_json`] writes. Every row kind (`line`,
+///   `choice`, `prompt`) carries its translation in `text`; the join key is
+///   `lineId`.
 /// - **CSV** — the [`CSV_COLUMNS`] table [`render_csv`] writes, read BY HEADER
 ///   NAME (so column order is free). Only `lineId` and `text` are required —
-///   in CSV both unit kinds already carry their translatable string in `text`.
+///   in CSV every unit kind already carries its translatable string in `text`.
+///
+/// ## Source hashes (dsl 0.47.0 §3.2)
+/// A row's `sourceHash` (JSON field or CSV column, optional) is stored per
+/// `(lineId, locale)` under the bundle's `sourceHashes`; `compile --locales`
+/// compares it with the record's current source. The bundle is always written
+/// as `schemaVersion: 2`.
 ///
 /// ## Where the locale tag comes from
 /// `export` emits no locale (it extracts the SOURCE language), so the normal
@@ -988,6 +1090,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
     let mut errors = 0usize;
     let mut skipped = 0usize;
     let mut triples: Vec<(String, String, String)> = Vec::new();
+    let mut hashes: Vec<(String, String, String)> = Vec::new();
     // `(locale, lineId)` already claimed — the duplicate guard is per LOCALE,
     // so the same id legitimately recurs once per translated language.
     let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
@@ -1072,6 +1175,9 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
                 errors += 1;
                 continue;
             }
+            if let Some(hash) = row.source_hash {
+                hashes.push((line_id.clone(), locale.clone(), hash));
+            }
             triples.push((line_id, locale, row.text));
         }
     }
@@ -1081,7 +1187,15 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let rendered = LocaleBundle::from_triples(triples).to_json();
+    let mut bundle = LocaleBundle::from_triples(triples);
+    for (line_id, locale, hash) in hashes {
+        bundle
+            .source_hashes
+            .entry(line_id)
+            .or_default()
+            .insert(locale, hash);
+    }
+    let rendered = bundle.to_json();
     let write_result = match out {
         Some(path) => std::fs::write(path, rendered.as_bytes()).map_err(|e| {
             let e = lute_manifest::io_reason(&e);
@@ -1127,10 +1241,11 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
         // Every row's translatable string is its `text` (dsl 0.37.0 D7) —
         // exactly what `render_json` writes for both kinds.
         let field = match obj.get("kind").and_then(serde_json::Value::as_str) {
-            Some("line" | "choice") => "text",
+            Some("line" | "choice" | "prompt") => "text",
             Some(other) => {
                 return Err(format!(
-                    "entry {row} has unknown `kind` `{other}` (expected `line` or `choice`)"
+                    "entry {row} has unknown `kind` `{other}` (expected `line`, `choice` or \
+                     `prompt`)"
                 ))
             }
             None => return Err(format!("entry {row} has no `kind`")),
@@ -1153,6 +1268,13 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 Some(_) => return Err(format!("entry {row} has a non-string `locale`")),
             },
             text: text.to_string(),
+            source_hash: match obj.get("sourceHash") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(s)) => {
+                    Some(s.trim().to_string()).filter(|s| !s.is_empty())
+                }
+                Some(_) => return Err(format!("entry {row} has a non-string `sourceHash`")),
+            },
             row,
         });
     }
@@ -1173,6 +1295,7 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
     let text_at = column("text")
         .ok_or_else(|| format!("CSV header has no `text` column (expected `{expected}`)"))?;
     let locale_at = column("locale");
+    let hash_at = column("sourceHash");
 
     let mut rows = Vec::new();
     for (i, record) in records {
@@ -1195,6 +1318,10 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 .filter(|s| !s.is_empty())
                 .cloned(),
             text: text.clone(),
+            source_hash: hash_at
+                .and_then(|at| record.get(at))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             row,
         });
     }

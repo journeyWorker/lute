@@ -1,0 +1,19 @@
+---
+kind: scene
+id: harbor
+title: Harbor
+on: visit
+once: false
+---
+
+## Harbor
+
+<hub id="stalls" prompt="Which stall?">
+  <choice id="fish" text="The fish stall">
+    @narrator{code="0010"}: Fresh mackerel.
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator{code="0020"}: You walk on.
+  </choice>
+</hub>
+::set{run.over = true}

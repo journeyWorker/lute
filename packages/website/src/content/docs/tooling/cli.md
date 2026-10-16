@@ -35,9 +35,9 @@ Every command has an **id**: its subcommand path as typed — `check`, `check-pr
 | `calendar` | `--json` | `0.43.0.calendar` |
 | `refs` | `--json` | `0.43.0.refs` |
 | `lore` | `--json` | `0.43.0.lore` |
-| `loc report` | `--json` | `0.43.0.loc-report` |
+| `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
-| `schema` | always | `0.43.0.schema` |
+| `schema` | always | `0.47.0.schema` |
 
 Three reports that used to be bare arrays are objects now: `constraints` puts its rows under `constraints`; a `trace` refusal and a `compile` refusal put their diagnostics under `diagnostics`. `patch` reports whether the patch was accepted in `accepted` (its `ok` is the exit rule, see [`lute patch`](#lute-patch-0366)).
 
@@ -66,14 +66,14 @@ Three reports that used to be bare arrays are objects now: `constraints` puts it
 $ lute schema [COMMAND]...
 ```
 
-Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, and `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion`. The data comes from the parser's own definition, so it cannot drift from `--help`. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
+Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion` — and `inputs` (0.47): one entry per structured input the command reads, an empty list for every command but `patch`, whose `PATCH` request is described as `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }` (see [the patch request](/tooling/ai-harness/#the-patch-request-047)). The data comes from the parser's own definition, so it cannot drift from `--help` or the patch request parser. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
 
 ## Telemetry
 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.46.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.47.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
@@ -237,7 +237,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.46.0 and the AI edit-loop
+contract; the repository's current release is 0.47.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -327,7 +327,7 @@ An `E-`-severity capability-resolution diagnostic (a bad plugin option, identity
 
 ### `--locales` — merge a translation bundle
 
-`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: a `texts` map on every line record and on every choice/hub option, keyed by `lineId`, plus `localeSegments` on a line that uses inline modifiers. The source-language `text` is never overwritten, and the maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact. A translation whose inline modifiers (name, form, and attributes, as a multiset) differ from the source line's is not merged: `E-L10N-MODIFIERS`, and no artifact is emitted.
+`--locales <bundle.json>` merges a locale bundle (see [`loc import`](#loc-import)) into the artifact: a `texts` map on every line record and on every choice/hub option, keyed by `lineId`, a `promptTexts` map on a branch or hub with `prompt=`, keyed by its `promptLineId`, plus `localeSegments` on a line that uses inline modifiers. The source-language `text` is never overwritten, and the maps are omitted when empty — so a document compiled without `--locales` is byte-identical to before. A bundle entry matching nothing in this document is ignored; a bundle legitimately spans a whole project. It composes with `--all`, merging the one bundle into every artifact. A translation whose inline modifiers (name, form, and attributes, as a multiset) differ from the source line's is not merged: `E-L10N-MODIFIERS`, and no artifact is emitted.
 
 A translatable record missing a locale the bundle declares is `W-L10N-MISSING`, one per `(lineId, locale)` pair, written to stderr. It is a warning: the artifact still emits, carrying the source-language string. `--deny W-L10N-MISSING` (or `--deny-warnings`) promotes it, so CI can require a complete translation before anything ships:
 
@@ -337,6 +337,8 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single compile and under `--all`. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
 
 ## compile-stream
 
@@ -570,6 +572,8 @@ The YAML passes read the text as bytes, so Korean, an em dash or any other UTF-8
 
 An existing language stamp older than the toolchain is raised to it (0.41.1): `defaults: luteVersion` in `lute.project.yaml` and a `.lute` document's own frontmatter `luteVersion`, each one fix, with the quotes and comment around the value kept — so the `W-LUTE-VERSION-STALE` it answered goes away. A missing stamp is not added, and a newer or non-`MAJOR.MINOR.PATCH` stamp is left alone.
 
+The `bindingsVersion` of a `player.bindings.yaml` that is an older `MAJOR.MINOR` than the toolchain line (the toolchain version's `MAJOR.MINOR`) is raised to that line (0.47), one fix, with the quotes and comment around the value kept — so the `W-BINDINGS-VERSION-STALE` it answered goes away. A newer or non-`MAJOR.MINOR` value (leading zeros included) and a file written as one flow mapping are left alone; see [the `bindingsVersion` rule](/player/bindings/#bindingsversion).
+
 The `volume` scale is renamed in a project that still uses the old documented one (0.42): when the project's folded `volume` domain is exactly `[silent, down, normal, up, full]` — those members in that order, in every document that sees a `volume` domain — `down` becomes `quiet` and `up` becomes `loud` in the declaration, in every `volume=` directive value and in the keys of `player.bindings.yaml`'s `volumes:`, one fix per token. A project that chose its own levels (a subset, other names, another order) or whose documents disagree is not touched; a `.lute` file outside any project is judged by its own frontmatter.
 
 An author key in snake case becomes lowerCamelCase only where the rewrite is unambiguous. Inline text modifiers are never invented; an existing one is kept byte for byte. The earlier migrations still apply: `:line[speaker]{…}: text` → `@speaker{…}: text`, leading `:` sigil → `@`, choice `as="…"` → `into="…"`, a literal-comparison `<when test="$ == 'gold'">` → `<when is="gold">` (`W-WHEN-TEST-LITERAL`), and 0.31 CEL fact-query and presence calls to their standard-CEL forms.
@@ -789,7 +793,7 @@ Diagnose the local toolchain and project setup: the version axes, the project ma
 
 ```console
 $ lute doctor .
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.46.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
   • toolchain version: 0.22.0
   • language version: 0.22.0
   • IR schema version: 0.22.0
@@ -841,7 +845,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.46.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -988,9 +992,15 @@ Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory `check-pro
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-Extract every translatable content line — the stable `code`, speaker, text, and choice text — across a project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
+Extract every translatable content line — the stable `code`, speaker, text, choice text, and branch/hub prompt — across a project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. `--format` is `json` (default) or `csv`; `-o`/`--out` writes to a file instead of stdout. Exit **0** on success, **2** on I/O.
 
 Each row also carries the `lineId` the compiler will stamp on that record — the join `loc import` and `compile --locales` key on. It is `null` (JSON) or empty (CSV) for a line with no authored `code`, whose id the compiler back-fills from the post-expansion command stream and which no source-only walk can reproduce: run `lute tag` first, and the advisory `N lines untagged — run lute tag` on stderr goes away with it.
+
+Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceId}`) and `prompt` (a branch's or hub's `prompt=`, `key` `{branchOrHubId}.prompt`, lineId `{prefix}.{branchOrHubId}.prompt`), in document order; a prompt row comes before the options of its branch or hub. Every row carries `sourceHash`: `"sha256:<hex>"` of the record's **plain** source text as the compiler emits it — a line's text with inline modifiers and escapes removed, an option's text, a prompt. Translators leave it unchanged; `loc import` stores it so `compile --locales` can tell when the source changed since (`W-L10N-STALE`). In CSV it is the last column:
+
+```text
+kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
+```
 
 ## loc import
 
@@ -1004,15 +1014,21 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": ["en-US", "ja-JP"],
   "entries": {
     "marina.s01ep02.marina_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  },
+  "sourceHashes": {
+    "marina.s01ep02.marina_0010": {
+      "en-US": "sha256:23ea498e82f4…",
+      "ja-JP": "sha256:23ea498e82f4…"
+    }
   }
 }
 ```
 
-`locales` and `entries` are both sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
+(Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locales` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
 ## loc report
 
@@ -1020,7 +1036,7 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 $ lute loc report <dir> [--json]
 ```
 
-Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
 
 ## --explain
 
@@ -1094,11 +1110,21 @@ parse failure.
 
 `diff` compares directories or `git:<revision>` sides and emits
 `schemaVersion: "0.36.0.diff"`, `before`, `after`, and sorted semantic
-`changes`; formatting-only changes yield an empty array. Exit 0 means a
+`changes`; formatting-only changes yield an empty array. When the other side
+is a directory inside the current git work tree, a `git:` side is archived
+from that subtree only (`git archive <rev> -- <its path>`) and rooted there,
+so `lute diff git:HEAD story` from the repository root compares the `story/`
+project and a symlink elsewhere in the repository does not matter (one inside
+the compared tree is still refused; the directory name is a literal path,
+and a directory missing at that revision is `E-CLI-IO` naming both); otherwise (the other side outside the
+repository, or both sides `git:`) the current directory's tree is archived
+(0.47). Exit 0 means a
 comparison was produced; exit 2 means invalid input, materialization, parse,
 or I/O failure.
 
-`patch` accepts the strict request shape documented in the [AI harness guide](/tooling/ai-harness/).
+`patch` accepts the strict request shape documented in [the patch request](/tooling/ai-harness/#the-patch-request-047)
+(fields, ops, preserve keys, node-key kinds, an example); `lute schema patch`
+describes it under `inputs`.
 Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
 `removeNode`, `createFile`, `moveFile`, and revision-guarded `replaceText`.
 Preserve claims include `ids`, positional `lineIds`, `voiceKeys`,
@@ -1112,8 +1138,13 @@ the process exit rule. Thus an accepted patch with semantic changes has
 diff; an accepted, meaning-preserving patch has both `accepted: true` and
 `ok: true` with exit **0**. `--dry-run` uses the same decisions without
 writing. Refusals exit **2** and retain their patch codes
-(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`,
-`E-PATCH-PRESERVE`); an unreadable patch file uses the JSON error envelope.
+(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`,
+`E-PATCH-CHECK`, `E-PATCH-PRESERVE`); an unreadable patch file uses the JSON
+error envelope. Several edits in one file are resolved against the original
+text, and only the lines they touch are formatted. A `.lute` file that was
+`lute fmt --check` clean stays clean; in any other file the touched lines end
+up canonical. A patch that would break this is refused with `E-PATCH-FORMAT`
+naming the file, and nothing is written (0.47).
 
 `context` returns `schemaVersion`, `projectRevision`, `files`, `target`,
 `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, and

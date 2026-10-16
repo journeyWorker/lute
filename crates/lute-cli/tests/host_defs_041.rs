@@ -20,7 +20,7 @@ fn host_defs_are_never_unused_and_frontmatter_refuses_host() {
         &dir,
         "lute.project.yaml",
         "pluginsDir: plugins/\ndefaultProfile: core\nprofiles:\n  core:\n    plugins: { game.defs: true }\n\
-         defaults:\n  luteVersion: \"0.46.0\"\n  uses: [world.schema.yaml]\n",
+         defaults:\n  luteVersion: \"0.47.0\"\n  uses: [world.schema.yaml]\n",
     );
     write(
         &dir,

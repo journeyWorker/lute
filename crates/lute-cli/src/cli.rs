@@ -209,14 +209,17 @@ pub(crate) enum Command {
         #[arg(long)]
         all: bool,
         /// Merge a locale bundle (`lute loc import`) into the execution IR:
-        /// `texts` on every line, `labels` on every choice/hub option, keyed by
-        /// `lineId`. `text`/`label` stay the source language.
-        /// A record missing a declared locale is `W-L10N-MISSING`.
+        /// `texts` on every line and choice/hub option, `promptTexts` on a
+        /// prompted branch/hub, keyed by `lineId`/`promptLineId`. `text` and
+        /// `prompt` stay the source language. A record missing a declared
+        /// locale is `W-L10N-MISSING`, a translation of a changed source is
+        /// `W-L10N-STALE`.
         #[arg(long, value_name = "FILE")]
         locales: Option<PathBuf>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
         /// verdict and exit code (repeatable) — the same policy `check`
-        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`).
+        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`,
+        /// `W-L10N-STALE`).
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit code.
@@ -294,7 +297,9 @@ pub(crate) enum Command {
     /// fact-query/presence calls (`holds`/`count`/`countDistinct`/`validAt`/
     /// `isSet`) to their standard-CEL 0.32 forms; renamed domains in project,
     /// schema and plugin YAML (0.41.0); existing `luteVersion` stamps older
-    /// than the toolchain, raised to it (0.41.1); and, when the project's
+    /// than the toolchain, raised to it (0.41.1); a `player.bindings.yaml`
+    /// `bindingsVersion` older than the toolchain line, raised to it
+    /// (0.47.0); and, when the project's
     /// `volume` domain is exactly the old `[silent, down, normal, up, full]`,
     /// `down`/`up` to `quiet`/`loud` in commands, YAML references and
     /// `volumes` keys (0.42.0). Byte-exact and

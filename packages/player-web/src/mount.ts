@@ -95,7 +95,9 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     const assetsOptions: PixiAssetsOptions = { assetsBase, backend: createPixiAssetsBackend() }
     const assets = new PixiAssets(assetsOptions)
     const ui = new Ui(pixi.layers.overlay, theme, world, (file) => assets.texture(file))
-    ui.setDesign(bindings.canvas, "Lute")
+    const title = bindings.ui?.title ?? undefined
+    // The heading is the bound `ui.title.text`; no heading without it (spec 0.47.0 §2.6).
+    ui.setDesign(bindings.canvas, title?.text ?? undefined)
     // Cues name bound files; the backend loads them below the assets base.
     const resolveSound = (file: string): string => resolveAsset(bindings, assetsBase, file)
     const audio = new PixiAudio({
@@ -105,15 +107,15 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
         unlock: pixiSoundBackend.unlock
       }
     })
-    const title = bindings.ui?.title
-    const titleBackground = title === undefined || title === null
+    // `ui.title.background`/`music` are optional: no backdrop / no title music when absent (spec 0.47.0 §4.1).
+    const titleBackground = title?.background === undefined || title.background === null
       ? undefined
       : resolveAsset(bindings, assetsBase, title.background)
     if (titleBackground !== undefined) yield* assets.ensure([titleBackground])
     let player: LutePlayerHandle | undefined
     const resolveEnded = (screen: Extract<ScreenModel, { _tag: "Ended" }>): Effect.Effect<ScreenModel> =>
       Effect.gen(function* () {
-        const ended = (bindings.ui as (typeof bindings.ui & { readonly ended?: { readonly by: string; readonly screens: Record<string, { readonly title: string; readonly text: string; readonly background?: string | null }> } | null }) | undefined)?.ended
+        const ended = bindings.ui?.ended
         if (player === undefined) return screen
         const current = yield* SubscriptionRef.get(player.session.current)
         const selected = yield* resolveEndedScreen(player.program, current.state, ended, screen)
@@ -172,7 +174,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     yield* Effect.forkScoped(Stream.runForEach(SubscriptionRef.changes(player.view), (view) => Effect.sync(() => {
       ui.setPlaying(view.flow === "playing" && view.story !== "idle", { auto: view.mode === "auto", skip: view.mode === "skip", hidden: view.uiHidden })
     })))
-    if (title !== undefined && title !== null) {
+    if (title?.music !== undefined && title.music !== null) {
       const file = resolveAsset(bindings, assetsBase, title.music)
       yield* Effect.forkScoped(audio.play("music", { file, loop: true, volume: 1, fade: 0, restart: true }).pipe(Effect.catch(() => Effect.void)))
     }

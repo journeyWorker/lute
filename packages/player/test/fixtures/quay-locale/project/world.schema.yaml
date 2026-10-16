@@ -1,0 +1,7 @@
+state:
+  run.route: { type: { enum: [none, dock, hill] }, default: none }
+  run.over: { type: bool, default: false }
+  user.runs: { type: int, default: 0 }
+cast:
+  mara: { name: Mara }
+terminal: "run.over"

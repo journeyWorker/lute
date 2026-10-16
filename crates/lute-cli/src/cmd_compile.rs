@@ -100,10 +100,10 @@ pub(crate) fn dispatch_compile(
 ///
 /// With `--locales <bundle.json>` the compiled execution IR additionally carries
 /// per-record locale texts ([`load_locale_bundle`] then
-/// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7). Any resulting
-/// `W-L10N-MISSING` prints to STDERR — stdout may be carrying the execution IR —
-/// and, when `--deny` promotes it, flips the verdict to `1` with NO execution IR
-/// written.
+/// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7, 0.47.0 §3). Any
+/// resulting `W-L10N-MISSING` / `W-L10N-STALE` prints to STDERR — stdout may be
+/// carrying the execution IR — and, when `--deny` promotes it, flips the
+/// verdict to `1` with NO execution IR written.
 #[expect(
     clippy::too_many_arguments,
     reason = "CLI flags are kept explicit at the command boundary"

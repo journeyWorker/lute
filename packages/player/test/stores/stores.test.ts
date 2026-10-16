@@ -41,7 +41,7 @@ const world = {
   visited: []
 }
 const runtime: SaveRuntime = {
-  snapshot: { await: { type: "idle" }, continuation: null, project, request: 0, snapshotVersion: "0.46", world },
+  snapshot: { await: { type: "idle" }, continuation: null, project, request: 0, snapshotVersion: "0.47", world },
   log: [],
   backlog: []
 }
@@ -161,6 +161,28 @@ describe("ProfileStore", () => {
       yield* TestClock.adjust(250)
       expect(values.has("profile:" + project)).toBe(true)
     }).pipe(Effect.provide(Layer.mergeAll(profileLayer({ project }).pipe(Layer.provide(layer)), TestClock.layer())))
+  })
+
+  it.effect("keeps the read marks and settings of an older profile version, without its lineage (0.47.0 §2.3)", () => Effect.gen(function* () {
+    for (const profileVersion of ["0.45", "0.40"]) {
+      const { layer } = kvLayer(new Map([["profile:" + project, JSON.stringify({ profileVersion, project, readLines: ["line-1", "line-2"], settings: { locale: "ko", textSpeed: 12 }, lineage: runtime.snapshot })]]))
+      yield* Effect.gen(function* () {
+        const profile = yield* ProfileStore
+        expect(yield* SubscriptionRef.get(profile.readLines)).toEqual(new Set(["line-1", "line-2"]))
+        expect(yield* SubscriptionRef.get(profile.settings)).toEqual({ ...defaultSettings, locale: "ko", textSpeed: 12 })
+        expect(yield* SubscriptionRef.get(profile.lineage)).toBeUndefined()
+      }).pipe(Effect.provide(profileLayer({ project }).pipe(Layer.provide(layer))))
+    }
+  }))
+
+  it.effect("decodes a 0.46 profile as 0.46 wrote it", () => {
+    const { layer } = kvLayer(new Map([["profile:" + project, JSON.stringify({ profileVersion: "0.46", project, readLines: ["line-1"], settings: { locale: "en", textSpeed: 40 } })]]))
+    return Effect.gen(function* () {
+      const profile = yield* ProfileStore
+      expect(yield* SubscriptionRef.get(profile.readLines)).toEqual(new Set(["line-1"]))
+      expect((yield* SubscriptionRef.get(profile.settings)).locale).toBe("en")
+      expect(yield* SubscriptionRef.get(profile.lineage)).toBeUndefined()
+    }).pipe(Effect.provide(profileLayer({ project }).pipe(Layer.provide(layer))))
   })
 })
 

@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: quay
+profiles:
+  quay:
+    plugins: { quay.occasions: true }
+defaults:
+  luteVersion: "0.47.0"
+  contentLang: en-US
+  uses: [world.schema.yaml]

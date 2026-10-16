@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.46.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.46.schema.json)
+[`schemas/lute-ir-0.47.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.47.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -293,14 +293,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.46` 엔진은 `0.46.*` 아티팩트만 받아들이고 `0.44.*` 및 `0.46.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.47` 엔진은 `0.47.*` 아티팩트만 받아들이고 `0.46.*` 및 `0.48.*`은 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.46.0"
+irVersion: "0.47.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -316,7 +316,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.46.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
@@ -359,6 +359,10 @@ match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이
   나타나며, `host: true`는 호스트가 읽는 def를 표시합니다. 스칼라가 아닌 파라미터가
   있거나, 본문이 낮춰지지 않거나, 두 문서에서 본문이나 파라미터 목록이 다른 def는
   빠집니다. `param` 노드는 다른 곳에는 나타나지 않습니다.
+
+0.47부터 인덱스에는 선택적인 **`contentLang`**도 들어갑니다. 매니페스트의
+`defaults.contentLang`, 즉 프로젝트 텍스트의 원본 언어이며 매니페스트에 없으면 생략됩니다.
+플레이어는 이를 로드한 번들의 원본 로케일로 쓰며, 문서의 `meta.contentLang`보다 먼저 봅니다.
 
 ### IR 0.37.0에서 변경된 내용
 
@@ -597,7 +601,7 @@ while (pc < artifact.commands.length) {
 
 ## 현지화 텍스트
 
-`line` 레코드의 `text`와 choice/hub 옵션의 `text`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locales`](/ko/tooling/cli/#--locales--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
+`line` 레코드의 `text`, choice/hub 옵션의 `text`, branch/hub의 `prompt`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locales`](/ko/tooling/cli/#--locales--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. `prompt`가 있는 `choice`/`hub` 레코드에는 `promptLineId`(`{prefix}.{branchOrHubId}.prompt`, `prompt`가 있으면 항상 존재, dsl 0.47.0)와, 번들이 번역했다면 `promptTexts`(locale 태그 → 번역된 프롬프트)도 들어갑니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
 
 ```json
 {
@@ -629,7 +633,9 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도)에서 locale을 조회해 제시하고 `text`로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
+locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
+
+런타임의 `line` 레코드(`--locales`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 번역 맵은 이스케이프를 풀어 둔 plain text이므로, 번역에는 원본 마커와 참조 대상이 같은 `{{…}}`를 글자 그대로 보여 줄 수 없습니다. `\{{user.voyages}}`로 써도 값이 표시됩니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
 
 ## 런타임 문서
 

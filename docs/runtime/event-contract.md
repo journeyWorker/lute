@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.46.0 runtime contract.**
+**Status: 0.47.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.46.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.46.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.47.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.47.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -159,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.46.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.47.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -194,7 +194,17 @@ always an object, never `kind`, `position`, `timing`, provenance or plugin
 | `sequence` | `name` |
 
 `record.record` preserves the `lute run --json` execution-record shape plus
-play-only line `delivery` and menu markers that run strips. Grant records
+play-only line `delivery` and menu markers that run strips. A `line` record's
+delivery fields are `role`, `lineId`, `voiceKey`, `as`, `emotion`, `segments`,
+`texts` and `localeSegments`, each present when the line command has it.
+`text` and `segments` have their `{{…}}` markers replaced by the rendered
+values; `texts` and `localeSegments` (dsl 0.47.0 §2.2) are the command's
+translations with each marker replaced by the value the source rendered for
+the marker with the same referent — the text inside `{{ }}`, trimmed
+(translators may reorder markers; a marker the source does not have stays as
+written). The translations are plain text with escapes decoded, so a
+translation cannot show a literal `{{…}}` whose referent equals a source
+marker's: `\{{x}}` in a translation still shows the value. Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
 machine's remaining fields; `instance` is the settlement key. The host
 settles the grant, not the runtime.
@@ -255,7 +265,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.46.schema.json` and in
+definitions in `lute-events-0.47.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -366,7 +376,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.46.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.47.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

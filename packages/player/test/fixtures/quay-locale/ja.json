@@ -1,0 +1,12 @@
+[
+  {
+    "file": "project/quay.lute",
+    "key": "path.prompt",
+    "kind": "prompt",
+    "line": 14,
+    "lineId": "quay.path.prompt",
+    "source": null,
+    "sourceHash": "sha256:82b5b8e301814d0cb18876155e4c67cb1afe917f2f67ab6938e421cfc5fe04e6",
+    "text": "さて、どこへ?"
+  }
+]

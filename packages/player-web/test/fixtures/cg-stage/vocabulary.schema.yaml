@@ -1,0 +1,9 @@
+enums:
+  emotion: [neutral]
+  cgLayout: [inset]
+  anchor:
+    members: [center]
+    default: center
+  action:
+    members: [fadeIn, fadeOut]
+    exits: [fadeOut]

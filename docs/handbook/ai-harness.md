@@ -1,11 +1,11 @@
 ---
-title: "AI harness surface — 0.46.0"
+title: "AI harness surface — 0.47.0"
 status: Implemented
 ---
 # AI harness surface
 
-This page is the thin adapter contract for 0.46.0. The current language is
-0.46.0; the CLI's machine-readable reports use a common JSON envelope. The
+This page is the thin adapter contract for 0.47.0. The current language is
+0.47.0; the CLI's machine-readable reports use a common JSON envelope. The
 CLI is the boundary, not a chat app, session manager, MCP server, or
 Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).
@@ -84,17 +84,33 @@ used by LSP features; the CLI does not implement a second symbol/type resolver.
 }
 ```
 
+`lute schema patch` describes this request under `inputs`
+(`{argument: "PATCH", kind: "request", format: "json", fields, ops, preserve,
+nodeKinds}`), read from the same table as the request parser
+(`crates/lute-model/src/patch/request.rs`); the website's AI harness guide
+("The patch request") documents every field, op, preserve key and node-key
+kind with an example. Node keys come from `lute context --json`
+(`affected[].key`, or `target.kind`:`target.key` for the target itself;
+`target.key` alone is the bare key); a `replaceText` `span` has the shape of
+`affected[].reasons[].sourceSpan`.
+
 Operations are `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`,
 `removeNode`, `createFile`, `moveFile`, and exact-revision `replaceText`.
 Targets must be span-bearing source nodes. Project/dependency-only nodes with
 no source anchor are refused with `E-PATCH-TARGET`; schema state declarations
 expose YAML spans and are editable via `replaceText`. The patch stages all
 edits, formats touched regions, rebuilds/checks the model, computes semantic
-diff, enforces preserve, then writes all files or none.
+diff, enforces preserve, then writes all files or none. Every edit of a file is
+resolved against the original text and the file's touched regions are mapped
+through all of its edits, so several edits in one file do not shift each other
+(0.47). Before `accepted`, each region-formatted `.lute` file must satisfy: a
+file that was `lute fmt --check` clean is still clean; in any other file,
+formatting the touched lines again changes nothing. A violation refuses the
+patch with `E-PATCH-FORMAT` naming the file.
 
 An accepted patch exits 1 when it changes semantics (review the reported diff)
 and 0 when it doesn't. Refusal codes are `E-PATCH-STALE`, `E-PATCH-TARGET`,
-`E-PATCH-EDIT`, `E-PATCH-CHECK`, and `E-PATCH-PRESERVE`; each refusal exits 2
+`E-PATCH-EDIT`, `E-PATCH-FORMAT`, `E-PATCH-CHECK`, and `E-PATCH-PRESERVE`; each refusal exits 2
 and includes structured details. I/O failures exit 2 with `error.kind: "io"`
 and no code. `--dry-run` performs every stage except writing.
 
@@ -103,7 +119,12 @@ and no code. `--dry-run` performs every stage except writing.
 `lute diff <before> <after> --json` accepts directories or `git:<rev>` sides.
 Git materialization admits only regular files/directories, refuses symlinks,
 absolute paths, and `..` archive entries, and deletes its private temporary
-directory afterward. The result includes both revisions and a sorted `changes`
+directory afterward. When the other side is a directory inside the current
+work tree, the git side is archived from that subtree only (`git -C <toplevel>
+archive <rev> -- <path>`) and rooted there, so special files elsewhere in the
+repository do not matter (the path is literal; a directory missing at that
+revision is `E-CLI-IO` naming both); otherwise (the other side outside the repository, or
+both sides `git:`) the current directory's tree is archived (0.47). The result includes both revisions and a sorted `changes`
 array. Changes match by NodeKey and report added, removed, moved, or per-node
 semantic fields; formatting-only changes produce an empty array. Guards compare
 as exact-profile canonical CEL ASTs (literal kind preserved); unparsable

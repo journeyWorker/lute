@@ -264,9 +264,15 @@ export const playerMachine = initial.createMachine({
               emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
               return { target: "title", context: { pendingConfirm: undefined, overlayStack: [] } }
             },
-            toTitle: ({ context }, enq) => context.pendingConfirm === undefined
-              ? confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
-              : undefined,
+            // Spec 0.47.0 §2.5: leaving an ended run discards nothing — no confirm.
+            // An open overlay (the in-game menu) keeps its confirm.
+            toTitle: ({ context }, enq) => {
+              if (context.pendingConfirm !== undefined) return
+              if (context.overlayStack.length > 0) return confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
+              emit(enq, { type: "toTitle" })
+              emit(enq, { type: "screen.show", screen: { _tag: "Title", canContinue: context.canContinue, background: undefined } })
+              return { target: "title" }
+            },
           },
         },
         error: {
@@ -291,7 +297,8 @@ export const playerMachine = initial.createMachine({
         running: {
           id: "playerStoryRunning",
           on: {
-            "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
+            // A new batch leaves the previous await (an `ended` must not outlive it).
+            "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false, await: undefined } }),
             "line.typing": ({ event }) => ({
               target: "#playerStoryTyping",
               context: { line: "typing", lastLineRead: event.read, hasVoice: event.hasVoice, advanceBuffered: false },
@@ -407,7 +414,7 @@ export const playerMachine = initial.createMachine({
         halted: { id: "playerStoryHalted", on: { toTitle: { target: "#playerStoryRunning" }, confirm: { target: "#playerStoryRunning" } } },
       },
       on: {
-        "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
+        "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false, await: undefined } }),
         // Acknowledgements the director sends in every state; only some states act on them.
         "line.released": () => undefined,
         "save.done": () => undefined,
@@ -594,7 +601,8 @@ export const playerMachine = initial.createMachine({
               return { target: hidden ? "#playerOverlayHidden" : "#playerOverlayNone", context: { uiHidden: hidden } }
             },
             toTitle: ({ context }, enq) => {
-              if (context.overlayStack.length !== 0) return
+              // At `ended` the flow leaves for the title without a confirm (spec 0.47.0 §2.5).
+              if (context.overlayStack.length !== 0 || context.await?.type === "ended") return
               return confirmFor({ type: "toTitle" })({ context, event: { type: "toTitle" } }, enq)
             },
           },

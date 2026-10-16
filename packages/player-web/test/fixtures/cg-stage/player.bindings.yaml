@@ -1,0 +1,17 @@
+bindingsVersion: "0.47"
+canvas: { width: 1280, height: 720 }
+assetsBase: ../../../../../examples/player-demo/assets/
+assets:
+  cg.reunion: cg/reunion.png
+backgrounds:
+  harbor: { image: bg/harbor-noon.png, times: { noon: bg/harbor-noon.png } }
+characters:
+  mara:
+    sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png } }
+anchors: { center: { x: 0.5 } }
+actions:
+  fadeIn: { effect: fadeIn, duration: 0.4 }
+  fadeOut: { effect: fadeOut, duration: 0.4 }
+cgLayouts: { inset: { fit: contain, scale: 0.65, x: 0.5, y: 0.5 } }
+flow:
+  newGame: { occasion: start }

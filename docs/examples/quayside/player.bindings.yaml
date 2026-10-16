@@ -1,4 +1,4 @@
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -19,9 +19,11 @@ characters:
     nameColor: "#78b5e8"
 ui:
   font: "Georgia, serif"
-  title: { background: bg/title.png, music: title-music }
+  title: { background: bg/title.png, music: title-music, text: "Quayside" }
   ended:
     by: run.ending
     screens:
       restore: { title: "The Hall Opens", text: "Quayside gathers under one roof.", background: bg/restore.png }
       retire: { title: "A Gentle Closing", text: "The town lets the old hall rest.", background: bg/retire.png }
+flow:
+  newGame: { occasion: start }

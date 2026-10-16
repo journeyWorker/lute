@@ -5,6 +5,8 @@ state:
   run.heardSignal: { type: bool, default: false }
   run.finished: { type: bool, default: false }
   run.choice: { type: { enum: [none, tower, harbor] }, default: none }
+  # Survives every run and a page reload (the player's lineage, spec 0.47.0 §2.3).
+  user.voyages: { type: int, default: 0 }
 cast:
   mara: { name: Mara, emotions: [neutral, happy, worried, angry, hopeful, sad, surprised] }
   elio: { name: Elio, emotions: [neutral, happy, worried, angry, hopeful, sad, surprised] }

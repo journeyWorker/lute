@@ -55,6 +55,9 @@ pub struct IndexUnions {
     /// dsl 0.41.0 §4.3: the project defs ([`document_defs`]
     /// unioned over the documents), carried as `ProjectIndex.defs`.
     pub defs: BTreeMap<String, IndexDef>,
+    /// dsl 0.47.0 §2.2: the manifest's `defaults.contentLang`, carried as
+    /// `ProjectIndex.contentLang`.
+    pub content_lang: Option<String>,
 }
 
 /// dsl 0.41.0 §4.3: the project defs one document sees — its
@@ -474,6 +477,7 @@ pub fn build_index(
         capability_snapshot: capability.map(|(_, v)| v.to_string()).unwrap_or_default(),
         required_semantics: required_semantics.into_iter().collect(),
         identity_renames: identity_renames.into_values().collect(),
+        content_lang: unions.content_lang.clone(),
         documents,
         entities: entities.finish(),
         enums: enums.finish(),

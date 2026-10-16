@@ -16,7 +16,15 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
         .collect();
     documents.sort_by(|a, b| a.path.cmp(&b.path));
 
-    let mut unions = IndexUnions::default();
+    let mut unions = IndexUnions {
+        // dsl 0.47.0 §2.2: the project's source language, for the index.
+        content_lang: model
+            .manifest()
+            .and_then(|m| m.defaults.get("contentLang"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        ..IndexUnions::default()
+    };
     let mut world_events = BTreeSet::new();
     for document in &documents {
         let input = &document.input;

@@ -1030,6 +1030,15 @@ pub struct ChoiceCmd {
     /// authored (skip-if-empty, matching `ChoiceOption::when`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// dsl 0.47.0 §3.1: the prompt's lineId, `{prefix}.{branchId}.prompt`
+    /// (the prefix its options' lineIds use). Present exactly when `prompt`
+    /// is, so a prompt-less record is byte-identical.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_line_id: Option<String>,
+    /// dsl 0.47.0 §3.1: merged locale texts for `prompt`, locale tag →
+    /// translated prompt, keyed on `promptLineId`. See `LineCmd::texts`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub prompt_texts: BTreeMap<String, String>,
     /// dsl 0.11.0: the countdown, in whole seconds (dsl 0.37.0 §5.3
     /// `timeout`). Absent unless authored.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1076,6 +1085,14 @@ pub struct HubCmd {
     /// unless authored, so every other hub record is byte-identical.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// dsl 0.47.0 §3.1: the prompt's lineId, `{prefix}.{hubId}.prompt`.
+    /// Present exactly when `prompt` is.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_line_id: Option<String>,
+    /// dsl 0.47.0 §3.1: merged locale texts for `prompt`, keyed on
+    /// `promptLineId`. See `LineCmd::texts`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub prompt_texts: BTreeMap<String, String>,
     /// dsl 0.28.0 §5: the start of the hub's `<return>` segment — run each
     /// time a non-`exit` option's segment ends, before the hub is judged
     /// and presented again. It is a segment boundary like an option

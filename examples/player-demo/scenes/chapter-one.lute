@@ -13,6 +13,8 @@ on: chapter
 ::actor{character="elio" anchor="right" action="fadeIn" emotion="neutral" costume="plain"}
 ::camera{framing="wide" transition="fade"}
 @narrator{code="0010"}: At six in the morning, the harbor keeps its secrets under a skin of silver water.
+@mara{code="0140" emotion="sad" when="has(prev.run.path) && prev.run.path != 'unknown'"}: We have climbed toward that light before. I still remember the tide.
+@narrator{code="0070"}: Voyages to the lighthouse so far: {{user.voyages}}.
 @mara{code="0010" emotion="worried"}: The lighthouse blinked three times. That is not a weather signal.
 @elio{code="0010" emotion="neutral"}: Or it is a very dramatic gull.
 @mara{code="0020" emotion="angry" action="shake"}: Elio.

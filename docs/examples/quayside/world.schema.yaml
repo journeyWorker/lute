@@ -6,6 +6,7 @@ state:
   run.slot: { type: { domain: slot }, default: morning, owner: engine }
   run.ending: { type: { domain: ending }, default: none }
   run.visits: { type: int, default: 0 }
+  user.endings: { type: int, default: 0 }
 clock:
   day: run.day
   slot: run.slot

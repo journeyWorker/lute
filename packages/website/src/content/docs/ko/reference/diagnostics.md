@@ -140,9 +140,15 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BINDING-SHAPE
 
-플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함합니다.
+플레이어 바인딩 YAML이 잘못되었거나 알 수 없는 키를 포함하거나, 작성된 `ui.title`이 `text`, `background`, `music` 중 아무것도 지정하지 않거나 빈 `text`를 가집니다.
 
-명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
+명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md), [dsl 0.47.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
+### E-BINDINGS-VERSION
+
+플레이어 바인딩 섹션이 파일에 선언한 `bindingsVersion` 라인보다 새롭습니다(`vfx`의 `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47). `bindingsVersion`을 그 섹션에 필요한 라인으로 올리세요.
+
+명세: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 ### E-BRANCH-ALL-GUARDED
 
 비어 있지 않은 `<branch>`의 모든 `<choice>`에 `when` 가드가 걸려 있어, 모든 가드가 동시에 거짓이 되어 빈 메뉴가 나타날 수 있습니다. 가드 없는 선택지가 최소 하나 필요합니다.
@@ -241,9 +247,9 @@ CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허
 
 ### E-CHOICE-DUP
 
-`<branch>` 또는 `<hub>`가 같은 `id`를 가진 `<choice>`를 두 번 선언했습니다. 선택지 id는 같은 branch/hub 안에서 유일해야 합니다.
+`<branch>` 또는 `<hub>`가 같은 `id`를 가진 `<choice>`를 두 번 선언했습니다. 선택지 id는 같은 branch/hub 안에서 유일해야 합니다. 또는 `prompt=`가 있는 branch/hub에 `<choice id="prompt">`가 있어, 그 lineId가 프롬프트의 lineId(`{prefix}.{branchOrHubId}.prompt`)와 겹칩니다 — 선택지 이름을 바꾸세요.
 
-명세: [dsl §11.1](/ko/spec/)
+명세: [dsl §11.1](/ko/spec/), [dsl 0.47.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-CHOICELOG-READ
 
@@ -1007,6 +1013,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 패치 편집이 잘못되었거나 대상 밖에 있거나 다른 편집과 겹치거나 escape-hatch 스팬 검사를 통과하지 못했습니다.
 
 명세: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-PATCH-FORMAT
+
+패치가 영역 포맷을 거친 `.lute` 파일을 정규 형식이 아닌 상태로 남기게 됩니다. `lute fmt --check`를 통과하던 파일이 통과하지 못하게 되거나, 건드린 줄을 다시 포맷하면 바뀝니다. 아무것도 쓰지 않으며, 메시지가 파일 이름을 알려 줍니다.
+
+명세: [dsl 0.47.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-PATCH-PRESERVE
 
@@ -1891,6 +1903,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
+### W-BINDINGS-VERSION-STALE
+
+플레이어 바인딩의 `bindingsVersion`이 툴체인 라인(툴체인 버전의 `MAJOR.MINOR`)과 다릅니다. 더 오래되었으면 그 라인으로 올리고(`lute fix`가 수행), 더 새로우면 스탬프를 낮추지 말고 툴체인을 업그레이드하며, `MAJOR.MINOR` 형식이 아니면 다시 스탬프합니다.
+
+명세: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
 ### W-BRANCH-ID-SHARED
 
 한 프로젝트의 두 문서가 각각 같은 id의 `<branch>`나 `<hub>`를 선언합니다. id는 한 문서 안에서만 유일하면 되지만, 플레이나 테스트의 `choose:`는 메뉴를 id만으로 가리키므로 키 하나가 두 메뉴에 모두 답합니다(결정 목록을 쓰면 두 메뉴가 이어서 소비합니다).
@@ -2028,6 +2046,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 컴파일된 대사 레코드에 로케일라이제이션 번들이 선언한 로케일의 텍스트가 빠져 있습니다.
 
 명세: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-L10N-STALE
+
+병합된 번역이 레코드의 현재 원문과 다른 원문으로 만들어졌습니다 — 번역자가 작업한 `lute loc export` 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었습니다(저장된 `sourceHash`가 다릅니다). 번역은 그대로 병합됩니다. 다시 내보내고 번역을 갱신하세요.
+
+명세: [dsl 0.47.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-LINE-CODE-UNTAGGED
 

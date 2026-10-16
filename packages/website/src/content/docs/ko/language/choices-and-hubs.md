@@ -102,6 +102,7 @@ title: The number
   ],
   "converge": "001-0600",
   "prompt": "Ask for her number?",
+  "promptLineId": "bar.counter.number.prompt",
   "timeout": 10,
   "default": "soft"
 }
@@ -113,10 +114,17 @@ title: The number
 - **`prompt`**와 **`timeout`**은 작성된 경우에만 존재합니다. `timeout`은 선택 없이 분기를 끝낼 수
   있으므로, 그 뒤 `scene.choices.number`를 대상으로 하는 `<match>`에는 `is="unset"` 분기 또는
   `<otherwise>`가 필요합니다.
+- 프롬프트도 선택지 라벨처럼 번역할 수 있습니다(dsl 0.47.0). lineId **`promptLineId`**는
+  `{prefix}.{branch id}.prompt`이며 `prompt`가 있을 때만 존재합니다.
+  [`lute loc export`](/ko/tooling/cli/#loc-export)는 이를 `kind: "prompt"` 행으로 쓰고,
+  `lute compile --locales`는 번역을 **`promptTexts`**(로케일 → 텍스트, 비어 있으면 생략)에
+  병합합니다. `prompt`는 원문 그대로입니다. 프롬프트와 선택지는 `{prefix}.{branch id}.…`
+  네임스페이스를 공유하므로 `prompt=`가 있는 branch 안의 `<choice id="prompt">`는
+  `E-CHOICE-DUP`입니다 — 선택지 이름을 바꾸세요. `prompt=`가 없으면 이 id도 쓸 수 있습니다.
 
 `<hub>`는 같은 형태의 `hub` 레코드로 컴파일됩니다. 여기에는 `id`, `selectionKey`
 (`scene.choices.<hubId>`), `once` 및 `exit` 플래그를 추가하는 항목들로 구성된 `options`,
-`converge`, 선택적인 `prompt`, 그리고 [`<return>`](#돌아오기-return) 블록이 있는 허브의 경우
+`converge`, 선택적인 `prompt`(branch와 같이 `promptLineId`, `promptTexts` 포함), 그리고 [`<return>`](#돌아오기-return) 블록이 있는 허브의 경우
 해당 블록이 시작되는 `return` 위치가 들어 있습니다.
 
 ## 허브 재방문
@@ -187,7 +195,9 @@ title: The bar
 
 프롬프트는 허브 레코드의 `prompt` (`HubCmd`에 포함되며, 작성하지 않으면 생략됨)로 컴파일되고,
 `lute run` / `lute play`는 허브가 제시될 때마다 프롬프트를 출력합니다. 빈 프롬프트는 브랜치와
-마찬가지로 `E-BRANCH-PROMPT`입니다.
+마찬가지로 `E-BRANCH-PROMPT`입니다. 브랜치 프롬프트처럼 번역할 수 있습니다. lineId는
+`{prefix}.{hub id}.prompt`(`promptLineId`, 여기서는 `bar.marina.chat.prompt`)이고 번역은
+`promptTexts`에 들어가며, 프롬프트가 있는 허브 안의 `<choice id="prompt">`는 `E-CHOICE-DUP`입니다.
 
 ### 돌아오기: `<return>`
 

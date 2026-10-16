@@ -8,15 +8,25 @@ export interface DesignSize {
   readonly height: number
 }
 
+/**
+ * Running applications by the element they are mounted in. Internal: browser
+ * tests read what player-web drew through {@link pixiAppOf}; it is not
+ * exported from the package entry.
+ */
+const mounted = new WeakMap<HTMLElement, PixiAppShape>()
+
+/** The Pixi application mounted in `element`, while it is mounted (internal; tests only). */
+export const pixiAppOf = (element: HTMLElement): PixiAppShape | undefined => mounted.get(element)
+
 const makeLayers = (): Layers => {
   const camera = new Container()
   const actors = new Container()
   camera.addChild(actors)
   return {
     background: new Container(),
-    cg: new Container(),
     camera,
     actors,
+    cg: new Container(),
     video: new Container(),
     dialogue: new Container(),
     choice: new Container(),
@@ -53,8 +63,8 @@ export class PixiApp extends Context.Service<PixiApp, PixiAppShape>()("Lute.Web.
         const layers = makeLayers()
         root.addChild(
           layers.background,
-          layers.cg,
           layers.camera,
+          layers.cg,
           layers.video,
           layers.dialogue,
           layers.choice,
@@ -85,8 +95,12 @@ export class PixiApp extends Context.Service<PixiApp, PixiAppShape>()("Lute.Web.
         app.ticker.add(frame)
         const frames: Stream.Stream<number> = Stream.fromPubSub(framesPubSub)
         const service: PixiAppShape = { app, layers, design, frames }
-        return yield* Effect.acquireRelease(Effect.succeed(service), () =>
+        return yield* Effect.acquireRelease(Effect.sync(() => {
+          mounted.set(element, service)
+          return service
+        }), () =>
           Effect.sync(() => {
+            mounted.delete(element)
             app.ticker.remove(frame)
             app.renderer.off("resize", resize)
             void Effect.runPromise(PubSub.shutdown(framesPubSub))

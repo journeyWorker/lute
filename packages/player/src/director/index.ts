@@ -5,16 +5,16 @@ import * as Runtime from "@lute-lang/runtime"
 import type { Errors } from "@lute-lang/runtime"
 import { derivePlayerView, playerMachine } from "../machine/playerMachine.js"
 import type {
-  ConfirmAction, CueContext, CueFactoryShape, CueFactoryWrapper, CueSchedulerShape, DirectorCommand, Input, LineGate,
+  ConfirmAction, Cue, CueContext, CueFactoryShape, CueFactoryWrapper, CueSchedulerShape, DirectorCommand, Input, LineGate,
   MachineEvent, Output, Overlay, PlayerView, SaveRuntime, Stage
 } from "../model.js"
 import type { PlayerSessionShape } from "../session/index.js"
-import { SaveIncompatible } from "../session/index.js"
+import { localizedEntry, SaveIncompatible } from "../session/index.js"
 import type { Bindings } from "../bindings/schema.js"
 import type {
-  AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, SlotId
+  AssetLoader, AudioPort, LineView, PlayerAction, PlayerHost, Presenter, ScreenModel, Settings, SlotId
 } from "../ports/index.js"
-import { make as makeCues, mergePlugin, stageFiles, stageMusic, voiceFile } from "../cues/index.js"
+import { bundleLocales, make as makeCues, mergePlugin, stageFiles, stageMusic, voiceFile } from "../cues/index.js"
 import { AssetMissing } from "../ports/index.js"
 import type { ProfileStoreShape, SaveStoreShape } from "../stores/index.js"
 import { autosavesAt } from "../stores/autosave.js"
@@ -121,6 +121,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   // The batch that runs; cleared by the batch itself before it settles.
   let batchRunning: number | undefined
   let batchCount = 0
+  // The running batch's cues for the current locale (spec 0.47.0 §2.2): a
+  // locale switch re-resolves them, so its next line reads the new locale.
+  let batchCues: { readonly output: Output; readonly read: ReadonlySet<string>; locale: string; cues: ReadonlyArray<Cue> } | undefined
   let countdownFiber: Fiber.Fiber<void, never> | undefined
   let autoFiber: Fiber.Fiber<void, never> | undefined
   let choiceFiber: Fiber.Fiber<void, never> | undefined
@@ -135,6 +138,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   const voiceEnded = new Set<string>()
   let idleOptions: ReadonlyArray<{ readonly label: string; readonly input: Input }> = []
   let currentSettings = settings
+  // Spec 0.47.0 §2.2: the bundle's locales; a saved locale it does not carry reads source text.
+  const { source: sourceLocale, locales } = bundleLocales(options.bundle)
+  const localeOf = (value: Settings): string => locales.includes(value.locale) ? value.locale : sourceLocale
   let closed = false
   const commandBuffer: DirectorCommand[] = []
   // Read marks this director added, by the input point (log length) of their batch.
@@ -170,6 +176,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
 
   const interruptBatch = Effect.fn("Lute.Player.Director.interruptBatch")(function* () {
     batchRunning = undefined
+    batchCues = undefined
     if (batchFiber !== undefined) {
       yield* Fiber.interrupt(batchFiber)
       batchFiber = undefined
@@ -269,7 +276,8 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   const saveSlot = (slot: SlotId): Effect.Effect<void, unknown, Scope.Scope> => Effect.gen(function* () {
     const runtime = yield* options.session.snapshot
     const backlog = yield* SubscriptionRef.get(options.session.backlog)
-    const label = backlog.at(-1)?.text ?? "Save"
+    const last = backlog.at(-1)
+    const label = last === undefined ? "Save" : localizedEntry(last, localeOf(currentSettings)).text
     const thumbnail = yield* options.presenter.capture
     yield* options.saves.save(slot, { project: options.session.fingerprint, runtime, label, thumbnail })
     yield* offerEvent({ type: "save.done" })
@@ -279,9 +287,35 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   // An autosave that fails is logged; it never stops the story.
   const autosave = saveSlot("auto").pipe(Effect.catchCause((cause) => Effect.logWarning("autosave failed", cause)))
 
+  // A lineage that cannot be written is logged; it never stops the story.
+  const writeLineage = options.session.snapshot.pipe(
+    Effect.flatMap(({ snapshot }) => options.profile.setLineage(snapshot)),
+    Effect.catchCause((cause) => Effect.logWarning("lineage write failed", cause))
+  )
+
   const playBatch = Effect.fn("Lute.Player.Director.playBatch")(function* (output: Output) {
     const read = yield* SubscriptionRef.get(options.profile.readLines)
-    const cues = yield* factory.fromOutput(output, read)
+    const locale = localeOf(currentSettings)
+    const resolved = yield* factory.fromOutput(output, read, locale)
+    const localized = { output, read, locale, cues: resolved }
+    batchCues = localized
+    // A line cue takes the batch's cue at its index for the locale current when
+    // it starts (`fromOutput` returns one cue per event, in order), then keeps it.
+    const cues = resolved.map((cue, index): Cue => {
+      if (cue.kind !== "line") return cue
+      let pinned: Cue | undefined
+      const current = (): Cue => pinned ??= localized.cues[index] ?? cue
+      return {
+        kind: cue.kind,
+        timing: cue.timing,
+        stage: cue.stage,
+        files: cue.files,
+        describe: cue.describe,
+        get line() { return current().line },
+        execute: (ctx) => Effect.suspend(() => current().execute(ctx)),
+        complete: (ctx) => Effect.suspend(() => current().complete(ctx))
+      }
+    })
     const files = cues.flatMap((cue) => cue.files)
     const inputPoint = (yield* options.session.current).logLength
     const context: CueContext = { presenter: options.presenter, audio: options.audio, bindings: options.bindings, settings: currentSettings, voiceEnded: markVoiceEnded }
@@ -302,7 +336,10 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       if (marked.size > 0) readJournal.set(inputPoint, [...(readJournal.get(inputPoint) ?? []), ...marked])
       const point = yield* options.session.current
       if (autosavesAt(options.autosave, "choice") && point.await.type === "awaitChoice") yield* autosave
+      // Spec 0.47.0 §2.3: the lineage is the snapshot at the presented `ended`, written at once.
+      if (point.await.type === "ended") yield* writeLineage
       if (batchRunning === batch) batchRunning = undefined
+      if (batchCues === localized) batchCues = undefined
       yield* offerEvent({ type: "batch.settled", await: point.await })
     }))
     batchFiber = yield* Effect.forkScoped(running)
@@ -425,7 +462,10 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     switch (overlay) {
       case "menu": return Effect.succeed({ _tag: "Menu" })
       case "backlog":
-        return Effect.map(SubscriptionRef.get(options.session.backlog), (entries): ScreenModel => ({ _tag: "Backlog", entries }))
+        return Effect.map(SubscriptionRef.get(options.session.backlog), (entries): ScreenModel => {
+          const locale = localeOf(currentSettings)
+          return { _tag: "Backlog", entries: entries.map((entry) => localizedEntry(entry, locale)) }
+        })
       case "save":
       case "load":
         return options.saves.list.pipe(
@@ -434,7 +474,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
           Effect.map((slots): ScreenModel => ({ _tag: "SaveLoad", mode: overlay, slots, page: 0 }))
         )
       case "settings":
-        return Effect.succeed({ _tag: "Settings", settings: currentSettings, locales: [currentSettings.locale] })
+        return Effect.succeed({ _tag: "Settings", settings: { ...currentSettings, locale: localeOf(currentSettings) }, locales })
       case "confirm": return Effect.succeed({ _tag: "Confirm", message: confirmMessage(confirm) })
     }
   }
@@ -498,7 +538,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
         return Effect.gen(function* () {
           choiceFiber = yield* Effect.forkScoped(Effect.gen(function* () {
             const remaining = Stream.fromEffectRepeat(Effect.andThen(Effect.sleep(100), SubscriptionRef.get(countdownRef)))
-            const option = yield* options.presenter.showChoice(factory.choiceView(command.await, currentSettings.locale), remaining)
+            const option = yield* options.presenter.showChoice(factory.choiceView(command.await, localeOf(currentSettings)), remaining)
             yield* offerEvent({ type: "choose", option })
           }))
         })
@@ -551,7 +591,18 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "overlay.hide": return options.presenter.hideScreen
       case "ui.hidden": return options.presenter.setUiHidden(command.hidden)
       case "settings.apply":
-        return Effect.gen(function* () { yield* options.profile.updateSettings(command.settings); currentSettings = yield* SubscriptionRef.get(options.profile.settings); yield* options.presenter.applySettings(currentSettings); yield* options.audio.setVolumes(currentSettings.volumes) })
+        return Effect.gen(function* () {
+          yield* options.profile.updateSettings(command.settings)
+          currentSettings = yield* SubscriptionRef.get(options.profile.settings)
+          const running = batchCues
+          const locale = localeOf(currentSettings)
+          if (running !== undefined && running.locale !== locale) {
+            running.cues = yield* factory.fromOutput(running.output, running.read, locale)
+            running.locale = locale
+          }
+          yield* options.presenter.applySettings(currentSettings)
+          yield* options.audio.setVolumes(currentSettings.volumes)
+        })
       case "voice.replay": {
         const file = voiceFile(options.bindings, command.voiceKey)
         return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0, restart: true })

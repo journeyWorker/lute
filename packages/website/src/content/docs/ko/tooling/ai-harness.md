@@ -4,7 +4,7 @@ description: Lute를 AI 작성 파이프라인에 연결하는 방법 — 신뢰
 ---
 ## 기계 판독 CLI 계약 (0.43)
 
-JSON을 지원하는 명령은 이제 배열이 아니라 `command`, `schemaVersion`, `ok`와 명령별 payload를 담은 하나의 객체를 출력합니다. 실패는 `ok: false`와 `error`(`code`, `message`, 선택적 `path`·`argument`·`hint`)로 표현됩니다. stdout을 파싱하기 전에 종료 코드를 확인하고, 프로젝트 해석·사용법 오류는 stderr도 보존하세요. 현재 명령 ID와 schema 버전은 `lute schema --json`으로 조회합니다. 재현 가능한 예에서는 `LUTE_TELEMETRY=0`을 사용하세요.
+JSON을 지원하는 명령은 이제 배열이 아니라 `command`, `schemaVersion`, `ok`와 명령별 payload를 담은 하나의 객체를 출력합니다. 실패는 `ok: false`와 `error`(`code`, `message`, 선택적 `path`·`argument`·`hint`)로 표현됩니다. stdout을 파싱하기 전에 종료 코드를 확인하고, 프로젝트 해석·사용법 오류는 stderr도 보존하세요. 현재 명령 ID와 schema 버전은 `lute schema <command>`(또는 `lute schema`, 출력은 항상 JSON)로 조회합니다. 재현 가능한 예에서는 `LUTE_TELEMETRY=0`을 사용하세요.
 
 Lute는 모델이나 다른 작성 도구로 구동할 수 있지만, 도구가 권위자가 되지는 않습니다. 하네스는 문장이 아니라 종료 코드와 JSON을 읽으며, 호스트가 프로젝트와 [capability-permission 상한](/ko/tooling/capability-permissions/)을 독립적으로 선택합니다. 작동하는 루프는 **신뢰된 context 입력 → 생성 → 같은 상한으로 검사 → 승격 → 태그**입니다. Lute 자체는 AI나 원격 서비스를 호출하지 않습니다.
 
@@ -217,3 +217,59 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 ```
 
 줄에 ID가 없으면 편집 전에 `lute tag`를 실행해야 합니다. 생성된 ID는 위치 기반이며 발명하거나 다시 번호를 매기면 안 됩니다. Context의 `projectRevision`과 파일 revision을 patch base에 복사하세요. `diff.changes`를 검토한 뒤 `--dry-run` 없이 같은 patch를 적용하고, 프로젝트 자체의 test, play 또는 trace 스크립트로 replay하세요. `context --at <file>:<line>:<column>`은 `--max-items N`과 `--run <FILE>`을 받을 수 있습니다(후자는 script file이 필요함). Lute는 결정적인 CLI 경계이지 chat 애플리케이션이나 MCP server가 아닙니다.
+
+## patch 요청 (0.47)
+
+`lute patch <DIR> <PATCH> [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
+
+| 필드 | 필수 | 타입 | 의미 |
+|---|---|---|---|
+| `base` | 예 | 객체 | `project`(필수): 프로젝트 revision `sha256:…`이며 `lute context --json`의 `projectRevision`에서 복사합니다. `files`(선택): 프로젝트 기준 상대 경로에서 그 파일의 revision `sha256:…`으로 가는 맵입니다(context의 `files`). 다르면 patch가 거부됩니다(`E-PATCH-STALE`). |
+| `targets` | 아니오 | 노드 키 | 편집이 건드릴 수 있는 노드입니다. 편집이 가리키는 모든 노드나 span은 target 안에 있어야 합니다. |
+| `edits` | 아니오 | 편집 | 모두 함께 적용되거나 하나도 적용되지 않습니다. |
+| `preserve` | 아니오 | preserve 항목 | patch가 지켜야 할 의미 주장입니다(깨지면 `E-PATCH-PRESERVE`). |
+
+각 편집은 `op`와 그 연산의 필드를 담은 객체이며, 필드는 모두 필수입니다.
+
+| `op` | 필드 | 효과 |
+|---|---|---|
+| `replaceNode` | `node`, `text` | 노드의 소스 span을 `text`로 바꿉니다. |
+| `insertBefore` | `node`, `text` | 노드 span의 시작에 `text`를 넣습니다. |
+| `insertAfter` | `node`, `text` | 노드 span의 끝에 `text`를 넣습니다. |
+| `replaceAttr` | `node`, `attr`, `value` | 노드 안 속성 하나의 값을 바꿉니다(따옴표는 유지). |
+| `removeNode` | `node` | 노드의 소스 span을 지웁니다. |
+| `replaceText` | `file`, `rev`, `span`, `text` | revision이 `rev`인 `file`의 `span`을 정확히 바꿉니다. `span`은 `lute context --json`의 `affected[].reasons[].sourceSpan`과 같은 모양의 소스 span 객체(`byte_start`, `byte_end`, `line`, `column`, `utf16_range`)이며 target 안에 있어야 합니다. |
+| `createFile` | `path`, `text` | 새 파일을 만듭니다(파일 전체를 포맷). |
+| `moveFile` | `from`, `to` | 파일을 옮깁니다. 다른 파일이 옛 경로를 아직 참조하면 거부됩니다. |
+
+경로는 프로젝트 기준 상대 경로이며 프로젝트를 벗어날 수 없습니다. 각 `preserve` 항목은 키가 정확히 하나인 객체입니다.
+
+| 키 | 값 | 주장 |
+|---|---|---|
+| `ids` | 노드 키 | 노드가 identity를 유지합니다. |
+| `lineIds` | 문자열(읽지 않음) | 어떤 line id도 바뀌지 않습니다. |
+| `voiceKeys` | 문자열(읽지 않음) | 어떤 voice key도 바뀌지 않습니다. |
+| `choiceEffects` | 노드 키 | 선택지의 효과가 그대로입니다. |
+| `rewards` | 노드 키 | 보상이 그대로입니다. |
+| `hostContracts` | `true` | 호스트 계약 표면이 그대로입니다. |
+| `conditions` | 노드 키 | 노드의 조건이 그대로입니다. |
+| `reachability` | 노드 키 | 노드의 도달 가능성이 그대로입니다. |
+| `constraints` | `true` | 프로젝트 제약 판정이 그대로입니다. |
+
+노드 키는 `kind:key`입니다. 키는 `lute context <file> --target <kind:key> --json`에서 가져오세요. `affected[]`의 모든 항목이 정규 `key`(와 `reasons[].sourceSpan`)를 담고, target 자신은 `target.kind`:`target.key`입니다(`target.key`만으로는 kind 없는 키입니다). 종류는 `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`입니다. patch는 편집 가능한 소스 span이 있는 노드만 target으로 삼을 수 있습니다. `project`, `occasion`, `relation`, `state`, `expanded`, `fact`, `engine`은 target으로 거부됩니다(`E-PATCH-TARGET`. 스키마 YAML은 target으로 삼을 수 있는 노드 안에서 `replaceText`로 편집하세요). `lute schema patch`의 `nodeKinds[].targetable`도 같은 내용을 알려 줍니다.
+
+```json
+{
+  "base": { "project": "sha256:dc7f8a0c…" },
+  "targets": ["line:fair.narrator_0020", "line:fair.pell_0010"],
+  "edits": [
+    { "op": "replaceNode", "node": "line:fair.narrator_0020",
+      "text": "@narrator{code=\"0020\"}: Someone runs past, shouting." },
+    { "op": "replaceNode", "node": "line:fair.pell_0010",
+      "text": "@pell{code=\"0010\"}: Paper, a frame, and a pencil." }
+  ],
+  "preserve": [{ "lineIds": [] }, { "reachability": ["line:fair.pell_0010"] }]
+}
+```
+
+한 파일의 모든 편집은 원래 텍스트를 기준으로 해석되므로, 한 파일의 여러 편집은 서로의 길이 변화에 영향을 받지 않습니다. patch는 자신이 건드린 줄만 포맷합니다. `accepted`를 보고하기 전에 영역 포맷을 거친 모든 `.lute` 파일은 다음을 만족해야 합니다. `lute fmt --check`를 통과하던 파일은 계속 통과하고, 그 밖의 파일에서는 건드린 줄을 다시 포맷해도 아무것도 바뀌지 않습니다. 그렇지 않으면 patch는 파일 이름을 담은 `E-PATCH-FORMAT`으로 거부되고 아무것도 쓰지 않습니다. 거부(`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE`)는 `accepted: false`와 함께 종료 2이고, 승인된 patch는 의미가 바뀌면 종료 1, 바뀌지 않으면 종료 0입니다.

@@ -102,6 +102,7 @@ title: The number
   ],
   "converge": "001-0600",
   "prompt": "Ask for her number?",
+  "promptLineId": "bar.counter.number.prompt",
   "timeout": 10,
   "default": "soft"
 }
@@ -113,11 +114,18 @@ title: The number
 - **`prompt`**, **`timeout`** and **`default`** are present only when authored. `timeout` and
   `default` require each other, and expiry takes the named option exactly as if it had been
   selected, so a timed branch always has an outcome.
+- A prompt is translatable like an option label (dsl 0.47.0): it gets the lineId
+  **`promptLineId`**, `{prefix}.{branch id}.prompt`, present exactly when `prompt` is.
+  [`lute loc export`](/tooling/cli/#loc-export) writes it as a `kind: "prompt"` row and
+  `lute compile --locales` merges its translations into **`promptTexts`** (locale → text, omitted
+  when empty); `prompt` stays the source string. Because the prompt and the options share the
+  `{prefix}.{branch id}.…` namespace, a `<choice id="prompt">` in a branch that has `prompt=` is
+  `E-CHOICE-DUP` — rename the choice. Without `prompt=` the id is legal.
 
 A `<hub>` compiles to a `hub` record of the same shape: `id`, `selectionKey`
 (`scene.choices.<hubId>`), `options` whose entries add the `once` and `exit` flags, `converge`, and
-an optional `prompt` and, for a hub with a [`<return>`](#coming-back-return) block, the `return`
-position that block starts at.
+an optional `prompt` (with its `promptLineId` and `promptTexts`, as on a branch) and, for a hub
+with a [`<return>`](#coming-back-return) block, the `return` position that block starts at.
 
 ## Revisit hubs
 
@@ -186,7 +194,9 @@ title: The bar
 
 The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unauthored), and
 `lute run` / `lute play` print it with every presentation of the hub. An empty prompt is
-`E-BRANCH-PROMPT`, as it is on a branch.
+`E-BRANCH-PROMPT`, as it is on a branch. Like a branch prompt it is localizable: lineId
+`{prefix}.{hub id}.prompt` (`promptLineId`, here `bar.marina.chat.prompt`), translations in
+`promptTexts`, and a `<choice id="prompt">` in a prompted hub is `E-CHOICE-DUP`.
 
 ### Coming back: `<return>`
 

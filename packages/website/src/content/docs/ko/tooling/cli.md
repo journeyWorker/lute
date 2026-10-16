@@ -35,9 +35,9 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 | `calendar` | `--json` | `0.43.0.calendar` |
 | `refs` | `--json` | `0.43.0.refs` |
 | `lore` | `--json` | `0.43.0.lore` |
-| `loc report` | `--json` | `0.43.0.loc-report` |
+| `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
-| `schema` | 항상 | `0.43.0.schema` |
+| `schema` | 항상 | `0.47.0.schema` |
 
 배열이던 보고서 세 개는 이제 객체입니다. `constraints`는 행을 `constraints` 필드에, `trace`와 `compile`의 거부는 진단을 `diagnostics` 필드에 담습니다. `patch`는 패치가 받아들여졌는지를 `accepted`로 알립니다(`ok`는 종료 코드 규칙을 따릅니다. [`lute patch`](#lute-patch-0366) 참고).
 
@@ -66,14 +66,14 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 $ lute schema [COMMAND]...
 ```
 
-명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, 그리고 `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion`입니다. 파서 자신의 정의에서 나오므로 `--help`와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
+명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion` — 그리고 `inputs`(0.47)입니다. `inputs`는 명령이 읽는 구조화된 입력마다 한 항목이며, `patch`를 뺀 모든 명령에서 빈 목록입니다. `patch`의 `PATCH` 요청은 `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }`로 설명됩니다([patch 요청](/ko/tooling/ai-harness/#patch-요청-047) 참고). 파서 자신의 정의에서 나오므로 `--help`나 patch 요청 파서와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
 
 ## Telemetry
 
 `lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.46.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.47.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
@@ -205,7 +205,7 @@ constraints:
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.46.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.47.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -292,7 +292,7 @@ lute compile --all: 1 vocabulary conflict(s); no output written
 
 ### `--locales` — 번역 번들 병합
 
-`--locales <bundle.json>`은 로케일 번들을([`loc import`](#loc-import) 참고) 아티팩트에 병합합니다. 모든 줄 레코드와 모든 choice/hub 옵션에 `lineId`를 키로 하는 `texts` 맵을 추가하고, 인라인 수정자를 사용하는 줄에는 `localeSegments`를 추가합니다. 소스 언어의 `text`는 덮어쓰지 않으며 맵이 비어 있으면 생략합니다. 따라서 `--locales` 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다. 이 문서와 일치하는 항목이 없는 번들 항목은 무시됩니다. 번들은 프로젝트 전체에 걸쳐도 됩니다. `--all`과 함께 사용하면 하나의 번들을 모든 아티팩트에 병합합니다. 인라인 수정자(이름, 형식, 속성의 멀티셋)가 소스 줄과 다른 번역은 병합하지 않습니다(`E-L10N-MODIFIERS`). 이 경우 아티팩트가 출력되지 않습니다.
+`--locales <bundle.json>`은 로케일 번들을([`loc import`](#loc-import) 참고) 아티팩트에 병합합니다. 모든 줄 레코드와 모든 choice/hub 옵션에 `lineId`를 키로 하는 `texts` 맵을, `prompt=`가 있는 branch/hub에는 `promptLineId`를 키로 하는 `promptTexts` 맵을 추가하고, 인라인 수정자를 사용하는 줄에는 `localeSegments`를 추가합니다. 소스 언어의 `text`는 덮어쓰지 않으며 맵이 비어 있으면 생략합니다. 따라서 `--locales` 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다. 이 문서와 일치하는 항목이 없는 번들 항목은 무시됩니다. 번들은 프로젝트 전체에 걸쳐도 됩니다. `--all`과 함께 사용하면 하나의 번들을 모든 아티팩트에 병합합니다. 인라인 수정자(이름, 형식, 속성의 멀티셋)가 소스 줄과 다른 번역은 병합하지 않습니다(`E-L10N-MODIFIERS`). 이 경우 아티팩트가 출력되지 않습니다.
 
 번들이 선언한 로케일 중 번역 가능한 레코드에 없는 로케일은 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-MISSING`으로 stderr에 기록됩니다. 이는 경고이므로 소스 언어 문자열을 담은 아티팩트는 여전히 출력됩니다. `--deny W-L10N-MISSING`(또는 `--deny-warnings`)을 사용하면 이를 승격하여, 아무것도 출시하기 전에 완전한 번역을 요구하도록 CI를 구성할 수 있습니다.
 
@@ -302,6 +302,8 @@ $ lute compile scenes/opening.lute --project . --locales bundle.json --deny W-L1
 scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `narrator.s01ep01.narrator_0020`
 --deny promoted 1 diagnostic(s); no artifact emitted
 ```
+
+병합된 번역에 저장된 `sourceHash`([`loc import`](#loc-import) 참고)가 레코드의 현재 원문 해시와 다르면 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-STALE`입니다. 번역자가 작업한 export 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었다는 뜻입니다. 메시지는 lineId와 로케일을 밝히고 `lute loc export`로 다시 내보내 번역을 갱신하라고 안내합니다. 번역은 그대로 병합됩니다. 다른 경고와 마찬가지로 단일 컴파일과 `--all` 모두에서 `--deny W-L10N-STALE` 또는 `--deny-warnings`로 승격됩니다. `schemaVersion: 1` 번들에는 해시가 없으므로 이 검사를 하지 않습니다.
 
 ## compile-stream
 
@@ -518,6 +520,8 @@ $ lute fix <path>…
 YAML 처리는 텍스트를 바이트 단위로 읽으므로, 스칼라·따옴표 문자열·주석 안의 한글, em dash 같은 UTF-8 문자는 바이트 그대로 유지됩니다(0.41.1. 0.41.0은 여기서 panic했습니다).
 
 툴체인보다 오래된 기존 언어 스탬프는 툴체인 버전으로 올립니다(0.41.1). `lute.project.yaml`의 `defaults: luteVersion`과 `.lute` 문서 자체의 frontmatter `luteVersion`이 대상이며, 각각 수정 하나로 세고 값 주변의 따옴표와 주석은 유지합니다. 따라서 해당 `W-LUTE-VERSION-STALE`이 사라집니다. 없는 스탬프는 추가하지 않으며, 더 새롭거나 `MAJOR.MINOR.PATCH` 형식이 아닌 스탬프는 그대로 둡니다.
+
+`player.bindings.yaml`의 `bindingsVersion`이 툴체인 라인(툴체인 버전의 `MAJOR.MINOR`)보다 오래된 `MAJOR.MINOR`이면 그 라인으로 올립니다(0.47). 수정 하나로 세고 값 주변의 따옴표와 주석은 유지하므로 해당 `W-BINDINGS-VERSION-STALE`이 사라집니다. 더 새롭거나 `MAJOR.MINOR` 형식이 아닌 값(앞에 0이 붙은 값 포함)과 하나의 flow 매핑으로 쓴 파일은 그대로 둡니다. [`bindingsVersion` 규칙](/ko/player/bindings/#bindingsversion)을 참고하세요.
 
 옛 문서화된 `volume` 단계를 그대로 쓰는 프로젝트에서는 그 단계의 이름을 바꿉니다(0.42). 프로젝트의 접힌(folded) `volume` 도메인이 정확히 `[silent, down, normal, up, full]`일 때 — `volume` 도메인을 보는 모든 문서에서 그 멤버가 그 순서로 — 선언, 모든 `volume=` 디렉티브 값, `player.bindings.yaml`의 `volumes:` 키에서 `down`은 `quiet`, `up`은 `loud`가 되며 토큰마다 수정 하나로 셉니다. 프로젝트가 직접 고른 레벨(부분집합, 다른 이름, 다른 순서)이거나 문서들이 서로 다르면 건드리지 않습니다. 프로젝트 밖의 `.lute` 파일은 자신의 프런트매터로 판단합니다.
 
@@ -789,7 +793,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트는 메모리에서 한 번 컴파일되며, `compile --all`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.46.0"`이 들어갑니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.47.0"`이 들어갑니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--explain <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다.
 
@@ -935,9 +939,15 @@ $ lute lint [<path>] [--json] [--config <FILE>] [--deny <CODE>]… [--deny-warni
 $ lute loc export <dir> [--format json|csv] [-o <FILE>]
 ```
 
-프로젝트 전체에서 번역 가능한 모든 콘텐츠 줄(안정적인 `code`, 화자, 텍스트, 선택지 텍스트)을 추출해 로컬라이제이션 export로 만듭니다. export된 `text`는 소스 마크업을 유지합니다. 인라인 modifier(`:pause{s=0.5}`, `:speed[…]{rate=…}`, 텍스트 스타일 span)와 `{{…}}` interpolation을 포함하며, 번역은 같은 modifier 집합을 유지해야 합니다. `--format`은 `json`(기본값) 또는 `csv`이고, `-o`/`--out`은 stdout 대신 파일에 씁니다. 성공 시 종료 **0**, I/O 오류 시 **2**입니다.
+프로젝트 전체에서 번역 가능한 모든 콘텐츠 줄(안정적인 `code`, 화자, 텍스트, 선택지 텍스트, branch/hub 프롬프트)을 추출해 로컬라이제이션 export로 만듭니다. export된 `text`는 소스 마크업을 유지합니다. 인라인 modifier(`:pause{s=0.5}`, `:speed[…]{rate=…}`, 텍스트 스타일 span)와 `{{…}}` interpolation을 포함하며, 번역은 같은 modifier 집합을 유지해야 합니다. `--format`은 `json`(기본값) 또는 `csv`이고, `-o`/`--out`은 stdout 대신 파일에 씁니다. 성공 시 종료 **0**, I/O 오류 시 **2**입니다.
 
 각 행에는 컴파일러가 해당 레코드에 기록할 `lineId`도 들어가며, `loc import`와 `compile --locales`가 조인 키로 사용합니다. 작성된 `code`가 없는 줄은 JSON에서 `null`, CSV에서 빈 값입니다. 이 id는 확장 후 명령 스트림에서 컴파일러가 보완하며 소스만 걷는 것으로는 재현할 수 없습니다. 먼저 `lute tag`를 실행하면 stderr의 `N lines untagged — run lute tag` 안내가 사라집니다.
+
+행 종류는 `line`, `choice`(선택지 라벨, `key`는 `{branchOrHubId}.{choiceId}`), `prompt`(branch/hub의 `prompt=`, `key`는 `{branchOrHubId}.prompt`, lineId는 `{prefix}.{branchOrHubId}.prompt`)이며 문서 순서를 따릅니다. 프롬프트 행은 그 branch/hub의 선택지보다 앞에 옵니다. 모든 행에는 `sourceHash`가 있습니다. 컴파일러가 내보내는 레코드의 **평문** 원문 — 인라인 수정자와 이스케이프를 제거한 대사 텍스트, 선택지 텍스트, 프롬프트 — 의 `"sha256:<hex>"`입니다. 번역자는 이 값을 바꾸지 않습니다. `loc import`가 이를 저장해 두므로 `compile --locales`는 그 뒤 원문이 바뀌었는지 알 수 있습니다(`W-L10N-STALE`). CSV에서는 마지막 열입니다.
+
+```text
+kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
+```
 
 ## loc import
 
@@ -951,15 +961,21 @@ $ lute loc import <file>… [-o <FILE>]
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": ["en-US", "ja-JP"],
   "entries": {
     "marina.s01ep02.marina_0010": { "en-US": "Hello there.", "ja-JP": "こんにちは。" }
+  },
+  "sourceHashes": {
+    "marina.s01ep02.marina_0010": {
+      "en-US": "sha256:23ea498e82f4…",
+      "ja-JP": "sha256:23ea498e82f4…"
+    }
   }
 }
 ```
 
-`locales`와 `entries`는 모두 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
+(위 해시는 줄여 표기했습니다.) `sourceHashes`는 각 행의 `sourceHash`를 lineId **와** 로케일별로 담습니다(두 로케일이 서로 다른 export에서 번역될 수 있기 때문입니다). 항상 기록되며, 해시를 가진 행이 없으면 `{}`입니다. 모든 맵이 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. `compile --locales`는 `schemaVersion: 1` 번들도 읽습니다(`sourceHashes`가 없고 stale 검사도 하지 않습니다). 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
 
 ## loc report
 
@@ -967,7 +983,7 @@ $ lute loc import <file>… [-o <FILE>]
 $ lute loc report <dir> [--json]
 ```
 
-문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
+문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. 선택지 라벨은 개수(`choices`)만 세고 단어는 세지 않습니다. branch/hub 프롬프트는 개수(`prompts`, 0.47부터 — 보고서 버전 `0.47.0.loc-report`)를 세고, 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
 
 ## --explain
 
@@ -1026,8 +1042,8 @@ id: cli-identity
 ```
 `fmt`는 `.lute`, project/schema YAML, 설정된 plugin YAML을 결정적 순서로 포맷합니다. YAML 값은 불투명하므로 임의의 YAML을 다시 포맷하지 않습니다. `--check`가 없으면 정규 텍스트를 쓰고, `--check`이면 아무것도 쓰지 않습니다. 선택한 파일이 다르면 1, 정규 형식이면 0, I/O·UTF-8·파싱 실패면 2로 종료합니다.
 
-`diff`는 디렉터리 또는 `git:<revision>` 양쪽을 비교하고 `schemaVersion: "0.36.0.diff"`, `before`, `after`, 정렬된 의미론적 `changes`를 출력합니다. 포맷만 달라진 경우 빈 배열입니다. 비교가 생성되면 종료 0, 입력·materialization·파싱·I/O 오류면 종료 2입니다.
+`diff`는 디렉터리 또는 `git:<revision>` 양쪽을 비교하고 `schemaVersion: "0.36.0.diff"`, `before`, `after`, 정렬된 의미론적 `changes`를 출력합니다. 포맷만 달라진 경우 빈 배열입니다. 다른 쪽이 현재 git 작업 트리 안의 디렉터리이면 `git:` 쪽은 그 하위 트리만 archive하고(`git archive <rev> -- <그 경로>`) 그곳을 루트로 삼습니다. 그래서 저장소 루트에서 `lute diff git:HEAD story`를 실행하면 `story/` 프로젝트끼리 비교하고, 저장소의 다른 곳에 있는 심볼릭 링크는 상관없습니다(비교하는 트리 안의 심볼릭 링크는 여전히 거부됩니다. 디렉터리 이름은 글자 그대로의 경로이며, 그 revision에 없는 디렉터리는 디렉터리와 revision을 함께 알려 주는 `E-CLI-IO`입니다). 그 밖의 경우(다른 쪽이 저장소 밖에 있거나 양쪽이 모두 `git:`)에는 현재 디렉터리의 트리를 archive합니다(0.47). 비교가 생성되면 종료 0, 입력·materialization·파싱·I/O 오류면 종료 2입니다.
 
-`patch`는 [AI harness guide](/ko/tooling/ai-harness/)에 문서화된 엄격한 요청 형식을 받습니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. patch 보고서는 `schemaVersion: "0.43.0.patch"`와 `before`, `after`, `diff`, `writes`를 유지합니다. `accepted`는 patch 검증 통과 여부를 나타내고, envelope의 `ok`는 종료 코드 규칙을 따릅니다. 따라서 의미가 바뀐 승인 patch는 `accepted: true`, `ok: false`, 종료 **1**(검토용 diff 포함)이고, 의미를 보존한 patch는 `accepted: true`, `ok: true`, 종료 **0**입니다. `--dry-run`도 쓰기 없이 같은 판정을 사용합니다. 거부는 **2**로 종료하며 기존 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE` 코드를 유지합니다. 읽을 수 없는 patch 파일은 JSON error envelope을 사용합니다.
+`patch`는 [patch 요청](/ko/tooling/ai-harness/#patch-요청-047)에 문서화된 엄격한 요청 형식(필드, 연산, preserve 키, 노드 키 종류, 예시)을 받으며, `lute schema patch`가 이를 `inputs`로 설명합니다. 연산은 `replaceNode`, `insertBefore`, `insertAfter`, `replaceAttr`, `removeNode`, `createFile`, `moveFile`, revision 보호형 `replaceText`입니다. 보존 주장에는 `ids`, 위치 기반 `lineIds`, `voiceKeys`, `choiceEffects`, `rewards`, `conditions`, `reachability`, `hostContracts`, `constraints`가 포함됩니다. patch 보고서는 `schemaVersion: "0.43.0.patch"`와 `before`, `after`, `diff`, `writes`를 유지합니다. `accepted`는 patch 검증 통과 여부를 나타내고, envelope의 `ok`는 종료 코드 규칙을 따릅니다. 따라서 의미가 바뀐 승인 patch는 `accepted: true`, `ok: false`, 종료 **1**(검토용 diff 포함)이고, 의미를 보존한 patch는 `accepted: true`, `ok: true`, 종료 **0**입니다. `--dry-run`도 쓰기 없이 같은 판정을 사용합니다. 거부는 **2**로 종료하며 기존 `E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE` 코드를 유지합니다. 읽을 수 없는 patch 파일은 JSON error envelope을 사용합니다. 한 파일의 여러 편집은 원래 텍스트를 기준으로 해석되고, 편집이 닿은 줄만 포맷합니다. `lute fmt --check`를 통과하던 `.lute` 파일은 계속 통과하고, 그 밖의 파일에서는 닿은 줄이 정규 형식이 됩니다. 이를 깨뜨릴 patch는 파일 이름을 담은 `E-PATCH-FORMAT`으로 거부되며 아무것도 쓰지 않습니다(0.47).
 
 `context`는 `schemaVersion`, `projectRevision`, `files`, `target`, `declared`, `references`, `affected`, `tests`, `plays`, `vocabulary`, `notIncluded`를 반환합니다. 경계는 조용히 버리지 않고 보고합니다. `--run`에는 스크립트 경로가 필요하며 실행된 증거를 `witnessed`로 표시합니다.

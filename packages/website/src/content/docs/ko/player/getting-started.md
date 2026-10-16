@@ -1,6 +1,6 @@
 ---
 title: 플레이어 시작하기
-description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.46 웹 플레이어를 마운트합니다.
+description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.47 웹 플레이어를 마운트합니다.
 ---
 
 이 가이드는 저장소의 `examples/player-demo`를 사용합니다. 자신의 프로젝트에도 같은 단계를 적용할 수 있습니다.
@@ -20,7 +20,7 @@ lute compile --all examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.46 패키지를 설치합니다.
+정확한 0.47 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
@@ -106,4 +106,31 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-이 스크립트는 `examples/player-demo`를 컴파일하고 `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+
+Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export .`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
+
+## 6. 스테이지 레이어
+
+player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 위 순서입니다.
+
+1. `background` — `::bg` 배경.
+2. `camera` — 배우(`::actor`). 프레이밍과 카메라 이동은 이 레이어를 변형합니다.
+3. `cg` — 이벤트 일러스트(`::cg`).
+4. `video` — `::video` 재생.
+5. `dialogue` — 대사 창.
+6. `choice` — 선택지와 허브 메뉴.
+7. `overlay` — 화면과 메뉴(타이틀, 저장/불러오기, 백로그, 설정, 엔딩).
+8. `transition` — 장면 전환.
+
+따라서 `::cg`는 스테이지의 배우를 덮고, 대사 창과 UI 아래에 남습니다. `cgLayouts`는 레이어 안에서 CG의 배치(`fit`, `scale`, `x`, `y`)만 정하며 순서는 바꾸지 않습니다.
+
+## 7. 타이틀 화면
+
+타이틀 화면의 제목은 바인딩에 `ui.title.text`가 있으면 그 값입니다. 없으면 제목을 그리지 않습니다(player-web은 임시 이름을 표시하지 않습니다). `ui.title.background`와 `ui.title.music`은 선택 사항이며, 없으면 배경을 그리지 않고 음악도 재생하지 않습니다.
+
+```yaml
+bindingsVersion: "0.47"
+ui:
+  title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
+```

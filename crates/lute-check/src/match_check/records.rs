@@ -68,6 +68,33 @@ fn ident_diag(what: &str, id: &str, span: Span) -> Option<Diagnostic> {
         .map(|message| diag(E_PATH_IDENT, Severity::Error, message, span))
 }
 
+/// dsl 0.47.0 §3.1: a branch or hub with `prompt=` mints the prompt lineId
+/// `{prefix}.{id}.prompt` in its options' namespace, so a `<choice
+/// id="prompt">` in it would share that lineId — `E-CHOICE-DUP`, one per
+/// such choice (a repeated `prompt` id is also the ordinary duplicate).
+/// Without `prompt=` the id is legal.
+fn prompt_id_clash<'a>(
+    what: &'static str,
+    attrs: &'a [Attr],
+    choices: &'a [lute_syntax::ast::Choice],
+) -> impl Iterator<Item = Diagnostic> + 'a {
+    let prompted = attrs.iter().any(|a| a.key == "prompt");
+    choices
+        .iter()
+        .filter(move |c| prompted && c.id == "prompt")
+        .map(move |c| {
+            diag(
+                "E-CHOICE-DUP",
+                Severity::Error,
+                format!(
+                    "choice id `prompt` is the lineId of this {what}'s prompt; rename the choice \
+                     (dsl 0.47.0 §3.1)"
+                ),
+                c.span,
+            )
+        })
+}
+
 /// Record a `<branch>` (dsl §11.1): flag a duplicate id within the episode
 /// (`E-DUP-BRANCH`) and return the implicit `scene.choices.<id>` declaration.
 /// `seen` is the caller-owned, document-order set of branch ids seen so far (see
@@ -127,6 +154,7 @@ pub fn check_branch(branch: &Branch, seen: &mut BTreeSet<String>) -> BranchRecor
             ));
         }
     }
+    diags.extend(prompt_id_clash("branch", &branch.attrs, &branch.choices));
     // E-BRANCH-ALL-GUARDED (dsl §11.1, S5): a non-empty branch whose EVERY
     // `<choice>` carries a `when` guard could have every guard false at a
     // presentation point, leaving an empty menu. At least one unguarded
@@ -212,6 +240,7 @@ pub fn check_hub(hub: &Hub, seen: &mut BTreeSet<String>) -> HubRecord {
             ));
         }
     }
+    diags.extend(prompt_id_clash("hub", &hub.attrs, &hub.choices));
 
     // E-HUB-NO-EXIT (§7.3.2, §11.1.3, D-C): a hub can terminate iff it has at
     // least one UNGUARDED (`when`-less) `exit` choice, OR every choice is `once`

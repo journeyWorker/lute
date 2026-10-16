@@ -281,6 +281,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-ON-NO-EVENT", DiagnosticClass::SourceError),
         ("E-PATCH-CHECK", DiagnosticClass::SourceError),
         ("E-PATCH-EDIT", DiagnosticClass::SourceError),
+        ("E-PATCH-FORMAT", DiagnosticClass::SourceError),
         ("E-PATCH-PRESERVE", DiagnosticClass::SourceError),
         ("E-PATCH-STALE", DiagnosticClass::SourceError),
         ("E-PATCH-TARGET", DiagnosticClass::SourceError),
@@ -475,6 +476,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-BINDING-FILE", DiagnosticClass::SourceError),
         ("E-BINDING-KEY", DiagnosticClass::SourceError),
         ("E-BINDING-SHAPE", DiagnosticClass::SourceError),
+        ("E-BINDINGS-VERSION", DiagnosticClass::SourceError),
         (
             "W-BINDING-MISSING",
             DiagnosticClass::Analysis {
@@ -487,6 +489,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
                 evidence: lute_core_span::Evidence::Heuristic,
             },
         ),
+        ("W-BINDINGS-VERSION-STALE", DiagnosticClass::SourceError),
         ("W-BRANCH-ID-SHARED", DiagnosticClass::SourceError),
         (
             "W-CAST-ABSENT",
@@ -523,6 +526,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ),
         ("W-INTO-SET-DUP", DiagnosticClass::SourceError),
         ("W-L10N-MISSING", DiagnosticClass::SourceError),
+        ("W-L10N-STALE", DiagnosticClass::SourceError),
         ("W-LINE-CODE-UNTAGGED", DiagnosticClass::SourceError),
         ("W-LUTE-VERSION-STALE", DiagnosticClass::SourceError),
         ("W-META-LEGACY", DiagnosticClass::SourceError),

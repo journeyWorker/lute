@@ -1,0 +1,11 @@
+---
+kind: scene
+id: pier
+title: The Pier
+on: start
+---
+
+## The Pier
+
+@mara{code="0010"}: The harbor lights are on.
+::set{run.finished = true}

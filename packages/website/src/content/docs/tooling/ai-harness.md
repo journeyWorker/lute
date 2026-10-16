@@ -4,7 +4,7 @@ description: Wiring Lute into an AI authoring pipeline — trusted permission-pr
 ---
 ## Machine-readable CLI contract (0.43)
 
-Every JSON-capable command now emits one object with `command`, `schemaVersion`, `ok`, and its command-specific payload. Errors use `ok: false` plus an `error` object (`code`, `message`, and optional `path`, `argument`, or `hint`); they are not diagnostic arrays. Branch on the process exit code before parsing stdout, and keep stderr for project-resolution and usage failures. Use `lute schema <command> --json` (or `lute schema --json`) to discover the current command IDs and schema versions. Examples in this guide assume `LUTE_TELEMETRY=0` when output must be reproducible.
+Every JSON-capable command now emits one object with `command`, `schemaVersion`, `ok`, and its command-specific payload. Errors use `ok: false` plus an `error` object (`code`, `message`, and optional `path`, `argument`, or `hint`); they are not diagnostic arrays. Branch on the process exit code before parsing stdout, and keep stderr for project-resolution and usage failures. Use `lute schema <command>` (or `lute schema`; its output is always JSON) to discover the current command IDs and schema versions. Examples in this guide assume `LUTE_TELEMETRY=0` when output must be reproducible.
 
 Lute can be driven by a model or any other authoring tool, but the tool never becomes an authority. A harness reads exit codes and JSON, never prose, while the host independently selects the project and [capability-permission ceiling](/tooling/capability-permissions/). A working loop is: **trusted context in → generate → check under the same ceiling → promote → tag**. Lute itself makes no AI or remote service call.
 
@@ -247,3 +247,59 @@ apply the same patch without `--dry-run`; replay with the project's own test,
 play, or trace scripts. `context --at <file>:<line>:<column>` accepts
 `--max-items N` and `--run <FILE>` (the latter requires a script file).
 Lute is a deterministic CLI boundary, not a chat application or MCP server.
+
+## The patch request (0.47)
+
+`lute patch <DIR> <PATCH> [--dry-run] [--json]` reads `PATCH`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "PATCH"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
+
+| Field | Required | Type | Meaning |
+|---|---|---|---|
+| `base` | yes | object | `project` (required): the project revision `sha256:…`, copied from `lute context --json` `projectRevision`. `files` (optional): a map from project-relative path to that file's revision `sha256:…` (context `files`). A mismatch refuses the patch (`E-PATCH-STALE`). |
+| `targets` | no | node keys | The nodes the edits may touch. Every node or span an edit names must lie inside a target. |
+| `edits` | no | edits | Applied all together, or not at all. |
+| `preserve` | no | preserve items | Semantic claims the patch must keep (`E-PATCH-PRESERVE` when broken). |
+
+Every edit is an object with `op` and the op's fields, all required:
+
+| `op` | Fields | Effect |
+|---|---|---|
+| `replaceNode` | `node`, `text` | Replace the node's source span with `text`. |
+| `insertBefore` | `node`, `text` | Insert `text` at the start of the node's span. |
+| `insertAfter` | `node`, `text` | Insert `text` at the end of the node's span. |
+| `replaceAttr` | `node`, `attr`, `value` | Replace one attribute's value inside the node (quotes are kept). |
+| `removeNode` | `node` | Delete the node's source span. |
+| `replaceText` | `file`, `rev`, `span`, `text` | Replace exactly `span` of `file`, whose revision must be `rev`. `span` is a source span object shaped like `affected[].reasons[].sourceSpan` in `lute context --json` (`byte_start`, `byte_end`, `line`, `column`, `utf16_range`); it must lie inside a target. |
+| `createFile` | `path`, `text` | Create a new file (formatted whole). |
+| `moveFile` | `from`, `to` | Move a file; refused while another file still references the old path. |
+
+Paths are project-relative and may not leave the project. Each `preserve` item is an object with exactly one key:
+
+| Key | Value | Claim |
+|---|---|---|
+| `ids` | node keys | The nodes keep their identity. |
+| `lineIds` | strings (not read) | No line id changes. |
+| `voiceKeys` | strings (not read) | No voice key changes. |
+| `choiceEffects` | node keys | The choices' effects are unchanged. |
+| `rewards` | node keys | The rewards are unchanged. |
+| `hostContracts` | `true` | The host contract surface is unchanged. |
+| `conditions` | node keys | The nodes' conditions are unchanged. |
+| `reachability` | node keys | The nodes' reachability is unchanged. |
+| `constraints` | `true` | The project's constraint verdicts are unchanged. |
+
+A node key is `kind:key`. Take keys from `lute context <file> --target <kind:key> --json`: every entry of `affected[]` carries its canonical `key` (and `reasons[].sourceSpan`); the target itself is `target.kind`:`target.key` (`target.key` alone is the bare key). The kinds are `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`. A patch may target only nodes with an editable source span: `project`, `occasion`, `relation`, `state`, `expanded`, `fact` and `engine` are refused as targets (`E-PATCH-TARGET`; edit schema YAML with `replaceText` inside a targetable node instead). `nodeKinds[].targetable` in `lute schema patch` says the same.
+
+```json
+{
+  "base": { "project": "sha256:dc7f8a0c…" },
+  "targets": ["line:fair.narrator_0020", "line:fair.pell_0010"],
+  "edits": [
+    { "op": "replaceNode", "node": "line:fair.narrator_0020",
+      "text": "@narrator{code=\"0020\"}: Someone runs past, shouting." },
+    { "op": "replaceNode", "node": "line:fair.pell_0010",
+      "text": "@pell{code=\"0010\"}: Paper, a frame, and a pencil." }
+  ],
+  "preserve": [{ "lineIds": [] }, { "reachability": ["line:fair.pell_0010"] }]
+}
+```
+
+All edits of a file are resolved against the original text, so several edits in one file are independent of each other's growth. The patch formats the lines it touched and nothing else. Before it reports `accepted`, every `.lute` file it region-formatted must hold: a file that was `lute fmt --check` clean is still clean, and in any other file formatting the touched lines again changes nothing. Otherwise the patch is refused with `E-PATCH-FORMAT` naming the file, and nothing is written. Refusals (`E-PATCH-STALE`, `E-PATCH-TARGET`, `E-PATCH-EDIT`, `E-PATCH-FORMAT`, `E-PATCH-CHECK`, `E-PATCH-PRESERVE`) exit 2 with `accepted: false`; an accepted patch exits 1 when it changes semantics and 0 when it does not.

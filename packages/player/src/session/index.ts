@@ -1,7 +1,8 @@
 /** Runtime-backed player session with rollback, saves, and backlog. */
-import { Context, Effect, Layer, Schema, Semaphore, SubscriptionRef } from "effect"
+import { Context, Effect, Exit, Layer, Schema, Semaphore, SubscriptionRef } from "effect"
 import { Session as RuntimeSession } from "@lute-lang/runtime"
 import type { Contract, Errors } from "@lute-lang/runtime"
+import { recordTranslations } from "../cues/index.js"
 import type { Bindings, Input, InputPoint, LogEntry, Output, SaveRuntime } from "../model.js"
 import type { BacklogEntry, Settings } from "../ports/index.js"
 
@@ -58,13 +59,17 @@ interface PointRecord {
 /** Session service contract used by the director. */
 export interface PlayerSessionShape {
   /**
-   * Start the story (spec 0.41.0 §7.3). While the session has accepted no
-   * input since it was built, the runtime session's `started` output; after
-   * that a new run: `newRun`. Either is followed by the bound `flow.newGame`
-   * raise when there is one, the events concatenated in order with the last
-   * await. A session that waits where `newRun` is refused (halted, at a choice
-   * or a bridge) is first restored to the snapshot captured when the player
-   * session was built.
+   * Start the story (spec 0.41.0 §7.3, 0.47.0 §2.3). A session at `ended`
+   * (also one restored from an ended snapshot) sends `newRun`; so does one at
+   * `idle` once it accepted an input. An untouched session presents the
+   * runtime session's `started` output. A session that cannot send `newRun`
+   * where it waits (untouched, halted, at a choice or a bridge) is restored to
+   * the {@link SessionOptions.lineage} when there is one, then sends `newRun`
+   * (the input log starts with `{ snapshot: <lineage> }`); without one (or
+   * when the runtime refuses it, which drops it) to the snapshot captured
+   * when the player session was built. The start is followed by the bound
+   * `flow.newGame` raise when there is one, the events concatenated in order
+   * with the last await.
    */
   readonly begin: Effect.Effect<Output, Errors.RuntimeRejection | Errors.InputLogError>
   readonly send: (input: Input) => Effect.Effect<Output, Errors.RuntimeRejection | Errors.InputLogError>
@@ -83,6 +88,14 @@ export class PlayerSession extends Context.Service<PlayerSession, PlayerSessionS
   "@lute-lang/player/PlayerSession"
 ) {}
 
+/** The lineage a player keeps across reloads (spec 0.47.0 §2.3). */
+export interface SessionLineage {
+  /** The latest lineage: the runtime snapshot taken when an `ended` output was presented. */
+  readonly get: Effect.Effect<Contract.Snapshot | undefined>
+  /** Forget a lineage the runtime refused to restore. */
+  readonly drop: Effect.Effect<void>
+}
+
 /** Options for constructing a player session over a runtime Session. */
 export interface SessionOptions {
   readonly bindings: Bindings
@@ -93,16 +106,24 @@ export interface SessionOptions {
    * built.
    */
   readonly seed?: Contract.Seed
-  readonly settings?: Pick<Settings, "rollbackDepth" | "locale">
+  readonly settings?: Pick<Settings, "rollbackDepth">
   /** The bundle index `cast` (cast id → display name) for backlog names; narration has none. */
   readonly cast?: Readonly<Record<string, string>>
+  /**
+   * Where New game continues a play-through when `newRun` cannot be sent
+   * where the session waits. `LutePlayer.make` passes the profile's lineage
+   * for a player started without `snapshot` / `session`.
+   */
+  readonly lineage?: SessionLineage
 }
 
-const linesFromOutput = (
-  output: Output,
-  locale: string,
-  cast: Readonly<Record<string, string>>
-): ReadonlyArray<BacklogEntry> => {
+/** A backlog entry with `text` in `locale`: its translation, else the source text. */
+export const localizedEntry = (entry: BacklogEntry, locale: string): BacklogEntry => {
+  const translated = entry.texts?.[locale]
+  return translated === undefined ? entry : { ...entry, text: translated }
+}
+
+const linesFromOutput = (output: Output, cast: Readonly<Record<string, string>>): ReadonlyArray<BacklogEntry> => {
   const result: BacklogEntry[] = []
   for (const event of output.events) {
     if (event.type !== "record" || typeof event.record !== "object" || event.record === null) continue
@@ -112,12 +133,7 @@ const linesFromOutput = (
     const lineIdValue = value("lineId")
     if (typeof lineIdValue !== "string") continue
     const textValue = value("text")
-    let text = typeof textValue === "string" ? textValue : ""
-    const texts = value("texts")
-    if (typeof texts === "object" && texts !== null && !Array.isArray(texts)) {
-      const localized = Object.entries(texts).find(([key, item]) => key === locale && typeof item === "string")?.[1]
-      if (typeof localized === "string") text = localized
-    }
+    const text = typeof textValue === "string" ? textValue : ""
     const speaker = value("speaker")
     const voice = value("voiceKey")
     const role = value("role")
@@ -125,7 +141,9 @@ const linesFromOutput = (
       ? ""
       : cast[speaker] ?? speaker
     const voiceKey = typeof voice === "string" ? voice : ""
-    result.push({ lineId: lineIdValue, voiceKey, speakerName, text, hasVoice: voiceKey.length > 0 })
+    // The record's translations, markers rendered (spec 0.47.0 §2.2).
+    const translated = recordTranslations({ texts: value("texts"), localeSegments: value("localeSegments") })
+    result.push({ lineId: lineIdValue, voiceKey, speakerName, text, hasVoice: voiceKey.length > 0, ...translated })
   }
   return result
 }
@@ -146,7 +164,6 @@ export const layer = (
 ): Layer.Layer<PlayerSession, never, RuntimeSession.Session> =>
   Layer.effect(PlayerSession, Effect.gen(function* () {
     const runtime = yield* RuntimeSession.Session
-    const locale = options.settings?.locale ?? "en"
     const cast = options.cast ?? {}
     const depth = Math.max(0, options.settings?.rollbackDepth ?? 100)
     const lock = yield* Semaphore.make(1)
@@ -176,21 +193,54 @@ export const layer = (
       history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
       log = [...beforeLog, { input }]
       fresh = false
-      const added = linesFromOutput(output, locale, cast)
+      const added = linesFromOutput(output, cast)
       yield* SubscriptionRef.set(backlog, [...beforeBacklog, ...added])
       return output
     })
 
-    const begin = Effect.gen(function* () {
-      let fromStart = fresh
-      if (!fresh && !acceptsNewRun((yield* SubscriptionRef.get(runtime.current)).await)) {
-        yield* runtime.restore(start)
-        log = [startEntry]
+    /** Back to where the player session started: the snapshot captured when it was built. */
+    const toStart = Effect.gen(function* () {
+      yield* runtime.restore(start)
+      log = [startEntry]
+      history = []
+      yield* SubscriptionRef.set(backlog, [])
+    })
+
+    /**
+     * Continue the play-through of the lineage: restore it and send `newRun`.
+     * `undefined` without a lineage, or when the runtime refuses it (the
+     * lineage is dropped and the session is back where it was or at its start).
+     */
+    const continueLineage = Effect.gen(function* () {
+      const lineage = options.lineage === undefined ? undefined : yield* options.lineage.get
+      if (options.lineage === undefined || lineage === undefined) return undefined
+      const restored = yield* Effect.exit(runtime.restore(lineage))
+      if (Exit.isSuccess(restored)) {
+        log = [{ snapshot: lineage }]
         history = []
         yield* SubscriptionRef.set(backlog, [])
-        fromStart = !acceptsNewRun(start.await)
+        const sent = yield* Effect.exit(send({ type: "newRun" }))
+        if (Exit.isSuccess(sent)) return sent.value
+        yield* Effect.logWarning("the lineage refused newRun; New game starts from the start point", sent.cause)
+        yield* toStart
+      } else yield* Effect.logWarning("the runtime refused the lineage; New game starts from the start point", restored.cause)
+      yield* options.lineage.drop
+      return undefined
+    })
+
+    const begin = Effect.gen(function* () {
+      const waiting = (yield* SubscriptionRef.get(runtime.current)).await
+      let first: Output | undefined
+      if (waiting.type === "ended" || (!fresh && waiting.type === "idle")) first = yield* send({ type: "newRun" })
+      else first = yield* continueLineage
+      if (first === undefined) {
+        let fromStart = fresh
+        if (!fresh) {
+          yield* toStart
+          fromStart = !acceptsNewRun(start.await)
+        }
+        first = fromStart ? runtime.started : yield* send({ type: "newRun" })
       }
-      const first = fromStart ? runtime.started : yield* send({ type: "newRun" })
       const newGame = options.bindings.flow?.newGame
       if (newGame == null) return first
       const raised = yield* send({ type: "raiseOccasion", occasion: newGame.occasion, ...(newGame.target == null ? {} : { target: newGame.target }) })

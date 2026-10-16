@@ -3,7 +3,7 @@
  * stores, the cue pipeline and the director over the host's ports
  * (docs/player/architecture.md).
  */
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect, Layer, SubscriptionRef } from "effect"
 import type { Scope } from "effect"
 import type * as KeyValueStore from "effect/persistence/KeyValueStore"
 import * as Runtime from "@lute-lang/runtime"
@@ -11,6 +11,7 @@ import type { Contract } from "@lute-lang/runtime"
 import { decode } from "./bindings/load.js"
 import type { BindingsInvalid } from "./bindings/load.js"
 import type { Bindings } from "./bindings/schema.js"
+import { bundleLocales } from "./cues/index.js"
 import { make as makeDirector } from "./director/index.js"
 import type { Autosave, DirectorHandle, LinePacing } from "./director/index.js"
 import type { CueFactoryWrapper } from "./model.js"
@@ -18,6 +19,7 @@ export type { CueFactoryWrapper }
 import type { AssetLoader, AudioPort, PlayerHost, Presenter } from "./ports/index.js"
 import { make as makeScheduler } from "./scheduler/index.js"
 import { layer as sessionLayer, PlayerSession } from "./session/index.js"
+import type { SessionLineage } from "./session/index.js"
 import { layer as saveLayer, profileLayer, ProfileStore, SaveStore } from "./stores/index.js"
 import type { ProfileCorrupt, SaveCorrupt } from "./stores/index.js"
 
@@ -87,14 +89,26 @@ const build = Effect.fn("Lute.Player.make")(function* (options: LutePlayerOption
       yield* Layer.build(Runtime.Session.layer(options.snapshot !== undefined ? { snapshot: options.snapshot } : { seed: seed ?? { derive: true } })),
       Runtime.Session.Session
     )
+  const project = session.fingerprint
+  // Spec 0.47.0 §2.2: a new profile reads the bundle's source locale.
+  const built = yield* Layer.build(Layer.mergeAll(saveLayer({ project }), profileLayer({ project, defaults: { locale: bundleLocales(bundle).source } })))
+  const profile = Context.get(built, ProfileStore)
+  // Spec 0.47.0 §2.3: a player the host handed no state continues the profile's lineage.
+  const lineage: SessionLineage | undefined = seed === undefined ? undefined : {
+    get: SubscriptionRef.get(profile.lineage),
+    drop: profile.setLineage(undefined).pipe(Effect.catchCause((cause) => Effect.logWarning("lineage drop failed", cause)))
+  }
   const playerSession = Context.get(
-    yield* Layer.build(sessionLayer({ bindings, ...(seed === undefined ? {} : { seed }), cast: bundle.index.cast ?? {} }).pipe(
+    yield* Layer.build(sessionLayer({
+      bindings,
+      cast: bundle.index.cast ?? {},
+      ...(seed === undefined ? {} : { seed }),
+      ...(lineage === undefined ? {} : { lineage })
+    }).pipe(
       Layer.provide(Layer.succeed(Runtime.Session.Session, session))
     )),
     PlayerSession
   )
-  const project = playerSession.fingerprint
-  const built = yield* Layer.build(Layer.mergeAll(saveLayer({ project }), profileLayer({ project })))
   const director = yield* makeDirector({
     bindings,
     bundle,
@@ -102,7 +116,7 @@ const build = Effect.fn("Lute.Player.make")(function* (options: LutePlayerOption
     presenter: options.presenter,
     audio: options.audio,
     assets: options.assets,
-    profile: Context.get(built, ProfileStore),
+    profile,
     saves: Context.get(built, SaveStore),
     ...(options.cueFactory === undefined ? {} : { cueFactory: options.cueFactory }),
     scheduler: yield* makeScheduler(),

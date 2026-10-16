@@ -1,0 +1,5 @@
+state:
+  run.a: { type: int, default: 0 }
+  run.b: { type: int, default: 0 }
+  run.over: { type: bool, default: false }
+terminal: "run.over"

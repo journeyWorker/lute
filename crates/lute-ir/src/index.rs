@@ -177,6 +177,11 @@ pub struct ProjectIndex {
     /// `from`; omitted when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub identity_renames: Vec<lute_manifest::project::IdentityRename>,
+    /// dsl 0.47.0 §2.2: the manifest's `defaults.contentLang` — the source
+    /// language of every text in the project. Omitted when the manifest
+    /// declares none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_lang: Option<String>,
     #[serde(default)]
     pub documents: Vec<IndexDocument>,
     #[serde(default)]

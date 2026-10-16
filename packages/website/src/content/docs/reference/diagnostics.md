@@ -140,9 +140,15 @@ Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-BINDING-SHAPE
 
-The player bindings YAML is malformed or contains an unknown key.
+The player bindings YAML is malformed or contains an unknown key, or a written `ui.title` binds none of `text`, `background`, `music` or has an empty `text`.
 
-Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md)
+Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md), [dsl 0.46.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md), [dsl 0.47.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
+### E-BINDINGS-VERSION
+
+A player bindings section is newer than the file's declared `bindingsVersion` line (`vfx` `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); raise `bindingsVersion` to the line the section needs.
+
+Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-BRANCH-ALL-GUARDED
 
@@ -242,9 +248,9 @@ Spec: [dsl 0.33.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-CHOICE-DUP
 
-A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.
+A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub; or a branch or hub with `prompt=` has a `<choice id="prompt">`, whose lineId would be the prompt's (`{prefix}.{branchOrHubId}.prompt`) — rename the choice.
 
-Spec: [dsl §11.1](/spec/)
+Spec: [dsl §11.1](/spec/), [dsl 0.47.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-CHOICELOG-READ
 
@@ -1009,6 +1015,12 @@ Spec: [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.
 
 Spec: [dsl 0.36.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.36.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+
+### E-PATCH-FORMAT
+
+A patch would leave a `.lute` file it region-formatted non-canonical: a file that was `lute fmt --check` clean would not be, or formatting the touched lines again would change them. Nothing is written; the message names the file.
+
+Spec: [dsl 0.47.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### E-PATCH-PRESERVE
 
@@ -1896,6 +1908,12 @@ A player binding key is not used by any compiled project document.
 
 Spec: [dsl 0.40.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md)
 
+### W-BINDINGS-VERSION-STALE
+
+The player bindings' `bindingsVersion` is not the toolchain line (the toolchain version's `MAJOR.MINOR`): older — update it to the line (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the stamp; not `MAJOR.MINOR` — restamp it.
+
+Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
+
 ### W-BRANCH-ID-SHARED
 
 Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).
@@ -2033,6 +2051,12 @@ Spec: [dsl 0.6.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 A compiled line record is missing text for a locale its localization bundle declares.
 
 Spec: [dsl 0.8.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+
+### W-L10N-STALE
+
+A merged translation was made from a different source text than the record's current one — the line, option label or prompt changed after the `lute loc export` the translator worked from (its stored `sourceHash` differs). The translation is still merged; re-export and update it.
+
+Spec: [dsl 0.47.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md)
 
 ### W-LINE-CODE-UNTAGGED
 

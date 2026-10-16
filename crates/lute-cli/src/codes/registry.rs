@@ -108,8 +108,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BINDING-SHAPE",
-        summary: "The player bindings YAML is malformed or contains an unknown key.",
-        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2"],
+        summary: "The player bindings YAML is malformed or contains an unknown key, or a written `ui.title` binds none of `text`, `background`, `music` or has an empty `text`.",
+        spec: &["dsl 0.40.0 §5", "dsl 0.46.0 §3.2", "dsl 0.47.0 §4.1"],
+    },
+    Code {
+        code: "E-BINDINGS-VERSION",
+        summary: "A player bindings section is newer than the file's declared `bindingsVersion` line (`vfx` `effect: custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); raise `bindingsVersion` to the line the section needs.",
+        spec: &["dsl 0.47.0 §4.2"],
     },
     Code {
         code: "E-BRANCH-ALL-GUARDED",
@@ -193,8 +198,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CHOICE-DUP",
-        summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub.",
-        spec: &["dsl §11.1"],
+        summary: "A `<branch>` or `<hub>` declares two `<choice>` elements with the same `id`, but choice ids must be unique within their branch or hub; or a branch or hub with `prompt=` has a `<choice id=\"prompt\">`, whose lineId would be the prompt's (`{prefix}.{branchOrHubId}.prompt`) — rename the choice.",
+        spec: &["dsl §11.1", "dsl 0.47.0 §3.1"],
     },
     Code {
         code: "E-CHOICELOG-READ",
@@ -875,6 +880,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-PATCH-EDIT",
         summary: "A patch edit is malformed, outside its target, overlaps another edit, or fails its escape-hatch span assertion.",
         spec: &["dsl 0.36.0 §5.1", "dsl 0.36.0 §5.2", "dsl 0.36.0 §8"],
+    },
+    Code {
+        code: "E-PATCH-FORMAT",
+        summary: "A patch would leave a `.lute` file it region-formatted non-canonical: a file that was `lute fmt --check` clean would not be, or formatting the touched lines again would change them. Nothing is written; the message names the file.",
+        spec: &["dsl 0.47.0 §5.1"],
     },
     Code {
         code: "E-PATCH-PRESERVE",
@@ -1672,6 +1682,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.40.0 §5"],
     },
     Code {
+        code: "W-BINDINGS-VERSION-STALE",
+        summary: "The player bindings' `bindingsVersion` is not the toolchain line (the toolchain version's `MAJOR.MINOR`): older — update it to the line (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the stamp; not `MAJOR.MINOR` — restamp it.",
+        spec: &["dsl 0.47.0 §4.2"],
+    },
+    Code {
         code: "W-BRANCH-ID-SHARED",
         summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).",
         spec: &["dsl 0.28.0 §7"],
@@ -1785,6 +1800,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-L10N-MISSING",
         summary: "A compiled line record is missing text for a locale its localization bundle declares.",
         spec: &["dsl 0.8.0 §7"],
+    },
+    Code {
+        code: "W-L10N-STALE",
+        summary: "A merged translation was made from a different source text than the record's current one — the line, option label or prompt changed after the `lute loc export` the translator worked from (its stored `sourceHash` differs). The translation is still merged; re-export and update it.",
+        spec: &["dsl 0.47.0 §3.2"],
     },
     Code {
         code: "W-LINE-CODE-UNTAGGED",

@@ -19,9 +19,11 @@
 - [`connect-scenes/`](connect-scenes/) is the project the website's *Connect scenes into a story* page builds: scenes chained with one shape-only occasion (`on: chapter`), `after:`, descending `priority:` and `when:` endings, played by `plays/*.play.yaml` and pinned by `tests/`. [`episodes/`](episodes/) is the two-scene project of *Write your first scene*.
 - Worked-example spot picks: [`quest-grove.lute`](quest-grove.lute) (a lone quest with authored `fail=` and derived completion), [`quest-subquest.lute`](quest-subquest.lute) (a parent that names required + optional children via `<objective quest="…"/>`, spec: [`docs/superpowers/specs/2026-08-31-lute-subquest-design.md`](../superpowers/specs/2026-08-31-lute-subquest-design.md)), and [`capability-permissions/`](capability-permissions/) (absent versus explicit-empty permission fields, an authored reward accepted normally but denied by a trusted host profile, and a forbidden streamed write rejected before IR emission).
 
-[`quayside/`](quayside/) is the complete Lute 0.46 town-game tutorial project:
+[`quayside/`](quayside/) is the complete town-game tutorial project:
 it combines a named clock, gated occasions, static lore barks, play refusals,
-named ending bindings, and a player-web host recipe.
+named ending bindings, a player-web host recipe, a second play-through
+(`user.*`, `prev.run`, `plays/second-run.play.yaml`) and a Korean translation
+(`locales/ko.json` from `lute loc export`, `locales/bundle.json` from `lute loc import`).
 
 ## Games
 

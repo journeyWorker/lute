@@ -51,6 +51,9 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
                     .collect(),
             )
         }
+        PatchRefusal::Format { path } => {
+            value["path"] = serde_json::json!(path);
+        }
         PatchRefusal::Io { .. } => unreachable!(),
     }
     envelope::report(envelope::version::PATCH, 2, value)
