@@ -200,8 +200,11 @@ delivery fields are `role`, `lineId`, `voiceKey`, `as`, `emotion`, `segments`,
 `text` and `segments` have their `{{…}}` markers replaced by the rendered
 values; `texts` and `localeSegments` (dsl 0.47.0 §2.2) are the command's
 translations with each marker replaced by the value the source rendered for
-the marker with the same text (translators may reorder markers; a marker the
-source does not have stays as written). Grant records
+the marker with the same referent — the text inside `{{ }}`, trimmed
+(translators may reorder markers; a marker the source does not have stays as
+written). The translations are plain text with escapes decoded, so a
+translation cannot show a literal `{{…}}` whose referent equals a source
+marker's: `\{{x}}` in a translation still shows the value. Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
 machine's remaining fields; `instance` is the settlement key. The host
 settles the grant, not the runtime.

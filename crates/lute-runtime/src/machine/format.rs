@@ -176,28 +176,37 @@ pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usi
 }
 
 /// `text` (a translation) with each `{{…}}` marker replaced by the value
-/// `by_marker` holds for the same marker text — the value the source line
-/// rendered for it (dsl 0.47.0 §2.2), so a translator's reordering keeps
-/// each value with its marker. A marker the source does not have stays as
-/// written.
-pub(super) fn substitute_by_marker(text: &str, by_marker: &[(&str, &str)]) -> String {
+/// the source line rendered for its marker with the same referent — the
+/// inner text trimmed, as the parser reads it, so `{{ run.a }}` matches
+/// `{{run.a}}` (dsl 0.47.0 §2.2). `source` is the line's plain text and
+/// `rendered` its markers' values in order, so a translator's reordering
+/// keeps each value with its marker. A marker the source does not have
+/// stays as written. The plain text keeps no escapes: a literal `{{…}}` in
+/// a translation (written `\{{…}}`) is a marker here too.
+pub(super) fn substitute_by_marker(text: &str, source: &str, rendered: &[String]) -> String {
     splice_markers(text, |marker| {
-        by_marker
-            .iter()
-            .find(|(source, _)| *source == marker)
-            .map(|(_, value)| *value)
+        let referent = referent_of(marker);
+        markers(source)
+            .zip(rendered)
+            .find(|(source_marker, _)| referent_of(source_marker) == referent)
+            .map(|(_, value)| value.as_str())
     })
 }
 
 /// The `{{…}}` markers of `text`, left to right, as written.
-pub(super) fn marker_texts(text: &str) -> Vec<&str> {
-    let mut out = Vec::new();
+fn markers(text: &str) -> impl Iterator<Item = &str> {
     let mut rest = text;
-    while let Some((open, end)) = next_marker(rest) {
-        out.push(&rest[open..end]);
+    std::iter::from_fn(move || {
+        let (open, end) = next_marker(rest)?;
+        let marker = &rest[open..end];
         rest = &rest[end..];
-    }
-    out
+        Some(marker)
+    })
+}
+
+/// A `{{…}}` marker's inner text, trimmed.
+fn referent_of(marker: &str) -> &str {
+    marker[2..marker.len() - 2].trim()
 }
 
 /// The byte range of `rest`'s first complete `{{…}}` marker.

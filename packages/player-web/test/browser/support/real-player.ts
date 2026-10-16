@@ -119,9 +119,11 @@ export const press = (player: RealPlayer, key: string): void => {
 /**
  * Play until `stop` holds: New game at the title (text speed instant), the
  * first idle menu entry at idle, and at a choice the first open option whose
- * id is in `prefer`, else the first open option. Every other state is
- * advanced with Enter ({@link press}): sounds, and the batches that wait for
- * them, wait for the device input that unlocks player-web's audio.
+ * id is in `prefer`, else the first open option. A line is advanced with
+ * Enter ({@link press}) only once it is shown and drawn, so no line is
+ * skipped under load; audio is unlocked first with Escape, as in
+ * {@link playReading} (sounds, and the batches that wait for them, wait for
+ * player-web's audio unlock). A blank shown line fails.
  */
 export const playUntil = async (
   player: RealPlayer,
@@ -129,31 +131,13 @@ export const playUntil = async (
   prefer: ReadonlyArray<string> = [],
   timeoutMs = 120_000
 ): Promise<PlayerView> => {
-  const deadline = performance.now() + timeoutMs
-  const trail: string[] = []
-  for (;;) {
-    const view = await player.view()
-    if (stop(view)) return view
-    const state = `${view.flow}/${view.story}/${view.overlay}`
-    if (trail.at(-1) !== state) trail.push(state)
-    if (performance.now() > deadline) throw new Error(`stop condition not reached: ${trail.slice(-20).join(" ")}`)
-    if (view.flow === "title") {
-      await player.act({ type: "setSettings", settings: { textSpeed: 0 } })
-      await player.act({ type: "newGame" })
-    } else if (view.flow === "playing" && view.story === "idle") {
-      await player.act({ type: "pickIdle", index: 0 })
-    } else if (view.flow === "playing" && view.story === "choice") {
-      const current = await Effect.runPromise(SubscriptionRef.get(player.handle.session.current))
-      if (current.await.type === "awaitChoice") {
-        const open = current.await.menu.options.filter((option) => option.verdict === "open")
-        const option = open.find((candidate) => prefer.includes(candidate.id)) ?? open[0]
-        if (option !== undefined) await player.act({ type: "choose", option: option.id })
-      }
-    } else if (view.flow === "playing") {
-      press(player, "Enter")
-    }
-    await Effect.runPromise(Effect.sleep("15 millis"))
-  }
+  let stopped: PlayerView | undefined
+  await playReading(player, (_reading, view) => {
+    if (stop(view)) stopped = view
+    return stopped !== undefined
+  }, prefer, undefined, timeoutMs)
+  if (stopped === undefined) throw new Error("playReading returned before the stop condition held")
+  return stopped
 }
 
 /** The dialogue window's drawn texts: the speaker plate (when shown), then the line. */
@@ -172,7 +156,7 @@ export interface Reading {
 export const shows = (drawn: ReadonlyArray<string>, text: string): boolean => drawn.some((piece) => piece.includes(text))
 
 /**
- * Play like {@link playUntil} (text speed instant), recording each dialogue
+ * Play as {@link playUntil} describes (text speed instant), recording each dialogue
  * line and choice menu as drawn, and never advancing a line before it has
  * been read: Enter is pressed only on a `shown` line, after recording it,
  * and audio is unlocked first with Escape (the menu, closed again). `stop`

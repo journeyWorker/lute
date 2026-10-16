@@ -1,9 +1,9 @@
 //! dsl 0.47.0 §2.2 (#122): the runtime's `line` record carries `texts` and
 //! `localeSegments` with each translation's `{{…}}` markers replaced by the
-//! value the source rendered for the marker with the same text — markers a
-//! translator reordered keep their values, and a marker the source does not
-//! have stays as written. `lute run --json` (the conformance record) leaves
-//! them out.
+//! value the source rendered for the marker with the same referent (inner
+//! text trimmed) — markers a translator reordered or spaced differently keep
+//! their values, and a marker the source does not have stays as written.
+//! `lute run --json` (the conformance record) leaves them out.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -56,12 +56,16 @@ once: false
 ::set{run.b = 5}
 @narrator{code=\"0010\"}: First {{run.a}}, then {{run.b}}.
 @narrator{code=\"0020\"}: :speed[Count {{run.a}}]{rate=1.5} and {{run.b}}.
+@narrator{code=\"0030\"}: Total {{ run.a }}.
 ";
 
 /// The ko translations: line 0010 reorders its markers and adds one the
-/// source does not have; line 0020 moves `{{run.b}}` into the modified run.
-const KO_0010: &str = "먼저 {{run.b}}, 그다음 {{run.a}} {{run.c}}.";
+/// source does not have; line 0020 moves `{{run.b}}` into the modified run;
+/// line 0030 spaces its markers unlike the source and writes an escaped
+/// `\{{run.a}}`, which the compiler's plain text keeps as `{{run.a}}`.
+const KO_0010: &str = "먼저 {{ run.b }}, 그다음 {{run.a}} {{run.c}}.";
 const KO_0020: &str = ":speed[{{run.b}} 세기]{rate=1.5} 그리고 {{run.a}}.";
+const KO_0030: &str = "합계 {{run.a}}, 글자 \\{{run.a}}.";
 
 fn project(dir: &Path) {
     write(
@@ -101,6 +105,8 @@ fn compile_localized(dir: &Path, out: &Path) {
                 row["text"] = json!(KO_0010);
             } else if line.ends_with("narrator_0020") {
                 row["text"] = json!(KO_0020);
+            } else if line.ends_with("narrator_0030") {
+                row["text"] = json!(KO_0030);
             }
             row
         })
@@ -160,13 +166,13 @@ fn a_line_record_carries_its_translations_rendered_by_marker_text() {
     let out = scratch.join("bundle");
     compile_localized(&scratch, &out);
     let lines = line_records(&out);
-    assert_eq!(lines.len(), 2, "{lines:#?}");
+    assert_eq!(lines.len(), 3, "{lines:#?}");
 
     assert_eq!(lines[0]["text"], "First 3, then 5.");
     assert_eq!(
         lines[0]["texts"],
         json!({"ko": "먼저 5, 그다음 3 {{run.c}}."}),
-        "reordered markers keep their values; an unknown one stays as written"
+        "reordered and spaced markers keep their values; an unknown one stays as written"
     );
     assert!(lines[0].get("localeSegments").is_none(), "{:#?}", lines[0]);
 
@@ -183,6 +189,12 @@ fn a_line_record_carries_its_translations_rendered_by_marker_text() {
         lines[1]["segments"],
         json!([{"text": "Count 3", "rate": 1.5}, {"text": " and 5."}])
     );
+
+    // A spaced source marker matches an unspaced translation marker. The
+    // plain text keeps no escape, so a literal `{{run.a}}` equal to a source
+    // marker is replaced too (documented in the runtime contract).
+    assert_eq!(lines[2]["text"], "Total 3.");
+    assert_eq!(lines[2]["texts"], json!({"ko": "합계 3, 글자 3."}));
 }
 
 #[test]

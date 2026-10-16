@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value as Json};
 
-use super::format::{marker_texts, substitute_by_marker, substitute_markers, value_to_json};
+use super::format::{substitute_by_marker, substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
 use crate::driver::{Driver, SiteKind};
 use crate::eval::Read;
@@ -89,12 +89,6 @@ impl<D: Driver> Machine<D> {
         // the line text and its segments both splice from that list.
         let rendered = self.render_markers(raw, placeholders);
         let text = substitute_markers(raw, &rendered, &mut 0);
-        // dsl 0.47.0 §2.2: a translation's markers take the value the source
-        // rendered for the marker with the same text.
-        let by_marker: Vec<(&str, &str)> = marker_texts(raw)
-            .into_iter()
-            .zip(rendered.iter().map(String::as_str))
-            .collect();
         let mut rec = serde_json::Map::new();
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("line".into()));
@@ -105,16 +99,18 @@ impl<D: Driver> Machine<D> {
         // re-join the artifact to know who spoke, how, under which audio key
         // and what each locale reads. (`lute run`'s driver drops them: its
         // record is the conformance contract.)
+        // dsl 0.47.0 §2.2: a translation's markers take the value the source
+        // rendered for the marker with the same referent.
         for key in LINE_DELIVERY_KEYS {
             if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
                 let v = match key {
                     "segments" => segments_with(v, &rendered),
                     "texts" => per_locale(v, |text| match text.as_str() {
-                        Some(text) => Json::String(substitute_by_marker(text, &by_marker)),
+                        Some(text) => Json::String(substitute_by_marker(text, raw, &rendered)),
                         None => text.clone(),
                     }),
                     "localeSegments" => {
-                        per_locale(v, |runs| locale_segments_with(runs, &by_marker))
+                        per_locale(v, |runs| locale_segments_with(runs, raw, &rendered))
                     }
                     _ => v.clone(),
                 };
@@ -140,8 +136,9 @@ fn per_locale(map: &Json, render: impl Fn(&Json) -> Json) -> Json {
 }
 
 /// A translation's `segments` with each text run's `{{…}}` markers replaced
-/// by the source's rendered value for the same marker text.
-fn locale_segments_with(segments: &Json, by_marker: &[(&str, &str)]) -> Json {
+/// by the value the source (`raw`, its markers `rendered`) gave the marker
+/// with the same referent.
+fn locale_segments_with(segments: &Json, raw: &str, rendered: &[String]) -> Json {
     let Some(runs) = segments.as_array() else {
         return segments.clone();
     };
@@ -150,7 +147,7 @@ fn locale_segments_with(segments: &Json, by_marker: &[(&str, &str)]) -> Json {
         .map(|run| {
             let mut run = run.clone();
             if let Some(text) = run.get("text").and_then(Json::as_str) {
-                let text = substitute_by_marker(text, by_marker);
+                let text = substitute_by_marker(text, raw, rendered);
                 run["text"] = Json::String(text);
             }
             run

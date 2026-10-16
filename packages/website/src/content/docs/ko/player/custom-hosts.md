@@ -353,7 +353,7 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), branch와 hub 프롬프트(`promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
 
-대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line이 같은 텍스트의 마커에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남습니다. 선택지 라벨은 0.46과 같습니다(`{{…}}` 마커를 렌더링하지 않음).
+대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트, 앞뒤 공백 제외)에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남고, 원본 마커와 같은 `{{…}}`는 글자 그대로 보여 줄 수 없습니다([현지화 텍스트](/ko/tooling/runtime-contract/#현지화-텍스트) 참고). 선택지 라벨은 0.46과 같습니다(`{{…}}` 마커를 렌더링하지 않음).
 
 ## 롤백과 기록
 
