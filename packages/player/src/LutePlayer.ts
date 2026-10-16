@@ -101,7 +101,6 @@ const build = Effect.fn("Lute.Player.make")(function* (options: LutePlayerOption
   const playerSession = Context.get(
     yield* Layer.build(sessionLayer({
       bindings,
-      bundle,
       cast: bundle.index.cast ?? {},
       ...(seed === undefined ? {} : { seed }),
       ...(lineage === undefined ? {} : { lineage })

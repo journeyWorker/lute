@@ -368,6 +368,8 @@ The locale is a setting (`settings.locale`), not a mount option. A loaded bundle
 
 For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (`texts[locale]`), branch and hub prompts (`promptTexts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
 
+A dialogue line and a backlog entry take their translation from the runtime's `line` record, not from the compiled artifact: the record carries `texts` and `localeSegments` with every `{{…}}` marker already replaced by its value. A translation's marker gets the value the source line rendered for the marker with the same text, so a translator may reorder markers; a marker the source line does not have stays as written. Option labels keep the 0.46 behaviour (their `{{…}}` markers are not rendered).
+
 ## Rollback and history
 
 The session retains the last `settings.rollbackDepth` input points (default 100). Each point contains runtime state, await, stage, backlog length, and log length. `rollback` interrupts current cue fibers, restores the selected point's stage through `Presenter.restore`, restarts its music, and resumes from that await. If no earlier point remains, the core returns `NothingToRollback`. It never serializes an XState actor snapshot as a save.

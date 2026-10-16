@@ -1,0 +1,24 @@
+[
+  {
+    "code": "0010",
+    "file": "project/tally.lute",
+    "kind": "line",
+    "line": 13,
+    "lineId": "tally.narrator_0010",
+    "source": null,
+    "sourceHash": "sha256:66d1a13c54b0de003b9ed702a7a0b3665d2618f92609e3aef8143c76d2f8d2c1",
+    "speaker": "narrator",
+    "text": "먼저 {{run.b}}, 그다음 {{run.a}}."
+  },
+  {
+    "code": "0020",
+    "file": "project/tally.lute",
+    "kind": "line",
+    "line": 14,
+    "lineId": "tally.narrator_0020",
+    "source": null,
+    "sourceHash": "sha256:9d033e98cf05482e9652907e1638456262fbfb053d42087643fa1b9bc15a83e3",
+    "speaker": "narrator",
+    "text": ":speed[{{run.b}} 세기]{rate=1.5} 그리고 {{run.a}}."
+  }
+]

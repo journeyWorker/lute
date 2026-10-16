@@ -62,7 +62,7 @@ interface Cue {
   readonly id: number                 // position in its batch
   readonly kind: CueKind              // "line" | staging kinds | "barrier" | "choiceRecord" | "state" | "plugin" | "presentation" | …
   readonly timing: CueTiming          // normalized: wait, delay, duration, at, timeline (all resolved defaults)
-  readonly blocking: boolean          // lines, sequences and wait:true cues block the batch
+  readonly blocking: boolean          // lines, sequences, presentation and wait:true cues block the batch
   readonly stage: boolean             // affects persistent stage (actor/bg/cg/video/music): settled at an await
   readonly assets: ReadonlyArray<AssetKey>
   readonly execute: (ctx: CueContext) => Effect.Effect<void>   // normal play; completes when the effect finished
@@ -85,6 +85,10 @@ director's job (see `LineGate`). `LineView.speakerName` is the index `cast`
 name (`bundle.index.cast`, empty for narration); `emotion` / `variant` carry
 the line command's values.
 
+The cue of a runtime `presentation` event clears the dialogue window
+(`presenter.clearLine`) and waits by default (0.47 §2.7): it runs in order with
+the batch, so it can never wipe the presentation's first line.
+
 **One cue per event (normative).** `CueFactory.fromOutput` returns exactly
 one cue per output event, in event order. A host MAY wrap the factory relying
 on it.
@@ -96,7 +100,10 @@ switch while a batch plays calls `fromOutput` again for that batch with the new
 locale; each line cue still to start takes the cue at its index from the
 latest call, so the next line shown reads the new locale. A line reads
 `localeSegments[locale]`, else `texts[locale]`, else its source segments /
-text; an option label reads `texts[locale]`, else its source text; a branch/hub
+text — all from the runtime's `line` record, whose `{{…}}` markers the runtime
+already replaced with their values (a translation's marker takes the value the
+source rendered for the same marker text, 0.47); the IR command's templates are
+never shown. An option label reads `texts[locale]`, else its source text; a branch/hub
 prompt reads the record's `promptTexts[locale]`, else its source `prompt`. A bundle's
 locales come from `bundleLocales(bundle)`: the **source locale** is the
 index's `contentLang`, else the `contentLang` of the first artifact (in
@@ -238,10 +245,9 @@ The input log starts with `{ seed }` (the `seed` option) or `{ snapshot }`
 
 Each start is followed by the bound `flow.newGame` raise, the events
 concatenated in order with the last await. Backlog names come from the `cast`
-option (the index `cast`); with the `bundle` option a backlog entry also keeps
-its line command's `texts` and `localeSegments` (runtime records carry source
-text only), and the director resolves them for the current locale when the
-`Backlog` screen opens (`localizedEntry`).
+option (the index `cast`); a backlog entry also keeps the runtime `line`
+record's rendered `texts` and `localeSegments`, and the director resolves them
+for the current locale when the `Backlog` screen opens (`localizedEntry`).
 
 ### stores (`stores/`)
 

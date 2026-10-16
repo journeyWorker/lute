@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: tally
+profiles:
+  tally:
+    plugins: { tally.occasions: true }
+defaults:
+  luteVersion: "0.46.0"
+  contentLang: en-US
+  uses: [world.schema.yaml]

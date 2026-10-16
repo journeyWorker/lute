@@ -1,0 +1,15 @@
+---
+kind: scene
+id: tally
+title: Tally
+on: visit
+once: false
+---
+
+## Tally
+
+::set{run.a = 3}
+::set{run.b = 5}
+@narrator{code="0010"}: First {{run.a}}, then {{run.b}}.
+@narrator{code="0020"}: :speed[Count {{run.a}}]{rate=1.5} and {{run.b}}.
+::set{run.over = true}

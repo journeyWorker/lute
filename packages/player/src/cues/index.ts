@@ -49,7 +49,9 @@ const timingOf = (value: unknown, kind: string): CueTiming => {
   const atValue = field(source, "at")
   const timelineValue = field(source, "timeline")
   const explicitWait = field(source, "wait")
-  const defaultWait = kind === "line" || kind === "sequence" || (kind === "video" && field(value, "display") === "show") || kind === "barrier"
+  // Spec 0.47.0 §2.7: a `presentation` cue clears the dialogue window, so it
+  // runs in order — forked, it would wipe the batch's first line.
+  const defaultWait = kind === "line" || kind === "sequence" || (kind === "video" && field(value, "display") === "show") || kind === "barrier" || kind === "presentation"
   return {
     delay: number(delayValue) ? delayValue : 0,
     duration: number(durationValue) ? durationValue : undefined,
@@ -225,27 +227,24 @@ const decodeTranslations = Schema.decodeUnknownOption(Schema.Struct({
 }))
 
 /**
- * Looks up the translations of the line command a runtime record came from
- * (by its document and position): the artifact's `texts` and
- * `localeSegments`, when it has any. Runtime records carry source text only.
+ * The translations a runtime `line` record carries: its `texts` and
+ * `localeSegments`, each `{{…}}` marker already replaced by the value the
+ * runtime rendered (spec 0.47.0 §2.2), when it has any.
  */
-export const lineTranslations = (bundle: Bundle): ((document: string, position: string) => LineTranslations | undefined) => {
-  const commands = commandIndexFrom(bundle)
-  return (document, position) => {
-    const source = commands.get(document)?.get(position)
-    if (source === undefined || kindOf(source) !== "line") return undefined
-    const decoded = decodeTranslations({
-      ...(source.texts === undefined ? {} : { texts: source.texts }),
-      ...(source.localeSegments === undefined ? {} : { localeSegments: source.localeSegments })
-    })
-    if (Option.isNone(decoded)) return undefined
-    const { texts, localeSegments } = decoded.value
-    if (texts === undefined && localeSegments === undefined) return undefined
-    return { ...(texts === undefined ? {} : { texts }), ...(localeSegments === undefined ? {} : { localeSegments }) }
-  }
+export const recordTranslations = (value: { readonly texts?: unknown; readonly localeSegments?: unknown }): LineTranslations | undefined => {
+  const decoded = decodeTranslations({
+    ...(value.texts === undefined ? {} : { texts: value.texts }),
+    ...(value.localeSegments === undefined ? {} : { localeSegments: value.localeSegments })
+  })
+  if (Option.isNone(decoded)) return undefined
+  const { texts, localeSegments } = decoded.value
+  if (texts === undefined && localeSegments === undefined) return undefined
+  return { ...(texts === undefined ? {} : { texts }), ...(localeSegments === undefined ? {} : { localeSegments }) }
 }
 
-const LINE_RUNTIME_FIELDS = ["lineId", "role", "speaker", "text", "voiceKey"] as const
+// The record's rendered text, segments and translations replace the IR's
+// `{{…}}` templates.
+const LINE_RUNTIME_FIELDS = ["lineId", "role", "speaker", "text", "voiceKey", "segments", "texts", "localeSegments"] as const
 const lineRuntimeFields = (value: JsonRecord): JsonRecord =>
   Object.fromEntries(LINE_RUNTIME_FIELDS.flatMap((key) => (key in value ? [[key, value[key]]] : [])))
 

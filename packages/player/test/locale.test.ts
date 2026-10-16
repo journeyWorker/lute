@@ -2,7 +2,7 @@
 import { Effect, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { describe, expect, it } from "@effect/vitest"
-import { compileQuayKorean } from "./fixtures.js"
+import { compileQuayKorean, compileTallyKorean } from "./fixtures.js"
 import { flush } from "./director/support.js"
 import { act, hostLayer, player, recorder, textOf } from "./player.js"
 import type { ScreenModel } from "../src/ports/index.js"
@@ -117,4 +117,39 @@ describe("translated text follows the locale setting (§2.2)", () => {
       expect(recorded.lines.map(textOf)).toEqual(["The bell is ringing."])
     }))
   })))
+})
+
+describe("a translation's {{…}} markers show their values (§2.2)", () => {
+  const overTally = <A, E, R>(use: Effect.Effect<A, E, R>) =>
+    Effect.flatMap(compileTallyKorean, (bundle) => Effect.provide(use, hostLayer(bundle)))
+
+  it.effect("Korean lines and the backlog read the values, each with its marker though the translation reorders them", () => overTally(Effect.scoped(Effect.gen(function* () {
+    const recorded = recorder()
+    const handle = yield* player(recorded)
+    yield* act(handle, { type: "setSettings", settings: { locale: "ko" } })
+    yield* act(handle, { type: "newGame" })
+    expect(recorded.lines.map(textOf)).toEqual(["먼저 5, 그다음 3.", "5 세기 그리고 3."])
+    // The modified line keeps its translated runs, rendered.
+    expect(recorded.lines[1]?.segments).toEqual([
+      { _tag: "Text", text: "5 세기", styles: [], rate: 1.5 },
+      { _tag: "Text", text: " 그리고 3.", styles: [] }
+    ])
+    yield* act(handle, { type: "openBacklog" })
+    expect(lastScreen(recorded.screens, "Backlog")?.entries.map((entry) => entry.text)).toEqual(["먼저 5, 그다음 3.", "5 세기 그리고 3."])
+    expect((yield* handle.snapshot).backlog.map((entry) => entry.localeSegments)).toEqual([
+      undefined,
+      { ko: [{ text: "5 세기", rate: 1.5 }, { text: " 그리고 3." }] }
+    ])
+  }))))
+
+  it.effect("the source locale reads the values too, a modified line's runs included", () => overTally(Effect.scoped(Effect.gen(function* () {
+    const recorded = recorder()
+    const handle = yield* player(recorded)
+    yield* act(handle, { type: "newGame" })
+    expect(recorded.lines.map(textOf)).toEqual(["First 3, then 5.", "Count 3 and 5."])
+    expect(recorded.lines[1]?.segments).toEqual([
+      { _tag: "Text", text: "Count 3", styles: [], rate: 1.5 },
+      { _tag: "Text", text: " and 5.", styles: [] }
+    ])
+  }))))
 })

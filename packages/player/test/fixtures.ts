@@ -61,3 +61,11 @@ export const compileQuayKorean: Effect.Effect<string> = compileTranslated(quayPr
  * translated to Korean (`ko.json`, from `lute loc export`), source locale `en`.
  */
 export const compileHubKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "hub-locale", "project"), [join(fixtures, "hub-locale", "ko.json")])
+
+/**
+ * `tally-locale`: one scene that sets `run.a = 3` and `run.b = 5`, then two
+ * narrator lines with `{{run.a}}` / `{{run.b}}` — the second with a `:speed`
+ * modifier — whose Korean translations (`ko.json`) put the markers in the
+ * other order; source locale `en-US`. `visit` starts it.
+ */
+export const compileTallyKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "tally-locale", "project"), [join(fixtures, "tally-locale", "ko.json")])

@@ -23,6 +23,8 @@ export interface Recorder {
   readonly lines: Array<LineView>
   readonly choices: Array<ChoiceView>
   readonly screens: Array<ScreenModel>
+  /** The dialogue window in call order: `line <text>` per `showLine`, `clear` per `clearLine`. */
+  readonly dialogue: Array<string>
   readonly presenter: Presenter
 }
 
@@ -30,11 +32,15 @@ export const recorder = (): Recorder => {
   const lines: Array<LineView> = []
   const choices: Array<ChoiceView> = []
   const screens: Array<ScreenModel> = []
+  const dialogue: Array<string> = []
   const presenter: Presenter = {
     stage: () => Effect.void,
-    showLine: (line) => Effect.sync(() => { lines.push(line) }),
+    showLine: (line) => Effect.sync(() => {
+      lines.push(line)
+      dialogue.push(`line ${textOf(line)}`)
+    }),
     revealLine: Effect.void,
-    clearLine: Effect.void,
+    clearLine: Effect.sync(() => { dialogue.push("clear") }),
     restore: () => Effect.void,
     // The reader answers through `actions({ type: "choose" })`.
     showChoice: (choice) => Effect.andThen(Effect.sync(() => { choices.push(choice) }), Effect.never),
@@ -46,7 +52,7 @@ export const recorder = (): Recorder => {
     capture: Effect.succeed(""),
     actions: Stream.empty
   }
-  return { lines, choices, screens, presenter }
+  return { lines, choices, screens, dialogue, presenter }
 }
 
 const audio: AudioPort = { play: () => Effect.void, stop: () => Effect.void, setVolumes: () => Effect.void }

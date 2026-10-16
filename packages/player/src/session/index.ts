@@ -1,9 +1,8 @@
 /** Runtime-backed player session with rollback, saves, and backlog. */
 import { Context, Effect, Exit, Layer, Schema, Semaphore, SubscriptionRef } from "effect"
 import { Session as RuntimeSession } from "@lute-lang/runtime"
-import type { Bundle, Contract, Errors } from "@lute-lang/runtime"
-import { lineTranslations } from "../cues/index.js"
-import type { LineTranslations } from "../cues/index.js"
+import type { Contract, Errors } from "@lute-lang/runtime"
+import { recordTranslations } from "../cues/index.js"
 import type { Bindings, Input, InputPoint, LogEntry, Output, SaveRuntime } from "../model.js"
 import type { BacklogEntry, Settings } from "../ports/index.js"
 
@@ -110,8 +109,6 @@ export interface SessionOptions {
   readonly settings?: Pick<Settings, "rollbackDepth">
   /** The bundle index `cast` (cast id → display name) for backlog names; narration has none. */
   readonly cast?: Readonly<Record<string, string>>
-  /** The loaded bundle: backlog entries keep their line's translations from its artifacts. */
-  readonly bundle?: Bundle.Bundle
   /**
    * Where New game continues a play-through when `newRun` cannot be sent
    * where the session waits. `LutePlayer.make` passes the profile's lineage
@@ -126,11 +123,7 @@ export const localizedEntry = (entry: BacklogEntry, locale: string): BacklogEntr
   return translated === undefined ? entry : { ...entry, text: translated }
 }
 
-const linesFromOutput = (
-  output: Output,
-  cast: Readonly<Record<string, string>>,
-  translations: ((document: string, position: string) => LineTranslations | undefined) | undefined
-): ReadonlyArray<BacklogEntry> => {
+const linesFromOutput = (output: Output, cast: Readonly<Record<string, string>>): ReadonlyArray<BacklogEntry> => {
   const result: BacklogEntry[] = []
   for (const event of output.events) {
     if (event.type !== "record" || typeof event.record !== "object" || event.record === null) continue
@@ -144,12 +137,12 @@ const linesFromOutput = (
     const speaker = value("speaker")
     const voice = value("voiceKey")
     const role = value("role")
-    const position = value("position")
     const speakerName = typeof speaker !== "string" || role === "narration" || speaker === "narrator"
       ? ""
       : cast[speaker] ?? speaker
     const voiceKey = typeof voice === "string" ? voice : ""
-    const translated = translations !== undefined && typeof position === "string" ? translations(event.document, position) : undefined
+    // The record's translations, markers rendered (spec 0.47.0 §2.2).
+    const translated = recordTranslations({ texts: value("texts"), localeSegments: value("localeSegments") })
     result.push({ lineId: lineIdValue, voiceKey, speakerName, text, hasVoice: voiceKey.length > 0, ...translated })
   }
   return result
@@ -172,7 +165,6 @@ export const layer = (
   Layer.effect(PlayerSession, Effect.gen(function* () {
     const runtime = yield* RuntimeSession.Session
     const cast = options.cast ?? {}
-    const translations = options.bundle === undefined ? undefined : lineTranslations(options.bundle)
     const depth = Math.max(0, options.settings?.rollbackDepth ?? 100)
     const lock = yield* Semaphore.make(1)
     const backlog = yield* SubscriptionRef.make<ReadonlyArray<BacklogEntry>>([])
@@ -201,7 +193,7 @@ export const layer = (
       history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
       log = [...beforeLog, { input }]
       fresh = false
-      const added = linesFromOutput(output, cast, translations)
+      const added = linesFromOutput(output, cast)
       yield* SubscriptionRef.set(backlog, [...beforeBacklog, ...added])
       return output
     })
