@@ -2,7 +2,7 @@
 // (spec 0.47.0 §6) and provides their URLs; vite serves them through `/@fs/`.
 import { join } from "node:path"
 import type { TestProject } from "vitest/node"
-import { compileProject, demoProject, packageRoot, wasmFile } from "../support/bundle.js"
+import { compileProject, demoLocales, demoProject, packageRoot, wasmFile } from "../support/bundle.js"
 
 /** URLs of a compiled project, as `mount` takes them. */
 export interface RealProjectUrls {
@@ -12,11 +12,15 @@ export interface RealProjectUrls {
   readonly wasmUrl: string
 }
 
-/** Projects the suite compiles: `demo` is examples/player-demo, the rest live in test/fixtures. */
+/**
+ * Projects the suite compiles: `demo` is examples/player-demo (with its
+ * Korean locale bundle), the rest live in test/fixtures.
+ */
 export const realProjects = {
-  demo: demoProject,
-  "cg-stage": join(packageRoot, "test/fixtures/cg-stage")
-} as const
+  demo: { dir: demoProject, locales: demoLocales },
+  "cg-stage": { dir: join(packageRoot, "test/fixtures/cg-stage") },
+  "title-text": { dir: join(packageRoot, "test/fixtures/title-text") }
+} as const satisfies Record<string, { readonly dir: string; readonly locales?: string }>
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -29,9 +33,9 @@ const fsUrl = (path: string): string => `/@fs${path}`
 const assets = `${fsUrl(join(demoProject, "assets"))}/`
 
 export default function setup(project: TestProject): void {
-  const urls = Object.fromEntries(Object.entries(realProjects).map(([name, dir]) => [name, {
-    bundleUrl: `${fsUrl(compileProject(`browser-${name}`, dir))}/`,
-    bindingsUrl: fsUrl(join(dir, "player.bindings.yaml")),
+  const urls = Object.fromEntries(Object.entries(realProjects).map(([name, entry]) => [name, {
+    bundleUrl: `${fsUrl(compileProject(`browser-${name}`, entry.dir, "locales" in entry ? entry.locales : undefined))}/`,
+    bindingsUrl: fsUrl(join(entry.dir, "player.bindings.yaml")),
     assetsUrl: assets,
     wasmUrl: fsUrl(wasmFile)
   }])) as Record<keyof typeof realProjects, RealProjectUrls>
