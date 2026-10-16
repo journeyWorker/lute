@@ -33,10 +33,14 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
         }
     };
     if let Some(message) = effect_shape_error(&text) {
-        return vec![(
-            path,
+        let mut out = vec![(
+            path.clone(),
             diag("E-BINDING-EFFECT", message, locate(&text, "effect")),
         )];
+        if let Some(declared) = declared_version(&text) {
+            check_version_value(&path, &text, &declared, &mut out);
+        }
+        return out;
     }
     let bindings = match yaml_serde::from_str::<Bindings>(&text) {
         Ok(value) => value,
@@ -52,13 +56,21 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
                     )
                 },
             );
-            return vec![(path, diag("E-BINDING-SHAPE", error.to_string(), span))];
+            let mut out = vec![(
+                path.clone(),
+                diag("E-BINDING-SHAPE", error.to_string(), span),
+            )];
+            if let Some(declared) = declared_version(&text) {
+                check_version_value(&path, &text, &declared, &mut out);
+            }
+            return out;
         }
     };
     let mut out = Vec::new();
     let anchor = |needle: &str| locate(&text, needle);
     check_title_shape(&path, &text, &bindings, &mut out);
-    check_bindings_version(&path, &text, &bindings, &mut out);
+    check_version_value(&path, &text, &bindings.bindings_version, &mut out);
+    check_section_lines(&path, &text, &bindings, &mut out);
     let mut domains = BTreeMap::<String, BTreeSet<String>>::new();
     let mut cast = BTreeSet::new();
     let mut occasions = BTreeMap::new();
@@ -296,10 +308,13 @@ pub(crate) fn toolchain_line() -> String {
 /// comparable pair; `None` for anything else.
 pub(crate) fn bindings_line(value: &str) -> Option<(u64, u64)> {
     let (major, minor) = value.split_once('.')?;
+    // A canonical decimal: `0` or digits without a leading zero, so a value
+    // that parses equal to the line is spelled exactly like it.
     let number = |part: &str| {
-        (!part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
-            .then(|| part.parse().ok())
-            .flatten()
+        let canonical = !part.is_empty()
+            && part.bytes().all(|b| b.is_ascii_digit())
+            && (part == "0" || !part.starts_with('0'));
+        canonical.then(|| part.parse().ok()).flatten()
     };
     Some((number(major)?, number(minor)?))
 }
@@ -347,44 +362,76 @@ fn check_title_shape(
     }
 }
 
+/// The declared `bindingsVersion` of a file that does not decode as
+/// [`Bindings`] (an unknown section, a bad effect): read alone, so the
+/// stale-value warning still says when the file is newer than the toolchain.
+fn declared_version(text: &str) -> Option<String> {
+    #[derive(serde::Deserialize)]
+    struct Declared {
+        #[serde(rename = "bindingsVersion")]
+        bindings_version: String,
+    }
+    yaml_serde::from_str::<Declared>(text)
+        .ok()
+        .map(|declared| declared.bindings_version)
+}
+
 /// 0.47.0 §4.2: `W-BINDINGS-VERSION-STALE` at the `bindingsVersion` value
-/// when it is not the toolchain line, and `E-BINDINGS-VERSION` at each
-/// section newer than a `MAJOR.MINOR` declared line.
-fn check_bindings_version(
+/// when it is not the toolchain line — older, newer or not `MAJOR.MINOR`.
+/// The older wording names `lute fix` only when `lute fix` raises this file.
+fn check_version_value(
+    path: &Path,
+    text: &str,
+    declared: &str,
+    out: &mut Vec<(PathBuf, Diagnostic)>,
+) {
+    let line = toolchain_line();
+    if declared == line {
+        return;
+    }
+    let current = lute_check::LUTE_LANG_VERSION;
+    let message = match (bindings_line(declared), bindings_line(&line)) {
+        (Some(d), Some(l)) if d > l => format!(
+            "`bindingsVersion: \"{declared}\"` is newer than this toolchain's bindings line \
+             \"{line}\" (Lute {current}) — upgrade the toolchain; do not downgrade the stamp \
+             (dsl 0.47.0 §4.2)"
+        ),
+        (Some(_), _) => {
+            let fix = if crate::rewrite::fixes_bindings_version(text, path) {
+                " (`lute fix` does it)"
+            } else {
+                ""
+            };
+            format!(
+                "`bindingsVersion: \"{declared}\"` is stale — this toolchain's bindings line is \
+                 \"{line}\" (Lute {current}); update it to `bindingsVersion: \"{line}\"`{fix} \
+                 (dsl 0.47.0 §4.2)"
+            )
+        }
+        (None, _) => format!(
+            "`bindingsVersion: \"{declared}\"` is not `MAJOR.MINOR` — restamp it as \
+             `bindingsVersion: \"{line}\"`, this toolchain's bindings line (Lute {current}) \
+             (dsl 0.47.0 §4.2)"
+        ),
+    };
+    let span = yaml_span(text, &[YamlStep::Key("bindingsVersion"), YamlStep::Value])
+        .unwrap_or_else(|| locate(text, "bindingsVersion"));
+    out.push((
+        path.to_path_buf(),
+        diag("W-BINDINGS-VERSION-STALE", message, span),
+    ));
+}
+
+/// 0.47.0 §4.2: `E-BINDINGS-VERSION` at each section newer than a
+/// `MAJOR.MINOR` declared line.
+fn check_section_lines(
     path: &Path,
     text: &str,
     bindings: &Bindings,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
     let declared = bindings.bindings_version.as_str();
-    let line = toolchain_line();
-    let current = lute_check::LUTE_LANG_VERSION;
     let parsed = bindings_line(declared);
-    if declared != line {
-        let message = match (parsed, bindings_line(&line)) {
-            (Some(d), Some(l)) if d > l => format!(
-                "`bindingsVersion: \"{declared}\"` is newer than this toolchain's bindings line \
-                 \"{line}\" (Lute {current}) — upgrade the toolchain; do not downgrade the stamp \
-                 (dsl 0.47.0 §4.2)"
-            ),
-            (Some(_), _) => format!(
-                "`bindingsVersion: \"{declared}\"` is stale — this toolchain's bindings line is \
-                 \"{line}\" (Lute {current}); update it to `bindingsVersion: \"{line}\"` \
-                 (`lute fix` does it) (dsl 0.47.0 §4.2)"
-            ),
-            (None, _) => format!(
-                "`bindingsVersion: \"{declared}\"` is not `MAJOR.MINOR` — restamp it as \
-                 `bindingsVersion: \"{line}\"`, this toolchain's bindings line (Lute {current}) \
-                 (dsl 0.47.0 §4.2)"
-            ),
-        };
-        let span = yaml_span(text, &[YamlStep::Key("bindingsVersion"), YamlStep::Value])
-            .unwrap_or_else(|| locate(text, "bindingsVersion"));
-        out.push((
-            path.to_path_buf(),
-            diag("W-BINDINGS-VERSION-STALE", message, span),
-        ));
-    }
     let Some(declared_line) = parsed else {
         return;
     };

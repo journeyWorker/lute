@@ -521,7 +521,7 @@ YAML 처리는 텍스트를 바이트 단위로 읽으므로, 스칼라·따옴�
 
 툴체인보다 오래된 기존 언어 스탬프는 툴체인 버전으로 올립니다(0.41.1). `lute.project.yaml`의 `defaults: luteVersion`과 `.lute` 문서 자체의 frontmatter `luteVersion`이 대상이며, 각각 수정 하나로 세고 값 주변의 따옴표와 주석은 유지합니다. 따라서 해당 `W-LUTE-VERSION-STALE`이 사라집니다. 없는 스탬프는 추가하지 않으며, 더 새롭거나 `MAJOR.MINOR.PATCH` 형식이 아닌 스탬프는 그대로 둡니다.
 
-`player.bindings.yaml`의 `bindingsVersion`이 툴체인 라인(툴체인 버전의 `MAJOR.MINOR`)보다 오래된 `MAJOR.MINOR`이면 그 라인으로 올립니다(0.47). 수정 하나로 세고 값 주변의 따옴표와 주석은 유지하므로 해당 `W-BINDINGS-VERSION-STALE`이 사라집니다. 더 새롭거나 `MAJOR.MINOR` 형식이 아닌 값은 그대로 둡니다. [`bindingsVersion` 규칙](/ko/player/bindings/#bindingsversion)을 참고하세요.
+`player.bindings.yaml`의 `bindingsVersion`이 툴체인 라인(툴체인 버전의 `MAJOR.MINOR`)보다 오래된 `MAJOR.MINOR`이면 그 라인으로 올립니다(0.47). 수정 하나로 세고 값 주변의 따옴표와 주석은 유지하므로 해당 `W-BINDINGS-VERSION-STALE`이 사라집니다. 더 새롭거나 `MAJOR.MINOR` 형식이 아닌 값(앞에 0이 붙은 값 포함)과 하나의 flow 매핑으로 쓴 파일은 그대로 둡니다. [`bindingsVersion` 규칙](/ko/player/bindings/#bindingsversion)을 참고하세요.
 
 옛 문서화된 `volume` 단계를 그대로 쓰는 프로젝트에서는 그 단계의 이름을 바꿉니다(0.42). 프로젝트의 접힌(folded) `volume` 도메인이 정확히 `[silent, down, normal, up, full]`일 때 — `volume` 도메인을 보는 모든 문서에서 그 멤버가 그 순서로 — 선언, 모든 `volume=` 디렉티브 값, `player.bindings.yaml`의 `volumes:` 키에서 `down`은 `quiet`, `up`은 `loud`가 되며 토큰마다 수정 하나로 셉니다. 프로젝트가 직접 고른 레벨(부분집합, 다른 이름, 다른 순서)이거나 문서들이 서로 다르면 건드리지 않습니다. 프로젝트 밖의 `.lute` 파일은 자신의 프런트매터로 판단합니다.
 

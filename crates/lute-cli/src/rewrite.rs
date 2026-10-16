@@ -802,6 +802,12 @@ fn rewrite_lute_version(text: &str, file: &Path) -> Rewrite {
     apply_edits(text, edits)
 }
 
+/// Whether `lute fix` raises the `bindingsVersion` of `file` (text `text`):
+/// the stale-value warning names `lute fix` only then.
+pub(crate) fn fixes_bindings_version(text: &str, file: &Path) -> bool {
+    rewrite_bindings_version(text, file).changed > 0
+}
+
 /// 0.47.0 §4.2: raise the `bindingsVersion` of a `player.bindings.yaml` that
 /// is an older `MAJOR.MINOR` than the toolchain line to that line. Only the
 /// scalar's text is spliced (quotes, comments and layout survive); a current,

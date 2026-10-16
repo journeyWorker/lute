@@ -87,6 +87,8 @@ fn stale_newer_and_malformed_versions_warn_at_the_value() {
     let (major, minor) = line_pair();
     let older = format!("{major}.{}", minor - 1);
     let newer = format!("{major}.{}", minor + 1);
+    let zero_major = format!("0{line}");
+    let zero_minor = format!("{major}.0{minor}");
     for (tag, value, wording) in [
         (
             "older",
@@ -106,6 +108,18 @@ fn stale_newer_and_malformed_versions_warn_at_the_value() {
         (
             "word",
             "latest",
+            format!("is not `MAJOR.MINOR` — restamp it as `bindingsVersion: \"{line}\"`"),
+        ),
+        // Leading zeros parse equal to the line but are not its spelling, and
+        // `lute fix` does not raise them: restamp advice, not "stale".
+        (
+            "zero-major",
+            zero_major.as_str(),
+            format!("is not `MAJOR.MINOR` — restamp it as `bindingsVersion: \"{line}\"`"),
+        ),
+        (
+            "zero-minor",
+            zero_minor.as_str(),
             format!("is not `MAJOR.MINOR` — restamp it as `bindingsVersion: \"{line}\"`"),
         ),
     ] {
@@ -222,8 +236,73 @@ fn an_unknown_key_stays_a_shape_error() {
     let bindings =
         format!("bindingsVersion: '0.40'\n{CANVAS}ui:\n  title: {{text: Brinewake, heading: x}}\n");
     let diagnostics = check("bindings-unknown-key-047", &bindings);
-    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
-    assert_eq!(diagnostics[0]["code"], "E-BINDING-SHAPE", "{diagnostics:?}");
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        with_code(&diagnostics, "E-BINDING-SHAPE").len(),
+        1,
+        "{diagnostics:?}"
+    );
+    assert_eq!(
+        with_code(&diagnostics, "W-BINDINGS-VERSION-STALE").len(),
+        1,
+        "{diagnostics:?}"
+    );
+}
+
+/// A file newer than the toolchain that it cannot decode (an unknown
+/// section, an unknown effect) still says to upgrade the toolchain.
+#[test]
+fn an_undecodable_newer_file_still_says_upgrade_the_toolchain() {
+    let (major, minor) = line_pair();
+    let newer = format!("{major}.{}", minor + 1);
+    for (tag, body, code) in [
+        ("shape", "futureSection: {x: 1}\n", "E-BINDING-SHAPE"),
+        (
+            "effect",
+            "actions: {x: {effect: teleport}}\n",
+            "E-BINDING-EFFECT",
+        ),
+    ] {
+        let bindings = format!("bindingsVersion: '{newer}'\n{CANVAS}{body}");
+        let diagnostics = check(&format!("bindings-undecodable-{tag}-047"), &bindings);
+        assert_eq!(diagnostics.len(), 2, "{tag}: {diagnostics:?}");
+        assert_eq!(with_code(&diagnostics, code).len(), 1, "{diagnostics:?}");
+        let stale = with_code(&diagnostics, "W-BINDINGS-VERSION-STALE");
+        assert_eq!(stale.len(), 1, "{tag}: {diagnostics:?}");
+        assert!(
+            message(stale[0]).contains("upgrade the toolchain; do not downgrade the stamp"),
+            "{tag}: {}",
+            stale[0]
+        );
+        let start = stale[0]["span"]["byte_start"].as_u64().unwrap() as usize;
+        let end = stale[0]["span"]["byte_end"].as_u64().unwrap() as usize;
+        assert_eq!(&bindings[start..end], format!("'{newer}'"), "{tag}");
+    }
+}
+
+/// `lute fix` raises only a block-style top-level `bindingsVersion`; an older
+/// value in a flow-style document is stale, but the warning does not promise
+/// a fix that does not happen.
+#[test]
+fn a_flow_style_older_version_is_stale_without_naming_lute_fix() {
+    let before = "{bindingsVersion: '0.40', canvas: {width: 1, height: 1}}\n";
+    let diagnostics = check("bindings-flow-older-047", before);
+    let stale = with_code(&diagnostics, "W-BINDINGS-VERSION-STALE");
+    assert_eq!(stale.len(), 1, "{diagnostics:?}");
+    let text = message(stale[0]);
+    assert!(
+        text.contains(&format!("update it to `bindingsVersion: \"{}\"`", line())),
+        "{text}"
+    );
+    assert!(!text.contains("lute fix"), "{text}");
+
+    let dir = project("fix-bindings-flow-047", before);
+    let out = run(&["fix"], &dir);
+    assert!(out.contains("lute: applied 0 fix(es)"), "{out}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("player.bindings.yaml")).unwrap(),
+        before
+    );
 }
 
 /// Diagnostics other than the "newer" stamp warning a pre-0.47 toolchain
@@ -332,6 +411,8 @@ fn fix_leaves_current_newer_and_malformed_versions_alone() {
         ("newer", format!("{major}.{}", minor + 1)),
         ("triple", "0.40.0".to_string()),
         ("word", "latest".to_string()),
+        ("zero-major", format!("0{}", line())),
+        ("zero-minor", format!("{major}.0{minor}")),
     ] {
         let before = format!("bindingsVersion: '{value}'\n{CANVAS}");
         let dir = project(&format!("fix-bindings-keep-{tag}-047"), &before);

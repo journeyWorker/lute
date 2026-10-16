@@ -67,7 +67,7 @@ flow:
 
 - 값이 툴체인 라인과 다르면 `lute check-project`가 그 값 위치에 `W-BINDINGS-VERSION-STALE`을 보고합니다. 더 오래된 라인이면 툴체인 라인으로 올리라고 안내하며 `lute fix`가 이를 수행합니다. 더 새로운 라인이면 스탬프를 낮추지 말고 툴체인을 업그레이드하라고 안내합니다. `MAJOR.MINOR` 형식이 아닌 값(예: `"0.47.0"`)은 다시 스탬프하라고 안내합니다.
 - 선언한 라인보다 새로운 섹션은 그 섹션 키 위치의 `E-BINDINGS-VERSION`이며, 필요한 라인을 알려 줍니다. 예: `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. 값이 `MAJOR.MINOR` 형식이 아니면 섹션을 검사하지 않습니다.
-- `lute fix`는 `player.bindings.yaml`의 오래된 `MAJOR.MINOR` 값을 툴체인 라인으로 올리고 파일의 나머지(따옴표와 주석 포함)는 바이트 그대로 둡니다. 더 새롭거나 형식이 잘못된 값은 그대로 둡니다.
+- `lute fix`는 `player.bindings.yaml`의 오래된 `MAJOR.MINOR` 값을 툴체인 라인으로 올리고 파일의 나머지(따옴표와 주석 포함)는 바이트 그대로 둡니다. 더 새롭거나 형식이 잘못된 값(`"0.046"`처럼 앞에 0이 붙은 값 포함)과 하나의 flow 매핑(`{ bindingsVersion: …, … }`)으로 쓴 파일은 그대로 두며, 경고는 `lute fix`가 값을 올릴 수 있을 때만 `lute fix`를 언급합니다.
 
 | 섹션 | 필요한 `bindingsVersion` |
 | --- | --- |

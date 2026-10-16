@@ -106,7 +106,10 @@ version (`"0.47"` for Lute 0.47.x).
   Sections are not checked when the value is not `MAJOR.MINOR`.
 - `lute fix` raises an older `MAJOR.MINOR` value in `player.bindings.yaml` to
   the toolchain line, keeping the rest of the file byte for byte (quotes and
-  comments included); a newer or malformed value is left alone.
+  comments included); a newer or malformed value (leading zeros such as
+  `"0.046"` included) is left alone, and so is a file written as one flow
+  mapping (`{ bindingsVersion: …, … }`); the warning names `lute fix` only when
+  it raises the value.
 
 | Section | Needs `bindingsVersion` |
 | --- | --- |

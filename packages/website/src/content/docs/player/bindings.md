@@ -67,7 +67,7 @@ flow:
 
 - `lute check-project` reports `W-BINDINGS-VERSION-STALE` at the value when it differs from the toolchain line. An older line says to update it to the toolchain line, which `lute fix` does; a newer line says to upgrade the toolchain rather than downgrade the stamp; a value that is not `MAJOR.MINOR` (such as `"0.47.0"`) is told to restamp it.
 - A section newer than the declared line is `E-BINDINGS-VERSION` at that section's key, naming the line it needs, for example `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. Sections are not checked when the value is not `MAJOR.MINOR`.
-- `lute fix` raises an older `MAJOR.MINOR` value in `player.bindings.yaml` to the toolchain line, keeping the rest of the file byte for byte (quotes and comments included). A newer or malformed value is left alone.
+- `lute fix` raises an older `MAJOR.MINOR` value in `player.bindings.yaml` to the toolchain line, keeping the rest of the file byte for byte (quotes and comments included). A newer or malformed value (leading zeros such as `"0.046"` included) is left alone, and so is a file written as one flow mapping (`{ bindingsVersion: …, … }`); the warning names `lute fix` only when it raises the value.
 
 | Section | Needs `bindingsVersion` |
 | --- | --- |
