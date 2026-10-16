@@ -297,7 +297,8 @@ export const playerMachine = initial.createMachine({
         running: {
           id: "playerStoryRunning",
           on: {
-            "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
+            // A new batch leaves the previous await (an `ended` must not outlive it).
+            "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false, await: undefined } }),
             "line.typing": ({ event }) => ({
               target: "#playerStoryTyping",
               context: { line: "typing", lastLineRead: event.read, hasVoice: event.hasVoice, advanceBuffered: false },
@@ -413,7 +414,7 @@ export const playerMachine = initial.createMachine({
         halted: { id: "playerStoryHalted", on: { toTitle: { target: "#playerStoryRunning" }, confirm: { target: "#playerStoryRunning" } } },
       },
       on: {
-        "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false } }),
+        "batch.started": () => ({ target: "#playerStoryRunning", context: { advanceBuffered: false, await: undefined } }),
         // Acknowledgements the director sends in every state; only some states act on them.
         "line.released": () => undefined,
         "save.done": () => undefined,

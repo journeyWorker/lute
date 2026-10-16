@@ -44,6 +44,20 @@ describe("leaving an ended run (§2.5)", () => {
     }))
   }))
 
+  it.effect("after leaving an ended run, toTitle during the next run's first batch asks the confirm again", () => Effect.gen(function* () {
+    const bundle = yield* compileBundle(quayProject)
+    yield* withHarness(bundle, { bindings: quayBindings, choices: ["dock"] }, (h) => Effect.gen(function* () {
+      yield* toEnded(h)
+      yield* h.action({ type: "toTitle" })
+      // New game: the first line of run 2 waits for the reader while its batch runs.
+      yield* h.action({ type: "newGame" })
+      expect(yield* h.view).toMatchObject({ flow: "playing", story: "shown" })
+      yield* h.action({ type: "toTitle" })
+      expect(h.screens.at(-1)).toMatchObject({ _tag: "Confirm" })
+      expect(yield* h.view).toMatchObject({ flow: "playing", overlay: "confirm" })
+    }))
+  }))
+
   it.effect("toTitle from the in-game menu at ended keeps the confirm", () => Effect.gen(function* () {
     const bundle = yield* compileBundle(quayProject)
     yield* withHarness(bundle, { bindings: quayBindings, choices: ["dock"] }, (h) => Effect.gen(function* () {

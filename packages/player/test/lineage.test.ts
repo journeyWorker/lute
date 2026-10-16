@@ -11,6 +11,7 @@ import { quayProject } from "./fixtures.js"
 import { act, hostLayer, player, recorder, stateOf, textOf } from "./player.js"
 import type { LutePlayerHandle } from "../src/LutePlayer.js"
 import type { Recorder } from "./player.js"
+import { ProfileStore, profileLayer } from "../src/stores/index.js"
 
 const StoredProfile = Schema.fromJsonString(Schema.Struct({ profileVersion: Schema.String, lineage: Schema.optionalKey(Contract.Snapshot) }))
 
@@ -104,8 +105,9 @@ describe("lineage across a reload (§2.3)", () => {
     yield* overQuay(Effect.gen(function* () {
       yield* Effect.scoped(Effect.gen(function* () {
         const handle = yield* player(recorder())
-        const store = yield* KeyValueStore.KeyValueStore
-        yield* store.set(`profile:${handle.session.fingerprint}`, JSON.stringify({ profileVersion: "0.46", project: handle.session.fingerprint, readLines: [], settings: {}, lineage: Schema.encodeSync(Contract.Snapshot)(foreign) }))
+        // Written by the profile store itself, in the format version it writes.
+        yield* Effect.flatMap(ProfileStore, (profile) => profile.setLineage(foreign)).pipe(Effect.provide(profileLayer({ project: handle.session.fingerprint })))
+        expect((yield* storedProfile(handle)).lineage?.project).toBe(foreign.project)
       }))
       yield* Effect.scoped(Effect.gen(function* () {
         const recorded = recorder()
