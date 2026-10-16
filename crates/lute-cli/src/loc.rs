@@ -92,7 +92,8 @@
 //!
 //! ## Word/line report (`report`)
 //! Per-document and per-speaker word counts, total lines, tagged-vs-untagged
-//! line counts, and choice-label counts, plus project-wide totals. `--json`
+//! line counts, choice-label counts and branch/hub prompt counts (dsl 0.47.0
+//! §3.1), plus project-wide totals. `--json`
 //! emits a stable object; otherwise aligned human tables.
 //!
 //! ### Word-counting rule
@@ -102,7 +103,9 @@
 //! each maximal run of non-whitespace characters as one word. So
 //! `Hello {{@player.name}}!` counts as two words (`Hello`, `@player.name}}`→
 //! `@player.name!`). Choice/hub labels are counted as units (their count), not
-//! folded into the word totals.
+//! folded into the word totals. A branch/hub prompt is counted both ways: its
+//! words join the document and project word totals (not any speaker's), and
+//! `prompts` counts the prompts.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -230,20 +233,6 @@ fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
         })
 }
 
-/// A branch/hub `prompt=` value exactly as the compiler stages it
-/// (`lute-compile`'s `attr_string`): a string literal verbatim, an `@ref`
-/// value's raw text, a bare flag as `true`. `None` without `prompt=`.
-fn prompt_text(attrs: &[Attr]) -> Option<String> {
-    attrs
-        .iter()
-        .find(|a| a.key == "prompt")
-        .map(|a| match &a.value {
-            AttrValue::Str(s) => s.clone(),
-            AttrValue::Ref(slot) => slot.raw.clone(),
-            AttrValue::BoolTrue => "true".to_string(),
-        })
-}
-
 /// Push a branch's or hub's prompt unit (dsl 0.47.0 §3.1), when it has one.
 /// Its byte is the branch/hub's own, so it sorts before every option.
 fn walk_prompt<'a>(
@@ -254,7 +243,8 @@ fn walk_prompt<'a>(
     region: Region<'a>,
     out: &mut Vec<Unit>,
 ) {
-    let Some(text) = prompt_text(attrs) else {
+    // Exactly the value the compiler stages as the record's `prompt`.
+    let Some(text) = lute_compile::lower::attr_string(attrs, "prompt") else {
         return;
     };
     let key = format!("{group_id}.prompt");
@@ -841,6 +831,8 @@ struct DocStat {
     untagged: usize,
     words: usize,
     choices: usize,
+    /// Branch/hub prompts (dsl 0.47.0 §3.1); their words are in `words`.
+    prompts: usize,
     speakers: BTreeMap<String, SpeakerStat>,
 }
 
@@ -886,8 +878,18 @@ pub fn run_report(dir: &Path, json: bool) -> ExitCode {
                 tsp.lines += 1;
                 tsp.words += words;
             }
-            // A prompt is not a choice label (the report counts labels).
-            Unit::Choice { prompt: true, .. } => {}
+            // A prompt is narration-like text with no speaker: its words
+            // count toward the document and project totals, and it has its
+            // own count (it is not a choice label).
+            Unit::Choice {
+                prompt: true, text, ..
+            } => {
+                let words = word_count(text);
+                stat.prompts += 1;
+                stat.words += words;
+                totals.prompts += 1;
+                totals.words += words;
+            }
             Unit::Choice { .. } => {
                 stat.choices += 1;
                 totals.choices += 1;
@@ -933,6 +935,7 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
                 "untagged": d.untagged,
                 "words": d.words,
                 "choices": d.choices,
+                "prompts": d.prompts,
                 "speakers": speakers_json(&d.speakers),
             })
         })
@@ -946,6 +949,7 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
             "untagged": totals.untagged,
             "words": totals.words,
             "choices": totals.choices,
+            "prompts": totals.prompts,
             "speakers": speakers_json(&totals.speakers),
         },
     });
@@ -968,18 +972,24 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
         .max()
         .unwrap_or(8);
     s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-        "document", "lines", "words", "untagged", "tagged", "choices"
+        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+        "document", "lines", "words", "untagged", "tagged", "choices", "prompts"
     ));
     for (file, d) in docs {
         s.push_str(&format!(
-            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-            file, d.lines, d.words, d.untagged, d.tagged, d.choices
+            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+            file, d.lines, d.words, d.untagged, d.tagged, d.choices, d.prompts
         ));
     }
     s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}\n",
-        "TOTAL", totals.lines, totals.words, totals.untagged, totals.tagged, totals.choices
+        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+        "TOTAL",
+        totals.lines,
+        totals.words,
+        totals.untagged,
+        totals.tagged,
+        totals.choices,
+        totals.prompts
     ));
 
     // Per-speaker (project-wide) table.
@@ -1005,11 +1015,12 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
     }
 
     s.push_str(&format!(
-        "\n{} document(s), {} line(s), {} word(s), {} choice(s)\n",
+        "\n{} document(s), {} line(s), {} word(s), {} choice(s), {} prompt(s)\n",
         docs.len(),
         totals.lines,
         totals.words,
-        totals.choices
+        totals.choices,
+        totals.prompts
     ));
     s
 }

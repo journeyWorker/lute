@@ -46,7 +46,7 @@ pub(crate) mod version {
     pub(crate) const CALENDAR: &str = "0.43.0.calendar";
     pub(crate) const REFS: &str = "0.43.0.refs";
     pub(crate) const LORE: &str = "0.43.0.lore";
-    pub(crate) const LOC_REPORT: &str = "0.43.0.loc-report";
+    pub(crate) const LOC_REPORT: &str = "0.47.0.loc-report";
     pub(crate) const DOCTOR: &str = "0.43.0.doctor";
     pub(crate) const SCHEMA: &str = "0.43.0.schema";
     pub(crate) const ERROR: &str = "0.43.0.error";

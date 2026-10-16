@@ -540,3 +540,40 @@ fn a_source_edit_after_export_is_w_l10n_stale_merged_and_deniable() {
     assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
     assert!(!denied.join("project.index.json").exists());
 }
+
+// --- §3.1: `loc report` counts prompts ------------------------------------
+
+#[test]
+fn loc_report_counts_prompts_and_their_words() {
+    let dir = project("report-prompts");
+    let out = run(&["loc", "report", dir.to_str().unwrap(), "--json"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let report: Json = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["schemaVersion"], "0.47.0.loc-report");
+    let totals = &report["totals"];
+    assert_eq!(totals["prompts"], 2, "{report:#}");
+    assert_eq!(totals["choices"], 4, "{report:#}");
+    // Lines: 2 (scene) + 1 (component) + 5 arm lines; their words plus the
+    // prompts' "Where now?" (2) and "Look where?" (2).
+    let line_words: u64 = totals["speakers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["words"].as_u64().unwrap())
+        .sum();
+    assert_eq!(
+        totals["words"].as_u64().unwrap(),
+        line_words + 4,
+        "{report:#}"
+    );
+    assert_eq!(report["documents"][0]["prompts"], 2, "{report:#}");
+
+    let human = run(&["loc", "report", dir.to_str().unwrap()]);
+    assert_eq!(human.status.code(), Some(0), "{}", stderr(&human));
+    let text = String::from_utf8(human.stdout).unwrap();
+    assert!(
+        text.lines().next().unwrap().ends_with("choices  prompts"),
+        "{text}"
+    );
+    assert!(text.contains("4 choice(s), 2 prompt(s)"), "{text}");
+}

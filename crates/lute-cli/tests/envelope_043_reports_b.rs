@@ -59,7 +59,7 @@ fn reports_carry_the_envelope() {
     report(
         &["loc", "report", arcia, "--json"],
         "loc report",
-        "0.43.0.loc-report",
+        "0.47.0.loc-report",
     );
     report(&["test", arcia, "--json"], "test", "0.43.0.test");
     report(

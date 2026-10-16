@@ -35,7 +35,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `check-pr
 | `calendar` | `--json` | `0.43.0.calendar` |
 | `refs` | `--json` | `0.43.0.refs` |
 | `lore` | `--json` | `0.43.0.lore` |
-| `loc report` | `--json` | `0.43.0.loc-report` |
+| `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
 | `schema` | always | `0.43.0.schema` |
 
@@ -1034,7 +1034,7 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 $ lute loc report <dir> [--json]
 ```
 
-Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
 
 ## --explain
 

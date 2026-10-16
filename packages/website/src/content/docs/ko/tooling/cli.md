@@ -35,7 +35,7 @@ description: 모든 lute 하위 명령 — init, new, check, check-project, comp
 | `calendar` | `--json` | `0.43.0.calendar` |
 | `refs` | `--json` | `0.43.0.refs` |
 | `lore` | `--json` | `0.43.0.lore` |
-| `loc report` | `--json` | `0.43.0.loc-report` |
+| `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
 | `schema` | 항상 | `0.43.0.schema` |
 
@@ -981,7 +981,7 @@ $ lute loc import <file>… [-o <FILE>]
 $ lute loc report <dir> [--json]
 ```
 
-문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
+문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. 선택지 라벨은 개수(`choices`)만 세고 단어는 세지 않습니다. branch/hub 프롬프트는 개수(`prompts`, 0.47부터 — 보고서 버전 `0.47.0.loc-report`)를 세고, 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
 
 ## --explain
 

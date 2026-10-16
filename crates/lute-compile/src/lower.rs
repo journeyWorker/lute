@@ -682,7 +682,10 @@ fn attr_default_string(decl: Option<&DirectiveDecl>, key: &str) -> Option<String
     }
 }
 
-pub(crate) fn attr_string(attrs: &[Attr], key: &str) -> Option<String> {
+/// The value of attribute `key` as the compiler stages it: a string literal
+/// verbatim, an `@ref` value's raw text, a bare flag as `true`. `lute loc
+/// export` reads a prompt through this, so its row text is the record's.
+pub fn attr_string(attrs: &[Attr], key: &str) -> Option<String> {
     attrs.iter().find(|a| a.key == key).map(|a| match &a.value {
         AttrValue::Str(s) => s.clone(),
         AttrValue::Ref(slot) => slot.raw.clone(),

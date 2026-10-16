@@ -209,14 +209,17 @@ pub(crate) enum Command {
         #[arg(long)]
         all: bool,
         /// Merge a locale bundle (`lute loc import`) into the execution IR:
-        /// `texts` on every line, `labels` on every choice/hub option, keyed by
-        /// `lineId`. `text`/`label` stay the source language.
-        /// A record missing a declared locale is `W-L10N-MISSING`.
+        /// `texts` on every line and choice/hub option, `promptTexts` on a
+        /// prompted branch/hub, keyed by `lineId`/`promptLineId`. `text` and
+        /// `prompt` stay the source language. A record missing a declared
+        /// locale is `W-L10N-MISSING`, a translation of a changed source is
+        /// `W-L10N-STALE`.
         #[arg(long, value_name = "FILE")]
         locales: Option<PathBuf>,
         /// Promote every diagnostic with EXACTLY this code to an error for the
         /// verdict and exit code (repeatable) — the same policy `check`
-        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`).
+        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`,
+        /// `W-L10N-STALE`).
         #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
         deny: Vec<String>,
         /// Promote EVERY warning to an error for the verdict and exit code.
