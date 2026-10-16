@@ -4,4 +4,5 @@ profiles:
   game:
     plugins: { quayside.occasions: true }
 defaults:
+  contentLang: en
   uses: [world.schema.yaml]

@@ -8,4 +8,4 @@ on: tide
 ## Evening tide
 
 ::use{component="clockBackdrop" slot=@currentSlot instance="tide-backdrop"}
-@narrator: At evening tide, the town lights come on one by one.
+@narrator{code="0010"}: At evening tide, the town lights come on one by one.

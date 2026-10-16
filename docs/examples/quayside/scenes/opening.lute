@@ -9,5 +9,8 @@ priority: 10
 ## Morning at Quayside
 
 ::use{component="clockBackdrop" slot=@currentSlot instance="opening-backdrop"}
-@june: The tide is out, and Quayside is already awake.
-@narrator: A hand-painted sign points toward the square, the pier, and the bakery.
+@june{code="0010" when="has(prev.run.ending) && prev.run.ending == 'restore'"}: The hall's lanterns burned all night. Welcome back.
+@june{code="0020" when="has(prev.run.ending) && prev.run.ending == 'retire'"}: The old hall sleeps, but the town remembers you.
+@june{code="0030"}: The tide is out, and Quayside is already awake.
+@narrator{code="0010" when="user.endings > 0"}: Bell answers given so far: {{user.endings}}.
+@narrator{code="0020"}: A hand-painted sign points toward the square, the pier, and the bakery.

@@ -1,0 +1,18 @@
+# Finish a run, start a new one, and hear Quayside remember the first.
+steps:
+  - occasion: start
+    expect: { winner: opening }
+  - occasion: visit
+    target: place.square
+    choose: { closingBell: restore }
+    expect: { winner: market, state: { run.ending: restore, user.endings: 1 } }
+  - newRun: true
+    expect: { state: { prev.run.ending: restore, run.ending: none, user.endings: 1 } }
+  - occasion: start
+    expect: { winner: opening }
+expect:
+  end: complete
+  state: { prev.run.ending: restore, user.endings: 1 }
+  transcriptContains:
+    - "@june: The hall's lanterns burned all night. Welcome back."
+    - "@narrator: Bell answers given so far: 1."
