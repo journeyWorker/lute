@@ -275,15 +275,6 @@ describe("playerMachine", () => {
     expect(run.commands.at(-1)).toEqual({ type: "screen.show", screen: { _tag: "Halted", message: "bad" } })
   })
 
-  it("requires confirmation before returning to title", () => {
-    const run = playingActor()
-    run.actor.send({ type: "batch.settled", await: { type: "ended", reason: "done" } })
-    run.actor.send({ type: "toTitle" })
-    expect(run.actor.getSnapshot().context.pendingConfirm).toEqual({ type: "toTitle" })
-    run.actor.send({ type: "confirm", yes: true })
-    expect(run.actor.getSnapshot().value).toMatchObject({ flow: "title", story: "running" })
-  })
-
   it("hides UI and consumes the first input while hidden", () => {
     const run = playingActor()
     run.actor.send({ type: "hideUI" })

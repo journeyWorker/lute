@@ -1,0 +1,10 @@
+---
+kind: quest
+id: ledger
+luteVersion: "0.46.0"
+title: Ledger
+contentLang: en-US
+---
+<quest id="ledger" title="Ledger" tier="run">
+  <objective id="close" title="Close the ledger" done="run.route != 'none'"/>
+</quest>

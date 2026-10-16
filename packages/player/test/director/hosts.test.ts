@@ -337,7 +337,7 @@ describe("cue factory composition (§5.3)", () => {
       ...bridgeHost,
       cueFactory: (base) => {
         wraps++
-        return { ...base, fromOutput: (output, read) => { outputs++; return base.fromOutput(output, read) } }
+        return { ...base, fromOutput: (output, read, locale) => { outputs++; return base.fromOutput(output, read, locale) } }
       },
       host: { plugin: { demo: () => Effect.sync(() => { calls.push("host") }) } }
     }, (h) => Effect.gen(function* () {

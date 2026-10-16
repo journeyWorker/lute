@@ -6,6 +6,8 @@ import * as Runtime from "@lute-lang/runtime"
 import * as LuteBun from "../../../runtime/src/bun.js"
 import { BundleSource } from "../../../runtime/src/index.js"
 import { compileBundle, jsonLines, sessionRoot } from "../../../runtime/test/support.js"
+import * as RuntimeSession from "../../../runtime/src/Session.js"
+import { compileQuayKorean, quayProject } from "../fixtures.js"
 import * as Bindings from "../../src/bindings/schema.js"
 import * as CueFactory from "../../src/cues/index.js"
 import * as Scheduler from "../../src/scheduler/index.js"
@@ -32,7 +34,7 @@ const bindings = decodeBindings({
 })
 
 const commands = [
-  { kind: "line", family: "content", position: "001-0100", role: "dialogue", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1", texts: { fr: "Bonjour" }, segments: [{ text: "Hello", styles: ["emphasis"], rate: 0.5 }, { pause: 0.25 }] },
+  { kind: "line", family: "content", position: "001-0100", role: "dialogue", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1", segments: [{ text: "Hello", styles: ["emphasis"], rate: 0.5 }, { pause: 0.25 }] },
   { kind: "bg", family: "staging", position: "001-0200", location: "foyer", time: "night", assetId: "bg" },
   { kind: "actor", family: "staging", position: "001-0300", character: "guide", emotion: "happy", action: "enter" },
   { kind: "cg", family: "staging", position: "001-0400", assetId: "cg", display: "show" },
@@ -97,41 +99,79 @@ const output = decodeOutput({ eventVersion: "0.46", await: { type: "idle" }, eve
   { type: "clock", from: {}, to: {} }
 ] })
 
-const factory = CueFactory.make({ bundle, bindings, locale: "fr" })
+const factory = CueFactory.make({ bundle, bindings })
 
 describe("CueFactory", () => {
   it.effect("decodes every runtime record and session event without a defect", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set(["line-1"]))
+    const cues = yield* factory.fromOutput(output, new Set(["line-1"]), "en")
     expect(cues).toHaveLength(16)
     expect(cues.map(({ kind }) => kind)).toEqual(["line", "bg", "actor", "cg", "video", "camera", "vfx", "sequence", "music", "music", "sfx", "bookkeeping", "presentation", "presentationEnd", "quest", "clock"])
   }))
-  it.effect("resolves cast name, locale fallback, segments, read flag and voice file", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set(["line-1"]))
+  it.effect("resolves cast name, segments, read flag and voice file", () => Effect.gen(function* () {
+    const cues = yield* factory.fromOutput(output, new Set(["line-1"]), "en")
     const line = cues[0]?.line
     expect(line).toMatchObject({ speakerName: "Guide-san", read: true, voiceKey: "voice-1" })
     expect(line?.segments).toEqual([{ _tag: "Text", text: "Hello", styles: ["emphasis"], rate: 0.5 }, { _tag: "Pause", seconds: 0.25 }])
     expect(cues[0]?.files).toEqual(["voice/voice-1.ogg"])
   }))
-  it.effect("falls back from an unavailable locale to source text", () => Effect.gen(function* () {
-    const local = CueFactory.make({ bundle, bindings, locale: "ja" })
-    const cues = yield* local.fromOutput(output, new Set())
-    expect(cues[0]?.line?.segments).toEqual([{ _tag: "Text", text: "Hello", styles: ["emphasis"], rate: 0.5 }, { _tag: "Pause", seconds: 0.25 }])
-  }))
+
+  describe("locale per call over a compiled translation (spec 0.47.0 §2.2)", () => {
+    /** The Korean-compiled fixture, its loaded bundle and the runtime output of its first raise (lines, then the branch). */
+    const visited = Effect.gen(function* () {
+      const compiled = yield* compileQuayKorean
+      const source = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(compiled))
+      const visit = yield* Effect.scoped(Effect.flatMap(RuntimeSession.Session, (session) => session.send({ type: "raiseOccasion", occasion: "visit" })).pipe(
+        Effect.provide(LuteBun.session({ bundle: compiled, seed: { derive: true } }))
+      ))
+      if (visit.await.type !== "awaitChoice") throw new Error("quay-locale never awaits its branch")
+      return { source, visit, choice: visit.await }
+    })
+
+    it.effect("reads a line's translation for the locale of each call, else the source text", () => Effect.gen(function* () {
+      const { source, visit } = yield* visited
+      const local = CueFactory.make({ bundle: source, bindings })
+      const named = (cues: ReadonlyArray<Cue>) => cues.flatMap((cue) => cue.line === undefined ? [] : [cue.line]).find((line) => line.lineId === "quay.mara_0020")
+      const korean = named(yield* local.fromOutput(visit, new Set(), "ko"))
+      expect(korean).toMatchObject({ speakerName: "Mara", segments: [{ _tag: "Text", text: "종이 울리고 있어.", styles: [] }] })
+      expect(named(yield* local.fromOutput(visit, new Set(), "en-US"))?.segments).toEqual([{ _tag: "Text", text: "The bell is ringing.", styles: [] }])
+      expect(named(yield* local.fromOutput(visit, new Set(), "ja"))?.segments).toEqual([{ _tag: "Text", text: "The bell is ringing.", styles: [] }])
+    }))
+
+    it.effect("reads choice labels for the locale of each call, else the source text", () => Effect.gen(function* () {
+      const { source, choice } = yield* visited
+      const local = CueFactory.make({ bundle: source, bindings })
+      const labels = (locale: string) => local.choiceView(choice, locale).options.map((option) => option.text)
+      expect(labels("ko")).toEqual(["부두로 걸어간다", "언덕을 오른다"])
+      expect(labels("en-US")).toEqual(["Walk to the dock", "Climb the hill"])
+      expect(labels("ja")).toEqual(["Walk to the dock", "Climb the hill"])
+      expect(local.choiceView(choice, "ko").prompt).toBe("Where now?")
+    }))
+
+    it.effect("names the source locale and the compiled locales of a bundle", () => Effect.gen(function* () {
+      const { source } = yield* visited
+      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en-US", locales: ["en-US", "ko"] })
+      const plain = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(quayProject)))
+      expect(CueFactory.bundleLocales(plain)).toEqual({ source: "en-US", locales: ["en-US"] })
+      const timed = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(join(sessionRoot, "timed-choice", "project"))))
+      expect(CueFactory.bundleLocales(timed)).toEqual({ source: "en", locales: ["en"] })
+    }))
+  })
+
   it.effect("maps every StageCue tag and preserves duration and files", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues.slice(1, 11).map((cue) => cue.kind)).toEqual(["bg", "actor", "cg", "video", "camera", "vfx", "sequence", "music", "music", "sfx"])
     expect(cues.find((cue) => cue.kind === "bg")?.files).toEqual(["foyer-night.png"])
     expect(cues.find((cue) => cue.kind === "actor")?.files).toEqual(["guide-happy.png"])
   }))
   it.effect("maps music stop to AudioPort stop through execute and complete", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     const stop = cues[9]
     expect(stop?.describe).toContain("stop")
     expect(stop?.timing.wait).toBe(false)
   }))
   it.effect("normalizes timing defaults by cue kind", () => Effect.gen(function* () {
     const localOutput = decodeOutput({ eventVersion: "0.46", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500", attrs: { assetId: "video", display: "show" } } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800", attrs: { name: "intro" } } }] })
-    const cues = yield* factory.fromOutput(localOutput, new Set())
+    const cues = yield* factory.fromOutput(localOutput, new Set(), "en")
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
 
@@ -146,67 +186,67 @@ describe("CueFactory", () => {
       .map((line) => Schema.decodeUnknownSync(Runtime.Contract.Output)(Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(line).output))
       .find((output) => output.await.type === "awaitChoice")
     if (first === undefined || first.await.type !== "awaitChoice") throw new Error("timed-choice never awaits a choice")
-    const view = CueFactory.make({ bundle: source, bindings }).choiceView(first.await)
+    const view = CueFactory.make({ bundle: source, bindings }).choiceView(first.await, "en")
     expect(view).toMatchObject({ id: "knock", construct: "branch", prompt: "Open the door?", timeout: 5, default: "wait" })
     expect(view.options.map((option) => [option.id, option.text])).toEqual([["open", "Open it"], ["wait", "Wait"]])
   }))
 
   it.effect("uses runtime attrs instead of artifact media fields", () => Effect.gen(function* () {
     const local = CueFactory.make({ bundle, bindings })
-    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "001-0200", attrs: { assetId: "runtime-bg.png" } }]), new Set())
+    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "001-0200", attrs: { assetId: "runtime-bg.png" } }]), new Set(), "en")
     expect(cues[0]?.files).toEqual(["runtime-bg.png"])
   }))
   it.effect("maps Background StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[1]?.kind).toBe("bg")
     expect(cues[1]?.files).toEqual(["foyer-night.png"])
   }))
   it.effect("maps ActorShow StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[2]?.kind).toBe("actor")
     expect(cues[2]?.files).toEqual(["guide-happy.png"])
   }))
   it.effect("maps ActorExit StageCue", () => Effect.gen(function* () {
     const exitOutput = decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "actor", position: "001-0300", attrs: { character: "guide", exit: true } } }] })
-    const cues = yield* factory.fromOutput(exitOutput, new Set())
+    const cues = yield* factory.fromOutput(exitOutput, new Set(), "en")
     expect(cues[0]?.kind).toBe("actor")
     expect(cues[0]?.describe).toContain("guide")
   }))
   it.effect("maps Cg show and hide StageCues", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
-    const hidden = yield* factory.fromOutput(decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "cg", position: "001-0400", attrs: { display: "hide" } } }] }), new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
+    const hidden = yield* factory.fromOutput(decodeOutput({ ...output, events: [{ type: "record", document: "scene", record: { kind: "cg", position: "001-0400", attrs: { display: "hide" } } }] }), new Set(), "en")
     expect(cues[3]?.kind).toBe("cg")
     expect(hidden[0]?.kind).toBe("cg")
   }))
   it.effect("maps Video StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[4]?.kind).toBe("video")
   }))
   it.effect("maps Camera StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[5]?.kind).toBe("camera")
   }))
   it.effect("maps Vfx StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[6]?.kind).toBe("vfx")
   }))
   it.effect("maps Sequence StageCue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[7]?.kind).toBe("sequence")
     expect(cues[7]?.files).toEqual(["intro.mp4"])
   }))
   it.effect("maps music start to a music cue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[8]?.kind).toBe("music")
     expect(cues[8]?.files).toEqual(["music.ogg"])
   }))
   it.effect("maps music stop true to a music cue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[9]?.kind).toBe("music")
     expect(cues[9]?.describe).toContain("stop")
   }))
   it.effect("maps sfx to an audio cue", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(output, new Set())
+    const cues = yield* factory.fromOutput(output, new Set(), "en")
     expect(cues[10]?.kind).toBe("sfx")
     expect(cues[10]?.files).toEqual(["sfx.ogg"])
   }))
@@ -216,19 +256,19 @@ describe("CueFactory", () => {
       { kind: "line", position: "002-0100", speaker: "guide", role: "dialogue", text: "Hi", lineId: "line-2", voiceKey: "" },
       { kind: "line", position: "002-0150", speaker: "narrator", role: "narration", text: "Quiet.", lineId: "line-3", voiceKey: "" },
       { kind: "line", position: "001-0100", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1" }
-    ]), new Set())
+    ]), new Set(), "en")
     expect(cues[0]?.line).toMatchObject({ speaker: "guide", speakerName: "Guide-san", emotion: "happy", variant: "2" })
     expect(cues[1]?.line).toMatchObject({ speakerName: "" })
     expect(cues[1]?.line).not.toHaveProperty("emotion")
     expect(cues[2]?.line).not.toHaveProperty("emotion")
     expect(cues[2]?.line).not.toHaveProperty("variant")
     const uncast = CueFactory.make({ bundle: { ...bundle, index: { ...index, cast: {} } }, bindings })
-    expect((yield* uncast.fromOutput(recordsOutput([{ kind: "line", position: "002-0100", speaker: "guide", text: "Hi", lineId: "line-2" }]), new Set()))[0]?.line?.speakerName).toBe("guide")
+    expect((yield* uncast.fromOutput(recordsOutput([{ kind: "line", position: "002-0100", speaker: "guide", text: "Hi", lineId: "line-2" }]), new Set(), "en"))[0]?.line?.speakerName).toBe("guide")
   }))
 
   it.effect("plays music by playback, volume and duration (§7.7 table)", () => Effect.gen(function* () {
     const positions = ["002-0200", "002-0300", "002-0400", "002-0500", "002-0600", "002-0700", "002-0750", "001-0900", "001-1000"]
-    const cues = yield* factory.fromOutput(recordsOutput(positions.map((position) => ({ kind: "music", position, attrs: runtimeAttrs(position) }))), new Set())
+    const cues = yield* factory.fromOutput(recordsOutput(positions.map((position) => ({ kind: "music", position, attrs: runtimeAttrs(position) }))), new Set(), "en")
     const played = yield* recordAudio(cues, "execute")
     expect(played).toEqual([
       { play: { file: "calm.ogg", loop: true, volume: 0.5, fade: 0, restart: true } },
@@ -272,7 +312,7 @@ describe("CueFactory", () => {
       { kind: "bg", family: "staging", position: "003-0100", assetId: "bg/hall.png" },
       { kind: "music", family: "staging", position: "003-0200", assetId: "bgm/theme.ogg" }
     ] } } }, bindings: unbound })
-    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "003-0100", attrs: { assetId: "bg/hall.png" } }, { kind: "music", position: "003-0200", attrs: { assetId: "bgm/theme.ogg" } }]), new Set())
+    const cues = yield* local.fromOutput(recordsOutput([{ kind: "bg", position: "003-0100", attrs: { assetId: "bg/hall.png" } }, { kind: "music", position: "003-0200", attrs: { assetId: "bgm/theme.ogg" } }]), new Set(), "en")
     expect(cues.map((cue) => cue.files)).toEqual([["bg/hall.png"], ["bgm/theme.ogg"]])
   }))
 
@@ -285,7 +325,7 @@ describe("CueFactory", () => {
   })
 
   it.effect("gives StageCue.Vfx an EffectSpec for custom, catalogue and unbound vfx (§7.7)", () => Effect.gen(function* () {
-    const cues = yield* factory.fromOutput(recordsOutput(["002-0800", "002-0900", "001-0700", "002-1000"].map((position) => ({ kind: "vfx", position }))), new Set())
+    const cues = yield* factory.fromOutput(recordsOutput(["002-0800", "002-0900", "001-0700", "002-1000"].map((position) => ({ kind: "vfx", position }))), new Set(), "en")
     const staged = yield* recordStages(cues)
     expect(staged).toEqual([
       { _tag: "Vfx", effect: { effect: "custom", name: "lanterns", params: {} }, duration: undefined },
@@ -305,7 +345,7 @@ describe("CueFactory", () => {
       { kind: "plugin", position: "002-1100", tag: "well", attrs: {}, answered: [{ field: "passed", value: true }] },
       // An effect record shares its plugin's position; it is not a hook.
       { kind: "set", position: "002-1100", path: "run.depth", value: 3, effectOf: "well" }
-    ]), new Set())
+    ]), new Set(), "en")
     expect(cues.map((cue) => cue.kind)).toEqual(["plugin", "bookkeeping", "bookkeeping", "bookkeeping"])
     expect(cues[0]?.timing.wait).toBe(true)
     yield* cues[0]!.execute(silentContext)
@@ -325,7 +365,7 @@ describe("CueFactory", () => {
     const cues = yield* hosted.fromOutput(recordsOutput([
       { kind: "plugin", position: "002-1100", tag: "well", attrs: {} },
       { kind: "plugin", position: "002-1200", tag: "odds", attrs: {} }
-    ]), new Set())
+    ]), new Set(), "en")
     const scheduler = yield* Scheduler.make()
     const mode = yield* SubscriptionRef.make<PlayMode>("normal")
     const gate = { started: () => Effect.void, release: () => Effect.void }
@@ -348,7 +388,7 @@ describe("CueFactory", () => {
       { type: "record", document: "scene", record: { kind: "plugin", position: "002-1100", tag: "well", attrs: {} } },
       { type: "record", document: "scene", record: { kind: "objective", quest: "q" } }
     ] })
-    const cues = yield* hosted.fromOutput(mixed, new Set())
+    const cues = yield* hosted.fromOutput(mixed, new Set(), "en")
     expect(cues).toHaveLength(mixed.events.length)
     expect(cues.slice(-2).map((cue) => cue.kind)).toEqual(["plugin", "bookkeeping"])
   }))
