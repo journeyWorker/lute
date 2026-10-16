@@ -1,0 +1,54 @@
+[
+  {
+    "file": "project/harbor.lute",
+    "key": "stalls.prompt",
+    "kind": "prompt",
+    "line": 11,
+    "lineId": "harbor.stalls.prompt",
+    "source": null,
+    "sourceHash": "sha256:78df1c63394bb18d42099ea1e2cf2aa1e46a7cf4f531b5f8916ce80cb92b371c",
+    "text": "어느 가게로?"
+  },
+  {
+    "file": "project/harbor.lute",
+    "key": "stalls.fish",
+    "kind": "choice",
+    "line": 12,
+    "lineId": "harbor.stalls.fish",
+    "source": null,
+    "sourceHash": "sha256:abbb91c82344c1a4527587aa622d34cbddffd7c1b5bcfedb8a94d9a45ec343fd",
+    "text": "생선 가게"
+  },
+  {
+    "code": "0010",
+    "file": "project/harbor.lute",
+    "kind": "line",
+    "line": 13,
+    "lineId": "harbor.narrator_0010",
+    "source": null,
+    "sourceHash": "sha256:ae7e0dd54b9390f2f2340256c56c403d55c0ed8f7a2d3e3f196edbd404675d7c",
+    "speaker": "narrator",
+    "text": "싱싱한 고등어."
+  },
+  {
+    "file": "project/harbor.lute",
+    "key": "stalls.leave",
+    "kind": "choice",
+    "line": 15,
+    "lineId": "harbor.stalls.leave",
+    "source": null,
+    "sourceHash": "sha256:fc6e4a408d56be9670c14ee7be21e1a39c93c2df82f7c95975485e90ca6371c3",
+    "text": "떠난다"
+  },
+  {
+    "code": "0020",
+    "file": "project/harbor.lute",
+    "kind": "line",
+    "line": 16,
+    "lineId": "harbor.narrator_0020",
+    "source": null,
+    "sourceHash": "sha256:8b17eec5cdc06f1564ea82c05b621b6f0d841a6f386e9c950f6d5781b8f85d4b",
+    "speaker": "narrator",
+    "text": "걸음을 옮긴다."
+  }
+]
