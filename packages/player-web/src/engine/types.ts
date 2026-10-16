@@ -6,12 +6,17 @@
 import type { Context, Deferred, Effect, Stream } from "effect"
 import type { Application, Container } from "pixi.js"
 
-/** Fixed scene layers, back to front. `camera` holds the actors and is what framing/moves transform. */
+/**
+ * Fixed scene layers, back to front: `background`, `camera` (actors), `cg`,
+ * `video`, `dialogue`, `choice`, `overlay`, `transition`. `camera` holds the
+ * actors and is what framing/moves transform; a CG covers the actors and
+ * stays under the dialogue window and UI.
+ */
 export interface Layers {
   readonly background: Container
-  readonly cg: Container
   readonly camera: Container
   readonly actors: Container
+  readonly cg: Container
   readonly video: Container
   readonly dialogue: Container
   readonly choice: Container

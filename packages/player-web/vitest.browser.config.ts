@@ -9,6 +9,7 @@ export default defineConfig({
   root: packageRoot,
   resolve: {
     alias: {
+      "@lute-lang/runtime/browser": resolve(packageRoot, "../runtime/src/browser.ts"),
       "@lute-lang/runtime": resolve(packageRoot, "../runtime/src/index.ts"),
       "@lute-lang/player": resolve(packageRoot, "../player/src/index.ts")
     }
@@ -18,6 +19,8 @@ export default defineConfig({
   },
   test: {
     include: ["test/browser/**/*.browser.test.ts"],
+    // Compiles the real fixtures (examples/player-demo) the `test/browser/real` suite mounts.
+    globalSetup: ["test/browser/globalSetup.ts"],
     browser: {
       enabled: true,
       headless: true,

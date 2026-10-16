@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { Effect, Layer } from "effect"
 import { Container, Graphics } from "pixi.js"
-import { PixiApp } from "../../src/engine/app.js"
+import { PixiApp, pixiAppOf } from "../../src/engine/app.js"
 import { World } from "../../src/engine/world.js"
 import { fade, wipe } from "../../src/engine/behaviours.js"
 
@@ -24,11 +24,13 @@ describe("Pixi engine browser", () => {
       pixi.app.renderer.resize(800, 600)
       expect(root.scale.x).toBeCloseTo(0.416667)
       expect(root.children).toEqual([
-        pixi.layers.background, pixi.layers.cg, pixi.layers.camera, pixi.layers.video,
+        pixi.layers.background, pixi.layers.camera, pixi.layers.cg, pixi.layers.video,
         pixi.layers.dialogue, pixi.layers.choice, pixi.layers.overlay, pixi.layers.transition
       ])
+      expect(pixiAppOf(element)).toBe(pixi)
     }).pipe(Effect.provide(layer))))
     expect(element.querySelector("canvas")).toBeNull()
+    expect(pixiAppOf(element)).toBeUndefined()
     element.remove()
   })
 

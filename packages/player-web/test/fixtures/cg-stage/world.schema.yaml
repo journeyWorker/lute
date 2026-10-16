@@ -1,0 +1,5 @@
+state:
+  run.finished: { type: bool, default: false }
+cast:
+  mara: { name: Mara, emotions: [neutral] }
+terminal: "run.finished"

@@ -113,7 +113,7 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
     let player: LutePlayerHandle | undefined
     const resolveEnded = (screen: Extract<ScreenModel, { _tag: "Ended" }>): Effect.Effect<ScreenModel> =>
       Effect.gen(function* () {
-        const ended = (bindings.ui as (typeof bindings.ui & { readonly ended?: { readonly by: string; readonly screens: Record<string, { readonly title: string; readonly text: string; readonly background?: string | null }> } | null }) | undefined)?.ended
+        const ended = bindings.ui?.ended
         if (player === undefined) return screen
         const current = yield* SubscriptionRef.get(player.session.current)
         const selected = yield* resolveEndedScreen(player.program, current.state, ended, screen)

@@ -42,7 +42,7 @@ mount ─► WebPlayer layer ─┬─ PixiApp (scoped Application, layers, lett
 // app/
 interface PixiApp {
   readonly app: Application                      // initialized with preference "webgl"
-  readonly layers: Layers                        // background, cg, camera(actors), video, dialogue, choice, overlay, transition
+  readonly layers: Layers                        // bottom→top: background, camera(actors), cg, video, dialogue, choice, overlay, transition
   readonly design: { width: number; height: number }   // bindings.canvas
   readonly frames: Stream<number>                // dt seconds per tick
 }
