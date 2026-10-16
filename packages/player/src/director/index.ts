@@ -5,7 +5,7 @@ import * as Runtime from "@lute-lang/runtime"
 import type { Errors } from "@lute-lang/runtime"
 import { derivePlayerView, playerMachine } from "../machine/playerMachine.js"
 import type {
-  ConfirmAction, CueContext, CueFactoryShape, CueFactoryWrapper, CueSchedulerShape, DirectorCommand, Input, LineGate,
+  ConfirmAction, Cue, CueContext, CueFactoryShape, CueFactoryWrapper, CueSchedulerShape, DirectorCommand, Input, LineGate,
   MachineEvent, Output, Overlay, PlayerView, SaveRuntime, Stage
 } from "../model.js"
 import type { PlayerSessionShape } from "../session/index.js"
@@ -121,6 +121,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
   // The batch that runs; cleared by the batch itself before it settles.
   let batchRunning: number | undefined
   let batchCount = 0
+  // The running batch's cues for the current locale (spec 0.47.0 §2.2): a
+  // locale switch re-resolves them, so its next line reads the new locale.
+  let batchCues: { readonly output: Output; readonly read: ReadonlySet<string>; locale: string; cues: ReadonlyArray<Cue> } | undefined
   let countdownFiber: Fiber.Fiber<void, never> | undefined
   let autoFiber: Fiber.Fiber<void, never> | undefined
   let choiceFiber: Fiber.Fiber<void, never> | undefined
@@ -173,6 +176,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
 
   const interruptBatch = Effect.fn("Lute.Player.Director.interruptBatch")(function* () {
     batchRunning = undefined
+    batchCues = undefined
     if (batchFiber !== undefined) {
       yield* Fiber.interrupt(batchFiber)
       batchFiber = undefined
@@ -291,7 +295,27 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
 
   const playBatch = Effect.fn("Lute.Player.Director.playBatch")(function* (output: Output) {
     const read = yield* SubscriptionRef.get(options.profile.readLines)
-    const cues = yield* factory.fromOutput(output, read, localeOf(currentSettings))
+    const locale = localeOf(currentSettings)
+    const resolved = yield* factory.fromOutput(output, read, locale)
+    const localized = { output, read, locale, cues: resolved }
+    batchCues = localized
+    // A line cue takes the batch's cue at its index for the locale current when
+    // it starts (`fromOutput` returns one cue per event, in order), then keeps it.
+    const cues = resolved.map((cue, index): Cue => {
+      if (cue.kind !== "line") return cue
+      let pinned: Cue | undefined
+      const current = (): Cue => pinned ??= localized.cues[index] ?? cue
+      return {
+        kind: cue.kind,
+        timing: cue.timing,
+        stage: cue.stage,
+        files: cue.files,
+        describe: cue.describe,
+        get line() { return current().line },
+        execute: (ctx) => Effect.suspend(() => current().execute(ctx)),
+        complete: (ctx) => Effect.suspend(() => current().complete(ctx))
+      }
+    })
     const files = cues.flatMap((cue) => cue.files)
     const inputPoint = (yield* options.session.current).logLength
     const context: CueContext = { presenter: options.presenter, audio: options.audio, bindings: options.bindings, settings: currentSettings, voiceEnded: markVoiceEnded }
@@ -315,6 +339,7 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       // Spec 0.47.0 §2.3: the lineage is the snapshot at the presented `ended`, written at once.
       if (point.await.type === "ended") yield* writeLineage
       if (batchRunning === batch) batchRunning = undefined
+      if (batchCues === localized) batchCues = undefined
       yield* offerEvent({ type: "batch.settled", await: point.await })
     }))
     batchFiber = yield* Effect.forkScoped(running)
@@ -566,7 +591,18 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       case "overlay.hide": return options.presenter.hideScreen
       case "ui.hidden": return options.presenter.setUiHidden(command.hidden)
       case "settings.apply":
-        return Effect.gen(function* () { yield* options.profile.updateSettings(command.settings); currentSettings = yield* SubscriptionRef.get(options.profile.settings); yield* options.presenter.applySettings(currentSettings); yield* options.audio.setVolumes(currentSettings.volumes) })
+        return Effect.gen(function* () {
+          yield* options.profile.updateSettings(command.settings)
+          currentSettings = yield* SubscriptionRef.get(options.profile.settings)
+          const running = batchCues
+          const locale = localeOf(currentSettings)
+          if (running !== undefined && running.locale !== locale) {
+            running.cues = yield* factory.fromOutput(running.output, running.read, locale)
+            running.locale = locale
+          }
+          yield* options.presenter.applySettings(currentSettings)
+          yield* options.audio.setVolumes(currentSettings.volumes)
+        })
       case "voice.replay": {
         const file = voiceFile(options.bindings, command.voiceKey)
         return file === undefined ? Effect.void : options.audio.play("voice", { file, loop: false, volume: 1, fade: 0, restart: true })

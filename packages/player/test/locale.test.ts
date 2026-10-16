@@ -67,6 +67,20 @@ describe("translated text follows the locale setting (§2.2)", () => {
     expect(recorded.choices.at(-1)?.prompt).toBe("이제 어디로?")
   }))))
 
+  it.effect("setSettings while a batch's first line is shown: the next line of the same batch reads Korean", () => overKorean(Effect.scoped(Effect.gen(function* () {
+    const recorded = recorder()
+    const handle = yield* player(recorded)
+    yield* act(handle, { type: "newGame" })
+    // `dock` plays one batch of two lines; the reader switches while the first is shown.
+    yield* handle.actions({ type: "choose", option: "dock" })
+    yield* flush
+    expect(recorded.lines.slice(1).map(textOf)).toEqual(["Mind the tide."])
+    yield* handle.actions({ type: "setSettings", settings: { locale: "ko" } })
+    yield* act(handle, { type: "advance" })
+    expect(recorded.lines.slice(1).map(textOf)).toEqual(["Mind the tide.", "물이 빠진다."])
+    expect((yield* SubscriptionRef.get(handle.view)).flow).toBe("ended")
+  }))))
+
   it.effect("a saved backlog keeps the translations: continued after a reload it is shown in Korean", () => overKorean(Effect.gen(function* () {
     yield* Effect.scoped(Effect.gen(function* () {
       const handle = yield* player(recorder())

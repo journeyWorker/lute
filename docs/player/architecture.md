@@ -91,7 +91,10 @@ on it.
 
 **Locale per call (0.47).** The director passes the current
 `settings.locale` to every `fromOutput` and `choiceView` call (custom
-factories and `cueFactory` wrappers receive it and pass it on). A line reads
+factories and `cueFactory` wrappers receive it and pass it on). A locale
+switch while a batch plays calls `fromOutput` again for that batch with the new
+locale; each line cue still to start takes the cue at its index from the
+latest call, so the next line shown reads the new locale. A line reads
 `localeSegments[locale]`, else `texts[locale]`, else its source segments /
 text; an option label reads `texts[locale]`, else its source text; a branch/hub
 prompt reads the record's `promptTexts[locale]`, else its source `prompt`. A bundle's
