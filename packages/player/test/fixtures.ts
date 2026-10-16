@@ -12,11 +12,13 @@ const fixtures = join(import.meta.dirname, "fixtures")
 
 /**
  * `quay-locale`: one scene (a `prev.run`-gated line, a named line, a branch,
- * a `user.runs` counter, then the terminal `run.over`), source locale `en-US`
- * (the quest document's `contentLang`) and a Korean export (`ko.json`).
+ * a prompted branch, a `user.runs` counter, then the terminal `run.over`),
+ * source locale `en-US` (the manifest's `defaults.contentLang`, over the quest
+ * document's `en-GB`), a Korean export (`ko.json`) and a Japanese one that
+ * translates only the branch prompt (`ja.json`).
  */
 export const quayProject = join(fixtures, "quay-locale", "project")
-const quayKorean = join(fixtures, "quay-locale", "ko.json")
+const quayTranslations = [join(fixtures, "quay-locale", "ko.json"), join(fixtures, "quay-locale", "ja.json")]
 
 const luteBinary = join(process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "target"), "debug", "lute")
 
@@ -33,7 +35,7 @@ const lute = (args: ReadonlyArray<string>): void => {
 let korean: string | undefined
 
 /**
- * `quay-locale` compiled with its Korean translation: `lute loc import ko.json`
+ * `quay-locale` compiled with its translations: `lute loc import ko.json ja.json`
  * then `lute compile --all <project> --locales <bundle>`, with the binary
  * `compileBundle` builds.
  */
@@ -44,7 +46,7 @@ export const compileQuayKorean: Effect.Effect<string> = Effect.gen(function* () 
   const work = mkdtempSync(join(tmpdir(), "lute-player-locale-"))
   const localeBundle = join(work, "locales.json")
   const output = join(work, "bundle")
-  lute(["loc", "import", quayKorean, "-o", localeBundle])
+  lute(["loc", "import", ...quayTranslations, "-o", localeBundle])
   lute(["compile", "--all", quayProject, "--locales", localeBundle, "-o", output])
   korean = output
   return output

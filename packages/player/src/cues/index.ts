@@ -184,18 +184,20 @@ export interface BundleLocales {
 }
 
 /**
- * A bundle's source locale — the `contentLang` of the first artifact (in
- * `index.documents` order) whose meta declares one, else `"en"` — and its
- * compiled locales: the keys of every `texts` map in its artifacts.
+ * A bundle's source locale — the index's `contentLang`, else the
+ * `contentLang` of the first artifact (in `index.documents` order) whose meta
+ * declares one, else `"en"` — and its compiled locales: the keys of every
+ * `texts`/`promptTexts` map in its artifacts.
  */
 export const bundleLocales = (bundle: Bundle): BundleLocales => {
-  let source: string | undefined
+  const indexLang = bundle.index.contentLang
+  let source = indexLang !== undefined && indexLang.length > 0 ? indexLang : undefined
   const compiled = new Set<string>()
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) for (const child of value) visit(child)
     else if (isRecord(value)) {
       for (const [key, child] of Object.entries(value)) {
-        if (key === "texts" && isRecord(child)) for (const locale of Object.keys(child)) compiled.add(locale)
+        if ((key === "texts" || key === "promptTexts") && isRecord(child)) for (const locale of Object.keys(child)) compiled.add(locale)
         else visit(child)
       }
     }
@@ -448,7 +450,8 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
     const textOf = (value: JsonRecord | undefined, fallback: string): string =>
       localizedText(field(value, "texts"), locale, string(value?.text) ? value.text : fallback)
     const sourcePrompt = field(source, "prompt")
-    const prompt = string(sourcePrompt) ? sourcePrompt : await_.menu.prompt ?? undefined
+    const fallbackPrompt = string(sourcePrompt) ? sourcePrompt : await_.menu.prompt ?? undefined
+    const prompt = fallbackPrompt === undefined ? undefined : localizedText(field(source, "promptTexts"), locale, fallbackPrompt)
     return {
       id: await_.menu.id,
       construct: await_.menu.construct === "hub" ? "hub" : "branch",

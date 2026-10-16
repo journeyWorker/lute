@@ -349,9 +349,9 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ## Locale (0.47)
 
-locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값이고, 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts` 맵의 키입니다(`lute compile --locales`). `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
+locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 프로젝트 index의 `contentLang`(매니페스트의 `defaults.contentLang`)이고, 없으면 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값, 그것도 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts`와 `promptTexts` 맵의 키이므로(`lute compile --locales`) 프롬프트만 번역한 locale도 포함됩니다. `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
 
-현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
+현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), branch와 hub 프롬프트(`promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
 
 ## 롤백과 기록
 
