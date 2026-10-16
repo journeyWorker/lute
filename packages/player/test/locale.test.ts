@@ -15,17 +15,27 @@ const overKorean = <A, E, R>(use: Effect.Effect<A, E, R>) =>
   Effect.flatMap(compileQuayKorean, (bundle) => Effect.provide(use, hostLayer(bundle)))
 
 describe("translated text follows the locale setting (§2.2)", () => {
-  it.effect("Settings offers the source and the compiled locales; a new profile starts at the source locale", () => overKorean(Effect.scoped(Effect.gen(function* () {
+  it.effect("Settings offers the source locale (the index contentLang) and the compiled locales, a prompt-only one included; a new profile starts at the source locale", () => overKorean(Effect.scoped(Effect.gen(function* () {
     const recorded = recorder()
     const handle = yield* player(recorded)
     yield* act(handle, { type: "openSettings" })
-    expect(lastScreen(recorded.screens, "Settings")).toMatchObject({ locales: ["en-US", "ko"], settings: { locale: "en-US" } })
+    expect(lastScreen(recorded.screens, "Settings")).toMatchObject({ locales: ["en-US", "ja", "ko"], settings: { locale: "en-US" } })
     yield* act(handle, { type: "close" })
     yield* act(handle, { type: "newGame" })
     expect(recorded.lines.map(textOf)).toEqual(["The bell is ringing."])
+    expect(recorded.choices.at(-1)?.prompt).toBe("Where now?")
   }))))
 
-  it.effect("setSettings mid-run: the next line, the choice and the backlog read Korean; a new game stays Korean", () => overKorean(Effect.scoped(Effect.gen(function* () {
+  it.effect("a prompt-only locale translates the branch prompt and leaves the rest in the source locale", () => overKorean(Effect.scoped(Effect.gen(function* () {
+    const recorded = recorder()
+    const handle = yield* player(recorded)
+    yield* act(handle, { type: "setSettings", settings: { locale: "ja" } })
+    yield* act(handle, { type: "newGame" })
+    expect(recorded.lines.map(textOf)).toEqual(["The bell is ringing."])
+    expect(recorded.choices.at(-1)).toMatchObject({ prompt: "さて、どこへ?", options: [{ text: "Walk to the dock" }, { text: "Climb the hill" }] })
+  }))))
+
+  it.effect("setSettings mid-run: the next line, the choice, its prompt and the backlog read Korean; a new game stays Korean", () => overKorean(Effect.scoped(Effect.gen(function* () {
     const recorded = recorder()
     const handle = yield* player(recorded)
     // The first line is presented in the source locale, then the reader switches.
@@ -34,6 +44,7 @@ describe("translated text follows the locale setting (§2.2)", () => {
     expect(recorded.lines.map(textOf)).toEqual(["The bell is ringing."])
     yield* act(handle, { type: "setSettings", settings: { locale: "ko" } })
     expect(recorded.choices.at(-1)?.options.map((option) => option.text)).toEqual(["부두로 걸어간다", "언덕을 오른다"])
+    expect(recorded.choices.at(-1)?.prompt).toBe("이제 어디로?")
     // The backlog, recorded while English was set, is shown in Korean.
     yield* act(handle, { type: "openBacklog" })
     expect(lastScreen(recorded.screens, "Backlog")?.entries.map((entry) => entry.text)).toEqual(["종이 울리고 있어."])
@@ -53,6 +64,7 @@ describe("translated text follows the locale setting (§2.2)", () => {
     yield* act(handle, { type: "newGame" })
     expect(recorded.lines.slice(shown).map((line) => [line.speakerName, textOf(line)])).toEqual([["Mara", "또 왔구나."], ["Mara", "종이 울리고 있어."]])
     expect(recorded.choices.at(-1)?.options.map((option) => option.text)).toEqual(["부두로 걸어간다", "언덕을 오른다"])
+    expect(recorded.choices.at(-1)?.prompt).toBe("이제 어디로?")
   }))))
 
   it.effect("a saved backlog keeps the translations: continued after a reload it is shown in Korean", () => overKorean(Effect.gen(function* () {
@@ -85,7 +97,7 @@ describe("translated text follows the locale setting (§2.2)", () => {
       const recorded = recorder()
       const handle = yield* player(recorded)
       yield* act(handle, { type: "openSettings" })
-      expect(lastScreen(recorded.screens, "Settings")).toMatchObject({ locales: ["en-US", "ko"], settings: { locale: "en-US" } })
+      expect(lastScreen(recorded.screens, "Settings")).toMatchObject({ locales: ["en-US", "ja", "ko"], settings: { locale: "en-US" } })
       yield* act(handle, { type: "close" })
       yield* act(handle, { type: "newGame" })
       expect(recorded.lines.map(textOf)).toEqual(["The bell is ringing."])

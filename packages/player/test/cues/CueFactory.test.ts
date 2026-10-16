@@ -137,19 +137,25 @@ describe("CueFactory", () => {
       expect(named(yield* local.fromOutput(visit, new Set(), "ja"))?.segments).toEqual([{ _tag: "Text", text: "The bell is ringing.", styles: [] }])
     }))
 
-    it.effect("reads choice labels for the locale of each call, else the source text", () => Effect.gen(function* () {
+    it.effect("reads choice labels and the prompt for the locale of each call, else the source text", () => Effect.gen(function* () {
       const { source, choice } = yield* visited
       const local = CueFactory.make({ bundle: source, bindings })
       const labels = (locale: string) => local.choiceView(choice, locale).options.map((option) => option.text)
       expect(labels("ko")).toEqual(["부두로 걸어간다", "언덕을 오른다"])
       expect(labels("en-US")).toEqual(["Walk to the dock", "Climb the hill"])
       expect(labels("ja")).toEqual(["Walk to the dock", "Climb the hill"])
-      expect(local.choiceView(choice, "ko").prompt).toBe("Where now?")
+      expect(local.choiceView(choice, "ko").prompt).toBe("이제 어디로?")
+      expect(local.choiceView(choice, "ja").prompt).toBe("さて、どこへ?")
+      expect(local.choiceView(choice, "en-US").prompt).toBe("Where now?")
+      expect(local.choiceView(choice, "fr").prompt).toBe("Where now?")
     }))
 
     it.effect("names the source locale and the compiled locales of a bundle", () => Effect.gen(function* () {
       const { source } = yield* visited
-      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en-US", locales: ["en-US", "ko"] })
+      // The index's contentLang (the manifest's en-US) wins over the quest document's en-GB.
+      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en-US", locales: ["en-US", "ja", "ko"] })
+      const { contentLang: _contentLang, ...withoutLang } = source.index
+      expect(CueFactory.bundleLocales({ ...source, index: withoutLang })).toEqual({ source: "en-GB", locales: ["en-GB", "ja", "ko"] })
       const plain = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(quayProject)))
       expect(CueFactory.bundleLocales(plain)).toEqual({ source: "en-US", locales: ["en-US"] })
       const timed = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(join(sessionRoot, "timed-choice", "project"))))
