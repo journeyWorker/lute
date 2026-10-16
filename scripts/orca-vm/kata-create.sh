@@ -143,6 +143,15 @@ cut -d" " -f1,2 "$D/host_ed25519.pub"
 )"
 case "$host_key" in ssh-ed25519\ *) ;; *) die "could not read sandbox host key" ;; esac
 
+# omp defaults (models, roles, compaction, ...) and custom agents so the first
+# launch in the workspace is not a fresh install.
+omp_config="$(dirname "$0")/omp-config.yml"
+omp_agents="$(dirname "$0")/omp-agents"
+[ -f "$omp_config" ] && [ -d "$omp_agents" ] || die "missing $omp_config or $omp_agents (run forca sync)"
+k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/config.yml"' < "$omp_config" >&2
+COPYFILE_DISABLE=1 tar -C "$omp_agents" -cf - . |
+  k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -' >&2
+
 # Orca dials with BatchMode and StrictHostKeyChecking: trust this sandbox's key
 # under its own alias (removed again by kata-destroy.sh).
 known_hosts="$HOME/.ssh/known_hosts"
