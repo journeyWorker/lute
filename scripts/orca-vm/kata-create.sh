@@ -15,14 +15,26 @@
 #   ORCA_KATA_KUBECTL     kubectl binary (default: PATH, then Homebrew paths)
 #   ORCA_KATA_POOL        SandboxWarmPool to claim from (default below)
 #   ORCA_KATA_SSH_KEY     desktop key Orca dials with (default ~/.ssh/orca-kata_ed25519)
+#
+# Features (repos.tsv third column):
+#   mirror    clone from the node-local forca cache (/forca in the sandbox:
+#             git mirrors, LFS subset, warm pub/Gradle caches), then point
+#             every remote back at GitHub so the sandbox owns its objects
+#   emulator  claim a paired Android emulator (android-emu pool), connect the
+#             sandbox's adb to it, and forward it to this desktop's adb so
+#             Orca's Mobile Emulator panel (scrcpy) can show it
 set -euo pipefail
 
 DEFAULT_POOL=omp-kata-rust
+FEATURES=""
 NAMESPACE=agent-sandbox
 SSHD_DIR=/home/dev/.orca-sshd
+EMU_POOL=android-emu
+STATE_DIR="$HOME/.cache/orca-kata"
 
 log() { printf '[kata-create] %s\n' "$*" >&2; }
 die() { log "error: $*"; exit 1; }
+has() { case ",$FEATURES," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 
 kubectl_bin="${ORCA_KATA_KUBECTL:-$(command -v kubectl || true)}"
 for c in /opt/homebrew/bin/kubectl /usr/local/bin/kubectl /usr/bin/kubectl; do
@@ -61,36 +73,64 @@ instance="${ORCA_VM_INSTANCE_ID:-$(date +%s)}"
 instance="${instance#orca-}"
 claim="$(printf 'orca-%s-%s' "$repo_name" "$instance" | tr 'A-Z_.' 'a-z--' | tr -cd 'a-z0-9-' | cut -c1-55)"
 claim="${claim%-}"
+emu_claim=""
+has emulator && emu_claim="$claim-emu"
+pf_pid_file="$STATE_DIR/$claim.port-forward.pid"
 
 cleanup_on_error() {
-  log "create failed; releasing claim $claim"
-  k delete sandboxclaim "$claim" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  log "create failed; releasing $claim${emu_claim:+ and $emu_claim}"
+  k delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  if [ -f "$pf_pid_file" ]; then
+    pid="$(cat "$pf_pid_file")"; pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true
+    rm -f "$pf_pid_file"
+  fi
 }
 trap cleanup_on_error ERR
 
-log "claiming $claim from pool $pool"
-k apply -f - >&2 <<EOF
+claim_from() {
+  k apply -f - >&2 <<EOF
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxClaim
 metadata:
-  name: $claim
+  name: $1
   namespace: $NAMESPACE
   labels:
     app.kubernetes.io/managed-by: orca-recipe
 spec:
   warmPoolRef:
-    name: $pool
+    name: $2
 EOF
+}
 
-sandbox=""
-for _ in $(seq 1 90); do
-  sandbox="$(k get sandboxclaim "$claim" -o jsonpath='{.status.sandbox.name}' 2>/dev/null || true)"
-  [ -n "$sandbox" ] && break
-  sleep 2
-done
-[ -n "$sandbox" ] || die "claim $claim got no sandbox within 180s"
-k wait pod "$sandbox" --for=condition=Ready --timeout=300s >&2
+# wait_claim <claim> <seconds>: prints the sandbox (pod) name once Ready
+wait_claim() {
+  local name="" _
+  for _ in $(seq 1 90); do
+    name="$(k get sandboxclaim "$1" -o jsonpath='{.status.sandbox.name}' 2>/dev/null || true)"
+    [ -n "$name" ] && break
+    sleep 2
+  done
+  [ -n "$name" ] || die "claim $1 got no sandbox within 180s"
+  k wait pod "$name" --for=condition=Ready --timeout="${2}s" >&2
+  echo "$name"
+}
+
+log "claiming $claim from pool $pool"
+claim_from "$claim" "$pool"
+if [ -n "$emu_claim" ]; then
+  log "claiming $emu_claim from pool $EMU_POOL"
+  claim_from "$emu_claim" "$EMU_POOL"
+fi
+
+sandbox="$(wait_claim "$claim" 300)"
 log "sandbox $sandbox ready"
+emu_pod=""; emu_addr=""
+if [ -n "$emu_claim" ]; then
+  # A warm emulator is already booted; a cold one needs ~2 minutes.
+  emu_pod="$(wait_claim "$emu_claim" 600)"
+  emu_addr="$(k get pod "$emu_pod" -o jsonpath='{.status.podIP}'):5555"
+  log "emulator $emu_pod ready at $emu_addr"
+fi
 
 if [ ! -f "$ssh_key" ]; then
   log "creating desktop key $ssh_key"
@@ -99,16 +139,19 @@ if [ ! -f "$ssh_key" ]; then
 fi
 
 # Prepare a user-mode sshd (the pod runs as dev, so no system sshd), the SSH
-# session environment and the checkout. Inputs arrive on stdin, one per line.
-# The last stdout line is the sandbox host key, read over the authenticated
-# Kubernetes API rather than an unverified ssh-keyscan.
+# session environment, the checkout, caches and the emulator connection.
+# Inputs arrive on stdin, one per line. The last stdout line is the sandbox
+# host key, read over the authenticated Kubernetes API rather than an
+# unverified ssh-keyscan.
 host_key="$(
-  printf '%s\n%s\n%s\n%s\n%s\n%s\n' "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" \
-    "$project_root" "$git_name" "$git_email" |
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" \
+    "$project_root" "$git_name" "$git_email" "$FEATURES" "$emu_addr" |
     k exec -i "$sandbox" -- bash -c '
 set -euo pipefail
 read -r pub; read -r repo_url; read -r repo_ref; read -r project_root
 IFS= read -r git_name || true; IFS= read -r git_email || true
+IFS= read -r features || true; IFS= read -r emu_addr || true
+has() { case ",$features," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 D='"$SSHD_DIR"'
 umask 077
 mkdir -p "$D" "$HOME/.ssh"
@@ -125,19 +168,91 @@ PermitUserEnvironment yes
 AllowTcpForwarding yes
 Subsystem sftp internal-sftp
 CFG
-# SSH sessions do not inherit the container env (toolchain PATH, omp broker,
-# git token); sshd reads it from here for every session.
-env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|LANG|LC_ALL)=" > "$HOME/.ssh/environment"
 umask 022
 gh auth setup-git >/dev/null 2>&1 || true
+git config --global url."https://github.com/".insteadOf git@github.com:
 [ -n "$git_name" ] && git config --global user.name "$git_name"
 [ -n "$git_email" ] && git config --global user.email "$git_email"
 export GIT_TERMINAL_PROMPT=0
+extra_env=""
+
+# forca cache key for a GitHub URL or slug: owner/repo -> owner__repo
+key() { local s="${1#https://github.com/}"; s="${s#git@github.com:}"; s="${s%.git}"; echo "${s%%/*}__${s#*/}"; }
+
+# lfs_from_mirror <checkout> <mirror>: copy the LFS objects this checkout needs
+# (the subset the mirror tracks) from the read-only cache, then fill any gap
+# from GitHub.
+lfs_from_mirror() {
+  local co="$1" m="$2" inc dst list
+  [ -f "$m/forca-lfs-include" ] || return 0
+  inc="$(cat "$m/forca-lfs-include")"
+  dst="$(git -C "$co" rev-parse --git-common-dir)/lfs/objects"
+  case "$dst" in /*) ;; *) dst="$co/$dst" ;; esac
+  mkdir -p "$dst"; list="$(mktemp)"
+  git -C "$co" lfs ls-files -l -I "$inc" | awk "{o=\$1; print substr(o,1,2)\"/\"substr(o,3,2)\"/\"o}" > "$list"
+  rsync -a --ignore-missing-args --files-from="$list" "$m/lfs/objects/" "$dst/" >&2 || true
+  rm -f "$list"
+  git -C "$co" lfs checkout >&2 2>/dev/null || true
+  git -C "$co" lfs pull --include "$inc" >&2
+}
+
 if [ ! -d "$project_root/.git" ]; then
-  git clone --quiet --filter=blob:none --branch "$repo_ref" "$repo_url" "$project_root" >&2
-  git -C "$project_root" submodule update --init --recursive --filter=blob:none --quiet >&2 || \
-    echo "warning: submodule init failed" >&2
+  mirror="/forca/git/$(key "$repo_url").git"
+  if has mirror && [ -d "$mirror" ]; then
+    # Copy (never borrow) objects from the cache, then switch every remote to
+    # GitHub: the checkout must not depend on the cache after creation.
+    export GIT_LFS_SKIP_SMUDGE=1
+    git clone --quiet --no-hardlinks --branch "$repo_ref" "$mirror" "$project_root" >&2
+    git -C "$project_root" remote set-url origin "$repo_url"
+    git -C "$project_root" fetch --quiet origin >&2
+    git -C "$project_root" reset --quiet --hard "origin/$repo_ref"
+    git -C "$project_root" submodule init --quiet
+    git -C "$project_root" config --get-regexp "^submodule\..*\.url$" | while read -r name url; do
+      sm="/forca/git/$(key "$url").git"
+      if [ -d "$sm" ]; then git -C "$project_root" config "$name" "$sm"; fi
+    done
+    # From the cache first (git blocks file-transport submodules unless
+    # allowed); commits newer than the last mirror sync come from GitHub on
+    # the second pass.
+    git -c protocol.file.allow=always -C "$project_root" submodule update --quiet --recursive >&2 2>/dev/null || true
+    git -C "$project_root" submodule sync --quiet --recursive
+    git -C "$project_root" submodule update --quiet --init --recursive >&2
+    lfs_from_mirror "$project_root" "$mirror"
+    git -C "$project_root" submodule foreach --quiet --recursive "echo \$displaypath \$(git remote get-url origin)" |
+      while read -r path url; do
+        lfs_from_mirror "$project_root/$path" "/forca/git/$(key "$url").git"
+      done
+    unset GIT_LFS_SKIP_SMUDGE
+  else
+    git clone --quiet --filter=blob:none --branch "$repo_ref" "$repo_url" "$project_root" >&2
+    git -C "$project_root" submodule update --init --recursive --filter=blob:none --quiet >&2 || \
+      echo "warning: submodule init failed" >&2
+  fi
 fi
+
+# Warm Flutter caches built by the forca-mirror job: Gradle reads the shared
+# dependency cache in place (GRADLE_RO_DEP_CACHE); pub and the Gradle wrapper
+# are copied because they need a writable home.
+warm="/forca/warm/$(key "$repo_url")/current"
+if has mirror && [ -d "$warm" ]; then
+  warm="$(readlink -f "$warm")"
+  [ -d "$warm/pub" ] && rsync -a "$warm/pub/" "$HOME/.pub-cache/" >&2
+  [ -d "$warm/gradle/wrapper" ] && mkdir -p "$HOME/.gradle" && rsync -a "$warm/gradle/wrapper" "$HOME/.gradle/" >&2
+  [ -d "$warm/gradle/caches/modules-2" ] && extra_env="$extra_env GRADLE_RO_DEP_CACHE=$warm/gradle/caches"
+fi
+
+if [ -n "$emu_addr" ]; then
+  adb connect "$emu_addr" >&2
+  extra_env="$extra_env FORCA_EMULATOR=$emu_addr ANDROID_SERIAL=$emu_addr"
+fi
+
+# SSH sessions do not inherit the container env (toolchain PATH, omp broker,
+# git token, SDK homes); sshd reads it from here for every session.
+umask 077
+{
+  env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|LANG|LC_ALL)="
+  for kv in $extra_env; do echo "$kv"; done
+} > "$HOME/.ssh/environment"
 cut -d" " -f1,2 "$D/host_ed25519.pub"
 ' | tail -n 1
 )"
@@ -149,7 +264,11 @@ omp_config="$(dirname "$0")/omp-config.yml"
 omp_agents="$(dirname "$0")/omp-agents"
 [ -f "$omp_config" ] && [ -d "$omp_agents" ] || die "missing $omp_config or $omp_agents (run forca sync)"
 k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/config.yml"' < "$omp_config" >&2
-COPYFILE_DISABLE=1 tar -C "$omp_agents" -cf - . |
+# bsdtar (macOS) would add AppleDouble files and provenance xattr headers that
+# GNU tar in the sandbox warns about.
+tar_flags=""
+tar --version 2>/dev/null | grep -q bsdtar && tar_flags="--no-xattrs --no-mac-metadata"
+COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf - . |
   k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -' >&2
 
 # Orca dials with BatchMode and StrictHostKeyChecking: trust this sandbox's key
@@ -167,7 +286,29 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i "$ssh
   "test -d '$project_root/.git' && command -v omp >/dev/null" >&2 ||
   die "SSH smoke test failed"
 
+# Desktop side of the emulator: a self-restarting port-forward to the
+# emulator's adbd plus `adb connect`, so the device shows up in Orca's Mobile
+# Emulator panel. The emulator itself runs on the cluster, never here.
+adb_port=""
+if [ -n "$emu_pod" ]; then
+  adb_bin="$(command -v adb || true)"
+  [ -n "$adb_bin" ] || [ ! -x "$HOME/Library/Android/sdk/platform-tools/adb" ] ||
+    adb_bin="$HOME/Library/Android/sdk/platform-tools/adb"
+  if [ -z "$adb_bin" ]; then
+    log "no adb on this desktop; skipping the local emulator connection"
+  else
+    mkdir -p "$STATE_DIR"
+    adb_port=15555
+    while nc -z 127.0.0.1 "$adb_port" >/dev/null 2>&1; do adb_port=$((adb_port + 1)); done
+    nohup bash -c "while :; do '$kubectl_bin' --kubeconfig '$kubeconfig' -n $NAMESPACE port-forward --address 127.0.0.1 pod/$emu_pod $adb_port:5555 >/dev/null 2>&1; sleep 2; done" \
+      >/dev/null 2>&1 &
+    echo $! > "$pf_pid_file"
+    for _ in $(seq 1 30); do nc -z 127.0.0.1 "$adb_port" >/dev/null 2>&1 && break; sleep 1; done
+    "$adb_bin" connect "127.0.0.1:$adb_port" >&2 || log "adb connect failed; run it by hand: adb connect 127.0.0.1:$adb_port"
+  fi
+fi
+
 trap - ERR
-log "ready: $sandbox ($project_root)"
-printf '{"schemaVersion":1,"connection":{"type":"ssh","projectRoot":"%s","target":{"label":"kata-%s","host":"%s","port":22,"username":"dev","identityFile":"%s","identitiesOnly":true,"proxyCommand":"%s"}},"userData":{"provider":"agent-sandbox","resourceId":"%s","sandbox":"%s","namespace":"%s","kubeconfig":"%s"}}\n' \
-  "$project_root" "$repo_name" "$sandbox" "$ssh_key" "$proxy_command" "$claim" "$sandbox" "$NAMESPACE" "$kubeconfig"
+log "ready: $sandbox ($project_root)${emu_pod:+, emulator $emu_pod (desktop adb 127.0.0.1:$adb_port)}"
+printf '{"schemaVersion":1,"connection":{"type":"ssh","projectRoot":"%s","target":{"label":"kata-%s","host":"%s","port":22,"username":"dev","identityFile":"%s","identitiesOnly":true,"proxyCommand":"%s"}},"userData":{"provider":"agent-sandbox","resourceId":"%s","sandbox":"%s","namespace":"%s","kubeconfig":"%s","emuClaim":"%s","adbPort":"%s"}}\n' \
+  "$project_root" "$repo_name" "$sandbox" "$ssh_key" "$proxy_command" "$claim" "$sandbox" "$NAMESPACE" "$kubeconfig" "$emu_claim" "$adb_port"
