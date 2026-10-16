@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": [
     "ja-JP"
   ],
@@ -7,5 +7,6 @@
     "hero.s01ep01.hero_0010": {
       "ja-JP": "やあ :emphasis[そこ]"
     }
-  }
+  },
+  "sourceHashes": {}
 }

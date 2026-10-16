@@ -1,8 +1,8 @@
 {
   "hub.lute.json": {
     "kind": "scene",
-    "lute": "0.46.0",
-    "irVersion": "0.46.0",
+    "lute": "0.47.0",
+    "irVersion": "0.47.0",
     "capabilitySnapshot": "65c68bcdbade1e659c7c657ead3d8158234a5d0686587fe2fac6237468eb15da",
     "requiredSemantics": [
       "lute.core/1",
@@ -134,7 +134,8 @@
           }
         ],
         "converge": "001-0900",
-        "prompt": "Confirm?"
+        "prompt": "Confirm?",
+        "promptLineId": "hub.answer.prompt"
       },
       {
         "kind": "set",

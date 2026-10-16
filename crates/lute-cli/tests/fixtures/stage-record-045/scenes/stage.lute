@@ -4,7 +4,7 @@ character: marina
 season: 1
 episode: 1
 title: Stage record
-luteVersion: "0.46.0"
+luteVersion: "0.47.0"
 enums:
   anchor: { members: [center], default: center }
   action: { members: [wave, leave], exits: [leave] }

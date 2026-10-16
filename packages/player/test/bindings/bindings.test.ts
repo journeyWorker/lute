@@ -28,19 +28,19 @@ describe("player bindings loading", () => {
   it.effect("decodes the clean CLI fixture", () =>
     Effect.gen(function* () {
       const bindings = yield* decode(readFileSync(cleanFixturePath, "utf8"))
-      expect(bindings).toEqual({ bindingsVersion: "0.46", canvas: { width: 1920, height: 1080 } })
+      expect(bindings).toEqual({ bindingsVersion: "0.47", canvas: { width: 1920, height: 1080 } })
     }))
 
   it.effect("rejects unknown keys with a BindingsInvalid path", () =>
     Effect.gen(function* () {
-      const rejected = yield* Effect.exit(decode({ bindingsVersion: "0.46", canvas: { width: 1, height: 1 }, mystery: true }))
+      const rejected = yield* Effect.exit(decode({ bindingsVersion: "0.47", canvas: { width: 1, height: 1 }, mystery: true }))
       const error = failure(rejected)
       expect(error.path).toContain("bindings.mystery")
     }))
 
   it.effect("rejects wrong types with a BindingsInvalid path", () =>
     Effect.gen(function* () {
-      const rejected = yield* Effect.exit(decode({ bindingsVersion: "0.46", canvas: { width: "wide", height: 1 } }))
+      const rejected = yield* Effect.exit(decode({ bindingsVersion: "0.47", canvas: { width: "wide", height: 1 } }))
       const error = failure(rejected)
       expect(error.path).toBe("bindings.canvas.width")
     }))
@@ -55,14 +55,14 @@ describe("player bindings loading", () => {
 
   it.effect("resolves relative assets with an assets base with or without a slash", () =>
     Effect.gen(function* () {
-      const bindings = yield* decode({ bindingsVersion: "0.46", canvas: { width: 1, height: 1 }, assetsBase: "media", assets: { theme: "audio/theme.ogg" } })
+      const bindings = yield* decode({ bindingsVersion: "0.47", canvas: { width: 1, height: 1 }, assetsBase: "media", assets: { theme: "audio/theme.ogg" } })
       expect(resolveFile(bindings, "theme")).toBe("media/audio/theme.ogg")
       expect(resolveFile({ ...bindings, assetsBase: "media/" }, "theme")).toBe("media/audio/theme.ogg")
     }))
 
   it.effect("resolves assets against absolute URLs and preserves absolute mapped URLs", () =>
     Effect.gen(function* () {
-      const bindings = yield* decode({ bindingsVersion: "0.46", canvas: { width: 1, height: 1 }, assetsBase: "https://cdn.example.test/assets/", assets: { theme: "audio/theme.ogg", remote: "https://other.example.test/theme.ogg" } })
+      const bindings = yield* decode({ bindingsVersion: "0.47", canvas: { width: 1, height: 1 }, assetsBase: "https://cdn.example.test/assets/", assets: { theme: "audio/theme.ogg", remote: "https://other.example.test/theme.ogg" } })
       expect(resolveFile({ ...bindings, assetsBase: "https://cdn.example.test/assets" }, "theme")).toBe("https://cdn.example.test/assets/audio/theme.ogg")
       expect(resolveFile(bindings, "remote")).toBe("https://other.example.test/theme.ogg")
     }))

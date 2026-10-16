@@ -15,7 +15,7 @@ import { flush, withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
 const canvas = { width: 1920, height: 1080 }
-const noFlow: Bindings = { bindingsVersion: "0.46", canvas }
+const noFlow: Bindings = { bindingsVersion: "0.47", canvas }
 const visit: Input = { type: "raiseOccasion", occasion: "visit" }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))

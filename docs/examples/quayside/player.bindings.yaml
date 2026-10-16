@@ -1,4 +1,4 @@
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -19,7 +19,7 @@ characters:
     nameColor: "#78b5e8"
 ui:
   font: "Georgia, serif"
-  title: { background: bg/title.png, music: title-music }
+  title: { background: bg/title.png, music: title-music, text: "Quayside" }
   ended:
     by: run.ending
     screens:

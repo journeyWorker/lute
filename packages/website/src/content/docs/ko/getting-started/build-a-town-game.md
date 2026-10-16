@@ -260,13 +260,14 @@ expect:
 
 ## 4. 바인딩과 이름 있는 결말 화면
 
-바인딩 경로는 `assetsBase` 아래에서 해석됩니다. `ui.title.music`은 `assets:`의
+바인딩 경로는 `assetsBase` 아래에서 해석됩니다. `ui.title.text`는 타이틀 화면에
+게임 이름을 표시합니다. `ui.title.music`은 `assets:`의
 `title-music` 키를 사용하고, `ui.ended`는 `run.ending`을 읽어 각 결말 화면을
 선택합니다. `flow.newGame`은 새 게임이 런을 시작할 때마다 `start`를 발생시키므로
 호스트가 직접 발생시키지 않습니다.
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -287,7 +288,7 @@ characters:
     nameColor: "#78b5e8"
 ui:
   font: "Georgia, serif"
-  title: { background: bg/title.png, music: title-music }
+  title: { background: bg/title.png, music: title-music, text: "Quayside" }
   ended:
     by: run.ending
     screens:

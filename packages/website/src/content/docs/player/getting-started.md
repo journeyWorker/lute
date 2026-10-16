@@ -1,6 +1,6 @@
 ---
 title: Player getting started
-description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.46 web player.
+description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.47 web player.
 ---
 
 This guide uses the repository's `examples/player-demo`; the same steps work for a project of your own.
@@ -20,7 +20,7 @@ The bundle directory must contain `project.index.json` and all referenced artifa
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. Mount in a page
 
-Install the exact 0.46 packages:
+Install the exact 0.47 packages:
 
 ```console
-bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "locales": [
     "ja-JP"
   ],
@@ -13,5 +13,6 @@
     "hero.s01ep01.hero_0030": {
       "ja-JP": ":speed[:speed[d]{rate=2}]{rate=0.5} c :emphasis[b]:emphasis[a]"
     }
-  }
+  },
+  "sourceHashes": {}
 }

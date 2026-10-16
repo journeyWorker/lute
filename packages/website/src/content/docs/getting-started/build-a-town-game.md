@@ -264,13 +264,14 @@ a workaround in the host.
 
 ## 4. Bindings and named ending screens
 
-Bindings resolve paths below `assetsBase`. `ui.title.music` uses the `assets:`
-key `title-music`; `ui.ended` reads `run.ending` and selects a screen for each
-named ending; `flow.newGame` raises `start` each time New game begins a run, so
-the host never raises it itself:
+Bindings resolve paths below `assetsBase`. `ui.title.text` names the game on
+the title screen; `ui.title.music` uses the `assets:` key `title-music`;
+`ui.ended` reads `run.ending` and selects a screen for each named ending;
+`flow.newGame` raises `start` each time New game begins a run, so the host
+never raises it itself:
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -291,7 +292,7 @@ characters:
     nameColor: "#78b5e8"
 ui:
   font: "Georgia, serif"
-  title: { background: bg/title.png, music: title-music }
+  title: { background: bg/title.png, music: title-music, text: "Quayside" }
   ended:
     by: run.ending
     screens:
@@ -302,7 +303,7 @@ flow:
 ```
 
 Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
-The manifest uses `bindingsVersion: "0.46"`; see the [bindings reference](/player/bindings/)
+The manifest uses `bindingsVersion: "0.47"`; see the [bindings reference](/player/bindings/)
 for the complete catalogue.
 
 ## 5. A player-web host

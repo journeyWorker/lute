@@ -1,4 +1,4 @@
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 assetsBase: ../../../../../examples/player-demo/assets/
 assets:

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.46.0`, the grammar and semantics the checker
+- **Language** — currently `0.47.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.46.0`) and gated on by consuming engines.
+  artifact (currently `0.47.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,172 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.47.0]
+
+**Brinewake round 2: player-web endings, translations and second
+play-throughs, localizable prompts, stale translations, bindings version,
+patch/diff fixes** (spec [`0.47.0.md`](docs/proposals/scenario-dsl/0.47.0.md);
+plan
+[`2026-10-17-lute-0.47.0-brinewake-r2.md`](docs/superpowers/plans/2026-10-17-lute-0.47.0-brinewake-r2.md);
+decisions
+[`2026-10-17-lute-0.47-decisions.md`](docs/superpowers/notes/2026-10-17-lute-0.47-decisions.md)).
+Inputs are issues #118–#129 from the second round of **The Last Bell at
+Brinewake**. The **player** and **player-web** earn most of the release
+(translated text that follows the locale setting, a lineage that carries a
+second play-through across reloads, ending screens from the real view entry,
+the CG layer, the title heading); localization gains prompts and stale
+translation detection, bindings gain `ui.title.text` and a checked
+`bindingsVersion`, and `lute patch`/`lute diff` are fixed. The IR moves
+additively (`promptLineId`/`promptTexts` on prompted branches and hubs, index
+`contentLang`); Event and snapshot shapes are unchanged, but line records now
+carry rendered translations. The stamps read `0.47.0`, the contract schemas
+move to the `0.47` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.47.schema.json`),
+`bindingsVersion` is `"0.47"` and the player's save/profile format version is
+`"0.47"`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- **The prompt id is reserved (#125).** A branch or hub with `prompt=` owns
+  the lineId `{prefix}.{id}.prompt`, so a `<choice id="prompt">` inside it is
+  `E-CHOICE-DUP` ("choice id `prompt` is the lineId of this branch's prompt;
+  rename the choice"). Without `prompt=` the id stays legal.
+
+### IR
+
+- **Localizable prompts (#125).** A `choice` (branch) or `hub` command with a
+  prompt gains `promptLineId` (`{prefix}.{branchOrHubId}.prompt`, the prefix
+  its options use) and, when a locale bundle translates it,
+  `promptTexts: { <locale>: <text> }` (omitted when empty); `prompt` stays the
+  source string. The IR schema's `cmdChoice`/`cmdHub` document both.
+- **Index `contentLang` (#122).** The project index gains optional
+  `contentLang`, copied from the manifest's `defaults.contentLang` (omitted
+  without one). Records without a prompt and indexes of projects without
+  `defaults.contentLang` are byte-identical apart from stamps.
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- **`ui.title.text` (#120).** `ui.title` gains optional `text` (a non-empty
+  string), the game's name drawn as the title heading; `background` and
+  `music` become optional. A written `ui.title` needs at least one of the
+  three (`E-BINDING-SHAPE`).
+- **`bindingsVersion` is checked (#119).** It follows the `luteVersion` rule:
+  `check-project` warns `W-BINDINGS-VERSION-STALE` when the value differs
+  from the toolchain line (older: update it, `lute fix` does it; newer:
+  upgrade the toolchain; not `MAJOR.MINOR`: restamp). A section newer than
+  the declared line is `E-BINDINGS-VERSION` at its key (`vfx` `effect:
+  custom` 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47).
+  `lute fix` raises an older `bindingsVersion` to the toolchain line,
+  byte-preserving the rest.
+
+### CLI
+
+- **Prompts in `lute loc` (#125).** `loc export` emits a `kind: "prompt"` row
+  per prompt (key `{branchOrHubId}.prompt`) before that branch's options;
+  `loc import` accepts it; `compile --locales` writes `promptTexts` and
+  reports `W-L10N-MISSING` for a missing prompt translation. `loc report`
+  counts prompts; its report version is `0.47.0.loc-report`.
+- **Stale translations (#128).** Every export row carries `sourceHash`
+  (`"sha256:<hex>"` of the plain source text; the last CSV column).
+  `loc import` stores it; the locale bundle moves to `schemaVersion: 2`
+  (`{ schemaVersion, locales, entries, sourceHashes }`; a `schemaVersion: 1`
+  bundle is still read). `compile --locales` (single and `--all`) warns
+  `W-L10N-STALE` for every merged `(lineId, locale)` whose stored hash no
+  longer matches the source; the translation is still merged.
+- **`lute patch` with several edits in one file (#123).** Edits are applied
+  in descending offset order against the original text, and the formatter
+  sees and splices back each edited region (before, the second edit's region
+  was mis-mapped and the formatted output spliced back as one block). Before
+  reporting `accepted`, a written `.lute` file that was `fmt --check` clean
+  must still be clean (else its touched regions must be stable); a violation
+  refuses the patch with `E-PATCH-FORMAT` and writes nothing.
+- **`lute schema` describes inputs (#124).** Every command description gains
+  `inputs`; `patch` lists its `PATCH` request (`fields`, `ops`, `preserve`,
+  `nodeKinds`). The schema report version is `0.47.0.schema`.
+- **`lute diff git:<rev> <path>` compares the subtree (#126).** When the
+  other side is a directory inside the work tree, the git side is
+  materialized from that subtree only and rooted at it.
+
+### Runtime
+
+- **Rendered translations on line records (#122).** A `line` record also
+  carries the line's `texts`/`localeSegments` (when the IR line has them)
+  with each `{{…}}` marker replaced by the value the source line rendered for
+  the marker with the same (trimmed) text; translators may reorder markers. No
+  schema change (records are open objects); `lute run` records are unchanged.
+
+### Player
+
+- **Translated text follows the locale setting (#122).** Lines, the backlog,
+  choice/hub labels and branch/hub prompts read the translation for
+  `settings.locale` and fall back to the source text; changing the locale
+  applies to the next text shown. The source locale is `index.contentLang`
+  (else the first artifact's `contentLang`, else `"en"`); Settings `locales`
+  are the source locale followed by the bundle's compiled locales, and a new
+  profile starts at the source locale. `CueFactory.fromOutput(output,
+  readLines, locale)` and `choiceView(await, locale)` take the locale per
+  call; backlog entries (and saved backlogs) keep the record's
+  `texts`/`localeSegments`.
+- **Lineage across reloads (#121).** The player stores the snapshot taken at
+  `ended` as the profile's `lineage` (written immediately). New game sends
+  `newRun` from an ended session (also one restored from an ended snapshot),
+  and in a player started without `snapshot`/`session` it restores the
+  lineage first, so `user.*` and `prev.run.*` survive a reload; a host `seed`
+  is not used on New game while a lineage exists. `profileVersion` is
+  `"0.47"`; older profiles keep read marks and settings and are never
+  refused.
+- **Leaving an ended run (#129).** `toTitle` from the ended flow skips the
+  discard-progress confirm.
+- **player-web.** Ending screens select by the runtime `WorldView` entry
+  `{ kind: "str", value }` at `ui.ended.by` (#118; before, a string was
+  expected and every ending showed the stock screen); stage layers put `cg`
+  above the actors and under the dialogue (#127); the title heading is
+  `ui.title.text` and no `"Lute"` heading is drawn unbound, with no backdrop
+  or music when those keys are absent (#120); the first line after a
+  presentation start is no longer cleared (the presentation cue runs in order
+  with its batch).
+
+### Diagnostics
+
+- New: `W-L10N-STALE` (#128), `W-BINDINGS-VERSION-STALE`,
+  `E-BINDINGS-VERSION` (#119), `E-PATCH-FORMAT` (#123).
+- `E-CHOICE-DUP` covers the reserved prompt id (#125); `E-BINDING-SHAPE`
+  covers an empty `ui.title` (#120).
+
+### Identity
+
+- None.
+
+### Documentation
+
+- The patch request (shape, ops, `preserve`, node-key kinds) is documented on
+  the website AI harness page (EN/KO) (#124).
+- The player docs describe the cross-run model (which tiers survive a reload,
+  when the lineage is written and used) and the player-web layer order.
+- **Build a town game** drops its "0.45 pattern" wording and gains a second
+  play-through step and a localization step over `docs/examples/quayside`,
+  which binds `ui.title.text`.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| Semantics | `<choice id="prompt">` in a branch/hub with `prompt=` is `E-CHOICE-DUP`. | Rename the choice. |
+| IR | Prompted branch/hub records gain `promptLineId` (and `promptTexts`); the project index gains optional `contentLang`. | Consumers that ignore unknown fields: none. |
+| CLI | Export rows gain `sourceHash`; locale bundles are `schemaVersion: 2`; `W-L10N-STALE`; `lute patch` may refuse `E-PATCH-FORMAT`; `lute schema` has `inputs` (`0.47.0.schema`); `loc report` is `0.47.0.loc-report`. | Re-export, keep `sourceHash` in translated rows, re-import. |
+| Bindings | `W-BINDINGS-VERSION-STALE`, `E-BINDINGS-VERSION`; `ui.title.text`; `ui.title.background`/`music` optional. | `lute fix`. |
+| Runtime | Line records carry rendered `texts`/`localeSegments`. | None (records are open objects). |
+| Player | `CueFactory.fromOutput(output, readLines, locale)`; backlog entries carry `texts`/`localeSegments`; Settings `locales` from the bundle, default the source locale; profile `lineage` (a host `seed` is not used on New game while one exists); no confirm leaving an ended run; player-web draws CG above actors and no `"Lute"` heading unless bound. | Custom cue factories take the locale argument; bind `ui.title.text`. Hosts that carried `user.*` themselves can drop it. |
+| Release | All axes and packages stamp `0.47.0`; schemas move to the `0.47` line; `bindingsVersion: "0.47"`; saves and profiles read `"0.47"`, so a 0.46 save is refused `SaveIncompatible` (a 0.46 profile still decodes). | Widen version gates to 0.47; `lute fix` updates `bindingsVersion`. |
 
 ## [0.46.0]
 

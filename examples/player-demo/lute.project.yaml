@@ -4,7 +4,7 @@ profiles:
   demo:
     plugins: { demo.occasions: true }
 defaults:
-  luteVersion: "0.46.0"
+  luteVersion: "0.47.0"
   contentLang: en-US
   pov: narrator
   uses: [world.schema.yaml, vocabulary.schema.yaml]

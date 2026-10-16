@@ -18,7 +18,7 @@ fn project(tag: &str, quest_attrs: &str, same_doc: bool) -> String {
     write(
         &dir,
         "lute.project.yaml",
-        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.46.0\"\n  uses: [world.schema.yaml]\n",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  luteVersion: \"0.47.0\"\n  uses: [world.schema.yaml]\n",
     );
     write(
         &dir,

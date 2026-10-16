@@ -1,6 +1,6 @@
 ---
 title: 플레이어 시작하기
-description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.46 웹 플레이어를 마운트합니다.
+description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.47 웹 플레이어를 마운트합니다.
 ---
 
 이 가이드는 저장소의 `examples/player-demo`를 사용합니다. 자신의 프로젝트에도 같은 단계를 적용할 수 있습니다.
@@ -20,7 +20,7 @@ lute compile --all examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.46"
+bindingsVersion: "0.47"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ lute check-project examples/player-demo
 
 ## 3. 페이지에 마운트
 
-정확한 0.46 패키지를 설치합니다.
+정확한 0.47 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.46.0 @lute-lang/player@0.46.0 @lute-lang/runtime@0.46.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
