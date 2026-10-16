@@ -1,9 +1,76 @@
 [
-  { "code": "0010", "file": "project/quay.lute", "kind": "line", "line": 12, "lineId": "quay.mara_0010", "source": null, "speaker": "mara", "text": "또 왔구나." },
-  { "code": "0020", "file": "project/quay.lute", "kind": "line", "line": 13, "lineId": "quay.mara_0020", "source": null, "speaker": "mara", "text": "종이 울리고 있어." },
-  { "file": "project/quay.lute", "key": "path.prompt", "kind": "prompt", "line": 14, "lineId": "quay.path.prompt", "source": null, "text": "이제 어디로?" },
-  { "file": "project/quay.lute", "key": "path.dock", "kind": "choice", "line": 16, "lineId": "quay.path.dock", "source": null, "text": "부두로 걸어간다" },
-  { "file": "project/quay.lute", "key": "path.hill", "kind": "choice", "line": 19, "lineId": "quay.path.hill", "source": null, "text": "언덕을 오른다" },
-  { "code": "0040", "file": "project/quay.lute", "kind": "line", "line": 22, "lineId": "quay.mara_0040", "source": null, "speaker": "mara", "text": "물때를 조심해." },
-  { "code": "0030", "file": "project/quay.lute", "kind": "line", "line": 23, "lineId": "quay.narrator_0030", "source": null, "speaker": "narrator", "text": "물이 빠진다." }
+  {
+    "code": "0010",
+    "file": "project/quay.lute",
+    "kind": "line",
+    "line": 11,
+    "lineId": "quay.mara_0010",
+    "source": null,
+    "sourceHash": "sha256:d8078c7d37f6947c26a9068f388424a75a8feaea48fa00421ed8103cfc4b7b33",
+    "speaker": "mara",
+    "text": "또 왔구나."
+  },
+  {
+    "code": "0020",
+    "file": "project/quay.lute",
+    "kind": "line",
+    "line": 12,
+    "lineId": "quay.mara_0020",
+    "source": null,
+    "sourceHash": "sha256:9e8fcab0d163b59ed05968b480230f47234aabb95f315178852ecfdbc7337ef9",
+    "speaker": "mara",
+    "text": "종이 울리고 있어."
+  },
+  {
+    "file": "project/quay.lute",
+    "key": "path.prompt",
+    "kind": "prompt",
+    "line": 14,
+    "lineId": "quay.path.prompt",
+    "source": null,
+    "sourceHash": "sha256:82b5b8e301814d0cb18876155e4c67cb1afe917f2f67ab6938e421cfc5fe04e6",
+    "text": "이제 어디로?"
+  },
+  {
+    "file": "project/quay.lute",
+    "key": "path.dock",
+    "kind": "choice",
+    "line": 15,
+    "lineId": "quay.path.dock",
+    "source": null,
+    "sourceHash": "sha256:7276ca91e65258738a2ef76711ce6a1616c96b0765de41d05db4613fbb7a420d",
+    "text": "부두로 걸어간다"
+  },
+  {
+    "file": "project/quay.lute",
+    "key": "path.hill",
+    "kind": "choice",
+    "line": 18,
+    "lineId": "quay.path.hill",
+    "source": null,
+    "sourceHash": "sha256:a506d092302cf92beb7410a0ccd1dd7491cdf20f9f83d31bd3c97abb086e1c63",
+    "text": "언덕을 오른다"
+  },
+  {
+    "code": "0040",
+    "file": "project/quay.lute",
+    "kind": "line",
+    "line": 22,
+    "lineId": "quay.mara_0040",
+    "source": null,
+    "sourceHash": "sha256:05387fc2441ef027b47d46eb5e0ea49a9eaf51a5dabbffe914caba3f5fc5f0cd",
+    "speaker": "mara",
+    "text": "물때를 조심해."
+  },
+  {
+    "code": "0030",
+    "file": "project/quay.lute",
+    "kind": "line",
+    "line": 23,
+    "lineId": "quay.narrator_0030",
+    "source": null,
+    "sourceHash": "sha256:e325a5782e399101bc974f0c83153eb10d412530398135478dc45ac073665562",
+    "speaker": "narrator",
+    "text": "물이 빠진다."
+  }
 ]

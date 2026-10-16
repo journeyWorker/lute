@@ -1,0 +1,3 @@
+state:
+  run.over: { type: bool, default: false }
+terminal: "run.over"
