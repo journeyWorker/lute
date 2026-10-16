@@ -1,0 +1,9 @@
+# Orca per-workspace environments. "Kata Sandbox" runs the workspace in a
+# fresh Kata VM (Rust toolchain) on the intranet k3s dev pool (agent-sandbox warm pool) and
+# releases it when the workspace is deleted. Needs kubectl + intranet
+# kubeconfig on the desktop; see scripts/orca-vm/kata-create.sh.
+environmentRecipes:
+  - id: kata
+    name: Kata Sandbox
+    create: ./scripts/orca-vm/kata-create.sh
+    destroy: ./scripts/orca-vm/kata-destroy.sh
