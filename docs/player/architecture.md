@@ -91,13 +91,17 @@ on it.
 
 **Locale per call (0.47).** The director passes the current
 `settings.locale` to every `fromOutput` and `choiceView` call (custom
-factories and `cueFactory` wrappers receive it and pass it on). A line reads
+factories and `cueFactory` wrappers receive it and pass it on). A locale
+switch while a batch plays calls `fromOutput` again for that batch with the new
+locale; each line cue still to start takes the cue at its index from the
+latest call, so the next line shown reads the new locale. A line reads
 `localeSegments[locale]`, else `texts[locale]`, else its source segments /
-text; an option label reads `texts[locale]`, else its source text. A bundle's
+text; an option label reads `texts[locale]`, else its source text; a branch/hub
+prompt reads the record's `promptTexts[locale]`, else its source `prompt`. A bundle's
 locales come from `bundleLocales(bundle)`: the **source locale** is the
-`contentLang` of the first artifact (in `index.documents` order) whose meta
-declares one, else `"en"`; the **compiled locales** are the keys of every
-`texts` map. The `Settings` screen model's `locales` is the source locale
+index's `contentLang`, else the `contentLang` of the first artifact (in
+`index.documents` order) whose meta declares one, else `"en"`; the **compiled
+locales** are the keys of every `texts` and `promptTexts` map. The `Settings` screen model's `locales` is the source locale
 followed by the compiled locales (sorted, without duplicates); a saved locale
 the bundle does not carry reads source text and Settings shows the source
 locale selected. `LutePlayer.make` starts a new profile at the source locale.

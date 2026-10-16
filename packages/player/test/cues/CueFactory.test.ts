@@ -7,7 +7,7 @@ import * as LuteBun from "../../../runtime/src/bun.js"
 import { BundleSource } from "../../../runtime/src/index.js"
 import { compileBundle, jsonLines, sessionRoot } from "../../../runtime/test/support.js"
 import * as RuntimeSession from "../../../runtime/src/Session.js"
-import { compileQuayKorean, quayProject } from "../fixtures.js"
+import { compileHubKorean, compileQuayKorean, quayProject } from "../fixtures.js"
 import * as Bindings from "../../src/bindings/schema.js"
 import * as CueFactory from "../../src/cues/index.js"
 import * as Scheduler from "../../src/scheduler/index.js"
@@ -137,19 +137,38 @@ describe("CueFactory", () => {
       expect(named(yield* local.fromOutput(visit, new Set(), "ja"))?.segments).toEqual([{ _tag: "Text", text: "The bell is ringing.", styles: [] }])
     }))
 
-    it.effect("reads choice labels for the locale of each call, else the source text", () => Effect.gen(function* () {
+    it.effect("reads choice labels and the prompt for the locale of each call, else the source text", () => Effect.gen(function* () {
       const { source, choice } = yield* visited
       const local = CueFactory.make({ bundle: source, bindings })
       const labels = (locale: string) => local.choiceView(choice, locale).options.map((option) => option.text)
       expect(labels("ko")).toEqual(["부두로 걸어간다", "언덕을 오른다"])
       expect(labels("en-US")).toEqual(["Walk to the dock", "Climb the hill"])
       expect(labels("ja")).toEqual(["Walk to the dock", "Climb the hill"])
-      expect(local.choiceView(choice, "ko").prompt).toBe("Where now?")
+      expect(local.choiceView(choice, "ko").prompt).toBe("이제 어디로?")
+      expect(local.choiceView(choice, "ja").prompt).toBe("さて、どこへ?")
+      expect(local.choiceView(choice, "en-US").prompt).toBe("Where now?")
+      expect(local.choiceView(choice, "fr").prompt).toBe("Where now?")
+    }))
+
+    it.effect("reads a hub's prompt for the locale of each call", () => Effect.gen(function* () {
+      const compiled = yield* compileHubKorean
+      const source = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(compiled))
+      const visit = yield* Effect.scoped(Effect.flatMap(RuntimeSession.Session, (session) => session.send({ type: "raiseOccasion", occasion: "visit" })).pipe(
+        Effect.provide(LuteBun.session({ bundle: compiled, seed: { derive: true } }))
+      ))
+      if (visit.await.type !== "awaitChoice") throw new Error("hub-locale never awaits its hub")
+      const local = CueFactory.make({ bundle: source, bindings })
+      expect(local.choiceView(visit.await, "ko")).toMatchObject({ construct: "hub", prompt: "어느 가게로?", options: [{ text: "생선 가게" }, { text: "떠난다" }] })
+      expect(local.choiceView(visit.await, "en")).toMatchObject({ construct: "hub", prompt: "Which stall?", options: [{ text: "The fish stall" }, { text: "Leave" }] })
+      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en", locales: ["en", "ko"] })
     }))
 
     it.effect("names the source locale and the compiled locales of a bundle", () => Effect.gen(function* () {
       const { source } = yield* visited
-      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en-US", locales: ["en-US", "ko"] })
+      // The index's contentLang (the manifest's en-US) wins over the quest document's en-GB.
+      expect(CueFactory.bundleLocales(source)).toEqual({ source: "en-US", locales: ["en-US", "ja", "ko"] })
+      const { contentLang: _contentLang, ...withoutLang } = source.index
+      expect(CueFactory.bundleLocales({ ...source, index: withoutLang })).toEqual({ source: "en-GB", locales: ["en-GB", "ja", "ko"] })
       const plain = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(quayProject)))
       expect(CueFactory.bundleLocales(plain)).toEqual({ source: "en-US", locales: ["en-US"] })
       const timed = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(yield* compileBundle(join(sessionRoot, "timed-choice", "project"))))

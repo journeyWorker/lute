@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: harbor
+profiles:
+  harbor:
+    plugins: { harbor.occasions: true }
+defaults:
+  luteVersion: "0.46.0"
+  contentLang: en
+  uses: [world.schema.yaml]

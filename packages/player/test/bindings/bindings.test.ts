@@ -20,7 +20,7 @@ describe("player bindings loading", () => {
   it.effect("decodes the complete YAML example from the bindings documentation", () =>
     Effect.gen(function* () {
       const bindings = yield* decode(docsExample)
-      expect(bindings.bindingsVersion).toBe("0.46")
+      expect(bindings.bindingsVersion).toBe("0.47")
       expect(bindings.characters?.guide?.sprite.default).toBe("char/guide.png")
       expect(bindings.flow?.newGame?.occasion).toBe("start")
     }))
