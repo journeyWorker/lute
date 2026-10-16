@@ -1,0 +1,2 @@
+occasions:
+  start: { select: first, description: New game }

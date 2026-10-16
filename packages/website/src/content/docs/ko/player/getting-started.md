@@ -107,3 +107,18 @@ bun run --cwd packages/player-web demo
 ```
 
 이 스크립트는 `examples/player-demo`를 컴파일하고 `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+
+## 6. 스테이지 레이어
+
+player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 위 순서입니다.
+
+1. `background` — `::bg` 배경.
+2. `camera` — 배우(`::actor`). 프레이밍과 카메라 이동은 이 레이어를 변형합니다.
+3. `cg` — 이벤트 일러스트(`::cg`).
+4. `video` — `::video` 재생.
+5. `dialogue` — 대사 창.
+6. `choice` — 선택지와 허브 메뉴.
+7. `overlay` — 화면과 메뉴(타이틀, 저장/불러오기, 백로그, 설정, 엔딩).
+8. `transition` — 장면 전환.
+
+따라서 `::cg`는 스테이지의 배우를 덮고, 대사 창과 UI 아래에 남습니다. `cgLayouts`는 레이어 안에서 CG의 배치(`fit`, `scale`, `x`, `y`)만 정하며 순서는 바꾸지 않습니다.

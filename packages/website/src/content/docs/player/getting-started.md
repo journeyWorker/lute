@@ -116,3 +116,18 @@ bun run --cwd packages/player-web demo
 ```
 
 The script compiles `examples/player-demo`, bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
+
+## 6. Stage layers
+
+player-web draws the stage in fixed layers, bottom to top:
+
+1. `background` — the `::bg` backdrop.
+2. `camera` — the actors (`::actor`); framing and camera moves transform this layer.
+3. `cg` — event illustrations (`::cg`).
+4. `video` — `::video` playback.
+5. `dialogue` — the dialogue window.
+6. `choice` — choice and hub menus.
+7. `overlay` — screens and menus (title, save/load, backlog, settings, ended).
+8. `transition` — scene transitions.
+
+A `::cg` therefore covers the actors on stage and stays under the dialogue window and the UI. `cgLayouts` place a CG (`fit`, `scale`, `x`, `y`) inside its layer; they do not change the order.

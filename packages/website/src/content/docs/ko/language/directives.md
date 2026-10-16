@@ -23,7 +23,7 @@ description: lute.core의 열세 가지 디렉티브 — 열 가지 연출 말�
 | `::actor` | `character`(필수), `anchor`(`anchor` 도메인), `action`(`action` 도메인), `emotion`(`emotion` 도메인), `costume`(`costume` 도메인) — 등장, 퇴장, 포즈, 표정, 의상 |
 | `::clear` | 없음 — 무대의 모든 캐릭터가 퇴장하며 배경과 음악은 유지됩니다(아래 참고). |
 | `::camera` | `focus`(캐스트 멤버), `framing`(`framing` 도메인), `move`(`cameraMove` 도메인), `transition`(`transition` 도메인) — 최소 하나 필요 |
-| `::cg` | `assetId`(필수), `display`(`show`\|`hide`, 기본값 `show`), `layout`(`cgLayout` 도메인) — 이벤트 일러스트 |
+| `::cg` | `assetId`(필수), `display`(`show`\|`hide`, 기본값 `show`), `layout`(`cgLayout` 도메인) — 이벤트 일러스트. player-web는 배우 위, 대사 창 아래에 그립니다([스테이지 레이어](/ko/player/getting-started/#6-스테이지-레이어)) |
 | `::vfx` | `type`(`vfxType` 도메인), `label`, `transition` |
 | `::video` | `assetId`(필수), `display`(`show`\|`hide`, 기본값 `show`) |
 | `::sequence` | `name`(필수, `sequence` 도메인) — 엔진이 소유한 시네마틱의 참조이며 `wait` 기본값은 `true`입니다. |

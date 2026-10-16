@@ -28,7 +28,7 @@ forward jump pair `::jump` / `::label` — with these canonical attributes:
 | `::actor` | `character` (required), `anchor` (domain `anchor`), `action` (domain `action`), `emotion` (domain `emotion`), `costume` (domain `costume`) — entrance, exit, pose, expression, outfit |
 | `::clear` | none — every character on stage exits; background and music stay (below) |
 | `::camera` | `focus` (a cast member), `framing` (domain `framing`), `move` (domain `cameraMove`), `transition` (domain `transition`) — at least one |
-| `::cg` | `assetId` (required), `display` (`show`\|`hide`, default `show`), `layout` (domain `cgLayout`) — an event illustration |
+| `::cg` | `assetId` (required), `display` (`show`\|`hide`, default `show`), `layout` (domain `cgLayout`) — an event illustration; player-web draws it over the actors, under the dialogue window ([stage layers](/player/getting-started/#6-stage-layers)) |
 | `::vfx` | `type` (domain `vfxType`), `label`, `transition` |
 | `::video` | `assetId` (required), `display` (`show`\|`hide`, default `show`) |
 | `::sequence` | `name` (required, domain `sequence`) — a reference to a cinematic the engine owns; `wait` defaults to `true` |

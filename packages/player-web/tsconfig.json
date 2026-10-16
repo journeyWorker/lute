@@ -23,6 +23,9 @@
       "@lute-lang/runtime/browser": [
         "../runtime/src/browser.ts"
       ],
+      "@lute-lang/runtime/bun": [
+        "../runtime/src/bun.ts"
+      ],
       "@lute-lang/player": [
         "../player/src/index.ts"
       ]

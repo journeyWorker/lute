@@ -4,6 +4,7 @@ import { defineConfig } from "vitest/config"
 export default defineConfig({
   resolve: {
     alias: {
+      "@lute-lang/runtime/bun": resolve(import.meta.dirname, "../runtime/src/bun.ts"),
       "@lute-lang/runtime": resolve(import.meta.dirname, "../runtime/src/index.ts"),
       "@lute-lang/player": resolve(import.meta.dirname, "../player/src/index.ts")
     }
