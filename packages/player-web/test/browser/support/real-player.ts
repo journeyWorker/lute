@@ -6,6 +6,7 @@
  */
 import { Effect, Exit, Scope, SubscriptionRef } from "effect"
 import { BitmapText, Container, HTMLText, Rectangle, Text } from "pixi.js"
+import { Button } from "../../../src/ui/widgets/index.js"
 import { inject, type ProvidedContext } from "vitest"
 import type { LutePlayerStart, PlayerAction, PlayerView } from "@lute-lang/player"
 import { pixiAppOf } from "../../../src/engine/app.js"
@@ -153,6 +154,102 @@ export const playUntil = async (
     }
     await Effect.runPromise(Effect.sleep("15 millis"))
   }
+}
+
+/** The dialogue window's drawn texts: the speaker plate (when shown), then the line. */
+const drawnLine = (player: RealPlayer): ReadonlyArray<string> =>
+  drawnTexts(player.pixi.layers.dialogue).filter((piece) => piece !== "" && piece !== "▼")
+
+/** What {@link playReading} saw player-web draw, in order. */
+export interface Reading {
+  /** Every dialogue line drawn, as its drawn texts (speaker plate first when shown). */
+  readonly lines: Array<ReadonlyArray<string>>
+  /** Every choice menu drawn, as its drawn texts (prompt first). */
+  readonly choices: Array<ReadonlyArray<string>>
+}
+
+/** A drawn line or menu contains `text` (the speaker plate, the line, a prompt or a label). */
+export const shows = (drawn: ReadonlyArray<string>, text: string): boolean => drawn.some((piece) => piece.includes(text))
+
+/**
+ * Play like {@link playUntil} (text speed instant), recording each dialogue
+ * line and choice menu as drawn, and never advancing a line before it has
+ * been read: Enter is pressed only on a `shown` line, after recording it,
+ * and audio is unlocked first with Escape (the menu, closed again). `stop`
+ * sees the reading so far; pass `reading` to continue one.
+ */
+export const playReading = async (
+  player: RealPlayer,
+  stop: (reading: Reading, view: PlayerView) => boolean,
+  prefer: ReadonlyArray<string> = [],
+  reading: Reading = { lines: [], choices: [] },
+  timeoutMs = 120_000
+): Promise<Reading> => {
+  const deadline = performance.now() + timeoutMs
+  const trail: string[] = []
+  let unlocked = false
+  for (;;) {
+    const view = await player.view()
+    if (stop(reading, view)) return reading
+    const state = `${view.flow}/${view.story}/${view.overlay}`
+    if (trail.at(-1) !== state) trail.push(state)
+    if (performance.now() > deadline) throw new Error(`stop condition not reached: ${trail.slice(-20).join(" ")}; first lines read: ${JSON.stringify(reading.lines.slice(0, 5))}`)
+    if (view.flow === "title" && view.overlay === "none") {
+      await player.act({ type: "setSettings", settings: { textSpeed: 0 } })
+      await player.act({ type: "newGame" })
+    } else if (view.flow === "playing" && view.overlay === "none") {
+      if (view.story === "idle") {
+        await player.act({ type: "pickIdle", index: 0 })
+      } else if (!unlocked && view.story === "running") {
+        // Unlock audio with a device input that cannot advance a line: Escape
+        // opens the menu (retried while a full screen, e.g. loading, takes keys).
+        press(player, "Escape")
+        unlocked = await waitFor(async () => (await player.view()).overlay === "menu", "the menu Escape opens", 500).then(() => true, () => false)
+        if (unlocked) await player.act({ type: "close" })
+      } else if (view.story === "choice") {
+        const current = await Effect.runPromise(SubscriptionRef.get(player.handle.session.current))
+        const drawn = drawnTexts(player.pixi.layers.choice)
+        if (current.await.type === "awaitChoice" && drawn.length > 0) {
+          reading.choices.push(drawn)
+          if (stop(reading, view)) return reading
+          const open = current.await.menu.options.filter((option) => option.verdict === "open")
+          const option = open.find((candidate) => prefer.includes(candidate.id)) ?? open[0]
+          if (option !== undefined) await player.act({ type: "choose", option: option.id })
+        }
+      } else if (view.story === "shown") {
+        // The machine can report a line shown a few frames before its text is drawn.
+        const drawn = await waitFor(() => {
+          const line = drawnLine(player)
+          return line.length > 0 ? line : undefined
+        }, "the shown line to be drawn", 3_000).catch(() => drawnLine(player))
+        reading.lines.push(drawn)
+        if (stop(reading, view)) return reading
+        press(player, "Enter")
+        unlocked = true
+        // One Enter per line: wait until this line is released before reading on.
+        const key = drawn.join("\n")
+        await waitFor(async () => (await player.view()).story !== "shown" || drawnLine(player).join("\n") !== key, "the line to be released")
+      }
+    } else if (view.flow === "playing" && view.overlay === "menu") {
+      // A late answer to an unlock Escape.
+      unlocked = true
+      await player.act({ type: "close" })
+    }
+    await Effect.runPromise(Effect.sleep("15 millis"))
+  }
+}
+
+/** The drawn button below `root` whose caption is `label`. */
+export const buttonLabelled = (root: Container, label: string): Button | undefined => {
+  const find = (node: Container): Button | undefined => {
+    if (node instanceof Button && isDrawn(node) && node.children.some((child) => child instanceof Text && child.text === label)) return node
+    for (const child of node.children) {
+      const found = find(child)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  return find(root)
 }
 
 /** RGBA bytes the renderer draws for `frame` (stage coordinates) of the current stage. */

@@ -1,0 +1,11 @@
+# `ui.title.text` needs the 0.47 bindings line.
+bindingsVersion: "0.47"
+canvas: { width: 1280, height: 720 }
+assetsBase: ../../../../../examples/player-demo/assets/
+characters:
+  mara:
+    sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png } }
+ui:
+  title: { text: "Harbor Lights" }
+flow:
+  newGame: { occasion: start }

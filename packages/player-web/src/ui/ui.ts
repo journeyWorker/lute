@@ -31,7 +31,7 @@ export class Ui implements UiShape {
   private hud: HudScreen | undefined
   private hudState = ""
   private design = { width: 1280, height: 720 }
-  private titleName = "Lute"
+  private titleName: string | undefined
   private push: (action: PlayerAction) => void = () => {}
 
   constructor(root: Container, theme: Theme, _world?: WorldShape, textureFor?: (file: string) => Texture | undefined) {
@@ -108,8 +108,8 @@ export class Ui implements UiShape {
   /** Replace theme for future screens. */
   setTheme(theme: Theme): void { this.theme = theme }
 
-  /** Configure the game's design coordinates and binding-supplied title. */
-  setDesign(design: { readonly width: number; readonly height: number }, title = "Lute"): void {
+  /** Configure the game's design coordinates and the bound title heading (`ui.title.text`; none when absent). */
+  setDesign(design: { readonly width: number; readonly height: number }, title?: string): void {
     this.design = { width: Math.max(1, design.width), height: Math.max(1, design.height) }
     this.titleName = title
   }

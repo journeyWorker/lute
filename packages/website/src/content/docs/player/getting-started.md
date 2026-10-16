@@ -115,7 +115,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-The script compiles `examples/player-demo`, bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
+The script compiles `examples/player-demo` with its Korean locale bundle (`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`), bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
+
+Settings → Locale offers the source locale (`en-US`) and `ko`; switching applies to the next line, choice and prompt shown, mid-run or on a new game. The bundle comes from `lute loc export .` run in `examples/player-demo`, translated into `locales/ko.json`, then `lute loc import locales/ko.json -o locales/bundle.json`. A finished run is kept as the player's lineage: after a reload, New game starts run 2 with run 1's `user.*` values and its `prev.run` (the demo's first chapter shows both).
 
 ## 6. Stage layers
 
@@ -131,3 +133,13 @@ player-web draws the stage in fixed layers, bottom to top:
 8. `transition` — scene transitions.
 
 A `::cg` therefore covers the actors on stage and stays under the dialogue window and the UI. `cgLayouts` place a CG (`fit`, `scale`, `x`, `y`) inside its layer; they do not change the order.
+
+## 7. Title screen
+
+The title screen's heading is `ui.title.text` when the bindings set it; without it the title draws no heading (player-web never shows a placeholder name). `ui.title.background` and `ui.title.music` are optional: without them the title has no backdrop and plays no music.
+
+```yaml
+bindingsVersion: "0.47"
+ui:
+  title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
+```

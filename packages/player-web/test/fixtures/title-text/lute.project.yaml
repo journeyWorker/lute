@@ -1,0 +1,11 @@
+# Browser-test fixture (spec 0.47.0 §2.6, §4.1): a title bound by `ui.title.text` alone (no backdrop, no music).
+pluginsDir: plugins/
+defaultProfile: test
+profiles:
+  test:
+    plugins: { test.occasions: true }
+defaults:
+  luteVersion: "0.46.0"
+  contentLang: en-US
+  pov: narrator
+  uses: [world.schema.yaml, vocabulary.schema.yaml]

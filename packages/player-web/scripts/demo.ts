@@ -20,7 +20,9 @@ const lute = binCandidates.find((candidate) => candidate === "lute" || existsSyn
 if (lute === undefined) throw new Error("cannot find lute; set LUTE_BIN or build target/{release,debug}/lute")
 
 // The demo build never writes the developer's telemetry (dsl 0.43.0 §6).
-const compile = Bun.spawnSync([lute, "compile", "--all", project, "-o", bundle], { cwd: repo, env: { ...process.env, LUTE_TELEMETRY: "0" }, stdout: "inherit", stderr: "inherit" })
+// Its Korean translation is merged from `lute loc import locales/ko.json`.
+const locales = join(project, "locales/bundle.json")
+const compile = Bun.spawnSync([lute, "compile", "--all", project, "--locales", locales, "-o", bundle], { cwd: repo, env: { ...process.env, LUTE_TELEMETRY: "0" }, stdout: "inherit", stderr: "inherit" })
 if (compile.exitCode !== 0) process.exit(compile.exitCode ?? 1)
 
 const built = await Bun.build({

@@ -44,6 +44,8 @@ When bindings define `ui.ended`, an ended state member selects a named ending sc
 
 The stage is drawn in fixed layers, bottom to top: `background`, `camera` (actors), `cg`, `video`, `dialogue`, `choice`, `overlay`, `transition`. A `::cg` covers the actors and stays under the dialogue window and UI.
 
+The title screen's heading is the bound `ui.title.text`; without it the title draws no heading (never a placeholder name). Without `ui.title.background` the title has no backdrop, and without `ui.title.music` it plays no music.
+
 ## Cue handling
 
 - **Names.** The dialogue name plate and backlog rows show `speakerName`, the cast display name from the bundle index (`cast: { id: name }`); name colours stay keyed by the speaker id.
@@ -62,8 +64,8 @@ The suites build the CLI with `cargo build -q -p lute-cli` unless `LUTE_BIN` nam
 
 Player behaviour is tested against real runtime output, never a hand-written view, record or bundle:
 
-- **Node.** `test/support/bundle.ts` compiles a project (`compileProject(name, dir)`, output under `node_modules/.lute-test/`); tests drive it with `@lute-lang/runtime/bun` (see `test/ui/ended.test.ts`).
-- **Browser.** `test/browser/globalSetup.ts` compiles once the projects registered in `realProjects` (`globalSetup.ts`: `examples/player-demo` and fixtures under `test/fixtures/`; add new fixtures there) and provides its URLs (`inject("luteProjects")`; vite serves them through `/@fs/`). `test/browser/support/real-player.ts` mounts player-web with `mount` over that bundle and the packaged wasm runtime: `mountProject(name, options?)` (`demo` = examples/player-demo, others under `test/fixtures/`) (a fresh `storageKey` unless one is passed; mounting again with the same key after `close()` models a reload over the same storage), `playUntil(player, stop, prefer?)` plays with real `PlayerAction`s (New game, idle menu, choices by preferred option id, advance), and assertions read what player-web drew: `player.pixi.layers` (the mounted Pixi stage from the internal `pixiAppOf(element)`, not exported from the package), `drawnTexts(container)` and `stagePixels(pixi, frame)`. See `test/browser/real/`.
+- **Node.** `test/support/bundle.ts` compiles a project (`compileProject(name, dir, locales?)`, `locales` a `lute loc import` bundle passed as `--locales`; output under `node_modules/.lute-test/`); tests drive it with `@lute-lang/runtime/bun` (see `test/ui/ended.test.ts`).
+- **Browser.** `test/browser/globalSetup.ts` compiles once the projects registered in `realProjects` (`globalSetup.ts`: `examples/player-demo` with its Korean bundle `locales/bundle.json`, and fixtures under `test/fixtures/`; add new fixtures there) and provides its URLs (`inject("luteProjects")`; vite serves them through `/@fs/`). `test/browser/support/real-player.ts` mounts player-web with `mount` over that bundle and the packaged wasm runtime: `mountProject(name, options?)` (`demo` = examples/player-demo, others under `test/fixtures/`) (a fresh `storageKey` unless one is passed; mounting again with the same key after `close()` models a reload over the same storage), `playUntil(player, stop, prefer?)` plays with real `PlayerAction`s (New game, idle menu, choices by preferred option id, advance), `playReading(player, stop, prefer?)` plays the same way but records every dialogue line and choice menu as drawn and advances a line only after reading it, `buttonLabelled(container, label)` finds a drawn button to `activate()`, and assertions read what player-web drew: `player.pixi.layers` (the mounted Pixi stage from the internal `pixiAppOf(element)`, not exported from the package), `drawnTexts(container)` and `stagePixels(pixi, frame)`. See `test/browser/real/`.
 
 ## API and guides
 

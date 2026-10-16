@@ -10,6 +10,8 @@ export const packageRoot = resolve(import.meta.dirname, "../..")
 export const repositoryRoot = resolve(packageRoot, "../..")
 /** The multi-ending demo project (`run.path`: `dawn` / `dusk`). */
 export const demoProject = join(repositoryRoot, "examples/player-demo")
+/** The demo's Korean locale bundle (`lute loc import locales/ko.json`). */
+export const demoLocales = join(demoProject, "locales/bundle.json")
 /** Compiled test bundles live under the package's (ignored) `node_modules`. */
 export const fixturesRoot = join(packageRoot, "node_modules/.lute-test")
 /** The packaged runtime binding the browser suite loads. */
@@ -32,11 +34,14 @@ export const luteBinary = (): string => {
   return binary = join(process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "target"), "debug", "lute")
 }
 
-/** `lute compile --all <project>` into `fixturesRoot/<name>`; returns the bundle directory. */
-export const compileProject = (name: string, project: string): string => {
+/**
+ * `lute compile --all <project> [--locales <bundle>]` into
+ * `fixturesRoot/<name>`; returns the bundle directory.
+ */
+export const compileProject = (name: string, project: string, locales?: string): string => {
   const output = join(fixturesRoot, name)
   rmSync(output, { recursive: true, force: true })
   mkdirSync(fixturesRoot, { recursive: true })
-  run([luteBinary(), "compile", "--all", project, "-o", output])
+  run([luteBinary(), "compile", "--all", project, ...(locales === undefined ? [] : ["--locales", locales]), "-o", output])
   return output
 }
