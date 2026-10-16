@@ -176,7 +176,8 @@ export const shows = (drawn: ReadonlyArray<string>, text: string): boolean => dr
  * line and choice menu as drawn, and never advancing a line before it has
  * been read: Enter is pressed only on a `shown` line, after recording it,
  * and audio is unlocked first with Escape (the menu, closed again). `stop`
- * sees the reading so far; pass `reading` to continue one.
+ * sees the reading so far; pass `reading` to continue one. A shown line
+ * with no drawn text within 3s fails the reading (spec 0.47.0 §2.7).
  */
 export const playReading = async (
   player: RealPlayer,
@@ -217,11 +218,12 @@ export const playReading = async (
           if (option !== undefined) await player.act({ type: "choose", option: option.id })
         }
       } else if (view.story === "shown") {
-        // The machine can report a line shown a few frames before its text is drawn.
+        // The machine can report a line shown a few frames before its text is
+        // drawn; a line that stays blank is a failure, never read as empty.
         const drawn = await waitFor(() => {
           const line = drawnLine(player)
           return line.length > 0 ? line : undefined
-        }, "the shown line to be drawn", 3_000).catch(() => drawnLine(player))
+        }, `the shown line to be drawn (after ${JSON.stringify(reading.lines.at(-1) ?? null)})`, 3_000)
         reading.lines.push(drawn)
         if (stop(reading, view)) return reading
         press(player, "Enter")

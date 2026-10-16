@@ -3,17 +3,22 @@
 // (`examples/player-demo/locales/bundle.json`); the locale is switched to
 // `ko` mid-run (while a line of the opening batch is shown) and kept on a
 // new game, and a named line, a choice label and a prompt are drawn in
-// Korean. Settings offers source + `ko`.
+// Korean, and the `{{user.voyages}}` line with its value. Settings offers
+// source + `ko`. Spec 0.47.0 §2.7: the opening's first line is drawn.
 import { afterEach, describe, expect, it } from "vitest"
 import { drawnTexts, mountProject, playReading, shows, waitFor, type Reading, type RealPlayer } from "../support/real-player.js"
 
 const source = {
+  opening: "At six in the morning, the harbor keeps its secrets under a skin of silver water.",
   voyages: "Voyages to the lighthouse so far: 0.",
   mara: "The lighthouse blinked three times. That is not a weather signal.",
   prompt: "The tide is turning beneath the lighthouse.",
   tower: "Follow the signal to the lighthouse"
 }
 const korean = {
+  opening: "아침 여섯 시, 항구는 은빛 물결 아래에 비밀을 숨기고 있다.",
+  // `locales/ko.json`'s "지금까지 등대로 떠난 항해: {{user.voyages}}번." in run 1.
+  voyages: "지금까지 등대로 떠난 항해: 0번.",
   mara: "등대가 세 번 깜박였어. 날씨 신호가 아니야.",
   prompt: "등대 아래에서 물길이 바뀌고 있다.",
   tower: "신호를 따라 등대로 간다",
@@ -62,6 +67,7 @@ describe("translated text over the compiled demo", () => {
     const mounted = player = await mountProject("demo")
     // Run 1 in the source locale up to a line of the opening batch, then Settings mid-batch.
     const before = await playReading(mounted, (reading) => reading.lines.some((line) => shows(line, source.voyages)))
+    expect(before.lines[0]).toEqual([source.opening])
     expect(before.lines.at(-1)).toEqual([source.voyages])
     await chooseKorean(mounted)
     // The next line of the same batch, the branch, then (after `tower`) the next batch and the hub.
@@ -89,5 +95,7 @@ describe("translated text over the compiled demo", () => {
     const newGame = await playReading(mounted, untilChoice)
     expect(newGame.lines.some((line) => shows(line, source.mara)), JSON.stringify(newGame)).toBe(false)
     expectKoreanOpening(newGame)
+    expect(newGame.lines[0]).toEqual([korean.opening])
+    expect(newGame.lines, JSON.stringify(newGame)).toContainEqual([korean.voyages])
   }, 180_000)
 })
