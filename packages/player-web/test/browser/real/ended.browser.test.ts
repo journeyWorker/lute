@@ -2,7 +2,7 @@
 // (`ui.ended.by: run.path`) draws its mapped ended screen, played to the
 // end over the compiled demo and the wasm runtime.
 import { afterEach, describe, expect, it } from "vitest"
-import { drawnTexts, mountProject, playUntil, waitFor, type RealPlayer } from "../support/real-player.js"
+import { drawnTexts, mountProject, playUntil, playthroughTimeout, waitFor, type RealPlayer } from "../support/real-player.js"
 
 const endings = [
   { member: "dawn", prefer: ["release"], title: "Dawn: The Shore Remembers", text: "Mara and Elio let the light go to the sea." },
@@ -27,5 +27,5 @@ describe("ended screens over the compiled demo", () => {
     expect(drawn).toContain(title)
     expect(drawn).toContain(text)
     expect(drawn).not.toContain("The End")
-  }, 180_000)
+  }, playthroughTimeout())
 })

@@ -6,7 +6,7 @@
 // Korean, and the `{{user.voyages}}` line with its value. Settings offers
 // source + `ko`. Spec 0.47.0 §2.7: the opening's first line is drawn.
 import { afterEach, describe, expect, it } from "vitest"
-import { drawnTexts, mountProject, playReading, shows, waitFor, type Reading, type RealPlayer } from "../support/real-player.js"
+import { drawnTexts, mountProject, playReading, playthroughTimeout, shows, waitFor, type Reading, type RealPlayer } from "../support/real-player.js"
 
 const source = {
   opening: "At six in the morning, the harbor keeps its secrets under a skin of silver water.",
@@ -97,5 +97,5 @@ describe("translated text over the compiled demo", () => {
     expectKoreanOpening(newGame)
     expect(newGame.lines[0]).toEqual([korean.opening])
     expect(newGame.lines, JSON.stringify(newGame)).toContainEqual([korean.voyages])
-  }, 180_000)
+  }, playthroughTimeout(3))
 })

@@ -6,7 +6,7 @@
 import { Effect, Fiber, Stream } from "effect"
 import { Rectangle, Sprite, type Container } from "pixi.js"
 import { afterEach, describe, expect, it } from "vitest"
-import { alphaOf, isDrawn, mountProject, playReading, press, shows, stagePixels, waitFor, type RealPlayer } from "../support/real-player.js"
+import { alphaOf, isDrawn, mountProject, playReading, playthroughTimeout, press, shows, stagePixels, waitFor, type RealPlayer } from "../support/real-player.js"
 
 /** Longer than any camera transition (0.6s) and actor fade (0.4s) in the demo. */
 const settle = (): Promise<void> => Effect.runPromise(Effect.sleep("1500 millis"))
@@ -90,7 +90,7 @@ describe("camera transitions over the compiled demo", () => {
     await settle()
     expectActorsDrawn(player)
     expect(player.pixi.layers.camera.scale.x).toBe(1)
-  }, 180_000)
+  }, playthroughTimeout())
 
   it("ends chapter two's wipeLeft and chapter three's dissolve cues visible, framed", async () => {
     player = await mountProject("demo")
@@ -105,7 +105,7 @@ describe("camera transitions over the compiled demo", () => {
     expectActorsDrawn(player)
     // `wide` framing (zoom 1).
     expect(player.pixi.layers.camera.scale.x).toBeCloseTo(1)
-  }, 240_000)
+  }, playthroughTimeout(2))
 
   it("leaves the actors drawn after a load during the fade cue", async () => {
     player = await mountProject("demo")
@@ -210,5 +210,5 @@ describe("camera transitions over the compiled camera-stage fixture", () => {
     expectActorsDrawn(player)
     // The move's `close` framing (zoom 1.3), not the superseded transition's `wide` (1).
     expect(player.pixi.layers.camera.scale.x).toBeCloseTo(1.3)
-  }, 120_000)
+  }, playthroughTimeout())
 })

@@ -117,25 +117,36 @@ export const press = (player: RealPlayer, key: string): void => {
 }
 
 /**
+ * How long one {@link playReading}/{@link playUntil} may play: the demo
+ * played to an ending takes about 1 min alone on a fast machine and over
+ * 2 min on a CI runner (behaviours advance by the frame time, at most 0.1s a
+ * frame, so slow SwiftShader frames stretch every cue).
+ */
+export const playthroughMs = 300_000
+
+/** A test timeout for `count` playthroughs: their deadlines fire first, plus room to mount and assert. */
+export const playthroughTimeout = (count = 1): number => count * playthroughMs + 60_000
+
+/**
  * Play until `stop` holds: New game at the title (text speed instant), the
  * first idle menu entry at idle, and at a choice the first open option whose
  * id is in `prefer`, else the first open option. A line is advanced with
  * Enter ({@link press}) only once it is shown and drawn, so no line is
  * skipped under load; audio is unlocked first with Escape, as in
  * {@link playReading} (sounds, and the batches that wait for them, wait for
- * player-web's audio unlock). A blank shown line fails.
+ * player-web's audio unlock). A blank shown line fails, as does `stop` not
+ * holding within {@link playthroughMs}.
  */
 export const playUntil = async (
   player: RealPlayer,
   stop: (view: PlayerView) => boolean,
-  prefer: ReadonlyArray<string> = [],
-  timeoutMs = 120_000
+  prefer: ReadonlyArray<string> = []
 ): Promise<PlayerView> => {
   let stopped: PlayerView | undefined
   await playReading(player, (_reading, view) => {
     if (stop(view)) stopped = view
     return stopped !== undefined
-  }, prefer, undefined, timeoutMs)
+  }, prefer)
   if (stopped === undefined) throw new Error("playReading returned before the stop condition held")
   return stopped
 }
@@ -161,16 +172,16 @@ export const shows = (drawn: ReadonlyArray<string>, text: string): boolean => dr
  * been read: Enter is pressed only on a `shown` line, after recording it,
  * and audio is unlocked first with Escape (the menu, closed again). `stop`
  * sees the reading so far; pass `reading` to continue one. A shown line
- * with no drawn text within 3s fails the reading (spec 0.47.0 §2.7).
+ * with no drawn text within 3s fails the reading (spec 0.47.0 §2.7), as
+ * does `stop` not holding within {@link playthroughMs}.
  */
 export const playReading = async (
   player: RealPlayer,
   stop: (reading: Reading, view: PlayerView) => boolean,
   prefer: ReadonlyArray<string> = [],
-  reading: Reading = { lines: [], choices: [] },
-  timeoutMs = 120_000
+  reading: Reading = { lines: [], choices: [] }
 ): Promise<Reading> => {
-  const deadline = performance.now() + timeoutMs
+  const deadline = performance.now() + playthroughMs
   const trail: string[] = []
   let unlocked = false
   for (;;) {
