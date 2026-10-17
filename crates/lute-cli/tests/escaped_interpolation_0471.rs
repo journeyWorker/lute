@@ -331,3 +331,74 @@ fn the_checker_reads_an_even_run_before_a_marker_as_a_marker() {
     assert_eq!(checked.status.code(), Some(1), "{text}");
     assert!(text.contains("run.nope"), "{text}");
 }
+
+/// A `::use` string argument is spliced as its decoded value (`\\` is one
+/// backslash), and the line-text rule judges its `{{` there: `\\{{` passes a
+/// literal `{{`, `\\\\{{` a backslash and the marker, a bare `{{` the marker.
+#[test]
+fn a_use_string_argument_is_judged_on_its_decoded_value() {
+    let scratch = lute_scratch::ScratchDir::named("escaped-interp-0471-use");
+    project(&scratch);
+    write(
+        &scratch,
+        "scenes/note.component.lute",
+        "---\ncomponent: note\nparams:\n  p: string\n---\n\n## Note\n@narrator: A {{@p}} B.\n",
+    );
+    write(
+        &scratch,
+        "scenes/tally.lute",
+        r#"---
+kind: scene
+id: tally
+on: tally
+once: false
+components: [note.component.lute]
+---
+
+## Tally
+
+::set{run.a = 3}
+::use{component="note" p="lit \\{{run.a}}"}
+::use{component="note" p="lit {{run.a}}"}
+::use{component="note" p="lit \\\\{{run.a}}"}
+"#,
+    );
+    let out = scratch.join("bundle");
+    ok(&run(&[
+        "compile",
+        "--all",
+        scratch.to_str().unwrap(),
+        "-o",
+        out.to_str().unwrap(),
+    ]));
+    let path = json!([{"kind": "path", "path": "run.a"}]);
+    let ir: Vec<(Json, Json)> = ir_lines(&out)
+        .into_iter()
+        .map(|l| {
+            (
+                l["text"].clone(),
+                l.get("placeholders").cloned().unwrap_or(Json::Null),
+            )
+        })
+        .collect();
+    assert_eq!(
+        ir,
+        [
+            (json!(r"A lit \{{run.a}} B."), Json::Null),
+            (json!("A lit {{run.a}} B."), path.clone()),
+            (json!(r"A lit \\{{run.a}} B."), path),
+        ]
+    );
+    let texts: Vec<Json> = line_records(&out)
+        .into_iter()
+        .map(|r| r["text"].clone())
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            json!("A lit {{run.a}} B."),
+            json!("A lit 3 B."),
+            json!(r"A lit \3 B."),
+        ]
+    );
+}

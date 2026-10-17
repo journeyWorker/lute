@@ -1191,6 +1191,11 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                 kept.push((interp, at, out.len()));
             }
             Some(AttrValue::Str(s)) => {
+                // lute 0.47.1 §3: what is spliced is the argument's decoded
+                // value, so its `{{` escapes are judged on that — a `\\`
+                // pair before `{{` is one backslash there (`p="\\{{x}}"`
+                // passes a literal `{{x}}`).
+                let s = decode_opener_runs(&s);
                 // dsl 0.24.0 §4: no placeholder survives a literal splice
                 // to carry the hint, so it applies here — `ordinal` /
                 // `ordinalWord` / `cardinalWord` on a number literal
@@ -1248,6 +1253,36 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     // lowered plain text and segments follow the bound text.
     l.inline = lute_syntax::parse_inline_text(&out).0;
     l.text = out;
+}
+
+/// A `::use` string argument (kept with its `\\` pairs by the attribute
+/// parser) with every backslash run directly before a `{{` decoded as dsl
+/// §4.4 reads a String: each `\\` pair is one backslash (a lone trailing `\`
+/// stays). The line-text rule then judges the `{{` on what is spliced, so
+/// `p="\\{{x}}"` passes a literal `{{x}}` and `p="\\\\{{x}}"` a backslash
+/// and the marker (lute 0.47.1 §3). Backslashes elsewhere are left as
+/// written, as before.
+fn decode_opener_runs(raw: &str) -> String {
+    let b = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len());
+    let (mut copied, mut at) = (0, 0);
+    while let Some(rel) = raw[at..].find("{{") {
+        let open = at + rel;
+        let mut run = open;
+        while run > copied && b[run - 1] == b'\\' {
+            run -= 1;
+        }
+        let n = open - run;
+        out.push_str(&raw[copied..run]);
+        for _ in 0..n / 2 + n % 2 {
+            out.push('\\');
+        }
+        out.push_str("{{");
+        copied = open + 2;
+        at = copied;
+    }
+    out.push_str(&raw[copied..]);
+    out
 }
 
 /// `lit` with its inline-grammar punctuation (`: [ ] { }`, dsl 0.37.0 §3.6)
