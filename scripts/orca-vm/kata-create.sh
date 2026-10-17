@@ -281,6 +281,33 @@ tar --version 2>/dev/null | grep -q bsdtar && tar_flags="--no-xattrs --no-mac-me
 COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf - . |
   k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -' >&2
 
+# "Kata Sandbox + Backend" (kata-create-backend.sh): the repo's own setup flow
+# (eevee development-workflow guide): DOPPLER_TOKEN in the root .env, then
+# `bun run setup` (dependencies, Doppler dev_local env, local DB migrate). The
+# token is a read-only service token in Secret forca-backend-<repo>; it only
+# lands in this workspace's .env. `adb reverse` makes the emulator's
+# localhost:3001 the sandbox API, so `run:local` works unchanged; Marionette
+# lets omp drive the running app (flutter-dev skill).
+if [ "${ORCA_KATA_BACKEND:-0}" = 1 ]; then
+  has backend || die "$repo_name has no backend feature in forca repos.tsv"
+  backend_secret="forca-backend-$repo_name"
+  doppler_token="$(k get secret "$backend_secret" -o jsonpath='{.data.DOPPLER_TOKEN}' | base64 -d)"
+  [ -n "$doppler_token" ] || die "secret $backend_secret has no DOPPLER_TOKEN"
+  log "backend: bun run setup (several minutes), adb reverse :3001, Marionette"
+  printf '%s\n%s\n%s\n' "$doppler_token" "$project_root" "$emu_addr" |
+    k exec -i "$sandbox" -- bash -c '
+set -euo pipefail
+read -r token; read -r project_root; IFS= read -r emu_addr || true
+cd "$project_root"
+if [ ! -f .env ]; then (umask 077; printf "DOPPLER_TOKEN=%s\n" "$token" > .env); fi
+bun run setup >&2
+if [ -n "$emu_addr" ]; then adb -s "$emu_addr" reverse tcp:3001 tcp:3001 >&2; fi
+bun run flutter:marionette setup --providers oh-my-pi >&2 ||
+  echo "warning: Marionette setup failed; see the flutter-dev skill" >&2
+' >&2
+  unset doppler_token
+fi
+
 # Orca dials with BatchMode and StrictHostKeyChecking: trust this sandbox's key
 # under its own alias (removed again by kata-destroy.sh).
 known_hosts="$HOME/.ssh/known_hosts"
