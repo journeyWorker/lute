@@ -43,7 +43,7 @@ lute check-project examples/player-demo
 정확한 0.47 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.47.1 @lute-lang/player@0.47.1 @lute-lang/runtime@0.47.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
@@ -124,6 +124,15 @@ player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 
 8. `transition` — 장면 전환.
 
 따라서 `::cg`는 스테이지의 배우를 덮고, 대사 창과 UI 아래에 남습니다. `cgLayouts`는 레이어 안에서 CG의 배치(`fit`, `scale`, `x`, `y`)만 정하며 순서는 바꾸지 않습니다.
+
+### 카메라 전환
+
+`camera` 레이어는 평소에 완전히 보이는 상태(알파 1, 마스크 없음)입니다. `move`가 있는 `::camera` 큐는 진행 중인 전환을 멈추고 프레이밍을 적용한 뒤 이동을 재생합니다. `move`는 `transition`보다 우선합니다. `transition`이 있으면 효과에 따라 새 프레이밍이 나타나는 방식이 정해집니다.
+
+- `fade`, `dissolve`, `fadeOut`, `wipeLeft`/`wipeRight`/`wipeUp`/`wipeDown`, `slideLeft`, `slideRight`, `slideOut`은 지속 시간의 앞 절반 동안 배우를 감추고, 프레이밍과 초점을 적용한 다음, 뒤 절반 동안 배우를 다시 보여 줍니다(알파가 1로 돌아오거나, 와이프로 드러나거나, 슬라이드로 제자리에 돌아옵니다). 와이프는 배우가 걸친 범위만이 아니라 스테이지 전체를 쓸고 지나갑니다.
+- 그 밖의 효과는 프레이밍을 적용한 뒤 재생합니다.
+
+어느 쪽이든 큐가 끝나면 배우는 새 프레이밍으로 보이는 상태(알파 1, 마스크 없음)입니다. `cut`, `none`, 지속 시간 0, 즉시 큐(건너뛰기, 불러오기)는 프레이밍을 바로 적용합니다. 이미 시작된 전환은 이야기가 먼저 선택지에 이르더라도 끝까지 재생되며, 이후의 카메라 큐가 전환을 멈춥니다. (`autosave`가 `false` 또는 `"presentation"`이면 선택지 바로 앞의 마지막 카메라 큐는 현재 아예 시작되지 않습니다.) 전환 도중에 불러오거나 되감으면 전환이 멈추고 복원된 스테이지에서 배우가 보입니다.
 
 ## 7. 타이틀 화면
 

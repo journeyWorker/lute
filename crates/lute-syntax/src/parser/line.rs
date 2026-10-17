@@ -359,42 +359,31 @@ impl Parser<'_> {
         (attrs, text.len())
     }
 
-    /// Scan `{{…}}` interpolations in a content line's `Text` (dsl §7.6).
+    /// Scan `{{…}}` interpolations in a content line's `Text` (dsl §7.6) by
+    /// the inline parser's escape rule ([`crate::line_text::interp_sites`]).
     fn scan_interps(&mut self, text: &str, text_start_body: usize) -> Vec<Interp> {
-        let b = text.as_bytes();
         let mut out = Vec::new();
-        let mut j = 0;
-        while j + 1 < b.len() {
-            if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
-                j += 3;
-                continue;
-            }
-            if b[j] == b'{' && b[j + 1] == b'{' {
-                match text[j + 2..].find("}}") {
-                    None => {
-                        let (s, e) = (text_start_body + j, text_start_body + text.len());
-                        self.emit_o(
-                            E_INTERP_UNTERMINATED,
-                            "`{{` has no closing `}}` before end of line (dsl §7.6)".into(),
-                            self.orig(s),
-                            self.orig(e),
-                            Layer::Content,
-                        );
-                        break;
-                    }
-                    Some(rel) => {
-                        let (s, e) = (text_start_body + j, text_start_body + j + 2 + rel + 2);
-                        let span = self.span(s, e);
-                        out.push(crate::ast::interp_from_inner(
-                            &text[j + 2..j + 2 + rel],
-                            span,
-                        ));
-                        j = j + 2 + rel + 2;
-                        continue;
-                    }
+        for site in crate::line_text::interp_sites(text) {
+            match site {
+                crate::line_text::InterpSite::Escaped { .. } => {}
+                crate::line_text::InterpSite::Marker { start, end, .. } => {
+                    let span = self.span(text_start_body + start, text_start_body + end);
+                    out.push(crate::ast::interp_from_inner(
+                        &text[start + 2..end - 2],
+                        span,
+                    ));
+                }
+                crate::line_text::InterpSite::Unterminated { start, .. } => {
+                    let (s, e) = (text_start_body + start, text_start_body + text.len());
+                    self.emit_o(
+                        E_INTERP_UNTERMINATED,
+                        "`{{` has no closing `}}` before end of line (dsl §7.6)".into(),
+                        self.orig(s),
+                        self.orig(e),
+                        Layer::Content,
+                    );
                 }
             }
-            j += 1;
         }
         out
     }

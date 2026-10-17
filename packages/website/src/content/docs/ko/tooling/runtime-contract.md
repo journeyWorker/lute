@@ -254,7 +254,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 `line`에는 모든 역할에 대해 `role`(`dialogue`, `narration`, `mono`, `os`, `vo`),
 `speaker`, `text`, `lineId`, `voiceKey`가 들어갑니다. `voiceKey`는 녹음이 존재한다는 약속이
 아니라 결합 키입니다. `text`는 저작된 텍스트에서 파생된 평문입니다. 인라인 수정자는 제거하고,
-이스케이프는 디코딩하며, `{{…}}` 마커는 유지합니다. 인라인 수정자를 사용하는 줄에는 제시
+이스케이프는 디코딩하며, `{{…}}` 마커는 유지하고 마커마다 순서대로 `placeholders` 항목이 하나씩 있습니다.
+다만(lute 0.47.1) 리터럴 `{{`(저작 시 `\{{`)는 `\{{`로 쓰고, `{{` 바로 앞의 리터럴 백슬래시는 모두
+두 번 씁니다. segment 실행, `texts`, `localeSegments`도 같은 인코딩을 씁니다. 왼쪽에서 오른쪽으로
+읽으며, `{{` 바로 앞에 백슬래시가 *n*개 이어지면 ⌊*n*/2⌋개의 백슬래시를 뜻하고, *n*이 홀수이면 그
+`{{`는 리터럴 텍스트(한 단위로 소비)이며 짝수이면 다음 마커를 엽니다. `run.a = 3`일 때
+`Lit \{{run.a}} and {{ run.a }}.`는 `Lit {{run.a}} and 3.`로 렌더링됩니다. placeholder를 직접
+치환하는 엔진은 이 읽기 규칙을 적용해야 합니다. `\{{`가 있는 줄은 loc `sourceHash`가 새로 바뀌므로
+다시 내보내세요(0.47.0에서 내보낸 것은 `W-L10N-STALE`입니다). 인라인 수정자를 사용하는 줄에는 제시
 실행 단위인 `segments`도 들어갑니다: `{ text, styles?, rate? }` 텍스트 실행과
 `{ pause }` 리프(초)입니다. 수정자가 없는 줄에는 `segments`가 없습니다. 로캘 형식은
 [지역화된 텍스트](#현지화-텍스트)를 참고하세요.
@@ -300,7 +307,7 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.0"
+irVersion: "0.47.1"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -316,7 +323,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.1` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
@@ -635,7 +642,7 @@ while (pc < artifact.commands.length) {
 
 locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
 
-런타임의 `line` 레코드(`--locales`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 번역 맵은 이스케이프를 풀어 둔 plain text이므로, 번역에는 원본 마커와 참조 대상이 같은 `{{…}}`를 글자 그대로 보여 줄 수 없습니다. `\{{user.voyages}}`로 써도 값이 표시됩니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
+런타임의 `line` 레코드(`--locales`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 레코드는 디코딩된 텍스트를 담으며(lute 0.47.1: 인코딩 백슬래시 없음), 번역에도 `\{{`를 쓸 수 있고 원본과 마찬가지로 리터럴 `{{`로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
 
 ## 런타임 문서
 

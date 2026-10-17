@@ -1,0 +1,11 @@
+# Browser-test fixture (spec 0.47.1 §4): camera transitions that end their batch.
+pluginsDir: plugins/
+defaultProfile: test
+profiles:
+  test:
+    plugins: { test.occasions: true }
+defaults:
+  luteVersion: "0.47.1"
+  contentLang: en-US
+  pov: narrator
+  uses: [world.schema.yaml, vocabulary.schema.yaml]

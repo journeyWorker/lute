@@ -766,7 +766,11 @@ pub struct LineCmd {
     pub speaker: String,
     /// The plain-text derivation of the authored text (dsl 0.37.0 §3.6):
     /// modifier delimiters and attributes removed, escapes decoded, `{{…}}`
-    /// markers verbatim.
+    /// markers verbatim. lute 0.47.1 §3: a literal `{{` is written `\{{`
+    /// and each literal backslash directly before a `{{` doubled — n
+    /// backslashes before `{{` read as ⌊n/2⌋ backslashes and a literal `{{`
+    /// (n odd) or a marker (n even). The same encoding holds in `segments`
+    /// runs, `texts` and `localeSegments`.
     pub text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub emotion: Option<String>,

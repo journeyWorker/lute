@@ -5,8 +5,8 @@ The Lute 0.47 browser visual-novel player. It supplies PixiJS 8 rendering, Web A
 ## Install
 
 ```sh
-  bun add @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
-  # npm install @lute-lang/player-web@0.47.0 @lute-lang/player@0.47.0 @lute-lang/runtime@0.47.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  bun add @lute-lang/player-web@0.47.1 @lute-lang/player@0.47.1 @lute-lang/runtime@0.47.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  # npm install @lute-lang/player-web@0.47.1 @lute-lang/player@0.47.1 @lute-lang/runtime@0.47.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 The package requires exact `effect@4.0.2` and `@effect/platform-browser@4.0.2` peers. Runtime and player packages are released in lockstep.
@@ -50,13 +50,14 @@ The title screen's heading is the bound `ui.title.text`; without it the title dr
 
 - **Names.** The dialogue name plate and backlog rows show `speakerName`, the cast display name from the bundle index (`cast: { id: name }`); name colours stay keyed by the speaker id.
 - **Music.** `PixiAudio` honours `AudioPlay.restart`: `restart: true` plays the file from its start; without it, the music file already playing only changes volume, fading over `fade`, and a different file crossfades.
+- **Camera.** The `camera` layer rests at alpha 1 with no mask. A `transition` with a hiding effect (`fade`, `dissolve`, `fadeOut`, `wipe*`, `slideLeft`/`slideRight`, `slideOut`) hides the actors over the first half, applies the framing, and shows them over the second half; other effects apply the framing, then play. Every cue ends visible in its framing; `cut`, `none`, a zero duration and skip apply it at once; a started transition keeps playing after its batch ends (it runs in the player's scope; with `autosave` `false` or `"presentation"`, a non-waiting camera cue that is the last of a batch before a choice is currently not started at all, a player-core scheduler behaviour); a later camera cue supersedes it, and so does skip when it starts while the cue still runs (a transition whose cue already ended finishes at normal speed); a `move` takes precedence; a wipe sweeps the design stage, not the actors' span; `restore` (load, rollback) cancels running camera behaviours and rests the layer before applying the framing.
 - **Custom vfx.** A `StageCue.Vfx` whose `effect.effect` is `"custom"` (a project vfx bound as `{ effect: custom }`, or a vfx type with no binding) has no Pixi effect: the presenter plays nothing and logs `effect.name` once at debug level (`PresenterOptions.debug`, default `console.debug`). Render project effects with your own `Presenter`.
 
 ## Tests
 
 ```console
 bun run test           # unit tests (node); real-runtime tests compile fixtures with the lute binary
-bun run test:browser   # Chromium (vitest browser mode, WebGL via SwiftShader)
+bun run test:browser   # Chromium (vitest browser mode, WebGL via SwiftShader); projects `browser` and `real` (test/browser/real, one file at a time)
 bun run test:e2e       # Playwright over `bun run demo`
 ```
 
@@ -65,7 +66,7 @@ The suites build the CLI with `cargo build -q -p lute-cli` unless `LUTE_BIN` nam
 Player behaviour is tested against real runtime output, never a hand-written view, record or bundle:
 
 - **Node.** `test/support/bundle.ts` compiles a project (`compileProject(name, dir, locales?)`, `locales` a `lute loc import` bundle passed as `--locales`; output under `node_modules/.lute-test/`); tests drive it with `@lute-lang/runtime/bun` (see `test/ui/ended.test.ts`).
-- **Browser.** `test/browser/globalSetup.ts` compiles once the projects registered in `realProjects` (`globalSetup.ts`: `examples/player-demo` with its Korean bundle `locales/bundle.json`, and fixtures under `test/fixtures/`; add new fixtures there) and provides its URLs (`inject("luteProjects")`; vite serves them through `/@fs/`). `test/browser/support/real-player.ts` mounts player-web with `mount` over that bundle and the packaged wasm runtime: `mountProject(name, options?)` (`demo` = examples/player-demo, others under `test/fixtures/`) (a fresh `storageKey` unless one is passed; mounting again with the same key after `close()` models a reload over the same storage), `playUntil(player, stop, prefer?)` plays with real `PlayerAction`s (New game, idle menu, choices by preferred option id, advance), `playReading(player, stop, prefer?)` plays the same way but records every dialogue line and choice menu as drawn and advances a line only after reading it, `buttonLabelled(container, label)` finds a drawn button to `activate()`, and assertions read what player-web drew: `player.pixi.layers` (the mounted Pixi stage from the internal `pixiAppOf(element)`, not exported from the package), `drawnTexts(container)` and `stagePixels(pixi, frame)`. See `test/browser/real/`.
+- **Browser.** The `real` project (`test/browser/real/`, in `vitest.browser.config.ts`) runs its files one at a time: its players animate on the per-frame clock (at most 0.1s a frame), so files rendering side by side on a few CPUs stretch every playthrough past its deadlines; the batch-end camera test reads the player's clock (`pixi.frames`), not wall time. Its `test/browser/globalSetup.ts` compiles once the projects registered in `realProjects` (`globalSetup.ts`: `examples/player-demo` with its Korean bundle `locales/bundle.json`, and fixtures under `test/fixtures/`; add new fixtures there) and provides its URLs (`inject("luteProjects")`; vite serves them through `/@fs/`). `test/browser/support/real-player.ts` mounts player-web with `mount` over that bundle and the packaged wasm runtime: `mountProject(name, options?)` (`demo` = examples/player-demo, others under `test/fixtures/`) (a fresh `storageKey` unless one is passed; mounting again with the same key after `close()` models a reload over the same storage), `playUntil(player, stop, prefer?)` plays with real `PlayerAction`s (New game, idle menu, choices by preferred option id, advance), `playReading(player, stop, prefer?)` plays the same way but records every dialogue line and choice menu as drawn and advances a line only after reading it (each fails when `stop` does not hold within `playthroughMs`, 300 s: the demo played to an ending takes about 1 min on a fast machine, over 2 min on a CI runner; a test making `count` such calls takes `playthroughTimeout(count)`), `buttonLabelled(container, label)` finds a drawn button to `activate()`, and assertions read what player-web drew: `player.pixi.layers` (the mounted Pixi stage from the internal `pixiAppOf(element)`, not exported from the package), `drawnTexts(container)` and `stagePixels(pixi, frame)`. See `test/browser/real/`.
 
 ## API and guides
 

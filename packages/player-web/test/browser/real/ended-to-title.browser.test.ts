@@ -2,7 +2,7 @@
 // without the discard-progress confirm, over a compiled project played to
 // its end on the wasm runtime.
 import { afterEach, describe, expect, it } from "vitest"
-import { buttonLabelled, drawnTexts, mountProject, playReading, waitFor, type RealPlayer } from "../support/real-player.js"
+import { buttonLabelled, drawnTexts, mountProject, playReading, playthroughTimeout, waitFor, type RealPlayer } from "../support/real-player.js"
 
 describe("leaving an ended run", () => {
   let player: RealPlayer | undefined
@@ -29,5 +29,5 @@ describe("leaving an ended run", () => {
     expect(title).toContain("New game")
     expect(overlays).not.toContain("confirm")
     expect(seen.flat()).not.toContain("Yes")
-  })
+  }, playthroughTimeout())
 })

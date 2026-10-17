@@ -142,6 +142,12 @@ placeholder records after expansion, exactly as in a line written in the host:
 `"placeholders": [{"kind": "reserved", "token": "userName"}]`, so the engine renders the player's
 name. Before 0.26.0 the placeholder record was dropped and the braces shipped as literal text.
 
+To pass a literal `{{` instead, escape it as in a line, written with the attribute string's own
+backslash escape: `to="you, \\{{userName}}"` is the value `you, \{{userName}}`, which the line reads
+as a literal `{{` (lute 0.47.1), so the text shows `To you, {{userName}}!` and has no placeholder.
+The escape is judged on the decoded value — an odd run of backslashes before `{{` makes it literal —
+so `to="\\\\{{userName}}"` passes one backslash and keeps the placeholder.
+
 ### Component body rules
 
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may

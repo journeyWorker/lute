@@ -1,0 +1,10 @@
+---
+kind: scene
+id: begin
+on: begin
+once: false
+---
+
+## begin
+
+@narrator: The town wakes.

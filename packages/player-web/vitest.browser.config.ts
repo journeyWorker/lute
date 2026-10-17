@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config"
 const packageRoot = resolve(import.meta.dirname)
 const repositoryRoot = resolve(packageRoot, "../..")
 
+/** Real-bundle files: each plays compiled projects through a mounted player. */
+const realSuite = "test/browser/real/**/*.browser.test.ts"
+
 export default defineConfig({
   root: packageRoot,
   resolve: {
@@ -18,9 +21,6 @@ export default defineConfig({
     fs: { allow: [repositoryRoot] }
   },
   test: {
-    include: ["test/browser/**/*.browser.test.ts"],
-    // Compiles the real fixtures (examples/player-demo) the `test/browser/real` suite mounts.
-    globalSetup: ["test/browser/globalSetup.ts"],
     browser: {
       enabled: true,
       headless: true,
@@ -31,6 +31,29 @@ export default defineConfig({
         }
       }),
       instances: [{ browser: "chromium" }]
-    }
+    },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "browser",
+          include: ["test/browser/**/*.browser.test.ts"],
+          exclude: [realSuite]
+        }
+      },
+      {
+        extends: true,
+        test: {
+          name: "real",
+          include: [realSuite],
+          // Compiles the real fixtures (examples/player-demo) the suite mounts.
+          globalSetup: ["test/browser/globalSetup.ts"],
+          // One file at a time: their players animate on the per-frame clock
+          // (at most 0.1s a frame), so files rendering side by side on a few
+          // CPUs (SwiftShader) slow every playthrough past its deadlines.
+          fileParallelism: false
+        }
+      }
+    ]
   }
 })

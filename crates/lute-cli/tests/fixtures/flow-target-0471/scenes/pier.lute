@@ -1,0 +1,11 @@
+---
+kind: scene
+id: pier
+on: visit
+target: place.pier
+once: false
+---
+
+## pier
+
+@narrator: The pier is quiet.

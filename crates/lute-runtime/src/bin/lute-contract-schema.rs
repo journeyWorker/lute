@@ -31,7 +31,7 @@ fn collect<T: schemars::JsonSchema>(name: &str, defs: &mut BTreeMap<String, Valu
 }
 
 /// The release line (`major.minor`) the schema files are named for, from the
-/// workspace version: `0.47.0` writes `lute-*-0.47.schema.json`.
+/// workspace version: `0.47.1` writes `lute-*-0.47.schema.json`.
 fn release_line() -> String {
     let version = env!("CARGO_PKG_VERSION");
     let mut parts = version.splitn(3, '.');

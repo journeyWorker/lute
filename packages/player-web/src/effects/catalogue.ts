@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect"
 import { BlurFilter, Container } from "pixi.js"
-import { fade, flash, hop, shake, slide, tween, wipe } from "../engine/behaviours.js"
+import { concealing, fade, flash, hop, shake, slide, tween, wipe } from "../engine/behaviours.js"
 import type { WipeDirection } from "../engine/behaviours.js"
 import type { Behaviour } from "../engine/types.js"
 import { linear } from "../engine/easing.js"
@@ -193,5 +193,62 @@ export const build = (
     }
   })
 
+/**
+ * A hiding transition (spec 0.47.1 §4) split in its two halves: `hide`
+ * conceals the target (which stays at alpha 0 once it ended), `show` brings
+ * it back from wherever it is placed when `show` is called. A wipe sweeps
+ * `ctx.design` (in the target's parent space) when given.
+ */
+export interface HidingTransition {
+  readonly hide: (seconds: number) => Behaviour
+  readonly show: (seconds: number) => Behaviour
+}
+
+/**
+ * The hide and show halves of a hiding effect (`fade`, `dissolve`,
+ * `fadeOut`, `wipe*`, `slideLeft`, `slideRight`, `slideOut`), or `undefined`
+ * for any other effect; decoding failures as {@link build}.
+ */
+export const hidingTransition = (
+  name: string,
+  target: Container,
+  params: EffectParams = {},
+  ctx: EffectContext = {}
+): Effect.Effect<HidingTransition | undefined, EffectDecodeError> =>
+  Effect.gen(function* () {
+    const effect = yield* parseName(name)
+    yield* parse(effect, params)
+    const shown = (behaviour: Behaviour): Behaviour => {
+      target.alpha = 1
+      return behaviour
+    }
+    switch (effect) {
+      case "fade": case "dissolve": case "fadeOut":
+        return {
+          hide: (seconds) => concealing(target, fade(target, 0, seconds)),
+          show: (seconds) => {
+            target.alpha = 0
+            return fade(target, 1, seconds)
+          }
+        }
+      case "wipeLeft": case "wipeRight": case "wipeUp": case "wipeDown":
+        return {
+          hide: (seconds) => concealing(target, wipe(target, wipeDirection(effect), seconds, false, ctx.design)),
+          show: (seconds) => shown(wipe(target, wipeDirection(effect), seconds, true, ctx.design))
+        }
+      case "slideLeft": case "slideOut":
+        return {
+          hide: (seconds) => concealing(target, slide(target, target.x, target.x - dimension(target, ctx), seconds)),
+          show: (seconds) => shown(slide(target, target.x + dimension(target, ctx), target.x, seconds))
+        }
+      case "slideRight":
+        return {
+          hide: (seconds) => concealing(target, slide(target, target.x, target.x + dimension(target, ctx), seconds)),
+          show: (seconds) => shown(slide(target, target.x - dimension(target, ctx), target.x, seconds))
+        }
+      default: return undefined
+    }
+  })
+
 /** Catalogue facade for callers that prefer an object. */
-export const EffectCatalogue = { build }
+export const EffectCatalogue = { build, hidingTransition }

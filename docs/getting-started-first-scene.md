@@ -314,8 +314,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.47.0",
-  "irVersion": "0.47.0",
+  "lute": "0.47.1",
+  "irVersion": "0.47.1",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": ["lute.core/1"],
   "meta": {
@@ -716,7 +716,7 @@ textModifiers (inline, content-line text only):
   :pause{s=0.5} [leaf]: a pause of `s` seconds (required, non-negative) at that point of the line
   :speed[text]{rate=1.25} [span]: the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate
   textStyle: not declared (declare `textStyle` in `enums:` for style spans)
-  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves
+  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept, one `placeholders` entry each); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves; in `text`, segment runs and `texts` a literal `{{` is written `\{{` and a literal backslash directly before `{{` is doubled
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (10):

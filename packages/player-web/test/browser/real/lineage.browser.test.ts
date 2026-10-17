@@ -4,7 +4,7 @@
 // `prev.run`-gated line and the `user.voyages` count run 1 left. §2.2: run 2
 // played again in Korean draws the translated count with its value.
 import { afterEach, describe, expect, it } from "vitest"
-import { mountProject, playReading, shows, waitFor, type RealPlayer } from "../support/real-player.js"
+import { mountProject, playReading, playthroughTimeout, shows, waitFor, type RealPlayer } from "../support/real-player.js"
 
 const remembered = "We have climbed toward that light before. I still remember the tide."
 const voyages = (count: number): string => `Voyages to the lighthouse so far: ${count}.`
@@ -22,7 +22,7 @@ describe("lineage across a reload over the compiled demo", () => {
   it("run 2 after a reload draws the prev.run line and run 1's user value", async () => {
     const storageKey = `lute-test-lineage-${crypto.randomUUID()}`
     player = await mountProject("demo", { storageKey })
-    const first = await playReading(player, (_reading, view) => view.flow === "ended", ["release"], undefined, 180_000)
+    const first = await playReading(player, (_reading, view) => view.flow === "ended", ["release"])
     expect(first.lines.some((line) => shows(line, voyages(0)))).toBe(true)
     expect(first.lines.some((line) => shows(line, remembered))).toBe(false)
     await player.close()
@@ -44,5 +44,5 @@ describe("lineage across a reload over the compiled demo", () => {
     const korean = await playReading(mounted, (reading) => reading.lines.some((line) => shows(line, koreanVoyages(1))))
     expect(korean.lines.find((line) => shows(line, koreanRemembered)), JSON.stringify(korean)).toEqual(["Mara", koreanRemembered])
     expect(korean.lines.at(-1)).toEqual([koreanVoyages(1)])
-  }, 300_000)
+  }, playthroughTimeout(3))
 })

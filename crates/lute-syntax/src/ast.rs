@@ -85,7 +85,8 @@ pub struct InlineAttr {
 }
 
 impl Line {
-    /// Derive source text with inline delimiters, attributes, and escapes removed.
+    /// The line's IR text ([`inline_plain_text`]): inline delimiters and
+    /// attributes removed, escapes decoded, in the IR encoding of `{{`.
     pub fn plain_text(&self) -> String {
         inline_plain_text(&self.inline)
     }
@@ -140,22 +141,26 @@ pub fn inline_modifier_multiset(nodes: &[InlineNode]) -> std::collections::BTree
     out
 }
 
-/// The plain-text derivation of inline `nodes` (dsl 0.37.0 §3.6): modifier
-/// delimiters and attributes removed, escapes decoded, `{{…}}` verbatim.
+/// The plain-text derivation of inline `nodes` (dsl 0.37.0 §3.6) as the IR
+/// writes it (lute 0.47.1 §3): modifier delimiters and attributes removed,
+/// escapes decoded, `{{…}}` markers verbatim — and, so an engine can tell
+/// them apart, a literal `{{` written `\{{` and each literal backslash
+/// directly before a `{{` doubled ([`crate::line_text::IrText`]). A line's
+/// `text`, a merged translation and the `sourceHash` `lute loc export`
+/// writes all come from here.
 pub fn inline_plain_text(nodes: &[InlineNode]) -> String {
-    let mut out = String::new();
-    for node in nodes {
-        match node {
-            InlineNode::Text { text, .. } => out.push_str(text),
-            InlineNode::Interpolation(i) => {
-                out.push_str("{{");
-                out.push_str(&i.source);
-                out.push_str("}}");
+    fn walk(nodes: &[InlineNode], out: &mut crate::line_text::IrText) {
+        for node in nodes {
+            match node {
+                InlineNode::Text { text, .. } => out.push_literal(text),
+                InlineNode::Interpolation(i) => out.push_marker(&format!("{{{{{}}}}}", i.source)),
+                InlineNode::Modifier(m) => walk(&m.children, out),
             }
-            InlineNode::Modifier(m) => out.push_str(&inline_plain_text(&m.children)),
         }
     }
-    out
+    let mut out = crate::line_text::IrText::new();
+    walk(nodes, &mut out);
+    out.finish()
 }
 
 #[derive(Clone, Debug)]
@@ -818,31 +823,14 @@ fn is_hint_ident(s: &str) -> bool {
 /// option-label lowering. Classification reuses [`classify_interp`]. Every
 /// recovered interp is spanned at the whole slot (`span`) — the label's own byte
 /// offset is not retained on the AST — matching the resolver's whole-slot span
-/// fallback. An unterminated `{{` in a label is simply not scanned (conservative,
+/// fallback. An unterminated `{{` in a label ends the scan (conservative,
 /// never panics); a label never round-trips through the content-line parser, so
-/// its `E-INTERP-UNTERMINATED` never applies here.
+/// its `E-INTERP-UNTERMINATED` never applies here. An escaped `\{{` follows the
+/// line-text rule ([`crate::line_text::interp_sites`]).
 pub fn scan_label_interps(label: &str, span: Span) -> Vec<Interp> {
-    let b = label.as_bytes();
-    let mut out = Vec::new();
-    let mut j = 0;
-    while j + 1 < b.len() {
-        if b[j] == b'\\' && label[j + 1..].starts_with("{{") {
-            j += 3; // literal `\{{`
-            continue;
-        }
-        if b[j] == b'{' && b[j + 1] == b'{' {
-            match label[j + 2..].find("}}") {
-                Some(rel) => {
-                    out.push(interp_from_inner(&label[j + 2..j + 2 + rel], span));
-                    j = j + 2 + rel + 2;
-                    continue;
-                }
-                None => break, // unterminated — nothing more to scan
-            }
-        }
-        j += 1;
-    }
-    out
+    crate::line_text::interp_markers(label)
+        .map(|(start, end)| interp_from_inner(&label[start + 2..end - 2], span))
+        .collect()
 }
 
 /// The literal pattern of a `<when is="…">` arm (dsl §7.3.1). Unlike `test`,

@@ -3,7 +3,7 @@
 // pixels where the CG and the actor overlap are the CG's.
 import { Rectangle, type Container } from "pixi.js"
 import { afterEach, describe, expect, it } from "vitest"
-import { alphaOf, isDrawn, mountProject, playUntil, stagePixels, waitFor, type RealPlayer } from "../support/real-player.js"
+import { alphaOf, isDrawn, mountProject, playUntil, playthroughTimeout, stagePixels, waitFor, type RealPlayer } from "../support/real-player.js"
 
 /** Bounds of the drawn leaves of `layer` once every one of them is fully faded in. */
 const settledBounds = (layer: Container): ReadonlyArray<Rectangle> | undefined => {
@@ -70,5 +70,5 @@ describe("CG layer over the compiled cg-stage fixture", () => {
     }
     expect(layers.cg.parent!.getChildIndex(layers.cg)).toBeGreaterThan(layers.cg.parent!.getChildIndex(layers.camera))
     expect(layers.cg.parent!.getChildIndex(layers.cg)).toBeLessThan(layers.cg.parent!.getChildIndex(layers.dialogue))
-  }, 180_000)
+  }, playthroughTimeout())
 })

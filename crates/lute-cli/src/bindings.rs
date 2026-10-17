@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use lute_compile::ir::Command;
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::bindings::{Bindings, Idle};
-use lute_manifest::schema::OccasionTarget;
+use lute_manifest::relations::EntityKindDecl;
 use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_model::ProjectModel;
 
@@ -74,6 +74,9 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
     let mut domains = BTreeMap::<String, BTreeSet<String>>::new();
     let mut cast = BTreeSet::new();
     let mut occasions = BTreeMap::new();
+    // The project's `entities:` kinds, merged across documents like
+    // `occasions` — the vocabulary flow targets are checked against.
+    let mut kinds = BTreeMap::<String, EntityKindDecl>::new();
     for document in model.documents() {
         for (name, domain) in &document.folded.domains {
             domains
@@ -83,6 +86,7 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
         }
         cast.extend(document.folded.cast.keys().cloned());
         occasions.extend(document.folded.occasions.clone());
+        kinds.extend(document.folded.env.rel_vocab.kinds.clone());
     }
     check_domain_map(
         &bindings.anchors,
@@ -283,7 +287,7 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
             ));
         }
     }
-    check_flow(&bindings, &occasions, &domains, &path, &anchor, &mut out);
+    check_flow(&bindings, &occasions, &kinds, &path, &anchor, &mut out);
     for (diagnostic_path, _) in &mut out {
         if diagnostic_path.as_os_str().is_empty() {
             *diagnostic_path = path.clone();
@@ -774,7 +778,7 @@ fn files_check(
 fn check_flow(
     b: &Bindings,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
-    domains: &BTreeMap<String, BTreeSet<String>>,
+    kinds: &BTreeMap<String, EntityKindDecl>,
     path: &Path,
     anchor: &impl Fn(&str) -> Span,
     out: &mut Vec<(PathBuf, Diagnostic)>,
@@ -784,7 +788,7 @@ fn check_flow(
             &flow.occasion,
             flow.target.as_deref(),
             occasions,
-            domains,
+            kinds,
             path,
             anchor,
             out,
@@ -796,7 +800,7 @@ fn check_flow(
                 &item.occasion,
                 item.target.as_deref(),
                 occasions,
-                domains,
+                kinds,
                 path,
                 anchor,
                 out,
@@ -808,18 +812,23 @@ fn check_flow(
             &raise.occasion,
             raise.target.as_deref(),
             occasions,
-            domains,
+            kinds,
             path,
             anchor,
             out,
         );
     }
 }
+/// A `flow` occasion must be declared, and its `target` (0.47.1 §2) is the
+/// full occasion target `raiseOccasion` takes (`place.square`), checked by
+/// the rule beat targets and play step targets share
+/// ([`lute_check::occasion_target_ok`]). As in plays, a target on an occasion
+/// raised for none is refused.
 fn flow_ref(
     occasion: &str,
     target: Option<&str>,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
-    domains: &BTreeMap<String, BTreeSet<String>>,
+    kinds: &BTreeMap<String, EntityKindDecl>,
     path: &Path,
     anchor: &impl Fn(&str) -> Span,
     out: &mut Vec<(PathBuf, Diagnostic)>,
@@ -841,29 +850,23 @@ fn flow_ref(
     let Some(target) = target else {
         return;
     };
-    if let OccasionTarget::Domain {
-        entity, members, ..
-    } = &decl.target
-    {
-        let allowed = members
-            .as_ref()
-            .map(|m| m.iter().cloned().collect())
-            .or_else(|| domains.get(entity).cloned());
-        if let Some(allowed) = allowed {
-            if !allowed.contains(target) {
-                out.push((
-                    path.to_path_buf(),
-                    diag(
-                        "E-BINDING-KEY",
-                        format!(
-                            "flow target `{target}` is not a member of occasion `{occasion}`{}",
-                            suggest(target, allowed.iter())
-                        ),
-                        anchor(target),
-                    ),
-                ));
-            }
-        }
+    let refused = if decl.target.takes_target() {
+        lute_check::occasion_target_ok(decl, target, kinds).err()
+    } else {
+        Some(format!(
+            "occasion `{occasion}` is not declared `target: true`, so it cannot be raised for \
+             `{target}`"
+        ))
+    };
+    if let Some(reason) = refused {
+        out.push((
+            path.to_path_buf(),
+            diag(
+                "E-BINDING-KEY",
+                format!("flow target `{target}`: {reason}"),
+                anchor(target),
+            ),
+        ));
     }
 }
 

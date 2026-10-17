@@ -1,0 +1,20 @@
+---
+kind: scene
+id: stage
+title: The Pier
+on: start
+---
+
+## The Pier
+
+::bg{location="harbor" time="noon"}
+::actor{character="mara" anchor="center" emotion="neutral"}
+::camera{framing="close" transition="fade" duration="8"}
+<branch id="look" prompt="The camera has just closed in.">
+  <choice id="on" text="Look on">
+    ::camera{framing="wide" transition="fade"}
+    ::camera{framing="close" move="shake"}
+    @mara{code="0010"}: The move came after the transition.
+  </choice>
+</branch>
+::set{run.finished = true}

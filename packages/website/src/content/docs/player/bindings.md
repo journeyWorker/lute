@@ -100,7 +100,9 @@ Unknown YAML keys are rejected. Unknown effects or parameters produce `E-BINDING
 
 ## Project checks and diagnostics
 
-Domain-keyed binding keys must be members of the merged project domains. `characters` keys must be declared cast ids. Flow occasions and occasion targets must be declared. These violations produce `E-BINDING-KEY`, with a nearby-name suggestion when one exists.
+Domain-keyed binding keys must be members of the merged project domains. `characters` keys must be declared cast ids. Flow occasions must be declared. These violations produce `E-BINDING-KEY`, with a nearby-name suggestion when one exists.
+
+A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). `lute check-project` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
 
 A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check-project --json`.
 

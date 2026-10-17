@@ -28,6 +28,7 @@ use lute_syntax::ast::{
     classify_interp, interp_from_inner, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode,
     Directive, Document, Interp, InterpKind, Line, Match, Node, Set,
 };
+use lute_syntax::line_text::{interp_markers, InterpSite};
 
 pub const COMPONENT_BEGIN: &str = "__component-begin";
 pub const COMPONENT_END: &str = "__component-end";
@@ -1138,8 +1139,9 @@ fn bind_slot(slot: &mut CelSlot, args: &BTreeMap<String, AttrValue>, params: &[(
 /// stays an interpolation, rebound to the caller's ref text (`{{@wdef}}`), so
 /// it renders through the ordinary def-placeholder path.
 ///
-/// Markers are walked with the parser's own scan rule (`\{{` is a literal,
-/// `{{…}}` pairs left to right), so the k-th marker IS `l.interps[k]`.
+/// Markers are walked with the line-text rule the parser reads them by
+/// ([`lute_syntax::line_text::interp_sites`]: an odd backslash run before
+/// `{{` makes it literal), so the k-th marker IS `l.interps[k]`.
 ///
 /// dsl 0.24.0 T1-12: every surviving interp's `span` is recomputed against
 /// the REWRITTEN `text` (base `l.text_span`), since a rebound `{{@def}}` and a
@@ -1157,85 +1159,78 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     }
     let base = l.text_span.byte_start;
     let text = &l.text;
-    let b = text.as_bytes();
     let mut out = String::with_capacity(text.len());
     // Each kept interp with its `[start, end)` in `out`.
     let mut kept: Vec<(Interp, usize, usize)> = Vec::with_capacity(l.interps.len());
     let mut interps = std::mem::take(&mut l.interps).into_iter();
-    let (mut j, mut copied) = (0, 0);
-    while j + 1 < b.len() {
-        if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
-            j += 3;
-            continue;
-        }
-        if b[j] == b'{' && b[j + 1] == b'{' {
-            let Some(rel) = text[j + 2..].find("}}") else {
-                break;
-            };
-            let end = j + 2 + rel + 2;
-            let Some(mut interp) = interps.next() else {
-                break;
-            };
-            out.push_str(&text[copied..j]);
-            copied = end;
-            let at = out.len();
-            match bound(&interp).cloned() {
-                Some(AttrValue::Ref(slot)) => {
-                    out.push_str("{{");
-                    out.push_str(&slot.raw);
-                    // dsl 0.24.0 §4: the rebound marker keeps its hint.
-                    if let Some(hint) = interp.hint_text() {
-                        out.push(':');
-                        out.push_str(&hint);
-                    }
-                    out.push_str("}}");
-                    interp.kind = classify_interp(&slot.raw);
-                    interp.raw = slot.raw;
-                    kept.push((interp, at, out.len()));
+    let mut copied = 0;
+    for site in lute_syntax::line_text::interp_sites(text) {
+        let (j, end) = match site {
+            InterpSite::Marker { start, end, .. } => (start, end),
+            InterpSite::Escaped { .. } => continue,
+            InterpSite::Unterminated { .. } => break,
+        };
+        let Some(mut interp) = interps.next() else {
+            break;
+        };
+        out.push_str(&text[copied..j]);
+        copied = end;
+        let at = out.len();
+        match bound(&interp).cloned() {
+            Some(AttrValue::Ref(slot)) => {
+                out.push_str("{{");
+                out.push_str(&slot.raw);
+                // dsl 0.24.0 §4: the rebound marker keeps its hint.
+                if let Some(hint) = interp.hint_text() {
+                    out.push(':');
+                    out.push_str(&hint);
                 }
-                Some(AttrValue::Str(s)) => {
-                    // dsl 0.24.0 §4: no placeholder survives a literal splice
-                    // to carry the hint, so it applies here — `ordinal` /
-                    // `ordinalWord` / `cardinalWord` on a number literal
-                    // renders its word, `plural` (dsl 0.27.0 §7) its form, and
-                    // a text hint the literal's text (its fallback forms: the
-                    // spliced literal is text, not a member with forms).
-                    let shown = s.trim();
-                    let formatted = interp.format.as_deref().and_then(|f| {
-                        match shown.parse::<f64>() {
-                            Ok(n) => lute_manifest::text::format_number(
-                                f,
-                                interp.forms.as_deref(),
-                                n,
-                                shown,
-                            ),
-                            Err(_) => None,
+                out.push_str("}}");
+                interp.kind = classify_interp(&slot.raw);
+                interp.raw = slot.raw;
+                kept.push((interp, at, out.len()));
+            }
+            Some(AttrValue::Str(s)) => {
+                // lute 0.47.1 §3: what is spliced is the argument's decoded
+                // value, so its `{{` escapes are judged on that — a `\\`
+                // pair before `{{` is one backslash there (`p="\\{{x}}"`
+                // passes a literal `{{x}}`).
+                let s = decode_opener_runs(&s);
+                // dsl 0.24.0 §4: no placeholder survives a literal splice
+                // to carry the hint, so it applies here — `ordinal` /
+                // `ordinalWord` / `cardinalWord` on a number literal
+                // renders its word, `plural` (dsl 0.27.0 §7) its form, and
+                // a text hint the literal's text (its fallback forms: the
+                // spliced literal is text, not a member with forms).
+                let shown = s.trim();
+                let formatted = interp.format.as_deref().and_then(|f| {
+                    match shown.parse::<f64>() {
+                        Ok(n) => {
+                            lute_manifest::text::format_number(f, interp.forms.as_deref(), n, shown)
                         }
-                        .or_else(|| lute_manifest::text::format_text(f, &s, None, None))
-                    });
-                    // dsl 0.37.0 §3.6: an argument is literal text — its
-                    // inline punctuation is escaped so it can never become
-                    // modifier syntax (or close an authored span).
-                    let lit = escape_inline_literal(formatted.as_deref().unwrap_or(&s));
-                    out.push_str(&lit);
-                    // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
-                    // an interpolation exactly as in direct text — it keeps
-                    // its placeholder record.
-                    for (s0, e0) in interp_markers(&lit) {
-                        let inner = &lit[s0 + 2..e0 - 2];
-                        kept.push((interp_from_inner(inner, l.text_span), at + s0, at + e0));
+                        Err(_) => None,
                     }
-                }
-                Some(AttrValue::BoolTrue) => out.push_str("true"),
-                None => {
-                    out.push_str(&text[j..end]);
-                    kept.push((interp, at, out.len()));
+                    .or_else(|| lute_manifest::text::format_text(f, &s, None, None))
+                });
+                // dsl 0.37.0 §3.6: an argument is literal text — its
+                // inline punctuation is escaped so it can never become
+                // modifier syntax (or close an authored span).
+                let lit = escape_inline_literal(formatted.as_deref().unwrap_or(&s));
+                out.push_str(&lit);
+                // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
+                // an interpolation exactly as in direct text — it keeps
+                // its placeholder record.
+                for (s0, e0) in interp_markers(&lit) {
+                    let inner = &lit[s0 + 2..e0 - 2];
+                    kept.push((interp_from_inner(inner, l.text_span), at + s0, at + e0));
                 }
             }
-            j = end;
-            continue;
+            Some(AttrValue::BoolTrue) => out.push_str("true"),
+            None => {
+                out.push_str(&text[j..end]);
+                kept.push((interp, at, out.len()));
+            }
         }
-        j += 1;
     }
     // Markers the scan never reached keep their offset past `copied`, shifted
     // by the length change so far (the parser only emits well-formed pairs,
@@ -1260,12 +1255,44 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     l.text = out;
 }
 
+/// A `::use` string argument (kept with its `\\` pairs by the attribute
+/// parser) with every backslash run directly before a `{{` decoded as dsl
+/// §4.4 reads a String: each `\\` pair is one backslash (a lone trailing `\`
+/// stays). The line-text rule then judges the `{{` on what is spliced, so
+/// `p="\\{{x}}"` passes a literal `{{x}}` and `p="\\\\{{x}}"` a backslash
+/// and the marker (lute 0.47.1 §3). Backslashes elsewhere are left as
+/// written, as before.
+fn decode_opener_runs(raw: &str) -> String {
+    let b = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len());
+    let (mut copied, mut at) = (0, 0);
+    while let Some(rel) = raw[at..].find("{{") {
+        let open = at + rel;
+        let mut run = open;
+        while run > copied && b[run - 1] == b'\\' {
+            run -= 1;
+        }
+        let n = open - run;
+        out.push_str(&raw[copied..run]);
+        for _ in 0..n / 2 + n % 2 {
+            out.push('\\');
+        }
+        out.push_str("{{");
+        copied = open + 2;
+        at = copied;
+    }
+    out.push_str(&raw[copied..]);
+    out
+}
+
 /// `lit` with its inline-grammar punctuation (`: [ ] { }`, dsl 0.37.0 §3.6)
-/// escaped OUTSIDE its `{{…}}` markers and `\{{` literal escapes, which stay
-/// verbatim: spliced argument text re-parses to exactly its own characters
-/// plus its interpolations, never to a modifier. A backslash is doubled only
-/// where it would otherwise escape something (before punctuation, or last),
-/// so a stray `\` reads as itself.
+/// escaped OUTSIDE its `{{…}}` markers and `\{{` literal escapes — each with
+/// the backslash run before it, read by the line-text rule
+/// ([`lute_syntax::line_text::interp_sites`]) — which stay verbatim: spliced
+/// argument text re-parses to exactly its own characters plus its
+/// interpolations, never to a modifier. A backslash is doubled only where it
+/// would otherwise escape something (before punctuation, or last), so a stray
+/// `\` reads as itself.
 fn escape_inline_literal(lit: &str) -> String {
     fn copy_escaped(chunk: &str, out: &mut String) {
         let mut chars = chunk.chars().peekable();
@@ -1284,54 +1311,17 @@ fn escape_inline_literal(lit: &str) -> String {
         }
     }
     let mut out = String::with_capacity(lit.len());
-    let b = lit.as_bytes();
-    let mut markers = interp_markers(lit).into_iter().peekable();
-    let (mut at, mut j) = (0, 0);
-    while j < b.len() {
-        if let Some(&(s, e)) = markers.peek() {
-            if j == s {
-                copy_escaped(&lit[at..s], &mut out);
-                out.push_str(&lit[s..e]);
-                (at, j) = (e, e);
-                markers.next();
-                continue;
-            }
-        }
-        if b[j] == b'\\' && lit[j + 1..].starts_with("{{") {
-            copy_escaped(&lit[at..j], &mut out);
-            out.push_str(&lit[j..j + 3]);
-            (at, j) = (j + 3, j + 3);
-            continue;
-        }
-        j += 1;
+    let mut at = 0;
+    for site in lute_syntax::line_text::interp_sites(lit) {
+        let (run, end) = match site {
+            InterpSite::Escaped { run, end } | InterpSite::Marker { run, end, .. } => (run, end),
+            InterpSite::Unterminated { .. } => break,
+        };
+        copy_escaped(&lit[at..run], &mut out);
+        out.push_str(&lit[run..end]);
+        at = end;
     }
     copy_escaped(&lit[at..], &mut out);
-    out
-}
-
-/// The `[start, end)` byte range of every `{{…}}` marker in `text`, left to
-/// right, by the parser's own scan rule (`\{{` is a literal; an unterminated
-/// `{{` ends the scan).
-fn interp_markers(text: &str) -> Vec<(usize, usize)> {
-    let b = text.as_bytes();
-    let mut out = Vec::new();
-    let mut j = 0;
-    while j + 1 < b.len() {
-        if b[j] == b'\\' && text[j + 1..].starts_with("{{") {
-            j += 3;
-            continue;
-        }
-        if b[j] == b'{' && b[j + 1] == b'{' {
-            let Some(rel) = text[j + 2..].find("}}") else {
-                break;
-            };
-            let end = j + 2 + rel + 2;
-            out.push((j, end));
-            j = end;
-            continue;
-        }
-        j += 1;
-    }
     out
 }
 

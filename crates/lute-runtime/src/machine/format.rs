@@ -1,5 +1,13 @@
 //! Interpolation and value formatting: `{{…}}` placeholders, enum labels,
 //! a placeholder's `format`, and a [`Value`]'s JSON and text renderings.
+//!
+//! IR text (a line's `text`, a segment run's `text`, a merged translation)
+//! is read by lute 0.47.1 §3: scanning left to right, a run of n
+//! backslashes directly before `{{` stands for ⌊n/2⌋ literal backslashes;
+//! if n is odd the `{{` is literal text (consumed as one unit before the
+//! next `{{` is looked for), if even it opens a marker that ends at the
+//! first `}}` after it. Every other byte is literal. The rendered text holds
+//! the decoded characters, never the encoding backslashes.
 
 use serde_json::{json, Value as Json};
 
@@ -27,14 +35,8 @@ impl<D: Driver> Machine<D> {
     ) -> Vec<String> {
         let phs: &[Json] = placeholders.map(Vec::as_slice).unwrap_or_default();
         let mut out = Vec::new();
-        let mut rest = text;
         let mut it = phs.iter();
-        while let Some(open) = rest.find("{{") {
-            let Some(rel_close) = rest[open..].find("}}") else {
-                break;
-            };
-            let end = open + rel_close + 2;
-            let marker = &rest[open..end];
+        for marker in markers(text) {
             let rendered = match it.next() {
                 Some(ph) if ph.get("kind").and_then(Json::as_str) == Some("path") => {
                     let path = ph.get("path").and_then(Json::as_str).unwrap_or("");
@@ -84,7 +86,6 @@ impl<D: Driver> Machine<D> {
                 _ => marker.to_string(),
             };
             out.push(rendered);
-            rest = &rest[end..];
         }
         out
     }
@@ -178,11 +179,11 @@ pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usi
 /// `text` (a translation) with each `{{…}}` marker replaced by the value
 /// the source line rendered for its marker with the same referent — the
 /// inner text trimmed, as the parser reads it, so `{{ run.a }}` matches
-/// `{{run.a}}` (dsl 0.47.0 §2.2). `source` is the line's plain text and
+/// `{{run.a}}` (dsl 0.47.0 §2.2). `source` is the line's IR text and
 /// `rendered` its markers' values in order, so a translator's reordering
 /// keeps each value with its marker. A marker the source does not have
-/// stays as written. The plain text keeps no escapes: a literal `{{…}}` in
-/// a translation (written `\{{…}}`) is a marker here too.
+/// stays as written. A literal `{{` (written `\{{`, lute 0.47.1 §3) is no
+/// marker, in the translation or the source.
 pub(super) fn substitute_by_marker(text: &str, source: &str, rendered: &[String]) -> String {
     splice_markers(text, |marker| {
         let referent = referent_of(marker);
@@ -193,15 +194,53 @@ pub(super) fn substitute_by_marker(text: &str, source: &str, rendered: &[String]
     })
 }
 
-/// The `{{…}}` markers of `text`, left to right, as written.
-fn markers(text: &str) -> impl Iterator<Item = &str> {
-    let mut rest = text;
+/// One `{{` of IR text: the backslash run before it starts at `run`, the
+/// `{{` at `open`; `end` is past the `}}` of a marker, past the `{{` of a
+/// literal opener.
+struct Site {
+    run: usize,
+    open: usize,
+    end: usize,
+    marker: bool,
+}
+
+/// The `{{` sites of IR text, left to right (module docs). A marker with no
+/// `}}` after it ends the scan: the rest of the text is read as written.
+fn sites(text: &str) -> impl Iterator<Item = Site> + '_ {
+    let mut at = 0;
     std::iter::from_fn(move || {
-        let (open, end) = next_marker(rest)?;
-        let marker = &rest[open..end];
-        rest = &rest[end..];
-        Some(marker)
+        let open = at + text.get(at..)?.find("{{")?;
+        let b = text.as_bytes();
+        let mut run = open;
+        while run > at && b[run - 1] == b'\\' {
+            run -= 1;
+        }
+        let site = if (open - run) % 2 == 1 {
+            Site {
+                run,
+                open,
+                end: open + 2,
+                marker: false,
+            }
+        } else {
+            let rel_close = text[open + 2..].find("}}")?;
+            Site {
+                run,
+                open,
+                end: open + 2 + rel_close + 2,
+                marker: true,
+            }
+        };
+        at = site.end;
+        Some(site)
     })
+}
+
+/// The `{{…}}` markers of IR `text`, left to right, as written.
+fn markers(text: &str) -> impl Iterator<Item = &str> {
+    sites(text)
+        .filter(|site| site.marker)
+        .map(|site| &text[site.open..site.end])
 }
 
 /// A `{{…}}` marker's inner text, trimmed.
@@ -209,25 +248,25 @@ fn referent_of(marker: &str) -> &str {
     marker[2..marker.len() - 2].trim()
 }
 
-/// The byte range of `rest`'s first complete `{{…}}` marker.
-fn next_marker(rest: &str) -> Option<(usize, usize)> {
-    let open = rest.find("{{")?;
-    let rel_close = rest[open..].find("}}")?;
-    Some((open, open + rel_close + 2))
-}
-
-/// `text` with each marker, left to right, replaced by `value(marker)`; a
-/// marker with no value stays verbatim.
+/// IR `text` decoded, with each marker, left to right, replaced by
+/// `value(marker)`; a marker with no value stays verbatim.
 fn splice_markers<'a>(text: &str, mut value: impl FnMut(&str) -> Option<&'a str>) -> String {
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some((open, end)) = next_marker(rest) {
-        out.push_str(&rest[..open]);
-        let marker = &rest[open..end];
-        out.push_str(value(marker).unwrap_or(marker));
-        rest = &rest[end..];
+    let mut at = 0;
+    for site in sites(text) {
+        out.push_str(&text[at..site.run]);
+        for _ in 0..(site.open - site.run) / 2 {
+            out.push('\\');
+        }
+        if site.marker {
+            let marker = &text[site.open..site.end];
+            out.push_str(value(marker).unwrap_or(marker));
+        } else {
+            out.push_str("{{");
+        }
+        at = site.end;
     }
-    out.push_str(rest);
+    out.push_str(&text[at..]);
     out
 }
 

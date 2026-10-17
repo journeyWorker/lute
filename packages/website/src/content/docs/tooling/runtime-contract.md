@@ -284,7 +284,17 @@ false.
 A `line` carries `role` (`dialogue`, `narration`, `mono`, `os`, or `vo`),
 `speaker`, `text`, `lineId`, and a `voiceKey` on every role — a join key, not a
 promise that a recording exists. `text` is the plain derivation of the
-authored text: inline modifiers removed, escapes decoded, `{{…}}` markers kept.
+authored text: inline modifiers removed, escapes decoded, `{{…}}` markers kept,
+one `placeholders` entry per marker, in order — except that (lute 0.47.1) a
+literal `{{` (authored `\{{`) is written `\{{` and every literal backslash
+directly before a `{{` is doubled; segment runs, `texts` and `localeSegments`
+use the same encoding. Read it left to right: a run of *n* backslashes directly
+before `{{` stands for ⌊*n*/2⌋ backslashes, and the `{{` is literal text when
+*n* is odd (consumed as one unit) or opens the next marker when *n* is even.
+`Lit \{{run.a}} and {{ run.a }}.` with `run.a = 3` renders
+`Lit {{run.a}} and 3.`. An engine that substitutes placeholders itself must
+apply this reading; a line with `\{{` gets a new loc `sourceHash`, so re-export
+it (a 0.47.0 export of it is `W-L10N-STALE`).
 A line that uses an inline modifier also carries `segments`, the presentation
 runs: `{ text, styles?, rate? }` text runs and `{ pause }` leaves (seconds).
 A line without modifiers has no `segments`. See [Localized text](#localized-text)
@@ -360,7 +370,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.0"
+irVersion: "0.47.1"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -376,7 +386,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.1`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 
@@ -991,10 +1001,9 @@ and `segments` with their `{{…}}` markers replaced, it carries `texts` and
 marker replaced by the value the source rendered for the marker with the same
 referent (the text inside `{{ }}`, trimmed, so `{{ user.voyages }}` matches
 `{{user.voyages}}`) — a translator may reorder markers, and a marker the source
-does not have stays as written. The translation maps hold plain text with
-escapes decoded, so a translation cannot show a literal `{{…}}` whose referent
-equals one of the source's markers: written `\{{user.voyages}}`, it still shows
-the value. Show a runtime line from its record, not from the
+does not have stays as written. The record holds decoded text (lute 0.47.1:
+no encoding backslashes), and a translation may write `\{{`, which stays a
+literal `{{` there as in the source. Show a runtime line from its record, not from the
 artifact's templates. `lute run --json`, the conformance record, leaves them
 out like the other delivery fields. Option labels and prompts are not rendered.
 

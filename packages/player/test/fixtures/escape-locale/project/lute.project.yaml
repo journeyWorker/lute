@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: escape
+profiles:
+  escape:
+    plugins: { escape.occasions: true }
+defaults:
+  luteVersion: "0.47.1"
+  contentLang: en-US
+  uses: [world.schema.yaml]

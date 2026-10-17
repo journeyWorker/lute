@@ -204,12 +204,13 @@ window.mountParity = {
   })
 
   test("plays to an ending with real keyboard input; the timed choice expires", async () => {
-    // A full playthrough under SwiftShader on a CI runner takes minutes.
-    test.setTimeout(600_000)
+    // A full playthrough under SwiftShader on a CI runner takes minutes (about 10 on the
+    // slower GitHub runner class), so the deadline allows about 1.5x that.
+    test.setTimeout(960_000)
     await freshGame()
     let timedExpired = false
     let shotMid = false
-    const deadline = Date.now() + 540_000
+    const deadline = Date.now() + 900_000
     const trail: string[] = []
     for (let i = 0; Date.now() < deadline; i++) {
       const now = await current()
