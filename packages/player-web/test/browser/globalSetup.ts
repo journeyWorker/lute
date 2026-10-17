@@ -19,6 +19,7 @@ export interface RealProjectUrls {
 export const realProjects = {
   demo: { dir: demoProject, locales: demoLocales },
   "cg-stage": { dir: join(packageRoot, "test/fixtures/cg-stage") },
+  "camera-stage": { dir: join(packageRoot, "test/fixtures/camera-stage") },
   "title-text": { dir: join(packageRoot, "test/fixtures/title-text") }
 } as const satisfies Record<string, { readonly dir: string; readonly locales?: string }>
 

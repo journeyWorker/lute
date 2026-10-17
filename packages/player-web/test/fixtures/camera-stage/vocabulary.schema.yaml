@@ -1,0 +1,8 @@
+enums:
+  emotion: [neutral]
+  framing: [wide, close]
+  cameraMove: [shake]
+  transition: [fade]
+  anchor:
+    members: [center]
+    default: center

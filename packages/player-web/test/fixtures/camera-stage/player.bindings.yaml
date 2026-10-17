@@ -1,0 +1,15 @@
+bindingsVersion: "0.47"
+canvas: { width: 1280, height: 720 }
+assetsBase: ../../../../../examples/player-demo/assets/
+backgrounds:
+  harbor: { image: bg/harbor-noon.png, times: { noon: bg/harbor-noon.png } }
+characters:
+  mara:
+    sprite: { default: char/mara-neutral.png, emotions: { neutral: char/mara-neutral.png } }
+anchors: { center: { x: 0.5 } }
+transitions:
+  fade: { effect: fade, duration: 0.6 }
+framing: { wide: { zoom: 1.0 }, close: { zoom: 1.3 } }
+cameraMove: { shake: { effect: shake, duration: 0.2, strength: 4 } }
+flow:
+  newGame: { occasion: start }

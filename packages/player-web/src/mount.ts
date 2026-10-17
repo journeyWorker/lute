@@ -124,9 +124,10 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
         yield* assets.ensure([background])
         return { ...selected, background }
       }).pipe(Effect.scoped, Effect.catch(() => Effect.succeed(screen)))
+    const scope = yield* Effect.scope
     const presenterOptions = titleBackground === undefined
-      ? { pixi, world, ui, assets, bindings, theme, resolveEnded }
-      : { pixi, world, ui, assets, bindings, theme, titleBackground, resolveEnded }
+      ? { pixi, world, ui, assets, bindings, theme, scope, resolveEnded }
+      : { pixi, world, ui, assets, bindings, theme, scope, titleBackground, resolveEnded }
     const presenter = new PixiPresenter(presenterOptions)
     const storage = yield* namespacedStorage(options.storageKey ?? "lute")
     const requirements = Layer.mergeAll(

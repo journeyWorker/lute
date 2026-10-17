@@ -134,6 +134,15 @@ player-web draws the stage in fixed layers, bottom to top:
 
 A `::cg` therefore covers the actors on stage and stays under the dialogue window and the UI. `cgLayouts` place a CG (`fit`, `scale`, `x`, `y`) inside its layer; they do not change the order.
 
+### Camera transitions
+
+The `camera` layer rests fully visible (alpha 1, no mask). A `::camera` cue with a `move` stops a running transition, applies its framing and plays the move; a `move` takes precedence over a `transition`. With a `transition`, the effect decides how the new framing appears:
+
+- `fade`, `dissolve`, `fadeOut`, `wipeLeft`/`wipeRight`/`wipeUp`/`wipeDown`, `slideLeft`, `slideRight` and `slideOut` hide the actors over the first half of the duration, apply the framing and focus, then show the actors again over the second half (alpha back to 1, a wipe reveal, a slide back into place). A wipe sweeps the whole stage, not just the span of the actors.
+- Any other effect applies the framing, then plays.
+
+Either way the cue ends with the actors visible (alpha 1, no mask) in the new framing. `cut`, `none`, a zero duration and an instant cue (skip, load) apply the framing at once. A transition that has started plays to its end even when the story reaches a choice first; a later camera cue stops it. (With `autosave` set to `false` or `"presentation"`, a camera cue that is the last one before a choice is currently not started at all.) Loading or rolling back during a transition stops it and shows the actors in the restored stage.
+
 ## 7. Title screen
 
 The title screen's heading is `ui.title.text` when the bindings set it; without it the title draws no heading (player-web never shows a placeholder name). `ui.title.background` and `ui.title.music` are optional: without them the title has no backdrop and plays no music.
