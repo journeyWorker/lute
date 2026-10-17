@@ -62,7 +62,7 @@ once: false
 /// The ko translations: line 0010 reorders its markers and adds one the
 /// source does not have; line 0020 moves `{{run.b}}` into the modified run;
 /// line 0030 spaces its markers unlike the source and writes an escaped
-/// `\{{run.a}}`, which the compiler's plain text keeps as `{{run.a}}`.
+/// `\{{run.a}}`, which stays literal (lute 0.47.1 §3).
 const KO_0010: &str = "먼저 {{ run.b }}, 그다음 {{run.a}} {{run.c}}.";
 const KO_0020: &str = ":speed[{{run.b}} 세기]{rate=1.5} 그리고 {{run.a}}.";
 const KO_0030: &str = "합계 {{run.a}}, 글자 \\{{run.a}}.";
@@ -190,11 +190,11 @@ fn a_line_record_carries_its_translations_rendered_by_marker_text() {
         json!([{"text": "Count 3", "rate": 1.5}, {"text": " and 5."}])
     );
 
-    // A spaced source marker matches an unspaced translation marker. The
-    // plain text keeps no escape, so a literal `{{run.a}}` equal to a source
-    // marker is replaced too (documented in the runtime contract).
+    // A spaced source marker matches an unspaced translation marker. An
+    // escaped `\{{run.a}}` is literal text, though its referent equals a
+    // source marker's (lute 0.47.1 §3; 0.47.0 replaced it).
     assert_eq!(lines[2]["text"], "Total 3.");
-    assert_eq!(lines[2]["texts"], json!({"ko": "합계 3, 글자 3."}));
+    assert_eq!(lines[2]["texts"], json!({"ko": "합계 3, 글자 {{run.a}}."}));
 }
 
 #[test]

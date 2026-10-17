@@ -1264,14 +1264,65 @@ fn section_id_span_excludes_heading_whitespace() {
     assert_eq!(&"##   Heading {#id}"[span.byte_start..span.byte_end], "id");
 }
 
+/// lute 0.47.1 §3: the placeholder scan and the inline parser agree — an
+/// odd backslash run before `{{` escapes it, an even one does not — and the
+/// plain text writes the IR encoding (literal `{{` as `\{{`, a literal
+/// backslash before `{{` doubled).
 #[test]
-fn escaped_interpolation_matches_legacy_scan() {
-    let (doc, diags) = parse("## Section\n@n: \\{{x}} and \\\\{{y}}\n");
+fn escaped_interpolation_follows_the_inline_parser() {
+    let (doc, diags) = parse("## Section\n@n: \\{{x}} and \\\\{{y}} and \\\\\\{{z}}\n");
     assert!(diags.is_empty(), "{diags:?}");
     let Node::Line(line) = &doc.sections[0].body[0] else {
         panic!()
     };
-    assert_eq!(line.interps.len(), 0);
+    let raws: Vec<_> = line.interps.iter().map(|i| i.raw.as_str()).collect();
+    assert_eq!(raws, ["y"]);
+    let markers: Vec<_> = line
+        .inline
+        .iter()
+        .filter_map(|n| match n {
+            InlineNode::Interpolation(i) => Some(i.raw.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(markers, raws);
+    let s = &line.interps[0].span;
+    assert_eq!(
+        &line.text
+            [(s.byte_start - line.text_span.byte_start)..(s.byte_end - line.text_span.byte_start)],
+        "{{y}}"
+    );
+    assert_eq!(line.plain_text(), "\\{{x}} and \\\\{{y}} and \\\\\\{{z}}");
+}
+
+#[test]
+fn label_scan_follows_the_inline_parser() {
+    let span = lute_core_span::Span {
+        byte_start: 0,
+        byte_end: 0,
+        line: 0,
+        column: 0,
+        utf16_range: (0, 0),
+    };
+    let raws = |label: &str| -> Vec<String> {
+        crate::scan_label_interps(label, span)
+            .into_iter()
+            .map(|i| i.raw)
+            .collect()
+    };
+    assert_eq!(raws("\\{{x}} and \\\\{{y}}"), ["y"]);
+    assert_eq!(raws("\\{{{a}}"), Vec::<String>::new());
+}
+
+#[test]
+fn plain_text_encodes_a_backslash_before_a_marker() {
+    let (doc, diags) = parse("## Section\n@n: :speed[x\\\\]{rate=2}{{run.a}} end.\n");
+    assert!(diags.is_empty(), "{diags:?}");
+    let Node::Line(line) = &doc.sections[0].body[0] else {
+        panic!()
+    };
+    assert_eq!(line.interps.len(), 1);
+    assert_eq!(line.plain_text(), "x\\\\{{run.a}} end.");
 }
 
 #[test]

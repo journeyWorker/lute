@@ -1060,8 +1060,10 @@ fn text_modifiers(
     }
     o.insert(
         "lowering".into(),
-        "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); \
-         a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves"
+        "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept, \
+         one `placeholders` entry each); a modified line adds `segments`: text runs \
+         {text, styles?, rate?} and {pause} leaves; in `text`, segment runs and `texts` a \
+         literal `{{` is written `\\{{` and a literal backslash directly before `{{` is doubled"
             .into(),
     );
     serde_json::Value::Object(o)

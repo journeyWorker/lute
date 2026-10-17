@@ -522,8 +522,8 @@ state:
 @fixer: The sign says 10:30 :) and nothing else.
 ```
 
-In the artifact, `text` is always the **plain** text: modifier markup removed, escapes decoded,
-`{{…}}` kept. A line that uses a modifier also gets `segments` — text runs carrying the active
+In the artifact, `text` is always the **plain** text: modifier markup removed, escapes decoded
+(except a literal `{{`, see below), `{{…}}` kept. A line that uses a modifier also gets `segments` — text runs carrying the active
 `styles` (outermost first) and `rate`, and `{pause}` leaves; a line without one has no `segments`:
 
 ```json
@@ -540,7 +540,13 @@ The rules, line by line above:
   innermost `rate`. Adjacent runs with the same styles and rate are merged.
 - **Escapes.** `\:` is a literal colon that never starts a modifier. Inside a modifier, `\[`, `\]`,
   `\{`, `\}` and `\\` write the bracket, brace or backslash; any other escape there is
-  `E-TEXT-ESCAPE`. The `\{{` literal-interpolation escape is unchanged.
+  `E-TEXT-ESCAPE`.
+- **Literal `{{`.** `\{{` writes a literal `{{`: an odd run of backslashes directly before `{{`
+  escapes it, an even run leaves a marker (`\\{{run.a}}` is a backslash, then the marker). In the
+  artifact (lute 0.47.1) a literal `{{` stays written `\{{` in `text`, segment runs and
+  translations, and a literal backslash directly before a `{{` is doubled, so
+  `Lit \{{run.a}} and {{ run.a }}.` keeps that `text`, has one placeholder, and renders
+  `Lit {{run.a}} and 3.` when `run.a` is 3. A translation may write `\{{` too.
 - **Plain colons stay text.** A colon starts a modifier only when a name and then `[` or `{`
   follow it, so `10:30` and `:)` need no escape.
 

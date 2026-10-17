@@ -520,6 +520,7 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
         "syntax": ":speed[text]{rate=1.25}"
       }
     ],
+    "lowering": "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept, one `placeholders` entry each); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves; in `text`, segment runs and `texts` a literal `{{` is written `\\{{` and a literal backslash directly before `{{` is doubled"
   }
 }
 ```

@@ -74,19 +74,26 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
 /// A line's presentation runs (dsl 0.37.0 §3.6): empty unless `nodes` carry
 /// an inline modifier. Text (and `{{…}}` markers, verbatim) coalesces while
 /// the active styles (outermost first) and innermost `speed` rate stay the
-/// same; `pause{s}` is a leaf of its own; empty text never appears.
+/// same; `pause{s}` is a leaf of its own; empty text never appears. Each
+/// run's text is in the IR encoding of `{{` (lute 0.47.1 §3,
+/// [`lute_syntax::line_text::IrText`]), on its own.
 pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
-    fn walk(
-        nodes: &[InlineNode],
-        styles: &mut Vec<String>,
-        rate: Option<f64>,
-        out: &mut Vec<Segment>,
-    ) {
+    use lute_syntax::line_text::IrText;
+    enum Run {
+        Text {
+            text: IrText,
+            styles: Vec<String>,
+            rate: Option<f64>,
+        },
+        Pause(f64),
+    }
+    fn walk(nodes: &[InlineNode], styles: &mut Vec<String>, rate: Option<f64>, out: &mut Vec<Run>) {
         for node in nodes {
             match node {
-                InlineNode::Text { text, .. } => push_text(out, text, styles, rate),
+                InlineNode::Text { text, .. } if text.is_empty() => {}
+                InlineNode::Text { text, .. } => run(out, styles, rate).push_literal(text),
                 InlineNode::Interpolation(i) => {
-                    push_text(out, &format!("{{{{{}}}}}", i.source), styles, rate)
+                    run(out, styles, rate).push_marker(&format!("{{{{{}}}}}", i.source))
                 }
                 InlineNode::Modifier(m) => {
                     let attr = |k: &str| {
@@ -96,9 +103,7 @@ pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
                             .and_then(|a| a.value.parse::<f64>().ok())
                     };
                     match m.name.as_str() {
-                        "pause" => out.push(Segment::Pause {
-                            pause: attr("s").unwrap_or(0.0),
-                        }),
+                        "pause" => out.push(Run::Pause(attr("s").unwrap_or(0.0))),
                         "speed" => walk(&m.children, styles, attr("rate").or(rate), out),
                         style => {
                             styles.push(style.to_string());
@@ -110,33 +115,40 @@ pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
             }
         }
     }
-    fn push_text(out: &mut Vec<Segment>, text: &str, styles: &[String], rate: Option<f64>) {
-        if text.is_empty() {
-            return;
+    /// The text run to append to: the last one when its styles and rate
+    /// match, else a new one.
+    fn run<'a>(out: &'a mut Vec<Run>, styles: &[String], rate: Option<f64>) -> &'a mut IrText {
+        let same = matches!(
+            out.last(),
+            Some(Run::Text { styles: s, rate: r, .. }) if s.as_slice() == styles && *r == rate
+        );
+        if !same {
+            out.push(Run::Text {
+                text: IrText::new(),
+                styles: styles.to_vec(),
+                rate,
+            });
         }
-        if let Some(Segment::Text {
-            text: last,
-            styles: s,
-            rate: r,
-        }) = out.last_mut()
-        {
-            if s.as_slice() == styles && *r == rate {
-                last.push_str(text);
-                return;
-            }
+        match out.last_mut() {
+            Some(Run::Text { text, .. }) => text,
+            _ => unreachable!("a text run was just ensured"),
         }
-        out.push(Segment::Text {
-            text: text.to_string(),
-            styles: styles.to_vec(),
-            rate,
-        });
     }
     if !nodes.iter().any(|n| matches!(n, InlineNode::Modifier(_))) {
         return Vec::new();
     }
-    let mut out = Vec::new();
-    walk(nodes, &mut Vec::new(), None, &mut out);
-    out
+    let mut runs = Vec::new();
+    walk(nodes, &mut Vec::new(), None, &mut runs);
+    runs.into_iter()
+        .map(|run| match run {
+            Run::Text { text, styles, rate } => Segment::Text {
+                text: text.finish(),
+                styles,
+                rate,
+            },
+            Run::Pause(pause) => Segment::Pause { pause },
+        })
+        .collect()
 }
 
 pub fn lower_set(set: &Set) -> Command {

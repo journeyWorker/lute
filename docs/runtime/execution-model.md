@@ -508,8 +508,32 @@ or `vo` (voice-over).
 `text` is always the **plain text** of the line in the source language:
 inline modifier markup is removed, escapes are decoded, and `{{…}}`
 interpolation markers stay verbatim for the engine to substitute from
-`placeholders`. Backlog, text-to-speech, search, and any consumer that does not
-render presentation markup read `text` alone.
+`placeholders` (one entry per marker, in order). Backlog, text-to-speech,
+search, and any consumer that does not render presentation markup read `text`
+alone.
+
+**Escaped interpolation (lute 0.47.1).** In source, `\{{` is a literal `{{`:
+an odd run of backslashes directly before `{{` escapes it, an even run leaves
+a marker (`\\{{run.a}}` is a literal backslash, then the marker). The IR keeps
+the two apart with one encoding, used alike in `text`, in each `segments` run's
+`text`, and in the merged `texts` and `localeSegments`: a literal `{{` is
+written `\{{`, and every literal backslash directly before a `{{` (literal or
+marker) is doubled. Every other backslash and escape stays decoded. An engine
+reads such a string left to right: a run of *n* backslashes directly before
+`{{` stands for ⌊*n*/2⌋ literal backslashes; when *n* is odd the `{{` is
+literal text (consumed as one unit before looking for the next `{{`), when *n*
+is even it opens a marker, substituted from `placeholders` in order. The Lute
+runtime applies this reading to `text`, to segments and to the by-marker
+rendering of translations; its rendered `line` record holds the decoded text,
+with no encoding backslashes. For example, `Lit \{{run.a}} and {{ run.a }}.`
+with `run.a = 3` compiles to `text` `Lit \{{run.a}} and {{ run.a }}.` with one
+placeholder and renders `Lit {{run.a}} and 3.`;
+`:speed[x\\]{rate=2}{{run.a}} end.` compiles to `text` `x\\{{run.a}} end.`
+with segments `x\` and `{{run.a}} end.`, and renders `x\3 end.` in text and
+segments alike. A translation may contain `\{{`; it is literal there too.
+Engines that substitute placeholders themselves must apply this reading. A
+line containing `\{{` gets a new loc `sourceHash` (re-export it); a 0.47.0
+export of it reports `W-L10N-STALE`.
 
 ### Inline text modifiers: `segments`
 

@@ -162,25 +162,25 @@ fn glue(text: &Text<'_>, diags: &mut Vec<Diagnostic>) {
 }
 
 /// `W-TEXT-SINGLE-BRACE` for every `{…}` group (not `{{…}}`, not escaped
-/// `\{{`) whose inside has a recognized shape.
+/// `\{{`, both by the line-text rule [`lute_syntax::line_text::interp_sites`])
+/// whose inside has a recognized shape.
 fn single_braces(text: &Text<'_>, ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+    use lute_syntax::line_text::InterpSite;
     let s = text.text;
     let b = s.as_bytes();
+    let mut sites = lute_syntax::line_text::interp_sites(s).peekable();
     let mut j = 0;
     while j < b.len() {
-        if b[j] == b'\\' && s[j + 1..].starts_with("{{") {
-            j += 3;
-            continue;
-        }
+        while sites.next_if(|site| site.open() < j).is_some() {}
         // Byte tests only: `j` walks bytes, so it can sit inside a
         // multi-byte character (`—`), where slicing `s[j..]` panics.
-        if b[j] == b'{' && b.get(j + 1) == Some(&b'{') {
-            match s[j + 2..].find("}}") {
-                Some(rel) => {
-                    j += 2 + rel + 2;
+        if let Some(site) = sites.next_if(|site| site.open() == j) {
+            match site {
+                InterpSite::Escaped { end, .. } | InterpSite::Marker { end, .. } => {
+                    j = end;
                     continue;
                 }
-                None => break,
+                InterpSite::Unterminated { .. } => break,
             }
         }
         if b[j] == b'{' {

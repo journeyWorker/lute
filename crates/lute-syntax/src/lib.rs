@@ -15,6 +15,8 @@
 //!   assembly (§7.3–§7.4), producing an [`ast::Document`] plus parse
 //!   diagnostics.
 //! - [`ast`] — the syntax-layer AST node types.
+//! - [`line_text`] — the one `{{` escape rule of line text and its IR
+//!   encoding (lute 0.47.1 §3).
 //! - [`cel_ast`] — the embedded Lute-CEL expression AST (§8.4).
 //! - [`walk`] — a read-only AST visitor.
 //!
@@ -29,6 +31,7 @@ pub mod format;
 pub mod incremental;
 pub mod is_pattern;
 pub mod lex;
+pub mod line_text;
 pub mod parser;
 pub mod path;
 pub mod trivia;
