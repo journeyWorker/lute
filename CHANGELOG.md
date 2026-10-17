@@ -107,6 +107,9 @@ player's save/profile format stays `"0.47"`. The seven npm packages align to
 
 - `lute loc export` computes `sourceHash` from the encoded line text, so a
   line containing `\{{` gets a new hash. (#134)
+- `lute context`'s `textModifiers.lowering` text states the escape rule (one
+  `placeholders` entry per marker; a literal `{{` is `\{{`, backslashes before
+  `{{` doubled). (#134)
 
 ### Runtime
 
@@ -136,8 +139,9 @@ player's save/profile format stays `"0.47"`. The seven npm packages align to
 
 ### Diagnostics
 
-- No new codes. `E-BINDING-KEY` now covers flow targets (message prefixed
-  ``flow target `…`:``). (#133)
+- No new codes. Flow-target `E-BINDING-KEY` now uses the beat/play target
+  rule and its message (prefixed ``flow target `…`:``), and also refuses a
+  target on an occasion without one or with an undeclared entity kind. (#133)
 
 ### Identity
 
@@ -150,7 +154,8 @@ player's save/profile format stays `"0.47"`. The seven npm packages align to
 ### Documentation
 
 - The IR contract docs (execution model, event contract, runtime contract,
-  dialogue, custom hosts) state the escape rule; the bindings docs say flow
+  dialogue, custom hosts) state the escape rule, and components and extends
+  says how a `::use` string argument passes a literal `{{`; the bindings docs say flow
   targets are written in the prefixed form; the player-web docs describe the
   camera transition.
 
