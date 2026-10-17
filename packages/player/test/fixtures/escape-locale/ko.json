@@ -1,0 +1,24 @@
+[
+  {
+    "code": "0010",
+    "file": "project/escape.lute",
+    "kind": "line",
+    "line": 12,
+    "lineId": "escape.narrator_0010",
+    "source": null,
+    "sourceHash": "sha256:bdf0b221e0f8531329156ad1ca525ace12d739151b96815851fda977c81bcb45",
+    "speaker": "narrator",
+    "text": "리터럴 \\{{run.a}} 그리고 {{run.a}}."
+  },
+  {
+    "code": "0020",
+    "file": "project/escape.lute",
+    "kind": "line",
+    "line": 13,
+    "lineId": "escape.narrator_0020",
+    "source": null,
+    "sourceHash": "sha256:80ebc882903bf08b91ec64872b1c376b4afc7d08c0ea6152c5a876dbeeb5ff01",
+    "speaker": "narrator",
+    "text": ":speed[리터럴 \\{{run.a}}]{rate=1.5} 그리고 {{run.a}}."
+  }
+]

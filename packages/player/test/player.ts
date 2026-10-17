@@ -58,9 +58,9 @@ export const recorder = (): Recorder => {
 const audio: AudioPort = { play: () => Effect.void, stop: () => Effect.void, setVolumes: () => Effect.void }
 const assets: AssetLoader = { ensure: () => Effect.void, progress: Stream.empty }
 
-/** A player over the host layer's bundle, drawing into `recorded`. */
-export const player = (recorded: Recorder, start: LutePlayerStart = {}) =>
-  LutePlayer.make({ ...start, bindings: quayBindings, presenter: recorded.presenter, audio, assets })
+/** A player over the host layer's bundle, drawing into `recorded`, with `bindings` (the quay fixture's by default). */
+export const player = (recorded: Recorder, start: LutePlayerStart = {}, bindings: Bindings = quayBindings) =>
+  LutePlayer.make({ ...start, bindings, presenter: recorded.presenter, audio, assets })
 
 /** Act, then advance through lines until the story waits at a choice, `idle`, `ended` or `halted`. */
 export const act = (handle: LutePlayerHandle, action: Parameters<LutePlayerHandle["actions"]>[0]) => Effect.gen(function* () {

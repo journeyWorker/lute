@@ -1,0 +1,14 @@
+---
+kind: scene
+id: escape
+title: Escape
+on: visit
+once: false
+---
+
+## Escape
+
+::set{run.a = 3}
+@narrator{code="0010"}: Lit \{{run.a}} and {{ run.a }}.
+@narrator{code="0020"}: :speed[Lit \{{run.a}}]{rate=1.5} and {{run.a}}.
+::set{run.over = true}

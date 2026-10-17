@@ -29,7 +29,7 @@ const lute = (args: ReadonlyArray<string>): void => {
     stdout: "pipe",
     stderr: "pipe"
   })
-  if (result.exitCode !== 0) throw new Error(`lute ${args.join(" ")} failed (${result.exitCode}): ${result.stderr.toString()}`)
+  if (result.exitCode !== 0) throw new Error(`lute ${args.join(" ")} failed (${result.exitCode}): ${result.stdout.toString()}${result.stderr.toString()}`)
 }
 
 const compiled = new Map<string, string>()
@@ -69,3 +69,23 @@ export const compileHubKorean: Effect.Effect<string> = compileTranslated(join(fi
  * other order; source locale `en-US`. `visit` starts it.
  */
 export const compileTallyKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "tally-locale", "project"), [join(fixtures, "tally-locale", "ko.json")])
+
+/**
+ * `escape-locale`: one scene that sets `run.a = 3`, then two narrator lines
+ * with an escaped `\{{run.a}}` beside a real `{{run.a}}` marker — the second
+ * inside a `:speed` run — whose Korean translations (`ko.json`) keep a
+ * literal `\{{run.a}}` too (lute 0.47.1 §3); source locale `en-US`. `visit`
+ * starts it.
+ */
+export const compileEscapeKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "escape-locale", "project"), [join(fixtures, "escape-locale", "ko.json")])
+
+/**
+ * `flow-target-0471` (shared with the CLI's `check-project` test): `begin`
+ * starts the run and leaves it idle; `player.bindings.yaml`'s idle menu
+ * raises `visit` for `place.square` or `place.pier`, each the target of one
+ * beat (lute 0.47.1 §2).
+ */
+export const flowTargetProject = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "flow-target-0471")
+
+/** `lute check-project <project>` passes (call after `compileBundle`, which builds the CLI). */
+export const checkProject = (project: string): Effect.Effect<void> => Effect.sync(() => lute(["check-project", project]))
