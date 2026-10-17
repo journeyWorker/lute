@@ -1,0 +1,4 @@
+state:
+  run.over: { type: bool, default: false }
+entities:
+  place: { members: [square, pier] }

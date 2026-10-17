@@ -1,0 +1,6 @@
+defaultProfile: town
+profiles:
+  town:
+    plugins: { town: true }
+defaults:
+  uses: [world.schema.yaml]

@@ -1,0 +1,11 @@
+---
+kind: scene
+id: square
+on: visit
+target: place.square
+once: false
+---
+
+## square
+
+@narrator: The square is busy.

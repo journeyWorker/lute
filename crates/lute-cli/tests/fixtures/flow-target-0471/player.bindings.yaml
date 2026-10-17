@@ -1,0 +1,8 @@
+bindingsVersion: "0.47"
+canvas: { width: 1920, height: 1080 }
+flow:
+  newGame: { occasion: begin }
+  idle:
+    menu:
+      - { label: "The square", occasion: visit, target: place.square }
+      - { label: "The pier", occasion: visit, target: place.pier }
