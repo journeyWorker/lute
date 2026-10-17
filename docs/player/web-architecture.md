@@ -143,10 +143,15 @@ framing's scale and position. `cut`, `none`, a zero duration and an instant
 cue (skip) apply the framing at once. The transition runs on a fiber of the
 camera's own, forked in the player's scope (`PresenterOptions.scope`; unmount
 interrupts it), and the cue joins it: a cue the scheduler does not wait for is
-interrupted when its batch ends (e.g. right before a choice), and the
-transition still plays out. Its behaviours run under their own world key. A
-later camera cue (a transition, a move, or the instant cue skip stages)
-supersedes it: its behaviours are cancelled and it does no more. `restore`
+interrupted when its batch ends (e.g. right before a choice), and a started
+transition still plays out. (With `autosave` `false` or `"presentation"`, a
+non-waiting camera cue that is the last of a batch before a choice is
+currently not started at all: a player-core scheduler behaviour, tracked
+separately.) Its behaviours run under their own world key. A later camera
+cue (a transition or a move) supersedes it: its behaviours are cancelled and
+it does no more. Skip supersedes it only when skip starts while the cue still
+runs (the scheduler then stages the cue instantly); a transition whose cue
+already ended finishes at normal speed until the next camera cue. `restore`
 (load, rollback) supersedes it too, cancels every running camera behaviour,
 sets alpha 1 and no mask, then applies the default framing, so a load during
 a transition never leaves the actors hidden.
