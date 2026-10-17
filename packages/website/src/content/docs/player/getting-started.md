@@ -136,12 +136,12 @@ A `::cg` therefore covers the actors on stage and stays under the dialogue windo
 
 ### Camera transitions
 
-The `camera` layer rests fully visible (alpha 1, no mask). A `::camera` cue with a `move` applies its framing and plays the move; a `move` takes precedence over a `transition`. With a `transition`, the effect decides how the new framing appears:
+The `camera` layer rests fully visible (alpha 1, no mask). A `::camera` cue with a `move` stops a running transition, applies its framing and plays the move; a `move` takes precedence over a `transition`. With a `transition`, the effect decides how the new framing appears:
 
-- `fade`, `dissolve`, `fadeOut`, `wipeLeft`/`wipeRight`/`wipeUp`/`wipeDown`, `slideLeft`, `slideRight` and `slideOut` hide the actors over the first half of the duration, apply the framing and focus, then show the actors again over the second half (alpha back to 1, a wipe reveal, a slide back into place).
+- `fade`, `dissolve`, `fadeOut`, `wipeLeft`/`wipeRight`/`wipeUp`/`wipeDown`, `slideLeft`, `slideRight` and `slideOut` hide the actors over the first half of the duration, apply the framing and focus, then show the actors again over the second half (alpha back to 1, a wipe reveal, a slide back into place). A wipe sweeps the whole stage, not just the span of the actors.
 - Any other effect applies the framing, then plays.
 
-Either way the cue ends with the actors visible (alpha 1, no mask) in the new framing. `cut`, `none`, a zero duration and an instant cue (skip, load) apply the framing at once. Loading or rolling back during a transition stops it and shows the actors in the restored stage.
+Either way the cue ends with the actors visible (alpha 1, no mask) in the new framing. `cut`, `none`, a zero duration and an instant cue (skip, load) apply the framing at once. A transition plays to its end even when the story reaches a choice first; a later camera cue stops it. Loading or rolling back during a transition stops it and shows the actors in the restored stage.
 
 ## 7. Title screen
 

@@ -196,7 +196,8 @@ export const build = (
 /**
  * A hiding transition (spec 0.47.1 §4) split in its two halves: `hide`
  * conceals the target (which stays at alpha 0 once it ended), `show` brings
- * it back from wherever it is placed when `show` is called.
+ * it back from wherever it is placed when `show` is called. A wipe sweeps
+ * `ctx.design` (in the target's parent space) when given.
  */
 export interface HidingTransition {
   readonly hide: (seconds: number) => Behaviour
@@ -232,8 +233,8 @@ export const hidingTransition = (
         }
       case "wipeLeft": case "wipeRight": case "wipeUp": case "wipeDown":
         return {
-          hide: (seconds) => concealing(target, wipe(target, wipeDirection(effect), seconds, false)),
-          show: (seconds) => shown(wipe(target, wipeDirection(effect), seconds, true))
+          hide: (seconds) => concealing(target, wipe(target, wipeDirection(effect), seconds, false, ctx.design)),
+          show: (seconds) => shown(wipe(target, wipeDirection(effect), seconds, true, ctx.design))
         }
       case "slideLeft": case "slideOut":
         return {

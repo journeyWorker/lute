@@ -271,25 +271,34 @@ class WipeBehaviour implements Behaviour {
     if (this.pooled) return
     this.target.mask = null
     this.maskGraphic.clear()
+    this.maskGraphic.removeFromParent()
     this.pooled = true
     wipePool.push(this)
   }
 }
 const wipePool: WipeBehaviour[] = []
-/** Reveal or conceal a target with a reusable Graphics mask. */
+/**
+ * Reveal or conceal a target with a reusable Graphics mask. The mask covers
+ * the target's own bounds; with `area` it covers that area from the origin
+ * of the target's parent space instead (e.g. the design stage for the
+ * camera layer, whose bounds are only the actors' span and move with the
+ * framing).
+ */
 export const wipe = (
   target: Container,
   direction: WipeDirection,
   duration: number,
-  reveal = true
+  reveal = true,
+  area?: { readonly width: number; readonly height: number }
 ): Behaviour => {
   const value = wipePool.pop() ?? new WipeBehaviour()
   value.target = target
   value.maskGraphic = value.maskGraphic ?? new Graphics()
   value.direction = direction
   value.reveal = reveal
-  value.width = Math.max(1, target.width)
-  value.height = Math.max(1, target.height)
+  value.width = Math.max(1, area?.width ?? target.width)
+  value.height = Math.max(1, area?.height ?? target.height)
+  if (area !== undefined) target.parent?.addChild(value.maskGraphic)
   value.duration = Math.max(0, duration)
   value.elapsed = 0
   value.pooled = false

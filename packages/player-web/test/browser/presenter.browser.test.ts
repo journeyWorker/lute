@@ -59,7 +59,8 @@ const withPresenter = async (callback: (presenter: PixiPresenter, pixi: { readon
     const world = yield* World
     const ui = new Ui(pixi.layers.overlay, theme, world)
     ui.setDesign(pixi.design)
-    const presenter = new PixiPresenter({ pixi, world, ui, assets: makeBindingsAssets(), bindings, theme: themeFromBindings(bindings), ...extra })
+    const scope = yield* Effect.scope
+    const presenter = new PixiPresenter({ pixi, world, ui, assets: makeBindingsAssets(), bindings, theme: themeFromBindings(bindings), scope, ...extra })
     yield* Effect.promise(() => callback(presenter, pixi))
   }).pipe(Effect.provide(engineLayer))))
   element.remove()

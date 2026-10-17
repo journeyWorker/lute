@@ -123,10 +123,63 @@ describe("camera transitions over the compiled demo", () => {
     player = await mountProject("demo")
     await startDuringOpeningFade(player)
     await player.act({ type: "toggleSkip" })
-    await waitFor(() => player!.pixi.layers.camera.alpha === 1 && (player!.pixi.layers.camera.mask ?? null) === null, "the skipped cue to rest", 500)
+    await waitFor(() => player!.pixi.layers.camera.alpha === 1 && (player!.pixi.layers.camera.mask ?? null) === null, "the skipped cue to rest", 250)
     expect((await player.view()).mode).toBe("skip")
     await player.act({ type: "toggleSkip" })
     await settle()
     expectActorsDrawn(player)
   }, 180_000)
+})
+
+/** Record the camera layer's alpha and scale every rendered frame until the returned stop is called. */
+const recordCamera = (player: RealPlayer): (() => ReadonlyArray<{ readonly alpha: number; readonly scale: number }>) => {
+  const frames: Array<{ readonly alpha: number; readonly scale: number }> = []
+  const { camera } = player.pixi.layers
+  const sample = (): void => { frames.push({ alpha: camera.alpha, scale: camera.scale.x }) }
+  player.pixi.app.ticker.add(sample)
+  return () => {
+    player.pixi.app.ticker.remove(sample)
+    return frames
+  }
+}
+
+// The compiled `camera-stage` fixture: a 4s fade camera cue is the last cue
+// of its batch (a choice follows; the batch settles, autosaving at the
+// choice, while the cue still runs), then a fade cue is followed at once by
+// a `move` cue with another framing.
+describe("camera transitions over the compiled camera-stage fixture", () => {
+  let player: RealPlayer | undefined
+  afterEach(async () => {
+    await player?.close()
+    player = undefined
+  })
+
+  it("plays a transition that ends its batch: hidden at its midpoint, then at rest", async () => {
+    player = await mountProject("camera-stage")
+    await waitFor(async () => (await player!.view()).flow === "title", "the title")
+    const stop = recordCamera(player)
+    await player.act({ type: "setSettings", settings: { textSpeed: 0 } })
+    await player.act({ type: "newGame" })
+    await waitFor(async () => (await player!.view()).story === "choice", "the choice after the camera cue")
+    // The batch settled at the choice before the cue's midpoint (2s) …
+    expect(player.pixi.layers.camera.alpha).toBeGreaterThan(0.1)
+    // … and the transition played on: hidden at its midpoint, then at rest.
+    await waitFor(() => player!.pixi.layers.camera.alpha < 0.1, "the layer to be hidden at the midpoint", 5_000)
+    await waitFor(() => player!.pixi.layers.camera.alpha === 1, "the transition to end", 5_000)
+    await settle()
+    const frames = stop()
+    expect(Math.min(...frames.map((frame) => frame.alpha))).toBeLessThan(0.1)
+    expectActorsDrawn(player)
+    // `close` framing (zoom 1.3).
+    expect(player.pixi.layers.camera.scale.x).toBeCloseTo(1.3)
+  }, 120_000)
+
+  it("lets a move cue supersede a running transition: the move's framing stays", async () => {
+    player = await mountProject("camera-stage")
+    await playReading(player, (read) => read.lines.some((line) => shows(line, "The move came after the transition")))
+    await settle()
+    expectActorsDrawn(player)
+    // The move's `close` framing (zoom 1.3), not the superseded transition's `wide` (1).
+    expect(player.pixi.layers.camera.scale.x).toBeCloseTo(1.3)
+  }, 120_000)
 })

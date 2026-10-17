@@ -123,8 +123,9 @@ mountPlayer(element, options): Promise<{ act, view, unmount }>              // t
 ## Camera transitions
 
 Spec 0.47.1 §4. The `camera` layer (the actors) rests at alpha 1 with no
-mask. A `::camera` cue with a `move` applies the framing, then plays the
-move (a move takes precedence over a transition). A cue with a `transition`:
+mask. A `::camera` cue with a `move` supersedes a running transition, rests
+the layer, applies the framing, then plays the move (a move takes precedence
+over a transition). A cue with a `transition`:
 
 - **Hiding effect** (`fade`, `dissolve`, `fadeOut`, `wipeLeft`/`Right`/`Up`/`Down`,
   `slideLeft`, `slideRight`, `slideOut`): the effect hides the layer over the
@@ -132,17 +133,23 @@ move (a move takes precedence over a transition). A cue with a `transition`:
   the framing and focus are applied, and the layer is shown again over the
   second half: alpha back to 1, a wipe reveal in the same direction, or a
   slide back into place (`slideLeft`/`slideOut` leave to the left and come
-  back from the right, `slideRight` the other way).
+  back from the right, `slideRight` the other way). A wipe sweeps the design
+  stage (its mask lives in the camera layer's parent space), not the actors'
+  span.
 - **Any other effect**: the framing is applied, then the effect plays.
 
 Whatever the effect, the cue ends with alpha 1, no mask and the new
 framing's scale and position. `cut`, `none`, a zero duration and an instant
-cue (skip) apply the framing at once. Transition behaviours run under their
-own world key: a newer transition cue cancels a running one without touching
-a camera move, and an interrupted cue (skip starting during it, a load) still
-ends at rest. `restore` (load, rollback) cancels every running camera
-behaviour, sets alpha 1 and no mask, then applies the default framing, so a
-load during a transition never leaves the actors hidden.
+cue (skip) apply the framing at once. The transition runs on a fiber of the
+camera's own, forked in the player's scope (`PresenterOptions.scope`; unmount
+interrupts it), and the cue joins it: a cue the scheduler does not wait for is
+interrupted when its batch ends (e.g. right before a choice), and the
+transition still plays out. Its behaviours run under their own world key. A
+later camera cue (a transition, a move, or the instant cue skip stages)
+supersedes it: its behaviours are cancelled and it does no more. `restore`
+(load, rollback) supersedes it too, cancels every running camera behaviour,
+sets alpha 1 and no mask, then applies the default framing, so a load during
+a transition never leaves the actors hidden.
 
 ## Testing
 

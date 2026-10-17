@@ -1,4 +1,4 @@
-import { Effect } from "effect"
+import { Effect, Fiber, type Scope } from "effect"
 import type { Bindings, EffectSpec } from "@lute-lang/player"
 import { Container } from "pixi.js"
 import { EffectCatalogue, type HidingTransition } from "../effects/catalogue.js"
@@ -46,14 +46,17 @@ export class Camera {
    * camera move.
    */
   private readonly transitions = new Container()
-  /** Bumped by every transition cue and restore: a superseded transition stops. */
+  /** Bumped by every cue and restore: a superseded transition stops. */
   private generation = 0
-  constructor(target: Container, actors: Container, world: WorldShape, bindings: Bindings, design: { readonly width: number; readonly height: number }, logger: (message: string) => void = console.warn) {
+  /** Where transition sequences run: they outlive the cue that started them, not the player. */
+  private readonly scope: Scope.Scope
+  constructor(target: Container, actors: Container, world: WorldShape, bindings: Bindings, design: { readonly width: number; readonly height: number }, scope: Scope.Scope, logger: (message: string) => void = console.warn) {
     this.target = target
     this.actors = actors
     this.world = world
     this.bindings = bindings
     this.design = design
+    this.scope = scope
     this.logger = logger
   }
 
@@ -81,17 +84,27 @@ export class Camera {
   }
 
   /**
-   * Stage a camera cue. A `move` keeps precedence: the framing is applied,
-   * then the move plays. A transition with a hiding effect hides the layer
-   * over the first half of its duration, applies the framing and shows the
-   * layer over the second half; any other effect plays after the framing is
-   * applied. Either way the cue ends at alpha 1, no mask, the new framing.
-   * `cut`, `none`, a zero duration and an instant cue apply it at once.
+   * Stage a camera cue. A `move` keeps precedence: it supersedes a running
+   * transition, the framing is applied, then the move plays. A transition
+   * with a hiding effect hides the layer over the first half of its
+   * duration, applies the framing and shows the layer over the second half;
+   * any other effect plays after the framing is applied. Either way the cue
+   * ends at alpha 1, no mask, the new framing. `cut`, `none`, a zero duration
+   * and an instant cue apply it at once.
    */
   readonly stage = (cue: CameraCue, instant: boolean): Effect.Effect<void> =>
     cue.move !== undefined
-      ? Effect.andThen(Effect.sync(() => this.apply(cue.framing, cue.focus)), this.move(cue.move, cue.duration, instant))
+      ? Effect.andThen(this.supersede, Effect.sync(() => {
+          this.rest()
+          this.apply(cue.framing, cue.focus)
+        })).pipe(Effect.andThen(this.move(cue.move, cue.duration, instant)))
       : this.transition(cue, cue.transition, instant)
+
+  /** Stop a transition still running from an earlier cue. */
+  private readonly supersede: Effect.Effect<void> = Effect.suspend(() => {
+    this.generation += 1
+    return this.world.cancel(this.transitions)
+  })
 
   private readonly move = (move: EffectSpec, duration: number | undefined, instant: boolean): Effect.Effect<void> => {
     if (instant) return Effect.void
@@ -101,8 +114,7 @@ export class Camera {
     )
   }
 
-  private readonly transition = (cue: CameraCue, transition: EffectSpec | undefined, instant: boolean): Effect.Effect<void> => Effect.suspend(() => {
-    this.generation += 1
+  private readonly transition = (cue: CameraCue, transition: EffectSpec | undefined, instant: boolean): Effect.Effect<void> => Effect.andThen(this.supersede, Effect.suspend(() => {
     const generation = this.generation
     const current = (): boolean => generation === this.generation
     const settle = Effect.sync(() => {
@@ -110,23 +122,27 @@ export class Camera {
       this.rest()
       this.apply(cue.framing, cue.focus)
     })
-    // A transition still running from an earlier cue is superseded.
-    const superseded = this.world.cancel(this.transitions)
     const seconds = transition === undefined ? 0 : Math.max(0, cue.duration ?? (typeof transition.params.duration === "number" ? transition.params.duration : 0))
-    if (transition === undefined || instant || seconds <= 0 || transition.effect === "cut" || transition.effect === "none") return Effect.andThen(superseded, settle)
+    if (transition === undefined || instant || seconds <= 0 || transition.effect === "cut" || transition.effect === "none") return settle
     const ctx = { design: this.design, camera: this.target }
-    return Effect.andThen(superseded, EffectCatalogue.hidingTransition(transition.effect, this.target, transition.params, ctx)).pipe(
-      Effect.flatMap((hiding) => hiding === undefined
-        ? Effect.andThen(Effect.sync(() => this.apply(cue.framing, cue.focus)), EffectCatalogue.build(transition.effect, this.target, transition.params, seconds, ctx)).pipe(
-            Effect.flatMap((behaviours) => Effect.forEach(behaviours, (behaviour) => this.run(behaviour), { discard: true }))
-          )
-        : this.hideAndShow(hiding, seconds / 2, cue, current)),
+    // A sequence superseded before it started (or between behaviours) runs no further.
+    const sequence = Effect.suspend(() => current() ? EffectCatalogue.hidingTransition(transition.effect, this.target, transition.params, ctx) : Effect.succeed(null)).pipe(
+      Effect.flatMap((hiding) => hiding === null
+        ? Effect.void
+        : hiding === undefined
+          ? Effect.andThen(Effect.sync(() => this.apply(cue.framing, cue.focus)), EffectCatalogue.build(transition.effect, this.target, transition.params, seconds, ctx)).pipe(
+              Effect.flatMap((behaviours) => Effect.forEach(behaviours, (behaviour) => current() ? this.run(behaviour) : Effect.sync(() => behaviour.dispose()), { discard: true }))
+            )
+          : this.hideAndShow(hiding, seconds / 2, cue, current)),
       Effect.catch(() => Effect.void),
-      Effect.andThen(settle),
-      // An interrupted cue (skip, load, a new batch) still ends at rest.
-      Effect.onInterrupt(() => current() ? Effect.andThen(this.world.cancel(this.transitions), settle) : Effect.void)
+      Effect.andThen(settle)
     )
-  })
+    // The sequence runs on the camera's own fiber: a cue the scheduler does
+    // not wait for is interrupted when its batch ends (e.g. right before a
+    // choice), and the transition still plays out. Skip (an instant cue),
+    // a later cue and `restore` supersede it instead.
+    return Effect.flatMap(Effect.forkIn(sequence, this.scope), Fiber.join)
+  }))
 
   private readonly hideAndShow = (hiding: HidingTransition, half: number, cue: CameraCue, current: () => boolean): Effect.Effect<void> =>
     Effect.suspend(() => this.run(hiding.hide(half))).pipe(

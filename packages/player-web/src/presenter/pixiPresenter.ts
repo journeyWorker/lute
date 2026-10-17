@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, PubSub, Stream } from "effect"
+import { Context, Effect, Layer, PubSub, Stream, type Scope } from "effect"
 import type { Bindings, ChoiceView, EffectSpec, LineView, PlayMode, PlayerAction, Presenter, ScreenModel, Settings, Stage, StageCue } from "@lute-lang/player"
 import type { TextStyleBinding } from "../text/richText.js"
 import type { PixiAppShape } from "../engine/types.js"
@@ -24,6 +24,8 @@ export interface PresenterOptions {
   readonly assets: TextureAssets
   readonly bindings: Bindings
   readonly theme: Theme
+  /** The player's scope: camera transitions run in it, outliving their cue (closed on unmount). */
+  readonly scope: Scope.Scope
   readonly titleBackground?: string
   /** Resolve an ended screen against the session's current state. */
   readonly resolveEnded?: (screen: Extract<ScreenModel, { _tag: "Ended" }>) => Effect.Effect<ScreenModel>
@@ -43,7 +45,8 @@ export class PixiPresenter implements Presenter {
       const pixi = yield* PixiApp
       const world = yield* World
       const ui = yield* UiTag
-      return new PixiPresenter({ pixi, world, ui, assets, bindings, theme })
+      const scope = yield* Effect.scope
+      return new PixiPresenter({ pixi, world, ui, assets, bindings, theme, scope })
     }))
 
   readonly stage: Presenter["stage"]
@@ -96,7 +99,7 @@ export class PixiPresenter implements Presenter {
     this.background = new Background(this.pixi.layers.background, this.world, this.bindings, this.assets, design, this.theme, (message) => this.logMissing(message))
     this.cg = new CgLayer(this.pixi.layers.cg, this.world, this.bindings, this.assets, design, this.theme, (message) => this.logMissing(message))
     this.video = new VideoLayer(this.pixi.layers.video, this.world, this.bindings, this.assets, design, this.theme, (message) => this.logMissing(message))
-    this.camera = new Camera(this.pixi.layers.camera, this.pixi.layers.actors, this.world, this.bindings, design, (message) => this.logMissing(message))
+    this.camera = new Camera(this.pixi.layers.camera, this.pixi.layers.actors, this.world, this.bindings, design, options.scope, (message) => this.logMissing(message))
     this.vfx = new Vfx(this.pixi.layers.overlay, this.world, design)
     const nameColors: Record<string, number> = {}
     for (const [character, binding] of Object.entries(this.bindings.characters ?? {})) {

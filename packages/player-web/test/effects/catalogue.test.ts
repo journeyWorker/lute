@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { Effect } from "effect"
-import { Container } from "pixi.js"
+import { Container, Graphics } from "pixi.js"
 import { build, EffectDecodeError, hidingTransition, type EffectName } from "../../src/effects/catalogue.js"
 
 const names: ReadonlyArray<EffectName> = [
@@ -98,5 +98,26 @@ describe("hiding transitions", () => {
   it("decodes parameters as the catalogue does", async () => {
     const result = await Effect.runPromise(Effect.result(hidingTransition("fade", new Container(), { strength: 2 })))
     expect(result._tag).toBe("Failure")
+  })
+
+  it.each(["wipeLeft", "wipeRight", "wipeUp", "wipeDown"] as const)("%s sweeps the design stage in the parent's space, not the actors' span", async (name) => {
+    // A camera layer whose only actor spans x 500–600: its own bounds are that span.
+    const stage = new Container()
+    const target = new Container()
+    target.addChild(new Graphics().rect(500, 300, 100, 200).fill(0xffffff))
+    stage.addChild(target)
+    const halves = await Effect.runPromise(hidingTransition(name, target, {}, { design: { width: 1280, height: 720 } }))
+    const hide = halves!.hide(0.3)
+    const mask = target.mask as Graphics
+    // The hide starts with nothing concealed: the mask covers the whole stage.
+    expect(mask.parent).toBe(stage)
+    const bounds = mask.getLocalBounds()
+    expect([bounds.minX, bounds.minY, bounds.maxX, bounds.maxY]).toEqual([0, 0, 1280, 720])
+    hide.update(0.15)
+    const half = mask.getLocalBounds()
+    expect(name === "wipeLeft" || name === "wipeRight" ? half.width : half.height).toBe(name === "wipeLeft" || name === "wipeRight" ? 640 : 360)
+    hide.dispose()
+    expect(mask.parent).toBeNull()
+    expect(target.mask ?? null).toBeNull()
   })
 })
