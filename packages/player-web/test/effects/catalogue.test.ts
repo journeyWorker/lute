@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { Effect } from "effect"
 import { Container } from "pixi.js"
-import { build, EffectDecodeError, type EffectName } from "../../src/effects/catalogue.js"
+import { build, EffectDecodeError, hidingTransition, type EffectName } from "../../src/effects/catalogue.js"
 
 const names: ReadonlyArray<EffectName> = [
   "fade", "dissolve", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "cut",
@@ -63,5 +63,40 @@ describe("catalogue parameter contract", () => {
     const target = new Container()
     expect((await Effect.runPromise(build("cut", target))).length).toBe(0)
     expect((await Effect.runPromise(build("none", target))).length).toBe(0)
+  })
+})
+
+// spec 0.47.1 §4: a hiding camera transition hides, then shows again.
+describe("hiding transitions", () => {
+  const hiding: ReadonlyArray<EffectName> = ["fade", "dissolve", "fadeOut", "wipeLeft", "wipeRight", "wipeUp", "wipeDown", "slideLeft", "slideRight", "slideOut"]
+
+  it.each(hiding)("%s hides over its first half and ends shown, unmasked and in place", async (name) => {
+    const target = new Container()
+    target.x = 40
+    const halves = await Effect.runPromise(hidingTransition(name, target, { duration: 0.6 }, { design: { width: 100, height: 100 } }))
+    expect(halves).toBeDefined()
+    const hide = halves!.hide(0.3)
+    expect(hide.update(0.3)).toBe("done")
+    hide.dispose()
+    // Hidden between the halves, even once a wipe dropped its mask.
+    expect(target.alpha).toBe(0)
+    expect(target.mask ?? null).toBeNull()
+    // The new framing is applied between the halves.
+    target.x = 25
+    const show = halves!.show(0.3)
+    expect(show.update(0.3)).toBe("done")
+    show.dispose()
+    expect(target.alpha).toBe(1)
+    expect(target.mask ?? null).toBeNull()
+    expect(target.x).toBe(25)
+  })
+
+  it.each(names.filter((name) => !hiding.includes(name)))("%s is not a hiding transition", async (name) => {
+    expect(await Effect.runPromise(hidingTransition(name, new Container()))).toBeUndefined()
+  })
+
+  it("decodes parameters as the catalogue does", async () => {
+    const result = await Effect.runPromise(Effect.result(hidingTransition("fade", new Container(), { strength: 2 })))
+    expect(result._tag).toBe("Failure")
   })
 })
