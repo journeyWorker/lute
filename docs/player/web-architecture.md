@@ -65,6 +65,8 @@ type EffectName = "fade" | "dissolve" | "wipeLeft" | "wipeRight" | "wipeUp" | "w
 interface EffectCatalogue {
   /** Behaviours for an effect on a target, with params from bindings and the cue's duration. */
   readonly build: (name: EffectName, target: Container, params: EffectParams, duration: number) => ReadonlyArray<Behaviour>
+  /** Hide/show halves of a hiding effect (fade, dissolve, fadeOut, wipe*, slideLeft/Right, slideOut); undefined otherwise. */
+  readonly hidingTransition: (name: EffectName, target: Container, params: EffectParams) => { hide(seconds): Behaviour; show(seconds): Behaviour } | undefined
 }
 
 // presenter/
@@ -74,9 +76,9 @@ interface EntityOps {                            // the vocabulary cues map to
   removeActor(character: string, action: EffectSpec | undefined): Effect<void>
   showCg(cg: StageCg | null, transition: EffectSpec): Effect<void>
   showVideo(video: StageVideo | null, wait: boolean): Effect<void>
-  camera(op: CameraOp): Effect<void>
+  camera(op: CameraOp): Effect<void>             // framing/focus with a move or a transition; see "Camera transitions"
   vfx(op: VfxOp): Effect<void>
-  restore(stage: Stage): Effect<void>            // rebuild everything at once
+  restore(stage: Stage): Effect<void>            // rebuild everything at once; the camera rests (alpha 1, no mask, default framing)
 }
 class PixiPresenter implements Presenter          // uses EntityOps, DialogueWindow, ChoiceMenu, Ui; capture() via renderer.extract
 // A StageCue.Vfx with effect.effect === "custom" plays nothing; the presenter logs effect.name once per name
@@ -117,6 +119,30 @@ const Input: Layer<Stream<PlayerAction>>          // keyboard/pointer/touch (tap
 LuteWeb.mount(element, options): Effect<WebPlayerHandle, MountError, Scope>   // WebPlayerHandle = LutePlayerHandle (send, restore, session, program)
 mountPlayer(element, options): Promise<{ act, view, unmount }>              // the only Promise API; options.host is the core's PlayerHost
 ```
+
+## Camera transitions
+
+Spec 0.47.1 §4. The `camera` layer (the actors) rests at alpha 1 with no
+mask. A `::camera` cue with a `move` applies the framing, then plays the
+move (a move takes precedence over a transition). A cue with a `transition`:
+
+- **Hiding effect** (`fade`, `dissolve`, `fadeOut`, `wipeLeft`/`Right`/`Up`/`Down`,
+  `slideLeft`, `slideRight`, `slideOut`): the effect hides the layer over the
+  first half of the duration (the layer stays hidden once that half ended),
+  the framing and focus are applied, and the layer is shown again over the
+  second half: alpha back to 1, a wipe reveal in the same direction, or a
+  slide back into place (`slideLeft`/`slideOut` leave to the left and come
+  back from the right, `slideRight` the other way).
+- **Any other effect**: the framing is applied, then the effect plays.
+
+Whatever the effect, the cue ends with alpha 1, no mask and the new
+framing's scale and position. `cut`, `none`, a zero duration and an instant
+cue (skip) apply the framing at once. Transition behaviours run under their
+own world key: a newer transition cue cancels a running one without touching
+a camera move, and an interrupted cue (skip starting during it, a load) still
+ends at rest. `restore` (load, rollback) cancels every running camera
+behaviour, sets alpha 1 and no mask, then applies the default framing, so a
+load during a transition never leaves the actors hidden.
 
 ## Testing
 

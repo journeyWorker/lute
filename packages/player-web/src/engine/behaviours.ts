@@ -226,6 +226,20 @@ export const slide = (target: Container, fromX: number, toX: number, duration: n
   return tween(target, { x: fromX }, { x: toX }, duration, quadOut)
 }
 
+/**
+ * Run `inner`, which hides `target`, and keep `target` hidden (alpha 0) once
+ * it ended, however it ended: a wipe drops its mask when it ends, so without
+ * this the target would show until the next behaviour starts.
+ */
+export const concealing = (target: Container, inner: Behaviour): Behaviour => ({
+  update: (dt) => inner.update(dt),
+  finish: () => inner.finish(),
+  dispose: () => {
+    inner.dispose()
+    target.alpha = 0
+  }
+})
+
 class WipeBehaviour implements Behaviour {
   target!: Container
   maskGraphic!: Graphics

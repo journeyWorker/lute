@@ -169,9 +169,7 @@ export class PixiPresenter implements Presenter {
         const stageVideo = file === undefined ? null : { assetId: file }
         return stageVideo === null ? this.video.hide() : this.video.show(stageVideo, true, instant)
       }
-      case "Camera": {
-        return Effect.sync(() => this.camera.apply(cue.framing, cue.focus)).pipe(Effect.flatMap(() => this.camera.move(cue.move ?? cue.transition, cue.duration, instant)))
-      }
+      case "Camera": return this.camera.stage(cue, instant)
       case "Vfx": return cue.effect.effect === "custom" ? this.logCustomVfx(cue.effect.name ?? "") : this.vfx.play(cue.effect, cue.duration, instant)
     }
   }
@@ -200,8 +198,8 @@ export class PixiPresenter implements Presenter {
     clearContainer(this.pixi.layers.video)
     clearContainer(this.pixi.layers.actors)
     this.actors.clear()
-    this.camera.clear()
   }).pipe(
+    Effect.flatMap(() => this.camera.restore),
     Effect.flatMap(() => this.background.set(stage.bg, undefined, true)),
     Effect.flatMap(() => Effect.forEach(stage.actors, (actor) => this.upsertActor(actor, undefined, true), { discard: true })),
     Effect.flatMap(() => this.cg.show(stage.cg, undefined, true)),
