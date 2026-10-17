@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.47.0`, the grammar and semantics the checker
+- **Language** — currently `0.47.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.47.0`) and gated on by consuming engines.
+  artifact (currently `0.47.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,137 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.47.1]
+
+**Fix patch on the 0.47 line: camera transitions, flow targets, escaped
+interpolation** (spec [`0.47.1.md`](docs/proposals/scenario-dsl/0.47.1.md);
+plan
+[`2026-10-17-lute-0.47.1-fixes.md`](docs/superpowers/plans/2026-10-17-lute-0.47.1-fixes.md);
+decisions
+[`2026-10-17-lute-0.47.1-decisions.md`](docs/superpowers/notes/2026-10-17-lute-0.47.1-decisions.md)).
+Fixes issues #132, #133 and #134, the three pre-existing defects recorded
+while implementing 0.47.0. The **toolchain**, the **language** (one escape
+rule), the **player bindings** checker and **player-web** earn the release.
+Unlike 0.41.1 and 0.42.1 the **IR is not a no-op for consumers**: no field
+changes, but a literal `{{` in a line's text now reads `\{{`, so an engine
+that substitutes placeholders itself must read the escape. `luteVersion`,
+`irVersion`, `eventVersion` and `snapshotVersion` read `0.47.1`;
+`bindingsVersion` stays `"0.47"`;
+`schemas/lute-{ir,events,snapshot,player-bindings}-0.47.schema.json` and the
+generated TypeScript (`packages/runtime/src/generated/**`,
+`packages/player/src/bindings/schema.ts`) are byte-identical to 0.47.0; the
+player's save/profile format stays `"0.47"`. The seven npm packages align to
+`0.47.1`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- `\{{` in a line writes a literal `{{`, as dsl 0.1.0 §7.6 always said. Every
+  scanner of line text (inline parser, placeholder scan, label scan, the
+  literal-text check and the normalizer) now uses one rule: an odd run of
+  backslashes directly before `{{` escapes it. Before, some scanners still
+  read an escaped `{{` as a marker. (#134)
+- A `::use` string argument spliced into a line is judged on its decoded
+  value, so `p="lit \\{{run.a}}"` passes a literal `{{run.a}}` (`\{` is
+  `E-STRING-ESCAPE` in attributes, so this is the way to pass a literal `{{`
+  through a param). (#134)
+
+### IR
+
+- No field or shape change; **one meaning change**. In a line's `text`, each
+  segment run's `text` and merged `texts` / `localeSegments`, a literal `{{`
+  is written `\{{` and each literal backslash directly before a `{{` is
+  doubled; every other escape stays decoded. `placeholders` has exactly one
+  entry per marker, in order. Reading: n backslashes before `{{` stand for
+  ⌊n/2⌋ backslashes, and the `{{` is literal (n odd) or a marker substituted
+  from `placeholders` (n even). Engines that substitute placeholders
+  themselves must apply this reading; `Lit \{{run.a}} and {{ run.a }}.` with
+  `run.a = 3` renders `Lit {{run.a}} and 3.` The schema's "escapes decoded"
+  wording for `cmdLine.text` / `segment.text` is superseded by the spec; the
+  schema body is unchanged. (#134)
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- `flow.newGame.target`, `flow.idle.raise.target` and each
+  `flow.idle.menu[].target` are full occasion targets, checked by
+  `check-project` with the rule beat targets and `lute play` step targets
+  use: the prefixed form (`place.square`) is accepted, a bare member
+  (`square`) is `E-BINDING-KEY` naming the domain and, when close,
+  ``did you mean `place.square`?``. A target on an occasion without a target
+  domain, or on an occasion whose entity kind the project does not declare,
+  is `E-BINDING-KEY` too. Before, the checker wanted the bare member — which
+  the runtime never matches — and refused the prefixed form. (#133)
+
+### CLI
+
+- `lute loc export` computes `sourceHash` from the encoded line text, so a
+  line containing `\{{` gets a new hash. (#134)
+
+### Runtime
+
+- The runtime reads the escape in a line's source text, segments and the
+  by-marker rendering of translations; its rendered line record holds the
+  decoded text (no encoding backslashes). A translation may contain `\{{`
+  too, which lifts the 0.47.0 limitation that a translation could not show a
+  literal marker equal to a source marker. (#134)
+
+### Player
+
+- player-web camera transitions end with the actors visible. A hiding
+  effect (`fade`, `dissolve`, `fadeOut`, `wipe*`, `slideLeft`/`slideRight`,
+  `slideOut`) hides the camera layer over the first half, the framing and
+  focus are applied, and the layer is shown over the second half; other
+  effects apply the framing and play as before. Every cue ends at alpha 1, no
+  mask and the new framing; `cut`/`none`, a zero duration and an instant cue
+  (skip, load) apply at once. Before, a `transition="fade"` camera cue left
+  the actors hidden. (#132)
+- The transition runs on the camera's own fiber in the player scope, so a
+  batch ending does not cut it short; a `move` supersedes a running
+  transition (a transition arriving during a move does not cancel it); a
+  wipe sweeps a stage-sized mask. Restoring the stage (load, rollback)
+  cancels running camera behaviours and resets alpha and mask before
+  applying the framing, so a load during a transition never leaves the
+  actors hidden. (#132)
+
+### Diagnostics
+
+- No new codes. `E-BINDING-KEY` now covers flow targets (message prefixed
+  ``flow target `…`:``). (#133)
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.47.1`; the Event,
+  snapshot and bindings schemas stay `lute-events-0.47`, `lute-snapshot-0.47`
+  and `lute-player-bindings-0.47` (bodies unchanged), `bindingsVersion` stays
+  `"0.47"`, and saves and profiles stay `"0.47"`. Line ids and voice keys do
+  not move.
+
+### Documentation
+
+- The IR contract docs (execution model, event contract, runtime contract,
+  dialogue, custom hosts) state the escape rule; the bindings docs say flow
+  targets are written in the prefixed form; the player-web docs describe the
+  camera transition.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Bindings checker | A bare `flow.*.target` member is `E-BINDING-KEY`; the prefixed form is accepted; a target on an occasion without one is `E-BINDING-KEY`. | Write `place.square`, not `square` (the runtime always required it). |
+| IR | A literal `{{` in a line is `\{{` in `text`/segments/translations (backslashes before `{{` doubled); markers and `placeholders` are 1:1. | Engines that substitute placeholders themselves apply the spec's §3 reading. |
+| Localization | A line with `\{{` gets a new `sourceHash`. | Re-export it. |
+| player-web | Camera transitions end with the actors visible. | None. |
+| Release | All axes `0.47.1`; schemas, `bindingsVersion` and save format stay on `0.47`. | None. |
+
+From 0.47.0: run `lute fix` to raise `luteVersion` stamps to `0.47.1`.
 
 ## [0.47.0]
 

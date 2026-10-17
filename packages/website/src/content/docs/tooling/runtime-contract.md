@@ -370,7 +370,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.0"
+irVersion: "0.47.1"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -386,7 +386,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.1`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

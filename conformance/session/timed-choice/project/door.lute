@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: door
-luteVersion: "0.47.0"
+luteVersion: "0.47.1"
 title: door
 on: visit
 priority: 0

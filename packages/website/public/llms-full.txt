@@ -282,7 +282,7 @@ diagnostics, the compiled JSON IR, and a mock-driven trace, all in your browser.
 # Installation
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.47.0**.
+compiles, traces, and inspects them. The current language version is **0.47.1**.
 
 ## Quick start with `bunx`
 
@@ -338,9 +338,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.47.0
-language      0.47.0
-IR schema     0.47.0
+lute toolchain 0.47.1
+language      0.47.1
+IR schema     0.47.1
 ```
 
 The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
@@ -349,20 +349,14 @@ three to its own number, so you should see the same version on each line. Why th
 how an engine gates on `irVersion`, is in the
 [versioning policy](https://github.com/journeyWorker/lute/blob/main/docs/versioning.md).
 
-For scripts and CI, `--json` prints the same three axes as one object. JSON
-reports from commands such as `check`, `play`, `trace`, `test`, `beats`,
-`refs`, `lore`, `scenario`, `loc report`, and `doctor` use the 0.43 envelope:
-`command`, `schemaVersion`, and `ok`; `ok` agrees with exit status 0.
-JSON-mode failures use `schemaVersion: "0.43.0.error"` and structured
-`error`. Runtime `run --json` artifacts and `play --events` rows remain
-unwrapped.
+For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.47.0","language":"0.47.0","ir":"0.47.0"}
+{"toolchain":"0.47.1","language":"0.47.1","ir":"0.47.1"}
 ```
 
-(`lute --version` also works and prints just `lute 0.47.0` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.47.1` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
 prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
@@ -391,7 +385,7 @@ Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.47.0**.
+**0.47.1**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -704,8 +698,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.47.0",
-  "irVersion": "0.47.0",
+  "lute": "0.47.1",
+  "irVersion": "0.47.1",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
@@ -1054,7 +1048,7 @@ textModifiers (inline, content-line text only):
   :pause{s=0.5} [leaf]: a pause of `s` seconds (required, non-negative) at that point of the line
   :speed[text]{rate=1.25} [span]: the wrapped text is delivered at `rate` (required, positive); a nested speed uses the innermost rate
   textStyle: not declared (declare `textStyle` in `enums:` for style spans)
-  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves
+  the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept, one `placeholders` entry each); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves; in `text`, segment runs and `texts` a literal `{{` is written `\{{` and a literal backslash directly before `{{` is doubled
 projectEnums (1):
   emotion: neutral, surprised, delighted, shy, content, angry, sad
 builtinDirectives (10):
@@ -1753,7 +1747,7 @@ Create `scenes/crime-scene.lute`:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.47.0"
+luteVersion: "0.47.1"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -1800,7 +1794,7 @@ Create `scenes/interview.lute`:
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.47.0"
+luteVersion: "0.47.1"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -1866,7 +1860,7 @@ Create `quests/identify-killer.lute`:
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.47.0"
+luteVersion: "0.47.1"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -1899,7 +1893,7 @@ Create `scenes/confrontation.lute`:
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.47.0"
+luteVersion: "0.47.1"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
@@ -2217,8 +2211,8 @@ Once a document checks clean it compiles to its JSON command-record artifact:
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-Exit `0`; `crime-scene.json` is stamped `"lute": "0.47.0"` /
-`"irVersion": "0.47.0"`. Every document in the project compiles. That artifact —
+Exit `0`; `crime-scene.json` is stamped `"lute": "0.47.1"` /
+`"irVersion": "0.47.1"`. Every document in the project compiles. That artifact —
 not the source — is what an engine plays through the
 [runtime contract](/tooling/runtime-contract/).
 
@@ -6754,8 +6748,8 @@ state:
 @fixer: The sign says 10:30 :) and nothing else.
 ```
 
-In the artifact, `text` is always the **plain** text: modifier markup removed, escapes decoded,
-`{{…}}` kept. A line that uses a modifier also gets `segments` — text runs carrying the active
+In the artifact, `text` is always the **plain** text: modifier markup removed, escapes decoded
+(except a literal `{{`, see below), `{{…}}` kept. A line that uses a modifier also gets `segments` — text runs carrying the active
 `styles` (outermost first) and `rate`, and `{pause}` leaves; a line without one has no `segments`:
 
 ```json
@@ -6772,7 +6766,13 @@ The rules, line by line above:
   innermost `rate`. Adjacent runs with the same styles and rate are merged.
 - **Escapes.** `\:` is a literal colon that never starts a modifier. Inside a modifier, `\[`, `\]`,
   `\{`, `\}` and `\\` write the bracket, brace or backslash; any other escape there is
-  `E-TEXT-ESCAPE`. The `\{{` literal-interpolation escape is unchanged.
+  `E-TEXT-ESCAPE`.
+- **Literal `{{`.** `\{{` writes a literal `{{`: an odd run of backslashes directly before `{{`
+  escapes it, an even run leaves a marker (`\\{{run.a}}` is a backslash, then the marker). In the
+  artifact (lute 0.47.1) a literal `{{` stays written `\{{` in `text`, segment runs and
+  translations, and a literal backslash directly before a `{{` is doubled, so
+  `Lit \{{run.a}} and {{ run.a }}.` keeps that `text`, has one placeholder, and renders
+  `Lit {{run.a}} and 3.` when `run.a` is 3. A translation may write `\{{` too.
 - **Plain colons stay text.** A colon starts a modifier only when a name and then `[` or `{`
   follow it, so `10:30` and `:)` need no escape.
 
@@ -8047,6 +8047,7 @@ admitted in quest documents. The checker warns when a timeline grows unwieldy (p
 tracks, 12 clips per track, or 40 clips total).
 
 # Components & extends
+
 Lute has three reuse mechanisms, each for a different thing: `defs` reuse typed CEL *values*,
 `uses`/`extends` reuse *schema*, and **components** reuse *content*. This page covers content
 components and schema `extends:` composition.
@@ -8185,6 +8186,12 @@ placeholder records after expansion, exactly as in a line written in the host:
 `::use{component="cheers" to="you, {{userName}}"}` compiles to the text `To you, {{userName}}!` with
 `"placeholders": [{"kind": "reserved", "token": "userName"}]`, so the engine renders the player's
 name. Before 0.26.0 the placeholder record was dropped and the braces shipped as literal text.
+
+To pass a literal `{{` instead, escape it as in a line, written with the attribute string's own
+backslash escape: `to="you, \\{{userName}}"` is the value `you, \{{userName}}`, which the line reads
+as a literal `{{` (lute 0.47.1), so the text shows `To you, {{userName}}!` and has no placeholder.
+The escape is judged on the decoded value — an odd run of backslashes before `{{` makes it literal —
+so `to="\\\\{{userName}}"` passes one backslash and keeps the placeholder.
 
 ### Component body rules
 
@@ -8578,6 +8585,7 @@ because persisted state must keep a stable type, an override that changes the de
 `E-EXTENDS-STATE-TYPE`; a `default`-only refinement (same type) is allowed silently. `extends` edges
 share the same DAG discipline as `uses:` — cycles, missing files, and parse errors reuse the
 `E-USES-*` diagnostics.
+
 # Definitions & params
 
 All conditions and `::set` right-hand sides in Lute are [CEL](https://cel.dev) expressions. Rather
@@ -13539,7 +13547,7 @@ Describes the command line itself as the `schema` report (always JSON; reads no 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.47.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.47.1","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
@@ -13703,7 +13711,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.47.0 and the AI edit-loop
+contract; the repository's current release is 0.47.1 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -13986,6 +13994,7 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
         "syntax": ":speed[text]{rate=1.25}"
       }
     ],
+    "lowering": "the IR `text` is the plain derivation (markup removed, escapes decoded, `{{…}}` kept, one `placeholders` entry each); a modified line adds `segments`: text runs {text, styles?, rate?} and {pause} leaves; in `text`, segment runs and `texts` a literal `{{` is written `\\{{` and a literal backslash directly before `{{` is doubled"
   }
 }
 ```
@@ -14259,7 +14268,7 @@ Diagnose the local toolchain and project setup: the version axes, the project ma
 
 ```console
 $ lute doctor .
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.1"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
   • toolchain version: 0.22.0
   • language version: 0.22.0
   • IR schema version: 0.22.0
@@ -14311,7 +14320,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--engine <FILE>] [--json] [--ir] [--n
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project is compiled once, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.0"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.47.1"`. It cannot be combined with `--json`, `--ir`, `--explain`, or `--dump-conditions`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--explain <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -18238,7 +18247,17 @@ false.
 A `line` carries `role` (`dialogue`, `narration`, `mono`, `os`, or `vo`),
 `speaker`, `text`, `lineId`, and a `voiceKey` on every role — a join key, not a
 promise that a recording exists. `text` is the plain derivation of the
-authored text: inline modifiers removed, escapes decoded, `{{…}}` markers kept.
+authored text: inline modifiers removed, escapes decoded, `{{…}}` markers kept,
+one `placeholders` entry per marker, in order — except that (lute 0.47.1) a
+literal `{{` (authored `\{{`) is written `\{{` and every literal backslash
+directly before a `{{` is doubled; segment runs, `texts` and `localeSegments`
+use the same encoding. Read it left to right: a run of *n* backslashes directly
+before `{{` stands for ⌊*n*/2⌋ backslashes, and the `{{` is literal text when
+*n* is odd (consumed as one unit) or opens the next marker when *n* is even.
+`Lit \{{run.a}} and {{ run.a }}.` with `run.a = 3` renders
+`Lit {{run.a}} and 3.`. An engine that substitutes placeholders itself must
+apply this reading; a line with `\{{` gets a new loc `sourceHash`, so re-export
+it (a 0.47.0 export of it is `W-L10N-STALE`).
 A line that uses an inline modifier also carries `segments`, the presentation
 runs: `{ text, styles?, rate? }` text runs and `{ pause }` leaves (seconds).
 A line without modifiers has no `segments`. See [Localized text](#localized-text)
@@ -18314,7 +18333,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.0"
+irVersion: "0.47.1"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -18330,7 +18349,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.1`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 
@@ -18945,10 +18964,9 @@ and `segments` with their `{{…}}` markers replaced, it carries `texts` and
 marker replaced by the value the source rendered for the marker with the same
 referent (the text inside `{{ }}`, trimmed, so `{{ user.voyages }}` matches
 `{{user.voyages}}`) — a translator may reorder markers, and a marker the source
-does not have stays as written. The translation maps hold plain text with
-escapes decoded, so a translation cannot show a literal `{{…}}` whose referent
-equals one of the source's markers: written `\{{user.voyages}}`, it still shows
-the value. Show a runtime line from its record, not from the
+does not have stays as written. The record holds decoded text (lute 0.47.1:
+no encoding backslashes), and a translation may write `\{{`, which stays a
+literal `{{` there as in the source. Show a runtime line from its record, not from the
 artifact's templates. `lute run --json`, the conformance record, leaves them
 out like the other delivery fields. Option labels and prompts are not rendered.
 
@@ -21513,10 +21531,11 @@ lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin
 ```
 
 # Current specification
+
 The versioned proposal stack under
 [`docs/proposals/scenario-dsl/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals/scenario-dsl)
 **remains the normative source of truth**. This page does not replace it — it is
-the consolidated **index** of what is *current* at language version **0.47.0**:
+the consolidated **index** of what is *current* at language version **0.47.1**:
 for each language area, which proposal revision introduced it, which last changed
 it, and where to read the normative text.
 
@@ -21555,7 +21574,7 @@ The normative release proposal is
 Historical behavior remains attributed to its introducing proposals below;
 this index does not rewrite those citations.
 
-## What is current at 0.47.0
+## What is current at 0.47.1
 
 
 | Language area | Introduced | Last changed | Normative source |
@@ -21565,7 +21584,7 @@ this index does not rewrite those citations.
 | Engine semantic negotiation | 0.33.0 | The compiler derives sorted `requiredSemantics` ids from lowered features; engines load `lute.engine.yaml` after the exact-minor IR gate and refuse unsupported ids before playback. `check --engine` and `check-project --engine` report missing capabilities at author time. | [0.33.0.md §2–§5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry) |
 | Frontmatter & profiles | 0.1.0 | 0.37.0 (frontmatter `title:` is the only document title — a body `# Title` line is `E-INERT-TITLE`; `monoSpeakers:` sits beside `pov:` on scene, quest and lore documents and in the manifest's `defaults:`; an authored key containing `_` is `E-AUTHOR-CASE`, naming the lowerCamelCase spelling; the manifest's `sequence:` key is gone (`E-REMOVED-PROJECT-KEY`); `0.28.0`: a frontmatter key that belongs to another layer names that layer (`terminal:` → a schema, `chapters:` / `questTier` → `lute.project.yaml`, `rearm` / `tier` → the `<quest>` attribute); `once` beside `spentBy:` is legal and sets the latch's period (`once: false` or a `share` key beside it is `E-BEAT-ATTR`); a quoted scalar where a bool or number is meant (`once: "false"`) says to write it unquoted; a `kind: lore` document accepts `pov:`; the manifest's `defaults.questTier` accepts `season:<name>`, and the manifest refuses unknown keys (`E-MANIFEST-KEY`); `0.27.0`: a scene beat may write `for: "kind:<kind>"` on an untargeted `select: sequence` occasion and is presented once per member whose `when` holds; `spentBy:` spends a beat when its condition holds (`0.28.0`: a latch — once the condition has held, in the settled world after any settle or when the beat is judged, per member for a kind or `for` beat, the beat stays spent for its `once` period, `run` unless written, even if the condition turns false; `once: false` or a `share` key beside it is `E-BEAT-ATTR`, one that holds at the start of play is `W-BEAT-SPENT-AT-START`, and one with no `once` written that can turn false again is `W-SPENT-BY-REVERSIBLE`); `once: week` (with the clock's `week:`) and `once: season:<name>`; the manifest's `chapters:` (`0.28.0`, a list of `{ on, scenes }` chains, one per occasion) gives each listed scene `on:`, a descending `priority:` and — except on a `select: sequence` occasion — `after:`, unless it writes the key; on a targeted occasion every listed scene declares `target:` (`E-CHAPTERS`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`); `0.26.0`: a scene beat may `target: "kind:<kind>"` — it answers every member of the kind and reads the raised member as `occasion.target`; the manifest's `defaults.uses` entries may be globs and `defaults.questTier` sets the default quest `tier=`; `0.25.0`: a scene beat may name a `share:` key beside a written `once`, spent together with every beat of the key; `0.24.0`: scene and bundle beats take `once: day` / `once: slot` when the project declares a clock — without one, `E-BEAT-ATTR`; `0.21.0`: a scene becomes a beat with the scene-only keys `on:` / `target:` / `when:` / `priority:` / `once:`; `when`, `target`, `priority`, or `once` without `on` is `E-BEAT-ATTR`) | [0.37.0.md §2.1, §3.1, §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#21-authoring-case); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Sections (`## Heading {#id}`) | 0.1.0 | 0.37.0 (a document's body is `##` sections — the IR's `sections` table, `{ section, heading, id? }`; an optional final `{#id}` is a stable section id, unique per document (`E-SECTION-DUP`), identity metadata only and never a `::jump` target; content before the first heading is `E-CONTENT-OUTSIDE-SECTION`; the reserved `<scene>` tag is removed (`E-REMOVED-TAG`); `0.6.0`: free heading text) | [0.37.0.md §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#31-sections-and-identity); [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
-| Content lines (`@speaker` dialogue) | 0.1.0 | 0.37.0 (a line's role is `dialogue`, `narration` (`@narrator`), or the `{mono}` / `{os}` / `{vo}` flag's `mono` / `os` / `vo`; a `{mono}` speaker must be the effective point of view (`pov:`, else `defaults.pov`) or listed in `monoSpeakers:` — `E-MONO-POV`, or `E-MONO-NO-POV` when no point of view resolves — judged at every `::use` of a component with that caller's context; a line takes no `id=` (a `::label` before it marks the place); inline text modifiers in line text — the core `:pause{s=…}` and `:speed[…]{rate=…}`, and span styles from the project's `textStyle` domain — with the IR `text` the plain derivation and a modified line adding `segments` (`E-TEXT-MODIFIER`, `E-TEXT-ESCAPE`); `0.28.0`: a kind's `labels:` entry wins over a cast `name:` in text (a speaker head keeps the cast name; `W-LABEL-CAST-SHADOWED` retired) and may be `{ text, start, indefinite }`, rendered by `{{…:start}}` / `{{…:indefinite}}`; `:capitalize` and `:cardinalWord` join the hints and `#word` / `#Word` spell the number in a `plural(…)` form; another language's markup in line text or a choice label warns — `W-TEXT-SINGLE-BRACE` (`{run.oil}`, Ink / Yarn braces), `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`, `W-TEXT-GLUE`; a quoted or `,`-separated plural form is `E-PLURAL-FORM`; diagnostic columns count characters; `0.27.0`: `{{occasion.target}}` and a `{ domain: K }` / `{ entity: K }` path render the kind's `labels:` (`0.28.0`: the label wins over a cast `name:`; a speaker head keeps the cast name); `{{n:plural(lamp\|lamps)}}` picks a form by the number, `#` standing for it; curly quotes around an attribute value are one `E-ATTR-QUOTE`; `0.26.0`: a component line `@@who:` speaks as the cast member a `speaker` param names; two cast entries or speaker display names that are exactly equal are `W-DISPLAY-NAME-DUP` unless the entry is `sharedName: true`; `0.25.0`: a reserved relation's `changedOn:` names the occasions on which the engine changes it, and cast `assume: true` then no longer covers it in a unit presented on one of them, in that unit's after-descendants, or under a guard that needs a fact of it; the `{{x:ordinalWord}}` format hint — `lute play` renders `first` … `twentieth`, the engine localizes; `0.24.0`: a cast entry may declare `present:` — a line whose guards do not imply it is `W-CAST-ABSENT`, `assume: true` reads a negated engine-reserved fact as true — and `emotions:`, outside which `emotion=` is `E-BAD-ENUM`; the `{{x:ordinal}}` format hint, and `{{path}}` of an enum-typed path renders the member's display `labels:`; `0.23.0`: a declared cast — a plugin `cast` export or a schema document's `cast:` — makes a speaker outside it `E-CAST-UNKNOWN` with a did-you-mean; without a cast speakers stay shape-only; `0.5.1`: delivery-flag authoring-surface honesty) | [0.37.0.md §3.4, §3.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#34-lines-roles-pov-and-voice-joins); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
+| Content lines (`@speaker` dialogue) | 0.1.0 | 0.47.1 (`\{{` in a line is literal text under one escape rule — an odd run of backslashes directly before `{{` escapes it, in every scanner; a `::use` string argument is judged on its decoded value; the IR writes a literal `{{` as `\{{` in `text`, segments and translations, backslashes before `{{` doubled, and engines that substitute placeholders themselves read that escape; `0.37.0`: a line's role is `dialogue`, `narration` (`@narrator`), or the `{mono}` / `{os}` / `{vo}` flag's `mono` / `os` / `vo`; a `{mono}` speaker must be the effective point of view (`pov:`, else `defaults.pov`) or listed in `monoSpeakers:` — `E-MONO-POV`, or `E-MONO-NO-POV` when no point of view resolves — judged at every `::use` of a component with that caller's context; a line takes no `id=` (a `::label` before it marks the place); inline text modifiers in line text — the core `:pause{s=…}` and `:speed[…]{rate=…}`, and span styles from the project's `textStyle` domain — with the IR `text` the plain derivation and a modified line adding `segments` (`E-TEXT-MODIFIER`, `E-TEXT-ESCAPE`); `0.28.0`: a kind's `labels:` entry wins over a cast `name:` in text (a speaker head keeps the cast name; `W-LABEL-CAST-SHADOWED` retired) and may be `{ text, start, indefinite }`, rendered by `{{…:start}}` / `{{…:indefinite}}`; `:capitalize` and `:cardinalWord` join the hints and `#word` / `#Word` spell the number in a `plural(…)` form; another language's markup in line text or a choice label warns — `W-TEXT-SINGLE-BRACE` (`{run.oil}`, Ink / Yarn braces), `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`, `W-TEXT-GLUE`; a quoted or `,`-separated plural form is `E-PLURAL-FORM`; diagnostic columns count characters; `0.27.0`: `{{occasion.target}}` and a `{ domain: K }` / `{ entity: K }` path render the kind's `labels:` (`0.28.0`: the label wins over a cast `name:`; a speaker head keeps the cast name); `{{n:plural(lamp\|lamps)}}` picks a form by the number, `#` standing for it; curly quotes around an attribute value are one `E-ATTR-QUOTE`; `0.26.0`: a component line `@@who:` speaks as the cast member a `speaker` param names; two cast entries or speaker display names that are exactly equal are `W-DISPLAY-NAME-DUP` unless the entry is `sharedName: true`; `0.25.0`: a reserved relation's `changedOn:` names the occasions on which the engine changes it, and cast `assume: true` then no longer covers it in a unit presented on one of them, in that unit's after-descendants, or under a guard that needs a fact of it; the `{{x:ordinalWord}}` format hint — `lute play` renders `first` … `twentieth`, the engine localizes; `0.24.0`: a cast entry may declare `present:` — a line whose guards do not imply it is `W-CAST-ABSENT`, `assume: true` reads a negated engine-reserved fact as true — and `emotions:`, outside which `emotion=` is `E-BAD-ENUM`; the `{{x:ordinal}}` format hint, and `{{path}}` of an enum-typed path renders the member's display `labels:`; `0.23.0`: a declared cast — a plugin `cast` export or a schema document's `cast:` — makes a speaker outside it `E-CAST-UNKNOWN` with a did-you-mean; without a cast speakers stay shape-only; `0.5.1`: delivery-flag authoring-surface honesty) | [0.47.1.md §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.1.md#3-escaped-interpolation-134); [0.37.0.md §3.4, §3.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#34-lines-roles-pov-and-voice-joins); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.5.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.5.1.md) |
 | Core directives (the closed `lute.core` vocabulary) | 0.1.0 | 0.42.0 (`volume` is an absolute project domain; the documented scale is `silent` / `quiet` / `normal` / `loud` / `full`, and numeric volume is rejected. The staging directives remain the 0.37 surface — `::bg`, `::music`, `::sfx`, `::vfx`, `::actor`, `::camera`, `::cg`, `::video`, and `::sequence` — with project-declared domains and resolved runtime fields. Historical cutovers remain: `0.37.0` renamed the directives and removed numeric camera vocabulary; earlier changes are listed in the linked proposals.) | [0.47.0.md §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md#4-bindings); [0.42.0.md §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#3-volume-domain-and-bindings-77); [0.37.0.md §3.3, §3.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#33-staging-directives); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | Implicit staging (stage hygiene injections) | 0.1.0 | 0.45.0 (injected staging — scene-change hides, actor anchor/preload, pose resets, `stage-clear` — and `W-STAGE-ABSENT` / `W-EXIT-INERT` key on the staging record a directive lowers to, so a plugin directive lowered to `bg` changes the scene like `::bg` and one lowered to `actor` stages like `::actor` (leaving on `exit: true`); amends base §11.5: still a toolchain rule, but a function of the lowered records, never of the source directive; an `actor` lowering must bind `character` to a required attribute or a literal, else `E-LOWER-RECORD-FIELD`) | [0.45.0.md §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#2-stage-meaning-follows-the-lowered-record-shape-2) |
 | Content vocabulary (`emotion`, `action`, `anchor`, `mood`, `volume`, `musicPlayback`, `vfxType`, `costume`, `framing`, `cameraMove`, `transition`, `cgLayout`, `sequence`, `textStyle`) | 0.1.0 (closed member lists shipped inside `lute.core`) | 0.42.0 (`volume` members are absolute levels; the documented scale is `silent`, `quiet`, `normal`, `loud`, `full`, and `lute fix` migrates only the exact old ordered `[silent, down, normal, up, full]` domain. Other slots remain project-owned. `0.41.0`'s `musicAction` → `musicPlayback` migration remains historical.) | [0.42.0.md §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#3-volume-domain-and-bindings-77); [0.41.0.md §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#31-renamed-domains-and-lute-fix-43); [0.37.0.md §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#32-project-declared-staging-vocabulary); [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
@@ -21582,7 +21601,7 @@ this index does not rewrite those citations.
 | Compiled artifact shape (`position` addressing, IR carriers) | 0.1.0 | 0.42.0 (the nine staging runtime records `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` carry resolved `attrs`; optional fields are omitted, while timing, provenance, plugin fields and envelope fields retain their existing locations. Event and snapshot schemas move to `lute-events-0.42` / `lute-snapshot-0.42`; the 0.37 command families, `position`, `sections`, `capabilitySnapshot` and `requiredSemantics` remain.) | [0.47.0.md §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md#22-translated-text-follows-the-locale-setting-122); [0.42.0.md §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#4-runtime-event-records-78); [0.41.0.md §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#4-ir-041-and-projectindexjson); [0.37.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#5-lowering-and-runtime-consequences); [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
 | Warning-severity diagnostics (`W-LUTE-VERSION-STALE`, `W-TRACE-MOCK-UNPRODUCIBLE`, `W-CODE-AFTER-END`, `W-L10N-MISSING`, `W-FACT-GUARANTEED`, `W-BEAT-SHADOWED`, `W-QUEST-STATE-ISSET`, `W-TEXT-LOOKS-LIKE-REF`, `W-QUEST-HANDLER-DEAD`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`, `W-REWARD-DOUBLE-CREDIT`, `W-CAST-ABSENT`, `W-DEADLINE-BEFORE-DONE`, `W-QUEST-NEVER-ACCEPTED`, `W-RELATION-UNREAD`, `W-DEF-UNUSED`, `W-DISPLAY-NAME-DUP`, `W-ENTRY-WRITE-REREAD`, `W-QUEST-TIER-IMPLICIT`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`, `W-DEADLINE-NEVER`, `W-TEXT-SINGLE-BRACE`, `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL`, `W-TEXT-GLUE`, `W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`, `W-BRANCH-ID-SHARED`, `W-QUEST-REARM-CONSTANT`, `W-SPENT-BY-REVERSIBLE`, `W-TERMINAL-PERSISTENT`, `W-BEAT-UNRAISED`, `W-DEADLINE-BEFORE-WINDOW`, `W-TEMPLATE-OVERRIDE`, `W-TEMPLATE-DOT-PARAM`, `W-WIP`, `W-OBJECTIVE-STRANDED`) | 0.6.1 | 0.41.0 (`lute check` / `check-project` summaries count `info` diagnostics separately and never as warnings, appending `, I info` only when some are present; the new `W-DEPENDS-ON-INVALID` (one per invalid declaration, at its first suppressed dependant) carries the `W-` prefix but is `info` severity, so it is counted there and not listed here; `W-OBJECTIVE-STRANDED` is always a warning; `0.32.0`: `W-QUEST-STATE-HAS` replaces `W-QUEST-STATE-ISSET`; new `E-FACT-QUERY` and `E-RUN-OWNED-WRITE`; no new code; a warning that can describe an intended design has a spelling that states the intent — `W-TERMINAL-PERSISTENT` is silent on a `terminal:` long form with `persists: true`, and `W-CHAPTER-STALL` warns only on a `chapters:` chain; `0.28.0`: `W-TEXT-SINGLE-BRACE`, `W-TEXT-COMMENT-LIKE`, `W-TEXT-BRACKET-LABEL` and `W-TEXT-GLUE` (another language's markup in text), `W-RELATION-TIER-IMPLICIT`, `W-SEASON-UNGATED`, `W-BRANCH-ID-SHARED`, `W-QUEST-REARM-CONSTANT`, `W-SPENT-BY-REVERSIBLE`, `W-TERMINAL-PERSISTENT`, `W-BEAT-UNRAISED`, `W-DEADLINE-BEFORE-WINDOW`, `W-TEMPLATE-OVERRIDE`, `W-TEMPLATE-DOT-PARAM`, and `W-WIP` for the dead guards `check-project --wip` spares (was the error code at warning severity); `W-LABEL-CAST-SHADOWED` is retired; `0.27.0`: `W-QUEST-TIER-IMPLICIT`, `W-CHAPTER-ORDER`, `W-CHAPTER-STALL`, `W-LABEL-CAST-SHADOWED` and `W-DEADLINE-NEVER`; every message drops its spec citations — the sections move to the `--json` `spec` array and `lute --explain <CODE>`; `0.26.0`: `W-DISPLAY-NAME-DUP` — two cast entries or speaker display names exactly equal; `W-ENTRY-WRITE-REREAD` — a repeatable entry beat whose body sets state or retracts a fact; `W-BEAT-PRIORITY-TIE` normalizes negations and says why two `when`s are not exclusive; `0.25.0`: `W-LUTE-VERSION-STALE` for a stamp inherited from the manifest's `defaults:` is reported once, at the manifest; `W-QUEST-NEVER-ACCEPTED` no longer counts a mock's `accepts:`; a negation that a declared exclusion implies is `W-FACT-GUARANTEED`; `0.24.0`: `W-CAST-ABSENT` — a line whose guards do not imply its speaker's cast `present:`; `W-DEADLINE-BEFORE-DONE` — an `on=` objective whose `done` implies its `by`; `W-QUEST-NEVER-ACCEPTED` — an accept-driven quest nothing accepts; `W-RELATION-UNREAD` / `W-DEF-UNUSED` — a relation nothing queries, a def nothing references; `0.23.0`: `W-REWARD-DOUBLE-CREDIT` — a reward whose kind `credits` a state path beside a handler `::set` of that same path pays twice; `0.22.0`: `W-QUEST-HANDLER-DEAD` — a `questFailed` handler on a quest with no way to fail; `W-BEAT-PRIORITY-TIE` — equal-priority beats on one `select: first` occasion whose `when`s are not provably exclusive, so file order picks; `W-BEAT-ONCE-RUN-USER` — a `once: run` beat gated only on user-tier state replays every run; `W-STAGE-ABSENT` follows paths, forking at each arm and joining at convergence; `0.21.1` added `W-QUEST-STATE-ISSET` — `has(quest.<id>.state)` is always true, compare with `== 'unset'`; `W-TEXT-LOOKS-LIKE-REF` — a line whose whole text is `@name` for a def or param ships that literal text; `0.21.0` added `W-BEAT-SHADOWED` — `check-project` warns when a `select: first` beat can never win because an earlier-ordered beat on the same occasion and target is always eligible and never spent; `0.20.0` added `W-FACT-GUARANTEED` and removed `W-UNPROVEN-RELATIONAL`, one of the three original 0.6.1 coverage warnings — naming it in `--deny` is a usage error) | [0.41.0.md §3.2–§3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#32-type-number-and-declaration-cascades-44); [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.21.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md) |
 | Deny promotion (`--deny` / `--deny-warnings`) | 0.6.1 | 0.6.1 | [0.6.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.1.md) |
-| Version stamp & axis alignment | 0.1.0 | 0.47.0 (every visible axis reads `0.47.0`; schemas use the `0.47` line and bindings `bindingsVersion: "0.47"`; 0.46.0 moved every axis to `0.46`; 0.45.0 moved every axis to `0.45`; 0.44.0 moved every axis to `0.44`; 0.43.0 moved every axis to `0.43`; 0.42.1 was a stamp-only patch; 0.42.0: language/toolchain, `luteVersion`, `irVersion`, Event, snapshot, bindings, generated contracts and player packages move together; schemas use the `0.42` line, and bindings use `bindingsVersion: "0.42"`; pre-1.0 engines still pin the exact IR minor.) [0.47.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md#1-scope-and-version-contract); [0.46.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#1-scope-and-version-contract); [0.45.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#1-scope-and-version-contract); [0.44.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.44.0.md#1-scope-and-version-contract); [0.43.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md#1-scope-and-version-contract); [0.42.1.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.1.md#1-scope-and-version-contract); [0.42.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#1-scope-and-version-contract); [0.41.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md); [0.37.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#1-scope-and-version-contract); [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
+| Version stamp & axis alignment | 0.1.0 | 0.47.1 (every visible axis reads `0.47.1` while schemas stay on the `0.47` line, bindings on `bindingsVersion: "0.47"` and player saves on `"0.47"`; 0.47.0 moved every axis to `0.47`; 0.46.0 moved every axis to `0.46`; 0.45.0 moved every axis to `0.45`; 0.44.0 moved every axis to `0.44`; 0.43.0 moved every axis to `0.43`; 0.42.1 was a stamp-only patch; 0.42.0: language/toolchain, `luteVersion`, `irVersion`, Event, snapshot, bindings, generated contracts and player packages move together; schemas use the `0.42` line, and bindings use `bindingsVersion: "0.42"`; pre-1.0 engines still pin the exact IR minor.) [0.47.1.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.1.md#1-scope-and-version-contract); [0.47.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.0.md#1-scope-and-version-contract); [0.46.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#1-scope-and-version-contract); [0.45.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.45.0.md#1-scope-and-version-contract); [0.44.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.44.0.md#1-scope-and-version-contract); [0.43.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.43.0.md#1-scope-and-version-contract); [0.42.1.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.1.md#1-scope-and-version-contract); [0.42.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#1-scope-and-version-contract); [0.41.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md); [0.37.0.md §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#1-scope-and-version-contract); [0.32.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.32.0.md) |
 | Scene & document identity (`id:` frontmatter) | 0.15.0 (authored canonical scene key; new `id:` frontmatter is the lineId prefix, `visited()`/connectivity node, and `prereqEdges[].node`, superseding the derived `{character}.{episodeId}` join wherever it was consumed; `character`/`season`/`episode`/`episodeId` demote to optional when `id:` is present) | 0.30.0 (one name rule: each segment of a document id — like every scene, beat, entry, quest, objective, branch, hub, choice and mark id, `share` key, season, relation, kind and member, plugin occasion and event, target and category — is letters, digits, `_` or `-`, not starting with `-`; only a name read bare as `@name` (a def, a def's param, a component or template param) stays an identifier; `0.29.0`: one identifier rule: each segment of a document id — like every scene, beat, entry, quest, objective, branch, hub, choice and mark id, `share` key, season, relation, def, kind, member and component param — is a letter, then letters, digits or `_`; a `-` or any other character, which 0.28 accepted outside CEL, is an error at the name under the slot's code (`E-META-ID` here) naming the camelCase spelling; `0.19.0`: quest and lore documents may declare an optional document `id:` — the bundle name, the artifact's `meta.id`, and its `ProjectIndex` key; document ids share one project-wide namespace with scene ids, so `E-META-ID` and `E-CONN-EPISODE-ID-DUP` extend to them) | [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.29.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md); [0.19.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md) |
 | Descriptive `extra:` block | 0.15.0 (open mapping of scalars or flat scalar-lists on scene and quest roots; carried verbatim into `meta.extra` and read by no language rule — `E-META-VALUE` on a nested mapping or non-scalar list entry) | 0.15.0 | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
 | Legacy identity keys (`character` / `season` / `episode` / `episodeId`) | 0.1.0 | 0.15.0 (deprecated in prose only — `W-META-LEGACY` warns per legacy key when a document also authors `id:`; the four keys are no longer required when `id:` is present, removal deferred to a future major) | [0.15.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.15.0.md) |
@@ -21595,7 +21614,7 @@ this index does not rewrite those citations.
 | Play / test harness (`lute play` scripts, derivation in trace and test) | 0.22.0 (`engine:` play steps write engine-owned state and facts, reserved relations included; a script starts from a save — `visited:`, `presented:`, `quests:`, `entriesRead:` — varies `choose:` per step, fires world events with `event:`, and asserts with step and top-level `expect:`; `lute test` runs every play carrying an `expect:`; `lute trace` / `test` / `play` apply seed facts and Datalog rules by default, `derive: false` / `--no-derive` restores the `0.21` answer) | 0.41.1 (a `bridges:` answer may take the long form `{ fields, writes }`, `writes` being the runtime's `bridgeResult.writes`, applied at the call and sent by `--events`; the human transcript shows a beat's `advances:` movement and each clock raise it made or found closed; `0.41.0`: an `advance:` step's `engine:` writes land before the clock moves, so the new day's raises read them — a script that relied on the 0.40 order moves those writes into a following `engine:` step; `lute play --events` prints a gate refusal as a `rejected` line (exit 1), while human and `--json` play and `lute test` keep their refusal text; `0.30.0`: a `state:` key, `expect.state`, `lute trace --state` and `lute calendar --axis` take a state path in either spelling (`run.visits["lab-b2"]`), and a fact seed or expectation may quote an argument (`at("lab-b2")`); `0.28.0`: play and test `expect.exit` is `expect.end: complete \| terminal \| incomplete \| error`; a test's menu expectation is `expect.options` (was `offered`) and its quest list only `accepts:`; a play script reports every usage error at once, each located; a hub script that runs out halts incomplete in `lute trace` / `lute test` as in `lute play`; vacuous assertions are refused (`E-TEST-NEEDLE`, a mocked occasion the engine would not raise); an `include:` may carry `label:`; `0.27.0`: `lute play`, `lute run`, `lute trace` and `lute test` execute the compiled IR on one walker, held to one transcript by a differential test; `lute play` refuses a raise whose gate is false or once `terminal:` holds (`E-OCCASION-GATE`), an `occasion:` step may carry `engine:` writes and a `payload:`, and `include:` takes `repeat:` / `choose:` / `bridges:`; transcript needles judge their attribute blocks; `lute test` gates a document on its project's verdict; play and test scripts are validated before they run; `0.26.0`: `lute trace` / `lute test` follow a taken `::next`, apply a handler `::accept` as play does, and fail a test that walks a beat whose `when` is false under its mocks unless it asserts `eligible:`, naming the false premise; `lute test` loads the project once and runs in parallel; `advance: { to: … }`, step `expect: { clock }`, `engine: { accept: [...] }`; `accepts:` resolves quests project-wide; `0.25.0`: a write that makes two exclusive facts hold halts `lute play` at the step (exit 1) and refuses the `lute trace` / `lute test` walk with `E-FACT-EXCLUSIVE`, and seeded facts that already break an exclusion refuse the run; a `bridges:` answer may omit result fields no content reads, and `lute play` no longer halts at a call none of whose results are read; `0.24.0`: `advance:` and `include:` play steps move a declared clock and raise its occasions; a plugin call is answered by `bridges:` in play, test and trace — a `scene.*` seed no longer answers it; `lute calendar` gains `clock`, `visited()` and per-occasion axes; `0.23.1`: a `::end` in `lute play` ends only the presentation it runs in and a step `end: true` ends the playthrough; step `expect:` gains `quests` / `state` / `facts` / `notFacts`; a `*.test.yaml` gains `expect.facts` / `notFacts` / `eligible` and `beat:`; trace and test apply reward `credits:` and walk objective bodies as play does; `lute calendar --script` replays the script's steps; `0.23.0`: `lute beats`, `lute calendar` and `lute scenario knowledge` overviews; play presents `sequence` lists and `also` beats, gains the `presented:` expectation, snapshots `prev.run` at `newRun`, and credits rewards; trace and run raise `<occasion>@<target>` and present one bundle beat with `--beat`) | [0.41.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md); [0.41.0.md §5.2, §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#52-gate-refusal-and-the-gate-query-51); [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [CHANGELOG `0.23.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
 | Clock (`clock:` schema declaration) | 0.24.0 (a schema may declare one `clock: { day, slot, slots, raise, week }` over two `owner: engine` paths; content reads the reserved read-only `clock.index` / `clock.weekday` / `clock.weekdayLabel`; beats spend `once: day` / `once: slot`; `raise:` names the occasion an advance raises, or a map `{ slot, dayStart, dayEnd }`; a clock may omit `slot` / `slots` and count whole days; a malformed clock is `E-CLOCK-DECL`) | 0.41.0 (an advance's host `writes` land and settle before the clock moves, and a `terminal` they make true ends the input without moving it; each crossed midnight then raises `dayEnd` and `dayStart`, the destination raises the slot occasion, and the `clock { from, to }` event stays last; a beat's `advances:` moves after its `presentationEnd`; `raiseAtStart: true` states that the host raises `dayStart` and then the slot occasion at the run's first position as two ordinary `raiseOccasion` inputs — the runtime raises nothing at `begin` / `newRun`; `0.28.0`: the read-only `clock.day` / `clock.slot` aliases and, on a finite clock, `clock.ended` (checked in a play with `expect: { clock: { ended: true } }`); `raiseAtStart: true` says the engine raises the slot occasion (and `dayStart`) where a run starts; a type may name the clock's enums (`{ domain: clock.slot }`, `{ domain: clock.weekdayLabel }`); a day path defaulting below 1 is `E-CLOCK-DECL`; on a clock that ends on its first day, a slot past the last one is a dead guard or arm; a clock whose day path outlives the run keeps its spends and its end across a `newRun`; `0.27.0`: a clock may declare its end — `last: { day, slot }` or `days: N`; an advance past it stops there and ends the clock, a later `advance:` is `E-CLOCK-END`, and the checker ranges `clock.index` and the day path over the finite span) | [0.41.0.md §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#54-clock-ordering-53); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md) |
 | Runtime event contract (`step`, inputs, awaits, queries, snapshot) | 0.38.0 (the first Event version: a parser-free runtime steps a compiled bundle and streams deterministic events) | 0.47.0 (a `line` record also carries the line's `texts` / `localeSegments` with each `{{…}}` marker rendered, matched to the source marker by its trimmed text; `0.42.0`: the nine staging records `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence` carry resolved `attrs`; timing and envelope ownership stays unchanged, and Event/snapshot schemas are `lute-events-0.42` / `lute-snapshot-0.42`) | [0.42.0.md §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#4-runtime-event-records-78); [0.41.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041); [0.40.0.md §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md#4-runtime-and-the-event-contract-040); [0.39.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.39.0.md); [0.38.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.38.0.md) |
-| Player bindings (`player.bindings.yaml`) | 0.40.0 (an optional project file beside `lute.project.yaml` mapping staging vocabulary and assets to player effects) | 0.47.0 (`ui.title` gains optional `text`, the title heading, and `background` / `music` become optional, an empty `ui.title` being `E-BINDING-SHAPE`; `bindingsVersion` follows the `luteVersion` rule — `W-BINDINGS-VERSION-STALE` when it differs from the toolchain line (`lute fix` raises an older value), and a section newer than the declared line is `E-BINDINGS-VERSION` (`vfx` custom 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); `0.42.0`: `bindingsVersion: "0.42"` and the `-0.42` schema line; optional `volumes: { member: gain }` gains are finite and in `[0, 1]`, with `E-BINDING-KEY`, `W-BINDING-MISSING`, and `E-BINDING-SHAPE` diagnostics. The player resolves volume only through this map.) | [0.42.0.md §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#3-volume-domain-and-bindings-77); [0.41.0.md §7.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#77-music-and-vfx-63); [0.40.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md#5-bindings-playerbindingsyaml) |
+| Player bindings (`player.bindings.yaml`) | 0.40.0 (an optional project file beside `lute.project.yaml` mapping staging vocabulary and assets to player effects) | 0.47.1 (`flow.*.target` values are full occasion targets in the prefixed form (`place.square`), checked by the rule beat and play targets use — a bare member, or a target on an occasion without a target domain, is `E-BINDING-KEY`; `0.47.0`: `ui.title` gains optional `text`, the title heading, and `background` / `music` become optional, an empty `ui.title` being `E-BINDING-SHAPE`; `bindingsVersion` follows the `luteVersion` rule — `W-BINDINGS-VERSION-STALE` when it differs from the toolchain line (`lute fix` raises an older value), and a section newer than the declared line is `E-BINDINGS-VERSION` (`vfx` custom 0.41, `volumes` 0.42, `ui.ended` 0.46, `ui.title.text` 0.47); `0.42.0`: `bindingsVersion: "0.42"` and the `-0.42` schema line; optional `volumes: { member: gain }` gains are finite and in `[0, 1]`, with `E-BINDING-KEY`, `W-BINDING-MISSING`, and `E-BINDING-SHAPE` diagnostics. The player resolves volume only through this map.) | [0.47.1.md §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.47.1.md#2-bindings-flowtarget-133); [0.42.0.md §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.42.0.md#3-volume-domain-and-bindings-77); [0.41.0.md §7.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#77-music-and-vfx-63); [0.40.0.md §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.40.0.md#5-bindings-playerbindingsyaml) |
 
 
 ## Notes on the boundaries
@@ -21903,20 +21922,3 @@ agent-facing addition is the CLI contract: JSON reports have a flat `command`,
 `E-CLI-IO`, or `E-CLI-INPUT`; `lute schema` describes the parser's command tree; and
 local telemetry is opt-out with `LUTE_TELEMETRY=0` or `DO_NOT_TRACK=1`. Artifacts,
 `run --json`, and event streams keep their existing non-report protocols.
-## Player
-
-Lute 0.42 provides a renderer-free player core and a browser implementation.
-`@lute-lang/player@0.47.0` owns runtime sessions, cue scheduling, interaction
-state, saves, profile/read history, backlog, auto/skip, rollback, and host
-bridges. `@lute-lang/player-web@0.47.0` supplies PixiJS 8 rendering, Web Audio,
-screens, assets, and keyboard, pointer/touch and gamepad input.
-
-See the [player overview](/player/overview/), [getting started](/player/getting-started/),
-[bindings reference](/player/bindings/), [custom hosts](/player/custom-hosts/),
-and [controls](/player/controls/) pages. Compile with `lute compile --all`,
-validate `player.bindings.yaml` with `lute check-project`, serve every bundle
-artifact, runtime wasm and bound asset, then call `mountPlayer(element, options)`.
-The core ports are `Presenter`, `AudioPort`, and `AssetLoader`; `PlayerHost`
-handles bridge answers and idle flow. Runtime 0.41 carries `world.stage` and
-`continuation.stage` in snapshots, and timed choices use the `timeout` input
-with their declared `default`.

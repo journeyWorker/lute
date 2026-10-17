@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.47.0 runtime contract.**
+**Status: 0.47.1 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -159,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.47.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.47.1", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -377,7 +377,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.47.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.47.1`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including
