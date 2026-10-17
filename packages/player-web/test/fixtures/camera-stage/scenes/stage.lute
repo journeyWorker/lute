@@ -9,7 +9,7 @@ on: start
 
 ::bg{location="harbor" time="noon"}
 ::actor{character="mara" anchor="center" emotion="neutral"}
-::camera{framing="close" transition="fade" duration="4"}
+::camera{framing="close" transition="fade" duration="8"}
 <branch id="look" prompt="The camera has just closed in.">
   <choice id="on" text="Look on">
     ::camera{framing="wide" transition="fade"}

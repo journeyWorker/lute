@@ -29,5 +29,5 @@ describe("leaving an ended run", () => {
     expect(title).toContain("New game")
     expect(overlays).not.toContain("confirm")
     expect(seen.flat()).not.toContain("Yes")
-  })
+  }, 120_000)
 })

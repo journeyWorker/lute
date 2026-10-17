@@ -3,7 +3,7 @@
 // transition="fade"}`, chapter two's `wipeLeft` and chapter three's
 // `dissolve` cues end at alpha 1 with no mask and their framing; a load
 // during the fade cue and a skip (instant cue) during it leave the actors drawn.
-import { Effect } from "effect"
+import { Effect, Fiber, Stream } from "effect"
 import { Rectangle, Sprite, type Container } from "pixi.js"
 import { afterEach, describe, expect, it } from "vitest"
 import { alphaOf, isDrawn, mountProject, playReading, press, shows, stagePixels, waitFor, type RealPlayer } from "../support/real-player.js"
@@ -131,22 +131,48 @@ describe("camera transitions over the compiled demo", () => {
   }, 180_000)
 })
 
-/** Record the camera layer's alpha and scale every rendered frame until the returned stop is called. */
-const recordCamera = (player: RealPlayer): (() => ReadonlyArray<{ readonly alpha: number; readonly scale: number }>) => {
-  const frames: Array<{ readonly alpha: number; readonly scale: number }> = []
+interface CameraRecording {
+  /** Seconds on the player's clock since recording began: the sum of `pixi.frames`, what its behaviours advance by (at most 0.1s a frame, so a slow machine's clock runs behind wall time). */
+  readonly clock: () => number
+  /** Stop recording; the camera layer's alpha at every frame. */
+  readonly stop: () => Promise<ReadonlyArray<number>>
+}
+
+/** Record the camera layer every frame on the player's own clock. */
+const recordCamera = (player: RealPlayer): CameraRecording => {
+  const alphas: number[] = []
   const { camera } = player.pixi.layers
-  const sample = (): void => { frames.push({ alpha: camera.alpha, scale: camera.scale.x }) }
-  player.pixi.app.ticker.add(sample)
-  return () => {
-    player.pixi.app.ticker.remove(sample)
-    return frames
+  let clock = 0
+  const fiber = Effect.runFork(Stream.runForEach(player.pixi.frames, (seconds) => Effect.sync(() => {
+    clock += seconds
+    alphas.push(camera.alpha)
+  })))
+  return {
+    clock: () => clock,
+    stop: () => Effect.runPromise(Fiber.interrupt(fiber)).then(() => alphas)
   }
 }
 
-// The compiled `camera-stage` fixture: a 4s fade camera cue is the last cue
+/** Poll `probe` until it holds; fail once the recording's clock is past `by` seconds without it. */
+const untilClock = async (recording: CameraRecording, probe: () => boolean, by: number, what: string): Promise<void> => {
+  for (;;) {
+    const now = recording.clock()
+    if (probe()) return
+    if (now > by) throw new Error(`timed out waiting for ${what}: ${now.toFixed(2)}s on the player's clock, due by ${by.toFixed(2)}s`)
+    await Effect.runPromise(Effect.sleep("20 millis"))
+  }
+}
+
+/** The fixture's `::camera{framing="close" transition="fade" duration="8"}`, in seconds. */
+const cueSeconds = 8
+/** A few frames (at most 0.1s each) between the player's clock and what the probes read. */
+const frameSlack = 0.5
+
+// The compiled `camera-stage` fixture: an 8s fade camera cue is the last cue
 // of its batch (a choice follows; the batch settles, autosaving at the
-// choice, while the cue still runs), then a fade cue is followed at once by
-// a `move` cue with another framing.
+// choice, while the cue still runs: long enough for a slow machine to settle
+// before its midpoint), then a fade cue is followed at once by a `move` cue
+// with another framing.
 describe("camera transitions over the compiled camera-stage fixture", () => {
   let player: RealPlayer | undefined
   afterEach(async () => {
@@ -157,18 +183,21 @@ describe("camera transitions over the compiled camera-stage fixture", () => {
   it("plays a transition that ends its batch: hidden at its midpoint, then at rest", async () => {
     player = await mountProject("camera-stage")
     await waitFor(async () => (await player!.view()).flow === "title", "the title")
-    const stop = recordCamera(player)
+    const recording = recordCamera(player)
     await player.act({ type: "setSettings", settings: { textSpeed: 0 } })
     await player.act({ type: "newGame" })
     await waitFor(async () => (await player!.view()).story === "choice", "the choice after the camera cue")
-    // The batch settled at the choice before the cue's midpoint (2s) …
+    // The batch settled at the choice before the cue's midpoint …
     expect(player.pixi.layers.camera.alpha).toBeGreaterThan(0.1)
-    // … and the transition played on: hidden at its midpoint, then at rest.
-    await waitFor(() => player!.pixi.layers.camera.alpha < 0.1, "the layer to be hidden at the midpoint", 5_000)
-    await waitFor(() => player!.pixi.layers.camera.alpha === 1, "the transition to end", 5_000)
+    // … and the transition played on: hidden at its midpoint, then at rest,
+    // each within the cue's own timing on the player's clock (the cue began
+    // before the choice), never by wall time a slow machine stretches.
+    const choiceAt = recording.clock()
+    await untilClock(recording, () => player!.pixi.layers.camera.alpha < 0.1, choiceAt + cueSeconds / 2 + frameSlack, "the layer to be hidden at the midpoint")
+    await untilClock(recording, () => player!.pixi.layers.camera.alpha === 1, choiceAt + cueSeconds + frameSlack, "the transition to end")
     await settle()
-    const frames = stop()
-    expect(Math.min(...frames.map((frame) => frame.alpha))).toBeLessThan(0.1)
+    const alphas = await recording.stop()
+    expect(Math.min(...alphas)).toBeLessThan(0.1)
     expectActorsDrawn(player)
     // `close` framing (zoom 1.3).
     expect(player.pixi.layers.camera.scale.x).toBeCloseTo(1.3)
