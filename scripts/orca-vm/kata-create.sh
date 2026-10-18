@@ -69,6 +69,24 @@ project_root="/workspace/$repo_name"
 git_name="$(git config user.name || true)"
 git_email="$(git config user.email || true)"
 
+# Provisioned root: the workspace IS this sandbox checkout (orca.yaml sets
+# checkoutMode: provisioned-root). Without it Orca adds a bare linked worktree
+# next to it, missing submodules, LFS assets, .env and the Flutter seed that
+# this script prepares. Orca passes the branch to create at the exact commit
+# it resolved; `orca vm recipe doctor` passes neither, and then the checkout
+# stays on the default branch.
+result_schema="${ORCA_RECIPE_RESULT_SCHEMA_VERSION:-1}"
+checkout_branch="" checkout_head="" checkout_ref=""
+if [ "$result_schema" = 2 ] && [ -n "${ORCA_REPO_REF_HEAD:-}" ]; then
+  [ -n "${ORCA_REPO_BRANCH:-}" ] || die "ORCA_REPO_REF_HEAD set without ORCA_REPO_BRANCH"
+  checkout_branch="$ORCA_REPO_BRANCH" checkout_head="$ORCA_REPO_REF_HEAD"
+  # Orca resolves the base ref on the desktop remote (e.g. origin/main); the
+  # sandbox fetches the same branch from GitHub.
+  checkout_ref="${ORCA_REPO_REF:-$repo_ref}"
+  checkout_ref="${checkout_ref#refs/remotes/}"; checkout_ref="${checkout_ref#refs/heads/}"
+  checkout_ref="${checkout_ref#origin/}"
+fi
+
 instance="${ORCA_VM_INSTANCE_ID:-$(date +%s)}"
 instance="${instance#orca-}"
 claim="$(printf 'orca-%s-%s' "$repo_name" "$instance" | tr 'A-Z_.' 'a-z--' | tr -cd 'a-z0-9-' | cut -c1-55)"
@@ -144,13 +162,16 @@ fi
 # host key, read over the authenticated Kubernetes API rather than an
 # unverified ssh-keyscan.
 host_key="$(
-  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" \
-    "$project_root" "$git_name" "$git_email" "$FEATURES" "$emu_addr" |
+  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" \
+    "$project_root" "$git_name" "$git_email" "$FEATURES" "$emu_addr" \
+    "$checkout_branch" "$checkout_head" "$checkout_ref" |
     k exec -i "$sandbox" -- bash -c '
 set -euo pipefail
 read -r pub; read -r repo_url; read -r repo_ref; read -r project_root
 IFS= read -r git_name || true; IFS= read -r git_email || true
 IFS= read -r features || true; IFS= read -r emu_addr || true
+IFS= read -r checkout_branch || true; IFS= read -r checkout_head || true
+IFS= read -r checkout_ref || true
 has() { case ",$features," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 D='"$SSHD_DIR"'
 umask 077
@@ -196,6 +217,16 @@ lfs_from_mirror() {
   git -C "$co" lfs pull --include "$inc" >&2
 }
 
+# pin_checkout <checkout>: provisioned root; put the workspace branch at the
+# exact commit Orca resolved (fetching it only if the clone lacks it).
+pin_checkout() {
+  [ -n "$checkout_head" ] || return 0
+  git -C "$1" cat-file -e "$checkout_head^{commit}" 2>/dev/null ||
+    git -C "$1" fetch --quiet origin "$checkout_ref" >&2
+  git -C "$1" cat-file -e "$checkout_head^{commit}"
+  git -C "$1" checkout --quiet -B "$checkout_branch" "$checkout_head" >&2
+}
+
 if [ ! -d "$project_root/.git" ]; then
   mirror="/forca/git/$(key "$repo_url").git"
   if has mirror && [ -d "$mirror" ]; then
@@ -206,6 +237,7 @@ if [ ! -d "$project_root/.git" ]; then
     git -C "$project_root" remote set-url origin "$repo_url"
     git -C "$project_root" fetch --quiet origin >&2
     git -C "$project_root" reset --quiet --hard "origin/$repo_ref"
+    pin_checkout "$project_root"
     git -C "$project_root" submodule init --quiet
     git -C "$project_root" config --get-regexp "^submodule\..*\.url$" | while read -r name url; do
       sm="/forca/git/$(key "$url").git"
@@ -225,6 +257,7 @@ if [ ! -d "$project_root/.git" ]; then
     unset GIT_LFS_SKIP_SMUDGE
   else
     git clone --quiet --filter=blob:none --branch "$repo_ref" "$repo_url" "$project_root" >&2
+    pin_checkout "$project_root"
     git -C "$project_root" submodule update --init --recursive --filter=blob:none --quiet >&2 || \
       echo "warning: submodule init failed" >&2
   fi
@@ -347,5 +380,7 @@ fi
 
 trap - ERR
 log "ready: $sandbox ($project_root)${emu_pod:+, emulator $emu_pod (desktop adb 127.0.0.1:$adb_port)}"
-printf '{"schemaVersion":1,"connection":{"type":"ssh","projectRoot":"%s","target":{"label":"kata-%s","host":"%s","port":22,"username":"dev","identityFile":"%s","identitiesOnly":true,"proxyCommand":"%s"}},"userData":{"provider":"agent-sandbox","resourceId":"%s","sandbox":"%s","namespace":"%s","kubeconfig":"%s","emuClaim":"%s","adbPort":"%s"}}\n' \
-  "$project_root" "$repo_name" "$sandbox" "$ssh_key" "$proxy_command" "$claim" "$sandbox" "$NAMESPACE" "$kubeconfig" "$emu_claim" "$adb_port"
+checkout_mode=""
+[ "$result_schema" = 2 ] && checkout_mode=',"checkoutMode":"provisioned-root"'
+printf '{"schemaVersion":%s%s,"connection":{"type":"ssh","projectRoot":"%s","target":{"label":"kata-%s","host":"%s","port":22,"username":"dev","identityFile":"%s","identitiesOnly":true,"proxyCommand":"%s"}},"userData":{"provider":"agent-sandbox","resourceId":"%s","sandbox":"%s","namespace":"%s","kubeconfig":"%s","emuClaim":"%s","adbPort":"%s"}}\n' \
+  "$result_schema" "$checkout_mode" "$project_root" "$repo_name" "$sandbox" "$ssh_key" "$proxy_command" "$claim" "$sandbox" "$NAMESPACE" "$kubeconfig" "$emu_claim" "$adb_port"
