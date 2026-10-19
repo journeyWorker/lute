@@ -1,6 +1,6 @@
 /**
  * A compiled bundle: `project.index.json` and every artifact it lists, keyed
- * by the index's `artifact` paths — the output of `lute compile --all`
+ * by the index's `artifact` paths — the output of `lute compile --project <DIR> -o <DIR>`
  * (spec 0.38.0 §4.1). The index is typed by the generated `Ir.projectIndex`
  * (spec 0.41.0 §4.4); the runtime validates the whole bundle on load.
  */

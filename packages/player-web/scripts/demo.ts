@@ -22,7 +22,7 @@ if (lute === undefined) throw new Error("cannot find lute; set LUTE_BIN or build
 // The demo build never writes the developer's telemetry (dsl 0.43.0 §6).
 // Its Korean translation is merged from `lute loc import locales/ko.json`.
 const locales = join(project, "locales/bundle.json")
-const compile = Bun.spawnSync([lute, "compile", "--all", project, "--locales", locales, "-o", bundle], { cwd: repo, env: { ...process.env, LUTE_TELEMETRY: "0" }, stdout: "inherit", stderr: "inherit" })
+const compile = Bun.spawnSync([lute, "compile", "--project", project, "--locale-bundle", locales, "-o", bundle], { cwd: repo, env: { ...process.env, LUTE_TELEMETRY: "0" }, stdout: "inherit", stderr: "inherit" })
 if (compile.exitCode !== 0) process.exit(compile.exitCode ?? 1)
 
 const built = await Bun.build({

@@ -1,7 +1,7 @@
 /**
  * Lute 0.47.1 §2 (#133): a bindings `flow` target is the full occasion
  * target `raiseOccasion` takes. Over the compiled `flow-target-0471` fixture
- * (which `lute check-project` accepts, `crates/lute-cli/tests/flow_target_0471.rs`)
+ * (which `lute check --project` accepts, `crates/lute-cli/tests/flow_target_0471.rs`)
  * the idle menu raises `visit` for `place.square` and the beat targeted at
  * it is presented; the bare member the checker now refuses reaches no beat.
  */
@@ -21,8 +21,8 @@ const overTown = <A, E, R>(use: Effect.Effect<A, E, R>) =>
   Effect.flatMap(compileBundle(flowTargetProject), (bundle) => Effect.provide(use, hostLayer(bundle)))
 
 describe("flow targets are raised as written (0.47.1 §2)", () => {
-  it.effect("the idle menu raises `place.square`, which check-project accepts, and its beat is presented", () => overTown(Effect.scoped(Effect.gen(function* () {
-    // The bindings raised below are the ones `lute check-project` accepts.
+  it.effect("the idle menu raises `place.square`, which `check --project` accepts, and its beat is presented", () => overTown(Effect.scoped(Effect.gen(function* () {
+    // The bindings raised below are the ones `lute check --project` accepts.
     yield* checkProject(flowTargetProject)
     const bindings = yield* fixtureBindings
     expect(bindings.flow?.idle).toEqual({ menu: [

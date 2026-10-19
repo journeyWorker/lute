@@ -53,7 +53,7 @@ scripts/check-release-workflow-safety.py):
    - a class heading may contain `None`, but may not be omitted or renamed.
 
 5. Example-check manifest: prints the one example root CI runs
-   `lute check-project` against (docs/examples). `conformance/` is NOT a root:
+   `lute check --project` against (docs/examples). `conformance/` is NOT a root:
    each fixture is an independent single-document contract test replayed on
    its own (see conformance/README.md), and several deliberately reuse the same
    scene identity, so unioning them into one project is `E-CONN-EPISODE-ID-DUP`
@@ -534,7 +534,7 @@ def main() -> int:
         f"canonical domain is coherent; {status_count} status-marked docs "
         f"under proposals/design/superpowers."
     )
-    print("check-docs-consistency: example roots for CI check-project:")
+    print("check-docs-consistency: example roots for CI check --project:")
     for r in roots:
         print(f"  - {r}")
     return 0

@@ -34,7 +34,7 @@ export const compileBundle = (projectDir: string): Effect.Effect<string> => Effe
     cliBuilt = true
   }
   const output = mkdtempSync(join(tmpdir(), "lute-runtime-bundle-"))
-  command([join(targetDir, "debug", "lute"), "compile", "--all", projectDir, "-o", output], repositoryRoot)
+  command([join(targetDir, "debug", "lute"), "compile", "--project", projectDir, "-o", output], repositoryRoot)
   return output
 })
 

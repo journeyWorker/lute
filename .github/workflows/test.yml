@@ -39,8 +39,8 @@ name: Test
 # `.github/workflows/docs.yml` cannot own that half: its `paths:` names only
 # `crates/lute-check/src/lib.rs` and `crates/lute-compile/src/lib.rs`, and
 # widening it to `crates/**` would run a full Astro website build on every Rust
-# change. So the two doc checks, `lute test docs/examples` and the per-game
-# `check-project --deny-warnings` ride here, where
+# change. So the two doc checks, `lute test --project docs/examples` and the per-game
+# `check --project --deny-warnings` ride here, where
 # `crates/**` is already in the trigger set and `target/debug/lute` is already
 # built. This is not duplicated coverage: `docs.yml` fires when a DOC moves,
 # this job fires when the BINARY the doc quotes — or runs — moves.
@@ -255,17 +255,17 @@ jobs:
       # docs/superpowers/notes/2026-07-31-haven-drive-test-findings.md). This
       # step catches the former class and is honestly blind to the latter.
       - name: Scenario suite gate (docs/examples tests vs this binary)
-        run: ./target/debug/lute test docs/examples
+        run: ./target/debug/lute test --project docs/examples
 
       # The crates-side half of `docs.yml`'s per-game `--deny-warnings` step:
       # a checker change that adds a warning to any of the fourteen games
       # under docs/examples/games moves the binary, not the docs, so it would
       # never trip the doc-side half.
-      - name: Game gate (check-project --deny-warnings each docs/examples/games/*)
+      - name: Game gate (check --project --deny-warnings each docs/examples/games/*)
         run: |
           set -euo pipefail
           for game in docs/examples/games/*/; do
-            ./target/debug/lute check-project --deny-warnings "${game%/}"
+            ./target/debug/lute check --project "${game%/}" --deny-warnings
           done
 
       # Its crate inputs today are only the two version consts `docs.yml`
@@ -461,7 +461,7 @@ jobs:
         run: bun run wasm:build
 
       - name: Check the player demo project and bindings
-        run: ./target/debug/lute check-project examples/player-demo && ./target/debug/lute test examples/player-demo
+        run: ./target/debug/lute check --project examples/player-demo && ./target/debug/lute test --project examples/player-demo
 
       - name: Typecheck player core
         working-directory: packages/player
