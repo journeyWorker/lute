@@ -1211,9 +1211,9 @@ Exit codes: `0` complete, `1` refused (check errors or invalid mocks —
 (an `unknown` guard halted the walk).
 
 **D20 — auto-selection honesty (confirmed; ratified in spec §4.4).** At a `<branch>`/`<hub>`
-with no `--choice` entry, zero true-eligible choices, and at least one unknown-guarded
+with no `--choose` entry, zero true-eligible choices, and at least one unknown-guarded
 choice, the walk halts incomplete (exit 3) rather than guessing past the unknown eligibility
-— `--choice` remains the documented escape hatch. Confirmed by the hub design decision (hub is
+— `--choose` remains the documented escape hatch. Confirmed by the hub design decision (hub is
 an interactive conversation wheel, `0.1 §7.3.2`): trace cannot simulate the player's weave
 under unknown eligibility, so halting honestly is the correct preview behavior.
 
@@ -1248,7 +1248,7 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
 [`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
-— `lute trace docs/examples/choice-persist.lute --choice sofaHelp=help`).
+— `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
 
 ## Capability permission architecture (0.17.0)
 
