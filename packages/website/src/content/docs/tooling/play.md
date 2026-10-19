@@ -186,7 +186,7 @@ For `select: sequence`, the candidates are listed when the occasion is raised, a
 ## `lute play`
 
 ```console
-$ lute play --project <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]… [--conditions-output <FILE>]
+$ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]… [--conditions-output <FILE>]
 ```
 
 ### Runtime event stream (`--events`)
@@ -206,7 +206,7 @@ first choice opens a second await):
 {"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
-- `--project <PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --project` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
+- `--project <DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --project` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
 - `--script <FILE>` — required: the play script, a `*.play.yaml` file.
 - `--json` — the same transcript as one JSON object on stdout.
 - `--ir` — print staging as the lowered IR records (`::bg`, `::actor`, and the preloads and pose resets the compiler injects) instead of the directives as authored. See [The transcript](#the-transcript).

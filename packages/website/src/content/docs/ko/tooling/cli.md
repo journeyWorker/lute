@@ -102,7 +102,7 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 ## schema
 
 ```console
-$ lute schema [COMMAND]...
+$ lute schema [<COMMAND>]…
 ```
 
 명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion` — 그리고 `inputs`(0.47)입니다. `inputs`는 명령이 읽는 구조화된 입력마다 한 항목이며, `patch`를 뺀 모든 명령에서 빈 목록입니다. `patch`의 `PATCH` 요청은 `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }`로 설명됩니다([patch 요청](/ko/tooling/ai-harness/#patch-요청-047) 참고). 파서 자신의 정의에서 나오므로 `--help`나 patch 요청 파서와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
@@ -268,7 +268,7 @@ impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었�
 
 ```console
 $ lute compile <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
-                      [-o, --output <FILE>] [--locale-bundle <FILE>]
+                      [-o, --output <PATH>] [--locale-bundle <FILE>]
                       [--deny <CODE>]… [--deny-warnings] [--json]
 $ lute compile --project <DIR> -o <DIR> [--providers <DIR>] [--permission-profile <NAME>]
                       [--locale-bundle <FILE>] [--deny <CODE>]… [--deny-warnings] [--json]
@@ -410,9 +410,9 @@ $ lute expr "@at(3, 'night')" --json
 
 ```console
 $ lute trace <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
-              [--deny <CODE>]… [--deny-warnings] [--state P=L]… [--fact "R(A…)"]…
-              [--choice BRANCH=CHOICE[,CHOICE]]… [--event N]… [--accepted-quest Q]…
-              [--occasion O[@T]]… [--mock <FILE>] [--entry <ID> | --beat <ID>]
+              [--deny <CODE>]… [--deny-warnings] [--state <PATH>=<LITERAL>]… [--fact <ATOM>]…
+              [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]… [--event <N>]… [--accepted-quest <QUEST>]…
+              [--occasion <OCCASION>[@<TARGET>]]… [--mock <FILE>] [--entry <ID> | --beat <ID>]
               [--no-derive] [--expand] [--json]
 ```
 
@@ -451,9 +451,9 @@ $ lute scenario knowledge [--node <NODE>]
 
 **결말** (0.27.0). 정적 판정이 결말을 반박하면 명령은 **1**로 종료하고(그 외에는 `unknown`을 포함해 0), CI가 이를 게이트로 사용할 수 있습니다. never-holds 행은 자신이 따르는 `when`에서 유도된 오류를 인용합니다(`caused by E-WHEN-LITERAL-DOMAIN at 7:99: …`, 인용된 리터럴 위치; JSON에서는 각 항목이 `{code, line, column, message}`인 `causes`, 열은 문자 단위로 계산). `--format`과 `--json`은 `reach` 앞이나 뒤에 올 수 있습니다. `reach --endings=<occasion>`은 해당 계기에 응답하는 모든 beat를 나열합니다. 인자 없는 `reach --endings`는 자체 본문 또는 `::use`하는 컴포넌트에서 `::end`를 실행할 수 있는 모든 beat(씬 beat, 번들 beat, entry)를 나열합니다. 결말마다 한 행을 출력하며, id와 파일, `reach --node <NODE>`가 제공하는 `after:` 판정, 전체 프로젝트 `check`가 도달하는 `when` 판정(`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`: never holds, `W-BEAT-SHADOWED`: never wins), 그리고 `when`을 반박하는 것이 없는 경우 해당 `when`이 읽는 상태 경로와 팩트 원자 및 그 producer를 표시합니다. producer는 경로를 기록하는 문서(자체 `::set` 또는 `<choice into>`, `::use`된 컴포넌트, 플러그인 디렉티브의 선언된 효과, 보상의 `credits:`), `owner: engine` 경로의 엔진, 또는 쓰기가 도달하지 않는 콘텐츠 경로의 `nothing writes it`입니다. 팩트 producer는 `knowledge`와 같은 방식으로 읽습니다. 요약 행에는 `N ending(s): A reachable, B unreachable, C unknown`을 출력합니다. “Reachable”은 정적으로 반박하는 것이 없다는 뜻이며, 기록된 경로가 `when`에 필요한 값에 도달할 수 있는지는 분석하지 않습니다. 따라서 결말을 제시하는 플레이가 증명이고, `lute test --coverage`는 어떤 플레이도 제시하지 않는 beat를 나열합니다. 노드 id는 받지 않으며(`reach --node <NODE> --endings`는 사용법 오류, 종료 2), 어떤 beat도 응답하지 않는 계기도 마찬가지입니다. 명령은 종료 0으로 끝납니다. `--json`은 `{roots: [{root, occasion, endings: [{id, kind, file, verdict, after, when, needs}], summary}]}`를 제공합니다.
 
-**번들 비트는 노드입니다** (dsl 0.23.0 §4). lore 문서의 각 `<beat>`는 `beat(<document id>.<beat id>)`로 그려집니다. `after=`를 선언하지 않았으면 엣지가 없는 레이어 0의 entry 노드이며, 대신 계기, 대상, `when`으로 선택됩니다. 선언한 경우에는 (dsl 0.25.0 §3) `after=`가 그리는 엣지의 종속 노드가 됩니다. `reach <beat id>`는 `Reachable`이라고 답한 다음 `after:` 행을 출력합니다(`(none declared) — an entry node: …` 또는 beat의 `after=` 식). 이어서 선언 파일(`declared in:`), 작성된 그대로의 `on:`, `target:`, `when:`을 출력합니다. `envelope <beat id>`는 entry-floor 표를 출력하며 seed 팩트가 보장된 팩트가 됩니다. dsl 0.24.0 §2부터 `after:`는 번들 beat(`visited('<doc>.<beat>')`)를 이름으로 지정할 수 있고 연결성은 이를 씬처럼 통과합니다. [씬 그래프](/ko/connectivity/scene-graph/#번들-비트)를 참고하세요.
+**번들 비트는 노드입니다** (dsl 0.23.0 §4). lore 문서의 각 `<beat>`는 `beat(<document id>.<beat id>)`로 그려집니다. `after=`를 선언하지 않았으면 엣지가 없는 레이어 0의 entry 노드이며, 대신 계기, 대상, `when`으로 선택됩니다. 선언한 경우에는 (dsl 0.25.0 §3) `after=`가 그리는 엣지의 종속 노드가 됩니다. `reach --node <beat id>`는 `Reachable`이라고 답한 다음 `after:` 행을 출력합니다(`(none declared) — an entry node: …` 또는 beat의 `after=` 식). 이어서 선언 파일(`declared in:`), 작성된 그대로의 `on:`, `target:`, `when:`을 출력합니다. `envelope --node <beat id>`는 entry-floor 표를 출력하며 seed 팩트가 보장된 팩트가 됩니다. dsl 0.24.0 §2부터 `after:`는 번들 beat(`visited('<doc>.<beat>')`)를 이름으로 지정할 수 있고 연결성은 이를 씬처럼 통과합니다. [씬 그래프](/ko/connectivity/scene-graph/#번들-비트)를 참고하세요.
 
-비앵커 퀘스트(dsl 0.21.0 §7a.5)는 어떤 레이어나 엣지에도 놓이지 않지만 보고서에서 빠지지 않습니다. `reach quest:<id>`는 ``Unanchored — a quest with no declared `follows` edge: available from the start of play; …`` 판정을 제공합니다(JSON에서는 `"reach": "unanchored"`). `after:` 행은 `(none declared) — unanchored: this quest is in no prerequisite graph layer and on no edge; it is available from the start of play.`입니다. `follows=` 없이 앵커된 퀘스트는 이를 활성화하는 `::accept`, 부모(서브퀘스트), 또는 `start` conjunct(dsl 0.25.0 §4)가 제공하는 앵커를 대신 나열합니다. `[start] entry(keeperLog)`처럼 한 줄씩 표시하며, JSON에서는 각 항목이 `{ kind, from }`인 `anchors`입니다.
+비앵커 퀘스트(dsl 0.21.0 §7a.5)는 어떤 레이어나 엣지에도 놓이지 않지만 보고서에서 빠지지 않습니다. `reach --node quest:<id>`는 ``Unanchored — a quest with no declared `follows` edge: available from the start of play; …`` 판정을 제공합니다(JSON에서는 `"reach": "unanchored"`). `after:` 행은 `(none declared) — unanchored: this quest is in no prerequisite graph layer and on no edge; it is available from the start of play.`입니다. `follows=` 없이 앵커된 퀘스트는 이를 활성화하는 `::accept`, 부모(서브퀘스트), 또는 `start` conjunct(dsl 0.25.0 §4)가 제공하는 앵커를 대신 나열합니다. `[start] entry(keeperLog)`처럼 한 줄씩 표시하며, JSON에서는 각 항목이 `{ kind, from }`인 `anchors`입니다.
 
 0.23.0부터 그래프 보기 마지막에는 그리지 않은 `completed()`/`active()`/`visited()` 참조를 나열하는 `note:`도 나옵니다. 퀘스트의 엣지는 `follows`, 서브퀘스트 트리, `start` conjunct, `::accept`에서 나오므로 엣지 없는 퀘스트를 이름으로 지정하는 `completed()`와 앵커 역할을 하는 `start` conjunct 밖에서 읽는 퀘스트의 `visited()`가 나열됩니다(`--json`에서는 `omitted`). [시나리오 그래프가 생략하는 것](/ko/tooling/overviews/#시나리오-그래프에서-생략하는-것)을 참고하세요. `knowledge [--node <NODE>]`는 모든 팩트 게이트 조건을 규칙을 따라 추적하여 팩트 producer인 단언 문서, seed 팩트, `reserved` 또는 `NO PRODUCER`를 찾습니다. dsl 0.24.0부터 beat, entry 및 objective 가드, 줄 `when=`, `<choice when>`, `<when>` arm 테스트, `::jump`/`::set` `when`, `<on when>`, 보상 `when`, 퀘스트 `start`/`fail` 및 목표 `until` 등 모든 가드 슬롯을 다룹니다. 문서별로 각 가드의 소스 줄과 함께 묶습니다. 부정은 “holds unless defeated”로 읽으며, 각 무효화 원인마다 `defeated when …` 한 줄을 출력합니다. 파생 무효화 원인은 모든 도출 경로와 함께 `⇐ … / ⇐ …`로 표시합니다(dsl 0.25.0 §9). 또는 “always holds (…) — cannot be defeated”를 출력하며, 파생 원자의 규칙은 한 번만 출력하고 이후 언급에서는 `traced above under …`라고 합니다. `knowledge`는 텍스트(기본) 또는 `--json`을 받습니다(JSON 요소에는 `for`와 `line`이 포함됨). `--node`는 씬(내부의 모든 가드), 번들 beat, entry id, `<quest>.<objective>`, `quest:<id>`, 또는 `<scene>#<branch>.<choice>`(단일 choice)를 받으며, 일치하지 않으면 did-you-mean과 함께 종료 **2**입니다. 규칙의 전제도 추적합니다. 엔티티 종류 원자는 멤버십으로 읽습니다(`person(ada) — entity kind `person`; ada is a member`, 선언되지 않은 관계가 아님). `cel(…)` 전제는 읽는 상태를 이름으로 표시합니다(`cel("run.slot == 'evening'") — state condition on run.slot, decided at run time`). `--json`에서 규칙 전제는 `{ relation, negated? }`, `{ entityKind }` 또는 `{ cel }`입니다. `envelope`의 Facts 행도 동일한 producer 표현(`seed facts …`, `reserved — the engine asserts it`, `derived by 1 rule`)을 사용합니다. 두 기능 모두 실제 출력과 함께 [스토리 개요](/ko/tooling/overviews/#lute-scenario-knowledge)에 설명되어 있습니다.
 
@@ -476,7 +476,7 @@ $ lute beats [--project <DIR>] [--providers <DIR>] [--occasion <OCCASION>]… [-
 ```console
 $ lute calendar [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
                 [--deny <CODE>]… [--deny-warnings]
-                [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | <family>.*=… | <family>[<axis>]=… | clock[=<d1>..<d2>]]…
+                [--axis <AXIS>=<VALUES>]…
                 [--occasion <OCCASION>]… [--occasion-axes <OCCASION>=<AXES>]… [--relation <RELATION>]…
                 [--target <TARGET>]… [--script <FILE> [--until <STEP>]] [--where <EXPR>]
                 [--format text|csv] [--json]
@@ -690,7 +690,7 @@ $ lute catalog refresh [--project <DIR>] [--providers <DIR>] [--json]
 ## init
 
 ```console
-$ lute init [<DIR>] [--template minimal|investigation|beats] [--json]
+$ lute init [<DIR>] [--template <NAME>] [--json]
 ```
 
 `lute check --project`를 실행할 수 있는 새 Lute 프로젝트 디렉터리를 스캐폴딩합니다. `<DIR>`의 기본값은 `.`입니다. 쓸 파일 중 하나라도 이미 있으면 아무것도 쓰지 않고 그 파일을 알려 주며 종료 **2**로 거부합니다. 안내하는 "Next steps"와 생성된 README는 0.48 명령줄을 씁니다. `--json`은 보고서 `0.48.0.init`(`{dir, template, files: [path]}`)을 출력합니다. `--template`은 시작 콘텐츠를 선택합니다.

@@ -839,10 +839,10 @@ project root: .
 
 `relight`는 `start` conjunct들로 앵커되므로 `follows=`가 필요하지 않으며, `oil`과 `wick`은 `[subquest]` 간선으로 그 아래에 매달립니다. `keeper.greeting`은 자신의 `after=`로 순서가 정해집니다. `keeper.warning`은 같은 종류의 팩트를 `when`에서 읽지만 아무것도 순서화하지 않으므로, 작성할 `after=`와 함께 표시됩니다. `salvage`와 `lostDog`는 어떤 간선에도 없으므로 `farewell`의 `after:`에 있는 `completed("salvage")`도 그려지지 않으며, 목표의 `visited()` 읽기는 조건일 뿐 앵커가 아닙니다.
 
-`--json`은 루트의 `unanchored`에 앵커되지 않은 노드를, `unanchoredHints`(노드 → 힌트)에 비트 힌트를, 그리지 않은 참조를 `omitted`에 담습니다. 각 `omitted` 항목은 `completed`/`active` 참조의 경우 `{ from, kind, quest }`, 퀘스트의 `visited()` 읽기의 경우 `{ from, kind: "visited", scene, slot }`입니다. `lute scenario --project . reach quest:relight`는 퀘스트 앵커(`anchors`, JSON에서는 각 항목이 `{ kind, from }`)를 나열합니다.
+`--json`은 루트의 `unanchored`에 앵커되지 않은 노드를, `unanchoredHints`(노드 → 힌트)에 비트 힌트를, 그리지 않은 참조를 `omitted`에 담습니다. 각 `omitted` 항목은 `completed`/`active` 참조의 경우 `{ from, kind, quest }`, 퀘스트의 `visited()` 읽기의 경우 `{ from, kind: "visited", scene, slot }`입니다. `lute scenario --project . reach --node quest:relight`는 퀘스트 앵커(`anchors`, JSON에서는 각 항목이 `{ kind, from }`)를 나열합니다.
 
 ```console
-$ lute scenario --project . reach quest:relight
+$ lute scenario --project . reach --node quest:relight
 project root: .
 reach quest(relight):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -854,7 +854,7 @@ reach quest(relight):
     - entry(keeperLog): Reachable — a satisfiable route exists under your declared routes.
 ```
 
-로어 엔트리는 퀘스트의 `start` 앵커 소스인 `entry(<id>)`로서만 그래프에 들어옵니다. 번들 비트는 항상 노드입니다. `after=`가 없는 비트는 엔트리 노드이고, `after=`가 있는 비트는 자신이 그리는 간선의 종속 노드입니다. `lute scenario --project . reach keeper.greeting`(또는 `reach beat:keeper.greeting`)은 이를 선언한 파일과 `on`, `target`, `when`을 출력합니다. [씬 그래프](/ko/connectivity/scene-graph/#번들-비트)를 참고하세요.
+로어 엔트리는 퀘스트의 `start` 앵커 소스인 `entry(<id>)`로서만 그래프에 들어옵니다. 번들 비트는 항상 노드입니다. `after=`가 없는 비트는 엔트리 노드이고, `after=`가 있는 비트는 자신이 그리는 간선의 종속 노드입니다. `lute scenario --project . reach --node keeper.greeting`(또는 `reach --node beat:keeper.greeting`)은 이를 선언한 파일과 `on`, `target`, `when`을 출력합니다. [씬 그래프](/ko/connectivity/scene-graph/#번들-비트)를 참고하세요.
 
 ### 팩트 간선(`lute scenario --facts`)
 

@@ -457,7 +457,7 @@ trace complete: 1 decision; 1 unresolved (forced past an unknown guard — the w
 
 With `--state run.day=3` the rule concludes `warrant(ann)` and `now` is eligible outright.
 
-**`derive: false` restores 0.21.** The mock key `derive: false` (also accepted in a `*.test.yaml`), or the `--no-derive` flag on `lute trace` and `lute test` — the flag wins over the key — brings back the lookup-only model: the seed facts are not loaded, the rules are not applied, and a fact of a derived relation that you did not mock is **unknown**, so a guard on it halts the walk (exit 3) unless forced. A note says so when the schema declares seed facts you did not supply, and another names each derived relation the walk read. (`lute play` takes the same key and flag; there the seed facts still load and only the rules stop — see [Playing a story](/tooling/play/#derivation-and---explain).)
+**`derive: false` restores 0.21.** The mock key `derive: false` (also accepted in a `*.test.yaml`), or the `--no-derive` flag on `lute trace` and `lute test` — the flag wins over the key — brings back the lookup-only model: the seed facts are not loaded, the rules are not applied, and a fact of a derived relation that you did not mock is **unknown**, so a guard on it halts the walk (exit 3) unless forced. A note says so when the schema declares seed facts you did not supply, and another names each derived relation the walk read. (`lute play` takes the same key and flag; there the seed facts still load and only the rules stop — see [Playing a story](/tooling/play/#derivation-and---derivation).)
 
 ```console
 $ lute trace accuse.lute --choice ask=skip --choice verdict=ann --no-derive

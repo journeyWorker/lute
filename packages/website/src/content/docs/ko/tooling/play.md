@@ -310,7 +310,7 @@ steps:
 ## `lute play`
 
 ```console
-$ lute play --project <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]…
+$ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]…
 ```
  
 시간 제한 branch에서는 `choose` 대신 `timeout: true`로 만료를 답할 수 있습니다.
@@ -340,7 +340,7 @@ steps:
 {"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
-- `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --project`와 같은
+- `--project <DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --project`와 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를
   두 타입으로 선언한 프로젝트는 그 게이트에서 실패하고(`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), 플레이는
   시작을 거부합니다(종료 코드 1). 프로젝트는 플레이마다 한 번 로드됩니다. dsl 0.26.0부터 팩트 분석을 비트마다가

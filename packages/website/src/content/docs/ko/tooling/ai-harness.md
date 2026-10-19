@@ -61,21 +61,21 @@ lute compile --stream scene.lute --project . \
 
 ## capability-resolution 오류가 종료 코드를 결정합니다
 
-일부 오류는 문서 위치의 span이 아니라 **프로젝트**를 설명합니다. 예를 들면 존재하지 않거나 선언된 타입에 맞지 않는 플러그인 옵션, 알 수 없는 토큰을 이름 붙인 `identity:` 템플릿, 설치되지 않은 플러그인을 활성화한 profile, 잘못된 permission 객체, 또는 빠진 `--permission-profile`입니다. 이런 오류는 `lute:` 채널 — stderr, `lute: <CODE>: <message>` — 에 출력되며, 붙일 문서 위치가 없으므로 `--json` 진단 목록에는 들어가지 않습니다. 권한 설정 오류는 제한 없는 동작으로 fallback하지 않습니다.
+일부 오류는 문서 위치의 span이 아니라 **프로젝트**를 설명합니다. 예를 들면 존재하지 않거나 선언된 타입에 맞지 않는 플러그인 옵션, 알 수 없는 토큰을 이름 붙인 `identity:` 템플릿, 설치되지 않은 플러그인을 활성화한 profile, 잘못된 permission 객체, 또는 빠진 `--permission-profile`입니다. `check`에서는 `0.48.0.check` 보고서의 일부입니다. 문서의 플러그인/profile 해석 오류는 `files[]`의 그 문서 항목(`ok: false`)과 그 `diagnostics`의 해석 진단이 되고, 전체 프로젝트 모드의 잘못된 매니페스트는 `files: []`와 `project_diagnostics`의 매니페스트 진단이 됩니다. 다른 명령은 붙일 문서 위치가 없으므로 `lute:` 채널 — stderr, `lute: <CODE>: <message>` — 에 출력합니다. 권한 설정 오류는 제한 없는 동작으로 fallback하지 않습니다.
 
 0.8.0부터 이런 오류는 종료 코드를 설정합니다. 이전에는 출력만 하고 빌드가 통과했으므로, 오타 난 플러그인 옵션이 조용히 배포되었습니다:
 
 <!-- lute-diagnostics -->
 ```console
 $ lute check scene.lute --project . --json
-lute: E-PLUGIN-OPTION-TYPE: option `showcase.pack.resultScope` expects enum(scene|run), got "galaxy"
+{"command":"check","files":[{"diagnostics":[{"code":"E-PLUGIN-OPTION-TYPE","message":"option `showcase.pack.resultScope` expects enum(scene|run), got \"galaxy\"",…}],"ok":false,"path":"scene.lute",…}],"ok":false,"schemaVersion":"0.48.0.check"}
 $ echo $?
 1
 ```
 
-일반 capability-resolution 동작은 `check`(파일 하나 또는 `--project`), `compile`(`--project` 포함), `context`, `trace`에서 검증됩니다. 신뢰된 `--permission-profile` 옵션은 의도적으로 더 좁으며 `check`, `compile`(`--project`와 `--stream` 포함), `context`에 있습니다. 일반 프로젝트 조정의 유일한 의도적 예외는 `compile --project` 뒤의 강제 단일 루트 스캔입니다. 중첩된 하위 프로젝트에 속한 형제 문서가 강제 루트 아래에서 올바르게 해석되지 않는 것은 정당하며, 대상 문서의 잘못이 아닙니다.
+일반 capability-resolution 동작은 `check`(파일 하나 또는 `--project`), `compile`(`--project` 포함), `context`, `trace`에서 검증됩니다. 신뢰된 `--permission-profile` 옵션은 의도적으로 더 좁으며 `check`, `compile`(`--project`와 `--stream` 포함), `context`, `trace`, `expr`, `patch`, `play`, `test`, `calendar`에 있습니다. 일반 프로젝트 조정의 유일한 의도적 예외는 `compile --project` 뒤의 강제 단일 루트 스캔입니다. 중첩된 하위 프로젝트에 속한 형제 문서가 강제 루트 아래에서 올바르게 해석되지 않는 것은 정당하며, 대상 문서의 잘못이 아닙니다.
 
-**하네스에서 중요한 결과입니다.** `--json`에서 stdout이 비어 있는데 종료 `1`인 상태가 이제 발생할 수 있으며, 이는 프로젝트 수준 오류를 뜻합니다. stdout을 파싱해 "진단 없음"을 "정상"으로 처리하는 루프는 망가진 프로젝트를 성공으로 보고합니다. 먼저 종료 코드에 따라 분기하고, 그 다음 JSON을 파싱하며, 둘이 다르면 stderr을 노출하세요.
+**하네스에서 중요한 결과입니다.** `lute check --json`은 `files[].diagnostics`(문서 하나면 `files[0]`)와, 전체 프로젝트 모드에서는 `project_diagnostics`로 읽으세요. 해석 오류는 빈 본문이 아니라 `ok: false` 항목입니다. 이런 오류를 stderr로만 보고하는 명령에서는 stdout이 비어 있는데 종료 `1`인 상태가 프로젝트 수준 오류를 뜻하며, stdout을 파싱해 "진단 없음"을 "정상"으로 처리하는 루프는 망가진 프로젝트를 성공으로 보고합니다. 먼저 종료 코드에 따라 분기하고, 그 다음 JSON을 파싱하며, 둘이 다르면 stderr을 노출하세요.
 
 이 채널의 플러그인 해석 코드는 `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, 플러그인 로드/조립 계열(`E-PLUGIN-MANIFEST`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`, …)입니다. 권한 loader/profile 조회 오류도 같은 프로젝트 해석 채널을 사용하며 권한 context를 명시합니다.
 
@@ -188,7 +188,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 | `E-LOWER-RECORD-FIELD` | record kind에 없는 field, 디렉티브가 선언하지 않은 `fromAttr`, 또는 field를 채울 수 없는 literal을 `lower: { fields }`가 이름 붙임 | `lute:` |
 | `E-FRONTMATTER-SCHEMA` | plugin 소유 frontmatter 키의 값이 선언된 schema를 위반 | JSON, span 포함 |
 
-`E-FRONTMATTER-SCHEMA`만 문서 위치가 있으므로 JSON 진단입니다. 나머지는 프로젝트 수준이어서 빈 JSON 본문과 함께 stderr로 도착합니다. 이 페이지의 모든 코드는 유효한 `--deny` 인자입니다. 알 수 없는 코드는 사용법 오류(종료 `2`)이므로 이 플래그가 아무것도 보호하지 않은 채 조용히 통과할 수 없습니다.
+`E-FRONTMATTER-SCHEMA`만 문서 위치가 있으므로 JSON 진단입니다. 나머지는 프로젝트 수준이어서 `check --json`에서는 `ok: false` 항목이나 `project_diagnostics`로, 다른 명령에서는 빈 JSON 본문과 함께 stderr로 도착합니다. 이 페이지의 모든 코드는 유효한 `--deny` 인자입니다. 알 수 없는 코드는 사용법 오류(종료 `2`)이므로 이 플래그가 아무것도 보호하지 않은 채 조용히 통과할 수 없습니다.
 ## 수정 사항
 
 진단에는 `kind`가 있는 fixit이 포함됩니다. `kind: "migrate"`는 기계가 적용할 수 있으므로 질문하지 않고 적용하세요(이것이 `lute fix`가 하는 일입니다). `kind: "refactor"`는 작가의 선택이므로 LSP code action으로 제시하고 절대로 자동 적용하지 마세요.
@@ -210,17 +210,17 @@ failed: scene.lute (1 error(s), 0 warning(s))
 
 ```console
 $ lute tag /tmp/drowned-crown
-$ lute context /tmp/drowned-crown/scenes/library.lute --project /tmp/drowned-crown --node quest:libraryKey --max-items 20 --json > context.json
+$ lute context /tmp/drowned-crown/quests/library.lute --project /tmp/drowned-crown --node quest:libraryKey --max-items 20 --json > context.json
 $ lute patch --project /tmp/drowned-crown planned-patch.json --dry-run --json
 $ lute check --project /tmp/drowned-crown
 $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 ```
 
-줄에 ID가 없으면 편집 전에 `lute tag`를 실행해야 합니다. 생성된 ID는 위치 기반이며 발명하거나 다시 번호를 매기면 안 됩니다. Context의 `projectRevision`과 파일 revision을 patch base에 복사하세요. `diff.changes`를 검토한 뒤 `--dry-run` 없이 같은 patch를 적용하고, 프로젝트 자체의 test, play 또는 trace 스크립트로 replay하세요. `context --at <file>:<line>:<column>`은 `--max-items N`과 `--script <FILE>`을 받을 수 있습니다(후자는 script file이 필요함). Lute는 결정적인 CLI 경계이지 chat 애플리케이션이나 MCP server가 아닙니다.
+줄에 ID가 없으면 편집 전에 `lute tag`를 실행해야 합니다. 생성된 ID는 위치 기반이며 발명하거나 다시 번호를 매기면 안 됩니다. Context의 `projectRevision`과 파일 revision을 patch base에 복사하세요. `diff.changes`를 검토한 뒤 `--dry-run` 없이 같은 patch를 적용하고, 프로젝트 자체의 test, play 또는 trace 스크립트로 replay하세요. `context --at <file>:<line>:<column>`은 `--max-items <N>`과 `--script <FILE>`을 받을 수 있습니다(`--script`는 script file 또는 그 아래 모든 스크립트를 고르는 디렉터리이고, `--all-scripts`는 프로젝트의 모든 play/test 스크립트를 실행합니다). Lute는 결정적인 CLI 경계이지 chat 애플리케이션이나 MCP server가 아닙니다.
 
 ## patch 요청 (0.47)
 
-`lute patch <PATCH> [--project <DIR>] [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
+`lute patch <FILE> [--project <DIR>] [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
 
 | 필드 | 필수 | 타입 | 의미 |
 |---|---|---|---|

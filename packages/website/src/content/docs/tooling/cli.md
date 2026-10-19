@@ -388,7 +388,7 @@ A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import))
 ### `--stream` — compile a scene from a live body
 
 ```console
-$ lute compile --stream <scene.lute> [--project <DIR>] [--providers <DIR>]
+$ lute compile --stream <FILE> [--project <DIR>] [--providers <DIR>]
                 [--permission-profile <NAME>]
 ```
 
@@ -458,8 +458,8 @@ $ lute expr "@at(3, 'night')" --json
 ```console
 $ lute trace <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
              [--deny <CODE>]… [--deny-warnings]
-             [--state P=L]… [--fact <ATOM>]… [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]…
-             [--event N]… [--accepted-quest <QUEST>]… [--occasion <OCCASION>[@<TARGET>]]…
+             [--state <PATH>=<LITERAL>]… [--fact <ATOM>]… [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]…
+             [--event <N>]… [--accepted-quest <QUEST>]… [--occasion <OCCASION>[@<TARGET>]]…
              [--mock <FILE>] [--entry <ID> | --beat <ID>] [--no-derive] [--expand] [--json]
 ```
 
@@ -521,7 +521,7 @@ Since dsl 0.28.0: a [kind beat](/tooling/play/#kind-targets) or a `for=` beat wh
 ```console
 $ lute calendar [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
                 [--deny <CODE>]… [--deny-warnings]
-                [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | <family>.*=… | <family>[<axis>]=… | clock[=<d1>..<d2>]]…
+                [--axis <AXIS>=<VALUES>]…
                 [--occasion <OCCASION>]… [--occasion-axes <OCCASION>=<AXES>]… [--target <TARGET>]…
                 [--relation <RELATION>]… [--script <FILE> [--until <STEP>]] [--where <EXPR>]
                 [--format text|csv] [--json]
@@ -530,7 +530,7 @@ $ lute calendar [--project <DIR>] [--providers <DIR>] [--permission-profile <NAM
 Evaluate `lute play`'s own eligibility at every cell of a grid of state values (dsl 0.23.0). For every cell and every occasion/target column, the grid shows the winner and `+N` shadowed eligible beats, the offered or sequence list, `-` when nothing is eligible, or `?` when an undecidable `when` decides the cell; the beats never eligible in any cell are listed at the end with the reason, and — since dsl 0.24.0 — so are the beats eligible in some cell but presented in none, with what was presented over them (`neverPresented`, each with `beatenBy`, in `--json`; a second table in `--format csv`). Each cell starts from the same world, gets its axis values written, and has its quests settled before its occasions are evaluated.
 
 - `--axis <path>=<values>` (optional, repeatable) — an inclusive integer range (`run.day=1..7`) or a list (`run.slot=morning,evening`) over a declared path, checked against its type; the first axis varies slowest, and with no `--axis` the grid is one cell. `quest.<id>.state=unset,active,…` seeds the quest's status as a save's `quests:` does (`unset` and `active` also clear the objective progress a replayed route made), and `quest.<id>.objectives.<oid>.done` is accepted as written; any other `quest.*` path is a usage error. `holds(<fact>)=true,false` asserts or retracts a base fact of a declared relation; a derived relation is refused (`` `trusted(ada)` is derived by rules and cannot be asserted ``). `visited('<id>')=true,false` (dsl 0.24.0) puts a scene or bundle beat in or out of the visited set, so an `after: visited(…)` beat reads both ways. `clock[=<d1>..<d2>]` (dsl 0.24.0 §1) expands to every slot of those days in clock order (bare `clock`: one week). Anything else is a usage error that lists the axis kinds, with a did-you-mean for a mistyped state path.
-- `--axis <family>.*=<values>` / `--axis '<family>[<axis>]=<values>'` (since 0.27.0) — one axis over a whole [`per:` family](/state/state-model/#one-path-per-entity-per): `run.aff.*=6,7` gives every member (`run.aff.ren`, `run.aff.kai`, …) the cell's value; `run.aff[run.route]=6,7` gives it only to the member the `--axis run.route` value names at that cell, and the other members keep their seed or default — route × own affection in one axis pair. The indexing axis must be an `--axis` of the same calendar naming at least one member of the family's kind (at a value naming none, the tied axis sets nothing and one cell stands for all its values); the bare family (`--axis run.aff=6,7`) is a usage error that names the three forms (`` `run.aff` is a `per: suitor` family — name a member (`run.aff.ren`), all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`) ``), and so is a second axis over a member the family axis already sets. Row labels, `--json` `at` keys and `--csv` headers name the axis as written.
+- `--axis <family>.*=<values>` / `--axis '<family>[<axis>]=<values>'` (since 0.27.0) — one axis over a whole [`per:` family](/state/state-model/#one-path-per-entity-per): `run.aff.*=6,7` gives every member (`run.aff.ren`, `run.aff.kai`, …) the cell's value; `run.aff[run.route]=6,7` gives it only to the member the `--axis run.route` value names at that cell, and the other members keep their seed or default — route × own affection in one axis pair. The indexing axis must be an `--axis` of the same calendar naming at least one member of the family's kind (at a value naming none, the tied axis sets nothing and one cell stands for all its values); the bare family (`--axis run.aff=6,7`) is a usage error that names the three forms (`` `run.aff` is a `per: suitor` family — name a member (`run.aff.ren`), all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`) ``), and so is a second axis over a member the family axis already sets. Row labels, `--json` `at` keys and `--format csv` headers name the axis as written.
 - `--occasion <OCCASION>` (repeatable) — the occasions to evaluate; default every occasion a beat answers.
 - `--occasion-axes <OCCASION>=<AXES>` (repeatable; 0.47's `--occasion <O>@<AXES>`, dsl 0.24.0) — selects `O` and varies only the named axes for it: it is evaluated where every other axis is at its first value (`--occasion-axes dayEnd=run.day,run.slot=night` holds `run.slot` at `night` instead) and left blank elsewhere, so a once-a-day occasion reads once per day (`--json`: the column's `varies` and `heldAt`). Naming the same occasion in `--occasion` and `--occasion-axes`, or twice in `--occasion-axes`, is `E-CLI-USAGE`. With `--axis clock`, name the clock's axes — `--occasion-axes dayEnd=clock.day,clock.slot=night`, or the clock's own paths, `--occasion-axes dayEnd=run.day,run.slot=night` — to evaluate `O` once per day at one slot (the day's first slot when none is named; the day's last for the clock's `raise.dayEnd` occasion, where the clock raises it).
 - With `--axis clock`, an occasion the clock's `raise:` names is judged only where `lute play`'s `advance:` raises it: the `slot` occasion at every position but the one the run starts at, `dayStart` at a day's first slot but never on the day the run starts, `dayEnd` at a day's last slot (and at the last position of a clock that ends); with the clock's `raiseAtStart: true`, the `slot` occasion and `dayStart` are raised where the run starts too. Every other cell reads `not raised`, with no winner, eligible list or shadowed beats (`--json`: `"notRaised": true` on the result, and a root `notRaised` list of `{ occasion, reason }`; `--format csv`: `not raised` in `notes`), and a header line says where the clock raises it. A beat eligible only in such cells is never eligible, with `` eligible at day 1 (Mon) morning, where the clock does not raise `dayStart` ``. The run starts where the save puts the clock, before any `--script` step. A `dayEnd` column that names its slot (`--occasion-axes dayEnd=clock.day,clock.slot=afternoon`) is judged there: an `advance: day` closes the day wherever the clock stands.
@@ -733,7 +733,7 @@ Re-stamp every pinned provider snapshot in `--providers <DIR>` against the curre
 ## init
 
 ```console
-$ lute init [<DIR>] [--template minimal|investigation|beats] [--json]
+$ lute init [<DIR>] [--template <NAME>] [--json]
 ```
 
 Scaffold a new Lute project directory, ready for `lute check`. `<DIR>` defaults to `.`. The command refuses (exit **2**, nothing written) when any file it would write already exists, naming it — not only an existing `lute.project.yaml`. `--template` selects the starter content:
@@ -1050,7 +1050,7 @@ Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory whole-proj
 ## loc export
 
 ```console
-$ lute loc export [--project <DIR>] [--format json|csv] [-o, --output <PATH>]
+$ lute loc export [--project <DIR>] [--format csv] [-o, --output <PATH>]
 ```
 
 Extract every translatable content line — the stable `code`, speaker, text, choice text, and branch/hub prompt — across the project to a localization export. The exported `text` keeps the source markup: inline modifiers (`:pause{s=0.5}`, `:speed[…]{rate=…}`, text-style spans) and `{{…}}` interpolations, which a translation must carry over with the same modifier set. JSON is the default and `--format csv` selects CSV (`--format json` is `E-CLI-USAGE` — omit it); `-o`/`--output` writes to a file instead of stdout. `loc export` is an artifact writer and takes no `--json`. Exit **0** on success, **2** on I/O.

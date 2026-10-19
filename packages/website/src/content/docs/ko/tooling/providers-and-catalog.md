@@ -27,4 +27,4 @@ $ lute check scene.lute --providers ./catalog
 $ lute catalog refresh --providers ./catalog --project ./my-game
 ```
 
-`catalog refresh <dir>`는 `<dir>`의 모든 고정 스냅숏에 현재 `capabilitySnapshot`을 다시 스탬프하고 `stale` 플래그를 지우며, 로더가 읽는 디스크상의 평면 형식으로 각 파일을 다시 씁니다. `--project` 아래에서는 해석된 다중 플러그인 `capabilitySnapshot`을 스탬프하고, 이를 생략하면 core 기준선을 사용합니다. 정확성은 라이브 카탈로그에 의존하지 않습니다 — refresh는 이미 고정된 아티팩트를 정규화하고 다시 스탬프할 뿐이므로, `refresh`한 뒤 `load`해도 정확히 왕복됩니다. 명시적인 `catalog refresh`는 빌드보다 먼저 실행합니다. 종료 코드는 성공 시 **0**, I/O 오류 시 **2**입니다.
+`catalog refresh --providers <dir>`는 `<dir>`(기본값은 프로젝트의 `catalogDir`)의 모든 고정 스냅숏에 현재 `capabilitySnapshot`을 다시 스탬프하고 `stale` 플래그를 지우며, 로더가 읽는 디스크상의 평면 형식으로 각 파일을 다시 씁니다. 프로젝트(`--project` 또는 가장 가까운 `lute.project.yaml`) 안에서는 해석된 다중 플러그인 `capabilitySnapshot`을 스탬프하고, `--providers`만 있고 프로젝트가 없으면 core 기준선을 사용합니다. 정확성은 라이브 카탈로그에 의존하지 않습니다 — refresh는 이미 고정된 아티팩트를 정규화하고 다시 스탬프할 뿐이므로, `refresh`한 뒤 `load`해도 정확히 왕복됩니다. 명시적인 `catalog refresh`는 빌드보다 먼저 실행합니다. 종료 코드는 성공 시 **0**, I/O 오류 시 **2**입니다.

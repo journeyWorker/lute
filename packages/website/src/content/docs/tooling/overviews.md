@@ -717,7 +717,7 @@ project root: .
       trusted(ada) — derived by 1 rule — traced above under objective `ferry.word` in quests/ferry.lute
 ```
 
-Only the rules that can conclude the queried atom are followed: `dockBo` asks for `present(bo, dock)`, so the rule that places Ada at the inn is not listed under it. A derived atom's rules print once per report; every later mention says where they were traced. A negation reads "holds unless defeated", followed by one line per fact that could defeat it — `defeated when <fact> is asserted by …`, `… is derived ⇐ <premises>`, `defeated when the engine asserts <fact> (reserved)`, or `defeated from the start: <fact> is a seed fact`. `not rumor(ada)` has no producer, so it "always holds … — cannot be defeated": the rumour that would make Ada distrust you is a relation declared and never written. (0.23 printed this as `NO PRODUCER`, which read as a warning; a positive read with no producer still says `NO PRODUCER`.) Under [`check --project --wip`](/tooling/cli/#check --project), a guard that is dead only because of such a relation is a warning, not an error.
+Only the rules that can conclude the queried atom are followed: `dockBo` asks for `present(bo, dock)`, so the rule that places Ada at the inn is not listed under it. A derived atom's rules print once per report; every later mention says where they were traced. A negation reads "holds unless defeated", followed by one line per fact that could defeat it — `defeated when <fact> is asserted by …`, `… is derived ⇐ <premises>`, `defeated when the engine asserts <fact> (reserved)`, or `defeated from the start: <fact> is a seed fact`. `not rumor(ada)` has no producer, so it "always holds … — cannot be defeated": the rumour that would make Ada distrust you is a relation declared and never written. (0.23 printed this as `NO PRODUCER`, which read as a warning; a positive read with no producer still says `NO PRODUCER`.) Under [`check --project . --wip`](/tooling/cli/#whole-project-mode), a guard that is dead only because of such a relation is a warning, not an error.
 
 Every premise of a rule is traced beneath it. A `cel(…)` premise is a state condition the rules cannot decide ahead of time, so it names the paths it reads — `cel("run.slot == 'evening'") — state condition on run.slot, decided at run time` — and an entity-kind atom is a membership test, not a relation that lacks a producer. With the trust rule written `trusted(P) :- person(P), met(P), not rumor(P)`:
 
@@ -842,10 +842,10 @@ project root: .
 
 `relight` is anchored by its `start` conjuncts, so it needs no `follows=`, and `oil` and `wick` hang off it by `[subquest]` edges. `keeper.greeting` is ordered by its own `after=`; `keeper.warning` reads the same kind of fact in its `when`, which gates it but orders nothing, so it is listed with the `after=` to write. `salvage` and `lostDog` are on no edge, so the `completed("salvage")` in `farewell`'s `after:` is not drawn either, and an objective's `visited()` read is a condition, never an anchor.
 
-`--json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario --project . reach quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
+`--json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario --project . reach --node quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
 
 ```console
-$ lute scenario --project . reach quest:relight
+$ lute scenario --project . reach --node quest:relight
 project root: .
 reach quest(relight):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -857,7 +857,7 @@ reach quest(relight):
     - entry(keeperLog): Reachable — a satisfiable route exists under your declared routes.
 ```
 
-Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario --project . reach keeper.greeting` (or `reach beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
+Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario --project . reach --node keeper.greeting` (or `reach --node beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
 ### Fact edges (`lute scenario --facts`)
 
