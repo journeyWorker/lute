@@ -511,7 +511,7 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
     let rewritten = line(&words);
     Some(
         CliError::usage(format!(
-            "lute {name}: {} — now `{rewritten}`",
+            "lute {name}: {}; use `{rewritten}`",
             reasons.join("; ")
         ))
         .with_argument(first)
