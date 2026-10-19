@@ -153,7 +153,10 @@ pub fn run() -> ExitCode {
 fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
     let json = envelope::json_mode_in(args);
     if let Some(error) = removed::check(args) {
-        envelope::set_invocation(envelope::command_id_in(args), json);
+        envelope::set_invocation(
+            envelope::command_id_in(args),
+            json || removed::names_format_json(args),
+        );
         return envelope::fail(error);
     }
     let cli = match Cli::try_parse_from(
@@ -565,15 +568,6 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     CliError::usage(
                         "lute scenario: --json prints the JSON report; --format selects a text \
                          rendering (`text` or `dot`) — pass one of them",
-                    )
-                    .with_argument("--format"),
-                );
-            }
-            if format.as_deref() == Some("json") {
-                return envelope::fail(
-                    CliError::usage(
-                        "lute scenario: `--format json` is gone — use `--json` \
-                         (`--format` selects a text rendering: `text` or `dot`)",
                     )
                     .with_argument("--format"),
                 );

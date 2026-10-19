@@ -121,7 +121,7 @@ static OUTPUTS: &[(&str, &[Output])] = &[
         "context",
         &[
             report_output("--json", version::SURFACE),
-            report_output("--json --target", version::CONTEXT),
+            report_output("--json --node", version::CONTEXT),
             report_output("--json --at", version::POSITION),
         ],
     ),
@@ -137,21 +137,18 @@ static OUTPUTS: &[(&str, &[Output])] = &[
         ],
     ),
     ("test", &[report_output("--json", version::TEST)]),
-    (
-        "scenario",
-        &[report_output("--format json", version::SCENARIO)],
-    ),
+    ("scenario", &[report_output("--json", version::SCENARIO)]),
     (
         "scenario reach",
-        &[report_output("--format json", version::SCENARIO_REACH)],
+        &[report_output("--json", version::SCENARIO_REACH)],
     ),
     (
         "scenario envelope",
-        &[report_output("--format json", version::SCENARIO_ENVELOPE)],
+        &[report_output("--json", version::SCENARIO_ENVELOPE)],
     ),
     (
         "scenario knowledge",
-        &[report_output("--format json", version::SCENARIO_KNOWLEDGE)],
+        &[report_output("--json", version::SCENARIO_KNOWLEDGE)],
     ),
     ("beats", &[report_output("--json", version::BEATS)]),
     ("calendar", &[report_output("--json", version::CALENDAR)]),
@@ -159,7 +156,10 @@ static OUTPUTS: &[(&str, &[Output])] = &[
     ("lore", &[report_output("--json", version::LORE)]),
     (
         "loc export",
-        &[document(Some("--format json"), OutputKind::Artifact)],
+        &[
+            document(None, OutputKind::Artifact),
+            document(Some("--format csv"), OutputKind::Artifact),
+        ],
     ),
     (
         "loc report",
@@ -252,20 +252,17 @@ fn operands(args: &[OsString]) -> impl Iterator<Item = String> + '_ {
         })
 }
 
-/// Whether `args` request JSON mode (dsl 0.43.0 §4.1): `--json`,
-/// `--format json` / `--format=json` before any `--`, or the `schema`
-/// command.
+/// Whether `args` request JSON mode (0.48.0 §2.3): `--json` before any `--`,
+/// or the `schema` command. (`--format json` was JSON mode in 0.47.2; it is a
+/// removed spelling now and [`crate::removed::names_format_json`] decides its
+/// error is still an envelope.)
 pub(crate) fn json_mode_in(args: &[OsString]) -> bool {
     let words: Vec<String> = args
         .iter()
         .map(|a| a.to_string_lossy().into_owned())
         .take_while(|a| a != "--")
         .collect();
-    let flag = words.iter().enumerate().any(|(i, w)| {
-        w == "--json"
-            || w == "--format=json"
-            || (w == "--format" && words.get(i + 1).is_some_and(|v| v == "json"))
-    });
+    let flag = words.iter().any(|w| w == "--json");
     flag || operands(args).next().is_some_and(|first| first == "schema")
 }
 
@@ -485,18 +482,15 @@ mod tests {
             Some("check")
         );
         assert_eq!(
-            command_id_in(&args(&[
-                "scenario", "dir", "reach", "scene:a", "--format", "json"
-            ]))
-            .as_deref(),
+            command_id_in(&args(&["scenario", "reach", "--node", "scene:a", "--json"])).as_deref(),
             Some("scenario reach")
         );
         assert_eq!(
-            command_id_in(&args(&["scenario", "dir", "--format", "json"])).as_deref(),
+            command_id_in(&args(&["scenario", "--json"])).as_deref(),
             Some("scenario")
         );
         assert_eq!(
-            command_id_in(&args(&["loc", "report", "dir"])).as_deref(),
+            command_id_in(&args(&["loc", "report", "--project", "dir"])).as_deref(),
             Some("loc report")
         );
         assert_eq!(command_id_in(&args(&["--explain", "check", "chek"])), None);
@@ -507,12 +501,12 @@ mod tests {
     #[test]
     fn json_mode_reads_flags_before_the_separator_and_the_schema_command() {
         assert!(json_mode_in(&args(&["check", "--json", "x"])));
-        assert!(json_mode_in(&args(&["scenario", "d", "--format", "json"])));
-        assert!(json_mode_in(&args(&["scenario", "d", "--format=json"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format", "json"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format=json"])));
         assert!(json_mode_in(&args(&["schema"])));
         assert!(json_mode_in(&args(&["schema", "check"])));
-        assert!(!json_mode_in(&args(&["scenario", "d", "--format", "dot"])));
-        assert!(!json_mode_in(&args(&["loc", "export", "d"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format", "dot"])));
+        assert!(!json_mode_in(&args(&["loc", "export"])));
         assert!(!json_mode_in(&args(&["check", "x", "--", "--json"])));
     }
 
