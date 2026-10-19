@@ -29,10 +29,13 @@ A reader who has seen an option once can predict it everywhere.
 | A play / test script | `--script <FILE>` (repeatable) / `--all-scripts` | |
 | The primary output file or directory | `-o, --output <PATH>` | a file when the command writes one artifact, a directory when it writes many (as dotnet's `--output`) |
 | A secondary output file | `--<noun>-output <FILE>` | e.g. `--conditions-output` |
-| Machine-readable output | `--json` | the 0.43 envelope |
+| Machine-readable output | `--json` | the 0.43 envelope; always explicit — see §1.1 |
 | Another output or file format | `--format <FORMAT>` | never `json` (that is `--json`) |
 | Verify a rewrite without writing | `--check` | for commands that rewrite source into a canonical form: exit 1 when a change is needed |
 | Run without writing | `--dry-run` | for commands that apply a change: report what would change |
+| Apply a dangerous change | `--commit` | see §1.2; no short alias |
+| Skip a confirmation prompt | `--yes` | see §1.2 |
+| Proceed although the tool would refuse | `--force` | see §1.2; never "don't ask" |
 | Plugin provider snapshots | `--providers <DIR>` | |
 | Engine capability manifest | `--engine <FILE>` | |
 | Mock bridge answers | `--mock <FILE>` | |
@@ -40,8 +43,26 @@ A reader who has seen an option once can predict it everywhere.
 | Permission profile | `--permission-profile <NAME>` | |
 | Explain a diagnostic code | `lute --explain <CODE>` (top level only, as `rustc --explain`) | |
 
-Use a standard name where one exists (`--all`, `--dry-run`, `--force`, `--json`, `--output`,
-`--quiet`, `--help`, `--version`).
+Use a standard name where one exists (`--all`, `--commit`, `--dry-run`, `--force`, `--json`,
+`--output`, `--quiet`, `--yes`, `--help`, `--version`).
+
+### 1.1 Output format is explicit
+
+Owner decision (2026-10-19): human-readable text is the default everywhere, and JSON is
+produced only when the command line says `--json`. Output never switches on whether stdout is
+a terminal, and no environment variable changes the default — the same command line gives the
+same output in a terminal, a pipe, CI and an agent harness. Text output stays line-oriented so
+`grep` / `head` / `wc` pipes work; a program that reads structure asks for `--json`.
+
+### 1.2 Execution, confirmation and danger
+
+- Ordinary commands execute by default; `--dry-run` previews where it helps.
+- A **dangerous** command — one that destroys or rewrites data others depend on, or is hard to
+  undo — previews by default (prints what it would change, exit 0, writes nothing) and acts
+  only with `--commit`. Today: renumbering published line codes (`tag`, see the 0.48 mapping).
+- `--yes` answers a confirmation prompt; `--force` overrides a refusal (overwrite, ignore a
+  lock). The two are never merged, and `--force` never means "skip the question".
+- No command prompts when stdin or stdout is not a terminal; a prompted value always has a flag.
 
 ## 2. The project
 
