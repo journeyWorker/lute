@@ -76,7 +76,7 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 | `catalog refresh` | `--json` | `0.48.0.catalog-refresh` |
 | `init` | `--json` | `0.48.0.init` |
 | `new scene`, `new quest`, `new lore`, `new schema` | `--json` | `0.48.0.new` |
-| `schema` | 항상 | `0.47.0.schema` |
+| `schema` | 항상 | `0.48.0.schema` |
 
 배열이던 보고서 세 개는 이제 객체입니다. `constraints`는 행을 `constraints` 필드에, `trace`와 `compile`의 거부는 진단을 `diagnostics` 필드에 담습니다. `patch`는 패치가 받아들여졌는지를 `accepted`로 알립니다(`ok`는 종료 코드 규칙을 따릅니다. [`lute patch`](#lute-patch-0366) 참고).
 

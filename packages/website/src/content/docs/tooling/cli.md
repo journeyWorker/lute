@@ -69,7 +69,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `scenario
 | `catalog refresh` | `--json` | `0.48.0.catalog-refresh` |
 | `init` | `--json` | `0.48.0.init` |
 | `new scene`, `new quest`, `new lore`, `new schema` | `--json` | `0.48.0.new` |
-| `schema` | always | `0.47.0.schema` |
+| `schema` | always | `0.48.0.schema` |
 
 `check` has one report for both modes: `files[]` holds one entry per document checked, and `project_diagnostics` is present exactly when the whole project ran (see [`check`](#check)). Three reports that used to be bare arrays are objects now: `constraints` puts its rows under `constraints`; a `trace` refusal and a `compile` refusal put their diagnostics under `diagnostics`. `patch` reports whether the patch was accepted in `accepted` (its `ok` is the exit rule, see [`lute patch`](#lute-patch-0366)).
 
