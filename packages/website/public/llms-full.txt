@@ -14901,7 +14901,7 @@ For `select: sequence`, the candidates are listed when the occasion is raised, a
 ## `lute play`
 
 ```console
-$ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--derivation <ATOM>]…
+$ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]… [--conditions-output <FILE>]
 ```
 
 - `--project <DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --project` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
