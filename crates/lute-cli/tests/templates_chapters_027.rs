@@ -69,11 +69,14 @@ fn template_beats_check_list_and_play_in_order() {
     );
     let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
-    let (_, beats) = run(&dir, &["beats", "."]);
+    let (_, beats) = run(&dir, &["beats", "--project", "."]);
     assert!(beats.contains("bonds.second"), "{beats}");
     assert!(beats.contains("visited(\"bonds.first\")"), "{beats}");
     assert!(beats.contains("user.bond >= 1"), "{beats}");
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/bond.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/bond.play.yaml"],
+    );
     assert_eq!(code, Some(0), "{play}");
     let at = |s: &str| {
         play.find(s)
@@ -83,7 +86,7 @@ fn template_beats_check_list_and_play_in_order() {
     assert!(at("A bond story begins.") < at("Hello, aria."), "{play}");
     assert!(at("Hello, aria.") < at("The bond deepens."), "{play}");
     assert!(at("Again, aria.") > at("The bond deepens."), "{play}");
-    let (code, test) = run(&dir, &["test", "."]);
+    let (code, test) = run(&dir, &["test", "--project", "."]);
     assert_eq!(code, Some(0), "{test}");
 }
 
@@ -127,11 +130,14 @@ fn a_chain_orders_scenes_that_say_nothing_about_order() {
     );
     let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
-    let (_, beats) = run(&dir, &["beats", "."]);
+    let (_, beats) = run(&dir, &["beats", "--project", "."]);
     assert!(beats.contains("visited(\"two\")"), "{beats}");
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/all.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/all.play.yaml"],
+    );
     assert_eq!(code, Some(0), "{play}");
-    let (code, test) = run(&dir, &["test", "."]);
+    let (code, test) = run(&dir, &["test", "--project", "."]);
     assert_eq!(code, Some(0), "{test}");
 }
 
@@ -152,7 +158,7 @@ fn coverage_counts_chapter_derived_beats() {
         "plays/two.play.yaml",
         "steps:\n  - occasion: chapter\n    expect: { winner: one }\n  - occasion: chapter\n    expect: { winner: two }\n",
     );
-    let (code, cov) = run(&dir, &["test", ".", "--coverage"]);
+    let (code, cov) = run(&dir, &["test", "--project", ".", "--coverage"]);
     assert_eq!(code, Some(0), "{cov}");
     assert!(
         cov.contains("1 untested unit(s) under . — no *.test.yaml presents them and no play presents them:\n    scenes/three.lute"),
@@ -199,7 +205,10 @@ fn a_chain_on_a_select_sequence_occasion_plays_in_one_raise() {
         "plays/new.play.yaml",
         "steps:\n  - occasion: newGame\n    expect: { presented: [one, two] }\n",
     );
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/new.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/new.play.yaml"],
+    );
     assert_eq!(code, Some(0), "{play}");
 }
 
@@ -451,16 +460,19 @@ fn a_headless_template_plays_and_beats_notes_the_when_a_use_replaces() {
     let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("E-CONTENT-OUTSIDE-SECTION"), "{out}");
-    let (_, beats) = run(&dir, &["beats", "."]);
+    let (_, beats) = run(&dir, &["beats", "--project", "."]);
     assert!(
         beats.contains(
             "user.bond >= 0 (replaces template `bondStory`'s `when: user.bond >= @need`)"
         ),
         "{beats}"
     );
-    let (_, json) = run(&dir, &["beats", ".", "--json"]);
+    let (_, json) = run(&dir, &["beats", "--project", ".", "--json"]);
     assert!(json.contains("\"replacesTemplateWhen\""), "{json}");
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/bond.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/bond.play.yaml"],
+    );
     assert_eq!(code, Some(0), "{play}");
     let at = |s: &str| {
         play.find(s)

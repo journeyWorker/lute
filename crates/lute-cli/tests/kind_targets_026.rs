@@ -81,6 +81,7 @@ fn play(dir: &Path, script: &str) -> Json {
     let script = write(dir, "s.play.yaml", script);
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -224,6 +225,7 @@ fn lute_beats_lists_the_kind_ladder_and_each_named_member() {
     let dir = project("beats");
     let out = run(&[
         "beats",
+        "--project",
         dir.to_str().unwrap(),
         "--occasion",
         "caught",
@@ -354,7 +356,7 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
     let d = dir.to_str().unwrap();
     let t = text(&run(&["check", "--project", d]));
     assert!(!t.contains("`s.goldLight` can never win"), "{t}");
-    let out = run(&["beats", d, "--target", "hero.cyra"]);
+    let out = run(&["beats", "--project", d, "--target", "hero.cyra"]);
     let t = text(&out);
     let row = |id: &str| t.lines().find(|l| l.contains(id)).unwrap().to_string();
     assert!(row("s.goldLight").contains("s.goldLight (kind:ssr)"), "{t}");
@@ -365,7 +367,7 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
     assert!(row("s.cyraA").contains("shadowed by s.limitedGlow"), "{t}");
     assert!(!row("s.limitedGlow").contains("shadowed"), "{t}");
     let shadowed_by = |target: &str| -> Json {
-        let out = run(&["beats", d, "--target", target, "--json"]);
+        let out = run(&["beats", "--project", d, "--target", target, "--json"]);
         let v: Json = serde_json::from_slice(&out.stdout).unwrap();
         v["roots"][0]["ladders"][0]["beats"]
             .as_array()
@@ -379,7 +381,7 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
     };
     assert_eq!(shadowed_by("hero.cyra"), json!(["s.limitedGlow"]));
     assert_eq!(shadowed_by("hero.aria"), Json::Null);
-    let out = run(&["beats", d, "--target", "hero.cyra", "--json"]);
+    let out = run(&["beats", "--project", d, "--target", "hero.cyra", "--json"]);
     let v: Json = serde_json::from_slice(&out.stdout).unwrap();
     let row = v["roots"][0]["ladders"][0]["beats"]
         .as_array()
@@ -415,7 +417,7 @@ fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
     let t = text(&run(&["check", "--project", d]));
     assert!(!t.contains("E-BEAT-UNREACHABLE"), "{t}");
     let never_for = |target: &str| -> Vec<(String, Json)> {
-        let out = run(&["beats", d, "--target", target, "--json"]);
+        let out = run(&["beats", "--project", d, "--target", target, "--json"]);
         assert_eq!(out.status.code(), Some(0), "{}", text(&out));
         let v: Json = serde_json::from_slice(&out.stdout).unwrap();
         v["roots"][0]["ladders"][0]["beats"]
@@ -443,7 +445,7 @@ fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
             ("s.fan".to_string(), Json::Null),
         ]
     );
-    let t = text(&run(&["beats", d, "--target", "hero.aria"]));
+    let t = text(&run(&["beats", "--project", d, "--target", "hero.aria"]));
     let row = |id: &str| t.lines().find(|l| l.contains(id)).unwrap().to_string();
     assert!(row("s.fan").contains("never for hero.aria"), "{t}");
     assert!(!row("s.notBram").contains("never"), "{t}");

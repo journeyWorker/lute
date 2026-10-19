@@ -1318,7 +1318,7 @@ const SLEW: &[E] = &[
 
 fn run(target: &str, json: bool) -> String {
     let mut cmd = Command::new(BIN);
-    cmd.args(["impact", ROOT, target]);
+    cmd.args(["impact", "--project", ROOT, "--node", target]);
     if json {
         cmd.arg("--json");
     }

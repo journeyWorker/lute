@@ -88,6 +88,7 @@ fn session_event_streams_and_runtime_replay_match() {
         let expected = std::fs::read_to_string(case.join("expected.jsonl")).unwrap();
         let got = lute()
             .arg("play")
+            .arg("--project")
             .arg(&project)
             .arg("--script")
             .arg(&script)

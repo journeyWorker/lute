@@ -425,6 +425,7 @@ fn write_matches_dry_run(task_name: &str) {
     fs::write(&patch_file, serde_json::to_vec(&patch).unwrap()).unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_lute"))
         .arg("patch")
+        .arg("--project")
         .arg(&copy)
         .arg(&patch_file)
         .arg("--json")

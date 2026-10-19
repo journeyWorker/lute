@@ -19,6 +19,7 @@ fn play(script: &str, extra: &[&str]) -> (i32, String, String) {
     std::fs::write(&path, script).unwrap();
     let out = Command::new(BIN)
         .arg("play")
+        .arg("--project")
         .arg(fixture())
         .arg("--script")
         .arg(&path)

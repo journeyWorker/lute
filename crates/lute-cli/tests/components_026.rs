@@ -216,7 +216,7 @@ fn a_bridge_call_a_component_expands_is_typed_by_its_slot_in_the_host() {
         "p.play.yaml",
         "steps:\n  - occasion: talk\n    bridges: { battle: [ { won: true } ] }\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     assert!(
@@ -300,7 +300,7 @@ fn an_omitted_argument_takes_its_default_and_a_component_reads_its_own_result() 
         "steps:\n  - occasion: talk\n    bridges: { battle: [ { won: true }, { won: false } ] }\n    \
          expect: { state: { run.coins: 3 } }\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     assert!(
@@ -476,7 +476,7 @@ fn play_and_test_agree_on_guarded_directives_and_play_names_each_skip() {
         "steps:\n  - occasion: talk\n    expect:\n      state: { run.coins: 7 }\n      \
          facts: [\"met(ada)\"]\n      notFacts: [\"met(joey)\"]\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     for skip in [

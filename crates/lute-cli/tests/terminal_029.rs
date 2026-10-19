@@ -180,7 +180,7 @@ fn play_says_a_persisting_game_is_over_for_good() {
         "s.play.yaml",
         "steps:\n  - occasion: knock\n  - newRun: true\n  - occasion: visit\n",
     );
-    let out = lute(&dir, &["play", ".", "--script", "s.play.yaml"]);
+    let out = lute(&dir, &["play", "--project", ".", "--script", "s.play.yaml"]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(

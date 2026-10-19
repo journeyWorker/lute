@@ -508,6 +508,7 @@ fn play_engine_refuses_staging_before_presenting_and_full_matrix_plays() {
     let matrix = matrix_file(&dir, "core.yaml", "play-checker", &ir, &["lute.core/1"], "");
     let failed = run_str(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -529,6 +530,7 @@ fn play_engine_refuses_staging_before_presenting_and_full_matrix_plays() {
     let all = matrix_file(&dir, "all.yaml", "play-reference", &ir, ALL_IDS, "");
     let accepted = run_str(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

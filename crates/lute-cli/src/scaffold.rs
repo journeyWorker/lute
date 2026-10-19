@@ -1,9 +1,9 @@
 //! `lute init` / `lute new` — project and document scaffolding.
 //!
 //! Every generated artifact is designed to pass the checker CLEAN: `lute init`
-//! output survives `lute check-project <dir>` (and the `beats` and
+//! output survives `lute check --project <dir>` (and the `beats` and
 //! `investigation` templates' `lute test` and `lute play` as well), and `lute
-//! new` output survives `lute check-project` of the project it lands in
+//! new` output survives `lute check --project` of the project it lands in
 //! (modulo the advisory an accept-driven `lute new quest` stub carries until
 //! a scene `::accept`s it). Frontmatter stamps the
 //! current [`lute_check::LUTE_LANG_VERSION`] unless the manifest's
@@ -127,7 +127,7 @@ uses:
 
 @narrator{emotion=\"delighted\"}: Welcome to your new Lute project.
 ::set{ run.greeted = true }
-@narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check-project`.
+@narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check --project .`.
 "
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
@@ -173,7 +173,7 @@ expect:
 /// schema's rules DERIVE the conclusions, with stratified negation (a
 /// suspect is cleared by an alibi unless evidence contradicts it); the
 /// accusation's choices are guarded by those derived facts, and the quest
-/// is accept-driven. `check-project`, `test` and `play` pass as scaffolded.
+/// is accept-driven. `check --project`, `test` and `play` pass as scaffolded.
 fn investigation_files() -> Vec<File> {
     let lang = lute_check::LUTE_LANG_VERSION;
     vec![
@@ -510,7 +510,7 @@ expect:
 /// The manifest's `defaults:` supplies `luteVersion:`/`uses:`, so no document
 /// repeats them. The engine-written clock is `owner: engine`, and the play
 /// script writes it with an `engine:` step instead of a fake-engine scene.
-/// `plays/` and `tests/` exercise it all: `check-project`, `test` and `play`
+/// `plays/` and `tests/` exercise it all: `check --project`, `test` and `play`
 /// pass as scaffolded.
 fn beats_files() -> Vec<File> {
     let lang = lute_check::LUTE_LANG_VERSION;
@@ -828,7 +828,7 @@ fn readme(template: &str) -> String {
     let commands = if template != "minimal" {
         "\
 # Validate the whole project (recursively):
-lute check-project .
+lute check --project .
 
 # Run every scenario test (and every play script that carries `expect:`):
 lute test --project .
@@ -854,7 +854,7 @@ lute new lore <name>
     } else {
         "\
 # Validate the whole project (recursively):
-lute check-project .
+lute check --project .
 
 # Run every scenario test under tests/ (a test's `file:` is relative to the
 # test file, so tests/ names scenes as ../scenes/<name>.lute):
@@ -864,7 +864,7 @@ lute test --project .
 lute check scenes/<your-scene>.lute
 
 # Preview a scene against a trace mock. Keep the mock's own `file:` pointed at
-# the scene you pass here — `lute check-project` reports a mock whose subject
+# the scene you pass here — `lute check --project .` reports a mock whose subject
 # does not exist, and `lute trace` refuses a mock that names a different one:
 lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
 
@@ -957,7 +957,7 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     }
     println!();
     println!("Next steps:");
-    println!("  lute check-project {d}");
+    println!("  lute check --project {d}");
     if files.iter().any(|f| f.rel.starts_with("tests/")) {
         println!("  lute test --project {d}");
     }
@@ -1540,7 +1540,7 @@ fn first_scene_id(dest: &Destination) -> Option<String> {
 
 /// Refuse (exit `2`, nothing written) a new document whose `id` a scene,
 /// quest or lore document of the project already declares: document ids are
-/// one namespace, so the new file would fail `check-project` at once.
+/// one namespace, so the new file would fail `lute check --project` at once.
 fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
     let snapshot = manifest_context(&dest.root)
         .map(|context| context.snapshot)

@@ -299,7 +299,10 @@ fn columns_count_characters_after_multibyte_text() {
         "{v}"
     );
 
-    let out = run(&dir, &["scenario", ".", "reach", "--endings=termEnd"]);
+    let out = run(
+        &dir,
+        &["scenario", "--project", ".", "reach", "--endings=termEnd"],
+    );
     let t = text(&out);
     assert!(
         t.contains("never holds — caused by E-WHEN-LITERAL-DOMAIN at 7:99: `'rne'`"),
@@ -314,11 +317,11 @@ fn columns_count_characters_after_multibyte_text() {
         &dir,
         &[
             "scenario",
+            "--project",
             ".",
             "reach",
             "--endings=termEnd",
-            "--format",
-            "json",
+            "--json",
         ],
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();

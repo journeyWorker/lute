@@ -22,7 +22,7 @@ fn trace(args: &[&str]) -> std::process::Output {
 fn choice_persist_worked_example() {
     let out = trace(&[
         "../../docs/examples/choice-persist.lute",
-        "--choose",
+        "--choice",
         "sofaHelp=help",
     ]);
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -58,7 +58,7 @@ fn choice_persist_worked_example() {
 fn json_contract() {
     let args = [
         "../../docs/examples/choice-persist.lute",
-        "--choose",
+        "--choice",
         "sofaHelp=help",
         "--json",
     ];
@@ -231,7 +231,7 @@ fn event_lifecycle_name_exits_1_with_trace_event() {
 fn accept_on_start_having_quest_exits_1_with_trace_accept() {
     let out = trace(&[
         "../../docs/examples/quest-rescue-halsin.lute",
-        "--accept",
+        "--accepted-quest",
         "rescueHalsin",
         "--project",
         "../../docs/examples",
@@ -714,7 +714,7 @@ fn trace_prints_a_scene_accept_on_the_branch_that_takes_it() {
             scene.to_str().unwrap(),
             "--project",
             dir.to_str().unwrap(),
-            "--choose",
+            "--choice",
             &format!("offer={choice}"),
         ]);
         assert_eq!(out.status.code(), Some(0));
@@ -829,7 +829,7 @@ fn integer_modulo_checks_and_evaluates_in_trace_and_test() {
     )
     .unwrap();
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     assert_eq!(

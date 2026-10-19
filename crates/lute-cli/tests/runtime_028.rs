@@ -65,7 +65,7 @@ fn scene(id: &str, front: &str, body: &str) -> String {
 fn play(dir: &Path, script: &str) -> Output {
     write(dir, "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"))
         .output()
         .unwrap()

@@ -58,7 +58,7 @@ fn ward(tag: &str, bound: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchD
 fn play(dir: &Path, script: &str, json: bool) -> Output {
     write(dir, "s.play.yaml", script);
     let mut cmd = Command::new(BIN);
-    cmd.args(["play", &dir.display().to_string(), "--script"])
+    cmd.args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"));
     if json {
         cmd.arg("--json");
@@ -190,6 +190,8 @@ fn lute_test_fails_a_play_advancing_an_ended_clock() {
     );
     let out = Command::new(BIN)
         .arg("test")
+        .arg("--project")
+        .arg(&dir)
         .arg(dir.join("plays"))
         .output()
         .unwrap();
@@ -204,6 +206,8 @@ fn lute_test_fails_a_play_advancing_an_ended_clock() {
     );
     let out = Command::new(BIN)
         .arg("test")
+        .arg("--project")
+        .arg(&dir)
         .arg(dir.join("plays"))
         .output()
         .unwrap();
@@ -452,12 +456,20 @@ fn the_calendar_clock_axis_ends_at_the_last_position() {
     let calendar = |args: &[&str]| {
         Command::new(BIN)
             .arg("calendar")
+            .arg("--project")
             .arg(&dir)
             .args(args)
             .output()
             .unwrap()
     };
-    let out = calendar(&["--axis", "clock", "--occasion", "hourStrikes", "--csv"]);
+    let out = calendar(&[
+        "--axis",
+        "clock",
+        "--occasion",
+        "hourStrikes",
+        "--format",
+        "csv",
+    ]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(

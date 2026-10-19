@@ -173,7 +173,7 @@ fn play(dir: &Path, tag: &str, script: &str, json: bool) -> Output {
     let path = dir.join(format!("{tag}.play.yaml"));
     std::fs::write(&path, script).unwrap();
     let mut cmd = Command::new(BIN);
-    cmd.args(["play", &dir.display().to_string(), "--script"])
+    cmd.args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(&path);
     if json {
         cmd.arg("--json");

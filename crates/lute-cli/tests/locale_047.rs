@@ -99,7 +99,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 }
 
 fn export_rows(project: &Path) -> Vec<Json> {
-    let out = run(&["loc", "export", project.to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", project.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     serde_json::from_slice(&out.stdout).unwrap()
 }
@@ -363,7 +363,14 @@ fn every_export_row_carries_the_source_hash_of_its_plain_text_in_json_and_csv() 
         .as_str()
         .is_some_and(|h| h.starts_with("sha256:"))));
 
-    let csv = run(&["loc", "export", dir.to_str().unwrap(), "--format", "csv"]);
+    let csv = run(&[
+        "loc",
+        "export",
+        "--project",
+        dir.to_str().unwrap(),
+        "--format",
+        "csv",
+    ]);
     assert_eq!(csv.status.code(), Some(0), "{}", stderr(&csv));
     let text = String::from_utf8(csv.stdout).unwrap();
     let mut lines = text.split("\r\n");
@@ -546,7 +553,13 @@ fn a_source_edit_after_export_is_w_l10n_stale_merged_and_deniable() {
 #[test]
 fn loc_report_counts_prompts_and_their_words() {
     let dir = project("report-prompts");
-    let out = run(&["loc", "report", dir.to_str().unwrap(), "--json"]);
+    let out = run(&[
+        "loc",
+        "report",
+        "--project",
+        dir.to_str().unwrap(),
+        "--json",
+    ]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let report: Json = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["schemaVersion"], "0.47.0.loc-report");
@@ -568,7 +581,7 @@ fn loc_report_counts_prompts_and_their_words() {
     );
     assert_eq!(report["documents"][0]["prompts"], 2, "{report:#}");
 
-    let human = run(&["loc", "report", dir.to_str().unwrap()]);
+    let human = run(&["loc", "report", "--project", dir.to_str().unwrap()]);
     assert_eq!(human.status.code(), Some(0), "{}", stderr(&human));
     let text = String::from_utf8(human.stdout).unwrap();
     assert!(

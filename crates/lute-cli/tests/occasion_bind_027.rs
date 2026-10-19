@@ -85,7 +85,17 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 
 fn play(dir: &Path, script: &str) -> (Option<i32>, Json, String) {
     write(dir, "s.play.yaml", script);
-    let out = run(dir, &["play", ".", "--script", "s.play.yaml", "--json"]);
+    let out = run(
+        dir,
+        &[
+            "play",
+            "--project",
+            ".",
+            "--script",
+            "s.play.yaml",
+            "--json",
+        ],
+    );
     let v = serde_json::from_slice(&out.stdout).unwrap_or(Json::Null);
     (out.status.code(), v, text(&out))
 }

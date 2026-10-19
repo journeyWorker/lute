@@ -216,6 +216,7 @@ fn play_reports_a_derived_violation_at_the_step_and_fails() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -239,6 +240,7 @@ fn play_reports_a_derived_violation_at_the_step_and_fails() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         ok.to_str().unwrap(),
@@ -256,7 +258,7 @@ fn trace_refuses_at_the_write_that_makes_both_hold() {
         scene.to_str().unwrap(),
         "--project",
         dir.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "pick=lie",
     ]);
     let t = text(&out);
@@ -273,7 +275,7 @@ fn trace_refuses_at_the_write_that_makes_both_hold() {
         scene.to_str().unwrap(),
         "--project",
         dir.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "pick=stay",
     ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -330,6 +332,7 @@ fn seeded_facts_that_break_an_exclusion_are_refused() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -360,6 +363,7 @@ fn play_halts_at_a_transient_overlap() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

@@ -85,7 +85,10 @@ fn two_chains_each_order_their_own_occasion() {
     );
     let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/all.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/all.play.yaml"],
+    );
     assert_eq!(code, Some(0), "{play}");
 }
 
@@ -226,7 +229,10 @@ fn only_a_derived_after_is_credited_to_chapters() {
             .unwrap_or_else(|| panic!("no accusation line: {play}"))
             .to_string()
     };
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     assert_eq!(code, Some(1), "{play}");
     let line = accusation(&play);
     assert!(
@@ -236,7 +242,10 @@ fn only_a_derived_after_is_credited_to_chapters() {
     assert!(!line.contains(credit), "hand-written: {play}");
 
     write(&dir, "scenes/accusation.lute", &scene("accusation", ""));
-    let (code, play) = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let (code, play) = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     assert_eq!(code, Some(1), "{play}");
     assert!(accusation(&play).contains(credit), "derived: {play}");
 }
@@ -300,7 +309,7 @@ fn a_chain_on_an_undeclared_occasion_is_not_applied() {
         out.contains("[E-CHAPTERS]") && out.contains("did you mean `chapter`?"),
         "{out}"
     );
-    let (code, beats) = run(&dir, &["beats", "."]);
+    let (code, beats) = run(&dir, &["beats", "--project", "."]);
     assert_eq!(code, Some(0), "{beats}");
     assert!(!beats.contains("chaptre"), "{beats}");
     assert!(!beats.contains("c1"), "{beats}");

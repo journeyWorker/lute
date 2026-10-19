@@ -100,6 +100,7 @@ fn play_io_error_has_script_path() {
     let script = project.path().join("missing.play.yaml");
     let output = run_cli([
         "play",
+        "--project",
         project.path().to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -116,6 +117,7 @@ fn play_input_error_has_script_path() {
     let script = project.write("bad.play.yaml", "steps: [");
     let output = run_cli([
         "play",
+        "--project",
         project.path().to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -132,6 +134,7 @@ fn play_usage_error_has_argument() {
     let script = project.write("play.yaml", "steps: []\n");
     let output = run_cli([
         "play",
+        "--project",
         project.path().to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -146,7 +149,7 @@ fn play_usage_error_has_argument() {
 #[test]
 fn calendar_io_error_has_directory_path() {
     let path = "/definitely/missing/calendar-project";
-    let output = run_cli(["calendar", path, "--json"]);
+    let output = run_cli(["calendar", "--project", path, "--json"]);
     let value = assert_error(&output, "calendar", "E-CLI-IO");
     assert_path(&value, Path::new(path));
 }
@@ -158,6 +161,7 @@ fn calendar_input_error_has_script_path() {
     let script = project.write("bad.play.yaml", "steps: [");
     let output = run_cli([
         "calendar",
+        "--project",
         project.path().to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -173,6 +177,7 @@ fn calendar_usage_error_has_argument() {
     project.write("lute.project.yaml", PROJECT);
     let output = run_cli([
         "calendar",
+        "--project",
         project.path().to_str().unwrap(),
         "--where",
         "(",
@@ -185,7 +190,7 @@ fn calendar_usage_error_has_argument() {
 #[test]
 fn test_io_error_has_directory_path() {
     let path = "/definitely/missing/test-project";
-    let output = run_cli(["test", path, "--json"]);
+    let output = run_cli(["test", "--project", path, "--json"]);
     let value = assert_error(&output, "test", "E-CLI-IO");
     assert_path(&value, Path::new(path));
 }
@@ -194,7 +199,12 @@ fn test_io_error_has_directory_path() {
 fn test_input_error_has_test_path() {
     let project = TempProject::new("envelope-043-test-input");
     let test = project.write("broken.test.yaml", "entries: [");
-    let output = run_cli(["test", project.path().to_str().unwrap(), "--json"]);
+    let output = run_cli([
+        "test",
+        "--project",
+        project.path().to_str().unwrap(),
+        "--json",
+    ]);
     let value = assert_error(&output, "test", "E-CLI-INPUT");
     assert_path(&value, &test);
 }

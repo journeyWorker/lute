@@ -111,6 +111,7 @@ fn play(dir: &Path, script: &str) -> Output {
     let s = write(dir, "s.play.yaml", script);
     run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         s.to_str().unwrap(),
@@ -203,9 +204,10 @@ fn knowledge_traces_the_counted_facts_under_the_premise() {
     let dir = project("knowledge", "");
     let out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "knowledge",
-        "--for",
+        "--node",
         "door",
     ]);
     let s = text(&out);

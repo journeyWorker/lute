@@ -499,6 +499,10 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
             options.extend(["--node".to_string(), node]);
         }
     }
+    // `--format json` becomes `--json`; a line that already says `--json`
+    // keeps one.
+    let mut seen_json = false;
+    options.retain(|o| o != "--json" || !std::mem::replace(&mut seen_json, true));
     let rest_operands: Vec<String> = operands.collect();
     let first = first?;
     let mut words: Vec<String> = command.iter().map(|w| (*w).to_string()).collect();

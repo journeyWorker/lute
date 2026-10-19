@@ -100,7 +100,7 @@ fn a_def_subject_without_a_portable_expr_takes_its_true_arm_in_play() {
     );
     assert_eq!(arms[0]["test"]["authored"], "is=true", "{arms:#?}");
 
-    let (code, out) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, out) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{out}");
     assert!(out.contains("(match arm) He is here."), "{out}");
     assert!(!out.contains("Alone."), "{out}");
@@ -121,7 +121,7 @@ fn an_is_arm_with_an_unportable_test_still_compares_its_subject() {
         "{arms:#?}"
     );
 
-    let (code, out) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, out) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{out}");
     assert!(out.contains("Not calm."), "{out}");
     assert!(!out.contains("Calm and seen."), "{out}");

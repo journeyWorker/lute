@@ -70,6 +70,7 @@ fn new_run_snapshots_prev_run_and_a_grant_credits_its_path() {
     let out = Command::new(BIN)
         .args(["play", "--json", "--script"])
         .arg(dir.join("s.play.yaml"))
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();
@@ -137,7 +138,7 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
     let scene = scene.to_str().unwrap();
 
     let script = dir.join("s.play.yaml");
-    let (code, text) = lute(&["play", d, "--script", script.to_str().unwrap()]);
+    let (code, text) = lute(&["play", "--project", d, "--script", script.to_str().unwrap()]);
     assert_eq!(code, Some(0), "{text}");
     assert!(
         text.contains("Today is mon.") && text.contains("Now it is Sunday."),

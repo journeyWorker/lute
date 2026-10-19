@@ -110,7 +110,10 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
     // Play keys state by declared type: it refuses the project rather than
     // read one document's number as the other's bool.
     write(&dir, "plays/p.play.yaml", "steps:\n  - occasion: go\n");
-    let play = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let play = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     assert_ne!(play.status.code(), Some(0), "{}", text(&play));
     assert!(text(&play).contains("refusing to play"), "{}", text(&play));
 }
@@ -609,7 +612,15 @@ fn refs_lists_every_value_with_the_documents_using_it() {
     let dir = refs_project("refs-list");
     let out = run(
         &dir,
-        &["refs", ".", "--attr", "give.item", "--reward", "ITEM"],
+        &[
+            "refs",
+            "--project",
+            ".",
+            "--attr",
+            "give.item",
+            "--reward",
+            "ITEM",
+        ],
     );
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
@@ -629,7 +640,10 @@ fn refs_lists_every_value_with_the_documents_using_it() {
         "objective rewards count: {s}"
     );
 
-    let json = run(&dir, &["refs", ".", "--reward", "ITEM", "--json"]);
+    let json = run(
+        &dir,
+        &["refs", "--project", ".", "--reward", "ITEM", "--json"],
+    );
     let v: serde_json::Value =
         serde_json::from_slice(&json.stdout).unwrap_or_else(|_| panic!("{}", text(&json)));
     let q = &v["queries"][0];
@@ -646,9 +660,14 @@ fn refs_lists_every_value_with_the_documents_using_it() {
 #[test]
 fn refs_needs_a_well_formed_query() {
     let dir = refs_project("refs-query");
-    assert_eq!(run(&dir, &["refs", "."]).status.code(), Some(2));
     assert_eq!(
-        run(&dir, &["refs", ".", "--attr", "give"]).status.code(),
+        run(&dir, &["refs", "--project", "."]).status.code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&dir, &["refs", "--project", ".", "--attr", "give"])
+            .status
+            .code(),
         Some(2)
     );
 }
@@ -988,7 +1007,7 @@ fn entity_typed_attribute_is_checked_through_component_arguments() {
 #[test]
 fn refs_lists_values_passed_through_components() {
     let dir = gift_project("n2");
-    let out = run(&dir, &["refs", ".", "--attr", "give.item"]);
+    let out = run(&dir, &["refs", "--project", ".", "--attr", "give.item"]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
     assert!(s.contains("a.lute:8\n"), "direct: {s}");

@@ -16,6 +16,7 @@ fn play(extra: &[&str]) -> (i32, String) {
     let dir = fixture();
     let out = Command::new(BIN)
         .arg("play")
+        .arg("--project")
         .arg(&dir)
         .arg("--script")
         .arg(dir.join("advances.play.yaml"))

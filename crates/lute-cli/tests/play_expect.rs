@@ -69,6 +69,7 @@ fn play(tag: &str, script: &str) -> Output {
     let script = write(&dir, "s.play.yaml", script);
     lute(&[
         "play",
+        "--project",
         fixture().to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -129,21 +130,21 @@ fn an_unknown_expect_key_is_a_usage_error_listing_the_legal_keys() {
 
 #[test]
 fn lute_test_runs_every_play_that_carries_an_expect() {
-    let dir = lute_scratch::ScratchDir::named("test-plays");
-    write(&dir, "plays/pass.play.yaml", PASSING);
-    write(&dir, "plays/fail.play.yaml", FAILING);
+    let dir = project_copy("test-plays");
+    write(&dir, "extra/pass.play.yaml", PASSING);
+    write(&dir, "extra/fail.play.yaml", FAILING);
     // No `expect:` anywhere: `lute play` material, not a test.
     write(
         &dir,
-        "plays/tour.play.yaml",
+        "extra/tour.play.yaml",
         "steps:\n  - occasion: hubVisit\n",
     );
-    let project = fixture();
+    let extra = dir.join("extra");
     let args = [
         "test",
-        dir.to_str().unwrap(),
+        extra.to_str().unwrap(),
         "--project",
-        project.to_str().unwrap(),
+        dir.to_str().unwrap(),
     ];
     let out = lute(&args);
     let t = text(&out);
@@ -183,18 +184,18 @@ fn lute_test_runs_every_play_that_carries_an_expect() {
 
 #[test]
 fn a_halted_play_fails_in_lute_test_unless_its_end_is_declared() {
-    let dir = lute_scratch::ScratchDir::named("halted");
+    let dir = project_copy("halted");
     // `oracle.vision`'s `when` reads `now()`: the reference runner cannot
     // decide it, so the play halts incomplete there.
     let halting = "steps:\n  - occasion: hubVisit\n    expect: { winner: hub.firstEver }\n  \
                    - occasion: talk\n    target: npc.oracle\n";
     write(&dir, "h.play.yaml", halting);
-    let project = fixture();
+    let h = dir.join("h.play.yaml");
     let args = [
         "test",
-        dir.to_str().unwrap(),
+        h.to_str().unwrap(),
         "--project",
-        project.to_str().unwrap(),
+        dir.to_str().unwrap(),
     ];
     let out = lute(&args);
     let t = text(&out);
@@ -213,14 +214,14 @@ fn a_halted_play_fails_in_lute_test_unless_its_end_is_declared() {
 
 #[test]
 fn coverage_counts_the_documents_a_play_presented() {
-    let dir = lute_scratch::ScratchDir::named("play-coverage");
-    write(&dir, "plays/pass.play.yaml", PASSING);
-    let project = fixture();
+    let dir = project_copy("play-coverage");
+    write(&dir, "extra/pass.play.yaml", PASSING);
+    let extra = dir.join("extra");
     let out = lute(&[
         "test",
-        dir.to_str().unwrap(),
+        extra.to_str().unwrap(),
         "--project",
-        project.to_str().unwrap(),
+        dir.to_str().unwrap(),
         "--coverage",
         "--json",
     ]);
@@ -379,6 +380,7 @@ const ASK: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 #[test]
 fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
     let dir = lute_scratch::ScratchDir::named("options");
+    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(&dir, "s.lute", ASK);
     write(
         &dir,
@@ -386,7 +388,7 @@ fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
         "file: s.lute\nchoose: { ask: plead }\nexpect:\n  options: { ask: [leave, plead] }\n  \
          transcriptLacks: ['demanded.', 'left.']\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 
     // Seeded bold, `demand` is offered too — the set is exact, so the old
@@ -397,7 +399,7 @@ fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
         "file: s.lute\nstate: { run.bold: true }\nchoose: { ask: demand }\nexpect:\n  \
          options: { ask: [leave, plead] }\n  transcriptLacks: ['demanded.']\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
@@ -410,6 +412,13 @@ fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
 #[test]
 fn quests_seed_the_status_a_scene_reads() {
     let dir = lute_scratch::ScratchDir::named("quest-seed");
+    write(&dir, "lute.project.yaml", BARE_PROJECT);
+    write(
+        &dir,
+        "quests/case.lute",
+        "---\nkind: quest\ntitle: Case\n---\n\n<quest id=\"caseClosed\" title=\"Case\">\n\
+         <objective id=\"o\" title=\"O\" done=\"false\"/>\n</quest>\n",
+    );
     write(
         &dir,
         "s.lute",
@@ -423,7 +432,7 @@ fn quests_seed_the_status_a_scene_reads() {
         "file: s.lute\nquests: { caseClosed: complete }\nexpect:\n  \
          transcriptContains: ['solved.']\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
 
@@ -521,6 +530,7 @@ fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
 #[test]
 fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
     let dir = lute_scratch::ScratchDir::named("test-facts");
+    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(
         &dir,
         "s.lute",
@@ -539,10 +549,15 @@ fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
         "file: nope.lute\nexpect:\n  end: complete\n",
     );
     // One file runs alone.
-    let out = lute(&["test", t_ok.to_str().unwrap()]);
+    let out = lute(&[
+        "test",
+        t_ok.to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     // The whole directory: the missing document fails its own test only.
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(t.contains("E-TEST-FILE"), "{t}");
@@ -552,7 +567,12 @@ fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
         "ok.test.yaml",
         "file: s.lute\nexpect:\n  notFacts: [met(meg)]\n",
     );
-    let out = lute(&["test", dir.join("ok.test.yaml").to_str().unwrap()]);
+    let out = lute(&[
+        "test",
+        dir.join("ok.test.yaml").to_str().unwrap(),
+        "--project",
+        dir.to_str().unwrap(),
+    ]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
@@ -579,6 +599,16 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
+const BARE_PROJECT: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
+
+/// A scratch copy of the `play-hub` project: scripts written into it sit
+/// under a `lute.project.yaml`, which `lute test` requires of a play.
+fn project_copy(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    copy_tree(&fixture(), &dir);
+    dir
+}
+
 #[test]
 fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
     let project = lute_scratch::ScratchDir::named("said");
@@ -597,6 +627,7 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
         let s = write(&project, "plays/probe.play.yaml", script);
         let out = lute(&[
             "play",
+            "--project",
             project.to_str().unwrap(),
             "--script",
             s.to_str().unwrap(),
@@ -651,6 +682,7 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
 #[test]
 fn options_judges_a_hub_like_a_branch() {
     let dir = lute_scratch::ScratchDir::named("hub-options");
+    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(
         &dir,
         "s.lute",
@@ -664,14 +696,14 @@ fn options_judges_a_hub_like_a_branch() {
         "t.test.yaml",
         "file: s.lute\nchoose: { chat: [a, leave] }\nexpect:\n  options: { chat: [a, leave] }\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     write(
         &dir,
         "t.test.yaml",
         "file: s.lute\nchoose: { chat: [a, leave] }\nexpect:\n  options: { chat: [a, never, leave] }\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(t.contains("got [a, leave]"), "{t}");
@@ -684,6 +716,7 @@ fn options_judges_a_hub_like_a_branch() {
 #[test]
 fn test_and_play_keys_name_the_spelling_and_the_file_they_belong_to() {
     let dir = lute_scratch::ScratchDir::named("key-renames");
+    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(&dir, "s.lute", ASK);
     write(
         &dir,
@@ -691,7 +724,7 @@ fn test_and_play_keys_name_the_spelling_and_the_file_they_belong_to() {
         "file: s.lute\naccept: [q]\npayload: { a: 1 }\nchoose: { ask: plead }\nexpect:\n  \
          offered: { ask: [leave, plead] }\n  winner: x\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     for want in [
@@ -834,6 +867,7 @@ fn play_harness_details() {
         let s = write(&project, "plays/probe.play.yaml", script);
         let out = lute(&[
             "play",
+            "--project",
             project.to_str().unwrap(),
             "--script",
             s.to_str().unwrap(),
@@ -946,6 +980,7 @@ fn play_prints_the_skipped_handler_of_a_settled_quest() {
     );
     let out = lute(&[
         "play",
+        "--project",
         project.to_str().unwrap(),
         "--script",
         s.to_str().unwrap(),
@@ -990,6 +1025,7 @@ fn play_in(project: &Path, script: &str) -> Output {
     let s = write(project, "plays/probe.play.yaml", script);
     lute(&[
         "play",
+        "--project",
         project.to_str().unwrap(),
         "--script",
         s.to_str().unwrap(),
@@ -1400,7 +1436,7 @@ fn every_play_usage_error_is_reported_at_once_in_file_order() {
          choose: { pik: ren }\n    expect: { state: { run.route: mkia }, bogus: 1 }\n",
     );
     let d = dir.to_str().unwrap();
-    let out = lute(&["play", d, "--script", script.to_str().unwrap()]);
+    let out = lute(&["play", "--project", d, "--script", script.to_str().unwrap()]);
     let t = String::from_utf8_lossy(&out.stderr).to_string();
     assert_eq!(out.status.code(), Some(2), "{t}");
     let located: Vec<&str> = t
@@ -1420,7 +1456,7 @@ fn every_play_usage_error_is_reported_at_once_in_file_order() {
          choose: { pik: ren }\n    expect: { state: { run.route: mkia } }\n",
     )
     .unwrap();
-    let out = lute(&["play", d, "--script", script.to_str().unwrap()]);
+    let out = lute(&["play", "--project", d, "--script", script.to_str().unwrap()]);
     let t = String::from_utf8_lossy(&out.stderr).to_string();
     assert_eq!(out.status.code(), Some(2), "{t}");
     let lines: Vec<&str> = t.lines().collect();
@@ -1459,7 +1495,7 @@ fn a_visited_seed_spends_the_scenes_once_user() {
         "visited: [festival]\nsteps:\n  - occasion: evening\n    expect: { winner: none }\n",
     );
     let d = dir.to_str().unwrap();
-    let out = lute(&["play", d, "--script", script.to_str().unwrap()]);
+    let out = lute(&["play", "--project", d, "--script", script.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
 
@@ -1469,6 +1505,7 @@ fn presented_advancing_beat_moves_clock_settles_quest_and_raises_slot() {
     let script = fixture.join("plays/advance.play.yaml");
     let out = lute(&[
         "play",
+        "--project",
         fixture.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

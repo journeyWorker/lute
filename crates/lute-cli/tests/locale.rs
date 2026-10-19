@@ -1,9 +1,9 @@
-//! `lute loc import` + `lute compile --locales` acceptance (dsl 0.8.0 §7): the
+//! `lute loc import` + `lute compile --locale-bundle` acceptance (dsl 0.8.0 §7): the
 //! localization ROUND TRIP. `loc export` extracted translatable content and
 //! nothing brought it back; these pin the reverse direction.
 //!
 //! Four groups: `export` → `import` produces a stable bundle (byte-identical
-//! across runs); `compile --locales` merges it onto `texts`/`labels` while
+//! across runs); `compile --locale-bundle` merges it onto `texts`/`labels` while
 //! leaving the source-language `text`/`label` untouched; `W-L10N-MISSING`
 //! fires exactly once per missing `(lineId, locale)` pair and `--deny` promotes
 //! it; and a bundle-less compile is byte-identical to before the feature.
@@ -74,7 +74,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 /// `decorate` and drop every row whose `lineId` is in `drop` — the "a human
 /// translated it" step, without a human. Returns the written file's path.
 fn translate(project: &Path, out: &Path, decorate: &str, drop: &[&str]) -> PathBuf {
-    let exported = run(&["loc", "export", project.to_str().unwrap()]);
+    let exported = run(&["loc", "export", "--project", project.to_str().unwrap()]);
     assert_eq!(exported.status.code(), Some(0));
     let rows: Vec<serde_json::Value> = serde_json::from_slice(&exported.stdout).unwrap();
     let translated: Vec<serde_json::Value> = rows
@@ -291,7 +291,7 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
          </branch>\n\
          </beat>\n",
     );
-    let exported = run(&["loc", "export", dir.to_str().unwrap()]);
+    let exported = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     assert_eq!(exported.status.code(), Some(0), "{exported:?}");
     let rows: Vec<serde_json::Value> = serde_json::from_slice(&exported.stdout).unwrap();
     let ids: Vec<&str> = rows.iter().map(|r| r["lineId"].as_str().unwrap()).collect();
@@ -342,6 +342,7 @@ fn a_csv_export_round_trips_through_import_too() {
     let exported = run(&[
         "loc",
         "export",
+        "--project",
         dir.to_str().unwrap(),
         "--format",
         "csv",
@@ -418,7 +419,7 @@ fn an_unparseable_input_and_an_empty_locale_tag_are_e_locale_bundle() {
     assert!(stderr.contains("empty locale tag"), "got: {stderr}");
 }
 
-// --- Group 2: `compile --locales` merges without disturbing the source -----
+// --- Group 2: `compile --locale-bundle` merges without disturbing the source -----
 
 #[test]
 fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() {
@@ -675,7 +676,7 @@ fn haven_root() -> PathBuf {
 /// IMPORTING document's frontmatter, which a component has none of.
 /// Everything downstream is keyed on lineId, so `loc import` skipped the row
 /// at exit 0 naming `lute tag`; `lute tag` answered "already tagged" (the
-/// lines DO carry code="0010"/"0020"); and `compile --locales` then emitted
+/// lines DO carry code="0010"/"0020"); and `compile --locale-bundle` then emitted
 /// W-L10N-MISSING for a caller-derived id that appears in no export.
 ///
 /// Fix (i): one row PER EXPANSION carrying the caller-derived lineId, with
@@ -684,7 +685,7 @@ fn haven_root() -> PathBuf {
 #[test]
 fn loc_export_emits_component_lines_per_expansion_with_the_callers_id() {
     let root = haven_root();
-    let out = run(&["loc", "export", root.to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", root.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let rows: serde_json::Value = serde_json::from_str(&text).expect("export json");
     let rows = rows.as_array().expect("array");
@@ -818,7 +819,7 @@ fn assert_export_parity(
     }
     assert!(!records.is_empty(), "no compiled records under {root:?}");
 
-    let export = run(&["loc", "export", root.to_str().unwrap()]);
+    let export = run(&["loc", "export", "--project", root.to_str().unwrap()]);
     let rows: serde_json::Value = serde_json::from_slice(&export.stdout).expect("export json");
     let exported: std::collections::BTreeMap<String, String> = rows
         .as_array()
@@ -920,7 +921,7 @@ id: authored.myid
 </branch>
 ",
     );
-    let out = run(&["loc", "export", dir.to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     assert!(
         out.status.success(),
         "stderr: {}",
@@ -977,7 +978,7 @@ episode: 1
 </branch>
 ",
     );
-    let out = run(&["loc", "export", dir.to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     assert!(
         out.status.success(),
         "stderr: {}",

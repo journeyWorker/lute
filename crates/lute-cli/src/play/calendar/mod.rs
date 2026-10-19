@@ -422,7 +422,21 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     let names: Vec<String> = specs.iter().map(|s| s.name.to_string()).collect();
     let mut columns = match columns(&p, &names, args.targets) {
         Ok(c) => c,
-        Err(e) => return usage(e),
+        Err(e) => {
+            // An occasion named only through `--occasion-axes` is reported
+            // under that option.
+            let mut e = e;
+            for (spec, is_axes) in specs.iter().zip(&from_axes) {
+                if *is_axes {
+                    let (name, axes) = spec.raw.split_once('@').unwrap_or((spec.raw, ""));
+                    e = e.replace(
+                        &format!("`--occasion {name}` is not an occasion"),
+                        &format!("`--occasion-axes {name}={axes}` is not an occasion"),
+                    );
+                }
+            }
+            return usage(e);
+        }
     };
     for spec in &specs {
         let decl = p.occasions.get(spec.name);

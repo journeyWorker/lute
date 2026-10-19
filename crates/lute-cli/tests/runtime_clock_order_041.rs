@@ -172,6 +172,7 @@ fn play_prints_advance_writes_before_the_move() {
     .unwrap();
     let out = Command::new(BIN)
         .arg("play")
+        .arg("--project")
         .arg(fixture())
         .arg("--script")
         .arg(&script)

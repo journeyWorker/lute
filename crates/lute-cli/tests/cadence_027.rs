@@ -49,7 +49,7 @@ fn check_project(dir: &Path) -> Output {
 fn play(dir: &Path, script: &str) -> Output {
     write(dir, "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"))
         .output()
         .unwrap()
@@ -536,7 +536,7 @@ fn a_season_fault_in_a_schema_is_reported_once_at_the_schema() {
         // error at the schema line, then refuse (exit 1).
         write(&dir, "tests/a.test.yaml", "file: ../scenes/a.lute\n");
         let tested = Command::new(BIN)
-            .args(["test", &dir.display().to_string(), "--project"])
+            .args(["test", "--project"])
             .arg(&dir)
             .output()
             .unwrap();
@@ -586,7 +586,7 @@ fn beats_lists_spent_by_week_and_season_cadences() {
     );
     let beats = |json: bool| {
         let mut cmd = Command::new(BIN);
-        cmd.arg("beats").arg(&dir);
+        cmd.arg("beats").arg("--project").arg(&dir);
         if json {
             cmd.arg("--json");
         }

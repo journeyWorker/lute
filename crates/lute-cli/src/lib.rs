@@ -283,14 +283,12 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
         Command::Expr {
             cel,
             project,
-            providers,
             permission_profile,
             gate,
             json,
         } => cmd_expr::run_expr(&cmd_expr::ExprOptions {
             cel: &cel,
             project: project.project.as_deref(),
-            providers: providers.providers.as_deref(),
             permission_profile: permission_profile.permission_profile.as_deref(),
             policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
             json: json.json,
@@ -585,20 +583,12 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
         }
         Command::Beats {
             project,
-            providers,
             occasion,
             target,
             json,
             expand,
         } => match project_for("beats", &project) {
-            Ok(dir) => beats_cmd::run_beats(
-                &dir,
-                providers.providers.as_deref(),
-                &occasion,
-                &target,
-                json.json,
-                expand,
-            ),
+            Ok(dir) => beats_cmd::run_beats(&dir, &occasion, &target, json.json, expand),
             Err(code) => code,
         },
         Command::Calendar {

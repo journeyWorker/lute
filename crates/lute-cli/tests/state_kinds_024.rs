@@ -69,7 +69,7 @@ fn per_member_defaults_reach_play() {
     let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(dir.join("p.play.yaml"), "steps:\n  - occasion: visit\n").unwrap();
-    let (_, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (_, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert!(t.contains("@narrator: 2 0 -1."), "{t}");
     assert!(t.contains("Tavi is hostile."), "{t}");
 }
@@ -132,7 +132,7 @@ fn component_params_bind_into_fact_atoms() {
     let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(dir.join("p.play.yaml"), "steps:\n  - occasion: visit\n").unwrap();
-    let (_, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (_, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert!(
         t.contains("assert gifted(sefa, compass)") && t.contains("Gifted."),
         "{t}"
@@ -223,7 +223,7 @@ fn a_component_indexes_a_per_family_by_its_param() {
         "steps:\n  - occasion: visit\nexpect:\n  state: { run.approval.isolde: 2, run.approval.corvin: 0 }\n",
     )
     .unwrap();
-    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{t}");
 
     std::fs::write(

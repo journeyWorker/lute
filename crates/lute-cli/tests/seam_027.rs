@@ -103,7 +103,7 @@ fn open_ward(tag: &str) -> lute_scratch::ScratchDir {
 fn play(dir: &Path, script: &str, json: bool) -> Output {
     write(dir, "s.play.yaml", script);
     let mut cmd = Command::new(BIN);
-    cmd.args(["play", &dir.display().to_string(), "--script"])
+    cmd.args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"));
     if json {
         cmd.arg("--json");
@@ -172,7 +172,10 @@ fn a_gate_refusal_is_located_and_names_its_false_read() {
 /// `lute test` in `dir` (JSON when `json`).
 fn test_in(dir: &Path, json: bool) -> Output {
     let mut cmd = Command::new(BIN);
-    cmd.arg("test").arg(dir.join("tests"));
+    cmd.arg("test")
+        .arg("--project")
+        .arg(&dir)
+        .arg(dir.join("tests"));
     if json {
         cmd.arg("--json");
     }
@@ -628,7 +631,12 @@ fn the_game_over_note_follows_its_settle_and_names_a_kept_terminal() {
 #[test]
 fn lute_beats_marks_a_target_whose_gate_never_holds() {
     let dir = ward("beats", "{ args: [room], tier: run }");
-    let out = Command::new(BIN).arg("beats").arg(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("beats")
+        .arg("--project")
+        .arg(&dir)
+        .output()
+        .unwrap();
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(
@@ -646,6 +654,7 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
 
     let out = Command::new(BIN)
         .arg("beats")
+        .arg("--project")
         .arg(&dir)
         .arg("--json")
         .output()
@@ -675,7 +684,12 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
 
     // An engine-written (`reserved`) relation may hold for any room.
     let dir = open_ward("beats-open");
-    let out = Command::new(BIN).arg("beats").arg(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("beats")
+        .arg("--project")
+        .arg(&dir)
+        .output()
+        .unwrap();
     assert!(!text(&out).contains("gate never holds"), "{}", text(&out));
 }
 
@@ -716,7 +730,14 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
         "{t}"
     );
     assert!(!t.contains("door-office.lute:"), "{t}");
-    let t = text(&Command::new(BIN).arg("beats").arg(&dir).output().unwrap());
+    let t = text(
+        &Command::new(BIN)
+            .arg("beats")
+            .arg("--project")
+            .arg(&dir)
+            .output()
+            .unwrap(),
+    );
     assert!(
         t.contains(
             "lockedDoor @ room.lobby — select: first · raisedWhen: \
@@ -758,26 +779,33 @@ fn tools_show_gates_for_beats_terminal_endings_and_structured_writers() {
     let d = dir.to_str().unwrap();
     let lute = |args: &[&str]| text(&Command::new(BIN).args(args).output().unwrap());
 
-    let t = lute(&["beats", d, "--occasion", "hourStrikes"]);
+    let t = lute(&["beats", "--project", d, "--occasion", "hourStrikes"]);
     assert!(
         t.contains("  hourStrikes — select: first · raisedWhen: run.hp > 1\n"),
         "{t}"
     );
     assert!(t.contains(" strike ") && t.contains(" none "), "{t}");
     assert!(!t.contains(" no "), "{t}");
-    let t = lute(&["beats", d, "--occasion", "evening"]);
+    let t = lute(&["beats", "--project", d, "--occasion", "evening"]);
     assert!(t.contains("end.each (for kind:room)"), "{t}");
-    let v: serde_json::Value =
-        serde_json::from_str(&lute(&["beats", d, "--occasion", "evening", "--json"])).unwrap();
+    let v: serde_json::Value = serde_json::from_str(&lute(&[
+        "beats",
+        "--project",
+        d,
+        "--occasion",
+        "evening",
+        "--json",
+    ]))
+    .unwrap();
     let row = &v["roots"][0]["ladders"][0]["beats"][0];
     assert_eq!(row["for"], "kind:room", "{v}");
     assert_eq!(row["forKind"]["kind"], "room", "{v}");
 
-    let t = lute(&["calendar", d, "--occasion", "evening"]);
+    let t = lute(&["calendar", "--project", d, "--occasion", "evening"]);
     assert!(t.contains("end.each for "), "{t}");
     assert!(!t.contains("end.each, end.each"), "{t}");
 
-    let t = lute(&["scenario", d, "reach", "--endings"]);
+    let t = lute(&["scenario", "--project", d, "reach", "--endings"]);
     assert!(
         t.contains(
             "  taken (scene, scenes/taken.lute): reachable\n    ends: writes `run.fate`, which \
@@ -785,7 +813,7 @@ fn tools_show_gates_for_beats_terminal_endings_and_structured_writers() {
         ),
         "{t}"
     );
-    let t = lute(&["scenario", d, "reach", "--endings=hourStrikes"]);
+    let t = lute(&["scenario", "--project", d, "reach", "--endings=hourStrikes"]);
     assert!(
         t.contains(
             "    gate: `raisedWhen: run.hp > 1` — it needs:\n      run.hp — the engine (`owner: engine`)\n    \
@@ -795,9 +823,9 @@ fn tools_show_gates_for_beats_terminal_endings_and_structured_writers() {
     );
     let v: serde_json::Value = serde_json::from_str(&lute(&[
         "scenario",
+        "--project",
         d,
-        "--format",
-        "json",
+        "--json",
         "reach",
         "--endings=knock",
     ]))
@@ -830,7 +858,7 @@ fn endings_skip_a_beats_own_writes_and_trace_a_quest_terminal() {
     );
     let d = dir.to_str().unwrap();
     let lute = |args: &[&str]| text(&Command::new(BIN).args(args).output().unwrap());
-    let t = lute(&["scenario", d, "reach", "--endings=knock"]);
+    let t = lute(&["scenario", "--project", d, "reach", "--endings=knock"]);
     let relapse = &t[t.find("  relapse (scene").unwrap_or_else(|| panic!("{t}"))..];
     let need = relapse
         .lines()
@@ -840,7 +868,7 @@ fn endings_skip_a_beats_own_writes_and_trace_a_quest_terminal() {
 
     // Only the beat itself writes what its `when` needs.
     std::fs::remove_file(dir.join("scenes/taken.lute")).unwrap();
-    let t = lute(&["scenario", d, "reach", "--endings=knock"]);
+    let t = lute(&["scenario", "--project", d, "reach", "--endings=knock"]);
     assert!(
         t.contains(
             "      run.fate — only this beat writes it, after its conditions held — nothing else \
@@ -866,7 +894,7 @@ fn endings_skip_a_beats_own_writes_and_trace_a_quest_terminal() {
          <objective id=\"fall\" title=\"Fall\" on=\"knock\" done=\"run.fate == 'taken'\"/>\n</quest>\n",
     );
     let d = dir.to_str().unwrap();
-    let t = lute(&["scenario", d, "reach", "--endings"]);
+    let t = lute(&["scenario", "--project", d, "reach", "--endings"]);
     assert!(
         t.contains(
             "  taken (scene, scenes/taken.lute): reachable\n    ends: its `knock` raise judges \
@@ -885,7 +913,7 @@ fn a_calendar_cell_whose_gate_is_false_says_so() {
     let dir = open_ward("calendar-gate");
     let calendar = |extra: &[&str]| {
         let out = Command::new(BIN)
-            .args(["calendar", &dir.display().to_string()])
+            .args(["calendar", "--project", &dir.display().to_string()])
             .args([
                 "--occasion",
                 "enter",
@@ -906,7 +934,7 @@ fn a_calendar_cell_whose_gate_is_false_says_so() {
         .find(|l| l.contains("lobby") && !l.contains("room."))
         .unwrap_or_else(|| panic!("{t}"));
     assert!(row.starts_with("gate false"), "{t}");
-    let csv = calendar(&["--csv"]);
+    let csv = calendar(&["--format", "csv"]);
     assert!(
         csv.contains("enter,room.office,first,,,,,gate false"),
         "{csv}"

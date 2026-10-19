@@ -81,7 +81,7 @@ fn check_project(dir: &Path) -> String {
 fn play(dir: &Path, script: &str) -> Output {
     write(dir, "p.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("p.play.yaml"))
         .output()
         .unwrap()

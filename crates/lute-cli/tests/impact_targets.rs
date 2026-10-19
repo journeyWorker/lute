@@ -12,7 +12,14 @@ fn write(dir: &Path, relative: &str, text: &str) {
 
 fn run(dir: &Path, target: &str) -> Output {
     Command::new(BIN)
-        .args(["impact", dir.to_str().unwrap(), target, "--json"])
+        .args([
+            "impact",
+            "--project",
+            dir.to_str().unwrap(),
+            "--node",
+            target,
+            "--json",
+        ])
         .output()
         .unwrap()
 }

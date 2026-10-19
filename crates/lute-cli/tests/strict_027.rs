@@ -83,7 +83,7 @@ fn an_op_by_from_attr_is_applied_by_play() {
         "p.play.yaml",
         "steps:\n  - occasion: poke\n  - occasion: poke\nexpect:\n  state: { run.sanity: 6 }\n",
     );
-    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{t}");
     assert!(t.contains("Sanity 8.") && t.contains("Sanity 6."), "{t}");
 }
@@ -96,7 +96,7 @@ fn a_value_from_attr_is_applied_by_play() {
         "p.play.yaml",
         "steps:\n  - occasion: poke\nexpect:\n  state: { run.sanity: 2 }\n",
     );
-    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{t}");
 }
 

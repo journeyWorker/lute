@@ -78,7 +78,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 
 fn play(dir: &Path, script: &str) -> (Option<i32>, String) {
     write(dir, "s.play.yaml", script);
-    run(dir, &["play", ".", "--script", "s.play.yaml"])
+    run(dir, &["play", "--project", ".", "--script", "s.play.yaml"])
 }
 
 /// Each non-member a play writes or expects is refused before anything

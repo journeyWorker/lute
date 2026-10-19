@@ -98,13 +98,13 @@ fn describe(id: &str, command: &Command) -> Value {
     })
 }
 
-/// Structured inputs a command reads (dsl 0.47.0 §5.2): `patch`'s `PATCH`
+/// Structured inputs a command reads (dsl 0.47.0 §5.2): `patch`'s `FILE`
 /// request, described from the table its parser reads; none elsewhere.
 fn inputs(id: &str) -> Vec<Value> {
     match id {
         "patch" => {
             let mut request = json!({
-                "argument": "PATCH",
+                "argument": "FILE",
                 "kind": "request",
                 "format": "json",
             });

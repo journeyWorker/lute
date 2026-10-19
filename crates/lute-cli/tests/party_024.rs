@@ -75,9 +75,9 @@ fn a_sub_kind_predicate_and_an_indexed_rule_derive_per_member_in_play() {
          facts: [inParty(isolde), inParty(corvin), loyal(isolde)]\n  notFacts: [loyal(corvin)]\n",
     );
     let out = Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"))
-        .args(["--explain", "loyal(isolde)"])
+        .args(["--derivation", "loyal(isolde)"])
         .output()
         .unwrap();
     let t = text(&out);

@@ -97,7 +97,7 @@ fn project(dir: &Path) {
 /// then `compile --all --locales` into `out`. Returns the exported rows and
 /// the compile's output.
 fn compile_localized(dir: &Path, out: &Path) -> (Vec<Json>, Output) {
-    let exported = run(&["loc", "export", dir.to_str().unwrap()]);
+    let exported = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     ok(&exported);
     let rows: Vec<Json> = serde_json::from_slice(&exported.stdout).unwrap();
     let translated: Vec<Json> = rows

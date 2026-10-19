@@ -106,6 +106,7 @@ fn play_renders_label_forms_and_number_words() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

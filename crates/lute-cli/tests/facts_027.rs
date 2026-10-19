@@ -175,7 +175,7 @@ fn play_applies_the_declared_assert_and_the_gated_follow_up_opens() {
         "steps:\n  - occasion: door\n  - occasion: search\n  - occasion: door\n\
          expect:\n  facts: [holding(brassKey)]\n",
     );
-    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{t}");
     assert!(t.contains("holding(brassKey)"), "{t}");
     assert!(t.contains("effect of ::give"), "{t}");
@@ -207,7 +207,7 @@ fn test_and_trace_apply_the_declared_assert() {
 #[test]
 fn scenario_facts_draws_the_directive_to_the_gated_scene() {
     let dir = project("scenario");
-    let (code, t) = run(&dir, &["scenario", ".", "--facts"]);
+    let (code, t) = run(&dir, &["scenario", "--project", ".", "--facts"]);
     assert_eq!(code, Some(0), "{t}");
     assert!(t.contains("holding(brassKey)"), "{t}");
     assert!(t.contains("canEnter(office)"), "{t}");
@@ -232,7 +232,7 @@ fn scenario_facts_draws_the_directive_through_an_occasion_gate() {
         "---\nkind: scene\nid: study\non: enter\ntarget: room.office\n---\n\n## Study\n\n\
          @narrator: Papers everywhere.\n",
     );
-    let (code, t) = run(&dir, &["scenario", ".", "--facts"]);
+    let (code, t) = run(&dir, &["scenario", "--project", ".", "--facts"]);
     assert_eq!(code, Some(0), "{t}");
     let edge = t
         .lines()
@@ -322,7 +322,7 @@ fn an_occasion_step_may_carry_engine_facts() {
         "p.play.yaml",
         "steps:\n  - engine: { facts: [holding(brassKey)] }\n    occasion: door\n",
     );
-    let (code, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let (code, t) = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     assert_eq!(code, Some(0), "{t}");
     assert!(t.contains("The office door gives."), "{t}");
 }

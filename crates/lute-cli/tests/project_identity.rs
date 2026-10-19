@@ -189,7 +189,7 @@ fn nested_uses_nest_scopes_and_loc_export_agrees() {
             .collect::<Vec<_>>(),
     );
 
-    let export = lute(&["loc", "export", p(&dir)]);
+    let export = lute(&["loc", "export", "--project", p(&dir)]);
     assert_eq!(export.status.code(), Some(0), "{}", text(&export));
     let rows: serde_json::Value = serde_json::from_slice(&export.stdout).unwrap();
     let exported: Vec<&str> = rows

@@ -51,7 +51,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
         "t.test.yaml",
         "file: s.lute\nderive: false\nexpect:\n  transcriptContains: [\"before.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(
         out.status.code(),
@@ -76,7 +76,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
     );
 
     // --json carries the same, machine-readable.
-    let out = lute(&["test", dir.to_str().unwrap(), "--json"]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let t = &v["tests"][0];
     assert_eq!(t["passed"], false, "{v:#}");
@@ -93,7 +93,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
         "t.test.yaml",
         "file: s.lute\nderive: false\nexpect:\n  end: incomplete\n  transcriptContains: [\"before.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
 
     // `--no-derive` overrides a test that derives.
@@ -102,7 +102,7 @@ fn an_incomplete_trace_fails_unless_the_test_declares_it_and_names_what_to_suppl
         "t.test.yaml",
         "file: s.lute\nexpect:\n  end: incomplete\n  transcriptContains: [\"before.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap(), "--no-derive"]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap(), "--no-derive"]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
 }
 
@@ -118,7 +118,7 @@ fn a_rule_derived_fact_decides_a_test_guard_without_mocking_it() {
         "t.test.yaml",
         "file: s.lute\nexpect:\n  end: complete\n  transcriptContains: [\"allied.\", \"after.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
 }
 
@@ -140,7 +140,7 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
         "t.test.yaml",
         "file: book.lute\nexpect:\n  end: complete\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("E-TEST-LORE"), "{text}");
@@ -158,7 +158,7 @@ fn a_lore_document_is_a_test_subject_only_with_its_entries_named() {
         "t.test.yaml",
         "file: book.lute\nentry: page\nexpect:\n  transcriptContains: [\"a page.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
 }
 
@@ -193,7 +193,7 @@ fn a_lore_test_without_an_entry_judges_facts_on_the_seeded_world() {
         "b.test.yaml",
         "file: book.lute\nexpect:\n  notFacts: [\"allied(ana, bo)\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     let verdict = |name: &str| {
         text.lines()
@@ -231,7 +231,7 @@ fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
         "t.test.yaml",
         "file: s.lute\nchoose: { askCook: scullery }\nexpect:\n  end: complete\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(
@@ -244,12 +244,12 @@ fn a_hub_whose_scripted_picks_run_out_halts_in_trace_and_test() {
     );
 
     let s = dir.join("s.lute");
-    let out = lute(&["trace", s.to_str().unwrap(), "--choose", "askCook=scullery"]);
+    let out = lute(&["trace", s.to_str().unwrap(), "--choice", "askCook=scullery"]);
     assert_eq!(out.status.code(), Some(3), "{}", stdout(&out));
     let out = lute(&[
         "trace",
         s.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "askCook=scullery,leave",
     ]);
     let text = stdout(&out);
@@ -284,7 +284,13 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
         "tests/t.test.yaml",
         "file: ../scenes/tested.lute\nexpect:\n  end: complete\n",
     );
-    let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
+    let out = lute(&[
+        "test",
+        "--project",
+        dir.to_str().unwrap(),
+        dir.join("tests").to_str().unwrap(),
+        "--coverage",
+    ]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
     assert!(text.contains("2 untested unit(s)"), "{text}");
@@ -301,7 +307,13 @@ fn coverage_is_measured_against_the_project_not_the_tests_directory() {
         "tests/book.test.yaml",
         "file: ../lore/book.lute\nentry: page\nexpect:\n  end: complete\n",
     );
-    let out = lute(&["test", dir.join("tests").to_str().unwrap(), "--coverage"]);
+    let out = lute(&[
+        "test",
+        "--project",
+        dir.to_str().unwrap(),
+        dir.join("tests").to_str().unwrap(),
+        "--coverage",
+    ]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
     let (_, listed) = text
@@ -332,7 +344,7 @@ fn expect_state_compares_the_effective_value_default_and_seed_included() {
         "seed.test.yaml",
         "file: s.lute\nstate:\n  run.mood: tense\nexpect:\n  state:\n    run.mood: tense\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("2 passed, 0 failed"), "{text}");
@@ -343,7 +355,7 @@ fn expect_state_compares_the_effective_value_default_and_seed_included() {
         "default.test.yaml",
         "file: s.lute\nexpect:\n  state:\n    user.score: 5\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("expected 5, got 0"), "{text}");
@@ -383,7 +395,7 @@ fn a_false_beat_when_is_named_by_trace_and_by_test() {
         "t.test.yaml",
         "file: wed.lute\nstate:\n  run.day: 4\nexpect:\n  transcriptContains: [\"Wednesday.\"]\n",
     );
-    let out = lute(&["test", dir.to_str().unwrap()]);
+    let out = lute(&["test", "--project", dir.to_str().unwrap()]);
     let text = stdout(&out);
     // dsl 0.26.0 §7 (T1-7): the test fails on the ineligible scene, and
     // the failure names the false premise (prerelease N3) — the trace's "the
@@ -419,7 +431,7 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
     let out = lute(&[
         "trace",
         file.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "ask=trust",
         "--no-derive",
     ]);
@@ -434,7 +446,7 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
     let out = lute(&[
         "trace",
         file.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "ask=trust",
         "--no-derive",
         "--json",
@@ -446,7 +458,7 @@ fn a_selection_forced_past_an_unknown_guard_is_counted_unresolved() {
     let out = lute(&[
         "trace",
         file.to_str().unwrap(),
-        "--choose",
+        "--choice",
         "ask=trust",
         "--json",
     ]);
@@ -543,7 +555,14 @@ fn envelope_possible_lists_only_what_is_not_guaranteed() {
         "---\nkind: scene\ncharacter: b\nseason: 1\nepisode: 1\n\
          after: 'visited(\"a.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
-    let out = lute(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
+    let out = lute(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "b.s01ep01",
+    ]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}");
     let (guaranteed, rest) = text
@@ -576,9 +595,9 @@ fn scenario_and_test_survive_a_closed_stdout() {
         "file: a.lute\nexpect:\n  end: complete\n",
     );
     for args in [
-        vec!["scenario", dir.to_str().unwrap()],
-        vec!["test", dir.to_str().unwrap()],
-        vec!["lore", dir.to_str().unwrap()],
+        vec!["scenario", "--project", dir.to_str().unwrap()],
+        vec!["test", "--project", dir.to_str().unwrap()],
+        vec!["lore", "--project", dir.to_str().unwrap()],
     ] {
         let mut child = Command::new(BIN)
             .args(&args)

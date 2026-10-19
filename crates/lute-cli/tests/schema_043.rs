@@ -199,6 +199,82 @@ fn a_command_lists_its_arguments_options_and_outputs() {
     assert_eq!(schema(&["version"])["outputs"][0]["kind"], "artifact");
 }
 
+/// 0.48.0 §4: the outputs rows of the commands the grammar cutover moved —
+/// `scenario*` reports are selected by `--json`, `context`'s node report by
+/// `--json --node`, `loc export` is an artifact writer (no `--json`; its CSV
+/// form is `--format csv`) — and `new`'s kinds are subcommands.
+#[test]
+fn the_moved_outputs_and_subcommands_are_listed() {
+    for (path, version) in [
+        (&["scenario"][..], "0.43.0.scenario"),
+        (&["scenario", "reach"][..], "0.43.0.scenario-reach"),
+        (&["scenario", "envelope"][..], "0.43.0.scenario-envelope"),
+        (&["scenario", "knowledge"][..], "0.43.0.scenario-knowledge"),
+    ] {
+        assert_eq!(
+            schema(path)["outputs"],
+            serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": version}]),
+            "{path:?}"
+        );
+    }
+    let context = schema(&["context"]);
+    let outputs: Vec<(&str, &str)> = context["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            (
+                o["flag"].as_str().unwrap(),
+                o["schemaVersion"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        outputs,
+        [
+            ("--json", "0.43.0.surface"),
+            ("--json --node", "0.36.0.context"),
+            ("--json --at", "0.36.0.position"),
+        ]
+    );
+    let export = schema(&["loc", "export"]);
+    assert_eq!(
+        export["outputs"],
+        serde_json::json!([
+            {"flag": null, "kind": "artifact", "schemaVersion": null},
+            {"flag": "--format csv", "kind": "artifact", "schemaVersion": null}
+        ])
+    );
+    assert!(
+        export["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|o| o["name"] != "--json"),
+        "loc export is an artifact writer"
+    );
+    let new = schema(&["new"]);
+    let ids: Vec<&str> = new["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["new scene", "new quest", "new lore", "new schema"]);
+    for id in ids {
+        let path: Vec<&str> = id.split(' ').collect();
+        let options = schema(&path)["options"].clone();
+        assert!(
+            options
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|o| o["name"] == "--project"),
+            "{id} takes --project"
+        );
+    }
+}
+
 #[test]
 fn an_unknown_path_is_a_usage_error_envelope() {
     for (path, argument) in [(&["nope"][..], "nope"), (&["scenario", "nope"][..], "nope")] {

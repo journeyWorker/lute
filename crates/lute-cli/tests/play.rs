@@ -41,6 +41,7 @@ fn play_in(project: &Path, tag: &str, script: &str, json: bool) -> Output {
     let script = write(&dir, "s.play.yaml", script);
     let mut args = vec![
         "play".to_string(),
+        "--project".to_string(),
         project.display().to_string(),
         "--script".to_string(),
         script.display().to_string(),
@@ -587,6 +588,7 @@ fn the_human_transcript_names_each_step_its_verdicts_and_the_winner() {
     let out = Command::new(BIN)
         .args([
             "play",
+            "--project",
             fixture().to_str().unwrap(),
             "--script",
             script.to_str().unwrap(),
@@ -1066,6 +1068,7 @@ fn staging_prints_as_authored_and_ir_prints_the_lowered_records() {
     let out = Command::new(BIN)
         .args([
             "play",
+            "--project",
             dir.to_str().unwrap(),
             "--script",
             s.to_str().unwrap(),
@@ -2503,6 +2506,7 @@ fn a_clear_prints_once_as_authored_and_lowers_to_an_exit_per_character() {
     let out = Command::new(BIN)
         .args([
             "play",
+            "--project",
             dir.to_str().unwrap(),
             "--script",
             s.to_str().unwrap(),
@@ -2720,7 +2724,12 @@ fn play_with(project: &Path, tag: &str, script: &str, args: &[&str]) -> Output {
     let script_scratch = lute_scratch::ScratchDir::named(tag);
     let script = write(&script_scratch, "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &project.display().to_string(), "--script"])
+        .args([
+            "play",
+            "--project",
+            &project.display().to_string(),
+            "--script",
+        ])
         .arg(&script)
         .args(args)
         .output()
@@ -3034,6 +3043,7 @@ expect: { end: complete }
     let out = Command::new(BIN)
         .args([
             "play",
+            "--project",
             dir.to_str().unwrap(),
             "--script",
             path.to_str().unwrap(),

@@ -246,7 +246,11 @@ fn play(script: &str, events: bool) -> std::process::Output {
     let path = scratch.join("s.play.yaml");
     std::fs::write(&path, script).unwrap();
     let mut cmd = Command::new(BIN);
-    cmd.arg("play").arg(fixture()).arg("--script").arg(&path);
+    cmd.arg("play")
+        .arg("--project")
+        .arg(fixture())
+        .arg("--script")
+        .arg(&path);
     if events {
         cmd.arg("--events");
     }

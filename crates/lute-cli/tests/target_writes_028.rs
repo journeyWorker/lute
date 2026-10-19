@@ -102,7 +102,10 @@ fn a_kind_beat_writes_only_the_member_it_ran_for() {
         "steps:\n  - occasion: landed\n    target: fish.cod\n  - occasion: landed\n    target: fish.cod\n\
          expect:\n  state: { run.count.cod: 2, run.count.eel: 0 }\n  facts: [caught(cod), hauled(cod)]\n",
     );
-    let play = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let play = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     let out = text(&play);
     assert!(play.status.success(), "{out}");
     assert!(out.contains("set run.count.cod = 2"), "{out}");
@@ -140,7 +143,10 @@ fn a_component_argument_passes_the_member_it_ran_for() {
         "facts: [met(ren)]\nsteps:\n  - occasion: camp\n\
          expect:\n  state: { run.bond.kai: 1, run.bond.ren: 0 }\n",
     );
-    let play = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let play = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     let out = text(&play);
     assert!(play.status.success(), "{out}");
     assert!(out.contains("@kai: Count me in."), "{out}");

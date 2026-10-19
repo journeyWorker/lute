@@ -99,6 +99,7 @@ fn play_renders_kind_labels_and_the_plural_form() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -305,6 +306,7 @@ fn a_kind_label_wins_over_a_cast_name_in_text() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

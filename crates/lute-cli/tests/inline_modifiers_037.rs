@@ -31,7 +31,7 @@ const LINE_ID: &str = "rock.arrival.inspector_0020";
 
 #[test]
 fn loc_export_keeps_the_authored_markup() {
-    let out = run(&["loc", "export", game().to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", game().to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let all = text(&out);
     assert!(
@@ -97,6 +97,7 @@ fn play_json_line_events_carry_segments_and_plain_text() {
     let script = g.join("plays/true-account.play.yaml");
     let out = run(&[
         "play",
+        "--project",
         g.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -199,6 +200,7 @@ fn play_json_segments_render_each_marker_by_its_global_index() {
     let script = dir.join("s.play.yaml");
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

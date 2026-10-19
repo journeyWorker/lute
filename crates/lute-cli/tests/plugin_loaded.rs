@@ -90,6 +90,7 @@ fn refresh_stamps_resolved_version_under_project() {
         .args([
             "catalog",
             "refresh",
+            "--providers",
             tmp.to_str().unwrap(),
             "--project",
             "../../docs/examples/arcia-project",

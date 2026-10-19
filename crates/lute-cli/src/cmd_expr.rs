@@ -46,7 +46,6 @@ struct Report<'a> {
 pub(crate) struct ExprOptions<'a> {
     pub(crate) cel: &'a str,
     pub(crate) project: Option<&'a Path>,
-    pub(crate) providers: Option<&'a Path>,
     pub(crate) permission_profile: Option<&'a str>,
     pub(crate) policy: &'a DenyPolicy,
     pub(crate) json: bool,
@@ -57,7 +56,6 @@ pub(crate) struct ExprOptions<'a> {
 pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
     let ExprOptions {
         cel: raw,
-        providers,
         permission_profile,
         policy,
         json,
@@ -82,7 +80,7 @@ pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
         return envelope::fail(error);
     }
     let cache = InputCache::default();
-    let documents = match project_documents(&cache, project, providers, permission_profile) {
+    let documents = match project_documents(&cache, project, permission_profile) {
         Ok(documents) => documents,
         Err(message) => return envelope::fail(envelope::CliError::io(project, message)),
     };
@@ -92,7 +90,7 @@ pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
         &cache,
         &project.join(SYNTHETIC_DOCUMENT),
         text,
-        providers,
+        None,
         Some(project),
         permission_profile,
     );
@@ -217,7 +215,6 @@ fn finish(
 fn project_documents(
     cache: &InputCache,
     project: &Path,
-    providers: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> Result<Vec<(PathBuf, BuiltInput)>, String> {
     let mut files = find_lute_files(project).map_err(|e| {
@@ -233,14 +230,8 @@ fn project_documents(
         .into_iter()
         .map(|path| {
             let text = read_document(&path)?;
-            let (built, _) = assemble_input(
-                cache,
-                &path,
-                text,
-                providers,
-                Some(project),
-                permission_profile,
-            );
+            let (built, _) =
+                assemble_input(cache, &path, text, None, Some(project), permission_profile);
             Ok((path, built))
         })
         .collect()

@@ -261,8 +261,6 @@ pub(crate) enum Command {
         #[command(flatten)]
         project: ProjectOpt,
         #[command(flatten)]
-        providers: ProvidersOpt,
-        #[command(flatten)]
         permission_profile: PermissionProfileOpt,
         #[command(flatten)]
         gate: GateOpts,
@@ -758,8 +756,6 @@ pub(crate) enum Command {
     Beats {
         #[command(flatten)]
         project: ProjectOpt,
-        #[command(flatten)]
-        providers: ProvidersOpt,
         /// Only this occasion's ladders (repeatable).
         #[arg(long, value_name = "OCCASION")]
         occasion: Vec<String>,
