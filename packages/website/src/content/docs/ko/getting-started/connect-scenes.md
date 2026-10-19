@@ -125,11 +125,11 @@ priority: 20
 장면이 직접 쓴 키는 사슬보다 우선합니다: 한 장면에 자기 `priority:`나 다른 `after:`를 주면 그
 키만 바뀝니다. 어느 장면도 선언하지 않은 id를 목록에 적거나, 목록의 장면이 자기 `on:`으로 다른 계기에
 응답하거나, 한 장면을 두 번 적거나, 한 계기에 사슬을 둘 두거나, 어떤 플러그인도 선언하지 않은 `on:`을
-적으면 `lute check-project`가 `E-CHAPTERS`를 보고합니다(비슷한 이름 제안 포함). 아래 엔딩처럼 목록에
+적으면 `lute check --project .`가 `E-CHAPTERS`를 보고합니다(비슷한 이름 제안 포함). 아래 엔딩처럼 목록에
 없는 장면은 여전히 키를 직접 씁니다.
 
 자기 `when:`이 이야기가 끝내 설정하지 않을 수도 있는 상태를 읽어 재생되지 않을 수도 있는 장은 사슬을
-멈춥니다: 목록의 다음 장면이 `after:`로 그 장을 기다리기 때문이며, `lute check-project`가
+멈춥니다: 목록의 다음 장면이 `after:`로 그 장을 기다리기 때문이며, `lute check --project .`가
 경고합니다(`W-CHAPTER-STALL`). 시계만 읽는 `when:`은 그 계기의 이후 raise가 여전히 맞추는 동안 사슬을 늦출 뿐이므로 경고하지 않습니다. 창이 닫히는 `when:`은 경고합니다: 실행이 시작된 날의 `dayStart` 장(그날은 시계가 `dayStart`를 raise하지 않습니다. 시계가 `raiseAtStart: true`를 선언했다면 예외입니다)이나, 사슬이 너무 늦게 닿을 수 있는, 끝나는 시계의 마지막 날의 슬롯이 그렇습니다. 선택적인
 장 뒤의 장면에 그 앞 장을 가리키는 자기 `after:`를 주거나, 첫 장이라면 사슬에서 빼고 자기 `on:`을
 직접 쓰세요. `lute play`는 파생된 `after:`를 이유에 밝힙니다: `after: visited("pryceWakes") is not
@@ -212,7 +212,7 @@ when: "run.accused != 'ruben'"
 ## 검사하고 순서 보기
 
 ```
-$ lute check-project .
+$ lute check --project .
 ok: ./scenes/accusation.lute (0 warning(s))
 ok: ./scenes/counter.lute (0 warning(s))
 ok: ./scenes/ending/caught.lute (0 warning(s))
@@ -224,7 +224,7 @@ ok: . (5 file(s), 0 project-wide warning(s))
 `lute beats`는 각 계기에 응답하는 모든 장면을 서로 겨루는 순서대로 출력합니다:
 
 ```
-$ lute beats .
+$ lute beats --project .
 project root: .
 
   chapter — select: first
@@ -263,7 +263,7 @@ expect:
 - 마지막 `expect:`는 이야기 전체가 끝난 뒤의 상태를 확인합니다.
 
 ```
-$ lute play . --script plays/caught.play.yaml
+$ lute play --project . --script plays/caught.play.yaml
 ── step 1 · chapter ──────────────
   ✓ prologue [scene, priority 30]
   ✗ counter [scene, priority 20] — after: visited("prologue") is not satisfied (written by `chapters:` in lute.project.yaml)
@@ -327,7 +327,7 @@ expect:
 `after: 'visited("counter")'`를 기다리기 때문에 테스트가 그 줄이 필요하다고 알려줍니다:
 
 ```
-$ lute test . --project .
+$ lute test --project .
 FAIL  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
       eligible accusation: not eligible under these mocks (its `after: visited("counter")` (written by `chapters:` in lute.project.yaml) is false — add `visited: [counter]` to the mocks) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
 PASS  ./plays/caught.play.yaml  (play of .)
@@ -338,7 +338,7 @@ PASS  ./plays/caught.play.yaml  (play of .)
 `visited: [counter]`를 넣으면:
 
 ```
-$ lute test . --project .
+$ lute test --project .
 PASS  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
 PASS  ./plays/caught.play.yaml  (play of .)
 

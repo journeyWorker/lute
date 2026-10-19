@@ -59,7 +59,7 @@ Enforcement is new in 0.8.0, but it removes an ambiguity rather than adding a re
 ### One path, one declaration
 
 A frontmatter `state:` declaration is not private to its document: `run.southFossil` declared in
-two documents is one value at run time. Since dsl 0.26.0 §2.1 `check-project` compares every
+two documents is one value at run time. Since dsl 0.26.0 §2.1 whole-project `lute check` compares every
 declaration of a path, inline or imported, and reports **`E-STATE-DECL-CONFLICT`** naming both
 files and lines when their `type`, `default`, `per` or `owner` differ. `lute play` refuses a
 project that declares one path with two types.

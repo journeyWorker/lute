@@ -90,7 +90,7 @@ Apart from a second clock, which only the project can see, each is reported on t
 `lute check world.schema.yaml` finds them on its own (the `raise` occasions against the plugins of
 the project the schema sits in; outside a project, any occasion name passes). A document that uses
 the schema carries the same error at its line 1 in a single-file `lute check`, naming the schema, with
-the schema line under it. `check-project` instead reports it once, as a project-wide line at the
+the schema line under it. whole-project `lute check` instead reports it once, as a project-wide line at the
 schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
@@ -512,7 +512,7 @@ grid reads like a timetable. Bare `--axis clock` is one week from day 1 (day 1 a
 `week:`):
 
 ```console
-$ lute calendar . --axis clock=5..6 --occasion slotStart
+$ lute calendar --project . --axis clock=5..6 --occasion slotStart
 calendar: . — 6 cell(s) × 1 column(s), from declared defaults
 
 clock            slotStart (sequence)

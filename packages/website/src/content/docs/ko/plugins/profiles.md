@@ -74,7 +74,7 @@ plugins:
 
 소스가 작성한 `profile:`은 인증이 아니므로, 신뢰할 수 없는 작성 입력을 허용하는 호스트는
 `--permission-profile NAME`을 check, compile,
-compile-stream 또는 context에 추가합니다. 이 신뢰된 고정은 지정한
+compile --stream 또는 context에 추가합니다. 이 신뢰된 고정은 지정한
 프로필의 권한 상한만 기여하며, 플러그인을 활성화하거나 소스에 작성된
 프로필을 변경하지 않습니다.
 

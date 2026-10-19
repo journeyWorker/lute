@@ -1,9 +1,9 @@
 ---
 title: Player bindings reference
-description: Complete player.bindings.yaml sections, effect catalogue, parameters, and check-project diagnostics for Lute 0.41.
+description: Complete player.bindings.yaml sections, effect catalogue, parameters, and whole-project check diagnostics for Lute 0.41.
 ---
 
-`player.bindings.yaml` is optional and sits beside `lute.project.yaml`. `lute check-project` reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
+`player.bindings.yaml` is optional and sits beside `lute.project.yaml`. whole-project `lute check --project` reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
 bindingsVersion: "0.47"
@@ -65,7 +65,7 @@ flow:
 
 `bindingsVersion` follows the `luteVersion` rule. Its value is `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain version (`"0.47"` for Lute 0.47.x).
 
-- `lute check-project` reports `W-BINDINGS-VERSION-STALE` at the value when it differs from the toolchain line. An older line says to update it to the toolchain line, which `lute fix` does; a newer line says to upgrade the toolchain rather than downgrade the stamp; a value that is not `MAJOR.MINOR` (such as `"0.47.0"`) is told to restamp it.
+- `lute check --project` reports `W-BINDINGS-VERSION-STALE` at the value when it differs from the toolchain line. An older line says to update it to the toolchain line, which `lute fix` does; a newer line says to upgrade the toolchain rather than downgrade the stamp; a value that is not `MAJOR.MINOR` (such as `"0.47.0"`) is told to restamp it.
 - A section newer than the declared line is `E-BINDINGS-VERSION` at that section's key, naming the line it needs, for example `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. Sections are not checked when the value is not `MAJOR.MINOR`.
 - `lute fix` raises an older `MAJOR.MINOR` value in `player.bindings.yaml` to the toolchain line, keeping the rest of the file byte for byte (quotes and comments included). A newer or malformed value (leading zeros such as `"0.046"` included) is left alone, and so is a file written as one flow mapping (`{ bindingsVersion: …, … }`); the warning names `lute fix` only when it raises the value.
 
@@ -102,10 +102,10 @@ Unknown YAML keys are rejected. Unknown effects or parameters produce `E-BINDING
 
 Domain-keyed binding keys must be members of the merged project domains. `characters` keys must be declared cast ids. Flow occasions must be declared. These violations produce `E-BINDING-KEY`, with a nearby-name suggestion when one exists.
 
-A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). `lute check-project` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
+A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). `lute check --project` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
 
-A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check-project --json`.
+A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check --project <dir> --json`.
 
-Use `lute check-project <dir>` after `lute compile --all`; a clean project with no bindings remains valid because the file is optional.
+Use `lute check --project <dir>` after `lute compile --project <dir> -o <out>`; a clean project with no bindings remains valid because the file is optional.
 
 The normative repository reference is [`docs/player/bindings.md`](https://github.com/journeyWorker/lute/blob/main/docs/player/bindings.md).

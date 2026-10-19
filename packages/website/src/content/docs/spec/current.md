@@ -393,3 +393,18 @@ agent-facing addition is the CLI contract: JSON reports have a flat `command`,
 `E-CLI-IO`, or `E-CLI-INPUT`; `lute schema` describes the parser's command tree; and
 local telemetry is opt-out with `LUTE_TELEMETRY=0` or `DO_NOT_TRACK=1`. Artifacts,
 `run --json`, and event streams keep their existing non-report protocols.
+
+## 0.48 CLI grammar addendum
+
+0.48.0 changes the command line only; the language and artifact shapes are unchanged.
+A project is always named with `--project <DIR>`, and a command given no `--project`
+finds the nearest `lute.project.yaml` above the current directory (or above the
+file operand for `check`, `compile`, `context` and `trace`). `check-project` is
+folded into `lute check`: `lute check --project <DIR>` is the whole-project check,
+while `lute check <FILE>…` checks documents only. `lute compile --project <DIR> -o <OUT>`
+replaces `compile --all`, and `lute compile --stream <FILE>` replaces
+`compile-stream`. The `check --json` report is `0.48.0.check` with `files[]` and,
+in whole-project mode, `project_diagnostics`; the `0.43.0.check-project` report
+is retired. Flags are renamed uniformly (for example `--out` is `-o, --output`,
+`--locales` is `--locale-bundle`, `context --target` is `--node`). Earlier
+rows and notes on this page keep the spelling of the version they describe.

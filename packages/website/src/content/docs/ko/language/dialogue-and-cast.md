@@ -85,7 +85,7 @@ position과 번호는 소스 순서를 따르므로 섹션이 이동하면 바�
 
 voice key는 녹음을 위한 조인 키이지 녹음이 존재한다는 주장이 아닙니다. 내레이션에 음성을 입히지 않는 프로젝트는
 그 키에 해당하는 아티팩트가 없을 뿐입니다. 프로젝트에서 같은 `voiceKey`를 공유하는 두 줄은 동일한 텍스트를
-말해야 합니다([인라인 수식자](#인라인-텍스트-수식자)를 제거한 뒤 비교). 그렇지 않으면 `check-project`가
+말해야 합니다([인라인 수식자](#인라인-텍스트-수식자)를 제거한 뒤 비교). 그렇지 않으면 프로젝트 전체 `lute check`가
 `E-DUP-VOICEKEY`를 보고합니다.
 
 `action=`은 **무대** 결과가 있는 유일한 줄 속성이며, 그것도 작습니다. 해당 줄에서 화자의 포즈를 설정하고
@@ -148,7 +148,7 @@ cast:
 ### 두 화자가 공유하는 표시 이름
 
 대화 상자에서 같은 이름으로 표시되는 두 화자는 한 사람처럼 보입니다. 여러 작가가 하나의 프로젝트에 캐릭터를
-추가할 때 두 지역에서 각각 `Hiker Gus`를 작성하는 식으로 우연히 발생합니다. `check-project`는 이를 권고
+추가할 때 두 지역에서 각각 `Hiker Gus`를 작성하는 식으로 우연히 발생합니다. 프로젝트 전체 `lute check`는 이를 권고
 **`W-DISPLAY-NAME-DUP`**(dsl 0.26.0 §2.8)으로 보고하며, `lute lint`도 보고합니다. 다음 두 경우처럼
 정확히 같은 `name:`을 가진 캐스트 항목, 컴포넌트의 `::use{… name="…"}` 표시 문자열과 같은 캐스트 이름,
 서로 다른 화자에 대한 두 `who=` 문자열을 비교합니다.
@@ -169,7 +169,7 @@ cast:
   grunt2: { name: Eclipse Grunt, sharedName: true }
 ```
 
-플러그인의 `cast/*.yaml` 항목도 같은 키를 받습니다. `check-project --deny-warnings`를 실행하는 병합 게이트는
+플러그인의 `cast/*.yaml` 항목도 같은 키를 받습니다. `lute check --project . --deny-warnings`를 실행하는 병합 게이트는
 의도한 역할 이름에 표시를 붙이면 다시 통과하고, `lute lint --deny W-DISPLAY-NAME-DUP`는 이를 자체적으로 코드로
 승격합니다. [여러 작가 프로젝트](/ko/guides/multi-author/)를 참고하세요.
 
@@ -179,7 +179,7 @@ cast:
 캐스트 밖의 `::actor{character}`와 `::camera{focus}`는 동일한 did-you-mean과 함께 `E-CAST-UNKNOWN`입니다.
 타임라인 클립, `<match>` 갈래와 선택지의 본문도 검사됩니다.
 
-<!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from check-project output" -->
+<!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from whole-project lute check output" -->
 ```
 ./scenes/ridge.lute:11:20: error [E-CAST-UNKNOWN] `::actor{character}` `corvn` is not in the declared cast — did you mean `corvin`?
 ./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast — did you mean `isolde`?
@@ -261,7 +261,7 @@ cast:
   퀘스트의 핸들러라면 Tobias에게 줄을 주면서 가드를 반복하지 않아도 됩니다. objective 본문이나 이 퀘스트의
   이전 `questComplete` 핸들러에 있는 `::assert`, `::retract`, `::set`은 다른 가드와 마찬가지로 이 전제를 취소할
   수 있습니다.
-- `check-project`에서는 같은 계기에 대해 항상 자격이 있는 `once` 비트 중 자신보다 순위가 높은 비트가 이미
+- 프로젝트 전체 `lute check`에서는 같은 계기에 대해 항상 자격이 있는 `once` 비트 중 자신보다 순위가 높은 비트가 이미
   소진되었다고 전제합니다.
 
 파생 관계에 대한 `holds(A)` 가드는 A의 규칙 본문도 함의합니다. `inParty(P) :- recruited(P), not departed(P)`라면
@@ -280,10 +280,10 @@ atom을 무효화합니다. 그것도 atom을 잘못된 방향으로 이동할 �
 화면 밖에서 들린다는 뜻이므로 presence가 있어야 합니다. 라디오나 전화 너머의 원격 화자처럼 별도의 원격 화자
 플래그는 아직 없습니다.
 
-팩트는 `lute check`와 `check-project`가 다른 유일한 곳입니다. `check-project`는 줄까지 이어지는 모든 경로에서
+팩트는 `lute check`와 프로젝트 전체 `lute check`가 다른 유일한 곳입니다. 프로젝트 전체 `lute check`는 줄까지 이어지는 모든 경로에서
 참인 팩트도 셉니다. 모든 경로에서 앞서 assert되었거나, seed된 뒤 retract되지 않은 팩트입니다. 따라서 위 예시의
 마지막 줄 `::assert{ inParty(isolde) }` 뒤의 `@isolde: Back again.`은 그곳에서는 깨끗합니다. 단일 파일
-`lute check`는 그런 팩트를 볼 수 없으므로 그 줄에도 경고하고, `check-project`라면 볼 수 있다는 참고 사항을 추가합니다.
+`lute check`는 그런 팩트를 볼 수 없으므로 그 줄에도 경고하고, 프로젝트 전체 `lute check`라면 볼 수 있다는 참고 사항을 추가합니다.
 다른 경고와 마찬가지로 `--deny W-CAST-ABSENT`는 이를 오류로 올립니다.
 
 Presence에는 엔진만 쓰는 두 번째 조건이 붙는 경우가 많습니다. 예를 들어 "파티에 있고, 쓰러지지 않았다"인
@@ -316,7 +316,7 @@ cast:
   isolde: { name: Isolde, present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])", assume: true }
 ```
 
-`changedOn`이 있으면 `assume: true`는 해당 계기에서 제시되는 단위에서 더 이상 `!holds('fell', ['…'])`를 참으로 읽지 않습니다. 여기에는 `on: battleEnd`에 응답하는 씬, 엔트리 또는 번들 비트, 그리고 그곳에서 판정되는 퀘스트 `<on event>` 핸들러나 `on=` 목표 본문이 포함됩니다. `check-project`에서는 [시나리오 그래프](/ko/connectivity/scene-graph/)에서 그러한 단위의 **이후 자손(after-descendant)** 모두에 대해서도 마찬가지이며, `after:` / `after=` / `[start]` 간선이 적용됩니다. 계기 자체에는 정적인 순서가 없으므로, 무엇이 “전투 이후”인지 말해 주는 것은 그래프입니다. `inParty(isolde)`를 단언하는 캠프 씬, `after: 'visited("camp")'`인 `battleEnd`의 여파 씬, 그리고 `after: 'visited("aftermath")'`인 길 씬을 생각해 보세요:
+`changedOn`이 있으면 `assume: true`는 해당 계기에서 제시되는 단위에서 더 이상 `!holds('fell', ['…'])`를 참으로 읽지 않습니다. 여기에는 `on: battleEnd`에 응답하는 씬, 엔트리 또는 번들 비트, 그리고 그곳에서 판정되는 퀘스트 `<on event>` 핸들러나 `on=` 목표 본문이 포함됩니다. 프로젝트 전체 `lute check`에서는 [시나리오 그래프](/ko/connectivity/scene-graph/)에서 그러한 단위의 **이후 자손(after-descendant)** 모두에 대해서도 마찬가지이며, `after:` / `after=` / `[start]` 간선이 적용됩니다. 계기 자체에는 정적인 순서가 없으므로, 무엇이 “전투 이후”인지 말해 주는 것은 그래프입니다. `inParty(isolde)`를 단언하는 캠프 씬, `after: 'visited("camp")'`인 `battleEnd`의 여파 씬, 그리고 `after: 'visited("aftermath")'`인 길 씬을 생각해 보세요:
 
 ```lute
 @isolde{when="holds('inParty', ['isolde'])"}: We should keep moving.
@@ -326,7 +326,7 @@ cast:
 
 길에서는 첫 두 줄이 다시 경고되며, 각각 `assume: true`가 적용되지 않은 이유를 말하는 참고 사항이 붙습니다. `{vo}` 줄은 계속 예외입니다:
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
 ```
 ./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
 ```
@@ -534,4 +534,4 @@ diner.lute:13:26: error [E-TEXT-MODIFIER] text style `:emphasis` takes no attrib
 
 보이스 키는 평문을 비교하므로 줄의 스타일만 바꾸어도 녹음과 충돌하지 않습니다. [`lute loc export`](/ko/tooling/cli/#loc-export)는 소스 마크업을 내보내며, 번역은 동일한 수식자를 전달해야 합니다 — 이름, 형식, 속성이 같아야 하고 순서는 달라도 됩니다 — 그렇지 않으면 병합되지 않습니다(`E-L10N-MODIFIERS`). 번역된 로케일에는 항상 `texts`에 평문이 들어가며, 수식자가 있는 줄에는 해당 로케일의 `localeSegments`도 들어갑니다.
 
-export의 각 행에는 `sourceHash`도 있습니다 — 줄의 평문(마크업과 이스케이프를 제거한, 컴파일된 `text`), 선택지 텍스트 또는 프롬프트의 `"sha256:<hex>"`입니다. 번역 파일에 그대로 두세요. [`lute loc import`](/ko/tooling/cli/#loc-import)가 이를 lineId와 로케일별로 번들(`schemaVersion: 2`, `sourceHashes`)에 저장하고, `lute compile --locales`는 번역의 바탕이 된 export 이후 줄이 수정되었으면 `W-L10N-STALE`을 보고합니다 — 다시 내보내 그 번역을 갱신하세요. 갱신하기 전까지 오래된 번역도 그대로 병합됩니다.
+export의 각 행에는 `sourceHash`도 있습니다 — 줄의 평문(마크업과 이스케이프를 제거한, 컴파일된 `text`), 선택지 텍스트 또는 프롬프트의 `"sha256:<hex>"`입니다. 번역 파일에 그대로 두세요. [`lute loc import`](/ko/tooling/cli/#loc-import)가 이를 lineId와 로케일별로 번들(`schemaVersion: 2`, `sourceHashes`)에 저장하고, `lute compile --locale-bundle`는 번역의 바탕이 된 export 이후 줄이 수정되었으면 `W-L10N-STALE`을 보고합니다 — 다시 내보내 그 번역을 갱신하세요. 갱신하기 전까지 오래된 번역도 그대로 병합됩니다.

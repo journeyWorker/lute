@@ -1,6 +1,6 @@
 ---
 title: Build an investigation
-description: A first-project tutorial that builds a small whodunit in a folder of your own, file by file — project manifest, schema, facts and Datalog, three scenes with an interrogation hub, a quest, after-sequencing, check-project and its relational guard analysis, scenario reach, two trace mocks, scenario tests, and compile.
+description: A first-project tutorial that builds a small whodunit in a folder of your own, file by file — project manifest, schema, facts and Datalog, three scenes with an interrogation hub, a quest, after-sequencing, whole-project `lute check` and its relational guard analysis, scenario reach, two trace mocks, scenario tests, and compile.
 ---
 
 [Write your first scene](/getting-started/first-scene/) built one file. This
@@ -45,7 +45,7 @@ profiles:
 ```
 
 The manifest is what turns a folder of `.lute` files into something
-`lute check-project` can resolve as one unit.
+whole-project `lute check` can resolve as one unit.
 
 ## 2. The shared schema
 
@@ -151,7 +151,7 @@ The last line, *"Both threads pull toward one name"*, deliberately carries
 **no** guard. `when="holds('points', ['blake'])"` would be redundant: both clues are
 asserted on the only route through this scene and `implicates(ledger, blake)` is
 a seed, so the rule derives `points(blake)` before the line on every
-playthrough — and `check-project` proves exactly that kind of claim (step 8).
+playthrough — and whole-project `lute check` proves exactly that kind of claim (step 8).
 
 ## 5. The interrogation hub
 
@@ -245,7 +245,7 @@ title: Identify the Killer
 
 `start="true"` makes the quest active from the start, and `tier="run"` makes it a
 quest of one playthrough: it resets with every new run. (Without `tier=` a quest is
-user-tier and persists across runs; `check-project` warns `W-QUEST-TIER-IMPLICIT`
+user-tier and persists across runs; whole-project `lute check` warns `W-QUEST-TIER-IMPLICIT`
 when such a quest reads only run state.) Completion is derived: the
 quest completes once every non-`optional` objective is `done`.
 `gatherEvidence` and `nameSuspect` gate on scalar run state the scenes write, so
@@ -323,7 +323,7 @@ investigation/
 ## 8. Check the whole project
 
 ```sh
-lute check-project .
+lute check --project .
 ```
 
 Exit `0`, and nothing to report — no errors, no warnings:
@@ -336,7 +336,7 @@ ok: ./scenes/interview.lute (0 warning(s))
 ok: . (4 file(s), 0 project-wide warning(s))
 ```
 
-That silence is a proof, not an absence of one. `check-project` decides every
+That silence is a proof, not an absence of one. whole-project `lute check` decides every
 relational fact query (`holds(…)`, `count(…)`) in every guard: **impossible**
 (no seed, assert, rule, or engine relation can produce the fact), **guaranteed**
 (it holds on every declared route to the guard), or **possible** — the normal
@@ -353,7 +353,7 @@ nobody ever logs, `when="holds('foundClue', ['knife'])"`:
   <choice id="pressLetter" text="Press them on the letter" when="holds('foundClue', ['knife'])">
 ```
 
-Run `lute check-project .` again. It now exits `1`, and among its output are
+Run `lute check --project .` again. It now exits `1`, and among its output are
 these two project-wide diagnostics:
 
 {/* lute-diagnostics */}
@@ -361,7 +361,7 @@ these two project-wide diagnostics:
 ./scenes/interview.lute:17:66: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `holds('foundClue', ['ledger'])` is asserted on every route to here (./scenes/crime-scene.lute:16)
 ```
 
-{/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" */}
+{/* lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from whole-project check output" */}
 ```
 ./scenes/interview.lute:22:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `holds('foundClue', ['knife'])` under your declared routes
 ```
@@ -378,9 +378,9 @@ and it becomes `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate rather
 than a guard, so an always-true one is never flagged as redundant.)
 
 The analysis needs every document at once — an assert in a sibling scene is
-invisible to one file — so it runs in `check-project` only; a single-file
+invisible to one file — so it runs in whole-project `lute check` only; a single-file
 `lute check` leaves relational queries undecided. See
-[facts and Datalog](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)
+[facts and Datalog](/state/facts-and-datalog/#how-whole-project-lute-check-analyzes-relational-guards)
 for the full model.
 
 ## 9. Reachability & the scene graph
@@ -389,7 +389,7 @@ for the full model.
 no CEL, no Datalog. Ask about the last scene by its `id:`:
 
 ```sh
-lute scenario . reach detective.s01ep03
+lute scenario reach --project . --node detective.s01ep03
 ```
 
 ```

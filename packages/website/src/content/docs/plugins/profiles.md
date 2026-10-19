@@ -74,7 +74,7 @@ plugin exports.
 
 Because source-authored `profile:` is not authorization, a host accepting
 untrusted authored input adds `--permission-profile NAME` to check, compile,
-compile-stream, or context. That trusted pin contributes only the named
+compile --stream, or context. That trusted pin contributes only the named
 profile's permission ceiling—it neither activates its plugins nor changes the
 profile written in source.
 

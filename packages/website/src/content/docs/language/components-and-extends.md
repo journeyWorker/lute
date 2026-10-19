@@ -253,7 +253,7 @@ A fact atom in the body may take params as arguments, `::assert{gifted(@who, @it
 in a `::retract`. Each `::use` binds the params to its arguments, and the host checks the bound atom
 there, like any atom it wrote itself. With `item: string` and an `item` kind of `[locket, map]`,
 `::use{component="gift" who="isolde" item="locket"}` compiles to an `assert` of
-`gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. `check-project`'s
+`gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. whole-project `lute check`'s
 fact analyses see the bound atom too, so a later `holds('gifted', ['isolde', 'locket'])` is a guaranteed
 guard, and a query no `::use` can produce is dead (`E-ARM-DEAD`). A fact's arguments are ground, so
 the argument must be a constant: an entity or enum member id, `true` or `false`. A def argument,
@@ -359,7 +359,7 @@ A plugin directive that declares result slots, such as a bridge `::battle` that 
 declares (dsl 0.26.0 §3.3). This is the trainer battle of a monster-collecting game, where every
 route trainer is one `::use`:
 
-```lute unverified="needs the engine plugin that declares the ::battle bridge directive and the cast; checked with lute check-project on a scratch project that declares both"
+```lute unverified="needs the engine plugin that declares the ::battle bridge directive and the cast; checked with lute check --project on a scratch project that declares both"
 ---
 component: trainerBattle
 effects: true
@@ -428,7 +428,7 @@ checked against the kind, with a did-you-mean:
 ./scenes/route2.lute:9:30: error [E-BAD-ENUM] `superPotoin` is not a member of entity kind `bagItem` (attribute `item` of `::give` in component `gift`) — did you mean `superPotion`?
 ```
 
-[`lute refs <dir> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
+[`lute refs --project <dir> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
 binds it, marked ``(via component `gift`)``.
 
 Such a param also renders as text (dsl 0.27.0 §7): `{{@hall}}` over `hall: { domain: room }` shows

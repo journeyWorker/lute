@@ -63,7 +63,7 @@ occasions:
 - 위치를 지정하지 않는 `last` / `days`: 두 키를 동시에 사용한 경우, `days: 0`, 1보다 작은 `last.day`, `slots`에 없는 `last.slot`(또는 슬롯이 없는 시계에서의 모든 `last.slot`), 또는 `day` / `slot`의 기본값이 이미 마지막 위치를 지난 시계(dsl 0.27.0 §4);
 - 두 번째 시계: 한 프로젝트의 두 스키마가 모두 `clock:`을 선언하는 경우.
 
-두 번째 시계를 제외하면(두 번째 시계만 프로젝트에서 알 수 있습니다) 각각은 스키마의 `clock:` 키가 있는 줄에 보고됩니다. `lute check world.schema.yaml`만 실행해도 직접 찾을 수 있습니다(스키마가 속한 프로젝트의 플러그인을 기준으로 `raise` 계기를 검사하며, 프로젝트 밖에서는 어떤 계기 이름이든 통과합니다). 이 스키마를 사용하는 문서는 단일 파일 `lute check`에서 같은 오류를 1번 줄에 전달하며, 스키마 이름과 그 아래 스키마의 줄을 함께 표시합니다. `check-project`는 대신 프로젝트 전체 오류로 한 번 보고하고, 스키마 줄에 `(imported by N documents)`를 덧붙이며, 가져온 문서들은 `ok`로 둡니다. `owner: engine` 없이 `run.day` 위에 선언한 시계는 다음과 같습니다:
+두 번째 시계를 제외하면(두 번째 시계만 프로젝트에서 알 수 있습니다) 각각은 스키마의 `clock:` 키가 있는 줄에 보고됩니다. `lute check world.schema.yaml`만 실행해도 직접 찾을 수 있습니다(스키마가 속한 프로젝트의 플러그인을 기준으로 `raise` 계기를 검사하며, 프로젝트 밖에서는 어떤 계기 이름이든 통과합니다). 이 스키마를 사용하는 문서는 단일 파일 `lute check`에서 같은 오류를 1번 줄에 전달하며, 스키마 이름과 그 아래 스키마의 줄을 함께 표시합니다. 프로젝트 전체 `lute check`는 대신 프로젝트 전체 오류로 한 번 보고하고, 스키마 줄에 `(imported by N documents)`를 덧붙이며, 가져온 문서들은 `ok`로 둡니다. `owner: engine` 없이 `run.day` 위에 선언한 시계는 다음과 같습니다:
 
 <!-- lute-diagnostics unverified="verbatim lute check output, but composed at runtime: crates/lute-check/src/clock.rs wraps each clock problem as `clock:` {what}, a prefix literal below the admission floor, so no single format! literal spans it" -->
 ```
@@ -401,7 +401,7 @@ steps:
 `lute calendar --axis clock=<d1>..<d2>`는 지정된 날짜의 모든 슬롯을 시계 순서로 배치하므로 격자가 시간표처럼 읽힙니다. `--axis clock`만 쓰면 day 1부터 일주일을 표시합니다(`week:`가 없으면 day 1만 표시합니다):
 
 ```console
-$ lute calendar . --axis clock=5..6 --occasion slotStart
+$ lute calendar --project . --axis clock=5..6 --occasion slotStart
 calendar: . — 6 cell(s) × 1 column(s), from declared defaults
 
 clock            slotStart (sequence)

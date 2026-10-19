@@ -87,7 +87,7 @@ $ lute version --json
 바이너리인지 알 수 없으면 그 줄 끝에 `(compared by reported version only)`를 붙입니다.
 
 **편집기와 터미널이 파일에 대해 다르게 말하면** — `lute check`가 `ok`라고 하는 파일에 빨간 밑줄이
-있거나 그 반대라면 — 터미널을 믿고 프로젝트에서 `lute doctor .`를 실행하세요: 흔한 원인은
+있거나 그 반대라면 — 터미널을 믿고 프로젝트에서 `lute doctor --project .`를 실행하세요: 흔한 원인은
 `lute`보다 오래된 편집기 언어 서버이고, 업그레이드 뒤 편집기를 다시 시작하면 해결됩니다.
 
 ## 다음
@@ -98,4 +98,4 @@ $ lute version --json
 프로젝트 전체에서 시작할 수도 있습니다: `lute init <dir>`는 최소 프로젝트를 만들고,
 `lute init --template beats <dir>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
 계기 플러그인, 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오 테스트까지, 만든 그대로
-`lute check-project`, `lute test`, `lute play`가 통과합니다.
+전체 프로젝트 `lute check`, `lute test`, `lute play`가 통과합니다.

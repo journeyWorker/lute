@@ -137,10 +137,10 @@ state:
 - `run.oil`은 이 파일이 혼자서 검사되도록 이 장면에서 선언했습니다. 프로젝트에서는 다른 장면도 읽으므로
   모든 장면이 가져오는 스키마에 둡니다.
 
-`lute trace`는 장면을 지나는 경로 하나를 재생합니다. `--choose`는 허브에서 고를 것을 순서대로 적습니다:
+`lute trace`는 장면을 지나는 경로 하나를 재생합니다. `--choice`는 허브에서 고를 것을 순서대로 적습니다:
 
 ```
-$ lute trace lamp.lute --choose lamp=ledger,ledger,stores,ledger,dusk
+$ lute trace lamp.lute --choice lamp=ledger,ledger,stores,ledger,dusk
 trace: lamp.lute  (seeds: 0 paths, 0 facts; 5 selections)
   ## The Lamp Room
     @narrator  The lamp room smells of cold brass.

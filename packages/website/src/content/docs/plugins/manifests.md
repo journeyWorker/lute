@@ -161,7 +161,7 @@ The gate may read **`occasion.target`**, the member the occasion is raised for. 
 A beat answering a gated occasion can only be presented while the gate holds, so the checker judges every beat and [entry beat](/language/beats/#entry-beats) that answers the occasion together with its gate, per member when the gate reads `occasion.target`:
 
 - The gate's text is checked like any condition slot. An error in it is reported at the beat's `on`, prefixed ``occasion `enter`'s `raisedWhen: …`:``.
-- A beat for which the gate is provably false is `E-BEAT-UNREACHABLE` (`E-ENTRY-UNREACHABLE` for an entry): the engine never raises the occasion for it. So is a beat whose `when` is provably false whenever the gate holds, since the engine raises no occasion otherwise. Under `lute check-project` the gate's `holds(…)` is decided from the project's [fact analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards): when nothing in the project can assert `canEnter(office)`, every `enter` beat for `room.office` is never eligible.
+- A beat for which the gate is provably false is `E-BEAT-UNREACHABLE` (`E-ENTRY-UNREACHABLE` for an entry): the engine never raises the occasion for it. So is a beat whose `when` is provably false whenever the gate holds, since the engine raises no occasion otherwise. In whole-project `lute check` the gate's `holds(…)` is decided from the project's [fact analysis](/state/facts-and-datalog/#how-whole-project-lute-check-analyzes-relational-guards): when nothing in the project can assert `canEnter(office)`, every `enter` beat for `room.office` is never eligible.
 - A beat that is never eligible this way takes no part in `W-BEAT-PRIORITY-TIE`.
 - The relations the gate reads count as read for `W-RELATION-UNREAD`.
 
@@ -278,7 +278,7 @@ assert holding(brassKey)  (effect of ::give)
 ```
 
 Every analysis that reads what content asserts reads these calls as `::assert`s and `::retract`s
-of their facts: the project's [fact analysis](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)
+of their facts: the project's [fact analysis](/state/facts-and-datalog/#how-whole-project-lute-check-analyzes-relational-guards)
 (what may and what must hold), `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE` (which suggests declaring the
 `retracts:` the directive is missing), cast presence, `lute scenario --facts`,
 [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) and `lute lore`. A
@@ -308,13 +308,13 @@ entities:
 
 A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute typed by a kind that no schema of the document declares is `E-DOMAIN-UNKNOWN` at every use:
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
+<!-- lute-diagnostics unverified="verbatim lute check --project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
 ```
 ./scenes/mart.lute:9:14: error [E-BAD-ENUM] `potoin` is not a member of entity kind `bagItem` (attribute `item` of `::give`) — did you mean `potion`?
 ./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:`
 ```
 
-A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs <dir> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
+A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs --project <dir> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
 
 ### Reward target contracts
 
@@ -342,7 +342,7 @@ A contract names `entity:` or `provider:`, not both: one with both fails the plu
 ./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
-Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs <dir> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
+Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs --project <dir> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
 
 ### Cast
 
@@ -356,7 +356,7 @@ cast:
 
 A `cast` export (dsl 0.23.0) declares the speakers an engine pack is built for: each map key is a speaker id, and every field is optional. `name` is the display name. Since 0.24.0 an entry may also declare `present:`, the condition under which the character is with the player, `emotions:`, the `emotion=` values their lines may use, and `assume: true`, which lets the presence check take the engine's `reserved:` facts that `present:` negates as absent. A line whose guards do not imply `present:` is `W-CAST-ABSENT`, and an `emotion=` outside `emotions:` is `E-BAD-ENUM` (see [The cast](/language/dialogue-and-cast/#the-cast)). Any other key is `E-PLUGIN-PARSE`. Once any cast is declared, by a plugin or by a schema document's `cast:` key, a content line whose speaker is outside it is `E-CAST-UNKNOWN` with a did-you-mean, and so is an `::actor{character}` or `::camera{focus}` that names someone outside it. The plugin casts and the schema casts a document imports are unioned, and a plugin's entry wins an id they share, because it carries the engine's display name. Two active plugins declaring the same id is `E-PLUGIN-DUP-ACROSS` at assembly. A non-empty cast folds into `capabilitySnapshot`; a plugin that exports none leaves the stamp alone, and a cast that uses none of the 0.24.0 keys keeps the stamp it had under 0.23.
 
-Since dsl 0.26.0 §2.8 an entry may also say `sharedName: true`: its `name` is a role name several speakers share on purpose, such as a villain team's rank and file (`grunt1: { name: Eclipse Grunt, sharedName: true }`). `check-project` and `lute lint` report two speakers shown under exactly the same name as the advisory `W-DISPLAY-NAME-DUP`, and a `sharedName` entry is not counted (see [Display names shared by two speakers](/language/dialogue-and-cast/#display-names-shared-by-two-speakers)).
+Since dsl 0.26.0 §2.8 an entry may also say `sharedName: true`: its `name` is a role name several speakers share on purpose, such as a villain team's rank and file (`grunt1: { name: Eclipse Grunt, sharedName: true }`). whole-project `lute check` and `lute lint` report two speakers shown under exactly the same name as the advisory `W-DISPLAY-NAME-DUP`, and a `sharedName` entry is not counted (see [Display names shared by two speakers](/language/dialogue-and-cast/#display-names-shared-by-two-speakers)).
 
 ## Cross-cutting attributes (`stampAttrs`)
 

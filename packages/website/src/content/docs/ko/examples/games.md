@@ -9,7 +9,7 @@ description: 저장소에 들어 있는 완성된 게임 열네 편 — 미스�
 매니페스트, 스키마, 씬, 로어, 퀘스트, 플러그인, `tests/`, `plays/` — 그리고 README가 그 게임이 쓰는
 기능과 기능마다 살펴볼 파일, 실행 명령을 적어 둡니다.
 
-CI는 모든 게임을 `lute check-project --deny-warnings`로 검사하고 테스트와 플레이를 실행하므로, 언어가
+CI는 모든 게임을 `lute check --project DIR --deny-warnings`로 검사하고 테스트와 플레이를 실행하므로, 언어가
 바뀌어도 게임이 깨끗하게 유지됩니다. 경고가 물을 법한 설계를 게임이 일부러 택했을 때 — 영구 엔딩, 걸려서
 풀리지 않는 `spentBy`, 두 캐스트 항목이 함께 쓰는 역할 이름 — 억제가 아니라 Lute가 그 의도를 위해 마련한
 표기로 적습니다.
@@ -41,7 +41,7 @@ Yarn에서 오셨다면 [`ledger`](https://github.com/journeyWorker/lute/tree/ma
 저장소를 체크아웃한 뒤 하나를 실행해 보세요:
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/tea-hollin
-lute test docs/examples/games/tea-hollin
-lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
+lute check --project docs/examples/games/tea-hollin --deny-warnings
+lute test --project docs/examples/games/tea-hollin
+lute play --project docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
 ```

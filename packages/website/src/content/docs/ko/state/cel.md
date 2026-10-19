@@ -58,7 +58,7 @@ defs:
 
 관계형 계층이 사용 중이면 조건은 제한된 술어 표면을 통해 팩트 데이터베이스도 읽을 수 있습니다: `holds('rel', ['args|_'])`(현재 유효한 멤버십, 어떤 슬롯이든 `_`일 수 있음), `count('rel', ['args|_']) OP n`(서로 다른 유효 튜플 수), `countDistinct('rel', ['args|_'], int) OP n`(0.24.0부터: 리스트 요소가 `'_'`인 0부터 시작하는 위치의 서로 다른 값. 따라서 `countDistinct('sawAt', ['_', '_', '_'], 0)`은 서로 다른 목격자를 세고, `count('sawAt', ['_', '_', '_'])`은 목격 횟수를 셉니다), 그리고 `validAt('rel', ['args|_'], T)`(기본 관계에 대한 과거 시점 형식)입니다. `T`는 `narrativeTime` 표현식이며, 실제로는 작성자가 이름을 지정할 수 있는 유일한 표현식인 `quest.<id>.activatedAt`입니다([퀘스트와 씬](/ko/language/quests-and-scenes/) 참고). 집계 아래의 조인은 [파생 관계](/ko/state/facts-and-datalog/)로 표현하며, 여러 관계를 쓰는 `count`는 절대 사용하지 않습니다. `<match on>` subject는 스칼라/enum 경로로 유지해야 합니다. 팩트 질의는 가드 안에서만 사용하며, 어떤 팩트 질의도 규칙의 `cel()` 가드 안에 나타날 수 없습니다.
 
-0.21.0부터 모든 조건 슬롯은 `visited('<scene id>')`도 호출할 수 있습니다. 이 함수는 해당 씬이 이 세이브에서 제시된 뒤 한 번이라도 제시되었으면 true이며, 씬의 `after:`가 읽는 것과 같은 방문 집합을 사용합니다. 인자는 프로젝트의 씬을 하나 지정하는 문자열 리터럴 하나이거나, 0.23.0부터 정식 `<document id>.<beat id>`로 지정한 [번들 비트](/ko/language/beats/#비트-번들)일 수 있습니다(그렇지 않으면 `E-CONN-UNKNOWN-NODE`가 `check-project`에서 발생합니다). [퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)을 참고하세요.
+0.21.0부터 모든 조건 슬롯은 `visited('<scene id>')`도 호출할 수 있습니다. 이 함수는 해당 씬이 이 세이브에서 제시된 뒤 한 번이라도 제시되었으면 true이며, 씬의 `after:`가 읽는 것과 같은 방문 집합을 사용합니다. 인자는 프로젝트의 씬을 하나 지정하는 문자열 리터럴 하나이거나, 0.23.0부터 정식 `<document id>.<beat id>`로 지정한 [번들 비트](/ko/language/beats/#비트-번들)일 수 있습니다(그렇지 않으면 `E-CONN-UNKNOWN-NODE`가 프로젝트 전체 `lute check`에서 발생합니다). [퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)을 참고하세요.
 
 ## 보간은 CEL이 아닙니다
 

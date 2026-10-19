@@ -66,7 +66,7 @@ A sub-kind's members are members of its parent (dsl 0.26.0 §2.3): a member it s
 
 A sub-kind lists its own `members:`. A parent the document does not declare, a parent declared `open:`, a sub-kind declared `open:`, and a `subsetOf:` chain that loops back on itself are `E-ENTITY-KIND-SHAPE`, reported once at the schema line. Before 0.26.0 a sub-kind member missing from the parent's list was an error too. A kind's members may also be assembled across schema files with [`add:`](/state/schemas/#kinds-assembled-across-files-add).
 
-`check-project`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
+Whole-project `lute check`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
 
 ### Exclusive relations: `excludes:`
 
@@ -91,7 +91,7 @@ rules:
 
 The declaration is symmetric: `fell` excludes `seenAfter` without restating it, and the compiled `RelationEntry` carries the symmetric closure, sorted (`"excludes": ["seenAfter"]` on `fell`; absent when empty). Each partner must be a declared relation other than the relation itself, with the same argument kinds. Otherwise the declaration is `E-RELATION-DECL`: `` `dwon` is not a declared relation — did you mean `down`? ``, `` `near` takes [c, p] but `up` takes [c] ``, or a relation that `cannot exclude itself`. Base and derived relations may exclude each other in any mix.
 
-Exclusion is an invariant the author declares, not something the checker infers from the rules. `check-project` then uses it everywhere it decides a relational guard ([below](#how-check-project-analyzes-relational-guards)):
+Exclusion is an invariant the author declares, not something the checker infers from the rules. Whole-project `lute check` then uses it everywhere it decides a relational guard ([below](#how-whole-project-lute-check-analyzes-relational-guards)):
 
 - `holds('A', ['x']) && holds('B', ['x'])` is false, so a guard that needs both is dead: `E-ARM-DEAD` on a line or arm, `E-BEAT-UNREACHABLE` on a beat, and the message names the exclusion;
 - `!holds('B', ['x'])` follows from `holds('A', ['x'])`: in the same guard, in an enclosing one, or because `A(x)` holds on every route to the guard. Such a guard is `W-FACT-GUARANTEED`, and [cast presence](/language/dialogue-and-cast/#presence-present) reads it the same way. A guard over an engine `reserved:` relation counts too, inside the region it guards;
@@ -108,7 +108,7 @@ A storm scene asserts `at(elias, gallery)` and `damaged(gallery)`, and `panicked
 ::assert{ calm(maren) }
 ```
 
-<!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
+<!-- lute-diagnostics unverified="verbatim whole-project check output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
 ```
 ./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('seenAfter', ['elias']) && holds('fell', ['elias'])` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
 ./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds('seenAfter', ['elias']) && !holds('fell', ['elias'])` is redundant: `!holds('fell', ['elias'])` follows from this guard's `holds('seenAfter', ['elias'])`: `seenAfter` excludes `fell`
@@ -164,7 +164,7 @@ rules:
 
 Because there are no function symbols, the Herbrand base is finite: bottom-up evaluation reaches a least fixpoint in finitely many steps, so **every derivation terminates** — this is Datalog, not Prolog. Safety requires every head/negated/guard variable to appear in a positive body atom (an entity-kind atom such as `character(P)` counts); violations are `E-DATALOG-UNSAFE`. A rule whose head has no variables needs no positive atom at all, so a ground head behind a scalar guard alone — `canReach(player, moonrise) :- cel("run.act >= 2")` — is a legal rule. A negation cycle is `E-DATALOG-UNSTRATIFIED`, and a would-be function term is `E-DATALOG-FUNCTION`. A rule body may carry a scalar CEL guard (`cel("run.act == 1")`) but never a fact query — that firewall (`E-DATALOG-GUARD-FACT`) keeps every dependency visible to the analysis. Derived and `reserved:` relations are read-only to content. The whole layer reduces to data the engine evaluates deterministically; nothing is author-iterated.
 
-An entity-kind atom is a test against the kind's members, never a lookup of `character(…)` facts: no fact is ever asserted under a kind's name. `lute trace`, `test`, `play` and `run` evaluate it that way in a join, under `not`, and in `--explain`. Before 0.24.0 they looked for such facts, so a rule like `inParty(P) :- companion(P), …` passed `check` and derived nothing at run time.
+An entity-kind atom is a test against the kind's members, never a lookup of `character(…)` facts: no fact is ever asserted under a kind's name. `lute trace`, `test`, `play` and `run` evaluate it that way in a join, under `not`, and in `--derivation`. Before 0.24.0 they looked for such facts, so a rule like `inParty(P) :- companion(P), …` passed `check` and derived nothing at run time.
 
 ### The anonymous variable and `countDistinct`
 
@@ -201,7 +201,7 @@ facts:
 @narrator{when="holds('testified', ['bram']) && holds('silent', ['dora'])"}: Bram spoke. Dora saw nothing at all.
 ```
 
-Three sightings, two witnesses: `ada` saw two people and `bram` one. `<Var>` must be a variable that appears in the pattern, otherwise the call is `E-CEL-PROFILE`. `check-project` decides `countDistinct` from its fact envelope as it does `count`, and trace, test and play evaluate it. Like `count` and `holds`, it reads the fact store, so it is forbidden in a rule guard (`E-DATALOG-GUARD-FACT`).
+Three sightings, two witnesses: `ada` saw two people and `bram` one. `<Var>` must be a variable that appears in the pattern, otherwise the call is `E-CEL-PROFILE`. Whole-project `lute check` decides `countDistinct` from its fact envelope as it does `count`, and trace, test and play evaluate it. Like `count` and `holds`, it reads the fact store, so it is forbidden in a rule guard (`E-DATALOG-GUARD-FACT`).
 
 ### Counts in a rule body
 
@@ -365,7 +365,7 @@ a guard `holds('canMend', ['lamp'])` is decided by the rule: mock `knows(lamp)` 
 
 `derive: false` — a key of a trace mock, a `*.test.yaml`, or a play script — or the `--no-derive` flag, which wins over the key, restores the 0.21 model: the seed `facts:` are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. A test written against that model (an unmocked derived atom reading unknown, or a seeded relation reading empty) pins `derive: false` to keep its verdict. See the [Tracing guide](/tooling/tracing/) and [Playing a story](/tooling/play/).
 
-To see *why* an atom holds, `lute play --explain <atom>` (repeatable) prints its derivation at the end of the playthrough: the rule used, each premise's own support — a seed fact, asserted, or derived in turn — and a negated premise shown `(absent)`:
+To see *why* an atom holds, `lute play --derivation <atom>` (repeatable) prints its derivation at the end of the playthrough: the rule used, each premise's own support — a seed fact, asserted, or derived in turn — and a negated premise shown `(absent)`:
 
 ```
 explain canMend(lamp): holds
@@ -383,9 +383,9 @@ explain canMend(lamp): does not hold
   └─ ✗ not broken(lamp)  (but it holds: asserted)
 ```
 
-## How `check-project` analyzes relational guards
+## How whole-project `lute check` analyzes relational guards
 
-A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, `check-project` decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::jump` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
+A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, whole-project `lute check` (`lute check --project <dir>`) decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::jump` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
 
 - **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
 - **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
@@ -424,7 +424,7 @@ and a scene that offers a choice only to a player who has read it:
 </branch>
 ```
 
-The inner guard can only hold, so `check-project` reports it redundant and names the assert that guarantees it:
+The inner guard can only hold, so whole-project `lute check` reports it redundant and names the assert that guarantees it:
 
 <!-- lute-diagnostics -->
 ```
@@ -473,25 +473,25 @@ The bridge is sequenced `after: 'visited("demo.archive")'` and guards three line
 @eris{when="holds('knows', ['eris', 'heading'])"}: I changed it myself.
 ```
 
-`check-project` settles the first and third and leaves the second alone — `knows(player, heading)` holds only if the player chose `readOn`, which is exactly what that guard is for:
+Whole-project `lute check` settles the first and third and leaves the second alone — `knows(player, heading)` holds only if the player chose `readOn`, which is exactly what that guard is for:
 
 <!-- lute-diagnostics -->
 ```
 ./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds('knows', ['player', 'lumen'])` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
 ```
 
-<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
+<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from whole-project check output" -->
 ```
 ./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('knows', ['eris', 'heading'])` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
 ```
 
 The same two sets decide counts: after the archive, `count('knows', ['player', '_'])` lies between 1 and 2, so a guard `count('knows', ['player', '_']) >= 3` is dead and `count('knows', ['player', '_']) >= 1` is redundant.
 
-The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in `check-project` only. Single-file `lute check` leaves each relational query undecided, but still sees a contradiction between two queries in one condition: `holds(P) && !holds(P)` is false whatever holds (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)). To see why a guard was judged guaranteed, `lute scenario <dir> envelope <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)). To see which documents produce the facts a guard queries, `lute scenario <dir> knowledge` traces each queried atom through the rules to its producers, or to **no producer** (see [Overviews](/tooling/overviews/#lute-scenario-knowledge)).
+The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in whole-project `lute check` only. `lute check <file>` leaves each relational query undecided, but still sees a contradiction between two queries in one condition: `holds(P) && !holds(P)` is false whatever holds (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)). To see why a guard was judged guaranteed, `lute scenario --project <dir> envelope --node <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)). To see which documents produce the facts a guard queries, `lute scenario --project <dir> knowledge` traces each queried atom through the rules to its producers, or to **no producer** (see [Overviews](/tooling/overviews/#lute-scenario-knowledge)).
 
 ### Relations nothing reads
 
-The converse problem is a relation that is written but never read. `check-project` (dsl 0.24.0 §7) reports `W-RELATION-UNREAD` for a declared, non-`reserved:` relation that is asserted, seeded or derived, but that no condition queries (`holds`, `count`, `countDistinct`), no rule body uses, and no def reads. Its facts change nothing:
+The converse problem is a relation that is written but never read. Whole-project `lute check` (dsl 0.24.0 §7) reports `W-RELATION-UNREAD` for a declared, non-`reserved:` relation that is asserted, seeded or derived, but that no condition queries (`holds`, `count`, `countDistinct`), no rule body uses, and no def reads. Its facts change nothing:
 
 <!-- lute-diagnostics -->
 ```
@@ -502,4 +502,4 @@ It is reported once per project, at the declaration: the schema file's line, or 
 
 ### Guards over facts not written yet
 
-While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check-project --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).
+While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check --project <dir> --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).
