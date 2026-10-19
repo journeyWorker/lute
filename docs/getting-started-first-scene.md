@@ -591,7 +591,7 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <key>` answers "can the player ever get here, and by what route?":
+`reach --node <key>` answers "can the player ever get here, and by what route?":
 
 ```
 $ ./target/debug/lute scenario --project episodes reach --node mira.s01ep02
@@ -603,7 +603,7 @@ reach scene(mira.s01ep02):
     - scene(mira.s01ep01): Reachable — a satisfiable route exists under your declared routes.
 ```
 
-And `envelope <key>` answers the question you most want before writing a `when=` guard:
+And `envelope --node <key>` answers the question you most want before writing a `when=` guard:
 *what state is safe to read here?* — i.e. what every route into this scene guarantees is
 already set:
 

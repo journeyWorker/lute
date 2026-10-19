@@ -15,8 +15,8 @@ cargo build --release -p lute-cli
 ./target/release/lute check --project examples/player-demo
 ./target/release/lute play --project examples/player-demo --script examples/player-demo/tests/dawn.play.yaml
 ./target/release/lute play --project examples/player-demo --script examples/player-demo/tests/dusk.play.yaml
-./target/release/lute test examples/player-demo/tests/dawn.play.yaml
-./target/release/lute test examples/player-demo/tests/dusk.play.yaml
+./target/release/lute test examples/player-demo/tests/dawn.play.yaml --project examples/player-demo
+./target/release/lute test examples/player-demo/tests/dusk.play.yaml --project examples/player-demo
 bun run --cwd packages/player-web demo
 ```
 

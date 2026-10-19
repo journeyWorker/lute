@@ -254,7 +254,7 @@ Policies (the only place the runtimes may differ):
 
 | Hook | RunDriver (`lute run`) | PlayDriver (`lute play`, play files in `lute test`) | TraceDriver (`lute trace`, `lute test`, wasm) |
 |---|---|---|---|
-| `choose` | `mock.choose` with cursor, else `Unscripted` → incomplete | script `choose:` / step `choose:` with cursor (`P` `present_with_choose` 4138), else `Unscripted` | `--choice` / mock with cursor, else `AutoFirst` / `HubAutoPass` |
+| `choose` | `mock.choose` with cursor, else `Unscripted` → incomplete | script `choose:` / step `choose:` with cursor (`P` `present_with_choose` 4138), else `Unscripted` | `--choose` / mock with cursor, else `AutoFirst` / `HubAutoPass` |
 | `forced` | `Spent` → `Skip`, `Closed` → `Refuse` | `Spent` / `Closed` → `Refuse` (`E-TRACE-CHOICE`) | `Closed` / `Spent` → `Refuse`; `Unknown` → `Take` and record `forced_unknown` |
 | `bridge` | mock `bridges:` queue | step queue, then top queue | mock `bridges:` queue |
 | `unknown` | `Continue` everywhere (today's `lute run` exit logic is unchanged: incomplete only through the flags) | `Halt` for every site (plays know every value; the honesty gate moves to the site, see §6 R4) | `Halt` for `Arm`, `BranchAllUnknown`, `HubAllUnknown`, `Guard`, `OccasionTarget`; `Continue` (recorded in `unresolved`) for quest, objective, handler and reward sites and `BridgeResult` |

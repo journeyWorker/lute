@@ -169,7 +169,7 @@ Separately, this tree used to trigger 14 project-wide `W-UNPROVEN-RELATIONAL`
 warnings — thirteen on quest gates, one on the `when` of the lore bark
 `vesnaManifestBark` — each on a correct relational gate the checker declined to
 judge, with no discharge path an author could take (**T9.19**). dsl 0.20.0
-removed the code: `check --project` now decides every relational query in a
+removed the code: `check-project` now decides every relational query in a
 guard as impossible, guaranteed, or possible, and reports only the dead and
 the redundant; none of those fourteen gates is either, so all are silent. The
 same analysis found one guard that could never close: `listTheMass` in the

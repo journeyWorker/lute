@@ -82,7 +82,7 @@ single-file `lute check` leaves relational queries undecided.
 no CEL is evaluated, no Datalog is run.
 
 ```sh
-cargo run -q -p lute-cli -- scenario docs/examples/investigation
+cargo run -q -p lute-cli -- scenario --project docs/examples/investigation
 ```
 
 shows the reachability chain as topological layers:
@@ -97,7 +97,7 @@ shows the reachability chain as topological layers:
 Ask about one node's reachability and its declared prerequisite structure:
 
 ```sh
-cargo run -q -p lute-cli -- scenario docs/examples/investigation reach detective.s01ep03
+cargo run -q -p lute-cli -- scenario --project docs/examples/investigation reach --node detective.s01ep03
 ```
 
 ```
@@ -196,7 +196,7 @@ expect:
 Run the whole suite from the repository root:
 
 ```sh
-cargo run -q -p lute-cli -- test docs/examples/investigation
+cargo run -q -p lute-cli -- test --project docs/examples/investigation
 ```
 
 ```
@@ -215,7 +215,7 @@ paths only** — never a whole-space coverage claim (D1: trace explains, it
 never proves):
 
 ```sh
-cargo run -q -p lute-cli -- test docs/examples/investigation --coverage
+cargo run -q -p lute-cli -- test --project docs/examples/investigation --coverage
 ```
 
 ```
