@@ -1,6 +1,6 @@
-//! `lute calendar <dir> [--axis <axis>=<values>]… [--occasion
-//! O[@<axis>[=<value>],…]]… [--target T]… [--facts <relation>]… [--script
-//! route.play.yaml [--until <step>]] [--where <cel>] [--json | --csv]` (dsl
+//! `lute calendar [--project <dir>] [--axis <axis>=<values>]… [--occasion O]…
+//! [--occasion-axes O=<axis>[=<value>],…]… [--target T]… [--relation <relation>]… [--script
+//! route.play.yaml [--until <step>]] [--where <cel>] [--json | --format csv]` (dsl
 //! 0.23.0 §1, D-A; 0.23.1; 0.24.0).
 //!
 //! The calendar is a tool over play, not a schedule file. Every cell of the
@@ -28,18 +28,18 @@
 //! CEL `visited()` read). An axis the calendar cannot apply is a usage
 //! error naming the kinds, never silently dropped.
 //!
-//! Per-occasion axes: `--occasion dayEnd@run.day` varies only `run.day` for
+//! Per-occasion axes: `--occasion-axes dayEnd=run.day` varies only `run.day` for
 //! `dayEnd` — the occasion is evaluated in the cells where every other axis
 //! is at its first value (once per `run.day` value) and is blank elsewhere;
-//! `dayEnd@run.day,run.slot=night` holds `run.slot` at `night` instead. An
+//! `dayEnd=run.day,run.slot=night` holds `run.slot` at `night` instead. An
 //! occasion the engine raises once per day is read once per day.
 //!
-//! Presence: `--facts <relation>` lists, per cell, the facts of that
+//! Presence: `--relation <relation>` lists, per cell, the facts of that
 //! relation that hold once the cell has settled (the runner's fixpoint, as
 //! play's end-of-play `facts:` judge them) — in text one table per relation,
 //! a row per first argument and a column per cell.
 //!
-//! Output: a grid (text), `--json`, or `--csv`. At the end: beats that were
+//! Output: a grid (text), `--json`, or `--format csv`. At the end: beats that were
 //! a candidate somewhere but eligible in no cell, with why; and beats
 //! eligible somewhere but presented in no cell, with the beats presented
 //! over them (`?` where an unknown `when` decided the cell).
@@ -159,13 +159,17 @@ struct FactsRel {
 pub(crate) struct CalendarArgs<'a> {
     pub axes: &'a [(String, Vec<String>)],
     pub occasions: &'a [String],
-    pub facts: &'a [String],
+    /// `--occasion-axes O=<AXES>`: `(occasion, axes)` pairs.
+    pub occasion_axes: &'a [(String, String)],
+    /// `--relation <RELATION>`: relations whose facts each cell lists.
+    pub relations: &'a [String],
     pub targets: &'a [String],
     pub script: Option<&'a Path>,
     pub until: Option<&'a str>,
     pub where_: Option<&'a str>,
     pub json: bool,
     pub csv: bool,
+    pub build: super::Build<'a>,
 }
 
 /// Where every cell starts, for the header.
@@ -212,9 +216,10 @@ fn calendar_argument(message: &str) -> Option<&'static str> {
         ("`--axis", "--axis"),
         ("axes' product", "--axis"),
         ("`--where", "--where"),
+        ("`--occasion-axes", "--occasion-axes"),
         ("`--occasion", "--occasion"),
         ("`--target", "--target"),
-        ("`--facts", "--facts"),
+        ("`--relation", "--relation"),
         ("`--until", "--until"),
     ]
     .iter()
@@ -288,6 +293,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         dir,
         super::project::CALENDAR,
         &crate::EngineMatrix::reference(),
+        &args.build,
     ) {
         Ok((p, _)) => p,
         Err(code) if code == ExitCode::from(2) => {
@@ -342,7 +348,7 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
             };
             return usage(format!(
                 "`--axis {}` and `--axis clock` both set the clock — the clock axis already \
-                 varies {paths}; vary one part per occasion with `--occasion O@{}` (or `O@clock.day`)",
+                 varies {paths}; vary one part per occasion with `--occasion-axes O={}` (or `O=clock.day`)",
                 a.path, clock.day
             ));
         }
@@ -354,14 +360,63 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
     let Some(cell_count) = cell_count else {
         return usage(format!("the axes' product exceeds {MAX_CELLS} cells"));
     };
-    let mut specs = Vec::with_capacity(args.occasions.len());
+    // `--occasion-axes O=<AXES>` is the 0.47.2 `--occasion O@<AXES>` spelling:
+    // it parses through the same grammar and selects `O`. `--occasion`
+    // itself takes bare occasion names.
     for raw in args.occasions {
+        if raw.contains('@') {
+            let (name, axes) = raw.split_once('@').unwrap_or((raw, ""));
+            return usage(format!(
+                "`--occasion {raw}`: `--occasion` takes a bare occasion name — vary only some \
+                 axes with `--occasion-axes {}={axes}`",
+                name.trim()
+            ));
+        }
+    }
+    let axes_raws: Vec<String> = args
+        .occasion_axes
+        .iter()
+        .map(|(occasion, axes)| format!("{occasion}@{axes}"))
+        .collect();
+    let mut specs: Vec<OccasionSpec<'_>> =
+        Vec::with_capacity(args.occasions.len() + axes_raws.len());
+    let mut from_axes: Vec<bool> = Vec::new();
+    for (raw, is_axes) in args
+        .occasions
+        .iter()
+        .map(|raw| (raw.as_str(), false))
+        .chain(axes_raws.iter().map(|raw| (raw.as_str(), true)))
+    {
         match parse_occasion(raw) {
-            Ok(s) if specs.iter().any(|o: &OccasionSpec<'_>| o.name == s.name) => {
-                return usage(format!("`--occasion {}` is given twice", s.name))
+            Ok(s) => {
+                if let Some(at) = specs.iter().position(|o| o.name == s.name) {
+                    return usage(if is_axes && from_axes[at] {
+                        format!("`--occasion-axes {}` is given twice", s.name)
+                    } else if is_axes || from_axes[at] {
+                        format!(
+                            "`--occasion {0}` and `--occasion-axes {0}=…` name the same \
+                             occasion — give it once: `--occasion-axes` alone selects it",
+                            s.name
+                        )
+                    } else {
+                        format!("`--occasion {}` is given twice", s.name)
+                    });
+                }
+                specs.push(s);
+                from_axes.push(is_axes);
             }
-            Ok(s) => specs.push(s),
-            Err(e) => return usage(e),
+            Err(e) => {
+                let e = if is_axes {
+                    let (name, axes) = raw.split_once('@').unwrap_or((raw, ""));
+                    e.replace(
+                        &format!("`--occasion {raw}`"),
+                        &format!("`--occasion-axes {name}={axes}`"),
+                    )
+                } else {
+                    e
+                };
+                return usage(e);
+            }
         }
     }
     let names: Vec<String> = specs.iter().map(|s| s.name.to_string()).collect();
@@ -378,24 +433,30 @@ pub(crate) fn run_calendar(dir: &Path, args: &CalendarArgs<'_>) -> ExitCode {
         };
         let pins = match occasion_pins(spec, &resolved, p.index.clock.as_ref(), &is_target) {
             Ok(p) => p,
-            Err(e) => return usage(e),
+            Err(e) => {
+                let (name, axes) = spec.raw.split_once('@').unwrap_or((spec.raw, ""));
+                return usage(e.replace(
+                    &format!("`--occasion {}`", spec.raw),
+                    &format!("`--occasion-axes {name}={axes}`"),
+                ));
+            }
         };
         for col in columns.iter_mut().filter(|c| c.occasion == spec.name) {
             col.pins.clone_from(&pins);
         }
     }
-    let mut rels: Vec<FactsRel> = Vec::with_capacity(args.facts.len());
-    for name in args.facts {
+    let mut rels: Vec<FactsRel> = Vec::with_capacity(args.relations.len());
+    for name in args.relations {
         let Some(r) = p.index.relations.iter().find(|r| &r.name == name) else {
             return usage(unknown_id(
-                "`--facts`",
+                "`--relation`",
                 name,
                 "relation",
                 p.index.relations.iter().map(|r| r.name.as_str()),
             ));
         };
         if rels.iter().any(|f| &f.name == name) {
-            return usage(format!("`--facts {name}` is given twice"));
+            return usage(format!("`--relation {name}` is given twice"));
         }
         rels.push(FactsRel {
             name: name.clone(),

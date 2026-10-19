@@ -315,18 +315,18 @@ pub(crate) fn run_scenario(
             &file_results,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ),
-        Some(ScenarioCommand::Reach { node_id, .. }) => run_scenario_reach(
+        Some(ScenarioCommand::Reach { node, .. }) => run_scenario_reach(
             &mut out,
             dir,
             &by_root,
             &file_results,
-            node_id.as_deref().unwrap_or_default(),
+            node.as_deref().unwrap_or_default(),
         ),
-        Some(ScenarioCommand::Envelope { node_id }) => {
-            run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node_id)
+        Some(ScenarioCommand::Envelope { node }) => {
+            run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node)
         }
-        Some(ScenarioCommand::Knowledge { for_node }) => {
-            knowledge::run_text(&mut out, &by_root, &file_results, for_node.as_deref())
+        Some(ScenarioCommand::Knowledge { node }) => {
+            knowledge::run_text(&mut out, &by_root, &file_results, node.as_deref())
         }
     };
     if write_stdout(&out).is_err() {

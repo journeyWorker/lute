@@ -1,4 +1,4 @@
-//! `lute scenario <dir> reach --endings[=<occasion>]` (T3-20): one row per
+//! `lute scenario reach --endings[=<occasion>]` (T3-20): one row per
 //! ending with every static verdict the toolchain already reaches about it.
 //!
 //! An ending is, with `=<occasion>`, every beat answering that occasion;
@@ -1252,7 +1252,7 @@ fn need_json(n: &Need) -> Json {
     v
 }
 
-/// `lute scenario <dir> reach --endings[=<occasion>]`, text.
+/// `lute scenario reach --endings[=<occasion>]`, text.
 pub(crate) fn run_text(
     out: &mut String,
     by_root: &ByRoot,
@@ -1362,7 +1362,7 @@ fn unreachable_exit(roots: &[RootRows]) -> ExitCode {
     }
 }
 
-/// `lute scenario <dir> --format json reach --endings[=<occasion>]`, with
+/// `lute scenario --json reach --endings[=<occasion>]`, with
 /// its exit code ([`unreachable_exit`]).
 pub(crate) fn json(
     by_root: &ByRoot,

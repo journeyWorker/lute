@@ -147,7 +147,7 @@ state:
             rel: "tests/opening.test.yaml",
             content: "\
 # Scenario test. Run every test in the project with:
-#   lute test . --project .
+#   lute test --project .
 # `file:` is resolved against THIS file, so a test in tests/ names its scene
 # as ../scenes/<name>.lute.
 file: ../scenes/opening.lute
@@ -438,7 +438,7 @@ title: The evidence
             rel: "plays/the-case.play.yaml",
             content: "\
 # The whole case, end to end:
-#   lute play . --script plays/the-case.play.yaml
+#   lute play --project . --script plays/the-case.play.yaml
 # Each step raises an occasion the way your engine would; `expect:` asserts
 # what happened, and `lute test` runs this script alongside tests/.
 choose:
@@ -478,7 +478,7 @@ expect:
             rel: "tests/accusation.test.yaml",
             content: "\
 # A scenario test traces one document against mocks and asserts the outcome:
-#   lute test . --project .
+#   lute test --project .
 # Cass's alibi stands, so `not cleared(cass)` fails and she cannot be accused;
 # the ledger breaks Blake's, so he can.
 file: ../scenes/accusation.lute
@@ -749,7 +749,7 @@ title: Tomas
             rel: "plays/first-day.play.yaml",
             content: "\
 # One day, end to end:
-#   lute play . --script plays/first-day.play.yaml
+#   lute play --project . --script plays/first-day.play.yaml
 # Each step raises an occasion the way your engine would; an `engine:` step
 # writes what the engine owns; `expect:` asserts what happened, and `lute test`
 # runs this script alongside tests/.
@@ -782,7 +782,7 @@ expect:
             rel: "tests/mara-first.test.yaml",
             content: "\
 # A scenario test traces one document against mocks and asserts the outcome:
-#   lute test . --project .
+#   lute test --project .
 file: ../scenes/talk/mara-first.lute
 choose: { maraAsk: lamp }
 expect:
@@ -831,20 +831,20 @@ fn readme(template: &str) -> String {
 lute check-project .
 
 # Run every scenario test (and every play script that carries `expect:`):
-lute test . --project .
+lute test --project .
 
 # Play the project through a script of raised occasions:
-lute play . --script plays/<your-play>.play.yaml
+lute play --project . --script plays/<your-play>.play.yaml
 
 # Everything you can write against a document — occasions, state, defs, ids:
 lute context scenes/<your-scene>.lute --project .
 
 # Check the toolchain and the project setup:
-lute doctor .
+lute doctor --project .
 
 # Add more documents (a beat answers an occasion; a targeted one needs
 # `--target <prefix>.<member>`). The file is named after the id; `/` in a
-# name nests it (`talk/<name>` lands in scenes/talk/); `--dir` names the
+# name nests it (`talk/<name>` lands in scenes/talk/); `--project` names the
 # PROJECT, never a subfolder:
 lute new scene <name> --occasion <occasion> --target <target>
 lute new scene <name>
@@ -858,7 +858,7 @@ lute check-project .
 
 # Run every scenario test under tests/ (a test's `file:` is relative to the
 # test file, so tests/ names scenes as ../scenes/<name>.lute):
-lute test . --project .
+lute test --project .
 
 # Check one document:
 lute check scenes/<your-scene>.lute
@@ -869,11 +869,11 @@ lute check scenes/<your-scene>.lute
 lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
 
 # Report the scene graph / reachability:
-lute scenario .
+lute scenario --project .
 
 # If your editor and the terminal disagree, the terminal is right; this names
 # a stale editor server or a mismatched toolchain:
-lute doctor .
+lute doctor --project .
 
 # Chain scenes into a story you can play with `lute play`:
 #   https://lute-lang.vercel.app/getting-started/connect-scenes/
@@ -959,15 +959,18 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
     println!("Next steps:");
     println!("  lute check-project {d}");
     if files.iter().any(|f| f.rel.starts_with("tests/")) {
-        println!("  lute test {d} --project {d}");
+        println!("  lute test --project {d}");
     }
     let play = files.iter().find(|f| f.rel.starts_with("plays/"));
     if let Some(play) = play {
-        println!("  lute play {d} --script {}", dir.join(play.rel).display());
-        println!("  lute new scene <name> --occasion <occasion> --dir {d}");
+        println!(
+            "  lute play --project {d} --script {}",
+            dir.join(play.rel).display()
+        );
+        println!("  lute new scene <name> --occasion <occasion> --project {d}");
     } else {
-        println!("  lute scenario {d}");
-        println!("  lute new scene <name> --dir {d}");
+        println!("  lute scenario --project {d}");
+        println!("  lute new scene <name> --project {d}");
     }
     ExitCode::SUCCESS
 }
@@ -1052,11 +1055,11 @@ fn absolute(path: &Path) -> PathBuf {
     out
 }
 
-/// Where a `lute new` document lands: the project root `--dir` names, and
+/// Where a `lute new` document lands: the project root `--project` names, and
 /// the `defaults:` its manifest supplies — a defaulted key is omitted from
 /// the new document's frontmatter (dsl 0.22.0 §13). Outside any project, the
 /// requested directory with no defaults. A directory INSIDE a project that is
-/// not its root is [`Destination::find`]'s `Err`: `--dir` names the project,
+/// not its root is [`Destination::find`]'s `Err`: `--project` names the project,
 /// and the document would otherwise land somewhere the author did not point.
 struct Destination {
     root: PathBuf,
@@ -1643,11 +1646,11 @@ state:
     created(&path, &hint)
 }
 
-/// Where `--dir` should have pointed for a directory inside a project that is
+/// Where `--project` should have pointed for a directory inside a project that is
 /// not its root, spelled as the command to run instead: the subdirectory
 /// relative to the root (minus the kind's own folder) moves into `<name>`,
-/// and `--dir <root>` is added unless the root is the current directory.
-/// `given` is whether the author passed `--dir`; without it the directory is
+/// and `--project <root>` is added unless the root is the current directory.
+/// `given` is whether the author passed `--project`; without it the directory is
 /// the current one, and the message says so rather than blaming a flag the
 /// author never typed (round-3 CR N7).
 fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> String {
@@ -1676,25 +1679,25 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
         .as_deref()
         != Some(root)
     {
-        suggestion.push_str(&format!(" --dir {}", root.display()));
+        suggestion.push_str(&format!(" --project {}", root.display()));
     }
     let resolved = absolute(dir);
     let (what, fix) = if given {
         (
             format!(
-                "`--dir {}` resolves to `{}`",
+                "`--project {}` resolves to `{}`",
                 dir.display(),
                 resolved.display()
             ),
-            "`--dir` names the project, not the destination folder",
+            "`--project` names the project, not the destination folder",
         )
     } else {
         (
             format!(
-                "no `--dir` was given, so `lute new` started from the current directory `{}`",
+                "no `--project` was given, so `lute new` started from the current directory `{}`",
                 resolved.display()
             ),
-            "run from the project root, or pass `--dir <root>`",
+            "run from the project root, or pass `--project <root>`",
         )
     };
     format!(
@@ -1711,7 +1714,7 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
 /// non-quest is a usage error (exit `2`). Refuses to overwrite an existing
 /// target (exit `2`). A `dir` inside a project but not its root is refused
 /// (exit `2`, nothing written) with the `<sub>/<name>` spelling to use:
-/// `--dir` names the project, and writing to `<root>/scenes/<name>` when
+/// `--project` names the project, and writing to `<root>/scenes/<name>` when
 /// the author pointed at `scenes/talk/` would land the document somewhere
 /// they did not ask for. Outside a project (no `lute.project.yaml` at or
 /// above `dir`) it says so — and refuses `--occasion`, since no occasion is
@@ -1719,7 +1722,7 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
 pub fn run_new(
     kind: &str,
     name: &str,
-    dir: Option<&Path>,
+    project: Option<&Path>,
     on: Option<&str>,
     target: Option<&str>,
     start: bool,
@@ -1728,7 +1731,7 @@ pub fn run_new(
         eprintln!(
             "lute new: unknown kind `{kind}` (expected `scene`, `quest`, `lore`, or `schema`)"
         );
-        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <PROJECT>] [--occasion <OCCASION> [--target <TARGET>]] [--start]");
+        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--project <DIR>] [--occasion <OCCASION> [--target <TARGET>]] [--start]");
         return ExitCode::from(2);
     }
     if let (Some(_), false) = (on, kind == "scene") {
@@ -1746,8 +1749,17 @@ pub fn run_new(
         eprintln!("lute new: `--start` makes a quest auto-start; a {kind} takes no `--start`");
         return ExitCode::from(2);
     }
-    let given = dir.is_some();
-    let dir = dir.unwrap_or(Path::new("."));
+    // `--project` names the project explicitly (and a non-root directory is
+    // refused); otherwise the nearest `lute.project.yaml` at or above the
+    // current directory is the project, and with none the document is
+    // written self-contained into the current directory (0.48.0 §2.1).
+    let given = project.is_some();
+    let discovered = if given {
+        None
+    } else {
+        crate::project::discover_project_from_cwd()
+    };
+    let dir = project.or(discovered.as_deref()).unwrap_or(Path::new("."));
     let dest = match Destination::find(dir) {
         Ok(dest) => dest,
         Err(root) => {

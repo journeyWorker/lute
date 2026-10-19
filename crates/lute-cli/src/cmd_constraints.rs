@@ -6,14 +6,52 @@ use lute_check::Mode;
 use lute_model::{constraints::ConstraintResult, ModelOptions};
 use lute_semantic::{NodeKey, NodeKind};
 
-/// Report every project constraint. `--run` records script witnesses when a
-/// play/test script contains an observed quest completion transition.
+/// The play/test scripts `--script` / `--all-scripts` select (0.48.0 §3.4):
+/// a named script, a directory selecting every script under it, or every
+/// script of the project.
+pub(crate) struct ScriptSelection<'a> {
+    pub(crate) scripts: &'a [PathBuf],
+    pub(crate) all: bool,
+}
+
+impl ScriptSelection<'_> {
+    /// Whether any script is selected at all.
+    pub(crate) fn any(&self) -> bool {
+        self.all || !self.scripts.is_empty()
+    }
+
+    /// Whether `path` (a script found in the project) is selected.
+    pub(crate) fn selects(&self, path: &Path) -> bool {
+        if self.all {
+            return true;
+        }
+        let canonical = std::fs::canonicalize(path).ok();
+        self.scripts.iter().any(|selector| {
+            if selector == path {
+                return true;
+            }
+            match (std::fs::canonicalize(selector).ok(), &canonical) {
+                (Some(selector), Some(path)) => path == &selector || path.starts_with(&selector),
+                _ => false,
+            }
+        })
+    }
+}
+
+/// Report every project constraint. `--script` / `--all-scripts` record
+/// script witnesses when a selected play/test script contains an observed
+/// quest completion transition.
 pub(crate) fn run_constraints(
     dir: &Path,
     json: bool,
-    run: bool,
+    scripts: &[PathBuf],
+    all_scripts: bool,
     providers: Option<&Path>,
 ) -> ExitCode {
+    let selection = ScriptSelection {
+        scripts,
+        all: all_scripts,
+    };
     let opts = ModelOptions {
         providers: providers.map(Path::to_path_buf),
         permission_profile: None,
@@ -77,8 +115,8 @@ pub(crate) fn run_constraints(
                 .expect("model scenario"),
             &slots,
         );
-        if run {
-            add_script_witnesses(model.root(), &mut results);
+        if selection.any() {
+            add_script_witnesses(model.root(), &mut results, &selection);
         }
         for result in results {
             failed |= matches!(
@@ -148,9 +186,14 @@ pub(crate) fn run_constraints(
     }
 }
 
-fn add_script_witnesses(root: &Path, results: &mut [ConstraintResult]) {
+fn add_script_witnesses(
+    root: &Path,
+    results: &mut [ConstraintResult],
+    selection: &ScriptSelection<'_>,
+) {
     let mut scripts = Vec::new();
     collect_scripts(root, &mut scripts);
+    scripts.retain(|script| selection.selects(script));
     for result in results.iter_mut().filter(|r| r.kind == "completable") {
         let quest = result.counterexamples.first().cloned().unwrap_or_default();
         for script in &scripts {
@@ -175,12 +218,12 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
         return false;
     };
     if name.ends_with(".test.yaml") {
-        return crate::testcmd::run_test_for_constraint(root, script, quest);
+        return crate::testcmd::run_test_for_constraint(script, quest);
     }
     if !name.ends_with(".play.yaml") {
         return false;
     }
-    let project = crate::play::PlayProject::compile(root);
+    let project = crate::play::PlayProject::compile(root, &crate::play::Build::default());
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };
@@ -188,18 +231,18 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
 }
 
 /// Run one discovered script through the same in-process machinery used by
-/// `constraints --run`, and report whether it observed the target node.
+/// `constraints --all-scripts`, and report whether it observed the target node.
 pub(crate) fn run_script_for_context(root: &Path, script: &Path, target: &NodeKey) -> bool {
     let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
     if name.ends_with(".test.yaml") {
-        return crate::testcmd::run_test_for_context(root, script, target);
+        return crate::testcmd::run_test_for_context(script, target);
     }
     if !name.ends_with(".play.yaml") {
         return false;
     }
-    let project = crate::play::PlayProject::compile(root);
+    let project = crate::play::PlayProject::compile(root, &crate::play::Build::default());
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };

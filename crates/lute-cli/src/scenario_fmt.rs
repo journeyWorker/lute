@@ -1,4 +1,4 @@
-//! `lute scenario --format json|dot` — machine-readable renderings of the
+//! `lute scenario --json` and `--format dot` — machine-readable renderings of the
 //! SAME per-root scenario analysis the text view reports. Never a second
 //! analysis: every graph/reach/envelope datum comes from
 //! `crate::collect_project_docs` + `crate::assemble_root_scenario` (the exact
@@ -27,8 +27,8 @@ use crate::{
     resolve_node_ref, topo_layers, unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
 };
 /// Render the scenario report in a non-text format. See
-/// [`crate::Command::Scenario`]. `json` and `dot` are the only valid
-/// formats; anything else is a usage error (exit `2`) naming the valid set.
+/// [`crate::Command::Scenario`]. `json` (the `--json` report) and `dot` are
+/// the only renderings here; anything else is a usage error (exit `2`).
 pub fn run(
     dir: &Path,
     providers: Option<&Path>,
@@ -41,7 +41,7 @@ pub fn run(
         "dot" => run_dot(dir, providers, command, facts),
         other => cli_envelope::fail(
             CliError::usage(format!(
-                "lute scenario: unknown --format `{other}` (valid formats: text, json, dot)"
+                "lute scenario: unknown --format `{other}` (valid formats: text, dot)"
             ))
             .with_argument("--format"),
         ),
@@ -181,20 +181,21 @@ fn run_json(
             }
             Err(code) => code,
         },
-        Some(ScenarioCommand::Reach { node_id, .. }) => reach_json(
+        Some(ScenarioCommand::Reach { node, .. }) => reach_json(
             dir,
             &by_root,
             &file_results,
-            node_id.as_deref().unwrap_or_default(),
+            node.as_deref().unwrap_or_default(),
         ),
-        Some(ScenarioCommand::Envelope { node_id }) => {
-            envelope_json(dir, &by_root, &file_results, &node_id)
+        Some(ScenarioCommand::Envelope { node }) => {
+            envelope_json(dir, &by_root, &file_results, &node)
         }
-        Some(ScenarioCommand::Knowledge { for_node }) => {
-            match crate::knowledge::json(&by_root, for_node.as_deref()) {
+        Some(ScenarioCommand::Knowledge { node }) => {
+            match crate::knowledge::json(&by_root, node.as_deref()) {
                 Ok(v) => print_json(&v, crate::envelope::version::SCENARIO_KNOWLEDGE, 0),
                 Err(e) => cli_envelope::fail(
-                    CliError::usage(format!("lute scenario knowledge: {e}")).with_argument("--for"),
+                    CliError::usage(format!("lute scenario knowledge: {e}"))
+                        .with_argument("--node"),
                 ),
             }
         }
@@ -370,7 +371,7 @@ fn root_graph_json(
     Value::Object(obj)
 }
 
-/// `scenario reach <node> --format json`: the single-node reachability view
+/// `scenario reach --node <node> --json`: the single-node reachability view
 /// (verdict text + token + declared `after` structure + each directly
 /// referenced node's own verdict) — the JSON mirror of `run_scenario_reach`.
 fn reach_json(
@@ -470,7 +471,7 @@ fn reach_json(
     )
 }
 
-/// `scenario envelope <node> --format json`: the single-node envelope view —
+/// `scenario envelope --node <node> --json`: the single-node envelope view —
 /// the SAME `Guaranteed`/`Possible` tables + `Possible \ Guaranteed`
 /// difference the text `print_scene_envelope`/`print_quest_envelope` report,
 /// reusing `envelope::quest_envelope` verbatim for quests and the SAME
@@ -647,7 +648,7 @@ fn run_dot(
         return cli_envelope::fail(
             CliError::usage(
                 "lute scenario: --format dot applies to the graph view only; \
-                 `reach`/`envelope`/`knowledge` have no graph to render (use --format json or text)",
+                 `reach`/`envelope`/`knowledge` have no graph to render (use --json or --format text)",
             )
             .with_argument("--format"),
         );

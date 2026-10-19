@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use crate::envelope::{self, CliError};
-use lute_model::{apply_patch, PatchRefusal, PatchRequest};
+use lute_model::{apply_patch, ModelOptions, PatchRefusal, PatchRequest};
 fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
     if let PatchRefusal::Io { path, message } = refusal {
         return envelope::report(
@@ -71,7 +71,13 @@ fn report_json(report: &lute_model::PatchReport, exit: u8) -> Result<String, ser
 /// semantic changes return exit 1. Refusals and malformed input are exit 2.
 /// The JSON document says which with `accepted` (dsl 0.43.0 §3.3); its `ok`
 /// is the envelope's (exit `0`).
-pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCode {
+pub(crate) fn run(
+    dir: &Path,
+    patch: &Path,
+    dry_run: bool,
+    json: bool,
+    opts: &ModelOptions,
+) -> ExitCode {
     let input = match std::fs::read_to_string(patch) {
         Ok(input) => input,
         Err(error) => {
@@ -111,7 +117,7 @@ pub(crate) fn run(dir: &Path, patch: &Path, dry_run: bool, json: bool) -> ExitCo
             return ExitCode::from(2);
         }
     };
-    match apply_patch(dir, request, dry_run) {
+    match apply_patch(dir, request, dry_run, opts) {
         Ok(report) => {
             let exit = if report.diff.changes.is_empty() { 0 } else { 1 };
             if json {

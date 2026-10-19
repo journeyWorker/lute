@@ -245,6 +245,8 @@ fn an_untargetable_kind_is_refused_as_a_target() {
         "edits": [],
     }))
     .unwrap();
-    let refusal = lute_model::apply_patch_to(&model, request, true).unwrap_err();
+    let refusal =
+        lute_model::apply_patch_to(&model, request, true, &lute_model::ModelOptions::default())
+            .unwrap_err();
     assert_eq!(refusal.code(), "E-PATCH-TARGET");
 }

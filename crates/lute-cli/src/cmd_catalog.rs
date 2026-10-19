@@ -19,7 +19,40 @@ use crate::envelope::{self, CliError};
 ///
 /// Refresh iterates the directory itself (rather than `ProviderSet::load`, which
 /// discards filenames) so each snapshot rewrites to the file it came from.
-pub(crate) fn run_refresh(dir: &Path, project: Option<&Path>) -> ExitCode {
+pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> ExitCode {
+    // The project is `--project` or the nearest `lute.project.yaml` (0.48.0
+    // §2.1); `--providers` names the directory, defaulting to the project's
+    // `catalogDir`. With neither there is nothing to refresh.
+    let project = project
+        .map(Path::to_path_buf)
+        .or_else(crate::project::discover_project_from_cwd);
+    let project = project.as_deref();
+    let dir: PathBuf = match (providers, project) {
+        (Some(dir), _) => dir.to_path_buf(),
+        (None, Some(root)) => {
+            let opts = lute_model::ModelOptions {
+                providers: None,
+                permission_profile: None,
+                mode: lute_check::Mode::Ci,
+                compile: false,
+                wip: false,
+            };
+            lute_model::ProjectModel::build_single_root(root, &opts)
+                .ok()
+                .and_then(|model| model.manifest().map(|config| config.catalog_dir.clone()))
+                .unwrap_or_else(|| root.join("catalog"))
+        }
+        (None, None) => {
+            return envelope::fail(
+                CliError::usage(
+                    "lute catalog refresh: no snapshot directory — pass --providers <DIR>, \
+                     or run inside a project (or pass --project <DIR>) to refresh its catalogDir",
+                )
+                .with_argument("--providers"),
+            );
+        }
+    };
+    let dir = dir.as_path();
     if let Err(e) = std::fs::create_dir_all(dir) {
         let e = lute_manifest::io_reason(&e);
         return envelope::fail(CliError::io(

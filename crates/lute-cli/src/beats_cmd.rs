@@ -240,12 +240,13 @@ fn when_text(b: &ProjectBeat<'_>, expand: bool) -> Option<String> {
 /// See [`crate::Command::Beats`].
 pub(crate) fn run_beats(
     dir: &Path,
+    providers: Option<&Path>,
     occasions: &[String],
     targets: &[String],
     json_out: bool,
     expand: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match crate::collect_project_docs(dir, None, None, false) {
+    let (file_results, by_root) = match crate::collect_project_docs(dir, providers, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };

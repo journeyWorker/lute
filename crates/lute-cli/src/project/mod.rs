@@ -394,12 +394,14 @@ pub(crate) fn project_assert_relations(
     root: &Path,
     single_root: bool,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
 ) -> Option<BTreeSet<String>> {
     project_assert_relations_in(
         &lute_model::ModelMemo::default(),
         root,
         single_root,
         providers,
+        permission_profile,
     )
 }
 
@@ -409,9 +411,10 @@ pub(crate) fn project_assert_relations_in(
     root: &Path,
     single_root: bool,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
 ) -> Option<BTreeSet<String>> {
     let (file_results, by_root) =
-        collect_project_docs_in(memo, root, providers, None, single_root).ok()?;
+        collect_project_docs_in(memo, root, providers, permission_profile, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
     let docs = lute_model::project_docs(group);
@@ -427,8 +430,17 @@ pub(crate) fn project_assert_relations_in(
 /// dsl 0.24.0 T3-15: every `<quest id>` declared under the `--project`
 /// root — what `lute trace --project` settles its "existence is unverified"
 /// notes against. `None` when the project cannot be collected.
-pub(crate) fn project_quest_ids(root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
-    project_quest_ids_in(&lute_model::ModelMemo::default(), root, providers)
+pub(crate) fn project_quest_ids(
+    root: &Path,
+    providers: Option<&Path>,
+    permission_profile: Option<&str>,
+) -> Option<BTreeSet<String>> {
+    project_quest_ids_in(
+        &lute_model::ModelMemo::default(),
+        root,
+        providers,
+        permission_profile,
+    )
 }
 
 /// [`project_quest_ids`] over `memo`'s model.
@@ -436,8 +448,10 @@ pub(crate) fn project_quest_ids_in(
     memo: &lute_model::ModelMemo,
     root: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
 ) -> Option<BTreeSet<String>> {
-    let (_, by_root) = collect_project_docs_in(memo, root, providers, None, true).ok()?;
+    let (_, by_root) =
+        collect_project_docs_in(memo, root, providers, permission_profile, true).ok()?;
     let group = by_root.get(root)?;
     let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::quest_id_set(&docs))

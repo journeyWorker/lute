@@ -10,6 +10,7 @@ use lute_check::{fold_env, CheckInput, Namespace, RelVocab};
 use lute_manifest::relations::KindShape;
 use lute_manifest::types::{Literal, Type};
 
+use crate::cmd_constraints::ScriptSelection;
 use crate::context;
 use crate::envelope::{self, CliError};
 use crate::output::{pretty_json, write_stdout};
@@ -17,6 +18,19 @@ use crate::project::{discover_project, resolve_project};
 use lute_load::{build_input, BuiltInput};
 use lute_model::{ModelOptions, ProjectModel};
 use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
+
+/// `lute context`'s options (see [`crate::Command::Context`]).
+pub(crate) struct ContextOptions<'a> {
+    pub(crate) file: &'a Path,
+    pub(crate) json: bool,
+    pub(crate) providers: Option<&'a Path>,
+    pub(crate) project: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
+    pub(crate) node: Option<&'a str>,
+    pub(crate) at: Option<&'a str>,
+    pub(crate) max_items: usize,
+    pub(crate) scripts: ScriptSelection<'a>,
+}
 
 /// Emit the project-resolved AUTHORING SURFACE for `file`: everything an AI
 /// needs to WRITE valid Lute against THIS file's project — the resolved
@@ -31,32 +45,29 @@ use lute_semantic::{GraphEdge, NodeKey, NodeKind, SemanticGraph};
 /// capability QUERY, not validation: it emits the surface regardless of any
 /// document diagnostics (`fold_env` is pure/total). Exit `0` on success, `2` on
 /// an I/O failure (unreadable file), matching `run_check`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI flags are kept explicit at the command boundary"
-)]
-pub(crate) fn run_context(
-    file: &Path,
-    json: bool,
-    providers: Option<&Path>,
-    project: Option<&Path>,
-    permission_profile: Option<&str>,
-    target: Option<&str>,
-    at: Option<&str>,
-    max_items: usize,
-    run: Option<&Path>,
-) -> ExitCode {
-    if target.is_some() || at.is_some() {
+pub(crate) fn run_context(opts: &ContextOptions<'_>) -> ExitCode {
+    let ContextOptions {
+        file,
+        json,
+        providers,
+        project,
+        permission_profile,
+        node,
+        at,
+        max_items,
+        ref scripts,
+    } = *opts;
+    if node.is_some() || at.is_some() {
         return run_task_context(
             file,
             json,
             providers,
             project,
             permission_profile,
-            target,
+            node,
             at,
             max_items,
-            run,
+            scripts,
         );
     }
     run_authoring_context(file, json, providers, project, permission_profile)
@@ -153,14 +164,14 @@ fn run_task_context(
     target: Option<&str>,
     at: Option<&str>,
     max_items: usize,
-    run: Option<&Path>,
+    scripts: &ScriptSelection<'_>,
 ) -> ExitCode {
     if let Some(spec) = at {
         return run_position_context(file, json, providers, project, permission_profile, spec);
     }
     let Some(raw_target) = target else {
         return envelope::fail(
-            CliError::usage("lute context: --target requires a value").with_argument("--target"),
+            CliError::usage("lute context: --node requires a value").with_argument("--node"),
         );
     };
     let root = resolve_project(file, project).unwrap_or_else(|| {
@@ -266,7 +277,7 @@ fn run_task_context(
         .map(|item| serde_json::to_value(item).unwrap_or_default())
         .collect::<Vec<_>>();
     sort_and_truncate(&mut affected, limit, "affected", &mut not_included);
-    let scripts = related_scripts(&model, &key, limit, run, &mut not_included);
+    let scripts = related_scripts(&model, &key, limit, scripts, &mut not_included);
     let vocabulary = vocabulary(&model, graph, &key, limit, &mut not_included);
     let excerpt = node
         .file
@@ -537,7 +548,7 @@ fn related_scripts(
     model: &ProjectModel,
     key: &NodeKey,
     limit: usize,
-    run: Option<&Path>,
+    scripts: &ScriptSelection<'_>,
     not_included: &mut Vec<serde_json::Value>,
 ) -> Scripts {
     let mut tests = Vec::new();
@@ -578,9 +589,7 @@ fn related_scripts(
         }
         .ok()
         .is_some_and(|references| references.iter().any(|reference| reference == needle));
-        let selected = run.is_some_and(|selector| {
-            selector == path || (selector.is_dir() && path.strip_prefix(selector).is_ok())
-        });
+        let selected = scripts.selects(&path);
         let witnessed =
             selected && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
         if !static_match && !witnessed {
@@ -609,7 +618,7 @@ fn related_scripts(
             "kind": "scripts",
             "available": omitted,
             "omitted": omitted,
-            "reason": if run.is_some() { "unrun-or-no-observable-target" } else { "unrun-or-no-static-target" }
+            "reason": if scripts.any() { "unrun-or-no-observable-target" } else { "unrun-or-no-static-target" }
         }));
     }
     sort_and_truncate(&mut tests, limit, "tests", not_included);

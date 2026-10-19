@@ -1,4 +1,4 @@
-//! `lute scenario envelope <node>`: a node's Guaranteed/Possible state
+//! `lute scenario envelope --node <node>`: a node's Guaranteed/Possible state
 //! envelope, its writers, and its fact envelope.
 
 use std::collections::{BTreeMap, BTreeSet};

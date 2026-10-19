@@ -99,7 +99,7 @@ pub fn run_artifact(
     json_out: bool,
     entry: Option<&str>,
     beat: Option<&str>,
-    dump_conditions: Option<&Path>,
+    conditions_output: Option<&Path>,
 ) -> ExitCode {
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
@@ -231,14 +231,14 @@ pub fn run_artifact(
 
     mock_set.occasions.extend(occasions);
     let mut m = run_machine(&art, &mock_set, entry, beat);
-    if let Some(path) = dump_conditions {
+    if let Some(path) = conditions_output {
         let file = match std::fs::File::create(path) {
             Ok(file) => std::rc::Rc::new(std::cell::RefCell::new(file)),
             Err(e) => {
                 return envelope::fail(CliError::io(
                     path,
                     format!(
-                        "lute run: cannot create condition dump {}: {e}",
+                        "lute run: cannot create conditions-output file {}: {e}",
                         path.display()
                     ),
                 ));
@@ -952,7 +952,7 @@ struct ConditionDumpRecord {
     visited: Option<Vec<String>>,
 }
 
-/// Emitted conditions keyed by raw CEL text, built once per condition dump so
+/// Emitted conditions keyed by raw CEL text, built once per conditions-output file so
 /// each evaluation is a lookup instead of a walk over every artifact. Within an
 /// artifact the first node carrying a `cel` decides (depth-first, node before
 /// children); across artifacts the first one whose deciding node has an

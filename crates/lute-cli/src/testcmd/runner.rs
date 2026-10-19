@@ -1,39 +1,89 @@
 use super::*;
 use lute_load::build_input;
-pub fn run_test(
-    dir: &Path,
-    json: bool,
-    providers: Option<&Path>,
-    project: Option<&Path>,
-    coverage: bool,
-    no_derive: bool,
-) -> ExitCode {
-    let single = dir.is_file().then(|| {
-        let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        (name.ends_with(".test.yaml"), name.ends_with(".play.yaml"))
-    });
-    let (test_files, play_files) = match single {
-        Some((true, _)) => (vec![dir.to_path_buf()], Vec::new()),
-        Some((_, true)) => (Vec::new(), vec![dir.to_path_buf()]),
-        Some(_) => {
-            return crate::envelope::fail(crate::envelope::CliError::usage(format!(
-                "lute: {} is not a directory, a `*.test.yaml` or a `*.play.yaml`",
-                dir.display()
-            )));
-        }
-        None => match (
-            find_files_with_suffix(dir, ".test.yaml"),
-            find_files_with_suffix(dir, ".play.yaml"),
-        ) {
-            (Ok(t), Ok(p)) => (t, p),
-            (Err(e), _) | (_, Err(e)) => {
-                let e = lute_manifest::io_reason(&e);
-                return crate::envelope::fail(crate::envelope::CliError::io(
-                    dir,
-                    format!("lute: cannot walk {}: {e}", dir.display()),
-                ));
+/// `lute test`'s flags (0.48.0 §3.14), resolved by the dispatcher.
+pub struct TestOptions<'a> {
+    /// The project directory: the walk root when no operand is given, and
+    /// the coverage denominator.
+    pub project: &'a Path,
+    /// `[<PATH>]…`: a script file, or a directory walked for scripts.
+    pub paths: &'a [PathBuf],
+    pub json: bool,
+    pub coverage: bool,
+    pub no_derive: bool,
+    pub build: crate::play::Build<'a>,
+}
+
+/// Collect the scripts `operands` select (the project directory when none):
+/// a `*.test.yaml` / `*.play.yaml` file, or a directory walked for both.
+/// `Err` is the exit code after the error envelope printed.
+fn select_scripts(
+    project: &Path,
+    operands: &[PathBuf],
+) -> Result<(Vec<PathBuf>, Vec<PathBuf>), ExitCode> {
+    let walk_default = [project.to_path_buf()];
+    let operands = if operands.is_empty() {
+        &walk_default[..]
+    } else {
+        operands
+    };
+    let mut test_files: Vec<PathBuf> = Vec::new();
+    let mut play_files: Vec<PathBuf> = Vec::new();
+    for operand in operands {
+        if operand.is_file() {
+            let name = operand.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.ends_with(".test.yaml") {
+                test_files.push(operand.clone());
+            } else if name.ends_with(".play.yaml") {
+                play_files.push(operand.clone());
+            } else {
+                return Err(crate::envelope::fail(crate::envelope::CliError::usage(
+                    format!(
+                        "lute test: {} is not a directory, a `*.test.yaml` or a `*.play.yaml`",
+                        operand.display()
+                    ),
+                )));
             }
-        },
+        } else {
+            match (
+                find_files_with_suffix(operand, ".test.yaml"),
+                find_files_with_suffix(operand, ".play.yaml"),
+            ) {
+                (Ok(t), Ok(p)) => {
+                    test_files.extend(t);
+                    play_files.extend(p);
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    let e = lute_manifest::io_reason(&e);
+                    return Err(crate::envelope::fail(crate::envelope::CliError::io(
+                        operand,
+                        format!("lute: cannot walk {}: {e}", operand.display()),
+                    )));
+                }
+            }
+        }
+    }
+    // One run per script however many operands reach it.
+    let mut seen = BTreeSet::new();
+    test_files.retain(|f| seen.insert(canonical_key(f)));
+    let mut seen = BTreeSet::new();
+    play_files.retain(|f| seen.insert(canonical_key(f)));
+    Ok((test_files, play_files))
+}
+
+pub fn run_test(options: &TestOptions) -> ExitCode {
+    let TestOptions {
+        project: dir,
+        paths,
+        json,
+        coverage,
+        no_derive,
+        build,
+    } = options;
+    let (dir, json, coverage, no_derive) = (*dir, *json, *coverage, *no_derive);
+    let providers = build.providers;
+    let (test_files, play_files) = match select_scripts(dir, paths) {
+        Ok(files) => files,
+        Err(code) => return code,
     };
 
     // T2-1: the project is loaded and analysed once for the whole run —
@@ -49,7 +99,7 @@ pub fn run_test(
     // Every model this run builds, once: the tests' analysis, the gates,
     // quest ids, producer sets and the plays' compile read the same project.
     let memo = lute_model::ModelMemo::default();
-    let mut shared = match Shared::for_tests(&memo, &test_files, project, providers) {
+    let mut shared = match Shared::for_tests(&memo, &test_files, build) {
         Ok(shared) => shared,
         Err(code) => return code,
     };
@@ -57,11 +107,17 @@ pub fn run_test(
     // `<doc>:1:1` copy) per document that imports it.
     let play_roots: BTreeSet<PathBuf> = play_files
         .iter()
-        .filter_map(|p| project_dir_of(p, project))
+        .filter_map(|p| project_dir_of(p))
         .collect();
     for root in play_roots {
         shared.gates.entry(root.clone()).or_insert_with(|| {
-            lute_model::reconciled_project_results_in(&memo, &root, providers).ok()
+            lute_model::reconciled_project_results_in(
+                &memo,
+                &root,
+                providers,
+                build.permission_profile,
+            )
+            .ok()
         });
     }
     let faults: Vec<String> = shared
@@ -89,8 +145,7 @@ pub fn run_test(
             let (r, lines) = captured(|| {
                 run_one_test(
                     test_file,
-                    providers,
-                    project,
+                    build,
                     no_derive,
                     &shared,
                     coverage.then_some(&mut local),
@@ -113,7 +168,7 @@ pub fn run_test(
         }
     }
 
-    shared.compile_plays(&memo, &play_files, project);
+    shared.compile_plays(&memo, &play_files, build);
     let runs: Vec<_> = play_files
         .par_iter()
         .map(|play_file| {
@@ -121,7 +176,6 @@ pub fn run_test(
             let (r, lines) = captured(|| {
                 run_one_play(
                     play_file,
-                    project,
                     no_derive,
                     &shared,
                     coverage.then_some(&mut local),
@@ -144,8 +198,7 @@ pub fn run_test(
     // #24's denominator, at beat granularity since T3-20: every coverage
     // unit ([`coverage_units`]) under the PROJECT root that no test
     // presented and no play presented, MINUS the component documents. The
-    // root is `--project`, else the nearest `lute.project.yaml` above `dir`,
-    // else `dir` itself — the
+    // root is the project directory — the
     // tests conventionally live in `tests/`, and measuring against the walk
     // root there made `every testable document … is named` vacuously true
     // (T1-13). `find_lute_files` is the SAME byte-sorted, symlink-deduped
@@ -162,18 +215,7 @@ pub fn run_test(
     // component case already has its own honest surface, and it is not this
     // one: `W-COMPONENT-UNVERIFIED` (dsl 0.10.0 §9 rule 4, D-W) says the
     // component's contract was not verified, and says who decides.
-    let walk_root = if single.is_some() {
-        dir.parent().unwrap_or_else(|| Path::new("."))
-    } else {
-        dir
-    };
-    let coverage_root: PathBuf = match project {
-        Some(p) => p.to_path_buf(),
-        None => match nearest_manifest_dir(dir) {
-            Some(root) if canonical_key(&root) != canonical_key(walk_root) => root,
-            _ => walk_root.to_path_buf(),
-        },
-    };
+    let coverage_root: PathBuf = dir.to_path_buf();
     let units: Vec<CoverageUnit> = if coverage {
         match coverage_units(&coverage_root) {
             Ok(units) => units,
@@ -251,23 +293,17 @@ struct Shared {
     gates: BTreeMap<PathBuf, Option<crate::ReconciledProject>>,
 }
 
-/// The root whose producer set judges `lute_path`'s mocked facts:
-/// `--project` when given (every file resolves against it, as the trace
-/// gate does), else the nearest `lute.project.yaml` — with whether it is a
-/// single root ([`crate::project_assert_relations`]).
-fn producer_root(lute_path: &Path, project: Option<&Path>) -> Option<(PathBuf, bool)> {
-    match project {
-        Some(p) => Some((p.to_path_buf(), true)),
-        None => nearest_manifest_dir(lute_path).map(|root| (root, false)),
-    }
+/// The root whose producer set judges `lute_path`'s mocked facts: the nearest
+/// `lute.project.yaml` — with whether it is a single root
+/// ([`crate::project_assert_relations`]).
+fn producer_root(lute_path: &Path) -> Option<(PathBuf, bool)> {
+    nearest_manifest_dir(lute_path).map(|root| (root, false))
 }
 
-/// The project `file` belongs to: `--project`, else the nearest
-/// `lute.project.yaml` above it.
-fn project_dir_of(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
-    project
-        .map(Path::to_path_buf)
-        .or_else(|| nearest_manifest_dir(file))
+/// The project `file` belongs to: the nearest `lute.project.yaml` at or above
+/// it (0.48.0 §3.14 — each script resolves against its own project).
+fn project_dir_of(file: &Path) -> Option<PathBuf> {
+    nearest_manifest_dir(file)
 }
 
 impl Shared {
@@ -276,9 +312,9 @@ impl Shared {
     fn for_tests(
         memo: &lute_model::ModelMemo,
         test_files: &[PathBuf],
-        project: Option<&Path>,
-        providers: Option<&Path>,
+        build: &crate::play::Build,
     ) -> Result<Self, ExitCode> {
+        let providers = build.providers;
         let mut model_roots: BTreeSet<PathBuf> = BTreeSet::new();
         let mut producer_roots: BTreeSet<(PathBuf, bool)> = BTreeSet::new();
         let mut quest_roots: BTreeSet<PathBuf> = BTreeSet::new();
@@ -296,20 +332,20 @@ impl Shared {
                 .parent()
                 .unwrap_or_else(|| Path::new("."))
                 .join(&rel);
-            if let Some(root) = project_dir_of(&lute_path, project) {
+            if let Some(root) = project_dir_of(&lute_path) {
                 model_roots.insert(root);
             }
             if !mocks.facts.is_empty() {
-                producer_roots.extend(producer_root(&lute_path, project));
+                producer_roots.extend(producer_root(&lute_path));
             }
             if !mocks.accepts.is_empty() {
-                quest_roots.extend(project_dir_of(&lute_path, project));
+                quest_roots.extend(project_dir_of(&lute_path));
             }
-            gate_roots.extend(project_dir_of(&lute_path, project));
+            gate_roots.extend(project_dir_of(&lute_path));
         }
         let opts = ModelOptions {
             providers: providers.map(Path::to_path_buf),
-            permission_profile: None,
+            permission_profile: build.permission_profile.map(str::to_owned),
             mode: lute_check::Mode::Ci,
             compile: false,
             wip: false,
@@ -354,16 +390,32 @@ impl Shared {
             shared.models.insert(canonical_key(&root), model);
         }
         for (root, single_root) in producer_roots {
-            let set =
-                crate::project::project_assert_relations_in(memo, &root, single_root, providers);
+            let set = crate::project::project_assert_relations_in(
+                memo,
+                &root,
+                single_root,
+                providers,
+                build.permission_profile,
+            );
             shared.producers.insert(root, set);
         }
         for root in quest_roots {
-            let ids = crate::project::project_quest_ids_in(memo, &root, providers);
+            let ids = crate::project::project_quest_ids_in(
+                memo,
+                &root,
+                providers,
+                build.permission_profile,
+            );
             shared.quests.insert(root, ids);
         }
         for root in gate_roots {
-            let rec = lute_model::reconciled_project_results_in(memo, &root, providers).ok();
+            let rec = lute_model::reconciled_project_results_in(
+                memo,
+                &root,
+                providers,
+                build.permission_profile,
+            )
+            .ok();
             shared.gates.insert(root, rec);
         }
         Ok(shared)
@@ -384,16 +436,16 @@ impl Shared {
         &mut self,
         memo: &lute_model::ModelMemo,
         play_files: &[PathBuf],
-        project: Option<&Path>,
+        build: &crate::play::Build,
     ) {
         for play_file in play_files {
             if !matches!(scan_play(play_file), PlayScan::Expect { .. }) {
                 continue;
             }
-            if let Some(dir) = project_dir_of(play_file, project) {
+            if let Some(dir) = project_dir_of(play_file) {
                 self.plays
                     .entry(dir.clone())
-                    .or_insert_with(|| crate::play::PlayProject::compile_in(memo, &dir));
+                    .or_insert_with(|| crate::play::PlayProject::compile_in(memo, &dir, build));
             }
         }
     }
@@ -405,21 +457,25 @@ impl Shared {
     fn for_document(
         &self,
         lute_path: &Path,
-        project: Option<&Path>,
-        providers: Option<&Path>,
+        build: &crate::play::Build,
     ) -> Option<BTreeSet<String>> {
-        let (root, single_root) = producer_root(lute_path, project)?;
+        let (root, single_root) = producer_root(lute_path)?;
         match self.producers.get(&root) {
             Some(set) => set.clone(),
-            None => crate::project_assert_relations(&root, single_root, providers),
+            None => crate::project_assert_relations(
+                &root,
+                single_root,
+                build.providers,
+                build.permission_profile,
+            ),
         }
     }
 
     /// Every quest id of the project at `root`.
-    fn project_quests(&self, root: &Path, providers: Option<&Path>) -> Option<BTreeSet<String>> {
+    fn project_quests(&self, root: &Path, build: &crate::play::Build) -> Option<BTreeSet<String>> {
         match self.quests.get(root) {
             Some(ids) => ids.clone(),
-            None => crate::project_quest_ids(root, providers),
+            None => crate::project_quest_ids(root, build.providers, build.permission_profile),
         }
     }
 
@@ -445,21 +501,19 @@ impl Shared {
 /// including a refused trace, which is a test FAILURE (semantic), not an I/O
 /// error. When `cov` is `Some`, the produced report is folded into it.
 ///
-/// `project` resolves the traced document EXACTLY as `lute trace --project`
-/// does (module docs): threaded straight into [`lute_load::build_input`], never
-/// substituted for `None`. A project-resolution `E-` diagnostic
+/// The traced document resolves against its nearest project (module docs). A project-resolution `E-` diagnostic
 /// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
 /// never folded into a per-test `TestResult` where a caller filtering on
 /// `passed` could mistake a broken manifest for a failing assertion.
 /// Run one scenario test in-process and report only a quest completion
 /// transition observed by its trace. Seeded `complete` status is not enough.
-pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -> bool {
+pub(crate) fn run_test_for_constraint(script: &Path, quest: &str) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None)
-    else {
+    let build = crate::play::Build::default();
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, &build) else {
         return false;
     };
-    let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
+    let Ok(result) = run_one_test(script, &build, false, &shared, None) else {
         return false;
     };
     result.completed_quests.contains(quest)
@@ -468,13 +522,13 @@ pub(crate) fn run_test_for_constraint(root: &Path, script: &Path, quest: &str) -
 /// Execute one scenario test in-process and report whether its trace visited a
 /// graph target. This deliberately uses the same trace runner as
 /// `constraints --run`; static YAML mentions are never treated as witnesses.
-pub(crate) fn run_test_for_context(root: &Path, script: &Path, target: &NodeKey) -> bool {
+pub(crate) fn run_test_for_context(script: &Path, target: &NodeKey) -> bool {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, Some(root), None)
-    else {
+    let build = crate::play::Build::default();
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, &build) else {
         return false;
     };
-    let Ok(result) = run_one_test(script, None, Some(root), false, &shared, None) else {
+    let Ok(result) = run_one_test(script, &build, false, &shared, None) else {
         return false;
     };
     result_visits_target(&result, target)
@@ -519,12 +573,12 @@ fn traced_document_id(path: &str) -> Option<String> {
 
 fn run_one_test(
     test_file: &Path,
-    providers: Option<&Path>,
-    project: Option<&Path>,
+    build: &crate::play::Build,
     no_derive: bool,
     shared: &Shared,
     cov: Option<&mut CoverageAccum>,
 ) -> Result<TestResult, ExitCode> {
+    let providers = build.providers;
     let text = match std::fs::read_to_string(test_file) {
         Ok(t) => t,
         Err(e) => {
@@ -744,17 +798,13 @@ fn run_one_test(
     // 0.23.1: like `lute check <file>` and like the plays of this run, a
     // scenario test without `--project` resolves its document against the
     // nearest `lute.project.yaml` — announced once per project root.
-    let discovered = match project {
-        Some(_) => None,
-        None => nearest_manifest_dir(&lute_path),
-    };
+    let discovered = nearest_manifest_dir(&lute_path);
     if let Some(root) = &discovered {
         let shown = crate::cwd_relative(&root.display().to_string());
         stderr_line(StderrLine::Note(
             root.clone(),
             format!(
-                "lute: note: scenario tests use project {} (nearest lute.project.yaml); pass \
-                 --project to choose another",
+                "lute: note: scenario tests use project {} (nearest lute.project.yaml)",
                 if shown.is_empty() {
                     "."
                 } else {
@@ -763,7 +813,7 @@ fn run_one_test(
             ),
         ));
     }
-    let resolve_with = project.or(discovered.as_deref());
+    let resolve_with = discovered.as_deref();
     if let Some(root) = resolve_with {
         if let Some(faults) = shared
             .schema_faults(root)
@@ -787,7 +837,7 @@ fn run_one_test(
             );
             return Err(ExitCode::from(1));
         }
-        let Some(built) = build_input(&lute_path, providers, None, None) else {
+        let Some(built) = build_input(&lute_path, providers, None, build.permission_profile) else {
             return Err(crate::envelope::fail_quietly(
                 crate::envelope::CliError::unreadable_document(&lute_path),
             ));
@@ -1060,7 +1110,7 @@ fn run_one_test(
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        shared.for_document(&lute_path, project, providers)
+        shared.for_document(&lute_path, build)
     };
     // dsl 0.26.0 §7 (T3-5), round-5 T3-24: an `accepts:`, a `quests:` seed or
     // an `expect.quests` naming a quest this document does not declare
@@ -1083,8 +1133,7 @@ fn run_one_test(
             .iter()
             .any(|id| !doc.quests.iter().any(|q| q.id == *id));
         if foreign {
-            mocks.project_quests =
-                resolve_with.and_then(|root| shared.project_quests(root, providers));
+            mocks.project_quests = resolve_with.and_then(|root| shared.project_quests(root, build));
         }
     }
     // What a quest another document declares starts the walk as (T3-24).
@@ -1101,10 +1150,16 @@ fn run_one_test(
     // `lute trace --project` and `lute play` gate on), else the standalone
     // check. An unpresented entry / beat is judged under the same mocks and
     // verdict (T3-5).
-    let checked = match resolve_with.and_then(|root| shared.gate(root, &lute_path)) {
+    let mut checked = match resolve_with.and_then(|root| shared.gate(root, &lute_path)) {
         Some(check) => check,
         None => model_doc.map_or_else(|| lute_check::check(input), |d| d.check.clone()),
     };
+    // `--deny` / `--deny-warnings` promote the check verdict this test
+    // consults: a denied warning refuses the trace, failing the test
+    // (0.48.0 §2.2).
+    if build.policy.any_denied(&checked.diagnostics) {
+        checked.ok = false;
+    }
     let eligibility_mocks = judges_eligibility_by_id.then(|| (mocks.clone(), checked.clone()));
     let (report, exit) = if let Some(beat) = &beat {
         trace_beat_with_check(input, checked, mocks, beat, project_asserts.as_ref())
@@ -1702,7 +1757,6 @@ fn scan_play(play_file: &Path) -> PlayScan {
 /// every branch/hub it answered joins the choice rows (T3-20).
 fn run_one_play(
     play_file: &Path,
-    project: Option<&Path>,
     no_derive: bool,
     shared: &Shared,
     cov: Option<&mut CoverageAccum>,
@@ -1722,11 +1776,11 @@ fn run_one_play(
         PlayScan::Expect { declares_exit } => declares_exit,
         PlayScan::Broken(why) => return refused(String::new(), &why),
     };
-    let Some(project_dir) = project_dir_of(play_file, project) else {
+    let Some(project_dir) = project_dir_of(play_file) else {
         return refused(
             String::new(),
-            "no `lute.project.yaml` above this play — a play runs a project; pass \
-             `--project <dir>`",
+            "no `lute.project.yaml` above this play — a play runs a project; run `lute \
+             test` on a script inside one",
         );
     };
     let project_display = display_path(&project_dir);

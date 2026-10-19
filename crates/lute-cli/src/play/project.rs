@@ -25,6 +25,17 @@ fn project_rel(path: &Path, root: &Path) -> Option<String> {
     (!out.is_empty()).then_some(out)
 }
 
+/// What a command that compiles the project passes the build: the provider
+/// directory, the permission profile and the `--deny`/`--deny-warnings`
+/// policy (0.48.0 §2.2). The default is the manifest's own catalog, no
+/// profile, no promotion.
+#[derive(Clone, Default)]
+pub(crate) struct Build<'a> {
+    pub providers: Option<&'a Path>,
+    pub permission_profile: Option<&'a str>,
+    pub policy: crate::DenyPolicy,
+}
+
 /// The command a project is compiled for, as its messages name it.
 #[derive(Clone, Copy)]
 pub(crate) struct Gate {
@@ -57,8 +68,9 @@ pub(super) fn compile_project(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
+    build: &Build,
 ) -> Result<(ExecProject, NeedleVocab), ExitCode> {
-    compile_bundle(memo, project_dir, gate, matrix)?.load()
+    compile_bundle(memo, project_dir, gate, matrix, build)?.load()
 }
 
 /// [`compile_project`] stopped at the bundle.
@@ -67,12 +79,13 @@ fn compile_bundle(
     project_dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
+    build: &Build,
 ) -> Result<PlayBundle, ExitCode> {
     let project_dir =
         nearest_manifest_dir(project_dir).unwrap_or_else(|| project_dir.to_path_buf());
     manifest_gate(&project_dir, gate.cmd)?;
     let source_model = memo
-        .single_root(&project_dir, &model_options())
+        .single_root(&project_dir, &model_options(build))
         .map_err(|error| {
             eprintln!(
                 "{}: cannot build {}: {error}",
@@ -81,7 +94,7 @@ fn compile_bundle(
             );
             ExitCode::from(1)
         })?;
-    assemble_bundle_from_model(&project_dir, gate, matrix, &source_model)
+    assemble_bundle_from_model(&project_dir, gate, matrix, &source_model, build)
 }
 
 /// Refuse a project whose manifests are invalid or whose chapters do not
@@ -114,17 +127,19 @@ pub(crate) fn manifest_gate(project_dir: &Path, cmd: &str) -> Result<(), ExitCod
 pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, ExitCode> {
     let project_dir =
         nearest_manifest_dir(project_dir).unwrap_or_else(|| project_dir.to_path_buf());
-    ProjectModel::build_single_root(&project_dir, &model_options()).map_err(|error| {
-        eprintln!("lute: cannot build {}: {error}", project_dir.display());
-        ExitCode::from(1)
-    })
+    ProjectModel::build_single_root(&project_dir, &model_options(&Build::default())).map_err(
+        |error| {
+            eprintln!("lute: cannot build {}: {error}", project_dir.display());
+            ExitCode::from(1)
+        },
+    )
 }
 
 /// The model a play compiles from: the project as `compile --all` sees it.
-fn model_options() -> ModelOptions {
+fn model_options(build: &Build) -> ModelOptions {
     ModelOptions {
-        providers: None,
-        permission_profile: None,
+        providers: build.providers.map(Path::to_path_buf),
+        permission_profile: build.permission_profile.map(str::to_owned),
         mode: lute_check::Mode::Ci,
         compile: true,
         wip: false,
@@ -139,7 +154,7 @@ pub(crate) fn assemble_project_from_model(
     matrix: &crate::EngineMatrix,
     source_model: &ProjectModel,
 ) -> Result<(ExecProject, NeedleVocab), ExitCode> {
-    assemble_bundle_from_model(project_dir, gate, matrix, source_model)?.load()
+    assemble_bundle_from_model(project_dir, gate, matrix, source_model, &Build::default())?.load()
 }
 
 /// [`assemble_project_from_model`] stopped at the bundle.
@@ -148,9 +163,10 @@ fn assemble_bundle_from_model(
     gate: Gate,
     matrix: &crate::EngineMatrix,
     source_model: &ProjectModel,
+    build: &Build,
 ) -> Result<PlayBundle, ExitCode> {
     let Gate { cmd, refuses } = gate;
-    let policy = crate::DenyPolicy::default();
+    let policy = &build.policy;
     if source_model.has_resolution_errors() {
         for document in source_model.documents() {
             for diagnostic in &document.resolve_diags {
@@ -189,13 +205,13 @@ fn assemble_bundle_from_model(
     }
     let project_errors: Vec<_> = project_diagnostics
         .iter()
-        .filter(|(_, d)| d.severity == lute_core_span::Severity::Error)
+        .filter(|(_, d)| d.severity == lute_core_span::Severity::Error || policy.denied(d))
         .collect();
     if !project_errors.is_empty() {
         for (path, diagnostic) in &project_errors {
             print!(
                 "{}",
-                crate::render_diagnostics(path, std::slice::from_ref(diagnostic), &policy)
+                crate::render_diagnostics(path, std::slice::from_ref(diagnostic), policy)
             );
         }
         eprintln!(
@@ -249,10 +265,10 @@ fn assemble_bundle_from_model(
             &desugared,
             &source.folded.typed,
         ));
-        if !source.check.ok {
+        if !source.check.ok || policy.any_denied(&source.check.diagnostics) {
             failures.insert(
                 file.clone(),
-                crate::render_diagnostics(file, &source.check.diagnostics, &policy),
+                crate::render_diagnostics(file, &source.check.diagnostics, policy),
             );
             continue;
         }
@@ -359,8 +375,9 @@ pub(super) fn compile_play_project(
     dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
+    build: &Build,
 ) -> Result<(ExecProject, NeedleVocab), (ExitCode, String)> {
-    compile_play_bundle(memo, dir, gate, matrix)?
+    compile_play_bundle(memo, dir, gate, matrix, build)?
         .load()
         .map_err(|code| (code, String::new()))
 }
@@ -371,6 +388,7 @@ pub(super) fn compile_play_bundle(
     dir: &Path,
     gate: Gate,
     matrix: &crate::EngineMatrix,
+    build: &Build,
 ) -> Result<PlayBundle, (ExitCode, String)> {
     if !dir.is_dir() {
         return Err((
@@ -378,5 +396,5 @@ pub(super) fn compile_play_bundle(
             format!("{} is not a project directory", dir.display()),
         ));
     }
-    compile_bundle(memo, dir, gate, matrix).map_err(|code| (code, String::new()))
+    compile_bundle(memo, dir, gate, matrix, build).map_err(|code| (code, String::new()))
 }

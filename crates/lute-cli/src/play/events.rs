@@ -64,12 +64,24 @@ pub struct ScriptRun {
 /// `lute play`'s driver to learn its answers. `Err` is `lute play`'s usage
 /// or compile message.
 pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<ScriptRun, String> {
+    script_run_with(dir, script_path, no_derive, &super::Build::default())
+}
+
+/// [`script_run`] over a project built with `build` (providers, permission
+/// profile, `--deny` policy).
+pub(crate) fn script_run_with(
+    dir: &Path,
+    script_path: &Path,
+    no_derive: bool,
+    build: &super::Build,
+) -> Result<ScriptRun, String> {
     let script = super::load_script(script_path).map_err(|(_, message)| message)?;
     let compiled = super::project::compile_play_bundle(
         &lute_model::ModelMemo::default(),
         dir,
         super::project::PLAY,
         &crate::EngineMatrix::reference(),
+        build,
     )
     .map_err(|(_, message)| {
         if message.is_empty() {

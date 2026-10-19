@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 /// The `--deny <CODE>` / `--deny-warnings` promotion policy (spec §5). Errors are
 /// never demotable (spec §6), so promotion only ever turns a NON-error into an
 /// error for the verdict, exit code, and reported severity.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct DenyPolicy {
     pub(crate) codes: BTreeSet<String>,
     pub(crate) warnings: bool,

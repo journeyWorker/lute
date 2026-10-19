@@ -194,7 +194,7 @@ fn run_compile(
     // loose scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair,
     // and so does a project that failed to load (its error already printed).
     let gate = match resolved.as_deref() {
-        Some(dir) => match project_gate_result(file, dir, providers) {
+        Some(dir) => match project_gate_result(file, dir, providers, permission_profile) {
             Ok(gate) => gate,
             Err(code) => return code,
         },

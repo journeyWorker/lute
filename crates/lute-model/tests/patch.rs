@@ -142,6 +142,7 @@ fn run_edit(
             preserve,
         },
         true,
+        &ModelOptions::default(),
     )
 }
 
@@ -149,7 +150,7 @@ fn run_edit(
 fn dry_run_stages_diff_without_writing() {
     let root = project();
     let original = std::fs::read_to_string(root.join("scene.lute")).unwrap();
-    let report = apply_patch(&root, request(&root), true).unwrap();
+    let report = apply_patch(&root, request(&root), true, &ModelOptions::default()).unwrap();
     assert_eq!(
         std::fs::read_to_string(root.join("scene.lute")).unwrap(),
         original
@@ -162,7 +163,7 @@ fn dry_run_stages_diff_without_writing() {
 fn prebuilt_model_is_accepted_as_patch_before_snapshot() {
     let root = project();
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
-    let report = apply_patch_to(&model, request(&root), true).unwrap();
+    let report = apply_patch_to(&model, request(&root), true, &ModelOptions::default()).unwrap();
     assert_eq!(report.before, *model.revisions());
     assert!(!std::fs::read_to_string(root.join("scene.lute"))
         .unwrap()
@@ -174,7 +175,7 @@ fn stale_project_revision_refuses_before_staging() {
     let root = project();
     let mut patch = request(&root);
     patch.base.project = "sha256:stale".into();
-    let refusal = apply_patch(&root, patch, true).unwrap_err();
+    let refusal = apply_patch(&root, patch, true, &ModelOptions::default()).unwrap_err();
     assert_eq!(refusal.code(), "E-PATCH-STALE");
 }
 
@@ -192,7 +193,9 @@ fn target_and_edit_refusals_are_stable_and_atomic() {
         preserve: vec![],
     };
     assert_eq!(
-        apply_patch(&root, unknown, true).unwrap_err().code(),
+        apply_patch(&root, unknown, true, &ModelOptions::default())
+            .unwrap_err()
+            .code(),
         "E-PATCH-TARGET"
     );
     let (line, span, file) = line_info(&root);
@@ -216,7 +219,9 @@ fn target_and_edit_refusals_are_stable_and_atomic() {
         preserve: vec![],
     };
     assert_eq!(
-        apply_patch(&root, outside, true).unwrap_err().code(),
+        apply_patch(&root, outside, true, &ModelOptions::default())
+            .unwrap_err()
+            .code(),
         "E-PATCH-EDIT"
     );
     let overlap = PatchRequest {
@@ -238,7 +243,9 @@ fn target_and_edit_refusals_are_stable_and_atomic() {
         preserve: vec![],
     };
     assert_eq!(
-        apply_patch(&root, overlap, true).unwrap_err().code(),
+        apply_patch(&root, overlap, true, &ModelOptions::default())
+            .unwrap_err()
+            .code(),
         "E-PATCH-EDIT"
     );
     assert_eq!(std::fs::read(root.join(&file)).unwrap(), original);
@@ -299,7 +306,7 @@ fn create_and_move_preserve_identity_and_write_only_after_success() {
         }],
         preserve: vec![],
     };
-    let report = apply_patch(&root, request, true).unwrap();
+    let report = apply_patch(&root, request, true, &ModelOptions::default()).unwrap();
     assert!(report.writes.contains(&PathBuf::from("new.lute")));
     assert!(!root.join("new.lute").exists());
     let model = ProjectModel::build_single_root(&root, &ModelOptions::default()).unwrap();
@@ -315,7 +322,7 @@ fn create_and_move_preserve_identity_and_write_only_after_success() {
         }],
         preserve: vec![],
     };
-    let report = apply_patch(&root, request, true).unwrap();
+    let report = apply_patch(&root, request, true, &ModelOptions::default()).unwrap();
     assert!(report
         .diff
         .changes
@@ -374,7 +381,7 @@ fn mapped_preserve_id_accepts_renamed_quest_identity() {
             "oldQuest",
         )])],
     );
-    assert!(apply_patch(&root, request, true).is_ok());
+    assert!(apply_patch(&root, request, true, &ModelOptions::default()).is_ok());
 }
 #[test]
 fn acceptance_refusal_matrix_has_named_cases() {
@@ -536,7 +543,7 @@ fn acceptance_refusal_matrix_has_named_cases() {
     ));
 
     for (name, root, request, expected) in cases {
-        let result = apply_patch(&root, request, true);
+        let result = apply_patch(&root, request, true, &ModelOptions::default());
         if expected == "ACCEPT" {
             assert!(result.is_ok(), "{name}: {:?}", result.err());
         } else {
@@ -647,6 +654,7 @@ fn acceptance_preserve_matrix_has_named_cases() {
             &root,
             patch(&root, vec![target.clone()], vec![edit], vec![preserve]),
             true,
+            &ModelOptions::default(),
         );
         assert!(
             matches!(&result, Err(refusal) if refusal.code() == "E-PATCH-PRESERVE"),
@@ -696,7 +704,9 @@ fn atomicity_refused_multi_file_patch_preserves_bytes_and_leaves_no_temps() {
         vec![],
     );
     assert_eq!(
-        apply_patch(&root, request, false).unwrap_err().code(),
+        apply_patch(&root, request, false, &ModelOptions::default())
+            .unwrap_err()
+            .code(),
         "E-PATCH-CHECK"
     );
     assert_eq!(
@@ -745,7 +755,7 @@ fn formatting_only_touched_regions_changes_and_far_noncanonical_bytes_remain() {
         }],
         vec![],
     );
-    apply_patch(&root, request, false).unwrap();
+    apply_patch(&root, request, false, &ModelOptions::default()).unwrap();
     let after = std::fs::read_to_string(root.join("scene.lute")).unwrap();
     assert!(after.contains(&far), "far line was reformatted: {after:?}");
 }
@@ -804,7 +814,8 @@ fn acceptance_success_matrix_has_named_cases() {
             apply_patch(
                 &root,
                 patch(&root, vec![line], vec![operation], vec![]),
-                true
+                true,
+                &ModelOptions::default()
             )
             .is_ok(),
             "{name}"
@@ -826,7 +837,8 @@ fn acceptance_success_matrix_has_named_cases() {
                 }],
                 vec![]
             ),
-            true
+            true,
+            &ModelOptions::default()
         )
         .is_ok(),
         "replaceAttr"
@@ -845,7 +857,8 @@ fn acceptance_success_matrix_has_named_cases() {
                 }],
                 vec![]
             ),
-            true
+            true,
+            &ModelOptions::default()
         )
         .is_ok(),
         "createFile"
@@ -868,6 +881,7 @@ fn acceptance_success_matrix_has_named_cases() {
             vec![],
         ),
         true,
+        &ModelOptions::default(),
     )
     .unwrap();
     assert!(
@@ -897,7 +911,8 @@ fn acceptance_success_matrix_has_named_cases() {
                 }],
                 vec![]
             ),
-            true
+            true,
+            &ModelOptions::default()
         )
         .is_ok(),
         "replaceText"
@@ -924,6 +939,7 @@ fn move_file_with_stale_reference_is_check_refusal() {
             vec![],
         ),
         true,
+        &ModelOptions::default(),
     );
     assert_eq!(result.unwrap_err().code(), "E-PATCH-CHECK");
     assert!(root.join("scene.lute").exists() && !root.join("moved.lute").exists());
@@ -993,6 +1009,7 @@ fn replace_node_noop_preserves_plugin_context_and_bytes() {
             vec![],
         ),
         true,
+        &ModelOptions::default(),
     )
     .unwrap();
     assert!(
@@ -1029,6 +1046,7 @@ fn replace_node_adds_match_arm_with_plugin_directives() {
             vec![],
         ),
         true,
+        &ModelOptions::default(),
     )
     .unwrap();
     assert!(
@@ -1069,7 +1087,7 @@ fn two_replace_node_edits_in_one_file_change_only_the_nodes_and_stay_canonical()
         ],
         vec![],
     );
-    apply_patch(&root, request, false).unwrap();
+    apply_patch(&root, request, false, &ModelOptions::default()).unwrap();
     let after = std::fs::read_to_string(root.join("scene.lute")).unwrap();
     assert!(
         canonical(&after),

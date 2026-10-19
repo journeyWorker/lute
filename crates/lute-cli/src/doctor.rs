@@ -923,7 +923,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
                         snaps.len(),
                         catalog_dir.display()
                     ),
-                    "re-stamp with `lute catalog refresh <catalog-dir>`",
+                    "re-stamp with `lute catalog refresh --project <DIR>`",
                 ));
             } else {
                 checks.push(Check::pass(

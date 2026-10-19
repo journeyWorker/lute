@@ -6,7 +6,9 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
-use lute_model::{apply_patch_to, project_revision, PatchRefusal, PatchRequest, ProjectModel};
+use lute_model::{
+    apply_patch_to, project_revision, ModelOptions, PatchRefusal, PatchRequest, ProjectModel,
+};
 
 fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -129,7 +131,7 @@ fn refusal_json(refusal: &PatchRefusal) -> Value {
 
 fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
     let request: PatchRequest = serde_json::from_value(value).unwrap();
-    match apply_patch_to(model, request, true) {
+    match apply_patch_to(model, request, true, &ModelOptions::default()) {
         Ok(report) => {
             let mut output = serde_json::to_value(report).unwrap();
             output["schemaVersion"] = Value::String("0.36.0.patch".into());
