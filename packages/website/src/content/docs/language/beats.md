@@ -950,7 +950,7 @@ beat never played before either, but now the checker says so.
 ### Work in progress
 
 A fact-gated beat is often dead only because the scene that asserts its fact is not written yet.
-`lute check --project <dir> --wip` (dsl 0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and
+`lute check --project <DIR> --wip` (dsl 0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and
 `E-OBJECTIVE-UNSATISFIABLE` as **warnings** when the condition is dead only because some relation
 has no producer at all: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The note on
 the warning says why. A relation that has producers but can never match stays an error. So does
@@ -960,7 +960,7 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
 
 ## Tooling
 
-- `lute play --project <dir> --script <play.yaml>` raises a scripted sequence of occasions through a whole
+- `lute play --project <DIR> --script <play.yaml>` raises a scripted sequence of occasions through a whole
   project. It prints every candidate with its verdict, presents the winner and any `also` beats
   (or every eligible beat of a `select: sequence` occasion), and advances quest lifecycles after
   each one. A step on a `select: all` occasion names the player's choice with `pick:`, or closes
@@ -970,7 +970,7 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
   `<document id>.<entry id>` (`talks.miraBark`) wherever they take an entry id: `pick:`,
   `entriesRead:`, a step's `winner` / `offered` / `notOffered` / `presented`, a test's `entry:` /
   `entries:` and `expect.eligible` keys, and `lute trace --entry`.
-- `lute beats --project <dir>` prints each occasion's (and each target's) beat ladder in selection order,
+- `lute beats --project <DIR>` prints each occasion's (and each target's) beat ladder in selection order,
   with priority, `once` (and its `share` key), `also`, `after:`, `when`, title, and the whole-project `lute check` verdicts above,
   even for a project that does not check clean yet. Since dsl 0.26.0 §8 it also marks a fallback
   that an earlier, never-spent beat always beats, because the fallback's `when` implies the
@@ -983,9 +983,9 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
       2  0         gate.shutFallback  bundle  no    covered by gate.open  -      run.badges >= 3
   ```
 
-  `lute calendar --project <dir> --axis …` evaluates
+  `lute calendar --project <DIR> --axis …` evaluates
   eligibility over a grid of state values, such as every day and time slot, and shows what each
-  cell presents: the winner, or a sequence's whole list. `lute scenario --project <dir> knowledge` traces
+  cell presents: the winner, or a sequence's whole list. `lute scenario --project <DIR> knowledge` traces
   each fact-gated beat to the facts it queries and whatever produces them. See
   [Overviews](/tooling/overviews/).
 - `lute trace <lore.lute> --beat <id>` previews one bundle beat, and `lute run <artifact> --beat
@@ -996,7 +996,7 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
   compiled scene beat carries `meta.beat`, each entry beat carries `on` / `priority` / `once` on
   its `entry` record, and each bundle beat is a `beat` record in its lore artifact, followed by its
   body.
-- `lute new scene <name> --occasion <occasion> [--target <target>]` writes a scene beat, checking
+- `lute new scene <name> --occasion <OCCASION> [--target <TARGET>]` writes a scene beat, checking
   the occasion and target against the project first; a targeted occasion needs `--target`.
 - `lute context` lists the project's declared occasions, with their target domains, beside its
   other vocabulary.

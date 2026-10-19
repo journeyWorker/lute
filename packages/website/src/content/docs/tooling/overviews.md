@@ -775,7 +775,7 @@ A fact with several derivation routes lists every one of them (dsl 0.25.0 §9), 
 
 At most three defeating facts are printed per premise, then `… and N more defeating facts`. A negated relation that may hold any tuple (an open argument domain) says so after its defeat line (`` — any `rumor` tuple may hold ``).
 
-`--node <node>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
+`--node <NODE>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
 
 ```console
 $ lute scenario --project . knowledge --node inn.ask

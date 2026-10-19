@@ -351,7 +351,7 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
   `shipRecords`. A test of an entry or beat that targets a
   [kind](/language/beats/#kind-targets) names the raised member with
   `state: { occasion.target: <member> }`.
-- `lute lore --project <dir>` prints the world-narrative map: entries by target and by series, with each
+- `lute lore --project <DIR>` prints the world-narrative map: entries by target and by series, with each
   entry's and beat's `when` under it, and which facts entries reveal versus scenes and quests. It
   reads beat bodies too. When the project's rules derive a relation, a **Derived** section lists
   every conclusion the rules can reach from what the project asserts, the rule instance behind it,

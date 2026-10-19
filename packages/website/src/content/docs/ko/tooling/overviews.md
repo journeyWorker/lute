@@ -773,7 +773,7 @@ project root: .
 
 전제 하나당 패배 팩트는 최대 세 개까지 출력하고, 그 뒤에는 `… and N more defeating facts`가 붙습니다. 열린 인자 도메인의 어떤 tuple이든 성립할 수 있는 부정 관계는 패배 줄 뒤에 `` — any `rumor` tuple may hold ``라고 합니다.
 
-`--node <node>`는 씬(그 안의 모든 가드 — `inn.again`), 번들 비트, 엔트리 id(`dockBo`), `<quest>.<objective>` 형태의 퀘스트 목표(`ferry.word`), 퀘스트의 모든 목표를 위한 `quest:<id>`, 또는 한 choice의 가드를 위한 `<scene>#<branch>.<choice>`를 선택합니다. 줄과 choice가 팩트로 가드된 `inn.ask` 씬이 있다면 다음과 같습니다.
+`--node <NODE>`는 씬(그 안의 모든 가드 — `inn.again`), 번들 비트, 엔트리 id(`dockBo`), `<quest>.<objective>` 형태의 퀘스트 목표(`ferry.word`), 퀘스트의 모든 목표를 위한 `quest:<id>`, 또는 한 choice의 가드를 위한 `<scene>#<branch>.<choice>`를 선택합니다. 줄과 choice가 팩트로 가드된 `inn.ask` 씬이 있다면 다음과 같습니다.
 
 ```console
 $ lute scenario --project . knowledge --node inn.ask

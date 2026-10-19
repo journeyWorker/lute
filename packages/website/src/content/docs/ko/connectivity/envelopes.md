@@ -47,7 +47,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
 
 ## 표 읽기
 
-`lute scenario --project <dir> envelope --node <nodeId>`는 두 표를 모두 출력합니다. 노드 X에서 상태 경로 `P`를 읽을 때의 진단은 다음과 같습니다.
+`lute scenario --project <DIR> envelope --node <NODE>`는 두 표를 모두 출력합니다. 노드 X에서 상태 경로 `P`를 읽을 때의 진단은 다음과 같습니다.
 
 - `P ∈ Guaranteed(X)` → 선언된 경로에서 안전하므로 진단이 없습니다.
 - `P ∉ Possible(X)` → X 전에 `P`를 설정하는 선언된 경로가 전혀 없습니다 — **오류 등급**인 `E-STATE-MAYBE-UNAVAILABLE`이며, 기본적으로 프로젝트 전체 `lute check`가 제공합니다.
@@ -76,7 +76,7 @@ $ lute scenario --project docs/examples/haven envelope --node haven.s01ep09
 
 ## 퀘스트 지정
 
-`lute scenario --project <dir> envelope --node quest:<id>`는 **모든** 퀘스트에 대해 실제 표를 출력합니다.
+`lute scenario --project <DIR> envelope --node quest:<id>`는 **모든** 퀘스트에 대해 실제 표를 출력합니다.
 
 - `after` 속성이 **있는** 퀘스트 → 장면과 정확히 같은 방식으로 계산한 전체 `Guaranteed`/`Possible` 표입니다.
 - `after`가 **없는** 퀘스트 → 기본값만 담은 `D` 표(결코 비어 있지 않고 오류도 아님)와, `after`를 선언하면 기본값만 있는 상태를 넘어 더 풍부한 정보를 얻는다는 한 줄 메모입니다.

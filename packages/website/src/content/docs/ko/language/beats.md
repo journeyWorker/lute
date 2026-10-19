@@ -900,7 +900,7 @@ defs:
 ### 작업 중
 
 사실로 제한된 비트는 그 사실을 주장하는 scene이 아직 작성되지 않았기 때문에만 성립하지 않는 경우가
-많습니다. `lute check --project <dir> --wip`(dsl 0.23.0)는 어떤 관계에도 생산자가 전혀 없기 때문에 조건이
+많습니다. `lute check --project <DIR> --wip`(dsl 0.23.0)는 어떤 관계에도 생산자가 전혀 없기 때문에 조건이
 성립하지 않을 때 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을
 **경고**로 보고합니다. 즉 seed도, 어디에도 있는 `::assert`도, 규칙도, `reserved:`도 없는 경우입니다.
 경고의 메모에는 이유가 적힙니다. 생산자는 있지만 일치할 수 없는 관계는 계속 오류입니다. 그 뒤에
@@ -909,9 +909,9 @@ defs:
 
 ## 도구
 
-- `lute play --project <dir> --script <play.yaml>`은 프로젝트 전체에서 계기의 스크립트 시퀀스를 발생시킵니다. 모든 후보를 판정과 함께 출력하고, 승자와 모든 `also` 비트를 제시합니다(또는 `select: sequence` 계기의 실행 가능한 모든 비트를 제시함). 그리고 각 후보 뒤에 퀘스트 수명 주기를 진행합니다. `select: all` 계기의 단계는 `pick:`으로 플레이어의 선택을 지정하거나 `pick: none`으로 목록을 닫으며, 단계의 `expect: { presented: [ids] }`는 제시된 비트가 순서대로인지 검증합니다. Bundle 비트는 scene 비트처럼 재생됩니다. [스토리 재생](/ko/tooling/play/)을 참조하십시오.
+- `lute play --project <DIR> --script <play.yaml>`은 프로젝트 전체에서 계기의 스크립트 시퀀스를 발생시킵니다. 모든 후보를 판정과 함께 출력하고, 승자와 모든 `also` 비트를 제시합니다(또는 `select: sequence` 계기의 실행 가능한 모든 비트를 제시함). 그리고 각 후보 뒤에 퀘스트 수명 주기를 진행합니다. `select: all` 계기의 단계는 `pick:`으로 플레이어의 선택을 지정하거나 `pick: none`으로 목록을 닫으며, 단계의 `expect: { presented: [ids] }`는 제시된 비트가 순서대로인지 검증합니다. Bundle 비트는 scene 비트처럼 재생됩니다. [스토리 재생](/ko/tooling/play/)을 참조하십시오.
   dsl 0.26.0 §8부터 `lute play`와 `lute test`는 엔트리 id를 받는 모든 곳에서 `<document id>.<entry id>`(`talks.miraBark`) 형식의 엔트리도 받습니다. 즉 `pick:`, `entriesRead:`, 단계의 `winner` / `offered` / `notOffered` / `presented`, 테스트의 `entry:` / `entries:`, `expect.eligible` 키 및 `lute trace --entry`에서 사용할 수 있습니다.
-- `lute beats --project <dir>`는 각 계기와 각 대상의 비트 사다리를 선택 순서대로 출력합니다. `priority`, `once`(및 `share` 키), `also`, `after:`, `when`, title, 위의 프로젝트 전체 `lute check` 판정을 포함하며, 아직 깨끗하게 검사되지 않는 프로젝트에서도 출력합니다. dsl 0.26.0 §8부터는 더 이른 비트가 소비되지 않은 채 항상 이기고 fallback의 `when`이 더 이른 비트의 `when`을 함의하는 경우 fallback을 `covered by <id>`(`--json`: `coveredBy`)로 표시합니다. 이는 경고가 아니라 정보입니다.
+- `lute beats --project <DIR>`는 각 계기와 각 대상의 비트 사다리를 선택 순서대로 출력합니다. `priority`, `once`(및 `share` 키), `also`, `after:`, `when`, title, 위의 프로젝트 전체 `lute check` 판정을 포함하며, 아직 깨끗하게 검사되지 않는 프로젝트에서도 출력합니다. dsl 0.26.0 §8부터는 더 이른 비트가 소비되지 않은 채 항상 이기고 fallback의 `when`이 더 이른 비트의 `when`을 함의하는 경우 fallback을 `covered by <id>`(`--json`: `coveredBy`)로 표시합니다. 이는 경고가 아니라 정보입니다.
 
   ```
     townVisit — select: first
@@ -920,10 +920,10 @@ defs:
       2  0         gate.shutFallback  bundle  no    covered by gate.open  -      run.badges >= 3
   ```
 
-  `lute calendar --project <dir> --axis …`는 모든 날짜와 시간 슬롯처럼 상태 값의 격자에서 실행 가능성을 평가하고, 각 셀에 제시되는 내용을 보여 줍니다. 즉 승자 또는 sequence의 전체 목록입니다. `lute scenario --project <dir> knowledge`는 각 사실로 제한된 비트가 쿼리하는 사실과 그 사실을 생산하는 대상을 추적합니다. [개요](/ko/tooling/overviews/)를 참조하십시오.
+  `lute calendar --project <DIR> --axis …`는 모든 날짜와 시간 슬롯처럼 상태 값의 격자에서 실행 가능성을 평가하고, 각 셀에 제시되는 내용을 보여 줍니다. 즉 승자 또는 sequence의 전체 목록입니다. `lute scenario --project <DIR> knowledge`는 각 사실로 제한된 비트가 쿼리하는 사실과 그 사실을 생산하는 대상을 추적합니다. [개요](/ko/tooling/overviews/)를 참조하십시오.
 - `lute trace <lore.lute> --beat <id>`는 하나의 bundle 비트를 미리 보고, `lute run <artifact> --beat <id>`는 컴파일된 lore artifact에서 하나를 실행합니다. bundle 비트를 지정하지 않는 id는 `trace`에서 `E-TRACE-BEAT`가 되고 `run`에서는 사용 오류입니다. [추적](/ko/tooling/tracing/#번들-비트)을 참조하십시오.
 - 프로젝트 전체 `lute compile`(문서 피연산자 없음, `-o <DIR>`)은 `project.index.json`에 `beats`를 씁니다. scene, 엔트리 또는 bundle 비트(kind `bundle`)마다 한 행이며, 확장된 `when`과 `title`을 포함합니다(dsl 0.23.0). 컴파일된 각 scene 비트에는 `meta.beat`가 포함되고, 각 엔트리 비트에는 `entry` 레코드에 `on` / `priority` / `once`가 포함되며, 각 bundle 비트는 lore artifact에서 본문에 앞서 `beat` 레코드로 기록됩니다.
-- `lute new scene <name> --occasion <occasion> [--target <target>]`은 먼저 프로젝트에서 계기와 대상을 확인한 뒤 scene 비트를 작성합니다. 대상이 지정된 계기에는 `--target`이 필요합니다.
+- `lute new scene <name> --occasion <OCCASION> [--target <TARGET>]`은 먼저 프로젝트에서 계기와 대상을 확인한 뒤 scene 비트를 작성합니다. 대상이 지정된 계기에는 `--target`이 필요합니다.
 - `lute context`는 프로젝트가 선언한 계기를 대상 도메인과 함께 다른 어휘 옆에 나열합니다.
 
 엔진 계약(후보, 실행 가능성, 소비, 제시)은

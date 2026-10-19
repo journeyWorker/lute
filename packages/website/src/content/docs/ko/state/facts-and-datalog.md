@@ -362,7 +362,7 @@ rules:
 
 trace mock의 키, `*.test.yaml`, play 스크립트의 키인 `derive: false` 또는 이 키보다 우선하는 `--no-derive` 플래그를 사용하면 0.21 모델로 돌아갑니다. 시드 `facts:`를 로드하지 않고, mock하지 않은 파생 원자는 unknown이 되며, 읽힌 각 파생 관계의 이름이 note로 표시됩니다. 이 모델을 기준으로 작성한 테스트(unknown을 읽는 mock하지 않은 파생 원자 또는 빈 값을 읽는 시드 관계)는 판정을 고정하기 위해 `derive: false`를 지정합니다. [Tracing guide](/ko/tooling/tracing/)와 [Playing a story](/ko/tooling/play/)를 참고하세요.
 
-어떤 원자가 *왜* 성립하는지 보려면 `lute play --derivation <atom>`을 사용합니다(반복 가능). 플레이스루 끝에 파생을 출력합니다. 사용한 규칙, 각 전제 자체의 근거(시드 팩트, assert, 또는 그 차례에 파생된 팩트), 그리고 `(absent)`로 표시된 부정 전제가 나옵니다.
+어떤 원자가 *왜* 성립하는지 보려면 `lute play --derivation <ATOM>`을 사용합니다(반복 가능). 플레이스루 끝에 파생을 출력합니다. 사용한 규칙, 각 전제 자체의 근거(시드 팩트, assert, 또는 그 차례에 파생된 팩트), 그리고 `(absent)`로 표시된 부정 전제가 나옵니다.
 
 ```
 explain canMend(lamp): holds
@@ -382,7 +382,7 @@ explain canMend(lamp): does not hold
 
 ## 프로젝트 전체 `lute check`가 관계형 가드를 분석하는 방법
 
-지식을 전제로 하는 가드가 올바른 도구입니다. `@eris{when="holds('knows', ['player', 'lumen'])"}`은 플레이어가 알고 난 뒤에만 줄을 표시합니다. 0.20.0부터 프로젝트 전체 `lute check`(`lute check --project <dir>`)는 모든 가드 슬롯의 모든 관계형 질의(`holds(…)`, `count(…)`)를 다음 세 판정 중 하나로 결정합니다. 줄의 `when=`, `<choice when>`, `<when test>`, `::jump` 가드, 로어 항목의 `when`, 퀘스트의 `start`/`fail`, objective의 `done`/`visibleWhen`이 대상입니다.
+지식을 전제로 하는 가드가 올바른 도구입니다. `@eris{when="holds('knows', ['player', 'lumen'])"}`은 플레이어가 알고 난 뒤에만 줄을 표시합니다. 0.20.0부터 프로젝트 전체 `lute check`(`lute check --project <DIR>`)는 모든 가드 슬롯의 모든 관계형 질의(`holds(…)`, `count(…)`)를 다음 세 판정 중 하나로 결정합니다. 줄의 `when=`, `<choice when>`, `<when test>`, `::jump` 가드, 로어 항목의 `when`, 퀘스트의 `start`/`fail`, objective의 `done`/`visibleWhen`이 대상입니다.
 
 - **impossible** — 프로젝트 어디에도 일치하는 팩트를 생성할 수 있는 시드, assert, 규칙 또는 엔진 관계가 없습니다.
 - **guaranteed** — 가드에 도달하는 선언된 모든 경로에서 일치하는 팩트가 성립합니다.
@@ -484,7 +484,7 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 
 동일한 두 집합으로 개수도 결정합니다. archive 뒤에서 `count('knows', ['player', '_'])`는 1과 2 사이이므로, `count('knows', ['player', '_']) >= 3` 가드는 dead이고 `count('knows', ['player', '_']) >= 1`은 redundant입니다.
 
-이 분석에는 전체 프로젝트가 필요합니다. 형제 문서의 assert는 단일 파일에서 보이지 않으며, 한 파일만 보고 “절대 assert되지 않음”이라고 주장하면 거짓이 되기 때문입니다. 따라서 분석은 프로젝트 전체 `lute check`에서만 실행됩니다. `lute check <file>`은 각 관계형 질의를 undecided로 두지만, 한 조건 안의 두 질의가 모순되는 것은 여전히 알아냅니다. `holds(P) && !holds(P)`는 무엇이 성립하든 false입니다(dsl 0.23.0, [`when` 결정 방법](/ko/language/beats/#when의-판정-방식) 참고). 가드가 guaranteed로 판단된 이유를 보려면 `lute scenario --project <dir> envelope --node <scene>`이 스칼라 표 옆에 씬 진입 시점의 **guaranteed facts**를 나열합니다([엔벨로프](/ko/connectivity/envelopes/#보장된-팩트) 참고). 가드가 질의하는 팩트를 어떤 문서가 생성하는지 보려면 `lute scenario --project <dir> knowledge`가 각 질의 원자를 규칙을 따라 producer까지, 또는 **no producer**까지 추적합니다([개요](/ko/tooling/overviews/#lute-scenario-knowledge) 참고).
+이 분석에는 전체 프로젝트가 필요합니다. 형제 문서의 assert는 단일 파일에서 보이지 않으며, 한 파일만 보고 “절대 assert되지 않음”이라고 주장하면 거짓이 되기 때문입니다. 따라서 분석은 프로젝트 전체 `lute check`에서만 실행됩니다. `lute check <file>`은 각 관계형 질의를 undecided로 두지만, 한 조건 안의 두 질의가 모순되는 것은 여전히 알아냅니다. `holds(P) && !holds(P)`는 무엇이 성립하든 false입니다(dsl 0.23.0, [`when` 결정 방법](/ko/language/beats/#when의-판정-방식) 참고). 가드가 guaranteed로 판단된 이유를 보려면 `lute scenario --project <DIR> envelope --node <scene>`이 스칼라 표 옆에 씬 진입 시점의 **guaranteed facts**를 나열합니다([엔벨로프](/ko/connectivity/envelopes/#보장된-팩트) 참고). 가드가 질의하는 팩트를 어떤 문서가 생성하는지 보려면 `lute scenario --project <DIR> knowledge`가 각 질의 원자를 규칙을 따라 producer까지, 또는 **no producer**까지 추적합니다([개요](/ko/tooling/overviews/#lute-scenario-knowledge) 참고).
 
 ### 아무도 읽지 않는 관계
 
@@ -499,4 +499,4 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 
 ### 아직 쓰이지 않은 팩트 위의 가드
 
-스토리를 작성하는 동안에는 가드가 dead인 이유가 그 팩트를 assert하는 씬이 아직 존재하지 않기 때문인 경우가 많습니다. `lute check --project <dir> --wip`(dsl 0.23.0)는 관계에 **producer가 전혀 없기 때문에** 가드가 dead인 경우 `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 보고합니다. 즉 시드도, 어디에도 `::assert`도, 규칙도, `reserved:`도 없어야 합니다. 경고의 note가 그 이유를 말합니다. producer는 있지만 질의와 절대 일치할 수 없는 관계는 여전히 오류이며, dead 콘텐츠가 downstream에서 발생시키는 `E-CONN-UNREACHABLE` 같은 것도 마찬가지입니다. [작업 중](/ko/language/beats/#작업-중)을 참고하세요.
+스토리를 작성하는 동안에는 가드가 dead인 이유가 그 팩트를 assert하는 씬이 아직 존재하지 않기 때문인 경우가 많습니다. `lute check --project <DIR> --wip`(dsl 0.23.0)는 관계에 **producer가 전혀 없기 때문에** 가드가 dead인 경우 `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 보고합니다. 즉 시드도, 어디에도 `::assert`도, 규칙도, `reserved:`도 없어야 합니다. 경고의 note가 그 이유를 말합니다. producer는 있지만 질의와 절대 일치할 수 없는 관계는 여전히 오류이며, dead 콘텐츠가 downstream에서 발생시키는 `E-CONN-UNREACHABLE` 같은 것도 마찬가지입니다. [작업 중](/ko/language/beats/#작업-중)을 참고하세요.

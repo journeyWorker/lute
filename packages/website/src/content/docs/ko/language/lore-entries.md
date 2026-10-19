@@ -245,7 +245,7 @@ title: Ship's records
   아무 엔트리도 지정하지 않는 로어 테스트는 `E-TEST-LORE`가 되며, 메시지에 문서의 엔트리 id를 나열합니다. 로어도 테스트할 수 있으므로 `lute test --coverage`는 테스트되지 않은 다른 문서와 함께 테스트되지 않은 로어 문서도 나열합니다.
 
   dsl 0.26.0 §8부터 테스트(`entry:`, `entries:`, `expect.eligible` 키), 플레이 스크립트(`pick:`, `entriesRead:`, 스텝의 `winner` / `offered` / `notOffered` / `presented`), `lute trace --entry`는 모두 `<document id>.<entry id>`를 엔트리 id의 별칭으로도 받습니다. `entry: shipRecords.bridgeLog`는 이 페이지에서 `id:`가 `shipRecords`인 문서의 `bridgeLog`를 지정합니다. [종류](/ko/language/beats/#kind-대상)를 대상으로 하는 엔트리 또는 비트 테스트는 `state: { occasion.target: <member> }`로 발생한 멤버를 지정합니다.
-- `lute lore --project <dir>`는 세계 서사 맵을 출력합니다. target별 및 series별 엔트리를, 각 엔트리와 비트의 `when`, 엔트리가 밝히는 팩트와 씬 및 퀘스트가 밝히는 팩트를 함께 보여 줍니다. 비트 본문도 읽습니다. 프로젝트 규칙이 관계를 derive하면 **Derived** 섹션에 규칙이 도달할 수 있는 모든 결론, 그 뒤의 규칙 인스턴스, 근거가 되는 증거(각 전제를 assert한 엔트리 또는 씬), 그리고 그 결론이 gate하는 엔트리와 비트를 나열합니다(`--json`에서는 `derived`). [CLI 레퍼런스](/ko/tooling/cli/)를 참고하세요.
+- `lute lore --project <DIR>`는 세계 서사 맵을 출력합니다. target별 및 series별 엔트리를, 각 엔트리와 비트의 `when`, 엔트리가 밝히는 팩트와 씬 및 퀘스트가 밝히는 팩트를 함께 보여 줍니다. 비트 본문도 읽습니다. 프로젝트 규칙이 관계를 derive하면 **Derived** 섹션에 규칙이 도달할 수 있는 모든 결론, 그 뒤의 규칙 인스턴스, 근거가 되는 증거(각 전제를 assert한 엔트리 또는 씬), 그리고 그 결론이 gate하는 엔트리와 비트를 나열합니다(`--json`에서는 `derived`). [CLI 레퍼런스](/ko/tooling/cli/)를 참고하세요.
 - `lute new lore <name>`은 로어 문서 뼈대를 만듭니다.
 
 엔진 계약 — 자격, 제시, 첫 읽기 효과, 두 읽기 플래그 — 은 [`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)에 있고, 규범 사양은 다음과 같습니다:

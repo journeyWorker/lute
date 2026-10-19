@@ -95,7 +95,7 @@ $ lute version --json
 [첫 장면 작성하기](/ko/getting-started/first-scene/)로 이동하여, 빈 파일에서 실제 `.lute`
 파일을 만들며 매 단계마다 `lute`를 실행해 보세요.
 
-프로젝트 전체에서 시작할 수도 있습니다: `lute init <dir>`는 최소 프로젝트를 만들고,
-`lute init --template beats <dir>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
+프로젝트 전체에서 시작할 수도 있습니다: `lute init <DIR>`는 최소 프로젝트를 만들고,
+`lute init --template beats <DIR>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
 계기 플러그인, 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오 테스트까지, 만든 그대로
 프로젝트 전체 `lute check`, `lute test`, `lute play`가 통과합니다.

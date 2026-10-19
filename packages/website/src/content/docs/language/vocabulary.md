@@ -185,7 +185,7 @@ Neither key is serialized into the artifact. The compiler has already resolved t
 imports — an opinionated template, not a rule, in a file you own and edit. Add the camera, CG,
 costume, sequence and text-style slots when the project first stages one.
 
-`lute doctor --project <dir>` reports which slots a root has declared, with the member semantics inline:
+`lute doctor --project <DIR>` reports which slots a root has declared, with the member semantics inline:
 
 ```
 $ lute init demo && lute doctor --project demo

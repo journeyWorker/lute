@@ -428,7 +428,7 @@ checked against the kind, with a did-you-mean:
 ./scenes/route2.lute:9:30: error [E-BAD-ENUM] `superPotoin` is not a member of entity kind `bagItem` (attribute `item` of `::give` in component `gift`) — did you mean `superPotion`?
 ```
 
-[`lute refs --project <dir> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
+[`lute refs --project <DIR> --attr give.item`](/tooling/cli/) lists such a value at the `::use` line that
 binds it, marked ``(via component `gift`)``.
 
 Such a param also renders as text (dsl 0.27.0 §7): `{{@hall}}` over `hall: { domain: room }` shows

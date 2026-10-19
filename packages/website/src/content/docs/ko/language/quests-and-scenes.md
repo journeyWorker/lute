@@ -117,7 +117,7 @@ error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key an
 - **서브퀘스트.** 모든 중첩 퀘스트는 부모에 매달립니다: `quest(relight) -> quest(oil) [subquest]`. 자식이 있는 부모는 더 이상 고정되지 않은 것으로 나열되지 않으며 자식도 마찬가지입니다.
 - **`start` 결합항.** `follows=`가 없는 퀘스트는 `visited('…')`, `entry.X.everRead`, 또는 `quest.Y.state == '…'`(어떤 상태든 `unset` 이외의 상태)를 읽는 `start`의 최상위 `&&` 결합항으로 고정됩니다. `start="entry.keeperLog.everRead && visited('arrival')"`은 `entry(keeperLog) -> quest(relight) [start]`와 `scene(arrival) -> quest(relight) [start]`를 그립니다. 엔트리는 `entry(<id>)` 노드로 그래프에 참여합니다. 이런 읽기의 `||`는 여러 소스를 가진 하나의 앵커입니다. 그러므로 `start` 기반 퀘스트에는 `start`를 `follows=`에 복사할 필요가 없습니다.
 
-`lute scenario --project <dir> reach --node quest:<id>`는 퀘스트의 앵커를 나열합니다(`--json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start`와 `accept` 앵커 대신 그것이 선언한 간선만 유지되고, 서브퀘스트 간선은 남습니다.
+`lute scenario --project <DIR> reach --node quest:<id>`는 퀘스트의 앵커를 나열합니다(`--json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start`와 `accept` 앵커 대신 그것이 선언한 간선만 유지되고, 서브퀘스트 간선은 남습니다.
 
 #### 돌아오는 퀘스트: 시즌 tier와 `rearm`
 
