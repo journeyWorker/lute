@@ -107,7 +107,7 @@ jobs:
 
       # The 34 `*.test.yaml` scenario tests under docs/examples were reachable
       # by `docs/**` in the trigger paths above and read by nothing: this job
-      # ran `check --project`, which walks `.lute` documents and never opens a
+      # ran `check-project` (now `check --project`), which walks `.lute` documents and never opens a
       # test file. That is the failure this workflow's own header names — "a
       # trigger that fires on files nothing reads advertises coverage it does
       # not provide" — so the suites are registered here rather than left as

@@ -4,7 +4,7 @@ r"""Compile-check the ```lute snippets in the documentation surface.
 The `website` CI job builds the Astro site, so it catches a broken page or a
 broken link. It has never once looked at what is *inside* a fenced block, and
 `docs.yml` lists `docs/**` in its trigger paths while its only content job runs
-`check --project` over `docs/examples` alone — a trigger that fires on a file
+`check-project` (now `check --project`) over `docs/examples` alone — a trigger that fires on a file
 nothing reads. That combination is how three bug classes shipped:
 
   * ten pages writing `emotion="…"` after dsl 0.9.0 moved content-vocabulary
