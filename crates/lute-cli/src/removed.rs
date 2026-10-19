@@ -37,7 +37,7 @@ pub(crate) fn check(args: &[OsString]) -> Option<CliError> {
             }
         }
         "impact" | "constraints" | "context" | "patch" | "doctor" | "play" | "run" | "trace"
-        | "beats" | "calendar" | "lore" | "refs" => rewrite(&[words[at].as_str()], rest),
+        | "beats" | "calendar" | "lore" | "refs" | "tag" => rewrite(&[words[at].as_str()], rest),
         _ => None,
     }
 }
@@ -340,6 +340,16 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
             continue;
         }
         match (command, flag) {
+            (["tag"], "--force") => {
+                note(
+                    &mut reasons,
+                    "--force",
+                    "`--force` is now `--renumber --commit` (`--renumber` alone previews)"
+                        .to_string(),
+                );
+                options.extend(["--renumber".to_string(), "--commit".to_string()]);
+                continue;
+            }
             (["calendar"], "--csv") => {
                 note(
                     &mut reasons,

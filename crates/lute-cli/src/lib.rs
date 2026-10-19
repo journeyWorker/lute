@@ -293,7 +293,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
             json: json.json,
         }),
-        Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
+        Command::Fmt { paths, check, json } => cmd_fmt::run(&paths, check, json.json),
         Command::Diff {
             before,
             after,
@@ -384,12 +384,34 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             no_derive,
             expand,
         }),
-        Command::Tag { path, force } => rewrite::run_tag(&path, force),
-        Command::Fix { paths } => rewrite::run_fix(&paths),
-        Command::Catalog(CatalogCommand::Refresh { project, providers }) => {
-            run_refresh(project.project.as_deref(), providers.providers.as_deref())
-        }
-        Command::Init { dir, template } => scaffold::run_init(&dir, template.as_deref()),
+        Command::Tag {
+            paths,
+            renumber,
+            commit,
+            check,
+            json,
+        } => rewrite::run_tag(&rewrite::TagOptions {
+            paths: &paths,
+            renumber,
+            commit,
+            check,
+            json: json.json,
+        }),
+        Command::Fix { paths, check, json } => rewrite::run_fix(&paths, check, json.json),
+        Command::Catalog(CatalogCommand::Refresh {
+            project,
+            providers,
+            json,
+        }) => run_refresh(
+            project.project.as_deref(),
+            providers.providers.as_deref(),
+            json.json,
+        ),
+        Command::Init {
+            dir,
+            template,
+            json: _,
+        } => scaffold::run_init(dir.as_deref(), template.as_deref()),
         Command::New(new) => {
             let (kind, name, project, occasion, target, start) = match &new {
                 NewCommand::Scene {
@@ -397,6 +419,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     project,
                     occasion,
                     target,
+                    json: _,
                 } => (
                     "scene",
                     name,
@@ -409,11 +432,18 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     name,
                     project,
                     start,
+                    json: _,
                 } => ("quest", name, project, None, None, *start),
-                NewCommand::Lore { name, project } => ("lore", name, project, None, None, false),
-                NewCommand::Schema { name, project } => {
-                    ("schema", name, project, None, None, false)
-                }
+                NewCommand::Lore {
+                    name,
+                    project,
+                    json: _,
+                } => ("lore", name, project, None, None, false),
+                NewCommand::Schema {
+                    name,
+                    project,
+                    json: _,
+                } => ("schema", name, project, None, None, false),
             };
             scaffold::run_new(
                 kind,
@@ -537,9 +567,11 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             }
             Err(code) => code,
         },
-        Command::Loc(LocCommand::Import { files, output }) => {
-            loc::run_import(&files, output.as_deref())
-        }
+        Command::Loc(LocCommand::Import {
+            files,
+            output,
+            json,
+        }) => loc::run_import(&files, output.as_deref(), json.json),
         Command::Loc(LocCommand::Report { project, json }) => {
             match project_for("loc report", &project) {
                 Ok(dir) => loc::run_report(&dir, json.json),

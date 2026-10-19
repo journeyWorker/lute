@@ -98,11 +98,12 @@ fn tag_walks_a_directory_recursively_in_sorted_order() {
     );
 }
 
-/// A refused file in a tree does not stop the walk: `--force` renumbers the
+/// A refused file in a tree does not stop the walk: `--renumber --commit`
+/// renumbers the
 /// draft and refuses the `codesLocked:` one, and the exit code reports the
 /// refusal.
 #[test]
-fn tag_force_over_a_directory_continues_past_a_refusal() {
+fn tag_renumber_commit_over_a_directory_continues_past_a_refusal() {
     let dir = lute_scratch::ScratchDir::named("tag-dir-force");
     let draft = "---\nkind: scene\nid: d\n---\n## Shot 1.\n@ann{code=\"0050\"}: one\n";
     let locked =
@@ -111,7 +112,7 @@ fn tag_force_over_a_directory_continues_past_a_refusal() {
     std::fs::write(dir.join("b-draft.lute"), draft).unwrap();
 
     let out = Command::new(BIN)
-        .args(["tag", "--force", dir.to_str().unwrap()])
+        .args(["tag", "--renumber", "--commit", dir.to_str().unwrap()])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1), "{out:?}");

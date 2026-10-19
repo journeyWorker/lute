@@ -1,0 +1,57 @@
+# The one list of lute option names (grammar section 6, spec 0.48.0 section 6).
+# Columns, tab separated: option, value name (`-` for a flag), concept.
+# Adding an option to any command means adding a row here; an unused row fails
+# crates/lute-cli/tests/cli_grammar_048.rs.
+option	value	concept
+--accepted-quest	QUEST	A quest the player accepted before the walk (trace)
+--all-scripts	-	Execute every play/test script of the project
+--at	FILE:LINE:COLUMN	A source position FILE:LINE:COLUMN
+--attr	DIRECTIVE.ATTR	A directive attribute to list references of
+--axis	AXIS=VALUES	A calendar axis and the values to sweep
+--beat	ID	One bundle beat of a lore execution IR (present or trace)
+--check	-	Verify a rewrite without writing (grammar section 1)
+--choice	BRANCH=CHOICE	A branch or hub and the choices to pick
+--commit	-	Apply a dangerous change that previews by default (grammar section 1.2)
+--conditions-output	FILE	Secondary output file: JSONL of every CEL condition evaluation
+--config	FILE	A lint configuration file
+--coverage	-	Report which project units the scripts exercise
+--deny	CODE	Fail on a diagnostic code (repeatable)
+--deny-warnings	-	Fail on every warning
+--derivation	ATOM	Explain how a fact atom was derived
+--dry-run	-	Run without writing (grammar section 1)
+--endings	OCCASION	Every ending, optionally for one occasion
+--engine	FILE	Engine capability manifest
+--entry	ID	One lore entry of a lore execution IR
+--event	NAME	A bridge event to fire, in order
+--events	-	Stream engine events instead of a report
+--expand	-	Show defs and guards expanded
+--fact	ATOM	A fact atom asserted before the walk
+--facts	-	Add the fact edges to a scenario graph
+--format	FORMAT	Another output or file format; never json (grammar section 1)
+--ir	-	Print the execution IR the play ran
+--json	-	Machine-readable output: one JSON document (grammar section 1.1)
+--locale-bundle	FILE	A locale bundle file
+--max-items	N	Bound each context collection
+--mock	FILE	Mock bridge answers
+--no-derive	-	Skip the Datalog derivation (negation of a default-on behaviour)
+--node	NODE	A project graph node, kind:key as lute context prints it
+--occasion	OCCASION	An occasion to raise
+--occasion-axes	OCCASION=AXES	Per-occasion axis variation, OCCASION=AXES
+--output	PATH	The primary output file or directory (short -o)
+--permission-profile	NAME	Permission profile applied as a host ceiling
+--project	DIR	The project (grammar section 2)
+--providers	DIR	Plugin provider snapshots
+--quiet	-	Suppress the human transcript
+--relation	RELATION	A relation whose facts to show
+--renumber	-	The dangerous tag mode: renumber every line code
+--reward	KIND	A reward kind to list references of
+--script	FILE	A play or test script
+--start	-	Scaffold an auto-starting quest
+--state	PATH=LITERAL	A state path and the literal it starts at
+--stream	-	Stream compile output for a body read from stdin
+--strict	-	Exit 1 when any doctor check fails
+--target	TARGET	An occasion target used as a filter
+--template	NAME	A project template
+--until	STEP	Stop a script at a step
+--where	EXPR	A CEL filter over calendar rows
+--wip	-	Treat dead guards over unproduced relations as work in progress

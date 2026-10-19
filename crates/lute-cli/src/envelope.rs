@@ -46,6 +46,13 @@ pub(crate) mod version {
     pub(crate) const REFS: &str = "0.43.0.refs";
     pub(crate) const LORE: &str = "0.43.0.lore";
     pub(crate) const LOC_REPORT: &str = "0.47.0.loc-report";
+    pub(crate) const TAG: &str = "0.48.0.tag";
+    pub(crate) const FIX: &str = "0.48.0.fix";
+    pub(crate) const FMT: &str = "0.48.0.fmt";
+    pub(crate) const CATALOG_REFRESH: &str = "0.48.0.catalog-refresh";
+    pub(crate) const INIT: &str = "0.48.0.init";
+    pub(crate) const NEW: &str = "0.48.0.new";
+    pub(crate) const LOC_IMPORT: &str = "0.48.0.loc-import";
     pub(crate) const DOCTOR: &str = "0.43.0.doctor";
     pub(crate) const SCHEMA: &str = "0.47.0.schema";
     pub(crate) const ERROR: &str = "0.43.0.error";
@@ -108,6 +115,18 @@ static OUTPUTS: &[(&str, &[Output])] = &[
         &[report_output("--json", version::CONSTRAINTS)],
     ),
     ("lint", &[report_output("--json", version::LINT)]),
+    ("tag", &[report_output("--json", version::TAG)]),
+    ("fix", &[report_output("--json", version::FIX)]),
+    ("fmt", &[report_output("--json", version::FMT)]),
+    (
+        "catalog refresh",
+        &[report_output("--json", version::CATALOG_REFRESH)],
+    ),
+    ("init", &[report_output("--json", version::INIT)]),
+    ("new scene", &[report_output("--json", version::NEW)]),
+    ("new quest", &[report_output("--json", version::NEW)]),
+    ("new lore", &[report_output("--json", version::NEW)]),
+    ("new schema", &[report_output("--json", version::NEW)]),
     (
         "compile",
         &[
@@ -164,6 +183,10 @@ static OUTPUTS: &[(&str, &[Output])] = &[
     (
         "loc report",
         &[report_output("--json", version::LOC_REPORT)],
+    ),
+    (
+        "loc import",
+        &[report_output("--json", version::LOC_IMPORT)],
     ),
     ("doctor", &[report_output("--json", version::DOCTOR)]),
     ("version", &[document(Some("--json"), OutputKind::Artifact)]),
@@ -280,6 +303,27 @@ pub(crate) fn report(schema_version: &str, exit: u8, payload: Value) -> Value {
     map.insert("schemaVersion".into(), Value::String(schema_version.into()));
     map.insert("ok".into(), Value::Bool(exit == 0));
     Value::Object(map)
+}
+
+/// Print `payload` as the enveloped report of the running command on stdout
+/// and return the exit code `exit`; a failed write is an `E-CLI-IO` failure.
+pub(crate) fn emit_report(schema_version: &str, exit: u8, payload: Value) -> ExitCode {
+    let wrapped = report(schema_version, exit, payload);
+    let mut text = match pretty_json(&wrapped) {
+        Ok(text) => text,
+        Err(e) => {
+            return fail(CliError::io_without_path(format!(
+                "lute: cannot serialize the report: {e}"
+            )))
+        }
+    };
+    text.push('\n');
+    if let Err(e) = write_stdout(&text) {
+        return fail_quietly(CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
+    }
+    ExitCode::from(exit)
 }
 
 /// The class of a CLI failure (dsl 0.43.0 §4.3).
@@ -538,6 +582,7 @@ mod tests {
             "loc report",
             "doctor",
             "version",
+            "loc import",
             "schema",
         ] {
             let outs = outputs(id);
@@ -550,6 +595,10 @@ mod tests {
                 );
             }
         }
-        assert!(outputs("fmt").is_empty());
+        for id in ["tag", "fix", "fmt", "catalog refresh", "init", "new scene"] {
+            assert!(!outputs(id).is_empty(), "{id} reports with --json");
+        }
+        assert_eq!(outputs("new lore")[0].schema_version, Some("0.48.0.new"));
+        assert!(outputs("check-project").is_empty());
     }
 }

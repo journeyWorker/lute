@@ -195,7 +195,33 @@ fn a_command_lists_its_arguments_options_and_outputs() {
         .map(|o| o["kind"].as_str().unwrap())
         .collect();
     assert_eq!(kinds, ["report", "stream"]);
-    assert_eq!(schema(&["fmt"])["outputs"], serde_json::json!([]));
+    for (path, version) in [
+        (&["tag"][..], "0.48.0.tag"),
+        (&["fix"][..], "0.48.0.fix"),
+        (&["fmt"][..], "0.48.0.fmt"),
+        (&["catalog", "refresh"][..], "0.48.0.catalog-refresh"),
+        (&["init"][..], "0.48.0.init"),
+        (&["new", "scene"][..], "0.48.0.new"),
+        (&["new", "quest"][..], "0.48.0.new"),
+        (&["new", "lore"][..], "0.48.0.new"),
+        (&["new", "schema"][..], "0.48.0.new"),
+        (&["loc", "import"][..], "0.48.0.loc-import"),
+    ] {
+        assert_eq!(
+            schema(path)["outputs"],
+            serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": version}]),
+            "{path:?}"
+        );
+    }
+    // An option whose value may be omitted says so (0.48.0 §6 arity).
+    let endings = schema(&["scenario", "reach"])["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["name"] == "--endings")
+        .unwrap()
+        .clone();
+    assert_eq!(endings["valueOptional"], true);
     assert_eq!(schema(&["version"])["outputs"][0]["kind"], "artifact");
 }
 

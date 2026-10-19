@@ -152,6 +152,13 @@ fn argument(arg: &Arg) -> Value {
             map.insert("valueName".into(), Value::String(first.clone()));
         }
     }
+    // `--endings[=<OCCASION>]`: the value may be omitted (0.48.0 §6 arity).
+    if takes_value
+        && !arg.is_positional()
+        && arg.get_num_args().is_some_and(|n| n.min_values() == 0)
+    {
+        map.insert("valueOptional".into(), Value::Bool(true));
+    }
     let possible: Vec<Value> = arg
         .get_possible_values()
         .iter()

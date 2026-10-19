@@ -1,5 +1,6 @@
 //! `lute fmt`: deterministic, lossless canonical formatting for source inputs.
 
+use crate::envelope::{self, CliError};
 use lute_load::manifest_context;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -66,12 +67,14 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Run `lute fmt [--check] <path…>`.
+/// Run `lute fmt [--check] [<PATH>]… [--json]`.
 ///
 /// Selection and output are sorted by path. Check mode never writes and exits
 /// 1 when at least one selected input is noncanonical; I/O, UTF-8, and parser
-/// failures use exit 2.
-pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
+/// failures use exit 2 (the error envelope with `--json`). `--json` prints the
+/// `0.48.0.fmt` report over every selected file; the check-mode path lines go
+/// to stderr then.
+pub(crate) fn run(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
     let roots: Vec<PathBuf> = if paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -80,26 +83,29 @@ pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
     let mut files = Vec::new();
     for root in roots {
         if let Err(err) = collect(&root, &mut files) {
-            eprintln!("lute fmt: {}: {err}", root.display());
-            return ExitCode::from(2);
+            let message = format!("lute fmt: {}: {err}", root.display());
+            eprintln!("{message}");
+            return envelope::fail_quietly(CliError::io(&root, message));
         }
     }
     files.sort();
     files.dedup();
-    let mut changed = false;
+    let mut rows: Vec<(PathBuf, bool)> = Vec::new();
     for path in files {
         let bytes = match std::fs::read(&path) {
             Ok(bytes) => bytes,
             Err(err) => {
-                eprintln!("lute fmt: {}: {err}", path.display());
-                return ExitCode::from(2);
+                let message = format!("lute fmt: {}: {err}", path.display());
+                eprintln!("{message}");
+                return envelope::fail_quietly(CliError::io(&path, message));
             }
         };
         let source = match std::str::from_utf8(&bytes) {
             Ok(source) => source,
             Err(err) => {
-                eprintln!("lute fmt: {}: invalid UTF-8 ({err})", path.display());
-                return ExitCode::from(2);
+                let message = format!("lute fmt: {}: invalid UTF-8 ({err})", path.display());
+                eprintln!("{message}");
+                return envelope::fail_quietly(CliError::input(&path, message));
             }
         };
         let result = if is_yaml(&path) {
@@ -108,27 +114,48 @@ pub(crate) fn run(paths: &[PathBuf], check: bool) -> ExitCode {
             match lute_syntax::format_source(source, &lute_syntax::FormatOptions::default()) {
                 Ok(result) => result,
                 Err(err) => {
-                    eprintln!("lute fmt: {}: formatting failed: {err:?}", path.display());
-                    return ExitCode::from(2);
+                    let message =
+                        format!("lute fmt: {}: formatting failed: {err:?}", path.display());
+                    eprintln!("{message}");
+                    return envelope::fail_quietly(CliError::input(&path, message));
                 }
             }
         };
+        rows.push((path.clone(), result.changed));
         if !result.changed {
             continue;
         }
-        changed = true;
         if check {
-            println!("{}", path.display());
+            if json {
+                eprintln!("{}", path.display());
+            } else {
+                println!("{}", path.display());
+            }
         } else if let Err(err) = std::fs::write(&path, result.text.as_bytes()) {
-            eprintln!("lute fmt: {}: {err}", path.display());
-            return ExitCode::from(2);
+            let message = format!("lute fmt: {}: {err}", path.display());
+            eprintln!("{message}");
+            return envelope::fail_quietly(CliError::io(&path, message));
         }
     }
-    if check && changed {
-        ExitCode::from(1)
-    } else {
-        ExitCode::SUCCESS
+    let changed = rows.iter().any(|(_, changed)| *changed);
+    let exit = u8::from(check && changed);
+    if !json {
+        return ExitCode::from(exit);
     }
+    envelope::emit_report(
+        envelope::version::FMT,
+        exit,
+        serde_json::json!({
+            "applied": !check && changed,
+            "files": rows
+                .iter()
+                .map(|(path, changed)| serde_json::json!({
+                    "path": path.display().to_string(),
+                    "changed": changed,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -143,13 +170,25 @@ mod tests {
         let file = root.join("sample.lute");
         let original = "## S\n@narrator: hi  \n";
         std::fs::write(&file, original).unwrap();
-        assert_eq!(run(std::slice::from_ref(&file), true), ExitCode::from(1));
+        assert_eq!(
+            run(std::slice::from_ref(&file), true, false),
+            ExitCode::from(1)
+        );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), original);
-        assert_eq!(run(std::slice::from_ref(&file), false), ExitCode::SUCCESS);
+        assert_eq!(
+            run(std::slice::from_ref(&file), false, false),
+            ExitCode::SUCCESS
+        );
         let canonical = std::fs::read_to_string(&file).unwrap();
         assert_ne!(canonical, original);
-        assert_eq!(run(std::slice::from_ref(&file), true), ExitCode::SUCCESS);
-        assert_eq!(run(&[root.join("missing.lute")], false), ExitCode::from(2));
+        assert_eq!(
+            run(std::slice::from_ref(&file), true, false),
+            ExitCode::SUCCESS
+        );
+        assert_eq!(
+            run(&[root.join("missing.lute")], false, false),
+            ExitCode::from(2)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 

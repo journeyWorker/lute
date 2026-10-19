@@ -272,18 +272,30 @@ pub(crate) enum Command {
     /// Back-fill missing stable identity attributes in the corpus: per-speaker
     /// line `code` values and `::use` component `instance` keys. Existing
     /// authored codes and instances are preserved byte-for-byte; only changed
-    /// files are written. A second run is a no-op.
+    /// files are written. A second run is a no-op. `--renumber` is the
+    /// dangerous mode (it rewrites published codes): it previews the
+    /// renumbering by default and writes only with `--commit`.
     Tag {
-        /// The `.lute` file to tag, or a directory to tag recursively.
-        path: PathBuf,
-        /// FORCE-renumber every line's `code` in clean document order
+        /// `.lute` files, or directories to tag recursively (default `.`).
+        #[arg(value_name = "PATH")]
+        paths: Vec<PathBuf>,
+        /// Renumber every line's `code` in clean document order
         /// (0010/0020/… per speaker per scope), rewriting existing codes.
-        /// A drafting tool: refused when frontmatter declares `codesLocked:`
-        /// (published codes key `lineId`/`voiceKey` — renumbering breaks the
-        /// localization/voice join). `--force` never changes an explicit
-        /// component `instance`.
+        /// A drafting tool: prints one `<path>:<line>: <old> -> <new>` line
+        /// per change and writes nothing unless `--commit`. Refused when
+        /// frontmatter declares `codesLocked:` (published codes key
+        /// `lineId`/`voiceKey` — renumbering breaks the localization/voice
+        /// join). Never changes an explicit component `instance`.
         #[arg(long)]
-        force: bool,
+        renumber: bool,
+        /// Apply the renumbering `--renumber` previews.
+        #[arg(long, requires = "renumber", conflicts_with = "check")]
+        commit: bool,
+        /// Write nothing; exit `1` when the selected mode would change a file.
+        #[arg(long)]
+        check: bool,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Apply mechanical, meaning-preserving source migrations in place.
     ///
@@ -303,9 +315,15 @@ pub(crate) enum Command {
     /// sorted; several paths migrate in the order given. Exit `0` on success,
     /// `2` on an I/O failure.
     Fix {
-        /// The `.lute`/YAML files to migrate, or directories to migrate recursively.
-        #[arg(required = true)]
+        /// The `.lute`/YAML files to migrate, or directories to migrate
+        /// recursively (default `.`).
+        #[arg(value_name = "PATH")]
         paths: Vec<PathBuf>,
+        /// Write nothing; exit `1` when any fix applies.
+        #[arg(long)]
+        check: bool,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Emit the project-resolved authoring surface for a `.lute` file.
     ///
@@ -346,12 +364,15 @@ pub(crate) enum Command {
     },
     /// Canonicalize one or more `.lute` or project declaration files.
     Fmt {
-        /// File or directory to format (directory traversal is recursive).
-        #[arg(required = true, value_name = "PATH")]
+        /// Files or directories to format; directory traversal is recursive
+        /// (default `.`).
+        #[arg(value_name = "PATH")]
         paths: Vec<PathBuf>,
         /// Check canonical form without writing; exits 1 when changes are needed.
         #[arg(long)]
         check: bool,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Compare two project directories (or `git:<rev>` sides) semantically.
     Diff {
@@ -476,10 +497,13 @@ pub(crate) enum Command {
     ///
     /// Scaffold a new Lute project directory: `lute.project.yaml`, a state
     /// schema, a starter vocabulary, starter documents, and ways to exercise
-    /// them — ready for `lute check-project`.
+    /// them — ready for `lute check`. Defaults to the current directory; it
+    /// refuses (exit `2`, nothing written) when any file it would write
+    /// already exists.
     Init {
-        /// Directory to create (must not already contain a `lute.project.yaml`).
-        dir: PathBuf,
+        /// Directory to create or fill (default `.`).
+        #[arg(value_name = "DIR")]
+        dir: Option<PathBuf>,
         /// Project template: `minimal` (default), `investigation` (a
         /// whodunit on the `beats` skeleton: `examine`/`interview`
         /// occasions, evidence lore, a negated derived rule, an accusation
@@ -487,6 +511,8 @@ pub(crate) enum Command {
         /// with `id:`, a quest, lore, a play script and scenario tests).
         #[arg(long, value_name = "NAME")]
         template: Option<String>,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Scaffold one new document (scene, quest, lore, schema) into a project.
     ///
@@ -1001,6 +1027,8 @@ pub(crate) enum NewCommand {
         /// `<prefix>.<member>`).
         #[arg(long, value_name = "TARGET")]
         target: Option<String>,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Scaffold a quest.
     Quest {
@@ -1013,6 +1041,8 @@ pub(crate) enum NewCommand {
         /// default accept-driven stub.
         #[arg(long)]
         start: bool,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Scaffold a lore document.
     Lore {
@@ -1021,6 +1051,8 @@ pub(crate) enum NewCommand {
         name: String,
         #[command(flatten)]
         project: ProjectOpt,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Scaffold a state schema (`<name>.schema.yaml`).
     Schema {
@@ -1029,6 +1061,8 @@ pub(crate) enum NewCommand {
         name: String,
         #[command(flatten)]
         project: ProjectOpt,
+        #[command(flatten)]
+        json: JsonOpt,
     },
 }
 
@@ -1071,6 +1105,8 @@ pub(crate) enum LocCommand {
         /// Write the bundle here instead of stdout.
         #[arg(short = 'o', long = "output", value_name = "PATH")]
         output: Option<PathBuf>,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Word-count and line-count report per document and per speaker.
     Report {
@@ -1093,6 +1129,8 @@ pub(crate) enum CatalogCommand {
         project: ProjectOpt,
         #[command(flatten)]
         providers: ProvidersOpt,
+        #[command(flatten)]
+        json: JsonOpt,
     },
 }
 

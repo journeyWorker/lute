@@ -6,12 +6,15 @@ use lute_core_span::Severity;
 use lute_syntax::ast::{Arm, AttrValue, Line, Node};
 use lute_syntax::parse;
 
-/// The result of tagging: the (possibly rewritten) document text and how many
-/// content lines received a new `code`.
+/// The result of tagging: the (possibly rewritten) document text, how many
+/// content lines received a new `code` and component instance keys were added
+/// (`added` is the sum of both).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TagOutcome {
     pub text: String,
     pub added: usize,
+    /// Of `added`: the `::use` / `<beat use=…>` instance keys.
+    pub instances: usize,
 }
 
 /// Back-fill a `code` attribute into every content line that lacks one (§12).
@@ -27,6 +30,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
         return TagOutcome {
             text: text.to_string(),
             added: 0,
+            instances: 0,
         };
     }
     let bytes = text.as_bytes();
@@ -51,11 +55,13 @@ pub fn tag_document(text: &str) -> TagOutcome {
         collect_lines(&beat.body, &mut lines);
         tag_scope(lines, bytes, &mut inserts);
     }
+    let codes = inserts.len();
     tag_components(text, &mut inserts);
     if inserts.is_empty() {
         return TagOutcome {
             text: text.to_string(),
             added: 0,
+            instances: 0,
         };
     }
     inserts.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
@@ -66,6 +72,7 @@ pub fn tag_document(text: &str) -> TagOutcome {
     TagOutcome {
         text: out,
         added: inserts.len(),
+        instances: inserts.len() - codes,
     }
 }
 
@@ -205,7 +212,16 @@ fn tag_scope(lines: Vec<&Line>, bytes: &[u8], inserts: &mut Vec<(usize, String)>
     }
 }
 
-/// The outcome of a FORCE renumber (`lute tag --force`).
+/// One line's code change in a renumber: the 1-based source `line`, its code
+/// before (`None` for a line without one) and the code it gets.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineRenumber {
+    pub line: u32,
+    pub from: Option<String>,
+    pub to: String,
+}
+
+/// The outcome of a renumber (`lute tag --renumber`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum RetagOutcome {
     /// Codes are locked, but component instances were added.
@@ -214,11 +230,13 @@ pub enum RetagOutcome {
     Locked,
     /// A structural parse defect; no rewrite occurred.
     Broken,
-    /// The renumbered text and counts.
+    /// The renumbered text and counts; `changes` lists each changed code in
+    /// document order within its identity scope (`renumbered` entries).
     Renumbered {
         text: String,
         renumbered: usize,
         skipped: usize,
+        changes: Vec<LineRenumber>,
     },
 }
 
@@ -295,6 +313,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
     let mut renumbered = 0usize;
     let mut skipped = 0usize;
+    let mut changes: Vec<LineRenumber> = Vec::new();
 
     let mut scene_lines: Vec<&Line> = Vec::new();
     for shot in &doc.sections {
@@ -306,6 +325,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         &mut edits,
         &mut renumbered,
         &mut skipped,
+        &mut changes,
     );
     for quest in &doc.quests {
         let mut quest_lines: Vec<&Line> = Vec::new();
@@ -316,6 +336,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
             &mut edits,
             &mut renumbered,
             &mut skipped,
+            &mut changes,
         );
     }
     for entry in &doc.entries {
@@ -327,12 +348,20 @@ pub fn retag_document(text: &str) -> RetagOutcome {
             &mut edits,
             &mut renumbered,
             &mut skipped,
+            &mut changes,
         );
     }
     for beat in &doc.beats {
         let mut beat_lines: Vec<&Line> = Vec::new();
         collect_lines(&beat.body, &mut beat_lines);
-        retag_scope(beat_lines, bytes, &mut edits, &mut renumbered, &mut skipped);
+        retag_scope(
+            beat_lines,
+            bytes,
+            &mut edits,
+            &mut renumbered,
+            &mut skipped,
+            &mut changes,
+        );
     }
 
     if edits.is_empty() {
@@ -340,6 +369,7 @@ pub fn retag_document(text: &str) -> RetagOutcome {
             text: text.to_string(),
             renumbered: 0,
             skipped,
+            changes,
         };
     }
 
@@ -350,10 +380,12 @@ pub fn retag_document(text: &str) -> RetagOutcome {
         out.replace_range(*start..*end, replacement);
     }
 
+    changes.sort_by_key(|c| c.line);
     RetagOutcome::Renumbered {
         text: out,
         renumbered,
         skipped,
+        changes,
     }
 }
 
@@ -369,6 +401,7 @@ fn retag_scope(
     edits: &mut Vec<(usize, usize, String)>,
     renumbered: &mut usize,
     skipped: &mut usize,
+    changes: &mut Vec<LineRenumber>,
 ) {
     let mut counter: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     for line in lines {
@@ -397,11 +430,24 @@ fn retag_scope(
                     attr.span.byte_end,
                     format!("code=\"{code}\""),
                 ));
+                changes.push(LineRenumber {
+                    line: line.span.line,
+                    from: match &attr.value {
+                        AttrValue::Str(s) => Some(s.clone()),
+                        _ => None,
+                    },
+                    to: code,
+                });
                 *renumbered += 1;
             }
             None => {
                 let (at, inserted) = code_insert(line, bytes, &code);
                 edits.push((at, at, inserted));
+                changes.push(LineRenumber {
+                    line: line.span.line,
+                    from: None,
+                    to: code,
+                });
                 *renumbered += 1;
             }
         }
@@ -529,6 +575,7 @@ mod tests {
                 text,
                 renumbered,
                 skipped,
+                ..
             } => (text, renumbered, skipped),
             other => panic!("expected Renumbered, got {other:?}"),
         }
@@ -555,6 +602,41 @@ mod tests {
             text.contains("@fixer{code=\"0030\"}: third"),
             "got:\n{text}"
         );
+    }
+
+    #[test]
+    fn retag_reports_each_changed_line_with_its_old_and_new_code() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer{code=\"0050\"}: first\n\
+                   @fixer{code=\"0020\"}: second\n\
+                   @fixer: third\n";
+        let RetagOutcome::Renumbered { changes, .. } = retag_document(src) else {
+            panic!("expected Renumbered");
+        };
+        assert_eq!(
+            changes,
+            vec![
+                LineRenumber {
+                    line: 8,
+                    from: Some("0050".into()),
+                    to: "0010".into()
+                },
+                LineRenumber {
+                    line: 10,
+                    from: None,
+                    to: "0030".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn tag_splits_codes_from_instance_keys() {
+        let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
+                   @fixer: first\n\
+                   ::use{component=\"fire\"}\n";
+        let out = tag_document(src);
+        assert_eq!((out.added, out.instances), (2, 1));
     }
 
     #[test]

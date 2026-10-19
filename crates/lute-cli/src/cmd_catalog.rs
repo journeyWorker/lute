@@ -19,7 +19,11 @@ use crate::envelope::{self, CliError};
 ///
 /// Refresh iterates the directory itself (rather than `ProviderSet::load`, which
 /// discards filenames) so each snapshot rewrites to the file it came from.
-pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> ExitCode {
+pub(crate) fn run_refresh(
+    project: Option<&Path>,
+    providers: Option<&Path>,
+    json: bool,
+) -> ExitCode {
     // The project is `--project` or the nearest `lute.project.yaml` (0.48.0
     // §2.1); `--providers` names the directory, defaulting to the project's
     // `catalogDir`. With neither there is nothing to refresh.
@@ -98,7 +102,8 @@ pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> E
         .collect();
     paths.sort();
 
-    let mut refreshed = 0usize;
+    let mut refreshed: Vec<String> = Vec::new();
+    let mut skipped: Vec<serde_json::Value> = Vec::new();
     for path in &paths {
         let raw = match std::fs::read_to_string(path) {
             Ok(r) => r,
@@ -117,6 +122,10 @@ pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> E
                     "lute: skipping {} (not a provider snapshot): {e}",
                     path.display()
                 );
+                skipped.push(serde_json::json!({
+                    "path": path.display().to_string(),
+                    "reason": format!("not a provider snapshot: {e}"),
+                }));
                 continue;
             }
         };
@@ -125,8 +134,10 @@ pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> E
         let out = match yaml_serde::to_string(&snap) {
             Ok(o) => o,
             Err(e) => {
-                eprintln!("lute: cannot serialize {}: {e}", path.display());
-                return ExitCode::from(2);
+                return envelope::fail(CliError::io(
+                    path,
+                    format!("lute: cannot serialize {}: {e}", path.display()),
+                ));
             }
         };
         if let Err(e) = std::fs::write(path, out) {
@@ -136,12 +147,27 @@ pub(crate) fn run_refresh(project: Option<&Path>, providers: Option<&Path>) -> E
                 format!("lute: cannot write {}: {e}", path.display()),
             ));
         }
-        refreshed += 1;
+        refreshed.push(path.display().to_string());
     }
 
-    println!(
-        "refreshed {refreshed} snapshot(s) in {} (capabilitySnapshot {version})",
+    let line = format!(
+        "refreshed {} snapshot(s) in {} (capabilitySnapshot {version})",
+        refreshed.len(),
         dir.display()
     );
-    ExitCode::SUCCESS
+    if !json {
+        println!("{line}");
+        return ExitCode::SUCCESS;
+    }
+    eprintln!("{line}");
+    envelope::emit_report(
+        envelope::version::CATALOG_REFRESH,
+        0,
+        serde_json::json!({
+            "providers": dir.display().to_string(),
+            "capabilitySnapshot": version,
+            "refreshed": refreshed,
+            "skipped": skipped,
+        }),
+    )
 }

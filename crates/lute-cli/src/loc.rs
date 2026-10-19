@@ -1086,7 +1086,17 @@ struct ImportRow {
 /// exactly as `export`'s own untagged advisory does.
 ///
 /// Exit `0` on success, `1` on `E-LOCALE-BUNDLE`, `2` on an I/O failure.
-pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
+pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode {
+    if json && out.is_none() {
+        return crate::envelope::fail(
+            crate::envelope::CliError::usage(
+                "lute loc import: --json needs -o, --output: the bundle is the artifact and \
+                 goes to the file, stdout carries the report",
+            )
+            .with_argument("--output"),
+        );
+    }
+    let mut diagnostics: Vec<serde_json::Value> = Vec::new();
     let mut errors = 0usize;
     let mut skipped = 0usize;
     let mut triples: Vec<(String, String, String)> = Vec::new();
@@ -1117,7 +1127,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         let rows = match parsed {
             Ok(rows) => rows,
             Err(msg) => {
-                bundle_error(file, &msg);
+                bundle_error(&mut diagnostics, file, &msg);
                 errors += 1;
                 continue;
             }
@@ -1153,6 +1163,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
                 .unwrap_or_else(|| stem.trim().to_string());
             if locale.is_empty() {
                 bundle_error(
+                    &mut diagnostics,
                     file,
                     &format!(
                         "row {} has an empty locale tag — give the row a `locale` value, or \
@@ -1165,6 +1176,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
             }
             if !seen.insert((locale.clone(), line_id.clone())) {
                 bundle_error(
+                    &mut diagnostics,
                     file,
                     &format!(
                         "row {}: duplicate `{line_id}` for locale `{locale}` — one lineId \
@@ -1182,8 +1194,32 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         }
     }
 
+    let locales: Vec<String> = triples
+        .iter()
+        .map(|(_, locale, _)| locale.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let lines = triples.len();
+    let report = |output: Option<&Path>, exit: u8| {
+        crate::envelope::emit_report(
+            crate::envelope::version::LOC_IMPORT,
+            exit,
+            serde_json::json!({
+                "output": output.map(|p| p.display().to_string()),
+                "locales": locales,
+                "lines": lines,
+                "skipped": skipped,
+                "diagnostics": diagnostics,
+            }),
+        )
+    };
+
     if errors > 0 {
         eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+        if json {
+            return report(None, 1);
+        }
         return ExitCode::FAILURE;
     }
 
@@ -1214,6 +1250,9 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
     if skipped > 0 {
         eprintln!("{skipped} rows skipped (no lineId) — run lute tag, then re-export");
     }
+    if json {
+        return report(out, 0);
+    }
     ExitCode::SUCCESS
 }
 
@@ -1221,8 +1260,13 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
 /// `print_diagnostics`'s `severity [CODE] message` tail; the head is the file
 /// rather than a `line:column` because an export row has no source span (the
 /// row number lives in `message` instead).
-fn bundle_error(file: &Path, message: &str) {
+fn bundle_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: &str) {
     eprintln!("{}: error [{E_LOCALE_BUNDLE}] {message}", file.display());
+    diagnostics.push(serde_json::json!({
+        "path": file.display().to_string(),
+        "code": E_LOCALE_BUNDLE,
+        "message": message,
+    }));
 }
 
 /// Parse `loc export --format json`'s array back into rows.
