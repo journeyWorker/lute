@@ -274,9 +274,9 @@ def collect_commands(binary: Path, output: Path) -> Snapshot:
                 actual = Command(
                     command.label,
                     (*command.args, "-o", temporary),
-                    (*command.args, "-o", "<temporary>"),
-                    Path(temporary),
-                    ((temporary.encode(), b"<temporary>"),),
+                    display_args=(*command.args, "-o", "<temporary>"),
+                    artifact_dir=Path(temporary),
+                    replacements=((temporary.encode(), b"<temporary>"),),
                 )
                 snapshot.run(actual)
         else:
