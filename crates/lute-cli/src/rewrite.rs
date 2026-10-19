@@ -87,12 +87,14 @@ fn write(file: &Path, text: &str) -> Result<(), CliError> {
     std::fs::write(file, text).map_err(|e| io_failure(file, "write", &e))
 }
 
-/// The files an operand list selects (`dir_files` expands a directory),
-/// first occurrence wins, and whether it is one lone file operand (whose
-/// messages stay unprefixed). No operand means `.`.
+/// The files an operand list selects (`dir_files` expands a directory), and
+/// whether it is one lone file operand (whose messages stay unprefixed). No
+/// operand means `.`. `dedup` keeps the first occurrence of a file named by
+/// several operands (`tag`); `fix` counts per operand, as 0.47.2 did.
 fn selected(
     paths: &[PathBuf],
     dir_files: impl Fn(&Path) -> std::io::Result<Vec<PathBuf>>,
+    dedup: bool,
 ) -> Result<(Vec<PathBuf>, bool), CliError> {
     let default = [PathBuf::from(".")];
     let paths = if paths.is_empty() {
@@ -109,7 +111,7 @@ fn selected(
             vec![path.clone()]
         };
         for file in found {
-            if !files.contains(&file) {
+            if !dedup || !files.contains(&file) {
                 files.push(file);
             }
         }
@@ -189,7 +191,7 @@ impl TagFile {
 /// join; missing component instance keys are still added) or when the
 /// document has structural errors.
 pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
-    let (files, single) = match selected(opts.paths, crate::find_lute_files) {
+    let (files, single) = match selected(opts.paths, crate::find_lute_files, true) {
         Ok(found) => found,
         Err(err) => return envelope::fail_quietly(err),
     };
@@ -209,7 +211,7 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
             Ok((outcome, record)) => {
                 if outcome == Outcome::Changed {
                     changed += 1;
-                    units += record.lines;
+                    units += record.lines + record.instances;
                 }
                 worst = worst.max(outcome);
                 records.push(record);
@@ -220,8 +222,12 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
             }
         }
     }
-    if let Some(err) = failure {
-        return envelope::fail_quietly(err);
+    // JSON mode: the error envelope replaces the report. Text mode prints the
+    // summary first, as 0.47.2 did, then fails.
+    if opts.json {
+        if let Some(err) = failure {
+            return envelope::fail_quietly(err);
+        }
     }
     let total = files.len();
     if preview || opts.check {
@@ -244,6 +250,9 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
         out(&format!(
             "lute: {verb} {units} line(s) in {changed} of {total} file(s)"
         ));
+    }
+    if let Some(err) = failure {
+        return envelope::fail_quietly(err);
     }
     let would_change = opts.check && records.iter().any(|r| r.changed);
     let exit = if worst == Outcome::Unchanged || worst == Outcome::Changed {
@@ -387,7 +396,7 @@ fn tag_file(
 /// slots are visited through the shared syntax walker; YAML project surfaces
 /// use the same byte-preserving CEL rewriter.
 pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
-    let (files, single) = match selected(paths, fix_targets) {
+    let (files, single) = match selected(paths, fix_targets, false) {
         Ok(found) => found,
         Err(err) => return envelope::fail_quietly(err),
     };
@@ -417,8 +426,10 @@ pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
             }
         }
     }
-    if let Some(err) = failure {
-        return envelope::fail_quietly(err);
+    if json {
+        if let Some(err) = failure {
+            return envelope::fail_quietly(err);
+        }
     }
     if !single {
         let verb = if check { "would apply" } else { "applied" };
@@ -426,6 +437,9 @@ pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
             "lute: {verb} {fixes} fix(es) in {changed} of {} file(s)",
             files.len()
         ));
+    }
+    if let Some(err) = failure {
+        return envelope::fail_quietly(err);
     }
     let exit = u8::from(check && changed > 0);
     if !json {

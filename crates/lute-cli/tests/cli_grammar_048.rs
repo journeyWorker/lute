@@ -253,7 +253,13 @@ fn grammar_placeholders() -> BTreeSet<String> {
         let after = &rest[open + 1..];
         let Some(close) = after.find('>') else { break };
         let word = &after[..close];
-        if !word.is_empty() && word.bytes().all(|b| b.is_ascii_uppercase()) {
+        // Words as written, so a `<NODE_ID>` in §5 would be one (and then be
+        // allowed): the never-shown derived names must stay out of the section.
+        if !word.is_empty()
+            && word
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b == b'_' || b == b'-')
+        {
             words.insert(word.to_string());
         }
         rest = &after[close + 1..];
@@ -281,11 +287,13 @@ fn is_kebab(name: &str) -> bool {
         && body.as_bytes()[0].is_ascii_lowercase()
 }
 
-/// The uppercase words of a value name (`FILE:LINE:COLUMN` → FILE, LINE,
-/// COLUMN; `EXECUTION-IR` → EXECUTION, IR).
+/// The placeholder tokens of a value name: it is split only on the composite
+/// separators of grammar §5 (`=` `:` `.` `,` `@` `[` `]` `…`), so every token
+/// must be exactly a §5 word — `NODE_ID`, `EXECUTION-IR` and a lowercase
+/// `file` stay whole and are rejected.
 fn tokens(value_name: &str) -> Vec<String> {
     value_name
-        .split(|c: char| !c.is_ascii_uppercase())
+        .split(['=', ':', '.', ',', '@', '[', ']', '…'])
         .filter(|t| !t.is_empty())
         .map(str::to_string)
         .collect()
@@ -586,11 +594,13 @@ fn the_vocabulary_rows_are_the_surface_options() {
     assert_eq!(vocab.keys().cloned().collect::<BTreeSet<_>>(), used);
 }
 
-/// §5 holds the words the surface uses, parsed from the grammar document.
+/// §5 is parsed from the grammar document and is exactly this set: a new
+/// placeholder is added to §5 first (and here), and a clap-derived name
+/// (`MAX_ITEMS`, `NODE_ID`, …) written as a `<…>` word in §5 would show up as
+/// an extra element.
 #[test]
 fn the_placeholder_vocabulary_is_parsed_from_the_grammar() {
-    let words = grammar_placeholders();
-    for word in [
+    let expected: BTreeSet<String> = [
         "DIR",
         "FILE",
         "PATH",
@@ -601,6 +611,7 @@ fn the_placeholder_vocabulary_is_parsed_from_the_grammar() {
         "NAME",
         "EXPR",
         "FORMAT",
+        "LOCALE",
         "N",
         "ATOM",
         "ID",
@@ -621,19 +632,11 @@ fn the_placeholder_vocabulary_is_parsed_from_the_grammar() {
         "LITERAL",
         "LINE",
         "COLUMN",
-    ] {
-        assert!(words.contains(word), "§5 lists <{word}>");
-    }
-    for derived in [
-        "MAX_ITEMS",
-        "NODE_ID",
-        "PATHS",
-        "NODEKEY",
-        "CHOICEID",
-        "QUESTID",
-    ] {
-        assert!(!words.contains(derived), "{derived} is not a placeholder");
-    }
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    assert_eq!(grammar_placeholders(), expected);
 }
 
 // --- each rule trips on a mutated copy of the real surface -----------------
@@ -713,6 +716,27 @@ fn rule_4_catches_a_placeholder_outside_the_grammar() {
     assert!(found.contains_key(&4), "{found:?}");
     let found = mutated(|s| command(s, "check").operands = vec!["PATHS".into()]);
     assert!(found.contains_key(&4), "{found:?}");
+    // The derived names that split into two §5 words, and a lowercase name.
+    for bad in ["NODE_ID", "CHOICE_ID", "file", "EXECUTION-IR"] {
+        let found = mutated(|s| {
+            let cmd = command(s, "check");
+            let at = option(cmd, "--engine");
+            cmd.options[at].value_name = Some(bad.into());
+        });
+        assert!(found.contains_key(&4), "{bad}: {found:?}");
+        let found = mutated(|s| command(s, "check").operands = vec![bad.into()]);
+        assert!(found.contains_key(&4), "operand {bad}: {found:?}");
+    }
+    // Composite forms of §5 stay legal.
+    for good in [
+        "BRANCH=CHOICE",
+        "FILE:LINE:COLUMN",
+        "DIRECTIVE.ATTR",
+        "OCCASION=AXES",
+    ] {
+        let found = mutated(|s| command(s, "check").operands = vec![good.into()]);
+        assert!(!found.contains_key(&4), "{good}: {found:?}");
+    }
 }
 
 #[test]

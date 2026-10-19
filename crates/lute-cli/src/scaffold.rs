@@ -951,6 +951,27 @@ pub fn run_init(dir: Option<&Path>, template: Option<&str>) -> ExitCode {
         }
     };
 
+    // A file where a directory is needed would fail halfway; refuse first.
+    for file in &files {
+        let target = dir.join(file.rel);
+        let blocker = target
+            .ancestors()
+            .skip(1)
+            .take_while(|a| a.starts_with(dir))
+            .find(|a| fs::metadata(a).is_ok_and(|m| !m.is_dir()));
+        if let Some(blocker) = blocker {
+            return refuse_io(
+                blocker,
+                format!(
+                    "lute init: `{}` exists and is not a directory, so `{}` cannot be created — \
+                     refusing (nothing was written)",
+                    blocker.display(),
+                    target.display()
+                ),
+            );
+        }
+    }
+
     // Refuse to clobber: every file the template would write must be new.
     let existing: Vec<PathBuf> = files
         .iter()

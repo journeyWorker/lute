@@ -495,3 +495,82 @@ fn loc_import_reports_locales_lines_skipped_and_diagnostics() {
 fn lute_lib_scratch(name: &str) -> lute_scratch::ScratchDir {
     lute_scratch::ScratchDir::named(name)
 }
+
+// --- review fixes: 0.47.2 parity of the tree summaries ------------------------
+
+const WITH_USE: &str =
+    "---\nkind: scene\nid: c\n---\n## Shot 1.\n@ann: one\n::use{component=\"fire\"}\n";
+
+#[test]
+fn tag_directory_summary_counts_codes_and_instance_keys() {
+    let dir = lute_lib_scratch("tag-summary");
+    write(&dir, "a/c.lute", WITH_USE);
+    write(&dir, "b/u.lute", UNTAGGED);
+    let out = lute_in(&dir, &["tag", "--check", "a", "b"]);
+    assert_eq!(out.status.code(), Some(1), "{}", all(&out));
+    assert!(
+        stdout(&out).contains("would tag 4 line(s) in 2 of 2 file(s)"),
+        "{}",
+        all(&out)
+    );
+    let out = lute_in(&dir, &["tag"]);
+    assert!(
+        stdout(&out).contains("tagged 4 line(s) in 2 of 2 file(s)"),
+        "{}",
+        all(&out)
+    );
+}
+
+#[test]
+fn tree_summaries_are_printed_before_an_io_failure() {
+    let dir = lute_lib_scratch("summary-io");
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\nid: a\n---\n## S\n@ann: one\n",
+    );
+    std::fs::write(dir.join("bad.lute"), [0xff, 0xfe, 0x00]).unwrap();
+    for (args, summary) in [
+        (&["tag"][..], "tagged 1 line(s) in 1 of 2 file(s)"),
+        (&["fix"][..], "applied 0 fix(es) in 0 of 2 file(s)"),
+    ] {
+        let out = lute_in(&dir, args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", all(&out));
+        assert!(stdout(&out).contains(summary), "{args:?}: {}", all(&out));
+        assert!(stderr(&out).contains("cannot read"), "{}", all(&out));
+        // JSON mode: the error envelope instead of the report.
+        let mut json_args = args.to_vec();
+        json_args.push("--json");
+        let out = lute_in(&dir, &json_args);
+        assert_eq!(out.status.code(), Some(2));
+        assert_eq!(json(&out)["error"]["code"], "E-CLI-IO");
+    }
+}
+
+#[test]
+fn fix_counts_files_per_operand_as_before() {
+    let dir = lute_lib_scratch("fix-overlap");
+    write(&dir, "d/s.lute", OLD_STAMP);
+    let out = lute_in(&dir, &["fix", "d", "d/s.lute"]);
+    assert_eq!(out.status.code(), Some(0), "{}", all(&out));
+    assert!(
+        stdout(&out).contains("in 1 of 2 file(s)"),
+        "one entry per operand: {}",
+        all(&out)
+    );
+}
+
+#[test]
+fn init_refuses_before_writing_when_a_parent_is_not_a_directory() {
+    let dir = lute_lib_scratch("init-parent");
+    write(&dir, "scenes", "a file where a directory goes\n");
+    let out = lute_in(&dir, &["init", "--json"]);
+    assert_eq!(out.status.code(), Some(2), "{}", all(&out));
+    let v = json(&out);
+    assert!(
+        v["error"]["message"].as_str().unwrap().contains("scenes"),
+        "{v}"
+    );
+    assert!(!dir.join("lute.project.yaml").exists(), "nothing written");
+    assert_eq!(read(&dir.join("scenes")), "a file where a directory goes\n");
+}
