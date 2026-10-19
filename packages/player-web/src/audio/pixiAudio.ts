@@ -66,7 +66,7 @@ export class PixiAudio implements AudioPort {
   }
   private currentVolumes: Volumes
   private readonly gate = Deferred.makeUnsafe<void>()
-  /** Completed when the latest music `play` is superseded; undefined when none is in progress. */
+  /** The latest music `play`'s token, completed when a later music `play` or `stop` supersedes it; undefined after a `stop`. */
   private musicRequest: Deferred.Deferred<void> | undefined
   constructor(options: PixiAudioOptions) {
     this.backend = options.backend

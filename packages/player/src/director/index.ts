@@ -374,7 +374,9 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
    */
   const restartMusic = (stage: Stage): Effect.Effect<void, never, Scope.Scope> => {
     const music = stageMusic(options.bindings, stage)
-    const call = music === undefined ? options.audio.stop("music", 0) : options.audio.play("music", music)
+    // Nothing joins the fiber, so a failing custom port is logged here (the command loop no longer sees it).
+    const call = (music === undefined ? options.audio.stop("music", 0) : options.audio.play("music", music))
+      .pipe(Effect.catchCause((cause) => Effect.logWarning("stage music failed", cause)))
     return Effect.asVoid(Effect.forkScoped(call, { startImmediately: true }))
   }
 
