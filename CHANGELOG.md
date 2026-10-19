@@ -106,10 +106,11 @@ player's save/profile format stays `"0.47"`. The seven npm packages align to
   at the title, or `restore`) reaches its restored await instead of hanging
   until a click. `PixiAudio` serves music in call order: a music `play` or
   `stop` supersedes every earlier music `play` still waiting (for the unlock,
-  its file or the backend), which completes at once without starting; music
-  already playing is replaced as before. So the loaded stage's music, not the
-  title music requested at mount, starts once audio unlocks. sfx and voice
-  are unchanged. (#138)
+  its file or the backend), which completes without starting (at once while
+  it waits for the unlock; a backend play that resolves later is stopped,
+  never recorded); music already playing is replaced as before. So the loaded
+  stage's music, not the title music requested at mount, starts once audio
+  unlocks. sfx and voice are unchanged. (#138)
 
 ### Diagnostics
 
