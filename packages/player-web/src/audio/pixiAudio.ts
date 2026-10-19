@@ -66,6 +66,8 @@ export class PixiAudio implements AudioPort {
   }
   private currentVolumes: Volumes
   private readonly gate = Deferred.makeUnsafe<void>()
+  /** Completed when the latest music `play` is superseded; undefined when none is in progress. */
+  private musicRequest: Deferred.Deferred<void> | undefined
   constructor(options: PixiAudioOptions) {
     this.backend = options.backend
     this.logger = options.logger ?? ((message, error) => console.warn(message, error))
@@ -88,14 +90,24 @@ export class PixiAudio implements AudioPort {
   /**
    * Play a channel sound, waiting for finite sounds to end. Music without
    * `restart` whose file is the one already playing only changes its volume,
-   * fading over `fade`, without restarting it (spec 0.41.0 §7.7).
+   * fading over `fade`, without restarting it (spec 0.41.0 §7.7). A music `play`
+   * or `stop` supersedes every earlier music `play` still in progress (waiting for
+   * the unlock, its file or the backend): that play completes at once without
+   * starting, and a backend play resolving after that is stopped, not recorded.
    */
   readonly play = (channel: AudioChannel, soundToPlay: AudioPlay): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
+      // A music play is superseded by any later music play or stop (spec 0.47.2 §3).
+      const request = channel === "music" ? self.beginMusicRequest() : undefined
+      const superseded = (): boolean => request !== undefined && Deferred.isDoneUnsafe(request)
       if (!SubscriptionRef.getUnsafe(self.unlocked)) {
-        yield* Deferred.await(self.gate)
+        // The supersession must wake the wait: the gate may stay closed for good.
+        yield* request === undefined
+          ? Deferred.await(self.gate)
+          : Effect.raceFirst(Deferred.await(self.gate), Deferred.await(request))
       }
+      if (superseded()) return
       if (channel === "music" && !soundToPlay.restart) {
         const playing = self.active.music.filter((record) => !record.stopping).at(-1)
         if (playing !== undefined && playing.file === soundToPlay.file) {
@@ -110,7 +122,7 @@ export class PixiAudio implements AudioPort {
         }),
         Effect.option
       )
-      if (Option.isNone(loaded)) return
+      if (Option.isNone(loaded) || superseded()) return
       const inputVolume = clamp(soundToPlay.volume)
       if (channel === "voice") yield* self.stopVoiceImmediately()
       const playback = yield* self.backend.play(soundToPlay.file, {
@@ -124,6 +136,11 @@ export class PixiAudio implements AudioPort {
         Effect.option
       )
       if (Option.isNone(playback)) return
+      if (superseded()) {
+        // Superseded while the backend started it: stop it at once, never record it.
+        playback.value.stop()
+        return
+      }
       if (channel === "music") yield* self.replaceMusic(soundToPlay.fade)
       const record: ActivePlayback = {
         channel,
@@ -149,6 +166,7 @@ export class PixiAudio implements AudioPort {
   readonly stop = (channel: AudioChannel, fade: number): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
+      self.supersedeMusic(channel)
       const records = self.active[channel].slice()
       if (records.length === 0) return
       for (const record of records) {
@@ -179,6 +197,24 @@ export class PixiAudio implements AudioPort {
         for (const record of this.active[channel]) this.applyVolume(record)
       }
     })
+
+  /**
+   * Register a music `play`: completes the previous request (superseding its
+   * play still in progress, whatever it waits for) and returns this play's own.
+   */
+  private beginMusicRequest(): Deferred.Deferred<void> {
+    this.supersedeMusic("music")
+    const request = Deferred.makeUnsafe<void>()
+    this.musicRequest = request
+    return request
+  }
+
+  /** A music `stop` (or a later `play`) supersedes the latest music play still in progress. */
+  private supersedeMusic(channel: AudioChannel): void {
+    if (channel !== "music" || this.musicRequest === undefined) return
+    Deferred.doneUnsafe(this.musicRequest, Effect.void)
+    this.musicRequest = undefined
+  }
 
   private effectiveVolume(channel: AudioChannel, inputVolume: number): number {
     return clamp(inputVolume * this.currentVolumes.master * this.currentVolumes[channel])
