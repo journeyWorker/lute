@@ -590,8 +590,13 @@ fn related_scripts(
         .ok()
         .is_some_and(|references| references.iter().any(|reference| reference == needle));
         let selected = scripts.selects(&path);
-        let witnessed =
-            selected && crate::cmd_constraints::run_script_for_context(model.root(), &path, key);
+        let witnessed = selected
+            && crate::cmd_constraints::run_script_for_context(
+                model.root(),
+                &path,
+                key,
+                &scripts.build(),
+            );
         if !static_match && !witnessed {
             omitted += 1;
             continue;

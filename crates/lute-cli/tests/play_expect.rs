@@ -380,7 +380,6 @@ const ASK: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 #[test]
 fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
     let dir = lute_scratch::ScratchDir::named("options");
-    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(&dir, "s.lute", ASK);
     write(
         &dir,
@@ -412,13 +411,6 @@ fn options_and_transcript_lacks_judge_what_the_walk_offered_and_said() {
 #[test]
 fn quests_seed_the_status_a_scene_reads() {
     let dir = lute_scratch::ScratchDir::named("quest-seed");
-    write(&dir, "lute.project.yaml", BARE_PROJECT);
-    write(
-        &dir,
-        "quests/case.lute",
-        "---\nkind: quest\ntitle: Case\n---\n\n<quest id=\"caseClosed\" title=\"Case\">\n\
-         <objective id=\"o\" title=\"O\" done=\"false\"/>\n</quest>\n",
-    );
     write(
         &dir,
         "s.lute",
@@ -530,7 +522,6 @@ fn a_selection_expect_on_a_non_occasion_step_is_a_usage_error() {
 #[test]
 fn a_test_asserts_facts_and_runs_alone_and_a_missing_document_is_one_failure() {
     let dir = lute_scratch::ScratchDir::named("test-facts");
-    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(
         &dir,
         "s.lute",
@@ -598,8 +589,6 @@ fn copy_tree(from: &Path, to: &Path) {
         }
     }
 }
-
-const BARE_PROJECT: &str = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n";
 
 /// A scratch copy of the `play-hub` project: scripts written into it sit
 /// under a `lute.project.yaml`, which `lute test` requires of a play.
@@ -682,7 +671,6 @@ fn transcript_expectations_match_presented_lines_only_in_play_and_test_alike() {
 #[test]
 fn options_judges_a_hub_like_a_branch() {
     let dir = lute_scratch::ScratchDir::named("hub-options");
-    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(
         &dir,
         "s.lute",
@@ -716,7 +704,6 @@ fn options_judges_a_hub_like_a_branch() {
 #[test]
 fn test_and_play_keys_name_the_spelling_and_the_file_they_belong_to() {
     let dir = lute_scratch::ScratchDir::named("key-renames");
-    write(&dir, "lute.project.yaml", BARE_PROJECT);
     write(&dir, "s.lute", ASK);
     write(
         &dir,

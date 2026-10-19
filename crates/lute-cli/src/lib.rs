@@ -343,6 +343,8 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             scripts: ScriptSelection {
                 scripts: &script,
                 all: all_scripts,
+                providers: providers.providers.as_deref(),
+                permission_profile: permission_profile.permission_profile.as_deref(),
             },
         }),
         Command::Trace {
@@ -570,7 +572,13 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     .with_argument("--format"),
                 );
             }
-            let dir = match project_for("scenario", &project) {
+            let id = match &command {
+                None => "scenario",
+                Some(cli::ScenarioCommand::Reach { .. }) => "scenario reach",
+                Some(cli::ScenarioCommand::Envelope { .. }) => "scenario envelope",
+                Some(cli::ScenarioCommand::Knowledge { .. }) => "scenario knowledge",
+            };
+            let dir = match project_for(id, &project) {
                 Ok(dir) => dir,
                 Err(code) => return code,
             };

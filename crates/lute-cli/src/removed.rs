@@ -32,7 +32,7 @@ pub(crate) fn check(args: &[OsString]) -> Option<CliError> {
                     rewrite(&["loc", sub.as_str()], &rest[1..])
                 }
                 ("scenario", _) => rewrite(&["scenario"], rest),
-                ("new", Some(_)) => rewrite(&["new"], rest),
+                ("new", _) => rewrite(&["new"], rest),
                 _ => None,
             }
         }
@@ -222,7 +222,6 @@ const VALUED: &[&str] = &[
     "--target",
     "--axis",
     "--relation",
-    "--facts",
     "--until",
     "--where",
     "--attr",
@@ -308,7 +307,7 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
     let spec = spec_of(command);
     let name = command.join(" ");
     let mut options: Vec<String> = Vec::new();
-    let mut operands: Vec<String> = Vec::new();
+    let mut operands: Vec<(String, bool)> = Vec::new();
     let mut reasons: Vec<String> = Vec::new();
     let mut first: Option<String> = None;
     let mut note = |reasons: &mut Vec<String>, argument: &str, reason: String| {
@@ -425,9 +424,21 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
         {
             scenario_sub = Some(word.clone());
         } else {
-            operands.push(word.clone());
+            // Whether the operand follows `scenario`'s sub-view word: the
+            // words before it are the directory, those after it the node.
+            operands.push((word.clone(), scenario_sub.is_some()));
         }
     }
+    let after_sub: Vec<String> = operands
+        .iter()
+        .filter(|(_, after)| *after)
+        .map(|(w, _)| w.clone())
+        .collect();
+    let operands: Vec<String> = operands
+        .into_iter()
+        .filter(|(_, after)| !*after)
+        .map(|(w, _)| w)
+        .collect();
 
     // Operands: the project directory (and `impact`'s target, `scenario`'s
     // node), `catalog refresh`'s snapshot directory.
@@ -459,9 +470,15 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
             }
         }
         ["impact"] => {
-            let dir = operands.next();
-            let target = operands.next();
-            if dir.is_some() {
+            // `impact <DIR> <TARGET>`: one operand is the target alone.
+            let both: Vec<String> = operands.by_ref().collect();
+            let (dir, target) = match both.as_slice() {
+                [dir] if options.iter().any(|o| o == "--node") => (Some(dir.clone()), None),
+                [target] => (None, Some(target.clone())),
+                [dir, target, ..] => (Some(dir.clone()), Some(target.clone())),
+                [] => (None, None),
+            };
+            if dir.is_some() || target.is_some() {
                 note(
                     &mut reasons,
                     "--project",
@@ -490,7 +507,7 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
     }
     // `scenario reach <NODE>` / `scenario envelope <NODE>`.
     if let Some(sub) = &scenario_sub {
-        if let Some(node) = operands.next() {
+        if let Some(node) = after_sub.into_iter().next() {
             note(
                 &mut reasons,
                 "--node",
@@ -510,8 +527,15 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
         words.push(sub);
     }
     words.extend(leading);
-    words.extend(options);
-    words.extend(rest_operands);
+    if command == ["new"] {
+        // `new <KIND> <NAME>` first: the options belong to the kind's
+        // subcommand.
+        words.extend(rest_operands);
+        words.extend(options);
+    } else {
+        words.extend(options);
+        words.extend(rest_operands);
+    }
     let rewritten = line(&words);
     Some(
         CliError::usage(format!(

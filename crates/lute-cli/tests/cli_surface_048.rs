@@ -393,6 +393,57 @@ fn removed_spellings_answer_with_the_replacement_in_text_and_envelope() {
 }
 
 #[test]
+fn removed_spellings_rewrite_to_the_whole_runnable_line() {
+    let dir = lute_scratch::ScratchDir::named("removed-lines");
+    for (args, line) in [
+        (
+            vec!["new", "scene", "foo", "--dir", "/tmp/nx"],
+            "lute new scene foo --project /tmp/nx",
+        ),
+        (
+            vec!["new", "--dir", "d", "scene", "foo", "--occasion", "talk"],
+            "lute new scene foo --project d --occasion talk",
+        ),
+        (
+            vec!["scenario", "reach", "marina.s01"],
+            "lute scenario reach --node marina.s01",
+        ),
+        (
+            vec!["scenario", "d", "envelope", "quest:x"],
+            "lute scenario envelope --project d --node quest:x",
+        ),
+        (
+            vec!["scenario", "--facts", "."],
+            "lute scenario --project . --facts",
+        ),
+        (
+            vec!["scenario", "--facts", ".", "reach", "foo"],
+            "lute scenario reach --project . --facts --node foo",
+        ),
+        (vec!["impact", "scene:x"], "lute impact --node scene:x"),
+        (
+            vec!["impact", "d", "scene:x", "--json"],
+            "lute impact --project d --node scene:x --json",
+        ),
+    ] {
+        let out = lute_in(&dir, &args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", all(&out));
+        assert!(
+            stderr(&out).contains(&format!("use `{line}`")),
+            "{args:?}: {}",
+            stderr(&out)
+        );
+    }
+    // `--endings` takes its occasion only with `=`: no removed spelling.
+    let out = lute_in(&dir, &["scenario", "reach", "--endings=occ"]);
+    assert!(
+        !stderr(&out).contains("use `lute scenario"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
 fn removed_format_json_is_an_error_envelope_although_it_no_longer_selects_json() {
     let dir = lute_scratch::ScratchDir::named("removed-format-json");
     let out = lute_in(&dir, &["scenario", "d", "--format", "json"]);
@@ -1095,6 +1146,56 @@ fn catalog_refresh_defaults_to_the_projects_catalog_dir() {
     let out = lute_in(&empty, &["catalog", "refresh"]);
     assert_eq!(out.status.code(), Some(2), "{}", all(&out));
     assert!(stderr(&out).contains("--providers"), "{}", stderr(&out));
+}
+
+/// The witness scripts of `context --node … --script/--all-scripts` (and of
+/// `constraints`, which builds them through the same `ScriptSelection`) run
+/// under the command's `--providers`: the test traces the scene that names a
+/// provider id, which resolves only through them.
+#[test]
+fn context_witness_scripts_run_under_providers() {
+    let dir = provider_project("witness-providers");
+    write(
+        &dir,
+        "scenes/a.lute",
+        "---\nkind: scene\nid: a\n---\n\n## A\n\n::announce{id=\"hero\"}\n<branch id=\"b\">\n  \
+         <choice id=\"x\" text=\"X\">\n    @narrator: x\n  </choice>\n  \
+         <choice id=\"y\" text=\"Y\">\n    @narrator: y\n  </choice>\n</branch>\n",
+    );
+    write(
+        &dir,
+        "tests/a.test.yaml",
+        "file: ../scenes/a.lute\nchoose: { b: x }\nexpect:\n  end: complete\n",
+    );
+    let p = s(&dir);
+    let providers = s(&dir.join("providers")).to_string();
+    let scene = s(&dir.join("scenes/a.lute")).to_string();
+    let class = |extra: &[&str]| {
+        let mut args = vec![
+            "context",
+            scene.as_str(),
+            "--project",
+            p,
+            "--node",
+            "choice:a:b.x",
+            "--script",
+            "tests",
+            "--json",
+        ];
+        args.extend(extra);
+        let out = lute_in(&dir, &args);
+        let v = json(&out);
+        v["tests"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{v}"))
+            .iter()
+            .map(|t| t["classification"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+    // Without them the traced scene's provider id is unknown: the script
+    // observes nothing, so it is not even listed.
+    assert!(class(&[]).is_empty());
+    assert_eq!(class(&["--providers", providers.as_str()]), ["witnessed"]);
 }
 
 // --- --providers / --permission-profile take effect -------------------------

@@ -12,9 +12,22 @@ use lute_semantic::{NodeKey, NodeKind};
 pub(crate) struct ScriptSelection<'a> {
     pub(crate) scripts: &'a [PathBuf],
     pub(crate) all: bool,
+    /// `--providers` / `--permission-profile`: the witness scripts are
+    /// compiled and traced under the same project options as the model.
+    pub(crate) providers: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
 }
 
 impl ScriptSelection<'_> {
+    /// The build options the selected scripts run under.
+    pub(crate) fn build(&self) -> crate::play::Build<'_> {
+        crate::play::Build {
+            providers: self.providers,
+            permission_profile: self.permission_profile,
+            policy: crate::DenyPolicy::default(),
+        }
+    }
+
     /// Whether any script is selected at all.
     pub(crate) fn any(&self) -> bool {
         self.all || !self.scripts.is_empty()
@@ -51,6 +64,8 @@ pub(crate) fn run_constraints(
     let selection = ScriptSelection {
         scripts,
         all: all_scripts,
+        providers,
+        permission_profile: None,
     };
     let opts = ModelOptions {
         providers: providers.map(Path::to_path_buf),
@@ -197,7 +212,7 @@ fn add_script_witnesses(
     for result in results.iter_mut().filter(|r| r.kind == "completable") {
         let quest = result.counterexamples.first().cloned().unwrap_or_default();
         for script in &scripts {
-            if !script_witness(root, script, &quest) {
+            if !script_witness(root, script, &quest, &selection.build()) {
                 continue;
             }
             result
@@ -213,17 +228,17 @@ fn add_script_witnesses(
 
 /// Execute one script through the in-process test/play runner and accept only
 /// an observed completion transition, never a seeded complete status.
-fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
+fn script_witness(root: &Path, script: &Path, quest: &str, build: &crate::play::Build<'_>) -> bool {
     let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
     if name.ends_with(".test.yaml") {
-        return crate::testcmd::run_test_for_constraint(script, quest);
+        return crate::testcmd::run_test_for_constraint(script, quest, build);
     }
     if !name.ends_with(".play.yaml") {
         return false;
     }
-    let project = crate::play::PlayProject::compile(root, &crate::play::Build::default());
+    let project = crate::play::PlayProject::compile(root, build);
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };
@@ -232,17 +247,22 @@ fn script_witness(root: &Path, script: &Path, quest: &str) -> bool {
 
 /// Run one discovered script through the same in-process machinery used by
 /// `constraints --all-scripts`, and report whether it observed the target node.
-pub(crate) fn run_script_for_context(root: &Path, script: &Path, target: &NodeKey) -> bool {
+pub(crate) fn run_script_for_context(
+    root: &Path,
+    script: &Path,
+    target: &NodeKey,
+    build: &crate::play::Build<'_>,
+) -> bool {
     let Some(name) = script.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
     if name.ends_with(".test.yaml") {
-        return crate::testcmd::run_test_for_context(script, target);
+        return crate::testcmd::run_test_for_context(script, target, build);
     }
     if !name.ends_with(".play.yaml") {
         return false;
     }
-    let project = crate::play::PlayProject::compile(root, &crate::play::Build::default());
+    let project = crate::play::PlayProject::compile(root, build);
     let Ok(run) = crate::play::run_play_for_test(&project, script, true) else {
         return false;
     };

@@ -507,13 +507,16 @@ impl Shared {
 /// `passed` could mistake a broken manifest for a failing assertion.
 /// Run one scenario test in-process and report only a quest completion
 /// transition observed by its trace. Seeded `complete` status is not enough.
-pub(crate) fn run_test_for_constraint(script: &Path, quest: &str) -> bool {
+pub(crate) fn run_test_for_constraint(
+    script: &Path,
+    quest: &str,
+    build: &crate::play::Build<'_>,
+) -> bool {
     let files = [script.to_path_buf()];
-    let build = crate::play::Build::default();
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, &build) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, build) else {
         return false;
     };
-    let Ok(result) = run_one_test(script, &build, false, &shared, None) else {
+    let Ok(result) = run_one_test(script, build, false, &shared, None) else {
         return false;
     };
     result.completed_quests.contains(quest)
@@ -522,13 +525,16 @@ pub(crate) fn run_test_for_constraint(script: &Path, quest: &str) -> bool {
 /// Execute one scenario test in-process and report whether its trace visited a
 /// graph target. This deliberately uses the same trace runner as
 /// `constraints --run`; static YAML mentions are never treated as witnesses.
-pub(crate) fn run_test_for_context(script: &Path, target: &NodeKey) -> bool {
+pub(crate) fn run_test_for_context(
+    script: &Path,
+    target: &NodeKey,
+    build: &crate::play::Build<'_>,
+) -> bool {
     let files = [script.to_path_buf()];
-    let build = crate::play::Build::default();
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, &build) else {
+    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, build) else {
         return false;
     };
-    let Ok(result) = run_one_test(script, &build, false, &shared, None) else {
+    let Ok(result) = run_one_test(script, build, false, &shared, None) else {
         return false;
     };
     result_visits_target(&result, target)

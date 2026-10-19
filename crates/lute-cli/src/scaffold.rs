@@ -1650,10 +1650,9 @@ state:
 /// not its root, spelled as the command to run instead: the subdirectory
 /// relative to the root (minus the kind's own folder) moves into `<name>`,
 /// and `--project <root>` is added unless the root is the current directory.
-/// `given` is whether the author passed `--project`; without it the directory is
-/// the current one, and the message says so rather than blaming a flag the
-/// author never typed (round-3 CR N7).
-fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> String {
+/// Only an explicit `--project` can name such a directory: discovery always
+/// yields a project root.
+fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
     let rel = absolute(dir);
     let rel = rel.strip_prefix(root).unwrap_or(&rel);
     let folder = match kind {
@@ -1682,24 +1681,12 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
         suggestion.push_str(&format!(" --project {}", root.display()));
     }
     let resolved = absolute(dir);
-    let (what, fix) = if given {
-        (
-            format!(
-                "`--project {}` resolves to `{}`",
-                dir.display(),
-                resolved.display()
-            ),
-            "`--project` names the project, not the destination folder",
-        )
-    } else {
-        (
-            format!(
-                "no `--project` was given, so `lute new` started from the current directory `{}`",
-                resolved.display()
-            ),
-            "run from the project root, or pass `--project <root>`",
-        )
-    };
+    let what = format!(
+        "`--project {}` resolves to `{}`",
+        dir.display(),
+        resolved.display()
+    );
+    let fix = "`--project` names the project, not the destination folder";
     format!(
         "lute new: {what}, which is inside the project at `{}` (its lute.project.yaml) but not \
          its root; {fix} — did you mean `{suggestion}`? (nothing was written)",
@@ -1763,7 +1750,7 @@ pub fn run_new(
     let dest = match Destination::find(dir) {
         Ok(dest) => dest,
         Err(root) => {
-            eprintln!("{}", nested_hint(kind, name, dir, &root, given));
+            eprintln!("{}", nested_hint(kind, name, dir, &root));
             return ExitCode::from(2);
         }
     };

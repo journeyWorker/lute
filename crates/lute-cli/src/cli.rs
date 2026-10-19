@@ -193,7 +193,7 @@ pub(crate) enum Command {
         /// Use this `lute.lint.yaml` instead of the per-root default
         /// (`<project root>/lute.lint.yaml`). Applied to every root in
         /// the target's grouping.
-        #[arg(long = "config", value_name = "PATH")]
+        #[arg(long = "config", value_name = "FILE")]
         config: Option<PathBuf>,
         #[command(flatten)]
         json: JsonOpt,
