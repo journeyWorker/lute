@@ -29,7 +29,7 @@ const audio: AudioPort = {
 const ctx: CueContext = {
   presenter,
   audio,
-  bindings: { bindingsVersion: "0.47", canvas: { width: 1, height: 1 } },
+  bindings: { bindingsVersion: "0.48", canvas: { width: 1, height: 1 } },
   settings: {
     textSpeed: 1,
     autoDelay: 0,

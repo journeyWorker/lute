@@ -6,7 +6,7 @@ description: Complete player.bindings.yaml sections, effect catalogue, parameter
 `player.bindings.yaml` is optional and sits beside `lute.project.yaml`. Whole-project `lute check` (`lute check --project <DIR>`, no document operands) reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }

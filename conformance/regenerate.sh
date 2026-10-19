@@ -64,7 +64,7 @@ done < <(find . -name source.lute -not -path './edit-tasks/*' -not -path './diag
 # Runtime session event streams and their seed/input halves.
 for project in session/*/project; do
   case_dir=${project%/project}
-  "$lute" play "$project" --script "$project/script.play.yaml" --events > "$case_dir/expected.jsonl"
+  "$lute" play --project "$project" --script "$project/script.play.yaml" --events > "$case_dir/expected.jsonl"
   jq -c 'if has("seed") then {seed:.seed} else {input:.input} end' "$case_dir/expected.jsonl" > "$case_dir/inputs.jsonl"
   echo "recorded $case_dir session"
 done

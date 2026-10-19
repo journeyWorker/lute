@@ -155,7 +155,7 @@ fn check_ui_bindings(tag: &str, bindings: &str) -> serde_json::Value {
 fn ui_asset_keys_are_used_and_direct_music_paths_are_checked() {
     let value = check_ui_bindings(
         "bindings-ui-assets",
-        "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nassets:\n  title: title.png\nui:\n  title: {background: title, music: missing.ogg}\n",
+        "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nassets:\n  title: title.png\nui:\n  title: {background: title, music: missing.ogg}\n",
     );
     let diagnostics = value["project_diagnostics"].as_array().unwrap();
     assert!(diagnostics.iter().any(|d| d["code"] == "E-BINDING-FILE"));
@@ -168,7 +168,7 @@ fn ui_asset_keys_are_used_and_direct_music_paths_are_checked() {
 fn ended_screens_validate_closed_state_domains_and_assets() {
     let value = check_ui_bindings(
         "bindings-ended",
-        "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nassets:\n  dawn: dawn.png\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n      retire: {title: Quiet, text: Goodbye}\n",
+        "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nassets:\n  dawn: dawn.png\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n      retire: {title: Quiet, text: Goodbye}\n",
     );
     assert_eq!(
         value["project_diagnostics"].as_array().unwrap().len(),

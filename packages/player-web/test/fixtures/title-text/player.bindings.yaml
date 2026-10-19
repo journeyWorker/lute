@@ -1,5 +1,5 @@
 # `ui.title.text` needs the 0.47 bindings line.
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 assetsBase: ../../../../../examples/player-demo/assets/
 characters:

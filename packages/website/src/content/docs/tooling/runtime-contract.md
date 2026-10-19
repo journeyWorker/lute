@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.47.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.47.schema.json)
+[`schemas/lute-ir-0.48.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.48.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -370,7 +370,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.2"
+irVersion: "0.48.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -386,7 +386,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.47.2`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.48.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

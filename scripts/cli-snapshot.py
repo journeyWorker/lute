@@ -41,20 +41,20 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 CONFORMANCE = ROOT / "conformance"
 
-# These are intentionally narrow.  In particular, replacing every 0.46/0.47
+# These are intentionally narrow.  In particular, replacing every 0.47/0.48
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
     r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
-    r"0\.(?:46|47)(?:\.\d+)?"
+    r"0\.(?:47|48)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
-    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:46|47)"
+    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:47|48)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
 # The engine gate names the toolchain's own IR version in its refusal.
-ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:46|47)\.\d+(?=`)")
-VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:46|47)(?:\.\d+)?(?![A-Za-z0-9])")
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:47|48)\.\d+(?=`)")
+VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:47|48)(?:\.\d+)?(?![A-Za-z0-9])")
 
 
 @dataclass(frozen=True)
@@ -510,19 +510,19 @@ def normalize_for_compare(data: bytes, label: str) -> bytes:
     return text.encode("utf-8")
 
 
-# (label, 0.46 rendering, 0.47 rendering) for every stamp form the
+# (label, 0.47 rendering, 0.48 rendering) for every stamp form the
 # normalizer owns; both renderings must normalize to the same text.
 SELF_TEST_STAMPS = (
-    ("compile", '{"irVersion": "0.46.0", "lute": "0.46.0"}', '{"irVersion": "0.47.0", "lute": "0.47.0"}'),
-    ("check", 'luteVersion: "0.46.0"', 'luteVersion: "0.47.0"'),
-    ("play", '{"eventVersion":"0.46.0","snapshotVersion":"0.46.0"}', '{"eventVersion":"0.47.0","snapshotVersion":"0.47.0"}'),
+    ("compile", '{"irVersion": "0.47.0", "lute": "0.47.0"}', '{"irVersion": "0.48.0", "lute": "0.48.0"}'),
+    ("check", 'luteVersion: "0.47.0"', 'luteVersion: "0.48.0"'),
+    ("play", '{"eventVersion":"0.47.0","snapshotVersion":"0.47.0"}', '{"eventVersion":"0.48.0","snapshotVersion":"0.48.0"}'),
     (
         "schema",
-        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.46.schema.json"',
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.47.schema.json"',
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.48.schema.json"',
     ),
-    ("run", "the engine accepts `0.46.0` artifacts", "the engine accepts `0.47.0` artifacts"),
-    ("version", "lute toolchain 0.46.0\nlanguage      0.46.0\n", "lute toolchain 0.47.0\nlanguage      0.47.0\n"),
+    ("run", "the engine accepts `0.47.0` artifacts", "the engine accepts `0.48.0` artifacts"),
+    ("version", "lute toolchain 0.47.0\nlanguage      0.47.0\n", "lute toolchain 0.48.0\nlanguage      0.48.0\n"),
 )
 # (label, text) the normalizer must leave byte-identical.
 SELF_TEST_UNTOUCHED = (

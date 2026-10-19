@@ -6,7 +6,7 @@ description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로�
 `player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. 프로젝트 전체 `lute check`(`lute check --project <DIR>`, 문서 피연산자 없음)가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }

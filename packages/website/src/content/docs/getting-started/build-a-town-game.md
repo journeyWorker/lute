@@ -271,7 +271,7 @@ the title screen; `ui.title.music` uses the `assets:` key `title-music`;
 never raises it itself:
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -303,7 +303,7 @@ flow:
 ```
 
 Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
-The manifest uses `bindingsVersion: "0.47"`; see the [bindings reference](/player/bindings/)
+The manifest uses `bindingsVersion: "0.48"`; see the [bindings reference](/player/bindings/)
 for the complete catalogue.
 
 ## 5. A player-web host

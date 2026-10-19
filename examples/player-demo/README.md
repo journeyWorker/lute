@@ -20,9 +20,8 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-`check --project` reports one warning, `W-BINDINGS-VERSION-STALE`: the bindings
-declare `bindingsVersion: "0.47"` for `ui.title.text` (the title heading),
-newer than a 0.47 toolchain's line.
+`check --project` is clean: the bindings declare `bindingsVersion: "0.48"`, the
+toolchain line, and `ui.title.text` (the title heading) needs `"0.47"` or newer.
 
 The player bindings use a 1280×720 canvas and assets under `assets/`. Regenerate
 the deterministic art and audio pack with:

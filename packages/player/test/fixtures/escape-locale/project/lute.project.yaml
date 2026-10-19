@@ -4,6 +4,6 @@ profiles:
   escape:
     plugins: { escape.occasions: true }
 defaults:
-  luteVersion: "0.47.2"
+  luteVersion: "0.48.0"
   contentLang: en-US
   uses: [world.schema.yaml]

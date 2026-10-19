@@ -4,6 +4,6 @@ profiles:
   chime:
     plugins: { chime.occasions: true }
 defaults:
-  luteVersion: "0.47.2"
+  luteVersion: "0.48.0"
   contentLang: en
   uses: [world.schema.yaml]

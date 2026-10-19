@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.47.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.47.schema.json)
+[`schemas/lute-ir-0.48.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.48.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -307,7 +307,7 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.47.2"
+irVersion: "0.48.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -323,7 +323,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.2` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.48.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
