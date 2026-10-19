@@ -174,7 +174,7 @@ fn test_in(dir: &Path, json: bool) -> Output {
     let mut cmd = Command::new(BIN);
     cmd.arg("test")
         .arg("--project")
-        .arg(&dir)
+        .arg(dir)
         .arg(dir.join("tests"));
     if json {
         cmd.arg("--json");
