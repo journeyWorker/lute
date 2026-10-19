@@ -133,7 +133,7 @@ re-declaration must re-declare a superset of the imported base's members
 
 `lute init`은 `emotion`, `anchor`, `action`, `mood`, `volume`, `musicPlayback`, `vfxType`을 포함한 시작용 어휘를 생성된 씬이 가져오는 `vocabulary.schema.yaml`에 뼈대로 만듭니다 — 규칙이 아니라 여러분이 소유하고 편집하는, 의견이 담긴 템플릿입니다. 프로젝트가 카메라, CG, 의상, 시퀀스, 텍스트 스타일 중 하나를 처음 스테이징할 때 해당 슬롯을 추가하세요.
 
-`lute doctor --project <dir>`는 루트가 선언한 슬롯을 멤버 의미론과 함께 인라인으로 보고합니다:
+`lute doctor --project <DIR>`는 루트가 선언한 슬롯을 멤버 의미론과 함께 인라인으로 보고합니다:
 
 ```
 $ lute init demo && lute doctor --project demo

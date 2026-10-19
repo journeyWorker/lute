@@ -54,7 +54,7 @@ project root: .
 
 ## 그래프 보기
 
-`lute scenario --project <dir>`는 확인된 프로젝트 루트마다 조립된 노드/엣지 그래프를 결정적인 위상 파동으로 출력합니다 — 프런트매터와 동기화해야 하는 중앙 집중식 엣지 매니페스트 파일 없이 전체 그래프를 보는 방법입니다.
+`lute scenario --project <DIR>`는 확인된 프로젝트 루트마다 조립된 노드/엣지 그래프를 결정적인 위상 파동으로 출력합니다 — 프런트매터와 동기화해야 하는 중앙 집중식 엣지 매니페스트 파일 없이 전체 그래프를 보는 방법입니다.
 
 ```console
 $ lute scenario --project .
@@ -71,7 +71,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-퀘스트는 `follows`를 선언하면(`follows=""`도 가능하며 그래프 메타데이터일 뿐, 퀘스트를 잠그지는 않음) 그래프에 들어옵니다. 이를 선언하지 않으면 앵커를 통해 들어옵니다. 앵커는 퀘스트를 받는 `::accept`(`[accept]`, dsl 0.24.0 §2), 부모 퀘스트(`[subquest]`, dsl 0.25.0 §4), 그리고 `start`의 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` 결합식(`[start]`, dsl 0.25.0 §4)입니다. (entry는 노드 `entry(X)`가 됩니다.) [퀘스트와 씬](/ko/language/quests-and-scenes/#quest)을 참고하세요. 이들 중 어느 것도 없는 퀘스트는 앵커되지 않은 것으로 나열됩니다. 그래도 `lute scenario --project <dir> envelope --node quest:<id>`로 지정할 수 있지만 엣지는 만들지 않습니다.
+퀘스트는 `follows`를 선언하면(`follows=""`도 가능하며 그래프 메타데이터일 뿐, 퀘스트를 잠그지는 않음) 그래프에 들어옵니다. 이를 선언하지 않으면 앵커를 통해 들어옵니다. 앵커는 퀘스트를 받는 `::accept`(`[accept]`, dsl 0.24.0 §2), 부모 퀘스트(`[subquest]`, dsl 0.25.0 §4), 그리고 `start`의 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` 결합식(`[start]`, dsl 0.25.0 §4)입니다. (entry는 노드 `entry(X)`가 됩니다.) [퀘스트와 씬](/ko/language/quests-and-scenes/#quest)을 참고하세요. 이들 중 어느 것도 없는 퀘스트는 앵커되지 않은 것으로 나열됩니다. 그래도 `lute scenario --project <DIR> envelope --node quest:<id>`로 지정할 수 있지만 엣지는 만들지 않습니다.
 
 ### 엣지 종류
 

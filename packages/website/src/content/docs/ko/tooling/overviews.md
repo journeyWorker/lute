@@ -110,7 +110,7 @@ rules:
 ## `lute beats`
 
 ```console
-$ lute beats --project <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
+$ lute beats --project <DIR> [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
 ```
 
 프로젝트의 모든 비트를 계기별 **사다리** 하나로, 대상 지정 계기라면 대상별 하나로 나누어 선택 순서 — priority 내림차순, 그 다음 `project.index.json`의 `beats` 순서인 프로젝트 순서 — 대로 출력합니다. 각 행에는 비트의 위치를 결정하는 것과 프로젝트 전체 `check`가 비트에 대해 내린 판정이 함께 표시됩니다:
@@ -195,7 +195,7 @@ project root: .
     4  -1        dockEmpty   entry  no    shadowed     -      -
 ```
 
-`--occasion <O>`(반복 가능)는 해당 계기의 사다리만 남기고, `--target <T>`(반복 가능)는 해당 대상에 발생하는 사다리만 남기므로 대상 없는 계기는 빠집니다. 프로젝트가 모르는 계기는 known 목록을 보여 주는 사용법 오류이며, beat가 이름 붙인 대상이 없으면 `(no beats)`를 출력합니다:
+`--occasion <OCCASION>`(반복 가능)는 해당 계기의 사다리만 남기고, `--target <TARGET>`(반복 가능)는 해당 대상에 발생하는 사다리만 남기므로 대상 없는 계기는 빠집니다. 프로젝트가 모르는 계기는 known 목록을 보여 주는 사용법 오류이며, beat가 이름 붙인 대상이 없으면 `(no beats)`를 출력합니다:
 
 ```console
 $ lute beats --project . --occasion daystart
@@ -245,8 +245,8 @@ project root: .
 ## `lute calendar`
 
 ```console
-$ lute calendar --project <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
-                [--occasion <O>]… [--occasion-axes <O>=<axis>[=<value>],…]… [--target <T>]… [--relation <relation>]…
+$ lute calendar --project <DIR> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
+                [--occasion <OCCASION>]… [--occasion-axes <OCCASION>=<axis>[=<value>],…]… [--target <TARGET>]… [--relation <relation>]…
                 [--script <route.play.yaml> [--until <step>]] [--where <cel>]
                 [--format text|csv] [--json]
 ```
@@ -254,9 +254,9 @@ $ lute calendar --project <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… |
 상태 값 격자의 **모든 셀**과 모든 계기 열에 대해, [`lute play`](/ko/tooling/play/)가 그곳에서 자격 있다고 판정할 비트를 평가합니다 — 프로젝트의 규칙을 적용한 자체 후보, `once`, `after:`, `when` — 그리고 승자를 보고합니다. 모든 셀은 같은 월드에서 시작합니다. 선언된 기본값 또는 스텝을 재생한 플레이 스크립트의 세이브에서 시작한 뒤 축 값을 쓰고 퀘스트를 정착시킵니다. 격자 안에서 제시되는 것은 없습니다. 각 셀은 “지금 엔진이 이 계기를 발생시키면 무엇을 플레이할까?”라는 하나의 질문이며, 어떤 셀도 다른 셀이 한 일을 보지 않습니다.
 
 - `--axis`(선택, 반복 가능)는 선언된 상태 경로와 그 값을 이름 붙입니다: 포함하는 정수 범위 `run.day=1..7`, 또는 목록 `run.slot=morning,evening`입니다. 각 값은 경로의 선언된 타입에 맞는지 검사됩니다. 격자는 축들의 곱이며, **첫 번째 축이 가장 느리게 변합니다**. `--axis`가 없으면 단일 셀입니다. 상태 쓰기로는 닿을 수 없는 더 많은 축 종류(퀘스트 상태, 팩트, 방문 집합, 선언된 시계)는 [퀘스트, 팩트, visited 및 시계 축](#퀘스트와-팩트-축)을 참고하세요.
-- `--occasion <O>`(반복 가능) — 평가할 계기입니다. 기본값은 비트가 응답하는 모든 계기입니다. `--occasion-axes <O>=<axis>,…`는 해당 계기를 선택하면서 일부 축만 변화시킵니다 — [계기별 축과 각자의 위치](#계기별-축과-각자의-위치)를 참고하세요.
+- `--occasion <OCCASION>`(반복 가능) — 평가할 계기입니다. 기본값은 비트가 응답하는 모든 계기입니다. `--occasion-axes <OCCASION>=<axis>,…`는 해당 계기를 선택하면서 일부 축만 변화시킵니다 — [계기별 축과 각자의 위치](#계기별-축과-각자의-위치)를 참고하세요.
 - `--relation <relation>`(반복 가능, dsl 0.24.0) — 정착이 끝난 뒤 모든 셀에서 해당 관계의 팩트를 출력합니다.
-- `--target <T>`(반복 가능) — 대상에게 발생하는 계기의 대상입니다. 기본값은 비트가 이름 붙인 모든 대상이며, 선언된 [대상 도메인](/ko/tooling/play/#계기)의 나머지는 포함하지 않습니다. 비트가 응답하지 않아 모든 셀이 구멍으로 읽히기 때문입니다. [종류 비트](/ko/tooling/play/#종류-대상)(dsl 0.26.0)는 종류의 모든 멤버를 이름 붙이므로 각 멤버에 열이 생기며, 해당 멤버에게 발생할 때 그 priority의 자체 비트 뒤에서 제공됩니다. 어떤 비트도 대상을 이름 붙이지 않으면 계기에는 `(any)`라는 단일 열이 생깁니다(아래 목록에서 `<occasion>@(any)`). 이 열에는 대상 없는 비트만 응답합니다. 각 (계기, 대상) 쌍은 하나의 열입니다.
+- `--target <TARGET>`(반복 가능) — 대상에게 발생하는 계기의 대상입니다. 기본값은 비트가 이름 붙인 모든 대상이며, 선언된 [대상 도메인](/ko/tooling/play/#계기)의 나머지는 포함하지 않습니다. 비트가 응답하지 않아 모든 셀이 구멍으로 읽히기 때문입니다. [종류 비트](/ko/tooling/play/#종류-대상)(dsl 0.26.0)는 종류의 모든 멤버를 이름 붙이므로 각 멤버에 열이 생기며, 해당 멤버에게 발생할 때 그 priority의 자체 비트 뒤에서 제공됩니다. 어떤 비트도 대상을 이름 붙이지 않으면 계기에는 `(any)`라는 단일 열이 생깁니다(아래 목록에서 `<occasion>@(any)`). 이 열에는 대상 없는 비트만 응답합니다. 각 (계기, 대상) 쌍은 하나의 열입니다.
 - `--script <file>` — 모든 셀이 시작할 플레이 스크립트입니다. **세이브**(`state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` — [세이브에서 시작하기](/ko/tooling/play/#세이브에서-시작하기))에서 시작한 뒤 `steps:`를 `lute play`와 정확히 같은 방식으로 재생합니다. 세이브에는 스텝이 없어도 됩니다. 이 옵션이 없으면 모든 셀이 선언된 기본값과 seed 팩트에서 시작합니다.
 - `--until <step>` — `--script`와 함께 사용하며, 이 스텝 전까지만 재생합니다. 1부터 세는 번호 또는 `label:`로 지정하며 해당 스텝 자체는 플레이하지 않습니다. [경로를 따라](#경로를-따라)를 참고하세요.
 - `--where <cel>` — 이 조건이 성립하는 셀만 남깁니다. [어떤 런도 도달하지 않는 셀 버리기](#어떤-런도-도달하지-않는-셀-버리기)를 참고하세요.
@@ -480,7 +480,7 @@ lute calendar: `--axis run.aff`: `run.aff` is a `per: suitor` family — name a 
 
 ### 계기별 축과 각자의 위치
 
-어떤 계기는 하루에 한 번 발생하지만 day × slot 격자는 모든 행에서 모든 계기를 평가합니다. `--occasion-axes <O>=<axis>,…`(dsl 0.24.0)는 `O`에서 이름 붙인 축만 변화시킵니다. 다른 모든 축이 첫 값에 있고 나머지는 비워진 곳에서 평가됩니다 — `--occasion-axes dayStart=run.day`는 하루에 한 번 벨을 읽습니다. `--occasion-axes dayStart=run.day,run.slot=evening`은 `run.slot`을 첫 값 대신 `evening`으로 고정합니다. 반복 가능한 `--relation <relation>`은 정착된 각 셀의 관계 팩트를 표로 추가합니다 — 첫 번째 인자마다 행을 만들고 셀마다 열을 만들어 사람을 이동시키는 규칙을 보이게 합니다.
+어떤 계기는 하루에 한 번 발생하지만 day × slot 격자는 모든 행에서 모든 계기를 평가합니다. `--occasion-axes <OCCASION>=<axis>,…`(dsl 0.24.0)는 `O`에서 이름 붙인 축만 변화시킵니다. 다른 모든 축이 첫 값에 있고 나머지는 비워진 곳에서 평가됩니다 — `--occasion-axes dayStart=run.day`는 하루에 한 번 벨을 읽습니다. `--occasion-axes dayStart=run.day,run.slot=evening`은 `run.slot`을 첫 값 대신 `evening`으로 고정합니다. 반복 가능한 `--relation <relation>`은 정착된 각 셀의 관계 팩트를 표로 추가합니다 — 첫 번째 인자마다 행을 만들고 셀마다 열을 만들어 사람을 이동시키는 규칙을 보이게 합니다.
 
 ```console
 $ lute calendar --project . --axis run.day=1..3 --axis run.slot=morning,evening \
@@ -662,7 +662,7 @@ lute calendar: the axes' product exceeds 10000 cells
 ## `lute scenario knowledge`
 
 ```console
-$ lute scenario --project <dir> [--json] knowledge [--node <node>]
+$ lute scenario --project <DIR> [--json] knowledge [--node <NODE>]
 ```
 
 모든 가드 슬롯에서 팩트를 질의하는 조건(`holds(…)`, `count(…)`, `countDistinct(…)`, `validAt(…)`)을 나열합니다(dsl 0.24.0). 대상에는 beat, entry 및 objective 가드, 줄의 `when=`, `<choice when>`, `<when>` arm 테스트, `::jump`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail`, objective `until`이 모두 포함됩니다. 조건은 문서별로 묶고 소스 줄을 함께 표시하며, 각 질의 원자는 무엇이 생성할 수 있는지까지 추적합니다. 파생 원자는 규칙을 따라가되, 규칙 head의 변수를 해당 원자의 상수에 바인딩하므로 필요한 전제를 ground atom으로 표시합니다. 기반 원자는 producer에서 끝납니다.
@@ -773,7 +773,7 @@ project root: .
 
 전제 하나당 패배 팩트는 최대 세 개까지 출력하고, 그 뒤에는 `… and N more defeating facts`가 붙습니다. 열린 인자 도메인의 어떤 tuple이든 성립할 수 있는 부정 관계는 패배 줄 뒤에 `` — any `rumor` tuple may hold ``라고 합니다.
 
-`--node <node>`는 씬(그 안의 모든 가드 — `inn.again`), 번들 비트, 엔트리 id(`dockBo`), `<quest>.<objective>` 형태의 퀘스트 목표(`ferry.word`), 퀘스트의 모든 목표를 위한 `quest:<id>`, 또는 한 choice의 가드를 위한 `<scene>#<branch>.<choice>`를 선택합니다. 줄과 choice가 팩트로 가드된 `inn.ask` 씬이 있다면 다음과 같습니다.
+`--node <NODE>`는 씬(그 안의 모든 가드 — `inn.again`), 번들 비트, 엔트리 id(`dockBo`), `<quest>.<objective>` 형태의 퀘스트 목표(`ferry.word`), 퀘스트의 모든 목표를 위한 `quest:<id>`, 또는 한 choice의 가드를 위한 `<scene>#<branch>.<choice>`를 선택합니다. 줄과 choice가 팩트로 가드된 `inn.ask` 씬이 있다면 다음과 같습니다.
 
 ```console
 $ lute scenario --project . knowledge --node inn.ask
@@ -859,7 +859,7 @@ reach quest(relight):
 ### 팩트 간선(`lute scenario --facts`)
 
 ```console
-$ lute scenario --project <dir> [--format text|dot] [--json] --facts
+$ lute scenario --project <DIR> [--format text|dot] [--json] --facts
 ```
 
 수집 게임의 진행은 방문이 아니라 팩트로 게이트됩니다. 배지가 있어야 체육관이 열리고 렌즈가 있어야 탑이 열립니다. 그런 게이트는 `after:` 간선을 그리지 않으므로 기본 그래프에서는 모든 체육관이 레이어 0에 놓입니다. `--facts`(dsl 0.26.0 §8)는 씬, 비트 또는 퀘스트의 게이트(`when:` 또는 `start=`)가 `holds(F)`를 읽고 producer가 `F`를 단언하는 곳에 **팩트 간선** `producer -> reader [fact]`를 추가합니다. `F`가 파생되면, 파생 규칙이 필요로 하는 팩트를 단언하는 곳에서 출발하여 규칙의 결론을 표시하며 `[hasItem(goodRod), via canPass(pier)]`처럼 출력합니다. 이후 순환을 닫지 않는 곳에서는 팩트 간선 위에 레이어도 그리므로, 팩트가 여는 것은 그것을 제공하는 것보다 아래에 놓입니다. Wren의 씬은 막대기를 제공합니다(`::assert{hasItem(goodRod)}`). 호수는 `holds('hasItem', ['goodRod'])`를 읽고, 보트는 `canPass(pier) :- hasItem(goodRod)` 규칙으로 파생되는 `holds('canPass', ['pier'])`를 읽습니다.

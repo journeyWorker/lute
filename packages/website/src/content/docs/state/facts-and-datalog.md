@@ -365,7 +365,7 @@ a guard `holds('canMend', ['lamp'])` is decided by the rule: mock `knows(lamp)` 
 
 `derive: false` — a key of a trace mock, a `*.test.yaml`, or a play script — or the `--no-derive` flag, which wins over the key, restores the 0.21 model: the seed `facts:` are not loaded, an unmocked derived atom is unknown, and a note names each derived relation read. A test written against that model (an unmocked derived atom reading unknown, or a seeded relation reading empty) pins `derive: false` to keep its verdict. See the [Tracing guide](/tooling/tracing/) and [Playing a story](/tooling/play/).
 
-To see *why* an atom holds, `lute play --derivation <atom>` (repeatable) prints its derivation at the end of the playthrough: the rule used, each premise's own support — a seed fact, asserted, or derived in turn — and a negated premise shown `(absent)`:
+To see *why* an atom holds, `lute play --derivation <ATOM>` (repeatable) prints its derivation at the end of the playthrough: the rule used, each premise's own support — a seed fact, asserted, or derived in turn — and a negated premise shown `(absent)`:
 
 ```
 explain canMend(lamp): holds
@@ -385,7 +385,7 @@ explain canMend(lamp): does not hold
 
 ## How whole-project `lute check` analyzes relational guards
 
-A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, whole-project `lute check` (`lute check --project <dir>`) decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::jump` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
+A guard that presumes knowledge is the right tool — `@eris{when="holds('knows', ['player', 'lumen'])"}` shows the line only once the player knows. Since 0.20.0, whole-project `lute check` (`lute check --project <DIR>`) decides every relational query (`holds(…)`, `count(…)`) in every guard slot — a line `when=`, a `<choice when>`, a `<when test>`, a `::jump` guard, a lore entry `when`, a quest `start`/`fail`, an objective `done`/`visibleWhen` — as one of three verdicts:
 
 - **impossible** — no seed, assert, rule, or engine relation anywhere in the project can produce a matching fact;
 - **guaranteed** — a matching fact holds on **every** declared route reaching the guard;
@@ -487,7 +487,7 @@ Whole-project `lute check` settles the first and third and leaves the second alo
 
 The same two sets decide counts: after the archive, `count('knows', ['player', '_'])` lies between 1 and 2, so a guard `count('knows', ['player', '_']) >= 3` is dead and `count('knows', ['player', '_']) >= 1` is redundant.
 
-The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in whole-project `lute check` only. `lute check <file>` leaves each relational query undecided, but still sees a contradiction between two queries in one condition: `holds(P) && !holds(P)` is false whatever holds (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)). To see why a guard was judged guaranteed, `lute scenario --project <dir> envelope --node <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)). To see which documents produce the facts a guard queries, `lute scenario --project <dir> knowledge` traces each queried atom through the rules to its producers, or to **no producer** (see [Overviews](/tooling/overviews/#lute-scenario-knowledge)).
+The analysis needs the whole project — an assert in a sibling document is invisible to a single file, and claiming "never asserted" from one file would be false — so it runs in whole-project `lute check` only. `lute check <file>` leaves each relational query undecided, but still sees a contradiction between two queries in one condition: `holds(P) && !holds(P)` is false whatever holds (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)). To see why a guard was judged guaranteed, `lute scenario --project <DIR> envelope --node <scene>` lists the **guaranteed facts** at the scene's entry beside the scalar tables (see [envelopes](/connectivity/envelopes/#guaranteed-facts)). To see which documents produce the facts a guard queries, `lute scenario --project <DIR> knowledge` traces each queried atom through the rules to its producers, or to **no producer** (see [Overviews](/tooling/overviews/#lute-scenario-knowledge)).
 
 ### Relations nothing reads
 
@@ -502,4 +502,4 @@ It is reported once per project, at the declaration: the schema file's line, or 
 
 ### Guards over facts not written yet
 
-While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check --project <dir> --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).
+While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check --project <DIR> --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).

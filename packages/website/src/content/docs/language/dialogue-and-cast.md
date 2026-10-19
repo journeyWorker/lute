@@ -150,7 +150,7 @@ Without a declared cast, speakers are checked for shape only, as before 0.23.0, 
 write dialogue before it settles its characters. The cast belongs to the project, not to one
 scene: a `cast:` key in a scene's frontmatter is `E-META-UNKNOWN-KEY`.
 
-`lute context <file>` lists the cast with its display names (pass `--project <dir>` to include a
+`lute context <file>` lists the cast with its display names (pass `--project <DIR>` to include a
 plugin's cast), and the language server offers the cast when it completes a speaker after `@`.
 
 ### Display names shared by two speakers

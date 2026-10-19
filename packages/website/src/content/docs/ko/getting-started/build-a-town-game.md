@@ -601,7 +601,7 @@ key `closingBell.prompt`, lineId `market.closingBell.prompt`이며 세 선택지
 }
 ```
 
-**컴파일.** `compile --project <P> --locale-bundle <L> -o <OUT>`는 번들을 모든 artifact에 병합합니다. 줄과
+**컴파일.** `compile --project <DIR> --locale-bundle <FILE> -o <DIR>`는 번들을 모든 artifact에 병합합니다. 줄과
 선택지 라벨에는 `texts` 맵이 생기고, `closingBell` branch에는 원본 `prompt`와
 `promptLineId` 옆에 `promptTexts`가 생깁니다. 원본 텍스트는 바뀌지 않습니다.
 번들이 선언한 locale의 번역이 없는 레코드는 lineId와 locale마다 하나씩

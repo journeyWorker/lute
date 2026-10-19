@@ -13,7 +13,7 @@ world.schema.yaml declares three enum paths:
 
   lute check --project .  -> ok, although scenes/end.lute (via components/ending.component.lute, param typed
                            { entity: outcome }) writing "tragic" into run.ending is `ok`
-  lute play . --script plays/p.play.yaml -> `set run.ending = "tragic"` (out-of-domain value stored)
+  lute play --project . --script plays/p.play.yaml -> `set run.ending = "tragic"` (out-of-domain value stored)
 
 Same holds for into="run.ending" value="tragic" and <when is="tragic"> (probed; not kept).
 The cheatsheet recommends { domain: weekday } exactly to get labels:, so a labelled

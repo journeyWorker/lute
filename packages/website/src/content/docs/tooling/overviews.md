@@ -110,7 +110,7 @@ And one quest, `quests/ferry.lute`, which starts once you have met Ada at the in
 ## `lute beats`
 
 ```console
-$ lute beats --project <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
+$ lute beats --project <DIR> [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
 ```
 
 Print every beat of the project, grouped into one **ladder** per occasion — and, for a targeted occasion, one per target — in selection order: priority descending, then project order (the order of `beats` in `project.index.json`). Each row carries what decides the beat's place and what `check --project` concludes about it:
@@ -195,7 +195,7 @@ project root: .
     4  -1        dockEmpty   entry  no    shadowed     -      -
 ```
 
-`--occasion <O>` (repeatable) keeps only those occasions' ladders; `--target <T>` (repeatable) keeps only the ladders raised for that target, so untargeted occasions drop out. An occasion the project does not know is a usage error that lists the known ones; a target no beat names prints `(no beats)`:
+`--occasion <OCCASION>` (repeatable) keeps only those occasions' ladders; `--target <TARGET>` (repeatable) keeps only the ladders raised for that target, so untargeted occasions drop out. An occasion the project does not know is a usage error that lists the known ones; a target no beat names prints `(no beats)`:
 
 ```console
 $ lute beats --project . --occasion daystart
@@ -246,8 +246,8 @@ Exit **0** on success, **2** on an I/O failure or an unknown `--occasion`.
 ## `lute calendar`
 
 ```console
-$ lute calendar --project <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
-                [--occasion <O>]… [--occasion-axes <O>=<axis>[=<value>],…]… [--target <T>]… [--relation <relation>]…
+$ lute calendar --project <DIR> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
+                [--occasion <OCCASION>]… [--occasion-axes <OCCASION>=<axis>[=<value>],…]… [--target <TARGET>]… [--relation <relation>]…
                 [--script <route.play.yaml> [--until <step>]] [--where <cel>]
                 [--json | --format csv]
 ```
@@ -255,9 +255,9 @@ $ lute calendar --project <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… |
 Evaluate, for **every cell** of a grid of state values and every occasion column, which beats [`lute play`](/tooling/play/) would find eligible there — its own candidates, `once`, `after:` and `when`, with the project's rules applied — and report the winner. Every cell starts from the same world — the declared defaults, or a play script's save with its steps replayed — then gets its axis values written, and its quests settle. Nothing is presented within the grid: each cell is one question, "if the engine raised this occasion now, what would play?", and no cell sees what another did.
 
 - `--axis` (optional, repeatable) names a declared state path and its values: an inclusive integer range `run.day=1..7`, or a list `run.slot=morning,evening`. Each value is checked against the path's declared type. The grid is the product of the axes, and the **first axis varies slowest**; with no `--axis` it is a single cell. More kinds of axis reach what a state write cannot — a quest's status, a fact, the visited set, a declared clock — see [Quest, fact, visited and clock axes](#quest-and-fact-axes).
-- `--occasion <O>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers. `--occasion-axes <O>=<axis>,…` varies only some axes for that occasion — see [Per-occasion axes and who is where](#per-occasion-axes-and-who-is-where).
+- `--occasion <OCCASION>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers. `--occasion-axes <OCCASION>=<axis>,…` varies only some axes for that occasion — see [Per-occasion axes and who is where](#per-occasion-axes-and-who-is-where).
 - `--relation <relation>` (repeatable, dsl 0.24.0) — print the relation's facts in every cell, once it has settled.
-- `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0) names every member of its kind, so each member gets a column, and a cell offers it at that member's raise, after the member's own beats of its priority. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
+- `--target <TARGET>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0) names every member of its kind, so each member gets a column, and a cell offers it at that member's raise, after the member's own beats of its priority. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
 - `--script <file>` — a play script every cell starts from: its **save** — `state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` ([Starting from a save](/tooling/play/#starting-from-a-save)) — and then its `steps:`, replayed exactly as `lute play` plays them. A save needs no steps. Without it, every cell starts from the declared defaults and the seed facts.
 - `--until <step>` — with `--script`, replay only the steps before this one, named by its 1-based number or its `label:`; the step itself is not played. See [Along a route](#along-a-route).
 - `--where <cel>` — keep only the cells where this condition holds; see [Dropping cells no run reaches](#dropping-cells-no-run-reaches).
@@ -481,7 +481,7 @@ lute calendar: `--axis run.aff`: `run.aff` is a `per: suitor` family — name a 
 
 ### Per-occasion axes and who is where
 
-Some occasions happen once a day, but a grid over day × slot evaluates every occasion in every row. `--occasion-axes <O>=<axis>,…` (dsl 0.24.0) varies only the named axes for `O`: it is evaluated where every other axis is at its first value and left blank elsewhere — `--occasion-axes dayStart=run.day` reads the bell once per day. `--occasion-axes dayStart=run.day,run.slot=evening` holds `run.slot` at `evening` instead of its first value. `--relation <relation>` (repeatable) adds a table of the relation's facts in every settled cell — a row per first argument, a column per cell — so the rules that move people become visible:
+Some occasions happen once a day, but a grid over day × slot evaluates every occasion in every row. `--occasion-axes <OCCASION>=<axis>,…` (dsl 0.24.0) varies only the named axes for `O`: it is evaluated where every other axis is at its first value and left blank elsewhere — `--occasion-axes dayStart=run.day` reads the bell once per day. `--occasion-axes dayStart=run.day,run.slot=evening` holds `run.slot` at `evening` instead of its first value. `--relation <relation>` (repeatable) adds a table of the relation's facts in every settled cell — a row per first argument, a column per cell — so the rules that move people become visible:
 
 ```console
 $ lute calendar --project . --axis run.day=1..3 --axis run.slot=morning,evening \
@@ -664,7 +664,7 @@ Exit **0** on success, **1** when the project does not compile, **2** on an I/O 
 ## `lute scenario knowledge`
 
 ```console
-$ lute scenario --project <dir> [--json] knowledge [--node <node>]
+$ lute scenario --project <DIR> [--json] knowledge [--node <NODE>]
 ```
 
 List every condition that queries a fact — `holds(…)`, `count(…)`, `countDistinct(…)`, or `validAt(…)` — in every guard slot (dsl 0.24.0): beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::jump`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail`, and objective `until`. Conditions are grouped by document, each with its source line, and each queried atom is traced back to what can produce it. A derived atom is followed **through the rules**, with the rule head's variables bound to the atom's constants, so each premise is shown as the ground atom it needs; a base atom ends at its producers:
@@ -775,7 +775,7 @@ A fact with several derivation routes lists every one of them (dsl 0.25.0 §9), 
 
 At most three defeating facts are printed per premise, then `… and N more defeating facts`. A negated relation that may hold any tuple (an open argument domain) says so after its defeat line (`` — any `rumor` tuple may hold ``).
 
-`--node <node>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
+`--node <NODE>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
 
 ```console
 $ lute scenario --project . knowledge --node inn.ask
@@ -862,7 +862,7 @@ Lore entries join the graph only as the source of a quest's `start` anchor, `ent
 ### Fact edges (`lute scenario --facts`)
 
 ```console
-$ lute scenario --project <dir> [--format text|dot | --json] --facts
+$ lute scenario --project <DIR> [--format text|dot | --json] --facts
 ```
 
 Progress in a collecting game is gated by facts, not by visits: a gym opens on a badge, a tower on a lens. Those gates draw no `after:` edge, so the bare graph puts every gym in layer 0. `--facts` (dsl 0.26.0 §8) adds a **fact edge** `producer -> reader [fact]` wherever a scene's, beat's or quest's gate — its `when:` or `start=` — reads `holds(F)` and the producer asserts `F`; when `F` is derived, the edge runs from whatever asserts a fact the deriving rule needs and names the rule's conclusion, `[hasItem(goodRod), via canPass(pier)]`. The layers are then drawn over the fact edges too, wherever one closes no cycle, so what a fact unlocks sits below what gives it. Wren's scene gives a rod (`::assert{hasItem(goodRod)}`); the lake reads `holds('hasItem', ['goodRod'])`, and the boat reads `holds('canPass', ['pier'])`, which the rule `canPass(pier) :- hasItem(goodRod)` derives:

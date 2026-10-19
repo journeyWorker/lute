@@ -2321,7 +2321,7 @@ $ lute play --project tower --script tower/plays/night.play.yaml --no-derive
 ── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
-`--derivation <atom>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
+`--derivation <ATOM>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
 않는지 출력합니다. 성립하면: 사용된 규칙과 각 전제의 근거 — `seed fact`, 플레이 중 `asserted`(누가 단언했는지 아래 참고), 또는 다시
 파생된 것이면 그 아래 들여쓰기로 — 가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면: 그것을
 결론지을 수 있는 모든 규칙이 전제 표시와 함께 나옵니다 — 없는 기반 팩트는 `✗ <atom>  (absent)`, 없는 파생

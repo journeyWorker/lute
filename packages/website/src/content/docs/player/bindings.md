@@ -3,7 +3,7 @@ title: Player bindings reference
 description: Complete player.bindings.yaml sections, effect catalogue, parameters, and whole-project check diagnostics for Lute 0.41.
 ---
 
-`player.bindings.yaml` is optional and sits beside `lute.project.yaml`. Whole-project `lute check` (`lute check --project <dir>`, no document operands) reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
+`player.bindings.yaml` is optional and sits beside `lute.project.yaml`. Whole-project `lute check` (`lute check --project <DIR>`, no document operands) reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
 bindingsVersion: "0.47"
@@ -104,8 +104,8 @@ Domain-keyed binding keys must be members of the merged project domains. `charac
 
 A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). Whole-project `lute check` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
 
-A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check --project <dir> --json`.
+A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check --project <DIR> --json`.
 
-Use `lute check --project <dir>` after `lute compile --project <dir> -o <out>`; a clean project with no bindings remains valid because the file is optional.
+Use `lute check --project <DIR>` after `lute compile --project <DIR> -o <out>`; a clean project with no bindings remains valid because the file is optional.
 
 The normative repository reference is [`docs/player/bindings.md`](https://github.com/journeyWorker/lute/blob/main/docs/player/bindings.md).

@@ -405,7 +405,7 @@ who="lassMina" …} — when: false`와 같은 형태이며, trace와 test도 �
 ./scenes/route2.lute:9:30: error [E-BAD-ENUM] `superPotoin` is not a member of entity kind `bagItem` (attribute `item` of `::give` in component `gift`) — did you mean `superPotion`?
 ```
 
-[`lute refs --project <dir> --attr give.item`](/ko/tooling/cli/)은 해당 값을 바인딩하는 `::use` 줄에 표시하며
+[`lute refs --project <DIR> --attr give.item`](/ko/tooling/cli/)은 해당 값을 바인딩하는 `::use` 줄에 표시하며
 ``(via component `gift`)``로 표시합니다.
 
 이런 매개변수도 텍스트로 렌더링됩니다(dsl 0.27.0 §7). `hall: { domain: room }`에 대한 `{{@hall}}`은 인수에

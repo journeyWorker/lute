@@ -328,7 +328,7 @@ major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.2` 매트�
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
 
-`lute check --engine <file>`과 `lute check --project <dir> --engine <file>`은 플레이백 없이
+`lute check --engine <file>`과 `lute check --project <DIR> --engine <file>`은 플레이백 없이
 저작 시점의 협상을 수행합니다. 누락된 캐퍼빌리티는 낮춰진 구성의 소스 범위, 의미 ID,
 엔진 이름과 함께 `E-CHECK-ENGINE-SEMANTICS`로 보고됩니다. 프로젝트 형식은 프로젝트 인덱스
 합집합을 검사하고 기여한 각 문서/범위를 나열합니다. 플러그인 호환성은 여전히 정확한

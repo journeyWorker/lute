@@ -178,7 +178,7 @@ Two more kinds of anchor need no `follows=` either (dsl 0.25.0 §4):
   entry joins the graph as the node `entry(<id>)`. An `||` of such reads is one anchor with several
   sources. A `start`-driven quest therefore needs no copy of its `start` in `follows=`.
 
-`lute scenario --project <dir> reach --node quest:<id>` lists a quest's anchors (`anchors` in `--json`).
+`lute scenario --project <DIR> reach --node quest:<id>` lists a quest's anchors (`anchors` in `--json`).
 Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
 explicit `follows=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
 the subquest edge stays.

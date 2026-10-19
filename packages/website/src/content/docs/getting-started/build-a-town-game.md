@@ -608,7 +608,7 @@ writes the same bytes. An excerpt of
 }
 ```
 
-**Compile.** `compile --project <P> --locale-bundle <L> -o <OUT>` merges the bundle into every artifact:
+**Compile.** `compile --project <DIR> --locale-bundle <FILE> -o <DIR>` merges the bundle into every artifact:
 lines and option labels gain a `texts` map, and the `closingBell` branch gains
 `promptTexts` next to its source `prompt` and `promptLineId`. The source text
 is never replaced. A record with no translation for a locale the bundle

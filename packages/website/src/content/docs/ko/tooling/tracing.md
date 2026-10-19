@@ -29,7 +29,7 @@ $ lute trace scene.lute \
 
 퀘스트와 씬 조건에는 두 가지 입력원이 더 있습니다(dsl 0.21.0).
 
-- `--occasion <name>` — walk가 정착한 뒤 CLI 순서대로 계기를 발생시킵니다(반복 가능하며 mock의 `occasions:` 뒤에 옵니다). 각 발생은 먼저 활성 퀘스트의 `<on event="<name>">` 핸들러를 모두 실행하고 — 계기는 `lute play`와 `lute run`처럼 같은 이름의 월드 이벤트도 발생시킵니다 — 그다음 모든 활성 퀘스트의 `<objective on="<name>">` 목표를 판정합니다. 따라서 목표는 핸들러가 쓴 내용을 읽을 수 있으며, `on` 목표는 그 밖의 경우에는 절대 판정하지 않습니다. `--occasion <name>@<target>`(dsl 0.23.0)은 대상에게 계기를 발생시킵니다 — [대상, 기한 및 이전 런](#대상-기한-및-이전-런)을 참고하세요.
+- `--occasion <OCCASION>` — walk가 정착한 뒤 CLI 순서대로 계기를 발생시킵니다(반복 가능하며 mock의 `occasions:` 뒤에 옵니다). 각 발생은 먼저 활성 퀘스트의 `<on event="<name>">` 핸들러를 모두 실행하고 — 계기는 `lute play`와 `lute run`처럼 같은 이름의 월드 이벤트도 발생시킵니다 — 그다음 모든 활성 퀘스트의 `<objective on="<name>">` 목표를 판정합니다. 따라서 목표는 핸들러가 쓴 내용을 읽을 수 있으며, `on` 목표는 그 밖의 경우에는 절대 판정하지 않습니다. `--occasion <OCCASION>@<target>`(dsl 0.23.0)은 대상에게 계기를 발생시킵니다 — [대상, 기한 및 이전 런](#대상-기한-및-이전-런)을 참고하세요.
 - `visited: [<scene id>…]` (mock 파일만 해당) — 이미 제시된 씬입니다. 어떤 조건에서든 `visited('<scene id>')`가 읽으며, 목록에 없는 씬은 방문되지 않은 것입니다. 집합이 닫혀 있으므로 `visited(…)` 읽기는 항상 `true` 또는 `false`이고 미해결이 아닙니다.
 - `bridges: { <tag>: [ {<field>: value}, … ] }` (mock 또는 test만 해당, dsl 0.24.0 §5) — 브리지 결과를 읽는 플러그인 호출의 응답으로, 해당 태그 호출마다 호출 순서대로 하나씩 둡니다. [브리지 응답](#브리지-응답)을 참고하세요.
 
@@ -167,7 +167,7 @@ trace complete: 0 decisions
 
 비트 자신의 `after="…"`(dsl 0.25.0 §3)도 mock의 `visited:`와 퀘스트 상태 위에서 같은 방식으로 표시되지만 강제되지는 않습니다. 성립하지 않으면 walk 시작에 ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)``가 나옵니다.
 
-전체 종류를 대상으로 하는 비트 또는 엔트리(`target="kind:trainer"`, dsl 0.26.0 §5; [종류 대상](/ko/tooling/play/#종류-대상) 참고)는 발생한 멤버를 `occasion.target`으로 읽습니다. 상태 경로와 같이 시드할 수 있습니다 — `--state occasion.target=r16Gus`, 또는 mock/test의 `state: { occasion.target: r16Gus }` — 종류가 정한 타입을 따르므로 비멤버는 `E-TRACE-MOCK-TYPE`입니다. 또는 `--occasion <occasion>@<target>`으로 비트의 계기를 해당 멤버에게 발생시키면 엔진처럼 바인딩됩니다(종류 밖 대상도 `E-TRACE-MOCK-TYPE`). 텍스트가 이를 보간하면 trace와 test는 `lute play`처럼 멤버를 출력합니다. 종류의 label이 우선하고, cast id인 멤버면 cast `name:`을 사용하며, 그 밖에는 id를 씁니다(`@narrator  Hiker Brom squares up.`). 둘 중 어느 것도 없으면 멤버를 필요로 하는 첫 줄 또는 쓰기에서 walk가 미완료로 멈추고 시드를 표시합니다. `--entry`도 엔트리의 `<document id>.<entry id>`를 받습니다(`--entry lore.tomas.tomasOil`).
+전체 종류를 대상으로 하는 비트 또는 엔트리(`target="kind:trainer"`, dsl 0.26.0 §5; [종류 대상](/ko/tooling/play/#종류-대상) 참고)는 발생한 멤버를 `occasion.target`으로 읽습니다. 상태 경로와 같이 시드할 수 있습니다 — `--state occasion.target=r16Gus`, 또는 mock/test의 `state: { occasion.target: r16Gus }` — 종류가 정한 타입을 따르므로 비멤버는 `E-TRACE-MOCK-TYPE`입니다. 또는 `--occasion <OCCASION>@<target>`으로 비트의 계기를 해당 멤버에게 발생시키면 엔진처럼 바인딩됩니다(종류 밖 대상도 `E-TRACE-MOCK-TYPE`). 텍스트가 이를 보간하면 trace와 test는 `lute play`처럼 멤버를 출력합니다. 종류의 label이 우선하고, cast id인 멤버면 cast `name:`을 사용하며, 그 밖에는 id를 씁니다(`@narrator  Hiker Brom squares up.`). 둘 중 어느 것도 없으면 멤버를 필요로 하는 첫 줄 또는 쓰기에서 walk가 미완료로 멈추고 시드를 표시합니다. `--entry`도 엔트리의 `<document id>.<entry id>`를 받습니다(`--entry lore.tomas.tomasOil`).
 
 lore 문서는 `--entry` 또는 `--beat`가 필요하며, 둘 다 없으면 사용법 오류(종료 **2**)에서 두 종류의 id를 모두 나열합니다. 문서에 없는 beat를 `--beat`로 지정하면 `E-TRACE-BEAT`(종료 **1**)이며 선언된 목록을 표시합니다.
 
@@ -501,7 +501,7 @@ trace refused: scenes/dawn.lute — exclusive relations hold together
 
 0.6.1부터 trace는 거부가 아닌 경고도 냅니다 — 어떤 작성된 producer도 절대 assert할 수 없는 관계의 `--fact`/mock-YAML 팩트(`producible()`이 생산 불가로 판정함)에 대해 `W-TRACE-MOCK-UNPRODUCIBLE`을 냅니다. 공급한 답변은 도달 가능한 플레이에서 절대 발생할 수 없으므로, 그것을 시드한 "complete" 걷기는 아무것도 증명하지 못합니다. `reserved: true`이거나 `open: engine` 인자 관계는 정의상 생산 가능하므로 경고하지 않습니다.
 
-Trace가 프로젝트를 볼 수 있으면 판정 범위는 프로젝트 전체입니다 — `--project <dir>`을 주거나 trace하는 파일 위에 `lute.project.yaml`이 있는 경우입니다. `facts:` 시드 또는 프로젝트 전체 `check`가 도달 불가라고 증명하지 않은 문서의 `::assert`가 관계를 생산할 수 있으면 그 관계는 생산 가능하며, 파생 관계는 규칙을 통해 판정합니다. 프로젝트가 없으면 경고는 trace 대상 문서만 판정하고 이를 명시합니다(`judged against this document only; pass --project <dir> to count the asserts of the project's other documents`). 따라서 이웃 씬에서 assert한 단서는 그 문서에서만 "not producible"입니다.
+Trace가 프로젝트를 볼 수 있으면 판정 범위는 프로젝트 전체입니다 — `--project <DIR>`을 주거나 trace하는 파일 위에 `lute.project.yaml`이 있는 경우입니다. `facts:` 시드 또는 프로젝트 전체 `check`가 도달 불가라고 증명하지 않은 문서의 `::assert`가 관계를 생산할 수 있으면 그 관계는 생산 가능하며, 파생 관계는 규칙을 통해 판정합니다. 프로젝트가 없으면 경고는 trace 대상 문서만 판정하고 이를 명시합니다(`judged against this document only; pass --project <DIR> to count the asserts of the project's other documents`). 따라서 이웃 씬에서 assert한 단서는 그 문서에서만 "not producible"입니다.
 
 ## 0.34.0의 증거
 

@@ -37,7 +37,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
     - run.kaiFound   written by: …
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `check`, surfaced here):
     - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `has(run.kaiFound)`
 ```
 
@@ -47,7 +47,7 @@ Reading a quest's completion write from a scene gated on `active` is therefore t
 
 ## Reading the tables
 
-`lute scenario --project <dir> envelope --node <nodeId>` prints both tables. The diagnostic reads for a state path `P` at node X:
+`lute scenario --project <DIR> envelope --node <NODE>` prints both tables. The diagnostic reads for a state path `P` at node X:
 
 - `P ∈ Guaranteed(X)` → safe under your declared routes; no diagnostic.
 - `P ∉ Possible(X)` → no declared route ever sets `P` before X — **error grade**, `E-STATE-MAYBE-UNAVAILABLE`, shipped by default in whole-project `lute check`.
@@ -76,7 +76,7 @@ Episode 6 asserts all three of Ottavio's facts outside any branch, and every rou
 
 ## Quest addressing
 
-`lute scenario --project <dir> envelope --node quest:<id>` prints a real table for **every** quest:
+`lute scenario --project <DIR> envelope --node quest:<id>` prints a real table for **every** quest:
 
 - A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
 - A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.

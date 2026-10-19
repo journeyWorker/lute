@@ -12,4 +12,4 @@ the rule `bonded(H) :- hero(H), cel("user.bond[H] >= 100")` instantiates for ivo
 undeclared path and play --explain shows `? cel("user.bond.ivo >= 100") (undecided)`; an
 engine: step writing user.bond.ivo is refused as "not a declared state path". Membership is
 inconsistent across per:, kind atoms and targets, and nothing reports it.
-Run (in variant-silent-rule): lute check --project . ; lute play . --script plays/p.play.yaml --explain "bonded(ivo)"
+Run (in variant-silent-rule): lute check --project . ; lute play --project . --script plays/p.play.yaml --derivation "bonded(ivo)"

@@ -19,7 +19,7 @@ Any node with an absent or empty `after` is a graph entry point (`reachable = tr
 
 ## Verdicts
 
-`lute scenario --project <dir> reach --node <nodeId>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
+`lute scenario --project <DIR> reach --node <NODE>` reports one of three verdicts plus the node's declared `after` prerequisite structure:
 
 - **Reachable** — a satisfiable route exists under the declared `after` graph.
 - **Unreachable** — no declared route reaches the node (`E-CONN-UNREACHABLE`).
@@ -41,7 +41,7 @@ The referenced-node list is deliberately not a checklist: it reports each atom's
 
 ## Endings
 
-`lute scenario --project <dir> reach --endings[=<occasion>]` (0.27.0) checks every ending at once: with `=<occasion>`, every beat answering that occasion; bare, every beat whose content can run `::end`. Each row puts the `after:` verdict above beside the `when` verdict whole-project `lute check` reaches — `E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE` (it never holds) or `W-BEAT-SHADOWED` (it never wins) — and, for a `when` nothing refutes, the state paths and facts it reads with who produces them:
+`lute scenario --project <DIR> reach --endings[=<OCCASION>]` (0.27.0) checks every ending at once: with `=<OCCASION>`, every beat answering that occasion; bare, every beat whose content can run `::end`. Each row puts the `after:` verdict above beside the `when` verdict whole-project `lute check` reaches — `E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE` (it never holds) or `W-BEAT-SHADOWED` (it never wins) — and, for a `when` nothing refutes, the state paths and facts it reads with who produces them:
 
 ```console
 $ lute scenario --project . reach --endings=termEnd
@@ -49,12 +49,12 @@ project root: .
 endings (the beats answering `termEnd`):
   end.other.keeper (beat, lore/endings/other.lute): reachable
     after: Reachable — a satisfiable route exists under your declared routes.
-    when: `run.route == 'hotaru'` — check-project does not refute it; it needs:
+    when: `run.route == 'hotaru'` — whole-project `check` does not refute it; it needs:
       run.route — written by scene `common.festival` (choice into)
   …
   end.ren.lantern (beat, lore/endings/ren.lute): reachable
     after: Reachable — a satisfiable route exists under your declared routes.
-    when: `run.route == 'ren' && @devoted(run.aff.ren)` — check-project does not refute it; it needs:
+    when: `run.route == 'ren' && @devoted(run.aff.ren)` — whole-project `check` does not refute it; it needs:
       run.aff.ren — written by beat `hangouts.council` via component `hangout`, scene `common.arrival`, scene `common.clash`, scene `common.injury`, scene `ren.confession`, scene `ren.date`
       run.route — written by scene `common.festival` (choice into)
   …
