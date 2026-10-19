@@ -120,7 +120,7 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 | Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
 
 Checkpoint and restore a running player with the handle:
 

@@ -103,7 +103,7 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 | Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
 
 Checkpoint and restore a running player with the handle:
 
@@ -280,6 +280,8 @@ A `StageCue.Vfx` carries an `EffectSpec`: a catalogue effect (`flash`, `shake`, 
 
 `AudioPort` implements `play(channel, sound)`, `stop(channel, fade)`, and `setVolumes`. Channels are `music`, `sfx`, and `voice`. `AudioPlay.file` is already resolved from bindings; `loop`, `volume` (0–1), `fade` and `restart` are explicit; a music `volume` is the gain `bindings.volumes` maps the record's member to (no member: 1; a member without a gain: 0). Music records follow `playback`: `start` plays from the start (`restart: true`); `stop` / `fadeOut` stop (fade `duration`, `fadeOut` defaulting to 1 s); any other value changes to the file, and playing the file that already plays without `restart` only changes its volume. `AssetLoader.ensure(files)` keeps files loaded for the open scope and reports progress through its stream; missing files fail with `AssetMissing`.
 
+Restoring a stage (load, `restore`, rollback) does not await its music call: the director begins the music `play` (or `stop`) on a fiber of the player scope and goes on, so that call may still be in progress (waiting for the platform to allow sound, or for a file) when the story continues. An `AudioPort` MUST let a later music `play` or `stop` win over an earlier music `play` still in progress: the earlier one completes without starting (or is stopped once it starts). `PixiAudio` does this, so a load before any user gesture reaches its restored await at once and the stage's music starts when audio unlocks.
+
 The public `PlayerAction` union is the device-independent input surface: advance, auto/skip, rollback, backlog/menu/save/load/settings, quick save/load, UI visibility, choice, idle, send, voice replay, and settings actions. A native host can emit these actions from any device.
 
 ## Line pacing
@@ -372,7 +374,7 @@ A dialogue line and a backlog entry take their translation from the runtime's `l
 
 ## Rollback and history
 
-The session retains the last `settings.rollbackDepth` input points (default 100). Each point contains runtime state, await, stage, backlog length, and log length. `rollback` interrupts current cue fibers, restores the selected point's stage through `Presenter.restore`, restarts its music, and resumes from that await. If no earlier point remains, the core returns `NothingToRollback`. It never serializes an XState actor snapshot as a save.
+The session retains the last `settings.rollbackDepth` input points (default 100). Each point contains runtime state, await, stage, backlog length, and log length. `rollback` interrupts current cue fibers, restores the selected point's stage through `Presenter.restore`, begins its music without waiting for it to start, and resumes from that await. If no earlier point remains, the core returns `NothingToRollback`. It never serializes an XState actor snapshot as a save.
 
 ## Read history and backlog
 

@@ -104,7 +104,7 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 | 담는 것 | 런타임 상태: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world`(state, facts, stage, clock) | `{ snapshot, log, backlog }`: 그 런타임 스냅숏과 플레이어의 accepted-input log, backlog |
 | 만드는 곳 | 런타임 `Session.save` | 플레이어 핸들의 `snapshot`(`DirectorHandle.snapshot`) |
 | 쓰는 곳 | 런타임 `Session.restore`, `LutePlayer.make({ snapshot })`, `RuntimeSession.layer({ snapshot })` | 핸들의 `restore(save)`, 저장 슬롯 |
-| 복원하는 것 | 이야기 위치 | 이야기와 플레이어 log·backlog. 체크포인트 뒤에 붙은 읽음 표시는 지우고, rollback 기록은 비우고, `auto` 슬롯을 다시 쓰고, stage와 음악을 다시 만들고, await를 다시 제시합니다 |
+| 복원하는 것 | 이야기 위치 | 이야기와 플레이어 log·backlog. 체크포인트 뒤에 붙은 읽음 표시는 지우고, rollback 기록은 비우고, `auto` 슬롯을 다시 쓰고, stage를 다시 만들고, 그 음악은 재생이 시작되기를 기다리지 않고 시작하고, await를 다시 제시합니다 |
 
 실행 중인 플레이어는 핸들로 체크포인트를 만들고 복원합니다.
 
@@ -256,7 +256,7 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 - `session`은 사용 중인 런타임 세션이고 `program`은 그 `session.program`입니다. bundle을 다시 로드하지 않고 `current`를 읽고 `events`를 구독하며 `view` / `evaluate` / `def` / `gate` / `candidates`를 실행합니다.
 - `send(input)`은 batch가 돌지 않고 이야기가 `idle` 또는 `ended`에서 기다릴 때 런타임에 입력을 넘깁니다(`ended`에서는 `newRun` 또는 outside-run 계기만 받습니다). 그 밖에서는 `DirectorBusy { flow, story }`로 실패하고 아무것도 바꾸지 않습니다. 런타임이 거부하면 그 오류로 실패하고 director는 같은 await에 머뭅니다. 입력이 수락되어 batch가 시작되면 완료되므로, send하는 핸들러가 자기 연출을 기다리는 일은 없습니다. `{ type: "send", input }` action도 같은 동작입니다.
 - **엔딩에 속한 쓰기 (0.44).** 이야기가 `ended`에 이르면 `hostWrite`는 거절됩니다(`RuntimeBusy`, 메시지가 이유를 알려 줍니다). 엔딩 메타데이터는 run을 끝내는 입력, 즉 `terminal`을 성립시키는 `raiseOccasion`, `advanceClock`, `bridgeResult`, `hostWrite`의 `writes`에 실어 보내세요(`send({ type: "raiseOccasion", occasion: "dawn", writes: { state: [{ path: "run.endedBy", value: "dawnSeven" }] } })`). `choose`, `timeout`, `worldEvent`는 쓰기를 싣지 않으므로, 이들이 run을 끝낸다면 그 상태를 스토리(갈래 안의 `::set`)나 그 전에 보낸 `hostWrite`에 기록하세요. `newRun`의 쓰기는 다음 run의 초기값이며, 그 run에서 끝난 run의 값은 `prev.run.*`로 읽힙니다.
-- `restore(save)`는 boot를 제외한 모든 flow 상태에서 호스트 체크포인트(핸들의 `snapshot` — 런타임 스냅숏, input log, backlog)로 이어 갑니다. 진행 중인 연출을 버리고, 체크포인트 뒤에 추가된 읽음 표시를 지우고, `auto` 슬롯을 다시 쓰며(autosave가 꺼져 있지 않으면), stage와 음악을 다시 만들고, 복원된 await를 다시 제시합니다(choice는 메뉴, bridge는 핸들러, idle은 idle 흐름, 엔딩은 엔딩 화면).
+- `restore(save)`는 boot를 제외한 모든 flow 상태에서 호스트 체크포인트(핸들의 `snapshot` — 런타임 스냅숏, input log, backlog)로 이어 갑니다. 진행 중인 연출을 버리고, 체크포인트 뒤에 추가된 읽음 표시를 지우고, `auto` 슬롯을 다시 쓰며(autosave가 꺼져 있지 않으면), stage를 다시 만들고 그 음악을 재생이 시작되기를 기다리지 않고 시작하며, 복원된 await를 다시 제시합니다(choice는 메뉴, bridge는 핸들러, idle은 idle 흐름, 엔딩은 엔딩 화면).
 
 ## 포트 계약
 
@@ -265,6 +265,8 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 `StageCue.Vfx`는 `EffectSpec`을 담습니다. 카탈로그 효과(`flash`, `shake`, …)이거나, `{ effect: custom }` vfx 바인딩(`name` 또는 바인딩 키)이나 바인딩 없는 vfx 타입이면 `name`이 있는 `effect: "custom"`입니다. `cue.effect.effect === "custom"`으로 분기하고 `cue.effect.name`을 읽습니다. `LineView.speakerName`은 bundle index의 cast 이름(내레이션은 빈 문자열)이며 `emotion`과 `variant`는 line 자체의 값입니다.
 
 `AudioPort`는 `play(channel, sound)`, `stop(channel, fade)`, `setVolumes`를 구현합니다. 채널은 `music`, `sfx`, `voice`입니다. `AudioPlay.file`은 이미 바인딩에서 해석되며 `loop`, `volume`(0–1), `fade`, `restart`가 명시됩니다. music의 `volume`은 레코드의 멤버를 `bindings.volumes`가 대응시킨 gain입니다(멤버 없음: 1, gain이 없는 멤버: 0). music 레코드는 `playback`을 따릅니다. `start`는 처음부터 재생하고(`restart: true`), `stop` / `fadeOut`은 멈추며(`duration`만큼 fade, `fadeOut` 기본 1초), 그 밖의 값은 해당 파일로 바꿉니다. 이미 재생 중인 파일을 `restart` 없이 재생하면 볼륨만 바뀝니다. `AssetLoader.ensure(files)`는 열린 scope 동안 파일을 유지하고 stream으로 progress를 보고합니다. 없는 파일은 `AssetMissing`로 실패합니다.
+
+stage 복원(load, `restore`, rollback)은 그 음악 호출을 기다리지 않습니다. director가 음악 `play`(또는 `stop`)를 플레이어 scope의 fiber에서 시작하고 넘어가므로, 이야기가 이어질 때 그 호출이 아직 진행 중일 수 있습니다(플랫폼이 소리를 허용하기를, 또는 파일을 기다리는 중). `AudioPort`는 나중의 music `play`/`stop`이 아직 진행 중인 앞선 music `play`보다 우선하도록 해야 합니다. 앞선 호출은 시작하지 않고 완료되며, 이미 시작했다면 바로 멈춥니다. `PixiAudio`가 이렇게 하므로, 사용자 제스처 전의 load도 복원된 await에 바로 이르고 stage의 음악은 오디오가 풀릴 때 시작합니다.
 
 ## 대사 진행 주체
 
@@ -357,7 +359,7 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 ## 롤백과 기록
 
-세션은 `settings.rollbackDepth`(기본 100)개의 input point를 보관합니다. 각 point에는 runtime state, await, stage, backlog 길이와 log 길이가 있습니다. rollback은 현재 cue fiber를 중단하고 선택한 point의 stage를 `Presenter.restore`로 복원한 뒤 음악을 재시작하고 해당 await에서 재개합니다. 이전 point가 없으면 `NothingToRollback`입니다. XState actor 스냅숏은 저장하지 않습니다.
+세션은 `settings.rollbackDepth`(기본 100)개의 input point를 보관합니다. 각 point에는 runtime state, await, stage, backlog 길이와 log 길이가 있습니다. rollback은 현재 cue fiber를 중단하고 선택한 point의 stage를 `Presenter.restore`로 복원한 뒤 음악을 재생이 시작되기를 기다리지 않고 시작하고 해당 await에서 재개합니다. 이전 point가 없으면 `NothingToRollback`입니다. XState actor 스냅숏은 저장하지 않습니다.
 
 ## 읽기 기록과 백로그
 
