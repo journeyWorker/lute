@@ -45,10 +45,10 @@
 //! ## What is reused, never re-implemented
 //! - Whole-project compile + gate: [`lute_model::reconciled_project_results`] +
 //!   [`crate::gate_for_doc`] + `lute_compile::compile_with_check`, the loop
-//!   `compile --all` ([`crate::compile_all`]) runs, kept in memory.
+//!   whole-project `compile` ([`crate::compile_all`]) runs, kept in memory.
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
 //!   the SAME `beats` rows (and tiebreak order), rules, seed facts and
-//!   relation tiers `compile --all` writes to `project.index.json`.
+//!   relation tiers whole-project `compile` writes to `project.index.json`.
 //! - Execution: [`lute_runtime::machine::Machine`] — the walker `lute run` uses
 //!   — driven by [`PlayDriver`], runs every scene beat, every entry beat
 //!   (its `--entry` path: first-read effects, `entry.<id>.read`), every
@@ -100,6 +100,7 @@ use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
 use plan::{bridge_queues, locate_step_error, plan_script, plan_steps, Step};
+pub(crate) use project::Build;
 #[cfg(test)]
 pub(crate) use project::{assemble_project_from_model, build_project_model, manifest_gate, PLAY};
 use project::{compile_play_project, compile_project};
@@ -240,6 +241,7 @@ fn load(
     script_path: &Path,
     no_derive: bool,
     matrix: &crate::EngineMatrix,
+    build: &Build,
 ) -> Result<Loaded, (ExitCode, String)> {
     let script = load_script(script_path)?;
     let (project, needles) = compile_play_project(
@@ -247,6 +249,7 @@ fn load(
         dir,
         project::PLAY,
         matrix,
+        build,
     )?;
     let (plan, world) = plan_script(&project, &needles, &script, script_path, no_derive)?;
     Ok(Loaded {
@@ -316,8 +319,12 @@ fn install_condition_dump(
     driver: &mut PlayDriverState,
     path: &Path,
 ) -> Result<(), String> {
-    let file = std::fs::File::create(path)
-        .map_err(|e| format!("cannot create condition dump {}: {e}", path.display()))?;
+    let file = std::fs::File::create(path).map_err(|e| {
+        format!(
+            "cannot create conditions-output file {}: {e}",
+            path.display()
+        )
+    })?;
     let file = Rc::new(RefCell::new(file));
     let mut env = project
         .eval_json
@@ -350,9 +357,9 @@ fn install_condition_dump(
     }
     if let Ok(mut f) = file.try_borrow_mut() {
         serde_json::to_writer(&mut *f, &json!({"kind": "env", "env": env}))
-            .map_err(|e| format!("cannot write condition dump header: {e}"))?;
+            .map_err(|e| format!("cannot write conditions-output header: {e}"))?;
         use std::io::Write;
-        writeln!(f).map_err(|e| format!("cannot write condition dump header: {e}"))?;
+        writeln!(f).map_err(|e| format!("cannot write conditions-output header: {e}"))?;
     }
     let defaults: std::collections::BTreeMap<String, lute_runtime::Value> = project
         .state_table
@@ -427,8 +434,8 @@ fn install_condition_dump(
 
 /// `lute play --events` (spec 0.38.0 §10.2): the script through the public
 /// runtime, as JSON Lines on stdout.
-fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode {
-    let run = match events::script_run(dir, script_path, no_derive) {
+fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool, build: &Build) -> ExitCode {
+    let run = match events::script_run_with(dir, script_path, no_derive, build) {
         Ok(run) => run,
         Err(e) => {
             eprintln!("lute play: {e}");
@@ -445,32 +452,58 @@ fn run_play_events(dir: &Path, script_path: &Path, no_derive: bool) -> ExitCode 
     ExitCode::from(code)
 }
 
+/// `lute play`'s flags (0.48.0 §3.12), resolved by the dispatcher.
+pub struct PlayOptions<'a> {
+    pub dir: &'a Path,
+    pub script: &'a Path,
+    pub engine: Option<&'a Path>,
+    pub events: bool,
+    pub json: bool,
+    pub no_derive: bool,
+    /// `--derivation <FACT>`: the facts whose derivation to print.
+    pub derivation: &'a [String],
+    pub ir: bool,
+    pub quiet: bool,
+    pub conditions_output: Option<&'a Path>,
+    pub build: Build<'a>,
+}
+
 /// See [`crate::Command::Play`].
-#[expect(
-    clippy::too_many_arguments,
-    reason = "CLI flags are kept explicit at the command boundary"
-)]
-pub fn run_play(
-    dir: &Path,
-    script_path: &Path,
-    engine: Option<&Path>,
-    events: bool,
-    json: bool,
-    no_derive: bool,
-    explain: &[String],
-    ir: bool,
-    quiet: bool,
-    dump_conditions: Option<&Path>,
-) -> ExitCode {
+pub fn run_play(options: &PlayOptions) -> ExitCode {
+    let PlayOptions {
+        dir,
+        script: script_path,
+        engine,
+        events,
+        json,
+        no_derive,
+        derivation: explain,
+        ir,
+        quiet,
+        conditions_output: dump_conditions,
+        build,
+    } = options;
+    let (dir, script_path, engine, events, json, no_derive, explain, ir, quiet, dump_conditions) = (
+        *dir,
+        *script_path,
+        *engine,
+        *events,
+        *json,
+        *no_derive,
+        *explain,
+        *ir,
+        *quiet,
+        *dump_conditions,
+    );
     if events {
         if json || ir || !explain.is_empty() || dump_conditions.is_some() {
             eprintln!(
                 "lute play: --events prints the runtime stream; it cannot be combined with \
-                 --json, --ir, --explain or --dump-conditions"
+                 --json, --ir, --derivation or --conditions-output"
             );
             return ExitCode::from(2);
         }
-        return run_play_events(dir, script_path, no_derive);
+        return run_play_events(dir, script_path, no_derive, build);
     }
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(m) => m,
@@ -486,7 +519,7 @@ pub fn run_play(
         project,
         plan,
         world,
-    } = match load(dir, script_path, no_derive, &matrix) {
+    } = match load(dir, script_path, no_derive, &matrix, build) {
         Ok(l) => l,
         Err((code, msg)) => {
             if code == ExitCode::from(2)
@@ -534,10 +567,10 @@ pub fn run_play(
             Ok(e) => Some(e),
             Err(e) => {
                 let message = format!(
-                    "lute play: --explain: {}",
+                    "lute play: --derivation: {}",
                     lute_core_span::plain_message(&e)
                 );
-                return envelope::fail(CliError::usage(message).with_argument("--explain"));
+                return envelope::fail(CliError::usage(message).with_argument("--derivation"));
             }
         }
     };
@@ -659,12 +692,12 @@ pub(crate) struct PlayProject(
 
 impl PlayProject {
     /// Compile the project at `dir` for play ([`compile_project`]).
-    pub(crate) fn compile(dir: &Path) -> Self {
-        Self::compile_in(&lute_model::ModelMemo::default(), dir)
+    pub(crate) fn compile(dir: &Path, build: &Build) -> Self {
+        Self::compile_in(&lute_model::ModelMemo::default(), dir, build)
     }
 
     /// [`PlayProject::compile`] over `memo`'s model of the project.
-    pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path) -> Self {
+    pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path, build: &Build) -> Self {
         const NOT_COMPILED: &str = "the project does not compile (diagnostics above)";
         PlayProject(
             project::compile_play_bundle(
@@ -672,6 +705,7 @@ impl PlayProject {
                 dir,
                 project::TEST,
                 &crate::EngineMatrix::reference(),
+                build,
             )
             .map_err(|(_, msg)| {
                 if msg.is_empty() {

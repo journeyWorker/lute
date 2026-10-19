@@ -48,7 +48,7 @@ fn envelope_guaranteed_read_drops_the_reconciled_maybe_unset_and_exits_zero() {
         String::from_utf8_lossy(&out_x.stdout)
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -96,7 +96,7 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
         ),
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -111,7 +111,7 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
     );
     assert!(
         v.get("envelope_warnings").is_none(),
-        "the warning grade must not be surfaced anywhere in default check-project output: {v}"
+        "the warning grade must not be surfaced anywhere in default whole-project check output: {v}"
     );
     for f in v["files"].as_array().unwrap() {
         let diags = f["diagnostics"].as_array().unwrap();
@@ -123,7 +123,7 @@ fn envelope_possible_not_guaranteed_read_is_fully_suppressed_by_default() {
         );
     }
 
-    let out_human = run(&["check-project", dir.to_str().unwrap()]);
+    let out_human = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(out_human.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&out_human.stdout);
     assert!(!stdout.contains("E-MAYBE-UNSET"), "{stdout}");
@@ -147,7 +147,7 @@ fn envelope_never_possible_read_replaces_maybe_unset_with_state_unavailable_erro
         &scene_reading_run_z("x", "after: 'visited(\"y.s01ep01\")'\n"),
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -192,7 +192,7 @@ fn envelope_unavailable_engine_path_is_not_told_to_add_an_after() {
             "run.z: { type: int, owner: engine }",
         ),
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(1), "{stdout}");
     let line = stdout
@@ -227,7 +227,7 @@ fn a_dotted_quest_id_is_reported_once_at_its_declaration() {
         "---\nkind: scene\ncharacter: s\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
          @narrator{when=\"quest.wing.hush.state == 'complete'\"}: Asleep.\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("E-PATH-IDENT"), "{stdout}");
     assert!(!stdout.contains("E-UNDECLARED"), "{stdout}");
@@ -277,7 +277,7 @@ fn a_hyphenated_quest_id_read_after_a_dot_names_the_quoted_spelling() {
     for when in ["quest.lamp-duty.state == 'active'", "quest.lamp-duty.state"] {
         write(&dir, "a.lute", &scene(when));
         for args in [
-            vec!["check-project", dir.to_str().unwrap()],
+            vec!["check", "--project", dir.to_str().unwrap()],
             vec!["check", dir.join("a.lute").to_str().unwrap()],
         ] {
             let errs = errors(&run(&args));
@@ -295,7 +295,7 @@ fn a_hyphenated_quest_id_read_after_a_dot_names_the_quoted_spelling() {
         "a.lute",
         &scene("quest['lamp-duty'].state == 'active'"),
     );
-    let errs = errors(&run(&["check-project", dir.to_str().unwrap()]));
+    let errs = errors(&run(&["check", "--project", dir.to_str().unwrap()]));
     assert!(errs.is_empty(), "{errs:?}");
 }
 
@@ -313,7 +313,7 @@ fn envelope_tainted_node_leaves_maybe_unset_untouched() {
         &scene_reading_run_z("x", "after: 'visited(\"ghost.s01ep01\")'\n"),
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -386,7 +386,7 @@ fn envelope_reconciliation_is_per_node_across_a_cycle() {
         );
     }
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -454,7 +454,7 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
     // `scene.local` is entry-dependent (declared, no default, never
     // locally proven) but SCENE-tier -- out of the envelope's `run.*`/
     // `user.*` scope (dsl §4.3 §386-393). Reconciliation must NEVER touch
-    // it: the per-file `E-MAYBE-UNSET` survives check-project untouched,
+    // it: the per-file `E-MAYBE-UNSET` survives whole-project check untouched,
     // no `E-STATE-MAYBE-UNAVAILABLE` is ever produced for it.
     let dir = temp_dir("envelope-out-of-scope-scene");
     write(
@@ -463,7 +463,7 @@ fn envelope_out_of_scope_scene_maybe_unset_survives_check_project() {
         "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  scene.local: { type: int }\n---\n## Shot 1.\n@narrator: value {{scene.local}}\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -509,7 +509,7 @@ fn envelope_out_of_scope_quest_state_read_is_clean_in_check_project() {
         "---\nkind: scene\ncharacter: x7\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: value {{quest.foo.state}}\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -561,7 +561,7 @@ fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
     // Standalone red proof: BOTH reads flag E-MAYBE-UNSET at the same span.
     let out_x = run(&["check", dir.join("x.lute").to_str().unwrap(), "--json"]);
     let vx: serde_json::Value = serde_json::from_slice(&out_x.stdout).unwrap();
-    let unset: Vec<&serde_json::Value> = vx["diagnostics"]
+    let unset: Vec<&serde_json::Value> = vx["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -577,7 +577,7 @@ fn envelope_mixed_slot_span_collision_only_reconciles_the_in_scope_path() {
         "both reads must share the same slot span: {vx}"
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),

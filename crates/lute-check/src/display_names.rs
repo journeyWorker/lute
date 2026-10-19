@@ -3,7 +3,7 @@
 //! cast entries with the same `name:`, a cast `name:` equal to a component
 //! `::use{… name="…"}` display string, or two such strings for different
 //! speakers, read as one person. `W-DISPLAY-NAME-DUP` is advisory
-//! (`check-project` and `lute lint`); names are compared exactly.
+//! (whole-project `check` and `lute lint`); names are compared exactly.
 //!
 //! A `::use` display string belongs to the speaker its `who=` names (the
 //! speaker-param convention, §3.2), so a trainer's battle and rematch are one

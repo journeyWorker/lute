@@ -441,7 +441,7 @@ fn reserved_quest_paths(
         .into()
 }
 
-/// The documents of `project` (the same `.lute` walk `check-project` does),
+/// The documents of `project` (the same `.lute` walk whole-project `check` does),
 /// else `file` alone, parsed.
 fn project_docs(
     file: &Path,
@@ -469,7 +469,7 @@ fn project_docs(
 /// entry id, and lore bundle beat canonical id (`<document id>.<beat id>`,
 /// dsl 0.23.0 §4; the `beats` key is present only when some document bundles
 /// beats) — under `project` when given (the same `.lute` walk
-/// `check-project` does), else in `file` alone. Parse-only: ids are
+/// whole-project `check` does), else in `file` alone. Parse-only: ids are
 /// syntactic, and a document that does not check still declares them.
 fn project_ids(docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)]) -> Value {
     let views: Vec<lute_check::ProjectDoc<'_>> = docs

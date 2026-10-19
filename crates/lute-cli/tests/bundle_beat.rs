@@ -42,8 +42,8 @@ state:
 /// source order, each head record followed by its body segment.
 const ARTIFACT: &str = r#"{
   "kind": "lore",
-  "lute": "0.47.2",
-  "irVersion": "0.47.2",
+  "lute": "0.48.0",
+  "irVersion": "0.48.0",
   "requiredSemantics": ["lute.core/1", "lute.lore/1", "lute.occasions.selection/1", "lute.time.cadence/1"],
   "meta": { "id": "interviews" },
   "state": [
@@ -106,7 +106,7 @@ fn trace_bundle_beat_walks_the_chosen_arm() {
         &file,
         "--beat",
         "porter",
-        "--choose",
+        "--choice",
         "porterTalk=ask",
     ]);
     assert_eq!(code, Some(0), "stderr: {stderr}\nstdout: {stdout}");
@@ -122,7 +122,7 @@ fn trace_bundle_beat_walks_the_chosen_arm() {
         &file,
         "--beat",
         "interviews.porter",
-        "--choose",
+        "--choice",
         "porterTalk=leave",
         "--json",
     ]);
@@ -307,9 +307,13 @@ fn play_presents_a_bundle_beat_and_spends_it() {
          choose:\n  porterTalk: [ask]\n",
     );
     let root = dir.to_str().unwrap().to_string();
-    let (code, stdout, stderr) = lute(&["check-project", &root]);
-    assert_eq!(code, Some(0), "check-project clean:\n{stdout}\n{stderr}");
-    let (code, stdout, stderr) = lute(&["play", &root, "--script", &script, "--json"]);
+    let (code, stdout, stderr) = lute(&["check", "--project", &root]);
+    assert_eq!(
+        code,
+        Some(0),
+        "whole-project check clean:\n{stdout}\n{stderr}"
+    );
+    let (code, stdout, stderr) = lute(&["play", "--project", &root, "--script", &script, "--json"]);
     assert_eq!(code, Some(0), "play:\n{stdout}\n{stderr}");
     let v: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     let steps = v["steps"].as_array().expect("steps");

@@ -80,7 +80,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.47.2";
+pub const LUTE_LANG_VERSION: &str = "0.48.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -247,7 +247,7 @@ pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
 pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
-pub use tag::{codes_locked, retag_document, tag_document, RetagOutcome, TagOutcome};
+pub use tag::{codes_locked, retag_document, tag_document, LineRenumber, RetagOutcome, TagOutcome};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use time::{fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};
 pub use timeline::{

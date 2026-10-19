@@ -352,7 +352,7 @@ fn ever_read_is_a_readable_reserved_flag_and_unwritable() {
     let ds = diags(&src);
     assert!(with_code(&ds, "E-UNDECLARED").is_empty(), "{ds:?}");
     assert_eq!(with_code(&ds, "E-QUEST-RESERVED-WRITE").len(), 1, "{ds:?}");
-    // check-project resolves the id like `entry.<id>.read`.
+    // whole-project check resolves the id like `entry.<id>.read`.
     let docs = ProjectDocs::parse(
         vec![(PathBuf::from("s.lute"), lute_syntax::parse(&src).0)],
         &snapshot(),

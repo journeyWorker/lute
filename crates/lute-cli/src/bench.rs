@@ -12,7 +12,7 @@ pub struct Project(PlayProject);
 /// Compile the project at `dir` for play: model build, manifest gate and
 /// `ExecProject` assembly. `Err` names why no play can run over it.
 pub fn compile(dir: &Path) -> Result<Project, String> {
-    let project = PlayProject::compile(dir);
+    let project = PlayProject::compile(dir, &crate::play::Build::default());
     match project.error() {
         Some(e) => Err(e.to_string()),
         None => Ok(Project(project)),

@@ -1,30 +1,36 @@
 {
   "command": "check",
-  "diagnostics": [
+  "files": [
     {
-      "code": "E-TEXT-ESCAPE",
-      "layer": "content",
-      "message": "unknown escape in inline modifier",
-      "severity": "error",
-      "span": {
-        "byte_end": 157,
-        "byte_start": 155,
-        "column": 22,
-        "line": 13,
-        "utf16_range": [
-          155,
-          157
-        ]
+      "diagnostics": [
+        {
+          "code": "E-TEXT-ESCAPE",
+          "layer": "content",
+          "message": "unknown escape in inline modifier",
+          "severity": "error",
+          "span": {
+            "byte_end": 157,
+            "byte_start": 155,
+            "column": 22,
+            "line": 13,
+            "utf16_range": [
+              155,
+              157
+            ]
+          }
+        }
+      ],
+      "ok": false,
+      "path": "source.lute",
+      "resolved": {
+        "commands_preview": [
+          ":hero"
+        ],
+        "injections": [],
+        "timeline_tables": []
       }
     }
   ],
   "ok": false,
-  "resolved": {
-    "commands_preview": [
-      ":hero"
-    ],
-    "injections": [],
-    "timeline_tables": []
-  },
-  "schemaVersion": "0.43.0.check"
+  "schemaVersion": "0.48.0.check"
 }

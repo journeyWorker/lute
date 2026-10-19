@@ -59,6 +59,7 @@ fn occasions_project(tag: &str) -> lute_scratch::ScratchDir {
 fn doctor(dir: &Path, path_env: &Path) -> String {
     let out = Command::new(BIN)
         .arg("doctor")
+        .arg("--project")
         .arg(dir)
         .env("PATH", path_env)
         .output()
@@ -286,6 +287,7 @@ fn doctor_compares_the_lute_lsp_beside_lute_with_the_one_on_path() {
     let run = |path: &Path| {
         let out = Command::new(&lute)
             .arg("doctor")
+            .arg("--project")
             .arg(&proj)
             .env("PATH", path)
             .output()
@@ -347,6 +349,7 @@ fn doctor_accepts_the_npm_launcher_reporting_this_version_beside_lute() {
     let run = |path: &Path| {
         let out = Command::new(&lute)
             .arg("doctor")
+            .arg("--project")
             .arg(&proj)
             .env("PATH", path)
             .output()

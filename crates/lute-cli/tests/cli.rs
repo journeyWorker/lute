@@ -46,17 +46,17 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
-        v["diagnostics"].is_array(),
+        v["files"][0]["diagnostics"].is_array(),
         "diagnostics must serialize as an array"
     );
     // A clean document carries a resolved view (Some-vs-None policy).
     assert!(
-        v["resolved"].is_object(),
+        v["files"][0]["resolved"].is_object(),
         "clean doc → resolved is Some: {v}"
     );
-    assert!(v["resolved"]["commands_preview"].is_array());
-    assert!(v["resolved"]["timeline_tables"].is_array());
-    assert!(v["resolved"]["injections"].is_array());
+    assert!(v["files"][0]["resolved"]["commands_preview"].is_array());
+    assert!(v["files"][0]["resolved"]["timeline_tables"].is_array());
+    assert!(v["files"][0]["resolved"]["injections"].is_array());
 }
 
 #[test]
@@ -145,6 +145,7 @@ fn catalog_refresh_then_load_round_trips() {
     let out = Command::new(BIN)
         .arg("catalog")
         .arg("refresh")
+        .arg("--providers")
         .arg(&dir)
         .output()
         .unwrap();
@@ -180,6 +181,7 @@ fn catalog_refresh_missing_dir_is_created() {
     let out = Command::new(BIN)
         .arg("catalog")
         .arg("refresh")
+        .arg("--providers")
         .arg(&target)
         .output()
         .unwrap();
@@ -215,13 +217,13 @@ fn hub_demo_example_checks_clean() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "hub-demo → ok:true; got {v}");
     assert_eq!(
-        v["diagnostics"].as_array().map(Vec::len),
+        v["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "hub-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
     );
     // Prove the 0.1.0 features are actually present in the resolved view — the
     // `<hub>` and both `<when is>`-bearing matches — not a trivially clean doc.
-    let preview = v["resolved"]["commands_preview"].to_string();
+    let preview = v["files"][0]["resolved"]["commands_preview"].to_string();
     assert!(
         preview.contains("<hub>"),
         "resolved view must contain the hub; got {preview}"
@@ -365,13 +367,13 @@ fn when_is_demo_example_checks_clean() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "when-is-demo → ok:true; got {v}");
     assert_eq!(
-        v["diagnostics"].as_array().map(Vec::len),
+        v["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "when-is-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
     );
     // Prove the `<when is>` feature is actually present in the resolved view — the
     // `<match>` over the plain scene enum — not a trivially clean doc.
-    let preview = v["resolved"]["commands_preview"].to_string();
+    let preview = v["files"][0]["resolved"]["commands_preview"].to_string();
     assert!(
         preview.contains("<match"),
         "resolved view must contain the match; got {preview}"
@@ -1045,11 +1047,11 @@ fn init_scaffolds_a_checkable_vocabulary() {
     let scene = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
     assert!(
         scene.contains("emotion="),
-        "the starter scene must USE a vocabulary slot, or `check-project` below \
+        "the starter scene must USE a vocabulary slot, or whole-project `check` below \
          would pass without ever resolving the declaration:\n{scene}"
     );
     let check = Command::new(BIN)
-        .args(["check-project", proj.to_str().unwrap()])
+        .args(["check", "--project", proj.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(
@@ -1154,7 +1156,7 @@ fn doctor_reports_which_vocabulary_slots_resolve() {
         .success());
 
     let out = Command::new(BIN)
-        .args(["doctor", proj.to_str().unwrap()])
+        .args(["doctor", "--project", proj.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(out.status.success());
@@ -1179,7 +1181,7 @@ fn doctor_reports_which_vocabulary_slots_resolve() {
     // undeclared, so it tracks the project rather than printing a constant.
     std::fs::remove_file(proj.join("vocabulary.schema.yaml")).unwrap();
     let out = Command::new(BIN)
-        .args(["doctor", proj.to_str().unwrap()])
+        .args(["doctor", "--project", proj.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(out.status.success());
@@ -1209,13 +1211,13 @@ fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
-/// `doctor <dir>` and `check-project <dir>` MUST resolve the same project root
+/// `doctor --project <dir>` and `check --project <dir>` MUST resolve the same project root
 /// for the same target, or `doctor` reports a vocabulary the checker rejects.
 ///
 /// The fixture is the asymmetry itself: `proj/lute.project.yaml` activates a
 /// plugin whose `enums` export declares `musicPlayback`, `proj/scenes/` carries NO
 /// manifest, and `proj/scenes/a.lute` writes `::music{playback="start"}`.
-/// `check-project proj/scenes` cannot ascend above the requested dir, loads no
+/// `whole-project check proj/scenes` cannot ascend above the requested dir, loads no
 /// project, and reports `E-DOMAIN-UNKNOWN`. A `doctor` that walks up to `proj`
 /// would call the same slot declared.
 ///
@@ -1250,7 +1252,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
     let scenes = proj.join("scenes");
 
     let check = Command::new(BIN)
-        .args(["check-project", scenes.to_str().unwrap()])
+        .args(["check", "--project", scenes.to_str().unwrap()])
         .output()
         .unwrap();
     let check_text = format!(
@@ -1265,7 +1267,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
     );
 
     let out = Command::new(BIN)
-        .args(["doctor", scenes.to_str().unwrap()])
+        .args(["doctor", "--project", scenes.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(out.status.success());
@@ -1277,7 +1279,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
         .to_string();
     assert!(
         !declared.contains("musicPlayback"),
-        "doctor called `musicPlayback` declared while `check-project` on the SAME \
+        "doctor called `musicPlayback` declared while whole-project `check` on the SAME \
          dir reports E-DOMAIN-UNKNOWN — doctor ascended above the requested \
          directory:\n{declared}"
     );
@@ -1319,7 +1321,7 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
     // Two documents resolve the same broken project: the per-file loop used to
     // print the identical message twice, straight to stderr.
     let out = Command::new(BIN)
-        .args(["doctor", proj.to_str().unwrap()])
+        .args(["doctor", "--project", proj.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(out.status.success(), "doctor reports, never gates: {out:?}");
@@ -1338,7 +1340,7 @@ fn doctor_reports_a_broken_project_manifest_once_as_a_check() {
     );
 
     let out = Command::new(BIN)
-        .args(["doctor", proj.to_str().unwrap(), "--json"])
+        .args(["doctor", "--project", proj.to_str().unwrap(), "--json"])
         .output()
         .unwrap();
     assert!(out.status.success());
@@ -1380,7 +1382,7 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
         "file: s.lute\nchoose:\n  pick: noSuchArm\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1401,7 +1403,7 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
     // input that came from a YAML key, so even printed it points at the
     // wrong syntax.
     assert!(
-        !text.contains("--choose"),
+        !text.contains("--choice") && !text.contains("--choose"),
         "render the YAML key, not the flag: {text}"
     );
     assert!(text.contains("choose:"), "the YAML key must appear: {text}");
@@ -1429,7 +1431,7 @@ fn test_file_with_a_typoed_top_level_key_fails_and_suggests_the_real_one() {
         "file: s.lute\nchooses:\n  pick: b\nexpect:\n  transcriptContains: [\"b.\"]\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1460,7 +1462,7 @@ fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails()
         "file: s.lute\nexpect:\n  transcriptContain: [\"nope\"]\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1480,7 +1482,7 @@ fn test_file_with_a_typoed_expect_key_fails_and_its_corrected_twin_still_fails()
         "file: s.lute\nexpect:\n  transcriptContains: [\"nope\"]\n",
     );
     let out2 = Command::new(BIN)
-        .args(["test", dir2.to_str().unwrap()])
+        .args(["test", "--project", dir2.to_str().unwrap()])
         .output()
         .unwrap();
     let text2 = String::from_utf8_lossy(&out2.stdout).to_string();
@@ -1506,7 +1508,7 @@ fn test_with_zero_expectations_is_an_error_not_a_pass() {
     write_at(&dir, "empty.test.yaml", "file: s.lute\nexpect: {}\n");
     write_at(&dir, "absent.test.yaml", "file: s.lute\n");
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1538,7 +1540,7 @@ fn autopicked_branch_is_reported_not_silent() {
         "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1584,7 +1586,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
         );
         write_at(&d, "t.test.yaml", body);
         let out = Command::new(BIN)
-            .args(["test", d.to_str().unwrap()])
+            .args(["test", "--project", d.to_str().unwrap()])
             .output()
             .unwrap();
         (
@@ -1662,7 +1664,7 @@ fn a_never_written_state_path_never_renders_as_its_own_expected_value() {
         "file: s.lute\nexpect:\n  state:\n    run.label: \"<never written>\"\n",
     );
     let out = Command::new(BIN)
-        .args(["test", d.to_str().unwrap()])
+        .args(["test", "--project", d.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1691,7 +1693,7 @@ fn test_file_key_resolves_relative_to_the_test_file_not_the_cwd() {
         "file: ../scenes/s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap()])
+        .args(["test", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1722,7 +1724,7 @@ fn coverage_keys_on_the_construct_not_on_the_guard_text() {
         "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .args(["test", "--project", dir.to_str().unwrap(), "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1770,7 +1772,7 @@ fn coverage_reports_documents_with_no_test_at_all() {
         "file: tested.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .args(["test", "--project", dir.to_str().unwrap(), "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1799,7 +1801,7 @@ fn coverage_names_each_bundle_beat_as_its_own_unit() {
     );
     let d = dir.to_str().unwrap();
     let out = Command::new(BIN)
-        .args(["test", d, "--coverage"])
+        .args(["test", "--project", d, "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1809,7 +1811,7 @@ fn coverage_names_each_bundle_beat_as_its_own_unit() {
     assert!(!text.contains("every testable document"), "{text}");
 
     let out = Command::new(BIN)
-        .args(["test", d, "--coverage", "--json"])
+        .args(["test", "--project", d, "--coverage", "--json"])
         .output()
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -1852,7 +1854,7 @@ fn untested_denominator_excludes_component_documents() {
         "file: tested.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .args(["test", "--project", dir.to_str().unwrap(), "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1891,7 +1893,7 @@ fn coverage_names_a_def_match_as_authored() {
         "file: s.lute\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .args(["test", "--project", dir.to_str().unwrap(), "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -1996,7 +1998,7 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
         "steps:\n  - engine: { state: { run.flag: false } }\n  - occasion: visit\n    expect: { winner: s }\nexpect:\n  end: complete\n",
     );
     let out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage"])
+        .args(["test", "--project", dir.to_str().unwrap(), "--coverage"])
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
@@ -2010,7 +2012,13 @@ fn coverage_merges_match_arms_executed_only_by_a_play() {
     assert!(text.contains("match `run.flag`"), "{text}");
     assert!(text.contains("2/2 arm(s) executed"), "{text}");
     let json_out = Command::new(BIN)
-        .args(["test", dir.to_str().unwrap(), "--coverage", "--json"])
+        .args([
+            "test",
+            "--project",
+            dir.to_str().unwrap(),
+            "--coverage",
+            "--json",
+        ])
         .output()
         .unwrap();
     let payload: serde_json::Value = serde_json::from_slice(&json_out.stdout).unwrap();

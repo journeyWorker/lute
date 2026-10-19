@@ -49,26 +49,38 @@ fn report(args: &[&str], command: &str, version: &str) -> Value {
 #[test]
 fn reports_carry_the_envelope() {
     let arcia = "docs/examples/arcia-project";
-    report(&["beats", arcia, "--json"], "beats", "0.43.0.beats");
     report(
-        &["refs", arcia, "--reward", "ITEM", "--json"],
+        &["beats", "--project", arcia, "--json"],
+        "beats",
+        "0.43.0.beats",
+    );
+    report(
+        &["refs", "--project", arcia, "--reward", "ITEM", "--json"],
         "refs",
         "0.43.0.refs",
     );
-    report(&["lore", "docs/examples", "--json"], "lore", "0.43.0.lore");
     report(
-        &["loc", "report", arcia, "--json"],
+        &["lore", "--project", "docs/examples", "--json"],
+        "lore",
+        "0.43.0.lore",
+    );
+    report(
+        &["loc", "report", "--project", arcia, "--json"],
         "loc report",
         "0.47.0.loc-report",
     );
-    report(&["test", arcia, "--json"], "test", "0.43.0.test");
     report(
-        &["scenario", arcia, "--format", "json"],
+        &["test", "--project", arcia, "--json"],
+        "test",
+        "0.43.0.test",
+    );
+    report(
+        &["scenario", "--project", arcia, "--json"],
         "scenario",
         "0.43.0.scenario",
     );
     let doctor = report(
-        &["doctor", "docs/examples", "--json"],
+        &["doctor", "--project", "docs/examples", "--json"],
         "doctor",
         "0.43.0.doctor",
     );
@@ -81,6 +93,7 @@ fn reports_carry_the_envelope() {
     let play = report(
         &[
             "play",
+            "--project",
             league,
             "--script",
             &format!("{league}/plays/north.play.yaml"),
@@ -139,12 +152,18 @@ fn artifacts_and_streams_stay_unwrapped() {
     );
     assert!(run["irVersion"].is_string());
 
-    let rows = json(&lute(&["loc", "export", "docs/examples/arcia-project"]));
+    let rows = json(&lute(&[
+        "loc",
+        "export",
+        "--project",
+        "docs/examples/arcia-project",
+    ]));
     assert!(rows.is_array());
 
     let session = "conformance/session/hub-once/project";
     let events = lute(&[
         "play",
+        "--project",
         session,
         "--script",
         &format!("{session}/script.play.yaml"),
@@ -167,11 +186,7 @@ fn error(args: &[&str], command: &str, code: &str) -> Value {
     assert_eq!(value["ok"], false);
     assert_eq!(value["command"], command);
     assert_eq!(value["error"]["code"], code, "{args:?}: {value}");
-    let human: Vec<&str> = args
-        .iter()
-        .copied()
-        .filter(|a| *a != "--json" && *a != "json" && *a != "--format")
-        .collect();
+    let human: Vec<&str> = args.iter().copied().filter(|a| *a != "--json").collect();
     let plain = lute(&human);
     assert_eq!(plain.status.code(), Some(2), "{human:?}");
     assert_eq!(
@@ -186,11 +201,17 @@ fn error(args: &[&str], command: &str, code: &str) -> Value {
 fn failures_in_json_mode_are_error_envelopes() {
     let missing = "/no/such/lute-dir";
     for (args, command) in [
-        (vec!["refs", missing, "--reward", "ITEM", "--json"], "refs"),
-        (vec!["lore", missing, "--json"], "lore"),
-        (vec!["loc", "report", missing, "--json"], "loc report"),
-        (vec!["check-project", missing, "--json"], "check-project"),
-        (vec!["doctor", missing, "--json"], "doctor"),
+        (
+            vec!["refs", "--project", missing, "--reward", "ITEM", "--json"],
+            "refs",
+        ),
+        (vec!["lore", "--project", missing, "--json"], "lore"),
+        (
+            vec!["loc", "report", "--project", missing, "--json"],
+            "loc report",
+        ),
+        (vec!["check", "--project", missing, "--json"], "check"),
+        (vec!["doctor", "--project", missing, "--json"], "doctor"),
         (vec!["compile", "--json", "/no/such.lute"], "compile"),
         (vec!["trace", "/no/such.lute", "--json"], "trace"),
     ] {
@@ -206,6 +227,7 @@ fn failures_in_json_mode_are_error_envelopes() {
     let usage = error(
         &[
             "beats",
+            "--project",
             "docs/examples/arcia-project",
             "--occasion",
             "nope",
@@ -216,7 +238,7 @@ fn failures_in_json_mode_are_error_envelopes() {
     );
     assert_eq!(usage["error"]["argument"], "--occasion");
     let usage = error(
-        &["compile", "--all", "--json", "docs/examples/arcia-project"],
+        &["compile", "--json", "-o", "/no/such/out"],
         "compile",
         "E-CLI-USAGE",
     );
@@ -224,11 +246,12 @@ fn failures_in_json_mode_are_error_envelopes() {
     error(
         &[
             "scenario",
+            "--project",
             "docs/examples/arcia-project",
             "reach",
+            "--node",
             "scene:nope",
-            "--format",
-            "json",
+            "--json",
         ],
         "scenario reach",
         "E-CLI-USAGE",

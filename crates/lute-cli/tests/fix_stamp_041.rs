@@ -37,7 +37,7 @@ const BARE_DOC: &str = "---\nkind: scene\nid: bare\n---\n## Bare\n@narrator: No 
 /// The issue's project: the manifest stamp, a document's own stamp and the
 /// domain rename (key and reference) are all fixed in one run — four fixes
 /// over three of four files; a document without a stamp gains none; the
-/// rerun is a no-op and `check-project` no longer reports a stale stamp.
+/// rerun is a no-op and whole-project `check` no longer reports a stale stamp.
 #[test]
 fn fix_raises_project_and_document_stamps() {
     let dir = lute_scratch::ScratchDir::named("fix-stamp-041");
@@ -46,7 +46,7 @@ fn fix_raises_project_and_document_stamps() {
     write(&dir, "old.lute", OLD_DOC);
     write(&dir, "bare.lute", BARE_DOC);
 
-    let (code, before) = run(&["check-project"], &dir);
+    let (code, before) = run(&["check", "--project"], &dir);
     assert_eq!(code, 0, "{before}");
     assert!(before.contains("W-LUTE-VERSION-STALE"), "{before}");
 
@@ -77,7 +77,7 @@ fn fix_raises_project_and_document_stamps() {
         "{again}"
     );
 
-    let (code, after) = run(&["check-project"], &dir);
+    let (code, after) = run(&["check", "--project"], &dir);
     assert_eq!(code, 0, "{after}");
     assert!(!after.contains("W-LUTE-VERSION-STALE"), "{after}");
 }

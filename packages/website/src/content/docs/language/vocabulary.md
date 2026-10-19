@@ -105,8 +105,8 @@ declaration never reaches into yours.
 :::note
 A plugin's members only reach a single-file command when the run can see the project.
 `lute check scenes/opening.lute` finds the nearest `lute.project.yaml` above the file on its own
-(stderr: `note: using project …`), and `lute check-project .` resolves the root itself. `lute
-compile`, `trace`, and `context` need `--project .`: without it they run core-only, and a document
+(stderr: `note: using project …`), and `lute check --project .` resolves the root itself. `lute
+compile`, `trace`, and `context` find the project the same way from the file's directory, or take `--project .`: with no project in sight they run core-only, and a document
 relying on the plugin route reports `E-DOMAIN-UNKNOWN`.
 :::
 
@@ -185,10 +185,10 @@ Neither key is serialized into the artifact. The compiler has already resolved t
 imports — an opinionated template, not a rule, in a file you own and edit. Add the camera, CG,
 costume, sequence and text-style slots when the project first stages one.
 
-`lute doctor <dir>` reports which slots a root has declared, with the member semantics inline:
+`lute doctor --project <DIR>` reports which slots a root has declared, with the member semantics inline:
 
 ```
-$ lute init demo && lute doctor demo
+$ lute init demo && lute doctor --project demo
 lute doctor — demo
   • toolchain version: 0.10.0
   • language version: 0.10.0

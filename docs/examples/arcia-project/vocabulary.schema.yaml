@@ -5,7 +5,7 @@
 # `arcia.minigame` is a bridge/directive pack that ships no vocabulary, so the
 # project schema route is the one to use.
 #
-# This is the file shape `lute init` scaffolds, and `lute doctor <dir>` lists
+# This is the file shape `lute init` scaffolds, and `lute doctor --project <dir>` lists
 # which slots a root has declared.
 enums:
   emotion: [neutral, surprised, delighted, shy, content, angry, sad]

@@ -9,7 +9,7 @@ pub const E_OCCASION_UNKNOWN: &str = "E-OCCASION-UNKNOWN";
 /// A scene beat whose `when` provably never holds (dsl 0.21.0 §5).
 pub const E_BEAT_UNREACHABLE: &str = "E-BEAT-UNREACHABLE";
 /// A `select: first` beat that can never win (dsl 0.21.0 §5,
-/// `check-project` only).
+/// whole-project `check` only).
 pub const W_BEAT_SHADOWED: &str = "W-BEAT-SHADOWED";
 
 /// The scene-frontmatter beat keys (dsl 0.21.0 §3.1). Scene-only, never

@@ -91,7 +91,9 @@ fn json_reports_the_existing_error() {
     let (code, text) = check("invalid.lute", true);
     assert_eq!(code, 1, "{text}");
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    let diags = v["files"][0]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
     assert_eq!(diags.len(), 2, "{text}");
     for d in diags {
         assert_eq!(d["code"], "E-BAD-ENUM", "{d}");

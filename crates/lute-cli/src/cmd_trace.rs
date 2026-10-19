@@ -15,17 +15,39 @@ use crate::project::{discover_project, project_assert_relations_in, project_ques
 use lute_load::{build_input, BuiltInput};
 use lute_model::project_gate_result_in;
 
+/// What one `lute trace` run was asked (see [`crate::Command::Trace`]).
+pub(crate) struct TraceOptions<'a> {
+    pub(crate) file: &'a Path,
+    pub(crate) state: Vec<(String, String)>,
+    pub(crate) fact: Vec<String>,
+    pub(crate) choose: Vec<(String, Vec<String>)>,
+    pub(crate) event: Vec<String>,
+    pub(crate) accept: Vec<String>,
+    pub(crate) occasion: Vec<String>,
+    pub(crate) mock: Option<&'a Path>,
+    pub(crate) json: bool,
+    pub(crate) providers: Option<&'a Path>,
+    pub(crate) project: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
+    pub(crate) policy: &'a DenyPolicy,
+    pub(crate) entry: Option<&'a str>,
+    pub(crate) beat: Option<&'a str>,
+    pub(crate) no_derive: bool,
+    pub(crate) expand: bool,
+}
+
 /// Run `trace` over one file (dsl 0.4.0 §4.3/§4.5): resolve the document
 /// IDENTICALLY to `check`/`compile` ([`build_input`]), load + merge the
-/// `--mock` file with the CLI's own `--state`/`--fact`/`--choose`/`--event`/
-/// `--accept`/`--occasion` flags into one [`MockSet`] ([`merge`] — "CLI flags compose with
+/// `--mock` file with the CLI's own `--state`/`--fact`/`--choice`/`--event`/
+/// `--accepted-quest`/`--occasion` flags into one [`MockSet`] ([`merge`] — "CLI flags compose with
 /// the file; on a conflict the flag wins"), then hand off to
 /// [`lute_trace::trace_document`] — the entire §4.3 mock-validation gate,
 /// the §4.4 walk, and the §4.5 report are ITS concern; this function owns
 /// only flag assembly, file I/O, and the exit-code/render mapping.
 ///
 /// Exit codes (§4.5): `0` [`TraceExit::Complete`], `1`
-/// [`TraceExit::Refused`] (a document check error OR an invalid mock — the
+/// [`TraceExit::Refused`] (a document check error — or a `--deny`-promoted
+/// diagnostic of the gate — OR an invalid mock — the
 /// `E-TRACE-*` diagnostics render in EXACTLY [`print_diagnostics`]'s
 /// check-diagnostic line format; a refusal whose diagnostics are NOT all
 /// `E-TRACE-*` came from the `check` gate itself, so a "run `lute check`
@@ -33,30 +55,32 @@ use lute_model::project_gate_result_in;
 /// malformed `--mock` YAML document — the same tier `run_check`/`run_compile`
 /// use for a read failure), `3` [`TraceExit::Incomplete`] (an `unknown`
 /// guard halted the walk, or an unresolved objective/quest atom).
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn run_trace(
-    file: &Path,
-    state: Vec<(String, String)>,
-    fact: Vec<String>,
-    choose: Vec<(String, Vec<String>)>,
-    event: Vec<String>,
-    accept: Vec<String>,
-    occasion: Vec<String>,
-    mock: Option<&Path>,
-    json: bool,
-    providers: Option<&Path>,
-    project: Option<&Path>,
-    entry: Option<&str>,
-    beat: Option<&str>,
-    no_derive: bool,
-    expand: bool,
-) -> ExitCode {
+pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
+    let TraceOptions {
+        file,
+        ref state,
+        ref fact,
+        ref choose,
+        ref event,
+        ref accept,
+        ref occasion,
+        mock,
+        json,
+        providers,
+        project,
+        permission_profile,
+        policy,
+        entry,
+        beat,
+        no_derive,
+        expand,
+    } = *opts;
     // FS-F2: resolved against the same project `lute check` resolves it
-    // against — `--project`, else the nearest manifest. Only an explicit
-    // `--project` switches the gate to the reconciled project verdict below.
+    // against — `--project`, else the nearest manifest. Either switches the
+    // gate to the reconciled project verdict below (0.48.0 §2.1).
     let discovered = discover_project(file, project);
     let resolved = project.or(discovered.as_deref());
-    let Some(built) = build_input(file, providers, resolved, None) else {
+    let Some(built) = build_input(file, providers, resolved, permission_profile) else {
         return envelope::fail_quietly(CliError::unreadable_document(file));
     };
     built.report_project_diags();
@@ -179,18 +203,18 @@ pub(crate) fn run_trace(
         None => MockSet::default(),
     };
 
-    // `--state`/`--mock` literals and `--choose` targets carry no source
+    // `--state`/`--mock` literals and `--choice` targets carry no source
     // text: a diagnostic about one renders at the synthetic point.
     let flag_mocks = MockSet {
         state: state
-            .into_iter()
-            .map(|(path, literal)| (lute_trace::state_key(&path), literal, None))
+            .iter()
+            .map(|(path, literal)| (lute_trace::state_key(path), literal.clone(), None))
             .collect(),
-        facts: fact,
-        choose: choose.into_iter().collect(),
-        events: event,
-        accepts: accept,
-        occasions: occasion,
+        facts: fact.clone(),
+        choose: choose.iter().cloned().collect(),
+        events: event.clone(),
+        accepts: accept.clone(),
+        occasions: occasion.clone(),
         visited: Vec::new(),
         derive: no_derive.then_some(false),
         bridges: Default::default(),
@@ -204,23 +228,32 @@ pub(crate) fn run_trace(
     // The project models this trace consults (gate, quest ids, producers),
     // each built once.
     let memo = lute_model::ModelMemo::default();
-    // dsl 0.26.0 §7 (T3-5): `--accept` / `accepts:` resolve against every
+    // dsl 0.26.0 §7 (T3-5): `--accepted-quest` / `accepts:` resolve against every
     // quest of the project, not only this document's.
     if !mocks.accepts.is_empty() {
-        mocks.project_quests = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers));
+        mocks.project_quests = resolved
+            .and_then(|dir| project_quest_ids_in(&memo, dir, providers, permission_profile));
     }
     // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
-    // `--project <dir>` trace gates on the target's RECONCILED `check-project`
-    // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
+    // a project (`--project`, else the discovered nearest manifest — the two
+    // mean the same, 0.48.0 §2.1) trace gates on the target's RECONCILED
+    // project verdict; WITHOUT one, the standalone single-file `check` gate.
     // The D1 quarantine holds — reconciliation is pure graph math, never
     // CEL/Datalog evaluation.
-    let gate = match project {
-        Some(dir) => match project_gate_result_in(&memo, file, dir, providers) {
-            Ok(gate) => gate,
-            Err(code) => return code,
-        },
+    // `--deny` / `--deny-warnings` promote the gate's diagnostics: a denied
+    // warning refuses the trace like an error (0.48.0 §2.2).
+    let mut gate = match resolved {
+        Some(dir) => {
+            match project_gate_result_in(&memo, file, dir, providers, permission_profile) {
+                Ok(gate) => gate,
+                Err(code) => return code,
+            }
+        }
         None => check(&input),
     };
+    if policy.any_denied(&gate.diagnostics) {
+        gate.ok = false;
+    }
 
     // A component is not a root document (see [`component_root_diag`]). Refused
     // AFTER the gate above, so a component carrying real check errors still
@@ -252,16 +285,15 @@ pub(crate) fn run_trace(
     }
 
     // T1-14: judge mocked facts against the project's producers, not this
-    // document's alone — `--project` when given, else the nearest manifest.
+    // document's alone — the project (`--project`, else discovered; the two
+    // mean the same, 0.48.0 §2.1) with every file resolving against it.
     // Only worth collecting when a fact was mocked at all.
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        match (project, &discovered) {
-            (Some(dir), _) => project_assert_relations_in(&memo, dir, true, providers),
-            (None, Some(root)) => project_assert_relations_in(&memo, root, false, providers),
-            (None, None) => None,
-        }
+        resolved.and_then(|dir| {
+            project_assert_relations_in(&memo, dir, true, providers, permission_profile)
+        })
     };
     let (mut report, exit) = match (entry, beat) {
         (Some(id), _) => {
@@ -275,7 +307,8 @@ pub(crate) fn run_trace(
     // T3-15: the project knows every quest — settle the
     // "existence is unverified" notes instead of repeating them.
     if !report.foreign_quests.is_empty() {
-        if let Some(declared) = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers))
+        if let Some(declared) =
+            resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers, permission_profile))
         {
             report.verify_quests(&declared);
         }
@@ -289,7 +322,13 @@ pub(crate) fn run_trace(
         TraceExit::Incomplete => print_trace_report(&report, json, expand, ExitCode::from(3)),
         TraceExit::Refused(diags) => {
             if json {
-                let payload = serde_json::json!({ "diagnostics": diags });
+                let mut diagnostics = serde_json::to_value(&diags).unwrap_or_default();
+                if let Some(items) = diagnostics.as_array_mut() {
+                    for (diag, item) in diags.iter().zip(items) {
+                        crate::output::apply_deny_json(diag, policy, item);
+                    }
+                }
+                let payload = serde_json::json!({ "diagnostics": diagnostics });
                 let wrapped = crate::envelope::report(crate::envelope::version::TRACE, 1, payload);
                 match serde_json::to_string_pretty(&wrapped) {
                     Ok(s) => println!("{s}"),
@@ -317,8 +356,8 @@ pub(crate) fn run_trace(
                     .iter()
                     .cloned()
                     .partition(|d| d.provenance.as_deref() == Some(lute_trace::MOCK_TEXT));
-                print_diagnostics(file, &at_doc, &DenyPolicy::default());
-                print_diagnostics(mock.unwrap_or(file), &at_mock, &DenyPolicy::default());
+                print_diagnostics(file, &at_doc, policy);
+                print_diagnostics(mock.unwrap_or(file), &at_mock, policy);
                 // Every `E-TRACE-*` code is mock/choice validation (D1
                 // quarantine: `lute-check` cannot know that vocabulary, so
                 // its OWN diagnostics never carry it) — a refusal carrying
@@ -350,7 +389,7 @@ pub(crate) fn run_trace(
                     println!("trace refused: {} — invalid `--beat`", file.display());
                 } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_CHOICE) {
                     println!(
-                        "trace refused: {} — a `--choose` / `choose:` selection cannot be followed",
+                        "trace refused: {} — a `--choice` / `choose:` selection cannot be followed",
                         file.display()
                     );
                 } else {

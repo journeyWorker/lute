@@ -57,7 +57,7 @@ fn project(tag: &str, bindings: &str) -> lute_scratch::ScratchDir {
 fn check(tag: &str, bindings: &str) -> Vec<Value> {
     let dir = project(tag, bindings);
     let out = Command::new(BIN)
-        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .args(["check", "--project", &dir.to_string_lossy(), "--json"])
         .output()
         .unwrap();
     let value: Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -375,7 +375,7 @@ fn run(args: &[&str], path: &Path) -> String {
 
 /// `lute fix` raises an older `MAJOR.MINOR` value to the toolchain line,
 /// splicing only the scalar (quote style, comments and layout survive); a
-/// rerun changes nothing and `check-project` no longer warns.
+/// rerun changes nothing and whole-project `check` no longer warns.
 #[test]
 fn fix_raises_an_older_bindings_version_in_place() {
     let line = line();
@@ -398,7 +398,7 @@ fn fix_raises_an_older_bindings_version_in_place() {
         );
         let again = run(&["fix"], &dir);
         assert!(again.contains("lute: applied 0 fix(es)"), "{again}");
-        let checked = run(&["check-project"], &dir);
+        let checked = run(&["check", "--project"], &dir);
         assert!(!checked.contains("W-BINDINGS-VERSION-STALE"), "{checked}");
     }
 }

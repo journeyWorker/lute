@@ -2,7 +2,7 @@
 # order, the Elite Four (with one broken streak), the Champion, the Hall of
 # Fame, the morning after and the Rift Cavern.
 #
-#   lute play . --script plays/spine.play.yaml
+#   lute play --project . --script plays/spine.play.yaml
 #
 # LEAD-OWNED. Each area owns its plays/steps/<area>*.steps.yaml: keep the
 # final step's `expect:` (the hand-off) green; add steps before it freely.

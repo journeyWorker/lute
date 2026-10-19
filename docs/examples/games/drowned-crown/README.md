@@ -62,19 +62,19 @@ happened and move their stories on as Ilo's bond with them grows.
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/drowned-crown
-lute test docs/examples/games/drowned-crown
-lute play docs/examples/games/drowned-crown --script docs/examples/games/drowned-crown/plays/four-dives.play.yaml
-lute play docs/examples/games/drowned-crown --script docs/examples/games/drowned-crown/plays/library.play.yaml
-lute beats docs/examples/games/drowned-crown --occasion talk --target npc.sefa
-lute calendar docs/examples/games/drowned-crown --axis user.runs=1..6 --occasion talk --target npc.tavi
+lute check --deny-warnings --project docs/examples/games/drowned-crown
+lute test --project docs/examples/games/drowned-crown
+lute play --project docs/examples/games/drowned-crown --script docs/examples/games/drowned-crown/plays/four-dives.play.yaml
+lute play --project docs/examples/games/drowned-crown --script docs/examples/games/drowned-crown/plays/library.play.yaml
+lute beats --project docs/examples/games/drowned-crown --occasion talk --target npc.sefa
+lute calendar --project docs/examples/games/drowned-crown --axis user.runs=1..6 --occasion talk --target npc.tavi
 ```
 
 The project also demonstrates the 0.36.6 analysis surfaces:
 
 ```sh
-lute impact docs/examples/games/drowned-crown fact:felled(regent)
-lute constraints docs/examples/games/drowned-crown
+lute impact --project docs/examples/games/drowned-crown --node fact:felled(regent)
+lute constraints --project docs/examples/games/drowned-crown
 ```
 
 `impact` reports the transitive reverse-dependency closure with reason chains;

@@ -15,7 +15,7 @@
 //! no runtime state and `lute-cel` stays parse-only.
 //!
 //! dsl 0.20.0 §5: with a fact envelope in scope (`DecideCtx::facts`, set
-//! only by `check-project`'s guard pass), R5's fact-query firewall opens for
+//! only by whole-project `check`'s guard pass), R5's fact-query firewall opens for
 //! `holds`/`count`: a relational call decides from the project's may/must
 //! sets (`fact_env.rs`), and `count(P) ⋈ n` decides over its interval. It
 //! is still a closed fold — the envelope is precomputed, never evaluated.

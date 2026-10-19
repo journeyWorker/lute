@@ -1,5 +1,5 @@
 ---
-status: Accepted
+status: Implemented
 ---
 
 # CLI grammar: commands, arguments, options and value names
@@ -115,7 +115,9 @@ same output in a terminal, a pipe, CI and an agent harness. Text output stays li
 
 One vocabulary, uppercase in angle brackets in help: `<DIR>`, `<FILE>`, `<PATH>`, `<NODE>`,
 `<OCCASION>`, `<TARGET>`, `<CODE>`, `<NAME>`, `<EXPR>`, `<FORMAT>`, `<LOCALE>`, `<N>`, `<ATOM>`,
-plus the composite forms `<PATH>=<LITERAL>`, `<BRANCH>=<CHOICE>` and `<FILE>:<LINE>:<COLUMN>`.
+`<ID>`, `<STEP>`, `<KIND>`, `<RELATION>`, `<QUEST>`, `<COMMAND>`, `<BEFORE>`, `<AFTER>`, `<AXES>`,
+plus the composite forms `<PATH>=<LITERAL>`, `<BRANCH>=<CHOICE>`, `<FILE>:<LINE>:<COLUMN>`,
+`<AXIS>=<VALUES>`, `<DIRECTIVE>.<ATTR>` and `<OCCASION>=<AXES>`.
 A new placeholder is added here first. clap's derived defaults (`MAX_ITEMS`, `NODE_ID`) are never
 shown.
 
@@ -123,15 +125,24 @@ shown.
 
 - Options for one concept are declared once (a `clap` `Args` struct flattened into each command),
   so their spelling, value name and help text cannot diverge.
-- Project resolution group (`--project`, `--providers`, `--permission-profile`) — every command
-  that resolves a project. Diagnostic gate group (`--deny`, `--deny-warnings`) — every command
-  that reports diagnostics and exits on them. `--json` — every command that reports a result
-  (`schema` is JSON already and is exempt).
-- A test walks `lute schema` and fails when: an option name is not kebab-case; one option name
-  has two value names or two arities across commands; an option is missing from the checked-in
-  vocabulary (name → value name → concept), or a vocabulary entry is unused; a placeholder is
-  outside §5; a valued option's name is a denylisted verb; a project command lacks the
-  resolution group; a reporting command lacks `--json`.
+- The project options are three single-option structs — `--project`, `--providers`,
+  `--permission-profile` — each flattened only into the commands where the option can change the
+  result (a test shows the effect; a command where none can be shown does not take the option).
+  `--project` is on every command that works on a project. The diagnostic gate group (`--deny`,
+  `--deny-warnings`) is on every command that reports diagnostics and exits on them. `--json` is
+  on every command that reports a result, except `schema` (always JSON) and `loc export` (an
+  artifact writer: JSON is its default file, `--format csv` selects the other).
+- Two checked-in files are the single source for the mechanical rules:
+  [`cli-vocabulary.tsv`](cli-vocabulary.tsv) lists every option (name, value name or `-`,
+  concept) and [`cli-commands.tsv`](cli-commands.tsv) lists, per command, whether it takes
+  `--project`, `--providers`, `--permission-profile`, `--json` (or is exempt) and the gate group.
+- A test (`crates/lute-cli/tests/cli_grammar_048.rs`) walks `lute schema` and fails when: an option
+  name is not kebab-case; one option name has two value names or two arities (takes a value, value
+  optional) across commands; an option is missing from the vocabulary, or a vocabulary entry is
+  unused; a placeholder is outside §5; a valued option's name is a denylisted verb (`choose`,
+  `accept`, `run`, `explain` below the top level, `dump-*`, `out`); a command's options differ
+  from its row in the commands file, or a command or row is missing; a short alias other than
+  `-o` exists.
 
 ## 7. Removed spellings
 

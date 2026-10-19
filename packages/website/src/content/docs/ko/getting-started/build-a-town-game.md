@@ -267,7 +267,7 @@ expect:
 호스트가 직접 발생시키지 않습니다.
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -457,7 +457,7 @@ expect:
     - "@narrator: Bell answers given so far: 1."
 ```
 
-`lute play --script plays/second-run.play.yaml .`은 새 런이 이전 런에서 가져온
+`lute play --project . --script plays/second-run.play.yaml`은 새 런이 이전 런에서 가져온
 값과 이번에 opening이 하는 말을 보여 줍니다(출력의 3–4단계).
 
 ```text
@@ -480,7 +480,7 @@ expect:
 ── end: complete (4 steps) ──────────────
 ```
 
-`lute test docs/examples/quayside`가 다른 플레이와 함께 실행합니다.
+`lute test --project docs/examples/quayside`가 다른 플레이와 함께 실행합니다.
 
 player-web에서는 5단계의 발생 외에 호스트 코드 없이 두 번째 런이 일어나고, 새로
 고침 뒤에도 이어집니다. 플레이어가 호스트 지도에서 광장으로 걸어가면 호스트가
@@ -533,9 +533,9 @@ defaults:
 
 ```console
 $ lute tag .
-$ lute loc export . -o locales/ko.json
+$ lute loc export --project . -o locales/ko.json
 $ lute loc import locales/ko.json -o locales/bundle.json
-$ lute compile --all --project . -o bundle/ --locales locales/bundle.json
+$ lute compile --project . -o bundle/ --locale-bundle locales/bundle.json
 ```
 
 **태그.** 줄의 `lineId`는 `code`로 만들어집니다. `code`가 없는 줄은
@@ -601,7 +601,7 @@ key `closingBell.prompt`, lineId `market.closingBell.prompt`이며 세 선택지
 }
 ```
 
-**컴파일.** `compile --all --locales`는 번들을 모든 artifact에 병합합니다. 줄과
+**컴파일.** `compile --project <DIR> --locale-bundle <FILE> -o <DIR>`는 번들을 모든 artifact에 병합합니다. 줄과
 선택지 라벨에는 `texts` 맵이 생기고, `closingBell` branch에는 원본 `prompt`와
 `promptLineId` 옆에 `promptTexts`가 생깁니다. 원본 텍스트는 바뀌지 않습니다.
 번들이 선언한 locale의 번역이 없는 레코드는 lineId와 locale마다 하나씩
@@ -621,10 +621,10 @@ something to mend or trade.") 다시 컴파일합니다. 한국어 텍스트는 
 
 다시 내보내고 그 행의 `text`를 고친 뒤(새 행에는 새 `sourceHash`가 있습니다)
 다시 가져옵니다. `--deny W-L10N-STALE`이나 `--deny-warnings`를 쓰면 번역이 낡은
-동안 컴파일이 거절됩니다. locale 번들은 `lute check-project`와 `lute test`를
+동안 컴파일이 거절됩니다. locale 번들은 프로젝트 전체 `lute check`와 `lute test`를
 바꾸지 않습니다. 플레이는 원본 텍스트로 실행됩니다.
 
-**플레이어에서.** `--locales`로 컴파일한 `bundle/`을 5단계의 `bundleUrl`로
+**플레이어에서.** `--locale-bundle`로 컴파일한 `bundle/`을 5단계의 `bundleUrl`로
 제공합니다. Settings 화면의 Locale 행은 원본 locale — `contentLang`에서 온
 `en` — 을 먼저, 그다음 컴파일된 locale(여기서는 `ko`)을 보여 줍니다. 새
 프로필은 `en`으로 시작합니다. 런 도중 `ko`를 고르면 다음 줄, 선택지 라벨,

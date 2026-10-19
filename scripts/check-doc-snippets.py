@@ -4,7 +4,7 @@ r"""Compile-check the ```lute snippets in the documentation surface.
 The `website` CI job builds the Astro site, so it catches a broken page or a
 broken link. It has never once looked at what is *inside* a fenced block, and
 `docs.yml` lists `docs/**` in its trigger paths while its only content job runs
-`check-project` over `docs/examples` alone — a trigger that fires on a file
+`check-project` (now `check --project`) over `docs/examples` alone — a trigger that fires on a file
 nothing reads. That combination is how three bug classes shipped:
 
   * ten pages writing `emotion="…"` after dsl 0.9.0 moved content-vocabulary
@@ -55,6 +55,13 @@ both halves are DECLARED in the fence meta rather than guessed:
         marker for every excerpt whose prose already says "(From
         `docs/examples/…`)" — it pins the excerpt to a real, laid-out project
         AND fails loudly if the page's cited source is renamed or deleted.
+
+    ```lute check-in-project="<repo-relative path>"
+        As `check="<path>"`, but the whole project is checked
+        (`lute check --project <root>`), not the one document. For a block
+        that is only sound as part of a multi-file project (cross-scene route
+        guarantees such as `E-MAYBE-UNSET`). The path must have an enclosing
+        `lute.project.yaml`.
 
     ```lute expect="E-KIND-MISSING[,E-OTHER…]"
         Expected to FAIL, with exactly that set of error codes. This is what
@@ -186,7 +193,7 @@ Of the 26 quoting fences, 8 quote plugin-resolution failures
 (`E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-RESERVED-STAMP-ATTR`, `E-LOWER-RECORD-*`,
 `E-FRONTMATTER-SCHEMA`) that only a deliberately-malformed plugin manifest can
 produce. A run-based pin needs one such fixture per quote: ~8 new broken
-mini-projects that must live somewhere `check-project docs/examples` and the
+mini-projects that must live somewhere `check --project docs/examples` and the
 capability-hash pin above do not see, each of which is itself a thing that
 rots, and none of which makes the comparison any sounder than an exact string
 match. The fixture is a means of obtaining the string; the string is the
@@ -329,7 +336,7 @@ SNIPPET_ROOTS = (
         # Zero: every whole document on the website now carries a marker. Both
         # `first-scene` tutorials' second whole document — the booth scene,
         # meaningful only inside the two-file project the prose builds — is
-        # pinned with `check-project="docs/examples/episodes/booth.lute"`, so
+        # pinned with `check-in-project="docs/examples/episodes/booth.lute"`, so
         # the layout that makes it check is a real project in this repo rather
         # than a promise in a comment.
         max_unmarked_whole=0,
@@ -402,7 +409,7 @@ FENCE_RE = re.compile(r"^([ \t]*)(`{3,}|~{3,})[ \t]*([^\s`~]*)(.*)$")
 # (last alternative) any unrecognised run of non-space.
 META_RE = re.compile(r'([A-Za-z_][\w-]*)(?:=(?:"([^"]*)"|([^\s"]+)))?|(\S+)')
 
-MARKERS = ("check", "check-project", "expect", "unverified")
+MARKERS = ("check", "check-in-project", "expect", "unverified")
 
 # Error-severity codes in `lute check`'s human output: a positioned diagnostic
 # (`file:line:col: error [CODE] …`) or a project-level one (`lute: CODE: …`).
@@ -715,11 +722,11 @@ def run_block(
     """Check `body`, standalone or materialised as `rel` inside its project.
 
     `whole_project` swaps single-file `check <path> --project <root>` for
-    `check-project <root>`. That is not a stylistic choice: single-file check
+    `check --project <root>`. That is not a stylistic choice: single-file check
     cannot establish cross-scene route guarantees, so a block that is only
     sound as part of a multi-file project needs the project-wide pass. Measured
     on docs/examples/episodes: `check booth.lute --project episodes` reports
-    `E-MAYBE-UNSET` on `run.metMira` where `check-project episodes` is clean,
+    `E-MAYBE-UNSET` on `run.metMira` where `check --project episodes` is clean,
     and docs/examples/connected-outro.lute documents that as a language
     property.
 
@@ -742,8 +749,8 @@ def run_block(
                 shutil.copytree(root, base)
                 target = base / pathlib.PurePath(rel).relative_to(root.relative_to(ROOT))
                 if whole_project:
-                    args = ["check-project", str(base)]
-                    scope = f"check-project {root.relative_to(ROOT)}"
+                    args = ["check", "--project", str(base)]
+                    scope = f"check --project {root.relative_to(ROOT)}"
                 else:
                     args = ["check", str(target), "--project", str(base)]
                     scope = f"--project {root.relative_to(ROOT)}"
@@ -803,11 +810,11 @@ def check_expected_failure(
 
 
 def path_marker(marks: dict[str, str | None], where: str) -> tuple[str | None, bool]:
-    """Validate a `check`/`check-project` path marker.
+    """Validate a `check`/`check-in-project` path marker.
 
     Returns (repo-relative path or None, whether to run the project-wide pass).
     """
-    key = "check-project" if "check-project" in marks else "check"
+    key = "check-in-project" if "check-in-project" in marks else "check"
     rel = marks.get(key)
     if rel is None:
         return None, False
@@ -818,14 +825,14 @@ def path_marker(marks: dict[str, str | None], where: str) -> tuple[str | None, b
             f"the page's citation."
         )
         return None, False
-    if key == "check-project" and project_root_for(rel) is None:
+    if key == "check-in-project" and project_root_for(rel) is None:
         ERRORS.append(
-            f'{where}: check-project="{rel}" has no enclosing '
-            f"lute.project.yaml. `check-project` needs a project root; use "
+            f'{where}: check-in-project="{rel}" has no enclosing '
+            f"lute.project.yaml. `check-in-project` needs a project root; use "
             f'check="{rel}" for a single-file check.'
         )
         return None, False
-    return rel, key == "check-project"
+    return rel, key == "check-in-project"
 
 
 def capability_snapshots(lute: str) -> dict[str, str]:
@@ -1580,14 +1587,14 @@ def main() -> int:
                         continue
                     opted_out.append((where, why))
                     continue
-                if "check" in marks and "check-project" in marks:
+                if "check" in marks and "check-in-project" in marks:
                     ERRORS.append(
-                        f"{where}: use either `check` or `check-project`, not "
+                        f"{where}: use either `check` or `check-in-project`, not "
                         f"both — they name the same file and differ only in "
                         f"which pass verifies it"
                     )
                     continue
-                has_path = "check" in marks or "check-project" in marks
+                has_path = "check" in marks or "check-in-project" in marks
                 if "expect" in marks:
                     codes = {
                         c.strip() for c in (marks["expect"] or "").split(",") if c.strip()
@@ -1600,7 +1607,7 @@ def main() -> int:
                         continue
                     rel, whole = path_marker(marks, where) if has_path else (None, False)
                     check_expected_failure(lute, b["body"], rel, codes, where, whole)
-                    how = f"as {rel} via check-project, " if whole else (
+                    how = f"as {rel} via check --project, " if whole else (
                         f"as {rel}, " if rel else ""
                     )
                     verified.append(f"{where}  ({how}expects {','.join(sorted(codes))})")
@@ -1609,7 +1616,7 @@ def main() -> int:
                     rel, whole = path_marker(marks, where)
                     check_clean(lute, b["body"], rel, where, whole)
                     how = (
-                        f"as {rel} via check-project"
+                        f"as {rel} via check --project"
                         if whole
                         else (f"as {rel}" if rel else "standalone")
                     )

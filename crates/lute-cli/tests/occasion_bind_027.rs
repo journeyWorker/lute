@@ -78,14 +78,24 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
          when=\"holds('owned', [occasion.target]) && user.bond[occasion.target] >= 2\">\n\
          \x20 @narrator: {{occasion.target}} again, and close.\n</beat>\n",
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     dir
 }
 
 fn play(dir: &Path, script: &str) -> (Option<i32>, Json, String) {
     write(dir, "s.play.yaml", script);
-    let out = run(dir, &["play", ".", "--script", "s.play.yaml", "--json"]);
+    let out = run(
+        dir,
+        &[
+            "play",
+            "--project",
+            ".",
+            "--script",
+            "s.play.yaml",
+            "--json",
+        ],
+    );
     let v = serde_json::from_slice(&out.stdout).unwrap_or(Json::Null);
     (out.status.code(), v, text(&out))
 }

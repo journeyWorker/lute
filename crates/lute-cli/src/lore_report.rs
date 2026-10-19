@@ -1,8 +1,8 @@
-//! `lute lore <dir> [--json]` — the project's world-narrative map (dsl 0.19.0
+//! `lute lore --project <dir> [--json]` — the project's world-narrative map (dsl 0.19.0
 //! §8).
 //!
 //! A read-only report over every `.lute` document under `dir`, discovered by
-//! the SAME deterministic walk `check-project` uses ([`crate::find_lute_files`]
+//! the SAME deterministic walk whole-project `check` uses ([`crate::find_lute_files`]
 //! — byte-sorted, symlink-deduped) and parsed by the same syntax-layer parse
 //! the checker runs ([`lute_syntax::parse`]). It does not check: a document
 //! that parses is reported whatever its diagnostics; one whose parse fails
@@ -630,7 +630,7 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
     // dsl 0.24.0 T3-2: the conclusions the rules can reach, over the same
     // per-root collection `lute scenario knowledge` reads — which also
     // resolves each directive call's declared facts (dsl 0.27.0 §4).
-    let (_, by_root) = match crate::collect_project_docs(dir, None, false) {
+    let (_, by_root) = match crate::collect_project_docs(dir, None, None, false) {
         Ok(c) => c,
         Err(code) => return code,
     };

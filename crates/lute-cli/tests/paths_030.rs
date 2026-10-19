@@ -31,7 +31,7 @@ fn dir() -> String {
 
 #[test]
 fn the_project_checks_clean() {
-    let out = lute(&["check-project", &dir()]);
+    let out = lute(&["check", "--project", &dir()]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(!t.contains("error ["), "{t}");
@@ -44,7 +44,13 @@ fn the_project_checks_clean() {
 #[test]
 fn a_play_reads_and_writes_quoted_names() {
     let script = fixture().join("plays/p.play.yaml");
-    let out = lute(&["play", &dir(), "--script", script.to_str().unwrap()]);
+    let out = lute(&[
+        "play",
+        "--project",
+        &dir(),
+        "--script",
+        script.to_str().unwrap(),
+    ]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(t.contains("Lab B2, visit 1."), "{t}");
@@ -58,7 +64,7 @@ fn a_play_reads_and_writes_quoted_names() {
 #[test]
 fn a_test_seeds_and_expects_quoted_keys() {
     let test = fixture().join("tests/wrap.test.yaml");
-    let out = lute(&["test", test.to_str().unwrap()]);
+    let out = lute(&["test", test.to_str().unwrap(), "--project", &dir()]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
 }
@@ -112,6 +118,7 @@ fn context_and_calendar_spell_quoted_members() {
 
     let out = lute(&[
         "calendar",
+        "--project",
         &dir(),
         "--axis",
         "run.visits['lab-b2']=1..2",

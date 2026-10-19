@@ -5,7 +5,7 @@ Lute 0.26.0 (native darwin-arm64 binary). Found while upgrading Skerry Rock
 lampLighting component now declares `keeper` and `glass` with `default:`.
 
 Commands (from this directory):
-  lute check-project .
+  lute check --project .
   lute context scenes/a.lute --project .
   lute context scenes/a.lute --project . --json
 

@@ -26,7 +26,8 @@ fn text(o: &Output) -> String {
 
 fn check_project(dir: &Path) -> Output {
     Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(dir)
         .output()
         .unwrap()
@@ -35,7 +36,7 @@ fn check_project(dir: &Path) -> Output {
 fn play(dir: &Path, script: &str) -> Output {
     write(dir, "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"))
         .output()
         .unwrap()
@@ -401,6 +402,7 @@ fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
     let cal = Command::new(BIN)
         .args([
             "calendar",
+            "--project",
             &dir.display().to_string(),
             "--axis",
             "clock=1..2",
@@ -451,6 +453,7 @@ fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
         let cal = Command::new(BIN)
             .args([
                 "calendar",
+                "--project",
                 &dir.display().to_string(),
                 "--axis",
                 "clock=1..2",

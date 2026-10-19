@@ -310,7 +310,7 @@ pub struct ClockSite {
 /// against the folded `schema` ([`clock_problems`]). Every diagnostic is
 /// anchored at `span` and names where the clock is declared; a clock from
 /// an imported schema also carries that schema's `clock:` line as a
-/// `related` entry, so `check-project` folds the identical report of every
+/// `related` entry, so whole-project `check` folds the identical report of every
 /// importer into one attributed to the schema.
 pub fn check_clock(
     clocks: &[(ClockSite, ClockDecl)],

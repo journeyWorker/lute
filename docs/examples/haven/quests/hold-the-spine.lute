@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.47.2"
+luteVersion: "0.48.0"
 uses: ../world.schema.yaml
 title: Hold the Spine
 ---
@@ -11,15 +11,15 @@ so a reader who "fixes" it deletes the evidence (see T4.7, and the "T4 controlle
 decision" that ruled this file is not retrofitted while Task 9's five siblings all
 carry `follows=`). See the README's "Deliberate imperfections".
 
-What it costs, verified with `lute scenario docs/examples/haven`: this quest appears
+What it costs, verified with `lute scenario --project docs/examples/haven`: this quest appears
 in NO topological layer and on NO edge — `follows=` is the ONLY thing that puts a
 quest into the prerequisite graph, and no amount of `start=`/`done=` work will
 place it. Since dsl 0.21.0 (§7a.5) it is no longer silently absent: the report
 lists it after the edges, under `unanchored (no `after` / `follows` — available from
-the start of play; no prerequisites in this graph):`, and `scenario reach quest:holdTheSpine`
+the start of play; no prerequisites in this graph):`, and `scenario reach --node quest:holdTheSpine`
 gives it its own verdict, `Unanchored — a quest with no declared `follows`
 edge: available from the start of play; …`. The graph still holds five
-quests, not six. `scenario envelope quest:holdTheSpine` still degrades to the
+quests, not six. `scenario envelope --node quest:holdTheSpine` still degrades to the
 defaults-only `D` table (dsl §4.4) plus a note offering the full project-resolved
 envelope if `follows` were declared.
 

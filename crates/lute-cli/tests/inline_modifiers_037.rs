@@ -1,6 +1,6 @@
 //! dsl 0.37.0 §3.6/§6 through the CLI, on the lighthouse-keeper corpus scene
 //! that uses inline modifiers: `loc export` keeps the authored markup,
-//! `compile --locales` refuses a translation whose modifiers differ
+//! `compile --locale-bundle` refuses a translation whose modifiers differ
 //! (`E-L10N-MODIFIERS`), `play --json` line events carry `segments` beside
 //! the plain `text`, and `context` describes the modifier surface.
 
@@ -31,7 +31,7 @@ const LINE_ID: &str = "rock.arrival.inspector_0020";
 
 #[test]
 fn loc_export_keeps_the_authored_markup() {
-    let out = run(&["loc", "export", game().to_str().unwrap()]);
+    let out = run(&["loc", "export", "--project", game().to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let all = text(&out);
     assert!(
@@ -53,7 +53,7 @@ fn compile_with(tag: &str, translation: &str) -> Output {
     run(&[
         "compile",
         scene.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ])
 }
@@ -97,6 +97,7 @@ fn play_json_line_events_carry_segments_and_plain_text() {
     let script = g.join("plays/true-account.play.yaml");
     let out = run(&[
         "play",
+        "--project",
         g.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -199,6 +200,7 @@ fn play_json_segments_render_each_marker_by_its_global_index() {
     let script = dir.join("s.play.yaml");
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

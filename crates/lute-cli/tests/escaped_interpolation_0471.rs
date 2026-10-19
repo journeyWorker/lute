@@ -94,10 +94,10 @@ fn project(dir: &Path) {
 }
 
 /// `lute loc export` rows, `lute loc import` of them translated into ko,
-/// then `compile --all --locales` into `out`. Returns the exported rows and
+/// then whole-project `compile --locale-bundle` into `out`. Returns the exported rows and
 /// the compile's output.
 fn compile_localized(dir: &Path, out: &Path) -> (Vec<Json>, Output) {
-    let exported = run(&["loc", "export", dir.to_str().unwrap()]);
+    let exported = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     ok(&exported);
     let rows: Vec<Json> = serde_json::from_slice(&exported.stdout).unwrap();
     let translated: Vec<Json> = rows
@@ -126,11 +126,11 @@ fn compile_localized(dir: &Path, out: &Path) -> (Vec<Json>, Output) {
     ]));
     let compiled = run(&[
         "compile",
-        "--all",
+        "--project",
         dir.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ]);
     ok(&compiled);
@@ -325,7 +325,7 @@ fn the_checker_reads_an_even_run_before_a_marker_as_a_marker() {
         "scenes/tally.lute",
         &SCENE.replace(r"Pair \\{{run.b}}", r"Pair \\{{run.nope}}"),
     );
-    let checked = run(&["check-project", scratch.to_str().unwrap()]);
+    let checked = run(&["check", "--project", scratch.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&checked.stdout).to_string()
         + &String::from_utf8_lossy(&checked.stderr);
     assert_eq!(checked.status.code(), Some(1), "{text}");
@@ -366,7 +366,7 @@ components: [note.component.lute]
     let out = scratch.join("bundle");
     ok(&run(&[
         "compile",
-        "--all",
+        "--project",
         scratch.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),

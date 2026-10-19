@@ -1,4 +1,4 @@
-//! `lute compile-stream`: stream checked continuation execution IR as flushed NDJSON.
+//! `lute compile --stream`: stream checked continuation execution IR as flushed NDJSON.
 
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -85,7 +85,7 @@ pub fn run(
     };
     if !identity_rename_decls.is_empty() || !identity_rename_diags.is_empty() {
         let Some(root) = project else {
-            eprintln!("lute compile-stream: identity ledger requires a project root");
+            eprintln!("lute compile --stream: identity ledger requires a project root");
             return ExitCode::FAILURE;
         };
         let opts = lute_model::ModelOptions {
@@ -98,7 +98,7 @@ pub fn run(
         let model = match lute_model::ProjectModel::build_single_root(root, &opts) {
             Ok(model) => model,
             Err(error) => {
-                eprintln!("lute compile-stream: cannot resolve identity ledger: {error}");
+                eprintln!("lute compile --stream: cannot resolve identity ledger: {error}");
                 return ExitCode::from(2);
             }
         };
@@ -151,7 +151,7 @@ fn run_stream<R: Read, W: Write>(
             Ok(read) => read,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
             Err(error) => {
-                eprintln!("lute compile-stream: cannot read stdin: {error}");
+                eprintln!("lute compile --stream: cannot read stdin: {error}");
                 return ExitCode::from(2);
             }
         };
@@ -181,7 +181,7 @@ fn run_stream<R: Read, W: Write>(
                     pending.drain(..valid_up_to);
                 }
                 if error.error_len().is_some() {
-                    eprintln!("lute compile-stream: stdin is not valid UTF-8");
+                    eprintln!("lute compile --stream: stdin is not valid UTF-8");
                     return ExitCode::from(2);
                 }
                 // The remaining bytes are an incomplete scalar split across
@@ -191,7 +191,7 @@ fn run_stream<R: Read, W: Write>(
     }
 
     if !pending.is_empty() {
-        eprintln!("lute compile-stream: stdin ends with incomplete UTF-8");
+        eprintln!("lute compile --stream: stdin ends with incomplete UTF-8");
         return ExitCode::from(2);
     }
 
@@ -246,6 +246,6 @@ fn write_event<W: Write>(output: &mut W, event: &Event<'_>) -> io::Result<()> {
 }
 
 fn output_error(error: io::Error) -> ExitCode {
-    eprintln!("lute compile-stream: cannot write stdout: {error}");
+    eprintln!("lute compile --stream: cannot write stdout: {error}");
     ExitCode::from(2)
 }

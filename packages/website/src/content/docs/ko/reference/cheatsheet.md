@@ -90,9 +90,9 @@ expect:
 ```
 
 ```console
-$ lute check-project .                              # every document, and the project as a whole
-$ lute test .                                       # every *.test.yaml, and every play with an expect:
-$ lute play . --script plays/story.play.yaml        # the transcript of one playthrough
+$ lute check --project .                            # every document, and the project as a whole
+$ lute test --project .                             # every *.test.yaml, and every play with an expect:
+$ lute play --project . --script plays/story.play.yaml  # the transcript of one playthrough
 ```
 
 → [테스트와 플레이](#cli) · [스토리 플레이](/ko/tooling/play/)
@@ -112,9 +112,9 @@ my-game/
 └── plays/*.play.yaml            lute play; lute test runs those with an expect:
 ```
 
-`lute init --template beats <dir>`는 이 구성을 그대로 만들어 줍니다: 계기 플러그인, `id:`가 있는 비트,
+`lute init --template beats <DIR>`는 이 구성을 그대로 만들어 줍니다: 계기 플러그인, `id:`가 있는 비트,
 퀘스트, 엔트리 비트, `engine:` 스텝과 `expect:`가 담긴 플레이 스크립트, 시나리오 테스트까지 들어 있으며,
-만든 그대로 `check-project`, `test`, `play`를 통과합니다.
+만든 그대로 프로젝트 전체 `check`, `test`, `play`를 통과합니다.
 
 `lute.project.yaml`:
 
@@ -647,7 +647,7 @@ rules:
 
 - 짝은 선언된 관계여야 하고, 인자 종류가 같아야 하며, 자기 자신일 수 없습니다(`E-RELATION-DECL`). IR의
   `RelationEntry.excludes`에는 대칭 폐포가 실립니다.
-- `check-project`: `holds('seenAfter', ['x']) && holds('fell', ['x'])`는 죽은 가드이고(`E-ARM-DEAD` / `E-BEAT-UNREACHABLE`),
+- 프로젝트 전체 `check`: `holds('seenAfter', ['x']) && holds('fell', ['x'])`는 죽은 가드이고(`E-ARM-DEAD` / `E-BEAT-UNREACHABLE`),
   `holds('seenAfter', ['x'])` 아래의 `!holds('fell', ['x'])`는 `W-FACT-GUARANTEED`이며, 여기서 `::assert{fell(elias)}`는
   `E-FACT-EXCLUSIVE`(다른 쪽이 모든 경로에서 성립), 짝을 깨뜨릴 수밖에 없는 `fell(P) :- seenAfter(P)` 같은 규칙은
   `E-RULE-EXCLUSIVE`입니다.
@@ -817,7 +817,7 @@ state:
 `select: sequence`(0.23.0)는 자격 있는 비트를 그 순서대로 모두 제시하며(루틴 다음에 그날의 이벤트),
 `select: all`은 플레이어가 고르게 합니다. 자격은 계기가 발생할 때 한 번 정해지고, 퀘스트는 제시할 때마다
 정산됩니다. 대상이 같거나 둘 다 없고 priority도 같은 `select: first` 비트 둘의 `when`이 서로 배타적임을
-증명할 수 없으면 승자는 파일 순서로 정해집니다(`check-project`의 `W-BEAT-PRIORITY-TIE`. 0.26.0부터는 부정을
+증명할 수 없으면 승자는 파일 순서로 정해집니다(프로젝트 전체 `check`의 `W-BEAT-PRIORITY-TIE`. 0.26.0부터는 부정을
 정규화하고 두 `when`이 왜 배타적이지 않은지 말해 줍니다). 앞선, 결코 소진되지 않는 비트가 그 `when`을 함의해
 늘 이기는 폴백은 `lute beats`에 `covered by <id>`로 나옵니다(0.26.0).
 
@@ -1041,7 +1041,7 @@ state:
 
 | 요소 | 규칙 |
 |---|---|
-| `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, `check-project`). 0.25.0부터 `accepts:` 목은 더 이상 치지 않습니다. 0.26.0부터 테스트의 `accepts:`는 퀘스트를 프로젝트 전체에서 찾고, 플레이는 `engine: { accept: [id] }` 스텝으로 도중에 수락합니다. |
+| `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, 프로젝트 전체 `check`). 0.25.0부터 `accepts:` 목은 더 이상 치지 않습니다. 0.26.0부터 테스트의 `accepts:`는 퀘스트를 프로젝트 전체에서 찾고, 플레이는 `engine: { accept: [id] }` 스텝으로 도중에 수락합니다. |
 | `accept="external"` | 0.25.0. 엔진이 문서 밖(퀘스트 게시판, 메뉴)에서 퀘스트를 수락합니다. `W-QUEST-NEVER-ACCEPTED`를 잠재웁니다. `start`와 함께 쓰면 `E-ATTR-TYPE`, 부모와 함께 활성화되는 자식에 쓰면 `E-ACCEPT-TARGET`입니다(`activate="accept"`를 더하세요). IR: `QuestCmd.accept`. |
 | `fail=` | `active` → `failed`. 완료 조건과 동시에 성립하면 실패가 이깁니다. |
 | `follows=` | 씬 그래프를 위한 그래프 메타데이터: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 결코 막지 않으며, 활성화는 `start`가 정합니다. 씬은 활성화를 막는 선행 조건을 프론트매터에 `after:`로 씁니다. 0.28.0 전에는 `after=`로 썼습니다(이제 `E-UNKNOWN-ATTR`). 이것이 없으면 퀘스트는 자신의 `::accept`, 부모(`[subquest]`, 0.25.0), 그리고 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …`를 읽는 `start` 연언항(`[start]`, 0.25.0)에 고정됩니다. |
@@ -1163,7 +1163,7 @@ state:
   나머지는 `E-GRAMMAR-NOT-ADMITTED`입니다.
 - 효과는 한 런에서 처음 읽을 때만 적용됩니다. 그 뒤로 `entry.<id>.read`는 `true`이며 어느 문서에서나 읽을
   수 있습니다. run 등급이라 새 런에서 초기화됩니다. `entry.<id>.everRead`는 그 user 등급 짝으로, 처음 읽을
-  때 설정되고 새 런에서도 초기화되지 않습니다. `entry.X.read`를 가정하는 가드 아래에서 `check-project`는
+  때 설정되고 새 런에서도 초기화되지 않습니다. `entry.X.read`를 가정하는 가드 아래에서 프로젝트 전체 `check`는
   X가 모든 경로에서 assert하는 팩트를 압니다(0.24.0). 그래서 거기서 중복된 `holds(…)`는
   `W-FACT-GUARANTEED`이고, `everRead`는 `tier: user` / `app` 팩트만 셉니다. 한 런에서 다시 읽힐 수
   있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 쓰기를 하면
@@ -1371,30 +1371,30 @@ enums:
 
 | 명령 | 용도 |
 |---|---|
-| `lute check <file> [--project <dir>]` | 문서 하나를 검사합니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고, 그 사실을 stderr에 알립니다. |
-| `lute check-project <dir> [--wip] [--deny-warnings]` | 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. 깨끗한 문서는 모두 컴파일까지 해 보므로, 컴파일 단계 오류(`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`)도 여기서 실패합니다. `W-BEAT-PRIORITY-TIE`, `W-QUEST-HANDLER-DEAD` 같은 프로젝트 권고도 여기서 나옵니다. `--wip`(0.23.0)는 아직 아무것도 만들어 내지 않는 관계(시드, assert, 규칙, `reserved` 모두 없음) 때문에만 가드가 죽은 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 낮춥니다. 만드는 쪽이 있는데도 결코 맞지 않는 관계는 여전히 오류입니다. 0.26.0부터 `--wip`는 바인딩되지 않은 `@param`을 쓰는 컴포넌트 `::assert`만이 만드는 관계도 아직 생산자가 없는 것으로 봅니다. |
+| `lute check [<file>…] [--project <DIR>] [--wip] [--deny-warnings] [--json]` | 문서 하나(또는 여러 개)를 검사합니다. 관계형 가드 판정과 `W-WIP`은 프로젝트 전체 모드가 필요합니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고, 그 사실을 stderr에 알립니다. |
+| `lute check --project <DIR> [--wip] [--deny-warnings]` (문서 피연산자 없음) | 프로젝트 전체 모드: 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. 깨끗한 문서는 모두 컴파일까지 해 보므로, 컴파일 단계 오류(`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`)도 여기서 실패합니다. `W-BEAT-PRIORITY-TIE`, `W-QUEST-HANDLER-DEAD` 같은 프로젝트 권고도 여기서 나옵니다. `--wip`(0.23.0)는 아직 아무것도 만들어 내지 않는 관계(시드, assert, 규칙, `reserved` 모두 없음) 때문에만 가드가 죽은 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 낮춥니다. 만드는 쪽이 있는데도 결코 맞지 않는 관계는 여전히 오류입니다. 0.26.0부터 `--wip`는 바인딩되지 않은 `@param`을 쓰는 컴포넌트 `::assert`만이 만드는 관계도 아직 생산자가 없는 것으로 봅니다. |
 | `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`, 그리고 이름이 바뀐 디렉티브·속성·태그 속성(`E-RENAMED-*`). 카메라 값, `cgLayout` 멤버, 시점(`pov`, `monoSpeakers`)처럼 판단이 필요한 것은 진단만 하고 추측하지 않습니다. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. |
-| `lute tag <file\|dir>` | 파일 하나, 또는 디렉터리 아래 모든 `.lute` 파일의 모든 줄에 안정적인 `code`를 채웁니다. |
-| `lute compile <file> -o out.json` · `--all --project <dir> -o <outdir>` | 산출물을 만듭니다. `--all`은 `beats`를 포함한 `project.index.json`도 씁니다. `--project`가 없으면 파일 하나를 그 위쪽에서 가장 가까운 `lute.project.yaml`로 컴파일합니다(0.27.0). `check`와 같습니다. |
-| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choose id=c[,c]] [--event e] [--accept q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accept`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::jump`는 label까지 따라갑니다. |
+| `lute tag [<path>…] [--renumber [--commit]] [--check]` | 파일이나 디렉터리(기본 `.`) 아래 모든 `.lute` 파일의 모든 줄에 안정적인 `code`를 채웁니다. `--renumber`는 다시 번호를 매길 내용을 미리 보여 주기만 하고, `--renumber --commit`이 실제로 씁니다. `--check`는 아무것도 쓰지 않고 바뀔 파일이 있으면 `1`로 끝납니다. |
+| `lute compile <file> -o out.json` · `compile --project <DIR> -o <DIR>` (문서 피연산자 없음) · `compile --stream <file>` · `--locale-bundle <file>` | 산출물을 만듭니다. 프로젝트 모드는 `beats`를 포함한 `project.index.json`도 씁니다. `--stream`은 stdin의 본문을 이어 붙여 NDJSON 스냅숏을 냅니다. `--project`가 없으면 파일 하나를 그 위쪽에서 가장 가까운 `lute.project.yaml`로 컴파일합니다(0.27.0). `check`와 같습니다. |
+| `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choice id=c[,c]] [--event e] [--accepted-quest q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accepted-quest`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::jump`는 label까지 따라갑니다. |
 | `lute run <artifact> [--mock m.yaml] [--occasion o[@target]] [--entry id \| --beat id]` | 컴파일된 산출물을 엔진처럼 실행합니다. 로어 산출물에는 `--entry`와 `--beat`(번들 비트의 정식 id, 모호하지 않으면 로컬 id) 중 정확히 하나가 필요합니다. 목의 `bridges:`가 플러그인 호출에 응답합니다(0.24.0). |
-| `lute play <dir> --script p.play.yaml [--json] [--ir] [--quiet] [--explain <atom>] [--no-derive]` | 프로젝트 전체에 계기를 발생시키며 퀘스트를 진행합니다. `expect:`가 어긋나면 종료 코드 `1`입니다. 연출은 작성한 그대로 출력되고, `--ir`은 대신 로워링된 레코드를 주입된 것까지 표시해 출력합니다. `--explain`(반복 가능)은 플레이가 끝난 뒤 ground atom의 도출 트리를, 성립하지 않으면 그것을 결론 낼 수 있는 규칙마다 실패한 전제를 출력합니다. 0.24.0부터 assert된 잎은 출처를 밝힙니다(``asserted by scene `cafe.open`, step 1``). |
-| `lute test [<dir> \| <file>] [--project <dir>] [--coverage] [--no-derive]` | 모든 `*.test.yaml`과, `expect:`가 있는 모든 `*.play.yaml`을 실행합니다. 파일 하나를 주면 그 테스트나 플레이만 실행합니다. `--project`가 없으면 가장 가까운 `lute.project.yaml`을 기준으로 해석합니다(stderr에 알림). 미완료로 끝난 워크는 실패하고, `file:`이 없는 테스트도 스위트를 멈추지 않고 실패 하나(`E-TEST-FILE`)로 남습니다. `--coverage`는 `--project`나 가장 가까운 `lute.project.yaml`의 프로젝트에서 어떤 테스트도 트레이스하지 않고 어떤 플레이도 제시하지 않은 문서를 나열합니다. 0.24.0부터 `advance:` 스텝의 발생이 제시한 문서도 셈에 들고, 머리글은 두 수를 함께 셉니다: `coverage over N traced path(s) and M play(s) (…):`. 0.26.0부터 프로젝트를 한 번만 적재하고 테스트와 플레이를 병렬로 실행하며(`RAYON_NUM_THREADS` 존중), 결과는 원래 순서로 보고합니다. 0.27.0부터 단위는 비트입니다: 번들 비트와 엔트리를 하나씩 나열하고(`lore/endings/ren.lute: ember`), 플레이가 고른 선택지도 branch/hub 행에 세며, 머리글은 `(plays count toward what they presented and the choices they picked, not match arms)`이고, 마지막 절에 어떤 플레이도 제시하지 않은 비트를 나열합니다(`--json`: `untested`, `notPresentedByPlay`, 각각 `{file, id, kind}`). |
-| `lute scenario <dir> [reach <node> \| envelope <node> \| knowledge [--for <node>]] [--facts] [--format text\|json\|dot]` | `after:` 그래프, 도달 가능성, 보장되는 상태와 팩트. 노드는 씬 id, `quest:<id>`, 또는 번들 비트의 정식 id입니다(그대로 또는 `beat:<doc>.<beat>`, 간선 없는 진입 노드로 그려짐). `knowledge`(0.23.0)는 팩트 가드가 있는 비트, 엔트리, 목표마다 질의하는 관계를 찾고, 각 관계를 규칙을 거슬러 그것을 만드는 쪽까지 추적합니다: assert하는 문서, 시드 팩트, 엔진(`reserved`), 또는 만드는 쪽 없음. 부정 전제를 깨뜨릴 수 있는 팩트도 알려 줍니다. `--for`에는 엔트리 id나 `<quest>.<objective>`도 줄 수 있습니다. 0.24.0부터 모든 가드 자리를 다루고, 종류 원자를 멤버십으로 읽으며(``suitor(sol) — entity kind `suitor`; sol is a member``), 규칙의 `cel()` 전제가 읽는 것을 밝힙니다. 0.26.0: `knowledge`는 규칙의 `count(…)` 전제를 그것이 세는 팩트의 생산자까지 추적하고, `--facts`는 팩트 생산 간선(`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`, `--format json`: `factEdges`, `dot`: 점선)을 그립니다. `reach --endings[=<occasion>]`(0.27.0)는 엔딩마다 — 그 occasion에 답하는 비트, 또는 인자가 없으면 `::end`를 실행할 수 있는 모든 비트 — `after:` 판정, `when` 판정(절대 참이 안 됨 / 절대 이기지 못함), 만족 가능한 `when`이 읽는 것과 그것을 쓰는 쪽(아무도 쓰지 않으면 `nothing writes it`), 그리고 `N ending(s): A reachable, B unreachable, C unknown` 요약을 보여 줍니다. |
-| `lute beats <dir> [--occasion o] [--target t] [--json] [--expand]` | 0.23.0. 계기별(대상별) 비트 사다리를 선택 순서대로 보여 줍니다: priority, `once`(번들 비트의 `day` / `slot` 포함), `also`, `after:`, `when`(`@def`는 쓴 그대로, `--expand`면 펼침), 제목, 그리고 `check-project`의 판정(도달 불가, 가려짐, 동점, once-run-user). 프로젝트가 깨끗하게 검사되지 않아도 됩니다. 0.26.0부터 앞선, 결코 소진되지 않는 비트가 그 `when`을 함의해 늘 이기는 폴백은 `covered by <id>`로(`--json`: `coveredBy`) 표시되고, 종류 대상 비트에는 `kind:<kind>` 사다리가 생기며, `--target`은 아무 멤버나 받습니다. |
-| `lute refs <dir> --attr <directive>.<attr> \| --reward <KIND> [--json]` | 0.26.0. 디렉티브 속성(`give.item`)의 모든 값, 또는 한 보상 종류의 모든 대상을 그것을 쓰는 문서와 줄과 함께 나열합니다. 컴포넌트를 거쳐 전달된 값은 그 `::use`에서(`via component <name>`), 대상 없는 보상은 `(no target)`으로 나옵니다. 병합 전에 누가 무엇을 주는지 봅니다. |
-| `lute calendar <dir> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>[@<axis>[=<value>],…]] [--target <T>] [--facts <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--json \| --csv]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion`의 `@` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion dusk@clock.day`(또는 `@run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--facts at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
-| `lute lore <dir>` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
-| `lute context <file> [--project <dir>] [--json]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 텍스트 수식어, 모든 씬·퀘스트·엔트리 id. `--json`은 기능 스냅샷 해시 `capabilitySnapshot`도 싣습니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
+| `lute play --project <DIR> --script p.play.yaml [--json] [--ir] [--quiet] [--derivation <ATOM>] [--conditions-output <file>] [--no-derive]` | 프로젝트 전체에 계기를 발생시키며 퀘스트를 진행합니다. `expect:`가 어긋나면 종료 코드 `1`입니다. 연출은 작성한 그대로 출력되고, `--ir`은 대신 로워링된 레코드를 주입된 것까지 표시해 출력합니다. `--derivation`(반복 가능)은 플레이가 끝난 뒤 ground atom의 도출 트리를, 성립하지 않으면 그것을 결론 낼 수 있는 규칙마다 실패한 전제를 출력합니다. 0.24.0부터 assert된 잎은 출처를 밝힙니다(``asserted by scene `cafe.open`, step 1``). |
+| `lute test [<path>…] [--project <DIR>] [--coverage] [--no-derive]` | 모든 `*.test.yaml`과, `expect:`가 있는 모든 `*.play.yaml`을 실행합니다. 파일 하나를 주면 그 테스트나 플레이만 실행합니다. `--project`가 없으면 가장 가까운 `lute.project.yaml`을 기준으로 해석합니다(stderr에 알림). 미완료로 끝난 워크는 실패하고, `file:`이 없는 테스트도 스위트를 멈추지 않고 실패 하나(`E-TEST-FILE`)로 남습니다. `--coverage`는 `--project`나 가장 가까운 `lute.project.yaml`의 프로젝트에서 어떤 테스트도 트레이스하지 않고 어떤 플레이도 제시하지 않은 문서를 나열합니다. 0.24.0부터 `advance:` 스텝의 발생이 제시한 문서도 셈에 들고, 머리글은 두 수를 함께 셉니다: `coverage over N traced path(s) and M play(s) (…):`. 0.26.0부터 프로젝트를 한 번만 적재하고 테스트와 플레이를 병렬로 실행하며(`RAYON_NUM_THREADS` 존중), 결과는 원래 순서로 보고합니다. 0.27.0부터 단위는 비트입니다: 번들 비트와 엔트리를 하나씩 나열하고(`lore/endings/ren.lute: ember`), 플레이가 고른 선택지도 branch/hub 행에 세며, 머리글은 `(plays count toward what they presented and the choices they picked, not match arms)`이고, 마지막 절에 어떤 플레이도 제시하지 않은 비트를 나열합니다(`--json`: `untested`, `notPresentedByPlay`, 각각 `{file, id, kind}`). |
+| `lute scenario [--project <DIR>] [reach --node <NODE> \| envelope --node <NODE> \| knowledge [--node <NODE>]] [--facts] [--format text\|dot] [--json]` | `after:` 그래프, 도달 가능성, 보장되는 상태와 팩트. 노드는 씬 id, `quest:<id>`, 또는 번들 비트의 정식 id입니다(그대로 또는 `beat:<doc>.<beat>`, 간선 없는 진입 노드로 그려짐). `knowledge`(0.23.0)는 팩트 가드가 있는 비트, 엔트리, 목표마다 질의하는 관계를 찾고, 각 관계를 규칙을 거슬러 그것을 만드는 쪽까지 추적합니다: assert하는 문서, 시드 팩트, 엔진(`reserved`), 또는 만드는 쪽 없음. 부정 전제를 깨뜨릴 수 있는 팩트도 알려 줍니다. `--node`에는 엔트리 id나 `<quest>.<objective>`도 줄 수 있습니다. 0.24.0부터 모든 가드 자리를 다루고, 종류 원자를 멤버십으로 읽으며(``suitor(sol) — entity kind `suitor`; sol is a member``), 규칙의 `cel()` 전제가 읽는 것을 밝힙니다. 0.26.0: `knowledge`는 규칙의 `count(…)` 전제를 그것이 세는 팩트의 생산자까지 추적하고, `--facts`는 팩트 생산 간선(`scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`, `--json`: `factEdges`, `dot`: 점선)을 그립니다. `reach --endings[=<OCCASION>]`(0.27.0)는 엔딩마다 — 그 occasion에 답하는 비트, 또는 인자가 없으면 `::end`를 실행할 수 있는 모든 비트 — `after:` 판정, `when` 판정(절대 참이 안 됨 / 절대 이기지 못함), 만족 가능한 `when`이 읽는 것과 그것을 쓰는 쪽(아무도 쓰지 않으면 `nothing writes it`), 그리고 `N ending(s): A reachable, B unreachable, C unknown` 요약을 보여 줍니다. |
+| `lute beats [--project <DIR>] [--occasion <OCCASION>] [--target <TARGET>] [--json] [--expand]` | 0.23.0. 계기별(대상별) 비트 사다리를 선택 순서대로 보여 줍니다: priority, `once`(번들 비트의 `day` / `slot` 포함), `also`, `after:`, `when`(`@def`는 쓴 그대로, `--expand`면 펼침), 제목, 그리고 프로젝트 전체 `check`의 판정(도달 불가, 가려짐, 동점, once-run-user). 프로젝트가 깨끗하게 검사되지 않아도 됩니다. 0.26.0부터 앞선, 결코 소진되지 않는 비트가 그 `when`을 함의해 늘 이기는 폴백은 `covered by <id>`로(`--json`: `coveredBy`) 표시되고, 종류 대상 비트에는 `kind:<kind>` 사다리가 생기며, `--target`은 아무 멤버나 받습니다. |
+| `lute refs [--project <DIR>] --attr <DIRECTIVE>.<ATTR> \| --reward <KIND> [--json]` | 0.26.0. 디렉티브 속성(`give.item`)의 모든 값, 또는 한 보상 종류의 모든 대상을 그것을 쓰는 문서와 줄과 함께 나열합니다. 컴포넌트를 거쳐 전달된 값은 그 `::use`에서(`via component <name>`), 대상 없는 보상은 `(no target)`으로 나옵니다. 병합 전에 누가 무엇을 주는지 봅니다. |
+| `lute calendar [--project <DIR>] [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>] [--occasion-axes <O>=<axis>[=<value>],…] [--target <T>] [--relation <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--format text\|csv] [--json]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion-axes`의 `=` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion-axes dusk=clock.day`(또는 `=run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--relation at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
+| `lute lore [--project <DIR>]` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
+| `lute context <file> [--project <DIR>] [--node <NODE> \| --at <file>:<line>:<col>] [--script <file>… \| --all-scripts] [--json]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 텍스트 수식어, 모든 씬·퀘스트·엔트리 id. `--json`은 기능 스냅샷 해시 `capabilitySnapshot`도 싣습니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
 | `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
-| `lute doctor [<dir>] [--strict]` | 툴체인과 프로젝트 설정: 버전, 활성 플러그인, 계기별로 응답하는 비트 수, 플레이 스크립트와 테스트, `PATH`의 `lute-lsp`가 이 버전인지, (0.24.0) 실행 중인 `lute` 옆의 빌드와 같은지(`lute-lsp beside lute`), 실행 중인 `lute-lsp`가 낡았는지(에디터 재시작). `--strict`(0.26.0)는 실패한 검사(`✗`)가 하나라도 있으면 `1`로 끝납니다. 0.26.0부터 `lute-lsp`는 자기 바이너리가 교체된 것을 알아채고, 옛 빌드의 결과 대신 재시작하라는 `lute-lsp-stale` 진단 하나를 보냅니다. |
-| `lute new scene\|quest\|lore\|schema <name> [--dir <dir>]` · `lute init <dir> [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. 파일 이름은 입력한 대소문자를 그대로 둔 id를 따릅니다. `lute new scene <name> --occasion <occasion> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. 대상 있는 계기에는 `--target`이 필요합니다. |
+| `lute doctor [--project <DIR>] [--strict] [--json]` | 툴체인과 프로젝트 설정: 버전, 활성 플러그인, 계기별로 응답하는 비트 수, 플레이 스크립트와 테스트, `PATH`의 `lute-lsp`가 이 버전인지, (0.24.0) 실행 중인 `lute` 옆의 빌드와 같은지(`lute-lsp beside lute`), 실행 중인 `lute-lsp`가 낡았는지(에디터 재시작). `--strict`(0.26.0)는 실패한 검사(`✗`)가 하나라도 있으면 `1`로 끝납니다. 0.26.0부터 `lute-lsp`는 자기 바이너리가 교체된 것을 알아채고, 옛 빌드의 결과 대신 재시작하라는 `lute-lsp-stale` 진단 하나를 보냅니다. |
+| `lute new scene\|quest\|lore\|schema <name> [--project <DIR>]` · `lute init [<DIR>] [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. 파일 이름은 입력한 대소문자를 그대로 둔 id를 따릅니다. `lute new scene <name> --occasion <OCCASION> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. 대상 있는 계기에는 `--target`이 필요합니다. |
 
 trace 목(`--mock`). 테스트의 목 키도 같은 형식입니다:
 
 ```yaml
 # mocks/counter.yaml: lute trace scenes/counter.lute --project . --mock mocks/counter.yaml
-file: ../scenes/counter.lute               # required under mocks/, which check-project validates
+file: ../scenes/counter.lute               # required under mocks/, which whole-project check validates
 state:  { run.tip: 5 }                     # path: literal
 facts:  ["knows(vesna, manifest)"]         # base facts, on top of the schema's facts: seeds
 choose: { greet: tip, chat: [coffee, leave] }   # branch: choice; hub: its visit order
@@ -1472,7 +1472,7 @@ FAIL  tests/north/gull.test.yaml  (tests/north/../../lore/north/gull.lute)
 
 0.27.0부터 다른 불일치도 전제를 댑니다. 단언한 `eligible: { ember: true }`가 틀리면
 ``eligible ember: expected true, got false — its `after="visited('ren.confession')"` is false — mock `visited: [ren.confession]` ``로
-읽힙니다. 가드가 거짓인 선택지에 떨어진 `--choose`(또는 테스트의 `choose:`)는 가드, 그 가드를 거짓으로 만든
+읽힙니다. 가드가 거짓인 선택지에 떨어진 `--choice`(또는 테스트의 `choose:`)는 가드, 그 가드를 거짓으로 만든
 읽기 하나하나, 그리고 그것을 바꿀 목을 댑니다:
 ``its guard `holds('found', ['receipt'])` decided false: `found(receipt)` does not hold (mock `--fact "found(receipt)"`)``
 — 테스트에서는 `facts: ["found(receipt)"]`로, 플레이에서는 YAML 키로 씁니다.
@@ -1583,7 +1583,7 @@ expect:                                 # judged at the end; a miss exits 1
 - 종류 대상 비트(0.26.0)의 `{{occasion.target}}`은 `lute play`에서 멤버의 캐스트 `name:`으로 렌더링됩니다.
   브리지 응답은 결과 슬롯이나 기능의 `result:` 형태로 타입이 정해지며, 타입 없는 응답은 문자열로 저장하지
   않고 거부합니다.
-- `lute play . --script plays/first.play.yaml --explain "can_halt(vesna)"`는 어떤 규칙이 그 atom을
+- `lute play --project . --script plays/first.play.yaml --derivation "can_halt(vesna)"`는 어떤 규칙이 그 atom을
   결론 냈고 각 전제가 어디서 왔는지 보여 줍니다.
 
 → [CLI 레퍼런스](/ko/tooling/cli/) · [트레이싱](/ko/tooling/tracing/) · [스토리 플레이](/ko/tooling/play/)
@@ -1601,7 +1601,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | 상태 경로나 `@def`가 선언되지 않았거나, 그 스키마를 가져오지 않았습니다. |
 | `E-MAYBE-UNSET` | 기본값도, 앞선 `::set`도, `has` 가드도 없는 경로를 읽었습니다. `prev.run.*`를 읽을 때는 항상 필요합니다. |
 | `E-CAST-UNKNOWN` | 캐스트가 선언되어 있는데(스키마의 `cast:`나 플러그인의 `cast` 내보내기) 이 화자는 그 안에 없거나, (0.24.0) `::actor{character}`, `::camera{focus}`, `speaker` 컴포넌트 인자가 캐스트 밖을 가리킵니다. 메시지가 가장 가까운 id를 제안합니다. |
-| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds('inParty', ['corvin'])"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 `check-project`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
+| `W-CAST-ABSENT` | 0.24.0. 화자의 캐스트 항목이 `present:`를 선언했는데 줄을 감싼 가드가 그것을 함의하지 않습니다(`{vo}` 줄은 제외, `{os}` 줄은 검사). 줄에 가드를 달거나(`@corvin{when="holds('inParty', ['corvin'])"}`) 그런 가드 아래로 옮기세요. 가드를 거짓으로 만들 수 있는 쓰기만 그 가드를 무효로 합니다. 단일 파일 `check`는 모든 경로에서 assert된 팩트를 볼 수 없지만 프로젝트 전체 `check`는 봅니다. 0.25.0: 관계의 `changedOn:` 계기 뒤의 줄에서는 `assume: true`가 그 관계를 덮지 않습니다. |
 | `E-BAD-ENUM` | enum 밖의 값입니다. 0.24.0부터는 화자의 캐스트 `emotions:` 밖의 `emotion=`도 해당합니다(`happy`는 `isolde`의 감정이 아님). 0.26.0부터는 `{ entity: K }`로 타입을 정한 속성에 그 종류 밖의 값을 줄 때도 해당합니다(비슷한 이름 제안과 함께, 컴포넌트 파라미터를 거친 값도). |
 | `E-ENGINE-OWNED-WRITE` | `::set`이 `owner: engine`으로 선언된 경로에 씁니다. 콘텐츠는 읽기만 합니다. `lute play`에서는 `engine:` 스텝으로, trace와 test에서는 목의 `state:`로 쓰세요. |
 | `W-QUEST-STATE-HAS` | `has(quest.<id>.state)`는 항상 참입니다. `'unset'`과 비교하세요. |
@@ -1624,19 +1624,19 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-BEAT-ONCE-RUN-USER` | 기본값 `once: run`을 그대로 둔 비트의 `when`이 user 등급 상태만 읽어서 런마다 다시 재생됩니다. 의도한 것이면 `once: run`을 직접 쓰고, 아니면 `once: user`를 쓰세요. |
 | `W-QUEST-HANDLER-DEAD` | 결코 실패할 수 없는 퀘스트(`fail`도, `by=` 기한이 있는 필수 목표도, 실패할 수 있는 필수 하위 퀘스트도, 부모 퀘스트도 없음)에 `<on event="questFailed">`가 있습니다. |
 | `W-STAGE-ABSENT` | 어떤 경로에서 퇴장했거나 `::bg` 장면 전환으로 자동으로 숨겨진 캐릭터를 줄이 무대에 세웁니다. 선택지와 `<match>` 갈래는 따로 따라가므로 한 갈래의 퇴장이 형제 갈래에서 경고를 내지 않습니다. 갈래가 다시 합쳐진 뒤에는 모든 갈래가 무대에 남겨 둔 캐릭터만 무대에 있습니다. |
-| `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | 조건이 결코 성립할 수 없습니다. `check-project`는 팩트 질의도 판정합니다. 0.23.0부터는 한 `&&` 안의 모순(`run.n > 5 && run.n < 3`)도 잡습니다. `check-project --wip`에서는 아직 아무것도 만들어 내지 않는 관계 때문에만 죽은 가드가 경고 `W-WIP`이고, 메시지가 원래 코드를 밝힙니다. |
+| `E-BEAT-UNREACHABLE` / `E-ARM-DEAD` | 조건이 결코 성립할 수 없습니다. 프로젝트 전체 `check`는 팩트 질의도 판정합니다. 0.23.0부터는 한 `&&` 안의 모순(`run.n > 5 && run.n < 3`)도 잡습니다. `lute check --project . --wip`에서는 아직 아무것도 만들어 내지 않는 관계 때문에만 죽은 가드가 경고 `W-WIP`이고, 메시지가 원래 코드를 밝힙니다. |
 | `E-ACCEPT-TARGET` | `::accept`가 없는 퀘스트나 `start`가 있는 퀘스트를 가리키거나, (0.24.0) 부모와 함께 활성화되는 자식을 가리키거나(그 자식에 `activate="accept"`를 선언하세요), `at`이 `"nextRun"`이 아닙니다. |
-| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, `check-project`. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트(`start` 없음, 또는 `activate="accept"` 자식)입니다. 결코 활성화되지 않습니다. 0.25.0부터 목의 `accepts:`는 치지 않으며(메시지가 그 목을 밝힙니다), 엔진이 수락하는 퀘스트에는 `accept="external"`을 선언하세요. |
+| `W-QUEST-NEVER-ACCEPTED` | 0.24.0, 프로젝트 전체 `check`. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트(`start` 없음, 또는 `activate="accept"` 자식)입니다. 결코 활성화되지 않습니다. 0.25.0부터 목의 `accepts:`는 치지 않으며(메시지가 그 목을 밝힙니다), 엔진이 수락하는 퀘스트에는 `accept="external"`을 선언하세요. |
 | `E-FACT-EXCLUSIVE` / `E-RULE-EXCLUSIVE` | 0.25.0. `::assert`가 두 `excludes:` 관계를 모든 경로에서(`lute trace` / `lute test`에서는 걸은 경로에서) 함께 성립하게 하거나, 규칙이 다른 쪽이 성립하는 곳에서만 한쪽을 도출합니다. |
-| `W-LUTE-VERSION-STALE` | 문서의 `luteVersion`이 툴체인과 다릅니다. 0.25.0: 매니페스트의 `defaults: luteVersion`에서 물려받은 경우 `check-project`는 문서마다가 아니라 `lute.project.yaml`의 그 줄에서 한 번 보고합니다(`… — every document inherits it (N documents)`). |
+| `W-LUTE-VERSION-STALE` | 문서의 `luteVersion`이 툴체인과 다릅니다. 0.25.0: 매니페스트의 `defaults: luteVersion`에서 물려받은 경우 프로젝트 전체 `check`는 문서마다가 아니라 `lute.project.yaml`의 그 줄에서 한 번 보고합니다(`… — every document inherits it (N documents)`). |
 | `W-DEADLINE-BEFORE-DONE` | 0.24.0. `on=` 목표의 `by=`가 `done`이 성립할 때마다 성립하므로, 매 정산마다 판정하는 `by`가 계기가 `done`을 판정하기 전에 목표를 실패시킵니다. 그 조건을 `until=`로 쓰세요. |
 | `E-STATE-DECL` | 상태 선언이 잘못되었습니다. 0.24.0부터는 열린 종류나 모르는 종류에 대한 `per:`, 그리고 멤버가 아닌 키를 쓰거나 값도 `_`도 없는 멤버를 남기거나(`` `default:` gives no value for `guild` ``) `per:` 없는 경로에 쓴 맵 `default:`도 해당합니다. |
 | `W-DOMAIN-UNREAD` | 선언했지만 아무것도 읽지 않는 enum이나 종류입니다. 0.24.0부터는 `per:` 색인, `subsetOf:` 부모, 규칙 본문이나 `holds(…)`의 종류 원자도 읽기로 치며, 경고는 선언 자신의 줄에 붙습니다. |
 | `E-ENTITY-KIND-SHAPE` | 엔티티 종류가 잘못되었습니다. 0.26.0부터는 한 종류나 enum에 같은 멤버를 두 번 적었거나 두 파일이 같은 멤버를 더한 경우(두 줄을 모두 밝힘), 어떤 import도 선언하지 않은 종류에 `add:`를 쓴 경우(비슷한 이름 제안), `open:` 종류에 `add:`를 쓰거나 `members:` / `open:` 옆에 쓴 경우도 해당합니다. 하위 종류의 멤버는 부모에 다시 적지 않아도 됩니다. 스키마 줄에서 한 번 보고합니다. |
-| `E-STATE-DECL-CONFLICT` | 0.26.0, `check-project`. 두 문서가 한 상태 경로를 다른 `type`, `default`, `per`, `owner`로 선언합니다(`scene.*`는 제외, `extends:`로 다듬은 것은 충돌 아님). 함께 쓰는 경로는 두 문서가 모두 가져오는 스키마에 한 번만 선언하세요. |
+| `E-STATE-DECL-CONFLICT` | 0.26.0, 프로젝트 전체 `check`. 두 문서가 한 상태 경로를 다른 `type`, `default`, `per`, `owner`로 선언합니다(`scene.*`는 제외, `extends:`로 다듬은 것은 충돌 아님). 함께 쓰는 경로는 두 문서가 모두 가져오는 스키마에 한 번만 선언하세요. |
 | `E-REWARD-TARGET` | 0.26.0. 보상의 `target=`이 보상 종류의 `target:` 계약을 어깁니다: `{ entity: K }` 종류의 멤버가 아니거나, `{ provider: … }`가 모르거나, `required: true`인데 없습니다. |
 | `E-RULE-AGGREGATE-CYCLE` | 0.26.0. 규칙의 `count(…)` / `countDistinct(…)`가 그 규칙의 머리에 의존하는 관계를 셉니다. 머리가 먹이지 않는 관계만 세세요. |
-| `W-DISPLAY-NAME-DUP` | 0.26.0, `check-project`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
+| `W-DISPLAY-NAME-DUP` | 0.26.0, 프로젝트 전체 `check`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
 | `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::label`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
@@ -1644,14 +1644,14 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-CLOCK-DECL` | 0.24.0. 스키마의 `clock:`이 잘못되었습니다: `day` / `slot`이 선언되지 않았거나 타입이 틀렸거나 `owner: engine`이 아니거나(`` `day: run.day` must be declared `owner: engine` ``), `slots`가 슬롯 enum의 멤버가 아니거나 `slot` 없이 쓰였거나, 모르는 `raise` 계기(플러그인이 계기를 선언할 때)나 `payload:`가 있는 `raise` 계기(0.28.0)이거나, 두 번째 시계입니다. |
 | `E-SEASON-DECL` | 0.27.0. `seasons:` 항목이 잘못되었거나(맵이 아님, `live`가 없거나 비어 있음, 알 수 없는 키, 잘못된 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리킵니다. `prev.season.*`에 쓰면 `prev.run.*`처럼 `E-QUEST-RESERVED-WRITE`입니다. |
 | `E-TEMPLATE` | 0.27.0. 비트 템플릿을 잘못 썼습니다: `<beat use>`가 가져오지 않은 컴포넌트(비슷한 이름 제안)나 `beat:` 머리가 없는 컴포넌트를 가리키거나, 머리에 모르는 키(`id` 포함)나 파라미터가 아닌 `@name`이 있거나, 일반 텍스트 머리 키에 식 인자가 들어가거나, `::body`가 템플릿 최상위가 아닌 곳에 있습니다. |
-| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었습니다. 또는 (`check-project`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
+| `E-CHAPTERS` | 0.28.0. `lute.project.yaml`의 `chapters:`가 `{ on, scenes }` 사슬의 목록이 아니거나, 씬을 두 번 적었거나, 한 계기에 사슬을 둘 두었습니다. 또는 (프로젝트 전체 `check`) 사슬이 어떤 플러그인도 선언하지 않은 계기에 응답하거나, 어느 씬도 선언하지 않은 id(비슷한 id 제안)나 자기 `on:`으로 다른 계기에 응답하는 씬을 적었거나, 대상 있는 계기에서 `target:`이 없는 씬을 적었습니다. 그 밖에는 적용된 사슬의 각 씬이 직접 쓰지 않은 `on:`, 내려가는 `priority:`, 그리고 (`select: sequence` 계기가 아니면) `after: visited("<앞 씬>")`를 받습니다. |
 | `W-CHAPTER-STALL` | 0.28.0. 사슬의 씬이 가진 자기 `when:`이 끝내 참이 되지 않을 수도 있는 상태를 읽는데, 다음 씬의 `after:`가 그 씬을 기다리므로 장이 거기서 멈출 수 있습니다. 시계만 읽는 `when:`은 그 창이 닫힐 때(계기의 이후 어떤 raise도 맞추지 못할 때)만 보고합니다. |
 | `W-CHAPTER-ORDER` | 0.28.0. `select: sequence` 계기에서 사슬의 씬이 가진 자기 `priority:`가 목록 순서를 벗어나게 재생합니다. |
 | `E-ENUM-LABEL-NOT-MEMBER` | 0.24.0. enum의 `labels:`가 그 멤버가 아닌 것을 가리킵니다. |
 | `E-CEL-TYPE` | 0.24.0. `%`의 피연산자가 정수가 아닙니다: `` `%` takes two integers: `2.5` is not an integer ``. |
 | `E-RULE-GUARD-DEF` | 0.24.0. 규칙의 `cel()` 가드가 없는 `@def`를 부르거나 인자 개수가 틀렸거나 `$`를 씁니다. |
 | `E-RESERVED-NAME` | 0.28.0. 선언한 이름이 Lute가 스스로 쓰는 이름입니다. CEL 호출·키워드·규칙 단어(`has`, `holds`, `visited`, `not`, …)와 같은 관계 이름, entity 멤버나 def 이름인 state 루트(`clock`), 멤버나 id 이름인 `unset`/`true`/`false`/`null`, id 이름인 `none`, `cast:`의 `narrator`가 그렇습니다. 메시지가 대신 쓸 이름을 제시합니다(`visited` → `wasAt`). 전체 목록은 [예약된 이름](/ko/reference/reserved-names/)에 있습니다. |
-| `W-RELATION-UNREAD` / `W-DEF-UNUSED` | 0.24.0, `check-project`, 선언 위치에서. 관계가 assert, 시드, 도출되지만 어떤 조건, 규칙 본문, def도 읽지 않거나, 어떤 콘텐츠, def, 규칙 가드도 `@def`를 참조하지 않습니다. 플레이 스크립트와 테스트는 읽기로 치지 않습니다. |
+| `W-RELATION-UNREAD` / `W-DEF-UNUSED` | 0.24.0, 프로젝트 전체 `check`, 선언 위치에서. 관계가 assert, 시드, 도출되지만 어떤 조건, 규칙 본문, def도 읽지 않거나, 어떤 콘텐츠, def, 규칙 가드도 `@def`를 참조하지 않습니다. 플레이 스크립트와 테스트는 읽기로 치지 않습니다. |
 | `E-PLUGIN-PARSE` / `E-PLUGIN-KEY` | 플러그인 내보내기를 파싱할 수 없거나, (`E-PLUGIN-KEY`) 받지 않는 키가 있습니다(``has no key `selct` — did you mean `select`?``, 그 줄에서. 0.28.0부터 `plugin.yaml`도 검사합니다). `E-PLUGIN-PARSE`는 코어 훅이 아닌 `lower: { kind: builtin }`도 포함하며, 이어지는 `E-PLUGIN-MISSING-ACTIVE`는 플러그인을 불러오지 못했다고 알려 줍니다. |
 | `E-CONN-EPISODE-ID-DUP` / `E-QUEST-ID-DUP` | 두 문서가 같은 씬 id나 퀘스트 id를 쓰거나, 번들 비트의 정식 `<doc>.<beat>` id가 씬 id와 같습니다. |
 | `E-DUP-VOICEKEY` | 수식어를 뗀 텍스트가 다른 줄들이 같은 `voiceKey`로 컴파일됩니다. 내레이션과 속마음을 포함한 모든 줄을 프로젝트 전체에서 비교합니다. 대개 `{speaker}-{code}` 템플릿으로 고정했을 때입니다. 기본값 `{prefix}.{speaker}-{code}`를 쓰거나 줄마다 다른 `code=`를 주세요. |
@@ -1707,7 +1707,7 @@ expect:                                 # judged at the end; a miss exits 1
 퀘스트의 `questComplete` 핸들러에 둡니다.
 
 **`visited()`는 세이브 전체에 걸칩니다.** 새 런에서도 지워지지 않습니다. 단일 파일 `check`는 이를 판정하지
-않고, `check-project`는 id를 검증하며, `trace`와 `test`에는 `visited:` 목록이 필요하고, 세이브에서
+않고, 프로젝트 전체 `check`는 id를 검증하며, `trace`와 `test`에는 `visited:` 목록이 필요하고, 세이브에서
 시작하는 플레이 스크립트는 최상위 `visited:`에 적습니다.
 
 **엔진 소유 상태는 콘텐츠가 아니라 하네스에서 옵니다.** `owner: engine` 경로에 `::set`을 쓰면 오류입니다.
@@ -1818,11 +1818,11 @@ id: choice.readback
 ```
 
 **단일 파일 명령은 모두 가장 가까운 프로젝트를 찾습니다(0.27.0).** `lute check`, `trace`, `compile`,
-`compile-stream`, `context`는 `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고
+`compile --stream`, `context`는 `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고
 stderr에 알립니다(`lute: note: using project <dir> (nearest lute.project.yaml); pass --project to choose another`).
 0.27.0 전에는 `check`만 그렇게 했고, 다른 명령은 `defaults:`로 끌어올린 것과 플러그인이 선언한 것 없이
 해석했습니다. `lute test`는 테스트 문서와 플레이 모두 `--project`나 가장 가까운 `lute.project.yaml`로
-해석합니다. `check-project`, `play`, `scenario`는 넘겨받은 디렉터리에서 프로젝트를 읽습니다. 위쪽에
+해석합니다. 프로젝트 전체 `check`, `play`, `scenario`는 `--project`로 넘겨받은 디렉터리(없으면 현재 디렉터리에서 찾은 가장 가까운 프로젝트)에서 프로젝트를 읽습니다. 위쪽에
 매니페스트가 없으면 코어만으로 해석합니다.
 
 **`trace`, `test`, `play`는 도출합니다: 결론이 아니라 전제를 목으로 주세요.** 스키마의 `facts:` 시드를
@@ -1965,7 +1965,7 @@ rules:
 
 **단일 파일 검사의 `W-CAST-ABSENT`는 오경보일 수 있습니다.** `lute check`는 줄을 감싼 가드만 봅니다.
 모든 경로에서 앞서 실행된 `::assert{inParty(isolde)}`나 아무도 retract하지 않는 시드가 있으면
-`check-project`는 모든 경로에서 성립하는 팩트를 세므로 `@isolde: …`가 깨끗합니다. 단일 파일 검사는 그럴 수
+프로젝트 전체 `check`는 모든 경로에서 성립하는 팩트를 세므로 `@isolde: …`가 깨끗합니다. 단일 파일 검사는 그럴 수
 없으며, 메시지가 그 사실을 알려 줍니다.
 
 ## 기계 판독 CLI 출력
@@ -1973,8 +1973,8 @@ rules:
 에이전트는 사람이 읽는 출력을 파싱하지 말고 JSON 보고서 봉투를 사용해야 합니다. JSON 보고서는
 stdout에 `command`, `schemaVersion`, `ok`를 포함한 객체 하나를 출력하며, `ok`는 프로세스 종료 코드가
 0일 때만 `true`입니다. `LUTE_TELEMETRY=0 target/debug/lute schema check`의 실제 출력은
-`schemaVersion: "0.47.0.schema"`이며 `--json` 검사 보고서(`0.43.0.check)의 인자와 출력을 설명합니다.
-`lute schema`는 항상 JSON이며 인자, 옵션, 출력, `inputs`(`lute schema patch`의 `PATCH` 요청, 다른 명령은 빈 목록)를 나열합니다.
+`schemaVersion: "0.48.0.schema"`이며 `--json` 검사 보고서(`0.48.0.check`)의 인자와 출력을 설명합니다.
+`lute schema`는 항상 JSON이며 인자, 옵션, 출력, `inputs`(`lute schema patch`의 `FILE` 요청, 다른 명령은 빈 목록)를 나열합니다.
 
 JSON 모드의 사용법·I/O·입력 오류도 객체 하나입니다. `error.code`는 `E-CLI-USAGE`, `E-CLI-IO`,
 `E-CLI-INPUT` 중 하나이며 가능한 경우 `error.path`, `error.argument`, `error.hint`가 들어갑니다.

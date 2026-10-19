@@ -22,7 +22,7 @@ fn text(o: &Output) -> String {
     )
 }
 
-/// `lute check-project` over a project whose occasions are `evening`
+/// `lute check` (whole project) over a project whose occasions are `evening`
 /// (`select: sequence`), `morning` (`select: first`), both raised for no
 /// target, and `talk` (raised for a hero), plus every `(path, text)`.
 fn check(tag: &str, docs: &[(&str, &str)]) -> String {
@@ -56,7 +56,8 @@ fn check(tag: &str, docs: &[(&str, &str)]) -> String {
     }
     text(
         &Command::new(BIN)
-            .arg("check-project")
+            .arg("check")
+            .arg("--project")
             .arg(&dir)
             .output()
             .unwrap(),

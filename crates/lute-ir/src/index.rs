@@ -162,7 +162,7 @@ impl IndexBeat {
     feature = "json-schema",
     schemars(
         rename = "projectIndex",
-        description = "`project.index.json` (`lute compile --all`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md)."
+        description = "`project.index.json` (whole-project `lute compile`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md)."
     )
 )]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -1,0 +1,42 @@
+# What each lute command takes (spec 0.48.0 section 2.2 and 6, decision note "Project option structs").
+# Columns, tab separated: command id, --project, --providers, --permission-profile,
+# --json (yes, or exempt: no --json because the command is an artifact writer or always JSON), gate
+# (--deny and --deny-warnings). A command takes --providers / --permission-profile exactly
+# when the option can change its result. A group that only groups subcommands has no row.
+command	project	providers	permission-profile	json	gate
+beats	yes	no	no	yes	no
+calendar	yes	yes	yes	yes	yes
+catalog refresh	yes	yes	no	yes	no
+check	yes	yes	yes	yes	yes
+compile	yes	yes	yes	yes	yes
+constraints	yes	yes	no	yes	no
+context	yes	yes	yes	yes	no
+diff	no	no	no	yes	no
+doctor	yes	no	no	yes	no
+expr	yes	no	yes	yes	yes
+fix	no	no	no	yes	no
+fmt	no	no	no	yes	no
+impact	yes	yes	no	yes	no
+init	no	no	no	yes	no
+lint	yes	yes	no	yes	yes
+loc export	yes	no	no	exempt	no
+loc import	no	no	no	yes	no
+loc report	yes	no	no	yes	no
+lore	yes	no	no	yes	no
+new lore	yes	no	no	yes	no
+new quest	yes	no	no	yes	no
+new scene	yes	no	no	yes	no
+new schema	yes	no	no	yes	no
+patch	yes	yes	yes	yes	no
+play	yes	yes	yes	yes	yes
+refs	yes	no	no	yes	no
+run	no	no	no	yes	no
+scenario	yes	yes	no	yes	no
+scenario envelope	yes	yes	no	yes	no
+scenario knowledge	yes	yes	no	yes	no
+scenario reach	yes	yes	no	yes	no
+schema	no	no	no	exempt	no
+tag	no	no	no	yes	no
+test	yes	yes	yes	yes	yes
+trace	yes	yes	yes	yes	yes
+version	no	no	no	yes	no

@@ -12,7 +12,7 @@ fn check_json_report_has_common_envelope_and_exit_agreement() {
     assert_eq!(output.status.code(), Some(0));
     let value = json(&output);
     assert_eq!(value["command"], "check");
-    assert_eq!(value["schemaVersion"], "0.43.0.check");
+    assert_eq!(value["schemaVersion"], "0.48.0.check");
     assert_eq!(value["ok"], true);
 }
 
@@ -39,15 +39,20 @@ fn check_json_diagnostic_report_sets_ok_false_for_exit_one() {
     assert_eq!(output.status.code(), Some(1));
     let value = json(&output);
     assert_eq!(value["command"], "check");
-    assert_eq!(value["schemaVersion"], "0.43.0.check");
+    assert_eq!(value["schemaVersion"], "0.48.0.check");
     assert_eq!(value["ok"], false);
-    assert!(value["diagnostics"].is_array());
+    assert!(value["files"][0]["diagnostics"].is_array());
 }
 
 #[test]
 fn constraints_json_uses_named_field() {
     let project = TempProject::new("envelope-043-constraints");
-    let output = run_cli(["constraints", project.path().to_str().unwrap(), "--json"]);
+    let output = run_cli([
+        "constraints",
+        "--project",
+        project.path().to_str().unwrap(),
+        "--json",
+    ]);
     assert_eq!(output.status.code(), Some(0));
     let value = json(&output);
     assert_eq!(value["command"], "constraints");
@@ -62,6 +67,7 @@ fn patch_malformed_json_keeps_patch_refusal_document() {
     let patch = project.write("bad.json", "{");
     let output = run_cli([
         "patch",
+        "--project",
         project.path().to_str().unwrap(),
         patch.to_str().unwrap(),
         "--json",

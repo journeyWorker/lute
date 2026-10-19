@@ -1,5 +1,5 @@
 Beat `when:` narrowing of a <match> subject (cheatsheet "Match & when": "A beat's when: narrows the subject for the whole body").
-lute check-project .   (s.lute is written with the last variant)
+lute check --project .   (s.lute is written with the last variant)
   when: run.accused != 'none'                          -> ok (narrowed: none not required)
   when: run.accused == 'tilly'                         -> E-ARM-DEAD on hester/ruben arms (narrowed)
   when: run.accused == 'tilly' || run.accused == 'hester'  -> E-NONEXHAUSTIVE `none` not covered; `ruben` arm NOT flagged dead

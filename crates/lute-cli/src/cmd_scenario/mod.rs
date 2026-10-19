@@ -2,8 +2,8 @@
 //! read-only reporting surface over everything §4 computes. Evaluates no
 //! CEL, runs no Datalog, takes no mocks: pure graph math over declared
 //! structure, reusing [`collect_project_docs`]'s SAME per-root doc grouping
-//! `check-project` builds (never a second file-walk/parse) plus the SAME
-//! `lute_check::connectivity`/`envelope` analyses `check-project`'s own
+//! whole-project `check` builds (never a second file-walk/parse) plus the SAME
+//! `lute_check::connectivity`/`envelope` analyses whole-project `check`'s own
 //! per-root pass calls (never duplicated math — only the presentation, and
 //! the omission of diagnostics, differ).
 
@@ -288,7 +288,7 @@ pub(crate) fn primary_node_ambiguity_note(
 }
 
 /// `lute scenario` dispatch (dsl §5:571-584): reuses [`collect_project_docs`]
-/// — the SAME per-root doc collection `check-project` builds — then routes
+/// — the SAME per-root doc collection whole-project `check` builds — then routes
 /// to the bare graph view, `reach`, or `envelope`.
 pub(crate) fn run_scenario(
     dir: &Path,
@@ -296,7 +296,7 @@ pub(crate) fn run_scenario(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -315,18 +315,18 @@ pub(crate) fn run_scenario(
             &file_results,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ),
-        Some(ScenarioCommand::Reach { node_id, .. }) => run_scenario_reach(
+        Some(ScenarioCommand::Reach { node, .. }) => run_scenario_reach(
             &mut out,
             dir,
             &by_root,
             &file_results,
-            node_id.as_deref().unwrap_or_default(),
+            node.as_deref().unwrap_or_default(),
         ),
-        Some(ScenarioCommand::Envelope { node_id }) => {
-            run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node_id)
+        Some(ScenarioCommand::Envelope { node }) => {
+            run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node)
         }
-        Some(ScenarioCommand::Knowledge { for_node }) => {
-            knowledge::run_text(&mut out, &by_root, &file_results, for_node.as_deref())
+        Some(ScenarioCommand::Knowledge { node }) => {
+            knowledge::run_text(&mut out, &by_root, &file_results, node.as_deref())
         }
     };
     if write_stdout(&out).is_err() {

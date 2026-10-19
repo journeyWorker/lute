@@ -1,9 +1,9 @@
 //! `lute init` / `lute new` — project and document scaffolding.
 //!
 //! Every generated artifact is designed to pass the checker CLEAN: `lute init`
-//! output survives `lute check-project <dir>` (and the `beats` and
+//! output survives `lute check --project <dir>` (and the `beats` and
 //! `investigation` templates' `lute test` and `lute play` as well), and `lute
-//! new` output survives `lute check-project` of the project it lands in
+//! new` output survives `lute check --project` of the project it lands in
 //! (modulo the advisory an accept-driven `lute new quest` stub carries until
 //! a scene `::accept`s it). Frontmatter stamps the
 //! current [`lute_check::LUTE_LANG_VERSION`] unless the manifest's
@@ -15,6 +15,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use crate::envelope::{self, CliError};
 use lute_check::ident_from_name;
 use lute_load::{build_input, manifest_context};
 use lute_manifest::project::MetaDefaults;
@@ -127,7 +128,7 @@ uses:
 
 @narrator{emotion=\"delighted\"}: Welcome to your new Lute project.
 ::set{ run.greeted = true }
-@narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check-project`.
+@narrator{when=\"run.greeted\"}: Edit this scene, then run `lute check --project .`.
 "
             .replace("{lang}", lute_check::LUTE_LANG_VERSION),
         },
@@ -147,7 +148,7 @@ state:
             rel: "tests/opening.test.yaml",
             content: "\
 # Scenario test. Run every test in the project with:
-#   lute test . --project .
+#   lute test --project .
 # `file:` is resolved against THIS file, so a test in tests/ names its scene
 # as ../scenes/<name>.lute.
 file: ../scenes/opening.lute
@@ -173,7 +174,7 @@ expect:
 /// schema's rules DERIVE the conclusions, with stratified negation (a
 /// suspect is cleared by an alibi unless evidence contradicts it); the
 /// accusation's choices are guarded by those derived facts, and the quest
-/// is accept-driven. `check-project`, `test` and `play` pass as scaffolded.
+/// is accept-driven. `check --project`, `test` and `play` pass as scaffolded.
 fn investigation_files() -> Vec<File> {
     let lang = lute_check::LUTE_LANG_VERSION;
     vec![
@@ -438,7 +439,7 @@ title: The evidence
             rel: "plays/the-case.play.yaml",
             content: "\
 # The whole case, end to end:
-#   lute play . --script plays/the-case.play.yaml
+#   lute play --project . --script plays/the-case.play.yaml
 # Each step raises an occasion the way your engine would; `expect:` asserts
 # what happened, and `lute test` runs this script alongside tests/.
 choose:
@@ -478,7 +479,7 @@ expect:
             rel: "tests/accusation.test.yaml",
             content: "\
 # A scenario test traces one document against mocks and asserts the outcome:
-#   lute test . --project .
+#   lute test --project .
 # Cass's alibi stands, so `not cleared(cass)` fails and she cannot be accused;
 # the ledger breaks Blake's, so he can.
 file: ../scenes/accusation.lute
@@ -510,7 +511,7 @@ expect:
 /// The manifest's `defaults:` supplies `luteVersion:`/`uses:`, so no document
 /// repeats them. The engine-written clock is `owner: engine`, and the play
 /// script writes it with an `engine:` step instead of a fake-engine scene.
-/// `plays/` and `tests/` exercise it all: `check-project`, `test` and `play`
+/// `plays/` and `tests/` exercise it all: `check --project`, `test` and `play`
 /// pass as scaffolded.
 fn beats_files() -> Vec<File> {
     let lang = lute_check::LUTE_LANG_VERSION;
@@ -749,7 +750,7 @@ title: Tomas
             rel: "plays/first-day.play.yaml",
             content: "\
 # One day, end to end:
-#   lute play . --script plays/first-day.play.yaml
+#   lute play --project . --script plays/first-day.play.yaml
 # Each step raises an occasion the way your engine would; an `engine:` step
 # writes what the engine owns; `expect:` asserts what happened, and `lute test`
 # runs this script alongside tests/.
@@ -782,7 +783,7 @@ expect:
             rel: "tests/mara-first.test.yaml",
             content: "\
 # A scenario test traces one document against mocks and asserts the outcome:
-#   lute test . --project .
+#   lute test --project .
 file: ../scenes/talk/mara-first.lute
 choose: { maraAsk: lamp }
 expect:
@@ -828,23 +829,23 @@ fn readme(template: &str) -> String {
     let commands = if template != "minimal" {
         "\
 # Validate the whole project (recursively):
-lute check-project .
+lute check --project .
 
 # Run every scenario test (and every play script that carries `expect:`):
-lute test . --project .
+lute test --project .
 
 # Play the project through a script of raised occasions:
-lute play . --script plays/<your-play>.play.yaml
+lute play --project . --script plays/<your-play>.play.yaml
 
 # Everything you can write against a document — occasions, state, defs, ids:
 lute context scenes/<your-scene>.lute --project .
 
 # Check the toolchain and the project setup:
-lute doctor .
+lute doctor --project .
 
 # Add more documents (a beat answers an occasion; a targeted one needs
 # `--target <prefix>.<member>`). The file is named after the id; `/` in a
-# name nests it (`talk/<name>` lands in scenes/talk/); `--dir` names the
+# name nests it (`talk/<name>` lands in scenes/talk/); `--project` names the
 # PROJECT, never a subfolder:
 lute new scene <name> --occasion <occasion> --target <target>
 lute new scene <name>
@@ -854,26 +855,26 @@ lute new lore <name>
     } else {
         "\
 # Validate the whole project (recursively):
-lute check-project .
+lute check --project .
 
 # Run every scenario test under tests/ (a test's `file:` is relative to the
 # test file, so tests/ names scenes as ../scenes/<name>.lute):
-lute test . --project .
+lute test --project .
 
 # Check one document:
 lute check scenes/<your-scene>.lute
 
 # Preview a scene against a trace mock. Keep the mock's own `file:` pointed at
-# the scene you pass here — `lute check-project` reports a mock whose subject
+# the scene you pass here — `lute check --project .` reports a mock whose subject
 # does not exist, and `lute trace` refuses a mock that names a different one:
 lute trace scenes/<your-scene>.lute --mock mocks/<your-mock>.yaml
 
 # Report the scene graph / reachability:
-lute scenario .
+lute scenario --project .
 
 # If your editor and the terminal disagree, the terminal is right; this names
 # a stale editor server or a mismatched toolchain:
-lute doctor .
+lute doctor --project .
 
 # Chain scenes into a story you can play with `lute play`:
 #   https://lute-lang.vercel.app/getting-started/connect-scenes/
@@ -904,33 +905,98 @@ replace freely; these instructions stay true.
     )
 }
 
+/// One human line: stdout, or stderr in JSON mode (stdout carries the one
+/// JSON document).
+fn out(line: &str) {
+    if envelope::json_mode() {
+        eprintln!("{line}");
+    } else {
+        println!("{line}");
+    }
+}
+
+/// Refuse with `message` (exit `2`): on stderr, and in JSON mode the
+/// `E-CLI-USAGE` envelope on stdout.
+fn refuse(message: String) -> ExitCode {
+    eprintln!("{message}");
+    envelope::fail_quietly(CliError::usage(message))
+}
+
+/// [`refuse`] for a failure of the file system at `path` (`E-CLI-IO`).
+fn refuse_io(path: &Path, message: String) -> ExitCode {
+    eprintln!("{message}");
+    envelope::fail_quietly(CliError::io(path, message))
+}
+
 /// Scaffold a new project directory. See [`crate::Command::Init`].
 ///
-/// Refuses (exit `2`) an unknown template or a directory that already carries a
-/// `lute.project.yaml`. Otherwise creates the directory tree and every template
-/// file, then prints a friendly summary. Exit `0` on success, `2` on any I/O
-/// failure.
-pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
+/// `dir` defaults to `.`. Refuses (exit `2`, nothing written) an unknown
+/// template or when any file the template would write already exists, naming
+/// it. Otherwise creates the directory tree and every template file, then
+/// prints a friendly summary (stderr with `--json`, whose stdout is the
+/// `0.48.0.init` report). Exit `0` on success, `2` on any I/O failure.
+pub fn run_init(dir: Option<&Path>, template: Option<&str>) -> ExitCode {
+    let dir = dir.unwrap_or(Path::new("."));
     let template = template.unwrap_or("minimal");
     let files = match template {
         "minimal" => minimal_files(),
         "investigation" => investigation_files(),
         "beats" => beats_files(),
         other => {
-            eprintln!(
+            let message = format!(
                 "lute init: unknown template `{other}` (expected `minimal`, `investigation`, or `beats`)"
             );
-            return ExitCode::from(2);
+            eprintln!("{message}");
+            return envelope::fail_quietly(CliError::usage(message).with_argument("--template"));
         }
     };
 
-    // Refuse to clobber an existing project (dir exists AND has a manifest).
-    if dir.join("lute.project.yaml").exists() {
-        eprintln!(
-            "lute init: `{}` already contains a lute.project.yaml — refusing to overwrite",
-            dir.display()
-        );
-        return ExitCode::from(2);
+    // A file where a directory is needed would fail halfway; refuse first.
+    for file in &files {
+        let target = dir.join(file.rel);
+        let blocker = target
+            .ancestors()
+            .skip(1)
+            .take_while(|a| a.starts_with(dir))
+            .find(|a| fs::metadata(a).is_ok_and(|m| !m.is_dir()));
+        if let Some(blocker) = blocker {
+            return refuse_io(
+                blocker,
+                format!(
+                    "lute init: `{}` exists and is not a directory, so `{}` cannot be created — \
+                     refusing (nothing was written)",
+                    blocker.display(),
+                    target.display()
+                ),
+            );
+        }
+    }
+
+    // Refuse to clobber: every file the template would write must be new.
+    let existing: Vec<PathBuf> = files
+        .iter()
+        .map(|file| dir.join(file.rel))
+        .filter(|path| fs::symlink_metadata(path).is_ok())
+        .collect();
+    if !existing.is_empty() {
+        let manifest = dir.join("lute.project.yaml");
+        let message = if existing.contains(&manifest) {
+            format!(
+                "lute init: `{}` already contains a lute.project.yaml — refusing to overwrite",
+                dir.display()
+            )
+        } else {
+            let names: Vec<String> = existing
+                .iter()
+                .map(|path| format!("`{}`", path.display()))
+                .collect();
+            format!(
+                "lute init: {} already {} — refusing to overwrite (nothing was written)",
+                names.join(", "),
+                if names.len() == 1 { "exists" } else { "exist" }
+            )
+        };
+        return refuse_io(&existing[0], message);
     }
 
     for file in &files {
@@ -938,38 +1004,61 @@ pub fn run_init(dir: &Path, template: Option<&str>) -> ExitCode {
         if let Some(parent) = path.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
                 let e = lute_manifest::io_reason(&e);
-                eprintln!("lute init: cannot create `{}`: {e}", parent.display());
-                return ExitCode::from(2);
+                return refuse_io(
+                    parent,
+                    format!("lute init: cannot create `{}`: {e}", parent.display()),
+                );
             }
         }
         if let Err(e) = fs::write(&path, &file.content) {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute init: cannot write `{}`: {e}", path.display());
-            return ExitCode::from(2);
+            return refuse_io(
+                &path,
+                format!("lute init: cannot write `{}`: {e}", path.display()),
+            );
         }
     }
 
     let d = dir.display();
-    println!("Initialized `{template}` Lute project at {d}");
-    println!("  created {} file(s):", files.len());
+    out(&format!("Initialized `{template}` Lute project at {d}"));
+    out(&format!("  created {} file(s):", files.len()));
     for file in &files {
-        println!("    {}", dir.join(file.rel).display());
+        out(&format!("    {}", dir.join(file.rel).display()));
     }
-    println!();
-    println!("Next steps:");
-    println!("  lute check-project {d}");
+    out("");
+    out("Next steps:");
+    out(&format!("  lute check --project {d}"));
     if files.iter().any(|f| f.rel.starts_with("tests/")) {
-        println!("  lute test {d} --project {d}");
+        out(&format!("  lute test --project {d}"));
     }
     let play = files.iter().find(|f| f.rel.starts_with("plays/"));
     if let Some(play) = play {
-        println!("  lute play {d} --script {}", dir.join(play.rel).display());
-        println!("  lute new scene <name> --occasion <occasion> --dir {d}");
+        out(&format!(
+            "  lute play --project {d} --script {}",
+            dir.join(play.rel).display()
+        ));
+        out(&format!(
+            "  lute new scene <name> --occasion <occasion> --project {d}"
+        ));
     } else {
-        println!("  lute scenario {d}");
-        println!("  lute new scene <name> --dir {d}");
+        out(&format!("  lute scenario --project {d}"));
+        out(&format!("  lute new scene <name> --project {d}"));
     }
-    ExitCode::SUCCESS
+    if !envelope::json_mode() {
+        return ExitCode::SUCCESS;
+    }
+    envelope::emit_report(
+        envelope::version::INIT,
+        0,
+        serde_json::json!({
+            "dir": dir.display().to_string(),
+            "template": template,
+            "files": files
+                .iter()
+                .map(|file| dir.join(file.rel).display().to_string())
+                .collect::<Vec<_>>(),
+        }),
+    )
 }
 
 /// A `lute new` document id from its name: every `/`- or `.`-separated
@@ -1052,11 +1141,11 @@ fn absolute(path: &Path) -> PathBuf {
     out
 }
 
-/// Where a `lute new` document lands: the project root `--dir` names, and
+/// Where a `lute new` document lands: the project root `--project` names, and
 /// the `defaults:` its manifest supplies — a defaulted key is omitted from
 /// the new document's frontmatter (dsl 0.22.0 §13). Outside any project, the
 /// requested directory with no defaults. A directory INSIDE a project that is
-/// not its root is [`Destination::find`]'s `Err`: `--dir` names the project,
+/// not its root is [`Destination::find`]'s `Err`: `--project` names the project,
 /// and the document would otherwise land somewhere the author did not point.
 struct Destination {
     root: PathBuf,
@@ -1146,31 +1235,50 @@ impl Destination {
 /// an existing file. `Err` is the exit code (`2`).
 fn create(path: &Path, content: &str) -> Result<(), ExitCode> {
     if path.exists() {
-        eprintln!(
-            "lute new: `{}` already exists — refusing to overwrite",
-            path.display()
-        );
-        return Err(ExitCode::from(2));
+        return Err(refuse_io(
+            path,
+            format!(
+                "lute new: `{}` already exists — refusing to overwrite",
+                path.display()
+            ),
+        ));
     }
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             let e = lute_manifest::io_reason(&e);
-            eprintln!("lute new: cannot create `{}`: {e}", parent.display());
-            return Err(ExitCode::from(2));
+            return Err(refuse_io(
+                parent,
+                format!("lute new: cannot create `{}`: {e}", parent.display()),
+            ));
         }
     }
     if let Err(e) = fs::write(path, content) {
         let e = lute_manifest::io_reason(&e);
-        eprintln!("lute new: cannot write `{}`: {e}", path.display());
-        return Err(ExitCode::from(2));
+        return Err(refuse_io(
+            path,
+            format!("lute new: cannot write `{}`: {e}", path.display()),
+        ));
     }
     Ok(())
 }
 
-fn created(path: &Path, hint: &str) -> ExitCode {
-    println!("created {}", path.display());
-    println!("  {hint}");
-    ExitCode::SUCCESS
+/// The success lines of `lute new <kind>` and, with `--json`, its
+/// `0.48.0.new` report `{kind, id, path}`.
+fn created(kind: &str, id: &str, path: &Path, hint: &str) -> ExitCode {
+    out(&format!("created {}", path.display()));
+    out(&format!("  {hint}"));
+    if !envelope::json_mode() {
+        return ExitCode::SUCCESS;
+    }
+    envelope::emit_report(
+        envelope::version::NEW,
+        0,
+        serde_json::json!({
+            "kind": kind,
+            "id": id,
+            "path": path.display().to_string(),
+        }),
+    )
 }
 
 /// Whether a beat on `on` (and `target`) answers something the project
@@ -1412,21 +1520,23 @@ fn new_scene(name: &str, dest: &Destination, on: Option<&str>, target: Option<&s
     }
     if let Some(Err(reason)) = on.map(|on| validate_beat(&path, &dest.root, on, target)) {
         let _ = fs::remove_file(&path);
-        eprintln!(
+        let message = format!(
             "lute new: {}; nothing was written",
             lute_core_span::plain_message(&reason)
         );
-        return ExitCode::from(2);
+        return refuse(message);
     }
     let code = created(
+        "scene",
+        &id,
         &path,
         &format!("check it with: lute check {}", path.display()),
     );
     if let Some(on) = chapter {
-        println!(
+        out(&format!(
             "  note: `{on}` carries a `chapters:` chain; to make `{id}` a chapter instead, add it \
              to that chain's `scenes:` in lute.project.yaml and drop its `on:`"
-        );
+        ));
     }
     code
 }
@@ -1501,6 +1611,8 @@ fn new_quest(name: &str, dest: &Destination, start: bool) -> ExitCode {
         return code;
     }
     created(
+        "quest",
+        &doc_id,
         &path,
         &format!("check it with: lute check {}", path.display()),
     )
@@ -1537,7 +1649,7 @@ fn first_scene_id(dest: &Destination) -> Option<String> {
 
 /// Refuse (exit `2`, nothing written) a new document whose `id` a scene,
 /// quest or lore document of the project already declares: document ids are
-/// one namespace, so the new file would fail `check-project` at once.
+/// one namespace, so the new file would fail `lute check --project` at once.
 fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
     let snapshot = manifest_context(&dest.root)
         .map(|context| context.snapshot)
@@ -1557,12 +1669,11 @@ fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
         return Ok(());
     };
     let shown = path.strip_prefix(&dest.root).unwrap_or(&path);
-    eprintln!(
+    Err(refuse(format!(
         "lute new: `{}` already declares `id: {id}` — scenes, quests and lore share one set of \
          document ids; pick another name; nothing was written",
         shown.display()
-    );
-    Err(ExitCode::from(2))
+    )))
 }
 
 /// `lute new lore <name>` (dsl 0.19.0 §2).
@@ -1601,6 +1712,8 @@ fn new_lore(name: &str, dest: &Destination) -> ExitCode {
         return code;
     }
     created(
+        "lore",
+        &doc_id,
         &path,
         &format!("check it with: lute check {}", path.display()),
     )
@@ -1640,17 +1753,16 @@ state:
     } else {
         format!("import it with: uses: ./{name}.schema.yaml")
     };
-    created(&path, &hint)
+    created("schema", name, &path, &hint)
 }
 
-/// Where `--dir` should have pointed for a directory inside a project that is
+/// Where `--project` should have pointed for a directory inside a project that is
 /// not its root, spelled as the command to run instead: the subdirectory
 /// relative to the root (minus the kind's own folder) moves into `<name>`,
-/// and `--dir <root>` is added unless the root is the current directory.
-/// `given` is whether the author passed `--dir`; without it the directory is
-/// the current one, and the message says so rather than blaming a flag the
-/// author never typed (round-3 CR N7).
-fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> String {
+/// and `--project <root>` is added unless the root is the current directory.
+/// Only an explicit `--project` can name such a directory: discovery always
+/// yields a project root.
+fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path) -> String {
     let rel = absolute(dir);
     let rel = rel.strip_prefix(root).unwrap_or(&rel);
     let folder = match kind {
@@ -1676,27 +1788,15 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
         .as_deref()
         != Some(root)
     {
-        suggestion.push_str(&format!(" --dir {}", root.display()));
+        suggestion.push_str(&format!(" --project {}", root.display()));
     }
     let resolved = absolute(dir);
-    let (what, fix) = if given {
-        (
-            format!(
-                "`--dir {}` resolves to `{}`",
-                dir.display(),
-                resolved.display()
-            ),
-            "`--dir` names the project, not the destination folder",
-        )
-    } else {
-        (
-            format!(
-                "no `--dir` was given, so `lute new` started from the current directory `{}`",
-                resolved.display()
-            ),
-            "run from the project root, or pass `--dir <root>`",
-        )
-    };
+    let what = format!(
+        "`--project {}` resolves to `{}`",
+        dir.display(),
+        resolved.display()
+    );
+    let fix = "`--project` names the project, not the destination folder";
     format!(
         "lute new: {what}, which is inside the project at `{}` (its lute.project.yaml) but not \
          its root; {fix} — did you mean `{suggestion}`? (nothing was written)",
@@ -1711,7 +1811,7 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
 /// non-quest is a usage error (exit `2`). Refuses to overwrite an existing
 /// target (exit `2`). A `dir` inside a project but not its root is refused
 /// (exit `2`, nothing written) with the `<sub>/<name>` spelling to use:
-/// `--dir` names the project, and writing to `<root>/scenes/<name>` when
+/// `--project` names the project, and writing to `<root>/scenes/<name>` when
 /// the author pointed at `scenes/talk/` would land the document somewhere
 /// they did not ask for. Outside a project (no `lute.project.yaml` at or
 /// above `dir`) it says so — and refuses `--occasion`, since no occasion is
@@ -1719,51 +1819,58 @@ fn nested_hint(kind: &str, name: &str, dir: &Path, root: &Path, given: bool) -> 
 pub fn run_new(
     kind: &str,
     name: &str,
-    dir: Option<&Path>,
+    project: Option<&Path>,
     on: Option<&str>,
     target: Option<&str>,
     start: bool,
 ) -> ExitCode {
     if !matches!(kind, "scene" | "quest" | "lore" | "schema") {
-        eprintln!(
+        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--project <DIR>] [--occasion <OCCASION> [--target <TARGET>]] [--start]");
+        return refuse(format!(
             "lute new: unknown kind `{kind}` (expected `scene`, `quest`, `lore`, or `schema`)"
-        );
-        eprintln!("usage: lute new <scene|quest|lore|schema> <name> [--dir <PROJECT>] [--occasion <OCCASION> [--target <TARGET>]] [--start]");
-        return ExitCode::from(2);
+        ));
     }
     if let (Some(_), false) = (on, kind == "scene") {
-        eprintln!("lute new: `--occasion` makes a scene a beat; a {kind} takes no `--occasion`");
-        return ExitCode::from(2);
+        return refuse(format!(
+            "lute new: `--occasion` makes a scene a beat; a {kind} takes no `--occasion`"
+        ));
     }
     if let (Some(t), None) = (target, on) {
-        eprintln!(
+        return refuse(format!(
             "lute new: `--target {t}` names the target a beat answers for; pass the occasion \
              too, `--occasion <OCCASION> --target {t}`"
-        );
-        return ExitCode::from(2);
+        ));
     }
     if start && kind != "quest" {
-        eprintln!("lute new: `--start` makes a quest auto-start; a {kind} takes no `--start`");
-        return ExitCode::from(2);
+        return refuse(format!(
+            "lute new: `--start` makes a quest auto-start; a {kind} takes no `--start`"
+        ));
     }
-    let given = dir.is_some();
-    let dir = dir.unwrap_or(Path::new("."));
+    // `--project` names the project explicitly (and a non-root directory is
+    // refused); otherwise the nearest `lute.project.yaml` at or above the
+    // current directory is the project, and with none the document is
+    // written self-contained into the current directory (0.48.0 §2.1).
+    let given = project.is_some();
+    let discovered = if given {
+        None
+    } else {
+        crate::project::discover_project_from_cwd()
+    };
+    let dir = project.or(discovered.as_deref()).unwrap_or(Path::new("."));
     let dest = match Destination::find(dir) {
         Ok(dest) => dest,
         Err(root) => {
-            eprintln!("{}", nested_hint(kind, name, dir, &root, given));
-            return ExitCode::from(2);
+            return refuse(nested_hint(kind, name, dir, &root));
         }
     };
     if !dest.in_project {
         if let Some(on) = on {
-            eprintln!(
+            return refuse(format!(
                 "lute new: `{}` is not inside a Lute project (no lute.project.yaml at or above it), \
                  so no occasion `{on}` is declared for a beat to answer — create one with \
                  `lute init --template beats <dir>`",
                 dir.display()
-            );
-            return ExitCode::from(2);
+            ));
         }
         eprintln!(
             "lute new: note: `{}` is not inside a Lute project (no lute.project.yaml at or above \

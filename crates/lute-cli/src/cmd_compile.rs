@@ -1,4 +1,4 @@
-//! `lute compile`: single-file compile and the `--all` routing.
+//! `lute compile`: a document, the whole project, or the NDJSON stream.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -17,80 +17,110 @@ use lute_load::{build_input, read_document, BuiltInput};
 use lute_model::project_gate_result;
 use lute_model::{ModelError, ModelOptions, ProjectModel};
 
-/// Route `lute compile` to the single-file ([`run_compile`]) or whole-project
-/// ([`compile_all::run`]) path, rejecting every flag combination that means
-/// neither.
+/// What `lute compile` was asked.
+pub(crate) struct CompileOptions<'a> {
+    pub(crate) file: Option<&'a Path>,
+    pub(crate) json: bool,
+    pub(crate) providers: Option<&'a Path>,
+    pub(crate) project: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
+    pub(crate) output: Option<&'a Path>,
+    pub(crate) locale_bundle: Option<&'a Path>,
+    pub(crate) deny: &'a [String],
+    pub(crate) deny_warnings: bool,
+    pub(crate) stream: bool,
+}
+
+/// A usage error naming the conflicting option.
+fn conflict(message: String, argument: &str) -> ExitCode {
+    envelope::fail(CliError::usage(message).with_argument(argument))
+}
+
+/// Route `lute compile` to the single-document ([`run_compile`]), whole-project
+/// ([`compile_all::run`]) or stream ([`crate::stream::run`]) path, rejecting
+/// every flag combination that means none of them (exit `2`, the usage tier —
+/// clap cannot express these dependencies itself).
 ///
-/// `--all` REQUIRES the project directory — `--project <dir>`, or the
-/// positional `<dir>` (it has no other way to know which documents belong
-/// to the project, and the capability snapshot resolves per project) — and
-/// `-o <dir>` (there is no single execution IR to put on stdout). It takes no
-/// `<file>`: naming one would imply the other documents are somehow
-/// secondary, which they are not. Every violation is exit `2`, the
-/// usage tier — clap cannot express these dependencies itself, so they are
-/// checked here and reported in clap's own voice.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn dispatch_compile(
-    file: Option<&Path>,
-    json: bool,
-    providers: Option<&Path>,
-    project: Option<&Path>,
-    permission_profile: Option<&str>,
-    out: Option<&Path>,
-    all: bool,
-    locales: Option<&Path>,
-    policy: &DenyPolicy,
-) -> ExitCode {
-    if !all {
+/// With no document the whole project (`--project`, else the nearest
+/// `lute.project.yaml`) compiles into the REQUIRED `-o <DIR>` — there is no
+/// single execution IR to put on stdout. `--stream` takes a document and
+/// none of the options that only mean something for an artifact or a report.
+pub(crate) fn dispatch_compile(opts: &CompileOptions<'_>) -> ExitCode {
+    let CompileOptions {
+        file,
+        json,
+        providers,
+        project,
+        permission_profile,
+        output,
+        locale_bundle,
+        deny,
+        deny_warnings,
+        stream,
+    } = *opts;
+    if stream {
         let Some(file) = file else {
-            let message = "error: the following required arguments were not provided:\n  <FILE>\n\nUsage: lute compile <FILE>\n       lute compile --all <DIR> -o <DIR>";
-            return envelope::fail(CliError::usage(message).with_argument("<FILE>"));
+            return conflict(
+                "lute compile: --stream needs the scene prefix: lute compile --stream <FILE>"
+                    .to_string(),
+                "--stream",
+            );
         };
+        let conflicting = [
+            (output.is_some(), "--output"),
+            (locale_bundle.is_some(), "--locale-bundle"),
+            (json, "--json"),
+            (!deny.is_empty(), "--deny"),
+            (deny_warnings, "--deny-warnings"),
+        ]
+        .into_iter()
+        .find_map(|(given, name)| given.then_some(name));
+        if let Some(name) = conflicting {
+            return conflict(
+                format!(
+                    "lute compile: --stream does not take {name} — it streams NDJSON snapshots on stdout"
+                ),
+                name,
+            );
+        }
+        return crate::stream::run(file, providers, project, permission_profile);
+    }
+    let policy = DenyPolicy::new(deny, deny_warnings);
+    if let Some(file) = file {
         return run_compile(
             file,
             json,
             providers,
             project,
             permission_profile,
-            out,
-            locales,
-            policy,
+            output,
+            locale_bundle,
+            &policy,
         );
     }
-    // T3-42: `--all` names the project positionally, as `lute test` / `lute play` do.
-    let (project, file) = match (project, file) {
-        (None, Some(dir)) if dir.is_dir() => (Some(dir), None),
-        other => other,
+    let Some(output) = output else {
+        return conflict(
+            "lute compile: compiling the whole project requires -o, --output <DIR>, an output DIRECTORY (there is no single execution IR to write to stdout); to compile one document name it: lute compile <FILE>"
+                .to_string(),
+            "--output",
+        );
     };
-    let mut usage: Vec<String> = Vec::new();
-    if project.is_none() {
-        usage.push("--all requires the project directory, `--all <DIR>` or `--project <DIR>` (the document set and capability snapshot both resolve per project)".to_string());
-    }
-    if out.is_none() {
-        usage.push("--all requires -o <DIR>, an output DIRECTORY (there is no single execution IR to write to stdout)".to_string());
-    }
-    if let Some(file) = file {
-        usage.push(format!("--all takes no <FILE> ({}): it compiles every document of the project — name the project directory, `--all <DIR>` or `--all --project <DIR>`", file.display()));
-    }
-    if !usage.is_empty() {
-        for message in &usage {
-            eprintln!("error: {message}");
-        }
-        eprintln!("\nUsage: lute compile --all <DIR> -o <DIR>");
-        return envelope::fail_quietly(CliError::usage(usage.join("\n")).with_argument("--all"));
-    }
-    let bundle = match locales.map(load_locale_bundle).transpose() {
+    let project = match crate::project::require_project("compile", project) {
+        Ok(project) => project,
+        Err(error) => return envelope::fail(error),
+    };
+    let bundle = match locale_bundle.map(load_locale_bundle).transpose() {
         Ok(b) => b,
         Err(code) => return code,
     };
     compile_all::run(
-        project.expect("checked above"),
-        out.expect("checked above"),
+        &project,
+        output,
         providers,
         permission_profile,
         json,
         bundle.as_ref(),
-        policy,
+        &policy,
     )
 }
 
@@ -98,7 +128,7 @@ pub(crate) fn dispatch_compile(
 /// `-o <FILE>`), `1` when the check gate fails (diagnostics to stdout,
 /// human or `--json`), `2` on I/O or serialization failure.
 ///
-/// With `--locales <bundle.json>` the compiled execution IR additionally carries
+/// With `--locale-bundle <bundle.json>` the compiled execution IR additionally carries
 /// per-record locale texts ([`load_locale_bundle`] then
 /// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7, 0.47.0 §3). Any
 /// resulting `W-L10N-MISSING` / `W-L10N-STALE` prints to STDERR — stdout may be
@@ -126,8 +156,7 @@ fn run_compile(
     };
     // FS-F2: the same project `lute check` resolves the file against —
     // `--project`, else the nearest manifest (its `defaults:`, profile and
-    // `identity:` apply). Only an explicit `--project` switches the gate to
-    // the reconciled project verdict below.
+    // `identity:` apply, and the project verdict gates the compile).
     let resolved = resolve_project(file, project);
     let Some(built) = build_input(file, providers, resolved.as_deref(), permission_profile) else {
         if let Err(message) = read_document(file) {
@@ -153,18 +182,19 @@ fn run_compile(
     if resolve_error {
         return ExitCode::from(1);
     }
-    // Project-aware gate (connectivity spec §5): WITH `--project <dir>` the
-    // target compiles against its RECONCILED `check-project` verdict (an
-    // envelope-Guaranteed `run.*`/`user.*` read no longer blocks; a read no
-    // route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`). WITHOUT it,
-    // the standalone single-file `check` gate, unchanged.
+    // Project-aware gate (connectivity spec §5): the target compiles against
+    // its RECONCILED project verdict (an envelope-Guaranteed `run.*`/`user.*`
+    // read no longer blocks; a read no route guarantees blocks with
+    // `E-STATE-MAYBE-UNAVAILABLE`). The project is the explicit `--project`
+    // or the discovered nearest manifest — the two mean the same (0.48.0
+    // §2.1); with no project at all, the standalone single-file `check` gate.
     //
     // 0.8.0 §9: the `identity:` block templates `lineId`/`voiceKey`. It is a
     // PROJECT setting, taken from the same manifest load as the snapshot: a
     // loose scene keeps `IdentityTemplates::default()`, i.e. 0.7.0's pair,
     // and so does a project that failed to load (its error already printed).
-    let gate = match project {
-        Some(dir) => match project_gate_result(file, dir, providers) {
+    let gate = match resolved.as_deref() {
+        Some(dir) => match project_gate_result(file, dir, providers, permission_profile) {
             Ok(gate) => gate,
             Err(code) => return code,
         },
@@ -365,7 +395,7 @@ fn stamp_project_identity_renames(
     Ok(())
 }
 
-/// Read + parse a `--locales <bundle.json>` file (dsl 0.8.0 §7). A missing or
+/// Read + parse a `--locale-bundle <bundle.json>` file (dsl 0.8.0 §7). A missing or
 /// unreadable file is I/O (`2`, matching every other file the CLI opens); a
 /// file that IS readable but is not a bundle is `E-LOCALE-BUNDLE` (`1`) — the
 /// same code `lute loc import` reports for a malformed input, so the two ends

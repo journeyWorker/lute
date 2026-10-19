@@ -2,7 +2,7 @@
 # The ENGINE fights the battle: it writes run.battle.outcome and who fell, then
 # raises battleEnd with the wagons it burned. Isolde does not get up, and the
 # engine no longer offers to talk to her (`talk`'s raisedWhen).
-#   lute play . --script plays/battle.play.yaml
+#   lute play --project . --script plays/battle.play.yaml
 choose:
   orders: swear
   plea: refuse

@@ -50,7 +50,7 @@ fn a_condition_prints_its_expr_node_on_one_line() {
 fn the_json_report_carries_the_cel_slot_a_compiled_beat_carries() {
     let dir = lute_scratch::ScratchDir::named("expr-041-compile");
     let compiled = Command::new(BIN)
-        .args(["compile", "--all", FIXTURE, "-o"])
+        .args(["compile", "--project", FIXTURE, "-o"])
         .arg(&*dir)
         .output()
         .unwrap();

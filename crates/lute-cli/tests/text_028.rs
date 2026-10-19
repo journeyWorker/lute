@@ -106,6 +106,7 @@ fn play_renders_label_forms_and_number_words() {
     );
     let out = run(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -145,7 +146,6 @@ fn the_artifact_carries_the_hints_and_the_label_forms() {
     let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -207,7 +207,7 @@ fn a_misspelt_label_form_is_reported() {
          entities:\n  spot:\n    members: [cut, ash]\n    labels:\n      \
          cut: { text: the cut, indefinte: a cut }\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_ne!(out.status.code(), Some(0), "{t}");
     assert!(

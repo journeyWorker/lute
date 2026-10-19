@@ -1,5 +1,5 @@
 //! Locale bundle (dsl 0.8.0 §7) — the canonical `lineId -> locale -> text`
-//! table `lute loc import` produces and `lute compile --locales` merges into an
+//! table `lute loc import` produces and `lute compile --locale-bundle` merges into an
 //! already-addressed [`ExecutionIr`].
 //!
 //! ## Why the merge lives downstream of addressing

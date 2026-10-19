@@ -34,6 +34,7 @@ fn dry_run_json_reports_diff_and_preserves_source() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--dry-run",
@@ -65,6 +66,7 @@ fn unknown_json_field_is_refused() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--json",
@@ -86,6 +88,7 @@ fn model_io_failure_is_untyped_json_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--json",
@@ -124,6 +127,7 @@ fn accepted_json_has_shape_and_exit_review() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--json",
@@ -163,6 +167,7 @@ fn stale_json_refusal_has_code_and_exit_two() {
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--json",
@@ -215,6 +220,7 @@ fn two_edits_in_one_file_leave_it_fmt_check_clean() {
     std::fs::write(&patch, serde_json::to_vec(&request).unwrap()).unwrap();
     let output = lute(&[
         "patch",
+        "--project",
         root.to_str().unwrap(),
         patch.to_str().unwrap(),
         "--json",
@@ -263,6 +269,7 @@ fn a_patch_that_would_leave_a_clean_file_unclean_is_refused_with_e_patch_format(
     let output = Command::new(env!("CARGO_BIN_EXE_lute"))
         .args([
             "patch",
+            "--project",
             root.to_str().unwrap(),
             patch.to_str().unwrap(),
             "--json",

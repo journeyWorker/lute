@@ -27,7 +27,7 @@ you want to know what is in the tree.
 | `vocabulary.schema.yaml` | | all seven compiler-typed content-vocabulary slots |
 | `lute.project.yaml` | | the manifest, including the `identity:` block |
 
-182 content lines, 2,375 words, 15 choices (`lute loc report docs/examples/haven`).
+182 content lines, 2,375 words, 15 choices (`lute loc report --project docs/examples/haven`).
 
 ## What it is the corpus's first coverage of
 
@@ -85,7 +85,7 @@ one piece of the lore surface against the same world schema the scenes use:
   `holds('knows', ['vesna', 'manifest'])` — the fact the ledger (and several scenes)
   reveal.
 
-`lute lore docs/examples/haven` prints the resulting map: entries by target and
+`lute lore --project docs/examples/haven` prints the resulting map: entries by target and
 by series, and for every `knows`/`awake`/`found` fact whether lore, scenes, or
 both reveal it (`knows(vesna, manifest)` is `both`; `knows(vesna, true_heading)`
 is revealed only by the ledger).
@@ -97,11 +97,11 @@ is revealed only by the ledger).
 # files, none project-wide. Its relational guard analysis (dsl 0.20.0) is
 # what removed the one guard this tree used to carry needlessly; see
 # "Deliberate imperfections" below.
-lute check-project docs/examples/haven
+lute check --project docs/examples/haven
 
 # The 32 scenario tests. Exits 0, 32 passed.
-lute test docs/examples/haven
-lute test docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
+lute test --project docs/examples/haven
+lute test --project docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
                                             # 5 match rows have an unexecuted arm
 
 # The prerequisite graph: 11 scenes over 9 topological layers, and 19 edges —
@@ -109,21 +109,21 @@ lute test docs/examples/haven --coverage    # 24 rows (5 branch/hub, 19 match);
 # `follows=`, and 2 quest-to-quest (`whoWakes` precedes two siblings, one on
 # `active` and one on `completed`). After the edges, `holdTheSpine` — the one
 # quest without `follows=` — is listed as unanchored.
-lute scenario docs/examples/haven
+lute scenario --project docs/examples/haven
 
 # Preview one scene. `trace` runs no Datalog fixpoint, so a guard over the
 # derived `can_halt` must be seeded — or driven through `lute run` instead.
 lute trace docs/examples/haven/scenes/cryobank.lute \
-  --project docs/examples/haven --choose whoWakes=wakeToma
+  --project docs/examples/haven --choice whoWakes=wakeToma
 
 # Preview one lore entry on its first read, and the world-narrative map.
 lute trace docs/examples/haven/lore/purser-ledger.lute \
   --project docs/examples/haven --entry purserLedger1
-lute lore docs/examples/haven
+lute lore --project docs/examples/haven
 ```
 
-`check-project docs/examples` (the outer root, which is what CI runs) walks all
-twenty of these documents. `lute test docs/examples` picks up all 32 of these
+`check --project docs/examples` (the outer root, which is what CI runs) walks all
+twenty of these documents. `lute test --project docs/examples` picks up all 32 of these
 tests plus `investigation`'s three.
 
 ## Deliberate imperfections
@@ -135,7 +135,7 @@ findings, and a reader who "fixes" one deletes the evidence.
    The component's body is a param-scoped `<match subject="@pressure">` with two arms,
    and it is invoked from exactly one site (`cryobank.lute:14`, `pressure="rising"`).
    `Allocation is nominal.` therefore never plays in this work. Nothing says so:
-   `check-project` is clean; the artifact prunes the arm at expansion (compile
+   `check --project` is clean; the artifact prunes the arm at expansion (compile
    `scenes/cryobank.lute` and the sole `purser` line in it is `Draw exceeds
    projection. …`); `loc export` prunes it too, carrying exactly one entry for
    this component — the same line, with a `source:` naming the component file
@@ -147,7 +147,7 @@ findings, and a reader who "fixes" one deletes the evidence.
    document kind that cannot be tested (**T9.12**).
 2. **`quests/hold-the-spine.lute` — the one quest with no `follows=`.** Its five
    siblings all declare one; this one does not, and the file says so in a
-   comment. What the omission costs, from `lute scenario docs/examples/haven`:
+   comment. What the omission costs, from `lute scenario --project docs/examples/haven`:
    the quest has no topological layer and no edge. The graph holds five quests,
    not six, because `follows=` is the only thing that puts a quest into it. It is
    no longer silently absent, though (dsl 0.21.0 §7a.5): the report lists it
@@ -175,7 +175,7 @@ the redundant; none of those fourteen gates is either, so all are silent. The
 same analysis found one guard that could never close: `listTheMass` in the
 purser scene was guarded on `found(ottavio)` and `knows(ottavio, manifest)`,
 both asserted unconditionally in episode 6 on every route to episode 9, so the
-guard was `W-FACT-GUARANTEED` and is gone. `lute scenario docs/examples/haven
+guard was `W-FACT-GUARANTEED` and is gone. `lute scenario --project docs/examples/haven
 envelope haven.s01ep09` lists those facts under *Guaranteed facts*.
 
 ## Reading order

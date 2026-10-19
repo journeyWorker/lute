@@ -20,12 +20,12 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runtime-clock-041")
 }
 
-/// `lute compile --all` of the fixture, read back as a host reads it.
+/// whole-project `lute compile` of the fixture, read back as a host reads it.
 fn runtime(scratch: &str) -> Runtime {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = Command::new(BIN)
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(fixture())
         .arg("-o")
         .arg(&out)
@@ -172,6 +172,7 @@ fn play_prints_advance_writes_before_the_move() {
     .unwrap();
     let out = Command::new(BIN)
         .arg("play")
+        .arg("--project")
         .arg(fixture())
         .arg("--script")
         .arg(&script)

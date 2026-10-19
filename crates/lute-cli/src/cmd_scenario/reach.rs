@@ -1,4 +1,4 @@
-//! `lute scenario reach <node>`: a node's declared prerequisite structure
+//! `lute scenario reach --node <node>`: a node's declared prerequisite structure
 //! and reach verdict.
 
 use std::collections::BTreeSet;

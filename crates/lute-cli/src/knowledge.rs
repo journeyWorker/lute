@@ -1,4 +1,4 @@
-//! `lute scenario <dir> knowledge [--for <node>]` (dsl 0.23.0 §1, 0.24.0
+//! `lute scenario knowledge [--node <node>]` (dsl 0.23.0 §1, 0.24.0
 //! T3-1): the knowledge map of a project. For every fact-guarded condition —
 //! one that queries a relation (`holds(…)`, `count(…)`, `countDistinct(…)`,
 //! `validAt(…)`) — in every guard slot (scene and bundle beat `when`, entry
@@ -19,7 +19,7 @@
 //! `S = tobias` reads `not liar(hollis)` when only Hollis saw Tobias.
 //!
 //! Read-only, over the same per-root document collection `lute scenario`
-//! and `check-project` use; documents need not check clean.
+//! and whole-project `check` use; documents need not check clean.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -45,7 +45,7 @@ struct Guarded {
     name: String,
     /// The source line of a guard inside a body (lines, choices, arms, …).
     line: Option<u32>,
-    /// The `--for` handles that select it: its container (a scene key, a
+    /// The `--node` handles that select it: its container (a scene key, a
     /// bundle beat key, an entry id, `quest:<id>`), an objective's
     /// `<quest>.<objective>`, a choice's `<container>#<branch>.<choice>`.
     handles: Vec<String>,
@@ -808,7 +808,7 @@ pub(crate) struct RootKnowledge {
     vocab: RelVocab,
     asserted: Asserters,
     /// Every ground fact that may hold at some point of some run — built as
-    /// `check-project` builds it, with every assert site counted live (this
+    /// whole-project `check` builds it, with every assert site counted live (this
     /// view does not run reachability).
     may: MaySet,
     /// The root vocabulary `may` was built over: what a rule's positive
@@ -1381,10 +1381,10 @@ impl Tracer<'_> {
     }
 }
 
-/// The `--for` selection over every root's elements; `Err` names the miss.
+/// The `--node` selection over every root's elements; `Err` names the miss.
 fn select<'a>(
     roots: &'a [RootKnowledge],
-    for_node: Option<&str>,
+    node: Option<&str>,
 ) -> Result<Vec<(&'a RootKnowledge, Vec<&'a Guarded>)>, String> {
     let picked: Vec<_> = roots
         .iter()
@@ -1392,12 +1392,12 @@ fn select<'a>(
             let chosen = k
                 .elements
                 .iter()
-                .filter(|g| for_node.is_none_or(|n| g.handles.iter().any(|h| h == n)))
+                .filter(|g| node.is_none_or(|n| g.handles.iter().any(|h| h == n)))
                 .collect::<Vec<_>>();
             (k, chosen)
         })
         .collect();
-    if let Some(n) = for_node {
+    if let Some(n) = node {
         if picked.iter().all(|(_, chosen)| chosen.is_empty()) {
             let handles: BTreeSet<&str> = roots
                 .iter()
@@ -1411,7 +1411,7 @@ fn select<'a>(
                 .map(|s| format!(" — did you mean `{s}`?"))
                 .unwrap_or_default();
             return Err(format!(
-                "`--for {n}` names no fact-guarded condition (a scene, bundle beat, entry, \
+                "`--node {n}` names no fact-guarded condition (a scene, bundle beat, entry, \
                  `quest:<id>`, `<quest>.<objective>` or `<scene>#<branch>.<choice>`){hint}"
             ));
         }
@@ -1437,19 +1437,19 @@ pub(crate) fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
         .collect()
 }
 
-/// The text view (`lute scenario <dir> knowledge`).
+/// The text view (`lute scenario knowledge`).
 pub(crate) fn run_text(
     out: &mut String,
     by_root: &ByRoot,
     _file_results: &[(PathBuf, lute_check::CheckResult)],
-    for_node: Option<&str>,
+    node: Option<&str>,
 ) -> ExitCode {
     let roots = collect(by_root);
-    let picked = match select(&roots, for_node) {
+    let picked = match select(&roots, node) {
         Ok(p) => p,
         Err(e) => {
             let message = format!("lute scenario knowledge: {e}");
-            return envelope::fail(CliError::usage(message).with_argument("--for"));
+            return envelope::fail(CliError::usage(message).with_argument("--node"));
         }
     };
     if by_root.is_empty() {
@@ -1742,11 +1742,11 @@ pub(crate) fn derived(k: &RootKnowledge) -> Vec<(String, Vec<DerivedFact>)> {
         .collect()
 }
 
-/// The `--format json` view: per root, the elements (with the relations
+/// The `--json` view: per root, the elements (with the relations
 /// they read) and one producer record per relation reached from them.
-pub(crate) fn json(by_root: &ByRoot, for_node: Option<&str>) -> Result<Json, String> {
+pub(crate) fn json(by_root: &ByRoot, node: Option<&str>) -> Result<Json, String> {
     let roots = collect(by_root);
-    let picked = select(&roots, for_node)?;
+    let picked = select(&roots, node)?;
     let roots_json: Vec<Json> = picked
         .into_iter()
         .map(|(k, elements)| {

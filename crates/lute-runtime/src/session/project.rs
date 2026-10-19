@@ -24,7 +24,7 @@ pub struct ExecProject {
     /// (`::bg{…}`), for every record a directive lowered to — what the
     /// transcript prints instead of the lowered record (0.23.1).
     pub authored: BTreeMap<String, BTreeMap<String, String>>,
-    /// The `compile --all` project index: `beats` (selection tiebreak
+    /// The whole-project `compile` project index: `beats` (selection tiebreak
     /// order), `relations` (tiers), `seedFacts`, `rules`.
     pub index: ProjectIndex,
     /// The occasions every resolved plugin declares, unioned across the

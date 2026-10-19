@@ -4,7 +4,7 @@ name: Docs
 # schemas, or the two crate files that own the canonical version strings.
 # Three jobs:
 #   consistency — stdlib-python single-source version/domain drift guard.
-#   examples    — build lute-cli, `check-project` the example roots (and each
+#   examples    — build lute-cli, `check --project` the example roots (and each
 #                 docs/examples/games/* project with `--deny-warnings`), run the
 #                 `*.test.yaml` scenario suites under them with `lute test`,
 #                 and compile-check every declared-checkable ```lute snippet in
@@ -86,11 +86,11 @@ jobs:
           ./target/debug/lute fmt --check docs/examples "${dirs[@]}"
 
       # docs/examples checks cleanly end-to-end (warnings only, exit 0). The
-      # bundled example roots are authored to pass `check-project`; a
+      # bundled example roots are authored to pass `check --project`; a
       # regression that turns any of them into an Error-severity failure
       # (exit 1) fails this job.
-      - name: check-project docs/examples
-        run: ./target/debug/lute check-project docs/examples
+      - name: check --project docs/examples
+        run: ./target/debug/lute check --project docs/examples
 
       # docs/examples/games/<slug> holds the fourteen dogfood games, each its
       # own project (spec 0.29 §6). They are held to a stricter bar than the
@@ -98,20 +98,20 @@ jobs:
       # is silenced in the game by the spelling that states the intent (spec
       # 0.29 §5), never by a suppression, so a new warning here is either a
       # real regression in the game or a checker false positive to fix.
-      - name: check-project --deny-warnings each game
+      - name: check --project --deny-warnings each game
         run: |
           set -euo pipefail
           for game in docs/examples/games/*/; do
-            ./target/debug/lute check-project --deny-warnings "${game%/}"
+            ./target/debug/lute check --project "${game%/}" --deny-warnings
           done
 
       # The 34 `*.test.yaml` scenario tests under docs/examples were reachable
       # by `docs/**` in the trigger paths above and read by nothing: this job
-      # ran `check-project`, which walks `.lute` documents and never opens a
+      # ran `check-project` (now `check --project`), which walks `.lute` documents and never opens a
       # test file. That is the failure this workflow's own header names — "a
       # trigger that fires on files nothing reads advertises coverage it does
       # not provide" — so the suites are registered here rather than left as
-      # decoration. One root, the same one `check-project` uses: `lute test`
+      # decoration. One root, the same one `check --project` uses: `lute test`
       # recurses and runs each nested project's tests and plays against that
       # project's own `lute.project.yaml`: docs/examples/haven (32),
       # docs/examples/investigation (3), docs/examples/connect-scenes (4),
@@ -130,17 +130,17 @@ jobs:
       # prologue reaches leaves every test green (see T9.18 in
       # docs/superpowers/notes/2026-07-31-haven-drive-test-findings.md). This
       # step catches the former class and is honestly blind to the latter.
-      - name: lute test docs/examples
-        run: ./target/debug/lute test docs/examples
+      - name: lute test --project docs/examples
+        run: ./target/debug/lute test --project docs/examples
 
       # A doc's ```lute blocks are source too, and until now nothing ever ran a
       # checker over them: the `website` job builds pages, not snippets, and
-      # `check-project` above reads only docs/examples. Reuses the lute-cli
+      # `check --project` above reads only docs/examples. Reuses the lute-cli
       # built above rather than cold-building the workspace in a job of its
       # own.
       #
       # The unit of verification is a block PAIRED WITH ITS EXPECTED OUTCOME,
-      # declared in the fence meta: `check` / `check="<path>"` (must be clean,
+      # declared in the fence meta: `check` / `check="<path>"` / `check-in-project="<path>"` (must be clean,
       # standalone or inside that path's project) or `expect="<CODE>,…"` (must
       # fail with exactly those codes — this is what makes a tutorial's
       # deliberately-failing intermediate states verifiable). `unverified=`

@@ -22,7 +22,7 @@ fn project(files: &[(&str, &str)]) -> lute_scratch::ScratchDir {
 
 fn check_project(dir: &Path) -> String {
     let out = Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     format!(

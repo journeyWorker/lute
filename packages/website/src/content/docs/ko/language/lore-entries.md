@@ -95,7 +95,7 @@ uses: ../world.schema.yaml
 
 `purserLedger1`은 `purserLedger` 시리즈의 `order` 1로, `purserLedger2`는 `order` 2로 컴파일됩니다. 컴파일된 `entry` 레코드와 `project.index.json`에는 해석된 `series` / `order`가 담기므로 어떤 형식으로 작성했든 엔진은 모든 엔트리를 같은 방식으로 읽습니다.
 
-엔트리별 `series=` / `order=` 속성(이 페이지의 첫 번째 예제)은 여러 파일에 걸친 시리즈에 사용하는 형식으로 남아 있습니다. `series:`를 선언한 문서 안에서 자체 `series=` 또는 `order=`를 가진 엔트리는 `E-ENTRY-ATTR`입니다 — 한 파일에서 두 형식을 섞을 수 없습니다. 같은 `(series, order)`로 해석되는 두 엔트리는 `E-ENTRY-SERIES-ORDER`입니다. `lute check`에서는 문서별로, `lute check-project`에서는 프로젝트 전체에서 검사합니다.
+엔트리별 `series=` / `order=` 속성(이 페이지의 첫 번째 예제)은 여러 파일에 걸친 시리즈에 사용하는 형식으로 남아 있습니다. `series:`를 선언한 문서 안에서 자체 `series=` 또는 `order=`를 가진 엔트리는 `E-ENTRY-ATTR`입니다 — 한 파일에서 두 형식을 섞을 수 없습니다. 같은 `(series, order)`로 해석되는 두 엔트리는 `E-ENTRY-SERIES-ORDER`입니다. `lute check`에서는 문서별로, 프로젝트 전체 `lute check`에서는 프로젝트 전체에서 검사합니다.
 
 ## 엔트리 본문에 포함할 수 있는 것
 
@@ -148,7 +148,7 @@ uses: ../world.schema.yaml
 - **런마다 한 번이 의도였습니다.** 엔트리에 `once="run"`을 씁니다.
 - **쓰기가 의도적으로 첫 읽기에만 속합니다.** `when="!entry.<id>.read"`로 guard합니다. `::set`에 직접 달거나 `<match subject="entry.<id>.read">`의 `is="false"` arm에 달 수 있습니다. 이 guard는 독자에게 의도를 알리고 경고를 없앱니다.
 
-`entry.<id>.read`는 어떤 문서에서도 읽을 수 있는 예약된 `bool`입니다. 시리즈의 다음 페이지를 gate하거나(`when="entry.scientistLog1.read"`), 씬을 그에 따라 분기하거나, 퀘스트 목표를 완료할 수 있습니다. 콘텐츠는 이를 쓰지 않습니다. 어떤 문서도 id를 선언하지 않으면 `lute check-project`가 `W-ENTRY-REF-UNKNOWN`을 경고합니다.
+`entry.<id>.read`는 어떤 문서에서도 읽을 수 있는 예약된 `bool`입니다. 시리즈의 다음 페이지를 gate하거나(`when="entry.scientistLog1.read"`), 씬을 그에 따라 분기하거나, 퀘스트 목표를 완료할 수 있습니다. 콘텐츠는 이를 쓰지 않습니다. 어떤 문서도 id를 선언하지 않으면 프로젝트 전체 `lute check`가 `W-ENTRY-REF-UNKNOWN`을 경고합니다.
 
 이 플래그는 **run-tier**입니다. 새 런이 이를 초기화하고 다음 첫 읽기에서 효과가 다시 적용됩니다. 따라서 `when="!entry.<id>.read"`는 엔트리를 영원히 한 번이 아니라 런마다 한 번 플레이하게 합니다.
 
@@ -171,7 +171,7 @@ uses: ../world.schema.yaml
 
 ### 읽기가 증명하는 것
 
-엔트리가 읽혔다고 가정하는 guard는 그 엔트리가 무엇을 assert했는지도 알 수 있습니다(dsl 0.24.0 §6). `entry.X.read`(또는 `entry.X.read == true`) 아래에서 `lute check-project`는 모든 경로에서 `X`의 본문이 assert하고 아무것도 retract하지 않는 팩트를, [팩트 분석](/ko/state/facts-and-datalog/)의 알고 있는 Must 집합에 추가합니다. 그러면 그 guard 안에 있는 그 팩트의 `holds(…)`는 중복으로 간주되어 `W-FACT-GUARANTEED`가 되고, 그 부정은 절대 성립할 수 없어 줄에서 `E-ARM-DEAD`가 됩니다. 이 페이지의 첫 문서를 `lore/ship-records.lute`로 저장하고 `scientistLog2`에 두 번째 줄을 추가해 보세요.
+엔트리가 읽혔다고 가정하는 guard는 그 엔트리가 무엇을 assert했는지도 알 수 있습니다(dsl 0.24.0 §6). `entry.X.read`(또는 `entry.X.read == true`) 아래에서 프로젝트 전체 `lute check`는 모든 경로에서 `X`의 본문이 assert하고 아무것도 retract하지 않는 팩트를, [팩트 분석](/ko/state/facts-and-datalog/)의 알고 있는 Must 집합에 추가합니다. 그러면 그 guard 안에 있는 그 팩트의 `holds(…)`는 중복으로 간주되어 `W-FACT-GUARANTEED`가 되고, 그 부정은 절대 성립할 수 없어 줄에서 `E-ARM-DEAD`가 됩니다. 이 페이지의 첫 문서를 `lore/ship-records.lute`로 저장하고 `scientistLog2`에 두 번째 줄을 추가해 보세요.
 
 ```lute
 <entry id="scientistLog2" target="item.torn_note_2" category="note" series="scientistLog" order="2" when="entry.scientistLog1.read">
@@ -245,7 +245,7 @@ title: Ship's records
   아무 엔트리도 지정하지 않는 로어 테스트는 `E-TEST-LORE`가 되며, 메시지에 문서의 엔트리 id를 나열합니다. 로어도 테스트할 수 있으므로 `lute test --coverage`는 테스트되지 않은 다른 문서와 함께 테스트되지 않은 로어 문서도 나열합니다.
 
   dsl 0.26.0 §8부터 테스트(`entry:`, `entries:`, `expect.eligible` 키), 플레이 스크립트(`pick:`, `entriesRead:`, 스텝의 `winner` / `offered` / `notOffered` / `presented`), `lute trace --entry`는 모두 `<document id>.<entry id>`를 엔트리 id의 별칭으로도 받습니다. `entry: shipRecords.bridgeLog`는 이 페이지에서 `id:`가 `shipRecords`인 문서의 `bridgeLog`를 지정합니다. [종류](/ko/language/beats/#kind-대상)를 대상으로 하는 엔트리 또는 비트 테스트는 `state: { occasion.target: <member> }`로 발생한 멤버를 지정합니다.
-- `lute lore <dir>`는 세계 서사 맵을 출력합니다. target별 및 series별 엔트리를, 각 엔트리와 비트의 `when`, 엔트리가 밝히는 팩트와 씬 및 퀘스트가 밝히는 팩트를 함께 보여 줍니다. 비트 본문도 읽습니다. 프로젝트 규칙이 관계를 derive하면 **Derived** 섹션에 규칙이 도달할 수 있는 모든 결론, 그 뒤의 규칙 인스턴스, 근거가 되는 증거(각 전제를 assert한 엔트리 또는 씬), 그리고 그 결론이 gate하는 엔트리와 비트를 나열합니다(`--json`에서는 `derived`). [CLI 레퍼런스](/ko/tooling/cli/)를 참고하세요.
+- `lute lore --project <DIR>`는 세계 서사 맵을 출력합니다. target별 및 series별 엔트리를, 각 엔트리와 비트의 `when`, 엔트리가 밝히는 팩트와 씬 및 퀘스트가 밝히는 팩트를 함께 보여 줍니다. 비트 본문도 읽습니다. 프로젝트 규칙이 관계를 derive하면 **Derived** 섹션에 규칙이 도달할 수 있는 모든 결론, 그 뒤의 규칙 인스턴스, 근거가 되는 증거(각 전제를 assert한 엔트리 또는 씬), 그리고 그 결론이 gate하는 엔트리와 비트를 나열합니다(`--json`에서는 `derived`). [CLI 레퍼런스](/ko/tooling/cli/)를 참고하세요.
 - `lute new lore <name>`은 로어 문서 뼈대를 만듭니다.
 
 엔진 계약 — 자격, 제시, 첫 읽기 효과, 두 읽기 플래그 — 은 [`docs/runtime/lore-entries.md`](https://github.com/journeyWorker/lute/blob/main/docs/runtime/lore-entries.md)에 있고, 규범 사양은 다음과 같습니다:

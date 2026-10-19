@@ -271,7 +271,7 @@ the title screen; `ui.title.music` uses the `assets:` key `title-music`;
 never raises it itself:
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -303,7 +303,7 @@ flow:
 ```
 
 Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
-The manifest uses `bindingsVersion: "0.47"`; see the [bindings reference](/player/bindings/)
+The manifest uses `bindingsVersion: "0.48"`; see the [bindings reference](/player/bindings/)
 for the complete catalogue.
 
 ## 5. A player-web host
@@ -461,7 +461,7 @@ expect:
     - "@narrator: Bell answers given so far: 1."
 ```
 
-`lute play --script plays/second-run.play.yaml .` shows what the new run took
+`lute play --project . --script plays/second-run.play.yaml` shows what the new run took
 from the old one and what the opening says this time (steps 3–4 of the
 output):
 
@@ -485,7 +485,7 @@ output):
 ── end: complete (4 steps) ──────────────
 ```
 
-`lute test docs/examples/quayside` runs it with the other plays.
+`lute test --project docs/examples/quayside` runs it with the other plays.
 
 In player-web the second run needs no host code beyond step 5's raises, and it
 survives a reload. The host raises `visit` for `place.square` when the player
@@ -538,9 +538,9 @@ The round trip is four commands, run in `docs/examples/quayside`:
 
 ```console
 $ lute tag .
-$ lute loc export . -o locales/ko.json
+$ lute loc export --project . -o locales/ko.json
 $ lute loc import locales/ko.json -o locales/bundle.json
-$ lute compile --all --project . -o bundle/ --locales locales/bundle.json
+$ lute compile --project . -o bundle/ --locale-bundle locales/bundle.json
 ```
 
 **Tag.** A line's `lineId` is built from its `code`. A line without one exports
@@ -608,7 +608,7 @@ writes the same bytes. An excerpt of
 }
 ```
 
-**Compile.** `compile --all --locales` merges the bundle into every artifact:
+**Compile.** `compile --project <DIR> --locale-bundle <FILE> -o <DIR>` merges the bundle into every artifact:
 lines and option labels gain a `texts` map, and the `closingBell` branch gains
 `promptTexts` next to its source `prompt` and `promptLineId`. The source text
 is never replaced. A record with no translation for a locale the bundle
@@ -630,9 +630,9 @@ source text:
 Re-export, update that row's `text` (the new row carries the new
 `sourceHash`) and import again. `--deny W-L10N-STALE` or `--deny-warnings`
 makes the compile refuse while a translation is stale. Locale bundles do not
-change `lute check-project` or `lute test`: plays run on the source text.
+change whole-project `lute check` or `lute test`: plays run on the source text.
 
-**In the player.** Serve the `bundle/` compiled with `--locales` as the
+**In the player.** Serve the `bundle/` compiled with `--locale-bundle` as the
 `bundleUrl` from step 5. The Settings screen's Locale row lists the source
 locale first — `en`, from `contentLang` — and then the compiled locales, here
 `ko`; a new profile starts at `en`. Pick `ko` mid-run: the next line, the

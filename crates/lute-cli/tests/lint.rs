@@ -287,7 +287,7 @@ fn plugin_lint_export_fires_end_to_end() {
 }
 
 /// A scene that gets `on:` only from the manifest's `chapters:` lints as the
-/// beat it is — the same document `check-project` reads — so its bare shot
+/// beat it is — the same document whole-project `check` reads — so its bare shot
 /// draws no background finding; a scene no chain lists still does.
 #[test]
 fn chapters_listed_scene_lints_as_a_beat() {

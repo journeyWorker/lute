@@ -126,12 +126,12 @@ priority: 20
 
 A key the scene writes itself wins over the chain: give one scene its own `priority:` or a
 different `after:` and only that key changes. A listed id that no scene declares is `E-CHAPTERS`
-in `lute check-project`, with a did-you-mean, and so is a listed scene whose own `on:` answers a
+in `lute check --project .`, with a did-you-mean, and so is a listed scene whose own `on:` answers a
 different occasion, a scene listed twice, two chains on one occasion, or an `on:` no plugin
 declares. Scenes you do not list, like the endings below, still write their keys by hand.
 
 A chapter that may not play, because its own `when:` reads state the story may never set, stalls
-the chain: the next listed scene waits on it through its `after:`, and `lute check-project` warns
+the chain: the next listed scene waits on it through its `after:`, and `lute check --project .` warns
 (`W-CHAPTER-STALL`). A `when:` that reads only the clock merely delays the chain while a later
 raise of its occasion still meets it, so it draws no warning; one whose window closes does: a
 `dayStart` chapter for the day the run starts (the clock never raises `dayStart` then, unless it declares `raiseAtStart: true`), or a slot
@@ -218,7 +218,7 @@ read [Quotes and YAML for writers](/getting-started/first-scene/#quotes-and-yaml
 ## Check it and see the order
 
 ```
-$ lute check-project .
+$ lute check --project .
 ok: ./scenes/accusation.lute (0 warning(s))
 ok: ./scenes/counter.lute (0 warning(s))
 ok: ./scenes/ending/caught.lute (0 warning(s))
@@ -230,7 +230,7 @@ ok: . (5 file(s), 0 project-wide warning(s))
 `lute beats` prints every scene that answers each occasion, in the order they compete:
 
 ```
-$ lute beats .
+$ lute beats --project .
 project root: .
 
   chapter — select: first
@@ -268,7 +268,7 @@ expect:
 - The last `expect:` checks the state after the whole story.
 
 ```
-$ lute play . --script plays/caught.play.yaml
+$ lute play --project . --script plays/caught.play.yaml
 ── step 1 · chapter ──────────────
   ✓ prologue [scene, priority 30]
   ✗ counter [scene, priority 20] — after: visited("prologue") is not satisfied (written by `chapters:` in lute.project.yaml)
@@ -332,7 +332,7 @@ expect:
 needed, because the accusation waits for `after: 'visited("counter")'`:
 
 ```
-$ lute test . --project .
+$ lute test --project .
 FAIL  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
       eligible accusation: not eligible under these mocks (its `after: visited("counter")` (written by `chapters:` in lute.project.yaml) is false — add `visited: [counter]` to the mocks) — the engine would never present it, so the walk proves nothing about play; fix the mocks, or assert `expect: { eligible: { accusation: false } }` (the body is then not walked)
 PASS  ./plays/caught.play.yaml  (play of .)
@@ -343,7 +343,7 @@ PASS  ./plays/caught.play.yaml  (play of .)
 With `visited: [counter]` in place:
 
 ```
-$ lute test . --project .
+$ lute test --project .
 PASS  ./tests/accusation.test.yaml  (./scenes/accusation.lute)
 PASS  ./plays/caught.play.yaml  (play of .)
 

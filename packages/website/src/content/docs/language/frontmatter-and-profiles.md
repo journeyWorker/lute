@@ -106,7 +106,7 @@ identity:
 ```
 
 Under such a pin, two lines that say different things under one key still refuse to build:
-`check-project` and `compile --all` report `E-DUP-VOICEKEY`, naming every line on the key. A
+Whole-project `lute check` and whole-project `lute compile` (no document operand, `-o <DIR>`) report `E-DUP-VOICEKEY`, naming every line on the key. A
 project that already declared `voiceKey: "{prefix}.{speaker}-{code}"` compiles unchanged, and can
 drop the pin.
 

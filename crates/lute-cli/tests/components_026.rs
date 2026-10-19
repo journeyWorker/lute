@@ -186,7 +186,7 @@ fn a_bridge_call_a_component_expands_is_typed_by_its_slot_in_the_host() {
              <otherwise>\n@narrator: arm otherwise\n</otherwise>\n</match>",
         ),
     );
-    let o = run(&dir, &["check-project", "."]);
+    let o = run(&dir, &["check", "--project", "."]);
     assert!(o.status.success(), "{}", text(&o));
     let out = dir.join("state.json");
     let o = run(
@@ -216,7 +216,7 @@ fn a_bridge_call_a_component_expands_is_typed_by_its_slot_in_the_host() {
         "p.play.yaml",
         "steps:\n  - occasion: talk\n    bridges: { battle: [ { won: true } ] }\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     assert!(
@@ -292,7 +292,7 @@ fn an_omitted_argument_takes_its_default_and_a_component_reads_its_own_result() 
             "::use{component=\"duel\"}\n::use{component=\"duel\" prize=\"10\"}",
         ),
     );
-    let o = run(&dir, &["check-project", "."]);
+    let o = run(&dir, &["check", "--project", "."]);
     assert!(o.status.success(), "{}", text(&o));
     write(
         &dir,
@@ -300,7 +300,7 @@ fn an_omitted_argument_takes_its_default_and_a_component_reads_its_own_result() 
         "steps:\n  - occasion: talk\n    bridges: { battle: [ { won: true }, { won: false } ] }\n    \
          expect: { state: { run.coins: 3 } }\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     assert!(
@@ -321,7 +321,7 @@ fn a_component_reading_a_slot_it_does_not_own_is_still_component_state() {
         "scenes/a.lute",
         &scene("a", "::use{component=\"duel\"}"),
     );
-    let t = text(&run(&dir, &["check-project", "."]));
+    let t = text(&run(&dir, &["check", "--project", "."]));
     assert!(t.contains("[E-COMPONENT-STATE]"), "{t}");
 }
 
@@ -334,7 +334,7 @@ fn a_default_naming_no_def_in_the_host_is_component_arg() {
         "scenes/a.lute",
         &scene("a", "::use{component=\"duel\"}"),
     );
-    let t = text(&run(&dir, &["check-project", "."]));
+    let t = text(&run(&dir, &["check", "--project", "."]));
     assert!(
         t.contains("[E-COMPONENT-ARG]") && t.contains("@nowhere"),
         "{t}"
@@ -355,7 +355,7 @@ fn at_at_who_speaks_as_the_member_each_use_names() {
         "scenes/a.lute",
         &scene("a", "::use{component=\"talk\" who=\"joey\" line=\"Hi.\"}"),
     );
-    let o = run(&dir, &["check-project", "."]);
+    let o = run(&dir, &["check", "--project", "."]);
     assert!(o.status.success(), "{}", text(&o));
     let speakers: Vec<String> = commands(&dir, "scenes/a.lute")
         .iter()
@@ -468,7 +468,7 @@ fn a_guarded_directive_compiles_to_a_one_arm_match() {
 fn play_and_test_agree_on_guarded_directives_and_play_names_each_skip() {
     let dir = project("parity", CAST, SCHEMA, &[("eff", EFF)]);
     write(&dir, "scenes/a.lute", &scene("a", GUARDED));
-    let o = run(&dir, &["check-project", "."]);
+    let o = run(&dir, &["check", "--project", "."]);
     assert!(o.status.success(), "{}", text(&o));
     write(
         &dir,
@@ -476,7 +476,7 @@ fn play_and_test_agree_on_guarded_directives_and_play_names_each_skip() {
         "steps:\n  - occasion: talk\n    expect:\n      state: { run.coins: 7 }\n      \
          facts: [\"met(ada)\"]\n      notFacts: [\"met(joey)\"]\n",
     );
-    let o = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
+    let o = run(&dir, &["play", "--project", ".", "--script", "p.play.yaml"]);
     let t = text(&o);
     assert!(o.status.success(), "{t}");
     for skip in [
@@ -545,7 +545,7 @@ fn a_guarded_use_reports_its_guard_once_and_reads_its_arguments_under_it() {
     assert_eq!(count(&t, "E-MAYBE-UNSET"), 1, "{t}");
     assert!(t.contains("`run.maybe`") && !t.contains("`run.num`"), "{t}");
     assert_eq!(count(&t, "E-CEL-PARSE"), 1, "{t}");
-    let t = text(&run(&dir, &["check-project", "."]));
+    let t = text(&run(&dir, &["check", "--project", "."]));
     assert!(count(&t, "E-STATE-MAYBE-UNAVAILABLE") <= 1, "{t}");
 }
 
@@ -563,7 +563,7 @@ fn a_guarded_assert_is_no_guaranteed_fact() {
         "scenes/b.lute",
         &scene("b", "::assert{met(joey)}\n@joey: Hi.").replace("id: b\n", "id: b\npriority: 1\n"),
     );
-    let t = text(&run(&dir, &["check-project", "."]));
+    let t = text(&run(&dir, &["check", "--project", "."]));
     let absent: Vec<&str> = t
         .lines()
         .filter(|l| l.contains("[W-CAST-ABSENT]"))
@@ -587,7 +587,7 @@ fn a_member_speaking_through_at_at_who_counts_as_spoken_at_the_use_for_display_n
         &scene("b", "::use{component=\"talk\" who=\"joe\" line=\"Yo.\"}")
             .replace("id: b\n", "id: b\npriority: 1\n"),
     );
-    for args in [&["check-project", "."][..], &["lint", "."][..]] {
+    for args in [&["check", "--project", "."][..], &["lint", "."][..]] {
         let t = text(&run(&dir, args));
         let dup: Vec<&str> = t
             .lines()

@@ -115,7 +115,7 @@ pub struct Scope<'a> {
     /// dsl 0.27.0 (round-5 T3-21): the document is a scene another scene
     /// may run before — it declares `after:` or a beat `on:` — so a read of
     /// a `run.*`/`user.*` path it never writes may be settled by that other
-    /// scene, which only `check-project` can see.
+    /// scene, which only whole-project `check` can see.
     pub preceded: bool,
     /// The components a `::use` names — an omitted param's `default: "@def"`
     /// is read at the call like the argument it stands for (dsl 0.27.0 §2,
@@ -245,10 +245,10 @@ pub fn check_definite_assignment(
 
 /// dsl 0.27.0 (round-5 T3-21): an `E-MAYBE-UNSET` on a `run.*`/`user.*`
 /// path `nodes` never writes, in a scene another scene may precede, says
-/// that a single file cannot see those scenes and `lute check-project`
+/// that a single file cannot see those scenes and whole-project `lute check`
 /// decides it. `reads[i]` is the path of the i-th `E-MAYBE-UNSET` in
 /// `diags` ([`check_read`] pushes both together). The hint is part of the
-/// message both `check()` and `check-project`'s envelope pass derive, so
+/// message both `check()` and whole-project `check`'s envelope pass derive, so
 /// the project pass still recognises the per-file diagnostic it replaces.
 fn hint_other_scenes(nodes: &[Node], reads: &[(String, Span)], diags: &mut [Diagnostic]) {
     let written = crate::envelope::possible_writes(nodes);
@@ -260,7 +260,7 @@ fn hint_other_scenes(nodes: &[Node], reads: &[(String, Span)], diags: &mut [Diag
         if crate::envelope::in_envelope_scope(path) && !written.iter().any(|w| overlaps(path, w)) {
             d.message.push_str(
                 "; this file never sets it, and a single file cannot see the scenes that \
-                 run before it — run `lute check-project`, which decides reads ordered by `after:`",
+                 run before it — run whole-project `lute check`, which decides reads ordered by `after:`",
             );
         }
     }

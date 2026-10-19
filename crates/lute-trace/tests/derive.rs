@@ -394,7 +394,7 @@ fn derive_key_parses_and_the_flag_wins_over_the_file() {
 }
 
 // ---------------------------------------------------------------------
-// `Program::explain` (`lute play --explain`): proof or failing premises.
+// `Program::explain` (`lute play --derivation`): proof or failing premises.
 // ---------------------------------------------------------------------
 
 mod explain {

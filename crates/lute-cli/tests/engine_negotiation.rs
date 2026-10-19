@@ -303,7 +303,7 @@ fn check_engine_reports_staging_at_the_directive_line() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: Json = serde_json::from_slice(&out.stdout).unwrap();
-    let diag = report["diagnostics"]
+    let diag = report["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -334,7 +334,8 @@ fn check_project_reports_each_contributing_document_and_clean_supports_all() {
         "",
     );
     let out = run_str(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--engine",
         core.to_str().unwrap(),
@@ -369,7 +370,8 @@ fn check_project_reports_each_contributing_document_and_clean_supports_all() {
 
     let all = matrix_file(&dir, "all.yaml", "project-reference", ir, ALL_IDS, "");
     let clean = run_str(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--engine",
         all.to_str().unwrap(),
@@ -435,7 +437,7 @@ fn check_engine_anchors_frontmatter_semantics_at_the_declaring_key() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: Json = serde_json::from_slice(&out.stdout).unwrap();
-    let diag = report["diagnostics"]
+    let diag = report["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -506,6 +508,7 @@ fn play_engine_refuses_staging_before_presenting_and_full_matrix_plays() {
     let matrix = matrix_file(&dir, "core.yaml", "play-checker", &ir, &["lute.core/1"], "");
     let failed = run_str(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),
@@ -527,6 +530,7 @@ fn play_engine_refuses_staging_before_presenting_and_full_matrix_plays() {
     let all = matrix_file(&dir, "all.yaml", "play-reference", &ir, ALL_IDS, "");
     let accepted = run_str(&[
         "play",
+        "--project",
         dir.to_str().unwrap(),
         "--script",
         script.to_str().unwrap(),

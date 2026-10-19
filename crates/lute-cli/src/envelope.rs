@@ -23,8 +23,7 @@ use crate::output::{pretty_json, write_stdout};
 /// Shape versions of the reports (dsl 0.43.0 §3.3). A version names a
 /// payload shape, not a release: it changes only when that payload does.
 pub(crate) mod version {
-    pub(crate) const CHECK: &str = "0.43.0.check";
-    pub(crate) const CHECK_PROJECT: &str = "0.43.0.check-project";
+    pub(crate) const CHECK: &str = "0.48.0.check";
     pub(crate) const IMPACT: &str = "0.43.0.impact";
     pub(crate) const CONSTRAINTS: &str = "0.43.0.constraints";
     pub(crate) const LINT: &str = "0.43.0.lint";
@@ -47,8 +46,15 @@ pub(crate) mod version {
     pub(crate) const REFS: &str = "0.43.0.refs";
     pub(crate) const LORE: &str = "0.43.0.lore";
     pub(crate) const LOC_REPORT: &str = "0.47.0.loc-report";
+    pub(crate) const TAG: &str = "0.48.0.tag";
+    pub(crate) const FIX: &str = "0.48.0.fix";
+    pub(crate) const FMT: &str = "0.48.0.fmt";
+    pub(crate) const CATALOG_REFRESH: &str = "0.48.0.catalog-refresh";
+    pub(crate) const INIT: &str = "0.48.0.init";
+    pub(crate) const NEW: &str = "0.48.0.new";
+    pub(crate) const LOC_IMPORT: &str = "0.48.0.loc-import";
     pub(crate) const DOCTOR: &str = "0.43.0.doctor";
-    pub(crate) const SCHEMA: &str = "0.47.0.schema";
+    pub(crate) const SCHEMA: &str = "0.48.0.schema";
     pub(crate) const ERROR: &str = "0.43.0.error";
 }
 
@@ -103,30 +109,38 @@ const fn document(flag: Option<&'static str>, kind: OutputKind) -> Output {
 /// here has none.
 static OUTPUTS: &[(&str, &[Output])] = &[
     ("check", &[report_output("--json", version::CHECK)]),
-    (
-        "check-project",
-        &[report_output("--json", version::CHECK_PROJECT)],
-    ),
     ("impact", &[report_output("--json", version::IMPACT)]),
     (
         "constraints",
         &[report_output("--json", version::CONSTRAINTS)],
     ),
     ("lint", &[report_output("--json", version::LINT)]),
+    ("tag", &[report_output("--json", version::TAG)]),
+    ("fix", &[report_output("--json", version::FIX)]),
+    ("fmt", &[report_output("--json", version::FMT)]),
+    (
+        "catalog refresh",
+        &[report_output("--json", version::CATALOG_REFRESH)],
+    ),
+    ("init", &[report_output("--json", version::INIT)]),
+    ("new scene", &[report_output("--json", version::NEW)]),
+    ("new quest", &[report_output("--json", version::NEW)]),
+    ("new lore", &[report_output("--json", version::NEW)]),
+    ("new schema", &[report_output("--json", version::NEW)]),
     (
         "compile",
         &[
             document(None, OutputKind::Artifact),
             report_output("--json", version::COMPILE),
+            document(Some("--stream"), OutputKind::Stream),
         ],
     ),
-    ("compile-stream", &[document(None, OutputKind::Stream)]),
     ("expr", &[report_output("--json", version::EXPR)]),
     (
         "context",
         &[
             report_output("--json", version::SURFACE),
-            report_output("--json --target", version::CONTEXT),
+            report_output("--json --node", version::CONTEXT),
             report_output("--json --at", version::POSITION),
         ],
     ),
@@ -142,21 +156,18 @@ static OUTPUTS: &[(&str, &[Output])] = &[
         ],
     ),
     ("test", &[report_output("--json", version::TEST)]),
-    (
-        "scenario",
-        &[report_output("--format json", version::SCENARIO)],
-    ),
+    ("scenario", &[report_output("--json", version::SCENARIO)]),
     (
         "scenario reach",
-        &[report_output("--format json", version::SCENARIO_REACH)],
+        &[report_output("--json", version::SCENARIO_REACH)],
     ),
     (
         "scenario envelope",
-        &[report_output("--format json", version::SCENARIO_ENVELOPE)],
+        &[report_output("--json", version::SCENARIO_ENVELOPE)],
     ),
     (
         "scenario knowledge",
-        &[report_output("--format json", version::SCENARIO_KNOWLEDGE)],
+        &[report_output("--json", version::SCENARIO_KNOWLEDGE)],
     ),
     ("beats", &[report_output("--json", version::BEATS)]),
     ("calendar", &[report_output("--json", version::CALENDAR)]),
@@ -164,11 +175,18 @@ static OUTPUTS: &[(&str, &[Output])] = &[
     ("lore", &[report_output("--json", version::LORE)]),
     (
         "loc export",
-        &[document(Some("--format json"), OutputKind::Artifact)],
+        &[
+            document(None, OutputKind::Artifact),
+            document(Some("--format csv"), OutputKind::Artifact),
+        ],
     ),
     (
         "loc report",
         &[report_output("--json", version::LOC_REPORT)],
+    ),
+    (
+        "loc import",
+        &[report_output("--json", version::LOC_IMPORT)],
     ),
     ("doctor", &[report_output("--json", version::DOCTOR)]),
     ("version", &[document(Some("--json"), OutputKind::Artifact)]),
@@ -257,20 +275,17 @@ fn operands(args: &[OsString]) -> impl Iterator<Item = String> + '_ {
         })
 }
 
-/// Whether `args` request JSON mode (dsl 0.43.0 §4.1): `--json`,
-/// `--format json` / `--format=json` before any `--`, or the `schema`
-/// command.
+/// Whether `args` request JSON mode (0.48.0 §2.3): `--json` before any `--`,
+/// or the `schema` command. (`--format json` was JSON mode in 0.47.2; it is a
+/// removed spelling now and [`crate::removed::names_format_json`] decides its
+/// error is still an envelope.)
 pub(crate) fn json_mode_in(args: &[OsString]) -> bool {
     let words: Vec<String> = args
         .iter()
         .map(|a| a.to_string_lossy().into_owned())
         .take_while(|a| a != "--")
         .collect();
-    let flag = words.iter().enumerate().any(|(i, w)| {
-        w == "--json"
-            || w == "--format=json"
-            || (w == "--format" && words.get(i + 1).is_some_and(|v| v == "json"))
-    });
+    let flag = words.iter().any(|w| w == "--json");
     flag || operands(args).next().is_some_and(|first| first == "schema")
 }
 
@@ -288,6 +303,27 @@ pub(crate) fn report(schema_version: &str, exit: u8, payload: Value) -> Value {
     map.insert("schemaVersion".into(), Value::String(schema_version.into()));
     map.insert("ok".into(), Value::Bool(exit == 0));
     Value::Object(map)
+}
+
+/// Print `payload` as the enveloped report of the running command on stdout
+/// and return the exit code `exit`; a failed write is an `E-CLI-IO` failure.
+pub(crate) fn emit_report(schema_version: &str, exit: u8, payload: Value) -> ExitCode {
+    let wrapped = report(schema_version, exit, payload);
+    let mut text = match pretty_json(&wrapped) {
+        Ok(text) => text,
+        Err(e) => {
+            return fail(CliError::io_without_path(format!(
+                "lute: cannot serialize the report: {e}"
+            )))
+        }
+    };
+    text.push('\n');
+    if let Err(e) = write_stdout(&text) {
+        return fail_quietly(CliError::io_without_path(format!(
+            "lute: cannot write stdout: {e}"
+        )));
+    }
+    ExitCode::from(exit)
 }
 
 /// The class of a CLI failure (dsl 0.43.0 §4.3).
@@ -490,18 +526,15 @@ mod tests {
             Some("check")
         );
         assert_eq!(
-            command_id_in(&args(&[
-                "scenario", "dir", "reach", "scene:a", "--format", "json"
-            ]))
-            .as_deref(),
+            command_id_in(&args(&["scenario", "reach", "--node", "scene:a", "--json"])).as_deref(),
             Some("scenario reach")
         );
         assert_eq!(
-            command_id_in(&args(&["scenario", "dir", "--format", "json"])).as_deref(),
+            command_id_in(&args(&["scenario", "--json"])).as_deref(),
             Some("scenario")
         );
         assert_eq!(
-            command_id_in(&args(&["loc", "report", "dir"])).as_deref(),
+            command_id_in(&args(&["loc", "report", "--project", "dir"])).as_deref(),
             Some("loc report")
         );
         assert_eq!(command_id_in(&args(&["--explain", "check", "chek"])), None);
@@ -512,12 +545,12 @@ mod tests {
     #[test]
     fn json_mode_reads_flags_before_the_separator_and_the_schema_command() {
         assert!(json_mode_in(&args(&["check", "--json", "x"])));
-        assert!(json_mode_in(&args(&["scenario", "d", "--format", "json"])));
-        assert!(json_mode_in(&args(&["scenario", "d", "--format=json"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format", "json"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format=json"])));
         assert!(json_mode_in(&args(&["schema"])));
         assert!(json_mode_in(&args(&["schema", "check"])));
-        assert!(!json_mode_in(&args(&["scenario", "d", "--format", "dot"])));
-        assert!(!json_mode_in(&args(&["loc", "export", "d"])));
+        assert!(!json_mode_in(&args(&["scenario", "--format", "dot"])));
+        assert!(!json_mode_in(&args(&["loc", "export"])));
         assert!(!json_mode_in(&args(&["check", "x", "--", "--json"])));
     }
 
@@ -525,12 +558,10 @@ mod tests {
     fn every_report_output_has_a_version_and_every_document_none() {
         for id in [
             "check",
-            "check-project",
             "impact",
             "constraints",
             "lint",
             "compile",
-            "compile-stream",
             "expr",
             "context",
             "diff",
@@ -551,6 +582,7 @@ mod tests {
             "loc report",
             "doctor",
             "version",
+            "loc import",
             "schema",
         ] {
             let outs = outputs(id);
@@ -563,6 +595,10 @@ mod tests {
                 );
             }
         }
-        assert!(outputs("fmt").is_empty());
+        for id in ["tag", "fix", "fmt", "catalog refresh", "init", "new scene"] {
+            assert!(!outputs(id).is_empty(), "{id} reports with --json");
+        }
+        assert_eq!(outputs("new lore")[0].schema_version, Some("0.48.0.new"));
+        assert!(outputs("check-project").is_empty());
     }
 }

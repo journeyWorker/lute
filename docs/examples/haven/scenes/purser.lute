@@ -82,7 +82,7 @@ Ilsabet the cryobank woke.
   /*
   No `when=`: `found(ottavio)` and `knows(ottavio, manifest)` are asserted
   unconditionally in episode 6, which every route to this scene passes through,
-  so a guard on them could never close (`check-project` reports such a guard as
+  so a guard on them could never close (`check --project` reports such a guard as
   `W-FACT-GUARANTEED`). This lever's licence is the route, not a choice.
   */
   <choice id="listTheMass" text="Put Ottavio on the manifest">

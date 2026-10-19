@@ -5,7 +5,7 @@ description: Lute 0.41의 렌더러 독립 플레이어 코어와 PixiJS 웹 플
 
 Lute 0.41은 두 플레이어 패키지를 제공합니다. [`@lute-lang/player`](https://www.npmjs.com/package/@lute-lang/player)는 렌더러 독립 코어로, 진행, 큐 스케줄링, 상호작용 상태, 런타임 세션, 저장, 읽기 기록, 백로그, 자동/스킵, 롤백, 호스트 브리지를 담당합니다. [`@lute-lang/player-web`](https://www.npmjs.com/package/@lute-lang/player-web)는 PixiJS 8, Web Audio, 화면과 입력을 사용하는 브라우저 구현을 제공합니다.
 
-두 패키지도 스토리를 컴파일하지 않습니다. `lute compile --all`로 프로젝트를 컴파일하고 결과 번들과 런타임 wasm, 검사된 `player.bindings.yaml`을 플레이어에 제공합니다.
+두 패키지도 스토리를 컴파일하지 않습니다. `lute compile --project <DIR> -o <out>`으로 프로젝트를 컴파일하고 결과 번들과 런타임 wasm, 검사된 `player.bindings.yaml`을 플레이어에 제공합니다.
 
 ## 아키텍처
 
@@ -34,9 +34,9 @@ player-web: mount ─► PixiApp ─► World/PixiPresenter
 
 | 패키지 | 책임 | 공개 진입점 |
 | --- | --- | --- |
-| `@lute-lang/player@0.47.2` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.47.2` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
-| `@lute-lang/runtime@0.47.2` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.48.0` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.48.0` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
+| `@lute-lang/runtime@0.48.0` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
 
 ## 패키지 검사
 

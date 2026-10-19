@@ -138,10 +138,10 @@ state:
 - `run.oil` is declared in this scene so the file checks on its own. In a project it belongs in a
   schema every scene imports, since other scenes read it too.
 
-`lute trace` plays one path through the scene. `--choose` lists the hub's picks in order:
+`lute trace` plays one path through the scene. `--choice` lists the hub's picks in order:
 
 ```
-$ lute trace lamp.lute --choose lamp=ledger,ledger,stores,ledger,dusk
+$ lute trace lamp.lute --choice lamp=ledger,ledger,stores,ledger,dusk
 trace: lamp.lute  (seeds: 0 paths, 0 facts; 5 selections)
   ## The Lamp Room
     @narrator  The lamp room smells of cold brass.

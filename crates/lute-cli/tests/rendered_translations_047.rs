@@ -94,7 +94,7 @@ fn project(dir: &Path) {
 /// Export the project's rows, translate both lines into ko, import and
 /// compile the whole project with the bundle into `out`.
 fn compile_localized(dir: &Path, out: &Path) {
-    let exported = run(&["loc", "export", dir.to_str().unwrap()]);
+    let exported = run(&["loc", "export", "--project", dir.to_str().unwrap()]);
     ok(&exported);
     let rows: Vec<Json> = serde_json::from_slice::<Vec<Json>>(&exported.stdout)
         .unwrap()
@@ -122,11 +122,11 @@ fn compile_localized(dir: &Path, out: &Path) {
     ]));
     ok(&run(&[
         "compile",
-        "--all",
+        "--project",
         dir.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ]));
 }

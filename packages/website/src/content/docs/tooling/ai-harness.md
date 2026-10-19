@@ -41,12 +41,12 @@ lute check scene.lute --json --project . \
 ```
 
 Use the **same trusted** `--permission-profile` on context, check, compile, and
-compile-stream. The name is resolved from host/project configuration; never let
+`compile --stream`. The name is resolved from host/project configuration; never let
 generated source choose it. A source-authored `profile: authored` cannot widen
 the additional host ceiling. Denied source is a non-suppressible
 `E-PERMISSION-*` error at its authored span.
 
-A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on `check-project`:
+A pipeline judges by exit code. To make a warning block the loop, promote it with the rustc/clippy-style flags (0.6.1 §5), also on whole-project `check`:
 
 ```sh
 lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
@@ -56,11 +56,11 @@ lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
 
 For an append-only generated continuation, do not invent a model-specific JSON
 grammar and do not treat parser framing as compilation. Give
-[`lute compile-stream`](/tooling/continuation-compiler/) a host-owned, checked
+[`lute compile --stream`](/tooling/continuation-compiler/) a host-owned, checked
 scene template and stream ordinary final-section Lute body text on stdin:
 
 ```sh
-lute compile-stream scene.lute --project . \
+lute compile --stream scene.lute --project . \
   --permission-profile generated
 ```
 
@@ -73,28 +73,28 @@ idempotency; permissions are not a runtime sandbox.
 
 ## Capability-resolution errors gate the exit code
 
-Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed, a malformed permission object, or a missing `--permission-profile`. These print on the `lute:` channel — stderr, `lute: <CODE>: <message>` — and are **not** in the `--json` diagnostic list, because they have no document position to attach to. Permission configuration errors never fall back to unrestricted behavior.
+Some errors describe the **project**, not a span in a document: a plugin option that does not exist or fails its declared type, an `identity:` template naming an unknown token, a profile activating a plugin that is not installed, a malformed permission object, or a missing `--permission-profile`. Under `check`, they are part of the `0.48.0.check` report: a plugin or profile resolve error for a document is that document's entry in `files[]` with `ok: false` and the resolve diagnostics in its `diagnostics`, and an invalid manifest in whole-project mode gives `files: []` with the manifest diagnostics in `project_diagnostics`. Other commands print them on the `lute:` channel — stderr, `lute: <CODE>: <message>` — because they have no document position to attach to. Permission configuration errors never fall back to unrestricted behavior.
 
 Since 0.8.0 they set the exit code. Previously they printed and the build passed, so a typo'd plugin option shipped silently:
 
 <!-- lute-diagnostics -->
 ```console
-$ lute check scene.lute --project . --json
+$ lute check episode01.lute --project .
 lute: E-PLUGIN-OPTION-TYPE: option `showcase.pack.resultScope` expects enum(scene|run), got "galaxy"
 $ echo $?
 1
 ```
 
-The ordinary capability-resolution behavior is verified on `check`,
-`check-project`, `compile` (including `--all`), `context`, and `trace`; the
+The ordinary capability-resolution behavior is verified on `check`
+(one document or the whole project), `compile` (including the whole-project form), `context`, and `trace`; the
 trusted `--permission-profile` option is intentionally narrower and exists on
-`check`, `compile` (including `--all`), `compile-stream`, and `context`. The one
+`check`, `compile` (including the whole-project form and `--stream`), `context`, `trace`, `expr`, `patch`, `play`, `test`, and `calendar`. The one
 deliberate exemption in ordinary project reconciliation is the
 forced-single-root scan behind `compile --project`: a sibling document belonging
 to a nested subproject legitimately mis-resolves under a forced root, and that
 is not the target document's fault.
 
-**The harness consequence is the important part.** Exit `1` with an **empty stdout** is now a reachable state under `--json`, and it means a project-level error. A loop that parses stdout and treats "no diagnostics" as "clean" will report success on a broken project. Branch on the exit code first, parse JSON second, and surface stderr when the two disagree.
+**The harness consequence is the important part.** Read `lute check --json` through `files[].diagnostics` (`files[0]` for a single document) and, in whole-project mode, `project_diagnostics`; a resolve error is an entry with `ok: false`, not an empty body. For commands that still report such errors only on stderr, exit `1` with an **empty stdout** means a project-level error: a loop that parses stdout and treats "no diagnostics" as "clean" would report success on a broken project. Branch on the exit code first, parse JSON second, and surface stderr when the two disagree.
 
 Plugin resolution codes on this channel include `E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`, `E-PLUGIN-MISSING-ACTIVE`, `E-IDENTITY-TEMPLATE`, and the plugin load/assembly family (`E-PLUGIN-MANIFEST`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`, …). Permission loader/profile lookup errors use the same project-resolution channel and explicitly identify their permission context.
 
@@ -102,16 +102,16 @@ Plugin resolution codes on this channel include `E-PLUGIN-OPTION-UNKNOWN`, `E-PL
 
 | Command | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| `check` / `check-project` | clean | error present | I/O | — |
-| `compile` (incl. `--all`) | success | failed gate | I/O / serialization | — |
-| `compile-stream` | successful EOF finalization | syntax / semantic / service rejection | usage / I/O / invalid UTF-8 | — |
+| `check` (document or `--project`) | clean | error present | I/O | — |
+| `compile` (incl. whole-project) | success | failed gate | I/O / serialization | — |
+| `compile --stream` | successful EOF finalization | syntax / semantic / service rejection | usage / I/O / invalid UTF-8 | — |
 | `trace` | complete | refused | I/O | incomplete |
 | `test` | every test passed | a test failed | I/O | — |
 | `loc import` | bundle written | `E-LOCALE-BUNDLE` | I/O | — |
 
 For `trace`, distinguish the two failure modes: **1 = refused** (check errors or invalid mocks — fix the document, then retry) versus **3 = incomplete** (an `unknown` guard halted the walk — supply more mock seeds, then retry). They demand different retry strategies.
 
-`compile --all` is all-or-nothing: exit **1** means nothing was written, so a partially-updated output directory is never a state the harness has to reason about.
+`compile --project DIR -o OUT` (no document) is all-or-nothing: exit **1** means nothing was written, so a partially-updated output directory is never a state the harness has to reason about.
 
 ### Permission denials
 
@@ -198,7 +198,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 
 **`E-IDENTITY-TEMPLATE`** — a `lute.project.yaml` `identity:` template using a token other than `{prefix}`, `{speaker}`, `{code}`. Project-level, so it arrives on the `lute:` channel (see above), not in JSON.
 
-**`W-L10N-MISSING` / `E-LOCALE-BUNDLE`** — the localization round trip. The warning is one per `(lineId, locale)` pair a `compile --locales` bundle fails to cover; the error is a malformed bundle at `loc import` (unparseable input, a `lineId` appearing twice within one locale, an empty locale tag). A harness that owns translation should run `--deny W-L10N-MISSING` so an incomplete bundle cannot reach an artifact.
+**`W-L10N-MISSING` / `E-LOCALE-BUNDLE`** — the localization round trip. The warning is one per `(lineId, locale)` pair a `compile --locale-bundle` bundle fails to cover; the error is a malformed bundle at `loc import` (unparseable input, a `lineId` appearing twice within one locale, an empty locale tag). A harness that owns translation should run `--deny W-L10N-MISSING` so an incomplete bundle cannot reach an artifact.
 
 **The plugin family** — these fire when the model authors a *plugin*, not a document:
 
@@ -211,7 +211,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 | `E-LOWER-RECORD-FIELD` | `lower: { fields }` naming a field the record kind lacks, a `fromAttr` the directive never declares, or a literal that cannot fill the field | `lute:` |
 | `E-FRONTMATTER-SCHEMA` | a plugin-owned frontmatter key whose value violates the declared schema | JSON, with a span |
 
-Only `E-FRONTMATTER-SCHEMA` has a document position and therefore a JSON diagnostic; the rest are project-level and reach you on stderr with an empty JSON body. Every code on this page is a valid `--deny` argument — an unknown code is a usage error (exit `2`), so the flag cannot silently protect nothing.
+Only `E-FRONTMATTER-SCHEMA` has a document position and therefore a JSON diagnostic; the rest are project-level: `check --json` reports them as `ok: false` entries or in `project_diagnostics`, and other commands reach you on stderr with an empty JSON body. Every code on this page is a valid `--deny` argument — an unknown code is a usage error (exit `2`), so the flag cannot silently protect nothing.
 
 ## Fixits
 
@@ -222,7 +222,7 @@ Diagnostics carry fixits with a `kind`. `kind: "migrate"` is machine-applicable 
 `check` is sound but deliberately incomplete over the relational layer, so know which regions are proof-covered and which are review-covered:
 
 - **Scalar gates are proof-covered** — reachability and Guaranteed/Possible envelopes (§5) statically decide them.
-- **Relational fact gates are proof-covered at the extremes, in `check-project` only** — every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project (dsl 0.20.0). A gate that can never hold is its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`); a guard that always holds is `W-FACT-GUARANTEED`. A *possible* gate — some routes have the fact, some do not — is silent and stays review-covered, and single-file `check` leaves every relational query undecided, so run `check-project` before trusting a generated fact gate. (`W-UNPROVEN-RELATIONAL`, which marked every relational gate, was removed in 0.20.0; naming it in `--deny` is a usage error.)
+- **Relational fact gates are proof-covered at the extremes, in whole-project `check` only** — every `holds(…)`/`count(…)` in a guard is decided impossible, guaranteed, or possible over the whole project (dsl 0.20.0). A gate that can never hold is its slot's dead-code error (`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`); a guard that always holds is `W-FACT-GUARANTEED`. A *possible* gate — some routes have the fact, some do not — is silent and stays review-covered, and single-file `check` leaves every relational query undecided, so run `lute check --project DIR` before trusting a generated fact gate. (`W-UNPROVEN-RELATIONAL`, which marked every relational gate, was removed in 0.20.0; naming it in `--deny` is a usage error.)
 - `W-TRACE-MOCK-UNPRODUCIBLE` warns when a `lute trace` mock seeds a fact over a relation no authored producer can ever assert — the walk proves nothing about reachable play.
 - `W-LUTE-VERSION-STALE` catches a model reproducing a stale `luteVersion` stamp copied from an old example.
 
@@ -234,9 +234,9 @@ Run `lute tag scene.lute` at the pipeline end to back-fill a stable `code` into 
 
 ```console
 $ lute tag /tmp/drowned-crown
-$ lute context /tmp/drowned-crown --target quest:libraryKey --max-items 20 --json > context.json
-$ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
-$ lute check-project /tmp/drowned-crown
+$ lute context /tmp/drowned-crown/quests/library.lute --project /tmp/drowned-crown --node quest:libraryKey --max-items 20 --json > context.json
+$ lute patch --project /tmp/drowned-crown planned-patch.json --dry-run --json
+$ lute check --project /tmp/drowned-crown
 $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 ```
 
@@ -245,12 +245,12 @@ positional and must not be invented or renumbered. Copy `projectRevision` and
 file revisions from context into the patch base. Review `diff.changes`, then
 apply the same patch without `--dry-run`; replay with the project's own test,
 play, or trace scripts. `context --at <file>:<line>:<column>` accepts
-`--max-items N` and `--run <FILE>` (the latter requires a script file).
+`--max-items <N>` and `--script <FILE>` (a script file, or a directory selecting every script under it; `--all-scripts` executes every play and test script of the project).
 Lute is a deterministic CLI boundary, not a chat application or MCP server.
 
 ## The patch request (0.47)
 
-`lute patch <DIR> <PATCH> [--dry-run] [--json]` reads `PATCH`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "PATCH"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
+`lute patch <FILE> --project <DIR> [--dry-run] [--json]` reads `FILE`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "FILE"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
@@ -286,7 +286,7 @@ Paths are project-relative and may not leave the project. Each `preserve` item i
 | `reachability` | node keys | The nodes' reachability is unchanged. |
 | `constraints` | `true` | The project's constraint verdicts are unchanged. |
 
-A node key is `kind:key`. Take keys from `lute context <file> --target <kind:key> --json`: every entry of `affected[]` carries its canonical `key` (and `reasons[].sourceSpan`); the target itself is `target.kind`:`target.key` (`target.key` alone is the bare key). The kinds are `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`. A patch may target only nodes with an editable source span: `project`, `occasion`, `relation`, `state`, `expanded`, `fact` and `engine` are refused as targets (`E-PATCH-TARGET`; edit schema YAML with `replaceText` inside a targetable node instead). `nodeKinds[].targetable` in `lute schema patch` says the same.
+A node key is `kind:key`. Take keys from `lute context <file> --node <kind:key> --json`: every entry of `affected[]` carries its canonical `key` (and `reasons[].sourceSpan`); the target itself is `target.kind`:`target.key` (`target.key` alone is the bare key). The kinds are `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`. A patch may target only nodes with an editable source span: `project`, `occasion`, `relation`, `state`, `expanded`, `fact` and `engine` are refused as targets (`E-PATCH-TARGET`; edit schema YAML with `replaceText` inside a targetable node instead). `nodeKinds[].targetable` in `lute schema patch` says the same.
 
 ```json
 {

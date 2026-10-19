@@ -25,7 +25,7 @@ fn schema(path: &[&str]) -> Value {
     assert_eq!(code, 0, "lute {args:?}: {stderr}");
     let value: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(value["command"], "schema");
-    assert_eq!(value["schemaVersion"], "0.47.0.schema");
+    assert_eq!(value["schemaVersion"], "0.48.0.schema");
     assert_eq!(value["ok"], true);
     value
 }
@@ -159,7 +159,8 @@ fn every_command_describes_every_option_its_help_lists() {
 fn a_command_lists_its_arguments_options_and_outputs() {
     let check = schema(&["check"]);
     assert_eq!(check["arguments"][0]["name"], "FILE");
-    assert_eq!(check["arguments"][0]["required"], true);
+    assert_eq!(check["arguments"][0]["required"], false);
+    assert_eq!(check["arguments"][0]["repeatable"], true);
     let options = check["options"].as_array().unwrap();
     let json = options.iter().find(|o| o["name"] == "--json").unwrap();
     assert_eq!(json["takesValue"], false);
@@ -169,7 +170,7 @@ fn a_command_lists_its_arguments_options_and_outputs() {
     assert_eq!(deny["valueName"], "CODE");
     assert_eq!(
         check["outputs"],
-        serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": "0.43.0.check"}])
+        serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": "0.48.0.check"}])
     );
 
     let reach = schema(&["scenario", "reach"]);
@@ -194,8 +195,110 @@ fn a_command_lists_its_arguments_options_and_outputs() {
         .map(|o| o["kind"].as_str().unwrap())
         .collect();
     assert_eq!(kinds, ["report", "stream"]);
-    assert_eq!(schema(&["fmt"])["outputs"], serde_json::json!([]));
+    for (path, version) in [
+        (&["tag"][..], "0.48.0.tag"),
+        (&["fix"][..], "0.48.0.fix"),
+        (&["fmt"][..], "0.48.0.fmt"),
+        (&["catalog", "refresh"][..], "0.48.0.catalog-refresh"),
+        (&["init"][..], "0.48.0.init"),
+        (&["new", "scene"][..], "0.48.0.new"),
+        (&["new", "quest"][..], "0.48.0.new"),
+        (&["new", "lore"][..], "0.48.0.new"),
+        (&["new", "schema"][..], "0.48.0.new"),
+        (&["loc", "import"][..], "0.48.0.loc-import"),
+    ] {
+        assert_eq!(
+            schema(path)["outputs"],
+            serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": version}]),
+            "{path:?}"
+        );
+    }
+    // An option whose value may be omitted says so (0.48.0 §6 arity).
+    let endings = schema(&["scenario", "reach"])["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["name"] == "--endings")
+        .unwrap()
+        .clone();
+    assert_eq!(endings["valueOptional"], true);
     assert_eq!(schema(&["version"])["outputs"][0]["kind"], "artifact");
+}
+
+/// 0.48.0 §4: the outputs rows of the commands the grammar cutover moved —
+/// `scenario*` reports are selected by `--json`, `context`'s node report by
+/// `--json --node`, `loc export` is an artifact writer (no `--json`; its CSV
+/// form is `--format csv`) — and `new`'s kinds are subcommands.
+#[test]
+fn the_moved_outputs_and_subcommands_are_listed() {
+    for (path, version) in [
+        (&["scenario"][..], "0.43.0.scenario"),
+        (&["scenario", "reach"][..], "0.43.0.scenario-reach"),
+        (&["scenario", "envelope"][..], "0.43.0.scenario-envelope"),
+        (&["scenario", "knowledge"][..], "0.43.0.scenario-knowledge"),
+    ] {
+        assert_eq!(
+            schema(path)["outputs"],
+            serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": version}]),
+            "{path:?}"
+        );
+    }
+    let context = schema(&["context"]);
+    let outputs: Vec<(&str, &str)> = context["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            (
+                o["flag"].as_str().unwrap(),
+                o["schemaVersion"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        outputs,
+        [
+            ("--json", "0.43.0.surface"),
+            ("--json --node", "0.36.0.context"),
+            ("--json --at", "0.36.0.position"),
+        ]
+    );
+    let export = schema(&["loc", "export"]);
+    assert_eq!(
+        export["outputs"],
+        serde_json::json!([
+            {"flag": null, "kind": "artifact", "schemaVersion": null},
+            {"flag": "--format csv", "kind": "artifact", "schemaVersion": null}
+        ])
+    );
+    assert!(
+        export["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|o| o["name"] != "--json"),
+        "loc export is an artifact writer"
+    );
+    let new = schema(&["new"]);
+    let ids: Vec<&str> = new["subcommands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["new scene", "new quest", "new lore", "new schema"]);
+    for id in ids {
+        let path: Vec<&str> = id.split(' ').collect();
+        let options = schema(&path)["options"].clone();
+        assert!(
+            options
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|o| o["name"] == "--project"),
+            "{id} takes --project"
+        );
+    }
 }
 
 #[test]

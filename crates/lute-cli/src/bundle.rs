@@ -110,7 +110,7 @@ pub(crate) fn index_defs<'a>(
     defs
 }
 
-/// Serialize the exact bundle shape emitted by `compile --all`.
+/// Serialize the exact bundle shape emitted by whole-project `compile`.
 pub(crate) fn build_bundle(
     compiled: &std::collections::BTreeMap<String, lute_compile::ExecutionIr>,
     unions: &IndexUnions,

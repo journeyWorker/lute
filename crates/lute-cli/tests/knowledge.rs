@@ -1,8 +1,8 @@
 //! dsl 0.24.0 T3-1 / T3-2, through the built `lute` binary: `lute scenario
-//! knowledge` over every guard slot (grouped per document, `--for
+//! knowledge` over every guard slot (grouped per document, `--node
 //! <scene>#<branch>.<choice>`), constants propagated into negated premises,
 //! the negation wording ("cannot be defeated", "defeated when …"), a derived
-//! tree printed once; `lute play --explain` provenance; `lute lore`'s entry
+//! tree printed once; `lute play --derivation` provenance; `lute lore`'s entry
 //! `when` and Derived section; `lute scenario envelope`'s producer wording.
 
 use std::path::Path;
@@ -104,7 +104,14 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     let d = dir.to_str().unwrap();
     // Before 0.24 a scene with only choice and line guards was not a
     // fact-guarded node: `--for` exited 2.
-    let s = ok(&["scenario", d, "knowledge", "--for", "inquiry.report"]);
+    let s = ok(&[
+        "scenario",
+        "--project",
+        d,
+        "knowledge",
+        "--node",
+        "inquiry.report",
+    ]);
     assert!(
         s.contains("\n  scenes/report.lute\n    choice `fate.tobias` (line 10)\n"),
         "{s}"
@@ -118,15 +125,16 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     assert!(s.contains("    line `@tobias` (line 22)\n"), "{s}");
     assert!(
         !s.contains("entry `nbTobias`"),
-        "--for selects the scene's guards only: {s}"
+        "--node selects the scene's guards only: {s}"
     );
 
     // One choice by `<scene>#<branch>.<choice>`.
     let one = ok(&[
         "scenario",
+        "--project",
         d,
         "knowledge",
-        "--for",
+        "--node",
         "inquiry.report#fate.ada",
     ]);
     assert!(one.contains("choice `fate.ada`"), "{one}");
@@ -136,7 +144,14 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     );
 
     // Quest `start`/`fail` are guard slots too.
-    let q = ok(&["scenario", d, "knowledge", "--for", "quest:case"]);
+    let q = ok(&[
+        "scenario",
+        "--project",
+        d,
+        "knowledge",
+        "--node",
+        "quest:case",
+    ]);
     assert!(
         q.contains("\n  quests/case.lute\n    quest `case`\n"),
         "{q}"
@@ -153,9 +168,10 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
 
     let miss = lute(&[
         "scenario",
+        "--project",
         d,
         "knowledge",
-        "--for",
+        "--node",
         "inquiry.report#fate.adda",
     ]);
     assert_eq!(miss.status.code(), Some(2));
@@ -170,7 +186,14 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
 fn knowledge_propagates_constants_into_negations_and_says_whether_they_can_be_defeated() {
     let dir = inquiry("negation");
     let d = dir.to_str().unwrap();
-    let s = ok(&["scenario", d, "knowledge", "--for", "inquiry.report"]);
+    let s = ok(&[
+        "scenario",
+        "--project",
+        d,
+        "knowledge",
+        "--node",
+        "inquiry.report",
+    ]);
     // `W` is bound to `hollis` by the only `saw(_, tobias)`; nothing makes
     // Hollis a liar.
     assert!(
@@ -216,9 +239,10 @@ fn a_defeater_lists_every_derivation_route() {
     write(&dir, "world.schema.yaml", &schema);
     let s = ok(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "knowledge",
-        "--for",
+        "--node",
         "inquiry.report",
     ]);
     assert!(
@@ -234,7 +258,7 @@ fn a_defeater_lists_every_derivation_route() {
 fn knowledge_prints_a_derived_tree_once_and_references_it() {
     let dir = inquiry("once");
     let d = dir.to_str().unwrap();
-    let s = ok(&["scenario", d, "knowledge"]);
+    let s = ok(&["scenario", "--project", d, "knowledge"]);
     // Before, every guard re-derived `alibied(tobias)` (4 guards read it).
     assert_eq!(
         s.matches("rule: alibied(S) :- saw(W, S), not liar(W)")
@@ -246,7 +270,14 @@ fn knowledge_prints_a_derived_tree_once_and_references_it() {
         s.contains("alibied(tobias) — derived by 1 rule — traced above under entry `nbTobias` in lore/evidence.lute"),
         "{s}"
     );
-    let scene = ok(&["scenario", d, "knowledge", "--for", "inquiry.report"]);
+    let scene = ok(&[
+        "scenario",
+        "--project",
+        d,
+        "knowledge",
+        "--node",
+        "inquiry.report",
+    ]);
     assert!(
         scene.contains("alibied(tobias) — derived by 1 rule — traced above under choice `fate.tobias` (line 10)\n"),
         "a later mention in the same document names the element only: {scene}"
@@ -266,12 +297,13 @@ fn play_explain_names_the_asserting_beat_and_step_and_expands_an_absent_negation
     let script = dir.join("plays/p.play.yaml");
     let s = ok(&[
         "play",
+        "--project",
         d,
         "--script",
         script.to_str().unwrap(),
-        "--explain",
+        "--derivation",
         "alibied(tobias)",
-        "--explain",
+        "--derivation",
         "alibied(ada)",
     ]);
     let tobias = s
@@ -303,7 +335,7 @@ fn play_explain_names_the_asserting_beat_and_step_and_expands_an_absent_negation
 fn lore_shows_entry_when_and_the_derived_conclusions() {
     let dir = inquiry("lore");
     let d = dir.to_str().unwrap();
-    let s = ok(&["lore", d]);
+    let s = ok(&["lore", "--project", d]);
     assert!(
         s.contains(
             "    nbTobias  \"Alibi\"  lore/evidence.lute\n      when: holds('alibied', ['tobias'])\n"
@@ -336,7 +368,8 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
         "{derived}"
     );
 
-    let v: serde_json::Value = serde_json::from_str(&ok(&["lore", d, "--json"])).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&ok(&["lore", "--project", d, "--json"])).unwrap();
     let liar = v["derived"]
         .as_array()
         .unwrap()
@@ -354,7 +387,14 @@ fn lore_shows_entry_when_and_the_derived_conclusions() {
 fn envelope_names_producers_in_the_knowledge_words() {
     let dir = inquiry("envelope");
     let d = dir.to_str().unwrap();
-    let s = ok(&["scenario", d, "envelope", "inquiry.report"]);
+    let s = ok(&[
+        "scenario",
+        "--project",
+        d,
+        "envelope",
+        "--node",
+        "inquiry.report",
+    ]);
     assert!(
         s.contains("    - present/1 (producible) — seed facts present(hollis); reserved — the engine asserts it\n"),
         "{s}"
@@ -403,7 +443,7 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
         "---\nkind: scene\nid: s\non: tick\nwhen: \"holds('ready', ['sol']) || holds('plain', ['ines'])\"\n---\n\n## S\n\n@narrator: Ready.\n",
     );
     let dir = d.to_str().unwrap();
-    let s = ok(&["scenario", dir, "knowledge", "--for", "s"]);
+    let s = ok(&["scenario", "--project", dir, "knowledge", "--node", "s"]);
     assert!(!s.contains("undeclared relation"), "{s}");
     assert!(
         s.contains("suitor(sol) — entity kind `suitor`; sol is a member\n"),
@@ -432,11 +472,11 @@ fn knowledge_reads_an_entity_kind_premise_as_membership_and_lists_cel_premises()
 
     let out = lute(&[
         "scenario",
+        "--project",
         dir,
-        "--format",
-        "json",
+        "--json",
         "knowledge",
-        "--for",
+        "--node",
         "s",
     ]);
     let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -492,7 +532,14 @@ fn a_kind_bound_negated_premise_names_its_defeater() {
          @narrator{when=\"holds('routeOpen', ['ren'])\"}: Ren's route is open.\n",
     );
     let dir = d.to_str().unwrap();
-    let s = ok(&["scenario", dir, "knowledge", "--for", "festival"]);
+    let s = ok(&[
+        "scenario",
+        "--project",
+        dir,
+        "knowledge",
+        "--node",
+        "festival",
+    ]);
     assert!(!s.contains("cannot be defeated"), "{s}");
     assert!(
         s.contains(
@@ -501,7 +548,7 @@ fn a_kind_bound_negated_premise_names_its_defeater() {
         ),
         "{s}"
     );
-    let lore = ok(&["lore", dir]);
+    let lore = ok(&["lore", "--project", dir]);
     assert!(
         lore.contains(
             "routeOpen(ren)\n      ⇐ suitor(ren), not locked(ren)  (rule at world.schema.yaml:"

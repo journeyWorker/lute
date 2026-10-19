@@ -4,7 +4,7 @@
 //! <nodeId>` reports a node's reachability verdict, and `envelope <nodeId>`
 //! (or `envelope quest:<id>`) prints the Guaranteed/Possible tables plus the
 //! `Possible \ Guaranteed` warning-grade reads T11 computes-and-drops from
-//! default `check-project` (dsl §6). ALSO: a `check-project` regression
+//! default whole-project `check` (dsl §6). ALSO: a whole-project `check` regression
 //! confirming the full §6 diagnostics table is wired (`E-CONN-UNKNOWN-NODE`
 //! exits non-zero) — connectivity T14's "Also confirm" step.
 
@@ -105,7 +105,14 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "b.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("run.a"), "{out_text}");
@@ -122,8 +129,10 @@ fn scenario_envelope_quest_without_follows_shows_defaults_note() {
 
     let out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "envelope",
+        "--node",
         "quest:someQuest",
     ]);
     let out_text = stdout(&out);
@@ -148,7 +157,14 @@ fn scenario_envelope_scene_falls_back_to_dd_floor_when_graph_cycle_empties_envs(
     write(&dir, "p.lute", p);
     write(&dir, "q.lute", q);
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "p.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     // Anchor on the actual table HEADINGS ("Guaranteed (safe to read" /
@@ -187,7 +203,14 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
     write(&dir, "p.lute", p);
     write(&dir, "q.lute", q);
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "p.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(
         out.status.success(),
@@ -204,7 +227,14 @@ fn scenario_envelope_cyclic_project_announces_e_conn_cycle_degraded() {
     );
     // Cross-check the same project's `reach` DOES announce the cycle, so the
     // two views are now consistent rather than reach-only.
-    let reach_out = run(&["scenario", dir.to_str().unwrap(), "reach", "p.s01ep01"]);
+    let reach_out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "p.s01ep01",
+    ]);
     assert!(
         stdout(&reach_out).contains("E-CONN-CYCLE"),
         "{}",
@@ -235,8 +265,10 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
 
     let out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "envelope",
+        "--node",
         "quest:plainQuest",
     ]);
     let out_text = stdout(&out);
@@ -277,8 +309,10 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
     // Independent node: real Reachable verdict, NO cycle wording.
     let reach_ind = stdout(&run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "ind.s01ep01",
     ]));
     assert!(
@@ -292,7 +326,14 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
     );
 
     // Independent node: real envelope, NO cycle note.
-    let env_ind = run(&["scenario", dir.to_str().unwrap(), "envelope", "ind.s01ep01"]);
+    let env_ind = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "ind.s01ep01",
+    ]);
     let env_ind_text = stdout(&env_ind);
     assert!(env_ind.status.success(), "{env_ind_text}");
     assert!(
@@ -315,14 +356,28 @@ fn scenario_cycle_independent_scene_keeps_real_reach_and_envelope() {
 
     // Contrast: a cycle MEMBER still degrades with the per-node cycle note in
     // BOTH views, and both still exit 0 (read-only surface, no NEW failure).
-    let reach_p = run(&["scenario", dir.to_str().unwrap(), "reach", "p.s01ep01"]);
+    let reach_p = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "p.s01ep01",
+    ]);
     assert!(reach_p.status.success(), "{}", stdout(&reach_p));
     assert!(
         stdout(&reach_p).contains("E-CONN-CYCLE"),
         "cycle-member reach must still show the per-node cycle degradation: {}",
         stdout(&reach_p)
     );
-    let env_p = run(&["scenario", dir.to_str().unwrap(), "envelope", "p.s01ep01"]);
+    let env_p = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "p.s01ep01",
+    ]);
     assert!(env_p.status.success(), "{}", stdout(&env_p));
     assert!(
         stdout(&env_p).contains("E-CONN-CYCLE"),
@@ -341,7 +396,14 @@ fn scenario_envelope_header_carries_pre_entry_label() {
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "b.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(
@@ -366,8 +428,10 @@ fn connectivity_t15_corpus_example_envelope_shows_guaranteed_cross_scene_read() 
     let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples");
     let out = run(&[
         "scenario",
+        "--project",
         examples.to_str().unwrap(),
         "envelope",
+        "--node",
         "kestrel.s01ep02",
     ]);
     let out_text = stdout(&out);
@@ -408,7 +472,7 @@ fn bare_scenario_prints_nonempty_topological_graph() {
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
-    let out = run(&["scenario", dir.to_str().unwrap()]);
+    let out = run(&["scenario", "--project", dir.to_str().unwrap()]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(
@@ -433,7 +497,14 @@ fn scenario_reach_prints_reachability_verdict() {
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "b.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "b.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("Reachable"), "{out_text}");
@@ -449,7 +520,7 @@ fn scenario_reach_prints_reachability_verdict() {
 #[test]
 fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
     // Contract #2: T11 computes-and-drops the `Possible \ Guaranteed`
-    // warning-grade read from default `check-project`; T14 must RE-derive
+    // warning-grade read from default whole-project `check`; T14 must RE-derive
     // and print it explicitly for the requested node, not merely dump the
     // two sets and expect a diff. `a` unconditionally sets `run.z`, `b`
     // never does; `x after: visited(a) || visited(b)` reads `run.z`, so
@@ -467,15 +538,22 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
         &scene_reading_run_z_after_or("x", "a.s01ep01", "b.s01ep01"),
     );
 
-    // Default `check-project` must NOT surface this warning grade at all
+    // Default whole-project `check` must NOT surface this warning grade at all
     // (T11's compute-and-drop default stays unchanged).
-    let cp = run(&["check-project", dir.to_str().unwrap()]);
+    let cp = run(&["check", "--project", dir.to_str().unwrap()]);
     assert!(cp.status.success(), "{}", stdout(&cp));
     let cp_text = stdout(&cp);
     assert!(!cp_text.contains("E-STATE-MAYBE-UNAVAILABLE"), "{cp_text}");
 
     // `lute scenario envelope` explicitly surfaces it for the requested node.
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "x.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "x.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("run.z"), "{out_text}");
@@ -485,14 +563,14 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
     );
 }
 
-// --- "Also confirm" (Step 3): check-project's full §6 diagnostics table --
+// --- "Also confirm" (Step 3): whole-project check's full §6 diagnostics table --
 
 #[test]
 fn check_project_unknown_node_exits_nonzero_with_e_conn_unknown_node() {
     let dir = lute_scratch::ScratchDir::named("scenario-check-project-unknown-node");
     write(&dir, "x.lute", &scene_after("x", "doesNotExist.s01ep01"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let out_text = stdout(&out);
     assert!(
         !out.status.success(),
@@ -520,7 +598,14 @@ fn scenario_reach_on_cross_root_duplicate_node_id_is_ambiguous_not_silently_pick
     let sub_a = dir.join("subA").to_string_lossy().into_owned();
     let sub_b = dir.join("subB").to_string_lossy().into_owned();
 
-    let reach_out = run(&["scenario", dir.to_str().unwrap(), "reach", "c.s01ep01"]);
+    let reach_out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "c.s01ep01",
+    ]);
     assert!(!reach_out.status.success(), "{}", stdout(&reach_out));
     let reach_err = stderr(&reach_out);
     assert!(reach_err.contains("ambiguous"), "{reach_err}");
@@ -539,7 +624,14 @@ fn scenario_reach_on_cross_root_duplicate_node_id_is_ambiguous_not_silently_pick
         "must name subB's root path: {reach_err}"
     );
 
-    let env_out = run(&["scenario", dir.to_str().unwrap(), "envelope", "c.s01ep01"]);
+    let env_out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "c.s01ep01",
+    ]);
     assert!(!env_out.status.success(), "{}", stdout(&env_out));
     let env_err = stderr(&env_out);
     assert!(env_err.contains("ambiguous"), "{env_err}");
@@ -576,7 +668,14 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
          after: 'completed(\"missingQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out_scene = run(&["scenario", dir.to_str().unwrap(), "reach", "x.s01ep01"]);
+    let out_scene = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "x.s01ep01",
+    ]);
     let text_scene = stdout(&out_scene);
     assert!(out_scene.status.success(), "{text_scene}");
     assert!(
@@ -596,7 +695,14 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
         "{referenced_line_scene}"
     );
 
-    let out_quest = run(&["scenario", dir.to_str().unwrap(), "reach", "q.s01ep01"]);
+    let out_quest = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "q.s01ep01",
+    ]);
     let text_quest = stdout(&out_quest);
     assert!(out_quest.status.success(), "{text_quest}");
     let referenced_line_quest = text_quest
@@ -616,7 +722,7 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
 #[test]
 fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     // Scene envelope's Possible\Guaranteed section is the T11 warning-grade
-    // READ-SITE class (suppressed by default in `check-project`); a quest
+    // READ-SITE class (suppressed by default in whole-project `check`); a quest
     // envelope's is plain SET-difference inventory (`check_envelope` is
     // scene-only, so there is no read-site data for a quest at all). The
     // two sections must NOT share the same "suppressed... warning-grade
@@ -624,7 +730,14 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     let dir = lute_scratch::ScratchDir::named("scenario-envelope-label-scene");
     write(&dir, "a.lute", &scene_sets_run_a("a"));
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
-    let out_scene = run(&["scenario", dir.to_str().unwrap(), "envelope", "b.s01ep01"]);
+    let out_scene = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "b.s01ep01",
+    ]);
     let text_scene = stdout(&out_scene);
     assert!(out_scene.status.success(), "{text_scene}");
     assert!(text_scene.contains("warning-grade reads"), "{text_scene}");
@@ -633,8 +746,10 @@ fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     write(&qdir, "q.lute", &quest_no_after("labelQuest"));
     let out_quest = run(&[
         "scenario",
+        "--project",
         qdir.to_str().unwrap(),
         "envelope",
+        "--node",
         "quest:labelQuest",
     ]);
     let text_quest = stdout(&out_quest);
@@ -674,7 +789,14 @@ fn scenario_envelope_ambiguous_quest_id_prints_ambiguity_note_not_arbitrary_pick
          <quest id=\"dup\">\n<objective id=\"o\" done=\"run.b\"/>\n</quest>\n",
     );
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "envelope", "quest:dup"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "quest:dup",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("ambiguous"), "{out_text}");
@@ -715,7 +837,14 @@ fn scenario_reach_and_envelope_on_duplicate_scene_key_prints_ambiguity_note_not_
          ## Shot 1.\n::set{run.y = true}\n",
     );
 
-    let reach_out = run(&["scenario", dir.to_str().unwrap(), "reach", "dup.s01ep01"]);
+    let reach_out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "dup.s01ep01",
+    ]);
     let reach_text = stdout(&reach_out);
     assert!(reach_out.status.success(), "{reach_text}");
     assert!(reach_text.contains("ambiguous"), "{reach_text}");
@@ -726,7 +855,14 @@ fn scenario_reach_and_envelope_on_duplicate_scene_key_prints_ambiguity_note_not_
     assert!(!reach_text.contains("verdict:"), "{reach_text}");
     assert!(!reach_text.contains("after:"), "{reach_text}");
 
-    let env_out = run(&["scenario", dir.to_str().unwrap(), "envelope", "dup.s01ep01"]);
+    let env_out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "dup.s01ep01",
+    ]);
     let env_text = stdout(&env_out);
     assert!(env_out.status.success(), "{env_text}");
     assert!(env_text.contains("ambiguous"), "{env_text}");
@@ -761,7 +897,14 @@ fn scenario_reach_formula_rendering_escapes_embedded_quote_and_backslash() {
          after: 'visited(\"has\\\"quote\\\\slash\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "x.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "x.s01ep01",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     // Properly escaped: a backslash before the embedded quote, and a
@@ -795,8 +938,10 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
 
     let reach_out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "scene:quest:zzz.s01ep01",
     ]);
     let reach_text = stdout(&reach_out);
@@ -809,8 +954,10 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
 
     let env_out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "envelope",
+        "--node",
         "scene:quest:zzz.s01ep01",
     ]);
     let env_text = stdout(&env_out);
@@ -824,8 +971,10 @@ fn scene_key_beginning_with_quest_prefix_is_selectable_via_explicit_scene_prefix
     // fall through to the colliding scene.
     let bare_out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "quest:zzz.s01ep01",
     ]);
     assert!(!bare_out.status.success(), "{}", stdout(&bare_out));
@@ -851,7 +1000,14 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
     );
     write(&dir, "q.lute", &quest_no_after("dup.s01ep01"));
 
-    let out = run(&["scenario", dir.to_str().unwrap(), "reach", "dup.s01ep01"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "reach",
+        "--node",
+        "dup.s01ep01",
+    ]);
     assert!(!out.status.success(), "{}", stdout(&out));
     let err = stderr(&out);
     assert!(err.contains("ambiguous"), "{err}");
@@ -862,7 +1018,7 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
 /// Defect B propagation: `lute scenario reach` must ALSO report a quest
 /// with a dead REQUIRED objective as `Unreachable` (both directly, and
 /// transitively through a scene's `completed(Q)` gate) -- the exact
-/// surface `check-project`'s own `E-CONN-UNREACHABLE` shares its
+/// surface whole-project `check`'s own `E-CONN-UNREACHABLE` shares its
 /// `reach`/`unreachable_quests` data with.
 #[test]
 fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
@@ -882,8 +1038,10 @@ fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
 
     let out_quest = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "quest:deadQuest",
     ]);
     let text_quest = stdout(&out_quest);
@@ -895,8 +1053,10 @@ fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
 
     let out_scene = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "scene:repro.s01ep01",
     ]);
     let text_scene = stdout(&out_scene);
@@ -939,7 +1099,7 @@ fn both_edge_kinds_fixture() -> (lute_scratch::ScratchDir, String) {
 #[test]
 fn scenario_json_reports_each_edge_kind_distinguishably() {
     let (_dir, path) = both_edge_kinds_fixture();
-    let out = run(&["scenario", &path, "--format", "json"]);
+    let out = run(&["scenario", "--project", &path, "--json"]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
 
@@ -980,7 +1140,7 @@ fn scenario_json_reports_each_edge_kind_distinguishably() {
 #[test]
 fn scenario_text_graph_labels_each_edge_kind() {
     let (_dir, path) = both_edge_kinds_fixture();
-    let out = run(&["scenario", &path]);
+    let out = run(&["scenario", "--project", &path]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(
@@ -1000,7 +1160,7 @@ fn scenario_text_graph_labels_each_edge_kind() {
 #[test]
 fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
     let (_dir, path) = both_edge_kinds_fixture();
-    let out = run(&["scenario", &path, "--format", "dot"]);
+    let out = run(&["scenario", "--project", &path, "--format", "dot"]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(
@@ -1016,7 +1176,7 @@ fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
         "a `visited` edge must keep the plain solid style: {out_text}"
     );
 
-    let again = stdout(&run(&["scenario", &path, "--format", "dot"]));
+    let again = stdout(&run(&["scenario", "--project", &path, "--format", "dot"]));
     assert_eq!(
         out_text, again,
         "dot output must be byte-identical across runs"
@@ -1028,7 +1188,14 @@ fn scenario_reach_accepts_an_active_prerequisite() {
     // End-to-end: `active(…)` must survive the per-file grammar check
     // (no E-CONN-PROFILE) and resolve to a real, reachable verdict.
     let (_dir, path) = both_edge_kinds_fixture();
-    let out = run(&["scenario", &path, "reach", "quest:viaActive"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        &path,
+        "reach",
+        "--node",
+        "quest:viaActive",
+    ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
     assert!(out_text.contains("Reachable"), "{out_text}");
@@ -1059,8 +1226,10 @@ fn dead_relation_start_reads_unreachable() {
 
     let out = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "reach",
+        "--node",
         "quest:deadStart",
     ]);
     let text = stdout(&out);
@@ -1088,8 +1257,10 @@ fn scene_envelope_names_the_writers_of_each_path() {
     write(&dir, "b.lute", &scene_after("b", "a.s01ep01"));
     let text = stdout(&run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "envelope",
+        "--node",
         "b.s01ep01",
     ]));
     assert!(text.contains("written by"), "{text}");
@@ -1108,8 +1279,10 @@ fn quest_envelope_names_a_completion_handler_as_a_writer() {
     let root = haven();
     let text = stdout(&run(&[
         "scenario",
+        "--project",
         root.to_str().unwrap(),
         "envelope",
+        "--node",
         "quest:whatVesnaCarries",
     ]));
     let line = text
@@ -1131,8 +1304,10 @@ fn envelope_reports_the_relational_layer_not_only_the_scalar_one() {
     let root = haven();
     let text = stdout(&run(&[
         "scenario",
+        "--project",
         root.to_str().unwrap(),
         "envelope",
+        "--node",
         "haven.s01ep06",
     ]));
     assert!(text.contains("Facts"), "{text}");
@@ -1182,14 +1357,18 @@ fn envelope_at_the_root_and_at_the_leaf_are_no_longer_identical() {
     let root = haven();
     let first = stdout(&run(&[
         "scenario",
+        "--project",
         root.to_str().unwrap(),
         "envelope",
+        "--node",
         "haven.s01ep01",
     ]));
     let last = stdout(&run(&[
         "scenario",
+        "--project",
         root.to_str().unwrap(),
         "envelope",
+        "--node",
         "haven.s01ep09",
     ]));
     let strip = |s: &str| {
@@ -1257,8 +1436,10 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
 
     let text = stdout(&run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "envelope",
+        "--node",
         "b.s01ep01",
     ]));
     let section = text
@@ -1270,10 +1451,11 @@ fn scenario_envelope_reports_guaranteed_facts_on_arrival() {
 
     let json = stdout(&run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
-        "--format",
-        "json",
+        "--json",
         "envelope",
+        "--node",
         "b.s01ep01",
     ]));
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1309,7 +1491,7 @@ fn unanchored_fixture(tag: &str) -> (lute_scratch::ScratchDir, String) {
 fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
     let (_dir, path) = unanchored_fixture("scenario-unanchored");
 
-    let text = stdout(&run(&["scenario", &path]));
+    let text = stdout(&run(&["scenario", "--project", &path]));
     let tail = text
         .split("  unanchored (no `after` / `follows` — available from the start of play; no prerequisites in this graph):\n")
         .nth(1)
@@ -1324,7 +1506,7 @@ fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
         "the bare quest sits in no layer and on no edge: {text}"
     );
 
-    let out = run(&["scenario", &path, "--format", "json"]);
+    let out = run(&["scenario", "--project", &path, "--json"]);
     assert!(out.status.success(), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(
@@ -1338,7 +1520,7 @@ fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
         "{v}"
     );
 
-    let dot = stdout(&run(&["scenario", &path, "--format", "dot"]));
+    let dot = stdout(&run(&["scenario", "--project", &path, "--format", "dot"]));
     assert!(
         dot.contains(
             "\"quest(loose)\" [shape=ellipse, style=dashed, color=blue, \
@@ -1352,7 +1534,7 @@ fn scenario_lists_a_bare_quest_as_unanchored_in_every_format() {
 fn scenario_json_omits_unanchored_when_every_quest_is_anchored() {
     let (_dir, path) = both_edge_kinds_fixture();
     let v: serde_json::Value =
-        serde_json::from_str(&stdout(&run(&["scenario", &path, "--format", "json"]))).unwrap();
+        serde_json::from_str(&stdout(&run(&["scenario", "--project", &path, "--json"]))).unwrap();
     assert!(v["roots"][0].get("unanchored").is_none(), "{v}");
 }
 
@@ -1360,7 +1542,14 @@ fn scenario_json_omits_unanchored_when_every_quest_is_anchored() {
 fn scenario_reach_reports_a_bare_quest_as_unanchored() {
     let (_dir, path) = unanchored_fixture("scenario-reach-unanchored");
 
-    let out = run(&["scenario", &path, "reach", "quest:loose"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        &path,
+        "reach",
+        "--node",
+        "quest:loose",
+    ]);
     let text = stdout(&out);
     assert!(out.status.success(), "{text}{}", stderr(&out));
     assert!(
@@ -1380,10 +1569,11 @@ fn scenario_reach_reports_a_bare_quest_as_unanchored() {
 
     let out = run(&[
         "scenario",
+        "--project",
         &path,
-        "--format",
-        "json",
+        "--json",
         "reach",
+        "--node",
         "quest:loose",
     ]);
     assert!(out.status.success(), "{}", stderr(&out));
@@ -1414,7 +1604,7 @@ fn scenario_draws_subquest_and_start_edges_without_after() {
          <quest id=\"openBridge\">\n<objective id=\"o\" done=\"run.done\"/>\n</quest>\n",
     );
     let path = dir.to_str().unwrap().to_string();
-    let text = stdout(&run(&["scenario", &path]));
+    let text = stdout(&run(&["scenario", "--project", &path]));
     assert!(
         text.contains("scene(road.departure) -> quest(emberRoad) [start]"),
         "{text}"
@@ -1427,10 +1617,11 @@ fn scenario_draws_subquest_and_start_edges_without_after() {
 
     let out = run(&[
         "scenario",
+        "--project",
         &path,
-        "--format",
-        "json",
+        "--json",
         "reach",
+        "--node",
         "quest:openBridge",
     ]);
     assert!(out.status.success(), "{}", stderr(&out));
@@ -1461,14 +1652,14 @@ fn scenario_draws_and_reaches_bundle_beats() {
     );
     let d = dir.to_str().unwrap();
 
-    let graph = stdout(&run(&["scenario", d]));
+    let graph = stdout(&run(&["scenario", "--project", d]));
     assert!(
         graph.contains("layer 0: scene(a.s01ep01), beat(talk.porter)"),
         "{graph}"
     );
 
     for arg in ["talk.porter", "beat:talk.porter"] {
-        let out = run(&["scenario", d, "reach", arg]);
+        let out = run(&["scenario", "--project", d, "reach", "--node", arg]);
         let text = stdout(&out);
         assert!(out.status.success(), "{arg}: {}{text}", stderr(&out));
         assert!(text.contains("reach beat(talk.porter):"), "{text}");
@@ -1480,12 +1671,27 @@ fn scenario_draws_and_reaches_bundle_beats() {
         assert!(text.contains("  when: visited('a.s01ep01')"), "{text}");
     }
 
-    let out = run(&["scenario", d, "--format", "json", "reach", "talk.porter"]);
+    let out = run(&[
+        "scenario",
+        "--project",
+        d,
+        "--json",
+        "reach",
+        "--node",
+        "talk.porter",
+    ]);
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
     assert_eq!(v["kind"], "beat", "{v}");
     assert_eq!(v["reach"], "reachable", "{v}");
 
-    let env = run(&["scenario", d, "envelope", "talk.porter"]);
+    let env = run(&[
+        "scenario",
+        "--project",
+        d,
+        "envelope",
+        "--node",
+        "talk.porter",
+    ]);
     assert!(env.status.success(), "{}", stderr(&env));
     assert!(
         stdout(&env).contains("envelope for beat(talk.porter)"),
@@ -1508,7 +1714,7 @@ fn scenario_reach_prints_a_bundle_beats_after() {
          <beat id=\"porter\" on=\"talk\" after=\"visited('a.s01ep01')\">\n  @porter: You again.\n</beat>\n",
     );
     let d = dir.to_str().unwrap();
-    let out = run(&["scenario", d, "reach", "talk.porter"]);
+    let out = run(&["scenario", "--project", d, "reach", "--node", "talk.porter"]);
     let text = stdout(&out);
     assert!(out.status.success(), "{}{text}", stderr(&out));
     assert!(text.contains("  after: visited(\"a.s01ep01\")"), "{text}");
@@ -1519,7 +1725,7 @@ fn scenario_reach_prints_a_bundle_beats_after() {
 
 /// T3-20 (round-5 OT-F11): `reach --endings=<occasion>` gives one row per
 /// beat answering the occasion with the `after:` verdict, the `when`
-/// verdict `check-project` reaches, and who writes what a satisfiable `when`
+/// verdict whole-project `check` reaches, and who writes what a satisfiable `when`
 /// reads; bare `--endings` keeps the beats whose content can run `::end`.
 #[test]
 fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
@@ -1547,7 +1753,7 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
          <beat id=\"typo\" on=\"finale\" when=\"run.mood == 'clam'\">\n  @narrator: Typo.\n</beat>\n",
     );
     let d = dir.to_str().unwrap();
-    let out = run(&["scenario", d, "reach", "--endings=finale"]);
+    let out = run(&["scenario", "--project", d, "reach", "--endings=finale"]);
     let text = stdout(&out);
     // OT-F-13: an unreachable ending fails the command, so CI can gate on it.
     assert_eq!(out.status.code(), Some(1), "{}{text}", stderr(&out));
@@ -1590,7 +1796,7 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
     assert!(text.contains("lute test --coverage"), "{text}");
 
     // Bare: only the beat whose body runs `::end`.
-    let out = run(&["scenario", d, "reach", "--endings"]);
+    let out = run(&["scenario", "--project", d, "reach", "--endings"]);
     let text = stdout(&out);
     assert_eq!(out.status.code(), Some(0), "{text}");
     assert!(text.contains("end.good"), "{text}");
@@ -1600,11 +1806,11 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
     // OT-F-13: `--format` is accepted after the sub-view too.
     let out = run(&[
         "scenario",
+        "--project",
         d,
         "reach",
         "--endings=finale",
-        "--format",
-        "json",
+        "--json",
     ]);
     assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
     let v: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
@@ -1623,13 +1829,21 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
 
     // A node and `--endings` together, or an occasion no beat answers: usage.
     assert_eq!(
-        run(&["scenario", d, "reach", "a.s01ep01", "--endings"])
-            .status
-            .code(),
+        run(&[
+            "scenario",
+            "--project",
+            d,
+            "reach",
+            "--node",
+            "a.s01ep01",
+            "--endings"
+        ])
+        .status
+        .code(),
         Some(2)
     );
     assert_eq!(
-        run(&["scenario", d, "reach", "--endings=nope"])
+        run(&["scenario", "--project", d, "reach", "--endings=nope"])
             .status
             .code(),
         Some(2)

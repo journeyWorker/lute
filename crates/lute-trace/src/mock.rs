@@ -1,11 +1,11 @@
 //! The `--mock` surface (dsl 0.4.0 §4.3): parsing a `--mock <file.yaml>`
-//! document, composing it with the CLI's own `--state`/`--fact`/`--choose`/
+//! document, composing it with the CLI's own `--state`/`--fact`/`--choice`/
 //! `--event` flags, and STRUCTURAL pre-walk validation — ids, arity, types,
 //! declaredness.
 //!
 //! [`validate`] deliberately does NOT evaluate a forced choice's GUARD: §4.4
 //! eligibility depends on in-flow writes the walk (Task 19) has not applied
-//! yet, so a `--choose` naming a real branch/hub + choice id passes here
+//! yet, so a `--choice` naming a real branch/hub + choice id passes here
 //! regardless of what that choice's `when=` would decide once the walk
 //! actually reaches it. Only an id that is entirely absent from the walked
 //! document is `E-TRACE-CHOICE` at this stage (§4.3's own text: "a forced
@@ -171,7 +171,7 @@ pub fn state_key(raw: &str) -> String {
         .unwrap_or_else(|| raw.to_string())
 }
 
-/// `--state`/`--mock` literals and `--choose` targets carry no real source
+/// `--state`/`--mock` literals and `--choice` targets carry no real source
 /// text — every diagnostic [`validate`]/[`parse_mock_yaml`] produces is
 /// spanned at this zeroed placeholder (the interface's "CLI-arg synthetic
 /// span"), mirroring the house zero-then-normalize convention
@@ -197,7 +197,7 @@ pub const E_TRACE_MOCK_TYPE: &str = "E-TRACE-MOCK-TYPE";
 /// A `--fact` naming an undeclared relation, wrong arity, or a foreign arg
 /// (§4.3) — every [`lute_check::check_atom`] hit is re-coded here (D18).
 pub const E_TRACE_MOCK_FACT: &str = "E-TRACE-MOCK-FACT";
-/// `--choose` names an unknown branch/hub/choice id, pre-walk (§4.3); Task 19
+/// `--choice` names an unknown branch/hub/choice id, pre-walk (§4.3); Task 19
 /// re-emits this SAME code for the walk-time "forces a false guard" case
 /// (§4.4) — this module only ever produces the structural half.
 pub const E_TRACE_CHOICE: &str = "E-TRACE-CHOICE";
@@ -206,9 +206,9 @@ pub const E_TRACE_CHOICE: &str = "E-TRACE-CHOICE";
 /// transitions the engine fires on the `unset -> active`/completion/failure
 /// transition, never impulses a writer fires directly (§4.3/§4.4): a
 /// `start`-having quest activates declaratively, a `start`-less one via
-/// `--accept`.
+/// `--accepted-quest`.
 pub const E_TRACE_EVENT: &str = "E-TRACE-EVENT";
-/// A `--accept`/`accepts:` entry naming an unknown quest id, or a
+/// A `--accepted-quest`/`accepts:` entry naming an unknown quest id, or a
 /// quest that carries a `start` predicate — it activates declaratively and
 /// needs no accept (§4.3/§4.4).
 pub const E_TRACE_ACCEPT: &str = "E-TRACE-ACCEPT";
@@ -351,7 +351,7 @@ pub const MOCK_TOP_KEYS: &[&str] = &[
 /// The top-level key set is **CLOSED** ([`MOCK_TOP_KEYS`]) — an unknown key is
 /// `E-TRACE-MOCK-PARSE`, the same channel every other mock-grammar violation
 /// already travels, so the diagnostic reaches `lute trace --mock`,
-/// `lute run --mock`, `check-project`'s `mocks/*.yaml` pass (§8) and the wasm
+/// `lute run --mock`, whole-project `check`'s `mocks/*.yaml` pass (§8) and the wasm
 /// preview without a new code and without a new wiring point. Enforcing it
 /// HERE rather than at each call site is the point: a mock document cannot be
 /// consumed anywhere without the gate.
@@ -732,7 +732,7 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 /// `Ok(None)` when the key is absent. Required-ness is NOT enforced here:
 /// `lute trace <doc> --mock m.yaml` supplies the subject on the command line
 /// and that wins, and the six `conformance/*/mock.yaml` acceptance fixtures
-/// legitimately carry none. `check-project`'s pass over `mocks/*.yaml` is
+/// legitimately carry none. whole-project `check`'s pass over `mocks/*.yaml` is
 /// where the key is required.
 #[allow(clippy::result_large_err)]
 pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
@@ -761,7 +761,7 @@ pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
 }
 
 /// Compose a `--mock <file.yaml>`'s [`MockSet`] with the CLI's own
-/// `--state`/`--fact`/`--choose`/`--event`/`--accept` flags (dsl 0.4.0
+/// `--state`/`--fact`/`--choice`/`--event`/`--accepted-quest` flags (dsl 0.4.0
 /// §4.3): "CLI flags compose with the file; on a conflict the flag wins
 /// (facts union; a flag `choose` replaces that id's file entry)".
 ///
@@ -1247,7 +1247,7 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
     }
 }
 
-/// `--choose` structural validation (§4.3): ids only — an id or choice id
+/// `--choice` structural validation (§4.3): ids only — an id or choice id
 /// absent from the walked document is [`E_TRACE_CHOICE`]. The choice's
 /// `when=` guard is NEVER consulted here (see the module doc); Task 19's
 /// walk re-emits this SAME code when a forced choice's guard decides false
@@ -1272,7 +1272,7 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             out.push(mock_diag(
                 E_TRACE_CHOICE,
                 format!(
-                    "`--choose {id}=…` names an unknown branch/hub id `{id}`{}",
+                    "`--choice {id}=…` names an unknown branch/hub id `{id}`{}",
                     hint(id, &ids, "branch/hub ids")
                 ),
                 mocks.choose_spans.key(id),
@@ -1285,7 +1285,7 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
                 out.push(mock_diag(
                     E_TRACE_CHOICE,
                     format!(
-                        "`--choose {id}={cid}` names an unknown choice id `{cid}` for \
+                        "`--choice {id}={cid}` names an unknown choice id `{cid}` for \
                          `<branch/hub id=\"{id}\">`{}",
                         hint(cid, &choices, "its choices")
                     ),
@@ -1301,7 +1301,7 @@ fn validate_choose(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
 /// engine's built-in lifecycle events (`questActive`/`questComplete`/
 /// `questFailed`) is [`E_TRACE_EVENT`] — those transitions are
 /// engine-derived (a `start`-having quest activates declaratively, a
-/// `start`-less one via `--accept`), never a writer-fired impulse.
+/// `start`-less one via `--accepted-quest`), never a writer-fired impulse.
 fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let span = synthetic_span();
@@ -1312,7 +1312,7 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
                 format!(
                     "`--event {name}` names a built-in lifecycle event — `{name}` is \
                      engine-derived (a `start`-having quest activates declaratively, a \
-                     `start`-less one via `--accept`), never user-fired via `--event` \
+                     `start`-less one via `--accepted-quest`), never user-fired via `--event` \
                     "
                 ),
                 span,
@@ -1322,7 +1322,7 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
     out
 }
 
-/// `--accept`/`accepts:` validation (§4.3/§4.4, extended by the
+/// `--accepted-quest`/`accepts:` validation (§4.3/§4.4, extended by the
 /// subquest design 2026-08-31 §2.4): an id absent from `doc.quests`,
 /// naming a quest that carries a `start` predicate (declarative — it
 /// activates on its own and needs no accept), or naming a REFERENCED
@@ -1330,7 +1330,7 @@ fn validate_events(mocks: &MockSet) -> Vec<Diagnostic> {
 /// not accept-driven), is [`E_TRACE_ACCEPT`]. The referenced-child guard
 /// uses only same-doc `<objective quest=…>` refs — cross-file parents
 /// are the CLI's project-aware concern (spec §2.3's own union note); an
-/// unref'd cross-file child still admits `--accept` here.
+/// unref'd cross-file child still admits `--accepted-quest` here.
 fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let span = synthetic_span();
@@ -1355,7 +1355,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             out.push(diag(
                 E_TRACE_ACCEPT,
                 format!(
-                    "`--accept {id}` names an unknown quest id `{id}` — no quest of {scope} \
+                    "`--accepted-quest {id}` names an unknown quest id `{id}` — no quest of {scope} \
                      declares it"
                 ),
                 span,
@@ -1366,7 +1366,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             out.push(diag(
                 E_TRACE_ACCEPT,
                 format!(
-                    "`--accept {id}` names quest `{id}`, which carries a `start` predicate — \
+                    "`--accepted-quest {id}` names quest `{id}`, which carries a `start` predicate — \
                      it activates declaratively and needs no accept"
                 ),
                 span,
@@ -1378,7 +1378,7 @@ fn validate_accept(mocks: &MockSet, doc: &Document) -> Vec<Diagnostic> {
             out.push(diag(
                 E_TRACE_ACCEPT,
                 format!(
-                    "`--accept {id}` names quest `{id}`, which is referenced by a parent \
+                    "`--accepted-quest {id}` names quest `{id}`, which is referenced by a parent \
                      quest's `<objective quest=\"{id}\"/>` — a referenced no-start child \
                      activates when its parent activates and does not accept"
                 ),
@@ -1526,7 +1526,7 @@ pub(crate) fn resolve_beat(
 /// STRUCTURAL pre-walk validation (dsl 0.4.0 §4.3): ids/arity/types/
 /// declaredness, plus the two lifecycle guards (§4.3/§4.4): a lifecycle
 /// name in `--event` ([`validate_events`]) and an unknown/`start`-having
-/// quest id in `--accept` ([`validate_accept`]). Forced-choice GUARDS are
+/// quest id in `--accepted-quest` ([`validate_accept`]). Forced-choice GUARDS are
 /// deliberately NOT evaluated here — eligibility is a presentation-point
 /// property (§4.4) that depends on in-flow writes the walk has not applied
 /// yet; Task 19 owns it. Runs every surface independently (a document with

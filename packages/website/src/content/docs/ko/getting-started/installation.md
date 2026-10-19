@@ -5,7 +5,7 @@ description: bunx, 전역 bun 설치, 또는 Rust 소스로 Lute CLI를 설치�
 
 Lute는 단일 명령줄 도구 `lute` 하나로 제공됩니다. 이 도구는 `.lute` 시나리오 파일을 읽어
 검사(check), 컴파일(compile), 트레이스(trace)하고 그 내용을 살펴봅니다. 현재 언어 버전은
-**0.47.2**입니다.
+**0.48.0**입니다.
 
 ## `bunx`로 빠르게 시작하기
 
@@ -61,9 +61,9 @@ cargo install --path crates/lute-cli
 
 ```
 $ lute version
-lute toolchain 0.47.2
-language      0.47.2
-IR schema     0.47.2
+lute toolchain 0.48.0
+language      0.48.0
+IR schema     0.48.0
 ```
 
 세 줄은 **toolchain**(이 CLI), 체커가 강제하는 **language**, 그리고 `lute compile`이 모든 산출물에
@@ -75,10 +75,10 @@ IR schema     0.47.2
 
 ```
 $ lute version --json
-{"toolchain":"0.47.2","language":"0.47.2","ir":"0.47.2"}
+{"toolchain":"0.48.0","language":"0.48.0","ir":"0.48.0"}
 ```
 
-(`lute --version`도 동작하며 `lute 0.47.2`만 출력합니다 — toolchain 축 하나뿐입니다.)
+(`lute --version`도 동작하며 `lute 0.48.0`만 출력합니다 — toolchain 축 하나뿐입니다.)
 
 에디터에서 언어 서버를 쓴다면 같은 빌드인지 확인하세요: `lute-lsp --version`은
 `lute-lsp <version>`을 출력하고, `lute doctor`는 `PATH`에서 가장 먼저 찾은 `lute-lsp`를 이 CLI 옆의
@@ -87,7 +87,7 @@ $ lute version --json
 바이너리인지 알 수 없으면 그 줄 끝에 `(compared by reported version only)`를 붙입니다.
 
 **편집기와 터미널이 파일에 대해 다르게 말하면** — `lute check`가 `ok`라고 하는 파일에 빨간 밑줄이
-있거나 그 반대라면 — 터미널을 믿고 프로젝트에서 `lute doctor .`를 실행하세요: 흔한 원인은
+있거나 그 반대라면 — 터미널을 믿고 프로젝트에서 `lute doctor --project .`를 실행하세요: 흔한 원인은
 `lute`보다 오래된 편집기 언어 서버이고, 업그레이드 뒤 편집기를 다시 시작하면 해결됩니다.
 
 ## 다음
@@ -95,7 +95,7 @@ $ lute version --json
 [첫 장면 작성하기](/ko/getting-started/first-scene/)로 이동하여, 빈 파일에서 실제 `.lute`
 파일을 만들며 매 단계마다 `lute`를 실행해 보세요.
 
-프로젝트 전체에서 시작할 수도 있습니다: `lute init <dir>`는 최소 프로젝트를 만들고,
-`lute init --template beats <dir>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
+프로젝트 전체에서 시작할 수도 있습니다: `lute init <DIR>`는 최소 프로젝트를 만들고,
+`lute init --template beats <DIR>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
 계기 플러그인, 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오 테스트까지, 만든 그대로
-`lute check-project`, `lute test`, `lute play`가 통과합니다.
+프로젝트 전체 `lute check`, `lute test`, `lute play`가 통과합니다.

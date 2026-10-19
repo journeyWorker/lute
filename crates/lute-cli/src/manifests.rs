@@ -180,7 +180,7 @@ pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
 
 /// Print every verdict's diagnostics and return `true` when the tree holds an
 /// invalid manifest (the caller's exit-1 signal). A malformed `chapters:`
-/// is not among them: `check-project` reports it located, beside the
+/// is not among them: whole-project `check` reports it located, beside the
 /// documents it still checks; a command that builds the project gates on it
 /// separately.
 pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
@@ -197,7 +197,7 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
     invalid
 }
 
-/// dsl 0.28.0 §4: for a command that builds the project (`compile --all`,
+/// dsl 0.28.0 §4: for a command that builds the project (whole-project `compile`,
 /// `play`), a malformed `chapters:` is fatal —
 /// a chain would silently not apply. Prints each, located, and returns
 /// `true` when there is one.

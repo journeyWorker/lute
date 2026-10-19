@@ -61,12 +61,12 @@ the Company's burn ledger, the ruins of Coldwater, and a camp every night.
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/ember-road
-lute test docs/examples/games/ember-road
-lute play docs/examples/games/ember-road --script docs/examples/games/ember-road/plays/parley.play.yaml
-lute play docs/examples/games/ember-road --script docs/examples/games/ember-road/plays/battle.play.yaml
-lute beats docs/examples/games/ember-road --occasion talk --target npc.isolde
-lute calendar docs/examples/games/ember-road --axis run.leg=1..3 --occasion travel
+lute check --deny-warnings --project docs/examples/games/ember-road
+lute test --project docs/examples/games/ember-road
+lute play --project docs/examples/games/ember-road --script docs/examples/games/ember-road/plays/parley.play.yaml
+lute play --project docs/examples/games/ember-road --script docs/examples/games/ember-road/plays/battle.play.yaml
+lute beats --project docs/examples/games/ember-road --occasion talk --target npc.isolde
+lute calendar --project docs/examples/games/ember-road --axis run.leg=1..3 --occasion travel
 ```
 
 ## Origin

@@ -26,7 +26,6 @@ fn compile_all_validates_nested_manifests() {
     let out = std::process::Command::new(BIN)
         .args([
             "compile",
-            "--all",
             "--project",
             dir.to_str().unwrap(),
             "-o",
@@ -54,7 +53,7 @@ fn compile_all_validates_nested_manifests() {
     );
 }
 
-/// 0.10.0 §7: the same diagnostic from `check-project` must also carry the
+/// 0.10.0 §7: the same diagnostic from whole-project `check` must also carry the
 /// manifest's path. At HEAD both the inner and the outer run printed a
 /// byte-identical, pathless `lute: E-IDENTITY-TEMPLATE: …`.
 #[test]
@@ -80,7 +79,7 @@ fn check_project_manifest_diagnostic_names_the_manifest() {
     .unwrap();
 
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -121,7 +120,7 @@ fn check_project_fails_on_an_unloadable_manifest_anywhere_under_the_tree() {
     .unwrap();
 
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -244,7 +243,7 @@ fn defaults_satisfy_required_frontmatter_keys() {
     )
     .unwrap();
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -290,7 +289,7 @@ fn a_documents_own_key_overrides_the_default_entire() {
     )
     .unwrap();
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -330,7 +329,7 @@ fn an_empty_authored_value_overrides_the_default() {
     )
     .unwrap();
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -373,7 +372,7 @@ fn a_scene_only_default_does_not_reach_a_quest() {
     )
     .unwrap();
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -455,7 +454,7 @@ fn a_subject_less_mock_is_reported_once_then_its_seed_is_caught() {
     std::fs::write(&mock, "state:\n  run.greeted: false\n").unwrap();
     let run = || {
         let out = std::process::Command::new(BIN)
-            .args(["check-project", dir.to_str().unwrap()])
+            .args(["check", "--project", dir.to_str().unwrap()])
             .output()
             .unwrap();
         (
@@ -525,7 +524,7 @@ fn a_mock_naming_a_deleted_scene_is_e_mock_subject() {
     )
     .unwrap();
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -576,7 +575,7 @@ fn the_pass_reaches_mocks_yaml_and_nothing_else() {
     std::fs::write(dir.join("mocks/ok.yaml"), "file: ../scenes/s.lute\n").unwrap();
 
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -589,7 +588,7 @@ fn the_pass_reaches_mocks_yaml_and_nothing_else() {
 }
 
 /// T3.10 / #2(a) / D-B, extended to the mock family (0.10.0 §8): a
-/// `mocks/*.yaml` mis-keying a surface is an ERROR from `check-project`, not
+/// `mocks/*.yaml` mis-keying a surface is an ERROR from whole-project `check`, not
 /// a silent drop. Before this, the identical file was `ok: … (N file(s), 0
 /// project-wide warning(s))` at exit 0, byte-identical to a tree with no
 /// mock in it at all.
@@ -618,7 +617,7 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
     // The good file first: this is what makes the red below mean something.
     // A gate that reddened every mock would pass the assertions after it.
     std::fs::write(&mock, "file: ../scenes/s.lute\nstate:\n  run.pressure: 2\n").unwrap();
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),
@@ -632,7 +631,7 @@ fn a_mis_keyed_mock_surface_is_reported_by_check_project() {
 
     // Now mis-key exactly one surface.
     std::fs::write(&mock, "file: ../scenes/s.lute\nselections:\n  h: a\n").unwrap();
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),

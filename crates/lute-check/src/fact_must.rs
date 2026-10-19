@@ -400,7 +400,7 @@ pub fn stable_seeds(docs: &[ProjectDoc<'_>], vocab: &RootVocab) -> BTreeSet<Grou
         .collect()
 }
 
-/// dsl 0.23.0 §10 / 0.26.0 §2.6 (`check-project --wip`): the relations of
+/// dsl 0.23.0 §10 / 0.26.0 §2.6 (whole-project `check --wip`): the relations of
 /// the root whose facts content not yet written may still produce — those
 /// nothing produces at all (no seed, no `::assert` anywhere, no rule, not
 /// reserved — [`RootVocab::unproduced`]), plus those a component `::assert`

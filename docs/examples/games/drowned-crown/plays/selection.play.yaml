@@ -1,6 +1,6 @@
 # The selection model under stress, from a veteran's save: six dives in, the
 # Regent felled once, every first-meeting beat long spent.
-#   lute play . --script plays/selection.play.yaml
+#   lute play --project . --script plays/selection.play.yaml
 state:
   user.runs: 6
   user.deaths: 5

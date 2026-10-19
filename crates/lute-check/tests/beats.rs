@@ -1,5 +1,5 @@
 //! dsl 0.21.0 beats and occasions through the assembled `check()` and the
-//! `check-project` passes: scene frontmatter beat keys and `<entry on=
+//! whole-project `check` passes: scene frontmatter beat keys and `<entry on=
 //! priority=>` shape (`E-BEAT-ATTR`), the occasion vocabulary
 //! (`E-OCCASION-UNKNOWN`, shape-only mode, untargeted occasions), the `when`
 //! CEL slot (registry checks, the `scene.*` ban), `E-BEAT-UNREACHABLE` per
@@ -443,7 +443,7 @@ fn when_that_decides_false_is_beat_unreachable_per_file() {
     assert!(with_code(&ds, "E-BEAT-UNREACHABLE").is_empty());
 }
 
-// --- check-project ---------------------------------------------------------
+// --- whole-project check ---------------------------------------------------------
 
 const VOCAB: &str = "entities:\n  crew: { members: [vesna, toma] }\n\
     relations:\n  awake: { args: [crew], tier: run }\n  found: { args: [crew], tier: run }\n\

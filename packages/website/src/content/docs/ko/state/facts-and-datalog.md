@@ -66,7 +66,7 @@ rules:
 
 하위 종류는 자체 `members:`를 나열합니다. 문서가 선언하지 않은 부모, `open:`으로 선언된 부모, `open:`으로 선언된 하위 종류, 그리고 자기 자신으로 되돌아가는 `subsetOf:` 순환은 `E-ENTITY-KIND-SHAPE`이며 스키마 줄에서 한 번 보고됩니다. 0.26.0 이전에는 부모 목록에 없는 하위 종류 멤버도 오류였습니다. [`add:`](/ko/state/schemas/#여러-파일에-걸쳐-조합되는-엔터티-종류-add)를 사용하면 여러 스키마 파일에서 종류의 멤버를 조합할 수도 있습니다.
 
-`check-project`의 `W-DOMAIN-UNREAD`는 아무것도 읽지 않는 종류를 표시합니다. 관계 인자와 함께 하위 종류의 `subsetOf:` 부모, `per:` 인덱스로 사용되는 종류, 규칙 본문이나 `holds(…)` 조건의 종류 원자를 읽기로 셉니다. 경고는 해당 종류를 선언한 스키마의 줄 또는 문서 자체의 `entities:` 키에 표시되며, 첫 번째 import 지점에는 표시되지 않습니다.
+프로젝트 전체 `lute check`의 `W-DOMAIN-UNREAD`는 아무것도 읽지 않는 종류를 표시합니다. 관계 인자와 함께 하위 종류의 `subsetOf:` 부모, `per:` 인덱스로 사용되는 종류, 규칙 본문이나 `holds(…)` 조건의 종류 원자를 읽기로 셉니다. 경고는 해당 종류를 선언한 스키마의 줄 또는 문서 자체의 `entities:` 키에 표시되며, 첫 번째 import 지점에는 표시되지 않습니다.
 
 ### 배타적 관계: `excludes:`
 
@@ -91,7 +91,7 @@ rules:
 
 선언은 대칭적입니다. `fell`은 다시 명시하지 않아도 `seenAfter`를 배제하며, 컴파일된 `RelationEntry`는 대칭적 폐쇄를 정렬된 형태로 전달합니다(`fell`의 `"excludes": ["seenAfter"]`, 비어 있으면 생략). 각 상대는 관계 자신이 아닌 선언된 관계여야 하고, 동일한 인자 종류를 가져야 합니다. 그렇지 않으면 선언에서 `E-RELATION-DECL`이 발생합니다. 예를 들어 `` `dwon` is not a declared relation — did you mean `down`? ``, `` `near` takes [c, p] but `up` takes [c] ``, 또는 `cannot exclude itself`라는 관계가 이에 해당합니다. 기본 관계와 도출 관계는 어떤 조합으로든 서로 배제할 수 있습니다.
 
-배제는 검사기가 규칙에서 추론하는 것이 아니라 작성자가 선언하는 불변식입니다. `check-project`는 관계형 가드를 결정하는 모든 곳에서 이를 사용합니다([관계형 가드를 검사기가 분석하는 방법](#check-project가-관계형-가드를-분석하는-방법) 참고).
+배제는 검사기가 규칙에서 추론하는 것이 아니라 작성자가 선언하는 불변식입니다. 프로젝트 전체 `lute check`는 관계형 가드를 결정하는 모든 곳에서 이를 사용합니다([관계형 가드를 검사기가 분석하는 방법](#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법) 참고).
 
 - `holds('A', ['x']) && holds('B', ['x'])`는 거짓이므로 둘 다 필요한 가드는 실행 불가능합니다. 줄이나 arm에는 `E-ARM-DEAD`, 비트에는 `E-BEAT-UNREACHABLE`이 표시되며 메시지는 배제 관계를 이름으로 지정합니다.
 - `holds('A', ['x'])`에서 `!holds('B', ['x'])`가 따라옵니다. 같은 가드 안, 바깥 가드 안, 또는 모든 경로에서 `A(x)`가 가드까지 성립하기 때문일 수 있습니다. 이런 가드는 `W-FACT-GUARANTEED`이며, [캐스트 존재 여부](/ko/language/dialogue-and-cast/#presence-present)도 같은 방식으로 읽습니다. 엔진 `reserved:` 관계에 대한 가드도 해당 가드 영역 안에서는 동일하게 셉니다.
@@ -108,7 +108,7 @@ rules:
 ::assert{ calm(maren) }
 ```
 
-<!-- lute-diagnostics unverified="verbatim check-project output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
+<!-- lute-diagnostics unverified="verbatim whole-project check output; the relational E-ARM-DEAD message names its code through the reachability::E_ARM_DEAD constant, so the scraper cannot pair quote and code" -->
 ```
 ./scenes/dawn.lute:20:17: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('seenAfter', ['elias']) && holds('fell', ['elias'])` is provably false — `seenAfter(elias)` and `fell(elias)` can never hold together (`seenAfter` excludes `fell`)
 ./scenes/dawn.lute:21:17: warning [W-FACT-GUARANTEED] guard `holds('seenAfter', ['elias']) && !holds('fell', ['elias'])` is redundant: `!holds('fell', ['elias'])` follows from this guard's `holds('seenAfter', ['elias'])`: `seenAfter` excludes `fell`
@@ -164,7 +164,7 @@ rules:
 
 함수 기호가 없으므로 Herbrand 기초는 유한합니다. 따라서 상향식 평가가 유한한 단계 안에 최소 고정점에 도달하고, **모든 도출이 종료됩니다**. 이는 Prolog가 아니라 Datalog입니다. 안전성 규칙에 따라 헤드, 부정, 가드의 모든 변수는 양의 본문 원자에 나타나야 합니다( `character(P)`와 같은 엔터티 종류 원자도 포함됩니다). 위반하면 `E-DATALOG-UNSAFE`가 됩니다. 변수 없는 헤드를 가진 규칙은 양의 원자가 전혀 필요하지 않으므로, 스칼라 가드만 뒤에 있는 그라운드 헤드 `canReach(player, moonrise) :- cel("run.act >= 2")`도 유효한 규칙입니다. 부정 순환은 `E-DATALOG-UNSTRATIFIED`가 되고, 함수 항을 작성하려 하면 `E-DATALOG-FUNCTION`이 됩니다. 규칙 본문에는 스칼라 CEL 가드(`cel("run.act == 1")`)를 넣을 수 있지만, 사실 쿼리는 넣을 수 없습니다. 이 방화벽(`E-DATALOG-GUARD-FACT`)은 모든 의존성이 분석에 드러나도록 보장합니다. 도출 관계와 `reserved:` 관계는 콘텐츠에서 읽기 전용입니다. 전체 계층은 엔진이 결정론적으로 평가하는 데이터로 축소되며, 작성자가 반복을 제어하지 않습니다.
 
-엔터티 종류 원자는 종류의 멤버에 대한 검사이지 `character(…)` 사실 조회가 아닙니다. 종류 이름으로 사실을 주장하는 일은 없습니다. `lute trace`, `test`, `play`, `run`은 조인, `not` 아래, `--explain`에서 이를 같은 방식으로 평가합니다. 0.24.0 이전에는 이런 사실을 찾았으므로 `inParty(P) :- companion(P), …` 같은 규칙이 `check`를 통과해도 런타임에는 아무것도 도출하지 않았습니다.
+엔터티 종류 원자는 종류의 멤버에 대한 검사이지 `character(…)` 사실 조회가 아닙니다. 종류 이름으로 사실을 주장하는 일은 없습니다. `lute trace`, `test`, `play`, `run`은 조인, `not` 아래, `--derivation`에서 이를 같은 방식으로 평가합니다. 0.24.0 이전에는 이런 사실을 찾았으므로 `inParty(P) :- companion(P), …` 같은 규칙이 `check`를 통과해도 런타임에는 아무것도 도출하지 않았습니다.
 
 ### 익명 변수와 `countDistinct`
 
@@ -199,7 +199,7 @@ facts:
 @narrator{when="holds('testified', ['bram']) && holds('silent', ['dora'])"}: Bram spoke. Dora saw nothing at all.
 ```
 
-목격은 세 건이고 목격자는 두 명입니다. `ada`가 두 명을 보았고 `bram`이 한 명을 보았습니다. `<Var>`는 패턴에 나타나는 변수여야 하며, 그렇지 않으면 `E-CEL-PROFILE`이 됩니다. `check-project`는 `count`와 마찬가지로 사실 외피(envelope)에서 `countDistinct`를 결정하며, trace, test, play가 이를 평가합니다. `count` 및 `holds`와 마찬가지로 사실 저장소를 읽으므로 규칙 가드에서는 금지됩니다(`E-DATALOG-GUARD-FACT`).
+목격은 세 건이고 목격자는 두 명입니다. `ada`가 두 명을 보았고 `bram`이 한 명을 보았습니다. `<Var>`는 패턴에 나타나는 변수여야 하며, 그렇지 않으면 `E-CEL-PROFILE`이 됩니다. 프로젝트 전체 `lute check`는 `count`와 마찬가지로 사실 외피(envelope)에서 `countDistinct`를 결정하며, trace, test, play가 이를 평가합니다. `count` 및 `holds`와 마찬가지로 사실 저장소를 읽으므로 규칙 가드에서는 금지됩니다(`E-DATALOG-GUARD-FACT`).
 
 ### 규칙 본문의 개수
 
@@ -362,7 +362,7 @@ rules:
 
 trace mock의 키, `*.test.yaml`, play 스크립트의 키인 `derive: false` 또는 이 키보다 우선하는 `--no-derive` 플래그를 사용하면 0.21 모델로 돌아갑니다. 시드 `facts:`를 로드하지 않고, mock하지 않은 파생 원자는 unknown이 되며, 읽힌 각 파생 관계의 이름이 note로 표시됩니다. 이 모델을 기준으로 작성한 테스트(unknown을 읽는 mock하지 않은 파생 원자 또는 빈 값을 읽는 시드 관계)는 판정을 고정하기 위해 `derive: false`를 지정합니다. [Tracing guide](/ko/tooling/tracing/)와 [Playing a story](/ko/tooling/play/)를 참고하세요.
 
-어떤 원자가 *왜* 성립하는지 보려면 `lute play --explain <atom>`을 사용합니다(반복 가능). 플레이스루 끝에 파생을 출력합니다. 사용한 규칙, 각 전제 자체의 근거(시드 팩트, assert, 또는 그 차례에 파생된 팩트), 그리고 `(absent)`로 표시된 부정 전제가 나옵니다.
+어떤 원자가 *왜* 성립하는지 보려면 `lute play --derivation <ATOM>`을 사용합니다(반복 가능). 플레이스루 끝에 파생을 출력합니다. 사용한 규칙, 각 전제 자체의 근거(시드 팩트, assert, 또는 그 차례에 파생된 팩트), 그리고 `(absent)`로 표시된 부정 전제가 나옵니다.
 
 ```
 explain canMend(lamp): holds
@@ -380,9 +380,9 @@ explain canMend(lamp): does not hold
   └─ ✗ not broken(lamp)  (but it holds: asserted)
 ```
 
-## `check-project`가 관계형 가드를 분석하는 방법
+## 프로젝트 전체 `lute check`가 관계형 가드를 분석하는 방법
 
-지식을 전제로 하는 가드가 올바른 도구입니다. `@eris{when="holds('knows', ['player', 'lumen'])"}`은 플레이어가 알고 난 뒤에만 줄을 표시합니다. 0.20.0부터 `check-project`는 모든 가드 슬롯의 모든 관계형 질의(`holds(…)`, `count(…)`)를 다음 세 판정 중 하나로 결정합니다. 줄의 `when=`, `<choice when>`, `<when test>`, `::jump` 가드, 로어 항목의 `when`, 퀘스트의 `start`/`fail`, objective의 `done`/`visibleWhen`이 대상입니다.
+지식을 전제로 하는 가드가 올바른 도구입니다. `@eris{when="holds('knows', ['player', 'lumen'])"}`은 플레이어가 알고 난 뒤에만 줄을 표시합니다. 0.20.0부터 프로젝트 전체 `lute check`(`lute check --project <DIR>`)는 모든 가드 슬롯의 모든 관계형 질의(`holds(…)`, `count(…)`)를 다음 세 판정 중 하나로 결정합니다. 줄의 `when=`, `<choice when>`, `<when test>`, `::jump` 가드, 로어 항목의 `when`, 퀘스트의 `start`/`fail`, objective의 `done`/`visibleWhen`이 대상입니다.
 
 - **impossible** — 프로젝트 어디에도 일치하는 팩트를 생성할 수 있는 시드, assert, 규칙 또는 엔진 관계가 없습니다.
 - **guaranteed** — 가드에 도달하는 선언된 모든 경로에서 일치하는 팩트가 성립합니다.
@@ -421,7 +421,7 @@ Must를 sound하게 유지하는 세 규칙이 있습니다.
 </branch>
 ```
 
-안쪽 가드는 성립할 수밖에 없으므로 `check-project`는 이를 redundant로 보고하고 보장하는 assert를 이름으로 표시합니다.
+안쪽 가드는 성립할 수밖에 없으므로 프로젝트 전체 `lute check`는 이를 redundant로 보고하고 보장하는 assert를 이름으로 표시합니다.
 
 <!-- lute-diagnostics -->
 ```
@@ -470,25 +470,25 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 @eris{when="holds('knows', ['eris', 'heading'])"}: I changed it myself.
 ```
 
-`check-project`는 첫 번째와 세 번째를 판정하고 두 번째는 그대로 둡니다. `knows(player, heading)`은 플레이어가 `readOn`을 선택한 경우에만 성립하며, 바로 그 경우를 위해 해당 가드가 있기 때문입니다.
+프로젝트 전체 `lute check`는 첫 번째와 세 번째를 판정하고 두 번째는 그대로 둡니다. `knows(player, heading)`은 플레이어가 `readOn`을 선택한 경우에만 성립하며, 바로 그 경우를 위해 해당 가드가 있기 때문입니다.
 
 <!-- lute-diagnostics -->
 ```
 ./scenes/bridge.lute:10:13: warning [W-FACT-GUARANTEED] guard `holds('knows', ['player', 'lumen'])` is redundant: `knows(player, lumen)` is asserted on every route to here (./scenes/archive.lute:10)
 ```
 
-<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
+<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from whole-project check output" -->
 ```
 ./scenes/bridge.lute:12:13: error [E-ARM-DEAD] this gated line can never be shown: its `when` guard `holds('knows', ['eris', 'heading'])` is provably false — no seed, assert, rule, or engine relation produces `knows(eris, heading)` under your declared routes
 ```
 
 동일한 두 집합으로 개수도 결정합니다. archive 뒤에서 `count('knows', ['player', '_'])`는 1과 2 사이이므로, `count('knows', ['player', '_']) >= 3` 가드는 dead이고 `count('knows', ['player', '_']) >= 1`은 redundant입니다.
 
-이 분석에는 전체 프로젝트가 필요합니다. 형제 문서의 assert는 단일 파일에서 보이지 않으며, 한 파일만 보고 “절대 assert되지 않음”이라고 주장하면 거짓이 되기 때문입니다. 따라서 분석은 `check-project`에서만 실행됩니다. 단일 파일 `lute check`는 각 관계형 질의를 undecided로 두지만, 한 조건 안의 두 질의가 모순되는 것은 여전히 알아냅니다. `holds(P) && !holds(P)`는 무엇이 성립하든 false입니다(dsl 0.23.0, [`when` 결정 방법](/ko/language/beats/#when의-판정-방식) 참고). 가드가 guaranteed로 판단된 이유를 보려면 `lute scenario <dir> envelope <scene>`이 스칼라 표 옆에 씬 진입 시점의 **guaranteed facts**를 나열합니다([엔벨로프](/ko/connectivity/envelopes/#보장된-팩트) 참고). 가드가 질의하는 팩트를 어떤 문서가 생성하는지 보려면 `lute scenario <dir> knowledge`가 각 질의 원자를 규칙을 따라 producer까지, 또는 **no producer**까지 추적합니다([개요](/ko/tooling/overviews/#lute-scenario-knowledge) 참고).
+이 분석에는 전체 프로젝트가 필요합니다. 형제 문서의 assert는 단일 파일에서 보이지 않으며, 한 파일만 보고 “절대 assert되지 않음”이라고 주장하면 거짓이 되기 때문입니다. 따라서 분석은 프로젝트 전체 `lute check`에서만 실행됩니다. `lute check <file>`은 각 관계형 질의를 undecided로 두지만, 한 조건 안의 두 질의가 모순되는 것은 여전히 알아냅니다. `holds(P) && !holds(P)`는 무엇이 성립하든 false입니다(dsl 0.23.0, [`when` 결정 방법](/ko/language/beats/#when의-판정-방식) 참고). 가드가 guaranteed로 판단된 이유를 보려면 `lute scenario --project <DIR> envelope --node <scene>`이 스칼라 표 옆에 씬 진입 시점의 **guaranteed facts**를 나열합니다([엔벨로프](/ko/connectivity/envelopes/#보장된-팩트) 참고). 가드가 질의하는 팩트를 어떤 문서가 생성하는지 보려면 `lute scenario --project <DIR> knowledge`가 각 질의 원자를 규칙을 따라 producer까지, 또는 **no producer**까지 추적합니다([개요](/ko/tooling/overviews/#lute-scenario-knowledge) 참고).
 
 ### 아무도 읽지 않는 관계
 
-반대 문제는 쓰이지만 한 번도 읽히지 않는 관계입니다. `check-project`(dsl 0.24.0 §7)는 선언되었고 `reserved:`가 아니며 assert, seed 또는 derive되었지만 어떤 조건도 질의하지 않고(`holds`, `count`, `countDistinct`), 어떤 규칙 본문도 사용하지 않으며 어떤 def도 읽지 않는 관계에 `W-RELATION-UNREAD`를 보고합니다. 그 팩트는 아무것도 바꾸지 않습니다.
+반대 문제는 쓰이지만 한 번도 읽히지 않는 관계입니다. 프로젝트 전체 `lute check`(dsl 0.24.0 §7)는 선언되었고 `reserved:`가 아니며 assert, seed 또는 derive되었지만 어떤 조건도 질의하지 않고(`holds`, `count`, `countDistinct`), 어떤 규칙 본문도 사용하지 않으며 어떤 def도 읽지 않는 관계에 `W-RELATION-UNREAD`를 보고합니다. 그 팩트는 아무것도 바꾸지 않습니다.
 
 <!-- lute-diagnostics -->
 ```
@@ -499,4 +499,4 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 
 ### 아직 쓰이지 않은 팩트 위의 가드
 
-스토리를 작성하는 동안에는 가드가 dead인 이유가 그 팩트를 assert하는 씬이 아직 존재하지 않기 때문인 경우가 많습니다. `lute check-project --wip`(dsl 0.23.0)는 관계에 **producer가 전혀 없기 때문에** 가드가 dead인 경우 `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 보고합니다. 즉 시드도, 어디에도 `::assert`도, 규칙도, `reserved:`도 없어야 합니다. 경고의 note가 그 이유를 말합니다. producer는 있지만 질의와 절대 일치할 수 없는 관계는 여전히 오류이며, dead 콘텐츠가 downstream에서 발생시키는 `E-CONN-UNREACHABLE` 같은 것도 마찬가지입니다. [작업 중](/ko/language/beats/#작업-중)을 참고하세요.
+스토리를 작성하는 동안에는 가드가 dead인 이유가 그 팩트를 assert하는 씬이 아직 존재하지 않기 때문인 경우가 많습니다. `lute check --project <DIR> --wip`(dsl 0.23.0)는 관계에 **producer가 전혀 없기 때문에** 가드가 dead인 경우 `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 보고합니다. 즉 시드도, 어디에도 `::assert`도, 규칙도, `reserved:`도 없어야 합니다. 경고의 note가 그 이유를 말합니다. producer는 있지만 질의와 절대 일치할 수 없는 관계는 여전히 오류이며, dead 콘텐츠가 downstream에서 발생시키는 `E-CONN-UNREACHABLE` 같은 것도 마찬가지입니다. [작업 중](/ko/language/beats/#작업-중)을 참고하세요.

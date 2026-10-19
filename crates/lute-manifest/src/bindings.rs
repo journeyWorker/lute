@@ -36,7 +36,7 @@ pub struct Bindings {
     #[serde(default)]
     pub music: Music,
     /// 0.42.0 §3.2: the project `volume` domain's absolute levels as gains,
-    /// each a finite number in `[0, 1]` (checked by `check-project`).
+    /// each a finite number in `[0, 1]` (checked by whole-project `check`).
     #[serde(default)]
     pub volumes: BTreeMap<String, f64>,
     #[serde(default)]
@@ -358,7 +358,7 @@ pub struct EndedScreen {
 
 /// `ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the
 /// title backdrop / music references, each optional; a written `ui.title`
-/// binds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).
+/// binds at least one (both checked by whole-project `check`, `E-BINDING-SHAPE`).
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "json-schema", schemars(extend("minProperties" = 1)))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -426,21 +426,21 @@ mod tests {
     #[test]
     fn decodes_the_spec_shape_and_rejects_unknown_effect_parameters() {
         let value: Bindings = yaml_serde::from_str(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1920, height: 1080}\nactions: {hop: {effect: hop, duration: 0.2}}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1920, height: 1080}\nactions: {hop: {effect: hop, duration: 0.2}}\n",
         ).unwrap();
         assert!(matches!(
             value.actions["hop"],
             EffectSpec::Hop { duration: Some(_) }
         ));
         assert!(yaml_serde::from_str::<Bindings>(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
         ).is_err());
     }
 
     #[test]
     fn vfx_admits_custom_effects_beside_the_catalogue() {
         let value: Bindings = yaml_serde::from_str(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nvfx:\n  flash: {effect: flash, color: '#fff', duration: 0.3}\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nvfx:\n  flash: {effect: flash, color: '#fff', duration: 0.3}\n  lanterns: {effect: custom}\n  tideRise: {effect: custom, name: tide-rise, duration: 2}\n",
         )
         .unwrap();
         assert!(matches!(
@@ -471,7 +471,7 @@ mod tests {
             "cameraMove: {x: {effect: custom}}",
         ] {
             let text =
-                format!("bindingsVersion: '0.47'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
+                format!("bindingsVersion: '0.48'\ncanvas: {{width: 1, height: 1}}\n{rejected}\n");
             assert!(
                 yaml_serde::from_str::<Bindings>(&text).is_err(),
                 "{rejected}"
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn strict_shape_errors_keep_yaml_position() {
         let error = yaml_serde::from_str::<Bindings>(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nunknown: true\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nunknown: true\n",
         )
         .unwrap_err();
         let location = error.location().expect("yaml_serde reports a location");
@@ -491,14 +491,14 @@ mod tests {
     #[test]
     fn decodes_ended_screens_and_rejects_unknown_keys() {
         let value: Bindings = yaml_serde::from_str(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens:\n      restore: {title: Again, text: Welcome, background: dawn}\n",
         )
         .unwrap();
         let ended = value.ui.ended.unwrap();
         assert_eq!(ended.by, "run.ending");
         assert_eq!(ended.screens["restore"].background.as_deref(), Some("dawn"));
         assert!(yaml_serde::from_str::<Bindings>(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens: {restore: {title: Again, text: Welcome, nope: x}}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens: {restore: {title: Again, text: Welcome, nope: x}}\n",
         )
         .is_err());
     }
@@ -506,7 +506,7 @@ mod tests {
     #[test]
     fn title_decodes_text_with_optional_assets() {
         let value: Bindings = yaml_serde::from_str(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  title: {text: Brinewake}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nui:\n  title: {text: Brinewake}\n",
         )
         .unwrap();
         assert_eq!(
@@ -518,7 +518,7 @@ mod tests {
             })
         );
         assert!(yaml_serde::from_str::<Bindings>(
-            "bindingsVersion: '0.47'\ncanvas: {width: 1, height: 1}\nui:\n  title: {heading: x}\n",
+            "bindingsVersion: '0.48'\ncanvas: {width: 1, height: 1}\nui:\n  title: {heading: x}\n",
         )
         .is_err());
     }

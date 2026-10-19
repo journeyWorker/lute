@@ -17,7 +17,7 @@ fn patch_schema() -> Value {
         .unwrap();
     assert!(out.status.success());
     let value: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(value["schemaVersion"], "0.47.0.schema");
+    assert_eq!(value["schemaVersion"], "0.48.0.schema");
     value
 }
 
@@ -245,6 +245,8 @@ fn an_untargetable_kind_is_refused_as_a_target() {
         "edits": [],
     }))
     .unwrap();
-    let refusal = lute_model::apply_patch_to(&model, request, true).unwrap_err();
+    let refusal =
+        lute_model::apply_patch_to(&model, request, true, &lute_model::ModelOptions::default())
+            .unwrap_err();
     assert_eq!(refusal.code(), "E-PATCH-TARGET");
 }

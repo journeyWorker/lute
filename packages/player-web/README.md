@@ -1,19 +1,19 @@
 # @lute-lang/player-web
 
-The Lute 0.47 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
+The Lute 0.48 browser visual-novel player. It supplies PixiJS 8 rendering, Web Audio, screens, and keyboard/mouse/touch/gamepad input for the renderer-free `@lute-lang/player` core.
 
 ## Install
 
 ```sh
-  bun add @lute-lang/player-web@0.47.2 @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
-  # npm install @lute-lang/player-web@0.47.2 @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  bun add @lute-lang/player-web@0.48.0 @lute-lang/player@0.48.0 @lute-lang/runtime@0.48.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+  # npm install @lute-lang/player-web@0.48.0 @lute-lang/player@0.48.0 @lute-lang/runtime@0.48.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 The package requires exact `effect@4.0.2` and `@effect/platform-browser@4.0.2` peers. Runtime and player packages are released in lockstep.
 
 ## Minimal usage
 
-Serve a `lute compile --all` bundle, the runtime wasm file, the bindings file, and its assets. Then mount into an element:
+Serve a `lute compile --project` bundle, the runtime wasm file, the bindings file, and its assets. Then mount into an element:
 
 ```ts
 import { mountPlayer } from "@lute-lang/player-web"
@@ -65,7 +65,7 @@ The suites build the CLI with `cargo build -q -p lute-cli` unless `LUTE_BIN` nam
 
 Player behaviour is tested against real runtime output, never a hand-written view, record or bundle:
 
-- **Node.** `test/support/bundle.ts` compiles a project (`compileProject(name, dir, locales?)`, `locales` a `lute loc import` bundle passed as `--locales`; output under `node_modules/.lute-test/`); tests drive it with `@lute-lang/runtime/bun` (see `test/ui/ended.test.ts`).
+- **Node.** `test/support/bundle.ts` compiles a project (`compileProject(name, dir, locales?)`, `locales` a `lute loc import` bundle passed as `--locale-bundle`; output under `node_modules/.lute-test/`); tests drive it with `@lute-lang/runtime/bun` (see `test/ui/ended.test.ts`).
 - **Browser.** The `real` project (`test/browser/real/`, in `vitest.browser.config.ts`) runs its files one at a time: its players animate on the per-frame clock (at most 0.1s a frame), so files rendering side by side on a few CPUs stretch every playthrough past its deadlines; the batch-end camera test reads the player's clock (`pixi.frames`), not wall time. Its `test/browser/globalSetup.ts` compiles once the projects registered in `realProjects` (`globalSetup.ts`: `examples/player-demo` with its Korean bundle `locales/bundle.json`, and fixtures under `test/fixtures/`; add new fixtures there) and provides its URLs (`inject("luteProjects")`; vite serves them through `/@fs/`). `test/browser/support/real-player.ts` mounts player-web with `mount` over that bundle and the packaged wasm runtime: `mountProject(name, options?)` (`demo` = examples/player-demo, others under `test/fixtures/`) (a fresh `storageKey` unless one is passed; mounting again with the same key after `close()` models a reload over the same storage), `playUntil(player, stop, prefer?)` plays with real `PlayerAction`s (New game, idle menu, choices by preferred option id, advance), `playReading(player, stop, prefer?)` plays the same way but records every dialogue line and choice menu as drawn and advances a line only after reading it (each fails when `stop` does not hold within `playthroughMs`, 300 s: the demo played to an ending takes about 1 min on a fast machine, over 2 min on a CI runner; a test making `count` such calls takes `playthroughTimeout(count)`), `buttonLabelled(container, label)` finds a drawn button to `activate()`, and assertions read what player-web drew: `player.pixi.layers` (the mounted Pixi stage from the internal `pixiAppOf(element)`, not exported from the package), `drawnTexts(container)` and `stagePixels(pixi, frame)`. See `test/browser/real/`.
 
 ## API and guides

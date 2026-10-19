@@ -75,7 +75,7 @@ enums:
 선언은 프로젝트 루트(`lute.project.yaml`이 있는 디렉터리)별입니다. 형제 루트의 선언은 여러분의 루트 안으로 들어오지 않습니다.
 
 :::note
-플러그인의 멤버는 실행이 프로젝트를 볼 수 있을 때만 단일 파일 명령에 도달합니다. `lute check scenes/opening.lute`는 파일 위의 가장 가까운 `lute.project.yaml`을 스스로 찾아냅니다(stderr: `note: using project …`). `lute check-project .`은 루트 자체를 해석합니다. `lute compile`, `trace`, `context`에는 `--project .`이 필요합니다. 이것 없이 실행하면 core 전용으로 동작하므로 플러그인 경로에 의존하는 문서는 `E-DOMAIN-UNKNOWN`을 보고합니다.
+플러그인의 멤버는 실행이 프로젝트를 볼 수 있을 때만 단일 파일 명령에 도달합니다. `lute check scenes/opening.lute`는 파일 위의 가장 가까운 `lute.project.yaml`을 스스로 찾아냅니다(stderr: `note: using project …`). `lute check --project .`은 루트 자체를 해석합니다. `lute compile`, `trace`, `context`도 파일의 디렉터리에서 같은 방식으로 프로젝트를 찾거나 `--project .`을 받습니다. 프로젝트를 찾지 못하면 core 전용으로 동작하므로 플러그인 경로에 의존하는 문서는 `E-DOMAIN-UNKNOWN`을 보고합니다.
 :::
 
 ## 두 경로가 하나의 슬롯을 선언할 때의 우선순위
@@ -133,10 +133,10 @@ re-declaration must re-declare a superset of the imported base's members
 
 `lute init`은 `emotion`, `anchor`, `action`, `mood`, `volume`, `musicPlayback`, `vfxType`을 포함한 시작용 어휘를 생성된 씬이 가져오는 `vocabulary.schema.yaml`에 뼈대로 만듭니다 — 규칙이 아니라 여러분이 소유하고 편집하는, 의견이 담긴 템플릿입니다. 프로젝트가 카메라, CG, 의상, 시퀀스, 텍스트 스타일 중 하나를 처음 스테이징할 때 해당 슬롯을 추가하세요.
 
-`lute doctor <dir>`는 루트가 선언한 슬롯을 멤버 의미론과 함께 인라인으로 보고합니다:
+`lute doctor --project <DIR>`는 루트가 선언한 슬롯을 멤버 의미론과 함께 인라인으로 보고합니다:
 
 ```
-$ lute init demo && lute doctor demo
+$ lute init demo && lute doctor --project demo
 lute doctor — demo
   • toolchain version: 0.10.0
   • language version: 0.10.0

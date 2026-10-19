@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-player-bindings-0.47.schema.json
+// Source: schemas/lute-player-bindings-0.48.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -252,7 +252,7 @@ export type TextStyle = typeof TextStyle.Type;
 /**
  * `ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the
  * title backdrop / music references, each optional; a written `ui.title`
- * binds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).
+ * binds at least one (both checked by whole-project `check`, `E-BINDING-SHAPE`).
  */
 export const Title = Schema.Struct({
   "background": Schema.optionalKey(Schema.NullOr(Schema.String)),

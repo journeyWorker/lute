@@ -1,5 +1,5 @@
 # Four dives into the palace of Vael, end to end.
-#   lute play . --script plays/four-dives.play.yaml
+#   lute play --project . --script plays/four-dives.play.yaml
 # The engine owns the dive: every `engine:` step is the game reporting what
 # happened below. A dive is a run; the hub visit after it belongs to that run.
 choose:

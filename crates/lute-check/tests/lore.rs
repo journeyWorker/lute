@@ -2,7 +2,7 @@
 //! project passes: the `kind: lore` document, `<entry>` attribute shape
 //! (`E-ENTRY-ATTR`), identity (`E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`),
 //! grammar admission, the entry-body walk, the reserved `entry.<id>.read`
-//! path, and the `check-project` passes (`W-ENTRY-REF-UNKNOWN`).
+//! path, and the whole-project `check` passes (`W-ENTRY-REF-UNKNOWN`).
 
 use std::path::PathBuf;
 
@@ -523,7 +523,7 @@ fn when_test_literal_and_fix_reach_entry_arms() {
     assert!(codes(&fixed.text).is_empty(), "{:?}", codes(&fixed.text));
 }
 
-// --- check-project -------------------------------------------------------------
+// --- whole-project check -------------------------------------------------------------
 
 fn parse_docs(files: &[(&str, &str)]) -> ProjectDocs {
     let docs = files
@@ -546,7 +546,7 @@ fn project_entry_id_dup_across_files() {
     assert_eq!(anchored(&b, d), "note");
     assert!(d.message.contains("a.lute"), "{}", d.message);
 
-    // Both occurrences are covered, so check-project suppresses the per-file
+    // Both occurrences are covered, so whole-project check suppresses the per-file
     // copies of the same collision.
     let covered = colliding_entry_occurrences(&docs.views());
     assert_eq!(covered.len(), 2, "{covered:?}");

@@ -1,7 +1,7 @@
 # Route E — the whole caravan burns: steel drawn at the chain, the battle lost,
 # and the battle system reports every wagon gone. `terminal:` holds, so the
 # chapter is over where it stands: no camp, no far bank.
-#   lute play . --script plays/ashes.play.yaml
+#   lute play --project . --script plays/ashes.play.yaml
 presented: { run: [road.departure, road.ford, bridge.arrival] }
 quests: { emberRoad: active }
 state:

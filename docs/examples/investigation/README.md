@@ -5,7 +5,7 @@ an investigation game: **relational facts + Datalog** (clues implicate
 suspects), **`after:` scene sequencing** (crime scene → interview →
 confrontation), a **`<hub>`** interrogation, a **`<branch>` accusation** with
 success/failure endings, and a **quest** whose objectives are satisfied by the
-scenes. It also shows what `check-project` proves about relational fact
+scenes. It also shows what `check --project` proves about relational fact
 queries across scenes — which is why two guards you might expect to see here
 are not.
 
@@ -33,7 +33,7 @@ Each scene names itself with `id:` (`detective.s01ep01` … `detective.s01ep03`)
 ## 1. Check the whole project
 
 ```sh
-cargo run -q -p lute-cli -- check-project docs/examples/investigation
+cargo run -q -p lute-cli -- check --project docs/examples/investigation
 ```
 
 Exit `0`, with no warnings:
@@ -46,14 +46,14 @@ ok: docs/examples/investigation/scenes/interview.lute (0 warning(s))
 ok: docs/examples/investigation (4 file(s), 0 project-wide warning(s))
 ```
 
-**What the checker proved.** `check-project` decides every relational fact
+**What the checker proved.** `check --project` decides every relational fact
 query (`holds(…)`, `count(…)`) in every guard: *impossible* (nothing can ever
 produce the fact), *guaranteed* (it holds on every declared route to the
 guard), or *possible*. The crime scene asserts `foundClue(ledger)` and
 `foundClue(letter)` on its only route, and the interview is sequenced `after:`
 it, so both facts hold on entry to the interview. Give `pressLedger` the guard
 `when="holds('foundClue', ['ledger'])"` and `pressLetter` a guard on a clue nobody
-logs, `when="holds('foundClue', ['knife'])"`, and `check-project` reports the first
+logs, `when="holds('foundClue', ['knife'])"`, and `check --project` reports the first
 as redundant (it can never close) and the second as dead (it can never open):
 
 <!-- lute-diagnostics -->
@@ -61,7 +61,7 @@ as redundant (it can never close) and the second as dead (it can never open):
 docs/examples/investigation/scenes/interview.lute:16:67: warning [W-FACT-GUARANTEED] guard `holds('foundClue', ['ledger'])` is redundant: `foundClue(ledger)` is asserted on every route to here (docs/examples/investigation/scenes/crime-scene.lute:15)
 ```
 
-<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check-project output" -->
+<!-- lute-diagnostics unverified="the relational E-ARM-DEAD message is composed in crates/lute-check/src/fact_check.rs, which names the code through the reachability::E_ARM_DEAD constant rather than a string literal, so the scraper cannot pair quote and code; copied verbatim from check --project output" -->
 ```
 docs/examples/investigation/scenes/interview.lute:21:3: error [E-ARM-DEAD] choice can never fire: guard `holds('foundClue', ['knife'])` is provably false — no seed, assert, rule, or engine relation produces `foundClue(knife)` under your declared routes
 ```
@@ -73,7 +73,7 @@ same way: the rule derives `points(blake)` from the crime scene's asserts and a
 seed fact, so the objective is satisfiable; had no seed, assert, or rule
 produced it, the objective would be `E-OBJECTIVE-UNSATISFIABLE`. (A `done` is a predicate, not a
 guard, so an always-true one is never reported as redundant.) The analysis
-needs every document at once, so it runs in `check-project` only; a
+needs every document at once, so it runs in `check --project` only; a
 single-file `lute check` leaves relational queries undecided.
 
 ## 2. Reachability & the scene graph
@@ -82,7 +82,7 @@ single-file `lute check` leaves relational queries undecided.
 no CEL is evaluated, no Datalog is run.
 
 ```sh
-cargo run -q -p lute-cli -- scenario docs/examples/investigation
+cargo run -q -p lute-cli -- scenario --project docs/examples/investigation
 ```
 
 shows the reachability chain as topological layers:
@@ -97,7 +97,7 @@ shows the reachability chain as topological layers:
 Ask about one node's reachability and its declared prerequisite structure:
 
 ```sh
-cargo run -q -p lute-cli -- scenario docs/examples/investigation reach detective.s01ep03
+cargo run -q -p lute-cli -- scenario --project docs/examples/investigation reach --node detective.s01ep03
 ```
 
 ```
@@ -164,7 +164,7 @@ cargo run -q -p lute-cli -- compile docs/examples/investigation/scenes/crime-sce
   --project docs/examples/investigation -o /tmp/crime-scene.json
 ```
 
-Exit `0`; the artifact is stamped `"lute": "0.47.2"` / `"irVersion": "0.47.2"`.
+Exit `0`; the artifact is stamped `"lute": "0.48.0"` / `"irVersion": "0.48.0"`.
 Every document in the project compiles (`scenes/*.lute` and
 `quests/identify-killer.lute`) — swap the path above.
 
@@ -196,7 +196,7 @@ expect:
 Run the whole suite from the repository root:
 
 ```sh
-cargo run -q -p lute-cli -- test docs/examples/investigation
+cargo run -q -p lute-cli -- test --project docs/examples/investigation
 ```
 
 ```
@@ -215,7 +215,7 @@ paths only** — never a whole-space coverage claim (D1: trace explains, it
 never proves):
 
 ```sh
-cargo run -q -p lute-cli -- test docs/examples/investigation --coverage
+cargo run -q -p lute-cli -- test --project docs/examples/investigation --coverage
 ```
 
 ```

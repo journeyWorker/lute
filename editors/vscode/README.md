@@ -48,7 +48,7 @@ differs from the CLI, a one-time warning says so and tells you to run
 one-time message, and its `W-LUTE-VERSION-STALE` warning names `lute doctor`, when
 a stamp is newer than it — that reaches any LSP client, not only this extension.)
 Disable the extension's check with `"lute.versionCheck": false` (only if you
-knowingly pin an older server). The CLI (`lute check` / `check-project`) remains
+knowingly pin an older server). The CLI (`lute check` / `check --project`) remains
 the canonical source of truth.
 
 ## Develop / run from source

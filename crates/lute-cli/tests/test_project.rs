@@ -109,7 +109,8 @@ fn same_test_yaml_without_project_resolves_the_nearest_manifest() {
     write_manifest_dependent_project(&dir);
 
     let out = Command::new(BIN)
-        .args(["test", dir.join("tests").to_str().unwrap()])
+        .current_dir(&dir)
+        .args(["test", "tests"])
         .output()
         .expect("run lute");
     let text = String::from_utf8_lossy(&out.stdout).to_string();
@@ -332,7 +333,13 @@ fn expect_quests_mismatch_fails_naming_expected_and_actual() {
 
     let (code, text) = run_quest_test("quests-fail-json", yaml, &["--json"]);
     assert_eq!(code, Some(1), "{text}");
-    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    // The stderr note naming the discovered project precedes the document.
+    let json: String = text
+        .lines()
+        .filter(|l| !l.starts_with("lute: note:"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     let e = &v["tests"][0]["expectations"][0];
     assert_eq!(e["kind"], "quests", "{v}");
     assert_eq!(e["subject"], "holdLine");

@@ -1,6 +1,6 @@
 //! `lute lint` — the CLI surface over `lute_lint::lint` (spec §2).
 //!
-//! Grouping mirrors `check-project`: `.lute` files discovered under `PATH`
+//! Grouping mirrors whole-project `check`: `.lute` files discovered under `PATH`
 //! are grouped by nearest ancestor `lute.project.yaml` (roots without a
 //! manifest fall back to `PATH` itself or, for a bare file, its parent
 //! directory). Each root loads `lute.lint.yaml` (or `--config PATH`),
@@ -34,7 +34,7 @@ use lute_manifest::resolve::resolve_activation;
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
 /// Lint diagnostic codes are dynamic (`L-*` derived from plugin/custom rule
-/// ids), so the code registry ([`crate::codes`]) `check`/`check-project`
+/// ids), so the code registry ([`crate::codes`]) `check`/whole-project `check`
 /// use cannot enumerate them. Instead accept any code matching
 /// `^(L-[A-Z0-9-]+|E-LINT-(CONFIG|EXPR|RULE))$`, plus the native
 /// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
@@ -177,7 +177,7 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
 /// root-relative display form. Returns `Err(exit 2)` on an unreadable file.
 ///
 /// Under a manifest (`with_project` true) the document is assembled through
-/// the shared model input path used by `check-project` — a scene a `chapters:`
+/// the shared model input path used by whole-project `check` — a scene a `chapters:`
 /// chain lists carries the `on:` the chain derives, so lint classifies it as
 /// the beat every other surface reads — returned with the model's
 /// [`lute_load::BuiltInput`] for the root's project passes.
@@ -185,9 +185,10 @@ fn build_lint_input(
     file: &Path,
     root: &Path,
     with_project: bool,
+    providers: Option<&Path>,
 ) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
     let (text, doc, built) = if with_project {
-        let Some(built) = build_input(file, None, Some(root), None) else {
+        let Some(built) = build_input(file, providers, Some(root), None) else {
             if let Err(message) = read_document(file) {
                 return Err(envelope::fail_quietly(CliError::io(file, message)));
             }
@@ -221,12 +222,15 @@ fn build_lint_input(
     ))
 }
 
-fn project_for_root(root: &Path) -> Result<Option<ProjectConfig>, ExitCode> {
+fn project_for_root(
+    root: &Path,
+    providers: Option<&Path>,
+) -> Result<Option<ProjectConfig>, ExitCode> {
     if !root.join("lute.project.yaml").is_file() {
         return Ok(None);
     }
     let opts = lute_model::ModelOptions {
-        providers: None,
+        providers: providers.map(Path::to_path_buf),
         permission_profile: None,
         mode: lute_check::Mode::Ci,
         compile: false,
@@ -254,7 +258,12 @@ fn project_for_root(root: &Path) -> Result<Option<ProjectConfig>, ExitCode> {
 }
 
 /// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.
-fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcome, ExitCode> {
+fn lint_target(
+    path: &Path,
+    floor: Option<&Path>,
+    providers_dir: Option<&Path>,
+    explicit_config: Option<&Path>,
+) -> Result<LintOutcome, ExitCode> {
     let mut aggregated = LintOutcome::default();
 
     // Two shapes: a single .lute file or a directory tree.
@@ -280,7 +289,10 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        let root = nearest_manifest_dir(path).unwrap_or(fallback);
+        let root = match floor {
+            Some(floor) => project_root_for(path, floor),
+            None => nearest_manifest_dir(path).unwrap_or(fallback),
+        };
         let mut m = BTreeMap::new();
         m.insert(root, vec![path.to_path_buf()]);
         m
@@ -294,7 +306,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
         })?;
         let mut m: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
         for f in files {
-            let root = project_root_for(&f, path);
+            let root = project_root_for(&f, floor.unwrap_or(path));
             m.entry(root).or_default().push(f);
         }
         m
@@ -320,17 +332,20 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 
         // Load the project through the shared semantic model. Absent
         // manifest ⇒ defaults-only, no plugin rules.
-        let project = project_for_root(&root)?;
-        let providers = project_providers(project.as_ref());
+        let project = project_for_root(&root, providers_dir)?;
+        let providers = match providers_dir {
+            Some(dir) => lute_manifest::provider::ProviderSet::load(dir),
+            None => project_providers(project.as_ref()),
+        };
         let plugin_rules = plugin_rules_for_root(project.as_ref());
 
-        // Build parsed inputs — under a manifest, desugared as `check-project`
+        // Build parsed inputs — under a manifest, desugared as whole-project `check`
         // reads them ([`build_lint_input`]).
         let (inputs, builts): (Vec<LintDocInput>, Vec<_>) = {
             use rayon::prelude::*;
             files
                 .par_iter()
-                .map(|f| build_lint_input(f, &root, project.is_some()))
+                .map(|f| build_lint_input(f, &root, project.is_some(), providers_dir))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .unzip()
@@ -389,7 +404,7 @@ fn lint_target(path: &Path, explicit_config: Option<&Path>) -> Result<LintOutcom
 }
 
 /// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
-/// pass `check-project` runs, each document's cast resolved the way `check`
+/// pass whole-project `check` runs, each document's cast resolved the way `check`
 /// resolves it. `builts` is index-aligned with `inputs`; paths are the
 /// root-relative display paths the other lint diagnostics carry.
 fn display_name_dups(
@@ -516,17 +531,34 @@ fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
     }
 }
 
-/// Entry point: `lute lint <PATH> [--json] [--deny CODE] [--deny-warnings]
-/// [--config PATH]`.
-pub fn run_lint(
-    path: &Path,
-    json: bool,
-    deny: &[String],
-    deny_warnings: bool,
-    config: Option<&Path>,
-) -> ExitCode {
+/// What one `lute lint` run was asked (see [`crate::Command::Lint`]).
+pub struct LintOptions<'a> {
+    pub path: Option<&'a Path>,
+    pub project: Option<&'a Path>,
+    pub providers: Option<&'a Path>,
+    pub json: bool,
+    pub deny: &'a [String],
+    pub deny_warnings: bool,
+    pub config: Option<&'a Path>,
+}
+
+/// Entry point: `lute lint [<PATH>] [--project DIR] [--providers DIR]
+/// [--json] [--deny CODE] [--deny-warnings] [--config PATH]`. With
+/// `--project`, `<PATH>` defaults to it and it bounds the grouping of
+/// documents by their nearest manifest from below (0.48.0 §3.5).
+pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
+    let LintOptions {
+        path,
+        project,
+        providers,
+        json,
+        deny,
+        deny_warnings,
+        config,
+    } = *opts;
     let policy = LintDenyPolicy::new(deny, deny_warnings);
-    let outcome = match lint_target(path, config) {
+    let path = path.or(project).unwrap_or_else(|| Path::new("."));
+    let outcome = match lint_target(path, project, providers, config) {
         Ok(v) => v,
         Err(code) => return code,
     };

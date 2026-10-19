@@ -1,4 +1,4 @@
-//! `lute check-project <dir>` acceptance (0.2.1 §6.3 gap #3): project-wide
+//! `lute check --project <dir>` acceptance (0.2.1 §6.3 gap #3): project-wide
 //! `<quest id>` uniqueness for quest docs NOT connected by an import edge —
 //! `lute check`'s own `E-QUEST-ID-DUP` (0.2.0 F4) only sees a collision within
 //! one document or across ITS OWN `uses:`/`extends:` import graph.

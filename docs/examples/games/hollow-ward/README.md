@@ -35,12 +35,12 @@ St. Agathe's Hollow Ward, closed since the 1979 fire. At eleven at night Nell Ar
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/hollow-ward
-lute test docs/examples/games/hollow-ward                     # 43 tests + 7 plays
-lute play docs/examples/games/hollow-ward --script docs/examples/games/hollow-ward/plays/released.play.yaml
-lute play docs/examples/games/hollow-ward --script docs/examples/games/hollow-ward/plays/isolation.play.yaml
-lute beats docs/examples/games/hollow-ward                    # every occasion's candidates in order
-lute calendar docs/examples/games/hollow-ward --axis clock --axis run.bellRung=false,true --axis run.stalker=chapel --occasion encounter --target room.chapel
+lute check --deny-warnings --project docs/examples/games/hollow-ward
+lute test --project docs/examples/games/hollow-ward                     # 43 tests + 7 plays
+lute play --project docs/examples/games/hollow-ward --script docs/examples/games/hollow-ward/plays/released.play.yaml
+lute play --project docs/examples/games/hollow-ward --script docs/examples/games/hollow-ward/plays/isolation.play.yaml
+lute beats --project docs/examples/games/hollow-ward                    # every occasion's candidates in order
+lute calendar --project docs/examples/games/hollow-ward --axis clock --axis run.bellRung=false,true --axis run.stalker=chapel --occasion encounter --target room.chapel
 ```
 
 ## Origin

@@ -98,7 +98,7 @@ pub fn check_project_quest_ids(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnos
 /// occurrence, which that function does NOT emit a diagnostic for, since it
 /// is the baseline the rest collide against).
 ///
-/// `lute check-project`'s caller (0.2.1 review F1) uses this to decide
+/// whole-project `lute check`'s caller (0.2.1 review F1) uses this to decide
 /// whether a per-file `E-QUEST-ID-DUP` it kept from `check()` (an
 /// in-document repeat, or a redeclare against an import-reachable id — both
 /// anchored at THAT file's own `quest.id_span`, 0.2.0 F4) is a collision this

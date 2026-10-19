@@ -169,7 +169,7 @@ name. Ids are unique across a project, but a player reads names, and two authors
 who each cast a "Hiker Gus" have written one person twice. It fires for two cast
 entries with exactly the same `name:`, a cast name equal to a component's
 `::use{… name="…"}` display string, and two such strings for different speakers
-(`who=`). It is the advisory `check-project` reports too, and it keeps its `W-`
+(`who=`). It is the advisory whole-project `check` reports too, and it keeps its `W-`
 code rather than an `L-*` one. The comparison covers the whole project the path
 belongs to, so linting one file still compares every cast entry; the finding is
 anchored at the first line that speaks one of the names, or at the document's
@@ -203,7 +203,7 @@ lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker
 failed: . (1 error(s), 0 warning(s))
 ```
 
-A project that gates a merge on `check-project --deny-warnings` marks its role
+A project that gates a merge on `check --project DIR --deny-warnings` marks its role
 names `sharedName: true` first. See the [multi-author guide](/guides/multi-author/).
 
 ## Plugin rule authoring

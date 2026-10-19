@@ -12,17 +12,16 @@ From the repository root:
 
 ```sh
 cargo build --release -p lute-cli
-./target/release/lute check-project examples/player-demo
-./target/release/lute play examples/player-demo --script examples/player-demo/tests/dawn.play.yaml
-./target/release/lute play examples/player-demo --script examples/player-demo/tests/dusk.play.yaml
-./target/release/lute test examples/player-demo/tests/dawn.play.yaml
-./target/release/lute test examples/player-demo/tests/dusk.play.yaml
+./target/release/lute check --project examples/player-demo
+./target/release/lute play --project examples/player-demo --script examples/player-demo/tests/dawn.play.yaml
+./target/release/lute play --project examples/player-demo --script examples/player-demo/tests/dusk.play.yaml
+./target/release/lute test examples/player-demo/tests/dawn.play.yaml --project examples/player-demo
+./target/release/lute test examples/player-demo/tests/dusk.play.yaml --project examples/player-demo
 bun run --cwd packages/player-web demo
 ```
 
-`check-project` reports one warning, `W-BINDINGS-VERSION-STALE`: the bindings
-declare `bindingsVersion: "0.47"` for `ui.title.text` (the title heading),
-newer than a 0.47 toolchain's line.
+`check --project` is clean: the bindings declare `bindingsVersion: "0.48"`, the
+toolchain line, and `ui.title.text` (the title heading) needs `"0.47"` or newer.
 
 The player bindings use a 1280×720 canvas and assets under `assets/`. Regenerate
 the deterministic art and audio pack with:
@@ -42,12 +41,12 @@ choice or prompt, re-export, update the translation and re-import (from this
 directory):
 
 ```sh
-lute loc export . -o /tmp/export.json   # merge new rows into locales/ko.json
+lute loc export --project . -o /tmp/export.json   # merge new rows into locales/ko.json
 lute loc import locales/ko.json -o locales/bundle.json
-lute compile --all . --locales locales/bundle.json -o /tmp/bundle
+lute compile --project . --locale-bundle locales/bundle.json -o /tmp/bundle
 ```
 
-The web demo compiles with `--locales locales/bundle.json`; Settings → Locale
+The web demo compiles with `--locale-bundle locales/bundle.json`; Settings → Locale
 switches between `en-US` and `ko`.
 
 ## Second play-through

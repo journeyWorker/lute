@@ -28,7 +28,7 @@ This is the one place the two quest atoms diverge. `completed(Q)` licenses the a
 Take a quest `findkai` whose required objective writes `run.kaiFound`, a scene gated `after: 'active("findkai")'` that reads it, and a second scene gated `after: 'completed("findkai")'`. Only the second one is safe:
 
 ```console
-$ lute scenario . envelope narrator.s01ep02
+$ lute scenario --project . envelope --node narrator.s01ep02
 project root: .
 envelope for scene(narrator.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
@@ -37,7 +37,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
     - run.kaiFound   written by: …
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `check`, surfaced here):
     - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `has(run.kaiFound)`
 ```
 
@@ -47,22 +47,22 @@ Reading a quest's completion write from a scene gated on `active` is therefore t
 
 ## Reading the tables
 
-`lute scenario <dir> envelope <nodeId>` prints both tables. The diagnostic reads for a state path `P` at node X:
+`lute scenario --project <DIR> envelope --node <NODE>` prints both tables. The diagnostic reads for a state path `P` at node X:
 
 - `P ∈ Guaranteed(X)` → safe under your declared routes; no diagnostic.
-- `P ∉ Possible(X)` → no declared route ever sets `P` before X — **error grade**, `E-STATE-MAYBE-UNAVAILABLE`, shipped by default in `check-project`.
-- `P ∈ Possible(X) \ Guaranteed(X)` → set on some but not all routes — **warning grade**, default-suppressed to this command's output only. This is the `Possible \ Guaranteed` read `check-project` computes and drops by default.
+- `P ∉ Possible(X)` → no declared route ever sets `P` before X — **error grade**, `E-STATE-MAYBE-UNAVAILABLE`, shipped by default in whole-project `lute check`.
+- `P ∈ Possible(X) \ Guaranteed(X)` → set on some but not all routes — **warning grade**, default-suppressed to this command's output only. This is the `Possible \ Guaranteed` read whole-project `lute check` computes and drops by default.
 
 Every message carries the verbatim "under your declared routes" qualifier (A-hybrid posture).
 
 ## Guaranteed facts
 
-Beside the scalar tables, the envelope carries the **fact envelope** (dsl 0.20.0): the relational facts that hold on *every* declared route reaching the node. It is the same must-set `check-project` uses to decide relational guards (see [how `check-project` analyzes relational guards](/state/facts-and-datalog/#how-check-project-analyzes-relational-guards)), propagated over `after:` with the same structural recursion as `Guaranteed` — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, `completed(Q)`/`active(Q)` contribute nothing. Only monotone facts cross a scene boundary: nothing may retract them, no other assert may share their `key:` with a different value, and their relation is neither `reserved:` nor engine-open; `tier: scene`/`tier: quest` facts never cross. Each fact names what establishes it — an assert site, a `facts:` seed, or a rule.
+Beside the scalar tables, the envelope carries the **fact envelope** (dsl 0.20.0): the relational facts that hold on *every* declared route reaching the node. It is the same must-set whole-project `lute check` uses to decide relational guards (see [how whole-project `lute check` analyzes relational guards](/state/facts-and-datalog/#how-whole-project-lute-check-analyzes-relational-guards)), propagated over `after:` with the same structural recursion as `Guaranteed` — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, `completed(Q)`/`active(Q)` contribute nothing. Only monotone facts cross a scene boundary: nothing may retract them, no other assert may share their `key:` with a different value, and their relation is neither `reserved:` nor engine-open; `tier: scene`/`tier: quest` facts never cross. Each fact names what establishes it — an assert site, a `facts:` seed, or a rule.
 
 From the Haven example, the purser scene (ep09):
 
 ```console
-$ lute scenario docs/examples/haven envelope haven.s01ep09
+$ lute scenario --project docs/examples/haven envelope --node haven.s01ep09
 …
   Guaranteed facts (hold on every declared route reaching this node):
     - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
@@ -72,11 +72,11 @@ $ lute scenario docs/examples/haven envelope haven.s01ep09
 …
 ```
 
-Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds('found', ['ottavio'])` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When `check-project` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--format json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
+Episode 6 asserts all three of Ottavio's facts outside any branch, and every route to ep09 passes through it, so a guard `holds('found', ['ottavio'])` in ep09 could never close — which is why that scene's `listTheMass` choice carries none. `knows(vesna, manifest)` is absent even though three other documents assert it: none of them lies on every route to ep09 (hydroponics is one of two alternatives, the archive is optional, and the purser ledger's assert holds only inside its own lore entry, which the engine presents at a time of its choosing). When whole-project `lute check` reports `W-FACT-GUARANTEED` on a guard, this table is where the fact comes from. With `--json` the same list is `envelope.guaranteedFacts`, an array of `{ "fact", "establishedBy" }` objects.
 
 ## Quest addressing
 
-`lute scenario <dir> envelope quest:<id>` prints a real table for **every** quest:
+`lute scenario --project <DIR> envelope --node quest:<id>` prints a real table for **every** quest:
 
 - A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
 - A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.

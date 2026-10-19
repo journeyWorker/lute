@@ -398,19 +398,21 @@ fn duplicate_authored_target(model: &ProjectModel, node: &NodeKey) -> bool {
     };
     count > 1
 }
+/// Apply `patch` to the project at `root`, building its models with `opts`
+/// (providers and the permission-profile ceiling reach the before and after
+/// builds, so a patch is judged under the same host ceiling `check` applies).
 pub fn apply_patch(
     root: &Path,
     patch: PatchRequest,
     dry_run: bool,
+    opts: &ModelOptions,
 ) -> Result<PatchReport, PatchRefusal> {
     let before_model =
-        ProjectModel::build_single_root(root, &ModelOptions::default()).map_err(|e| {
-            PatchRefusal::Io {
-                path: root.to_path_buf(),
-                message: e.to_string(),
-            }
+        ProjectModel::build_single_root(root, opts).map_err(|e| PatchRefusal::Io {
+            path: root.to_path_buf(),
+            message: e.to_string(),
         })?;
-    apply_patch_to(&before_model, patch, dry_run)
+    apply_patch_to(&before_model, patch, dry_run, opts)
 }
 
 /// Apply a patch against an already-built model.
@@ -422,9 +424,9 @@ pub fn apply_patch_to(
     before_model: &ProjectModel,
     patch: PatchRequest,
     dry_run: bool,
+    opts: &ModelOptions,
 ) -> Result<PatchReport, PatchRefusal> {
     let root = before_model.root();
-    let opts = ModelOptions::default();
     let before = before_model.revisions().clone();
     if !digest_equal(&patch.base.project, &before.sha256) {
         return Err(PatchRefusal::Stale {
@@ -768,7 +770,7 @@ pub fn apply_patch_to(
     }
 
     let after_model =
-        ProjectModel::build_single_root(&stage.root, &opts).map_err(|e| PatchRefusal::Io {
+        ProjectModel::build_single_root(&stage.root, opts).map_err(|e| PatchRefusal::Io {
             path: stage.root.clone(),
             message: e.to_string(),
         })?;
@@ -1288,7 +1290,7 @@ mod tests {
             }],
             preserve: Vec::new(),
         };
-        let refusal = apply_patch_to(&model, request, true).unwrap_err();
+        let refusal = apply_patch_to(&model, request, true, &ModelOptions::default()).unwrap_err();
         assert_eq!(refusal.code(), "E-PATCH-EDIT");
         assert_eq!(refusal.message(), "edit 0: file already exists");
         assert_eq!(

@@ -4,7 +4,7 @@ components/bump.component.lute (imported by every document through defaults: com
 contains, on line 11:
   ::set{run.aff.@who += 1}
 
-  lute check-project .
+  lute check --project .
     -> ./components/aaa.component.lute:1:1: error [E-CEL-PARSE] component `bump`
        (components/bump.component.lute): `::set` takes no attributes other than one trailing
        `when="…"` … (+2 more callers)

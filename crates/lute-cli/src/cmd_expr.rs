@@ -42,9 +42,32 @@ struct Report<'a> {
     diagnostics: &'a [Diagnostic],
 }
 
-/// Run `lute expr`. Exit `0` lowered, `1` a diagnostic error, `2` usage or
-/// I/O failure.
-pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
+/// What one `lute expr` run was asked (see [`crate::Command::Expr`]).
+pub(crate) struct ExprOptions<'a> {
+    pub(crate) cel: &'a str,
+    pub(crate) project: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
+    pub(crate) policy: &'a DenyPolicy,
+    pub(crate) json: bool,
+}
+
+/// Run `lute expr`. Exit `0` lowered, `1` a diagnostic error (or a
+/// `--deny`-promoted one), `2` usage or I/O failure.
+pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
+    let ExprOptions {
+        cel: raw,
+        permission_profile,
+        policy,
+        json,
+        ..
+    } = *opts;
+    // `--project`, else the nearest `lute.project.yaml` at or above the
+    // current directory (0.48.0 §2.1).
+    let project = match crate::project::require_project("expr", opts.project) {
+        Ok(project) => project,
+        Err(error) => return envelope::fail(error),
+    };
+    let project = project.as_path();
     if !project.join("lute.project.yaml").is_file() {
         let message = format!("lute expr: no lute.project.yaml in {} — pass the project directory with --project <DIR>", project.display());
         // A directory that does not exist cannot be read; an existing one
@@ -57,7 +80,7 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
         return envelope::fail(error);
     }
     let cache = InputCache::default();
-    let documents = match project_documents(&cache, project) {
+    let documents = match project_documents(&cache, project, permission_profile) {
         Ok(documents) => documents,
         Err(message) => return envelope::fail(envelope::CliError::io(project, message)),
     };
@@ -69,7 +92,7 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
         text,
         None,
         Some(project),
-        None,
+        permission_profile,
     );
     // The project's own resolution problems, and a schema import some
     // document names that does not resolve: in `--json` they are the
@@ -83,7 +106,7 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
     };
     diagnostics.extend(import_failures(&built));
     if built.resolve_error || diagnostics.iter().any(|d| d.severity == Severity::Error) {
-        return finish(json, None, raw, &diagnostics);
+        return finish(json, None, raw, &diagnostics, policy);
     }
     let bodies: BTreeMap<String, String> = index_defs
         .iter()
@@ -115,7 +138,10 @@ pub(crate) fn run_expr(raw: &str, project: &Path, json: bool) -> ExitCode {
                 None
             }
         });
-    finish(json, lowered.as_ref(), raw, &diagnostics)
+    // `--deny` / `--deny-warnings`: a promoted diagnostic fails the lowering
+    // like an error, so nothing is lowered.
+    let lowered = lowered.filter(|_| !policy.any_denied(&diagnostics));
+    finish(json, lowered.as_ref(), raw, &diagnostics, policy)
 }
 
 /// Print the outcome and pick the exit code.
@@ -124,6 +150,7 @@ fn finish(
     lowered: Option<&(String, lute_ir::ExprNode)>,
     raw: &str,
     diagnostics: &[Diagnostic],
+    policy: &DenyPolicy,
 ) -> ExitCode {
     let report = Report {
         ok: lowered.is_some(),
@@ -133,13 +160,21 @@ fn finish(
         diagnostics,
     };
     let stdout = if json {
-        let payload = match serde_json::to_value(&report) {
+        let mut payload = match serde_json::to_value(&report) {
             Ok(value) => value,
             Err(e) => {
                 eprintln!("lute expr: failed to serialize the result: {e}");
                 return ExitCode::from(2);
             }
         };
+        if let Some(items) = payload
+            .get_mut("diagnostics")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for (diag, item) in diagnostics.iter().zip(items) {
+                crate::output::apply_deny_json(diag, policy, item);
+            }
+        }
         serde_json::to_string(&envelope::report(
             envelope::version::EXPR,
             if report.ok { 0 } else { 1 },
@@ -149,7 +184,7 @@ fn finish(
     } else {
         eprint!(
             "{}",
-            render_diagnostics(Path::new(EXPR_LABEL), diagnostics, &DenyPolicy::default())
+            render_diagnostics(Path::new(EXPR_LABEL), diagnostics, policy)
         );
         report.expr.map(serde_json::to_string).transpose()
     };
@@ -175,11 +210,12 @@ fn finish(
     }
 }
 
-/// Every non-component document of the project, assembled as `compile --all`
+/// Every non-component document of the project, assembled as whole-project `compile`
 /// assembles it, in source-path order.
 fn project_documents(
     cache: &InputCache,
     project: &Path,
+    permission_profile: Option<&str>,
 ) -> Result<Vec<(PathBuf, BuiltInput)>, String> {
     let mut files = find_lute_files(project).map_err(|e| {
         format!(
@@ -194,7 +230,8 @@ fn project_documents(
         .into_iter()
         .map(|path| {
             let text = read_document(&path)?;
-            let (built, _) = assemble_input(cache, &path, text, None, Some(project), None);
+            let (built, _) =
+                assemble_input(cache, &path, text, None, Some(project), permission_profile);
             Ok((path, built))
         })
         .collect()

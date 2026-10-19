@@ -71,14 +71,14 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
          <beat id=\"gift\" on=\"gift\" once=\"false\" when=\"occasion.payload.to == 'ren'\">\n  \
          @narrator: A gift.\n</beat>\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     dir
 }
 
 fn play(dir: &Path, script: &str) -> (Option<i32>, String) {
     write(dir, "s.play.yaml", script);
-    run(dir, &["play", ".", "--script", "s.play.yaml"])
+    run(dir, &["play", "--project", ".", "--script", "s.play.yaml"])
 }
 
 /// Each non-member a play writes or expects is refused before anything
@@ -187,7 +187,7 @@ fn a_payload_field_typed_by_an_unknown_domain_is_refused_at_the_plugin() {
         "plugins/g.x/occasions/o.yaml",
         &OCCASIONS.replace("domain: route", "domain: rotue"),
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{t}");
     let line = t
         .lines()

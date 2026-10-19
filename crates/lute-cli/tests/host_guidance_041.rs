@@ -36,7 +36,7 @@ fn schema_def_unused_names_the_host_escape() {
         "a.lute",
         "---\nkind: scene\nid: a\ndefs:\n  local: \"user.level > 1\"\n---\n## A\n@narrator: {{user.level}}\n",
     );
-    let text = stdout(&["check-project"], &dir);
+    let text = stdout(&["check", "--project"], &dir);
     let schema = dir.join("world.schema.yaml");
     assert!(
         text.contains(&format!(

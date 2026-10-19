@@ -314,8 +314,8 @@ engine actually plays — one entry per line/choice/jump, in order:
 $ ./target/debug/lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.47.2",
-  "irVersion": "0.47.2",
+  "lute": "0.48.0",
+  "irVersion": "0.48.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": ["lute.core/1"],
   "meta": {
@@ -397,11 +397,11 @@ the artifact emitted successfully. It is not proof the scene is playable end to 
 runtime property, verified at integration time (see below).
 
 Finally, `lute trace` lets you **preview a playthrough** without opening the game — you tell it
-which choice to take at each branch with `--choose <branchId>=<choiceId>`, and it walks the
+which choice to take at each branch with `--choice <branchId>=<choiceId>`, and it walks the
 scene and prints exactly what would show on screen:
 
 ```
-$ ./target/debug/lute trace my-scene.lute --choose orderChoice=black
+$ ./target/debug/lute trace my-scene.lute --choice orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
@@ -535,7 +535,7 @@ profiles:
     plugins: {}
 ```
 
-```lute check-project="docs/examples/episodes/booth.lute"
+```lute check-in-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 title: The Usual Booth
@@ -560,7 +560,7 @@ state:
 Vocabulary is declared per document, so the booth repeats the diner's `enums:` block verbatim.
 Two files is exactly where you stop copying it: move the block into a `vocabulary.schema.yaml`
 sitting next to them and replace it in each scene with `uses: [./vocabulary.schema.yaml]`.
-`check-project` still reports the same three `ok:` lines, and that is precisely the layout
+`check --project` still reports the same three `ok:` lines, and that is precisely the layout
 `lute init` scaffolds.
 
 `booth.lute` is `mira.s01ep02`. It declares `after: 'visited("mira.s01ep01")'` — it becomes
@@ -571,7 +571,7 @@ Single-file `lute check` can't judge any of this — a `.lute` file on its own h
 other episodes exist. The **project** checker can. Point it at the folder:
 
 ```
-$ ./target/debug/lute check-project episodes
+$ ./target/debug/lute check --project episodes
 ok: episodes/booth.lute (0 warning(s))
 ok: episodes/diner.lute (0 warning(s))
 ok: episodes (2 file(s), 0 project-wide warning(s))
@@ -582,7 +582,7 @@ inspect the graph you just described. `lute scenario` is the read-only design su
 everything `after:` implies. Bare, it prints the whole graph in play order:
 
 ```
-$ ./target/debug/lute scenario episodes
+$ ./target/debug/lute scenario --project episodes
 project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
@@ -591,10 +591,10 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <key>` answers "can the player ever get here, and by what route?":
+`reach --node <key>` answers "can the player ever get here, and by what route?":
 
 ```
-$ ./target/debug/lute scenario episodes reach mira.s01ep02
+$ ./target/debug/lute scenario --project episodes reach --node mira.s01ep02
 project root: episodes
 reach scene(mira.s01ep02):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -603,12 +603,12 @@ reach scene(mira.s01ep02):
     - scene(mira.s01ep01): Reachable — a satisfiable route exists under your declared routes.
 ```
 
-And `envelope <key>` answers the question you most want before writing a `when=` guard:
+And `envelope --node <key>` answers the question you most want before writing a `when=` guard:
 *what state is safe to read here?* — i.e. what every route into this scene guarantees is
 already set:
 
 ```
-$ ./target/debug/lute scenario episodes envelope mira.s01ep02
+$ ./target/debug/lute scenario --project episodes envelope --node mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
@@ -617,7 +617,7 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check --project`, surfaced here):
     (none)
 ```
 
@@ -630,7 +630,7 @@ your *declared* `after` routes; they're what holds if play follows the graph you
 
 ### What the project checker catches for you
 
-These are the connectivity diagnostics `check-project` adds on top of single-file `check`
+These are the connectivity diagnostics `check --project` adds on top of single-file `check`
 (which structurally can't see across files) — the ones you'll meet most, not an exhaustive
 list. Each is a helpful catch, not a nuisance:
 
@@ -835,7 +835,7 @@ snippets):
 Building a game the engine drives by moments — the player walks into the hub, talks to
 someone, ends the day — rather than a fixed episode order? `lute init --template beats
 my-game` scaffolds a working example: an occasions plugin, beats that answer those moments, a
-quest, lore entries, a play script, and scenario tests, where `lute check-project`, `lute test`,
+quest, lore entries, a play script, and scenario tests, where `lute check --project`, `lute test`,
 and `lute play` all pass as scaffolded (`docs/proposals/scenario-dsl/0.21.0.md` and `0.22.0.md`
 specify beats, occasions, and play scripts).
 

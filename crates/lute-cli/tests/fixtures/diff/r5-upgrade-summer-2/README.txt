@@ -5,7 +5,7 @@ Not hit by Summer Station itself (its needles carry no attributes); found while 
 Compatibility section.
 
 Command:
-  cd /tmp/r5-upgrade-summer-2 && lute play --script plays/p.play.yaml .
+  cd /tmp/r5-upgrade-summer-2 && lute play --project . --script plays/p.play.yaml
   (0.25.1 comparison: copy the dir, set luteVersion "0.25.1", run /tmp/r5-upgrade-bin/lute-0.25.1 play --script plays/p.play.yaml .)
 
 The scene presents   @sol{emotion="happy"}: Vega, Deneb, Altair.

@@ -1,7 +1,7 @@
 # Death by the Orderly within the hour, then the loop: the next night the
 # gravel remembers her shoes.
 #
-#   lute play . --script plays/taken.play.yaml
+#   lute play --project . --script plays/taken.play.yaml
 steps:
   - include: steps/opening.steps.yaml
   - occasion: enter

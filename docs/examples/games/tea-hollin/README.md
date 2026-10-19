@@ -31,11 +31,11 @@ The smallest project in the set, written the way the getting-started guides teac
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/tea-hollin
-lute test docs/examples/games/tea-hollin                       # 7 tests + 3 plays
-lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
-lute calendar docs/examples/games/tea-hollin --axis clock      # when the kettle sings, where the chain stands
-lute trace docs/examples/games/tea-hollin/scenes/kitchen.lute --choose askCook=scullery,leave
+lute check --deny-warnings --project docs/examples/games/tea-hollin
+lute test --project docs/examples/games/tea-hollin                       # 7 tests + 3 plays
+lute play --project docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
+lute calendar --project docs/examples/games/tea-hollin --axis clock      # when the kettle sings, where the chain stands
+lute trace docs/examples/games/tea-hollin/scenes/kitchen.lute --choice askCook=scullery,leave
 ```
 
 ## Origin

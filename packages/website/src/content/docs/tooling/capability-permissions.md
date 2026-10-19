@@ -86,7 +86,7 @@ that accepts authored or generated Lute should choose its ceiling independently:
 ```console
 $ lute check scene.lute --project . --permission-profile restricted
 $ lute compile scene.lute --project . --permission-profile restricted -o scene.json
-$ lute compile --all --project . --permission-profile restricted -o build
+$ lute compile --project . --permission-profile restricted -o build
 $ lute context scene.lute --json --project . --permission-profile restricted
 ```
 
@@ -96,7 +96,7 @@ profile's plugins and does not rewrite the source profile. A document containing
 `profile: authored` therefore cannot widen a host-pinned `restricted` policy.
 A missing project or profile is an explicit resolver error.
 
-`compile --all` checks every document with the same host ceiling before writing;
+`compile --project DIR -o OUT` (no document operand) checks every document with the same host ceiling before writing;
 if any document is denied, no denied or partial output set is produced.
 
 For streaming, the same frozen ceiling checks the trusted template and every
@@ -104,7 +104,7 @@ body unit:
 
 ```console
 $ printf '::set{scene.score = 1}\n' \
-    | lute compile-stream scenes/live.lute --project . \
+    | lute compile --stream scenes/live.lute --project . \
         --permission-profile restricted
 ```
 

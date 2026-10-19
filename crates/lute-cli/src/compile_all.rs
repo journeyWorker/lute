@@ -1,4 +1,4 @@
-//! `lute compile --all` — compile a whole project and index it.
+//! whole-project `lute compile` — compile a whole project and index it.
 //!
 //! `lute compile` handles ONE file, and `--project <dir>` only resolves that
 //! file's capability snapshot. But `docs/runtime/execution-model.md` requires an
@@ -13,7 +13,7 @@
 //! Nothing here re-derives project structure. The document set and each
 //! document's checks and artifacts come from one [`lute_model::ProjectModel`]
 //! build for the whole project, rather than one pass per file. This keeps
-//! `compile --all` aligned with the project's model semantics.
+//! whole-project `compile` aligned with the project's model semantics.
 //!
 //! ## All-or-nothing
 //! Every document is compiled IN MEMORY first. A single failing gate prints its
@@ -147,12 +147,12 @@ pub fn run(
         Err(ModelError::Index(errors)) => {
             for e in &errors {
                 eprintln!(
-                    "lute compile --all: {}",
+                    "lute compile: {}",
                     lute_core_span::plain_message(&e.to_string())
                 );
             }
             eprintln!(
-                "lute compile --all: {} vocabulary conflict(s); no output written",
+                "lute compile: {} vocabulary conflict(s); no output written",
                 errors.len()
             );
             return ExitCode::FAILURE;
@@ -169,14 +169,14 @@ pub fn run(
         for document in model.documents() {
             for diagnostic in &document.resolve_diags {
                 eprintln!(
-                    "lute compile --all: {} [{}] {}",
+                    "lute compile: {} [{}] {}",
                     document.path.display(),
                     diagnostic.code,
                     diagnostic.message
                 );
             }
         }
-        eprintln!("lute compile --all: project resolution failed; no output written");
+        eprintln!("lute compile: project resolution failed; no output written");
         return ExitCode::FAILURE;
     }
     let mut project_diagnostics = model.project_diagnostics().to_vec();
@@ -192,9 +192,9 @@ pub fn run(
         .collect();
     if !project_errors.is_empty() {
         for (_, diagnostic) in project_errors {
-            eprintln!("lute compile --all: {}", diagnostic.text());
+            eprintln!("lute compile: {}", diagnostic.text());
         }
-        eprintln!("lute compile --all: project diagnostics prevent output");
+        eprintln!("lute compile: project diagnostics prevent output");
         return ExitCode::FAILURE;
     }
 
@@ -208,7 +208,7 @@ pub fn run(
         }
         let Some(rel) = rel_slash(&doc.path, project) else {
             eprintln!(
-                "lute compile --all: {} is not under --project {}",
+                "lute compile: {} is not under --project {}",
                 doc.path.display(),
                 project.display()
             );
@@ -271,7 +271,7 @@ pub fn run(
             print!("{rendered}");
         }
         eprintln!(
-            "lute compile --all: {} of {} document(s) failed; no output written",
+            "lute compile: {} of {} document(s) failed; no output written",
             failures.len(),
             failures.len() + compiled.len()
         );
@@ -297,10 +297,10 @@ pub fn run(
     let collisions = voice_key_collisions(&inputs);
     if !collisions.is_empty() {
         for c in &collisions {
-            eprintln!("lute compile --all: error [{E_DUP_VOICEKEY}] {c}");
+            eprintln!("lute compile: error [{E_DUP_VOICEKEY}] {c}");
         }
         eprintln!(
-            "lute compile --all: {} voiceKey collision(s); no output written",
+            "lute compile: {} voiceKey collision(s); no output written",
             collisions.len()
         );
         return ExitCode::FAILURE;
@@ -311,12 +311,12 @@ pub fn run(
         Err(errors) => {
             for e in &errors {
                 eprintln!(
-                    "lute compile --all: {}",
+                    "lute compile: {}",
                     lute_core_span::plain_message(&e.to_string())
                 );
             }
             eprintln!(
-                "lute compile --all: {} vocabulary conflict(s); no output written",
+                "lute compile: {} vocabulary conflict(s); no output written",
                 errors.len()
             );
             return ExitCode::FAILURE;
@@ -374,7 +374,7 @@ pub fn run(
     }
 
     eprintln!(
-        "lute compile --all: {} document(s) -> {}",
+        "lute compile: {} document(s) -> {}",
         compiled.len(),
         out_dir.display()
     );

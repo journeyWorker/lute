@@ -18,7 +18,7 @@ fn zero_span() -> Span {
 }
 
 /// `files` written to a fresh directory and imported (every one) through
-/// the same resolver `check-project` uses.
+/// the same resolver whole-project `check` uses.
 fn imports(files: &[(&str, &str)]) -> SchemaImports {
     let dir = lute_scratch::ScratchDir::new();
     for (name, text) in files {

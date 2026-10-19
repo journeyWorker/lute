@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 /// The `--deny <CODE>` / `--deny-warnings` promotion policy (spec §5). Errors are
 /// never demotable (spec §6), so promotion only ever turns a NON-error into an
 /// error for the verdict, exit code, and reported severity.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct DenyPolicy {
     pub(crate) codes: BTreeSet<String>,
     pub(crate) warnings: bool,
@@ -80,12 +80,14 @@ pub(crate) fn check_result_json(
     Ok(value)
 }
 
-/// Serialize the project-wide report envelope. File rows and project
-/// diagnostics are both assembled through [`check_result_json`] and
-/// [`diagnostic_json`], so deny promotion cannot drift between commands.
-pub(crate) fn project_report_json(
+/// Serialize the `0.48.0.check` payload (both modes): one `files[]` entry per
+/// document checked, and `project_diagnostics` exactly when the whole project
+/// ran. File rows and project diagnostics are both assembled through
+/// [`check_result_json`] and [`diagnostic_json`], so deny promotion cannot
+/// drift between modes.
+pub(crate) fn check_report_json(
     file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
-    project_diags: &[(std::path::PathBuf, Diagnostic)],
+    project_diags: Option<&[(std::path::PathBuf, Diagnostic)]>,
     ok: bool,
     policy: &DenyPolicy,
 ) -> Result<Value, serde_json::Error> {
@@ -100,20 +102,22 @@ pub(crate) fn project_report_json(
             Ok(value)
         })
         .collect::<Result<Vec<_>, serde_json::Error>>()?;
-    let project = project_diags
-        .iter()
-        .map(|(path, diagnostic)| {
-            let mut value = diagnostic_json(diagnostic, policy)?;
-            if let Value::Object(map) = &mut value {
-                map.insert("path".into(), path.display().to_string().into());
-            }
-            Ok(value)
-        })
-        .collect::<Result<Vec<_>, serde_json::Error>>()?;
     let mut report = Map::new();
     report.insert("ok".into(), ok.into());
     report.insert("files".into(), files.into());
-    report.insert("project_diagnostics".into(), project.into());
+    if let Some(project_diags) = project_diags {
+        let project = project_diags
+            .iter()
+            .map(|(path, diagnostic)| {
+                let mut value = diagnostic_json(diagnostic, policy)?;
+                if let Value::Object(map) = &mut value {
+                    map.insert("path".into(), path.display().to_string().into());
+                }
+                Ok(value)
+            })
+            .collect::<Result<Vec<_>, serde_json::Error>>()?;
+        report.insert("project_diagnostics".into(), project.into());
+    }
     Ok(Value::Object(report))
 }
 
@@ -145,7 +149,7 @@ pub(crate) fn write_stdout(s: &str) -> std::io::Result<()> {
 /// trailing ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document
 /// order. Shared by [`print_human`] (the `check`/`compile` diagnostic list),
 /// `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*` codes
-/// render exactly as check diagnostics do"), and `compile --locales`'
+/// render exactly as check diagnostics do"), and `compile --locale-bundle`'
 /// `W-L10N-MISSING` stream — ONE line format, never a second convention.
 ///
 /// Rendered to a `String` rather than printed so a caller whose STDOUT is

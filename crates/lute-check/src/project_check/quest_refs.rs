@@ -7,7 +7,7 @@ use lute_syntax::ast::{Document, Node};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-/// dsl 0.5.1 §1.4: a `check-project` reference to a reserved
+/// dsl 0.5.1 §1.4: a whole-project `check` reference to a reserved
 /// `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` path whose
 /// `<id>` (or `<oid>`, under a project-defined quest) no quest document in
 /// the walked directory defines — when that directory is not a whole project
@@ -175,7 +175,7 @@ fn quest_doc_hint(docs: &[ProjectDoc<'_>], id: &str) -> Option<String> {
 /// document's `id:` written where its quest id belongs. `whole_project`
 /// (the walk covers a `lute.project.yaml` root) makes it
 /// [`E_QUEST_REF_UNKNOWN`]; else [`W_QUEST_REF_UNKNOWN`]. Only ever called
-/// from `check-project`; single-file `check()` has no such graph and MUST
+/// from whole-project `check`; single-file `check()` has no such graph and MUST
 /// NOT emit either code.
 pub fn check_project_quest_refs(
     docs: &[ProjectDoc<'_>],

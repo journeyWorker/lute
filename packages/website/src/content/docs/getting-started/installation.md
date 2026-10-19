@@ -4,7 +4,7 @@ description: Install the Lute CLI with bunx, a global bun install, or from Rust 
 ---
 
 Lute ships as a single command-line tool, `lute`. It reads `.lute` scenario files and checks,
-compiles, traces, and inspects them. The current language version is **0.47.2**.
+compiles, traces, and inspects them. The current language version is **0.48.0**.
 
 ## Quick start with `bunx`
 
@@ -60,9 +60,9 @@ Whichever route you took, confirm the tool is on your `PATH`:
 
 ```
 $ lute version
-lute toolchain 0.47.2
-language      0.47.2
-IR schema     0.47.2
+lute toolchain 0.48.0
+language      0.48.0
+IR schema     0.48.0
 ```
 
 The three lines are the **toolchain** (this CLI), the **language** the checker enforces, and the
@@ -75,10 +75,10 @@ For scripts and CI, `--json` prints the same three axes as one object:
 
 ```
 $ lute version --json
-{"toolchain":"0.47.2","language":"0.47.2","ir":"0.47.2"}
+{"toolchain":"0.48.0","language":"0.48.0","ir":"0.48.0"}
 ```
 
-(`lute --version` also works and prints just `lute 0.47.2` — the toolchain axis alone.)
+(`lute --version` also works and prints just `lute 0.48.0` — the toolchain axis alone.)
 
 If your editor runs the language server, check that it is the same build: `lute-lsp --version`
 prints `lute-lsp <version>`, and `lute doctor` compares the `lute-lsp` first on your `PATH` with
@@ -88,7 +88,7 @@ binary the launcher starts; if it cannot tell which one that is, the line ends
 `(compared by reported version only)`.
 
 **If your editor and the terminal disagree** about a file — red underlines on a file `lute check`
-calls `ok`, or the other way round — trust the terminal and run `lute doctor .` in the project: the
+calls `ok`, or the other way round — trust the terminal and run `lute doctor --project .` in the project: the
 usual cause is an editor language server older than your `lute`, and restarting the editor after an
 upgrade fixes it.
 
@@ -97,7 +97,7 @@ upgrade fixes it.
 Head to [Write your first scene](/getting-started/first-scene/) to build a real `.lute` file from
 an empty file, running `lute` at every step.
 
-Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
-`lute init --template beats <dir>` scaffolds a game driven by [beats and occasions](/tooling/play/)
+Or start from a whole project: `lute init <DIR>` scaffolds a minimal one, and
+`lute init --template beats <DIR>` scaffolds a game driven by [beats and occasions](/tooling/play/)
 — an occasions plugin, beats, a quest, lore entries, a play script, and scenario tests that
-`lute check-project`, `lute test`, and `lute play` pass as scaffolded.
+whole-project `lute check`, `lute test`, and `lute play` pass as scaffolded.

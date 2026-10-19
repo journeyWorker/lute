@@ -82,7 +82,7 @@ fn the_after_premise_quest_mock_is_accepted() {
         "a.test.yaml",
         "file: wed.lute\nexpect:\n  transcriptContains: [\"Wednesday.\"]\n",
     );
-    let (code, t) = run(&dir, &["test", "."]);
+    let (code, t) = run(&dir, &["test", "--project", "."]);
     assert_eq!(code, Some(1), "{t}");
     assert!(
         t.contains("add `quests: { caseClosed: complete }` to the mocks"),
@@ -93,7 +93,7 @@ fn the_after_premise_quest_mock_is_accepted() {
         "a.test.yaml",
         "file: wed.lute\nquests: { caseClosed: complete }\nexpect:\n  transcriptContains: [\"Wednesday.\"]\n",
     );
-    let (code, t) = run(&dir, &["test", "."]);
+    let (code, t) = run(&dir, &["test", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
 }
 
@@ -114,7 +114,7 @@ fn a_spent_once_user_entry_is_mocked_by_entries_read() {
             "a.test.yaml",
             &format!("file: gate.lute\nentry: gateNote\nentriesRead: {{ user: [gateNote] }}\nexpect:\n  {expect}\n"),
         );
-        run(&dir, &["test", "."])
+        run(&dir, &["test", "--project", "."])
     };
     let (code, t) = test("transcriptContains: [\"The gate is open.\"]");
     assert_eq!(code, Some(1), "{t}");
@@ -130,7 +130,7 @@ fn a_spent_once_user_entry_is_mocked_by_entries_read() {
         "a.test.yaml",
         "file: gate.lute\nentry: gateNote\nexpect:\n  transcriptContains: [\"The gate is open.\"]\n",
     );
-    assert_eq!(run(&dir, &["test", "."]).0, Some(0));
+    assert_eq!(run(&dir, &["test", "--project", "."]).0, Some(0));
 }
 
 /// An imported rule's aggregate cycle: once at the schema line, counting
@@ -156,7 +156,7 @@ fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
             &format!("---\nkind: scene\nid: {s}\n---\n\n## One\n\n@narrator: Hi.\n::assert{{knock(earth)}}\n"),
         );
     }
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{t}");
     let tops: Vec<&str> = t
         .lines()
@@ -193,9 +193,9 @@ fn occasion_target_renders_the_cast_name_and_unspoken_dups_sit_at_the_cast() {
         "t.test.yaml",
         "file: lore/catch.lute\nbeat: bug\nstate: { occasion.target: ant }\nexpect:\n  transcriptContains: [\"A Inchlet.\"]\n",
     );
-    let (code, t) = run(&dir, &["test", "."]);
+    let (code, t) = run(&dir, &["test", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     let dup = t
         .lines()
         .find(|l| l.contains("W-DISPLAY-NAME-DUP"))
@@ -215,7 +215,7 @@ fn a_plugin_directive_attribute_named_when_is_refused_at_load() {
         "scenes/s.lute",
         "---\nkind: scene\nid: s\n---\n\n## One\n\n@narrator: Hi.\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_ne!(code, Some(0), "{t}");
     assert!(
         t.contains("E-PLUGIN-PARSE")

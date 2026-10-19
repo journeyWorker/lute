@@ -1,4 +1,4 @@
-//! `lute compile --all` acceptance (dsl 0.8.0 adoption surface): project-wide
+//! whole-project `lute compile` acceptance (dsl 0.8.0 adoption surface): project-wide
 //! compile plus the `project.index.json` UNION every engine previously had to
 //! re-implement by hand (`docs/runtime/execution-model.md`).
 //!
@@ -117,7 +117,6 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     let out = lute_scratch::ScratchDir::named("happy-out");
     let result = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -143,7 +142,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.47.2");
+    assert_eq!(index["irVersion"], "0.48.0");
     assert!(
         index["capabilitySnapshot"]
             .as_str()
@@ -204,7 +203,6 @@ fn all_is_byte_deterministic_across_runs() {
         let out = lute_scratch::ScratchDir::named(&format!("determinism-out{i}"));
         let result = run(&[
             "compile",
-            "--all",
             "--project",
             dir.to_str().unwrap(),
             "-o",
@@ -237,7 +235,6 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
     // The output directory must stay EMPTY — not "mostly written".
     let result = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -263,52 +260,6 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
 }
 
 #[test]
-fn all_without_project_is_a_usage_error() {
-    let out = lute_scratch::ScratchDir::named("usage-noproject");
-    let result = run(&["compile", "--all", "-o", out.to_str().unwrap()]);
-    assert_eq!(result.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(
-        stderr.contains("--all requires the project directory"),
-        "got: {stderr}"
-    );
-    assert!(
-        stderr.contains("Usage: lute compile --all"),
-        "got: {stderr}"
-    );
-}
-
-#[test]
-fn all_without_out_is_a_usage_error() {
-    let dir = two_doc_project("usage-noout");
-    let result = run(&["compile", "--all", "--project", dir.to_str().unwrap()]);
-    assert_eq!(result.status.code(), Some(2));
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(stderr.contains("--all requires -o"), "got: {stderr}");
-}
-
-#[test]
-fn all_with_a_file_argument_is_a_usage_error() {
-    let dir = two_doc_project("usage-file");
-    let out = lute_scratch::ScratchDir::named("usage-file-out");
-    let result = run(&[
-        "compile",
-        "--all",
-        "--project",
-        dir.to_str().unwrap(),
-        "-o",
-        out.to_str().unwrap(),
-        dir.join("a.lute").to_str().unwrap(),
-    ]);
-    assert_eq!(result.status.code(), Some(2));
-    assert!(
-        String::from_utf8_lossy(&result.stderr).contains("--all takes no <FILE>"),
-        "stderr: {}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-}
-
-#[test]
 fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
     let dir = lute_scratch::ScratchDir::named("conflict");
     write(&dir, "lute.project.yaml", PROJECT_YAML);
@@ -329,7 +280,6 @@ fn a_conflicting_cross_document_signature_exits_one_and_writes_nothing() {
     let out = lute_scratch::ScratchDir::named("conflict-out");
     let result = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -385,7 +335,6 @@ fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
     let out = std::process::Command::new(BIN)
         .args([
             "compile",
-            "--all",
             "--project",
             dir.to_str().unwrap(),
             "-o",
@@ -413,7 +362,7 @@ fn compile_all_warns_only_for_a_nested_manifest_that_would_have_mattered() {
     );
 }
 
-/// D-S's other half: `check-project` resolves each file against its OWN
+/// D-S's other half: whole-project `check` resolves each file against its OWN
 /// nearest root, so every nested manifest governs and the warning is
 /// unreachable. Same fixture, different command, zero warnings.
 #[test]
@@ -441,7 +390,7 @@ fn check_project_never_reports_project_inert() {
     std::fs::write(dir.join("differs/scenes/c.lute"), scene("c")).unwrap();
 
     let out = std::process::Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     let text = format!(
@@ -491,7 +440,6 @@ fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
     let out = std::process::Command::new(BIN)
         .args([
             "compile",
-            "--all",
             "--project",
             dir.to_str().unwrap(),
             "-o",
@@ -539,7 +487,7 @@ fn all_indexes_capability_unions_from_starfall_example() {
     let out = lute_scratch::ScratchDir::named("starfall-unions-out");
     let result = support::run_cli([
         "compile",
-        "--all",
+        "--project",
         root.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),
@@ -597,7 +545,7 @@ fn all_types_bridge_results_as_declared() {
     let out = lute_scratch::ScratchDir::named("lantern-bridge-results-out");
     let result = support::run_cli([
         "compile",
-        "--all",
+        "--project",
         root.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),

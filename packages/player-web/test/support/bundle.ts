@@ -35,13 +35,13 @@ export const luteBinary = (): string => {
 }
 
 /**
- * `lute compile --all <project> [--locales <bundle>]` into
+ * `lute compile --project <project> [--locale-bundle <bundle>]` into
  * `fixturesRoot/<name>`; returns the bundle directory.
  */
 export const compileProject = (name: string, project: string, locales?: string): string => {
   const output = join(fixturesRoot, name)
   rmSync(output, { recursive: true, force: true })
   mkdirSync(fixturesRoot, { recursive: true })
-  run([luteBinary(), "compile", "--all", project, ...(locales === undefined ? [] : ["--locales", locales]), "-o", output])
+  run([luteBinary(), "compile", "--project", project, ...(locales === undefined ? [] : ["--locale-bundle", locales]), "-o", output])
   return output
 }

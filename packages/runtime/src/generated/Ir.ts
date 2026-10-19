@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-ir-0.47.schema.json
+// Source: schemas/lute-ir-0.48.schema.json
 
 import * as Schema from "effect/Schema";
 
@@ -1350,7 +1350,7 @@ export const sectionEntry = Schema.Struct({
 export type sectionEntry = typeof sectionEntry.Type;
 
 /**
- * dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (`lute compile --all`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labelsclock.weekday` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared. dsl 0.27.0 §4: a finite clock (`last` / `days`) stops at its last position — an advance whose destination lies past it walks there (raising `dayEnd` / `dayStart` at each midnight it crosses on the way), raises the last day's `dayEnd` (never `slot`) and ends the clock; any later advance is the usage error `E-CLOCK-END` until a new run starts the clock over.
+ * dsl 0.24.0 §1: the project's declared clock, verbatim from the schema's `clock:` block. Carried on the artifact root and on `project.index.json` (whole-project `lute compile`) as `clock`. The engine derives the reserved read-only paths from it — `clock.index` = `(day - 1) * len(slots) + slotIndex` (`day - 1` without slots; monotone), `clock.weekday` = `(week.first + day - 1) mod week.length`, `clock.weekdayLabel` = `week.labelsclock.weekday` — none of which is a `state` row, and spends `once: day|slot` beats by it. An advance moves the clock forward only (the last slot wraps to the first slot of the next day), settles quests and raises `raise` (`dayEnd` / `dayStart` at each midnight it crosses, `slot` where it stops) when declared. dsl 0.27.0 §4: a finite clock (`last` / `days`) stops at its last position — an advance whose destination lies past it walks there (raising `dayEnd` / `dayStart` at each midnight it crosses on the way), raises the last day's `dayEnd` (never `slot`) and ends the clock; any later advance is the usage error `E-CLOCK-END` until a new run starts the clock over.
  */
 export const clockDecl = Schema.Struct({
   "day": Schema.String,
@@ -1441,7 +1441,7 @@ export const indexStateDomain = Schema.Struct({
 export type indexStateDomain = typeof indexStateDomain.Type;
 
 /**
- * `project.index.json` (`lute compile --all`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md).
+ * `project.index.json` (whole-project `lute compile`): the document table and the union of every compiled document's vocabulary an engine needs before it evaluates anything — the six vocabulary arrays always present, every other key omitted when empty (docs/runtime/execution-model.md).
  */
 export const projectIndex = Schema.Struct({
   "beats": Schema.optionalKey(Schema.Array(Schema.suspend(() => indexBeat))),

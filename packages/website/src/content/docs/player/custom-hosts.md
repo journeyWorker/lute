@@ -339,7 +339,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.47",
+  "saveVersion": "0.48",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -348,7 +348,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.47"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.48"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 Since 0.47 a profile also holds the **lineage** when one was written (see the cross-run model below). A profile of another `profileVersion` is never refused: its read marks and settings are kept, and it has no lineage.
 
@@ -366,7 +366,7 @@ What survives a page reload:
 
 ## Locale (0.47)
 
-The locale is a setting (`settings.locale`), not a mount option. A loaded bundle's **source locale** is the project index's `contentLang` (the manifest's `defaults.contentLang`), else the `contentLang` of the first artifact (in `index.documents` order) whose meta declares one, else `"en"`; its **compiled locales** are the keys of the artifacts' `texts` and `promptTexts` maps (`lute compile --locales`), so a locale that translates only a prompt is listed too. The `Settings` screen model's `locales` is the source locale followed by the compiled locales (sorted, without duplicates). A new profile starts at the source locale; a saved locale the bundle does not carry (a 0.46 profile's `"en"` in an `en-US` project) reads source text, and `Settings` shows the source locale selected.
+The locale is a setting (`settings.locale`), not a mount option. A loaded bundle's **source locale** is the project index's `contentLang` (the manifest's `defaults.contentLang`), else the `contentLang` of the first artifact (in `index.documents` order) whose meta declares one, else `"en"`; its **compiled locales** are the keys of the artifacts' `texts` and `promptTexts` maps (`lute compile --locale-bundle`), so a locale that translates only a prompt is listed too. The `Settings` screen model's `locales` is the source locale followed by the compiled locales (sorted, without duplicates). A new profile starts at the source locale; a saved locale the bundle does not carry (a 0.46 profile's `"en"` in an `en-US` project) reads source text, and `Settings` shows the source locale selected.
 
 For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (`texts[locale]`), branch and hub prompts (`promptTexts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
 

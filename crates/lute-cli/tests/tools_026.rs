@@ -86,7 +86,7 @@ fn the_tie_check_reads_the_must_set_at_a_beats_slot() {
         "---\nkind: lore\nid: barks\nuses: ../world.schema.yaml\n---\n\
          <entry id=\"stranger\" on=\"knock\" when=\"!holds('met', ['maud'])\">\n@narrator: Who?\n</entry>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
@@ -104,7 +104,7 @@ fn a_beat_whose_error_was_folded_leaves_the_tie_check() {
          <beat id=\"probeA\" on=\"peer\" priority=\"7\" when=\"run.nope > 2\">\n@narrator: A.\n</beat>\n\
          <beat id=\"probeB\" on=\"peer\" priority=\"7\" when=\"run.day > 1\">\n@narrator: B.\n</beat>\n",
     );
-    let t = text(&run(&["check-project", dir.to_str().unwrap()]));
+    let t = text(&run(&["check", "--project", dir.to_str().unwrap()]));
     assert!(t.contains("(+1 more:"), "the second read is folded: {t}");
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
@@ -120,7 +120,13 @@ fn beats_shows_a_fallback_covered_by_an_earlier_beat() {
          <entry id=\"spineGate\" on=\"gate\" priority=\"-10\" when=\"!holds('canPass', ['lens'])\">\n@narrator: Spine.\n</entry>\n\
          <entry id=\"liveGate\" on=\"gate\" priority=\"-20\" when=\"run.day > 3\">\n@narrator: Live.\n</entry>\n",
     );
-    let out = run(&["beats", dir.to_str().unwrap(), "--occasion", "gate"]);
+    let out = run(&[
+        "beats",
+        "--project",
+        dir.to_str().unwrap(),
+        "--occasion",
+        "gate",
+    ]);
     let t = text(&out);
     let row = |id: &str| {
         t.lines()
@@ -130,7 +136,7 @@ fn beats_shows_a_fallback_covered_by_an_earlier_beat() {
     };
     assert!(row("spineGate").contains("covered by areaGate"), "{t}");
     assert!(!row("liveGate").contains("covered by"), "{t}");
-    let json = run(&["beats", dir.to_str().unwrap(), "--json"]);
+    let json = run(&["beats", "--project", dir.to_str().unwrap(), "--json"]);
     assert!(
         text(&json).contains("\"coveredBy\": \"areaGate\""),
         "{}",
@@ -141,9 +147,9 @@ fn beats_shows_a_fallback_covered_by_an_earlier_beat() {
 #[test]
 fn scenario_facts_draws_producer_edges_and_layers_over_them() {
     let dir = project("facts");
-    let plain = text(&run(&["scenario", dir.to_str().unwrap()]));
+    let plain = text(&run(&["scenario", "--project", dir.to_str().unwrap()]));
     assert!(!plain.contains("fact edges"), "{plain}");
-    let out = run(&["scenario", dir.to_str().unwrap(), "--facts"]);
+    let out = run(&["scenario", "--project", dir.to_str().unwrap(), "--facts"]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(
@@ -155,19 +161,21 @@ fn scenario_facts_draws_producer_edges_and_layers_over_them() {
     assert!(!layer0.contains("scene(tower)"), "{t}");
     let json = text(&run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "--facts",
-        "--format",
-        "json",
+        "--json",
     ]));
     assert!(json.contains("\"factEdges\""), "{json}");
     assert!(json.contains("\"via\": \"canPass(lens)\""), "{json}");
     // A sub-view has no graph to draw edges on.
     let bad = run(&[
         "scenario",
+        "--project",
         dir.to_str().unwrap(),
         "--facts",
         "reach",
+        "--node",
         "intro",
     ]);
     assert_eq!(bad.status.code(), Some(2), "{}", text(&bad));
@@ -177,9 +185,9 @@ fn scenario_facts_draws_producer_edges_and_layers_over_them() {
 fn doctor_strict_fails_on_any_failed_check() {
     // No `.lute` file and no manifest: `✗` checks.
     let dir = lute_scratch::ScratchDir::named("doctor");
-    let lax = run(&["doctor", dir.to_str().unwrap()]);
+    let lax = run(&["doctor", "--project", dir.to_str().unwrap()]);
     assert!(text(&lax).contains('✗'), "{}", text(&lax));
     assert_eq!(lax.status.code(), Some(0));
-    let strict = run(&["doctor", dir.to_str().unwrap(), "--strict"]);
+    let strict = run(&["doctor", "--project", dir.to_str().unwrap(), "--strict"]);
     assert_eq!(strict.status.code(), Some(1), "{}", text(&strict));
 }

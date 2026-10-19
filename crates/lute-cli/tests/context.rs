@@ -558,7 +558,7 @@ fn task_context_refuses_unknown_and_reports_target() {
             file.to_str().unwrap(),
             "--project",
             proj.to_str().unwrap(),
-            "--target",
+            "--node",
             "scene:mara.first",
             "--json",
         ])
@@ -575,7 +575,7 @@ fn task_context_refuses_unknown_and_reports_target() {
             file.to_str().unwrap(),
             "--project",
             proj.to_str().unwrap(),
-            "--target",
+            "--node",
             "scene:missing",
         ])
         .output()
@@ -628,7 +628,7 @@ fn nested_duplicate_choice_key_is_ambiguous() {
             file.to_str().unwrap(),
             "--project",
             proj.to_str().unwrap(),
-            "--target",
+            "--node",
             "choice:mara.first:nested.coffee",
         ])
         .output()
@@ -645,7 +645,7 @@ fn drowned_crown_target_context_golden() {
         .args([
             "context",
             root.to_str().unwrap(),
-            "--target",
+            "--node",
             "choice:last.crown:crownChoice.wear",
             "--json",
             "--max-items",
@@ -696,7 +696,7 @@ fn task_context_discovers_project_root_for_file_targets() {
         .args([
             "context",
             file.to_str().unwrap(),
-            "--target",
+            "--node",
             "scene:mara.first",
             "--json",
         ])
@@ -747,7 +747,7 @@ fn related_scripts_use_typed_include_expansion() {
             file.to_str().unwrap(),
             "--project",
             proj.to_str().unwrap(),
-            "--target",
+            "--node",
             "shot:mara.first:Mara",
             "--json",
         ])

@@ -1,7 +1,7 @@
 //! `lute loc` — localization export/import and production word-count reporting.
 //!
 //! Three surfaces over a project's `.lute` documents. `export` and `report` are
-//! read-only walks built on the SAME deterministic file walk `check-project`
+//! read-only walks built on the SAME deterministic file walk whole-project `check`
 //! uses ([`crate::find_lute_files`] — byte-sorted, symlink-deduped) and the SAME
 //! syntax-layer parse the checker runs ([`lute_syntax::parse`]). Neither
 //! validates: a document that fails to parse (any `Error`-severity parse
@@ -31,13 +31,13 @@
 //! source text the compiler emits for the record
 //! ([`lute_compile::locale::source_hash`]) — a line's text with inline markup
 //! and escapes removed, an option's text, a prompt. `loc import` stores it in
-//! the bundle and `compile --locales` reports `W-L10N-STALE` when the source
+//! the bundle and `compile --locale-bundle` reports `W-L10N-STALE` when the source
 //! has changed since.
 //!
 //! ### `lineId` — the join that makes the round trip possible
 //! `lineId` is the stable content join `lute-compile`'s addressing pass stamps
 //! on every line and option record (`address.rs`), and the ONLY key
-//! `compile --locales` can merge a translation back onto (`addr` is a
+//! `compile --locale-bundle` can merge a translation back onto (`addr` is a
 //! REGENERATED position, spec §4.2/§12). It is reproduced here at the SYNTAX
 //! layer from exactly the same three inputs the addressing pass uses:
 //! - the identity PREFIX — a scene's `{character}.{episodeId}`
@@ -78,8 +78,8 @@
 //! The export array is sorted by (`file`, the `::use` site's byte offset in
 //! the CALLER, the unit's own byte offset) so it is byte-identical across
 //! runs regardless of directory-iteration order, and a whole expansion sorts
-//! where its invocation sits. `--format json`
-//! (default) emits a stable JSON array; `--format csv` emits an RFC-4180 file
+//! where its invocation sits. JSON
+//! (the default) emits a stable JSON array; `--format csv` emits an RFC-4180 file
 //! (header row, minimal quoting). An unknown format is a usage error (exit 2).
 //! `-o <FILE>` writes the export there; otherwise it goes to stdout. When any
 //! exported content line is untagged, a single `N lines untagged — run lute tag`
@@ -406,7 +406,7 @@ fn walk_nodes<'a>(
 /// A scene document's identity prefix: authored `id:` (dsl 0.15.0 §2) when
 /// present and valid, else `{character}.{episodeId}` via the SHARED
 /// [`canonical_episode_key`] `lute-compile`'s own prefix join and
-/// `check-project`'s scene-key grouping both call. `None` when the
+/// whole-project `check`'s scene-key grouping both call. `None` when the
 /// frontmatter carries neither a usable authored id nor a usable
 /// `character`/`season`/`episode` triad — a quest document (whose prefix is
 /// per-`<quest>`), a component/schema fragment, or a scene too broken to
@@ -528,7 +528,7 @@ fn is_component_document(doc: &Document) -> bool {
 ///
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
 /// project root ([`lute_load::project_root_for`], bounded below by `dir`) —
-/// same nested-subproject rule `check-project` and `lute scenario` use, so a
+/// same nested-subproject rule whole-project `check` and `lute scenario` use, so a
 /// walk spanning two subprojects exports each one's real ids.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
@@ -541,7 +541,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
         // component's lines are exported once PER CALL SITE under the
-        // caller's identity prefix — the id `compile --locales` actually
+        // caller's identity prefix — the id `compile --locale-bundle` actually
         // merges on. This is `lute-trace`'s own pipeline (`trace.rs`'s
         // `trace_document`), in the same order, with the same three passes;
         // `expand_document` is deliberately NOT run, because `{{…}}`
@@ -1031,7 +1031,7 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
 
 /// A translation round trip is a round TRIP: `export` extracted content and
 /// nothing brought it back. This canonicalizes translated exports into the
-/// locale bundle `lute compile --locales` merges.
+/// locale bundle `lute compile --locale-bundle` merges.
 pub const E_LOCALE_BUNDLE: &str = "E-LOCALE-BUNDLE";
 
 /// One parsed input row: the join key and the translated string.
@@ -1063,7 +1063,7 @@ struct ImportRow {
 ///
 /// ## Source hashes (dsl 0.47.0 §3.2)
 /// A row's `sourceHash` (JSON field or CSV column, optional) is stored per
-/// `(lineId, locale)` under the bundle's `sourceHashes`; `compile --locales`
+/// `(lineId, locale)` under the bundle's `sourceHashes`; `compile --locale-bundle`
 /// compares it with the record's current source. The bundle is always written
 /// as `schemaVersion: 2`.
 ///
@@ -1086,7 +1086,17 @@ struct ImportRow {
 /// exactly as `export`'s own untagged advisory does.
 ///
 /// Exit `0` on success, `1` on `E-LOCALE-BUNDLE`, `2` on an I/O failure.
-pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
+pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode {
+    if json && out.is_none() {
+        return crate::envelope::fail(
+            crate::envelope::CliError::usage(
+                "lute loc import: --json needs -o, --output: the bundle is the artifact and \
+                 goes to the file, stdout carries the report",
+            )
+            .with_argument("--output"),
+        );
+    }
+    let mut diagnostics: Vec<serde_json::Value> = Vec::new();
     let mut errors = 0usize;
     let mut skipped = 0usize;
     let mut triples: Vec<(String, String, String)> = Vec::new();
@@ -1117,7 +1127,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         let rows = match parsed {
             Ok(rows) => rows,
             Err(msg) => {
-                bundle_error(file, &msg);
+                bundle_error(&mut diagnostics, file, &msg);
                 errors += 1;
                 continue;
             }
@@ -1153,6 +1163,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
                 .unwrap_or_else(|| stem.trim().to_string());
             if locale.is_empty() {
                 bundle_error(
+                    &mut diagnostics,
                     file,
                     &format!(
                         "row {} has an empty locale tag — give the row a `locale` value, or \
@@ -1165,6 +1176,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
             }
             if !seen.insert((locale.clone(), line_id.clone())) {
                 bundle_error(
+                    &mut diagnostics,
                     file,
                     &format!(
                         "row {}: duplicate `{line_id}` for locale `{locale}` — one lineId \
@@ -1182,8 +1194,32 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
         }
     }
 
+    let locales: Vec<String> = triples
+        .iter()
+        .map(|(_, locale, _)| locale.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let lines = triples.len();
+    let report = |output: Option<&Path>, exit: u8| {
+        crate::envelope::emit_report(
+            crate::envelope::version::LOC_IMPORT,
+            exit,
+            serde_json::json!({
+                "output": output.map(|p| p.display().to_string()),
+                "locales": locales,
+                "lines": lines,
+                "skipped": skipped,
+                "diagnostics": diagnostics,
+            }),
+        )
+    };
+
     if errors > 0 {
         eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+        if json {
+            return report(None, 1);
+        }
         return ExitCode::FAILURE;
     }
 
@@ -1214,6 +1250,9 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
     if skipped > 0 {
         eprintln!("{skipped} rows skipped (no lineId) — run lute tag, then re-export");
     }
+    if json {
+        return report(out, 0);
+    }
     ExitCode::SUCCESS
 }
 
@@ -1221,11 +1260,16 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>) -> ExitCode {
 /// `print_diagnostics`'s `severity [CODE] message` tail; the head is the file
 /// rather than a `line:column` because an export row has no source span (the
 /// row number lives in `message` instead).
-fn bundle_error(file: &Path, message: &str) {
+fn bundle_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: &str) {
     eprintln!("{}: error [{E_LOCALE_BUNDLE}] {message}", file.display());
+    diagnostics.push(serde_json::json!({
+        "path": file.display().to_string(),
+        "code": E_LOCALE_BUNDLE,
+        "message": message,
+    }));
 }
 
-/// Parse `loc export --format json`'s array back into rows.
+/// Parse `loc export`'s JSON array back into rows.
 fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("not valid JSON: {e}"))?;

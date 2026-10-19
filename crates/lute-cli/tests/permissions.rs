@@ -70,7 +70,6 @@ fn compile_all_applies_ceiling_to_every_document_and_writes_nothing() {
     let out_dir = dir.join("out");
     let result = output(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "--permission-profile",
@@ -207,7 +206,8 @@ fn compile_stream_freezes_ceiling_for_appended_body() {
     let prefix = write_scene(&dir, "prefix.lute", 1, "");
     let mut child = Command::new(BIN)
         .args([
-            "compile-stream",
+            "compile",
+            "--stream",
             prefix.to_str().unwrap(),
             "--project",
             dir.to_str().unwrap(),

@@ -10,12 +10,12 @@ pub fn trace_document(input: &CheckInput, mocks: MockSet) -> (TraceReport, Trace
 /// Like [`trace_document`] but gated on a CALLER-SUPPLIED [`CheckResult`]
 /// instead of running `lute_check::check(input)` itself — the seam the
 /// project-aware CLI gate (connectivity design spec §5) uses to feed the
-/// target document's RECONCILED `check-project` verdict, mirroring
+/// target document's RECONCILED whole-project `check` verdict, mirroring
 /// `lute_compile::compile_with_check`. The D1 quarantine is intact: the
 /// reconciliation is pure graph math the CLI performs, never CEL/Datalog
 /// evaluation, and `trace`'s evaluated subset is unchanged.
 ///
-/// `project_asserts` is the project's May producer set — `check-project`'s
+/// `project_asserts` is the project's May producer set — whole-project `check`'s
 /// [`lute_check::connectivity::live_assert_relations`] for the root the
 /// document belongs to — when the caller resolved one; it widens
 /// `W-TRACE-MOCK-UNPRODUCIBLE`'s producer set past this document (T1-14).
@@ -41,7 +41,7 @@ pub fn trace_with_check(
 /// first-read effects apply only while `entry.<id>.read` is false; seed it
 /// `true` in the mock to preview a re-read). A non-lore document or an
 /// unknown id is refused with [`crate::mock::E_TRACE_ENTRY`] (exit 1), like
-/// `--accept` of an unknown quest.
+/// `--accepted-quest` of an unknown quest.
 pub fn trace_entry(input: &CheckInput, mocks: MockSet, entry: &str) -> (TraceReport, TraceExit) {
     trace_entry_with_check(input, lute_check::check(input), mocks, entry, None)
 }

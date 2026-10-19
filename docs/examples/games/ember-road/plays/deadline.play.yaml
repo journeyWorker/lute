@@ -1,7 +1,7 @@
 # The fourth night: the party pulls back from the chain and never returns.
 # The main quest's `bridge` objective has a `by=` deadline the engine's night
 # counter trips.
-#   lute play . --script plays/deadline.play.yaml
+#   lute play --project . --script plays/deadline.play.yaml
 visited: [road.departure, road.ford]
 quests: { emberRoad: active }
 state:

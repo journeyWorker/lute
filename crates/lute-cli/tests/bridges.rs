@@ -36,6 +36,7 @@ fn play(tag: &str, script: &str) -> Output {
     Command::new(BIN)
         .args([
             "play",
+            "--project",
             fixture().to_str().unwrap(),
             "--script",
             script.to_str().unwrap(),
@@ -405,7 +406,7 @@ fn a_bridges_mock_error_is_anchored_at_its_entry_in_the_mock() {
         &format!("file: ../scenes/probe/c.lute\n{BAD_BRIDGES}"),
     );
     let o = Command::new(BIN)
-        .args(["check-project", project.to_str().unwrap()])
+        .args(["check", "--project", project.to_str().unwrap()])
         .output()
         .unwrap();
     assert_eq!(o.status.code(), Some(1), "{}", out(&o));
@@ -463,6 +464,7 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         Command::new(BIN)
             .args([
                 "play",
+                "--project",
                 dir.to_str().unwrap(),
                 "--script",
                 script.to_str().unwrap(),
@@ -548,7 +550,7 @@ fn an_unread_bridge_result_field_may_be_left_out() {
         &format!("file: ../scenes/probe/c.lute\n{answers}"),
     );
     let o = Command::new(BIN)
-        .args(["check-project", dir.to_str().unwrap()])
+        .args(["check", "--project", dir.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(!out(&o).contains("E-TRACE-MOCK"), "{}", out(&o));

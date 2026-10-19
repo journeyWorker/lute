@@ -100,8 +100,8 @@ pub struct ProjectConfig {
     /// dsl 0.28.0 §4: `E-CHAPTERS` diagnostics of a malformed `chapters:`
     /// (its shape; the ids are checked project-wide against the scenes).
     /// Reported once per manifest,
-    /// located: by `check-project` beside the documents (never fatal to
-    /// their check), by the commands that build a project (`compile --all`,
+    /// located: by whole-project `check` beside the documents (never fatal to
+    /// their check), by the commands that build a project (whole-project `compile`,
     /// `play`) as a gate.
     pub chapter_diags: Vec<ChapterDiag>,
     /// dsl 0.28.0 §1 (T1-1): `E-MANIFEST-KEY` — every key of the manifest
@@ -456,8 +456,8 @@ pub struct ChapterDiag {
 
 /// A malformed `chapters:` (dsl 0.28.0 §4): not a
 /// list of `{ on, scenes }` chains, an occasion or entry that is no id, a
-/// scene listed twice, two chains on one occasion, or (project-wide, `lute
-/// check-project`) a listed id no scene declares, a listed scene whose own
+/// scene listed twice, two chains on one occasion, or (project-wide, whole-project
+/// `lute check`) a listed id no scene declares, a listed scene whose own
 /// `on:` names another occasion, or a scene of a targeted chain with no
 /// `target:`.
 pub const E_CHAPTERS: &str = "E-CHAPTERS";
@@ -493,7 +493,7 @@ fn entry_hint(text: &str) -> Option<&str> {
 /// chain resolves on its own: a malformed one is reported and kept
 /// unapplied, the others still apply; a repeated id alone is reported and
 /// its later occurrence dropped. Each diagnostic carries its
-/// [`ChapterAnchor`]; `lute check-project` reports them located, beside its
+/// [`ChapterAnchor`]; whole-project `lute check` reports them located, beside its
 /// checks of the documents.
 fn resolve_chapters(raw: Option<yaml_serde::Value>) -> (Vec<Chain>, Vec<ChapterDiag>) {
     let mut diags = Vec::new();

@@ -1,16 +1,16 @@
 ---
 title: 플레이어 시작하기
-description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.47 웹 플레이어를 마운트합니다.
+description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사한 뒤 0.48 웹 플레이어를 마운트합니다.
 ---
 
 이 가이드는 저장소의 `examples/player-demo`를 사용합니다. 자신의 프로젝트에도 같은 단계를 적용할 수 있습니다.
 
 ## 1. 프로젝트 컴파일
 
-완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 `--all`이 필요합니다.
+완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 프로젝트 전체(문서 피연산자 없이)를 디렉터리로 컴파일해야 합니다.
 
 ```console
-lute compile --all examples/player-demo -o dist/bundle
+lute compile --project examples/player-demo -o dist/bundle
 ```
 
 번들 디렉터리에는 `project.index.json`과 그 안에서 참조하는 모든 아티팩트 JSON 파일이 있어야 합니다. 0.41 런타임 바인딩 `lute_runtime_wasm_bg.wasm`도 제공합니다.
@@ -20,7 +20,7 @@ lute compile --all examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -33,17 +33,17 @@ assetsBase: assets/
 전체 형식은 [바인딩 레퍼런스](/ko/player/bindings/)에 있습니다. 컴파일 뒤 다음 명령을 실행합니다.
 
 ```console
-lute check-project examples/player-demo
+lute check --project examples/player-demo
 ```
 
-`check-project`는 스키마, domain 및 cast 키, 참조 파일, 효과와 flow 계기를 검사합니다. 잘못된 shape는 `E-BINDING-SHAPE`, 알 수 없는 효과나 매개변수는 `E-BINDING-EFFECT`, 없는 asset은 `E-BINDING-FILE`, 프로젝트 어휘 밖의 키는 `E-BINDING-KEY`입니다. `--json`으로 모든 진단을 확인할 수 있습니다.
+프로젝트 전체 `lute check`는 스키마, domain 및 cast 키, 참조 파일, 효과와 flow 계기를 검사합니다. 잘못된 shape는 `E-BINDING-SHAPE`, 알 수 없는 효과나 매개변수는 `E-BINDING-EFFECT`, 없는 asset은 `E-BINDING-FILE`, 프로젝트 어휘 밖의 키는 `E-BINDING-KEY`입니다. `--json`으로 모든 진단을 확인할 수 있습니다.
 
 ## 3. 페이지에 마운트
 
-정확한 0.47 패키지를 설치합니다.
+정확한 0.48 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.47.2 @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.48.0 @lute-lang/player@0.48.0 @lute-lang/runtime@0.48.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
@@ -106,9 +106,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --project examples/player-demo --locale-bundle examples/player-demo/locales/bundle.json -o <out>`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
 
-Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export .`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
+Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
 
 ## 6. 스테이지 레이어
 
@@ -139,7 +139,7 @@ player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 
 타이틀 화면의 제목은 바인딩에 `ui.title.text`가 있으면 그 값입니다. 없으면 제목을 그리지 않습니다(player-web은 임시 이름을 표시하지 않습니다). `ui.title.background`와 `ui.title.music`은 선택 사항이며, 없으면 배경을 그리지 않고 음악도 재생하지 않습니다.
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 ui:
   title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
 ```

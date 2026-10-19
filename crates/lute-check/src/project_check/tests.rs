@@ -832,7 +832,7 @@ mod test_cases {
         }
 
         // Both in one document: the per-file check reports it (the other
-        // direction, a user-tier parent), and check-project does not repeat it.
+        // direction, a user-tier parent), and whole-project check does not repeat it.
         let same = doc(vec![
             quest_with("case", 1, vec![objective("acc", Some("acc"), false, 5)]),
             run_tier(quest("acc", 10)),

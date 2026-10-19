@@ -48,7 +48,7 @@ pub(crate) fn component_hint(src: &Path) -> String {
 /// entity kind, domain, def, state path or cast member which the manifest's
 /// `defaults.uses` declares but this document's own `uses:` does not reach.
 /// An imported schema's own error (a `related` diagnostic in a schema file,
-/// which `check-project` reports once at that file) carries the note too.
+/// which whole-project `check` reports once at that file) carries the note too.
 pub(crate) fn note_replaced_uses(
     doc: &Document,
     typed: &crate::meta::TypedMeta,
@@ -71,7 +71,7 @@ pub(crate) fn note_replaced_uses(
     for d in &mut diags {
         annotate(d, &missing);
         // An imported schema's own error travels as a `related` diagnostic
-        // in that file, where `check-project` reports it once; one in a
+        // in that file, where whole-project `check` reports it once; one in a
         // component only repeats its outer line.
         for r in &mut d.related {
             if Path::new(&r.file).extension().and_then(|e| e.to_str()) != Some("lute") {

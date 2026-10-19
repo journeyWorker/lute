@@ -61,7 +61,8 @@ fn project_with(
 
 fn check_project(dir: &Path) -> Output {
     Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(dir)
         .output()
         .unwrap()
@@ -70,7 +71,7 @@ fn check_project(dir: &Path) -> Output {
 fn play(dir: &Path, script: &str) -> Output {
     write(dir, "s.play.yaml", script);
     Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--script"])
+        .args(["play", "--project", &dir.display().to_string(), "--script"])
         .arg(dir.join("s.play.yaml"))
         .output()
         .unwrap()
@@ -662,12 +663,20 @@ fn calendar_clock_axis_expands_day_by_slot_in_order() {
     let calendar = |args: &[&str]| {
         Command::new(BIN)
             .arg("calendar")
+            .arg("--project")
             .arg(&dir)
             .args(args)
             .output()
             .unwrap()
     };
-    let out = calendar(&["--axis", "clock=1..2", "--occasion", "slotStart", "--csv"]);
+    let out = calendar(&[
+        "--axis",
+        "clock=1..2",
+        "--occasion",
+        "slotStart",
+        "--format",
+        "csv",
+    ]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     let order = [
@@ -699,7 +708,14 @@ fn calendar_clock_axis_expands_day_by_slot_in_order() {
         "{t}"
     );
 
-    let out = calendar(&["--axis", "clock", "--occasion", "slotStart", "--csv"]);
+    let out = calendar(&[
+        "--axis",
+        "clock",
+        "--occasion",
+        "slotStart",
+        "--format",
+        "csv",
+    ]);
     assert!(text(&out).contains("7 Sun night"), "{}", text(&out));
     let out = calendar(&["--axis", "clock", "--axis", "run.day=1..2"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
@@ -873,7 +889,13 @@ fn an_advance_notes_the_positions_it_passed_without_its_slot_raise() {
 
     write(&dir, "s.play.yaml", script);
     let out = Command::new(BIN)
-        .args(["play", &dir.display().to_string(), "--json", "--script"])
+        .args([
+            "play",
+            "--project",
+            &dir.display().to_string(),
+            "--json",
+            "--script",
+        ])
         .arg(dir.join("s.play.yaml"))
         .output()
         .unwrap();
@@ -907,6 +929,7 @@ fn calendar_marks_the_cells_the_clock_does_not_raise() {
     let calendar = |args: &[&str]| {
         Command::new(BIN)
             .arg("calendar")
+            .arg("--project")
             .arg(&dir)
             .args(["--axis", "clock=1..2"])
             .args(args)
@@ -982,7 +1005,7 @@ fn calendar_marks_the_cells_the_clock_does_not_raise() {
     );
     // `dayEnd@clock.day` holds the slot where the clock raises it; a slot the
     // user names (an `advance: day` closes the day there) is judged as asked.
-    let out = calendar(&["--occasion", "dayEnd@clock.day", "--json"]);
+    let out = calendar(&["--occasion-axes", "dayEnd=clock.day", "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         v["columns"][0]["heldAt"],
@@ -990,8 +1013,8 @@ fn calendar_marks_the_cells_the_clock_does_not_raise() {
         "{v}"
     );
     let out = calendar(&[
-        "--occasion",
-        "dayEnd@clock.day,clock.slot=afternoon",
+        "--occasion-axes",
+        "dayEnd=clock.day,clock.slot=afternoon",
         "--json",
     ]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -1073,6 +1096,7 @@ fn a_day_granular_clock_needs_no_slot() {
     );
     let out = Command::new(BIN)
         .arg("calendar")
+        .arg("--project")
         .arg(&dir)
         .args(["--axis", "clock=1..2"])
         .output()
@@ -1095,25 +1119,32 @@ fn calendar_occasion_varies_over_one_part_of_the_clock_axis() {
         RAISING_CLOCK,
         &[("scenes/slot.lute", SLOT_SCENE)],
     );
-    let run = |occasion: &str| {
+    let run = |occasion_axes: &str| {
         let out = Command::new(BIN)
             .arg("calendar")
+            .arg("--project")
             .arg(&dir)
-            .args(["--axis", "clock=1..2", "--occasion", occasion, "--json"])
+            .args([
+                "--axis",
+                "clock=1..2",
+                "--occasion-axes",
+                occasion_axes,
+                "--json",
+            ])
             .output()
             .unwrap();
         assert!(out.status.success(), "{}", text(&out));
         let j: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         j["columns"][0].clone()
     };
-    let col = run("slotStart@run.day,run.slot=night");
+    let col = run("slotStart=run.day,run.slot=night");
     assert_eq!(col["varies"], serde_json::json!(["clock.day"]), "{col}");
     assert_eq!(
         col["heldAt"],
         serde_json::json!({ "clock.slot": "night" }),
         "{col}"
     );
-    let col = run("slotStart@clock.day");
+    let col = run("slotStart=clock.day");
     assert_eq!(
         col["heldAt"],
         serde_json::json!({ "clock.slot": "morning" }),
@@ -1132,7 +1163,12 @@ fn beats_lists_a_once_day_bundle_beat() {
         RAISING_CLOCK,
         &[("lore/b.lute", lore)],
     );
-    let out = Command::new(BIN).arg("beats").arg(&dir).output().unwrap();
+    let out = Command::new(BIN)
+        .arg("beats")
+        .arg("--project")
+        .arg(&dir)
+        .output()
+        .unwrap();
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     let row = t
@@ -1144,7 +1180,7 @@ fn beats_lists_a_once_day_bundle_beat() {
 
 /// Round-3 (cheatsheet p2): a clock over a path that is not `owner: engine`,
 /// or naming an undeclared `raise` occasion, is reported by `lute check` on
-/// the schema itself (it said `ok`), and by `check-project` once — at the
+/// the schema itself (it said `ok`), and by whole-project `check` once — at the
 /// schema's `clock:` line, counting its importers (round-5 T3-4).
 #[test]
 fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
@@ -1224,7 +1260,7 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
 
 /// Round-3 docs pass (a): `lute check` on a schema alone runs what an
 /// importer's check would report about it — enum labels, entity kinds,
-/// seed facts — at the schema's own lines; `check-project` reports each
+/// seed facts — at the schema's own lines; whole-project `check` reports each
 /// once, at the schema, counting the importers (round-5 T3-4).
 #[test]
 fn a_schema_checked_alone_reports_what_its_importers_would() {
@@ -1371,6 +1407,7 @@ fn calendar_names_the_unknown_when_of_an_undecided_cell() {
     );
     let out = Command::new(BIN)
         .arg("calendar")
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();

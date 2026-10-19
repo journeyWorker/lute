@@ -16,20 +16,20 @@ Trace walks the world you supply. A state path you do not seed reads its declare
 $ lute trace scene.lute \
     --state run.metMira=true \
     --fact "inParty(shadowheart)" \
-    --choose sofaHelp=help \
+    --choice sofaHelp=help \
     --event npcSpoke \
-    --accept sideQuest
+    --accepted-quest sideQuest
 ```
 
 - `--state <path>=<literal>` — a scalar seed on a declared path.
 - `--fact "<rel>(<arg>…)"` — a ground fact, valid-now, over the declared vocabulary (a *supplied answer*, so it may name a `derive:`/`reserved:` relation).
-- `--choose <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list. A hub whose list runs out before it exits halts the walk incomplete (exit 3) and names the list, as `lute play` does.
+- `--choice <id>=<choiceId>[,<choiceId>…]` — a menu selection at a `<branch>`/`<hub>` id; a hub may force a whole ordered visit sequence via one flag's comma list. A hub whose list runs out before it exits halts the walk incomplete (exit 3) and names the list, as `lute play` does.
 - `--event <name>` — fire a capability/world event, in CLI order.
-- `--accept <questId>` — simulate accepting a `start`-less (accept-driven) quest. With a project, since dsl 0.26.0, it may name any quest of the project, not only one the traced document declares; an id no quest declares is `E-TRACE-ACCEPT`.
+- `--accepted-quest <questId>` — simulate accepting a `start`-less (accept-driven) quest. With a project, since dsl 0.26.0, it may name any quest of the project, not only one the traced document declares; an id no quest declares is `E-TRACE-ACCEPT`.
 
 Two more surfaces feed quest and scene conditions (dsl 0.21.0):
 
-- `--occasion <name>` — raise an occasion after the walk settles, in CLI order (repeatable, after the mock's own `occasions:`). Each raise first runs every active quest's `<on event="<name>">` handlers — an occasion also fires the same-named world event, as it does in `lute play` and `lute run` — and then judges the `<objective on="<name>">` objectives of every active quest, so an objective can read what a handler wrote; an `on` objective is **never** judged otherwise. `--occasion <name>@<target>` (dsl 0.23.0) raises it for a target — see [Targets, deadlines, and the previous run](#targets-deadlines-and-the-previous-run).
+- `--occasion <OCCASION>` — raise an occasion after the walk settles, in CLI order (repeatable, after the mock's own `occasions:`). Each raise first runs every active quest's `<on event="<name>">` handlers — an occasion also fires the same-named world event, as it does in `lute play` and `lute run` — and then judges the `<objective on="<name>">` objectives of every active quest, so an objective can read what a handler wrote; an `on` objective is **never** judged otherwise. `--occasion <OCCASION>@<target>` (dsl 0.23.0) raises it for a target — see [Targets, deadlines, and the previous run](#targets-deadlines-and-the-previous-run).
 - `visited: [<scene id>…]` (mock file only) — the scenes already presented, read by `visited('<scene id>')` in any condition. The set is closed: a scene you do not list is not visited, so a `visited(…)` read is always `true` or `false`, never unresolved.
 - `bridges: { <tag>: [ {<field>: value}, … ] }` (mock file or test only, dsl 0.24.0 §5) — answers for plugin calls that read a bridge result, one per call of that tag, in call order. See [Bridge answers](#bridge-answers).
 
@@ -79,13 +79,13 @@ Three 0.23.0 additions reach trace through the same surfaces.
 **Raising for a target.** An objective with `target=` (`<objective on="talk" target="npc.oskar">`) is judged only by a raise for that target, written `<occasion>@<target>` — `--occasion talk@npc.oskar`, or `occasions: [talk@npc.oskar]` in the mock. A bare `talk`, or `talk@npc.maud`, leaves it alone, and the walk says which raise it was waiting for. The tower's hound quest from [Playing a story](/tooling/play/#deadlines-and-targeted-objectives), with the kill mocked:
 
 ```console
-$ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound)" --occasion talk@npc.maud
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --fact "slew(hound)" --occasion talk@npc.maud
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
 note: objective `houndHunt.report` is judged at occasion `talk` for `npc.oskar`, which this walk never raised (supply `--occasion talk@npc.oskar` or `occasions: [talk@npc.oskar]`)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> done (holds('slew', ['hound']))
 trace complete: 2 decisions
-$ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound)" --occasion talk@npc.oskar
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --fact "slew(hound)" --occasion talk@npc.oskar
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> done (holds('slew', ['hound']))
@@ -98,7 +98,7 @@ trace complete: 4 decisions
 **Deadlines.** An objective's `by=` is judged in every settle after its `done`; the first time it holds while the objective is not done, the objective is `failed` — naming the deadline — and never judged again, and a required one fails its quest. Without the kill, on floor four:
 
 ```console
-$ lute trace quests/hound.lute --project . --accept houndHunt --state run.floor=4
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --state run.floor=4
 trace: quests/hound.lute  (seeds: 1 paths, 0 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> pending (holds('slew', ['hound']))
@@ -126,12 +126,12 @@ A quest walk settles the way [`lute play`](/tooling/play/) settles it, so a trac
 
 **Credited rewards.** When a `<reward>`'s kind declares [`credits: <path>`](/plugins/manifests/#rewards-that-credit-state), a grant with a scalar amount adds it to that path, by the same rule as `::set <path> += <n>`. The grant line ends with the credit — `grant houndHunt  EMBERS 50 (credits user.embers = 50)` above, since the tower's `EMBERS` kind credits `user.embers` — and in `--json` the `grant` step carries `"credited": { "path": "user.embers", "value": "50" }`. The walk ends with the credited value, so a test's `expect.state` can assert `user.embers: 50`. A range amount is the engine's roll and credits nothing, and a path with no value to add to stays `unknown`.
 
-**Objective bodies.** An `<objective>` with a body plays it once, when the objective first turns done: its lines, `::set`, `::assert` and `::retract` follow the objective's `done` decision and its own grants in the transcript, and `--choose` decides a `<branch>` inside it.
+**Objective bodies.** An `<objective>` with a body plays it once, when the objective first turns done: its lines, `::set`, `::assert` and `::retract` follow the objective's `done` decision and its own grants in the transcript, and `--choice` decides a `<branch>` inside it.
 
-**Quest structure** (dsl 0.24.0 §2). `--accept` (and `accepts:`) takes an `activate="accept"` child quest, which activates only while its parent is active. When a `complete="any"` parent completes, its other active children fail, and the decision names why — `superseded from quest.<parent>` (a child of a failed parent still reads `cascade from quest.<parent>`). A river crossing whose `road` completes on either `parley` or `toll`:
+**Quest structure** (dsl 0.24.0 §2). `--accepted-quest` (and `accepts:`) takes an `activate="accept"` child quest, which activates only while its parent is active. When a `complete="any"` parent completes, its other active children fail, and the decision names why — `superseded from quest.<parent>` (a child of a failed parent still reads `cascade from quest.<parent>`). A river crossing whose `road` completes on either `parley` or `toll`:
 
 ```console
-$ lute trace quests/road.lute --project . --accept parley --accept toll --state run.talked=true
+$ lute trace quests/road.lute --project . --accepted-quest parley --accepted-quest toll --state run.talked=true
 trace: quests/road.lute  (seeds: 1 paths, 0 facts; 0 selections)
   <quest road>   -> active (true)
   <quest parley>   -> active (forced)
@@ -154,7 +154,7 @@ A raise for a target also runs the `<on event="E" target="…">` handlers for th
 
 ## Bundle beats
 
-A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) have no sequence to walk, so trace presents one at a time: `--beat <id>`, by its local id or its canonical `<document id>.<beat id>`. Its body is walked like a scene's — `--choose` decides its branches and hubs — every effect applies, and its `when` is shown, not enforced (JSON: a first step `{"kind": "beat", "id": …, "eligible": …}`). Oskar's hunt:
+A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) have no sequence to walk, so trace presents one at a time: `--beat <id>`, by its local id or its canonical `<document id>.<beat id>`. Its body is walked like a scene's — `--choice` decides its branches and hubs — every effect applies, and its `when` is shown, not enforced (JSON: a first step `{"kind": "beat", "id": …, "eligible": …}`). Oskar's hunt:
 
 ```console
 $ lute trace lore/oskar.lute --project . --beat hunt
@@ -167,7 +167,7 @@ trace complete: 0 decisions
 
 A beat's own `after="…"` (dsl 0.25.0 §3) is shown the same way, over the mock's `visited:` and quest states, and never enforced: ``<beat keeper.greeting>   (not eligible: `after` prerequisite not satisfied)`` heads the walk when it does not hold.
 
-A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`; or raise the beat's occasion for the member, `--occasion <occasion>@<target>` naming the member, which binds it as the engine does (a target outside the kind is `E-TRACE-MOCK-TYPE` too). Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without either, the walk stops incomplete at the first line or write that needs the member, naming the seed. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
+A beat or entry that targets a whole kind (`target="kind:trainer"`, dsl 0.26.0 §5; see [Kind targets](/tooling/play/#kind-targets)) reads the raised member as `occasion.target`. Seed it like any state path — `--state occasion.target=r16Gus`, or `state: { occasion.target: r16Gus }` in a mock or test — typed by the kind, so a non-member is `E-TRACE-MOCK-TYPE`; or raise the beat's occasion for the member, `--occasion <OCCASION>@<target>` naming the member, which binds it as the engine does (a target outside the kind is `E-TRACE-MOCK-TYPE` too). Where the text interpolates it, trace and test print the member the way `lute play` does: the kind's label for it, else its cast `name:` when the member is a cast id (`@narrator  Hiker Brom squares up.`), else the id. Without either, the walk stops incomplete at the first line or write that needs the member, naming the seed. `--entry` also takes an entry's `<document id>.<entry id>` (`--entry lore.tomas.tomasOil`).
 
 A lore document needs `--entry` or `--beat`, and without either the usage error (exit **2**) lists both kinds of id. A `--beat` that names no beat of the document is `E-TRACE-BEAT` (exit **1**), listing the ones it declares:
 
@@ -188,7 +188,7 @@ An `eligible:` expectation answers that failure, and with it asserted an ineligi
 The human form is an indented, ordered transcript: emitted content lines (interpolations substituted where decided, kept verbatim `{{…}}` where unknown), staging directives, state writes, and one line per **decision** — the construct, the winning arm/choice, and the guard with its read values. A trailing summary reports decisions taken, arm/choice coverage, and any unresolved atoms.
 
 ```console
-$ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
+$ lute trace docs/examples/choice-persist.lute --choice sofaHelp=help
 trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Recording the Choice
     @narrator  Elena had slipped on the wet step. You could help — or walk on.
@@ -201,12 +201,12 @@ trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @42:1)
 ```
 
-An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choose` is the documented escape hatch. A forced choice still counts: the summary reads `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)` and names the atoms that would decide it, and `--json` lists it under `forcedUnknown`. The exit code stays what the rest of the walk earned. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`, and since 0.24.0 `quest.<id>.failedBy` and `…objectives.<oid>.failed`) resolve to their defaults (`unset` / `false`) unless mocked (`quests:` or `--state`); without a project each carries an "existence unverified" note, and with one trace checks the id against the project's quests.
+An `unknown` guard halts the walk at that construct (exit 3) and reports the unresolved atoms — which paths or facts a mock would need. Trace never guesses past unknown eligibility; forcing past an unknown guard via `--choice` is the documented escape hatch. A forced choice still counts: the summary reads `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)` and names the atoms that would decide it, and `--json` lists it under `forcedUnknown`. The exit code stays what the rest of the walk earned. Reserved quest reads (`quest.<id>.state`, `…objectives.<oid>.done`, and since 0.24.0 `quest.<id>.failedBy` and `…objectives.<oid>.failed`) resolve to their defaults (`unset` / `false`) unless mocked (`quests:` or `--state`); without a project each carries an "existence unverified" note, and with one trace checks the id against the project's quests.
 
 **Def references read as authored** (dsl 0.24.0). A `<match subject="@def">` header, an arm or choice guard, and the coverage summary print a def reference the way the author wrote it; `--expand` prints the expansion the walk evaluated:
 
 ```console
-$ lute trace week.lute --state user.runs=3 --choose ask=old
+$ lute trace week.lute --state user.runs=3 --choice ask=old
 trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   ## Morning
   <match @weekday>   -> arm 1 (is="mon")
@@ -214,7 +214,7 @@ trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   <branch ask>   eligible: old, new   -> old (@atLeast(3))
     @narrator  You remember.
 trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 (@weekday @13:1)
-$ lute trace week.lute --state user.runs=3 --choose ask=old --expand
+$ lute trace week.lute --state user.runs=3 --choice ask=old --expand
 trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   ## Morning
   <match (run.day == 1 ? 'mon' : run.day == 2 ? 'tue' : 'other')>   -> arm 1 (is="mon")
@@ -228,10 +228,10 @@ trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 ((run.day == 1 ? 'mon' 
 
 **A beat's own `when`.** Tracing a [beat scene](/language/beats/) walks its body whether or not its frontmatter `when:` holds — trace is a preview. When the mocks make that `when` false or undecided, the trace opens with a note — ``beat `when` (run.day == 3) is false under these mocks — the `visit` selector would never present this scene; the walk below shows it as if it had been presented``. `lute test` does not pass such a walk: since dsl 0.26.0 a test that presents a beat its mocks make ineligible — by its `when`, its `after:`, or a spent `once: user` — fails unless it asserts `expect.eligible` (see [`lute test`](/tooling/cli/#test)).
 
-A scene's [`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest) renders as its own transcript line, `quest <id> accepted` (JSON step `{"kind": "accept", "quest": "<id>"}`). Trace walks one document, so the accept is recorded, not applied: the quest's own document is where its lifecycle runs (`--accept` / `accepts:` there, or `lute play` across the project). An `::accept` in a quest's own `<on>` handler is applied — see [A handler's accept](#rewards-and-objective-bodies).
+A scene's [`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest) renders as its own transcript line, `quest <id> accepted` (JSON step `{"kind": "accept", "quest": "<id>"}`). Trace walks one document, so the accept is recorded, not applied: the quest's own document is where its lifecycle runs (`--accepted-quest` / `accepts:` there, or `lute play` across the project). An `::accept` in a quest's own `<on>` handler is applied — see [A handler's accept](#rewards-and-objective-bodies).
 
 ```console
-$ lute trace scenes/shed.lute --project . --choose offer=take
+$ lute trace scenes/shed.lute --project . --choice offer=take
 trace: scenes/shed.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Shed
     @vesna  Somebody has to mind the shed.
@@ -246,7 +246,7 @@ trace complete: 1 decision; choices 1/2 (offer)
 A `::jump{to="<label>"}` the walk takes jumps to its `::label{name="<label>"}`, exactly as `lute run` and `lute play` jump (dsl 0.26.0 §7): the transcript shows `<jump -> <label>>` (JSON step `{"kind": "jump", "to": "<label>"}`) and the walk goes on from the label, so `trace complete` — and a test's `end: complete` — means the walk reached the end of the document. Before 0.26.0 the walk ended at a taken jump and still reported complete, so a test could pass on a transcript that play never shows. A vault whose door choice jumps past the guard:
 
 ```console
-$ lute trace scenes/vault.lute --project . --choose enter=yes
+$ lute trace scenes/vault.lute --project . --choice enter=yes
 trace: scenes/vault.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The door
     @narrator  The vault door stands open.
@@ -321,11 +321,11 @@ bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` 
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
-`lack.yaml` gives `- { passed: true }` and `bad.yaml` `- { passed: yes, margin: 3 }`, each the fourth line of the file. Before 0.24 a missing field was `E-TRACE-MOCK-UNDECLARED`, and every one of these errors was reported at `<document>:0:0`. In a scenario test the same error lands on the test's own line — `./tests/t.test.yaml:6:9: error [E-TRACE-MOCK-TYPE] …` under its `FAIL` — and `check-project` reports a bad `mocks/*.yaml` at `./mocks/lack.yaml:4:7`.
+`lack.yaml` gives `- { passed: true }` and `bad.yaml` `- { passed: yes, margin: 3 }`, each the fourth line of the file. Before 0.24 a missing field was `E-TRACE-MOCK-UNDECLARED`, and every one of these errors was reported at `<document>:0:0`. In a scenario test the same error lands on the test's own line — `./tests/t.test.yaml:6:9: error [E-TRACE-MOCK-TYPE] …` under its `FAIL` — and `check --project` reports a bad `mocks/*.yaml` at `./mocks/lack.yaml:4:7`.
 
 **Migrating a 0.23.1 mock.** A mock or test that answered a call by seeding its result slot — `state: { scene.check.guards.passed: true }` — no longer decides the guard: the call's answer is read from `bridges:` only, so the walk stops unresolved with the hint above. Replace the seed with `bridges: { check: [ { passed: true, margin: 3 } ] }`, one answer per call, in call order, with every field content reads.
 
-`check-project` runs the same checks over `mocks/*.yaml`. A scenario test without the answers fails as incomplete, its hint ending `in this test`; `lute run --mock` answers calls from the same key, and [`lute play`](/tooling/play/#answering-bridge-calls) takes it at the top level and per step.
+`check --project` runs the same checks over `mocks/*.yaml`. A scenario test without the answers fails as incomplete, its hint ending `in this test`; `lute run --mock` answers calls from the same key, and [`lute play`](/tooling/play/#answering-bridge-calls) takes it at the top level and per step.
 
 ## Derivation
 
@@ -374,7 +374,7 @@ rules:
 With no mock at all, the seeded `suspect(ann)` and the absent `alibi(ann)` derive `culprit(ann)`:
 
 ```console
-$ lute trace accuse.lute --choose ask=skip --choose verdict=ann
+$ lute trace accuse.lute --choice ask=skip --choice verdict=ann
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
   ## The parlour
     @inspector  Everyone stays in this room.
@@ -385,10 +385,10 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
 
-Once the maid's `::assert{ alibi(ann) }` runs, the negated premise holds and `culprit(ann)` is definitely false — `verdict` offers only `wait`, and forcing `--choose verdict=ann` there is refused (`E-TRACE-CHOICE`, exit 1), not forced past an unknown:
+Once the maid's `::assert{ alibi(ann) }` runs, the negated premise holds and `culprit(ann)` is definitely false — `verdict` offers only `wait`, and forcing `--choice verdict=ann` there is refused (`E-TRACE-CHOICE`, exit 1), not forced past an unknown:
 
 ```console
-$ lute trace accuse.lute --choose ask=maid --choose verdict=wait
+$ lute trace accuse.lute --choice ask=maid --choice verdict=wait
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
   ## The parlour
     @inspector  Everyone stays in this room.
@@ -446,7 +446,7 @@ rules:
 ```
 
 ```console
-$ lute trace arrest.lute --choose arrest=now
+$ lute trace arrest.lute --choice arrest=now
 trace: arrest.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The station
   <branch arrest>   eligible: later   -> now (holds('warrant', ['ann'])) (forced)
@@ -457,10 +457,10 @@ trace complete: 1 decision; 1 unresolved (forced past an unknown guard — the w
 
 With `--state run.day=3` the rule concludes `warrant(ann)` and `now` is eligible outright.
 
-**`derive: false` restores 0.21.** The mock key `derive: false` (also accepted in a `*.test.yaml`), or the `--no-derive` flag on `lute trace` and `lute test` — the flag wins over the key — brings back the lookup-only model: the seed facts are not loaded, the rules are not applied, and a fact of a derived relation that you did not mock is **unknown**, so a guard on it halts the walk (exit 3) unless forced. A note says so when the schema declares seed facts you did not supply, and another names each derived relation the walk read. (`lute play` takes the same key and flag; there the seed facts still load and only the rules stop — see [Playing a story](/tooling/play/#derivation-and---explain).)
+**`derive: false` restores 0.21.** The mock key `derive: false` (also accepted in a `*.test.yaml`), or the `--no-derive` flag on `lute trace` and `lute test` — the flag wins over the key — brings back the lookup-only model: the seed facts are not loaded, the rules are not applied, and a fact of a derived relation that you did not mock is **unknown**, so a guard on it halts the walk (exit 3) unless forced. A note says so when the schema declares seed facts you did not supply, and another names each derived relation the walk read. (`lute play` takes the same key and flag; there the seed facts still load and only the rules stop — see [Playing a story](/tooling/play/#derivation-and---derivation).)
 
 ```console
-$ lute trace accuse.lute --choose ask=skip --choose verdict=ann --no-derive
+$ lute trace accuse.lute --choice ask=skip --choice verdict=ann --no-derive
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 note: the schema declares seed facts (e.g. `suspect`) but under `derive: false` trace does not auto-load them (the explicit-world model) — supply seeded relations explicitly via --fact
 note: derived relation `culprit` read under `derive: false`: its rules were not applied, so an unmocked `culprit(…)` is unknown — supply it via --fact, or drop `derive: false`
@@ -482,7 +482,7 @@ Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-e
 
 <!-- lute-diagnostics unverified="verbatim lute trace output; E-FACT-EXCLUSIVE is named through a constant in the trace crate, so the scraper cannot pair quote and code" -->
 ```console
-$ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choose look=nothing
+$ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choice look=nothing
 trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
   ## First light
   <branch look>   eligible: saw, nothing   -> nothing
@@ -495,7 +495,7 @@ scenes/dawn.lute:31:5: error [E-FACT-EXCLUSIVE] this write makes exclusive relat
 trace refused: scenes/dawn.lute — exclusive relations hold together
 ```
 
-The exit is **1**, and nothing after the write is walked. A scenario test that reaches such a write fails the same way. When the seeded facts themselves — the mock's `facts:` or `--fact`, the project's `facts:` seeds, and what the rules derive from them — already break an exclusion, trace refuses before the walk starts, with an `E-FACT-EXCLUSIVE` that says so. `check-project` reports the same code statically when the other fact holds on every route to the `::assert`; trace catches the cases that are only possible, such as a fact asserted down one branch of an earlier scene, or supplied by a mock.
+The exit is **1**, and nothing after the write is walked. A scenario test that reaches such a write fails the same way. When the seeded facts themselves — the mock's `facts:` or `--fact`, the project's `facts:` seeds, and what the rules derive from them — already break an exclusion, trace refuses before the walk starts, with an `E-FACT-EXCLUSIVE` that says so. `check --project` reports the same code statically when the other fact holds on every route to the `::assert`; trace catches the cases that are only possible, such as a fact asserted down one branch of an earlier scene, or supplied by a mock.
 
 ## The `E-TRACE-*` refusals
 
@@ -503,7 +503,7 @@ Before walking, trace resolves the document exactly as `check` does and **refuse
 
 Since 0.6.1, trace also emits a warning (not a refusal) — `W-TRACE-MOCK-UNPRODUCIBLE` — for a `--fact`/mock-YAML fact whose relation no authored producer can ever assert (`producible()` judges it not producible): the supplied answer can never arise in reachable play, so a "complete" walk seeded with it proves nothing. A `reserved: true` or `open: engine`-argument relation is producible by definition and never warns.
 
-The judgement covers the whole project when trace can see one — `--project <dir>`, or a `lute.project.yaml` above the traced file: a relation is producible when a `facts:` seed, or an `::assert` in any document `check-project` does not prove unreachable, can produce it; a derived relation is judged through its rules. With no project the warning judges the traced document alone and says so (`judged against this document only; pass --project <dir> to count the asserts of the project's other documents`), so a clue asserted in a sibling scene is only "not producible" there.
+The judgement covers the whole project when trace can see one — `--project <DIR>`, or a `lute.project.yaml` above the traced file: a relation is producible when a `facts:` seed, or an `::assert` in any document `check --project` does not prove unreachable, can produce it; a derived relation is judged through its rules. With no project the warning judges the traced document alone and says so (`judged against this document only; pass --project <DIR> to count the asserts of the project's other documents`), so a clue asserted in a sibling scene is only "not producible" there.
 
 ## Evidence in 0.34.0
 

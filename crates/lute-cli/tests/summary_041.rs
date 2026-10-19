@@ -18,7 +18,7 @@ fn run(args: &[&str], dir: &PathBuf) -> String {
 #[test]
 fn summaries_append_the_info_count_only_when_non_zero() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/depends-invalid");
-    let project = run(&["check-project", "."], &dir);
+    let project = run(&["check", "--project", "."], &dir);
     assert!(
         project.contains("ok: ./scenes/probe/c.lute (0 warning(s), 2 info)\n"),
         "{project}"
@@ -34,7 +34,7 @@ fn summaries_append_the_info_count_only_when_non_zero() {
         "{project}"
     );
     let clean = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bridge-check");
-    let clean_out = run(&["check-project", "."], &clean);
+    let clean_out = run(&["check", "--project", "."], &clean);
     let last = clean_out.lines().last().unwrap_or_default();
     assert!(
         last.starts_with("ok: . (") && !last.contains("info"),

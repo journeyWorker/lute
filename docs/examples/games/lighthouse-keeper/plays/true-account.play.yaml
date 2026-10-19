@@ -1,5 +1,5 @@
 # The whole inquiry, played the way a careful inspector would:
-#   lute play . --script plays/true-account.play.yaml
+#   lute play --project . --script plays/true-account.play.yaml
 choose:
   firstQuestion: askBoat
   lanternLook: [clockwork, door, done]

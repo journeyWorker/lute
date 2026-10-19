@@ -533,7 +533,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-ENTRY-ID-DUP",
-        summary: "Two `<entry>` elements share the same `id`, though entry ids must be unique across the document (and project-wide under `check-project`).",
+        summary: "Two `<entry>` elements share the same `id`, though entry ids must be unique across the document (and project-wide under whole-project `check`).",
         spec: &["dsl 0.19.0 §3"],
     },
     Code {
@@ -728,7 +728,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-LOCALE-BUNDLE",
-        summary: "`lute compile --locales` failed to merge a locale import file — bad syntax, a row with an empty `locale`, or a duplicate `lineId` for the same locale.",
+        summary: "`lute compile --locale-bundle` failed to merge a locale import file — bad syntax, a row with an empty `locale`, or a duplicate `lineId` for the same locale.",
         spec: &[],
     },
     Code {
@@ -1473,7 +1473,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TRACE-ACCEPT",
-        summary: "A `--accept`/`accept:` entry names an unknown quest id, a quest that carries a `start` predicate (which activates declaratively, needing no accept), or a quest referenced by a parent's `<objective quest=…>` (a no-start child that activates via its parent).",
+        summary: "A `--accepted-quest`/`accept:` entry names an unknown quest id, a quest that carries a `start` predicate (which activates declaratively, needing no accept), or a quest referenced by a parent's `<objective quest=…>` (a no-start child that activates via its parent).",
         spec: &["dsl 0.4.0 §4.3", "dsl 0.4.0 §4.4"],
     },
     Code {
@@ -1483,7 +1483,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-TRACE-CHOICE",
-        summary: "A `--choose` entry names an unknown branch/hub id or an unknown choice id for that branch/hub, either before the walk starts or because the choice's guard decides false when reached.",
+        summary: "A `--choice` entry names an unknown branch/hub id or an unknown choice id for that branch/hub, either before the walk starts or because the choice's guard decides false when reached.",
         spec: &["dsl 0.4.0 §4.3", "dsl 0.4.0 §4.4"],
     },
     Code {
@@ -1978,7 +1978,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-WIP",
-        summary: "Under `check-project --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.",
+        summary: "Under whole-project `check --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.",
         spec: &["dsl 0.23.0 §10", "dsl 0.26.0 §2.6"],
     },
 ];

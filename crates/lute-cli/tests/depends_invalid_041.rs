@@ -14,7 +14,8 @@ fn fixture() -> PathBuf {
 
 fn check_project() -> (String, String) {
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(".")
         .current_dir(fixture())
         .output()

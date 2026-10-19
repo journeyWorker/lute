@@ -7,7 +7,7 @@ defaulted.lute omits it:          `::use{component="gauge"}`.
 Neither use is guarded.
 
 Command:
-  lute check-project .
+  lute check --project .
   lute trace defaulted.lute --project .
 
 Actual:

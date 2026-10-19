@@ -68,7 +68,9 @@ fn json_output_carries_structured_component_sub_diagnostics() {
         .unwrap();
     assert!(!out.status.success(), "a broken component import must fail");
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    let diags = v["files"][0]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
     let parse_diag = diags
         .iter()
         .find(|d| {
@@ -137,7 +139,9 @@ fn issue_count_includes_a_reclassified_component_state_child() {
         .unwrap();
     assert!(!out.status.success(), "a broken component import must fail");
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    let diags = v["files"][0]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
 
     // The body diagnostic must STILL be surfaced as its own top-level
     // diagnostic too (additive, never a relocation -- an existing consumer

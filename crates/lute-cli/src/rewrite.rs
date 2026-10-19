@@ -1,21 +1,31 @@
-//! `lute tag` / `lute fix` — the in-place source rewrites, over one `.lute`
-//! file or every `.lute` file under a directory (dsl 0.22.0 §13).
+//! `lute tag` / `lute fix` — the in-place source rewrites, over `.lute` files
+//! and directories (dsl 0.22.0 §13; operands and `--check`/`--renumber`,
+//! 0.48.0 §3.7, §3.8).
 //!
-//! A directory is walked recursively with the SAME walk `check-project` uses
-//! ([`crate::find_lute_files`]: byte-sorted, symlink aliases deduplicated), so
-//! the files rewritten are exactly the files the project checks, in a
-//! deterministic order. Each file is rewritten independently: a refused or
-//! unreadable file is reported and the walk continues, so one draft with
-//! structural errors does not leave the rest of the tree untagged.
+//! A directory is walked recursively (`tag`: the SAME walk `check` uses,
+//! [`crate::find_lute_files`]: byte-sorted, symlink aliases deduplicated; `fix`:
+//! `.lute` and YAML files), so the files rewritten are exactly the files the
+//! project checks, in a deterministic order. Each file is rewritten
+//! independently: a refused or unreadable file is reported and the walk
+//! continues, so one draft with structural errors does not leave the rest of
+//! the tree untagged.
 //!
 //! Exit codes: `0` when every file succeeded (changed or not), `1` when some
-//! file was refused (`--force` on a `codesLocked:` or structurally broken
-//! document), `2` on an I/O failure (an unreadable path or an unwritable
-//! file) — the worst outcome across the files wins.
+//! file was refused (`--renumber --commit` on a `codesLocked:` or structurally
+//! broken document) or `--check` found a change, `2` on an I/O failure (an
+//! unreadable path or an unwritable file) — the worst outcome across the
+//! files wins. With `--json` the human lines go to stderr and stdout carries
+//! the one report (`0.48.0.tag` / `0.48.0.fix`), or the error envelope on an
+//! I/O failure.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+use lute_check::LineRenumber;
+use serde_json::{json, Value};
+
+use crate::envelope::{self, CliError};
 
 /// How one file fared. Ordered by severity so a tree's exit code is the max.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,13 +36,13 @@ enum Outcome {
     Failed,
 }
 
-impl Outcome {
-    fn exit_code(self) -> ExitCode {
-        match self {
-            Outcome::Unchanged | Outcome::Changed => ExitCode::SUCCESS,
-            Outcome::Refused => ExitCode::from(1),
-            Outcome::Failed => ExitCode::from(2),
-        }
+/// One human line: stdout, or stderr in JSON mode (stdout carries the one
+/// JSON document).
+fn out(line: &str) {
+    if envelope::json_mode() {
+        eprintln!("{line}");
+    } else {
+        println!("{line}");
     }
 }
 
@@ -48,217 +58,408 @@ enum Scope<'a> {
 impl Scope<'_> {
     fn say(self, msg: &str) {
         match self {
-            Scope::Single => println!("lute: {msg}"),
-            Scope::Tree(file) => println!("lute: {}: {msg}", file.display()),
+            Scope::Single => out(&format!("lute: {msg}")),
+            Scope::Tree(file) => out(&format!("lute: {}: {msg}", file.display())),
         }
     }
 
     /// A no-op report: printed for a lone file only.
     fn say_unchanged(self, msg: &str) {
         if let Scope::Single = self {
-            println!("lute: {msg}");
+            out(&format!("lute: {msg}"));
         }
     }
 }
 
-/// The files a `tag`/`fix` invocation rewrites: `path` itself, or every
-/// `.lute` file under it when it is a directory. `Err` is the exit code.
-fn targets(path: &Path) -> Result<Option<Vec<PathBuf>>, ExitCode> {
-    if !path.is_dir() {
-        return Ok(None);
-    }
-    crate::find_lute_files(path).map(Some).map_err(|e| {
-        let e = lute_manifest::io_reason(&e);
-        eprintln!("lute: cannot walk {}: {e}", path.display());
-        ExitCode::from(2)
-    })
+/// `E-CLI-IO` for `path`, its message already printed to stderr.
+fn io_failure(path: &Path, verb: &str, e: &std::io::Error) -> CliError {
+    let e = lute_manifest::io_reason(e);
+    let message = format!("lute: cannot {verb} {}: {e}", path.display());
+    eprintln!("{message}");
+    CliError::io(path, message)
 }
 
-/// Run `one` over `path` (a file) or every `.lute` file under it (a
-/// directory), then — for a directory — print `summary(changed_files,
-/// total_files, units)` where `units` sums what each changed file reported.
-fn over_path(
-    path: &Path,
-    mut one: impl FnMut(&Path, Scope<'_>) -> (Outcome, usize),
-    summary: impl Fn(usize, usize, usize) -> String,
-) -> ExitCode {
-    let files = match targets(path) {
-        Ok(Some(files)) => files,
-        Ok(None) => return one(path, Scope::Single).0.exit_code(),
-        Err(code) => return code,
+fn read(file: &Path) -> Result<String, CliError> {
+    std::fs::read_to_string(file).map_err(|e| io_failure(file, "read", &e))
+}
+
+fn write(file: &Path, text: &str) -> Result<(), CliError> {
+    std::fs::write(file, text).map_err(|e| io_failure(file, "write", &e))
+}
+
+/// The files an operand list selects (`dir_files` expands a directory), and
+/// whether it is one lone file operand (whose messages stay unprefixed). No
+/// operand means `.`. `dedup` keeps the first occurrence of a file named by
+/// several operands (`tag`); `fix` counts per operand, as 0.47.2 did.
+fn selected(
+    paths: &[PathBuf],
+    dir_files: impl Fn(&Path) -> std::io::Result<Vec<PathBuf>>,
+    dedup: bool,
+) -> Result<(Vec<PathBuf>, bool), CliError> {
+    let default = [PathBuf::from(".")];
+    let paths = if paths.is_empty() {
+        &default[..]
+    } else {
+        paths
     };
-    let mut worst = Outcome::Unchanged;
-    let (mut changed, mut units) = (0, 0);
-    for file in &files {
-        let (outcome, n) = one(file, Scope::Tree(file));
-        if outcome == Outcome::Changed {
-            changed += 1;
-            units += n;
-        }
-        worst = worst.max(outcome);
-    }
-    println!("lute: {}", summary(changed, files.len(), units));
-    worst.exit_code()
-}
-
-fn read(file: &Path) -> Option<String> {
-    match std::fs::read_to_string(file) {
-        Ok(t) => Some(t),
-        Err(e) => {
-            let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot read {}: {e}", file.display());
-            None
+    let single = matches!(paths, [path] if !path.is_dir());
+    let mut files: Vec<PathBuf> = Vec::new();
+    for path in paths {
+        let found = if path.is_dir() {
+            dir_files(path).map_err(|e| io_failure(path, "walk", &e))?
+        } else {
+            vec![path.clone()]
+        };
+        for file in found {
+            if !dedup || !files.contains(&file) {
+                files.push(file);
+            }
         }
     }
+    Ok((files, single))
 }
 
-fn write(file: &Path, text: &str) -> bool {
-    match std::fs::write(file, text) {
-        Ok(()) => true,
-        Err(e) => {
-            let e = lute_manifest::io_reason(&e);
-            eprintln!("lute: cannot write {}: {e}", file.display());
-            false
+/// What `lute tag` was asked for.
+pub struct TagOptions<'a> {
+    pub paths: &'a [PathBuf],
+    /// The dangerous mode: renumber every line `code`.
+    pub renumber: bool,
+    /// With `renumber`: write (0.47.2's `--force`); else preview.
+    pub commit: bool,
+    /// Write nothing; exit `1` when a file would change.
+    pub check: bool,
+    pub json: bool,
+}
+
+/// One file's row of the `0.48.0.tag` report.
+struct TagFile {
+    path: PathBuf,
+    /// Written, or — when nothing is written — would be.
+    changed: bool,
+    written: bool,
+    lines: usize,
+    instances: usize,
+    refused: Option<String>,
+    renumbered: Option<Vec<LineRenumber>>,
+}
+
+impl TagFile {
+    fn new(path: &Path, renumber: bool) -> Self {
+        TagFile {
+            path: path.to_path_buf(),
+            changed: false,
+            written: false,
+            lines: 0,
+            instances: 0,
+            refused: None,
+            renumbered: renumber.then(Vec::new),
         }
+    }
+
+    fn to_json(&self) -> Value {
+        let mut row = json!({
+            "path": self.path.display().to_string(),
+            "changed": self.changed,
+            "lines": self.lines,
+            "instances": self.instances,
+        });
+        if let Some(message) = &self.refused {
+            row["refused"] = json!(message);
+        }
+        if let Some(changes) = &self.renumbered {
+            row["renumbered"] = changes
+                .iter()
+                .map(|c| json!({"line": c.line, "from": c.from, "to": c.to}))
+                .collect();
+        }
+        row
     }
 }
 
-/// Back-fill a stable `code` into every untagged `:line` (dsl §12), rewriting
-/// each file in place. A thin shell over [`lute_check::tag_document`] (the
-/// pure core that owns the tagging logic): read, tag, and — only when at least
-/// one line was tagged — write the result back, so an already-tagged document
-/// is left byte-identical (idempotent).
+/// Back-fill a stable `code` into every untagged `:line` and an `instance`
+/// into every component use (dsl §12), rewriting each file in place. A thin
+/// shell over [`lute_check::tag_document`] (the pure core that owns the
+/// tagging logic): read, tag, and — only when at least one line was tagged —
+/// write the result back, so an already-tagged document is left
+/// byte-identical (idempotent).
 ///
-/// With `--force`, FORCE-renumber instead ([`lute_check::retag_document`]):
-/// every line's code is rewritten in clean document order — a drafting tool.
+/// `--renumber` renumbers instead ([`lute_check::retag_document`]): every
+/// line's code is rewritten in clean document order — a drafting tool, so it
+/// previews by default and writes only with `--commit` (0.47.2's `--force`).
 /// Refused when frontmatter declares `codesLocked:` (published codes are
 /// `lineId`/`voiceKey` identity; renumbering severs the localization/voice
-/// join) or when the document has structural errors.
-pub fn run_tag(path: &Path, force: bool) -> ExitCode {
-    over_path(
-        path,
-        |file, scope| tag_file(file, force, scope),
-        |changed, total, lines| {
-            let verb = if force { "renumbered" } else { "tagged" };
-            format!("{verb} {lines} line(s) in {changed} of {total} file(s)")
-        },
+/// join; missing component instance keys are still added) or when the
+/// document has structural errors.
+pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
+    let (files, single) = match selected(opts.paths, crate::find_lute_files, true) {
+        Ok(found) => found,
+        Err(err) => return envelope::fail_quietly(err),
+    };
+    let write_files = !opts.check && (!opts.renumber || opts.commit);
+    let preview = opts.renumber && !opts.commit;
+    let mut worst = Outcome::Unchanged;
+    let mut failure: Option<CliError> = None;
+    let mut records: Vec<TagFile> = Vec::new();
+    let (mut changed, mut units) = (0, 0);
+    for file in &files {
+        let scope = if single {
+            Scope::Single
+        } else {
+            Scope::Tree(file)
+        };
+        match tag_file(file, opts, write_files, scope) {
+            Ok((outcome, record)) => {
+                if outcome == Outcome::Changed {
+                    changed += 1;
+                    units += record.lines + record.instances;
+                }
+                worst = worst.max(outcome);
+                records.push(record);
+            }
+            Err(err) => {
+                failure.get_or_insert(err);
+                worst = Outcome::Failed;
+            }
+        }
+    }
+    // JSON mode: the error envelope replaces the report. Text mode prints the
+    // summary first, as 0.47.2 did, then fails.
+    if opts.json {
+        if let Some(err) = failure {
+            return envelope::fail_quietly(err);
+        }
+    }
+    let total = files.len();
+    if preview || opts.check {
+        if opts.renumber {
+            out(&format!(
+                "lute: would renumber {units} line(s) in {changed} of {total} file(s); \
+                 pass --commit to apply"
+            ));
+        } else if !single {
+            out(&format!(
+                "lute: would tag {units} line(s) in {changed} of {total} file(s)"
+            ));
+        }
+    } else if !single {
+        let verb = if opts.renumber {
+            "renumbered"
+        } else {
+            "tagged"
+        };
+        out(&format!(
+            "lute: {verb} {units} line(s) in {changed} of {total} file(s)"
+        ));
+    }
+    if let Some(err) = failure {
+        return envelope::fail_quietly(err);
+    }
+    let would_change = opts.check && records.iter().any(|r| r.changed);
+    let exit = if worst == Outcome::Unchanged || worst == Outcome::Changed {
+        u8::from(would_change)
+    } else {
+        1
+    };
+    if !opts.json {
+        return ExitCode::from(exit);
+    }
+    envelope::emit_report(
+        envelope::version::TAG,
+        exit,
+        json!({
+            "mode": if opts.renumber { "renumber" } else { "tag" },
+            "applied": records.iter().any(|r| r.written),
+            "files": records.iter().map(TagFile::to_json).collect::<Vec<_>>(),
+        }),
     )
 }
 
-fn tag_file(file: &Path, force: bool, scope: Scope<'_>) -> (Outcome, usize) {
-    let Some(text) = read(file) else {
-        return (Outcome::Failed, 0);
-    };
+fn tag_file(
+    file: &Path,
+    opts: &TagOptions<'_>,
+    write_files: bool,
+    scope: Scope<'_>,
+) -> Result<(Outcome, TagFile), CliError> {
+    let text = read(file)?;
+    let mut record = TagFile::new(file, opts.renumber);
 
-    if force {
-        return match lute_check::retag_document(&text) {
+    if opts.renumber {
+        let outcome = match lute_check::retag_document(&text) {
             lute_check::RetagOutcome::LockedInstances { text: out, added } => {
-                if !write(file, &out) {
-                    return (Outcome::Failed, 0);
-                }
-                eprintln!(
-                    "lute: {} declares `codesLocked:` — refusing line-code renumber; \
-                     added {added} component instance key(s)",
-                    file.display()
-                );
-                (Outcome::Refused, added)
+                record.changed = true;
+                record.instances = added;
+                let message = if write_files {
+                    write(file, &out)?;
+                    record.written = true;
+                    format!(
+                        "{} declares `codesLocked:` — refusing line-code renumber; \
+                         added {added} component instance key(s)",
+                        file.display()
+                    )
+                } else {
+                    self::out(&format!(
+                        "{}: would add {added} component instance key(s)",
+                        file.display()
+                    ));
+                    format!(
+                        "{} declares `codesLocked:` — refusing line-code renumber",
+                        file.display()
+                    )
+                };
+                eprintln!("lute: {message}");
+                record.refused = Some(message);
+                Outcome::Refused
             }
             lute_check::RetagOutcome::Locked => {
-                eprintln!(
-                    "lute: {} declares `codesLocked:` — its codes are published identity \
+                let message = format!(
+                    "{} declares `codesLocked:` — its codes are published identity \
                      (lineId/voiceKey); refusing to renumber. Remove the key or set it \
                      `false` to renumber a draft.",
                     file.display()
                 );
-                (Outcome::Refused, 0)
+                eprintln!("lute: {message}");
+                record.refused = Some(message);
+                Outcome::Refused
             }
             lute_check::RetagOutcome::Broken => {
-                eprintln!(
-                    "lute: {} has structural errors — fix `lute check` findings first; \
+                let message = format!(
+                    "{} has structural errors — fix `lute check` findings first; \
                      nothing was rewritten",
                     file.display()
                 );
-                (Outcome::Refused, 0)
+                eprintln!("lute: {message}");
+                record.refused = Some(message);
+                Outcome::Refused
             }
             lute_check::RetagOutcome::Renumbered {
                 text: out,
                 renumbered,
                 skipped,
+                changes,
             } => {
                 let outcome = if renumbered > 0 {
-                    if !write(file, &out) {
-                        return (Outcome::Failed, 0);
+                    record.changed = true;
+                    record.lines = renumbered;
+                    if write_files {
+                        write(file, &out)?;
+                        record.written = true;
+                        scope.say(&format!("renumbered {renumbered} line(s)"));
+                    } else {
+                        for change in &changes {
+                            self::out(&format!(
+                                "{}:{}: {} -> {}",
+                                file.display(),
+                                change.line,
+                                change.from.as_deref().unwrap_or("(none)"),
+                                change.to
+                            ));
+                        }
                     }
-                    scope.say(&format!("renumbered {renumbered} line(s)"));
                     Outcome::Changed
                 } else {
                     scope.say_unchanged("codes already in order");
                     Outcome::Unchanged
                 };
+                record.renumbered = Some(changes);
                 if skipped > 0 {
                     scope.say(&format!(
                         "{skipped} line(s) skipped (non-string `code` value)"
                     ));
                 }
-                (outcome, renumbered)
+                outcome
             }
         };
+        return Ok((outcome, record));
     }
 
-    let out = lute_check::tag_document(&text);
-    if out.added == 0 {
+    let tagged = lute_check::tag_document(&text);
+    if tagged.added == 0 {
         scope.say_unchanged("already tagged");
-        return (Outcome::Unchanged, 0);
+        return Ok((Outcome::Unchanged, record));
     }
-    if !write(file, &out.text) {
-        return (Outcome::Failed, 0);
+    record.changed = true;
+    record.lines = tagged.added - tagged.instances;
+    record.instances = tagged.instances;
+    if write_files {
+        write(file, &tagged.text)?;
+        record.written = true;
+        scope.say(&format!("tagged {} line(s)", tagged.added));
+    } else {
+        scope.say(&format!("would tag {} line(s)", tagged.added));
     }
-    scope.say(&format!("tagged {} line(s)", out.added));
-    (Outcome::Changed, out.added)
+    Ok((Outcome::Changed, record))
 }
 
 /// Apply `lute fix`'s mechanical migrations in place (dsl §7.1, §7.3, 0.18.0
 /// §3 and 0.32.0 §1.3), rewriting a file only when a span was actually
-/// changed. CEL slots are visited through the shared syntax walker; YAML
-/// project surfaces use the same byte-preserving CEL rewriter.
-pub fn run_fix(paths: &[PathBuf]) -> ExitCode {
-    if let [path] = paths {
-        if !path.is_dir() {
-            let volume = volume_eligibility(std::slice::from_ref(path))[0];
-            return fix_file(path, Scope::Single, volume).0.exit_code();
-        }
-    }
-    let mut files = Vec::new();
-    for path in paths {
-        if path.is_dir() {
-            match fix_targets(path) {
-                Ok(found) => files.extend(found),
-                Err(e) => {
-                    eprintln!("lute: cannot walk {}: {e}", path.display());
-                    return ExitCode::from(2);
-                }
-            }
-        } else {
-            files.push(path.clone());
-        }
-    }
+/// changed (never with `--check`, which exits `1` when any fix applies). CEL
+/// slots are visited through the shared syntax walker; YAML project surfaces
+/// use the same byte-preserving CEL rewriter.
+pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
+    let (files, single) = match selected(paths, fix_targets, false) {
+        Ok(found) => found,
+        Err(err) => return envelope::fail_quietly(err),
+    };
     let volume = volume_eligibility(&files);
     let mut worst = Outcome::Unchanged;
-    let mut changed = 0;
-    let mut fixes = 0;
+    let mut failure: Option<CliError> = None;
+    let mut rows: Vec<(PathBuf, bool, usize)> = Vec::new();
+    let (mut changed, mut fixes) = (0, 0);
     for (file, &volume) in files.iter().zip(&volume) {
-        let (outcome, n) = fix_file(file, Scope::Tree(file), volume);
-        if outcome == Outcome::Changed {
-            changed += 1;
-            fixes += n;
+        let scope = if single {
+            Scope::Single
+        } else {
+            Scope::Tree(file)
+        };
+        match fix_file(file, scope, volume, !check) {
+            Ok((outcome, n)) => {
+                if outcome == Outcome::Changed {
+                    changed += 1;
+                    fixes += n;
+                }
+                worst = worst.max(outcome);
+                rows.push((file.clone(), outcome == Outcome::Changed, n));
+            }
+            Err(err) => {
+                failure.get_or_insert(err);
+                worst = Outcome::Failed;
+            }
         }
-        worst = worst.max(outcome);
     }
-    println!(
-        "lute: applied {fixes} fix(es) in {changed} of {} file(s)",
-        files.len()
-    );
-    worst.exit_code()
+    if json {
+        if let Some(err) = failure {
+            return envelope::fail_quietly(err);
+        }
+    }
+    if !single {
+        let verb = if check { "would apply" } else { "applied" };
+        out(&format!(
+            "lute: {verb} {fixes} fix(es) in {changed} of {} file(s)",
+            files.len()
+        ));
+    }
+    if let Some(err) = failure {
+        return envelope::fail_quietly(err);
+    }
+    let exit = u8::from(check && changed > 0);
+    if !json {
+        return ExitCode::from(exit);
+    }
+    envelope::emit_report(
+        envelope::version::FIX,
+        exit,
+        json!({
+            "applied": !check && changed > 0,
+            "files": rows
+                .iter()
+                .map(|(path, changed, fixes)| json!({
+                    "path": path.display().to_string(),
+                    "changed": changed,
+                    "fixes": fixes,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+    )
 }
 
 fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -283,10 +484,13 @@ fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-fn fix_file(file: &Path, scope: Scope<'_>, volume: bool) -> (Outcome, usize) {
-    let Some(text) = read(file) else {
-        return (Outcome::Failed, 0);
-    };
+fn fix_file(
+    file: &Path,
+    scope: Scope<'_>,
+    volume: bool,
+    write_files: bool,
+) -> Result<(Outcome, usize), CliError> {
+    let text = read(file)?;
     let legacy = lute_check::fix_document(&text);
     let (mut out, mut changed) = (legacy.text, legacy.changed);
     let yaml = file
@@ -325,13 +529,15 @@ fn fix_file(file: &Path, scope: Scope<'_>, volume: bool) -> (Outcome, usize) {
     }
     if changed == 0 {
         scope.say_unchanged("nothing to fix");
-        return (Outcome::Unchanged, 0);
+        return Ok((Outcome::Unchanged, 0));
     }
-    if !write(file, &out) {
-        return (Outcome::Failed, 0);
+    if write_files {
+        write(file, &out)?;
+        scope.say(&format!("applied {changed} fix(es)"));
+    } else {
+        scope.say(&format!("would apply {changed} fix(es)"));
     }
-    scope.say(&format!("applied {changed} fix(es)"));
-    (Outcome::Changed, changed)
+    Ok((Outcome::Changed, changed))
 }
 
 /// Convert the 0.31 fact-query calls to standard CEL list-form calls. The
@@ -982,6 +1188,7 @@ fn volume_eligibility(files: &[PathBuf]) -> Vec<bool> {
             None => {
                 file.extension().is_some_and(|ext| ext == "lute")
                     && read(file)
+                        .ok()
                         .is_some_and(|text| frontmatter_volume(&text).is_some_and(is_old_volume))
             }
         })

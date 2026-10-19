@@ -324,7 +324,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.47",
+  "saveVersion": "0.48",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -333,7 +333,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.47"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.48"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 0.47부터 프로필은 기록된 **lineage**도 담습니다(아래 회차 간 모델 참고). 다른 `profileVersion`의 프로필도 거절되지 않습니다. 읽기 기록과 settings은 유지되고 lineage는 없습니다.
 
@@ -351,7 +351,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ## Locale (0.47)
 
-locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 프로젝트 index의 `contentLang`(매니페스트의 `defaults.contentLang`)이고, 없으면 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값, 그것도 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts`와 `promptTexts` 맵의 키이므로(`lute compile --locales`) 프롬프트만 번역한 locale도 포함됩니다. `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
+locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 프로젝트 index의 `contentLang`(매니페스트의 `defaults.contentLang`)이고, 없으면 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값, 그것도 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts`와 `promptTexts` 맵의 키이므로(`lute compile --locale-bundle`) 프롬프트만 번역한 locale도 포함됩니다. `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
 
 현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), branch와 hub 프롬프트(`promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
 

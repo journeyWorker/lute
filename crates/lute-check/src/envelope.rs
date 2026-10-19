@@ -460,7 +460,7 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
 /// The entry base case `D` (dsl §4.3 spec lines 442-448): every `run.*`/
 /// `user.*` path in `schema` carrying a schema `default`. Reused verbatim
 /// from the schema import/merge layer's own resolved [`StateSchema`] — a
-/// caller (T11's `lute-cli` `check-project` wiring) unions this across
+/// caller (T11's `lute-cli` whole-project `check` wiring) unions this across
 /// every document's own resolved schema in one resolved project root to
 /// get the PROJECT-RESOLVED `D` [`propagate`] expects: "a `run.*`/`user.*`
 /// path with a schema default is already seeded/assigned at scene entry by
@@ -484,7 +484,7 @@ pub struct QuestEnv {
     /// `true` when `env` is the conservative `guaranteed = possible = D`
     /// defaults-only answer (no `after` declared, or an `after`-declaring
     /// quest whose node [`propagate`] never populated — see below) — the
-    /// caller (T14 `lute scenario envelope quest:<id>`) prints the
+    /// caller (T14 `lute scenario envelope --node quest:<id>`) prints the
     /// one-line "declaring `after` would enrich this table" note exactly
     /// when this is `true`.
     pub enrichment_note: bool,
@@ -492,7 +492,7 @@ pub struct QuestEnv {
 
 /// The quest-time availability INVENTORY (dsl §4.4 "§D", spec lines
 /// 508-521): "what can I rely on here, before I write anything?" — a
-/// read-only lookup for T14's `lute scenario envelope quest:<id>`, NEVER a
+/// read-only lookup for T14's `lute scenario envelope --node quest:<id>`, NEVER a
 /// diagnostic (that is [`crate::defassign::check_quest_guard_defassign`]'s
 /// unchanged, separate, reactive job — see spec lines 494-506).
 ///
@@ -564,7 +564,7 @@ pub fn quest_envelope(
 }
 
 /// dsl §2.3/§4.3: the `E-STATE-MAYBE-UNAVAILABLE` envelope diagnostic
-/// (error grade, `check_envelope`'s error branch, ships in `check-project`
+/// (error grade, `check_envelope`'s error branch, ships in whole-project `check`
 /// BY DEFAULT). See [`check_envelope`].
 pub const E_STATE_MAYBE_UNAVAILABLE: &str = "E-STATE-MAYBE-UNAVAILABLE";
 
@@ -628,11 +628,11 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 ///
 /// - `P ∈ Guaranteed(X)` → no diagnostic — safe under EVERY declared route.
 /// - `P ∉ Possible(X)` → [`E_STATE_MAYBE_UNAVAILABLE`], ERROR grade, ships
-///   in `check-project` BY DEFAULT — no declared route ever sets `P`
+///   in whole-project `check` BY DEFAULT — no declared route ever sets `P`
 ///   before `X`.
 /// - `P ∈ Possible(X) \ Guaranteed(X)` → [`E_STATE_MAYBE_UNAVAILABLE`],
 ///   WARNING grade, default-suppressed — set on SOME but not every
-///   declared route reaching `X`. Callers (T11's `check-project` wiring)
+///   declared route reaching `X`. Callers (T11's whole-project `check` wiring)
 ///   MUST filter this out of the default project diagnostics themselves
 ///   (`Severity::Warning` vs `Severity::Error`) and route it to `lute
 ///   scenario envelope` (T14) instead — this function does not suppress
@@ -670,7 +670,7 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 /// quest reads stay [`crate::defassign::check_quest_guard_defassign`]'s
 /// existing territory, unchanged; a quest's own `Env` (even an
 /// `after`-opted-in one, dsl §4.4) is `lute scenario envelope`'s (T14)
-/// INVENTORY surface, never a `check-project` diagnostic here (design spec
+/// INVENTORY surface, never a whole-project `check` diagnostic here (design spec
 /// lines 37-45, 540-546). This function never looks at [`NodeId::Quest`]
 /// at all.
 ///

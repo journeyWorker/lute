@@ -1,7 +1,7 @@
 # TypeScript runtime
 
 `@lute-lang/runtime` is the Effect 4 host API for Lute's resumable runtime. It
-loads a bundle produced by `lute compile --all`, drives the wasm binding for
+loads a bundle produced by `lute compile --project`, drives the wasm binding for
 `lute-runtime`, records inputs, exposes events and awaits as streams, and
 replays an input log. It does not render presentations, answer bridge calls,
 pace dialogue, settle grants, or apply other game policy: those remain the
@@ -42,12 +42,12 @@ the packages with `scripts/pack-local.sh`; it prints the tarball
 
 ## Bun
 
-Compile a project to the directory that the bundle layer reads. `--all` is
-important: the output contains `project.index.json` and every artifact named by
+Compile a project to the directory that the bundle layer reads. `compile --project <dir> -o <dir>` (no
+document operand) is important: the output contains `project.index.json` and every artifact named by
 that index.
 
 ```console
-lute compile --all path/to/project -o bundle
+lute compile --project path/to/project -o bundle
 ```
 
 This is a complete minimal session. It subscribes to `events` inside the
@@ -122,7 +122,7 @@ The low-level composition is also available as `LuteBun.wasm`,
 
 ## Browser
 
-Serve the release binding and the complete `lute compile --all` directory from
+Serve the release binding and the complete `lute compile --project` directory from
 the same application (or from URLs allowed by the application's fetch/CORS
 policy). The binding file is
 `dist/wasm/lute_runtime_wasm_bg.wasm`; the bundle URL must expose
@@ -341,8 +341,8 @@ const replay = (program: Program.Program, text: string) =>
 
 `Contract` is the generated Effect-schema namespace. Rust types in
 `crates/lute-runtime` are the single definition of the event and snapshot
-contract; `schemars` emits `schemas/lute-events-0.47.schema.json` and
-`schemas/lute-snapshot-0.47.schema.json`, and the package's code generator
+contract; `schemars` emits `schemas/lute-events-0.48.schema.json` and
+`schemas/lute-snapshot-0.48.schema.json`, and the package's code generator
 emits `packages/runtime/src/generated/Contract.ts` from those schemas. Do not
 hand-edit the generated TypeScript.
 
@@ -362,7 +362,7 @@ command and artifact shapes and, since 0.41, the `project.index.json` types
 
 The CLI `lute play --events` stream is the same contract: each line is a
 `Contract.StreamLine` (`{ seed, output }`, `{ input, output }`, or a rejection
-line), and its output carries `eventVersion: "0.47.2"`. Schema regeneration is
+line), and its output carries `eventVersion: "0.48.0"`. Schema regeneration is
 part of the contract-drift check; a change belongs in the Rust types first.
 
 ## Local dogfooding

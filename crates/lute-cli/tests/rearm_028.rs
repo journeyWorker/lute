@@ -33,7 +33,8 @@ fn check_project(tag: &str, docs: &[(&str, &str)]) -> (Output, String) {
         write(&dir, rel, body);
     }
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();

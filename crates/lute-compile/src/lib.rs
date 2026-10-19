@@ -398,7 +398,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.47.2";
+pub const LUTE_IR_VERSION: &str = "0.48.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -410,7 +410,7 @@ pub fn compile(input: &CheckInput) -> Result<ExecutionIr, Vec<Diagnostic>> {
 /// Like [`compile`] but gated on a CALLER-SUPPLIED [`CheckResult`] instead of
 /// running `check(input)` itself — the seam the project-aware CLI gate
 /// (connectivity design spec §5) uses to feed the target document's RECONCILED
-/// `check-project` verdict: a `run.*`/`user.*` read the connectivity envelope
+/// whole-project `check` verdict: a `run.*`/`user.*` read the connectivity envelope
 /// proves Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a
 /// read no route guarantees blocks with the project's error-grade
 /// `E-STATE-MAYBE-UNAVAILABLE`. [`compile`] itself is the thin wrapper
@@ -652,7 +652,7 @@ fn compile_inner(
             // too, identity prefix = its canonical `<document id>.<beat id>`.
             // Units are 1-based in SOURCE order, entries and beats
             // interleaved as authored — the declaration order
-            // `ProjectIndex.beats` (and `check-project`) break ties by.
+            // `ProjectIndex.beats` (and whole-project `check`) break ties by.
             let resolved =
                 lute_check::resolve_entry_series(folded.typed.series.as_deref(), &doc.entries);
             enum Unit<'d> {
@@ -1314,7 +1314,7 @@ fn plugin_frontmatter(
 /// no resolved project root, so this NEVER validates a `visited`/
 /// `completed` target, resolves it against any other document, or
 /// assembles a project-wide graph — those stay entirely in
-/// `check-project`/`lute scenario` (T3–T14).
+/// whole-project `check`/`lute scenario` (T3–T14).
 ///
 /// **Raw means raw**: an entry is emitted whenever the edge slot is
 /// AUTHORED (`Some(_)`), including an authored-but-empty `after: ""` /
@@ -1800,7 +1800,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.47.2");
+        assert_eq!(super::LUTE_IR_VERSION, "0.48.0");
     }
 
     #[test]
@@ -1809,8 +1809,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.47.2");
-        assert_eq!(v["irVersion"], "0.47.2");
+        assert_eq!(v["lute"], "0.48.0");
+        assert_eq!(v["irVersion"], "0.48.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

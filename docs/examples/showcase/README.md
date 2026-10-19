@@ -23,11 +23,11 @@ cp docs/examples/showcase/episode01.lute docs/examples/showcase/_t.lute
 rm docs/examples/showcase/_t.lute
 ```
 
-While a scene is still being drafted, `lute tag --force` renumbers EVERY line's
+While a scene is still being drafted, `lute tag --renumber --commit` renumbers EVERY line's
 `code` in clean document order (0010/0020/… per speaker per identity scope),
 rewriting existing codes — useful after insertions/deletions leave the sequence
 gappy. Once codes are published identity (exported for localization or voice),
-declare `codesLocked: true` in frontmatter and `--force` refuses to renumber
+declare `codesLocked: true` in frontmatter and `--renumber --commit` refuses to renumber
 (plain `lute tag` back-fill stays available — new lines never break the
 `lineId` join).
 

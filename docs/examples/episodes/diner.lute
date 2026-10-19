@@ -20,7 +20,7 @@ invented for the fixture -- every line is a block the page shows.
 It is the prerequisite half of the pair: `booth.lute` declares
 `after: 'visited("mira.s01ep01")'` and reads `run.metMira`, and the
 unconditional `::set` below is what makes that read Guaranteed under the
-project envelope. `lute check-project` proves it; single-file `lute check`
+project envelope. `lute check --project <dir>` proves it; single-file `lute check`
 on booth.lute alone cannot, which is exactly the point Part 5 makes.
 */
 

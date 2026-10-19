@@ -3,7 +3,7 @@
 # walk south (the giant, the ghosts, the day care), Helix Tower with Kai
 # winning, Sabine winning once, and the Saturday sale.
 #
-#   lute play . --script plays/mid.play.yaml
+#   lute play --project . --script plays/mid.play.yaml
 #
 # OWNED BY mid. Starts from a save that has what the south and east hand to
 # mid's first visit; east's second visit (the flute, the siege lifted) is an

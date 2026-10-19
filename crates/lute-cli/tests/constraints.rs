@@ -16,7 +16,12 @@ fn manifest(constraints: &str) -> String {
 }
 
 fn run(root: &Path, args: &[&str]) -> (i32, String) {
-    let output = Command::new(BIN).args(args).arg(root).output().unwrap();
+    let output = Command::new(BIN)
+        .args(args)
+        .arg("--project")
+        .arg(root)
+        .output()
+        .unwrap();
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -59,7 +64,7 @@ fn completable_violation_and_run_witness_are_distinct() {
         "plays/q.play.yaml",
         "steps: []\n# mentions complete but never executes a completion transition\n",
     );
-    let (code, out) = run(&root, &["constraints", "--run"]);
+    let (code, out) = run(&root, &["constraints", "--all-scripts"]);
     assert_eq!(code, 1, "{out}");
     assert!(
         out.contains("c: completable violated [proven]")
@@ -77,7 +82,7 @@ fn completable_violation_and_run_witness_are_distinct() {
         "tests/q-seeded.test.yaml",
         "file: ../q.lute\nquests: { q: complete }\nexpect:\n  quests: { q: complete }\n  end: complete\n",
     );
-    let (code, out) = run(&root, &["constraints", "--run"]);
+    let (code, out) = run(&root, &["constraints", "--all-scripts"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("c: completable unknown [unknown]"), "{out}");
     write(
@@ -85,7 +90,7 @@ fn completable_violation_and_run_witness_are_distinct() {
         "tests/q.test.yaml",
         "file: ../q.lute\nstate: { run.done: true }\nexpect:\n  quests: { q: complete }\n  end: complete\n",
     );
-    let (code, out) = run(&root, &["constraints", "--run"]);
+    let (code, out) = run(&root, &["constraints", "--all-scripts"]);
     assert_eq!(code, 0, "{out}");
     assert!(out.contains("c: completable holds [witnessed]"), "{out}");
     assert!(out.contains("tests/q.test.yaml: q -> complete"), "{out}");
@@ -151,7 +156,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         "scene.lute",
         "---\nkind: scene\nid: test\n---\n@narrator: hi\n",
     );
-    let (code, out) = run(&root, &["check-project"]);
+    let (code, out) = run(&root, &["check"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
     assert!(!out.contains("W-CONSTRAINT-UNKNOWN"), "{out}");
@@ -163,7 +168,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         "scene.lute",
         "---\nkind: scene\nuses: [world.schema.yaml]\n---\n@brann: hi\n",
     );
-    let (code, out) = run(&root, &["check-project"]);
+    let (code, out) = run(&root, &["check"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
     for (constraints, needle) in [
@@ -175,7 +180,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         ("  - id: m\n    kind: speaksOnlyWhen\n    speaker: brann\n    when: \"[\"\n", "not valid CEL"),
     ] {
         write(&root, "lute.project.yaml", &manifest(constraints));
-        let (code, out) = run(&root, &["check-project"]);
+        let (code, out) = run(&root, &["check"]);
         assert_eq!(code, 1, "{out}");
         assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
         assert!(out.contains(needle), "{out}");

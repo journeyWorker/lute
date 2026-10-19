@@ -1,5 +1,5 @@
 //! dsl 0.19.0 §8 CLI surfaces owned by the tooling slice: `lute new lore`
-//! scaffolds a document `lute check` accepts, and `lute lore <dir>` reports
+//! scaffolds a document `lute check` accepts, and `lute lore --project <dir>` reports
 //! the world-narrative map (entries by target / series, and which facts lore
 //! entries reveal versus scenes and quests) as text and as JSON.
 
@@ -29,7 +29,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
         "new",
         "lore",
         "ship-records",
-        "--dir",
+        "--project",
         dir.to_str().unwrap(),
     ]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
@@ -48,7 +48,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     });
     assert_eq!(check.status.code(), Some(0), "{result:#}");
     assert_eq!(
-        result["diagnostics"].as_array().map(Vec::len),
+        result["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "the scaffold must check with no diagnostics at all: {result:#}"
     );
@@ -58,7 +58,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
         "new",
         "lore",
         "ship-records",
-        "--dir",
+        "--project",
         dir.to_str().unwrap(),
     ]);
     assert_eq!(again.status.code(), Some(2));
@@ -80,13 +80,15 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
     );
     let d = dir.to_str().unwrap();
     assert_eq!(
-        run(&["new", "quest", "ship-records", "--start", "--dir", d])
+        run(&["new", "quest", "ship-records", "--start", "--project", d])
             .status
             .code(),
         Some(0)
     );
     assert_eq!(
-        run(&["new", "lore", "ship-logs", "--dir", d]).status.code(),
+        run(&["new", "lore", "ship-logs", "--project", d])
+            .status
+            .code(),
         Some(0)
     );
     let quest = std::fs::read_to_string(dir.join("quests/shipRecords.lute")).unwrap();
@@ -94,7 +96,7 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
     let lore = std::fs::read_to_string(dir.join("lore/shipLogs.lute")).unwrap();
     assert!(lore.contains("kind: lore\nid: shipLogs\n"), "{lore}");
 
-    let check = run(&["check-project", d, "--json"]);
+    let check = run(&["check", "--project", d, "--json"]);
     let result: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| {
         panic!(
             "{e}: {}{}",
@@ -110,7 +112,7 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
     );
 }
 
-/// dsl 0.19.0 §2.1 through `check-project`: a quest document id colliding
+/// dsl 0.19.0 §2.1 through whole-project `check`: a quest document id colliding
 /// with a scene id is `E-CONN-EPISODE-ID-DUP` worded as a document id, and a
 /// document-level `series:` colliding with another file's hand-numbered
 /// position is `E-ENTRY-SERIES-ORDER`.
@@ -143,7 +145,7 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
         "d-extra.lute",
         "---\nkind: lore\n---\n<entry id=\"logX\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
         panic!(
             "{e}: {}{}",
@@ -203,7 +205,7 @@ fn lore_report_uses_resolved_series() {
         "---\nkind: lore\nseries: captainsLog\n---\n<entry id=\"day2\">\n@n: b\n</entry>\n\
          <entry id=\"day1\">\n@n: a\n</entry>\n",
     );
-    let out = run(&["lore", dir.to_str().unwrap()]);
+    let out = run(&["lore", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     assert!(
         stdout(&out)
@@ -288,7 +290,7 @@ fn fixture() -> lute_scratch::ScratchDir {
 #[test]
 fn lore_report_text_groups_entries_and_splits_fact_sources() {
     let dir = fixture();
-    let out = run(&["lore", dir.to_str().unwrap()]);
+    let out = run(&["lore", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let expected = "\
 Entries and beats by target
@@ -323,7 +325,7 @@ Facts by relation
 #[test]
 fn lore_report_json_carries_the_same_data() {
     let dir = fixture();
-    let out = run(&["lore", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["lore", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let expected = serde_json::json!({
@@ -386,7 +388,7 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
          <choice id=\"why\" text=\"Why?\">\n      ::assert{ knows(vesna, reactor) }\n    </choice>\n  \
          </branch>\n</beat>\n",
     );
-    let out = run(&["lore", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["lore", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let knows = v["relations"]
@@ -415,7 +417,8 @@ fn lore_report_lists_bundle_beats_by_target_and_as_fact_sources() {
         ]})
     );
 
-    let text = String::from_utf8(run(&["lore", dir.to_str().unwrap()]).stdout).unwrap();
+    let text =
+        String::from_utf8(run(&["lore", "--project", dir.to_str().unwrap()]).stdout).unwrap();
     assert!(
         text.contains("  item.rusty_key\n    beat  lore.dock.talk  \"The key\"  lore/dock.lute  (on talk)\n    rustyKey  [item]  lore/ship.lute\n"),
         "{text}"
@@ -440,7 +443,7 @@ fn lore_report_reports_unchecked_documents_and_fails_on_io() {
         "---\nkind: lore\n---\n<entry id=\"x\" order=\"3\">\n@n: a\n</entry>\n\
          <entry id=\"x\">\n@n: b\n</entry>\n",
     );
-    let out = run(&["lore", dir.to_str().unwrap()]);
+    let out = run(&["lore", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(0), "{out:?}");
     let text = stdout(&out);
     assert!(
@@ -448,7 +451,7 @@ fn lore_report_reports_unchecked_documents_and_fails_on_io() {
         "{text}"
     );
 
-    let missing = run(&["lore", dir.join("nope").to_str().unwrap()]);
+    let missing = run(&["lore", "--project", dir.join("nope").to_str().unwrap()]);
     assert_eq!(missing.status.code(), Some(2), "{missing:?}");
 }
 
@@ -494,7 +497,7 @@ fn lore_report_binds_rules_components_and_labels_beats() {
          <beat id=\"word\" on=\"evening\" for=\"kind:suitor\">\n  @narrator: A word.\n</beat>\n",
     );
     let d = dir.to_str().unwrap();
-    let s = stdout(&run(&["lore", d]));
+    let s = stdout(&run(&["lore", "--project", d]));
     assert!(s.starts_with("Entries and beats by target\n"), "{s}");
     assert!(
         s.contains("    scene  clash  \"Clash\"  scenes/clash.lute  (on evening)"),
@@ -517,7 +520,8 @@ fn lore_report_binds_rules_components_and_labels_beats() {
         ),
         "{s}"
     );
-    let v: serde_json::Value = serde_json::from_str(&stdout(&run(&["lore", d, "--json"]))).unwrap();
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout(&run(&["lore", "--project", d, "--json"]))).unwrap();
     let rows = v["targets"][0]["entries"].as_array().unwrap();
     assert!(
         rows.iter()

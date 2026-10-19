@@ -1,6 +1,6 @@
 ---
 title: 스트리밍 연속 컴파일러
-description: 검사된 장면 템플릿에 일반 Lute 본문을 이어 붙이고, lute compile-stream으로 즉시 플러시되는 전체 산출물 스냅샷을 받아 런타임 커서와 상태를 안전하게 유지합니다.
+description: 검사된 장면 템플릿에 일반 Lute 본문을 이어 붙이고, lute compile --stream으로 즉시 플러시되는 전체 산출물 스냅샷을 받아 런타임 커서와 상태를 안전하게 유지합니다.
 ---
 
 검사형 연속 컴파일러(checked continuation compiler)는 호스트가 관리하는 장면
@@ -41,7 +41,7 @@ LUTE
 
 ```console
 $ { printf '@guide: 첫 번째 검사 완료 줄.\n'; sleep 1; printf '@guide: 두 번째 검사 완료 줄.\n'; } \
-    | lute compile-stream /tmp/live-scene.lute
+    | lute compile --stream /tmp/live-scene.lute
 {"kind":"start","sequence":0,"appendFrom":0,"artifact":{...}}
 {"kind":"update","sequence":1,"appendFrom":1,"artifact":{...}}
 {"kind":"update","sequence":2,"appendFrom":2,"artifact":{...}}
@@ -56,7 +56,7 @@ $ { printf '@guide: 첫 번째 검사 완료 줄.\n'; sleep 1; printf '@guide: �
 
 ```console
 $ printf '@guide: 프로젝트 설정으로 검사한 줄.\n' \
-    | lute compile-stream scenes/live.lute --project . --providers snapshots
+    | lute compile --stream scenes/live.lute --project . --providers snapshots
 ```
 
 CLI는 프로젝트, 프로바이더, 컴포넌트, 기본값, identity 템플릿을 한 번만 해석하며

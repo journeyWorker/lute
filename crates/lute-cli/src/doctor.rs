@@ -93,7 +93,7 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// DEDUPLICATED project-resolution problems resolution surfaced.
 ///
 /// Deliberately no second resolution path: this reuses `lute_load::build_input` —
-/// the SAME per-document resolution `lute check`/`check-project` perform (each
+/// the SAME per-document resolution `lute check`/whole-project `check` perform (each
 /// file's own project root via `lute_load::project_root_for`, its activated
 /// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
 /// imports per dsl §9.2) — and folds it through the SAME `merge_domains` the
@@ -818,7 +818,7 @@ fn slot_entry(slot: &str, domain: &Domain) -> String {
 /// unreadable (the only hard failure — caller exits `2`).
 fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // Directory readability is the sole gating condition. `find_lute_files`
-    // surfaces the same walk I/O errors `check-project` does.
+    // surfaces the same walk I/O errors whole-project `check` does.
     let lute_files = match find_lute_files(dir) {
         Ok(files) => files,
         Err(_) => return None,
@@ -923,7 +923,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
                         snaps.len(),
                         catalog_dir.display()
                     ),
-                    "re-stamp with `lute catalog refresh <catalog-dir>`",
+                    "re-stamp with `lute catalog refresh --project <DIR>`",
                 ));
             } else {
                 checks.push(Check::pass(
@@ -950,12 +950,12 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // is where it finds out first.
     //
     // INVARIANT: the walk root is the REQUESTED `dir`, never `manifest_dir`.
-    // `doctor`'s root policy MUST equal `check-project`'s or `doctor` lies about
-    // the checker's verdict: `check-project <dir>` passes `dir` as
+    // `doctor`'s root policy MUST equal whole-project `check`'s or `doctor` lies about
+    // the checker's verdict: `check --project <dir>` passes `dir` as
     // `project_root_for`'s lower bound, so it cannot ascend above the directory
     // it was asked about. Handing `manifest_dir` in here would let `doctor` pick
     // up a parent `lute.project.yaml` — and report a plugin-declared slot as
-    // declared while `check-project` on the SAME dir rejects it with
+    // declared while whole-project `check` on the SAME dir rejects it with
     // `E-DOMAIN-UNKNOWN`. `manifest_dir` remains the right answer for the
     // "found `lute.project.yaml` at …" line above, which reports the ancestry
     // rather than predicting a verdict.
@@ -1028,7 +1028,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
             "project resolution",
             scan.problems.join("; "),
             "fix `lute.project.yaml` (or the plugin/profile it activates); \
-             `lute check-project` fails on the same problem",
+             whole-project `lute check` fails on the same problem",
         ));
     }
 

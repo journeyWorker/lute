@@ -241,7 +241,7 @@ entities:
 있습니다. 각 `::use`가 매개변수를 인수에 바인딩하고, 호스트는 자신이 직접 작성한 원자와 마찬가지로 그 위치에서
 바인딩된 원자를 검사합니다. `item: string`과 `[locket, map]`인 `item` 종류가 있을 때
 `::use{component="gift" who="isolde" item="locket"}`는 `gifted(isolde, locket)`의 `assert`로 컴파일되며,
-`item="lockt"`은 `::use`에서 `E-FACT-DOMAIN`입니다. `check-project`의 팩트 분석도 바인딩된 원자를 보므로,
+`item="lockt"`은 `::use`에서 `E-FACT-DOMAIN`입니다. 프로젝트 전체 `lute check`의 팩트 분석도 바인딩된 원자를 보므로,
 이후 `holds('gifted', ['isolde', 'locket'])`는 보장된 가드가 되고, 어떤 `::use`도 생성할 수 없는 질의는
 도달 불가 상태가 됩니다(`E-ARM-DEAD`). 팩트의 인수는 변수가 없는 값이므로 인수는 상수여야 합니다. 엔티티 또는 enum 멤버 id,
 `true` 또는 `false`여야 합니다. def 인수 `item=@best`는 `E-COMPONENT-ARG`이며 메시지에는 원자가 표시됩니다.
@@ -337,7 +337,7 @@ params:
 본문에 놓을 수 있고, 본문은 자신이 선언한 슬롯을 읽을 수 있습니다(dsl 0.26.0 §3.3). 다음은 몬스터 수집 게임의
 트레이너 배틀로, 모든 경로의 트레이너가 하나의 `::use`입니다.
 
-```lute unverified="needs the engine plugin that declares the ::battle bridge directive and the cast; checked with lute check-project on a scratch project that declares both"
+```lute unverified="needs the engine plugin that declares the ::battle bridge directive and the cast; checked with lute check --project on a scratch project that declares both"
 ---
 component: trainerBattle
 effects: true
@@ -405,7 +405,7 @@ who="lassMina" …} — when: false`와 같은 형태이며, trace와 test도 �
 ./scenes/route2.lute:9:30: error [E-BAD-ENUM] `superPotoin` is not a member of entity kind `bagItem` (attribute `item` of `::give` in component `gift`) — did you mean `superPotion`?
 ```
 
-[`lute refs <dir> --attr give.item`](/ko/tooling/cli/)은 해당 값을 바인딩하는 `::use` 줄에 표시하며
+[`lute refs --project <DIR> --attr give.item`](/ko/tooling/cli/)은 해당 값을 바인딩하는 `::use` 줄에 표시하며
 ``(via component `gift`)``로 표시합니다.
 
 이런 매개변수도 텍스트로 렌더링됩니다(dsl 0.27.0 §7). `hall: { domain: room }`에 대한 `{{@hall}}`은 인수에

@@ -75,7 +75,7 @@ as `false`. A run-tier quest's reset clears both.
 - **unknown** → the quest is unknown; its objectives are unknown.
 
 A quest with **no `start`** is *accept-driven*: an external accept (the CLI
-`--accept` in `lute trace`, an engine "accept quest" action in production —
+`--accepted-quest` in `lute trace`, an engine "accept quest" action in production —
 `engine: { accept: [<quest id>] }` in a `lute play` step, dsl 0.26.0 §7 — or
 an `accept` record in a scene or quest handler) activates it. A quest that
 carries a `start` predicate needs no accept (`E-TRACE-ACCEPT` guards the
@@ -107,7 +107,7 @@ When the walk reaches it, the engine activates quest `quest` **if its state is
 other activation — and ignores the record otherwise (an active, complete, or
 failed quest is left alone). An `activate="accept"` child (§Subquests)
 activates only if its parent is `active` at that settle; otherwise the accept
-is spent without effect. `check-project` guarantees the target is an
+is spent without effect. `check --project` guarantees the target is an
 accept-driven quest of the project (`E-ACCEPT-TARGET`): a quest without
 `start` that is either no one's subquest or declares `activate="accept"` —
 so an engine never sees an `accept` for a quest with a `start` predicate, nor
@@ -640,7 +640,7 @@ quest's declaration table):
   `::retract`, etc.) the engine plays when the event fires and `when` holds.
 
 A `questFailed` handler on a quest that can never reach `failed` never runs.
-`check-project` warns `W-QUEST-HANDLER-DEAD` (dsl 0.22.0 §7) when the quest
+`check --project` warns `W-QUEST-HANDLER-DEAD` (dsl 0.22.0 §7) when the quest
 has no authored `fail`, no required objective with a `by=` or `until=` deadline (dsl
 0.23.0 §2), no required subquest objective whose child can itself fail (a
 failing required child fails its parent through the synthesized `fail`), and
@@ -659,7 +659,7 @@ the derived `{character}.{episodeId}` fallback (dsl 0.15.0 §2); a quest keeps
 its authored quest id. An engine reconstructs the project-wide prerequisite
 graph by **unioning `prereqEdges` across every document's artifact**, exactly
 as it unions `relations`/`rules`. The static reachability proof lives in
-`check-project` / `lute scenario`, and even there it is **conservative under the
+`check --project` / `lute scenario`, and even there it is **conservative under the
 declared `after` routes** — never a claim about every runtime path.
 
 In that project-wide graph (dsl 0.24.0 §2) a bundle beat is a node too:

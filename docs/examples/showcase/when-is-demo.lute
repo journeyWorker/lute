@@ -6,10 +6,10 @@ season: 1
 episode: 3
 title: The Mood Reading
 pov: fixer
-luteVersion: "0.47.2"
+luteVersion: "0.48.0"
 # Root capability profile (project lute.project.yaml), with the SAME scene-local
 # `plugins:` options episode01.lute narrows to: a project compiles to one capability
-# snapshot (`compile --all`, `play`, `check-project` refuse two — E-CAPABILITY-MISMATCH),
+# snapshot (`compile --project`, `play`, `check --project` refuse two — E-CAPABILITY-MISMATCH),
 # so every document in it resolves identical options even where no plugin directive is used.
 profile: showcase
 plugins:

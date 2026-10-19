@@ -204,7 +204,7 @@ pub(super) fn reserved_quest_notes(
             .collect();
         defaults.sort();
         let mut msg = format!(
-            "{}(run `check-project`, or trace with `--project`, to confirm it is defined by a \
+            "{}(run whole-project `check`, or trace with `--project`, to confirm it is defined by a \
              project quest)",
             unverified_quest_note_head(id)
         );
@@ -352,7 +352,7 @@ pub(super) fn occasion_notes(
 /// `live_assert_relations` is passed CONSERVATIVELY: [`collect_assert_relations`]
 /// gathers EVERY `::assert{R(…)}` site in the normalized (component-inlined)
 /// document with NO reachability gating — trace has no T6 reachability pass,
-/// unlike `check-project`'s [`lute_check::connectivity::live_assert_relations`].
+/// unlike whole-project `check`'s [`lute_check::connectivity::live_assert_relations`].
 /// A larger live set makes MORE relations producible, so a conservative
 /// all-sites set only ever UNDER-warns (a relation `check` would prove dead via
 /// reachability may still read producible here) — never a false positive.
@@ -368,7 +368,7 @@ pub(super) fn occasion_notes(
 /// judging by this document alone warned on every piece of evidence a
 /// mystery's other scenes establish — and on every relation derived from
 /// them. When the caller resolved the project (`--project`, or the nearest
-/// `lute.project.yaml`), `project_asserts` is `check-project`'s own
+/// `lute.project.yaml`), `project_asserts` is whole-project `check`'s own
 /// reachability-gated May set ([`lute_check::connectivity::live_assert_relations`])
 /// and is unioned in; without one the note says it judged this document only.
 pub(super) fn mock_unproducible_notes(

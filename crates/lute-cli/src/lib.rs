@@ -10,7 +10,7 @@
 //!   pinned provider catalog. Exit `0` when clean, `1` when any `Error`-severity
 //!   diagnostic is present (`CheckResult::ok`), `2` on an I/O failure. `--json`
 //!   prints the serialized [`CheckResult`]; otherwise a human line per diagnostic.
-//! - `lute check-project <dir> [--json] [--providers <dir>]` — recursively
+//! - `lute check --project <dir> [--json] [--providers <dir>]` — recursively
 //!   `check` every `*.lute` file under `<dir>` (deterministic sorted order),
 //!   resolving EACH file's project root independently as its nearest
 //!   ancestor directory containing a `lute.project.yaml` (bounded below by
@@ -32,7 +32,7 @@
 //!   on an I/O failure. `--json` prints a structured report (per-file
 //!   `CheckResult`s + the project-wide diagnostics); otherwise per-file
 //!   human lines plus a project-wide section.
-//! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
+//! - `lute catalog refresh --providers <dir>` — re-stamp every pinned provider snapshot in
 //!   `<dir>` against the current `capabilitySnapshot` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
 //!   (plugin §10; "an explicit `catalog refresh` precedes a build"). Correctness
@@ -100,6 +100,7 @@ mod play_expect;
 mod plugin_origins;
 mod project;
 mod refs;
+mod removed;
 mod rewrite;
 pub(crate) use engine_matrix::EngineMatrix;
 mod runner;
@@ -109,12 +110,10 @@ mod stream;
 mod telemetry;
 mod testcmd;
 
-use cli::{CatalogCommand, Cli, Command, LocCommand};
+use cli::{CatalogCommand, Cli, Command, LocCommand, NewCommand};
 use cmd_catalog::run_refresh;
-use cmd_check::run_check;
-use cmd_check_project::run_check_project;
 use cmd_compile::dispatch_compile;
-use cmd_constraints::run_constraints;
+use cmd_constraints::{run_constraints, ScriptSelection};
 use cmd_context::run_context;
 use cmd_impact::run_impact;
 use cmd_scenario::run_scenario;
@@ -153,6 +152,13 @@ pub fn run() -> ExitCode {
 
 fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
     let json = envelope::json_mode_in(args);
+    if let Some(error) = removed::check(args) {
+        envelope::set_invocation(
+            envelope::command_id_in(args),
+            json || removed::names_format_json(args),
+        );
+        return envelope::fail(error);
+    }
     let cli = match Cli::try_parse_from(
         std::iter::once(std::ffi::OsString::from("lute")).chain(args.iter().cloned()),
     ) {
@@ -190,228 +196,290 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
     };
     match command {
         Command::Check {
-            file,
-            json,
-            providers,
+            files,
             project,
+            providers,
             permission_profile,
             engine,
-            deny,
-            deny_warnings,
-        } => run_check(
-            &file,
-            json,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-            engine.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-        ),
-        Command::CheckProject {
-            dir,
-            json,
-            providers,
-            engine,
-            deny,
-            deny_warnings,
             wip,
-        } => run_check_project(
-            &dir,
+            gate,
             json,
-            providers.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-            wip,
-            engine.as_deref(),
+        } => cmd_check::run(
+            &files,
+            &cmd_check::CheckOptions {
+                json: json.json,
+                providers: providers.providers.as_deref(),
+                project: project.project.as_deref(),
+                permission_profile: permission_profile.permission_profile.as_deref(),
+                engine: engine.as_deref(),
+                wip,
+                policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            },
         ),
         Command::Impact {
-            dir,
-            target,
-            json,
+            node,
+            project,
             providers,
-        } => run_impact(&dir, &target, json, providers.as_deref()),
+            json,
+        } => match project_for("impact", &project) {
+            Ok(dir) => run_impact(&dir, &node, json.json, providers.providers.as_deref()),
+            Err(code) => code,
+        },
         Command::Constraints {
-            dir,
-            json,
-            run,
+            project,
             providers,
-        } => run_constraints(&dir, json, run, providers.as_deref()),
+            script,
+            all_scripts,
+            json,
+        } => match project_for("constraints", &project) {
+            Ok(dir) => run_constraints(
+                &dir,
+                json.json,
+                &script,
+                all_scripts,
+                providers.providers.as_deref(),
+            ),
+            Err(code) => code,
+        },
         Command::Lint {
             path,
-            json,
+            project,
+            providers,
             deny,
             deny_warnings,
             config,
-        } => lint::run_lint(&path, json, &deny, deny_warnings, config.as_deref()),
+            json,
+        } => lint::run_lint(&lint::LintOptions {
+            path: path.as_deref(),
+            project: project.project.as_deref(),
+            providers: providers.providers.as_deref(),
+            json: json.json,
+            deny: &deny,
+            deny_warnings,
+            config: config.as_deref(),
+        }),
         Command::Compile {
             file,
-            json,
+            project,
             providers,
+            permission_profile,
+            output,
+            locale_bundle,
+            gate,
+            json,
+            stream,
+        } => dispatch_compile(&cmd_compile::CompileOptions {
+            file: file.as_deref(),
+            json: json.json,
+            providers: providers.providers.as_deref(),
+            project: project.project.as_deref(),
+            permission_profile: permission_profile.permission_profile.as_deref(),
+            output: output.as_deref(),
+            locale_bundle: locale_bundle.as_deref(),
+            deny: &gate.deny,
+            deny_warnings: gate.deny_warnings,
+            stream,
+        }),
+        Command::Expr {
+            cel,
             project,
             permission_profile,
-            out,
-            all,
-            locales,
-            deny,
-            deny_warnings,
-        } => dispatch_compile(
-            file.as_deref(),
+            gate,
             json,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-            out.as_deref(),
-            all,
-            locales.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-        ),
-        Command::CompileStream {
-            file,
-            providers,
-            project,
-            permission_profile,
-        } => stream::run(
-            &file,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-        ),
-        Command::Expr { cel, project, json } => cmd_expr::run_expr(&cel, &project, json),
-        Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
+        } => cmd_expr::run_expr(&cmd_expr::ExprOptions {
+            cel: &cel,
+            project: project.project.as_deref(),
+            permission_profile: permission_profile.permission_profile.as_deref(),
+            policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            json: json.json,
+        }),
+        Command::Fmt { paths, check, json } => cmd_fmt::run(&paths, check, json.json),
         Command::Diff {
             before,
             after,
             json,
         } => cmd_diff::run(&before, &after, json),
         Command::Patch {
-            dir,
-            patch,
+            file,
+            project,
+            providers,
+            permission_profile,
             dry_run,
             json,
-        } => cmd_patch::run(&dir, &patch, dry_run, json),
+        } => match project_for("patch", &project) {
+            Ok(dir) => cmd_patch::run(
+                &dir,
+                &file,
+                dry_run,
+                json.json,
+                &lute_model::ModelOptions {
+                    providers: providers.providers,
+                    permission_profile: permission_profile.permission_profile,
+                    ..lute_model::ModelOptions::default()
+                },
+            ),
+            Err(code) => code,
+        },
         Command::Context {
             file,
-            target,
+            project,
+            providers,
+            permission_profile,
+            node,
             at,
             max_items,
-            run,
+            script,
+            all_scripts,
             json,
-            providers,
-            project,
-            permission_profile,
-        } => run_context(
-            &file,
-            json,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-            target.as_deref(),
-            at.as_deref(),
+        } => run_context(&cmd_context::ContextOptions {
+            file: &file,
+            json: json.json,
+            providers: providers.providers.as_deref(),
+            project: project.project.as_deref(),
+            permission_profile: permission_profile.permission_profile.as_deref(),
+            node: node.as_deref(),
+            at: at.as_deref(),
             max_items,
-            run.as_deref(),
-        ),
-        Command::Trace { retired_on, .. } if !retired_on.is_empty() => {
-            retired_on_flag("trace", &retired_on)
-        }
-        Command::Beats { retired_on, .. } if !retired_on.is_empty() => {
-            retired_on_flag("beats", &retired_on)
-        }
-        Command::Calendar { retired_on, .. } if !retired_on.is_empty() => {
-            retired_on_flag("calendar", &retired_on)
-        }
-        Command::Trace {
-            occasion, target, ..
-        } if !target.is_empty() => {
-            let t = &target[0];
-            let spelled = match occasion.as_slice() {
-                [o] if !o.contains('@') => format!("`--occasion {o}@{t}`"),
-                _ => format!("`--occasion <occasion>@{t}`"),
-            };
-            envelope::fail(
-                CliError::usage(format!(
-                    "lute trace: `--target {t}`: trace names a raise's target in the occasion — \
-                     {spelled}"
-                ))
-                .with_argument("--target"),
-            )
-        }
+            scripts: ScriptSelection {
+                scripts: &script,
+                all: all_scripts,
+                providers: providers.providers.as_deref(),
+                permission_profile: permission_profile.permission_profile.as_deref(),
+            },
+        }),
         Command::Trace {
             file,
+            project,
+            providers,
+            permission_profile,
+            gate,
             state,
             fact,
-            choose,
+            choice,
             event,
-            accept,
+            accepted_quest,
             occasion,
-            target: _,
-            retired_on: _,
             mock,
             json,
-            providers,
-            project,
             entry,
             beat,
             no_derive,
             expand,
-        } => run_trace(
-            &file,
+        } => run_trace(&cmd_trace::TraceOptions {
+            file: &file,
             state,
             fact,
-            choose,
+            choose: choice,
             event,
-            accept,
+            accept: accepted_quest,
             occasion,
-            mock.as_deref(),
-            json,
-            providers.as_deref(),
-            project.as_deref(),
-            entry.as_deref(),
-            beat.as_deref(),
+            mock: mock.as_deref(),
+            json: json.json,
+            providers: providers.providers.as_deref(),
+            project: project.project.as_deref(),
+            permission_profile: permission_profile.permission_profile.as_deref(),
+            policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            entry: entry.as_deref(),
+            beat: beat.as_deref(),
             no_derive,
             expand,
+        }),
+        Command::Tag {
+            paths,
+            renumber,
+            commit,
+            check,
+            json,
+        } => rewrite::run_tag(&rewrite::TagOptions {
+            paths: &paths,
+            renumber,
+            commit,
+            check,
+            json: json.json,
+        }),
+        Command::Fix { paths, check, json } => rewrite::run_fix(&paths, check, json.json),
+        Command::Catalog(CatalogCommand::Refresh {
+            project,
+            providers,
+            json,
+        }) => run_refresh(
+            project.project.as_deref(),
+            providers.providers.as_deref(),
+            json.json,
         ),
-        Command::Tag { path, force } => rewrite::run_tag(&path, force),
-        Command::Fix { paths } => rewrite::run_fix(&paths),
-        Command::Catalog(CatalogCommand::Refresh { dir, project }) => {
-            run_refresh(&dir, project.as_deref())
-        }
-        Command::Init { dir, template } => scaffold::run_init(&dir, template.as_deref()),
-        Command::New {
-            kind,
-            name,
+        Command::Init {
             dir,
-            occasion,
-            retired_on,
-            target,
-            start,
-        } => match retired_on {
-            Some(on) => envelope::fail(
-                CliError::usage(format!(
-                    "lute new: `--on` is now `--occasion`, as in every other command — \
-                     `lute new {} {} --occasion {}`",
-                    shell_word(&kind),
-                    shell_word(&name),
-                    shell_word(&on)
-                ))
-                .with_argument("--on")
-                .with_hint("--occasion"),
-            ),
-            None => scaffold::run_new(
-                &kind,
-                &name,
-                dir.as_deref(),
-                occasion.as_deref(),
-                target.as_deref(),
+            template,
+            json: _,
+        } => scaffold::run_init(dir.as_deref(), template.as_deref()),
+        Command::New(new) => {
+            let (kind, name, project, occasion, target, start) = match &new {
+                NewCommand::Scene {
+                    name,
+                    project,
+                    occasion,
+                    target,
+                    json: _,
+                } => (
+                    "scene",
+                    name,
+                    project,
+                    occasion.as_deref(),
+                    target.as_deref(),
+                    false,
+                ),
+                NewCommand::Quest {
+                    name,
+                    project,
+                    start,
+                    json: _,
+                } => ("quest", name, project, None, None, *start),
+                NewCommand::Lore {
+                    name,
+                    project,
+                    json: _,
+                } => ("lore", name, project, None, None, false),
+                NewCommand::Schema {
+                    name,
+                    project,
+                    json: _,
+                } => ("schema", name, project, None, None, false),
+            };
+            scaffold::run_new(
+                kind,
+                name,
+                project.project.as_deref(),
+                occasion,
+                target,
                 start,
-            ),
+            )
+        }
+        Command::Lore { project, json } => match project_for("lore", &project) {
+            Ok(dir) => lore_report::run_lore(&dir, json.json),
+            Err(code) => code,
         },
-        Command::Lore { dir, json } => lore_report::run_lore(&dir, json),
         Command::Refs {
-            dir,
+            project,
             attr,
             reward,
             json,
-        } => refs::run_refs(&dir, &attr, &reward, json),
-        Command::Doctor { dir, json, strict } => doctor::run_doctor(&dir, json, strict),
+        } => match project_for("refs", &project) {
+            Ok(dir) => refs::run_refs(&dir, &attr, &reward, json.json),
+            Err(code) => code,
+        },
+        Command::Doctor {
+            project,
+            json,
+            strict,
+        } => {
+            // With no project the current directory is scanned and the
+            // missing manifest reported (0.48.0 §3.14).
+            let dir = project
+                .project
+                .or_else(project::discover_project_from_cwd)
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            doctor::run_doctor(&dir, json.json, strict)
+        }
         Command::Run {
             artifact,
             engine,
@@ -420,7 +488,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             json,
             entry,
             beat,
-            dump_conditions,
+            conditions_output,
         } => runner::run_artifact(
             &artifact,
             engine.as_deref(),
@@ -429,55 +497,92 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             json,
             entry.as_deref(),
             beat.as_deref(),
-            dump_conditions.as_deref(),
+            conditions_output.as_deref(),
         ),
         Command::Play {
-            dir,
+            project,
+            providers,
+            permission_profile,
+            gate,
             script,
             engine,
             events,
             json,
             no_derive,
-            explain,
+            derivation,
             ir,
             quiet,
-            dump_conditions,
-        } => play::run_play(
-            &dir,
-            &script,
-            engine.as_deref(),
-            events,
-            json,
-            no_derive,
-            &explain,
-            ir,
-            quiet,
-            dump_conditions.as_deref(),
-        ),
+            conditions_output,
+        } => match project_for("play", &project) {
+            Ok(dir) => play::run_play(&play::PlayOptions {
+                dir: &dir,
+                script: &script,
+                engine: engine.as_deref(),
+                events,
+                json: json.json,
+                no_derive,
+                derivation: &derivation,
+                ir,
+                quiet,
+                conditions_output: conditions_output.as_deref(),
+                build: play::Build {
+                    providers: providers.providers.as_deref(),
+                    permission_profile: permission_profile.permission_profile.as_deref(),
+                    policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                },
+            }),
+            Err(code) => code,
+        },
         Command::Test {
-            dir,
-            json,
-            providers,
+            paths,
             project,
-            coverage,
-            no_derive,
-        } => testcmd::run_test(
-            &dir,
+            providers,
+            permission_profile,
+            gate,
             json,
-            providers.as_deref(),
-            project.as_deref(),
             coverage,
             no_derive,
-        ),
-        Command::Loc(LocCommand::Export { dir, format, out }) => {
-            loc::run_export(&dir, format.as_deref().unwrap_or("json"), out.as_deref())
+        } => match project_for("test", &project) {
+            Ok(dir) => testcmd::run_test(&testcmd::TestOptions {
+                project: &dir,
+                paths: &paths,
+                json: json.json,
+                coverage,
+                no_derive,
+                build: play::Build {
+                    providers: providers.providers.as_deref(),
+                    permission_profile: permission_profile.permission_profile.as_deref(),
+                    policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                },
+            }),
+            Err(code) => code,
+        },
+        Command::Loc(LocCommand::Export {
+            project,
+            format,
+            output,
+        }) => match project_for("loc export", &project) {
+            Ok(dir) => {
+                loc::run_export(&dir, format.as_deref().unwrap_or("json"), output.as_deref())
+            }
+            Err(code) => code,
+        },
+        Command::Loc(LocCommand::Import {
+            files,
+            output,
+            json,
+        }) => loc::run_import(&files, output.as_deref(), json.json),
+        Command::Loc(LocCommand::Report { project, json }) => {
+            match project_for("loc report", &project) {
+                Ok(dir) => loc::run_report(&dir, json.json),
+                Err(code) => code,
+            }
         }
-        Command::Loc(LocCommand::Import { files, out }) => loc::run_import(&files, out.as_deref()),
-        Command::Loc(LocCommand::Report { dir, json }) => loc::run_report(&dir, json),
         Command::Scenario {
-            dir,
+            project,
             providers,
             format,
+            json,
             facts,
             command,
         } => {
@@ -490,66 +595,101 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     .with_argument("--facts"),
                 );
             }
+            if json.json && format.is_some() {
+                return envelope::fail(
+                    CliError::usage(
+                        "lute scenario: --json prints the JSON report; --format selects a text \
+                         rendering (`text` or `dot`) — pass one of them",
+                    )
+                    .with_argument("--format"),
+                );
+            }
+            let id = match &command {
+                None => "scenario",
+                Some(cli::ScenarioCommand::Reach { .. }) => "scenario reach",
+                Some(cli::ScenarioCommand::Envelope { .. }) => "scenario envelope",
+                Some(cli::ScenarioCommand::Knowledge { .. }) => "scenario knowledge",
+            };
+            let dir = match project_for(id, &project) {
+                Ok(dir) => dir,
+                Err(code) => return code,
+            };
+            let providers = providers.providers.as_deref();
             match format.as_deref() {
-                None | Some("text") => run_scenario(&dir, providers.as_deref(), command, facts),
-                Some(fmt) => scenario_fmt::run(&dir, providers.as_deref(), command, fmt, facts),
+                _ if json.json => scenario_fmt::run(&dir, providers, command, "json", facts),
+                None | Some("text") => run_scenario(&dir, providers, command, facts),
+                Some(fmt) => scenario_fmt::run(&dir, providers, command, fmt, facts),
             }
         }
         Command::Beats {
-            dir,
+            project,
             occasion,
             target,
             json,
             expand,
-            retired_on: _,
-        } => beats_cmd::run_beats(&dir, &occasion, &target, json, expand),
+        } => match project_for("beats", &project) {
+            Ok(dir) => beats_cmd::run_beats(&dir, &occasion, &target, json.json, expand),
+            Err(code) => code,
+        },
         Command::Calendar {
-            dir,
+            project,
+            providers,
+            permission_profile,
+            gate,
             axis,
             occasion,
-            facts,
+            occasion_axes,
+            relation,
             target,
             script,
             until,
             where_,
+            format,
             json,
-            csv,
-            retired_on: _,
-        } => play::calendar::run_calendar(
-            &dir,
-            &play::calendar::CalendarArgs {
-                axes: &axis,
-                occasions: &occasion,
-                facts: &facts,
-                targets: &target,
-                script: script.as_deref(),
-                until: until.as_deref(),
-                where_: where_.as_deref(),
-                json,
-                csv,
-            },
-        ),
+        } => {
+            if json.json && format.is_some() {
+                return envelope::fail(
+                    CliError::usage(
+                        "lute calendar: --json prints the JSON grid; --format selects a text \
+                         rendering (`text` or `csv`) — pass one of them",
+                    )
+                    .with_argument("--format"),
+                );
+            }
+            match project_for("calendar", &project) {
+                Ok(dir) => play::calendar::run_calendar(
+                    &dir,
+                    &play::calendar::CalendarArgs {
+                        axes: &axis,
+                        occasions: &occasion,
+                        occasion_axes: &occasion_axes,
+                        relations: &relation,
+                        targets: &target,
+                        script: script.as_deref(),
+                        until: until.as_deref(),
+                        where_: where_.as_deref(),
+                        json: json.json,
+                        csv: format.as_deref() == Some("csv"),
+                        build: play::Build {
+                            providers: providers.providers.as_deref(),
+                            permission_profile: permission_profile.permission_profile.as_deref(),
+                            policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                        },
+                    },
+                ),
+                Err(code) => code,
+            }
+        }
         Command::Version { json } => run_version(json),
         Command::Schema { path } => cmd_schema::run(&path),
     }
 }
 
-/// `lute <command> --on X`: the flag is `--occasion` everywhere since 0.28;
-/// name the right one rather than clap's `-- --on` tip.
-fn retired_on_flag(command: &str, on: &[String]) -> ExitCode {
-    let flags: Vec<String> = on
-        .iter()
-        .map(|o| format!("--occasion {}", shell_word(o)))
-        .collect();
-    envelope::fail(
-        CliError::usage(format!(
-            "lute {command}: there is no `--on`; an occasion is named with `--occasion`, as in \
-             every command — `{}`",
-            flags.join(" ")
-        ))
-        .with_argument("--on")
-        .with_hint("--occasion"),
-    )
+/// The project a directory command works on (0.48.0 §2.1): `--project`, else
+/// the nearest `lute.project.yaml` at or above the current directory, else
+/// the `E-CLI-USAGE` exit naming `--project`.
+fn project_for(command: &str, project: &cli::ProjectOpt) -> Result<std::path::PathBuf, ExitCode> {
+    project::require_project(command, project.project.as_deref()).map_err(envelope::fail)
 }
 
 /// `word` as one shell argument: bare when it is plain, else single-quoted.

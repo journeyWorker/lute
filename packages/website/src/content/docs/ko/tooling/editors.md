@@ -52,7 +52,7 @@ Checker가 뒷받침하는 요청 — hover, completion, 정의로 이동, 참�
 [`lute doctor`](/ko/tooling/cli/#doctor)는 같은 상태를 명령줄에서 찾습니다. 바이너리가 교체되기 전에 시작된 실행 중인 `lute-lsp`, `lute` 옆의 다른 빌드, 다른 버전을 보고하는 `PATH`의 `lute-lsp`를 찾습니다. `lute doctor --strict`는 검사 하나라도 실패하면 1로 종료하므로 하네스는 낡은 설정에서 시작하기를 거부할 수 있습니다:
 
 ```console
-$ lute doctor . --strict
+$ lute doctor --project . --strict
 …
   ✗ running lute-lsp: pid 12430 (/Users/you/.bun/bin/lute-lsp) started before its binary was replaced, so it runs an older build
       → restart the editor (or its language server) so it launches this toolchain's lute-lsp

@@ -16,6 +16,7 @@ fn play(tag: &str, script: &str) -> Json {
     let out: Output = Command::new(BIN)
         .args([
             "play",
+            "--project",
             fixture().to_str().unwrap(),
             "--script",
             script_path.to_str().unwrap(),

@@ -6,14 +6,14 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.47.2**.
+**0.48.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
 only** — no plugins, no project configuration. Just the language itself.
 
 **If your editor and the terminal disagree** — red underlines in the editor on a file `lute check`
-calls `ok`, or the other way round — trust the terminal and run `lute doctor .`. It names the usual
+calls `ok`, or the other way round — trust the terminal and run `lute doctor --project .`. It names the usual
 cause: an editor language server older than your `lute` (restart the editor after upgrading).
 
 ## Part 1 — The minimal skeleton
@@ -319,8 +319,8 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.47.2",
-  "irVersion": "0.47.2",
+  "lute": "0.48.0",
+  "irVersion": "0.48.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
@@ -388,11 +388,11 @@ path declared, every `<match>` exhaustive. It is not proof the scene plays the w
 that is what `lute trace` and, in Part 6, `lute test` are for.
 
 `lute trace` previews a playthrough without opening the game — you tell it which choice to
-take at each branch with `--choose <branchId>=<choiceId>`, and it walks the scene and prints what
+take at each branch with `--choice <branchId>=<choiceId>`, and it walks the scene and prints what
 would show on screen:
 
 ```
-$ lute trace my-scene.lute --choose orderChoice=black
+$ lute trace my-scene.lute --choice orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
@@ -486,11 +486,11 @@ profiles:
 ```
 
 (Before 0.22.0 the default was the unprefixed `{speaker}-{code}`, so both lines were `mira-0010` —
-one recording for two lines, which `check-project` refuses as `E-DUP-VOICEKEY`. A project that
+one recording for two lines, which whole-project `lute check` refuses as `E-DUP-VOICEKEY`. A project that
 already recorded audio against those old keys keeps them by pinning
 `identity: { voiceKey: "{speaker}-{code}" }` in `lute.project.yaml`.)
 
-```lute check-project="docs/examples/episodes/booth.lute"
+```lute check-in-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 id: mira.s01ep02
@@ -519,7 +519,7 @@ Single-file `lute check` can't judge cross-file relationships — a `.lute` file
 idea what other episodes exist. The **project** checker can:
 
 ```
-$ lute check-project episodes
+$ lute check --project episodes
 ok: episodes/booth.lute (0 warning(s))
 ok: episodes/diner.lute (0 warning(s))
 ok: episodes (2 file(s), 0 project-wide warning(s))
@@ -529,7 +529,7 @@ Now inspect the graph. `lute scenario` is the read-only design surface for every
 implies. Bare, it prints the whole graph in play order:
 
 ```
-$ lute scenario episodes
+$ lute scenario --project episodes
 project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
@@ -538,11 +538,11 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <id>` answers "can the player ever get here, and by what route?"; `envelope <id>` answers
+`reach --node <id>` answers "can the player ever get here, and by what route?"; `envelope --node <id>` answers
 the question you most want before writing a `when=` guard — *what state is safe to read here?*:
 
 ```
-$ lute scenario episodes envelope mira.s01ep02
+$ lute scenario --project episodes envelope --node mira.s01ep02
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira   written by: scene(mira.s01ep01)
@@ -550,7 +550,7 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `check`, surfaced here):
     (none)
 ```
 
@@ -578,12 +578,12 @@ expect:
 - `file:` is the scene under test, **relative to the test file**: the test sits in `tests/`, so
   the diner is `../diner.lute`. (In a project with a `scenes/` folder it would be
   `../scenes/<name>.lute`.)
-- `choose:` picks at each branch, exactly like `--choose` on `lute trace`.
+- `choose:` picks at each branch, exactly like `--choice` on `lute trace`.
 - `expect:` lists what must hold: `transcriptContains` lines that must be shown, written
   `@speaker: text`; `transcriptLacks` lines that must not; `state` the values after the scene.
 
 ```
-$ lute test episodes --project episodes
+$ lute test --project episodes
 PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 1 passed, 0 failed
@@ -591,9 +591,9 @@ PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 A failing test says why. Change the choice to `familiar`, which is guarded by `scene.knowsMira`:
 
-<!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
+<!-- lute-diagnostics unverified="lute test respells the trace-driver literal `--choice {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
 ```
-$ lute test episodes --project episodes
+$ lute test --project episodes
 FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
       trace refused:
         episodes/diner.lute:26:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
@@ -603,7 +603,7 @@ FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 The choice's guard is false because nothing set `scene.knowsMira`. A test can start from any state
 you name: add `state: { scene.knowsMira: true }` above `choose:` and the `familiar` path is testable
-too. `lute test episodes --project episodes --coverage` then lists which choices no test has taken
+too. `lute test --project episodes --coverage` then lists which choices no test has taken
 yet, and which scenes no test names — a to-do list for your next tests.
 
 Every key a test file takes is in the [CLI reference](/tooling/cli/#test).
@@ -779,7 +779,7 @@ the [cheatsheet](/reference/cheatsheet/) open while you write, or read the
 games — a cozy mystery, an Ink port, roguelikes, visual novels — each a checked project with its
 tests and plays, see the [example games](/examples/games/).
 
-**Editor and terminal disagree?** Run `lute doctor .` in the project. It checks your toolchain and
+**Editor and terminal disagree?** Run `lute doctor --project .` in the project. It checks your toolchain and
 project setup and names an editor language server that is older than your `lute`.
 
 **Building a game the engine drives by moments** — the player walks into the hub, talks to
@@ -791,5 +791,5 @@ $ lute init --template beats my-game
 ```
 
 It sets up an occasions plugin, beats that answer those moments, a quest, lore entries, a play
-script, and scenario tests — `lute check-project`, `lute test`, and `lute play` all pass as
+script, and scenario tests — whole-project `lute check`, `lute test`, and `lute play` all pass as
 scaffolded. [Beats](/language/beats/) and [Playing a story](/tooling/play/) explain the model.

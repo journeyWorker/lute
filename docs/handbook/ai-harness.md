@@ -1,22 +1,22 @@
 ---
-title: "AI harness surface — 0.47.2"
+title: "AI harness surface — 0.48.0"
 status: Implemented
 ---
 # AI harness surface
 
-This page is the thin adapter contract for 0.47.2. The current language is
-0.47.2; the CLI's machine-readable reports use a common JSON envelope. The
+This page is the thin adapter contract for 0.48.0. The current language is
+0.48.0; the CLI's machine-readable reports use a common JSON envelope. The
 CLI is the boundary, not a chat app, session manager, MCP server, or
 Lute-specific agent protocol
 (`docs/design/architecture-direction.md:225-241`).
 
 ## Sequence
 
-1. **Inspect:** `lute context <dir> --target <kind:key> --json` (or
+1. **Inspect:** `lute context <file> --project <dir> --node <kind:key> --json` (or
    `lute context <file> --at <file>:<line>:<col> --json`).
 2. **Plan:** construct a patch with the returned `projectRevision`, target
    keys, edits, and explicit `preserve` items.
-3. **Patch:** `lute patch <dir> patch.json --dry-run --json`.
+3. **Patch:** `lute patch patch.json --project <dir> --dry-run --json`.
 4. **Check/review:** inspect the semantic diff and diagnostics; apply the same
    patch without `--dry-run` only when the result is intended.
 5. **Replay:** use the project's existing play/test/trace surface as the
@@ -28,6 +28,23 @@ Every report JSON object has `command`, `schemaVersion`, and `ok`; `ok` is
 `ok: false`; JSON-mode I/O failures use the `0.43.0.error` envelope and
 retain the command name and structured `error`. `run --json` and
 `play --events` are deliberately unwrapped runtime/artifact streams.
+
+`lute check --json` prints one `0.48.0.check` report in both modes (documents,
+or the whole project with `--project <dir>`): `files[]` holds one entry per
+document checked, and `project_diagnostics` is present exactly when the whole
+project ran.
+
+```json
+{
+  "command": "check",
+  "schemaVersion": "0.48.0.check",
+  "ok": true,
+  "files": [
+    {"path": "scenes/a.lute", "ok": true, "diagnostics": [], "resolved": {"commands_preview": [], "injections": [], "timeline_tables": []}}
+  ],
+  "project_diagnostics": []
+}
+```
 
 
 ## Revision contract
@@ -47,7 +64,7 @@ The context result contains `schemaVersion`, `projectRevision`, `files`,
 was resolved under, the same value as the compiled IR envelope.
 Static tests/plays are only scripts whose
 steps or expectations name the target (scene/beat/entry/quest ID or lineId).
-`witnessed` is reserved for scripts actually executed with `--run`; all other
+`witnessed` is reserved for scripts actually executed with `--script` or `--all-scripts`; all other
 scripts are listed in `notIncluded` with a count and reason. The result is
 deterministic and bounded by `--max-items`; every truncation names the
 collection and gives available and omitted counts. Dynamic/retrieval-only
@@ -144,7 +161,7 @@ First snapshot the source (and do this before composing any edit):
 
 ```console
 $ lute tag /tmp/drowned-crown
-$ lute context /tmp/drowned-crown --target quest:libraryKey --max-items 20 --json > context.json
+$ lute context /tmp/drowned-crown/quests/library.lute --project /tmp/drowned-crown --node quest:libraryKey --max-items 20 --json > context.json
 ```
 
 `lute tag` is an editing prerequisite when a line has no explicit `lineId`.
@@ -155,7 +172,7 @@ Inspect `context.json`, then plan a request whose `base.project` and
 `base.files` are copied exactly from it. Preview it without writing:
 
 ```console
-$ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
+$ lute patch planned-patch.json --project /tmp/drowned-crown --dry-run --json
 ```
 
 The successful patch JSON has `schemaVersion: "0.43.0.patch"`, `accepted`,
@@ -166,8 +183,8 @@ surface; formatting-only edits have no changes. Apply the identical request
 only after review:
 
 ```console
-$ lute patch /tmp/drowned-crown planned-patch.json --json
-$ lute check-project /tmp/drowned-crown
+$ lute patch planned-patch.json --project /tmp/drowned-crown --json
+$ lute check --project /tmp/drowned-crown
 ```
 
 Replay with the project's own `lute test`, `lute play`, or trace scripts; static
@@ -178,7 +195,7 @@ semantic diff:
 $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 ```
 
-For cursor-oriented inspection use `lute context <dir> --at <file>:<line>:<column>
---max-items N [--run <FILE>] --json`. `--run` requires a script file; its
+For cursor-oriented inspection use `lute context <file> --project <dir> --at <file>:<line>:<column>
+--max-items N [--script <FILE>] --json`. `--script` takes a script file or a directory of scripts (`--all-scripts` runs every script of the project); its
 executed scripts are reported as `witnessed`, while omitted scripts are
 explicitly reported in `notIncluded`.

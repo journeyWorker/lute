@@ -1,6 +1,6 @@
 # Chapter 5: the drowned library, the neap tide, and the last dive — from a
 # save three dives past the Regent.
-#   lute play . --script plays/library.play.yaml
+#   lute play --project . --script plays/library.play.yaml
 state:
   user.runs: 3
   user.deaths: 2

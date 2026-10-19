@@ -96,7 +96,7 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
          <quest id=\"champ\" title=\"Champ\" start=\"true\" tier=\"run\">\n  \
          <objective id=\"w\" title=\"Win\" done=\"run.wins\"/>\n</quest>\n",
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     let lines = top_lines(&s, "E-STATE-DECL-CONFLICT");
@@ -110,7 +110,10 @@ fn one_path_declared_with_two_types_is_e_state_decl_conflict_naming_both() {
     // Play keys state by declared type: it refuses the project rather than
     // read one document's number as the other's bool.
     write(&dir, "plays/p.play.yaml", "steps:\n  - occasion: go\n");
-    let play = run(&dir, &["play", ".", "--script", "plays/p.play.yaml"]);
+    let play = run(
+        &dir,
+        &["play", "--project", ".", "--script", "plays/p.play.yaml"],
+    );
     assert_ne!(play.status.code(), Some(0), "{}", text(&play));
     assert!(text(&play).contains("refusing to play"), "{}", text(&play));
 }
@@ -137,7 +140,7 @@ fn declarations_must_also_agree_on_default_and_a_schema_counts() {
             "",
         ),
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     let lines = top_lines(&s, "E-STATE-DECL-CONFLICT");
     assert_eq!(lines.len(), 1, "{s}");
@@ -169,7 +172,7 @@ fn agreeing_declarations_and_scene_locals_do_not_conflict() {
             "",
         ),
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert!(top_lines(&s, "E-STATE-DECL-CONFLICT").is_empty(), "{s}");
 }
@@ -186,7 +189,7 @@ fn a_member_listed_twice_is_e_entity_kind_shape_at_the_schema_line() {
     );
     write(&dir, "scenes/a.lute", &scene("a", "", ""));
     write(&dir, "scenes/b.lute", &scene("b", "", ""));
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     let lines = top_lines(&s, "E-ENTITY-KIND-SHAPE");
@@ -234,7 +237,7 @@ fn schema_errors_are_reported_once_at_the_schema_line() {
     for id in ["a", "b", "c"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id, "", ""));
     }
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     for (code, at) in [
         ("E-ENTITY-KIND-SHAPE", "./world.schema.yaml:3:3:"),
@@ -268,7 +271,7 @@ fn a_state_path_two_imports_declare_is_reported_at_the_later_import() {
         "<match subject=\"run.fossil\">\n  <when is=\"none\">\n    @narrator: none.\n  </when>\n  \
                 <when is=\"dome\">\n    @narrator: dome.\n  </when>\n</match>\n";
     write(&dir, "scenes/a.lute", &scene("a", "", body));
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     let lines = top_lines(&s, "E-USES-DUP-STATE");
@@ -306,7 +309,7 @@ fn a_duplicate_plugin_id_is_located_and_the_project_is_still_checked() {
         "scenes/b.lute",
         &scene("b", "", "<match subject=\"run.nope\">\n</match>\n"),
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     assert!(
@@ -350,7 +353,7 @@ fn a_non_member_at_use_and_assert_gets_a_did_you_mean() {
             "::use{component=\"meet\" spot=\"brdge\"}\n::assert{met(towr)}\n",
         ),
     );
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "E-FACT-DOMAIN");
     assert_eq!(lines.len(), 2, "{s}");
     assert!(
@@ -376,7 +379,7 @@ fn an_id_in_two_unrelated_kinds_offers_subset_or_rename() {
         "entities:\n  place: { members: [ashTower, hall] }\n  lair: { members: [ashTower] }\n",
     );
     write(&dir, "scenes/a.lute", &scene("a", "", ""));
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "E-ENTITY-KIND-CLASH");
     assert_eq!(lines.len(), 1, "{s}");
     assert!(
@@ -409,7 +412,7 @@ fn defaults_uses_globs_import_every_matching_schema() {
             "::set{run.eastFlag = true}\n::set{run.southFlag = true}\n",
         ),
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
 
@@ -456,7 +459,7 @@ fn a_quest_reading_only_run_state_without_a_tier_is_w_quest_tier_implicit() {
         <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n";
     let dir = project("tier-implicit", &[], "");
     write(&dir, "quests/q.lute", QUESTS);
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "an advisory: {s}");
     let lines = top_lines(&s, "W-QUEST-TIER-IMPLICIT");
@@ -470,7 +473,7 @@ fn a_quest_reading_only_run_state_without_a_tier_is_w_quest_tier_implicit() {
     // The project default is a tier: nothing is implicit.
     let dir = project("tier-implicit-default", &[], "  questTier: run\n");
     write(&dir, "quests/q.lute", QUESTS);
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert!(top_lines(&s, "W-QUEST-TIER-IMPLICIT").is_empty(), "{s}");
 }
@@ -531,7 +534,7 @@ fn an_entity_typed_attribute_checks_members_with_a_did_you_mean() {
             "::give{item=\"goodRod\"}\n::give{item=\"godRod\"}\n::give{item=\"potion\" tm=\"x\"}\n",
         ),
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     let bad = top_lines(&s, "E-BAD-ENUM");
     assert_eq!(bad.len(), 1, "{s}");
@@ -563,7 +566,7 @@ fn reward_targets_are_checked_against_the_kind_contract() {
          <reward kind=\"ITEM\" target=\"godRod\"/>\n  \
          <reward kind=\"ITEM\"/>\n</quest>\n",
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     let lines = top_lines(&s, "E-REWARD-TARGET");
@@ -609,7 +612,15 @@ fn refs_lists_every_value_with_the_documents_using_it() {
     let dir = refs_project("refs-list");
     let out = run(
         &dir,
-        &["refs", ".", "--attr", "give.item", "--reward", "ITEM"],
+        &[
+            "refs",
+            "--project",
+            ".",
+            "--attr",
+            "give.item",
+            "--reward",
+            "ITEM",
+        ],
     );
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
@@ -629,7 +640,10 @@ fn refs_lists_every_value_with_the_documents_using_it() {
         "objective rewards count: {s}"
     );
 
-    let json = run(&dir, &["refs", ".", "--reward", "ITEM", "--json"]);
+    let json = run(
+        &dir,
+        &["refs", "--project", ".", "--reward", "ITEM", "--json"],
+    );
     let v: serde_json::Value =
         serde_json::from_slice(&json.stdout).unwrap_or_else(|_| panic!("{}", text(&json)));
     let q = &v["queries"][0];
@@ -646,9 +660,14 @@ fn refs_lists_every_value_with_the_documents_using_it() {
 #[test]
 fn refs_needs_a_well_formed_query() {
     let dir = refs_project("refs-query");
-    assert_eq!(run(&dir, &["refs", "."]).status.code(), Some(2));
     assert_eq!(
-        run(&dir, &["refs", ".", "--attr", "give"]).status.code(),
+        run(&dir, &["refs", "--project", "."]).status.code(),
+        Some(2)
+    );
+    assert_eq!(
+        run(&dir, &["refs", "--project", ".", "--attr", "give"])
+            .status
+            .code(),
         Some(2)
     );
 }
@@ -686,7 +705,7 @@ fn equal_display_names_of_different_speakers_warn_once() {
         "",
         "@fisherNed: Hi.\n::use{component=\"battle\" who=\"r16Gus\" name=\"Hiker Gus\"}\n::use{component=\"battle\" who=\"r16Keeper\" name=\"Keeper Sol\"}\n",
     ));
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "advisory: {s}");
     let lines = top_lines(&s, "W-DISPLAY-NAME-DUP");
@@ -711,7 +730,7 @@ fn equal_display_names_of_different_speakers_warn_once() {
 
     let denied = run(
         &dir,
-        &["check-project", ".", "--deny", "W-DISPLAY-NAME-DUP"],
+        &["check", "--project", ".", "--deny", "W-DISPLAY-NAME-DUP"],
     );
     assert_eq!(denied.status.code(), Some(1), "{}", text(&denied));
 
@@ -727,7 +746,7 @@ fn one_speaker_shown_twice_under_one_name_is_not_a_collision() {
     let dir = names_project("names-one");
     // `fisherNed` and `oldNed` share a name, but only `south` exists: the
     // cast pair still collides; the `r3Gus` battle and rematch do not.
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "W-DISPLAY-NAME-DUP");
     assert_eq!(lines.len(), 1, "{s}");
     assert!(lines[0].contains("`Old Ned`"), "{s}");
@@ -767,7 +786,7 @@ fn an_extends_refinement_is_not_a_conflict() {
             "",
         ),
     );
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "E-STATE-DECL-CONFLICT");
     assert_eq!(lines.len(), 1, "only the unrelated number declaration: {s}");
     assert!(
@@ -828,14 +847,14 @@ fn spine(tag: &str, ribbon_tide: bool) -> lute_scratch::ScratchDir {
 #[test]
 fn wip_reads_a_component_only_producer_as_not_written_yet() {
     let dir = spine("wip-spine", false);
-    let plain = run(&dir, &["check-project", "."]);
+    let plain = run(&dir, &["check", "--project", "."]);
     let s = text(&plain);
     assert_eq!(plain.status.code(), Some(1), "{s}");
     for code in ["E-OBJECTIVE-UNSATISFIABLE", "E-BEAT-UNREACHABLE"] {
         assert!(s.contains(&format!("error [{code}]")), "{code}: {s}");
     }
 
-    let wip = run(&dir, &["check-project", "--wip", "."]);
+    let wip = run(&dir, &["check", "--wip", "--project", "."]);
     let s = text(&wip);
     assert_eq!(wip.status.code(), Some(0), "{s}");
     assert!(!s.contains("warning [E-"), "{s}");
@@ -866,7 +885,7 @@ fn wip_keeps_a_ground_producer_that_never_matches_an_error() {
     // component one, so the dead objective — and the parent objective on
     // the quest it kills — stays an error under `--wip`.
     let dir = spine("wip-ground", true);
-    let wip = run(&dir, &["check-project", "--wip", "."]);
+    let wip = run(&dir, &["check", "--wip", "--project", "."]);
     let s = text(&wip);
     assert_eq!(wip.status.code(), Some(1), "{s}");
     let unsat = top_lines(&s, "E-OBJECTIVE-UNSATISFIABLE");
@@ -960,7 +979,7 @@ fn gift_project(tag: &str) -> lute_scratch::ScratchDir {
 #[test]
 fn entity_typed_attribute_is_checked_through_component_arguments() {
     let dir = gift_project("n1");
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(1), "{s}");
     let bad = top_lines(&s, "E-BAD-ENUM");
@@ -988,7 +1007,7 @@ fn entity_typed_attribute_is_checked_through_component_arguments() {
 #[test]
 fn refs_lists_values_passed_through_components() {
     let dir = gift_project("n2");
-    let out = run(&dir, &["refs", ".", "--attr", "give.item"]);
+    let out = run(&dir, &["refs", "--project", ".", "--attr", "give.item"]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
     assert!(s.contains("a.lute:8\n"), "direct: {s}");
@@ -1179,7 +1198,7 @@ fn duplicate_add_member_is_anchored_at_both_member_lines() {
         ],
         "world.schema.yaml, schema/a.schema.yaml, schema/b.schema.yaml",
     );
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     assert!(
         s.contains("in `person`'s declaration in `schema/a.schema.yaml` (line 5) and in the `add:` of `schema/b.schema.yaml` (line 5)"),
         "{s}"
@@ -1212,7 +1231,7 @@ fn imported_def_decl_is_folded_at_the_schema_and_visited_is_bool() {
         "state:\n  run.fish: { type: int, default: 0 }\ndefs:\n  metA: \"visited('a')\"\n  metB: \"run.fish + run.gone\"\n",
     ));
     let dir = demo("n5", &files, "world.schema.yaml");
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "E-DEF-DECL");
     assert_eq!(lines.len(), 1, "once: {s}");
     assert!(
@@ -1242,7 +1261,7 @@ fn shared_name_cast_entries_are_not_display_name_dups() {
         ],
         "world.schema.yaml",
     );
-    let s = text(&run(&dir, &["check-project", "."]));
+    let s = text(&run(&dir, &["check", "--project", "."]));
     let lines = top_lines(&s, "W-DISPLAY-NAME-DUP");
     assert_eq!(lines.len(), 1, "{s}");
     assert!(lines[0].contains("`Hiker Gus`"), "{s}");
@@ -1266,7 +1285,7 @@ fn defaults_uses_glob_over_a_missing_directory_is_no_error() {
         ],
         "world.schema.yaml, schema/areas/*.schema.yaml",
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     let s = text(&out);
     assert_eq!(out.status.code(), Some(0), "{s}");
     assert!(!s.contains("E-DEFAULTS-KEY"), "{s}");

@@ -1,4 +1,4 @@
-//! `lute scenario <dir> reach --endings[=<occasion>]` (T3-20): one row per
+//! `lute scenario reach --endings[=<occasion>]` (T3-20): one row per
 //! ending with every static verdict the toolchain already reaches about it.
 //!
 //! An ending is, with `=<occasion>`, every beat answering that occasion;
@@ -8,7 +8,7 @@
 //! - the `after:` verdict — the SAME reach verdict `lute scenario reach
 //!   <node>` prints ([`crate::reach_verdict_text`]); an entry, never a graph
 //!   node, is an entry point;
-//! - the `when` verdict — the `check-project` verdicts about the beat, the
+//! - the `when` verdict — the whole-project `check` verdicts about the beat, the
 //!   ones `lute beats` shows (`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`:
 //!   it never holds; `W-BEAT-SHADOWED`: it never wins);
 //! - for a `when` nothing refutes, the state paths and fact atoms it reads
@@ -485,7 +485,7 @@ fn row(
     } else {
         (
             "unrefuted",
-            "check-project does not refute it; it needs:".to_string(),
+            "whole-project `check` does not refute it; it needs:".to_string(),
         )
     };
     let needs = match (&b.when, when_token) {
@@ -1252,7 +1252,7 @@ fn need_json(n: &Need) -> Json {
     v
 }
 
-/// `lute scenario <dir> reach --endings[=<occasion>]`, text.
+/// `lute scenario reach --endings[=<occasion>]`, text.
 pub(crate) fn run_text(
     out: &mut String,
     by_root: &ByRoot,
@@ -1362,7 +1362,7 @@ fn unreachable_exit(roots: &[RootRows]) -> ExitCode {
     }
 }
 
-/// `lute scenario <dir> --format json reach --endings[=<occasion>]`, with
+/// `lute scenario --json reach --endings[=<occasion>]`, with
 /// its exit code ([`unreachable_exit`]).
 pub(crate) fn json(
     by_root: &ByRoot,

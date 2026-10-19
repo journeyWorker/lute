@@ -21,12 +21,12 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runtime-gate-041")
 }
 
-/// `lute compile --all` of the fixture, read back as a host reads it.
+/// whole-project `lute compile` of the fixture, read back as a host reads it.
 fn runtime(scratch: &str) -> Runtime {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = Command::new(BIN)
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(fixture())
         .arg("-o")
         .arg(&out)
@@ -246,7 +246,11 @@ fn play(script: &str, events: bool) -> std::process::Output {
     let path = scratch.join("s.play.yaml");
     std::fs::write(&path, script).unwrap();
     let mut cmd = Command::new(BIN);
-    cmd.arg("play").arg(fixture()).arg("--script").arg(&path);
+    cmd.arg("play")
+        .arg("--project")
+        .arg(fixture())
+        .arg("--script")
+        .arg(&path);
     if events {
         cmd.arg("--events");
     }

@@ -1,6 +1,6 @@
 //! `lute run` — the reference headless runner over a COMPILED execution IR
 //! (the executable counterpart of `docs/runtime/` +
-//! `schemas/lute-ir-0.47.schema.json`).
+//! `schemas/lute-ir-0.48.schema.json`).
 //!
 //! `lute run` is the *engine* side of the runtime contract. It loads a compiled
 //! execution IR (`lute compile` output), gates on `irVersion` by exact minor
@@ -99,7 +99,7 @@ pub fn run_artifact(
     json_out: bool,
     entry: Option<&str>,
     beat: Option<&str>,
-    dump_conditions: Option<&Path>,
+    conditions_output: Option<&Path>,
 ) -> ExitCode {
     let text = match std::fs::read_to_string(artifact) {
         Ok(t) => t,
@@ -231,14 +231,14 @@ pub fn run_artifact(
 
     mock_set.occasions.extend(occasions);
     let mut m = run_machine(&art, &mock_set, entry, beat);
-    if let Some(path) = dump_conditions {
+    if let Some(path) = conditions_output {
         let file = match std::fs::File::create(path) {
             Ok(file) => std::rc::Rc::new(std::cell::RefCell::new(file)),
             Err(e) => {
                 return envelope::fail(CliError::io(
                     path,
                     format!(
-                        "lute run: cannot create condition dump {}: {e}",
+                        "lute run: cannot create conditions-output file {}: {e}",
                         path.display()
                     ),
                 ));
@@ -712,7 +712,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.47.2", "commands": [command]})
+        json!({"irVersion": "0.48.0", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is
@@ -952,7 +952,7 @@ struct ConditionDumpRecord {
     visited: Option<Vec<String>>,
 }
 
-/// Emitted conditions keyed by raw CEL text, built once per condition dump so
+/// Emitted conditions keyed by raw CEL text, built once per conditions-output file so
 /// each evaluation is a lookup instead of a walk over every artifact. Within an
 /// artifact the first node carrying a `cel` decides (depth-first, node before
 /// children); across artifacts the first one whose deciding node has an

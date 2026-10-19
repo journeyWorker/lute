@@ -712,7 +712,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let cast = &folded.cast;
     let mut cast_diags = crate::cast::check_speakers(&doc, cast);
     // dsl 0.24.0 §4: `emotion=` against the speaker's `emotions:`, and
-    // `W-CAST-ABSENT` (decided without facts here; `check-project`
+    // `W-CAST-ABSENT` (decided without facts here; whole-project `check`
     // re-decides it under the fact envelope).
     cast_diags.extend(crate::cast::check_emotions(
         &doc,
@@ -884,7 +884,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // restricted `visited()`/`completed()`/`active()` formula grammar T1's
     // `prereq` module defines. `check()` (single-file) validates ONLY that
     // local grammar here — it has no project graph to resolve the atoms'
-    // targets against, so node existence is deferred to `check-project`
+    // targets against, so node existence is deferred to whole-project `check`
     // (Task 3+).
     //
     // §2.1: frontmatter `after:` is a SCENE-ONLY prerequisite surface — a
@@ -1069,7 +1069,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         // dsl 0.10.0 §11.1 (**D-V**): both halves of the project-wide
         // domain-read question, computed from THIS document's merged vocabulary
         // and THIS document's resolved snapshot. `check()` draws no conclusion
-        // from them — `check-project` unions them across the root.
+        // from them — whole-project `check` unions them across the root.
         domain_use: DomainUse {
             // The clock's own enums (`clock.slot`, `clock.weekdayLabel`) are
             // nameable domains, not declarations of this project.

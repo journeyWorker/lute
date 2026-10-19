@@ -370,7 +370,7 @@ fn on_guard_reads_pre_event_snapshot_not_a_sibling_arms_write() {
 // ---------------------------------------------------------------------
 // (e) Two-path activation (dsl 0.4.0 §4.4): a `start`-less quest is
 //     ACCEPT-DRIVEN — it stays inactive ("awaiting accept", exit 0, NOT
-//     unresolved/exit-3) until a matching `--accept <questId>` activates
+//     unresolved/exit-3) until a matching `--accepted-quest <questId>` activates
 //     it, firing `questActive` EXACTLY ONCE.
 // ---------------------------------------------------------------------
 
@@ -403,7 +403,7 @@ fn start_less_quest_stays_inactive_without_accept_exit_zero_not_incomplete() {
     assert_eq!(awaiting.id, "sideQuest");
     assert!(
         quest_decision(&report.decisions, "active").is_none(),
-        "must never activate without --accept"
+        "must never activate without --accepted-quest"
     );
     assert!(
         !has_line_containing(&report.steps, "accepted!"),
@@ -424,8 +424,8 @@ fn start_less_quest_activates_on_matching_accept_questactive_fires_once() {
     assert_complete(&exit);
 
     // Activated exactly once via the accept-driven path.
-    let active =
-        quest_decision(&report.decisions, "active").expect("`--accept` must activate the quest");
+    let active = quest_decision(&report.decisions, "active")
+        .expect("`--accepted-quest` must activate the quest");
     assert_eq!(active.id, "sideQuest");
     assert_eq!(
         count_quest_decisions(&report.decisions, "sideQuest", "active"),

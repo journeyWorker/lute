@@ -124,7 +124,7 @@ pub fn check_project_entry_ids(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnos
 /// (anchored at `id_span`) or a colliding resolved `(series, order)` group
 /// (anchored at the `order` value span, or the entry id under a
 /// document-level `series:`) among `docs` — first occurrence included. The
-/// lore mirror of [`colliding_occurrences`]: `check-project` suppresses a
+/// lore mirror of [`colliding_occurrences`]: whole-project `check` suppresses a
 /// per-file `E-ENTRY-ID-DUP` / `E-ENTRY-SERIES-ORDER` whose `(path, span)` is
 /// a member here, because [`check_project_entry_ids`] already reports that
 /// group once; one that is NOT a member (an import-graph collision reaching
@@ -166,7 +166,7 @@ fn referenced_entry_reads(doc: &Document, meta: &crate::meta::TypedMeta) -> BTre
 /// across `docs` whose `<id>` no document among `docs` declares (the
 /// mistyped-entry-id catch). A warning, [`Layer::Logic`], exactly like
 /// [`W_QUEST_REF_UNKNOWN`]: the read is shape-legal and the entry may live
-/// outside the walked project. `check-project` only; single-file `check()`
+/// outside the walked project. whole-project `check` only; single-file `check()`
 /// has no project and MUST NOT emit it.
 pub fn check_project_entry_refs(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let declared: BTreeSet<&str> = docs

@@ -505,8 +505,8 @@ pub(super) fn csv_line(out: &mut String, fields: &[String]) {
 }
 
 /// One row per cell × evaluated column (a cell no column is evaluated at
-/// still gets one row when `--facts` asks for its facts); list fields
-/// `;`-joined, a `facts:<relation>` field per `--facts`. The beats eligible
+/// still gets one row when `--relation` asks for its facts); list fields
+/// `;`-joined, a `facts:<relation>` field per `--relation`. The beats eligible
 /// somewhere but never presented follow as a second table after a blank
 /// line, when there are any.
 pub(super) fn render_csv(r: &Report<'_>) -> String {

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.47.2`, the grammar and semantics the checker
+- **Language** — currently `0.48.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.47.2`) and gated on by consuming engines.
+  artifact (currently `0.48.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,214 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.48.0]
+
+**CLI grammar cutover: one name per concept, one command per action**
+(spec [`0.48.0.md`](docs/proposals/scenario-dsl/0.48.0.md); plan
+[`2026-10-19-lute-0.48.0-cli-grammar.md`](docs/superpowers/plans/2026-10-19-lute-0.48.0-cli-grammar.md);
+decisions
+[`2026-10-19-lute-0.48-decisions.md`](docs/superpowers/notes/2026-10-19-lute-0.48-decisions.md);
+grammar [`cli-grammar.md`](docs/design/cli-grammar.md)). The command line of
+every `lute` command follows one grammar: the project is always `--project
+<DIR>` with upward discovery, a graph node is always `--node`, `--json` is on
+every reporting command, `check`/`check-project` and `compile`/`compile-stream`
+fold into one command each, and a CI test walks `lute schema` and fails when a
+command drifts from the grammar. The language, the IR, the event and snapshot
+shapes and the player bindings do **not** change; no TypeScript API changes.
+The stamps read `0.48.0`, the contract schemas move to the `0.48` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.48.schema.json`, stamps
+and `$id` only), `bindingsVersion` is `"0.48"` and the player's save/profile
+format version is `"0.48"`. This is a clean cutover: every removed spelling
+answers with `E-CLI-USAGE` naming its replacement for this one minor release.
+
+### Breaking
+
+**The 0.47.2 → 0.48 mapping.** Rows list only what changes; every other
+option keeps its spelling.
+
+| Command | 0.47.2 | 0.48 |
+|---|---|---|
+| `check-project` | `check-project <DIR>` (project-wide checks, `--wip`); report id `check-project` | `check` with no document operand: every document of the discovered `--project` plus the project-wide checks; `--wip` valid only in this mode (with documents, `E-CLI-USAGE`). The command `check-project` is removed |
+| `check` | `check <FILE>`; report `0.43.0.check` | `check [<FILE>]…`: the named documents only, resolved in their project — the same per-document analysis as before (relational guard decisions still need the whole-project mode). One report for both modes: `0.48.0.check` with `files[]` (one entry per document) and `project_diagnostics` when the whole project ran |
+| `compile` | `compile <FILE>` to stdout / `-o FILE`; `compile --all <DIR>` or `--all --project <DIR>` with `-o DIR` | `compile <FILE>` as before; `compile` with no document operand compiles the whole discovered project into `-o <DIR>` (required) plus `project.index.json`. `--all` is removed |
+| `compile-stream` | `compile-stream <FILE>`: body text from stdin against the prefix, NDJSON stream out | `compile --stream <FILE>`: same input and stream (`lute schema compile` lists it as a `stream` output selected by `--stream`). `--stream` with `-o`, `--locale-bundle`, `--json`, `--deny*` or without a document is `E-CLI-USAGE` naming the conflict. The command `compile-stream` is removed |
+| all project commands | project as `DIR` operand (`check-project`, `impact`, `constraints`, `patch`, `doctor`, `play`, `test`, `loc export`, `loc report`, `beats`, `calendar`, `catalog refresh`, `scenario`, `lore`, `refs`), `--dir` (`new`), both operand and `--project` (`test`, `catalog refresh`) | `--project <DIR>` only, with upward discovery; `--project DIR` means exactly what the operand meant (the walk root, each document resolving against its nearest project) |
+| file commands | `--project` default = none (`check`, `compile`, `compile-stream`, `context`, `trace`, `expr`) | default = discovery from the file operand's directory (the current directory for `expr`); a lone document outside any project behaves as before |
+| `catalog refresh` | `catalog refresh <DIR>` (snapshot directory) | `--providers <DIR>` (default the project's `catalogDir`, `catalog/`); `--project` or discovery names the project whose `capabilitySnapshot` stamps them |
+| `impact` | `impact <DIR> <TARGET>` | `impact --project <DIR> --node <NODE>` |
+| `context` | `--target <NODEKEY>`, `--run <FILE>`, `--max-items <MAX_ITEMS>` | `--node <NODE>`, `--script <FILE>` (repeatable) / `--all-scripts`, `--max-items <N>` |
+| `scenario reach` / `envelope` / `knowledge` | `[NODE_ID]` / `NODE_ID` / `--for <NODE>`; no `--json` | `--node <NODE>`; `--json`; `--format` keeps only non-JSON formats; project via `--project` |
+| `constraints` | `--run` (flag) | `--all-scripts`; `--script <FILE>` to select |
+| `play` | `--explain <ATOM>`, `--dump-conditions <FILE>` | `--derivation <ATOM>`, `--conditions-output <FILE>` |
+| `run` | `EXECUTION-IR`, `--occasion <OCCASION>`, `--dump-conditions <FILE>` | `<FILE>`, `--occasion <OCCASION>[@<TARGET>]` (the value grammar of `trace`), `--conditions-output <FILE>` |
+| `trace` | `--choose <ID>=<CHOICEID>[,…]`, `--accept <QUESTID>` | `--choice <BRANCH>=<CHOICE>[,…]`, `--accepted-quest <QUEST>`; project discovery as above |
+| `calendar` | `--occasion <OCCASION>[@AXIS[=VALUE],…]`, `--facts <RELATION>`, `--csv` | `--occasion-axes <OCCASION>=<AXES>` (repeatable; the list after the old `@` unchanged — `@` now means only a target), `--relation <RELATION>`, `--format csv` |
+| `compile`, `loc export`, `loc import` | `--out <FILE>` | `-o, --output <PATH>` (`compile` without a document: a directory) |
+| `compile` | `--locales <FILE>` | `--locale-bundle <FILE>` |
+| `loc export` | `--format json` | omit it: JSON stays the default export; `--format csv` selects CSV; `--format json` is `E-CLI-USAGE` |
+| `new` | `new <KIND> <NAME>`, `--dir <PROJECT>` | `new scene <NAME>` (`--occasion`, `--target`), `new quest <NAME>` (`--start`), `new lore <NAME>`, `new schema <NAME>`; `--project` |
+| `fix`, `tag` | no `--check` | `--check` (verify without writing; exit as a write would require) |
+| `tag` | `--force` renumbers every line `code`, rewriting published codes | `--renumber` previews the renumbering and writes nothing; `--renumber --commit` applies it (exactly the 0.47.2 `--force` rewrite); still refused under `codesLocked:`. `--force` is removed |
+| no `--json` | `compile-stream`, `tag`, `fix`, `fmt`, `catalog refresh`, `init`, `new`, `loc import`, `scenario *` | `--json` with the 0.43 envelope (`schema` and the `loc export` artifact are exempt) |
+| shared groups | `--providers`, `--permission-profile`, `--deny`, `--deny-warnings` on some commands only | on every command where they can change the result (`--providers` on `play`, `lint`, `constraints` and the other project commands whose result it changes; `--deny*` on `test`, `play`, `trace`, `expr`, `calendar`) |
+| value names | `PATHS`, `PATH`, `EXECUTION-IR`, `NODEKEY`, `NODE_ID`, `MAX_ITEMS`, `CHOICEID`, `QUESTID` | the grammar §5 vocabulary (`<PATH>`, `<FILE>`, `<NODE>`, `<N>`, `<CHOICE>`, `<QUEST>`, …) |
+
+- **Removed spellings answer with the replacement.** Each removed spelling
+  (every spelling the table removes, spec §5, including a project directory
+  operand of any command and `check <DIR>`) is `E-CLI-USAGE` (exit `2`; the error
+  envelope in `--json` mode with `argument` = the removed spelling and `hint`
+  = the replacement) whose message names the replacement and, where the rest
+  of the command line allows, the full rewritten command (``lute check-project
+  docs/x`` → ``lute check-project is now `lute check --project docs/x` ``). The
+  removed commands `check-project` and `compile-stream` have a `null` command
+  in the envelope and no telemetry command id. This holds for one minor
+  release; after it they are plain unknown-argument errors.
+- **Project discovery now applies to the file commands.** Without `--project`,
+  a command uses the nearest `lute.project.yaml` above the file operand (the
+  current directory for `expr`, `new`, `test`, `doctor`) exactly as if it had
+  been passed, as the grammar's "the default is the nearest ancestor" requires:
+  `compile <FILE>` and `trace <FILE>` inside a project use the reconciled
+  project verdict. Measured over the 530 documents of the repository corpus,
+  only three change: `connected-outro.lute`, `episodes/booth.lute` and
+  `lantern-academy/scenes/soren/confession.lute` were refused with the
+  single-document `E-MAYBE-UNSET` and now compile (exit `1` → `0`), and their
+  `trace` exits `3` instead of `1`; no document is newly refused. `new`,
+  `test` and `doctor` run from a project subfolder act on the whole project
+  (0.47.2 `new` refused there; `new` from a subfolder now writes into that
+  project); `catalog refresh` inside a project stamps the project's
+  `capabilitySnapshot`. Directory commands with no project found fail with
+  `E-CLI-USAGE` naming `--project`. Pass `--project` explicitly where another
+  project is meant.
+- **`test` operands select scripts.** `test [<PATH>]…` selects scripts
+  (none = the project) and `--project` no longer forces single-root resolution
+  of every script; `--coverage` reports over the project directory.
+- **`check` report `0.48.0.check`.** `check --json` always emits `{ …,
+  files: [ { path, ok, diagnostics, resolved } ] }`, and whole-project runs
+  add `project_diagnostics` (`command: "check"`). It replaces `0.43.0.check`
+  (a single document is now `files[0]` with its `path`) and
+  `0.43.0.check-project`. Read `files[0]` for one document. The report has a
+  JSON Schema, `schemas/lute-check-report-0.48.schema.json`.
+- **New reports.** `tag` `0.48.0.tag`, `fix` `0.48.0.fix`, `fmt`
+  `0.48.0.fmt`, `catalog refresh` `0.48.0.catalog-refresh`, `init`
+  `0.48.0.init`, `new scene|quest|lore|schema` `0.48.0.new`, `loc import`
+  `0.48.0.loc-import`; `scenario*` keep their `0.43.0.*` versions (payload
+  unchanged, selected by `--json`). `loc import --json` requires `-o,
+  --output` (stdout carries the report).
+- **`schema` report `0.48.0.schema`.** An option whose value is optional
+  (`--endings[=<OCCASION>]`) carries `valueOptional: true`; the other option
+  fields are unchanged. Clients that read `lute schema` read the new version.
+- **`tag --renumber` previews.** The default prints the renumbering it would
+  apply and writes nothing; `--commit` writes. A script that ran `tag --force`
+  runs `tag --renumber --commit`.
+- **Path defaults.** `fmt`, `fix` and `tag` default to `.`; `init [<DIR>]`
+  defaults to `.` and refuses to run when any file it would write exists.
+- **The hidden `--on` and trace `--target` refusals are removed.** The
+  `--on` refusals of `trace`, `beats`, `calendar` and `new` (since 0.28) and
+  `trace`'s hidden `--target` refusal are plain unknown-argument errors.
+- **Contract line.** Every axis reads `0.48.0`; the schema files are
+  `-0.48`; `bindingsVersion: "0.48"` (an older value is
+  `W-BINDINGS-VERSION-STALE`; `lute fix` raises it); the player's save and
+  profile format is `"0.48"`, so a 0.47 save is refused `SaveIncompatible` (a
+  0.47 profile still decodes). Engines and hosts gated on `0.47` must widen
+  their gates to `0.48`; there is nothing new to read.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None. Shapes unchanged; the schema files are renamed to the `0.48` line
+  (stamps and `$id`; description text that names a command uses the 0.48
+  spelling).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.48"`.
+
+### CLI
+
+- **The grammar test and its vocabulary.** `crates/lute-cli/tests/cli_grammar_048.rs`
+  walks `lute schema` (every command and subcommand) and fails on an option
+  name that is not lowercase kebab-case, one name with two value names or two
+  arities, an option or placeholder outside
+  [`docs/design/cli-vocabulary.tsv`](docs/design/cli-vocabulary.tsv) and the
+  grammar §5, a denylisted verb as a valued option, a command whose options
+  differ from its row in
+  [`docs/design/cli-commands.tsv`](docs/design/cli-commands.tsv), or a short
+  alias other than `-o`. Adding an option means adding a vocabulary row.
+- **`--json` on every reporting command.** `tag`, `fix`, `fmt`,
+  `catalog refresh`, `init`, `new`, `loc import` and `scenario*` take
+  `--json` with the 0.43 envelope.
+- **`--check` on `fix` and `tag`.** Verifies without writing, as `fmt --check`
+  does.
+- **`compile` without a document** compiles the whole discovered project; its
+  stderr prefix is `lute compile:` (was `lute compile --all:`).
+- **`lute schema`** lists `compile --stream` as a stream output and
+  `valueOptional` for optional values.
+- **`--providers` is not on `beats` or `expr`.** It cannot change their
+  result (beat verdicts come from beat code only; provider ids never reach the
+  schema-import checks `expr` uses), so it is not accepted there.
+
+### Runtime
+
+- None.
+
+### Player
+
+- The save and profile format version is `"0.48"` (a stamp; no behaviour
+  change).
+
+### Diagnostics
+
+- No new codes. `E-CLI-USAGE` now covers every removed spelling and names the
+  replacement; command names inside diagnostic messages and `--explain` text use
+  the 0.48 spelling (`E-MAYBE-UNSET` says "run whole-project `lute check`",
+  `E-COMPILE-COMPONENT` names the whole-project `check`, and the
+  `E-ENTRY-ID-DUP`, `E-LOCALE-BUNDLE`, `E-TRACE-ACCEPT`, `E-TRACE-CHOICE` and
+  `W-WIP` explanations).
+
+### Identity
+
+- None.
+
+### Fixed
+
+- **`lute init .` no longer overwrites an existing file.** Running `init` in
+  an existing repository replaced its `README.md`; `init` now refuses, naming
+  the files, before writing anything.
+- Not fixed: [#145](https://github.com/journeyWorker/lute/issues/145) (a
+  quest-completing `play` is never a `constraints` witness) predates 0.48 and
+  is unchanged.
+
+### Documentation
+
+- Every command line in the website (EN/KO), `llms.txt`/`llms-full.txt`,
+  `docs/`, READMEs, CI workflows, scripts, conformance harnesses, examples and
+  package scripts uses the 0.48 spelling; the CLI reference lists the removed
+  spellings and the new reports. `docs/design/cli-grammar.md` is the grammar.
+  The documentation snippet marker ```` ```lute check-project="…" ```` is now
+  `check-in-project="…"`.
+
+### Migration notes
+
+| CHANGELOG class | Breaking change | Migration |
+|---|---|---|
+| CLI | The removed spellings of the mapping table (commands `check-project` and `compile-stream`, `compile --all`, directory operands, `--out`, `--locales`, `--target`/`--run` on `context`, `--explain`/`--dump-conditions`, `--choose`/`--accept`, `--facts`/`--csv`/`--occasion O@…`, `--force` on `tag`, …). | Rewrite as the error message says; each is `E-CLI-USAGE` with the replacement. |
+| CLI | Project discovery applies without `--project`; three corpus documents now compile and trace exit `3`; `new`/`test`/`doctor` act on the whole project from a subfolder. | Pass `--project` where another project is meant. |
+| CLI | `check` report `0.48.0.check` (`files[]`, `project_diagnostics`) replaces `0.43.0.check` and `0.43.0.check-project`; `schema` is `0.48.0.schema`. | Read `files[0]` for one document; accept `0.48.0.*`. |
+| CLI | `tag --renumber` previews, `--commit` writes; `fmt`/`fix`/`tag` default to `.`; `init` refuses existing files. | `tag --renumber --commit`; pass paths explicitly. |
+| CLI | lute-town and Brinewake scripts (not edited here) call 0.47.2 spellings. | Apply the mapping table to their scripts, CI and READMEs: `check-project D` → `check --project D`, `compile --all D -o O` → `compile --project D -o O`, `compile-stream F` → `compile --stream F`, `--out` → `--output`, `tag --force` → `tag --renumber --commit`, `trace --choose/--accept` → `--choice/--accepted-quest`. |
+| Release | All axes and packages stamp `0.48.0`; schemas move to the `0.48` line; `bindingsVersion: "0.48"`; saves and profiles read `"0.48"`, so a 0.47 save is refused `SaveIncompatible` (a 0.47 profile still decodes). | Widen gates from `0.47` to `0.48`; re-save. |
 
 ## [0.47.2]
 

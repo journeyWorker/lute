@@ -24,7 +24,7 @@ for d in "$root"/conformance/*/; do
   name=$(basename "$d")
   out="$tmp/$name.json"
   "$cargo_bin" compile "$d/source.lute" -o "$tmp/$name.artifact.json"
-  args=(run "$tmp/$name.artifact.json" --dump-conditions "$out")
+  args=(run "$tmp/$name.artifact.json" --conditions-output "$out")
   [[ -f "$d/mock.yaml" ]] && args+=(--mock "$d/mock.yaml")
   [[ -f "$d/entry.txt" ]] && args+=(--entry "$(cat "$d/entry.txt")")
   [[ -f "$d/beat.txt" ]] && args+=(--beat "$(cat "$d/beat.txt")")
@@ -56,7 +56,7 @@ find "$root/docs/examples" -type d -name saves -prune -o -type f -name '*.play.y
     rel=${script#"$root"/}
     safe=${rel//\//__}
     out="$tmp/play-$safe.json"
-    if "$cargo_bin" play "$project" --script "$script" --dump-conditions "$out" --json >/dev/null; then
+    if "$cargo_bin" play --project "$project" --script "$script" --conditions-output "$out" --json >/dev/null; then
       :
     else
       status=$?

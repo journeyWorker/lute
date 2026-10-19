@@ -1,16 +1,16 @@
 ---
 title: Player getting started
-description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.47 web player.
+description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.48 web player.
 ---
 
 This guide uses the repository's `examples/player-demo`; the same steps work for a project of your own.
 
 ## 1. Compile the project
 
-Build a complete bundle. `--all` is required because the browser runtime reads `project.index.json` and every artifact named by it.
+Build a complete bundle. Compile the whole project (no document operand) into a directory, because the browser runtime reads `project.index.json` and every artifact named by it.
 
 ```console
-lute compile --all examples/player-demo -o dist/bundle
+lute compile --project examples/player-demo -o dist/bundle
 ```
 
 The bundle directory must contain `project.index.json` and all referenced artifact JSON files. Copy or serve the 0.41 runtime binding at `lute_runtime_wasm_bg.wasm` as well.
@@ -20,7 +20,7 @@ The bundle directory must contain `project.index.json` and all referenced artifa
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -33,17 +33,17 @@ assetsBase: assets/
 The full format is in [Bindings reference](/player/bindings/). Check it after compiling:
 
 ```console
-lute check-project examples/player-demo
+lute check --project examples/player-demo
 ```
 
-`check-project` validates the schema, domain and cast keys, referenced files, effects, and flow occasions. A malformed shape is `E-BINDING-SHAPE`, an unknown effect or parameter is `E-BINDING-EFFECT`, a missing asset is `E-BINDING-FILE`, and a key outside the merged project vocabulary is `E-BINDING-KEY`. Missing, unused, and all other diagnostics are available with `--json`.
+Whole-project `lute check` validates the schema, domain and cast keys, referenced files, effects, and flow occasions. A malformed shape is `E-BINDING-SHAPE`, an unknown effect or parameter is `E-BINDING-EFFECT`, a missing asset is `E-BINDING-FILE`, and a key outside the merged project vocabulary is `E-BINDING-KEY`. Missing, unused, and all other diagnostics are available with `--json`.
 
 ## 3. Mount in a page
 
-Install the exact 0.47 packages:
+Install the exact 0.48 packages:
 
 ```console
-bun add @lute-lang/player-web@0.47.2 @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.48.0 @lute-lang/player@0.48.0 @lute-lang/runtime@0.48.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.
@@ -115,9 +115,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-The script compiles `examples/player-demo` with its Korean locale bundle (`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`), bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
+The script compiles `examples/player-demo` with its Korean locale bundle (`lute compile --project examples/player-demo --locale-bundle examples/player-demo/locales/bundle.json -o <out>`), bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
 
-Settings → Locale offers the source locale (`en-US`) and `ko`; switching applies to the next line, choice and prompt shown, mid-run or on a new game. The bundle comes from `lute loc export .` run in `examples/player-demo`, translated into `locales/ko.json`, then `lute loc import locales/ko.json -o locales/bundle.json`. A finished run is kept as the player's lineage: after a reload, New game starts run 2 with run 1's `user.*` values and its `prev.run` (the demo's first chapter shows both).
+Settings → Locale offers the source locale (`en-US`) and `ko`; switching applies to the next line, choice and prompt shown, mid-run or on a new game. The bundle comes from `lute loc export` run in `examples/player-demo`, translated into `locales/ko.json`, then `lute loc import locales/ko.json -o locales/bundle.json`. A finished run is kept as the player's lineage: after a reload, New game starts run 2 with run 1's `user.*` values and its `prev.run` (the demo's first chapter shows both).
 
 ## 6. Stage layers
 
@@ -148,7 +148,7 @@ Either way the cue ends with the actors visible (alpha 1, no mask) in the new fr
 The title screen's heading is `ui.title.text` when the bindings set it; without it the title draws no heading (player-web never shows a placeholder name). `ui.title.background` and `ui.title.music` are optional: without them the title has no backdrop and plays no music.
 
 ```yaml
-bindingsVersion: "0.47"
+bindingsVersion: "0.48"
 ui:
   title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
 ```

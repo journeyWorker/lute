@@ -36,13 +36,13 @@ Sol arrives in Marrow Bay on Monday morning. Aunt Pell's hands shake too much to
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/seven-days
-lute test docs/examples/games/seven-days                         # 15 tests + 5 plays
-lute play docs/examples/games/seven-days --script docs/examples/games/seven-days/plays/ines-route.play.yaml
-lute play docs/examples/games/seven-days --script docs/examples/games/seven-days/plays/no-lantern.play.yaml
-lute beats docs/examples/games/seven-days                        # every occasion's candidates in order
-lute calendar docs/examples/games/seven-days --axis clock --occasion slotStart --facts present   # who is where, when
-lute calendar docs/examples/games/seven-days --axis run.day=2..7 --axis run.slot=morning,afternoon,night \
+lute check --deny-warnings --project docs/examples/games/seven-days
+lute test --project docs/examples/games/seven-days                         # 15 tests + 5 plays
+lute play --project docs/examples/games/seven-days --script docs/examples/games/seven-days/plays/ines-route.play.yaml
+lute play --project docs/examples/games/seven-days --script docs/examples/games/seven-days/plays/no-lantern.play.yaml
+lute beats --project docs/examples/games/seven-days                        # every occasion's candidates in order
+lute calendar --project docs/examples/games/seven-days --axis clock --occasion slotStart --relation present   # who is where, when
+lute calendar --project docs/examples/games/seven-days --axis run.day=2..7 --axis run.slot=morning,afternoon,night \
   --occasion placeVisit --target place.library --script docs/examples/games/seven-days/saves/after-monday.play.yaml
 lute trace docs/examples/games/seven-days/lore/diary.lute --beat person \
   --state occasion.target=ines --state run.day=3 --state run.seen.ines=3 --state run.aff.ines=2

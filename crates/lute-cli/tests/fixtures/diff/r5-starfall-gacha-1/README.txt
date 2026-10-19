@@ -4,8 +4,8 @@ was raised for. `holds(owned(occasion.target))` (a ground fact argument) and
 0.26.0 refused them with E-CEL-PROFILE / E-UNDECLARED. "Is this a duplicate?" and "what bond rank is
 this hero?" are written once for the roster.
 Run:
-  lute check-project .                              -> ok, 0 warnings
-  lute play . --script plays/summon.play.yaml       -> bram new, then bram again (after owned(bram));
+  lute check --project .                              -> ok, 0 warnings
+  lute play --project . --script plays/summon.play.yaml       -> bram new, then bram again (after owned(bram));
                                                        aria's SSR fanfare; bram "almost smiles" at bond
                                                        150, "trusts you now" at 200
   lute test tests --project .                       -> 2 passed (occasion.target mocked)

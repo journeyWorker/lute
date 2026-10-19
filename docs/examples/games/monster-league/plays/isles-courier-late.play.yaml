@@ -1,7 +1,7 @@
 # AREA isles: the courier notice taken in the afternoon and carried into the
 # night: the objective's `by` fails it at nightfall.
 #
-#   lute play . --script plays/isles-courier-late.play.yaml
+#   lute play --project . --script plays/isles-courier-late.play.yaml
 facts: [rivalBeaten(champion)]
 state: { run.slot: day }
 steps:

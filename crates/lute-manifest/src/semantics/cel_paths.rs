@@ -64,7 +64,7 @@ impl EnginePath {
 /// 0.24.0 §2): engine-populated, implicitly declared for every quest and
 /// entry — local or foreign — and readable from any CEL slot in any
 /// document kind. Content MUST NOT `::set` them (`E-QUEST-RESERVED-WRITE`)
-/// nor declare them (`E-QUEST-RESERVED-DECL`); `check-project` resolves the
+/// nor declare them (`E-QUEST-RESERVED-DECL`); whole-project `check` resolves the
 /// ids (`W-QUEST-REF-UNKNOWN`, `W-ENTRY-REF-UNKNOWN`). The one table the
 /// shape predicates below and `lute context` read.
 pub const RESERVED_PATHS: &[EnginePath] = &[

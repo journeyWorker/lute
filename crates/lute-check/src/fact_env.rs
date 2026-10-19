@@ -690,7 +690,7 @@ impl MaySet {
         self.facts.get(relation)
     }
 
-    /// dsl 0.23.0 §10 (`check-project --wip`): this set with every relation
+    /// dsl 0.23.0 §10 (whole-project `check --wip`): this set with every relation
     /// in `open` unbounded — as if content not yet written could produce any
     /// fact of it — and the rules re-run to their fixpoint. Starting from
     /// this set's facts is sound: widening only ever adds facts.
@@ -1614,7 +1614,7 @@ impl MustMap {
 pub struct FactEnv {
     pub may: MaySet,
     pub must: MustMap,
-    /// dsl 0.23.0 §10 (`check-project --wip` only): `may` widened so every
+    /// dsl 0.23.0 §10 (whole-project `check --wip` only): `may` widened so every
     /// relation nothing produces yet may hold anything
     /// ([`MaySet::widened`]). A guard that is dead under `may` but not under
     /// this set is dead only because content is not written yet.

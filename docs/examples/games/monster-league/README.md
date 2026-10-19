@@ -36,13 +36,13 @@ Size: 67 scenes, 65 lore documents, 42 quests, 7 shared components, 151 species 
 From the repo root:
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/monster-league
-lute test docs/examples/games/monster-league
-lute play docs/examples/games/monster-league --script docs/examples/games/monster-league/plays/spine.play.yaml
-lute play docs/examples/games/monster-league --script docs/examples/games/monster-league/plays/isles.play.yaml
-lute beats docs/examples/games/monster-league --occasion talk --target npc.profAlder
-lute scenario docs/examples/games/monster-league knowledge --for blockAshTowerStairs
-lute calendar docs/examples/games/monster-league --axis run.day=1..7 --axis run.slot=morning,day,night --occasion enterTown
+lute check --deny-warnings --project docs/examples/games/monster-league
+lute test --project docs/examples/games/monster-league
+lute play --project docs/examples/games/monster-league --script docs/examples/games/monster-league/plays/spine.play.yaml
+lute play --project docs/examples/games/monster-league --script docs/examples/games/monster-league/plays/isles.play.yaml
+lute beats --project docs/examples/games/monster-league --occasion talk --target npc.profAlder
+lute scenario --project docs/examples/games/monster-league knowledge --node blockAshTowerStairs
+lute calendar --project docs/examples/games/monster-league --axis run.day=1..7 --axis run.slot=morning,day,night --occasion enterTown
 ```
 
 `lute test` runs 108 scenario tests and 8 plays. The 211 species facts make every load slow (several seconds). This is a known cost of static facts at this scale.

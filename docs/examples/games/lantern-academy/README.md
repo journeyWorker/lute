@@ -33,12 +33,12 @@ One run is one term. Days 1–5 are the common route: the ferry, a council heari
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/lantern-academy
-lute test docs/examples/games/lantern-academy                 # 19 tests + 7 plays
-lute play docs/examples/games/lantern-academy --script docs/examples/games/lantern-academy/plays/ren-lantern.play.yaml
-lute play docs/examples/games/lantern-academy --script docs/examples/games/lantern-academy/plays/five-terms.play.yaml
-lute calendar docs/examples/games/lantern-academy --axis clock=1..10 --occasion slotStart
-lute scenario docs/examples/games/lantern-academy reach --endings=termEnd   # 10 endings, all reachable
+lute check --deny-warnings --project docs/examples/games/lantern-academy
+lute test --project docs/examples/games/lantern-academy                 # 19 tests + 7 plays
+lute play --project docs/examples/games/lantern-academy --script docs/examples/games/lantern-academy/plays/ren-lantern.play.yaml
+lute play --project docs/examples/games/lantern-academy --script docs/examples/games/lantern-academy/plays/five-terms.play.yaml
+lute calendar --project docs/examples/games/lantern-academy --axis clock=1..10 --occasion slotStart
+lute scenario --project docs/examples/games/lantern-academy reach --endings=termEnd   # 10 endings, all reachable
 ```
 
 ## Origin

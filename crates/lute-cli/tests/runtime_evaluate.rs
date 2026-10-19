@@ -1,5 +1,5 @@
 //! dsl 0.41.0 §5.1: the runtime's read-only condition
-//! queries over a bundle `lute compile --all` emits — `evaluate` of an IR
+//! queries over a bundle whole-project `lute compile` emits — `evaluate` of an IR
 //! `exprNode` and `def` of a project def the index carries, its parameters
 //! bound to the host's arguments.
 
@@ -16,17 +16,17 @@ fn project() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../lute-runtime-wasm/tests/fixtures/evaluate")
 }
 
-/// `lute compile --all` of the evaluate fixture, read back as a host reads it.
+/// whole-project `lute compile` of the evaluate fixture, read back as a host reads it.
 fn compiled_bundle(scratch: &str) -> Bundle {
     compiled(&project(), scratch)
 }
 
-/// `lute compile --all` of `project`, read back as a host reads it.
+/// whole-project `lute compile` of `project`, read back as a host reads it.
 fn compiled(project: &Path, scratch: &str) -> Bundle {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = Command::new(env!("CARGO_BIN_EXE_lute"))
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(project)
         .arg("-o")
         .arg(&out)
