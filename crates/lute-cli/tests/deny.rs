@@ -43,7 +43,7 @@ fn warning_doc_clean_without_flags() {
     assert_eq!(out.status.code(), Some(0));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true);
-    let diags = v["diagnostics"].as_array().unwrap();
+    let diags = v["files"][0]["diagnostics"].as_array().unwrap();
     let stale = diags
         .iter()
         .find(|d| d["code"] == "W-LUTE-VERSION-STALE")
@@ -75,7 +75,7 @@ fn deny_specific_code_promotes_to_error() {
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
-    let stale = v["diagnostics"]
+    let stale = v["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -101,7 +101,7 @@ fn deny_warnings_promotes_to_error() {
     );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
-    let stale = v["diagnostics"]
+    let stale = v["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -185,16 +185,17 @@ fn deny_nonmatching_code_leaves_verdict_unchanged() {
     assert_eq!(v["ok"], true);
 }
 
-/// `check-project` honors `--deny-warnings` over per-file diagnostics: a
+/// whole-project `check` honors `--deny-warnings` over per-file diagnostics: a
 /// project whose only defect is a warning fails under promotion (exit 1).
 #[test]
 fn check_project_deny_warnings_promotes() {
     let (dir, _file) = write_stale("proj-deny");
-    let clean = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let clean = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(clean.status.code(), Some(0), "baseline project is clean");
 
     let out = run(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--json",
         "--deny-warnings",
@@ -218,13 +219,14 @@ fn check_project_deny_warnings_promotes() {
     assert_eq!(stale["denied"], true);
 }
 
-/// `check-project` also accepts `--deny <CODE>` and rejects an unknown one at
+/// whole-project `check` also accepts `--deny <CODE>` and rejects an unknown one at
 /// the clap layer (exit 2), mirroring `check`.
 #[test]
 fn check_project_unknown_deny_code_is_usage_error() {
     let (dir, _file) = write_stale("proj-unknown");
     let out = run(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--deny",
         "NOT-A-CODE",

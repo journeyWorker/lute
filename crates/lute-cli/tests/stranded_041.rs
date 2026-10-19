@@ -52,7 +52,8 @@ fn project(tag: &str, quest_attrs: &str, same_doc: bool) -> String {
         );
     }
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&*dir)
         .output()
         .unwrap();

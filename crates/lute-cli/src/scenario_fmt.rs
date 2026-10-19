@@ -139,7 +139,7 @@ fn run_json(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -652,7 +652,7 @@ fn run_dot(
             .with_argument("--format"),
         );
     }
-    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };

@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-check-report-0.48.schema.json",
+  "title": "lute check report (0.48.0.check)",
+  "description": "The `lute check --json` report, both modes (docs/proposals/scenario-dsl/0.48.0.md §3.1): `files` has one entry per document checked, in the order checked; `project_diagnostics` is present exactly when the whole project ran (no document operand).",
+  "type": "object",
+  "required": ["command", "schemaVersion", "ok", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "command": { "const": "check" },
+    "schemaVersion": { "const": "0.48.0.check" },
+    "ok": {
+      "type": "boolean",
+      "description": "true exactly when the process exits 0 (0.43.0 §3.2)."
+    },
+    "files": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/file" }
+    },
+    "project_diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/projectDiagnostic" }
+    }
+  },
+  "definitions": {
+    "file": {
+      "type": "object",
+      "required": ["path", "ok", "diagnostics", "resolved"],
+      "properties": {
+        "path": { "type": "string" },
+        "ok": {
+          "type": "boolean",
+          "description": "The document's verdict after `--deny` promotion."
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/diagnostic" }
+        },
+        "resolved": {
+          "description": "What the checker resolved for the document; null for a schema operand or a document whose project did not resolve.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["commands_preview", "injections", "timeline_tables"],
+              "properties": {
+                "commands_preview": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "injections": { "type": "array" },
+                "timeline_tables": { "type": "array" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "projectDiagnostic": {
+      "allOf": [
+        { "$ref": "#/definitions/diagnostic" },
+        {
+          "type": "object",
+          "required": ["path"],
+          "properties": { "path": { "type": "string" } }
+        }
+      ]
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "message", "span", "layer"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[EWLI]-[A-Z0-9-]+$" },
+        "severity": { "enum": ["error", "warning", "info", "hint"] },
+        "message": { "type": "string" },
+        "layer": { "type": "string" },
+        "denied": {
+          "const": true,
+          "description": "Present when `--deny` promoted the diagnostic to an error."
+        },
+        "span": {
+          "type": "object",
+          "required": ["byte_start", "byte_end", "line", "column"],
+          "properties": {
+            "byte_start": { "type": "integer", "minimum": 0 },
+            "byte_end": { "type": "integer", "minimum": 0 },
+            "line": { "type": "integer", "minimum": 0 },
+            "column": { "type": "integer", "minimum": 0 },
+            "utf16_range": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0 },
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        },
+        "spec": { "type": "array", "items": { "type": "string" } },
+        "fixits": { "type": "array" },
+        "related": { "type": "array" },
+        "covered": { "type": "array" }
+      }
+    }
+  }
+}

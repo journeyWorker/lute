@@ -156,7 +156,7 @@ fn an_imported_aggregate_cycle_is_reported_once_at_the_schema() {
             &format!("---\nkind: scene\nid: {s}\n---\n\n## One\n\n@narrator: Hi.\n::assert{{knock(earth)}}\n"),
         );
     }
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{t}");
     let tops: Vec<&str> = t
         .lines()
@@ -195,7 +195,7 @@ fn occasion_target_renders_the_cast_name_and_unspoken_dups_sit_at_the_cast() {
     );
     let (code, t) = run(&dir, &["test", "."]);
     assert_eq!(code, Some(0), "{t}");
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     let dup = t
         .lines()
         .find(|l| l.contains("W-DISPLAY-NAME-DUP"))
@@ -215,7 +215,7 @@ fn a_plugin_directive_attribute_named_when_is_refused_at_load() {
         "scenes/s.lute",
         "---\nkind: scene\nid: s\n---\n\n## One\n\n@narrator: Hi.\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_ne!(code, Some(0), "{t}");
     assert!(
         t.contains("E-PLUGIN-PARSE")

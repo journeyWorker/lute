@@ -92,7 +92,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 #[test]
 fn the_checker_knows_a_directive_asserts_its_declared_facts() {
     let dir = project("check");
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     // The entry's `::fright` is admitted; the office gate is not dead for
     // want of a `holding(brassKey)` producer.
@@ -133,7 +133,7 @@ fn an_entry_directive_without_effects_is_refused_with_the_reason() {
         "---\nkind: lore\nid: notes\n---\n\n<entry id=\"diary\">\n::fright{amount=3}\n\
          ::lure{room=\"lobby\"}\n@narrator: Wet.\n</entry>\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_ne!(code, Some(0), "{t}");
     assert!(
         t.contains(
@@ -158,7 +158,7 @@ fn a_directive_fact_on_an_undeclared_relation_is_refused_at_the_call() {
         "lore/notes.lute",
         "---\nkind: lore\nid: notes\n---\n\n<entry id=\"diary\">\n@narrator: Wet.\n</entry>\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_ne!(code, Some(0), "{t}");
     assert!(
         t.contains("`::give` asserts `carrying(brassKey)` (its declared `effects.asserts`)"),
@@ -274,7 +274,7 @@ fn an_entry_beats_effect_write_warns_it_applies_on_the_first_read_only() {
          <entry id=\"key\" on=\"door\" category=\"note\">\n::give{item=\"lantern\"}\n\
          @narrator: A lantern on the hook.\n</entry>\n",
     );
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     let hits: Vec<&str> = t
         .lines()
         .filter(|l| l.contains("[W-ENTRY-WRITE-REREAD]"))

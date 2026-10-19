@@ -1,4 +1,5 @@
-//! `lute check-project`.
+//! `lute check` in whole-project mode (0.48.0 §3.1; `check-project` through
+//! 0.47.2).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -8,7 +9,7 @@ use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::envelope::{self, CliError};
 use crate::manifests;
 use crate::mockcheck;
-use crate::output::{pretty_json, print_human, project_report_json, severity_str, DenyPolicy};
+use crate::output::{print_human, severity_str, DenyPolicy};
 use crate::project::{canonical_path, collect_project_inputs, normalize_span_from_text};
 use lute_check::CheckInput;
 use lute_core_span::{Diagnostic, Severity, Span};
@@ -28,6 +29,7 @@ pub(crate) fn run_check_project(
     dir: &Path,
     json: bool,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     policy: &DenyPolicy,
     wip: bool,
     engine: Option<&Path>,
@@ -35,22 +37,46 @@ pub(crate) fn run_check_project(
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(matrix) => matrix,
         Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
-            return envelope::fail(CliError::io(
-                &path,
-                format!("lute check-project: {message}"),
-            ));
+            return envelope::fail(CliError::io(&path, format!("lute check: {message}")));
         }
         Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
-            return envelope::fail(CliError::input(
-                &path,
-                format!("lute check-project: {message}"),
-            ));
+            return envelope::fail(CliError::input(&path, format!("lute check: {message}")));
         }
     };
     // 0.10.0 §7 (D-D): validate EVERY manifest under the tree, once each,
     // before any document work. Anchored at the manifest's own path, which
     // the per-document `lute:` replay never carried.
     let manifest_invalid = match manifests::validate_manifests_under(dir) {
+        Ok(verdicts) if json => {
+            // JSON mode prints one document on stdout: the manifest lines go to
+            // stderr, and an invalid manifest ends the run with its diagnostics
+            // in `project_diagnostics` (§3.1).
+            let mut manifest_diags: Vec<(PathBuf, Diagnostic)> = Vec::new();
+            let mut invalid = false;
+            for verdict in &verdicts {
+                if let Some(error) = &verdict.load_error {
+                    eprintln!("{error}");
+                    manifest_diags.push((
+                        verdict.path.clone(),
+                        manifests::as_diagnostic("E-PROJECT-CONFIG", error.to_string()),
+                    ));
+                }
+                for d in &verdict.diags {
+                    eprintln!("{}", manifests::spanless_line(&verdict.path, d, false));
+                    manifest_diags.push((verdict.path.clone(), d.clone()));
+                }
+                invalid |= verdict.is_invalid();
+            }
+            if invalid {
+                return crate::cmd_check::print_check_report(
+                    &[],
+                    Some(&manifest_diags),
+                    false,
+                    policy,
+                );
+            }
+            false
+        }
         Ok(verdicts) => manifests::report_and_gate(&verdicts),
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
@@ -65,7 +91,7 @@ pub(crate) fn run_check_project(
     }
 
     let (mut file_results, by_root, models, resolve_errors) =
-        match collect_project_inputs(dir, providers, false, wip) {
+        match collect_project_inputs(dir, providers, permission_profile, false, wip) {
             Ok(v) => v,
             Err(code) => return code,
         };
@@ -398,24 +424,12 @@ pub(crate) fn run_check_project(
     let ok = project_ok && file_results.iter().all(|(_, r)| file_ok(r));
 
     if json {
-        let report = match project_report_json(&file_results, &project_diags, ok, policy) {
-            Ok(report) => report,
-            Err(error) => {
-                return envelope::fail(CliError::io_without_path(format!(
-                    "lute: failed to serialize result: {error}"
-                )));
-            }
-        };
-        let exit = if ok { 0 } else { 1 };
-        let report = envelope::report(crate::envelope::version::CHECK_PROJECT, exit, report);
-        match pretty_json(&report) {
-            Ok(s) => println!("{s}"),
-            Err(error) => {
-                return envelope::fail(CliError::io_without_path(format!(
-                    "lute: failed to serialize result: {error}"
-                )));
-            }
-        }
+        return crate::cmd_check::print_check_report(
+            &file_results,
+            Some(&project_diags),
+            ok,
+            policy,
+        );
     } else {
         if file_results.is_empty() {
             println!("lute: no .lute files found under {}", dir.display());

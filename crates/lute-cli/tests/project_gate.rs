@@ -1,6 +1,6 @@
 //! `lute compile`/`lute trace` project-aware connectivity gate (connectivity
 //! design spec §5): WITH `--project <dir>` both commands gate on the target
-//! document's RECONCILED `check-project` verdict — an envelope-Guaranteed
+//! document's RECONCILED whole-project `check` verdict — an envelope-Guaranteed
 //! `run.*`/`user.*` read no longer blocks with a standalone `E-MAYBE-UNSET`,
 //! and a read no route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`.
 //! WITHOUT `--project`, the standalone single-file `check` gate is unchanged.
@@ -305,12 +305,12 @@ fn compile_gate_sibling_project_fault_does_not_block_target() {
         &scene_reading_run_z("bad", "after: 'visited(\"ghost.s99ep99\")'\n"),
     );
 
-    // `check-project` on the whole dir FAILS (the sibling's fault).
-    let cp = run(&["check-project", dir.to_str().unwrap()]);
+    // whole-project `check` on the whole dir FAILS (the sibling's fault).
+    let cp = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         cp.status.code(),
         Some(1),
-        "the sibling fault must fail check-project: {}",
+        "the sibling fault must fail whole-project check: {}",
         String::from_utf8_lossy(&cp.stdout)
     );
     assert!(
@@ -365,7 +365,7 @@ fn compile_gate_non_anchor_cycle_member_blocks() {
 
     // Sanity: the ONE cycle diagnostic anchors to p.lute, NOT q.lute — so q is
     // provably the non-anchored member.
-    let cp = run(&["check-project", dir.to_str().unwrap()]);
+    let cp = run(&["check", "--project", dir.to_str().unwrap()]);
     let cp_out = String::from_utf8_lossy(&cp.stdout);
     let cycle_line = cp_out
         .lines()

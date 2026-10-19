@@ -23,7 +23,9 @@ fn json_carries_covered_on_the_primary() {
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
-    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    let diags = v["files"][0]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
     let undeclared: Vec<&serde_json::Value> = diags
         .iter()
         .filter(|d| d["code"] == "E-UNDECLARED")

@@ -106,11 +106,11 @@ pub fn run(args: &[&str]) -> std::process::Output {
     Command::new(BIN).args(args).output().unwrap()
 }
 
-/// Every `(path, code, message)` a `check-project --json` run reports for a
+/// Every `(path, code, message)` a `whole-project check --json` run reports for a
 /// document under `scenes/` — i.e. the CALLERS, excluding the component file's
 /// own standalone verdict, which §9 rule 4 owns separately.
 fn caller_diags(dir: &Path, code: &str) -> Vec<(String, String)> {
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
     let mut hits = Vec::new();
@@ -307,8 +307,8 @@ fn a_scene_never_reports_component_unverified() {
 /// component two callers whose vocabularies differ, so the component-body
 /// message differs between them and **neither problem holds at both sites**. The
 /// intersection is therefore empty and rule 4 reports nothing; a union reports
-/// both. Nothing is lost either way — `check-project` still reports both, which
-/// is exactly what rule 4 means by *"stays with `check-project`, where the caller
+/// both. Nothing is lost either way — whole-project `check` still reports both, which
+/// is exactly what rule 4 means by *"stays with whole-project `check`, where the caller
 /// is visible"*.
 #[test]
 fn rule_4_reports_only_what_holds_at_every_call_site() {
@@ -344,7 +344,7 @@ fn rule_4_reports_only_what_holds_at_every_call_site() {
     assert_eq!(
         caller_diags(&dir, "E-BAD-ENUM").len(),
         2,
-        "a caller-specific fault stays with `check-project`, one per caller"
+        "a caller-specific fault stays with whole-project `check`, one per caller"
     );
 
     // The other direction, so an implementation that returns Vec::new() and
@@ -376,7 +376,7 @@ fn unverified_message(args: &[&str]) -> Option<String> {
     let out = run(&argv);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
-    v["diagnostics"]
+    v["files"][0]["diagnostics"]
         .as_array()
         .into_iter()
         .flatten()
@@ -552,7 +552,7 @@ fn write_defaults_components(tag: &str) -> lute_scratch::ScratchDir {
     dir
 }
 
-/// `(path suffix, ok, [(code, line, message)])` per file of a `check-project
+/// `(path suffix, ok, [(code, line, message)])` per file of a `whole-project check
 /// --json` run, plus the project-wide `(path suffix, code, line, message)`.
 #[allow(clippy::type_complexity)]
 fn project_report(
@@ -561,7 +561,7 @@ fn project_report(
     Vec<(String, bool, Vec<(String, u64, String)>)>,
     Vec<(String, String, u64, String)>,
 ) {
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
     let tail = |p: &serde_json::Value| {
@@ -641,7 +641,7 @@ fn a_component_body_fault_is_headed_in_the_component() {
     let component = dir.join("components/bump.component.lute");
     let out = run(&["check", component.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let lines: Vec<_> = v["diagnostics"]
+    let lines: Vec<_> = v["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()

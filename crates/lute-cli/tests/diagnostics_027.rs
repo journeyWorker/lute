@@ -67,7 +67,7 @@ const MANIFEST: &str = "defaultProfile: base\nprofiles:\n  base: { plugins: {} }
                         defaults:\n  uses: [world.schema.yaml]\n";
 
 fn check_project(dir: &Path) -> String {
-    text(&run(dir, &["check-project", "."]))
+    text(&run(dir, &["check", "--project", "."]))
 }
 
 /// ML-F4: a `<match on>` over a `count(…)` def names the fix — a `<match>`
@@ -292,7 +292,7 @@ fn columns_count_characters_after_multibyte_text() {
 
     let out = run(&dir, &["check", "lore/end.lute", "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let span = &v["diagnostics"][0]["span"];
+    let span = &v["files"][0]["diagnostics"][0]["span"];
     assert_eq!(
         (span["line"].as_u64(), span["column"].as_u64()),
         (Some(7), Some(99)),

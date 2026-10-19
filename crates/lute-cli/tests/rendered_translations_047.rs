@@ -122,11 +122,11 @@ fn compile_localized(dir: &Path, out: &Path) {
     ]));
     ok(&run(&[
         "compile",
-        "--all",
+        "--project",
         dir.to_str().unwrap(),
         "-o",
         out.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ]));
 }

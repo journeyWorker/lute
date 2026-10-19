@@ -189,7 +189,7 @@ fn failures_in_json_mode_are_error_envelopes() {
         (vec!["refs", missing, "--reward", "ITEM", "--json"], "refs"),
         (vec!["lore", missing, "--json"], "lore"),
         (vec!["loc", "report", missing, "--json"], "loc report"),
-        (vec!["check-project", missing, "--json"], "check-project"),
+        (vec!["check", "--project", missing, "--json"], "check"),
         (vec!["doctor", missing, "--json"], "doctor"),
         (vec!["compile", "--json", "/no/such.lute"], "compile"),
         (vec!["trace", "/no/such.lute", "--json"], "trace"),
@@ -216,7 +216,7 @@ fn failures_in_json_mode_are_error_envelopes() {
     );
     assert_eq!(usage["error"]["argument"], "--occasion");
     let usage = error(
-        &["compile", "--all", "--json", "docs/examples/arcia-project"],
+        &["compile", "--json", "-o", "/no/such/out"],
         "compile",
         "E-CLI-USAGE",
     );

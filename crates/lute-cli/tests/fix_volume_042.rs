@@ -84,7 +84,8 @@ fn the_exact_old_scale_is_migrated_in_place() {
     );
 
     let check = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&*dir)
         .output()
         .unwrap();

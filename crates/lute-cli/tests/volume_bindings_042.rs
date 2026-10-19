@@ -15,7 +15,7 @@ fn write(dir: &Path, rel: &str, text: &str) {
 }
 
 /// A project whose schema declares `volume` when `declared`, plus bindings
-/// with the given `volumes:` line; returns the check-project text output.
+/// with the given `volumes:` line; returns the whole-project check text output.
 fn check(tag: &str, declared: bool, volumes: &str) -> (i32, String) {
     let dir = lute_scratch::ScratchDir::named(tag);
     write(
@@ -40,7 +40,8 @@ fn check(tag: &str, declared: bool, volumes: &str) -> (i32, String) {
         &format!("bindingsVersion: \"0.47\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
     );
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&*dir)
         .output()
         .unwrap();

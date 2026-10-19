@@ -1,6 +1,6 @@
 //! 0.41.1 §3.5 (#81): a `layer: bridge` + `bridgeCall` directive with no
 //! `effects.writes` reading a bridge result is `E-BRIDGE-NO-RESULT-WRITE` at
-//! its declaration, from `check` and `check-project`, and nothing compiles;
+//! its declaration, from `check` and whole-project `check`, and nothing compiles;
 //! a result write (or no `layer: bridge`) is clean.
 
 use std::path::{Path, PathBuf};
@@ -55,7 +55,7 @@ fn run(dir: &Path, args: &[&str]) -> (i32, String, String) {
 #[test]
 fn check_project_reports_the_declaration() {
     let dir = project("bridge-decl-041-project", None);
-    let (code, stdout, stderr) = run(&dir, &["check-project", "."]);
+    let (code, stdout, stderr) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, 1, "{stdout}{stderr}");
     assert_eq!(
         stderr,
@@ -83,7 +83,7 @@ fn check_reports_the_declaration() {
 #[test]
 fn compile_is_refused() {
     let dir = project("bridge-decl-041-compile", None);
-    let (code, _, stderr) = run(&dir, &["compile", "--all", ".", "-o", "out"]);
+    let (code, _, stderr) = run(&dir, &["compile", "--project", ".", "-o", "out"]);
     assert_eq!(code, 1, "{stderr}");
     assert!(stderr.contains("[E-BRIDGE-NO-RESULT-WRITE]"), "{stderr}");
     assert!(stderr.contains("no output written"), "{stderr}");
@@ -109,7 +109,7 @@ fn a_result_write_or_no_bridge_layer_is_clean() {
          arena: {}\n---\n## Odds\n::odds\n@narrator: The odds are {{run.chance}}.\n",
     )
     .unwrap();
-    let (code, stdout, _) = run(&dir, &["check-project", "."]);
+    let (code, stdout, _) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, 0, "{stdout}");
     assert!(!stdout.contains("E-BRIDGE-NO-RESULT-WRITE"), "{stdout}");
 
@@ -117,8 +117,8 @@ fn a_result_write_or_no_bridge_layer_is_clean() {
         .unwrap()
         .replace("    layer: bridge\n", "");
     let dir = project("bridge-decl-041-plain", Some(&plain));
-    let (code, stdout, _) = run(&dir, &["check-project", "."]);
+    let (code, stdout, _) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, 0, "{stdout}");
-    let (code, _, stderr) = run(&dir, &["compile", "--all", ".", "-o", "out"]);
+    let (code, _, stderr) = run(&dir, &["compile", "--project", ".", "-o", "out"]);
     assert_eq!(code, 0, "{stderr}");
 }

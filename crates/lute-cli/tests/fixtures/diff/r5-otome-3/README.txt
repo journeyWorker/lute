@@ -11,7 +11,7 @@ world.schema.yaml declares three enum paths:
   Control: cp inline-control.lute.txt scenes/control.lute && lute check scenes/control.lute
     -> E-SET-TYPE and E-WHEN-LITERAL-DOMAIN for the inline-enum path run.inline.
 
-  lute check-project .  -> ok, although scenes/end.lute (via components/ending.component.lute, param typed
+  lute check --project .  -> ok, although scenes/end.lute (via components/ending.component.lute, param typed
                            { entity: outcome }) writing "tragic" into run.ending is `ok`
   lute play . --script plays/p.play.yaml -> `set run.ending = "tragic"` (out-of-domain value stored)
 

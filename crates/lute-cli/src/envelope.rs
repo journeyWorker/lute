@@ -23,8 +23,7 @@ use crate::output::{pretty_json, write_stdout};
 /// Shape versions of the reports (dsl 0.43.0 §3.3). A version names a
 /// payload shape, not a release: it changes only when that payload does.
 pub(crate) mod version {
-    pub(crate) const CHECK: &str = "0.43.0.check";
-    pub(crate) const CHECK_PROJECT: &str = "0.43.0.check-project";
+    pub(crate) const CHECK: &str = "0.48.0.check";
     pub(crate) const IMPACT: &str = "0.43.0.impact";
     pub(crate) const CONSTRAINTS: &str = "0.43.0.constraints";
     pub(crate) const LINT: &str = "0.43.0.lint";
@@ -103,10 +102,6 @@ const fn document(flag: Option<&'static str>, kind: OutputKind) -> Output {
 /// here has none.
 static OUTPUTS: &[(&str, &[Output])] = &[
     ("check", &[report_output("--json", version::CHECK)]),
-    (
-        "check-project",
-        &[report_output("--json", version::CHECK_PROJECT)],
-    ),
     ("impact", &[report_output("--json", version::IMPACT)]),
     (
         "constraints",
@@ -118,9 +113,9 @@ static OUTPUTS: &[(&str, &[Output])] = &[
         &[
             document(None, OutputKind::Artifact),
             report_output("--json", version::COMPILE),
+            document(Some("--stream"), OutputKind::Stream),
         ],
     ),
-    ("compile-stream", &[document(None, OutputKind::Stream)]),
     ("expr", &[report_output("--json", version::EXPR)]),
     (
         "context",
@@ -525,12 +520,10 @@ mod tests {
     fn every_report_output_has_a_version_and_every_document_none() {
         for id in [
             "check",
-            "check-project",
             "impact",
             "constraints",
             "lint",
             "compile",
-            "compile-stream",
             "expr",
             "context",
             "diff",

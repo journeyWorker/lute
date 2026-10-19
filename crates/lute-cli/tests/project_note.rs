@@ -72,7 +72,7 @@ fn trace_context_and_compile_stream_name_the_project_relative_to_cwd() {
     let cases: [(&[&str], Option<&str>); 3] = [
         (&["trace", "proj/scene.lute"], None),
         (&["context", "proj/scene.lute"], None),
-        (&["compile-stream", "proj/scene.lute"], Some("")),
+        (&["compile", "--stream", "proj/scene.lute"], Some("")),
     ];
     for (args, stdin) in cases {
         assert_eq!(

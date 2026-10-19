@@ -210,11 +210,12 @@ pub(crate) fn run_trace(
         mocks.project_quests = resolved.and_then(|dir| project_quest_ids_in(&memo, dir, providers));
     }
     // Project-aware gate (connectivity spec §5, mirrors `run_compile`): WITH
-    // `--project <dir>` trace gates on the target's RECONCILED `check-project`
-    // verdict; WITHOUT it, the standalone single-file `check` gate, unchanged.
+    // a project (`--project`, else the discovered nearest manifest — the two
+    // mean the same, 0.48.0 §2.1) trace gates on the target's RECONCILED
+    // project verdict; WITHOUT one, the standalone single-file `check` gate.
     // The D1 quarantine holds — reconciliation is pure graph math, never
     // CEL/Datalog evaluation.
-    let gate = match project {
+    let gate = match resolved {
         Some(dir) => match project_gate_result_in(&memo, file, dir, providers) {
             Ok(gate) => gate,
             Err(code) => return code,
@@ -252,16 +253,13 @@ pub(crate) fn run_trace(
     }
 
     // T1-14: judge mocked facts against the project's producers, not this
-    // document's alone — `--project` when given, else the nearest manifest.
+    // document's alone — the project (`--project`, else discovered; the two
+    // mean the same, 0.48.0 §2.1) with every file resolving against it.
     // Only worth collecting when a fact was mocked at all.
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        match (project, &discovered) {
-            (Some(dir), _) => project_assert_relations_in(&memo, dir, true, providers),
-            (None, Some(root)) => project_assert_relations_in(&memo, root, false, providers),
-            (None, None) => None,
-        }
+        resolved.and_then(|dir| project_assert_relations_in(&memo, dir, true, providers))
     };
     let (mut report, exit) = match (entry, beat) {
         (Some(id), _) => {

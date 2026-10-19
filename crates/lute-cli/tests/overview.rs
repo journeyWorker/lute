@@ -1,6 +1,6 @@
 //! dsl 0.23.0 §1 / §11 author overviews, through the built `lute` binary:
 //! `lute calendar` (play's eligibility over a grid of state values),
-//! `lute beats` (the selection ladder with `check-project`'s verdicts),
+//! `lute beats` (the selection ladder with whole-project `check`'s verdicts),
 //! `lute scenario knowledge` (fact-guarded conditions traced to producers),
 //! the scenario graph's note on references it cannot draw, and the play
 //! transcript's `read` mark on an already-read entry beat.
@@ -876,7 +876,7 @@ fn calendar_family_axes_set_every_member_or_the_one_another_axis_names() {
 #[test]
 fn beats_ladder_lists_selection_order_and_check_verdicts() {
     let dir = town("beats");
-    // An unreachable beat is an error `check-project` reports — and the
+    // An unreachable beat is an error whole-project `check` reports — and the
     // ladder still shows it (the project need not check clean).
     write(
         &dir,

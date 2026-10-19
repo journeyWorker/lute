@@ -48,7 +48,7 @@ fn new_lore_scaffolds_a_document_that_checks_clean() {
     });
     assert_eq!(check.status.code(), Some(0), "{result:#}");
     assert_eq!(
-        result["diagnostics"].as_array().map(Vec::len),
+        result["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "the scaffold must check with no diagnostics at all: {result:#}"
     );
@@ -94,7 +94,7 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
     let lore = std::fs::read_to_string(dir.join("lore/shipLogs.lute")).unwrap();
     assert!(lore.contains("kind: lore\nid: shipLogs\n"), "{lore}");
 
-    let check = run(&["check-project", d, "--json"]);
+    let check = run(&["check", "--project", d, "--json"]);
     let result: serde_json::Value = serde_json::from_slice(&check.stdout).unwrap_or_else(|e| {
         panic!(
             "{e}: {}{}",
@@ -110,7 +110,7 @@ fn new_quest_and_lore_scaffolds_check_clean_together() {
     );
 }
 
-/// dsl 0.19.0 §2.1 through `check-project`: a quest document id colliding
+/// dsl 0.19.0 §2.1 through whole-project `check`: a quest document id colliding
 /// with a scene id is `E-CONN-EPISODE-ID-DUP` worded as a document id, and a
 /// document-level `series:` colliding with another file's hand-numbered
 /// position is `E-ENTRY-SERIES-ORDER`.
@@ -143,7 +143,7 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
         "d-extra.lute",
         "---\nkind: lore\n---\n<entry id=\"logX\" series=\"log\" order=\"2\">\n@n: c\n</entry>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
         panic!(
             "{e}: {}{}",

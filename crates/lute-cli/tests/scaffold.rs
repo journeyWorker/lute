@@ -29,10 +29,10 @@ fn init_beats(tag: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     init_template(tag, "beats")
 }
 
-/// `check-project`, `test` and every `plays/*.play.yaml` pass as scaffolded.
+/// whole-project `check`, `test` and every `plays/*.play.yaml` pass as scaffolded.
 fn assert_checks_tests_and_plays_clean(proj: &Path) {
     let p = proj.to_str().unwrap();
-    let check = lute(&["check-project", p]);
+    let check = lute(&["check", "--project", p]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(
         !text(&check).contains("warning ["),
@@ -57,7 +57,7 @@ fn assert_checks_tests_and_plays_clean(proj: &Path) {
     }
 }
 
-/// The beats scaffold passes `check-project`, `test` and `play` out of the
+/// The beats scaffold passes whole-project `check`, `test` and `play` out of the
 /// box — the three commands its README and play script promise.
 #[test]
 fn beats_template_checks_tests_and_plays_clean() {
@@ -117,7 +117,7 @@ fn investigation_template_is_current_and_checks_tests_and_plays_clean() {
 /// Round-5 D-2/D-4: the `minimal` starter scene uses `id:` identity (as `lute
 /// new scene` does, so a fresh project never mixes the two conventions), and
 /// the template ships a `tests/` test that passes — the first thing a writer
-/// runs after `check-project`. The test names its scene `../scenes/…`, the
+/// runs after whole-project `check`. The test names its scene `../scenes/…`, the
 /// path a test in `tests/` needs.
 #[test]
 fn minimal_template_uses_id_identity_and_ships_a_passing_test() {
@@ -134,7 +134,7 @@ fn minimal_template_uses_id_identity_and_ships_a_passing_test() {
         "{test_file}"
     );
 
-    let check = lute(&["check-project", p]);
+    let check = lute(&["check", "--project", p]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(!text(&check).contains("warning ["), "{}", text(&check));
 
@@ -191,7 +191,7 @@ fn new_scene_on_writes_a_beat_that_respects_defaults() {
         "no legacy identity triple: {beat}"
     );
 
-    let check = lute(&["check-project", proj.to_str().unwrap()]);
+    let check = lute(&["check", "--project", proj.to_str().unwrap()]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 }
 
@@ -238,7 +238,7 @@ fn new_scene_on_a_chained_occasion_writes_on_and_names_the_chain() {
     ]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert!(!text(&out).contains("chapters:"), "{}", text(&out));
-    let check = lute(&["check-project", p]);
+    let check = lute(&["check", "--project", p]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 }
 
@@ -278,7 +278,7 @@ fn new_scene_on_ranks_below_every_existing_beat_of_the_occasion() {
         priority("stubC.lute"),
     );
     assert!(a > b && b > c, "{a} {b} {c}");
-    let check = lute(&["check-project", d]);
+    let check = lute(&["check", "--project", d]);
     let t = text(&check);
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
     assert!(!t.contains("W-BEAT-SHADOWED"), "{t}");
@@ -400,7 +400,7 @@ fn new_scene_with_a_dotted_name_keeps_the_dotted_id() {
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert!(scene(&proj, "theEpilogue.lute").contains("\nid: theEpilogue\n"));
 
-    let check = lute(&["check-project", d]);
+    let check = lute(&["check", "--project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(!text(&check).contains("warning ["), "{}", text(&check));
 }
@@ -425,7 +425,7 @@ fn new_quest_is_accept_driven_unless_start() {
         stub.contains("::accept{quest=\"oilRun\"}"),
         "the stub says how it starts: {stub}"
     );
-    let check = lute(&["check-project", d]);
+    let check = lute(&["check", "--project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
 
     let out = lute(&["new", "quest", "always-on", "--start", "--dir", d]);
@@ -441,7 +441,7 @@ fn new_quest_is_accept_driven_unless_start() {
     let mut text_ = std::fs::read_to_string(&welcome).unwrap();
     text_.push_str("::accept{quest=\"oilRun\"}\n");
     std::fs::write(&welcome, text_).unwrap();
-    let check = lute(&["check-project", d]);
+    let check = lute(&["check", "--project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(!text(&check).contains("warning ["), "{}", text(&check));
 
@@ -512,7 +512,7 @@ fn new_quest_and_lore_share_the_scene_head_and_invent_no_state() {
     assert!(!proj.join("lore/cellarKey.lute").exists());
     assert!(lore.contains("\nid: oldMap\n"), "no `lore.` prefix: {lore}");
 
-    let check = lute(&["check-project", d]);
+    let check = lute(&["check", "--project", d]);
     assert_eq!(check.status.code(), Some(0), "{}", text(&check));
     assert!(!text(&check).contains("error ["), "{}", text(&check));
 }

@@ -4,7 +4,7 @@
 //! <nodeId>` reports a node's reachability verdict, and `envelope <nodeId>`
 //! (or `envelope quest:<id>`) prints the Guaranteed/Possible tables plus the
 //! `Possible \ Guaranteed` warning-grade reads T11 computes-and-drops from
-//! default `check-project` (dsl §6). ALSO: a `check-project` regression
+//! default whole-project `check` (dsl §6). ALSO: a whole-project `check` regression
 //! confirming the full §6 diagnostics table is wired (`E-CONN-UNKNOWN-NODE`
 //! exits non-zero) — connectivity T14's "Also confirm" step.
 
@@ -449,7 +449,7 @@ fn scenario_reach_prints_reachability_verdict() {
 #[test]
 fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
     // Contract #2: T11 computes-and-drops the `Possible \ Guaranteed`
-    // warning-grade read from default `check-project`; T14 must RE-derive
+    // warning-grade read from default whole-project `check`; T14 must RE-derive
     // and print it explicitly for the requested node, not merely dump the
     // two sets and expect a diff. `a` unconditionally sets `run.z`, `b`
     // never does; `x after: visited(a) || visited(b)` reads `run.z`, so
@@ -467,9 +467,9 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
         &scene_reading_run_z_after_or("x", "a.s01ep01", "b.s01ep01"),
     );
 
-    // Default `check-project` must NOT surface this warning grade at all
+    // Default whole-project `check` must NOT surface this warning grade at all
     // (T11's compute-and-drop default stays unchanged).
-    let cp = run(&["check-project", dir.to_str().unwrap()]);
+    let cp = run(&["check", "--project", dir.to_str().unwrap()]);
     assert!(cp.status.success(), "{}", stdout(&cp));
     let cp_text = stdout(&cp);
     assert!(!cp_text.contains("E-STATE-MAYBE-UNAVAILABLE"), "{cp_text}");
@@ -485,14 +485,14 @@ fn scenario_envelope_explicitly_lists_possible_not_guaranteed_warning_read() {
     );
 }
 
-// --- "Also confirm" (Step 3): check-project's full §6 diagnostics table --
+// --- "Also confirm" (Step 3): whole-project check's full §6 diagnostics table --
 
 #[test]
 fn check_project_unknown_node_exits_nonzero_with_e_conn_unknown_node() {
     let dir = lute_scratch::ScratchDir::named("scenario-check-project-unknown-node");
     write(&dir, "x.lute", &scene_after("x", "doesNotExist.s01ep01"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let out_text = stdout(&out);
     assert!(
         !out.status.success(),
@@ -616,7 +616,7 @@ fn scenario_reach_referenced_undeclared_node_reports_unknown_not_reachable_or_cy
 #[test]
 fn scenario_envelope_labels_scene_and_quest_possible_guaranteed_differently() {
     // Scene envelope's Possible\Guaranteed section is the T11 warning-grade
-    // READ-SITE class (suppressed by default in `check-project`); a quest
+    // READ-SITE class (suppressed by default in whole-project `check`); a quest
     // envelope's is plain SET-difference inventory (`check_envelope` is
     // scene-only, so there is no read-site data for a quest at all). The
     // two sections must NOT share the same "suppressed... warning-grade
@@ -862,7 +862,7 @@ fn scenario_bare_nodeid_matching_both_scene_key_and_quest_id_is_rejected_as_ambi
 /// Defect B propagation: `lute scenario reach` must ALSO report a quest
 /// with a dead REQUIRED objective as `Unreachable` (both directly, and
 /// transitively through a scene's `completed(Q)` gate) -- the exact
-/// surface `check-project`'s own `E-CONN-UNREACHABLE` shares its
+/// surface whole-project `check`'s own `E-CONN-UNREACHABLE` shares its
 /// `reach`/`unreachable_quests` data with.
 #[test]
 fn scenario_reach_reports_unreachable_for_dead_required_objective_quest() {
@@ -1519,7 +1519,7 @@ fn scenario_reach_prints_a_bundle_beats_after() {
 
 /// T3-20 (round-5 OT-F11): `reach --endings=<occasion>` gives one row per
 /// beat answering the occasion with the `after:` verdict, the `when`
-/// verdict `check-project` reaches, and who writes what a satisfiable `when`
+/// verdict whole-project `check` reaches, and who writes what a satisfiable `when`
 /// reads; bare `--endings` keeps the beats whose content can run `::end`.
 #[test]
 fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {

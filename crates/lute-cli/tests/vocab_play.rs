@@ -181,7 +181,7 @@ fn an_enum_member_label_renders_in_play_trace_and_test() {
         "{entry}"
     );
 
-    let (code, text) = lute(&["check-project", d]);
+    let (code, text) = lute(&["check", "--project", d]);
     assert_eq!(code, Some(0), "{text}");
     assert!(!text.contains("W-DOMAIN-UNREAD"), "{text}");
 }

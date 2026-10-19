@@ -1,4 +1,4 @@
-//! `lute check-project <dir>` acceptance for NESTED subprojects (0.3.0
+//! `lute check --project <dir>` acceptance for NESTED subprojects (0.3.0
 //! triage fix): each walked file's project root is resolved as its OWN
 //! nearest-ancestor directory containing a `lute.project.yaml` (bounded
 //! below by the walk root), not pooled against the single walk root for
@@ -69,7 +69,7 @@ fn check_project_same_quest_id_in_sibling_subprojects_is_not_a_collision() {
     write(&dir, "subB/lute.project.yaml", &core_only_project_yaml());
     write(&dir, "subB/quest.lute", &clean_quest_doc("dup", "run.b"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         out.status.success(),
@@ -80,7 +80,7 @@ fn check_project_same_quest_id_in_sibling_subprojects_is_not_a_collision() {
         "no cross-subproject dup expected: {stdout}"
     );
 
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
     assert_eq!(v["files"].as_array().unwrap().len(), 2, "{v}");
@@ -109,7 +109,7 @@ fn check_project_same_quest_id_twice_within_one_project_root_still_collides() {
     write(&dir, "subC/a.lute", &clean_quest_doc("dup", "run.a"));
     write(&dir, "subC/b.lute", &clean_quest_doc("dup", "run.b"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(
         out.status.code(),
@@ -120,7 +120,7 @@ fn check_project_same_quest_id_twice_within_one_project_root_still_collides() {
     assert!(stdout.contains("a.lute"), "must name file a: {stdout}");
     assert!(stdout.contains("b.lute"), "must name file b: {stdout}");
 
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
     let project_diags = v["project_diagnostics"].as_array().unwrap();

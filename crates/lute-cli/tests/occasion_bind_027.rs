@@ -78,7 +78,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
          when=\"holds('owned', [occasion.target]) && user.bond[occasion.target] >= 2\">\n\
          \x20 @narrator: {{occasion.target}} again, and close.\n</beat>\n",
     );
-    let out = run(&dir, &["check-project", "."]);
+    let out = run(&dir, &["check", "--project", "."]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     dir
 }

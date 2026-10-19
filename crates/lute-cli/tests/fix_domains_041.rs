@@ -152,7 +152,8 @@ fn every_domain_unknown_site_names_the_rename() {
             write(&dir, rel, text);
         }
         let out = Command::new(BIN)
-            .arg("check-project")
+            .arg("check")
+            .arg("--project")
             .arg(&*dir)
             .output()
             .unwrap();

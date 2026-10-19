@@ -303,7 +303,7 @@ fn check_engine_reports_staging_at_the_directive_line() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: Json = serde_json::from_slice(&out.stdout).unwrap();
-    let diag = report["diagnostics"]
+    let diag = report["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()
@@ -334,7 +334,8 @@ fn check_project_reports_each_contributing_document_and_clean_supports_all() {
         "",
     );
     let out = run_str(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--engine",
         core.to_str().unwrap(),
@@ -369,7 +370,8 @@ fn check_project_reports_each_contributing_document_and_clean_supports_all() {
 
     let all = matrix_file(&dir, "all.yaml", "project-reference", ir, ALL_IDS, "");
     let clean = run_str(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--engine",
         all.to_str().unwrap(),
@@ -435,7 +437,7 @@ fn check_engine_anchors_frontmatter_semantics_at_the_declaring_key() {
         String::from_utf8_lossy(&out.stderr)
     );
     let report: Json = serde_json::from_slice(&out.stdout).unwrap();
-    let diag = report["diagnostics"]
+    let diag = report["files"][0]["diagnostics"]
         .as_array()
         .unwrap()
         .iter()

@@ -71,7 +71,7 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
          <beat id=\"gift\" on=\"gift\" once=\"false\" when=\"occasion.payload.to == 'ren'\">\n  \
          @narrator: A gift.\n</beat>\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     dir
 }
@@ -187,7 +187,7 @@ fn a_payload_field_typed_by_an_unknown_domain_is_refused_at_the_plugin() {
         "plugins/g.x/occasions/o.yaml",
         &OCCASIONS.replace("domain: route", "domain: rotue"),
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{t}");
     let line = t
         .lines()

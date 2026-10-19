@@ -869,10 +869,11 @@ fn play_harness_details() {
     assert!(t.contains("quote the atom"), "{t}");
 }
 
-/// 0.24.0 T3-15: tracing against the nearest manifest settles the "existence
-/// is unverified" note of a foreign quest read against the project's quests.
-/// With `--project` the gate is the whole project's verdict, where a read no
-/// quest defines is an error with the same did-you-mean.
+/// 0.24.0 T3-15, 0.48.0 §2.1: tracing a scene settles the quest reads against
+/// the project's quests, and the discovered nearest manifest means exactly what
+/// `--project` does — the gate is the whole project's verdict, where a read no
+/// quest defines is an error with the same did-you-mean (0.47.2 only gated, and
+/// only noted "existence is unverified", under an explicit `--project`).
 #[test]
 fn trace_with_project_verifies_quest_existence() {
     let project = lute_scratch::ScratchDir::named("trace-quests");
@@ -886,12 +887,11 @@ fn trace_with_project_verifies_quest_existence() {
     );
     let scene = scene.to_str().unwrap();
     let out = lute(&["trace", scene]);
-    let t = text(&out);
-    assert_eq!(out.status.code(), Some(0), "{t}");
-    assert!(!t.contains("existence is unverified"), "{t}");
+    let discovered = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{discovered}");
     assert!(
-        t.contains("quest `firstEscap` is declared by no quest document of the project — did you mean `firstEscape`?"),
-        "{t}"
+        !discovered.contains("existence is unverified"),
+        "{discovered}"
     );
     let out = lute(&["trace", scene, "--project", project.to_str().unwrap()]);
     let t = text(&out);
@@ -901,6 +901,16 @@ fn trace_with_project_verifies_quest_existence() {
         "{t}"
     );
     assert!(t.contains("trace refused"), "{t}");
+    let without_note: String = discovered
+        .lines()
+        .filter(|line| !line.starts_with("lute: note: using project"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    assert_eq!(
+        without_note.trim_end(),
+        t.trim_end(),
+        "discovered == explicit"
+    );
 }
 
 /// 0.24.0 T3-11: an `<on event>` handler of a quest an engine write already

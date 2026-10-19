@@ -2559,7 +2559,7 @@ fn an_entry_target_on_an_untargeted_occasion_does_not_restrict_it() {
 }
 
 /// dsl 0.24.0 (T3-16): `W-RELATION-UNREAD` anchors at the declaring schema
-/// file, printed walk-relative like every other check-project diagnostic.
+/// file, printed walk-relative like every other whole-project check diagnostic.
 #[test]
 fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
     let dir = lute_scratch::ScratchDir::named("relation-unread");
@@ -2579,7 +2579,7 @@ fn an_unread_relation_is_reported_at_its_schema_line_walk_relative() {
         "---\nkind: scene\nid: a.one\nuses: ../world.schema.yaml\n---\n## A\n@narrator: Hi.\n::assert{ met(sol) }\n",
     );
     let out = Command::new(BIN)
-        .args(["check-project", "."])
+        .args(["check", "--project", "."])
         .current_dir(&dir)
         .output()
         .unwrap();

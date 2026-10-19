@@ -245,7 +245,7 @@ pub(crate) fn run_beats(
     json_out: bool,
     expand: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match crate::collect_project_docs(dir, None, false) {
+    let (file_results, by_root) = match crate::collect_project_docs(dir, None, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };

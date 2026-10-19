@@ -94,7 +94,7 @@ const WRITES: &str = "<beat id=\"land\" on=\"landed\" target=\"kind:fish\" once=
 #[test]
 fn a_kind_beat_writes_only_the_member_it_ran_for() {
     let dir = project("writes", WRITES);
-    let check = run(&dir, &["check-project", "."]);
+    let check = run(&dir, &["check", "--project", "."]);
     assert!(check.status.success(), "{}", text(&check));
     write(
         &dir,
@@ -119,7 +119,7 @@ fn a_fact_written_through_the_target_is_producible_for_every_member() {
          when=\"holds('caught', ['eel']) && holds('hauled', ['cod'])\">\n  @narrator: Brag.\n</beat>\n"
     );
     let dir = project("producer", &lore);
-    let check = run(&dir, &["check-project", "."]);
+    let check = run(&dir, &["check", "--project", "."]);
     let out = text(&check);
     assert!(check.status.success(), "{out}");
     assert!(!out.contains("E-BEAT-UNREACHABLE"), "{out}");
@@ -132,7 +132,7 @@ fn a_component_argument_passes_the_member_it_ran_for() {
         ::use{component=\"reaction\" who=occasion.target mate=occasion.target}\n\
         </beat>\n";
     let dir = project("component", lore);
-    let check = run(&dir, &["check-project", "."]);
+    let check = run(&dir, &["check", "--project", "."]);
     assert!(check.status.success(), "{}", text(&check));
     write(
         &dir,
@@ -156,7 +156,7 @@ fn a_member_outside_the_argument_domain_is_judged_like_that_literal() {
         ::use{component=\"reaction\" who=narrator mate=occasion.target}\n\
         </beat>\n";
     let dir = project("domain", lore);
-    let out = text(&run(&dir, &["check-project", "."]));
+    let out = text(&run(&dir, &["check", "--project", "."]));
     let errors: Vec<&str> = out.lines().filter(|l| l.contains(": error [")).collect();
     assert!(!errors.is_empty(), "{out}");
     for e in &errors {
@@ -174,7 +174,7 @@ fn a_write_outside_a_kind_beat_is_one_scope_error() {
         ::set{run.count[occasion.target] += 1}\n\
         </beat>\n";
     let dir = project("scope", lore);
-    let out = text(&run(&dir, &["check-project", "."]));
+    let out = text(&run(&dir, &["check", "--project", "."]));
     let errors: Vec<&str> = out.lines().filter(|l| l.contains(": error [")).collect();
     assert_eq!(errors.len(), 1, "{out}");
     assert!(errors[0].contains("[E-UNDECLARED]"), "{out}");

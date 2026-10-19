@@ -45,7 +45,7 @@ fn check_project_reports_each_duplicate_entry_id_exactly_once() {
     let single = run(&["check", dir.join("a.lute").to_str().unwrap(), "--json"]);
     let sv: serde_json::Value = serde_json::from_slice(&single.stdout).unwrap();
     assert_eq!(
-        sv["diagnostics"]
+        sv["files"][0]["diagnostics"]
             .as_array()
             .unwrap()
             .iter()
@@ -55,7 +55,7 @@ fn check_project_reports_each_duplicate_entry_id_exactly_once() {
         "{sv}"
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -96,7 +96,7 @@ fn check_project_warns_on_an_unknown_entry_read() {
          @a{when=\"entry.note.read\"}: known.\n\
          @a{when=\"entry.nope.read\"}: unknown.\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -133,7 +133,7 @@ const FACT_VOCAB: &str = "entities:\n  crew: { members: [vesna, toma] }\n  \
 
 /// The verified gap: a line guard over a ground fact asserted nowhere (the
 /// relation IS asserted, with other arguments) is `E-ARM-DEAD` under
-/// `check-project` and stays silent under single-file `check`, which cannot
+/// whole-project `check` and stays silent under single-file `check`, which cannot
 /// see sibling asserts.
 #[test]
 fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
@@ -164,7 +164,7 @@ fn check_project_flags_a_line_guard_over_a_never_asserted_fact() {
         String::from_utf8_lossy(&single.stdout)
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -217,7 +217,7 @@ fn argument_level_dead_objective_marks_completed_gate_unreachable() {
         "---\nkind: scene\ncharacter: gated\nseason: 1\nepisode: 1\n\
          after: 'completed(\"q\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let codes: Vec<&str> = v["project_diagnostics"]
         .as_array()
@@ -243,7 +243,8 @@ fn argument_level_dead_objective_marks_completed_gate_unreachable() {
 fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
     let dir = temp_dir("deny-removed-unproven");
     let out = run(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--deny",
         "W-UNPROVEN-RELATIONAL",
@@ -255,7 +256,8 @@ fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
         String::from_utf8_lossy(&out.stderr)
     );
     let ok = run(&[
-        "check-project",
+        "check",
+        "--project",
         dir.to_str().unwrap(),
         "--deny",
         "W-FACT-GUARANTEED",
@@ -268,7 +270,7 @@ fn deny_of_the_removed_unproven_relational_code_is_a_usage_error() {
     );
 }
 
-// --- dsl 0.23.0 §10: `check-project --wip` ----------------------------------
+// --- dsl 0.23.0 §10: `whole-project check --wip` ----------------------------------
 
 /// A lore document whose entry reacts to `found(toma)` — a relation nothing
 /// produces yet — plus, when `with_dead_match`, an entry on `knows(toma,
@@ -292,12 +294,12 @@ fn wip_lore(with_dead_match: bool) -> String {
 fn wip_downgrades_a_guard_dead_only_for_want_of_a_producer() {
     let dir = temp_dir("wip-unwritten");
     write(&dir, "notes.lute", &wip_lore(false));
-    let plain = run(&["check-project", dir.to_str().unwrap()]);
+    let plain = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&plain.stdout);
     assert_eq!(plain.status.code(), Some(1), "{text}");
     assert!(text.contains("error [E-ENTRY-UNREACHABLE]"), "{text}");
 
-    let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
+    let wip = run(&["check", "--wip", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&wip.stdout);
     assert_eq!(wip.status.code(), Some(0), "{text}");
     // The downgrade prints as its own warning code, never `warning [E-…]`;
@@ -314,7 +316,7 @@ fn wip_downgrades_a_guard_dead_only_for_want_of_a_producer() {
 fn wip_keeps_a_produced_relation_that_never_matches_an_error() {
     let dir = temp_dir("wip-never-matches");
     write(&dir, "notes.lute", &wip_lore(true));
-    let wip = run(&["check-project", "--wip", dir.to_str().unwrap()]);
+    let wip = run(&["check", "--wip", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&wip.stdout);
     assert_eq!(wip.status.code(), Some(1), "{text}");
     assert!(text.contains("warning [W-WIP] entry `found`"), "{text}");
@@ -360,8 +362,9 @@ fn wip_reports_a_beat_dead_under_the_terminal_once() {
          <entry id=\"found\" on=\"chime\" when=\"holds('found', ['toma'])\">\n  @narrator: Found him.\n</entry>\n",
     );
     for (flag, code) in [(None, "E-ENTRY-UNREACHABLE"), (Some("--wip"), "W-WIP")] {
-        let mut args = vec!["check-project"];
+        let mut args = vec!["check"];
         args.extend(flag);
+        args.push("--project");
         args.push(dir.to_str().unwrap());
         let out = run(&args);
         let text = String::from_utf8_lossy(&out.stdout);
@@ -400,7 +403,7 @@ fn entity_kind_clash_is_reported_at_the_add_naming_both_files() {
         "scenes/s.lute",
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\n---\n\n## S\n\n@a: hi\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let line = text
         .lines()
@@ -445,7 +448,7 @@ fn replaced_default_uses_is_named_on_the_errors_it_causes() {
         "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 1\nuses: [../wake.schema.yaml]\n---\n\
          \n## S\n\n::set{ run.world = 1 }\n::set{ run.nowhere = 1 }\n@a: hi\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let line = |path: &str| {
         text.lines()
@@ -492,7 +495,7 @@ fn replaced_default_components_is_named_on_the_template_use() {
          <beat use=\"bondStory\" id=\"first\" who=\"aria\">\n@narrator: Hello.\n</beat>\n\n\
          <beat use=\"nowhereStory\" id=\"second\" who=\"aria\">\n@narrator: Hello.\n</beat>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let line = |name: &str| {
         text.lines()
@@ -542,7 +545,7 @@ fn check_project_warns_on_a_branch_id_two_documents_share() {
             branch_scene("twice")
         ),
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let shared: Vec<&str> = text
         .lines()
@@ -591,7 +594,7 @@ fn check_project_prints_causes_before_documents() {
         "---\nkind: scene\nid: a\n---\n## A\n<branch id=\"pick one\" prompt=\"?\">\n  \
          <choice id=\"x\" text=\"X\">\n    @n: x\n  </choice>\n</branch>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let stdout = String::from_utf8_lossy(&out.stdout);
     let at = |needle: &str| {
         stdout
@@ -648,7 +651,7 @@ fn check_project_reports_sera_kato_contention_without_stranded() {
         "---\nkind: scene\nid: kato\non: tick\nwhen: \"clock.index == 1\"\npriority: 9\nadvances: slot\n---\n\
          ## Kato\n@narrator: Kato takes the evening watch.\n::set{run.kato = true}\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(out.status.success(), "{text}");
     // 0.41.0 §3.4: a run-tier quest re-arms, and its completion beats live
@@ -691,7 +694,7 @@ fn check_project_reports_sera_kato_contention_without_stranded() {
         "---\nkind: scene\nid: main\non: tick\nwhen: \"clock.index == 1\"\nadvances: slot\n---\n\
          ## Main\n@narrator: Main.\n::set{run.done = true}\n",
     );
-    let clean_out = run(&["check-project", clean.to_str().unwrap()]);
+    let clean_out = run(&["check", "--project", clean.to_str().unwrap()]);
     let clean_text = String::from_utf8_lossy(&clean_out.stdout);
     assert!(!clean_text.contains("W-OBJECTIVE-STRANDED"), "{clean_text}");
 }
@@ -719,7 +722,7 @@ fn check_project_rejects_repeatable_advance_cascade() {
         "---\nkind: scene\nid: loop\non: tick\nonce: false\nadvances: slot\n---\n\
          ## Loop\n@narrator: Loop.\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(1), "{text}");
     assert!(text.contains("[E-ADVANCE-CASCADE]"), "{text}");

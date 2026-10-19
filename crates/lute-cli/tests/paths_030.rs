@@ -31,7 +31,7 @@ fn dir() -> String {
 
 #[test]
 fn the_project_checks_clean() {
-    let out = lute(&["check-project", &dir()]);
+    let out = lute(&["check", "--project", &dir()]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(!t.contains("error ["), "{t}");

@@ -90,12 +90,14 @@ pub(crate) fn model_cli_error_with_message(
 pub(crate) fn collect_project_docs(
     dir: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
     collect_project_docs_in(
         &lute_model::ModelMemo::default(),
         dir,
         providers,
+        permission_profile,
         single_root,
     )
 }
@@ -105,12 +107,13 @@ pub(crate) fn collect_project_docs_in(
     memo: &lute_model::ModelMemo,
     dir: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
     if !single_root {
         let opts = lute_model::ModelOptions {
             providers: providers.map(Path::to_path_buf),
-            permission_profile: None,
+            permission_profile: permission_profile.map(str::to_owned),
             mode: lute_check::Mode::Ci,
             compile: false,
             wip: false,
@@ -137,7 +140,7 @@ pub(crate) fn collect_project_docs_in(
         return Ok((file_results, by_root));
     }
     let (file_results, by_root, _, resolve_errors) =
-        collect_project_inputs_in(memo, dir, providers, single_root, false)?;
+        collect_project_inputs_in(memo, dir, providers, permission_profile, single_root, false)?;
     if resolve_errors > 0 && !single_root {
         return Err(ExitCode::from(1));
     }
@@ -156,6 +159,7 @@ pub(crate) fn collect_project_docs_in(
 pub(crate) fn collect_project_inputs(
     dir: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     single_root: bool,
     wip: bool,
 ) -> Result<
@@ -171,6 +175,7 @@ pub(crate) fn collect_project_inputs(
         &lute_model::ModelMemo::default(),
         dir,
         providers,
+        permission_profile,
         single_root,
         wip,
     )
@@ -182,6 +187,7 @@ pub(crate) fn collect_project_inputs_in(
     memo: &lute_model::ModelMemo,
     dir: &Path,
     providers: Option<&Path>,
+    permission_profile: Option<&str>,
     single_root: bool,
     wip: bool,
 ) -> Result<
@@ -195,7 +201,7 @@ pub(crate) fn collect_project_inputs_in(
 > {
     let opts = lute_model::ModelOptions {
         providers: providers.map(Path::to_path_buf),
-        permission_profile: None,
+        permission_profile: permission_profile.map(str::to_owned),
         mode: lute_check::Mode::Ci,
         compile: true,
         wip,
@@ -290,10 +296,12 @@ pub(crate) fn normalize_span_from_text(text: &str, span: Span) -> Span {
     Span::from_bytes(&idx, start, end)
 }
 
-/// The manifest a single-file command (`check`, `trace`, `compile`,
-/// `compile-stream`, `context`) resolves `file` against when no `--project`
-/// was passed: [`nearest_manifest_dir`], announced once on stderr. `None`
-/// when `--project` was given (it wins) or no manifest sits above `file`.
+/// The manifest a file command (`check`, `compile`, `context`, `trace`)
+/// resolves `file` against when no `--project` was passed (0.48.0 §2.1):
+/// [`nearest_manifest_dir`], announced once per distinct project on stderr.
+/// `None` when `--project` was given (it wins) or no manifest sits above
+/// `file`. The discovered directory is used exactly as if it had been passed
+/// with `--project`.
 ///
 /// One helper so the commands cannot disagree about which project a file
 /// belongs to: `lute check` found the nearest manifest since 0.21.1 while
@@ -305,21 +313,64 @@ pub(crate) fn discover_project(file: &Path, project: Option<&Path>) -> Option<Pa
         return None;
     }
     let dir = nearest_manifest_dir(file)?;
-    let shown = crate::output::cwd_relative(&dir.display().to_string());
-    eprintln!(
-        "lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another",
-        if shown.is_empty() { "." } else { shown.as_str() }
-    );
+    static NOTED: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+    let first = NOTED
+        .lock()
+        .map_or(true, |mut noted| noted.insert(dir.clone()));
+    if first {
+        let shown = crate::output::cwd_relative(&dir.display().to_string());
+        eprintln!(
+            "lute: note: using project {} (nearest lute.project.yaml); pass --project to choose another",
+            if shown.is_empty() { "." } else { shown.as_str() }
+        );
+    }
     Some(dir)
 }
 
 /// Resolve a command's project using an explicit `--project` first and the
 /// nearest manifest otherwise. Explicit paths stay byte-for-byte as supplied;
-/// discovery emits the existing informational note exactly once.
+/// discovery emits the informational note once per distinct project.
 pub(crate) fn resolve_project(file: &Path, project: Option<&Path>) -> Option<PathBuf> {
     project
         .map(Path::to_path_buf)
         .or_else(|| discover_project(file, None))
+}
+
+/// The nearest ancestor of the current directory (itself included) holding a
+/// `lute.project.yaml`, spelled relative to the current directory (`.`,
+/// `..`, `../..`) so a directory command prints the same paths as one given
+/// that directory. Silent: the stderr note is for file commands.
+pub(crate) fn discover_project_from_cwd() -> Option<PathBuf> {
+    let mut dir = PathBuf::from(".");
+    let depth = std::env::current_dir().ok()?.ancestors().count();
+    for _ in 0..depth {
+        if dir.join(crate::manifests::MANIFEST_FILE).is_file() {
+            return Some(dir);
+        }
+        dir = if dir == Path::new(".") {
+            PathBuf::from("..")
+        } else {
+            dir.join("..")
+        };
+    }
+    None
+}
+
+/// The project a command that needs one works on (0.48.0 §2.1): `--project`
+/// as given, else the nearest ancestor of the current directory with a
+/// `lute.project.yaml`. With neither, `E-CLI-USAGE` naming `--project`.
+pub(crate) fn require_project(command: &str, project: Option<&Path>) -> Result<PathBuf, CliError> {
+    if let Some(project) = project {
+        return Ok(project.to_path_buf());
+    }
+    discover_project_from_cwd().ok_or_else(|| {
+        let here = std::env::current_dir()
+            .map_or_else(|_| ".".to_string(), |dir| dir.display().to_string());
+        CliError::usage(format!(
+            "lute {command}: no lute.project.yaml at or above {here} — pass the project directory with --project <DIR>"
+        ))
+        .with_argument("--project")
+    })
 }
 
 /// Return the canonical identity of an existing path. Callers that need to
@@ -360,7 +411,7 @@ pub(crate) fn project_assert_relations_in(
     providers: Option<&Path>,
 ) -> Option<BTreeSet<String>> {
     let (file_results, by_root) =
-        collect_project_docs_in(memo, root, providers, single_root).ok()?;
+        collect_project_docs_in(memo, root, providers, None, single_root).ok()?;
     let group = by_root.get(root)?;
     let scenario = assemble_root_scenario(group, &file_results);
     let docs = lute_model::project_docs(group);
@@ -386,7 +437,7 @@ pub(crate) fn project_quest_ids_in(
     root: &Path,
     providers: Option<&Path>,
 ) -> Option<BTreeSet<String>> {
-    let (_, by_root) = collect_project_docs_in(memo, root, providers, true).ok()?;
+    let (_, by_root) = collect_project_docs_in(memo, root, providers, None, true).ok()?;
     let group = by_root.get(root)?;
     let docs = lute_model::project_docs(group);
     Some(lute_check::connectivity::quest_id_set(&docs))

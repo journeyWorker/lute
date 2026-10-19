@@ -1,5 +1,5 @@
 //! Beat templates and the manifest's `chapters:`, end to end through the
-//! built `lute` binary: `check-project` is clean, `lute beats` shows the
+//! built `lute` binary: whole-project `check` is clean, `lute beats` shows the
 //! derived headers, and `lute play` presents template beats in order with
 //! the template body around the use's body (`::body`), and chains the
 //! listed scenes without any `on:`/`after:`/`priority:` of their own.
@@ -67,7 +67,7 @@ fn template_beats_check_list_and_play_in_order() {
         "plays/bond.play.yaml",
         "steps:\n  - occasion: bond\n    expect: { winner: bonds.first }\n  - occasion: bond\n    expect: { winner: bonds.second }\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     let (_, beats) = run(&dir, &["beats", "."]);
     assert!(beats.contains("bonds.second"), "{beats}");
@@ -98,7 +98,7 @@ fn a_template_misuse_fails_check_project() {
         "---\nkind: lore\nid: bonds\ncomponents: [../components/bond.lute]\n---\n\n\
          <beat use=\"bondStroy\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("E-TEMPLATE") && out.contains("did you mean `bondStory`"),
@@ -125,7 +125,7 @@ fn a_chain_orders_scenes_that_say_nothing_about_order() {
         "plays/all.play.yaml",
         "steps:\n  - occasion: chapter\n    expect: { winner: one }\n  - occasion: chapter\n    expect: { winner: two }\n  - occasion: chapter\n    expect: { winner: three }\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     let (_, beats) = run(&dir, &["beats", "."]);
     assert!(beats.contains("visited(\"two\")"), "{beats}");
@@ -173,7 +173,7 @@ fn an_unknown_chapter_id_is_e_chapters_at_the_manifest() {
     for id in ["one", "two"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id));
     }
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("lute.project.yaml:9:19:"),
@@ -245,7 +245,7 @@ fn an_own_priority_that_reorders_a_select_sequence_warns() {
         "scenes/three.lute",
         &scene("three").replacen("title: three\n", "title: three\npriority: 5\n", 1),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(
         out.contains(
@@ -264,7 +264,7 @@ fn a_malformed_chain_is_located_and_not_fatal() {
     let dir = lute_scratch::ScratchDir::named("seqshape");
     project(&dir, "chapters:\n  - on: chapter\n    scene: [one]\n");
     write(&dir, "scenes/one.lute", &scene("one"));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("lute.project.yaml:9:5: error [E-CHAPTERS]")
@@ -448,7 +448,7 @@ fn a_headless_template_plays_and_beats_notes_the_when_a_use_replaces() {
         "plays/bond.play.yaml",
         "steps:\n  - occasion: bond\n    expect: { winner: bonds.first }\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("E-CONTENT-OUTSIDE-SECTION"), "{out}");
     let (_, beats) = run(&dir, &["beats", "."]);

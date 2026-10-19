@@ -83,7 +83,7 @@ const PERSISTS: &str = "terminal: { when: \"user.crowned\", persists: true }";
 #[test]
 fn persists_silences_the_persistent_terminal_warning() {
     let dir = realm("warn", "terminal: \"user.crowned\"");
-    let t = text(&lute(&dir, &["check-project", "."]));
+    let t = text(&lute(&dir, &["check", "--project", "."]));
     assert!(t.contains("W-TERMINAL-PERSISTENT"), "{t}");
     assert!(
         t.contains("say so: `terminal: { when: \"…\", persists: true }`"),
@@ -91,7 +91,7 @@ fn persists_silences_the_persistent_terminal_warning() {
     );
 
     let dir = realm("silent", PERSISTS);
-    let out = lute(&dir, &["check-project", ".", "--deny-warnings"]);
+    let out = lute(&dir, &["check", "--project", ".", "--deny-warnings"]);
     let t = text(&out);
     assert!(out.status.success(), "{t}");
     assert!(!t.contains("W-TERMINAL-PERSISTENT"), "{t}");
@@ -101,7 +101,7 @@ fn persists_silences_the_persistent_terminal_warning() {
         "false",
         "terminal: { when: \"user.crowned\", persists: false }",
     );
-    let t = text(&lute(&dir, &["check-project", "."]));
+    let t = text(&lute(&dir, &["check", "--project", "."]));
     assert!(t.contains("W-TERMINAL-PERSISTENT"), "{t}");
 }
 
@@ -113,7 +113,7 @@ fn persists_on_a_run_only_terminal_is_refused() {
         "run-only",
         "terminal:\n  when: \"run.over\"\n  persists: true",
     );
-    let out = lute(&dir, &["check-project", "."]);
+    let out = lute(&dir, &["check", "--project", "."]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert_eq!(t.matches("[E-META-VALUE]").count(), 1, "{t}");
@@ -138,7 +138,7 @@ fn the_long_form_keys_are_closed() {
         "typo",
         "terminal: { when: \"user.crowned\", persist: true }",
     );
-    let out = lute(&dir, &["check-project", "."]);
+    let out = lute(&dir, &["check", "--project", "."]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(
@@ -154,7 +154,7 @@ fn the_long_form_keys_are_closed() {
         "not-bool",
         "terminal: { when: \"user.crowned\", persists: 1 }",
     );
-    let t = text(&lute(&dir, &["check-project", "."]));
+    let t = text(&lute(&dir, &["check", "--project", "."]));
     assert!(
         t.contains("`terminal:`'s `persists: 1` is not `true` or `false`"),
         "{t}"
@@ -162,7 +162,7 @@ fn the_long_form_keys_are_closed() {
     assert!(!t.contains("W-TERMINAL-PERSISTENT"), "{t}");
 
     let dir = realm("no-when", "terminal: { persists: true }");
-    let t = text(&lute(&dir, &["check-project", "."]));
+    let t = text(&lute(&dir, &["check", "--project", "."]));
     assert!(
         t.contains("`terminal:` names no condition — write `when: \"<condition>\"`"),
         "{t}"
@@ -215,7 +215,7 @@ fn the_ir_carries_terminal_persists() {
         serde_json::from_str(&std::fs::read_to_string(dir.join(rel)).unwrap()).unwrap()
     };
     let dir = realm("ir", PERSISTS);
-    let out = lute(&dir, &["compile", "--all", ".", "-o", "out"]);
+    let out = lute(&dir, &["compile", "--project", ".", "-o", "out"]);
     assert!(out.status.success(), "{}", text(&out));
     let index = read(&dir, "out/project.index.json");
     assert_eq!(index["terminal"]["cel"], "user.crowned", "{index:#}");
@@ -227,7 +227,7 @@ fn the_ir_carries_terminal_persists() {
     assert_eq!(at("terminalPersists"), at("terminal") + 1, "{keys:?}");
 
     let dir = realm("ir-short", "terminal: \"run.over\"");
-    let out = lute(&dir, &["compile", "--all", ".", "-o", "out"]);
+    let out = lute(&dir, &["compile", "--project", ".", "-o", "out"]);
     assert!(out.status.success(), "{}", text(&out));
     let index = read(&dir, "out/project.index.json");
     assert_eq!(index["terminal"]["cel"], "run.over", "{index:#}");

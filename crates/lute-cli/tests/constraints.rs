@@ -151,7 +151,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         "scene.lute",
         "---\nkind: scene\nid: test\n---\n@narrator: hi\n",
     );
-    let (code, out) = run(&root, &["check-project"]);
+    let (code, out) = run(&root, &["check", "--project"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
     assert!(!out.contains("W-CONSTRAINT-UNKNOWN"), "{out}");
@@ -163,7 +163,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         "scene.lute",
         "---\nkind: scene\nuses: [world.schema.yaml]\n---\n@brann: hi\n",
     );
-    let (code, out) = run(&root, &["check-project"]);
+    let (code, out) = run(&root, &["check", "--project"]);
     assert_eq!(code, 1, "{out}");
     assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
     for (constraints, needle) in [
@@ -175,7 +175,7 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         ("  - id: m\n    kind: speaksOnlyWhen\n    speaker: brann\n    when: \"[\"\n", "not valid CEL"),
     ] {
         write(&root, "lute.project.yaml", &manifest(constraints));
-        let (code, out) = run(&root, &["check-project"]);
+        let (code, out) = run(&root, &["check", "--project"]);
         assert_eq!(code, 1, "{out}");
         assert!(out.contains("E-CONSTRAINT-DECL"), "{out}");
         assert!(out.contains(needle), "{out}");

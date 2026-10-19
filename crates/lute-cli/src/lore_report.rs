@@ -630,7 +630,7 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
     // dsl 0.24.0 T3-2: the conclusions the rules can reach, over the same
     // per-root collection `lute scenario knowledge` reads — which also
     // resolves each directive call's declared facts (dsl 0.27.0 §4).
-    let (_, by_root) = match crate::collect_project_docs(dir, None, false) {
+    let (_, by_root) = match crate::collect_project_docs(dir, None, None, false) {
         Ok(c) => c,
         Err(code) => return code,
     };

@@ -33,7 +33,7 @@ fn dead_required_objective_scalar_marks_completed_gate_unreachable() {
          after: 'completed(\"deadQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -81,7 +81,7 @@ fn dead_required_objective_relational_marks_completed_gate_unreachable() {
          after: 'completed(\"deadRelQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -127,7 +127,7 @@ fn optional_dead_objective_does_not_make_quest_unreachable() {
          after: 'completed(\"mixedQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(
@@ -167,7 +167,7 @@ fn start_false_quest_still_marks_completed_gate_unreachable() {
          after: 'completed(\"questA\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -211,7 +211,7 @@ fn live_quest_completed_gate_stays_reachable() {
          after: 'completed(\"liveQuest\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -237,7 +237,7 @@ fn episode_id_dup_span_points_at_character_line() {
     write(&dir, "a.lute", scene);
     write(&dir, "b.lute", scene);
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let d = v["project_diagnostics"]
         .as_array()
@@ -262,7 +262,7 @@ fn unknown_node_span_points_at_after_line() {
          after: 'visited(\"nonexistent.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let d = v["project_diagnostics"]
         .as_array()
@@ -293,7 +293,7 @@ fn cycle_span_points_at_a_cyclic_scenes_own_frontmatter() {
          after: 'visited(\"p.s01ep01\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let d = v["project_diagnostics"]
         .as_array()
@@ -324,7 +324,7 @@ fn unreachable_span_points_at_gated_scenes_own_frontmatter() {
          after: 'completed(\"questA\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let d = v["project_diagnostics"]
         .as_array()
@@ -384,7 +384,7 @@ fn fixpoint_closure_propagates_through_a_multi_hop_chain() {
          after: 'completed(\"chainQ2\")'\n---\n## Shot 1.\n@narrator: hi\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -441,7 +441,7 @@ fn dead_required_objective_never_drops_a_sibling_optional_objectives_live_assert
          <objective id=\"checkLive\" done=\"holds('liveRel', ['a'])\"/>\n</quest>\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let project_diags = v["project_diagnostics"].as_array().unwrap();
     assert!(

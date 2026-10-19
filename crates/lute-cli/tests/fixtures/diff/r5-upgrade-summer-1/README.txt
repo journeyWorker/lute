@@ -2,7 +2,7 @@ r5-upgrade-summer-1 — `occasion.target` cannot be a fact-query argument in a k
 Verdict: LANGUAGE-GAP (not a regression: kind targets are new in 0.26.0).
 
 Command (lute 0.26.0):
-  cd /tmp/r5-upgrade-summer-1 && lute check-project .
+  cd /tmp/r5-upgrade-summer-1 && lute check --project .
 
 Actual:
   ./lore/talks.lute:7:70: error [E-CEL-PROFILE] fact-query patterns take compile-time-ground literals or `_` (dsl 0.3.0 §5/§8)

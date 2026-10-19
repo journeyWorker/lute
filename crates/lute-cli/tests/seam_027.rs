@@ -681,7 +681,7 @@ fn lute_beats_marks_a_target_whose_gate_never_holds() {
 
 /// HW27-11: the other side — a negated gate over a fact that holds at
 /// every point of every run (a seed nothing retracts) never holds either:
-/// `check-project` reports the beat unreachable and `lute beats` marks it.
+/// whole-project `check` reports the beat unreachable and `lute beats` marks it.
 /// The office door, whose `canEnter` nothing produces, stays live.
 #[test]
 fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
@@ -703,7 +703,8 @@ fn a_negated_gate_over_a_fact_that_always_holds_never_holds() {
         );
     }
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();

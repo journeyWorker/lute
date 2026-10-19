@@ -1,5 +1,5 @@
 //! dsl 0.25.0 §1 exclusive relations (LH F17): `excludes:` on a relation
-//! declaration — the checker's verdicts (`check-project`), the declaration
+//! declaration — the checker's verdicts (whole-project `check`), the declaration
 //! errors, the IR, and the runtime violation `lute play` / `lute trace` report.
 
 use std::path::{Path, PathBuf};
@@ -105,7 +105,7 @@ fn check_project_reads_exclusive_relations() {
              ::assert{panicked(ada)}\n::assert{calm(ada)}\n",
         ),
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     // A guard needing both is dead, and says why.
@@ -153,7 +153,7 @@ fn an_excludes_entry_must_name_a_relation_of_the_same_kinds() {
          relations:\n  up: { args: [c], tier: run, excludes: [dwon, near, up] }\n  \
          down: { args: [c], tier: run }\n  near: { args: [c, p], tier: run }\n---\n\n## A\n\n@n: Hi.\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     let decl: Vec<&str> = t
@@ -393,7 +393,7 @@ fn a_reserved_fact_a_guard_requires_excludes_its_partner() {
          @n{when=\"!holds('alive', ['regent'])\"}: Gone.\n::assert{alive(regent)}\n</choice>\n\
          <choice id=\"d\" text=\"D\">\n@n: On.\n</choice>\n</branch>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert!(
         diag_line(&t, "W-FACT-GUARANTEED", "`!holds('alive', ['regent'])`").is_some(),
@@ -421,7 +421,7 @@ fn a_rule_deriving_from_its_exclusive_partner_is_an_error() {
          rules:\n  - \"dark(X) :- lit(X)\"\n  - \"seen(X) :- c(X), not hid(X)\"\n---\n\n## A\n\n\
          @n{when=\"holds('dark', ['lamp']) || holds('seen', ['x'])\"}: Hm.\n::assert{lit(lamp)}\n::assert{hid(x)}\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     let rules: Vec<&str> = t
@@ -456,7 +456,7 @@ fn an_inherited_stale_stamp_is_reported_once_at_the_manifest() {
         "b.lute",
         "---\nkind: scene\nid: b\n---\n\n## B\n\n@n: Hi.\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     let stale: Vec<&str> = t
         .lines()

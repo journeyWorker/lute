@@ -46,17 +46,17 @@ fn check_json_has_resolved_view_and_diagnostics_array() {
         .unwrap();
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(
-        v["diagnostics"].is_array(),
+        v["files"][0]["diagnostics"].is_array(),
         "diagnostics must serialize as an array"
     );
     // A clean document carries a resolved view (Some-vs-None policy).
     assert!(
-        v["resolved"].is_object(),
+        v["files"][0]["resolved"].is_object(),
         "clean doc → resolved is Some: {v}"
     );
-    assert!(v["resolved"]["commands_preview"].is_array());
-    assert!(v["resolved"]["timeline_tables"].is_array());
-    assert!(v["resolved"]["injections"].is_array());
+    assert!(v["files"][0]["resolved"]["commands_preview"].is_array());
+    assert!(v["files"][0]["resolved"]["timeline_tables"].is_array());
+    assert!(v["files"][0]["resolved"]["injections"].is_array());
 }
 
 #[test]
@@ -215,13 +215,13 @@ fn hub_demo_example_checks_clean() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "hub-demo → ok:true; got {v}");
     assert_eq!(
-        v["diagnostics"].as_array().map(Vec::len),
+        v["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "hub-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
     );
     // Prove the 0.1.0 features are actually present in the resolved view — the
     // `<hub>` and both `<when is>`-bearing matches — not a trivially clean doc.
-    let preview = v["resolved"]["commands_preview"].to_string();
+    let preview = v["files"][0]["resolved"]["commands_preview"].to_string();
     assert!(
         preview.contains("<hub>"),
         "resolved view must contain the hub; got {preview}"
@@ -365,13 +365,13 @@ fn when_is_demo_example_checks_clean() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], true, "when-is-demo → ok:true; got {v}");
     assert_eq!(
-        v["diagnostics"].as_array().map(Vec::len),
+        v["files"][0]["diagnostics"].as_array().map(Vec::len),
         Some(0),
         "when-is-demo must be diagnostic-free (0 errors, 0 warnings); got {v}"
     );
     // Prove the `<when is>` feature is actually present in the resolved view — the
     // `<match>` over the plain scene enum — not a trivially clean doc.
-    let preview = v["resolved"]["commands_preview"].to_string();
+    let preview = v["files"][0]["resolved"]["commands_preview"].to_string();
     assert!(
         preview.contains("<match"),
         "resolved view must contain the match; got {preview}"
@@ -1045,11 +1045,11 @@ fn init_scaffolds_a_checkable_vocabulary() {
     let scene = std::fs::read_to_string(proj.join("scenes/opening.lute")).unwrap();
     assert!(
         scene.contains("emotion="),
-        "the starter scene must USE a vocabulary slot, or `check-project` below \
+        "the starter scene must USE a vocabulary slot, or whole-project `check` below \
          would pass without ever resolving the declaration:\n{scene}"
     );
     let check = Command::new(BIN)
-        .args(["check-project", proj.to_str().unwrap()])
+        .args(["check", "--project", proj.to_str().unwrap()])
         .output()
         .unwrap();
     assert!(
@@ -1209,13 +1209,13 @@ fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
-/// `doctor <dir>` and `check-project <dir>` MUST resolve the same project root
+/// `doctor <dir>` and `whole-project check <dir>` MUST resolve the same project root
 /// for the same target, or `doctor` reports a vocabulary the checker rejects.
 ///
 /// The fixture is the asymmetry itself: `proj/lute.project.yaml` activates a
 /// plugin whose `enums` export declares `musicPlayback`, `proj/scenes/` carries NO
 /// manifest, and `proj/scenes/a.lute` writes `::music{playback="start"}`.
-/// `check-project proj/scenes` cannot ascend above the requested dir, loads no
+/// `whole-project check proj/scenes` cannot ascend above the requested dir, loads no
 /// project, and reports `E-DOMAIN-UNKNOWN`. A `doctor` that walks up to `proj`
 /// would call the same slot declared.
 ///
@@ -1250,7 +1250,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
     let scenes = proj.join("scenes");
 
     let check = Command::new(BIN)
-        .args(["check-project", scenes.to_str().unwrap()])
+        .args(["check", "--project", scenes.to_str().unwrap()])
         .output()
         .unwrap();
     let check_text = format!(
@@ -1277,7 +1277,7 @@ fn doctor_and_check_project_agree_on_the_project_root_boundary() {
         .to_string();
     assert!(
         !declared.contains("musicPlayback"),
-        "doctor called `musicPlayback` declared while `check-project` on the SAME \
+        "doctor called `musicPlayback` declared while whole-project `check` on the SAME \
          dir reports E-DOMAIN-UNKNOWN — doctor ascended above the requested \
          directory:\n{declared}"
     );

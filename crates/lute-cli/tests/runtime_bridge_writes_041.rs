@@ -26,7 +26,7 @@ fn compiled(scratch: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = Command::new(BIN)
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(fixture())
         .arg("-o")
         .arg(&out)
@@ -314,7 +314,7 @@ fn artifacts_carry_declared_defaults_and_folded_refs() {
     assert!(gift["weight"].is_f64(), "{gift}");
 }
 
-/// `lute check-project` of the fixture with each `(file, from, to)` edit
+/// `lute check` (whole project) of the fixture with each `(file, from, to)` edit
 /// applied: whether it passed, and everything it printed.
 fn check_edited(scratch: &str, edits: &[(&str, &str, &str)]) -> (bool, String) {
     let project = lute_scratch::ScratchDir::named(scratch);
@@ -326,7 +326,8 @@ fn check_edited(scratch: &str, edits: &[(&str, &str, &str)]) -> (bool, String) {
         std::fs::write(&path, text.replace(from, to)).unwrap();
     }
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&*project)
         .output()
         .unwrap();

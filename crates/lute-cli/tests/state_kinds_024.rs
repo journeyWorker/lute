@@ -66,7 +66,7 @@ fn per_member_defaults_reach_play() {
          @narrator{when=\"run.rep.tavi < 0\"}: Tavi is hostile.\n",
     );
     let dir = project("per-ok", &schema, &[("s.lute", &body)]);
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(dir.join("p.play.yaml"), "steps:\n  - occasion: visit\n").unwrap();
     let (_, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
@@ -81,7 +81,7 @@ fn per_member_default_maps_are_checked() {
          run.flat: {{ type: int, default: {{ a: 1 }} }}\n{KINDS}{GIFTED}"
     );
     let dir = project("per-bad", &bad, &[("s.lute", &scene("@narrator: hi\n"))]);
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     assert!(
         t.contains("`zed`, which is not a member of entity kind `npc`"),
         "{t}"
@@ -109,7 +109,7 @@ fn kind_reads_and_schema_anchor() {
          @narrator{when=\"holds('trusts', ['sefa'])\"}: Trusted.\n@narrator: x\n",
     );
     let dir = project("unread", &schema, &[("s.lute", &body)]);
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     let unread: Vec<&str> = t
         .lines()
         .filter(|l| l.contains("W-DOMAIN-UNREAD"))
@@ -129,7 +129,7 @@ fn component_params_bind_into_fact_atoms() {
          @narrator{when=\"holds('gifted', ['sefa', 'compass'])\"}: Gifted.\n@narrator: x\n",
     );
     let dir = project("param-ok", &schema, &[("s.lute", &ok)]);
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(dir.join("p.play.yaml"), "steps:\n  - occasion: visit\n").unwrap();
     let (_, t) = run(&dir, &["play", ".", "--script", "p.play.yaml"]);
@@ -144,7 +144,7 @@ fn component_params_bind_into_fact_atoms() {
          ::assert{gifted(@who, shell)}\n@narrator: x\n",
     );
     let dir = project("param-bad", &schema, &[("s.lute", &bad)]);
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     assert!(
         t.contains("binds `@item` in the fact atom `gifted(@who, @item)`"),
         "{t}"
@@ -168,7 +168,7 @@ fn unresolved_component_imports_suggest_the_project_file() {
         &schema,
         &[("scenes/run/recap.lute", nested), ("scenes/t.lute", typo)],
     );
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     assert!(
         t.contains("cannot resolve `components:` import `gift.component.lute`")
             && t.contains("did you mean `../../gift.component.lute`?"),
@@ -216,7 +216,7 @@ fn a_component_indexes_a_per_family_by_its_param() {
             ("s.lute", ok),
         ],
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     std::fs::write(
         dir.join("p.play.yaml"),
@@ -231,7 +231,7 @@ fn a_component_indexes_a_per_family_by_its_param() {
         "---\nkind: scene\nid: t\n---\n\n## T\n\n::use{component=\"react\" who=\"oda\"}\n",
     )
     .unwrap();
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     assert!(
         t.contains("./t.lute:8:")
             && t.contains("`oda` is not a member of entity kind `companion` [isolde, corvin]"),
@@ -297,7 +297,7 @@ fn a_cast_present_on_an_undeclared_path_is_an_error() {
             ("u.lute", "---\nkind: scene\nid: u\n---\n\n## U\n\n@isolde: Hello.\n"),
         ],
     );
-    let (_, t) = run(&dir, &["check-project", "."]);
+    let (_, t) = run(&dir, &["check", "--project", "."]);
     assert!(
         t.contains("E-UNDECLARED") && t.contains("reads `run.withIsolde`"),
         "{t}"
@@ -324,7 +324,7 @@ fn a_component_write_produces_only_at_its_use_sites() {
     };
     let absent = |docs: &[(&str, &str)]| {
         let dir = project("c1", &schema, docs);
-        let (_, t) = run(&dir, &["check-project", "."]);
+        let (_, t) = run(&dir, &["check", "--project", "."]);
         t.lines()
             .filter(|l| l.contains("W-CAST-ABSENT") && l.contains("a.lute"))
             .count()

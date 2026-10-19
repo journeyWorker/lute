@@ -1,6 +1,6 @@
-//! `lute check`: one document (or one `.yaml` state schema), plus the
-//! compile-stage gate and component call-site checks it shares with
-//! `compile`/`trace`/`check-project`.
+//! `lute check`: documents (or `.yaml` state schemas) one by one, or the
+//! whole project; plus the compile-stage gate and component call-site checks
+//! it shares with `compile`/`trace`.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -10,7 +10,7 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::envelope::{self, CliError};
-use crate::output::{check_result_json, pretty_json, print_human, DenyPolicy};
+use crate::output::{check_report_json, pretty_json, print_human, DenyPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
 use lute_load::{
     build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput,
@@ -442,15 +442,15 @@ pub(crate) fn engine_semantic_diags(
 /// Rendering, counting and the exit code all go through the same
 /// `CheckResult` path `run_check` uses, so `--json` and the human summary read
 /// identically for a schema and for a scene.
-fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCode {
+fn run_check_schema_yaml(file: &Path) -> Result<lute_check::CheckResult, ExitCode> {
     let text = match std::fs::read_to_string(file) {
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
-            return envelope::fail(CliError::io(
+            return Err(envelope::fail(CliError::io(
                 file,
                 format!("lute: cannot read {}: {e}", file.display()),
-            ));
+            )));
         }
     };
     let byte_end = text.len();
@@ -493,7 +493,7 @@ fn run_check_schema_yaml(file: &Path, json: bool, policy: &DenyPolicy) -> ExitCo
         resolved: None,
         domain_use: lute_check::DomainUse::default(),
     };
-    render_check_result(file, &result, json, policy)
+    Ok(result)
 }
 
 /// What `check` reports about the schema `file` when a document imports it
@@ -547,18 +547,54 @@ fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// Run `check` over one file and print its result. Exit `0` clean / `1` on an
-/// error diagnostic (native OR `--deny`-promoted, spec §5) / `2` on an I/O
-/// failure.
-pub(crate) fn run_check(
+/// A document's verdict: checked, or stopped by a project resolution error
+/// (printed on stderr; its diagnostics ride on the JSON entry only).
+enum Checked {
+    Done(lute_check::CheckResult),
+    ResolveFailed(lute_check::CheckResult),
+}
+
+impl Checked {
+    fn into_result(self) -> lute_check::CheckResult {
+        match self {
+            Checked::Done(r) | Checked::ResolveFailed(r) => r,
+        }
+    }
+}
+
+/// The `ok: false` entry for a document whose project failed to resolve: the
+/// resolve messages as diagnostics (`CODE: message`, or `E-PROJECT-CONFIG`
+/// for a manifest that did not load).
+fn resolve_failure(lines: &[String]) -> lute_check::CheckResult {
+    let diagnostics = lines
+        .iter()
+        .map(|line| {
+            let (code, message) = line
+                .split_once(": ")
+                .filter(|(code, _)| {
+                    (code.starts_with("E-") || code.starts_with("W-")) && !code.contains(' ')
+                })
+                .unwrap_or(("E-PROJECT-CONFIG", line.as_str()));
+            crate::manifests::as_diagnostic(code, message.to_string())
+        })
+        .collect();
+    lute_check::CheckResult {
+        ok: false,
+        diagnostics,
+        resolved: None,
+        domain_use: lute_check::DomainUse::default(),
+    }
+}
+
+/// Check one document (or one `.yaml` state schema) against its project and
+/// return its result. `Err` is a failure already reported (exit `2`).
+fn check_document(
     file: &Path,
-    json: bool,
-    providers: Option<&Path>,
-    project: Option<&Path>,
-    permission_profile: Option<&str>,
-    _engine: Option<&Path>,
-    policy: &DenyPolicy,
-) -> ExitCode {
+    opts: &CheckOptions<'_>,
+    matrix: &crate::EngineMatrix,
+) -> Result<Checked, ExitCode> {
+    let (providers, permission_profile, engine) =
+        (opts.providers, opts.permission_profile, opts.engine);
     // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
     // after an E-USES-PARSE, and it parsed the YAML schema AS A SCENE:
     // E-KIND-MISSING, three E-META-MISSING, and one E-UNCLASSIFIED per line —
@@ -570,19 +606,20 @@ pub(crate) fn run_check(
         file.extension().and_then(|e| e.to_str()),
         Some("yaml") | Some("yml")
     ) {
-        return run_check_schema_yaml(file, json, policy);
+        return run_check_schema_yaml(file).map(Checked::Done);
     }
     // 0.21.1 T3-9 (ashen F2): a file inside a project is checked against that
     // project. Without the manifest there is no `uses:` schema, no `defaults:`
     // and no profile, so the check reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN`
     // for paths the project declares, and advice that would have broken it.
-    let project = resolve_project(file, project);
+    let project = resolve_project(file, opts.project);
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
-        return envelope::fail_quietly(CliError::unreadable_document(file));
+        return Err(envelope::fail_quietly(CliError::unreadable_document(file)));
     };
     // `build_input` no longer prints these itself (`lute doctor` folds them into
     // its checklist instead); every gating command emits them exactly as before.
     built.report_project_diags();
+    let resolve_lines = built.project_diags.clone();
     let BuiltInput {
         input,
         resolve_error,
@@ -593,7 +630,7 @@ pub(crate) fn run_check(
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
     if resolve_error {
-        return ExitCode::from(1);
+        return Ok(Checked::ResolveFailed(resolve_failure(&resolve_lines)));
     }
     let mut result = check(&input);
 
@@ -611,22 +648,13 @@ pub(crate) fn run_check(
     if result.ok {
         merge_gate_diags(&mut result, compile_gate_diags(&input));
     }
-    let matrix = match crate::EngineMatrix::load(_engine) {
-        Ok(m) => m,
-        Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
-            return envelope::fail(CliError::io(&path, format!("lute check: {message}")));
-        }
-        Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
-            return envelope::fail(CliError::input(&path, format!("lute check: {message}")));
-        }
-    };
-    if _engine.is_some() && result.ok {
+    if engine.is_some() && result.ok {
         if let Ok((artifact, source_map)) =
             lute_compile::compile_mapped(&input, check(&input), &identity)
         {
             merge_gate_diags(
                 &mut result,
-                engine_semantic_diags(&input, &artifact, &source_map, &matrix),
+                engine_semantic_diags(&input, &artifact, &source_map, matrix),
             );
         }
     }
@@ -697,45 +725,119 @@ pub(crate) fn run_check(
             .iter()
             .any(|d| d.severity == Severity::Error);
     }
-    render_check_result(file, &result, json, policy)
+    Ok(Checked::Done(result))
 }
 
-/// Render one `CheckResult` (`--json` or human) and derive the exit code: `0`
-/// clean, `1` on a native OR `--deny`-promoted error. Shared by `run_check`
-/// and `run_check_schema_yaml` so a schema and a scene cannot drift in
-/// wording, JSON shape or verdict.
-fn render_check_result(
-    file: &Path,
-    result: &lute_check::CheckResult,
-    json: bool,
-    policy: &DenyPolicy,
-) -> ExitCode {
-    // §5 verdict: a promoted (denied) diagnostic fails an otherwise-clean run.
-    let ok = result.ok && !policy.any_denied(&result.diagnostics);
+/// What `lute check` was asked (everything after the operands).
+pub(crate) struct CheckOptions<'a> {
+    pub(crate) json: bool,
+    pub(crate) providers: Option<&'a Path>,
+    pub(crate) project: Option<&'a Path>,
+    pub(crate) permission_profile: Option<&'a str>,
+    pub(crate) engine: Option<&'a Path>,
+    pub(crate) wip: bool,
+    pub(crate) policy: &'a DenyPolicy,
+}
 
-    if json {
-        let value = match check_result_json(result, ok, policy) {
-            Ok(value) => value,
-            Err(error) => {
-                return envelope::fail(CliError::io_without_path(format!(
-                    "lute: failed to serialize result: {error}"
-                )));
-            }
+/// `lute check [<FILE>]…` (0.48.0 §3.1): the named documents each on their
+/// own, or — with no operand — the whole project plus the project-wide
+/// checks. Exit `0` clean / `1` on an error diagnostic (native OR
+/// `--deny`-promoted) / `2` on usage or I/O failure.
+pub(crate) fn run(files: &[PathBuf], opts: &CheckOptions<'_>) -> ExitCode {
+    if files.is_empty() {
+        let dir = match crate::project::require_project("check", opts.project) {
+            Ok(dir) => dir,
+            Err(error) => return envelope::fail(error),
         };
-        let exit = if ok { 0 } else { 1 };
-        let report = envelope::report(crate::envelope::version::CHECK, exit, value);
-        match pretty_json(&report) {
-            Ok(s) => println!("{s}"),
-            Err(error) => {
-                return envelope::fail(CliError::io_without_path(format!(
-                    "lute: failed to serialize result: {error}"
-                )));
+        return crate::cmd_check_project::run_check_project(
+            &dir,
+            opts.json,
+            opts.providers,
+            opts.permission_profile,
+            opts.policy,
+            opts.wip,
+            opts.engine,
+        );
+    }
+    if opts.wip {
+        return envelope::fail(
+            CliError::usage(
+                "lute check: --wip belongs to the whole-project mode — drop the document operands \
+                 (lute check --wip [--project <DIR>])",
+            )
+            .with_argument("--wip"),
+        );
+    }
+    if let Some(dir) = files.iter().find(|f| f.is_dir()) {
+        let shown = dir.display();
+        return envelope::fail(
+            CliError::usage(format!(
+                "lute check: {shown} is a directory — check the whole project with lute check --project {shown}"
+            ))
+            .with_argument(shown.to_string())
+            .with_hint(format!("lute check --project {shown}")),
+        );
+    }
+    let matrix = match crate::EngineMatrix::load(opts.engine) {
+        Ok(m) => m,
+        Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
+            return envelope::fail(CliError::io(&path, format!("lute check: {message}")));
+        }
+        Err(crate::engine_matrix::EngineMatrixError::Input { path, message }) => {
+            return envelope::fail(CliError::input(&path, format!("lute check: {message}")));
+        }
+    };
+    let mut results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::new();
+    for file in files {
+        let checked = match check_document(file, opts, &matrix) {
+            Ok(checked) => checked,
+            Err(code) => return code,
+        };
+        if let Checked::Done(result) = &checked {
+            if !opts.json {
+                print_human(file, result, opts.policy);
             }
         }
-    } else {
-        print_human(file, result, policy);
+        results.push((file.clone(), checked.into_result()));
     }
+    let ok = results
+        .iter()
+        .all(|(_, r)| r.ok && !opts.policy.any_denied(&r.diagnostics));
+    if opts.json {
+        return print_check_report(&results, None, ok, opts.policy);
+    }
+    if ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
 
+/// Print the `0.48.0.check` report (both modes) and return its exit code.
+pub(crate) fn print_check_report(
+    files: &[(PathBuf, lute_check::CheckResult)],
+    project_diags: Option<&[(PathBuf, Diagnostic)]>,
+    ok: bool,
+    policy: &DenyPolicy,
+) -> ExitCode {
+    let payload = match check_report_json(files, project_diags, ok, policy) {
+        Ok(payload) => payload,
+        Err(error) => {
+            return envelope::fail(CliError::io_without_path(format!(
+                "lute: failed to serialize result: {error}"
+            )));
+        }
+    };
+    let exit = if ok { 0 } else { 1 };
+    let report = envelope::report(crate::envelope::version::CHECK, exit, payload);
+    match pretty_json(&report) {
+        Ok(s) => println!("{s}"),
+        Err(error) => {
+            return envelope::fail(CliError::io_without_path(format!(
+                "lute: failed to serialize result: {error}"
+            )));
+        }
+    }
     if ok {
         ExitCode::SUCCESS
     } else {

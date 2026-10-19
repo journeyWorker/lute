@@ -57,7 +57,7 @@ fn first_update_is_flushed_before_stdin_closes() {
     let dir = lute_scratch::ScratchDir::named("flush");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let mut child = Command::new(BIN)
-        .args(["compile-stream", prefix.to_str().unwrap()])
+        .args(["compile", "--stream", prefix.to_str().unwrap()])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -120,7 +120,7 @@ fn final_branch_snapshot_runs_through_the_existing_runner() {
 ::set{ run.result = \"right\" }\n\
 </choice>\n\
 </branch>\n";
-    let output = stream_to_end(&["compile-stream", prefix.to_str().unwrap()], body);
+    let output = stream_to_end(&["compile", "--stream", prefix.to_str().unwrap()], body);
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -172,7 +172,7 @@ fn incomplete_block_at_eof_emits_error_without_finish() {
     let dir = lute_scratch::ScratchDir::named("incomplete");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let output = stream_to_end(
-        &["compile-stream", prefix.to_str().unwrap()],
+        &["compile", "--stream", prefix.to_str().unwrap()],
         b"<branch id=\"pick\">\n",
     );
     assert_eq!(output.status.code(), Some(1));
@@ -232,7 +232,8 @@ defaults:\n  kind: scene\n  character: hero\n  season: 1\n  episode: 7\n  uses: 
     let body = "::announce{id=\"hero\"}\n::use{component=\"greet\" who=\"hero\"}\n::set{ run.mood = \"happy\" }\n";
     let output = stream_to_end(
         &[
-            "compile-stream",
+            "compile",
+            "--stream",
             prefix.to_str().unwrap(),
             "--project",
             dir.to_str().unwrap(),
@@ -302,7 +303,7 @@ fn invalid_utf8_exits_two_without_finish() {
     let dir = lute_scratch::ScratchDir::named("utf8");
     let prefix = write_at(&dir, "prefix.lute", &scene_prefix(""));
     let output = stream_to_end(
-        &["compile-stream", prefix.to_str().unwrap()],
+        &["compile", "--stream", prefix.to_str().unwrap()],
         b"@narrator: valid\n\xff",
     );
     assert_eq!(output.status.code(), Some(2));

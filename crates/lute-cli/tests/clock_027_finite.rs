@@ -68,7 +68,8 @@ fn play(dir: &Path, script: &str, json: bool) -> Output {
 
 fn check_project(dir: &Path) -> Output {
     Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(dir)
         .output()
         .unwrap()

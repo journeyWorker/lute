@@ -100,6 +100,7 @@ mod play_expect;
 mod plugin_origins;
 mod project;
 mod refs;
+mod removed;
 mod rewrite;
 pub(crate) use engine_matrix::EngineMatrix;
 mod runner;
@@ -111,8 +112,6 @@ mod testcmd;
 
 use cli::{CatalogCommand, Cli, Command, LocCommand};
 use cmd_catalog::run_refresh;
-use cmd_check::run_check;
-use cmd_check_project::run_check_project;
 use cmd_compile::dispatch_compile;
 use cmd_constraints::run_constraints;
 use cmd_context::run_context;
@@ -153,6 +152,10 @@ pub fn run() -> ExitCode {
 
 fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
     let json = envelope::json_mode_in(args);
+    if let Some(error) = removed::check(args) {
+        envelope::set_invocation(envelope::command_id_in(args), json);
+        return envelope::fail(error);
+    }
     let cli = match Cli::try_parse_from(
         std::iter::once(std::ffi::OsString::from("lute")).chain(args.iter().cloned()),
     ) {
@@ -190,38 +193,25 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
     };
     match command {
         Command::Check {
-            file,
-            json,
-            providers,
+            files,
             project,
+            providers,
             permission_profile,
             engine,
-            deny,
-            deny_warnings,
-        } => run_check(
-            &file,
-            json,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-            engine.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-        ),
-        Command::CheckProject {
-            dir,
-            json,
-            providers,
-            engine,
-            deny,
-            deny_warnings,
             wip,
-        } => run_check_project(
-            &dir,
+            gate,
             json,
-            providers.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-            wip,
-            engine.as_deref(),
+        } => cmd_check::run(
+            &files,
+            &cmd_check::CheckOptions {
+                json: json.json,
+                providers: providers.providers.as_deref(),
+                project: project.project.as_deref(),
+                permission_profile: permission_profile.permission_profile.as_deref(),
+                engine: engine.as_deref(),
+                wip,
+                policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            },
         ),
         Command::Impact {
             dir,
@@ -244,37 +234,26 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
         } => lint::run_lint(&path, json, &deny, deny_warnings, config.as_deref()),
         Command::Compile {
             file,
-            json,
-            providers,
             project,
-            permission_profile,
-            out,
-            all,
-            locales,
-            deny,
-            deny_warnings,
-        } => dispatch_compile(
-            file.as_deref(),
-            json,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-            out.as_deref(),
-            all,
-            locales.as_deref(),
-            &DenyPolicy::new(&deny, deny_warnings),
-        ),
-        Command::CompileStream {
-            file,
             providers,
-            project,
             permission_profile,
-        } => stream::run(
-            &file,
-            providers.as_deref(),
-            project.as_deref(),
-            permission_profile.as_deref(),
-        ),
+            output,
+            locale_bundle,
+            gate,
+            json,
+            stream,
+        } => dispatch_compile(&cmd_compile::CompileOptions {
+            file: file.as_deref(),
+            json: json.json,
+            providers: providers.providers.as_deref(),
+            project: project.project.as_deref(),
+            permission_profile: permission_profile.permission_profile.as_deref(),
+            output: output.as_deref(),
+            locale_bundle: locale_bundle.as_deref(),
+            deny: &gate.deny,
+            deny_warnings: gate.deny_warnings,
+            stream,
+        }),
         Command::Expr { cel, project, json } => cmd_expr::run_expr(&cel, &project, json),
         Command::Fmt { paths, check } => cmd_fmt::run(&paths, check),
         Command::Diff {

@@ -1,4 +1,4 @@
-//! Project-level identity and snapshot gates that `check`/`check-project`
+//! Project-level identity and snapshot gates that `check`/whole-project `check`
 //! used to pass while `compile --all` or the engine got it wrong:
 //!
 //! * T1-10 (lamplight F37): a tagged component line shared its `lineId` with
@@ -7,7 +7,7 @@
 //! * T1-9 (lamplight F38, ashen F39): a `voiceKey` template without
 //!   `{prefix}` (the 0.21 default) lands lines of different documents on one
 //!   voice asset (`E-DUP-VOICEKEY`); the 0.22.0 default carries `{prefix}`.
-//! * T1-11 (ashen F8): a two-profile project passed `check-project` and was
+//! * T1-11 (ashen F8): a two-profile project passed whole-project `check` and was
 //!   then refused by `compile --all`/`play` (`E-CAPABILITY-MISMATCH`).
 //! * T3-9 (ashen F2): `lute check <file>` ignored the project the file sits in.
 
@@ -63,10 +63,10 @@ fn component_project(tag: &str, component_line: &str, host: &str) -> lute_scratc
     dir
 }
 
-/// `check-project` is clean, and `compile` mints these `(lineId, voiceKey)`
+/// whole-project `check` is clean, and `compile` mints these `(lineId, voiceKey)`
 /// pairs for the scene's `@ann` lines, in order.
 fn assert_clean_with_ann_ids(dir: &Path, want: &[(&str, &str)]) {
-    let project = lute(&["check-project", p(dir)]);
+    let project = lute(&["check", "--project", p(dir)]);
     assert_eq!(project.status.code(), Some(0), "{}", text(&project));
     let out = lute(&[
         "compile",
@@ -226,7 +226,7 @@ fn voice_project(tag: &str, manifest: &str, second_text: &str) -> lute_scratch::
 fn two_documents_voicing_different_text_under_one_voice_key_fail_check_project_and_compile_all() {
     let pinned = format!("{MANIFEST}identity:\n  voiceKey: \"{{speaker}}-{{code}}\"\n");
     let dir = voice_project("voice-collide", &pinned, "Goodbye.");
-    let project = lute(&["check-project", p(&dir)]);
+    let project = lute(&["check", "--project", p(&dir)]);
     assert_eq!(project.status.code(), Some(1), "{}", text(&project));
     let out = text(&project);
     assert!(
@@ -235,7 +235,7 @@ fn two_documents_voicing_different_text_under_one_voice_key_fail_check_project_a
     );
 
     let out_dir = dir.join("out");
-    let all = lute(&["compile", "--all", "--project", p(&dir), "-o", p(&out_dir)]);
+    let all = lute(&["compile", "--project", p(&dir), "-o", p(&out_dir)]);
     assert_eq!(all.status.code(), Some(1), "{}", text(&all));
     assert!(text(&all).contains("E-DUP-VOICEKEY"), "{}", text(&all));
     assert!(!out_dir.exists(), "no output may be written on a collision");
@@ -247,21 +247,14 @@ fn two_documents_voicing_different_text_under_one_voice_key_fail_check_project_a
 fn shared_text_or_the_default_prefixed_voice_key_is_clean() {
     let pinned = format!("{MANIFEST}identity:\n  voiceKey: \"{{speaker}}-{{code}}\"\n");
     let same = voice_project("voice-same-text", &pinned, "Hello.");
-    let o = lute(&["check-project", p(&same)]);
+    let o = lute(&["check", "--project", p(&same)]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
 
     let default = voice_project("voice-default", MANIFEST, "Goodbye.");
-    let o = lute(&["check-project", p(&default)]);
+    let o = lute(&["check", "--project", p(&default)]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
     let out_dir = default.join("out");
-    let o = lute(&[
-        "compile",
-        "--all",
-        "--project",
-        p(&default),
-        "-o",
-        p(&out_dir),
-    ]);
+    let o = lute(&["compile", "--project", p(&default), "-o", p(&out_dir)]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
 }
 
@@ -298,16 +291,9 @@ fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
         "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: b.\n",
     );
 
-    let all = lute(&[
-        "compile",
-        "--all",
-        "--project",
-        p(&dir),
-        "-o",
-        p(&dir.join("out")),
-    ]);
+    let all = lute(&["compile", "--project", p(&dir), "-o", p(&dir.join("out"))]);
     assert_eq!(all.status.code(), Some(1), "{}", text(&all));
-    let project = lute(&["check-project", p(&dir)]);
+    let project = lute(&["check", "--project", p(&dir)]);
     assert_eq!(project.status.code(), Some(1), "{}", text(&project));
     let out = text(&project);
     assert!(out.contains("E-CAPABILITY-MISMATCH"), "{out}");
@@ -316,8 +302,8 @@ fn check_project_refuses_the_two_profile_project_compile_all_refuses() {
     let reason = refusal
         .lines()
         .find(|l| l.contains("different capability snapshots"))
-        .and_then(|l| l.strip_prefix("lute compile --all: "))
-        .unwrap_or_else(|| panic!("compile --all names the mismatch: {refusal}"));
+        .and_then(|l| l.strip_prefix("lute compile: "))
+        .unwrap_or_else(|| panic!("compile names the mismatch: {refusal}"));
     assert!(out.contains(reason), "{out}\n---\n{reason}");
 }
 

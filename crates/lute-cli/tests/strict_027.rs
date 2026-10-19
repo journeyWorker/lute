@@ -76,7 +76,7 @@ fn project(tag: &str, value: &str) -> lute_scratch::ScratchDir {
 #[test]
 fn an_op_by_from_attr_is_applied_by_play() {
     let dir = project("by-attr", "{ op: decrement, by: { fromAttr: amount } }");
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
     write(
         &dir,
@@ -120,7 +120,7 @@ fn an_unknown_write_value_shape_fails_the_plugin_load() {
         ("[1, 2]", "is a list"),
     ] {
         let dir = project("bad-shape", value);
-        let (code, t) = run(&dir, &["check-project", "."]);
+        let (code, t) = run(&dir, &["check", "--project", "."]);
         assert_ne!(code, Some(0), "{value}: {t}");
         assert!(t.contains("E-PLUGIN-PARSE"), "{value}: {t}");
         assert!(t.contains(says), "{value}: {t}");
@@ -140,7 +140,7 @@ fn a_from_attr_must_name_a_declared_attr_and_a_by_one_a_number() {
         ),
     ] {
         let dir = project("bad-attr", value);
-        let (code, t) = run(&dir, &["check-project", "."]);
+        let (code, t) = run(&dir, &["check", "--project", "."]);
         assert_ne!(code, Some(0), "{value}: {t}");
         assert!(t.contains("E-PLUGIN-PARSE"), "{value}: {t}");
         assert!(t.contains(says), "{value}: {t}");
@@ -174,7 +174,7 @@ fn an_omitted_param_default_def_is_judged_for_definite_assignment_at_the_use() {
         "defaulted.lute",
         "---\nkind: scene\nid: defaulted\n---\n\n## A\n\n::use{component=\"gauge\"}\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_ne!(code, Some(0), "{t}");
     let line = t
         .lines()
@@ -190,6 +190,6 @@ fn an_omitted_param_default_def_is_judged_for_definite_assignment_at_the_use() {
         "defaulted.lute",
         "---\nkind: scene\nid: defaulted\n---\n\n## A\n\n::use{component=\"gauge\" fathoms=\"3\"}\n",
     );
-    let (code, t) = run(&dir, &["check-project", "."]);
+    let (code, t) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{t}");
 }

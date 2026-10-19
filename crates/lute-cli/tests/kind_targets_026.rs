@@ -161,7 +161,6 @@ fn the_artifact_and_the_index_carry_the_resolved_kind() {
     let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -333,7 +332,7 @@ fn play_picks_the_sub_kind_beat_over_the_parent_kind_beat() {
         candidates(&v["steps"][1]),
         [("s.silver", true), ("s.gold", true), ("s.blue", true)]
     );
-    let t = text(&run(&["check-project", dir.to_str().unwrap()]));
+    let t = text(&run(&["check", "--project", dir.to_str().unwrap()]));
     assert!(!t.contains("W-BEAT-SHADOWED"), "{t}");
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
@@ -353,7 +352,7 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
         .concat(),
     );
     let d = dir.to_str().unwrap();
-    let t = text(&run(&["check-project", d]));
+    let t = text(&run(&["check", "--project", d]));
     assert!(!t.contains("`s.goldLight` can never win"), "{t}");
     let out = run(&["beats", d, "--target", "hero.cyra"]);
     let t = text(&out);
@@ -393,7 +392,7 @@ fn lute_beats_gives_each_ladder_cell_its_own_verdict() {
 
 /// dsl 0.28.0: a kind beat whose `when` never holds for one member — as
 /// written, or because no fact it needs is produced for that member — is
-/// marked `never for` on that member's ladder only; `check-project` calls it
+/// marked `never for` on that member's ladder only; whole-project `check` calls it
 /// reachable (it plays for the others).
 #[test]
 fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
@@ -413,7 +412,7 @@ fn lute_beats_marks_the_members_a_kind_beat_never_plays_for() {
          relations:\n  fan: { args: [hero], tier: run }\nfacts:\n  - fan(cyra)\n",
     );
     let d = dir.to_str().unwrap();
-    let t = text(&run(&["check-project", d]));
+    let t = text(&run(&["check", "--project", d]));
     assert!(!t.contains("E-BEAT-UNREACHABLE"), "{t}");
     let never_for = |target: &str| -> Vec<(String, Json)> {
         let out = run(&["beats", d, "--target", target, "--json"]);

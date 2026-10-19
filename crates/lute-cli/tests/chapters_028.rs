@@ -83,7 +83,7 @@ fn two_chains_each_order_their_own_occasion() {
         "steps:\n  - occasion: stage\n    expect: { winner: s1 }\n  - occasion: chapter\n    expect: { winner: c1 }\n  \
          - occasion: stage\n    expect: { winner: s2 }\n  - occasion: chapter\n    expect: { winner: c2 }\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     let (code, play) = run(&dir, &["play", ".", "--script", "plays/all.play.yaml"]);
     assert_eq!(code, Some(0), "{play}");
@@ -107,7 +107,7 @@ fn the_removed_sequence_key_is_refused_and_never_read() {
         "scenes/c2.lute",
         &scene("c2", "once: user\nwhen: \"run.checkedPulse\"\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains(
@@ -146,7 +146,7 @@ fn a_tie_with_a_chain_priority_names_the_chain() {
             "on: chapter\npriority: 10\nonce: user\nwhen: \"run.leg >= 3\"\n",
         ),
     );
-    let (_, out) = run(&dir, &["check-project", "."]);
+    let (_, out) = run(&dir, &["check", "--project", "."]);
     let tie = out
         .lines()
         .find(|l| l.contains("[W-BEAT-PRIORITY-TIE]"))
@@ -177,7 +177,7 @@ fn a_chain_on_a_targeted_occasion_needs_every_scene_to_name_its_target() {
     );
     write(&dir, "scenes/m1.lute", &scene("m1", "target: npc.mara\n"));
     write(&dir, "scenes/m2.lute", &scene("m2", ""));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("scenes/m2.lute:3:1: error [E-CHAPTERS]")
@@ -187,7 +187,7 @@ fn a_chain_on_a_targeted_occasion_needs_every_scene_to_name_its_target() {
     assert_eq!(out.matches("[E-CHAPTERS]").count(), 1, "{out}");
 
     write(&dir, "scenes/m2.lute", &scene("m2", "target: npc.mara\n"));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
 }
 
@@ -260,7 +260,7 @@ fn a_rejected_chain_does_not_tell_its_scenes_to_join_it() {
         &scene("pryceWakes", "when: \"run.checkedPulse\"\n"),
     );
     write(&dir, "scenes/accusation.lute", &scene("accusation", ""));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("lute.project.yaml:10:5: error [E-CHAPTERS] `scene` is not a chain key — did you mean `scenes`?"),
@@ -294,7 +294,7 @@ fn a_chain_on_an_undeclared_occasion_is_not_applied() {
     for id in ["c1", "c2"] {
         write(&dir, &format!("scenes/{id}.lute"), &scene(id, ""));
     }
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("[E-CHAPTERS]") && out.contains("did you mean `chapter`?"),
@@ -336,7 +336,7 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
         "scenes/wed.lute",
         &scene("wed", "when: \"run.day >= 3\"\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 
@@ -345,7 +345,7 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
         "scenes/tue.lute",
         &scene("tue", "when: \"run.leg == 2\"\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
     assert!(out.contains("(it reads `run.leg`"), "{out}");
@@ -357,7 +357,7 @@ fn a_clock_only_condition_does_not_stall_a_chain() {
         "scenes/tue.lute",
         &scene("tue", "when: \"run.stage == 2\"\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 }
@@ -385,7 +385,7 @@ fn a_hand_written_after_outside_a_chain_never_stalls() {
         &scene("tue", "when: \"run.leg == 2\"\n"),
     );
     write(&dir, "scenes/wed.lute", &scene("wed", ""));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
 
@@ -406,7 +406,7 @@ fn a_hand_written_after_outside_a_chain_never_stalls() {
         "scenes/wed.lute",
         &scene("wed", "on: dayStart\nafter: visited(\"tue\")\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 }
@@ -433,7 +433,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
         &scene("kitchen", "when: \"run.slot == 'afternoon'\"\n"),
     );
     write(&dir, "scenes/garden.lute", &scene("garden", ""));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
     assert!(
@@ -449,7 +449,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
         "scenes/kitchen.lute",
         &scene("kitchen", "when: \"run.slot != 'morning'\"\n"),
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 
@@ -469,7 +469,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
         &scene("mon", "when: \"run.day == 1\"\n"),
     );
     write(&dir, "scenes/tue.lute", &scene("tue", ""));
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert_eq!(out.matches("[W-CHAPTER-STALL]").count(), 1, "{out}");
     assert!(
@@ -491,7 +491,7 @@ fn a_clock_window_that_closes_stalls_a_chain() {
          clock:\n  day: run.day\n  raise: { dayStart: dayStart }\n  days: 7\n  raiseAtStart: true\n",
         "chapters:\n  - on: dayStart\n    scenes: [mon, tue]\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(0), "{out}");
     assert!(!out.contains("W-CHAPTER-STALL"), "{out}");
 }
@@ -519,7 +519,7 @@ fn listing_what_is_not_a_scene_says_what_it_is() {
         "lore/codex.lute",
         "---\nkind: lore\nid: codex\n---\n\n<entry id=\"page\" on=\"chapter\">\n  @narrator: A page.\n</entry>\n",
     );
-    let (code, out) = run(&dir, &["check-project", "."]);
+    let (code, out) = run(&dir, &["check", "--project", "."]);
     assert_eq!(code, Some(1), "{out}");
     assert!(
         out.contains("lists `c4s1`, but no scene in this project declares `id: c4s1` — did you mean `main.c4s1`?"),

@@ -15,4 +15,4 @@ Controls (probed, reverted): the same rule with a base relation instead of the k
 atom (`routeOpen(S) :- met(S), not locked(S)` with met seeded) or a ground rule
 (`routeOpen(ren) :- not locked(ren)`) both report "holds unless defeated" correctly.
 Also wrong with an unconditional top-level ::assert{locked(ren)} in clash.lute.
-check-project and play are right (locked(ren) is producible; play derives routeOpen accordingly).
+whole-project check and play are right (locked(ren) is producible; play derives routeOpen accordingly).

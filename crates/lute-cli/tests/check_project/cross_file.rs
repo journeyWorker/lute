@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn standalone_check_on_either_unlinked_file_stays_clean_red_proof() {
-    // RED proof: BEFORE `check-project` existed, nothing caught this — `lute
+    // RED proof: BEFORE whole-project `check` existed, nothing caught this — `lute
     // check` on either file alone is clean, because neither imports the
     // other and `check()`'s own E-QUEST-ID-DUP is scoped to one document (or
     // its own import graph).
@@ -34,7 +34,7 @@ fn check_project_flags_unlinked_cross_file_quest_id_dup() {
     write(&dir, "a.lute", &clean_quest_doc("shared", "run.a"));
     write(&dir, "b.lute", &clean_quest_doc("shared", "run.b"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -53,7 +53,7 @@ fn check_project_json_reports_ok_false_and_project_diagnostic_for_cross_file_dup
     write(&dir, "a.lute", &clean_quest_doc("shared", "run.a"));
     write(&dir, "b.lute", &clean_quest_doc("shared", "run.b"));
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(out.status.code(), Some(1));
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
@@ -91,13 +91,13 @@ fn check_project_clean_project_with_distinct_quest_ids_exits_zero() {
     // Nested subdirectory -- the walk must be recursive.
     write(&dir, "sub/b.lute", &clean_quest_doc("questB", "run.b"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert!(
         out.status.success(),
         "distinct quest ids across files must exit zero: {}",
         String::from_utf8_lossy(&out.stdout)
     );
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
     assert_eq!(v["files"].as_array().unwrap().len(), 2, "{v}");
@@ -122,7 +122,7 @@ fn check_project_reports_unrelated_per_file_error_and_exits_nonzero() {
          <objective id=\"o\" done=\"run.missing\"/>\n</quest>\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -147,7 +147,7 @@ fn check_project_reports_unrelated_per_file_error_and_exits_nonzero() {
 fn check_project_import_linked_dup_is_not_double_reported() {
     // `a.lute` `uses:` `b.lute`; both declare `<quest id="q">`. Pre-0.2.1,
     // `lute check a.lute` ALONE already reports this (F4, seeded via
-    // `imported_quest_ids`). `check-project`'s project-wide pass ALSO sees
+    // `imported_quest_ids`). whole-project `check`'s project-wide pass ALSO sees
     // the same two files declaring `q` -- the SAME real-world collision must
     // surface as exactly ONE E-QUEST-ID-DUP across the whole report, not a
     // per-file copy plus a project-wide copy.
@@ -168,7 +168,7 @@ fn check_project_import_linked_dup_is_not_double_reported() {
          ---\n<quest id=\"q\">\n<objective id=\"oa\" done=\"run.a\"/>\n</quest>\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -185,7 +185,7 @@ fn check_project_import_linked_dup_is_not_double_reported() {
     // Same assertion, structurally, via --json: sum diagnostics carrying
     // E-QUEST-ID-DUP across EVERY file's own result plus the project-wide
     // list.
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     let mut total = 0usize;
     for f in v["files"].as_array().unwrap() {
@@ -239,7 +239,7 @@ fn check_project_flags_import_graph_dup_reaching_outside_walked_dir() {
          <quest id=\"scene_q\" start=\"true\">\n<objective id=\"oscene\" done=\"run.scene\"/>\n</quest>\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(1),
@@ -252,7 +252,7 @@ fn check_project_flags_import_graph_dup_reaching_outside_walked_dir() {
     // Structurally: the project-wide pass has NOTHING to say here (neither
     // import target is in the walked set); the dup must come from
     // scene.lute's own per-file result instead.
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], false, "{v}");
     assert!(
@@ -286,7 +286,7 @@ fn check_project_symlink_alias_does_not_fabricate_a_cross_file_dup() {
     let alias = dir.join("alias.lute");
     std::os::unix::fs::symlink(&real, &alias).unwrap();
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert!(
         out.status.success(),
         "a symlink alias to an already-walked doc must not fabricate a cross-file dup: {}",
@@ -298,7 +298,7 @@ fn check_project_symlink_alias_does_not_fabricate_a_cross_file_dup() {
         "false dup from one physical doc counted twice: {stdout}"
     );
 
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
     assert_eq!(
@@ -319,7 +319,7 @@ fn check_project_broken_symlink_exits_two_not_panic() {
     let broken = dir.join("broken.lute");
     std::os::unix::fs::symlink(&missing, &broken).unwrap();
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(2),
@@ -334,14 +334,14 @@ fn check_project_broken_symlink_exits_two_not_panic() {
 fn check_project_nonexistent_dir_exits_two() {
     let dir = temp_dir("missing");
     std::fs::remove_dir_all(&dir).ok();
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]
 fn check_project_empty_dir_exits_zero() {
     let dir = temp_dir("empty");
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -402,7 +402,7 @@ fn check_project_quest_ref_to_a_defined_quest_state_emits_no_warning() {
     );
     write(&dir, "scene.lute", &scene_matching_quest_state("heist"));
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -433,7 +433,7 @@ fn check_project_flags_mistyped_quest_id_reference() {
     );
     write(&dir, "scene.lute", &scene_matching_quest_state("heits"));
 
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -451,7 +451,7 @@ fn check_project_flags_mistyped_quest_id_reference() {
         "must name the path: {stdout}"
     );
 
-    let out_json = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out_json = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
     assert_eq!(v["ok"], true, "{v}");
     let project_diags = v["project_diagnostics"]
@@ -485,7 +485,7 @@ fn check_project_flags_reference_to_an_undefined_objective_under_a_defined_quest
         &scene_matching_quest_objective_done("heist", "bogus"),
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),
@@ -522,7 +522,9 @@ fn single_file_check_never_emits_quest_ref_unknown() {
 
     let out_json = run(&["check", scene.to_str().unwrap(), "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out_json.stdout).unwrap();
-    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    let diags = v["files"][0]["diagnostics"]
+        .as_array()
+        .expect("diagnostics array");
     assert!(
         !diags.iter().any(|d| d["code"] == "W-QUEST-REF-UNKNOWN"),
         "{v}"
@@ -560,7 +562,7 @@ fn check_project_clean_project_still_exits_zero_with_quest_refs_present() {
          identity:\n  voiceKey: \"{prefix}.{speaker}-{code}\"\n",
     );
 
-    let out = run(&["check-project", dir.to_str().unwrap(), "--json"]);
+    let out = run(&["check", "--project", dir.to_str().unwrap(), "--json"]);
     assert_eq!(
         out.status.code(),
         Some(0),

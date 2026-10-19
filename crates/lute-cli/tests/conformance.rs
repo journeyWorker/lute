@@ -437,8 +437,8 @@ fn invalid_engine_matrices_are_rejected() {
 /// Checker-diagnostic fixtures (dsl 0.37.0 §8): `conformance/diagnostics/*/`
 /// pins the exact `--json` diagnostics an invalid source produces, byte for
 /// byte, with exit 1. The command follows the fixture's files, as in
-/// `conformance/regenerate.sh`: a `lute.project.yaml` selects `check-project
-/// .`; a `loc/` translation set selects `compile --locales locales.json`;
+/// `conformance/regenerate.sh`: a `lute.project.yaml` selects `check --project .`; a `loc/` translation set selects `compile
+/// --locale-bundle locales.json`;
 /// otherwise `check source.lute`. The command runs from the fixture
 /// directory and the directory's absolute prefix is removed, so recorded
 /// paths are fixture-relative.
@@ -461,12 +461,12 @@ fn every_diagnostic_fixture_reproduces() {
     for dir in &dirs {
         let name = dir.file_name().unwrap().to_string_lossy().into_owned();
         let args: &[&str] = if dir.join("lute.project.yaml").is_file() {
-            &["check-project", ".", "--json"]
+            &["check", "--project", ".", "--json"]
         } else if dir.join("loc").is_dir() {
             &[
                 "compile",
                 "source.lute",
-                "--locales",
+                "--locale-bundle",
                 "locales.json",
                 "--json",
             ]
@@ -539,7 +539,6 @@ fn identity_rename_stamps_match_single_and_all_compile_paths() {
     let all_result = Command::new(BIN)
         .args([
             "compile",
-            "--all",
             "--project",
             &path_arg(&root),
             "-o",

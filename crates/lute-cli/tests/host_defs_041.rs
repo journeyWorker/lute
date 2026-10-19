@@ -45,7 +45,8 @@ fn host_defs_are_never_unused_and_frontmatter_refuses_host() {
         "---\nkind: scene\nid: a\n---\n## A\n@narrator: {{user.level}}\n",
     );
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&*dir)
         .output()
         .unwrap();

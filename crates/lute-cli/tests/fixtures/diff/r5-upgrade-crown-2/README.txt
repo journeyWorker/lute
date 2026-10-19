@@ -12,7 +12,7 @@ a.lute asserts close(sefa), close(brann) and sets user.seen.tavi, user.seen.bran
 user.bond.sefa.
 
 Command:
-  lute check-project .
+  lute check --project .
 
 Actual (0.26.0):
   ./a.lute:11:7: error [E-UNDECLARED] `::set` target `user.seen.brann` is not declared in the `state:` schema (dsl §7.3.4)

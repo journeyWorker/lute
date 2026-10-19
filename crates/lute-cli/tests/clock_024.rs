@@ -61,7 +61,8 @@ fn project_with(
 
 fn check_project(dir: &Path) -> Output {
     Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(dir)
         .output()
         .unwrap()
@@ -1144,7 +1145,7 @@ fn beats_lists_a_once_day_bundle_beat() {
 
 /// Round-3 (cheatsheet p2): a clock over a path that is not `owner: engine`,
 /// or naming an undeclared `raise` occasion, is reported by `lute check` on
-/// the schema itself (it said `ok`), and by `check-project` once — at the
+/// the schema itself (it said `ok`), and by whole-project `check` once — at the
 /// schema's `clock:` line, counting its importers (round-5 T3-4).
 #[test]
 fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
@@ -1224,7 +1225,7 @@ fn a_bad_clock_is_reported_on_the_schema_and_once_per_project() {
 
 /// Round-3 docs pass (a): `lute check` on a schema alone runs what an
 /// importer's check would report about it — enum labels, entity kinds,
-/// seed facts — at the schema's own lines; `check-project` reports each
+/// seed facts — at the schema's own lines; whole-project `check` reports each
 /// once, at the schema, counting the importers (round-5 T3-4).
 #[test]
 fn a_schema_checked_alone_reports_what_its_importers_would() {

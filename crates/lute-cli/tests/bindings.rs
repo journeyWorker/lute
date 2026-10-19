@@ -15,7 +15,7 @@ fn fixture(name: &str) -> String {
 #[test]
 fn clean_fixture_has_no_binding_diagnostics() {
     let out = Command::new(bin())
-        .args(["check-project", &fixture("bindings-clean"), "--json"])
+        .args(["check", "--project", &fixture("bindings-clean"), "--json"])
         .output()
         .unwrap();
     assert!(
@@ -34,7 +34,12 @@ fn clean_fixture_has_no_binding_diagnostics() {
 #[test]
 fn problem_fixture_json_covers_key_file_missing_and_unused() {
     let out = Command::new(bin())
-        .args(["check-project", &fixture("bindings-problems"), "--json"])
+        .args([
+            "check",
+            "--project",
+            &fixture("bindings-problems"),
+            "--json",
+        ])
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(1));
@@ -65,7 +70,12 @@ fn problem_fixture_json_covers_key_file_missing_and_unused() {
 #[test]
 fn custom_vfx_bindings_are_clean() {
     let out = Command::new(bin())
-        .args(["check-project", &fixture("bindings-custom-vfx"), "--json"])
+        .args([
+            "check",
+            "--project",
+            &fixture("bindings-custom-vfx"),
+            "--json",
+        ])
         .output()
         .unwrap();
     assert!(
@@ -85,7 +95,8 @@ fn custom_vfx_bindings_are_clean() {
 fn custom_effect_outside_vfx_is_a_binding_effect_error() {
     let out = Command::new(bin())
         .args([
-            "check-project",
+            "check",
+            "--project",
             &fixture("bindings-custom-misplaced"),
             "--json",
         ])
@@ -134,7 +145,7 @@ fn check_ui_bindings(tag: &str, bindings: &str) -> serde_json::Value {
     write_temp(&dir, "assets/dawn.png", "x");
     write_temp(&dir, "player.bindings.yaml", bindings);
     let out = Command::new(bin())
-        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .args(["check", "--project", &dir.to_string_lossy(), "--json"])
         .output()
         .unwrap();
     serde_json::from_slice(&out.stdout).unwrap()
@@ -185,7 +196,7 @@ fn list_entity_kind_shape_suggests_members_mapping_with_authored_members() {
         "---\nkind: scene\nid: start\non: start\n---\n## Start\n@narrator: Hello.\n",
     );
     let out = Command::new(bin())
-        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .args(["check", "--project", &dir.to_string_lossy(), "--json"])
         .output()
         .unwrap();
     let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();

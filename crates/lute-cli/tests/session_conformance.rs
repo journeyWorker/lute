@@ -34,7 +34,7 @@ fn compiled_bundle(project: &Path, scratch: &str) -> Bundle {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");
     let status = lute()
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(project)
         .arg("-o")
         .arg(&out)

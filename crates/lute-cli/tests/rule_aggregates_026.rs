@@ -125,7 +125,7 @@ fn badges(n: usize) -> String {
 #[test]
 fn a_counted_relation_is_read_and_the_head_is_producible() {
     let dir = project("clean", "");
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
     // Read only inside the counts: not W-RELATION-UNREAD. `open(earth)` is
@@ -189,7 +189,7 @@ fn play_derives_five_of_eight_badges_and_distinct_towns() {
 #[test]
 fn a_count_inside_its_own_recursion_is_e_rule_aggregate_cycle() {
     let dir = project("cycle", "  - \"open(D) :- door(D), count(open(_)) >= 1\"\n");
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(1), "{t}");
     assert!(

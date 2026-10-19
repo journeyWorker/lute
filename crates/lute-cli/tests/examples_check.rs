@@ -151,13 +151,13 @@ fn gated_line_checks_clean_under_project() {
 // merely asserted.
 // ---------------------------------------------------------------------
 
-/// `lute check-project <dir> --json`: exit code and parsed output.
+/// `lute check --project <dir> --json`: exit code and parsed output.
 struct ProjectRun {
     status: Option<i32>,
     json: serde_json::Value,
 }
 
-/// Run `check-project <dir> --json` once per project root for the whole test
+/// Run `whole-project check <dir> --json` once per project root for the whole test
 /// binary. Every corpus test below asks the same question of the same tree, and
 /// the `docs/examples` root alone covers all fourteen games, so re-running it
 /// per test repeated the most expensive check in the suite several times. The
@@ -174,14 +174,18 @@ fn check_project(dir: &Path) -> &'static ProjectRun {
         .unwrap_or_else(|| panic!("{} is not a shipped project root", dir.display()));
     slot.get_or_init(|| {
         let out = Command::new(env!("CARGO_BIN_EXE_lute"))
-            .arg("check-project")
+            .arg("check")
+            .arg("--project")
             .arg(dir)
             .arg("--json")
             .current_dir(env!("CARGO_MANIFEST_DIR"))
             .output()
             .unwrap();
         let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|e| {
-            panic!("{}: invalid JSON from `check-project`: {e}", dir.display())
+            panic!(
+                "{}: invalid JSON from whole-project `check`: {e}",
+                dir.display()
+            )
         });
         ProjectRun {
             status: out.status.code(),
@@ -190,7 +194,7 @@ fn check_project(dir: &Path) -> &'static ProjectRun {
     })
 }
 
-/// Every diagnostic code appearing ANYWHERE in a `check-project --json`
+/// Every diagnostic code appearing ANYWHERE in a `whole-project check --json`
 /// result -- both per-file (`files[].diagnostics`) and project-wide
 /// (`project_diagnostics`) -- pooled flat since this task only ever needs
 /// membership, never per-file attribution.
@@ -212,7 +216,7 @@ fn all_codes(v: &serde_json::Value) -> Vec<String> {
 
 #[test]
 fn corpus_check_project_is_clean_end_to_end() {
-    // dsl §7 corpus grounding: `check-project` over the WHOLE `docs/examples/`
+    // dsl §7 corpus grounding: whole-project `check` over the WHOLE `docs/examples/`
     // tree (every resolved subproject root the walk discovers --
     // docs/examples itself, showcase/, plugindef-project/, arcia-project/,
     // each scoped independently by `main.rs`'s `by_root` grouping) must
@@ -223,7 +227,7 @@ fn corpus_check_project_is_clean_end_to_end() {
     assert_eq!(
         run.status,
         Some(0),
-        "the whole shipped corpus must check-project clean: {v}"
+        "the whole shipped corpus must whole-project check clean: {v}"
     );
     assert_eq!(v["ok"], true, "{v}");
 }
@@ -246,7 +250,7 @@ fn corpus_no_false_positive_episode_dup_across_or_within_project_roots() {
     // (choice-persist.lute, gated-line.lute), and two `marina.s01ep05`
     // inside the arcia-project root (date-minigame.lute,
     // arcia-portrait.lute) -- genuine TRUE positives this grounding test
-    // caught on first run (nothing had ever run `check-project` over the
+    // caught on first run (nothing had ever run whole-project `check` over the
     // WHOLE corpus before this diagnostic existed to catch them). Fixed by
     // disambiguating each LATER-declared file's `episode:` frontmatter
     // only (components/scene.lute 1->2, param-def.lute 1->3,
@@ -284,7 +288,7 @@ fn corpus_halsin_relational_objective_not_dead() {
 }
 
 /// Every shipped `kind: scene` `.lute` file under `docs/examples/`, paired
-/// with the relative suffix `check-project`'s JSON reports it under and its
+/// with the relative suffix whole-project `check`'s JSON reports it under and its
 /// resolved project root (mirrors `main.rs::project_root_for`'s
 /// nearest-ancestor-with-`lute.project.yaml` rule; hand-enumerated since
 /// every subproject boundary in this fixed corpus is already known from its
@@ -322,12 +326,12 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
     // `check()` already reports clean standalone. Grounded against the REAL
     // shipped corpus, not a synthetic fixture: every shipped scene whose
     // single-file `check` proves clean is cross-checked against its OWN
-    // project's `check-project` run. This is exactly the class of test
+    // project's whole-project `check` run. This is exactly the class of test
     // that caught a REAL bug fixed in this same commit --
     // `showcase/episode01.lute`'s `run.sofaOutcome` read (consumed by a
     // domain-exhaustive `<match subject="run.sofaOutcome"><otherwise>`, written
     // only conditionally by one `<choice persist="run" into="run.sofaOutcome">`
-    // arm) is standalone-clean but was newly errored by `check-project`
+    // arm) is standalone-clean but was newly errored by whole-project `check`
     // before the `defassign::exhaustive_match_subject_spans` fix (main.rs's
     // T11 wiring recomputed `check_definite_assignment` raw, unaware of
     // `check.rs`'s own exhaustive-match-subject suppression).
@@ -342,7 +346,7 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
         ]);
         let sv: serde_json::Value = serde_json::from_slice(&single.stdout)
             .unwrap_or_else(|e| panic!("{rel}: invalid JSON from `check`: {e}"));
-        let single_clean = sv["diagnostics"]
+        let single_clean = sv["files"][0]["diagnostics"]
             .as_array()
             .expect("diagnostics array")
             .iter()
@@ -380,7 +384,7 @@ fn envelope_never_newly_errors_a_clean_standalone_scene() {
                 });
         assert!(
             !newly_errored,
-            "{rel} is clean standalone but check-project newly errored it with \
+            "{rel} is clean standalone but whole-project check newly errored it with \
              E-STATE-MAYBE-UNAVAILABLE: {pv}"
         );
     }

@@ -39,7 +39,8 @@ fn project(tag: &str, schema: &str, docs: &[(&str, &str)]) -> lute_scratch::Scra
 
 fn check_project(dir: &Path) -> Output {
     Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(dir)
         .output()
         .unwrap()

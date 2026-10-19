@@ -22,7 +22,7 @@ fn runtime() -> Runtime {
     let scratch = lute_scratch::ScratchDir::named("terminal-writes-044");
     let out = scratch.join("bundle");
     let status = Command::new(BIN)
-        .args(["compile", "--all"])
+        .args(["compile", "--project"])
         .arg(&fixture)
         .arg("-o")
         .arg(&out)

@@ -86,7 +86,7 @@ fn the_tie_check_reads_the_must_set_at_a_beats_slot() {
         "---\nkind: lore\nid: barks\nuses: ../world.schema.yaml\n---\n\
          <entry id=\"stranger\" on=\"knock\" when=\"!holds('met', ['maud'])\">\n@narrator: Who?\n</entry>\n",
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }
@@ -104,7 +104,7 @@ fn a_beat_whose_error_was_folded_leaves_the_tie_check() {
          <beat id=\"probeA\" on=\"peer\" priority=\"7\" when=\"run.nope > 2\">\n@narrator: A.\n</beat>\n\
          <beat id=\"probeB\" on=\"peer\" priority=\"7\" when=\"run.day > 1\">\n@narrator: B.\n</beat>\n",
     );
-    let t = text(&run(&["check-project", dir.to_str().unwrap()]));
+    let t = text(&run(&["check", "--project", dir.to_str().unwrap()]));
     assert!(t.contains("(+1 more:"), "the second read is folded: {t}");
     assert!(!t.contains("W-BEAT-PRIORITY-TIE"), "{t}");
 }

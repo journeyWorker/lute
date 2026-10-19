@@ -296,7 +296,7 @@ pub(crate) fn run_scenario(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, false) {
+    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
         Ok(v) => v,
         Err(code) => return code,
     };

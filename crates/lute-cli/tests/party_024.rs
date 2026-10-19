@@ -1,6 +1,6 @@
 //! dsl 0.24.0 §3 end to end through the built `lute` binary: a sub-kind used
 //! as a rule-body predicate, `per:` state, and a rule reading
-//! `run.approval[P]` — `check-project` is clean, `lute play` derives per
+//! `run.approval[P]` — whole-project `check` is clean, `lute play` derives per
 //! member, and `--explain` names the grounded instance.
 
 use std::path::Path;
@@ -61,7 +61,8 @@ fn project(tag: &str) -> lute_scratch::ScratchDir {
 fn a_sub_kind_predicate_and_an_indexed_rule_derive_per_member_in_play() {
     let dir = project("play");
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();

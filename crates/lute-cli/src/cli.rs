@@ -26,83 +26,101 @@ pub(crate) struct Cli {
     pub(crate) command: Option<Command>,
 }
 
+/// `--project <DIR>`: the project a command works on (0.48.0 §2.1). Declared
+/// once so every command that takes it shows one spelling and one help text.
+#[derive(clap::Args)]
+pub(crate) struct ProjectOpt {
+    /// Project directory (`lute.project.yaml` + `plugins/`). Omit for the
+    /// nearest `lute.project.yaml` at or above the file operand's directory
+    /// (file commands) or the current directory; the stderr note names the
+    /// project used.
+    #[arg(long = "project", value_name = "DIR")]
+    pub(crate) project: Option<PathBuf>,
+}
+
+/// `--providers <DIR>`.
+#[derive(clap::Args)]
+pub(crate) struct ProvidersOpt {
+    /// Directory of pinned provider snapshots to resolve ids against.
+    #[arg(long = "providers", value_name = "DIR")]
+    pub(crate) providers: Option<PathBuf>,
+}
+
+/// `--permission-profile <NAME>`.
+#[derive(clap::Args)]
+pub(crate) struct PermissionProfileOpt {
+    /// Trusted project profile whose permissions apply as an additional host
+    /// ceiling. This never activates the profile's plugins or rewrites source.
+    #[arg(long = "permission-profile", value_name = "NAME")]
+    pub(crate) permission_profile: Option<String>,
+}
+
+/// `--deny <CODE>` (repeatable) and `--deny-warnings`: the diagnostic gate.
+#[derive(clap::Args)]
+pub(crate) struct GateOpts {
+    /// Promote every diagnostic with EXACTLY this code to an error for the
+    /// verdict and exit code (repeatable), like rustc/clippy `-D`. An
+    /// unknown code is a usage error (exit 2). Errors are never demotable.
+    #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
+    pub(crate) deny: Vec<String>,
+    /// Promote EVERY warning to an error for the verdict and exit code.
+    #[arg(long = "deny-warnings")]
+    pub(crate) deny_warnings: bool,
+}
+
+/// `--json`: print the report as one JSON document (the 0.43 envelope).
+#[derive(clap::Args)]
+pub(crate) struct JsonOpt {
+    /// Print the result as one JSON document on stdout instead of
+    /// human-readable lines.
+    #[arg(long = "json")]
+    pub(crate) json: bool,
+}
+
 #[derive(Subcommand)]
 pub(crate) enum Command {
-    /// Statically validate a `.lute` document.
-    Check {
-        /// Path to the `.lute` file to check.
-        file: PathBuf,
-        /// Emit the full `CheckResult` as JSON instead of human-readable lines.
-        #[arg(long)]
-        json: bool,
-        /// Engine capability matrix YAML (defaults to the built-in reference matrix).
-        #[arg(long, value_name = "FILE")]
-        engine: Option<PathBuf>,
-        /// Directory of pinned provider snapshots to resolve ids against.
-        #[arg(long, value_name = "DIR")]
-        providers: Option<PathBuf>,
-        /// Project directory (`lute.project.yaml` + `plugins/`) whose installed
-        /// plugins resolve the document's activated capability snapshot. Omit
-        /// for the nearest `lute.project.yaml` above the file, or a core-only
-        /// (`lute.core`) check when there is none.
-        #[arg(long, value_name = "DIR")]
-        project: Option<PathBuf>,
-        /// Trusted project profile whose permissions apply as an additional host
-        /// ceiling. This never activates the profile's plugins or rewrites source.
-        #[arg(long = "permission-profile", value_name = "NAME")]
-        permission_profile: Option<String>,
-        /// Promote every diagnostic with EXACTLY this code to an error for the
-        /// verdict and exit code (repeatable), like rustc/clippy `-D`. An
-        /// unknown code is a usage error (exit 2). Errors are never
-        /// demotable.
-        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
-        deny: Vec<String>,
-        /// Promote EVERY warning to an error for the verdict and exit code.
-        #[arg(long = "deny-warnings")]
-        deny_warnings: bool,
-    },
-    /// Statically validate every `.lute` document under a directory, plus project-wide checks.
+    /// Statically validate `.lute` documents, or the whole project.
     ///
-    /// Statically validate EVERY `.lute` document under a directory
-    /// (recursively, deterministic sorted order), like `check` on each file,
-    /// PLUS project-wide `<quest id>` uniqueness for quest docs `check`'s
-    /// own import-graph-scoped `E-QUEST-ID-DUP` cannot see.
-    CheckProject {
-        /// Directory to walk recursively for `*.lute` files; also the
-        /// project root whose plugins resolve every file, so every
-        /// file's capability resolution matches `lute check <file> --project
-        /// <dir>`.
-        dir: PathBuf,
-        /// Emit a structured JSON report instead of human-readable lines.
-        #[arg(long)]
-        json: bool,
-        /// Directory of pinned provider snapshots to resolve ids against.
-        #[arg(long, value_name = "DIR")]
-        providers: Option<PathBuf>,
-        /// Promote every diagnostic with EXACTLY this code to an error for the
-        /// verdict and exit code (repeatable) — applies to per-file AND
-        /// project-wide diagnostics. An unknown code is a usage error (exit
-        /// 2). Errors are never demotable.
-        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
-        deny: Vec<String>,
+    /// With `<FILE>` operands, statically validate each document (or `.yaml`
+    /// state schema) on its own, resolved in its project (`--project`, else
+    /// the nearest `lute.project.yaml` above the file). That is the
+    /// per-document analysis: relational guard decisions (dead guards over
+    /// relations, `W-WIP`) and the project-wide checks need the whole-project
+    /// mode. With no operand, check EVERY `.lute` document of the project
+    /// (`--project <DIR>`, else the nearest `lute.project.yaml` above the
+    /// current directory; recursively, in sorted order, each document
+    /// resolving against its own nearest project) PLUS the project-wide
+    /// checks: `<quest id>` uniqueness, quest references, connectivity,
+    /// constraints, unread/unused declarations.
+    Check {
+        /// Documents to check; omit to check the whole project.
+        #[arg(value_name = "FILE")]
+        files: Vec<PathBuf>,
+        #[command(flatten)]
+        project: ProjectOpt,
+        #[command(flatten)]
+        providers: ProvidersOpt,
+        #[command(flatten)]
+        permission_profile: PermissionProfileOpt,
         /// Engine capability matrix YAML (defaults to the built-in reference matrix).
         #[arg(long, value_name = "FILE")]
         engine: Option<PathBuf>,
-        /// Promote EVERY warning to an error for the verdict and exit code.
-        #[arg(long = "deny-warnings")]
-        deny_warnings: bool,
-        /// Work in progress: a guard dead only because relations nothing
-        /// produces yet (no seed, assert, rule, or reserved declaration)
-        /// kill it is the warning `W-WIP`, whose message names the error
-        /// (`E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`,
-        /// `E-OBJECTIVE-UNSATISFIABLE`, `E-ARM-DEAD`) it is without the flag.
-        /// A relation only a component `::assert` with an unbound `@param`
-        /// writes counts as unproduced for specific arguments, and a
-        /// required `<objective quest=…>` on a child dead only for that
-        /// reason is a warning too. A relation with no such component
-        /// producer whose producers can never match stays an error.
+        /// Work in progress (whole-project mode only): a guard dead only
+        /// because relations nothing produces yet (no seed, assert, rule, or
+        /// reserved declaration) kill it is the warning `W-WIP`, whose
+        /// message names the error (`E-ENTRY-UNREACHABLE`,
+        /// `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-ARM-DEAD`)
+        /// it is without the flag. A relation only a component `::assert`
+        /// with an unbound `@param` writes counts as unproduced for specific
+        /// arguments, and a required `<objective quest=…>` on a child dead
+        /// only for that reason is a warning too. A relation with no such
+        /// component producer whose producers can never match stays an error.
         #[arg(long)]
         wip: bool,
+        #[command(flatten)]
+        gate: GateOpts,
+        #[command(flatten)]
+        json: JsonOpt,
     },
     /// Report the reverse dependency closure for a project target.
     Impact {
@@ -167,84 +185,48 @@ pub(crate) enum Command {
         #[arg(long = "config", value_name = "PATH")]
         config: Option<PathBuf>,
     },
-    /// Compile a checked `.lute` document, or a whole project with `--all`, to execution IR.
+    /// Compile a checked `.lute` document, or a whole project, to execution IR.
     ///
-    /// Compile a checked `.lute` document to its JSON command-record execution IR,
-    /// or — with `--all` — every document in a project plus a
-    /// `project.index.json` unioning their vocabularies.
+    /// Compile a checked `.lute` document to its JSON command-record execution
+    /// IR (stdout, or `-o <FILE>`). With no document, compile every document
+    /// of the project (`--project <DIR>`, else the nearest `lute.project.yaml`)
+    /// into `-o <DIR>` plus a `project.index.json` unioning their
+    /// vocabularies. With `--stream <FILE>`, incrementally compile body text
+    /// from stdin against the checked scene prefix, flushing execution IR
+    /// snapshots as newline-delimited JSON.
     Compile {
-        /// Path to the `.lute` file to compile. Under `--all`, the project
-        /// directory instead (the same as `--project <DIR>`).
+        /// Document to compile; omit to compile the whole project.
+        #[arg(value_name = "FILE")]
         file: Option<PathBuf>,
-        /// On a failed gate, print the diagnostics as JSON instead of
-        /// human-readable lines. (The execution IR itself is always JSON.)
-        #[arg(long)]
-        json: bool,
-        /// Directory of pinned provider snapshots to resolve ids against.
-        #[arg(long, value_name = "DIR")]
-        providers: Option<PathBuf>,
-        /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
-        /// document's activated capability snapshot. Omit for the nearest
-        /// `lute.project.yaml` above the file (as `lute check`); only an
-        /// explicit `--project` gates on the reconciled project verdict.
-        #[arg(long, value_name = "DIR")]
-        project: Option<PathBuf>,
-        /// Trusted project profile whose permissions apply as an additional host
-        /// ceiling to the selected document, or every document under `--all`.
-        /// This never activates the profile's plugins or rewrites source.
-        #[arg(long = "permission-profile", value_name = "NAME")]
-        permission_profile: Option<String>,
-        /// Write the execution IR here instead of stdout. Under `--all` this is a
-        /// required output DIRECTORY, not a file.
-        #[arg(short = 'o', long = "out", value_name = "FILE")]
-        out: Option<PathBuf>,
-        /// Compile EVERY `*.lute` document of the project (`--all <DIR>` or
-        /// `--all --project <DIR>`) into `-o <dir>`, mirroring the project's
-        /// own directory layout, and write a `project.index.json` whose
-        /// `entities`/`enums`/`relations`/`seedFacts`/`rules`/`prereqEdges`
-        /// are the UNION across all of them (`docs/runtime/execution-model.md`
-        /// requires an engine to compute exactly that union before it can
-        /// evaluate anything). Requires the project directory and `-o`; a
-        /// `.lute` file is a usage error.
-        #[arg(long)]
-        all: bool,
+        #[command(flatten)]
+        project: ProjectOpt,
+        #[command(flatten)]
+        providers: ProvidersOpt,
+        #[command(flatten)]
+        permission_profile: PermissionProfileOpt,
+        /// Write the primary output here instead of stdout: the execution IR
+        /// file for a document, the output DIRECTORY (required) for a whole
+        /// project, mirroring the project's own directory layout.
+        #[arg(short = 'o', long = "output", value_name = "PATH")]
+        output: Option<PathBuf>,
         /// Merge a locale bundle (`lute loc import`) into the execution IR:
         /// `texts` on every line and choice/hub option, `promptTexts` on a
         /// prompted branch/hub, keyed by `lineId`/`promptLineId`. `text` and
         /// `prompt` stay the source language. A record missing a declared
         /// locale is `W-L10N-MISSING`, a translation of a changed source is
         /// `W-L10N-STALE`.
-        #[arg(long, value_name = "FILE")]
-        locales: Option<PathBuf>,
-        /// Promote every diagnostic with EXACTLY this code to an error for the
-        /// verdict and exit code (repeatable) — the same policy `check`
-        /// applies, over the warnings compile itself emits (`W-L10N-MISSING`,
-        /// `W-L10N-STALE`).
-        #[arg(long = "deny", value_name = "CODE", value_parser = codes::parse_deny_code)]
-        deny: Vec<String>,
-        /// Promote EVERY warning to an error for the verdict and exit code.
-        #[arg(long = "deny-warnings")]
-        deny_warnings: bool,
-    },
-    /// Incrementally compile scene body text from stdin, streaming IR snapshots as NDJSON.
-    ///
-    /// Incrementally compile body text from stdin against a checked scene
-    /// prefix, flushing ordinary execution IR snapshots as newline-delimited JSON.
-    CompileStream {
-        /// Path to the immutable `.lute` scene prefix.
-        file: PathBuf,
-        /// Directory of pinned provider snapshots to resolve ids against.
-        #[arg(long, value_name = "DIR")]
-        providers: Option<PathBuf>,
-        /// Project directory (`lute.project.yaml` + `plugins/`) resolving the
-        /// prefix's capability snapshot, defaults, components, and identity.
-        /// Omit for the nearest `lute.project.yaml` above the file.
-        #[arg(long, value_name = "DIR")]
-        project: Option<PathBuf>,
-        /// Trusted project profile whose permissions apply as one frozen host
-        /// ceiling to both the prefix and every appended body unit.
-        #[arg(long = "permission-profile", value_name = "NAME")]
-        permission_profile: Option<String>,
+        #[arg(long = "locale-bundle", value_name = "FILE")]
+        locale_bundle: Option<PathBuf>,
+        #[command(flatten)]
+        gate: GateOpts,
+        #[command(flatten)]
+        json: JsonOpt,
+        /// Stream NDJSON snapshots: read the body text from stdin, compile it
+        /// incrementally against the scene prefix in `<FILE>`. Takes a
+        /// document; not with `-o`, `--locale-bundle`, `--json`, `--deny` or
+        /// `--deny-warnings`.
+        #[arg(long)]
+        stream: bool,
     },
     /// Lower a host CEL condition to an IR `exprNode` against a project.
     ///
@@ -911,12 +893,10 @@ impl Command {
     pub(crate) fn id(&self) -> &'static str {
         match self {
             Command::Check { .. } => "check",
-            Command::CheckProject { .. } => "check-project",
             Command::Impact { .. } => "impact",
             Command::Constraints { .. } => "constraints",
             Command::Lint { .. } => "lint",
             Command::Compile { .. } => "compile",
-            Command::CompileStream { .. } => "compile-stream",
             Command::Expr { .. } => "expr",
             Command::Tag { .. } => "tag",
             Command::Fix { .. } => "fix",

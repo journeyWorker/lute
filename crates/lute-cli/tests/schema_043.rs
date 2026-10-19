@@ -159,7 +159,8 @@ fn every_command_describes_every_option_its_help_lists() {
 fn a_command_lists_its_arguments_options_and_outputs() {
     let check = schema(&["check"]);
     assert_eq!(check["arguments"][0]["name"], "FILE");
-    assert_eq!(check["arguments"][0]["required"], true);
+    assert_eq!(check["arguments"][0]["required"], false);
+    assert_eq!(check["arguments"][0]["repeatable"], true);
     let options = check["options"].as_array().unwrap();
     let json = options.iter().find(|o| o["name"] == "--json").unwrap();
     assert_eq!(json["takesValue"], false);
@@ -169,7 +170,7 @@ fn a_command_lists_its_arguments_options_and_outputs() {
     assert_eq!(deny["valueName"], "CODE");
     assert_eq!(
         check["outputs"],
-        serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": "0.43.0.check"}])
+        serde_json::json!([{"flag": "--json", "kind": "report", "schemaVersion": "0.48.0.check"}])
     );
 
     let reach = schema(&["scenario", "reach"]);

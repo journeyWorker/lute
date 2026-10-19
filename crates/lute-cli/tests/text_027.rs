@@ -146,7 +146,6 @@ fn the_artifact_carries_labels_and_plural_forms() {
     let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -215,7 +214,6 @@ fn a_kind_typed_component_arg_renders_its_label() {
     let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        "--all",
         "--project",
         dir.to_str().unwrap(),
         "-o",
@@ -287,7 +285,7 @@ fn a_plural_hint_needs_two_forms() {
 /// A kind member that is also a cast id renders the kind's label in text —
 /// `{{occasion.target}}` in play and trace alike — not the cast `name:`
 /// (the speaker head of a line is where the cast name belongs), and
-/// `check-project` has nothing to warn about.
+/// whole-project `check` has nothing to warn about.
 #[test]
 fn a_kind_label_wins_over_a_cast_name_in_text() {
     let dir = project(
@@ -296,7 +294,7 @@ fn a_kind_label_wins_over_a_cast_name_in_text() {
             "{ROOMS}cast:\n  childrensWard: {{ name: Ward }}\n  chapel: {{ name: Old Chapel }}\n"
         ),
     );
-    let out = run(&["check-project", dir.to_str().unwrap()]);
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let t = text(&out);
     assert_eq!(out.status.code(), Some(0), "{t}");
     assert!(!t.contains("warning ["), "{t}");

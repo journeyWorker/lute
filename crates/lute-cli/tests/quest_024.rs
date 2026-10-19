@@ -1,4 +1,4 @@
-//! dsl 0.24.0 §2 quest structure through `lute play` (and `check-project`):
+//! dsl 0.24.0 §2 quest structure through `lute play` (and whole-project `check`):
 //! `activate="accept"` children, `complete="any"` with `superseded`, the
 //! reserved `failedBy` / `objectives.<o>.failed` reads, `<on event target>`,
 //! occasion `judge: before`, and `::accept{… at="nextRun"}` surviving the
@@ -225,7 +225,8 @@ fn quest_records(records: &Json) -> Vec<String> {
 fn the_project_checks_clean() {
     let dir = project("check");
     let out = Command::new(BIN)
-        .arg("check-project")
+        .arg("check")
+        .arg("--project")
         .arg(&dir)
         .output()
         .unwrap();

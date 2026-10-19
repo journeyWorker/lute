@@ -6,7 +6,7 @@
 #   cargo build -p lute-cli && conformance/regenerate.sh
 #
 # Replay fixtures: `lute compile source.lute -o artifact.json` (adding
-#   `--locales locales.json`, itself `lute loc import loc/*.json`, when the
+#   `--locale-bundle locales.json`, itself `lute loc import loc/*.json`, when the
 #   fixture has translations), then `lute run artifact.json --mock mock.yaml
 #   [--entry …] [--beat …] --json > expected.json`.
 # invalid/removed-*: the compiled artifact is mutated by invalid/derive.py and
@@ -32,7 +32,7 @@ while IFS= read -r src; do
   compile=(compile "$d/source.lute" -o "$d/artifact.json")
   if compgen -G "$d/loc/*.json" >/dev/null; then
     "$lute" loc import "$d"/loc/*.json -o "$d/locales.json"
-    compile+=(--locales "$d/locales.json")
+    compile+=(--locale-bundle "$d/locales.json")
   fi
   "$lute" "${compile[@]}"
   run=(run "$d/artifact.json" --mock "$d/mock.yaml")
@@ -69,7 +69,7 @@ for project in session/*/project; do
   echo "recorded $case_dir session"
 done
 runtime_fixture="$root/crates/lute-runtime-wasm/tests/fixtures/hub-once"
-"$lute" compile --all "$root/conformance/session/hub-once/project" -o "$runtime_fixture"
+"$lute" compile --project "$root/conformance/session/hub-once/project" -o "$runtime_fixture"
 jq -n --argjson hub "$(cat "$runtime_fixture/hub.lute.json")" \
   '{"hub.lute.json":$hub}' > "$runtime_fixture/artifacts.json"
 
@@ -79,10 +79,10 @@ for d in diagnostics/*/; do
   d=${d%/}
   abs=$(cd "$d" && pwd -P)
   if [[ -f "$d/lute.project.yaml" ]]; then
-    cmd=(check-project . --json)
+    cmd=(check --project . --json)
   elif compgen -G "$d/loc/*.json" >/dev/null; then
     (cd "$d" && "$lute" loc import loc/*.json -o locales.json)
-    cmd=(compile source.lute --locales locales.json --json)
+    cmd=(compile source.lute --locale-bundle locales.json --json)
   else
     cmd=(check source.lute --json)
   fi

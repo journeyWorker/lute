@@ -12,7 +12,7 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/flow-target-0471")
 }
 
-/// `check-project --json`'s exit code and `E-BINDING-KEY` messages for the
+/// `whole-project check --json`'s exit code and `E-BINDING-KEY` messages for the
 /// fixture with its bindings (and, when given, its occasions) replaced.
 fn check(tag: &str, bindings: Option<&str>, occasions: Option<&str>) -> (i32, Vec<String>) {
     let dir = lute_scratch::ScratchDir::named(tag);
@@ -24,7 +24,7 @@ fn check(tag: &str, bindings: Option<&str>, occasions: Option<&str>) -> (i32, Ve
         std::fs::write(dir.join("plugins/town/occasions/town.yaml"), occasions).unwrap();
     }
     let out = Command::new(env!("CARGO_BIN_EXE_lute"))
-        .args(["check-project", &dir.to_string_lossy(), "--json"])
+        .args(["check", "--project", &dir.to_string_lossy(), "--json"])
         .output()
         .unwrap();
     let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -141,7 +141,7 @@ fn an_open_kind_admits_any_prefixed_id_and_names_the_form() {
         std::fs::write(dir.join("plugins/town/occasions/town.yaml"), world).unwrap();
         std::fs::write(dir.join("player.bindings.yaml"), menu(&[("roam", target)])).unwrap();
         let out = Command::new(env!("CARGO_BIN_EXE_lute"))
-            .args(["check-project", &dir.to_string_lossy(), "--json"])
+            .args(["check", "--project", &dir.to_string_lossy(), "--json"])
             .output()
             .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();

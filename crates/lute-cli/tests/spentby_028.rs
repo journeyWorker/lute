@@ -70,7 +70,8 @@ fn project(tag: &str, docs: &[(&str, &str)]) -> lute_scratch::ScratchDir {
 fn check_project(dir: &Path) -> String {
     text(
         &Command::new(BIN)
-            .arg("check-project")
+            .arg("check")
+            .arg("--project")
             .arg(dir)
             .output()
             .unwrap(),

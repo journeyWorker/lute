@@ -53,7 +53,7 @@ fn compile_with(tag: &str, translation: &str) -> Output {
     run(&[
         "compile",
         scene.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ])
 }

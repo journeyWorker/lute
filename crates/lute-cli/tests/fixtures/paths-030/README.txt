@@ -5,5 +5,5 @@ counter, and a fact `at("lab-b2")`. Conditions reach a name that is not an
 identifier by a quoted index — `quest["zero-coke-001"].state`,
 `run.visits["lab-b2"]`, `holds(at("lab-b2"))` — and every tool keys on the
 canonical dotted path (`run.visits.lab-b2`).
-Run: lute check-project . ; lute play . --script plays/p.play.yaml ;
+Run: lute check --project . ; lute play . --script plays/p.play.yaml ;
 lute test tests/wrap.test.yaml

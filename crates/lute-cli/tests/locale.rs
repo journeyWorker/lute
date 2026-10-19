@@ -246,7 +246,7 @@ fn lore_entry_lines_round_trip_under_the_entry_prefix() {
         lore.to_str().unwrap(),
         "--project",
         dir.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
         "-o",
         merged.to_str().unwrap(),
@@ -445,7 +445,7 @@ fn compile_locales_fills_texts_and_labels_and_never_touches_the_source_string() 
         dir.join("a.lute").to_str().unwrap(),
         "--project",
         dir.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
         "-o",
         merged.to_str().unwrap(),
@@ -512,7 +512,7 @@ fn a_bundle_entry_matching_nothing_in_the_document_is_ignored() {
     let result = run(&[
         "compile",
         dir.join("a.lute").to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ]);
     // The stray entry is silently ignored (a bundle legitimately spans a whole
@@ -568,7 +568,7 @@ fn w_l10n_missing_fires_once_per_missing_line_id_locale_pair() {
     let result = run(&[
         "compile",
         dir.join("a.lute").to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
         "-o",
         work.join("a.json").to_str().unwrap(),
@@ -637,7 +637,7 @@ fn deny_promotes_w_l10n_missing_and_suppresses_the_artifact() {
     let args = [
         "compile",
         scene.to_str().unwrap(),
-        "--locales",
+        "--locale-bundle",
         bundle.to_str().unwrap(),
     ];
     // Baseline: warning only, artifact emitted.
@@ -785,7 +785,7 @@ fn assert_export_parity(
     let out_dir = dir.join("out");
     let out = run(&[
         "compile",
-        "--all",
+        "--project",
         root.to_str().unwrap(),
         "-o",
         out_dir.to_str().unwrap(),

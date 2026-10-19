@@ -656,7 +656,7 @@ describe("generated IR index schema", () => {
     let defs = 0;
     for (const project of projects) {
       const out = `${tmpdir()}/lute-index-schema-${process.pid}-${Math.random().toString(36).slice(2)}`;
-      const run = Bun.spawnSync([luteBin(), "compile", "--all", project, "-o", out], { cwd: ROOT });
+      const run = Bun.spawnSync([luteBin(), "compile", "--project", project, "-o", out], { cwd: ROOT });
       expect(run.success, `${project}: ${run.stderr.toString()}`).toBe(true);
       const index = JSON.parse(readFileSync(`${out}/project.index.json`, "utf8"));
       expect(validate(index), `${project}: ${JSON.stringify(validate.errors)}`).toBe(true);
@@ -684,5 +684,90 @@ describe("generated IR index schema", () => {
     expect(def(row), JSON.stringify(def.errors)).toBe(true);
     expect(def({ ...row, params: [{ name: "n", type: "number" }] })).toBe(false);
     expect(def({ cel: "x" })).toBe(false);
+  });
+});
+
+// --- the `lute check --json` report (0.48.0 §3.1), both modes ---
+
+describe("lute check report schema", () => {
+  const REPORT_SCHEMA_PATH = `${ROOT}/schemas/lute-check-report-0.48.schema.json`;
+
+  function reportValidator() {
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    const schema = JSON.parse(readFileSync(REPORT_SCHEMA_PATH, "utf8"));
+    expect(schema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(ajv.validateSchema(schema), JSON.stringify(ajv.errors)).toBe(true);
+    return ajv.compile(schema);
+  }
+
+  function checkJson(args, cwd = ROOT) {
+    const out = Bun.spawnSync([luteBin(), "check", ...args, "--json"], { cwd });
+    return { code: out.exitCode, json: JSON.parse(out.stdout.toString()) };
+  }
+
+  test("document mode (two files) validates", () => {
+    const validate = reportValidator();
+    const { code, json } = checkJson([
+      "docs/examples/haven/scenes/archive.lute",
+      "docs/examples/haven/scenes/bridge.lute",
+    ]);
+    expect(code).toBe(0);
+    expect(json.files.map((f) => f.path)).toEqual([
+      "docs/examples/haven/scenes/archive.lute",
+      "docs/examples/haven/scenes/bridge.lute",
+    ]);
+    expect(json.project_diagnostics).toBeUndefined();
+    expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("whole-project mode validates and carries project_diagnostics", () => {
+    const validate = reportValidator();
+    for (const project of ["docs/examples/haven", "docs/examples/quayside"]) {
+      const { code, json } = checkJson(["--project", project]);
+      expect(code, project).toBe(0);
+      expect(json.files.length, project).toBeGreaterThan(1);
+      expect(Array.isArray(json.project_diagnostics), project).toBe(true);
+      expect(validate(json), `${project}: ${JSON.stringify(validate.errors)}`).toBe(true);
+    }
+  });
+
+  test("a failing document and a schema operand validate", () => {
+    const validate = reportValidator();
+    const dir = `${tmpdir()}/lute-check-report-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    Bun.spawnSync(["mkdir", "-p", dir]);
+    Bun.write(`${dir}/bad.lute`, "---\nkind: scene\nid: bad\n---\n@narrator: [broken\n");
+    const bad = checkJson([`${dir}/bad.lute`, "docs/examples/haven/world.schema.yaml"]);
+    expect(bad.code).toBe(1);
+    expect(bad.json.ok).toBe(false);
+    expect(bad.json.files[0].ok).toBe(false);
+    expect(bad.json.files[0].diagnostics.length).toBeGreaterThan(0);
+    expect(bad.json.files[1].resolved).toBeNull();
+    expect(validate(bad.json), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("an invalid manifest in whole-project mode reports files [] and the manifest diagnostics", () => {
+    const validate = reportValidator();
+    const dir = `${tmpdir()}/lute-check-manifest-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    Bun.spawnSync(["mkdir", "-p", dir]);
+    Bun.write(`${dir}/lute.project.yaml`, "profiles: [this is: not valid\n");
+    const { code, json } = checkJson(["--project", dir]);
+    expect(code).toBe(1);
+    expect(json.files).toEqual([]);
+    expect(json.project_diagnostics.length).toBeGreaterThan(0);
+    expect(json.project_diagnostics[0].path.endsWith("lute.project.yaml")).toBe(true);
+    expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("the schema refuses the 0.47.2 single-document shape", () => {
+    const validate = reportValidator();
+    expect(
+      validate({
+        command: "check",
+        schemaVersion: "0.43.0.check",
+        ok: true,
+        diagnostics: [],
+        resolved: null,
+      }),
+    ).toBe(false);
   });
 });
