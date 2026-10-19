@@ -804,7 +804,8 @@ fn run_one_test(
         stderr_line(StderrLine::Note(
             root.clone(),
             format!(
-                "lute: note: scenario tests use project {} (nearest lute.project.yaml)",
+                "lute: note: scenario tests use project {} (nearest lute.project.yaml); pass \
+                 --project to choose another",
                 if shown.is_empty() {
                     "."
                 } else {
