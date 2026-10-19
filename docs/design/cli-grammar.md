@@ -2,12 +2,10 @@
 status: Accepted
 ---
 
-# CLI grammar: arguments, options and value names
+# CLI grammar: commands, arguments, options and value names
 
-The rules every `lute` command follows for its operands, options and value placeholders.
-Command names were settled in 0.37, 0.42.1 and 0.43; this document settles everything after the
-command name. A test over `lute schema` enforces the mechanical parts (§6), so a new command
-cannot drift.
+The rules every `lute` command follows for its name, operands, options and value placeholders.
+A test over `lute schema` enforces the mechanical parts (§6), so a new command cannot drift.
 
 Sources: POSIX Utility Conventions (XBD 12), GNU Coding Standards §4.8 and its long-option
 table, clig.dev "Arguments and flags" / "Subcommands", .NET System.CommandLine design guidance,
@@ -63,6 +61,19 @@ same output in a terminal, a pipe, CI and an agent harness. Text output stays li
 - `--yes` answers a confirmation prompt; `--force` overrides a refusal (overwrite, ignore a
   lock). The two are never merged, and `--force` never means "skip the question".
 - No command prompts when stdin or stdout is not a terminal; a prompted value always has a flag.
+
+### 1.3 One command per action
+
+- A command is named for its action with one lowercase word where possible (toolchain verbs:
+  `init`, `new`, `check`, `compile`, `fmt`, `lint`, `test`, `run`, `fix`); read-only views may
+  be nouns (`beats`, `refs`, `lore`, `calendar`). A group command only groups verb
+  subcommands (`loc export`).
+- Scope and mode are options, never a second command: one action has one command name.
+  Owner decision (2026-10-19): `check` and `check-project` become one `check`; `compile` and
+  `compile-stream` become one `compile` (the 0.48 mapping has the details).
+- Operand absent = the whole project: a command that acts on documents takes the documents to
+  act on as operands, and with none it acts on every document of the project (`cargo check`,
+  `tsc -p`). There is no separate `--all` spelling.
 
 ## 2. The project
 
