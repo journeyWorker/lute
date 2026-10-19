@@ -54,7 +54,7 @@ pub(crate) mod version {
     pub(crate) const NEW: &str = "0.48.0.new";
     pub(crate) const LOC_IMPORT: &str = "0.48.0.loc-import";
     pub(crate) const DOCTOR: &str = "0.43.0.doctor";
-    pub(crate) const SCHEMA: &str = "0.47.0.schema";
+    pub(crate) const SCHEMA: &str = "0.48.0.schema";
     pub(crate) const ERROR: &str = "0.43.0.error";
 }
 

@@ -25,7 +25,7 @@ fn schema(path: &[&str]) -> Value {
     assert_eq!(code, 0, "lute {args:?}: {stderr}");
     let value: Value = serde_json::from_str(&stdout).unwrap();
     assert_eq!(value["command"], "schema");
-    assert_eq!(value["schemaVersion"], "0.47.0.schema");
+    assert_eq!(value["schemaVersion"], "0.48.0.schema");
     assert_eq!(value["ok"], true);
     value
 }

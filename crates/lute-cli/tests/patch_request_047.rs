@@ -17,7 +17,7 @@ fn patch_schema() -> Value {
         .unwrap();
     assert!(out.status.success());
     let value: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(value["schemaVersion"], "0.47.0.schema");
+    assert_eq!(value["schemaVersion"], "0.48.0.schema");
     value
 }
 
