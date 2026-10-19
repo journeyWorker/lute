@@ -9,7 +9,13 @@ Usage:
 The corpus is discovered from ``docs/examples``, ``conformance``, and the
 registered diagnostic-code table in this checkout.  Each invocation gets a
 numbered directory containing ``stdout``, ``stderr``, and ``exit-code``;
-``compile --all`` also records every generated artifact under ``artifacts/``.
+the whole-project ``compile`` also records every generated artifact under
+``artifacts/``.  The corpus runs the 0.48 spellings but keeps every record
+label (and so record name) of 0.47.2, so records pair up with a 0.47.2
+baseline; when a record's arguments differ, ``translate_baseline_args``
+applies the 0.47.2 -> 0.48 mapping (spec 0.48.0 section 5) to the baseline
+arguments and a command whose translation equals the current arguments is
+counted as renamed, not as a difference.
 Comparison is byte-for-byte except for the release-stamp fields documented in
 ``normalize_for_compare``.  The command's working directory is always the
 repository root, and locale/time environment variables are pinned.
@@ -57,6 +63,7 @@ class Command:
     args: tuple[str, ...]
     display_args: tuple[str, ...] | None = None
     artifact_dir: Path | None = None
+    temporary_output: bool = False
     replacements: tuple[tuple[bytes, bytes], ...] = ()
 
 
@@ -190,8 +197,10 @@ def commands_for(binary: Path) -> Iterable[Command]:
     # compile.  The output directory is supplied by collect_commands below.
     for project in projects:
         project_arg = relative(project)
-        yield Command("check-project " + project_arg, ("check-project", project_arg))
-        yield Command("check-project --json " + project_arg, ("check-project", "--json", project_arg))
+        # Labels keep their 0.47.2 names (check-project / compile --all) so
+        # records pair up with the baseline.
+        yield Command("check-project " + project_arg, ("check", "--project", project_arg))
+        yield Command("check-project --json " + project_arg, ("check", "--project", project_arg, "--json"))
         yield from compile_all_command(project)
 
     for source in sorted_files("*.lute"):
@@ -206,16 +215,16 @@ def commands_for(binary: Path) -> Iterable[Command]:
             continue
         project_arg = relative(project)
         script_arg = relative(script)
-        base = ("play", project_arg, "--script", script_arg)
+        base = ("play", "--project", project_arg, "--script", script_arg)
         yield Command("play " + script_arg, base)
         yield Command("play --json " + script_arg, (*base, "--json"))
         yield Command("play --events " + script_arg, (*base, "--events"))
 
     for project in projects:
         project_arg = relative(project)
-        yield Command("test --json " + project_arg, ("test", project_arg, "--json"))
-        yield Command("scenario " + project_arg, ("scenario", project_arg))
-        yield Command("beats " + project_arg, ("beats", project_arg))
+        yield Command("test --json " + project_arg, ("test", "--project", project_arg, "--json"))
+        yield Command("scenario " + project_arg, ("scenario", "--project", project_arg))
+        yield Command("beats " + project_arg, ("beats", "--project", project_arg))
 
     for script in sorted(CONFORMANCE.joinpath("session").rglob("*.play.yaml")):
         if not script.is_file():
@@ -225,7 +234,7 @@ def commands_for(binary: Path) -> Iterable[Command]:
         script_arg = relative(script)
         yield Command(
             "session play --events " + script_arg,
-            ("play", project_arg, "--script", script_arg, "--events"),
+            ("play", "--project", project_arg, "--script", script_arg, "--events"),
         )
 
     for artifact in sorted(CONFORMANCE.rglob("artifact.json"), key=relative):
@@ -249,18 +258,18 @@ def commands_for(binary: Path) -> Iterable[Command]:
 
 
 def compile_all_command(project: Path) -> Iterable[Command]:
-    # This helper yields one marker command whose temporary output directory is
+    # The whole-project compile (0.47.2 `compile --all`, label kept). This
+    # helper yields one marker command whose temporary output directory is
     # attached by collect_commands. Keeping the path out of display_args makes
     # manifests identical across runs and machines.
     project_arg = relative(project)
-    yield Command("compile --all " + project_arg, ("compile", "--all", project_arg))
+    yield Command("compile --all " + project_arg, ("compile", "--project", project_arg), temporary_output=True)
 
 
 def collect_commands(binary: Path, output: Path) -> Snapshot:
     snapshot = Snapshot(binary, output)
     for command in commands_for(binary):
-        if command.label.startswith("compile --all "):
-            project = ROOT / command.args[2]
+        if command.temporary_output:
             with tempfile.TemporaryDirectory(prefix="lute-snapshot-") as temporary:
                 actual = Command(
                     command.label,
@@ -274,6 +283,206 @@ def collect_commands(binary: Path, output: Path) -> Snapshot:
             snapshot.run(command)
     snapshot.finish()
     return snapshot
+
+
+# --- 0.47.2 -> 0.48 argument translation (spec 0.48.0 section 5) -------------
+#
+# The corpus runs the 0.48 spellings under the 0.47.2 record labels. A baseline
+# manifest therefore records the 0.47.2 argument list; translate_baseline_args
+# maps it to the 0.48 spelling so compare() can recognise a renamed command.
+# The function covers every removed spelling of section 5 (not only the ones
+# the corpus uses) so new corpus entries do not need a code change.
+
+# Options that take a value, 0.47.2 and 0.48 spellings together (any command);
+# `--run` is a flag for `constraints` and handled in split_args.
+VALUE_OPTIONS = frozenset(
+    {
+        "--script", "--engine", "--explain", "--dump-conditions", "--out", "-o", "--locales",
+        "--project", "--permission-profile", "--providers", "--deny", "--max-items", "--at",
+        "--choose", "--accept", "--occasion", "--fact", "--entry", "--beat", "--mock",
+        "--facts", "--axis", "--where", "--until", "--config", "--template", "--dir",
+        "--attr", "--reward", "--format", "--for", "--target", "--run", "--node",
+        "--output", "--locale-bundle", "--derivation", "--conditions-output", "--choice",
+        "--accepted-quest", "--occasion-axes", "--relation",
+    }
+)
+# Commands whose 0.47.2 first operand was the project directory.
+OLD_DIR_OPERAND = {
+    ("check-project",): "project",
+    ("impact",): "project",
+    ("constraints",): "project",
+    ("patch",): "project",
+    ("doctor",): "project",
+    ("play",): "project",
+    ("test",): "project",
+    ("loc", "export"): "project",
+    ("loc", "report"): "project",
+    ("beats",): "project",
+    ("calendar",): "project",
+    ("scenario",): "project",
+    ("scenario", "reach"): "project",
+    ("scenario", "envelope"): "project",
+    ("scenario", "knowledge"): "project",
+    ("lore",): "project",
+    ("refs",): "project",
+    ("catalog", "refresh"): "providers",
+}
+OLD_SUBCOMMANDS = {
+    "loc": {"export", "report", "import"},
+    "scenario": {"reach", "envelope", "knowledge"},
+    "catalog": {"refresh"},
+}
+
+
+def split_args(args: list[str]) -> tuple[list[str], list[tuple[str, str | None]], list[str]]:
+    """Split arguments into (command path, options, operands).
+
+    Options keep their order as (name, value-or-None); a value joined with
+    ``=`` is split off.  Operands keep their order.
+    """
+    command = [args[0]]
+    rest = list(args[1:])
+    if command[0] in OLD_SUBCOMMANDS and rest and rest[0] in OLD_SUBCOMMANDS[command[0]]:
+        command.append(rest.pop(0))
+    options: list[tuple[str, str | None]] = []
+    operands: list[str] = []
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        index += 1
+        if token == "--":
+            operands.extend(rest[index:])
+            break
+        if token.startswith("-") and token != "-":
+            name, equals, value = token.partition("=")
+            takes_value = name in VALUE_OPTIONS
+            if name == "--run" and command[0] == "constraints":
+                takes_value = False
+            if equals:
+                options.append((name, value))
+            elif takes_value and index < len(rest):
+                options.append((name, rest[index]))
+                index += 1
+            else:
+                options.append((name, None))
+        else:
+            operands.append(token)
+    return command, options, operands
+
+
+def translate_baseline_args(args: list[str]) -> list[str]:
+    """Return the 0.48 spelling of a 0.47.2 argument list (spec section 5).
+
+    Order: command path, the project (``--project``, or ``--providers`` for
+    ``catalog refresh``), the remaining options in their original order with
+    removed names renamed, then the operands that stay operands.  Arguments
+    with nothing to translate come back unchanged.  Equality with a current
+    command line is decided on ``canonical_args`` (option order is not
+    significant).
+    """
+    args = list(args)
+    if not args or args[0].startswith("-"):
+        return args
+    command, options, operands = split_args(args)
+    path = tuple(command)
+    leading: list[str] = []  # options placed right after the command path
+    out: list[str] = []
+    positional: list[str] = []
+
+    if path == ("check-project",):
+        command = ["check"]
+    elif path == ("compile-stream",):
+        command = ["compile"]
+        leading.append("--stream")
+
+    # compile --all [DIR]: the project walk is the whole-project compile.
+    if path[0] == "compile" and ("--all", None) in options:
+        options = [o for o in options if o != ("--all", None)]
+        if operands:
+            leading += ["--project", operands.pop(0)]
+
+    # Directory operand -> --project (or --providers for catalog refresh). A
+    # `test` operand that coexists with --project now selects scripts, so it
+    # stays an operand there.
+    kind = OLD_DIR_OPERAND.get(path)
+    has_project = any(name == "--project" for name, _ in options)
+    if kind is not None and operands and not (path == ("test",) and has_project):
+        directory = operands.pop(0)
+        if path == ("patch",):
+            # patch <DIR> <PATCH> -> patch <PATCH> --project <DIR>
+            leading += ["--project", directory]
+        elif kind == "providers":
+            leading += ["--providers", directory]
+        else:
+            leading += ["--project", directory]
+        if path == ("impact",) and operands:
+            options.append(("--node", operands.pop(0)))
+        elif path in {("scenario", "reach"), ("scenario", "envelope")} and operands:
+            options.append(("--node", operands.pop(0)))
+    positional = operands
+
+    for name, value in options:
+        if name == "--out":
+            name = "--output"
+        elif name == "--locales":
+            name = "--locale-bundle"
+        elif name == "--dir" and path[0] == "new":
+            name = "--project"
+        elif name == "--dump-conditions":
+            name = "--conditions-output"
+        elif name == "--explain" and path[0] == "play":
+            name = "--derivation"
+        elif name == "--choose" and path[0] == "trace":
+            name = "--choice"
+        elif name == "--accept" and path[0] == "trace":
+            name = "--accepted-quest"
+        elif name == "--target" and path[0] == "context":
+            name = "--node"
+        elif name == "--run" and path[0] == "context":
+            name = "--script"
+        elif name == "--run" and path[0] == "constraints":
+            name = "--all-scripts"
+        elif name == "--for" and path == ("scenario", "knowledge"):
+            name = "--node"
+        elif name == "--facts" and path[0] == "calendar" and value is not None:
+            name = "--relation"
+        elif name == "--csv" and path[0] == "calendar":
+            out += ["--format", "csv"]
+            continue
+        elif name == "--occasion" and path[0] == "calendar" and value is not None and "@" in value:
+            occasion, _, axes = value.partition("@")
+            out += ["--occasion-axes", f"{occasion}={axes}"]
+            continue
+        elif name == "--format" and value == "json" and path[0] == "scenario":
+            out.append("--json")
+            continue
+        elif name == "--format" and value == "json" and path == ("loc", "export"):
+            continue  # JSON is the default export
+        elif name == "--force" and path[0] == "tag":
+            out += ["--renumber", "--commit"]
+            continue
+        out.append(name)
+        if value is not None:
+            out.append(value)
+
+    result = [*command, *leading, *out, *positional]
+    # Nothing to translate: keep the argument list exactly as given.
+    return args if canonical_args(result) == canonical_args(args) else result
+
+
+def canonical_args(args: list[str]) -> tuple[object, ...]:
+    """Order-insensitive form of an argument list: (command path, options, operands)."""
+    if not args or args[0].startswith("-"):
+        return (tuple(args),)
+    command, options, operands = split_args(list(args))
+    return (tuple(command), tuple(sorted((n, v or "") for n, v in options)), tuple(operands))
+
+
+def renamed(baseline: object, current: object) -> bool:
+    """True when the 0.47.2 baseline arguments translate to the current ones."""
+    if not isinstance(baseline, list) or not isinstance(current, list):
+        return False
+    return canonical_args(translate_baseline_args(baseline)) == canonical_args(current)
 
 
 def normalize_for_compare(data: bytes, label: str) -> bytes:
@@ -312,8 +521,69 @@ SELF_TEST_UNTOUCHED = (
 )
 
 
+# (0.47.2 arguments, 0.48 arguments): the spec section 5 mapping, including
+# every spelling the corpus uses.
+SELF_TEST_TRANSLATIONS = (
+    (["check-project", "docs/examples"], ["check", "--project", "docs/examples"]),
+    (["check-project", "--json", "docs/examples"], ["check", "--project", "docs/examples", "--json"]),
+    (["check-project", "--wip", "--deny-warnings", "docs/x"], ["check", "--project", "docs/x", "--wip", "--deny-warnings"]),
+    (["compile", "--all", "docs/examples", "-o", "<temporary>"], ["compile", "--project", "docs/examples", "-o", "<temporary>"]),
+    (["compile", "--all", "--project", "p", "-o", "o"], ["compile", "--project", "p", "-o", "o"]),
+    (["compile", "--out", "x.json", "--locales", "l.json", "a.lute"], ["compile", "--output", "x.json", "--locale-bundle", "l.json", "a.lute"]),
+    (["compile-stream", "a.lute"], ["compile", "--stream", "a.lute"]),
+    (["play", "docs/e/g", "--script", "docs/e/g/p.play.yaml"], ["play", "--project", "docs/e/g", "--script", "docs/e/g/p.play.yaml"]),
+    (["play", "docs/e/g", "--script", "s", "--events"], ["play", "--project", "docs/e/g", "--script", "s", "--events"]),
+    (["play", "g", "--script", "s", "--explain", "a", "--dump-conditions", "c"], ["play", "--project", "g", "--script", "s", "--derivation", "a", "--conditions-output", "c"]),
+    (["test", "docs/examples", "--json"], ["test", "--project", "docs/examples", "--json"]),
+    (["test", "docs/examples", "--project", "p"], ["test", "--project", "p", "docs/examples"]),
+    (["scenario", "docs/examples"], ["scenario", "--project", "docs/examples"]),
+    (["scenario", "--format", "json", "docs/examples"], ["scenario", "--project", "docs/examples", "--json"]),
+    (["scenario", "reach", "p", "n"], ["scenario", "reach", "--project", "p", "--node", "n"]),
+    (["scenario", "knowledge", "p", "--for", "n"], ["scenario", "knowledge", "--project", "p", "--node", "n"]),
+    (["beats", "docs/examples"], ["beats", "--project", "docs/examples"]),
+    (["impact", "p", "scene#1"], ["impact", "--project", "p", "--node", "scene#1"]),
+    (["constraints", "p", "--run"], ["constraints", "--project", "p", "--all-scripts"]),
+    (["patch", "p", "req.yaml"], ["patch", "req.yaml", "--project", "p"]),
+    (["doctor", "p", "--strict"], ["doctor", "--project", "p", "--strict"]),
+    (["loc", "export", "p", "--format", "json", "--out", "o"], ["loc", "export", "--project", "p", "--output", "o"]),
+    (["loc", "import", "a.csv", "--out", "o"], ["loc", "import", "--output", "o", "a.csv"]),
+    (["catalog", "refresh", "cat"], ["catalog", "refresh", "--providers", "cat"]),
+    (["new", "scene", "n", "--dir", "p"], ["new", "scene", "n", "--project", "p"]),
+    (["context", "a.lute", "--target", "n", "--run", "s"], ["context", "a.lute", "--node", "n", "--script", "s"]),
+    (["trace", "a.lute", "--choose", "b=c", "--accept", "q"], ["trace", "a.lute", "--choice", "b=c", "--accepted-quest", "q"]),
+    (["calendar", "p", "--facts", "r", "--csv", "--occasion", "O@run.day"], ["calendar", "--project", "p", "--relation", "r", "--format", "csv", "--occasion-axes", "O=run.day"]),
+    (["tag", "--force", "a.lute"], ["tag", "--renumber", "--commit", "a.lute"]),
+    # Unchanged lines and non-commands stay as they are.
+    (["check", "--json", "a.lute"], ["check", "--json", "a.lute"]),
+    (["compile", "a.lute"], ["compile", "a.lute"]),
+    (["run", "a.json", "--mock", "m.yaml", "--beat", "b", "--json"], ["run", "a.json", "--mock", "m.yaml", "--beat", "b", "--json"]),
+    (["--explain", "E-X"], ["--explain", "E-X"]),
+    (["version"], ["version"]),
+)
+
+
+# (0.47.2 arguments, current arguments) that are NOT the same command.
+SELF_TEST_NOT_RENAMED = (
+    (["check-project", "docs/a"], ["check", "--project", "docs/b"]),
+    (["check-project", "docs/a"], ["check", "--project", "docs/a", "--json"]),
+    (["compile", "--all", "docs/a", "-o", "<temporary>"], ["compile", "--project", "docs/a"]),
+    (["play", "g", "--script", "s"], ["play", "--project", "g", "--script", "t"]),
+    (["test", "docs/a", "--json"], ["test", "--project", "docs/a"]),
+)
+
+
 def self_test() -> int:
     failures = []
+    for old, new in SELF_TEST_TRANSLATIONS:
+        got = translate_baseline_args(old)
+        if canonical_args(got) != canonical_args(new):
+            failures.append(f"translate {old!r}: expected {new!r}, got {got!r}")
+        if not renamed(old, new) and old != new:
+            failures.append(f"renamed({old!r}, {new!r}) is false")
+    # A different command line is not a rename.
+    for old, new in SELF_TEST_NOT_RENAMED:
+        if renamed(old, new):
+            failures.append(f"renamed({old!r}, {new!r}) must be false")
     for label, old, new in SELF_TEST_STAMPS:
         old_norm = normalize_for_compare(old.encode(), label)
         new_norm = normalize_for_compare(new.encode(), label)
@@ -327,7 +597,11 @@ def self_test() -> int:
         print(f"cli-snapshot self-test: FAIL {failure}", file=sys.stderr)
     if failures:
         return 1
-    print(f"cli-snapshot self-test: OK ({len(SELF_TEST_STAMPS)} stamp forms, {len(SELF_TEST_UNTOUCHED)} untouched)")
+    print(
+        f"cli-snapshot self-test: OK ({len(SELF_TEST_STAMPS)} stamp forms, "
+        f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_TRANSLATIONS)} translations, "
+        f"{len(SELF_TEST_NOT_RENAMED)} non-renames)"
+    )
     return 0
 
 
@@ -375,9 +649,14 @@ def compare(current: Path, baseline: Path) -> int:
     current_commands = by_record(current_manifest)
     added = sorted(set(current_commands) - set(baseline_commands))
     removed = sorted(set(baseline_commands) - set(current_commands))
-    changed_args = sorted(
+    differing = sorted(
         r for r in set(current_commands) & set(baseline_commands) if current_commands[r] != baseline_commands[r]
     )
+    # A baseline command whose arguments translate to the current ones by the
+    # 0.47.2 -> 0.48 mapping is the same command, renamed; anything else that
+    # differs is a difference.
+    renamed_args = [r for r in differing if renamed(baseline_commands[r], current_commands[r])]
+    changed_args = [r for r in differing if r not in set(renamed_args)]
     for record in added:
         print(f"added command: {record}", file=sys.stderr)
     differences = bool(removed or changed_args)
@@ -385,6 +664,8 @@ def compare(current: Path, baseline: Path) -> int:
         print(f"removed command: {record}", file=sys.stderr)
     for record in changed_args:
         print(f"command arguments changed: {record}", file=sys.stderr)
+    if renamed_args:
+        print(f"renamed commands: {len(renamed_args)} (0.47.2 arguments translate to the current ones)", file=sys.stderr)
 
     added_records = set(added)
     baseline_files = set(files(baseline))
@@ -421,7 +702,12 @@ def compare(current: Path, baseline: Path) -> int:
         )
     if differences:
         return 1
-    suffix = f" ({len(added)} added command(s) not compared)" if added else ""
+    notes = []
+    if renamed_args:
+        notes.append(f"{len(renamed_args)} renamed command(s) compared under their 0.47.2 labels")
+    if added:
+        notes.append(f"{len(added)} added command(s) not compared")
+    suffix = f" ({'; '.join(notes)})" if notes else ""
     print(f"byte-identical: {len(current_files)} outputs{suffix}")
     return 0
 
