@@ -41,7 +41,7 @@ terminated exactly as an `<on>` body is (`quest-lifecycle.md`). It contains
 only `line`, `match`, `jump`, `set`, `assert`, and `retract` records: an entry
 has no choices, no staging, and no handlers.
 
-`ProjectIndex.entries` (`lute compile --all`) lists every entry in the project
+`ProjectIndex.entries` (`lute compile --project`) lists every entry in the project
 as `{id, document, target?, category?, series?, order?}` in document order, so
 an engine can build its `target → entries` and `series → entries` tables
 without loading every artifact.
@@ -155,7 +155,7 @@ entry-specific at runtime.
   (`on=`) without `once` whose body has a `set` or `retract` (an `assert` is exempt: the fact holds for the rest of the run anyway): every
   raise may present it again in the run, but its writes apply on the first
   read only. A write meant to repeat belongs in a `<beat once="false">`.
-- `lute lore <dir>` prints the project's world-narrative map: entries and
+- `lute lore --project <dir>` prints the project's world-narrative map: entries and
   beats by target (a bundle beat under its `<document id>.<beat id>`, a scene
   beat under its scene key, each labelled `beat`), entries by series, and
   which ground facts entries, bundle beats, and scenes and quests reveal.

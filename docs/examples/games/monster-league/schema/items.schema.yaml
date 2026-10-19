@@ -2,7 +2,7 @@
 # engine must ship every member (a new one is an engine ask). The engine
 # plugin types its attributes and reward targets by these kinds, so a typo or
 # an item the engine does not have is an error at the line that names it
-# (dsl 0.26.0 §2.5). `lute refs . --attr give.item --reward ITEM` lists who
+# (dsl 0.26.0 §2.5). `lute refs --project . --attr give.item --reward ITEM` lists who
 # gives what.
 entities:
   # a bag item (::give{item}, <reward kind="ITEM" target>). Key items are not

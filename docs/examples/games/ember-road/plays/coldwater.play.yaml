@@ -2,7 +2,7 @@
 # then walk an hour off the road to Coldwater. The chapel search fails once
 # and holds on the second try (`spentBy`), Isolde reads the roll, and Maelis
 # takes it as her proof. Nobody opens the ninth wagon.
-#   lute play . --script plays/coldwater.play.yaml
+#   lute play --project . --script plays/coldwater.play.yaml
 choose:
   orders: swear
   plea: help

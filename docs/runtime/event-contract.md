@@ -21,7 +21,7 @@ This guide explains how a host uses them. Artifact dispatch is described in
 ## Begin, step and restore
 
 Load the immutable bundle once with `Runtime::load`: document execution IR
-and `project.index.json` from `lute compile --all`. `begin(seed)` initializes
+and `project.index.json` from `lute compile --project`. `begin(seed)` initializes
 project defaults, applies the seed, settles quests and returns `(State,
 Output)`. It is not an input. `restore(snapshot)` is the other way to obtain
 state; it is also outside the step function.

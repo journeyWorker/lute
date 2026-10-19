@@ -1,7 +1,7 @@
 # Player bindings
 
 `player.bindings.yaml` is an optional file beside `lute.project.yaml`. It is read
-by `lute check-project` after compilation and is not part of the project
+by `lute check --project` after compilation and is not part of the project
 fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
@@ -70,7 +70,7 @@ flow:
 - `volumes` (0.42) maps each member of the project's `volume` domain to a gain,
   a finite number in `[0, 1]`. The player resolves a music cue's `volume`
   member only through this table: no `volume` is gain `1`, a member without a
-  gain is gain `0`, and a number is never parsed. `check-project` reports an
+  gain is gain `0`, and a number is never parsed. `check --project` reports an
   unknown key (`E-BINDING-KEY`), a member without a key
   (`W-BINDING-MISSING`) and a gain outside `[0, 1]` or not finite
   (`E-BINDING-SHAPE`, at the value).
@@ -96,7 +96,7 @@ flow:
 `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain
 version (`"0.47"` for Lute 0.47.x).
 
-- `lute check-project` reports `W-BINDINGS-VERSION-STALE` at the value when it
+- `lute check --project` reports `W-BINDINGS-VERSION-STALE` at the value when it
   differs from the toolchain line: older — update it to the toolchain line
   (`lute fix` does it); newer — upgrade the toolchain, do not downgrade the
   stamp; not `MAJOR.MINOR` (such as `"0.47.0"`) — restamp it.
@@ -156,7 +156,7 @@ nearby-name suggestion when one exists. A flow target (`flow.newGame.target`,
 `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion
 target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>`
 of the occasion's target domain — `place.square`, never the bare `square`
-(lute 0.47.1). `lute check-project` checks it with the same rule as beat
+(lute 0.47.1). `lute check --project` checks it with the same rule as beat
 targets and `lute play` step targets: an `open:` entity kind admits any
 `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its
 members under the prefix. Anything else is `E-BINDING-KEY` (the message starts
@@ -167,4 +167,4 @@ entity kind the project does not declare. A declared domain member, on-stage cas
 member, or compiled usage without a binding produces `W-BINDING-MISSING`.
 A binding in an asset/background/mood/sfx/vfx usage section that no compiled
 document uses produces `W-BINDING-UNUSED`. All diagnostics are anchored in
-`player.bindings.yaml` and appear in `check-project --json`.
+`player.bindings.yaml` and appear in `check --project <dir> --json`.

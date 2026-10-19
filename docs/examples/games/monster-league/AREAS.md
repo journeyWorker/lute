@@ -395,7 +395,7 @@ written with `after:`).
   and state above; never `::accept` a spine quest.
 - Your quests: `tier="run"` on every quest (and every child: a tier mix is `E-QUEST-TIER-MIX`).
   A quest with no `start` needs an `::accept` in your scenes or `accept="external"`.
-- `check-project` proves producers: if a spine objective turns into `E-OBJECTIVE-UNSATISFIABLE`
+- `check --project` proves producers: if a spine objective turns into `E-OBJECTIVE-UNSATISFIABLE`
   after your change, you removed or broke the beat that produced its fact.
 
 ## 9. Plays and tests
@@ -406,16 +406,16 @@ written with `after:`).
   `expect:`. Add your new content's steps before it: every beat you add that the path crosses
   (a town's first-visit beat, a route's trainers) should appear with a `winner:` expectation.
 - Winner ids: a scene is its id, a bundle beat is `<doc>.<beat>`, an entry is its bare id.
-- `lute test . --project .` runs `tests/**` and every play with `expect:`.
+- `lute test --project .` runs `tests/**` and every play with `expect:`.
 
 ## 10. Merge gates
 
 Before you hand a branch to the lead, from the project root:
 
 ```
-lute check-project .           # 0 errors, 0 warnings
-lute test . --project .        # all green, spine.play.yaml included
-lute beats . --occasion talk   # no W-BEAT-PRIORITY-TIE / shadowed beats you did not intend
+lute check --project .           # 0 errors, 0 warnings
+lute test --project .        # all green, spine.play.yaml included
+lute beats --project . --occasion talk   # no W-BEAT-PRIORITY-TIE / shadowed beats you did not intend
 ```
 
 Commit only files you own (§1).

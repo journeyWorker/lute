@@ -1,7 +1,7 @@
 # AREA north: a full Highlands & Isles playthrough from a save that has just
 # surfed out of the Midlands with six badges.
 #
-#   lute play . --script plays/north.play.yaml
+#   lute play --project . --script plays/north.play.yaml
 #
 # Clock: day 1 Monday morning. The play walks the week: day and night
 # trainers, the Tuesday quiz, back to Maud with a fire monster, the Wednesday

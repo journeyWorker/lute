@@ -1,7 +1,7 @@
 # Route A — the honest crossing: rescue the twins, find the ledger, talk Maelis
 # off the chain. Corvin's scheme is heard out too, and the parley supersedes it.
 # Every companion stays; every quest but the betrayal completes.
-#   lute play . --script plays/parley.play.yaml
+#   lute play --project . --script plays/parley.play.yaml
 choose:
   orders: price
   plea: help

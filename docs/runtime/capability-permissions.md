@@ -49,7 +49,7 @@ authored write and needs permission.
 
 The compiler repeats the shared permission gate before lowering. A host cannot
 bypass policy by handing `compile_with_check` a successful check result created
-against a different snapshot. `compile-stream` applies the same frozen ceiling
+against a different snapshot. `compile --stream` applies the same frozen ceiling
 to the initial template and every accepted body unit; a denied unit produces no
 forbidden IR.
 
@@ -66,14 +66,14 @@ For a whole project, the pin applies to every document and the write remains
 all-or-nothing:
 
 ```console
-$ lute compile --all --project . --permission-profile restricted -o build
+$ lute compile --project . --permission-profile restricted -o build
 ```
 
 For an append-only body stream:
 
 ```console
 $ printf '::set{scene.score = 1}\n' \
-    | lute compile-stream scenes/live.lute --project . \
+    | lute compile --stream scenes/live.lute --project . \
         --permission-profile restricted
 ```
 
@@ -115,8 +115,8 @@ Denied source is a non-suppressible error at the authored span:
 
 Malformed permission fields, explicit `null`, unknown fields, invalid patterns,
 and a missing host profile are configuration/resolver errors. They never fall
-back to an unrestricted policy. `compile` and `compile-stream` emit no denied
-artifact/update; `compile --all` emits none of the project artifacts if any one
+back to an unrestricted policy. `compile` and `compile --stream` emit no denied
+artifact/update; `compile --project` emits none of the project artifacts if any one
 is denied.
 
 ## `capabilitySnapshot` is not authorization

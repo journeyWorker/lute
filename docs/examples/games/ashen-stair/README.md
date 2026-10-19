@@ -37,11 +37,11 @@ Wren wakes on warm stone at the Hearth, below a Stair of nine floors, with a Gat
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/ashen-stair
-lute test docs/examples/games/ashen-stair                           # 16 tests + 4 plays
-lute play docs/examples/games/ashen-stair --script docs/examples/games/ashen-stair/plays/four-climbs.play.yaml
-lute play docs/examples/games/ashen-stair --script docs/examples/games/ashen-stair/plays/ashfall.play.yaml
-lute beats docs/examples/games/ashen-stair                          # each occasion's beat ladder
+lute check --deny-warnings --project docs/examples/games/ashen-stair
+lute test --project docs/examples/games/ashen-stair                           # 16 tests + 4 plays
+lute play --project docs/examples/games/ashen-stair --script docs/examples/games/ashen-stair/plays/four-climbs.play.yaml
+lute play --project docs/examples/games/ashen-stair --script docs/examples/games/ashen-stair/plays/ashfall.play.yaml
+lute beats --project docs/examples/games/ashen-stair                          # each occasion's beat ladder
 lute trace docs/examples/games/ashen-stair/lore/keepsakes.lute --beat maud --state user.bond.maud=4
 lute trace docs/examples/games/ashen-stair/quests/bonds.lute --state user.knowsSableName=true --state user.bond.sable=2 --state run.carriesFeather=true --state run.outcome=escaped --fact "saw(sable, wardenFall)" --occasion runEnd
 ```

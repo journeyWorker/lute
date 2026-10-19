@@ -2,7 +2,7 @@
 # remembers every ending (cleared, user tier), counts terms (user.terms), and
 # reads the term just ended through prev.run.*. After the fourth route the
 # keeper's route opens at the festival, and term 5 reaches the true ending.
-#   lute play . --script plays/five-terms.play.yaml
+#   lute play --project . --script plays/five-terms.play.yaml
 #
 # Each term states its own choices and minigame results beside its includes
 # (0.27 `include:` with `repeat:` / `choose:` / `bridges:`): the arrival's

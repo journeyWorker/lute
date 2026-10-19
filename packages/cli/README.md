@@ -20,17 +20,17 @@ lute <command> --help           # one command's arguments and exit codes
 lute --explain E-BAD-ENUM       # what raises a diagnostic code, and its reference page
 
 lute init my-game               # scaffold a project
-lute check-project my-game      # check every document of the project
-lute compile --all my-game -o dist/bundle
-lute play my-game --script my-game/plays/first.play.yaml
-lute test my-game               # scenario tests and play scripts with `expect:`
+lute check --project my-game      # check every document of the project
+lute compile --project my-game -o dist/bundle
+lute play --project my-game --script my-game/plays/first.play.yaml
+lute test --project my-game               # scenario tests and play scripts with `expect:`
 lute fix my-game                # mechanical migrations after an upgrade
 ```
 
 The commands, grouped:
 
-- **Check:** `check`, `check-project`, `lint`, `doctor`, `constraints`, `impact`.
-- **Build:** `compile` (one document, or `--all` for a project bundle with `project.index.json`), `compile-stream`, `expr`.
+- **Check:** `check`, `check --project`, `lint`, `doctor`, `constraints`, `impact`.
+- **Build:** `compile` (one document, or `--project <dir> -o <dir>` for a project bundle with `project.index.json`), `compile --stream`, `expr`.
 - **Run and test:** `play`, `test`, `trace`, `run`, `calendar`, `beats`, `scenario`.
 - **Author and maintain:** `init`, `new`, `fmt`, `fix`, `tag`, `patch`, `diff`, `context`, `refs`, `lore`, `loc`, `catalog`, `version`.
 

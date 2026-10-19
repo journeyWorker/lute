@@ -1,7 +1,7 @@
 # From a save at the chain, steel drawn: the battle system decides the caravan
 # loses, and Corvin falls. The main quest fails (its fail= reads the engine's
 # outcome) and pays its consolation reward.
-#   lute play . --script plays/defeat.play.yaml
+#   lute play --project . --script plays/defeat.play.yaml
 visited: [road.departure, road.ford, bridge.arrival]
 quests: { emberRoad: active }
 state:

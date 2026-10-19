@@ -1,7 +1,7 @@
 # Two storms in one week. Each storm is a fresh storm watch (`seasons: storm`):
 # the chores and the batten-down quest come back, and the second storm
 # remembers the first (`prev.season.storm.*`).
-#   lute play . --script plays/two-storms.play.yaml
+#   lute play --project . --script plays/two-storms.play.yaml
 visited: [days.arrival, sol.first, wren.first]
 presented: { run: [days.arrival, sol.first, wren.first] }
 state: { run.day: 3, run.slot: morning }

@@ -2,7 +2,7 @@
 # bell at three), Tobias lost to the Orderly once and found again, and the
 # ward put to sleep behind them. Sanity runs down to 2 on the way.
 #
-#   lute play . --script plays/released.play.yaml
+#   lute play --project . --script plays/released.play.yaml
 steps:
   - include: steps/opening.steps.yaml
 

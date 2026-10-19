@@ -2,7 +2,7 @@
 # bad turn at the valves, and then the hours simply go. The move past five
 # raises dawn, and both deadlines fail.
 #
-#   lute play . --script plays/dawn.play.yaml
+#   lute play --project . --script plays/dawn.play.yaml
 steps:
   - include: steps/opening.steps.yaml
   - occasion: examine

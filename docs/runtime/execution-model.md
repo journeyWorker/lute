@@ -84,7 +84,7 @@ loads, exactly as it concatenates the command streams.
 
 ### `project.index.json` (0.41.0)
 
-`lute compile --all` writes that union, plus the document table and the
+`lute compile --project` writes that union, plus the document table and the
 project-wide capability vocabulary, as `project.index.json`. Its shape is the
 `projectIndex` definition of `schemas/lute-ir-0.47.schema.json`: the index
 `$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
@@ -138,7 +138,7 @@ no command, condition, asset, or bridge may run — with exit code 2 and
 unsupported exact-minor line uses `E-ENGINE-IR-VERSION`. The built-in
 `reference` matrix supports every current registry id.
 
-`lute check --engine <file>` and `lute check-project --engine <file>` perform
+`lute check --engine <file>` and `lute check --project <dir> --engine <file>` perform
 the same negotiation at author time, without playback. They report each
 lowered construct whose semantic id is absent, including its source span,
 semantic id, and engine name, as `E-CHECK-ENGINE-SEMANTICS`. The project form
@@ -601,7 +601,7 @@ The `greet` line of the example document above compiles to:
 
 ### Localized lines: `texts` and `localeSegments`
 
-When an artifact is compiled with a locale bundle (`lute compile --locales`),
+When an artifact is compiled with a locale bundle (`lute compile --locale-bundle`),
 each translated line gains **`texts`**: locale tag → the translation's plain
 text, keyed on the line's `lineId`. `text` remains the source-language
 string. A line with inline modifiers additionally gains
@@ -657,7 +657,7 @@ are unchanged.
 Each `lute loc export` row carries `sourceHash`, the `sha256:` of the record's
 plain source text (`text` of a line or option, `prompt`), and `lute loc import`
 stores it per lineId and locale in the bundle (`schemaVersion: 2`,
-`sourceHashes`). `compile --locales` reports `W-L10N-STALE` for a merged
+`sourceHashes`). `compile --locale-bundle` reports `W-L10N-STALE` for a merged
 translation whose stored hash differs from the record's current source (dsl
 0.47.0 §3.2); the translation still merges.
 

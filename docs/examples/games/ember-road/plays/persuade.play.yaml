@@ -2,7 +2,7 @@
 # good roll, hear Maelis out, then pay her with the Company's silver anyway.
 # The engine rolls the [Persuasion] check; the play answers it (dsl 0.24 §5).
 # Paying supersedes the parley Maelis offered: the epilogue says so.
-#   lute play . --script plays/persuade.play.yaml
+#   lute play --project . --script plays/persuade.play.yaml
 choose:
   orders: swear
   plea: help

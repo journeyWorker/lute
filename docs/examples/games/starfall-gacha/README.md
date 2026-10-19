@@ -42,12 +42,12 @@ An account never starts over: everything the player keeps is `user.*`, and the c
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/starfall-gacha
-lute test docs/examples/games/starfall-gacha                  # 20 tests + 5 plays
-lute play docs/examples/games/starfall-gacha --script docs/examples/games/starfall-gacha/plays/season-one.play.yaml
-lute play docs/examples/games/starfall-gacha --script docs/examples/games/starfall-gacha/plays/frost-vigil.play.yaml
-lute beats docs/examples/games/starfall-gacha
-lute calendar docs/examples/games/starfall-gacha --axis clock=1..49 --occasion dailyReset
+lute check --deny-warnings --project docs/examples/games/starfall-gacha
+lute test --project docs/examples/games/starfall-gacha                  # 20 tests + 5 plays
+lute play --project docs/examples/games/starfall-gacha --script docs/examples/games/starfall-gacha/plays/season-one.play.yaml
+lute play --project docs/examples/games/starfall-gacha --script docs/examples/games/starfall-gacha/plays/frost-vigil.play.yaml
+lute beats --project docs/examples/games/starfall-gacha
+lute calendar --project docs/examples/games/starfall-gacha --axis clock=1..49 --occasion dailyReset
 ```
 
 ## Origin

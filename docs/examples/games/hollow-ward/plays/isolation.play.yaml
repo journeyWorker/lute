@@ -1,7 +1,7 @@
 # The isolation wing: the boiler is lit, Nell has the music box. Down in the
 # lift, the ward key, three patients settled before three.
 #
-#   lute play . --script plays/isolation.play.yaml
+#   lute play --project . --script plays/isolation.play.yaml
 state: { run.power: true }
 facts: [holding(musicBox)]
 steps:

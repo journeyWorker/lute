@@ -1,6 +1,6 @@
 # The radiosonde is a retry, not a one-off: the scene comes back every
 # afternoon until the balloon is up (`spentBy: run.balloonUp`).
-#   lute play . --script plays/balloon.play.yaml
+#   lute play --project . --script plays/balloon.play.yaml
 visited: [days.arrival, sol.first, wren.first, ines.forecast]
 presented: { run: [days.arrival, sol.first, wren.first, ines.forecast] }
 quests: { forecast: active }

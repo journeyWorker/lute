@@ -169,7 +169,7 @@ writes). A bundle beat is otherwise a **scene beat**: its eligibility is its
 in a row whose `node` is the beat's `id`), its `when`, and its `once` against
 the presentation record.
 
-`ProjectIndex.beats` (`lute compile --all`) lists every beat in the project so
+`ProjectIndex.beats` (`lute compile --project`) lists every beat in the project so
 an engine can build its `occasion → candidates` table without loading every
 artifact:
 
@@ -415,10 +415,10 @@ An artifact that compiled cleanly carries these guarantees:
   `select: first` occasion (`E-BEAT-ATTR`).
 - `share` (dsl 0.25.0 §2) is an identifier, written only beside an authored
   `once` that is not `false`, and every beat of one key declares the same
-  `once` (`E-BEAT-ATTR`, the last one at `check-project`).
+  `once` (`E-BEAT-ATTR`, the last one at `check --project`).
 - A bundle beat's `after=` (dsl 0.25.0 §3) parses under the scene `after:`
   grammar (`E-CONN-PROFILE`) and names known nodes (`E-CONN-UNKNOWN-NODE`,
-  `check-project`); it is a scenario edge as a scene's `after:` is.
+  `check --project`); it is a scenario edge as a scene's `after:` is.
 - `on` names a declared occasion whenever any resolved plugin declares
   occasions (`E-OCCASION-UNKNOWN`), and a `target` of a domain occasion is
   `<prefix>.<member>` of that domain (`E-BEAT-ATTR`).
@@ -426,7 +426,7 @@ An artifact that compiled cleanly carries these guarantees:
   never reads the scene's own `scene.*` state, which does not exist until the
   scene runs.
 
-Three `check-project` warnings are advisory. `W-BEAT-SHADOWED` names a
+Three `check --project` warnings are advisory. `W-BEAT-SHADOWED` names a
 `select: first` beat that an earlier-ordered, always-eligible, never-spent
 beat (a scene with `once: false`, an entry without `once`) on the same
 occasion and target beats every time — and (dsl 0.24.0) an untargeted beat on
@@ -451,7 +451,7 @@ history, not user state.
 
 ## Reference tooling
 
-- `lute play <dir> --script <play.yaml>` walks a playthrough as a sequence of
+- `lute play --project <dir> --script <play.yaml>` walks a playthrough as a sequence of
   raised occasions: for each step it computes the candidates and their
   verdicts, presents the winner and its eligible `also` beats (every eligible
   beat on a `select: sequence` occasion, or the step's `pick` on a `select:
@@ -477,7 +477,7 @@ history, not user state.
   (`skipped: [{ step, label }]` in `--json`). The transcript prints staging as
   authored (`::bg{…}`, `::actor{…}`, a plugin directive by its own name); `--ir`
   prints the lowered records instead, compiler-injected ones included.
-- `lute calendar <dir> --script <play.yaml>` starts every cell from the
+- `lute calendar --project <dir> --script <play.yaml>` starts every cell from the
   script's save with its steps replayed as `lute play` plays them; `--until
   <step number | label>` stops before that step. An axis
   `quest.<id>.state=…` seeds the quest's status (an `unset`/`active` seed
@@ -494,26 +494,26 @@ history, not user state.
   bundle-beat id in or out of the save's visited set (what `after:` and CEL
   `visited()` read; an unknown id is a usage error with a did-you-mean). An
   axis of none of these kinds is a usage error that lists them.
-  `--occasion <name>@<axis>[=<value>],…` varies only the named axes for that
+  `--occasion-axes <name>=<axis>[=<value>],…` varies only the named axes for that
   occasion: it is evaluated in the cells where every other axis is at its
   first value (or the named `=<value>`) and left out elsewhere — blank in
-  the text grid, no result in `--json`, no row in `--csv` — so an occasion
-  the engine raises once per day (`dayEnd@run.day`) is read once per day.
-  `--facts <relation>` (repeatable) shows, per cell, the facts of that
+  the text grid, no result in `--json`, no row in `--format csv` — so an occasion
+  the engine raises once per day (`--occasion-axes dayEnd=run.day`) is read once per day.
+  `--relation <relation>` (repeatable) shows, per cell, the facts of that
   relation that hold once the cell has settled (the runner's fixpoint): a
   table with a row per first argument and a column per cell in text, a
-  per-cell `facts` map in `--json`, a `facts:<relation>` column in `--csv`.
+  per-cell `facts` map in `--json`, a `facts:<relation>` column in `--format csv`.
   After the beats never eligible in any cell, the report lists the beats
   eligible in some cell but presented in none, with what was presented over
   them (`?` where an unknown `when` decided the cell) — `neverPresented`
-  with `beatenBy` in `--json`, a second table after a blank line in `--csv`.
-- `lute scenario <dir>` draws every bundle beat as a node
+  with `beatenBy` in `--json`, a second table after a blank line in `--format csv`.
+- `lute scenario --project <dir>` draws every bundle beat as a node
   `beat(<doc>.<beat>)` — an entry node, or (dsl 0.25.0 §3) the dependent of
   the edges its `after=` draws; `scenario reach|envelope` accept its
   canonical id, bare or `beat:`-prefixed. A scene or bundle beat without
   `after` whose `when` has a `visited('<id>')` conjunct is listed as
   unanchored — the conjunct gates it but draws no edge — with the `after`
-  that would (`unanchoredHints` in `--format json`).
+  that would (`unanchoredHints` in `--json`).
 - `lute beats` shows a beat's `share` key in its `once` column (`day, share
   solWarm`; `share` in `--json`), and `lute play` / `lute calendar` spend the
   whole key at a presentation: a sibling reads `once: day — share: solWarm

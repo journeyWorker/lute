@@ -1,6 +1,6 @@
 # A week of missed chances: skimmed readings, the forecast never written, Wren
 # met late and her lantern never finished, the Perseids slept through.
-#   lute play . --script plays/missed.play.yaml
+#   lute play --project . --script plays/missed.play.yaml
 choose:
   village: shrug
   care: skim

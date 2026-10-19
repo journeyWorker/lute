@@ -1,7 +1,7 @@
 # The good-not-best night: free-order exploration across four hours, three
 # codes, one chase, Tobias out of drawer 13 and through the gate by four.
 #
-#   lute play . --script plays/together.play.yaml
+#   lute play --project . --script plays/together.play.yaml
 steps:
   - include: steps/opening.steps.yaml
 

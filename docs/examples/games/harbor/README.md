@@ -32,13 +32,13 @@ The player arrives, pulls in a first net with Tomas, and agrees (or not) to help
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/harbor
-lute test docs/examples/games/harbor                           # 6 tests + 5 plays
-lute play docs/examples/games/harbor --script docs/examples/games/harbor/plays/week-one.play.yaml
-lute play docs/examples/games/harbor --script docs/examples/games/harbor/plays/festival.play.yaml
-lute beats docs/examples/games/harbor                          # every occasion's candidates in order
-lute calendar docs/examples/games/harbor --axis clock --occasion tide
-lute calendar docs/examples/games/harbor --occasion landed --axis occasion.payload.weight=0,40
+lute check --deny-warnings --project docs/examples/games/harbor
+lute test --project docs/examples/games/harbor                           # 6 tests + 5 plays
+lute play --project docs/examples/games/harbor --script docs/examples/games/harbor/plays/week-one.play.yaml
+lute play --project docs/examples/games/harbor --script docs/examples/games/harbor/plays/festival.play.yaml
+lute beats --project docs/examples/games/harbor                          # every occasion's candidates in order
+lute calendar --project docs/examples/games/harbor --axis clock --occasion tide
+lute calendar --project docs/examples/games/harbor --occasion landed --axis occasion.payload.weight=0,40
 ```
 
 ## Origin

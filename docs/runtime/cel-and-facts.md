@@ -158,13 +158,13 @@ reference runner (`lute run` / `lute play`) and, since dsl 0.22.0 §6,
 `lute trace` / `lute test` compute this fixpoint over the seed facts, the
 mocked and asserted facts, and the rules, so none of them can disagree with the
 others about a rule's conclusion. That makes the runner a reference to check an
-engine's evaluator against: `lute play --explain <atom>` prints the derivation
+engine's evaluator against: `lute play --derivation <atom>` prints the derivation
 it found for a ground atom at the end of a playthrough — the rule and each
 premise's support — or, when the atom does not hold, every rule that could
 conclude it with its failing premises.
 
 > **Boundary — relational gates are decided conservatively at compile time.**
-> Since dsl 0.20.0, `check-project` decides every `holds(…)`/`count(…)` in a
+> Since dsl 0.20.0, `check --project` decides every `holds(…)`/`count(…)` in a
 > guard from two sets (`crates/lute-check/src/fact_env.rs`,
 > `fact_must.rs`): the project-wide **may** set — every ground fact any seed,
 > assert, rule, or reserved relation can produce — and the path-sensitive
@@ -182,7 +182,7 @@ conclude it with its failing premises.
 > fact store remains the only real answer at run time; the compiler proves the
 > *shape* is well-formed and reports the gates it can prove dead or redundant.
 >
-> `check-project --wip` (dsl 0.23.0 §10, 0.26.0 §2.6) re-decides a dead
+> `check --project <dir> --wip` (dsl 0.23.0 §10, 0.26.0 §2.6) re-decides a dead
 > guard against a wider *may* set in which every relation content not yet
 > written may still produce is unbounded — one with no seed, assert, rule or
 > reserved declaration, or one only a component `::assert` with an unbound

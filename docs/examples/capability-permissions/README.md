@@ -39,7 +39,7 @@ is rejected before forbidden IR is emitted:
 
 ```console
 printf '::set{scene.score = 1}\n' \
-  | lute compile-stream stream-template.lute --project . \
+  | lute compile --stream stream-template.lute --project . \
       --permission-profile restricted
 ```
 

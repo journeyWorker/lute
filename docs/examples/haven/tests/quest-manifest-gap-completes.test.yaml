@@ -7,7 +7,7 @@
 # below, because it is story, not test scaffolding: `whatVesnaCarries` opens at
 # `run.vesnaTrust >= 2` and completes at `>= 3`, and `falseHeading.countTheYears`
 # reads the same scalar (the cross-quest coupling T9.14 describes;
-# `lute scenario docs/examples/haven envelope quest:whatVesnaCarries` lists
+# `lute scenario --project docs/examples/haven envelope --node quest:whatVesnaCarries` lists
 # `quest(manifestGap) on completion` among its writers). Removing the write
 # would move another quest's threshold.
 #
