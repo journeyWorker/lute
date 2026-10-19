@@ -1,4 +1,4 @@
-import { Effect, Fiber } from "effect"
+import { Deferred, Effect, Fiber } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "@effect/vitest"
 import { PixiAudio, AudioDecodeError, type AudioBackend, type AudioPlayback } from "../../src/audio/pixiAudio.js"
@@ -322,5 +322,106 @@ describe("PixiAudio", () => {
       expect(Math.max(...after)).toBeLessThanOrEqual(midpoint)
       expect(after.at(-1)).toBe(0)
       expect(old.stopCount()).toBe(1)
+    }))
+})
+describe("PixiAudio music supersession (0.47.2 §3)", () => {
+  const music = (file: string, restart = false) => ({ file, loop: true, volume: 1, fade: 0, restart })
+
+  const controlledBackend = () => {
+    const created: Array<{ readonly file: string } & TestPlayback> = []
+    const backend: AudioBackend = {
+      load: () => Effect.void,
+      play: (file, options) => Effect.sync(() => {
+        const item = playback(options.loop)
+        created.push({ file, ...item })
+        return item.value
+      }),
+      unlock: Effect.void
+    }
+    return { backend, created }
+  }
+
+  it.effect("completes every music play before unlock and starts only the latest after it", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const audio = new PixiAudio({ backend })
+      const done: Array<string> = []
+      const tracked = (file: string) => audio.play("music", music(file)).pipe(Effect.tap(() => Effect.sync(() => { done.push(file) })))
+      const first = Effect.runFork(tracked("title.wav"))
+      const second = Effect.runFork(tracked("stage.wav"))
+      yield* Effect.yieldNow
+      // The superseded play wakes while the gate is still closed.
+      expect(done).toEqual(["title.wav"])
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      expect(done).toEqual(["title.wav", "stage.wav"])
+      expect(created.map((item) => item.file)).toEqual(["stage.wav"])
+      expect(created[0]?.stopCount()).toBe(0)
+      yield* Fiber.join(first)
+      yield* Fiber.join(second)
+    }))
+
+  it.effect("a music stop before unlock supersedes a pending play", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const audio = new PixiAudio({ backend })
+      let done = false
+      const pending = Effect.runFork(audio.play("music", music("title.wav")).pipe(Effect.tap(() => Effect.sync(() => { done = true }))))
+      yield* Effect.yieldNow
+      expect(done).toBe(false)
+      yield* audio.stop("music", 0)
+      yield* Effect.yieldNow
+      expect(done).toBe(true)
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      expect(created).toHaveLength(0)
+      yield* Fiber.join(pending)
+    }))
+
+  it.effect("leaves sfx plays unsuperseded by a music request", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const audio = new PixiAudio({ backend })
+      const sfx = Effect.runFork(audio.play("sfx", { file: "click.wav", loop: true, volume: 1, fade: 0, restart: false }))
+      yield* audio.stop("music", 0)
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      expect(created.map((item) => item.file)).toEqual(["click.wav"])
+      yield* Fiber.interrupt(sfx)
+    }))
+
+  it.effect("stops a backend play resolving after it was superseded and never records it", () =>
+    Effect.gen(function* () {
+      const created: Array<{ readonly file: string } & TestPlayback> = []
+      const gates = new Map<string, Deferred.Deferred<void>>()
+      const backend: AudioBackend = {
+        load: () => Effect.void,
+        play: (file, options) => Effect.gen(function* () {
+          const gate = Deferred.makeUnsafe<void>()
+          gates.set(file, gate)
+          yield* Deferred.await(gate)
+          const item = playback(options.loop)
+          created.push({ file, ...item })
+          return item.value
+        }),
+        unlock: Effect.void
+      }
+      const audio = new PixiAudio({ backend })
+      yield* audio.unlock
+      const first = Effect.runFork(audio.play("music", music("one.wav")))
+      yield* Effect.yieldNow
+      const second = Effect.runFork(audio.play("music", music("two.wav")))
+      yield* Effect.yieldNow
+      yield* Deferred.succeed(gates.get("one.wav")!, undefined)
+      yield* Effect.yieldNow
+      // The superseded backend play resolved: stopped at once.
+      expect(created.map((item) => [item.file, item.stopCount()])).toEqual([["one.wav", 1]])
+      yield* Deferred.succeed(gates.get("two.wav")!, undefined)
+      yield* Fiber.join(first)
+      yield* Fiber.join(second)
+      expect(created.map((item) => [item.file, item.stopCount()])).toEqual([["one.wav", 1], ["two.wav", 0]])
+      // Never recorded: replacing the music stops only what is recorded (two.wav), not a second time one.wav.
+      yield* audio.stop("music", 0)
+      expect(created.map((item) => item.stopCount())).toEqual([1, 1])
     }))
 })
