@@ -144,10 +144,7 @@ cue (skip) apply the framing at once. The transition runs on a fiber of the
 camera's own, forked in the player's scope (`PresenterOptions.scope`; unmount
 interrupts it), and the cue joins it: a cue the scheduler does not wait for is
 interrupted when its batch ends (e.g. right before a choice), and a started
-transition still plays out. (With `autosave` `false` or `"presentation"`, a
-non-waiting camera cue that is the last of a batch before a choice is
-currently not started at all: a player-core scheduler behaviour, tracked
-separately.) Its behaviours run under their own world key. A later camera
+transition still plays out. Its behaviours run under their own world key. A later camera
 cue (a transition or a move) supersedes it: its behaviours are cancelled and
 it does no more. Skip supersedes it only when skip starts while the cue still
 runs (the scheduler then stages the cue instantly); a transition whose cue

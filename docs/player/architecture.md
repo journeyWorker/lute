@@ -149,8 +149,11 @@ interface LineGate {                 // provided by the director per batch
 interface CueScheduler {
   /**
    * Plays one batch (spec §6.3 rules 1–6). `mode` is read at each cue start
-   * (skip can be toggled mid-batch). Completes when every blocking cue ran and
-   * every stage cue settled; one-shot cues may still be running (they are
+   * (skip can be toggled mid-batch). Completes when every blocking cue ran,
+   * every stage cue settled and every forked cue (each non-waiting cue and
+   * timeline clip) has started — its `delay`/`at` elapsed and its `execute`
+   * begun (skip: `complete` begun; a cue still waiting when skip begins is
+   * completed at once); started one-shot cues may still be running (they are
    * forked into `scope`). Interrupting the returned effect interrupts all
    * cue fibers of the batch.
    */
