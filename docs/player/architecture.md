@@ -153,7 +153,8 @@ interface CueScheduler {
    * every stage cue settled and every forked cue (each non-waiting cue and
    * timeline clip) has started — its `delay`/`at` elapsed and its `execute`
    * begun (skip: `complete` begun; a cue still waiting when skip begins is
-   * completed at once); started one-shot cues may still be running (they are
+   * completed at once; a forked cue whose fiber exits before starting also
+   * releases the wait); started one-shot cues may still be running (they are
    * forked into `scope`). Interrupting the returned effect interrupts all
    * cue fibers of the batch.
    */
