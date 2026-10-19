@@ -67,8 +67,8 @@ lute compile --stream scene.lute --project . \
 
 <!-- lute-diagnostics -->
 ```console
-$ lute check scene.lute --project .
-lute: E-PLUGIN-MISSING-ACTIVE: plugin `nosuch` is activated by the project manifest but is not installed; add it under the plugins directory or drop it from the profile
+$ lute check episode01.lute --project .
+lute: E-PLUGIN-OPTION-TYPE: option `showcase.pack.resultScope` expects enum(scene|run), got "galaxy"
 $ echo $?
 1
 ```

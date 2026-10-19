@@ -778,7 +778,7 @@ $ lute new quest town/welcome
 lute new: `scenes/town/welcome.lute` already declares `id: town.welcome` — scenes, quests and lore share one set of document ids; pick another name; nothing was written
 ```
 
-`--occasion <occasion>`은 해당 계기에 응답하는 씬 [비트](/ko/language/beats/)를 만들고, `--target <target>`은 대상 지정 계기가 무엇을 위해 발생하는지, 즉 대상 도메인의 `<prefix>.<member>`를 지정합니다. 파일을 쓰기 전에 둘 다 프로젝트에 맞춰 검사합니다. 프로젝트 플러그인이 선언하지 않은 계기이거나 계기 도메인 밖의 대상이면 did-you-mean과 함께 종료 **2**가 되고 파일을 만들지 않습니다.
+`--occasion <OCCASION>`은 해당 계기에 응답하는 씬 [비트](/ko/language/beats/)를 만들고, `--target <TARGET>`은 대상 지정 계기가 무엇을 위해 발생하는지, 즉 대상 도메인의 `<prefix>.<member>`를 지정합니다. 파일을 쓰기 전에 둘 다 프로젝트에 맞춰 검사합니다. 프로젝트 플러그인이 선언하지 않은 계기이거나 계기 도메인 밖의 대상이면 did-you-mean과 함께 종료 **2**가 되고 파일을 만들지 않습니다.
 
 ```console
 $ lute new scene explore/gate --occasion explore --target place.villag
@@ -997,7 +997,7 @@ $ lute lint [<PATH>] [--project <DIR>] [--providers <DIR>] [--deny <CODE>]… [-
             [--config <FILE>] [--json]
 ```
 
-권고 콘텐츠 lint를 파일 또는 디렉터리 트리(기본값: 현재 디렉터리)에 실행합니다. 검사 항목은 줄 길이, 대사 비율, 감정 연속, 누락된 에셋, 프로젝트 로컬 규칙입니다. 선형 VN 규범(`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`)은 선형 씬만 판정하며 비트, 컴포넌트, 퀘스트, 로어는 판정하지 않습니다. 문서는 가장 가까운 `lute.project.yaml`별로 그룹화되고, 각 프로젝트의 `lute.lint.yaml`(또는 `--config <FILE>`)이 규칙 수준, 임계값, 무시 glob, `custom:` 규칙을 정합니다. 결과는 `lute check`와 별개의 `L-*` 코드이며 lint는 capability snapshot에 들어가거나 아티팩트를 변경하지 않습니다. `--deny`/`--deny-warnings`는 `check`와 같은 방식으로 결과를 승격합니다. 하위 오류 결과만 있거나 깨끗하면 종료 **0**, 오류 심각도 결과(`E-LINT-CONFIG`/`E-LINT-EXPR` 포함)가 있으면 **1**, I/O, 잘못된 YAML 또는 사용법 오류면 **2**입니다. 규칙, 메트릭, 설정 형식은 [Linting](/ko/tooling/linting/)을 참고하세요. `--project <P>`를 주면 `<PATH>`가 없을 때 `<P>`를 검사하고, 각 문서는 `<P>` 이하에서 가장 가까운 프로젝트에 대해 해석되며(`<P>`는 다른 디렉터리 명령과 같이 순회 바닥), 각 루트의 `lute.lint.yaml`이 적용됩니다(`--config`가 있으면 그것).
+권고 콘텐츠 lint를 파일 또는 디렉터리 트리(기본값: 현재 디렉터리)에 실행합니다. 검사 항목은 줄 길이, 대사 비율, 감정 연속, 누락된 에셋, 프로젝트 로컬 규칙입니다. 선형 VN 규범(`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`)은 선형 씬만 판정하며 비트, 컴포넌트, 퀘스트, 로어는 판정하지 않습니다. 문서는 가장 가까운 `lute.project.yaml`별로 그룹화되고, 각 프로젝트의 `lute.lint.yaml`(또는 `--config <FILE>`)이 규칙 수준, 임계값, 무시 glob, `custom:` 규칙을 정합니다. 결과는 `lute check`와 별개의 `L-*` 코드이며 lint는 capability snapshot에 들어가거나 아티팩트를 변경하지 않습니다. `--deny`/`--deny-warnings`는 `check`와 같은 방식으로 결과를 승격합니다. 하위 오류 결과만 있거나 깨끗하면 종료 **0**, 오류 심각도 결과(`E-LINT-CONFIG`/`E-LINT-EXPR` 포함)가 있으면 **1**, I/O, 잘못된 YAML 또는 사용법 오류면 **2**입니다. 규칙, 메트릭, 설정 형식은 [Linting](/ko/tooling/linting/)을 참고하세요. `--project <DIR>`를 주면 `<PATH>`가 없을 때 `<DIR>`를 검사하고, 각 문서는 `<P>` 이하에서 가장 가까운 프로젝트에 대해 해석되며(`<P>`는 다른 디렉터리 명령과 같이 순회 바닥), 각 루트의 `lute.lint.yaml`이 적용됩니다(`--config`가 있으면 그것).
 
 0.26.0부터 lint는 `W-DISPLAY-NAME-DUP`도 보고하며 권고 전체 프로젝트 `check`도 보고합니다. 대화 상자가 같은 이름으로 표시할 두 화자, 즉 동일한 `name:`을 가진 두 cast 항목, `::use{… name="…"}` 표시 문자열과 같은 cast 이름, 또는 서로 다른 화자의 두 문자열(`who=`)이 대상입니다. `sharedName: true`로 표시된 cast 항목은 여러 화자가 공유하는 의도된 역할 이름이므로 집계하지 않습니다. 이 코드는 `lute.lint.yaml` 규칙이 아니며 `--deny W-DISPLAY-NAME-DUP`로 오류로 만들 수 있습니다. [Linting](/ko/tooling/linting/#표시-이름)을 참고하세요.
 

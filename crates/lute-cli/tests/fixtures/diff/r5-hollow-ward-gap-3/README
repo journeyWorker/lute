@@ -9,5 +9,5 @@ the fact layer:
      instantiated per member (0.26.0: E-CEL-PROFILE "`S` is not a state path").
 So "the Orderly is one room away" derives from run.stalker + the adjacency graph.
   lute check --project .                  -> ok, 0 warnings
-  lute play . --script plays.yaml       -> chapel: "He is here." (not close);
+  lute play --project . --script plays.yaml       -> chapel: "He is here." (not close);
                                            lobby: "Wheels, close."
