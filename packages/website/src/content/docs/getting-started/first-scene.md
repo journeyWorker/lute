@@ -542,7 +542,7 @@ project root: episodes
 the question you most want before writing a `when=` guard — *what state is safe to read here?*:
 
 ```
-$ lute scenario envelope --node mira.s01ep02 --project episodes
+$ lute scenario --project episodes envelope --node mira.s01ep02
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
     - run.metMira   written by: scene(mira.s01ep01)
@@ -550,7 +550,7 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `lute check`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 

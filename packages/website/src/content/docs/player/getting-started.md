@@ -7,7 +7,7 @@ This guide uses the repository's `examples/player-demo`; the same steps work for
 
 ## 1. Compile the project
 
-Build a complete bundle. `--project` (whole-project compile) is required because the browser runtime reads `project.index.json` and every artifact named by it.
+Build a complete bundle. Compile the whole project (no document operand) into a directory, because the browser runtime reads `project.index.json` and every artifact named by it.
 
 ```console
 lute compile --project examples/player-demo -o dist/bundle

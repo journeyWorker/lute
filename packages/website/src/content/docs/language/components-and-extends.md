@@ -253,7 +253,7 @@ A fact atom in the body may take params as arguments, `::assert{gifted(@who, @it
 in a `::retract`. Each `::use` binds the params to its arguments, and the host checks the bound atom
 there, like any atom it wrote itself. With `item: string` and an `item` kind of `[locket, map]`,
 `::use{component="gift" who="isolde" item="locket"}` compiles to an `assert` of
-`gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. whole-project `lute check`'s
+`gifted(isolde, locket)`, and `item="lockt"` is `E-FACT-DOMAIN` at the `::use`. Whole-project `lute check`'s
 fact analyses see the bound atom too, so a later `holds('gifted', ['isolde', 'locket'])` is a guaranteed
 guard, and a query no `::use` can produce is dead (`E-ARM-DEAD`). A fact's arguments are ground, so
 the argument must be a constant: an entity or enum member id, `true` or `false`. A def argument,

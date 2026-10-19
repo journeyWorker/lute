@@ -206,7 +206,7 @@ An `::assert` is exempt: its fact holds for the rest of the run either way.
 
 `entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
 (`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
-never writes it. whole-project `lute check` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
+never writes it. Whole-project `lute check` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
 
 The flag is **run-tier**: a new run resets it, and the next first read applies the effects again.
 So `when="!entry.<id>.read"` makes an entry play once per run, not once ever.

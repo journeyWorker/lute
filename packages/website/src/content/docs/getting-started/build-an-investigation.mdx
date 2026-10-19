@@ -336,7 +336,7 @@ ok: ./scenes/interview.lute (0 warning(s))
 ok: . (4 file(s), 0 project-wide warning(s))
 ```
 
-That silence is a proof, not an absence of one. whole-project `lute check` decides every
+That silence is a proof, not an absence of one. Whole-project `lute check` decides every
 relational fact query (`holds(…)`, `count(…)`) in every guard: **impossible**
 (no seed, assert, rule, or engine relation can produce the fact), **guaranteed**
 (it holds on every declared route to the guard), or **possible** — the normal
@@ -389,7 +389,7 @@ for the full model.
 no CEL, no Datalog. Ask about the last scene by its `id:`:
 
 ```sh
-lute scenario reach --project . --node detective.s01ep03
+lute scenario --project . reach --node detective.s01ep03
 ```
 
 ```

@@ -7,7 +7,7 @@ description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사
 
 ## 1. 프로젝트 컴파일
 
-완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 `--project`(프로젝트 전체 컴파일)가 필요합니다.
+완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 프로젝트 전체(문서 피연산자 없이)를 디렉터리로 컴파일해야 합니다.
 
 ```console
 lute compile --project examples/player-demo -o dist/bundle

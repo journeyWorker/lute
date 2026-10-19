@@ -65,7 +65,7 @@ identity:
   voiceKey: "{speaker}-{code}"
 ```
 
-이렇게 고정하면 하나의 키 아래 서로 다른 내용을 말하는 두 줄은 여전히 빌드가 거부됩니다. 프로젝트 전체 `lute check`와 `compile --project`는 키에 해당하는 모든 줄을 이름 붙여 `E-DUP-VOICEKEY`를 보고합니다. 이미 `voiceKey: "{prefix}.{speaker}-{code}"`를 선언한 프로젝트는 변경 없이 컴파일되며 고정을 제거할 수 있습니다.
+이렇게 고정하면 하나의 키 아래 서로 다른 내용을 말하는 두 줄은 여전히 빌드가 거부됩니다. 프로젝트 전체 `lute check`와 프로젝트 전체 `lute compile`(문서 피연산자 없음, `-o <DIR>`)은 키에 해당하는 모든 줄을 이름 붙여 `E-DUP-VOICEKEY`를 보고합니다. 이미 `voiceKey: "{prefix}.{speaker}-{code}"`를 선언한 프로젝트는 변경 없이 컴파일되며 고정을 제거할 수 있습니다.
 
 [컴포넌트](/ko/language/components-and-extends/#줄-식별)에서 확장된 줄은 자체 범위를 얻습니다(0.22.0). `::use` 확장 내부에서 `{prefix}`는 `{prefix}.{component}#{n}`이며, `n`은 호스트가 해당 컴포넌트를 사용한 횟수입니다. 따라서 `harbor.dinner`의 두 번째 `::use{component="toast"}`는 그 안의 `@mira{code="0010"}` 줄을 `harbor.dinner.toast#2.mira_0010`으로 컴파일하고, 기본 `voiceKey`는 `harbor.dinner.toast#2.mira-0010`이 됩니다. `{prefix}`가 없는 고정 템플릿은 `voiceKey`에서 이 범위를 제거하므로 컴포넌트 줄이 호스트 자체의 `@mira{code="0010"}`와 `mira-0010`을 공유합니다.
 

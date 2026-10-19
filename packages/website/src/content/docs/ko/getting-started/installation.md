@@ -98,4 +98,4 @@ $ lute version --json
 프로젝트 전체에서 시작할 수도 있습니다: `lute init <dir>`는 최소 프로젝트를 만들고,
 `lute init --template beats <dir>`는 [비트와 계기](/ko/tooling/play/)로 움직이는 게임을 만듭니다 —
 계기 플러그인, 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오 테스트까지, 만든 그대로
-전체 프로젝트 `lute check`, `lute test`, `lute play`가 통과합니다.
+프로젝트 전체 `lute check`, `lute test`, `lute play`가 통과합니다.

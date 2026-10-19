@@ -90,7 +90,7 @@ Apart from a second clock, which only the project can see, each is reported on t
 `lute check world.schema.yaml` finds them on its own (the `raise` occasions against the plugins of
 the project the schema sits in; outside a project, any occasion name passes). A document that uses
 the schema carries the same error at its line 1 in a single-file `lute check`, naming the schema, with
-the schema line under it. whole-project `lute check` instead reports it once, as a project-wide line at the
+the schema line under it. Whole-project `lute check` instead reports it once, as a project-wide line at the
 schema line ending `(imported by N documents)`, and leaves the importers `ok`. A clock over a `run.day`
 without `owner: engine`:
 
@@ -529,8 +529,8 @@ follows the clock's raise map: a cell where no advance would raise the occasion 
 — `dayStart` anywhere but a day's first slot, and never on the day the run starts; `dayEnd`
 anywhere but a day's last slot; the `slot` occasion at the position the run starts at. With
 `raiseAtStart: true`, the `slot` occasion and `dayStart` are raised at that position. A beat
-only such cells would take is listed as never eligible. `--occasion dayEnd@clock.day` evaluates
-`dayEnd` once per day, at the day's last slot where the clock raises it (`@run.day`, the clock's
+only such cells would take is listed as never eligible. `--occasion-axes dayEnd=clock.day` evaluates
+`dayEnd` once per day, at the day's last slot where the clock raises it (`dayEnd=run.day`, the clock's
 own path, works too), and leaves the other rows blank; `,clock.slot=afternoon` reads it where an
 `advance: day` taken in the afternoon would close the day.
 

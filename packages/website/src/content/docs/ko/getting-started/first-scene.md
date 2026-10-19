@@ -487,7 +487,7 @@ profiles:
 
 (키 템플릿은 `lute.project.yaml`의 `identity: { voiceKey: "…" }`로 바꿀 수 있습니다. 접두사 없는
 `{speaker}-{code}`를 고정하면 두 대사가 모두 `mira-0010`이 되어 녹음 하나를 나눠 쓰게 됩니다 —
-전체 프로젝트 `lute check`는 같은 키 아래 수식자를 걷어낸 텍스트가 서로 다른 줄을 `E-DUP-VOICEKEY`로
+프로젝트 전체 `lute check`는 같은 키 아래 수식자를 걷어낸 텍스트가 서로 다른 줄을 `E-DUP-VOICEKEY`로
 거부합니다.)
 
 ```lute check-in-project="docs/examples/episodes/booth.lute"
@@ -543,7 +543,7 @@ project root: episodes
 상태는 무엇인가?* — 에 답합니다:
 
 ```
-$ lute scenario envelope --node mira.s01ep02 --project episodes
+$ lute scenario --project episodes envelope --node mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
@@ -552,7 +552,7 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `lute check`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
     (none)
 ```
 
@@ -789,5 +789,5 @@ $ lute init --template beats my-game
 ```
 
 계기(occasion) 플러그인, 그 순간에 응답하는 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오
-테스트를 만들어 주며 — 만든 그대로 전체 프로젝트 `lute check`, `lute test`, `lute play`가 모두
+테스트를 만들어 주며 — 만든 그대로 프로젝트 전체 `lute check`, `lute test`, `lute play`가 모두
 통과합니다. [비트](/ko/language/beats/)와 [스토리 플레이](/ko/tooling/play/)에서 모델을 설명합니다.

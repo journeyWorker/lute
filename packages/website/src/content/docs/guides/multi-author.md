@@ -216,7 +216,7 @@ cast:
 ```
 
 With four areas naming people, two of them sooner or later pick the same display name for
-different people. whole-project `lute check` warns **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0 §2.8, advisory; also
+different people. Whole-project `lute check` warns **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0 §2.8, advisory; also
 `lute lint`) when two cast entries have the same `name:`, a cast name equals a `::use{… name="…"}`
 display string, or two such strings name different speakers. A name that is meant to be shared,
 a role like "Tower Guard" or "Eclipse Grunt", is marked `sharedName: true` on the cast entry and
@@ -418,10 +418,10 @@ eligible. See [Playing a story](/tooling/play/).
 Before an area hands a branch to the lead, it runs, from the project root:
 
 ```sh
-lute check --project . --deny-warnings   # 0 errors, 0 warnings
-lute test --project .                  # every test and every play with expect:, spine included
-lute beats --project .                           # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
-lute refs --project . --attr give.item --reward ITEM   # who gives what
+lute check --project . --deny-warnings                # 0 errors, 0 warnings
+lute test --project .                                 # every test and every play with expect:, spine included
+lute beats --project .                                # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
+lute refs --project . --attr give.item --reward ITEM  # who gives what
 ```
 
 - **`lute check --project . --deny-warnings`** turns every warning into an error. With many writers a

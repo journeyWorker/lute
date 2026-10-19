@@ -382,7 +382,7 @@ choice where the player agrees:
 Accepting while the quest is already active, complete, or failed does nothing. An `::accept` may
 carry a guard, `::accept{quest="calmTheShed" when="run.shedPressure > 2"}` (dsl 0.26.0 §4, see
 [Guarding a directive](/language/directives/#guarding-a-directive-when)), and is then skipped when
-the guard is false. whole-project `lute check`
+the guard is false. Whole-project `lute check`
 warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
 the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
 (`mocks/*.yaml`, `*.test.yaml`) no longer counts. A mock proves a test, not the game, so a quest
@@ -783,7 +783,7 @@ next:
 apply it too, so a test of this document with `accepts: [salvage]` ends with `tides` active, as the
 play does. Before 0.26.0 trace and test did not apply it, and disagreed with play.
 
-A `questFailed` handler on a quest that can never fail is dead code. whole-project `lute check` warns
+A `questFailed` handler on a quest that can never fail is dead code. Whole-project `lute check` warns
 `W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required objective
 with a `by=` or `until=` [deadline](#deadlines), no required subquest objective whose child can
 itself fail (a failing required child fails its parent), and no parent quest (a parent's end

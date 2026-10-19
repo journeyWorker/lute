@@ -956,7 +956,7 @@ has no producer at all: no seed, no `::assert` anywhere, no rule, and not `reser
 the warning says why. A relation that has producers but can never match stays an error. So does
 what follows downstream: a quest that is dead only because its content is unwritten still counts
 for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
-[whole-project `lute check`](/tooling/cli/#check).
+[whole-project `lute check`](/tooling/cli/#whole-project-mode).
 
 ## Tooling
 
@@ -991,7 +991,7 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
 - `lute trace <lore.lute> --beat <id>` previews one bundle beat, and `lute run <artifact> --beat
   <id>` runs one from a compiled lore artifact. An id that names no bundle beat is `E-TRACE-BEAT`
   in `trace` and a usage error in `run`. See [Tracing](/tooling/tracing/#bundle-beats).
-- `lute compile --project` writes `beats` into `project.index.json`: one row per scene, entry, or
+- Whole-project `lute compile` (no document operand, `-o <DIR>`) writes `beats` into `project.index.json`: one row per scene, entry, or
   bundle beat (kind `bundle`), carrying the expanded `when` and the `title` (dsl 0.23.0). Each
   compiled scene beat carries `meta.beat`, each entry beat carries `on` / `priority` / `once` on
   its `entry` record, and each bundle beat is a `beat` record in its lore artifact, followed by its

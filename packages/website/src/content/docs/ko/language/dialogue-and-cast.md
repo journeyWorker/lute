@@ -280,7 +280,7 @@ atom을 무효화합니다. 그것도 atom을 잘못된 방향으로 이동할 �
 화면 밖에서 들린다는 뜻이므로 presence가 있어야 합니다. 라디오나 전화 너머의 원격 화자처럼 별도의 원격 화자
 플래그는 아직 없습니다.
 
-팩트는 `lute check`와 프로젝트 전체 `lute check`가 다른 유일한 곳입니다. 프로젝트 전체 `lute check`는 줄까지 이어지는 모든 경로에서
+팩트는 `lute check <FILE>`와 프로젝트 전체 `lute check`가 다른 유일한 곳입니다. 프로젝트 전체 `lute check`는 줄까지 이어지는 모든 경로에서
 참인 팩트도 셉니다. 모든 경로에서 앞서 assert되었거나, seed된 뒤 retract되지 않은 팩트입니다. 따라서 위 예시의
 마지막 줄 `::assert{ inParty(isolde) }` 뒤의 `@isolde: Back again.`은 그곳에서는 깨끗합니다. 단일 파일
 `lute check`는 그런 팩트를 볼 수 없으므로 그 줄에도 경고하고, 프로젝트 전체 `lute check`라면 볼 수 있다는 참고 사항을 추가합니다.

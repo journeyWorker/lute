@@ -601,7 +601,7 @@ key `closingBell.prompt`, lineId `market.closingBell.prompt`이며 세 선택지
 }
 ```
 
-**컴파일.** `compile --project --locale-bundle`는 번들을 모든 artifact에 병합합니다. 줄과
+**컴파일.** `compile --project <P> --locale-bundle <L> -o <OUT>`는 번들을 모든 artifact에 병합합니다. 줄과
 선택지 라벨에는 `texts` 맵이 생기고, `closingBell` branch에는 원본 `prompt`와
 `promptLineId` 옆에 `promptTexts`가 생깁니다. 원본 텍스트는 바뀌지 않습니다.
 번들이 선언한 locale의 번역이 없는 레코드는 lineId와 locale마다 하나씩
@@ -621,7 +621,7 @@ something to mend or trade.") 다시 컴파일합니다. 한국어 텍스트는 
 
 다시 내보내고 그 행의 `text`를 고친 뒤(새 행에는 새 `sourceHash`가 있습니다)
 다시 가져옵니다. `--deny W-L10N-STALE`이나 `--deny-warnings`를 쓰면 번역이 낡은
-동안 컴파일이 거절됩니다. locale 번들은 whole-project `lute check`와 `lute test`를
+동안 컴파일이 거절됩니다. locale 번들은 프로젝트 전체 `lute check`와 `lute test`를
 바꾸지 않습니다. 플레이는 원본 텍스트로 실행됩니다.
 
 **플레이어에서.** `--locale-bundle`로 컴파일한 `bundle/`을 5단계의 `bundleUrl`로

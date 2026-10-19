@@ -157,7 +157,7 @@ plugin's cast), and the language server offers the cast when it completes a spea
 
 Two speakers shown under the same name look like one person in the dialogue box. When several
 authors add characters to one project, that happens by accident: two areas each write a
-`Hiker Gus`. whole-project `lute check` reports it as the advisory **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0
+`Hiker Gus`. Whole-project `lute check` reports it as the advisory **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0
 §2.8), and `lute lint` reports it too. It compares two cast entries with exactly the same `name:`,
 a cast name equal to a component's `::use{… name="…"}` display string, and two such strings for
 different speakers (`who=`):
@@ -261,7 +261,7 @@ A write cancels a guard only when it can falsify it on that path. An `::assert` 
 
 A `{vo}` line is exempt, since a voice-over is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
 
-Facts are the one place where `lute check` and whole-project `lute check` differ. whole-project `lute check` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check` cannot see those facts, so it warns on that line too and adds a note saying that whole-project `lute check` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
+Facts are the one place where `lute check <FILE>` and whole-project `lute check` differ. Whole-project `lute check` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check <FILE>` cannot see those facts, so it warns on that line too and adds a note saying that whole-project `lute check` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
 
 Presence often has a second half that only the engine writes, such as "and she has not fallen":
 `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"`, where `fell` is a `reserved: true`

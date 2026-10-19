@@ -3,7 +3,7 @@ title: 플레이어 바인딩 레퍼런스
 description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로그, 매개변수와 프로젝트 전체 check 진단입니다.
 ---
 
-`player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. 프로젝트 전체 `lute check --project`가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
+`player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. 프로젝트 전체 `lute check`(`lute check --project <dir>`, 문서 피연산자 없음)가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
 bindingsVersion: "0.47"
@@ -65,7 +65,7 @@ flow:
 
 `bindingsVersion`은 `luteVersion` 규칙을 따릅니다. 값은 `"MAJOR.MINOR"`이며, **툴체인 라인**은 툴체인 버전의 `MAJOR.MINOR`입니다(Lute 0.47.x에서는 `"0.47"`).
 
-- 값이 툴체인 라인과 다르면 `lute check --project`가 그 값 위치에 `W-BINDINGS-VERSION-STALE`을 보고합니다. 더 오래된 라인이면 툴체인 라인으로 올리라고 안내하며 `lute fix`가 이를 수행합니다. 더 새로운 라인이면 스탬프를 낮추지 말고 툴체인을 업그레이드하라고 안내합니다. `MAJOR.MINOR` 형식이 아닌 값(예: `"0.47.0"`)은 다시 스탬프하라고 안내합니다.
+- 값이 툴체인 라인과 다르면 프로젝트 전체 `lute check`가 그 값 위치에 `W-BINDINGS-VERSION-STALE`을 보고합니다. 더 오래된 라인이면 툴체인 라인으로 올리라고 안내하며 `lute fix`가 이를 수행합니다. 더 새로운 라인이면 스탬프를 낮추지 말고 툴체인을 업그레이드하라고 안내합니다. `MAJOR.MINOR` 형식이 아닌 값(예: `"0.47.0"`)은 다시 스탬프하라고 안내합니다.
 - 선언한 라인보다 새로운 섹션은 그 섹션 키 위치의 `E-BINDINGS-VERSION`이며, 필요한 라인을 알려 줍니다. 예: `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. 값이 `MAJOR.MINOR` 형식이 아니면 섹션을 검사하지 않습니다.
 - `lute fix`는 `player.bindings.yaml`의 오래된 `MAJOR.MINOR` 값을 툴체인 라인으로 올리고 파일의 나머지(따옴표와 주석 포함)는 바이트 그대로 둡니다. 더 새롭거나 형식이 잘못된 값(`"0.046"`처럼 앞에 0이 붙은 값 포함)과 하나의 flow 매핑(`{ bindingsVersion: …, … }`)으로 쓴 파일은 그대로 두며, 경고는 `lute fix`가 값을 올릴 수 있을 때만 `lute fix`를 언급합니다.
 
@@ -102,7 +102,7 @@ flow:
 
 domain 키 바인딩은 병합된 프로젝트 domain의 구성원이어야 합니다. `characters` 키는 선언된 cast id여야 합니다. flow 계기도 선언되어야 합니다. 위반은 가까운 이름 제안이 있다면 함께 `E-BINDING-KEY`로 보고합니다.
 
-flow target(`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`)은 `raiseOccasion`이 받는 계기 target 전체이며, 계기 target domain의 접두사 형태 `<prefix>.<member>`로 씁니다. 접두사 없는 `square`가 아니라 `place.square`처럼 씁니다(lute 0.47.1). `lute check --project`는 beat target과 `lute play` 단계 target과 같은 규칙으로 이를 검사합니다. `open:` 엔티티 종류는 어떤 `<prefix>.<id>`든 받고, 닫힌 종류나 `members:` 부분집합은 접두사 아래의 그 구성원만 받습니다. 그 밖의 값은 `E-BINDING-KEY`이며, 메시지는 ``flow target `…`:``로 시작하고 가까운 이름이 있으면 ``did you mean `place.square`?``를 제안합니다. target 없이 선언한 계기(`target:`이 없거나 `target: false`)에 target을 쓰거나, 프로젝트가 선언하지 않은 엔티티 종류의 계기에 target을 써도 `E-BINDING-KEY`입니다.
+flow target(`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`)은 `raiseOccasion`이 받는 계기 target 전체이며, 계기 target domain의 접두사 형태 `<prefix>.<member>`로 씁니다. 접두사 없는 `square`가 아니라 `place.square`처럼 씁니다(lute 0.47.1). 프로젝트 전체 `lute check`는 beat target과 `lute play` 단계 target과 같은 규칙으로 이를 검사합니다. `open:` 엔티티 종류는 어떤 `<prefix>.<id>`든 받고, 닫힌 종류나 `members:` 부분집합은 접두사 아래의 그 구성원만 받습니다. 그 밖의 값은 `E-BINDING-KEY`이며, 메시지는 ``flow target `…`:``로 시작하고 가까운 이름이 있으면 ``did you mean `place.square`?``를 제안합니다. target 없이 선언한 계기(`target:`이 없거나 `target: false`)에 target을 쓰거나, 프로젝트가 선언하지 않은 엔티티 종류의 계기에 target을 써도 `E-BINDING-KEY`입니다.
 
 선언된 domain 구성원, stage 위 cast 구성원 또는 컴파일된 사용처에 바인딩이 없으면 `W-BINDING-MISSING`입니다. asset/background/mood/sfx/vfx 사용 섹션의 바인딩을 컴파일 문서가 사용하지 않으면 `W-BINDING-UNUSED`입니다. 진단은 `player.bindings.yaml`에 연결되어 `lute check --project <dir> --json`에 표시됩니다.
 

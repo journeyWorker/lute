@@ -413,7 +413,7 @@ clock            slotStart (sequence)
 6 Sat night      -
 ```
 
-하루에 한 번 발생하는 계기는 모든 슬롯 행에서가 아니라 하루에 한 번 읽어야 합니다. calendar는 시계의 raise 맵을 따릅니다. 어떤 이동도 계기를 발생시키지 않는 셀은 `not raised`로 읽힙니다. 즉 하루의 첫 슬롯이 아닌 곳의 `dayStart`, 하루의 마지막 슬롯이 아닌 곳의 `dayEnd`, 런이 시작하는 위치의 `slot` 계기가 그렇습니다. `raiseAtStart: true`이면 그 위치에서 `slot` 계기와 `dayStart`가 발생합니다. 그런 셀에서만 취할 수 있는 비트는 결코 자격이 없는 것으로 나열됩니다. `--occasion dayEnd@clock.day`는 하루마다 한 번씩, 시계가 이를 발생시키는 그날의 마지막 슬롯에서 `dayEnd`를 평가합니다(`@run.day`처럼 시계 자신의 경로도 사용할 수 있음). 다른 행은 비워 둡니다. `,clock.slot=afternoon`은 오후에 `advance: day`를 수행했을 때 하루를 닫는 위치에서 읽습니다.
+하루에 한 번 발생하는 계기는 모든 슬롯 행에서가 아니라 하루에 한 번 읽어야 합니다. calendar는 시계의 raise 맵을 따릅니다. 어떤 이동도 계기를 발생시키지 않는 셀은 `not raised`로 읽힙니다. 즉 하루의 첫 슬롯이 아닌 곳의 `dayStart`, 하루의 마지막 슬롯이 아닌 곳의 `dayEnd`, 런이 시작하는 위치의 `slot` 계기가 그렇습니다. `raiseAtStart: true`이면 그 위치에서 `slot` 계기와 `dayStart`가 발생합니다. 그런 셀에서만 취할 수 있는 비트는 결코 자격이 없는 것으로 나열됩니다. `--occasion-axes dayEnd=clock.day`는 하루마다 한 번씩, 시계가 이를 발생시키는 그날의 마지막 슬롯에서 `dayEnd`를 평가합니다(`dayEnd=run.day`처럼 시계 자신의 경로도 사용할 수 있음). 다른 행은 비워 둡니다. `,clock.slot=afternoon`은 오후에 `advance: day`를 수행했을 때 하루를 닫는 위치에서 읽습니다.
 
 나머지 calendar는 [개요](/ko/tooling/overviews/)를 참고하세요.
 ## 끝나는 시계

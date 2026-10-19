@@ -1,6 +1,6 @@
 ---
 title: 조사 프로젝트 만들기
-description: 자신만의 폴더에서 작은 추리극을 파일별로 만들어 보는 첫 프로젝트 튜토리얼입니다. 프로젝트 매니페스트, 스키마, 팩트와 Datalog, 심문 허브가 있는 세 장면, 퀘스트, after 순서 지정, whole-project `lute check`와 관계형 가드 분석, 시나리오 도달 가능성, 두 개의 trace mock, 시나리오 테스트, 컴파일까지 다룹니다.
+description: 자신만의 폴더에서 작은 추리극을 파일별로 만들어 보는 첫 프로젝트 튜토리얼입니다. 프로젝트 매니페스트, 스키마, 팩트와 Datalog, 심문 허브가 있는 세 장면, 퀘스트, after 순서 지정, 프로젝트 전체 `lute check`와 관계형 가드 분석, 시나리오 도달 가능성, 두 개의 trace mock, 시나리오 테스트, 컴파일까지 다룹니다.
 ---
 
 [첫 장면 작성하기](/ko/getting-started/first-scene/)에서는 파일 하나를 만들었습니다. 이
@@ -42,7 +42,7 @@ profiles:
     plugins: {}
 ```
 
-이 매니페스트가 폴더의 `.lute` 파일들을 whole-project `lute check`가 하나의 단위로 해석할 수 있는
+이 매니페스트가 폴더의 `.lute` 파일들을 프로젝트 전체 `lute check`가 하나의 단위로 해석할 수 있는
 프로젝트로 바꿉니다.
 
 ## 2. 공유 스키마
@@ -144,7 +144,7 @@ pov: detective
 마지막 줄인 *"Both threads pull toward one name"*에는 의도적으로 가드가 **없습니다**.
 `when="holds('points', ['blake'])"`를 붙이는 것은 중복입니다. 이 장면을 통과하는 유일한 경로에서
 두 단서가 모두 assert되고 `implicates(ledger, blake)`가 시드이므로, 규칙이 모든 플레이스루에서
-해당 줄 전에 `points(blake)`를 도출합니다. whole-project `lute check`는 바로 이런 주장을 증명합니다(8단계).
+해당 줄 전에 `points(blake)`를 도출합니다. 프로젝트 전체 `lute check`는 바로 이런 주장을 증명합니다(8단계).
 
 ## 5. 심문 허브
 
@@ -236,7 +236,7 @@ title: Identify the Killer
 
 `start="true"`는 퀘스트를 시작부터 활성화하고, `tier="run"`은 한 번의 플레이에
 속하는 퀘스트로 만들어 새 런마다 초기화합니다. (`tier=`가 없으면 퀘스트는 사용자 등급이
-되어 런을 넘어 유지되며, 그런 퀘스트가 런 상태만 읽을 때 whole-project `lute check`가
+되어 런을 넘어 유지되며, 그런 퀘스트가 런 상태만 읽을 때 프로젝트 전체 `lute check`가
 `W-QUEST-TIER-IMPLICIT`를 경고합니다.) 완료는 파생됩니다. 즉 `optional`이 아닌 모든
 목표가 `done`이 되면 퀘스트가 완료됩니다.
 `gatherEvidence`와 `nameSuspect`는 씬이 쓰는 스칼라 런 상태를 기준으로 하므로 정적으로
@@ -326,7 +326,7 @@ ok: ./scenes/interview.lute (0 warning(s))
 ok: . (4 file(s), 0 project-wide warning(s))
 ```
 
-이 침묵은 증명이 없는 것이 아니라 증명 그 자체입니다. whole-project `lute check`는 모든 가드에서
+이 침묵은 증명이 없는 것이 아니라 증명 그 자체입니다. 프로젝트 전체 `lute check`는 모든 가드에서
 모든 관계형 팩트 질의(`holds(…)`, `count(…)`)를 판정합니다. **불가능**(시드, assert,
 rule 또는 엔진 관계가 팩트를 만들 수 없음), **보장**(선언된 가드까지의 모든 경로에서
 성립함), 또는 **가능** — 가드에서는 정상적인 경우이며 조용히 넘어감 — 중 하나입니다.
@@ -366,7 +366,7 @@ assert를 표시합니다. 두 번째 가드는 절대로 열릴 수 없으므�
 됩니다. (`done`은 가드가 아니라 술어이므로, 항상 참인 항목은 중복으로 표시되지 않습니다.)
 
 분석에는 모든 문서가 한꺼번에 필요합니다 — 자매 씬의 assert는 한 파일에서는 보이지
-않습니다 — 따라서 분석은 whole-project `lute check`에서만 실행되고, 단일 파일 `lute check`에서는
+않습니다 — 따라서 분석은 프로젝트 전체 `lute check`에서만 실행되고, 단일 파일 `lute check`에서는
 관계형 질의가 미결정 상태로 남습니다. 전체 모델은
 [팩트와 Datalog](/ko/state/facts-and-datalog/#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법)을
 참고하세요.
@@ -376,7 +376,7 @@ assert를 표시합니다. 두 번째 가드는 절대로 열릴 수 없으므�
 CEL도, Datalog도 사용하지 않습니다. 마지막 씬은 `id:`로 질문합니다:
 
 ```sh
-lute scenario reach --project . --node detective.s01ep03
+lute scenario --project . reach --node detective.s01ep03
 ```
 
 ```

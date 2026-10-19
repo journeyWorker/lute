@@ -905,7 +905,7 @@ defs:
 **경고**로 보고합니다. 즉 seed도, 어디에도 있는 `::assert`도, 규칙도, `reserved:`도 없는 경우입니다.
 경고의 메모에는 이유가 적힙니다. 생산자는 있지만 일치할 수 없는 관계는 계속 오류입니다. 그 뒤에
 따라오는 것도 마찬가지입니다. 콘텐츠가 아직 작성되지 않았기 때문에만 성립하지 않는 퀘스트도 연결성에는
-포함되므로, 그 퀘스트가 일으키는 `E-CONN-UNREACHABLE`은 오류로 남습니다. [프로젝트 전체 `lute check`](/ko/tooling/cli/#check)를 참조하십시오.
+포함되므로, 그 퀘스트가 일으키는 `E-CONN-UNREACHABLE`은 오류로 남습니다. [프로젝트 전체 `lute check`](/ko/tooling/cli/#프로젝트-전체-모드)를 참조하십시오.
 
 ## 도구
 
@@ -922,7 +922,7 @@ defs:
 
   `lute calendar --project <dir> --axis …`는 모든 날짜와 시간 슬롯처럼 상태 값의 격자에서 실행 가능성을 평가하고, 각 셀에 제시되는 내용을 보여 줍니다. 즉 승자 또는 sequence의 전체 목록입니다. `lute scenario --project <dir> knowledge`는 각 사실로 제한된 비트가 쿼리하는 사실과 그 사실을 생산하는 대상을 추적합니다. [개요](/ko/tooling/overviews/)를 참조하십시오.
 - `lute trace <lore.lute> --beat <id>`는 하나의 bundle 비트를 미리 보고, `lute run <artifact> --beat <id>`는 컴파일된 lore artifact에서 하나를 실행합니다. bundle 비트를 지정하지 않는 id는 `trace`에서 `E-TRACE-BEAT`가 되고 `run`에서는 사용 오류입니다. [추적](/ko/tooling/tracing/#번들-비트)을 참조하십시오.
-- `lute compile --project`은 `project.index.json`에 `beats`를 씁니다. scene, 엔트리 또는 bundle 비트(kind `bundle`)마다 한 행이며, 확장된 `when`과 `title`을 포함합니다(dsl 0.23.0). 컴파일된 각 scene 비트에는 `meta.beat`가 포함되고, 각 엔트리 비트에는 `entry` 레코드에 `on` / `priority` / `once`가 포함되며, 각 bundle 비트는 lore artifact에서 본문에 앞서 `beat` 레코드로 기록됩니다.
+- 프로젝트 전체 `lute compile`(문서 피연산자 없음, `-o <DIR>`)은 `project.index.json`에 `beats`를 씁니다. scene, 엔트리 또는 bundle 비트(kind `bundle`)마다 한 행이며, 확장된 `when`과 `title`을 포함합니다(dsl 0.23.0). 컴파일된 각 scene 비트에는 `meta.beat`가 포함되고, 각 엔트리 비트에는 `entry` 레코드에 `on` / `priority` / `once`가 포함되며, 각 bundle 비트는 lore artifact에서 본문에 앞서 `beat` 레코드로 기록됩니다.
 - `lute new scene <name> --occasion <occasion> [--target <target>]`은 먼저 프로젝트에서 계기와 대상을 확인한 뒤 scene 비트를 작성합니다. 대상이 지정된 계기에는 `--target`이 필요합니다.
 - `lute context`는 프로젝트가 선언한 계기를 대상 도메인과 함께 다른 어휘 옆에 나열합니다.
 

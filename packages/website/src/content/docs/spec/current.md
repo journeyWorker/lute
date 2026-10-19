@@ -396,10 +396,12 @@ local telemetry is opt-out with `LUTE_TELEMETRY=0` or `DO_NOT_TRACK=1`. Artifact
 
 ## 0.48 CLI grammar addendum
 
-0.48.0 changes the command line only; the language and artifact shapes are unchanged.
+0.48.0 changes the command line (and one behaviour, below); the language and artifact shapes are unchanged.
 A project is always named with `--project <DIR>`, and a command given no `--project`
-finds the nearest `lute.project.yaml` above the current directory (or above the
-file operand for `check`, `compile`, `context` and `trace`). `check-project` is
+finds the nearest `lute.project.yaml` at or above the current directory (or at or above the
+file operand's directory for `check`, `compile`, `context` and `trace`). A discovered project
+is used exactly like an explicit `--project`, so `compile <FILE>` and `trace <FILE>` inside a
+project now gate on the project verdict. `check-project` is
 folded into `lute check`: `lute check --project <DIR>` is the whole-project check,
 while `lute check <FILE>…` checks documents only. `lute compile --project <DIR> -o <OUT>`
 replaces `compile --all`, and `lute compile --stream <FILE>` replaces
