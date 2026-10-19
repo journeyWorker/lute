@@ -89,3 +89,11 @@ export const flowTargetProject = join(repositoryRoot, "crates", "lute-cli", "tes
 
 /** `lute check-project <project>` passes (call after `compileBundle`, which builds the CLI). */
 export const checkProject = (project: string): Effect.Effect<void> => Effect.sync(() => lute(["check-project", project]))
+
+/**
+ * `chime-batch`: `gate` (occasion `visit`) shows a line, then `::camera` and
+ * `::sfx{sound="chime"}` as the last records before a `<branch>`'s choice;
+ * `porch` (occasion `begin`) shows a line, then a `::sfx` as the last record
+ * before the run goes idle (lute 0.47.2 §2).
+ */
+export const compileChimeBatch: Effect.Effect<string> = compileBundle(join(fixtures, "chime-batch", "project"))

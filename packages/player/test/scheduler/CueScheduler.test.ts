@@ -156,6 +156,42 @@ describe("CueScheduler", () => {
     yield* Fiber.join(fiber)
     expect(events).toEqual(["complete"])
   }))
+  it.effect("a delayed one-shot cue holds the batch until it starts, not until it finishes (0.47.2 §2)", () => Effect.gen(function* () {
+    const { scheduler, mode } = yield* install
+    const events: string[] = []
+    const shot = cue("sfx", events, { timing: { delay: 2, duration: undefined, wait: false, timeline: undefined, at: undefined }, execute: () => Effect.sync(() => events.push("sfx:execute")).pipe(Effect.andThen(Effect.sleep(100))) })
+    let settled = false
+    const fiber = yield* Effect.forkScoped(Effect.andThen(scheduler.play([cue("line", events, { line }), shot], ctx, mode, gate), Effect.sync(() => { settled = true })))
+    yield* TestClock.adjust(1)
+    expect(events).toEqual(["line:execute"])
+    expect(settled).toBe(false)
+    yield* TestClock.adjust(1)
+    yield* Fiber.join(fiber)
+    expect(events).toEqual(["line:execute", "sfx:execute"])
+  }))
+  it.effect("a one-shot cue still in its delay when skip begins is completed at once (0.47.2 §2)", () => Effect.gen(function* () {
+    const { scheduler, mode } = yield* install
+    const events: string[] = []
+    const delayed = cue("sfx", events, { timing: { delay: 5, duration: undefined, wait: false, timeline: undefined, at: undefined } })
+    const fiber = yield* Effect.forkScoped(scheduler.play([delayed, cue("line", events, { line })], ctx, mode, gate))
+    yield* TestClock.adjust(0)
+    expect(events).toEqual(["line:execute"])
+    yield* SubscriptionRef.set(mode, "skip")
+    yield* Fiber.join(fiber)
+    expect(events).toEqual(["line:execute", "sfx:complete"])
+  }))
+  it.effect("a timeline clip still waiting for its `at` when skip begins is completed at once (0.47.2 §2)", () => Effect.gen(function* () {
+    const { scheduler, mode } = yield* install
+    const events: string[] = []
+    const now = cue("sfx", events, { timing: { delay: 0, duration: undefined, wait: false, timeline: 1, at: 0 } })
+    const later = cue("vfx", events, { timing: { delay: 0, duration: undefined, wait: false, timeline: 1, at: 9 } })
+    const fiber = yield* Effect.forkScoped(scheduler.play([now, later], ctx, mode, gate))
+    yield* TestClock.adjust(0)
+    expect(events).toEqual(["sfx:execute"])
+    yield* SubscriptionRef.set(mode, "skip")
+    yield* Fiber.join(fiber)
+    expect(events).toEqual(["sfx:execute", "vfx:complete"])
+  }))
   it.effect("interrupts pending batch fibers", () => Effect.gen(function* () {
     const { scheduler, mode } = yield* install
     const events: string[] = []
