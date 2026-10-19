@@ -367,6 +367,13 @@ def split_args(args: list[str]) -> tuple[list[str], list[tuple[str, str | None]]
                 options.append((name, None))
         else:
             operands.append(token)
+    # 0.47.2 spells `scenario <DIR> <view> …`; 0.48 `scenario <view> --project <DIR> …`.
+    # Either way the sub-view is one of the first two operands.
+    if command == ["scenario"]:
+        for position, operand in enumerate(operands[:2]):
+            if operand in OLD_SUBCOMMANDS["scenario"]:
+                command.append(operands.pop(position))
+                break
     return command, options, operands
 
 
@@ -400,6 +407,10 @@ def translate_baseline_args(args: list[str]) -> list[str]:
         options = [o for o in options if o != ("--all", None)]
         if operands:
             leading += ["--project", operands.pop(0)]
+
+    # check <DIR> (a directory operand) is whole-project check --project <DIR>.
+    if path == ("check",) and len(operands) == 1 and (ROOT / operands[0]).is_dir():
+        leading += ["--project", operands.pop(0)]
 
     # Directory operand -> --project (or --providers for catalog refresh). A
     # `test` operand that coexists with --project now selects scripts, so it
@@ -475,7 +486,8 @@ def canonical_args(args: list[str]) -> tuple[object, ...]:
     if not args or args[0].startswith("-"):
         return (tuple(args),)
     command, options, operands = split_args(list(args))
-    return (tuple(command), tuple(sorted((n, v or "") for n, v in options)), tuple(operands))
+    options = tuple(sorted(("--output" if n == "-o" else n, v or "") for n, v in options))
+    return (tuple(command), options, tuple(operands))
 
 
 def renamed(baseline: object, current: object) -> bool:
@@ -538,8 +550,12 @@ SELF_TEST_TRANSLATIONS = (
     (["test", "docs/examples", "--project", "p"], ["test", "--project", "p", "docs/examples"]),
     (["scenario", "docs/examples"], ["scenario", "--project", "docs/examples"]),
     (["scenario", "--format", "json", "docs/examples"], ["scenario", "--project", "docs/examples", "--json"]),
-    (["scenario", "reach", "p", "n"], ["scenario", "reach", "--project", "p", "--node", "n"]),
-    (["scenario", "knowledge", "p", "--for", "n"], ["scenario", "knowledge", "--project", "p", "--node", "n"]),
+    (["scenario", "p", "reach", "n"], ["scenario", "--project", "p", "reach", "--node", "n"]),
+    (["scenario", "p", "reach", "--format", "json"], ["scenario", "--project", "p", "reach", "--json"]),
+    (["scenario", "p", "knowledge", "--for", "n"], ["scenario", "--project", "p", "knowledge", "--node", "n"]),
+    (["scenario", "p", "envelope", "n", "--format", "json"], ["scenario", "--project", "p", "envelope", "--node", "n", "--json"]),
+    (["check", "docs/examples"], ["check", "--project", "docs/examples"]),
+    (["compile", "--all", "p", "--out", "o"], ["compile", "--project", "p", "-o", "o"]),
     (["beats", "docs/examples"], ["beats", "--project", "docs/examples"]),
     (["impact", "p", "scene#1"], ["impact", "--project", "p", "--node", "scene#1"]),
     (["constraints", "p", "--run"], ["constraints", "--project", "p", "--all-scripts"]),

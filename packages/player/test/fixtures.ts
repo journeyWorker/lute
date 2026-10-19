@@ -36,7 +36,7 @@ const compiled = new Map<string, string>()
 
 /**
  * `project` compiled with `translations`: `lute loc import <translations>`
- * then `lute compile --all <project> --locales <bundle>`, with the binary
+ * then `lute compile --project <project> --locale-bundle <bundle> -o <dir>`, with the binary
  * `compileBundle` builds (once per project).
  */
 const compileTranslated = (project: string, translations: ReadonlyArray<string>): Effect.Effect<string> => Effect.gen(function* () {
@@ -48,7 +48,7 @@ const compileTranslated = (project: string, translations: ReadonlyArray<string>)
   const localeBundle = join(work, "locales.json")
   const output = join(work, "bundle")
   lute(["loc", "import", ...translations, "-o", localeBundle])
-  lute(["compile", "--all", project, "--locales", localeBundle, "-o", output])
+  lute(["compile", "--project", project, "--locale-bundle", localeBundle, "-o", output])
   compiled.set(project, output)
   return output
 })
@@ -80,15 +80,15 @@ export const compileTallyKorean: Effect.Effect<string> = compileTranslated(join(
 export const compileEscapeKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "escape-locale", "project"), [join(fixtures, "escape-locale", "ko.json")])
 
 /**
- * `flow-target-0471` (shared with the CLI's `check-project` test): `begin`
+ * `flow-target-0471` (shared with the CLI's whole-project `check` test): `begin`
  * starts the run and leaves it idle; `player.bindings.yaml`'s idle menu
  * raises `visit` for `place.square` or `place.pier`, each the target of one
  * beat (lute 0.47.1 §2).
  */
 export const flowTargetProject = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "flow-target-0471")
 
-/** `lute check-project <project>` passes (call after `compileBundle`, which builds the CLI). */
-export const checkProject = (project: string): Effect.Effect<void> => Effect.sync(() => lute(["check-project", project]))
+/** `lute check --project <project>` passes (call after `compileBundle`, which builds the CLI). */
+export const checkProject = (project: string): Effect.Effect<void> => Effect.sync(() => lute(["check", "--project", project]))
 
 /**
  * `chime-batch`: `gate` (occasion `visit`) shows a line, then `::camera` and

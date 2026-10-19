@@ -24,7 +24,7 @@ Each fixture directory contains:
 | `expected.json` | the exact `--json` machine transcript the runtime contract requires |
 | `entry.txt` | lore fixtures only (dsl 0.19.0): the one entry id the run presents, passed as `--entry <id>` — a lore artifact has no sequence to play, so `lute run` refuses it without one. The Rust harness (`crates/lute-cli/tests/conformance.rs`) does the same: when a fixture directory holds `entry.txt`, it appends `--entry` and the file's trimmed contents to the `lute run` arguments |
 | `beat.txt` | bundle-beat fixtures only (dsl 0.23.0 §4): the one beat id the run presents, passed as `--beat <id>`; the Rust harness appends it the same way |
-| `loc/<locale>.json`, `locales.json` | translated fixtures only: authored `lute loc export`-shaped translations, and the bundle `lute loc import` builds from them, merged by `lute compile --locales locales.json` |
+| `loc/<locale>.json`, `locales.json` | translated fixtures only: authored `lute loc export`-shaped translations, and the bundle `lute loc import` builds from them, merged by `lute compile --locale-bundle locales.json` |
 
 
 ## Session cases
@@ -149,7 +149,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `choice-timed-default` | a timed `<branch>` carries `timeout` and `default`; timeout input takes the named direct option |
 | `music-stops` | `musicPlayback.stops` marks only the listed playback member with `stop: true` in the music IR; the `volume` members `quiet` and `loud` of the 0.42 absolute scale ride in each music record's `attrs` |
 | `line-roles-voicekey` | every line `role` — `narration`, `dialogue`, `mono` (the POV speaker and a `monoSpeakers` speaker), `os`, `vo` — and a `voiceKey` on every line, narration and mono included |
-| `inline-modifiers` | dsl 0.37.0 §3.6 inline modifiers: `pause`, `speed`, nested `textStyle` spans, escaped punctuation, and `{{…}}` interpolation inside a span; `text` is the plain derivation and `segments` the coalesced runs (innermost rate wins). `loc/ja-JP.json` is imported to `locales.json` and merged with `lute compile --locales`, so each line carries `texts["ja-JP"]` and modified lines `localeSegments["ja-JP"]` |
+| `inline-modifiers` | dsl 0.37.0 §3.6 inline modifiers: `pause`, `speed`, nested `textStyle` spans, escaped punctuation, and `{{…}}` interpolation inside a span; `text` is the plain derivation and `segments` the coalesced runs (innermost rate wins). `loc/ja-JP.json` is imported to `locales.json` and merged with `lute compile --locale-bundle`, so each line carries `texts["ja-JP"]` and modified lines `localeSegments["ja-JP"]` |
 | `jump-label` | `::label{name}` emits no record; a guarded forward `::jump{to}` is taken from the seeded `run.hasKey`; a branch option carries `text`; `<match subject=…>` reads the seeded subject |
 | `reward-id` | `<reward id=…>` reaches the IR `rewards[].id` on quest and objective rewards beside an untagged reward; the grants fire in declaration order |
 | `invalid/owned-write` | a hand-built artifact whose `set` writes an engine-owned path; `lute run` refuses it with `E-RUN-OWNED-WRITE`, exit 1 |
@@ -182,9 +182,9 @@ the lifecycle and plugin sources.
 `diagnostics/<name>/` pins the checker diagnostics of a deliberately invalid
 source (dsl 0.37.0 §8): `expected.json` is the CLI's `--json` diagnostics
 output, run from the fixture directory, with the directory's absolute prefix
-removed. A fixture with a `lute.project.yaml` runs `lute check-project .
---json`; one with `loc/` translations runs `lute compile source.lute --locales
-locales.json --json`; any other runs `lute check source.lute --json`. Each exits
+removed. A fixture with a `lute.project.yaml` runs `lute check --project .
+--json`; one with `loc/` translations runs `lute compile source.lute
+--locale-bundle locales.json --json`; any other runs `lute check source.lute --json`. Each exits
 1. `crates/lute-cli/tests/conformance.rs` replays them byte for byte. These
 sources are not formatter input (several do not parse).
 
@@ -243,7 +243,7 @@ cargo run -q -p lute-cli -- run "$d/artifact.json" --mock "$d/mock.yaml" --json 
 (a lore fixture adds `--entry "$(cat "$d/entry.txt")"` and a bundle-beat
 fixture `--beat "$(cat "$d/beat.txt")"` to the `run` line; a fixture with
 `loc/*.json` translations first runs `lute loc import "$d"/loc/*.json -o
-"$d/locales.json"` and adds `--locales "$d/locales.json"` to the `compile`
+"$d/locales.json"` and adds `--locale-bundle "$d/locales.json"` to the `compile`
 line). `invalid/stale-minor` and `invalid/owned-write` are hand-built
 artifacts the compiler cannot produce and are not regenerated.
 

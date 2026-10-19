@@ -1,6 +1,6 @@
 /**
  * `@lute-lang/runtime/bun` — layers for the Bun runtime (spec 0.40.0 §6.1):
- * the packaged binding read from disk, bundles from a `lute compile --all`
+ * the packaged binding read from disk, bundles from a `lute compile --project <DIR> -o <DIR>`
  * directory, and a session composed from them.
  */
 import * as BunServices from "@effect/platform-bun/BunServices"
@@ -29,7 +29,7 @@ export const wasm: Layer.Layer<LuteWasm.LuteWasm, WasmLoadError> = Layer.effect(
 /** `LuteRuntime` over the packaged binding. */
 export const runtime: Layer.Layer<LuteRuntime.LuteRuntime, WasmLoadError> = LuteRuntime.layer.pipe(Layer.provide(wasm))
 
-/** The bundle in a `lute compile --all` output directory. */
+/** The bundle in a `lute compile --project <DIR> -o <DIR>` output directory. */
 export const bundle = (directory: string): Layer.Layer<BundleSource.BundleSource> =>
   BundleSource.directory(directory).pipe(Layer.provide(BunServices.layer))
 

@@ -1,6 +1,6 @@
 /**
- * Where a session's bundle comes from (spec 0.40.0 §5.1): a `lute compile
- * --all` output directory, the same layout served over HTTP, or a value the
+ * Where a session's bundle comes from (spec 0.40.0 §5.1): a `lute compile --project
+ * <DIR> -o <DIR>` output directory, the same layout served over HTTP, or a value the
  * host already holds.
  */
 import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
@@ -42,7 +42,7 @@ const assemble = <E>(read: (path: string) => Effect.Effect<string, E>): Effect.E
 export const value = (bundle: Bundle): Layer.Layer<BundleSource> =>
   Layer.succeed(BundleSource, { load: Effect.succeed(bundle) })
 
-/** A `lute compile --all` output directory. */
+/** A `lute compile --project <DIR> -o <DIR>` output directory. */
 export const directory = (root: string): Layer.Layer<BundleSource, never, FileSystem.FileSystem | Path.Path> =>
   Layer.effect(
     BundleSource,
@@ -61,7 +61,7 @@ export const directory = (root: string): Layer.Layer<BundleSource, never, FileSy
     })
   )
 
-/** A `lute compile --all` output served under `base` (a URL ending in `/`). */
+/** A `lute compile --project <DIR> -o <DIR>` output served under `base` (a URL ending in `/`). */
 export const url = (base: string): Layer.Layer<BundleSource, never, HttpClient.HttpClient> =>
   Layer.effect(
     BundleSource,
