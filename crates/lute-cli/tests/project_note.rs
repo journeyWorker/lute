@@ -1,7 +1,7 @@
 //! Every command that falls back to the nearest `lute.project.yaml` says so
 //! on stderr, and names the project relative to the working directory (`.`
 //! when it is the working directory) — the same text `lute test` and `lute
-//! check` print. 0.36.2 shipped `trace`, `context` and `compile --stream` with
+//! check` print. 0.36.2 shipped `trace`, `context` and `compile-stream` with
 //! the canonical absolute path instead, because their imports resolved to a
 //! second, absolute-path `discover_project` in `lute-load`.
 

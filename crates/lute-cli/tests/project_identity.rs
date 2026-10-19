@@ -1,5 +1,5 @@
-//! Project-level identity and snapshot gates that `check`/whole-project `check`
-//! used to pass while whole-project `compile` or the engine got it wrong:
+//! Project-level identity and snapshot gates that `check`/`check-project`
+//! used to pass while `compile --all` or the engine got it wrong:
 //!
 //! * T1-10 (lamplight F37): a tagged component line shared its `lineId` with
 //!   another expansion of itself or with a host line. dsl 0.22.0 §11 gives
@@ -7,8 +7,8 @@
 //! * T1-9 (lamplight F38, ashen F39): a `voiceKey` template without
 //!   `{prefix}` (the 0.21 default) lands lines of different documents on one
 //!   voice asset (`E-DUP-VOICEKEY`); the 0.22.0 default carries `{prefix}`.
-//! * T1-11 (ashen F8): a two-profile project passed whole-project `check` and was
-//!   then refused by whole-project `compile`/`play` (`E-CAPABILITY-MISMATCH`).
+//! * T1-11 (ashen F8): a two-profile project passed `check-project` and was
+//!   then refused by `compile --all`/`play` (`E-CAPABILITY-MISMATCH`).
 //! * T3-9 (ashen F2): `lute check <file>` ignored the project the file sits in.
 
 use std::path::Path;

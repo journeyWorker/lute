@@ -269,7 +269,7 @@ fn standalone_component_with_no_caller_is_unverified_not_ok() {
         "no caller in scope must not be a bare `ok`; got:\n{text}"
     );
     assert!(
-        text.contains("whole-project `check`"),
+        text.contains("Whole-project `check`"),
         "the message must name the deciding leg; got:\n{text}"
     );
     assert!(

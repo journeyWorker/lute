@@ -31,7 +31,7 @@ pub(super) fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
         };
         if path.is_empty() || value == Some("") {
             return Err(format!(
-                "`--occasion {raw}`: expected <occasion>@<axis>[=<value>],…, with no empty item"
+                "`--occasion {raw}`: expected <OCCASION>=<AXIS>[=<VALUE>],…, with no empty item"
             ));
         }
         only.push((path, value));
@@ -43,7 +43,7 @@ pub(super) fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
     })
 }
 
-/// How a per-occasion column (`--occasion O@…`) treats one axis.
+/// How a per-occasion column (`--occasion-axes O=…`) treats one axis.
 #[derive(Clone)]
 pub(super) enum Pin {
     /// The occasion varies over the axis.
@@ -51,7 +51,7 @@ pub(super) enum Pin {
     /// Held at one value index.
     At(usize),
     /// dsl 0.24.0 §1: the clock axis, varied or held per part
-    /// (`O@clock.day`, `O@run.day,run.slot=night`): the value indices whose
+    /// (`O=clock.day`, `O=run.day,run.slot=night`): the value indices whose
     /// position matches, and each part's held value (`None`: it varies).
     Clock {
         allowed: BTreeSet<usize>,
@@ -59,13 +59,13 @@ pub(super) enum Pin {
         slot: Option<String>,
         /// The clock has a slot part (not a day-granular clock).
         slotted: bool,
-        /// The `@` list holds the slot at a value it names
+        /// The axes list holds the slot at a value it names
         /// (`clock.slot=afternoon`), not at the default.
         slot_named: bool,
     },
 }
 
-/// Resolve an [`OccasionSpec`]'s `@` list against the axes into
+/// Resolve an [`OccasionSpec`]'s axes list against the axes into
 /// [`Column::pins`]. With a `clock` axis, its parts are named `clock.day` /
 /// `clock.slot` or by the clock's own day / slot paths (`run.day`); an
 /// unnamed part is held at its first value — an unnamed slot of the clock's
@@ -108,10 +108,10 @@ pub(super) fn occasion_pins(
                     continue;
                 }
             }
-            // `@` here names axes; a target is `--target`'s, as in `lute beats`.
+            // The axes list names axes; a target is `--target`'s, as in `lute beats`.
             if value.is_none() && is_target(path) {
                 return Err(format!(
-                    "`--occasion {raw}`: `@` names the axes `{0}` varies over, and `{path}` is a \
+                    "`--occasion {raw}`: the axes list names the axes `{0}` varies over, and `{path}` is a \
                      target of `{0}` — raise it for that target with `--occasion {0} --target \
                      {path}`",
                     spec.name

@@ -1000,6 +1000,16 @@ fn calendar_refusals_name_the_new_options() {
         "{}",
         stderr(&out)
     );
+    // An empty axes item names the grammar of `--occasion-axes`, not `@`.
+    let out = run(&["--occasion-axes", "dayStart=run.day,"]);
+    assert_eq!(out.status.code(), Some(2), "{}", all(&out));
+    assert!(
+        stderr(&out).contains(
+            "`--occasion-axes dayStart=run.day,`: expected <OCCASION>=<AXIS>[=<VALUE>],…, with no empty item"
+        ),
+        "{}",
+        stderr(&out)
+    );
     let out = run(&["--occasion", "zz"]);
     assert!(
         stderr(&out).contains("`--occasion zz` is not an occasion of this project"),

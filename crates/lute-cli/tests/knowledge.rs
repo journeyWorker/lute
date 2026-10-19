@@ -103,7 +103,7 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     let dir = inquiry("slots");
     let d = dir.to_str().unwrap();
     // Before 0.24 a scene with only choice and line guards was not a
-    // fact-guarded node: `--node` exited 2.
+    // fact-guarded node: `--for` exited 2.
     let s = ok(&[
         "scenario",
         "--project",

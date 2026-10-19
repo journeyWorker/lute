@@ -95,7 +95,7 @@ struct Column {
     /// none): only its untargeted beats are candidates.
     any_target: bool,
     select: OccasionSelect,
-    /// `--occasion O@<axes>`: per axis, how the occasion treats it. `None`
+    /// `--occasion-axes O=<axes>`: per axis, how the occasion treats it. `None`
     /// for an occasion that varies over every axis.
     pins: Option<Vec<Pin>>,
 }

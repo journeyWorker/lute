@@ -662,7 +662,7 @@ fn check_document(
     // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either
     // forwards the caller-resolved verdict or refuses to claim `ok`. Until
     // 0.10.0 it did neither: a component that cannot work with ANY of its
-    // callers reported `ok`, whole-project `check` reported the fault once per caller
+    // callers reported `ok`, `check-project` reported the fault once per caller
     // at line 1 of the wrong file, and `lute trace` refused with advice that
     // could not be followed. This is what makes that advice followable.
     //

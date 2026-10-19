@@ -62,7 +62,7 @@
 //! A component has no frontmatter and therefore no `{prefix}`, so exporting
 //! its lines under their own file produced rows with `lineId: null` that
 //! carried a `code` — rows `lute tag` could never fix, which `loc import`
-//! skipped and which `compile --locale-bundle` then reported as `W-L10N-MISSING`
+//! skipped and which `compile --locales` then reported as `W-L10N-MISSING`
 //! under a caller-derived id no export contained. Adopting the language's
 //! only reuse mechanism removed a line from the localization pipeline.
 //!
@@ -78,8 +78,8 @@
 //! The export array is sorted by (`file`, the `::use` site's byte offset in
 //! the CALLER, the unit's own byte offset) so it is byte-identical across
 //! runs regardless of directory-iteration order, and a whole expansion sorts
-//! where its invocation sits. `--format json`
-//! (default) emits a stable JSON array; `--format csv` emits an RFC-4180 file
+//! where its invocation sits. JSON
+//! (the default) emits a stable JSON array; `--format csv` emits an RFC-4180 file
 //! (header row, minimal quoting). An unknown format is a usage error (exit 2).
 //! `-o <FILE>` writes the export there; otherwise it goes to stdout. When any
 //! exported content line is untagged, a single `N lines untagged — run lute tag`
@@ -1269,7 +1269,7 @@ fn bundle_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: 
     }));
 }
 
-/// Parse `loc export --format json`'s array back into rows.
+/// Parse `loc export`'s JSON array back into rows.
 fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| format!("not valid JSON: {e}"))?;

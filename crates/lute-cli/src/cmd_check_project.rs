@@ -1,4 +1,4 @@
-//! `lute check` in whole-project mode (0.48.0 §3.1; whole-project `check` through
+//! `lute check` in whole-project mode (0.48.0 §3.1; `check-project` through
 //! 0.47.2).
 
 use std::collections::BTreeMap;

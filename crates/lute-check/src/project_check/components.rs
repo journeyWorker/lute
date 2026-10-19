@@ -54,7 +54,7 @@ pub fn component_unverified_diag(component: &str, at: Span, scope: ComponentScop
         }
         ComponentScope::NoImporter => {
             "The component is unused under this root, or its call sites live outside it. \
-             whole-project `check` is the deciding leg."
+             Whole-project `check` is the deciding leg."
         }
     };
     Diagnostic {

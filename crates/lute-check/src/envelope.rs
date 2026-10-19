@@ -484,7 +484,7 @@ pub struct QuestEnv {
     /// `true` when `env` is the conservative `guaranteed = possible = D`
     /// defaults-only answer (no `after` declared, or an `after`-declaring
     /// quest whose node [`propagate`] never populated — see below) — the
-    /// caller (T14 `lute scenario envelope quest:<id>`) prints the
+    /// caller (T14 `lute scenario envelope --node quest:<id>`) prints the
     /// one-line "declaring `after` would enrich this table" note exactly
     /// when this is `true`.
     pub enrichment_note: bool,
@@ -492,7 +492,7 @@ pub struct QuestEnv {
 
 /// The quest-time availability INVENTORY (dsl §4.4 "§D", spec lines
 /// 508-521): "what can I rely on here, before I write anything?" — a
-/// read-only lookup for T14's `lute scenario envelope quest:<id>`, NEVER a
+/// read-only lookup for T14's `lute scenario envelope --node quest:<id>`, NEVER a
 /// diagnostic (that is [`crate::defassign::check_quest_guard_defassign`]'s
 /// unchanged, separate, reactive job — see spec lines 494-506).
 ///

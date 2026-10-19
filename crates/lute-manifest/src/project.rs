@@ -456,8 +456,8 @@ pub struct ChapterDiag {
 
 /// A malformed `chapters:` (dsl 0.28.0 §4): not a
 /// list of `{ on, scenes }` chains, an occasion or entry that is no id, a
-/// scene listed twice, two chains on one occasion, or (project-wide, `lute
-/// whole-project check`) a listed id no scene declares, a listed scene whose own
+/// scene listed twice, two chains on one occasion, or (project-wide, whole-project
+/// `lute check`) a listed id no scene declares, a listed scene whose own
 /// `on:` names another occasion, or a scene of a targeted chain with no
 /// `target:`.
 pub const E_CHAPTERS: &str = "E-CHAPTERS";

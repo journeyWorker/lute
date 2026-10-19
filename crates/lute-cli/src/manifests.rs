@@ -3,10 +3,10 @@
 //!
 //! Before 0.10.0 a `lute.project.yaml` was only ever opened because some
 //! DOCUMENT resolved it as its nearest root (`crate::project_root_for`). Two
-//! holes followed. `compile --project <dir>` forces every document onto
+//! holes followed. `compile --all --project <dir>` forces every document onto
 //! the invoked root, so it opened no nested manifest at all — T1.10's finding:
-//! whole-project `check` refused to proceed over an inner `identity:` block that
-//! whole-project `compile` never read, while prefixing that project's `lineId`s with
+//! `check-project` refused to proceed over an inner `identity:` block that
+//! `compile --all` never read, while prefixing that project's `lineId`s with
 //! the outer template. And a manifest in a directory holding no `.lute` file
 //! was opened by nothing, in either command.
 //!

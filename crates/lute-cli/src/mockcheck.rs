@@ -1,7 +1,7 @@
 //! whole-project `check`'s pass over `mocks/*.yaml` (0.10.0 §8, D-E).
 //!
 //! `lute init` emits `mocks/playthrough.yaml`. The Haven drive test replaced
-//! `world.schema.yaml` and deleted `scenes/opening.lute`, and whole-project `check`
+//! `world.schema.yaml` and deleted `scenes/opening.lute`, and `check-project`
 //! stayed `ok`, exit 0, with a mock in the tree naming a state path that no
 //! longer exists and a scene file that no longer exists (T1.9). The rule that
 //! would have caught it has existed since 0.4.0 §4.3 — "state-by-typo MUST

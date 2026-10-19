@@ -112,7 +112,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 ///
 /// IR `0.13.0` is a PURE RESTAMP of `0.12.0` — no field added, renamed,
 /// moved, or retyped. The `0.13.0` toolchain release earns it (lint system:
-/// `lute lint`, `lute.lint.yaml`, plugin lints export; and `lute tag --renumber --commit`
+/// `lute lint`, `lute.lint.yaml`, plugin lints export; and `lute tag --force`
 /// — a clean renumber for drafts guarded by the new `codesLocked` publish
 /// gate) alongside a language change (the universal frontmatter key
 /// `codesLocked`, a document-level publish latch checked and echoed but
@@ -234,7 +234,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// unknown artifact kind.
 ///
 /// IR `0.20.0` is a PURE RESTAMP of `0.19.0`: the language gains the
-/// project-level fact envelopes (dsl 0.20.0 — whole-project `check` decides
+/// project-level fact envelopes (dsl 0.20.0 — `check-project` decides
 /// relational `holds`/`count` guards as impossible, guaranteed, or possible,
 /// adds `E-ENTRY-UNREACHABLE` / `W-FACT-GUARANTEED`, and removes
 /// `W-UNPROVEN-RELATIONAL`), which is static semantics only: no field,
