@@ -357,8 +357,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.47` engine accepts only `0.47.*` artifacts and refuses `0.46.*`
-   and `0.48.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.48` engine accepts only `0.48.*` artifacts and refuses `0.47.*`
+   and `0.49.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.

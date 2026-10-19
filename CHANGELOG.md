@@ -88,8 +88,8 @@ option keeps its spelling.
 | value names | `PATHS`, `PATH`, `EXECUTION-IR`, `NODEKEY`, `NODE_ID`, `MAX_ITEMS`, `CHOICEID`, `QUESTID` | the grammar §5 vocabulary (`<PATH>`, `<FILE>`, `<NODE>`, `<N>`, `<CHOICE>`, `<QUEST>`, …) |
 
 - **Removed spellings answer with the replacement.** Each removed spelling
-  (every 0.47.2 spelling in the table, including a project directory operand
-  of any command and `check <DIR>`) is `E-CLI-USAGE` (exit `2`; the error
+  (every spelling the table removes, spec §5, including a project directory
+  operand of any command and `check <DIR>`) is `E-CLI-USAGE` (exit `2`; the error
   envelope in `--json` mode with `argument` = the removed spelling and `hint`
   = the replacement) whose message names the replacement and, where the rest
   of the command line allows, the full rewritten command (``lute check-project
@@ -136,9 +136,6 @@ option keeps its spelling.
   runs `tag --renumber --commit`.
 - **Path defaults.** `fmt`, `fix` and `tag` default to `.`; `init [<DIR>]`
   defaults to `.` and refuses to run when any file it would write exists.
-- **`--providers` is not on `beats` or `expr`.** It cannot change their
-  result (beat verdicts come from beat code only; provider ids never reach the
-  schema-import checks `expr` uses), so it is not accepted there.
 - **The hidden `--on` and trace `--target` refusals are removed.** The
   `--on` refusals of `trace`, `beats`, `calendar` and `new` (since 0.28) and
   `trace`'s hidden `--target` refusal are plain unknown-argument errors.
@@ -191,6 +188,9 @@ option keeps its spelling.
   stderr prefix is `lute compile:` (was `lute compile --all:`).
 - **`lute schema`** lists `compile --stream` as a stream output and
   `valueOptional` for optional values.
+- **`--providers` is not on `beats` or `expr`.** It cannot change their
+  result (beat verdicts come from beat code only; provider ids never reach the
+  schema-import checks `expr` uses), so it is not accepted there.
 
 ### Runtime
 
@@ -239,7 +239,7 @@ option keeps its spelling.
 | CLI | The removed spellings of the mapping table (commands `check-project` and `compile-stream`, `compile --all`, directory operands, `--out`, `--locales`, `--target`/`--run` on `context`, `--explain`/`--dump-conditions`, `--choose`/`--accept`, `--facts`/`--csv`/`--occasion O@…`, `--force` on `tag`, …). | Rewrite as the error message says; each is `E-CLI-USAGE` with the replacement. |
 | CLI | Project discovery applies without `--project`; three corpus documents now compile and trace exit `3`; `new`/`test`/`doctor` act on the whole project from a subfolder. | Pass `--project` where another project is meant. |
 | CLI | `check` report `0.48.0.check` (`files[]`, `project_diagnostics`) replaces `0.43.0.check` and `0.43.0.check-project`; `schema` is `0.48.0.schema`. | Read `files[0]` for one document; accept `0.48.0.*`. |
-| CLI | `tag --renumber` previews, `--commit` writes; `fmt`/`fix`/`tag` default to `.`; `init` refuses existing files; `--providers` not on `beats`/`expr`. | `tag --renumber --commit`; pass paths explicitly. |
+| CLI | `tag --renumber` previews, `--commit` writes; `fmt`/`fix`/`tag` default to `.`; `init` refuses existing files. | `tag --renumber --commit`; pass paths explicitly. |
 | CLI | lute-town and Brinewake scripts (not edited here) call 0.47.2 spellings. | Apply the mapping table to their scripts, CI and READMEs: `check-project D` → `check --project D`, `compile --all D -o O` → `compile --project D -o O`, `compile-stream F` → `compile --stream F`, `--out` → `--output`, `tag --force` → `tag --renumber --commit`, `trace --choose/--accept` → `--choice/--accepted-quest`. |
 | Release | All axes and packages stamp `0.48.0`; schemas move to the `0.48` line; `bindingsVersion: "0.48"`; saves and profiles read `"0.48"`, so a 0.47 save is refused `SaveIncompatible` (a 0.47 profile still decodes). | Widen gates from `0.47` to `0.48`; re-save. |
 

@@ -63,7 +63,7 @@ flow:
 
 ## `bindingsVersion`
 
-`bindingsVersion`은 `luteVersion` 규칙을 따릅니다. 값은 `"MAJOR.MINOR"`이며, **툴체인 라인**은 툴체인 버전의 `MAJOR.MINOR`입니다(Lute 0.47.x에서는 `"0.47"`).
+`bindingsVersion`은 `luteVersion` 규칙을 따릅니다. 값은 `"MAJOR.MINOR"`이며, **툴체인 라인**은 툴체인 버전의 `MAJOR.MINOR`입니다(Lute 0.48.x에서는 `"0.48"`).
 
 - 값이 툴체인 라인과 다르면 프로젝트 전체 `lute check`가 그 값 위치에 `W-BINDINGS-VERSION-STALE`을 보고합니다. 더 오래된 라인이면 툴체인 라인으로 올리라고 안내하며 `lute fix`가 이를 수행합니다. 더 새로운 라인이면 스탬프를 낮추지 말고 툴체인을 업그레이드하라고 안내합니다. `MAJOR.MINOR` 형식이 아닌 값(예: `"0.47.0"`)은 다시 스탬프하라고 안내합니다.
 - 선언한 라인보다 새로운 섹션은 그 섹션 키 위치의 `E-BINDINGS-VERSION`이며, 필요한 라인을 알려 줍니다. 예: `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. 값이 `MAJOR.MINOR` 형식이 아니면 섹션을 검사하지 않습니다.

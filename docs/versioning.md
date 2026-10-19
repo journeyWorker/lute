@@ -1229,7 +1229,7 @@ reporting command, `tag --renumber` previews, and each removed spelling answers
 command now uses the nearest project, so three corpus documents that a
 single-file check refused now compile. The `check` report is `0.48.0.check`
 and `schema` is `0.48.0.schema`. The language, IR, Event and snapshot shapes
-and the bindings are unchanged: the `-0.48` schema files differ from `-0.47`
+and the bindings are unchanged: the `-0.48` schema files differ from the `-0.47` files
 by stamp and `$id` only, `bindingsVersion` becomes `"0.48"` and player saves
 and profiles read `"0.48"`. Engines and hosts gated on `0.47` must widen their
 gates to `0.48`; there is nothing new to read. See the
