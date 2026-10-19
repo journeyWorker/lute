@@ -108,7 +108,7 @@ rules:
 ```lute check="docs/examples/investigation/scenes/crime-scene.lute"
 ---
 kind: scene
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 id: detective.s01ep01
 title: The Study
 # No `after:`, so this scene is where the case starts.
@@ -153,7 +153,7 @@ pov: detective
 ```lute check="docs/examples/investigation/scenes/interview.lute"
 ---
 kind: scene
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 id: detective.s01ep02
 title: The Interview Room
 # Comes after the crime scene.
@@ -217,7 +217,7 @@ pov: detective
 ```lute check="docs/examples/investigation/quests/identify-killer.lute"
 ---
 kind: quest
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 uses: ../world.schema.yaml
 title: Identify the Killer
 ---
@@ -250,7 +250,7 @@ title: Identify the Killer
 ```lute check="docs/examples/investigation/scenes/confrontation.lute"
 ---
 kind: scene
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 id: detective.s01ep03
 title: The Confrontation
 # Comes after the interview.
@@ -565,8 +565,8 @@ PASS  ./tests/interview-press-ledger.test.yaml  (./scenes/interview.lute)
 lute compile scenes/crime-scene.lute --project . -o crime-scene.json
 ```
 
-종료 코드는 `0`이며, `crime-scene.json`에는 `"lute": "0.47.1"` /
-`"irVersion": "0.47.1"`이 기록됩니다. 프로젝트의 모든 문서가 컴파일됩니다. 엔진이
+종료 코드는 `0`이며, `crime-scene.json`에는 `"lute": "0.47.2"` /
+`"irVersion": "0.47.2"`이 기록됩니다. 프로젝트의 모든 문서가 컴파일됩니다. 엔진이
 플레이하는 것은 소스가 아니라 해당 아티팩트이며, [런타임 계약](/ko/tooling/runtime-contract/)을
 따릅니다.
 

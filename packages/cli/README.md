@@ -5,9 +5,9 @@ The Lute command-line toolchain for `.lute` branching game narratives: the check
 ## Install
 
 ```sh
-npm install --save-dev @lute-lang/lute@0.47.1
-# bun add -d @lute-lang/lute@0.47.1
-# or once, globally: npm install -g @lute-lang/lute@0.47.1
+npm install --save-dev @lute-lang/lute@0.47.2
+# bun add -d @lute-lang/lute@0.47.2
+# or once, globally: npm install -g @lute-lang/lute@0.47.2
 ```
 
 Then run it through your package manager (`npx lute …`, `bunx lute …`) or, installed globally, as `lute`. The package also installs `lute-lsp` for editors. `lute version` prints the toolchain, language, and IR versions this install implements; `lute doctor` checks the toolchain and the project around you.
@@ -42,7 +42,7 @@ Most commands exit `0` on success, `1` on a diagnostic error, and `2` on a usage
 - [Playing a story (`lute play`)](https://lute-lang.vercel.app/tooling/play/)
 - [Diagnostics reference](https://lute-lang.vercel.app/reference/diagnostics/)
 - [Installation](https://lute-lang.vercel.app/getting-started/installation/) and [your first scene](https://lute-lang.vercel.app/getting-started/first-scene/)
-- [Changelog and migration notes for 0.47.1](https://github.com/journeyWorker/lute/blob/v0.47.1/CHANGELOG.md#0471)
-- [Versioning policy](https://github.com/journeyWorker/lute/blob/v0.47.1/docs/versioning.md)
+- [Changelog and migration notes for 0.47.2](https://github.com/journeyWorker/lute/blob/v0.47.2/CHANGELOG.md#0472)
+- [Versioning policy](https://github.com/journeyWorker/lute/blob/v0.47.2/docs/versioning.md)
 
 Source, issues, and releases: [github.com/journeyWorker/lute](https://github.com/journeyWorker/lute).

@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: game
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 title: Game
 on: chapter
 state:

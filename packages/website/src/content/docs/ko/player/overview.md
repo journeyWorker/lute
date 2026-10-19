@@ -34,9 +34,9 @@ player-web: mount ─► PixiApp ─► World/PixiPresenter
 
 | 패키지 | 책임 | 공개 진입점 |
 | --- | --- | --- |
-| `@lute-lang/player@0.47.1` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
-| `@lute-lang/player-web@0.47.1` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
-| `@lute-lang/runtime@0.47.1` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
+| `@lute-lang/player@0.47.2` | 렌더러 독립 코어, 포트, 바인딩 디코더, 큐, 스케줄러, 세션, 저장소 | `LutePlayer.make(options)` |
+| `@lute-lang/player-web@0.47.2` | PixiJS/Web Audio presenter, asset, 화면, 입력, 브라우저 마운트 | `mountPlayer(element, options)` 또는 `LuteWeb.mount` |
+| `@lute-lang/runtime@0.47.2` | 번들 로딩, wasm 런타임 세션, 이벤트 계약, 스냅숏과 질의 | `@lute-lang/runtime/browser` |
 
 ## 패키지 검사
 
