@@ -95,7 +95,9 @@ interface ChoiceMenu { show(menu: MenuAwait, remaining: Stream<number>): Effect<
 // audio/
 class PixiAudio implements AudioPort             // channels music (crossfade), sfx, voice; fades as Effects; unlock on first gesture
                                                  // music: restart plays from the start; without it the file already
-                                                 // playing only changes volume (fading over `fade`)
+                                                 // playing only changes volume (fading over `fade`); a music play or
+                                                 // stop supersedes every earlier music play still waiting (for unlock,
+                                                 // its file or the backend), so while locked only the latest survives
 
 // assets/
 class PixiAssets implements AssetLoader          // keys = binding paths; Pixi Assets manifest/bundles; refcounted ensure/release; progress stream
