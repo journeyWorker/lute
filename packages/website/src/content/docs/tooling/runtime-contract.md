@@ -19,14 +19,14 @@ The `lute.engine.yaml` matrix format is specified in
 For the resumable runtime API and its JSON wire format, see the
 [runtime event contract](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md).
 The `lute-runtime` crate exposes the pure integration surface: load a
-`compile --all` bundle with `Runtime::load`, create a session with `begin`,
+`lute compile --project DIR -o OUT` bundle with `Runtime::load`, create a session with `begin`,
 advance it with `step`, and use `snapshot`/`restore` plus the read-only
 queries for host inspection. Hosts own rendering, pacing, bridge calls, and
 grant settlement; the runtime returns those effects as data.
 
 ## TypeScript runtime
 
-TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --all` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
+TypeScript hosts can use [`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md), an Effect 4 API over the wasm runtime. Its Bun and browser layers load a `lute compile --project DIR -o OUT` bundle, expose scoped sessions and event streams, and provide typed rejections, snapshots, and replay. See the [full TypeScript runtime guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md) for installation, a complete Bun session, browser serving, program queries, errors, generated contract schemas, and `Replay`.
 
 In 0.41 a `Program` adds `gate(state, occasion, target?)` (`Effect<Gate, InvalidInput>`)
 and `def(state, name, args?)`, whose `args` are one JSON scalar per declared
@@ -238,7 +238,7 @@ Every artifact opens with a fixed envelope (the `ExecutionIr` struct in
 
 `requiredSemantics` is the sorted union of the lowered features in one
 artifact. The project index carries the same field as the sorted union of its
-document artifacts, allowing `check-project`, `play`, and an engine to
+document artifacts, allowing whole-project `check`, `play`, and an engine to
 negotiate before opening every document. The complete registry and trigger
 mapping live in [the 0.33.0 proposal §2–§3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry);
 this page intentionally does not duplicate that registry.
@@ -391,7 +391,7 @@ matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 
 artifact that still carries a removed 0.36 field with `E-IR-REMOVED-FIELD`.
-`lute check --engine <file>` and `lute check-project --engine <file>` perform
+`lute check --engine <file>` and `lute check --project DIR --engine <file>` perform
 author-time negotiation without playback. Missing capabilities are reported as
 `E-CHECK-ENGINE-SEMANTICS` with the lowered construct's source span, semantic
 id, and engine name. The project form checks the project-index union and lists
@@ -837,7 +837,7 @@ empty body); and `on.body`, `entry.body`, and `beat.body`.
 
 ## Streaming snapshot replacement
 
-[`lute compile-stream`](/tooling/continuation-compiler/) emits a full ordinary
+[`lute compile --stream`](/tooling/continuation-compiler/) emits a full ordinary
 artifact snapshot for every accepted continuation unit. It does not define a
 second IR or a patch language. `appendFrom` is the previous snapshot's command
 count and only identifies the newly appended array region; it is not a runtime
@@ -946,7 +946,7 @@ except the reason is available.
 A `line` record's `text`, a choice/hub option's `text` and a branch/hub
 `prompt` are always the **source language** (`contentLang`), as plain text. When
 the artifact was built with
-[`lute compile --locales`](/tooling/cli/#--locales--merge-a-translation-bundle),
+[`lute compile --locale-bundle`](/tooling/cli/#--locale-bundle--merge-a-translation-bundle),
 the record also carries a `texts` map, locale tag → translated plain text,
 keyed on the record's `lineId`. A `choice` or `hub` record with a `prompt` also
 carries `promptLineId` (`{prefix}.{branchOrHubId}.prompt`, present whenever
@@ -987,7 +987,7 @@ backlog, TTS, and search never need to flatten segments:
 ```
 
 The locale maps are omitted when empty, so an artifact compiled without
-`--locales` is byte-identical to before, and a consumer that ignores them keeps
+`--locale-bundle` is byte-identical to before, and a consumer that ignores them keeps
 rendering the source language. Present a locale by looking it up in `texts`
 (and `localeSegments` for a modified line; `promptTexts` for a prompt) and
 falling back to `text` (`prompt`) — the
@@ -995,7 +995,7 @@ compiler warns at build time (`W-L10N-MISSING`) about exactly those gaps, so a
 complete bundle leaves nothing to fall back to.
 
 The runtime's `line` record (`lute-runtime` / `@lute-lang/runtime` events over
-a bundle compiled with `--locales`) renders these maps for you (dsl 0.47.0): besides `text`
+a bundle compiled with `--locale-bundle`) renders these maps for you (dsl 0.47.0): besides `text`
 and `segments` with their `{{…}}` markers replaced, it carries `texts` and
 `localeSegments` (when the line command has them) with each translation's
 marker replaced by the value the source rendered for the marker with the same

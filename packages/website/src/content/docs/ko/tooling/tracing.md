@@ -16,16 +16,16 @@ Trace는 제공한 월드를 걷습니다. 시드하지 않은 상태 경로는 
 $ lute trace scene.lute \
     --state run.metMira=true \
     --fact "inParty(shadowheart)" \
-    --choose sofaHelp=help \
+    --choice sofaHelp=help \
     --event npcSpoke \
-    --accept sideQuest
+    --accepted-quest sideQuest
 ```
 
 - `--state <path>=<literal>` — 선언된 경로에 대한 스칼라 시드입니다.
 - `--fact "<rel>(<arg>…)"` — 선언된 어휘 위에 놓인 ground 팩트로, 현재 유효합니다(명시한 답이므로 `derive:`/`reserved:` 관계를 가리킬 수도 있음).
-- `--choose <id>=<choiceId>[,<choiceId>…]` — `<branch>`/`<hub>` id에서 메뉴를 선택합니다. 하나의 플래그에서 쉼표로 나열하면 허브 전체의 순서 있는 방문 시퀀스를 강제할 수 있습니다. 목록이 끝나기 전에 허브가 종료되지 않으면 `lute play`와 같이 walk가 미완료로 멈추고(종료 3), 목록을 이름으로 표시합니다.
+- `--choice <id>=<choiceId>[,<choiceId>…]` — `<branch>`/`<hub>` id에서 메뉴를 선택합니다. 하나의 플래그에서 쉼표로 나열하면 허브 전체의 순서 있는 방문 시퀀스를 강제할 수 있습니다. 목록이 끝나기 전에 허브가 종료되지 않으면 `lute play`와 같이 walk가 미완료로 멈추고(종료 3), 목록을 이름으로 표시합니다.
 - `--event <name>` — capability/world 이벤트를 CLI 순서대로 발생시킵니다.
-- `--accept <questId>` — `start`가 없는(수락으로 구동되는) 퀘스트를 수락하는 일을 시뮬레이션합니다. 프로젝트가 있으면 dsl 0.26.0부터 추적 문서가 선언한 퀘스트뿐 아니라 프로젝트의 모든 퀘스트를 지정할 수 있습니다. 어떤 퀘스트도 선언하지 않은 id는 `E-TRACE-ACCEPT`입니다.
+- `--accepted-quest <questId>` — `start`가 없는(수락으로 구동되는) 퀘스트를 수락하는 일을 시뮬레이션합니다. 프로젝트가 있으면 dsl 0.26.0부터 추적 문서가 선언한 퀘스트뿐 아니라 프로젝트의 모든 퀘스트를 지정할 수 있습니다. 어떤 퀘스트도 선언하지 않은 id는 `E-TRACE-ACCEPT`입니다.
 
 퀘스트와 씬 조건에는 두 가지 입력원이 더 있습니다(dsl 0.21.0).
 
@@ -79,13 +79,13 @@ mock가 없으면 엔트리는 ``(first read, not eligible: its `when` (quest.la
 **대상에게 발생하기.** `target=`이 있는 목표(`<objective on="talk" target="npc.oskar">`)는 `<occasion>@<target>`으로 적은 대상 지정 발생에서만 판정됩니다 — `--occasion talk@npc.oskar`, 또는 mock의 `occasions: [talk@npc.oskar]`입니다. 일반 `talk`이나 `talk@npc.maud`는 이를 그대로 두며, walk는 어느 발생을 기다리는지 말합니다. [스토리 플레이](/ko/tooling/play/#기한과-대상-지정-목표)의 탑 사냥 퀘스트에서 처치를 mock한 경우:
 
 ```console
-$ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound)" --occasion talk@npc.maud
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --fact "slew(hound)" --occasion talk@npc.maud
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
 note: objective `houndHunt.report` is judged at occasion `talk` for `npc.oskar`, which this walk never raised (supply `--occasion talk@npc.oskar` or `occasions: [talk@npc.oskar]`)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> done (holds('slew', ['hound']))
 trace complete: 2 decisions
-$ lute trace quests/hound.lute --project . --accept houndHunt --fact "slew(hound)" --occasion talk@npc.oskar
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --fact "slew(hound)" --occasion talk@npc.oskar
 trace: quests/hound.lute  (seeds: 0 paths, 1 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> done (holds('slew', ['hound']))
@@ -98,7 +98,7 @@ trace complete: 4 decisions
 **기한.** 목표의 `by=`는 `done` 판정 뒤 모든 settle에서 판정됩니다. 목표가 아직 done이 아닐 때 처음 성립하는 순간 목표는 `failed`가 되고 기한을 표시하며, 다시는 판정하지 않습니다. 필수 목표라면 퀘스트도 실패합니다. 처치 없이 4층에 도달한 경우:
 
 ```console
-$ lute trace quests/hound.lute --project . --accept houndHunt --state run.floor=4
+$ lute trace quests/hound.lute --project . --accepted-quest houndHunt --state run.floor=4
 trace: quests/hound.lute  (seeds: 1 paths, 0 facts; 0 selections)
   <quest houndHunt>   -> active (forced)
   <objective collar>   -> pending (holds('slew', ['hound']))
@@ -126,12 +126,12 @@ trace complete: 1 decision; arms 1/2 (has(prev.run.floor) @11:1)
 
 **크레딧이 있는 보상.** `<reward>`의 kind가 [`credits: <path>`](/ko/plugins/manifests/#상태에-적립되는-보상)를 선언하면 스칼라 금액을 부여할 때 `::set <path> += <n>`과 같은 규칙으로 그 경로에 더합니다. 위의 탑 `EMBERS` kind가 `user.embers`에 크레딧하므로, 부여 줄은 `grant houndHunt  EMBERS 50 (credits user.embers = 50)`처럼 크레딧을 끝에 표시하고 `--json`에서 `grant` 스텝은 `"credited": { "path": "user.embers", "value": "50" }`를 가집니다. walk는 크레딧된 값으로 끝나므로 테스트의 `expect.state`는 `user.embers: 50`을 단언할 수 있습니다. 범위 금액은 엔진이 굴리는 값이라 아무것도 크레딧하지 않으며, 더할 값이 없는 경로는 `unknown`으로 남습니다.
 
-**목표 본문.** 본문이 있는 `<objective>`는 목표가 처음 done으로 바뀔 때 한 번 재생됩니다. 그 줄, `::set`, `::assert`, `::retract`는 목표의 `done` 판정과 자체 보상 뒤 트랜스크립트에 들어가며, `--choose`가 그 안의 `<branch>`를 결정합니다.
+**목표 본문.** 본문이 있는 `<objective>`는 목표가 처음 done으로 바뀔 때 한 번 재생됩니다. 그 줄, `::set`, `::assert`, `::retract`는 목표의 `done` 판정과 자체 보상 뒤 트랜스크립트에 들어가며, `--choice`가 그 안의 `<branch>`를 결정합니다.
 
-**퀘스트 구조** (dsl 0.24.0 §2). `--accept`(및 `accepts:`)는 `activate="accept"`인 자식 퀘스트를 취하며, 부모가 active인 동안에만 활성화합니다. `complete="any"`인 부모가 완료되면 다른 active 자식들은 실패하고, 결정에는 `superseded from quest.<parent>`라고 이유가 붙습니다(실패한 부모의 자식은 여전히 `cascade from quest.<parent>`를 읽습니다). `road`가 `parley` 또는 `toll` 중 하나로 완료되는 강 건너기 예시는 다음과 같습니다.
+**퀘스트 구조** (dsl 0.24.0 §2). `--accepted-quest`(및 `accepts:`)는 `activate="accept"`인 자식 퀘스트를 취하며, 부모가 active인 동안에만 활성화합니다. `complete="any"`인 부모가 완료되면 다른 active 자식들은 실패하고, 결정에는 `superseded from quest.<parent>`라고 이유가 붙습니다(실패한 부모의 자식은 여전히 `cascade from quest.<parent>`를 읽습니다). `road`가 `parley` 또는 `toll` 중 하나로 완료되는 강 건너기 예시는 다음과 같습니다.
 
 ```console
-$ lute trace quests/road.lute --project . --accept parley --accept toll --state run.talked=true
+$ lute trace quests/road.lute --project . --accepted-quest parley --accepted-quest toll --state run.talked=true
 trace: quests/road.lute  (seeds: 1 paths, 0 facts; 0 selections)
   <quest road>   -> active (true)
   <quest parley>   -> active (forced)
@@ -154,7 +154,7 @@ trace complete: 12 decisions
 
 ## 번들 비트
 
-[번들 비트](/ko/tooling/play/#번들-비트)가 있는 lore 문서는 걸을 시퀀스가 없으므로 trace가 한 번에 하나씩 제시합니다: 로컬 id 또는 정규 `<document id>.<beat id>`인 `--beat <id>`를 사용합니다. 본문은 씬처럼 걸으며(`--choose`가 분기와 허브를 결정), 모든 효과를 적용하고 `when`은 강제하지 않고 표시합니다(JSON: 첫 스텝은 `{"kind": "beat", "id": …, "eligible": …}`). 오스카의 hunt는 다음과 같습니다.
+[번들 비트](/ko/tooling/play/#번들-비트)가 있는 lore 문서는 걸을 시퀀스가 없으므로 trace가 한 번에 하나씩 제시합니다: 로컬 id 또는 정규 `<document id>.<beat id>`인 `--beat <id>`를 사용합니다. 본문은 씬처럼 걸으며(`--choice`가 분기와 허브를 결정), 모든 효과를 적용하고 `when`은 강제하지 않고 표시합니다(JSON: 첫 스텝은 `{"kind": "beat", "id": …, "eligible": …}`). 오스카의 hunt는 다음과 같습니다.
 
 ```console
 $ lute trace lore/oskar.lute --project . --beat hunt
@@ -187,7 +187,7 @@ lore/oskar.lute: error [E-TRACE-BEAT] `--beat hnut` names an unknown beat id `hn
 사람이 읽는 형식은 들여쓰기된 순서 있는 트랜스크립트입니다. 출력된 콘텐츠 줄(판정된 보간은 치환하고, 알 수 없는 경우 `{{…}}`를 그대로 유지함), 연출 디렉티브, 상태 쓰기, 그리고 **판정**마다 한 줄 — 구성 요소, 이긴 arm/choice, 읽은 값이 표시된 가드 — 를 담습니다. 마지막 요약에는 수행한 판정, arm/choice 커버리지, 그리고 아직 해결되지 않은 원자가 표시됩니다.
 
 ```console
-$ lute trace docs/examples/choice-persist.lute --choose sofaHelp=help
+$ lute trace docs/examples/choice-persist.lute --choice sofaHelp=help
 trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Recording the Choice
     @narrator  Elena had slipped on the wet step. You could help — or walk on.
@@ -200,12 +200,12 @@ trace: docs/examples/choice-persist.lute  (seeds: 0 paths, 0 facts; 1 selection)
 trace complete: 2 decisions; choices 1/3 (sofaHelp), arms 1/2 (run.metHelpfully @42:1)
 ```
 
-`unknown` 가드는 그 구성 요소에서 걷기를 멈추고(종료 3), mock에 필요한 미해결 원자 — 어떤 경로나 팩트가 필요한지 — 를 보고합니다. Trace는 자격이 `unknown`인 지점을 절대 추측해서 지나가지 않습니다. `--choose`로 `unknown` 가드를 강제로 지나가는 것이 문서화된 탈출구입니다. 강제 선택도 집계됩니다. 요약에는 `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)`가 표시되고, 이를 결정할 원자도 이름이 나옵니다. `--json`에서는 이를 `forcedUnknown` 아래에 나열합니다. 종료 코드는 나머지 걷기에서 얻은 값 그대로 유지됩니다. 예약된 퀘스트 읽기(`quest.<id>.state`, `…objectives.<oid>.done`, 그리고 0.24.0부터 `quest.<id>.failedBy` 및 `…objectives.<oid>.failed`)는 mock(`quests:` 또는 `--state`)하지 않는 한 기본값(`unset` / `false`)으로 해석됩니다. 프로젝트가 없으면 각 읽기에 "existence unverified" 메모가 붙고, 프로젝트가 있으면 trace가 id를 프로젝트의 퀘스트와 대조합니다.
+`unknown` 가드는 그 구성 요소에서 걷기를 멈추고(종료 3), mock에 필요한 미해결 원자 — 어떤 경로나 팩트가 필요한지 — 를 보고합니다. Trace는 자격이 `unknown`인 지점을 절대 추측해서 지나가지 않습니다. `--choice`로 `unknown` 가드를 강제로 지나가는 것이 문서화된 탈출구입니다. 강제 선택도 집계됩니다. 요약에는 `1 unresolved (forced past an unknown guard — the walk continued, exit unchanged)`가 표시되고, 이를 결정할 원자도 이름이 나옵니다. `--json`에서는 이를 `forcedUnknown` 아래에 나열합니다. 종료 코드는 나머지 걷기에서 얻은 값 그대로 유지됩니다. 예약된 퀘스트 읽기(`quest.<id>.state`, `…objectives.<oid>.done`, 그리고 0.24.0부터 `quest.<id>.failedBy` 및 `…objectives.<oid>.failed`)는 mock(`quests:` 또는 `--state`)하지 않는 한 기본값(`unset` / `false`)으로 해석됩니다. 프로젝트가 없으면 각 읽기에 "existence unverified" 메모가 붙고, 프로젝트가 있으면 trace가 id를 프로젝트의 퀘스트와 대조합니다.
 
 **def 참조를 작성된 그대로 읽기**(dsl 0.24.0). `<match subject="@def">` 헤더, arm 또는 choice 가드, 커버리지 요약은 작성자가 쓴 방식으로 def 참조를 출력합니다. `--expand`를 사용하면 걷기에서 평가한 확장 형태를 출력합니다:
 
 ```console
-$ lute trace week.lute --state user.runs=3 --choose ask=old
+$ lute trace week.lute --state user.runs=3 --choice ask=old
 trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   ## Morning
   <match @weekday>   -> arm 1 (is="mon")
@@ -213,7 +213,7 @@ trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   <branch ask>   eligible: old, new   -> old (@atLeast(3))
     @narrator  You remember.
 trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 (@weekday @13:1)
-$ lute trace week.lute --state user.runs=3 --choose ask=old --expand
+$ lute trace week.lute --state user.runs=3 --choice ask=old --expand
 trace: week.lute  (seeds: 1 paths, 0 facts; 1 selection)
   ## Morning
   <match (run.day == 1 ? 'mon' : run.day == 2 ? 'tue' : 'other')>   -> arm 1 (is="mon")
@@ -227,10 +227,10 @@ trace complete: 2 decisions; choices 1/2 (ask), arms 1/2 ((run.day == 1 ? 'mon' 
 
 **비트 자체의 `when`**. [비트 씬](/ko/language/beats/)을 trace하면 프런트매터의 `when:` 성립 여부와 관계없이 본문을 걷습니다. Trace는 미리보기이기 때문입니다. mock이 해당 `when`을 거짓 또는 미결정으로 만들면, trace는 메모로 시작합니다 — ``beat `when` (run.day == 3) is false under these mocks — the `visit` selector would never present this scene; the walk below shows it as if it had been presented``. `lute test`는 그런 걷기를 통과시키지 않습니다. dsl 0.26.0부터 mock이 `when`, `after:`, 또는 소진된 `once: user` 때문에 비트를 부적격으로 만들었는데도 그 비트를 제시하는 테스트는 `expect.eligible`을 단언하지 않는 한 실패합니다([`lute test`](/ko/tooling/cli/#test) 참고).
 
-씬의 [`::accept{quest="<id>"}`](/ko/language/directives/#accept--퀘스트-수락)는 자체 트랜스크립트 줄 `quest <id> accepted`(JSON step `{"kind": "accept", "quest": "<id>"}`)로 렌더링됩니다. Trace는 문서 하나를 걷기 때문에 accept를 기록만 하고 적용하지 않습니다. 퀘스트의 수명 주기가 실행되는 곳은 퀘스트 자체의 문서입니다(그곳에서 `--accept` / `accepts:`를 사용하거나, 프로젝트 전체에서는 `lute play`를 사용). 퀘스트 자체의 `<on>` 핸들러에 있는 `::accept`는 적용됩니다 — [핸들러의 accept](#보상과-목표-본문)를 참고하세요.
+씬의 [`::accept{quest="<id>"}`](/ko/language/directives/#accept--퀘스트-수락)는 자체 트랜스크립트 줄 `quest <id> accepted`(JSON step `{"kind": "accept", "quest": "<id>"}`)로 렌더링됩니다. Trace는 문서 하나를 걷기 때문에 accept를 기록만 하고 적용하지 않습니다. 퀘스트의 수명 주기가 실행되는 곳은 퀘스트 자체의 문서입니다(그곳에서 `--accepted-quest` / `accepts:`를 사용하거나, 프로젝트 전체에서는 `lute play`를 사용). 퀘스트 자체의 `<on>` 핸들러에 있는 `::accept`는 적용됩니다 — [핸들러의 accept](#보상과-목표-본문)를 참고하세요.
 
 ```console
-$ lute trace scenes/shed.lute --project . --choose offer=take
+$ lute trace scenes/shed.lute --project . --choice offer=take
 trace: scenes/shed.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## Shed
     @vesna  Somebody has to mind the shed.
@@ -245,7 +245,7 @@ trace complete: 1 decision; choices 1/2 (offer)
 걷기가 취한 `::jump{to="<label>"}`는 `lute run` 및 `lute play`와 정확히 같이 해당 `::label{name="<label>"}`로 점프합니다(dsl 0.26.0 §7). 트랜스크립트에는 `<jump -> <label>>`(JSON step `{"kind": "jump", "to": "<label>"}`)가 표시되고, 걷기는 라벨부터 계속되므로 `trace complete` — 그리고 테스트의 `end: complete` — 는 걷기가 문서 끝에 도달했다는 뜻입니다. 0.26.0 이전에는 걷기가 취한 점프에서 끝나도 complete를 보고했으므로, 테스트가 플레이에서는 절대 보이지 않는 트랜스크립트를 대상으로 통과할 수 있었습니다. 다음은 문 선택이 가드를 건너뛰어 점프하는 금고입니다:
 
 ```console
-$ lute trace scenes/vault.lute --project . --choose enter=yes
+$ lute trace scenes/vault.lute --project . --choice enter=yes
 trace: scenes/vault.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The door
     @narrator  The vault door stands open.
@@ -320,11 +320,11 @@ bad.yaml:4:9: error [E-TRACE-MOCK-TYPE] `bridges.check` answer 1: `passed: yes` 
 trace refused: scenes/gate/guards.lute — invalid mock input
 ```
 
-`lack.yaml`에는 `- { passed: true }`가, `bad.yaml`에는 `- { passed: yes, margin: 3 }`가 각각 파일의 네 번째 줄에 있습니다. 0.24 이전에는 필드 누락이 `E-TRACE-MOCK-UNDECLARED`였고, 이런 오류는 모두 `<document>:0:0`에 표시되었습니다. 시나리오 테스트에서는 같은 오류가 테스트 자체의 줄에 표시됩니다 — `FAIL` 아래의 `./tests/t.test.yaml:6:9: error [E-TRACE-MOCK-TYPE] …` — 그리고 `check-project`는 잘못된 `mocks/*.yaml`을 `./mocks/lack.yaml:4:7`에 보고합니다.
+`lack.yaml`에는 `- { passed: true }`가, `bad.yaml`에는 `- { passed: yes, margin: 3 }`가 각각 파일의 네 번째 줄에 있습니다. 0.24 이전에는 필드 누락이 `E-TRACE-MOCK-UNDECLARED`였고, 이런 오류는 모두 `<document>:0:0`에 표시되었습니다. 시나리오 테스트에서는 같은 오류가 테스트 자체의 줄에 표시됩니다 — `FAIL` 아래의 `./tests/t.test.yaml:6:9: error [E-TRACE-MOCK-TYPE] …` — 그리고 프로젝트 전체 `check`는 잘못된 `mocks/*.yaml`을 `./mocks/lack.yaml:4:7`에 보고합니다.
 
 **0.23.1 mock 마이그레이션**. 결과 슬롯을 시드하여 호출에 답하던 mock 또는 테스트 — `state: { scene.check.guards.passed: true }` — 는 이제 가드를 결정하지 않습니다. 호출의 답변은 `bridges:`에서만 읽으므로, 걷기는 위의 힌트와 함께 미해결 상태로 멈춥니다. 시드를 `bridges: { check: [ { passed: true, margin: 3 } ] }`로 바꾸고, 호출 순서대로 호출마다 하나씩, 콘텐츠가 읽는 모든 필드를 넣으세요.
 
-`check-project`는 `mocks/*.yaml`에도 같은 검사를 수행합니다. 답변이 없는 시나리오 테스트는 미완료로 실패하며 힌트가 `in this test`로 끝납니다. `lute run --mock`은 같은 키에서 호출 답변을 가져오고, [`lute play`](/ko/tooling/play/#브리지-호출에-답하기)는 최상위와 각 스텝에서 답변을 받습니다.
+프로젝트 전체 `check`는 `mocks/*.yaml`에도 같은 검사를 수행합니다. 답변이 없는 시나리오 테스트는 미완료로 실패하며 힌트가 `in this test`로 끝납니다. `lute run --mock`은 같은 키에서 호출 답변을 가져오고, [`lute play`](/ko/tooling/play/#브리지-호출에-답하기)는 최상위와 각 스텝에서 답변을 받습니다.
 
 ## 파생
 
@@ -373,7 +373,7 @@ rules:
 mock이 전혀 없어도 시드된 `suspect(ann)`과 없는 `alibi(ann)`에서 `culprit(ann)`이 파생됩니다:
 
 ```console
-$ lute trace accuse.lute --choose ask=skip --choose verdict=ann
+$ lute trace accuse.lute --choice ask=skip --choice verdict=ann
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
   ## The parlour
     @inspector  Everyone stays in this room.
@@ -384,10 +384,10 @@ trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 trace complete: 2 decisions; choices 1/2 (ask), choices 1/2 (verdict)
 ```
 
-하녀의 `::assert{ alibi(ann) }`가 실행되면 부정 전제가 성립하여 `culprit(ann)`은 확실히 거짓이 됩니다 — `verdict`에는 `wait`만 제시되고, 그때 `--choose verdict=ann`으로 강제하려 하면 `E-TRACE-CHOICE`(종료 1)로 거부됩니다. `unknown`을 강제로 지나가는 것이 아닙니다:
+하녀의 `::assert{ alibi(ann) }`가 실행되면 부정 전제가 성립하여 `culprit(ann)`은 확실히 거짓이 됩니다 — `verdict`에는 `wait`만 제시되고, 그때 `--choice verdict=ann`으로 강제하려 하면 `E-TRACE-CHOICE`(종료 1)로 거부됩니다. `unknown`을 강제로 지나가는 것이 아닙니다:
 
 ```console
-$ lute trace accuse.lute --choose ask=maid --choose verdict=wait
+$ lute trace accuse.lute --choice ask=maid --choice verdict=wait
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
   ## The parlour
     @inspector  Everyone stays in this room.
@@ -445,7 +445,7 @@ rules:
 ```
 
 ```console
-$ lute trace arrest.lute --choose arrest=now
+$ lute trace arrest.lute --choice arrest=now
 trace: arrest.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The station
   <branch arrest>   eligible: later   -> now (holds('warrant', ['ann'])) (forced)
@@ -456,10 +456,10 @@ trace complete: 1 decision; 1 unresolved (forced past an unknown guard — the w
 
 `--state run.day=3`을 주면 규칙이 `warrant(ann)`을 결론 내리고 `now`는 곧바로 자격을 얻습니다.
 
-**`derive: false`는 0.21을 복원합니다.** mock 키 `derive: false`(`*.test.yaml`에서도 허용됨) 또는 `lute trace`와 `lute test`의 `--no-derive` 플래그 — 플래그가 키보다 우선함 — 는 조회만 하는 모델을 복원합니다. 시드 팩트는 불러오지 않고 규칙은 적용하지 않으며, mock하지 않은 파생 관계의 팩트는 **unknown**이 됩니다. 따라서 그 팩트의 가드는 강제하지 않는 한 걷기를 중단합니다(종료 3). 스키마가 공급되지 않은 시드 팩트를 선언한 경우 이를 알리는 메모리가 표시되고, 걷기에서 읽은 각 파생 관계를 이름으로 밝히는 메모리도 표시됩니다. (`lute play`도 같은 키와 플래그를 받지만, 그 경우 시드 팩트는 여전히 로드되고 규칙만 멈춥니다 — [스토리 플레이](/ko/tooling/play/#파생과---explain)를 참고하세요.)
+**`derive: false`는 0.21을 복원합니다.** mock 키 `derive: false`(`*.test.yaml`에서도 허용됨) 또는 `lute trace`와 `lute test`의 `--no-derive` 플래그 — 플래그가 키보다 우선함 — 는 조회만 하는 모델을 복원합니다. 시드 팩트는 불러오지 않고 규칙은 적용하지 않으며, mock하지 않은 파생 관계의 팩트는 **unknown**이 됩니다. 따라서 그 팩트의 가드는 강제하지 않는 한 걷기를 중단합니다(종료 3). 스키마가 공급되지 않은 시드 팩트를 선언한 경우 이를 알리는 메모리가 표시되고, 걷기에서 읽은 각 파생 관계를 이름으로 밝히는 메모리도 표시됩니다. (`lute play`도 같은 키와 플래그를 받지만, 그 경우 시드 팩트는 여전히 로드되고 규칙만 멈춥니다 — [스토리 플레이](/ko/tooling/play/#파생과---derivation)를 참고하세요.)
 
 ```console
-$ lute trace accuse.lute --choose ask=skip --choose verdict=ann --no-derive
+$ lute trace accuse.lute --choice ask=skip --choice verdict=ann --no-derive
 trace: accuse.lute  (seeds: 0 paths, 0 facts; 2 selections)
 note: the schema declares seed facts (e.g. `suspect`) but under `derive: false` trace does not auto-load them (the explicit-world model) — supply seeded relations explicitly via --fact
 note: derived relation `culprit` read under `derive: false`: its rules were not applied, so an unmocked `culprit(…)` is unknown — supply it via --fact, or drop `derive: false`
@@ -480,7 +480,7 @@ trace complete: 2 decisions; 1 unresolved (forced past an unknown guard — the 
 
 <!-- lute-diagnostics unverified="verbatim lute trace output; E-FACT-EXCLUSIVE is named through a constant in the trace crate, so the scraper cannot pair quote and code" -->
 ```console
-$ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choose look=nothing
+$ lute trace scenes/dawn.lute --project . --fact "panicked(maren)" --choice look=nothing
 trace: scenes/dawn.lute  (seeds: 0 paths, 1 facts; 1 selection)
   ## First light
   <branch look>   eligible: saw, nothing   -> nothing
@@ -493,7 +493,7 @@ scenes/dawn.lute:31:5: error [E-FACT-EXCLUSIVE] this write makes exclusive relat
 trace refused: scenes/dawn.lute — exclusive relations hold together
 ```
 
-종료 코드는 **1**이며, 쓰기 뒤의 어떤 내용도 걷지 않습니다. 이런 쓰기에 도달하는 시나리오 테스트도 같은 방식으로 실패합니다. 시드된 팩트 자체 — mock의 `facts:` 또는 `--fact`, 프로젝트의 `facts:` 시드, 그리고 규칙이 그 팩트에서 파생한 내용 — 가 이미 배타성을 깨뜨리면, trace는 걷기 시작 전에 `E-FACT-EXCLUSIVE`와 함께 거부합니다. `check-project`는 `::assert`에 도달하는 모든 경로에서 다른 팩트가 성립하는 경우 같은 코드를 정적으로 보고합니다. Trace는 이전 씬의 한 분기에서만 assert되거나 mock으로 공급되는 것처럼 가능하기만 한 경우를 포착합니다.
+종료 코드는 **1**이며, 쓰기 뒤의 어떤 내용도 걷지 않습니다. 이런 쓰기에 도달하는 시나리오 테스트도 같은 방식으로 실패합니다. 시드된 팩트 자체 — mock의 `facts:` 또는 `--fact`, 프로젝트의 `facts:` 시드, 그리고 규칙이 그 팩트에서 파생한 내용 — 가 이미 배타성을 깨뜨리면, trace는 걷기 시작 전에 `E-FACT-EXCLUSIVE`와 함께 거부합니다. 프로젝트 전체 `check`는 `::assert`에 도달하는 모든 경로에서 다른 팩트가 성립하는 경우 같은 코드를 정적으로 보고합니다. Trace는 이전 씬의 한 분기에서만 assert되거나 mock으로 공급되는 것처럼 가능하기만 한 경우를 포착합니다.
 
 ## `E-TRACE-*` 거부
 
@@ -501,7 +501,7 @@ trace refused: scenes/dawn.lute — exclusive relations hold together
 
 0.6.1부터 trace는 거부가 아닌 경고도 냅니다 — 어떤 작성된 producer도 절대 assert할 수 없는 관계의 `--fact`/mock-YAML 팩트(`producible()`이 생산 불가로 판정함)에 대해 `W-TRACE-MOCK-UNPRODUCIBLE`을 냅니다. 공급한 답변은 도달 가능한 플레이에서 절대 발생할 수 없으므로, 그것을 시드한 "complete" 걷기는 아무것도 증명하지 못합니다. `reserved: true`이거나 `open: engine` 인자 관계는 정의상 생산 가능하므로 경고하지 않습니다.
 
-Trace가 프로젝트를 볼 수 있으면 판정 범위는 프로젝트 전체입니다 — `--project <dir>`을 주거나 trace하는 파일 위에 `lute.project.yaml`이 있는 경우입니다. `facts:` 시드 또는 `check-project`가 도달 불가라고 증명하지 않은 문서의 `::assert`가 관계를 생산할 수 있으면 그 관계는 생산 가능하며, 파생 관계는 규칙을 통해 판정합니다. 프로젝트가 없으면 경고는 trace 대상 문서만 판정하고 이를 명시합니다(`judged against this document only; pass --project <dir> to count the asserts of the project's other documents`). 따라서 이웃 씬에서 assert한 단서는 그 문서에서만 "not producible"입니다.
+Trace가 프로젝트를 볼 수 있으면 판정 범위는 프로젝트 전체입니다 — `--project <dir>`을 주거나 trace하는 파일 위에 `lute.project.yaml`이 있는 경우입니다. `facts:` 시드 또는 프로젝트 전체 `check`가 도달 불가라고 증명하지 않은 문서의 `::assert`가 관계를 생산할 수 있으면 그 관계는 생산 가능하며, 파생 관계는 규칙을 통해 판정합니다. 프로젝트가 없으면 경고는 trace 대상 문서만 판정하고 이를 명시합니다(`judged against this document only; pass --project <dir> to count the asserts of the project's other documents`). 따라서 이웃 씬에서 assert한 단서는 그 문서에서만 "not producible"입니다.
 
 ## 0.34.0의 증거
 

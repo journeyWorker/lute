@@ -16,4 +16,4 @@ authored strings, line IDs, semantic ordering, and values.
 
 YAML values are opaque: the formatter does not reserialize arbitrary YAML or
 rewrite values. Symlinks are skipped. Formatting is not validation or
-compilation; use `lute check` or `check-project` for diagnostics.
+compilation; use `lute check` or `lute check --project DIR` for diagnostics.

@@ -104,7 +104,7 @@ A scene is one beat per file. When a character has many short scenes — an NPC'
 </beat>
 ```
 
-A bundle beat behaves like a scene beat, not an entry: its id is `<document id>.<beat id>` — `oskar.hunt`, `oskar.rumor` — so the document needs an `id:`; its `once` defaults to `run` and is spent by presentation; presenting it marks that id visited, so `visited('oskar.hunt')` reads it in any condition, an `after:` included; since dsl 0.25.0 it may carry its own `after="…"`, which `lute play` checks like a scene's (`✗ keeper.greeting [beat, priority 0] — after: prerequisite not satisfied`); and `check-project` judges it like any beat (`E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). The language rules are on [Beats](/language/beats/#beat-bundles). In a transcript a bundle beat's kind is `beat`; `lute trace --beat` and `lute run --beat` present one on its own (see [Tracing](/tooling/tracing/#bundle-beats)).
+A bundle beat behaves like a scene beat, not an entry: its id is `<document id>.<beat id>` — `oskar.hunt`, `oskar.rumor` — so the document needs an `id:`; its `once` defaults to `run` and is spent by presentation; presenting it marks that id visited, so `visited('oskar.hunt')` reads it in any condition, an `after:` included; since dsl 0.25.0 it may carry its own `after="…"`, which `lute play` checks like a scene's (`✗ keeper.greeting [beat, priority 0] — after: prerequisite not satisfied`); and `check --project` judges it like any beat (`E-BEAT-UNREACHABLE`, `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). The language rules are on [Beats](/language/beats/#beat-bundles). In a transcript a bundle beat's kind is `beat`; `lute trace --beat` and `lute run --beat` present one on its own (see [Tracing](/tooling/tracing/#bundle-beats)).
 
 ### Kind targets
 
@@ -179,14 +179,14 @@ When the engine raises occasion `O`, optionally for target `T`:
 4. `select: first` presents the first eligible beat that is not `also`, then every eligible `also` beat; `select: all` offers the ordered list and presents the one the player picks; `select: sequence` presents the whole ordered list.
 5. **No eligible beat** — the occasion passes with no story, and the engine's default behavior for that moment applies.
 
-Selection is deterministic: the same state, facts, and presentation history pick the same beat in every engine. Weighted randomness or cooldowns are engine policy layered on top; the reference tooling implements exactly this order. When file order is what decides a `select: first` winner — two beats with equal priority whose `when`s are not provably exclusive — `check-project` warns `W-BEAT-PRIORITY-TIE`; see [Beats](/language/beats/) for it and the other beat advisories.
+Selection is deterministic: the same state, facts, and presentation history pick the same beat in every engine. Weighted randomness or cooldowns are engine policy layered on top; the reference tooling implements exactly this order. When file order is what decides a `select: first` winner — two beats with equal priority whose `when`s are not provably exclusive — `check --project` warns `W-BEAT-PRIORITY-TIE`; see [Beats](/language/beats/) for it and the other beat advisories.
 
 For `select: sequence`, the candidates are listed when the occasion is raised, and once a beat of the raise has played, each later beat is judged again just before its turn: a beat whose `when` an earlier beat made false is skipped, and one it made true plays. Such a candidate's line ends `(judged at its turn, after an earlier beat of this raise)`. `also` beats are judged once, when the occasion is raised. The quest lifecycles settle after each presentation, so a [deadline](#deadlines-and-targeted-objectives) is judged between beats, and the `<on event>` handlers the raise answers run after all of its beats. `W-BEAT-SHADOWED` and `W-BEAT-PRIORITY-TIE` ignore `also` beats, which never compete for the win.
 
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--explain <ATOM>]…
+$ lute play --project <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]… [--conditions-output <FILE>]
 ```
 
 ### Runtime event stream (`--events`)
@@ -195,7 +195,7 @@ $ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive
 line contains the seed and its output; every following line pairs the input
 the player took with its output, including `choose` and `bridgeResult`
 answers. Each output is stamped with `eventVersion: "0.41.1"`. The stream is
-exclusive with `--json`, `--ir`, `--explain`, and `--dump-conditions`.
+exclusive with `--json`, `--ir`, `--derivation`, and `--conditions-output`.
 
 A short real stream from the hub conformance project looks like this (the
 first choice opens a second await):
@@ -206,13 +206,14 @@ first choice opens a second await):
 {"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
-- `<PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --all` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
+- `--project <PROJECT_DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --project` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
 - `--script <FILE>` — required: the play script, a `*.play.yaml` file.
 - `--json` — the same transcript as one JSON object on stdout.
 - `--ir` — print staging as the lowered IR records (`::bg`, `::actor`, and the preloads and pose resets the compiler injects) instead of the directives as authored. See [The transcript](#the-transcript).
 - `--quiet` — leave out the candidates that were not eligible at each raise; winners, lines, quests and expectations still print (dsl 0.27.0, round-5 T3-16). Without it, five or more `when: false` candidates at one raise print as one line, `✗ 8 beats — when: false: a, b, c, …`; `--json` always lists every candidate.
-- `--no-derive` — do not apply the project's Datalog rules (dsl 0.22.0 §6); overrides the script's `derive:`. See [Derivation and `--explain`](#derivation-and---explain).
-- `--explain <ATOM>` — repeatable: after the play, print why a ground atom holds or does not.
+- `--no-derive` — do not apply the project's Datalog rules (dsl 0.22.0 §6); overrides the script's `derive:`. See [Derivation and `--derivation`](#derivation-and---derivation).
+- `--derivation <ATOM>` — repeatable: after the play, print why a ground atom holds or does not.
+- `--conditions-output <FILE>` — write the conditions the play evaluated to `FILE`.
 
 There is nothing else to seed on the command line: state, facts, the save, decisions, and assertions all live in the script, so a playthrough is one reviewable file.
 
@@ -300,7 +301,7 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `choose` | Branch/hub id → choice id (a list for a hub's visit sequence or a branch that decides differently each time): the decision for every presentation. |
 | `visited`, `presented`, `quests`, `entriesRead` | The save the play starts from — see [Starting from a save](#starting-from-a-save). |
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
-| `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--explain`](#derivation-and---explain). |
+| `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--derivation`](#derivation-and---derivation). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
  
 For a timed branch, a step may answer expiry with `timeout: true` instead of
@@ -557,9 +558,9 @@ A schema may declare when the game is over: `terminal: "run.fate == 'taken'"` (d
 
 In `--json` the root carries `"end": "terminal"` beside `"exit": "complete"`, and a top-level `expect: { end: terminal }` asserts it. A later `occasion:` step is `E-OCCASION-GATE` (exit 1: `` step 2: E-OCCASION-GATE: the game is over — `terminal: run.fate == 'taken'` holds, so the engine raises no occasion (`enter` for `room.lobby` included); start a new run (`newRun: true`) to play on, or, if the engine raises `enter` outside a run too (a title screen, a gallery), declare it `outsideRun: true` ``), and so is a later `advance:` — the clock does not move on either. An `engine:` step is still accepted: it is the engine's own write. An occasion declared [`outsideRun: true`](/plugins/manifests/) (a title screen, a gallery between runs) is raised anyway.
 
-`newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check-project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
+`newRun: true` starts a new run, and the play goes on only if the new run makes `terminal:` false. A `terminal:` over run state (`run.*`, a run-tier quest or relation) is reset by it. One that reads what a new run keeps (`user.*`, `visited(…)`) still holds, `check --project` warns `W-TERMINAL-PERSISTENT` at the schema, and the next raise halts: `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
-An ending meant to outlive every run says so in the schema: `terminal: { when: "user.crowned", persists: true }` ([Schemas](/state/schemas/#an-ending-that-outlives-runs-persists-true)). `check-project` then stays silent, and `lute play` says the game is over for good instead of offering a new run: the step that ends it, a `newRun: true` after it, and a later raise all say so, and none suggests `newRun`:
+An ending meant to outlive every run says so in the schema: `terminal: { when: "user.crowned", persists: true }` ([Schemas](/state/schemas/#an-ending-that-outlives-runs-persists-true)). `check --project` then stays silent, and `lute play` says the game is over for good instead of offering a new run: the step that ends it, a `newRun: true` after it, and a later raise all say so, and none suggests `newRun`:
 
 ```
 ── step 1 · knock ──────────────
@@ -778,7 +779,7 @@ expect:
 
 - **Step 2** — `advance: 2` from the afternoon stops at the night to close day 1 (`── step 2 · day 1 (Mon) night · dayEnd`), crosses midnight to open day 2, and raises `slotStart` once, in the morning where it ends: the night routine is not raised on the way, and the note under the step says so. Each move's writes and settle print just before the stop they lead to.
 - **Step 3** — `advance: day` from the morning closes day 2 where the clock stands; the move to day 3 fails `fest` in the settle before `dayStart`.
-- A midnight raise plays content like any other step: `transcriptContains` / `transcriptLacks` match its lines, [`--explain`](#derivation-and---explain) names a fact asserted there (`asserted by scene `day.close`, step 3`), and under `lute test --coverage` a document it presented counts as covered. On step 2, `expect: { presented: [day.close, day.open, routine.morning] }` holds, and `winner: routine.morning` judges the final raise.
+- A midnight raise plays content like any other step: `transcriptContains` / `transcriptLacks` match its lines, [`--derivation`](#derivation-and---derivation) names a fact asserted there (`asserted by scene `day.close`, step 3`), and under `lute test --coverage` a document it presented counts as covered. On step 2, `expect: { presented: [day.close, day.open, routine.morning] }` holds, and `winner: routine.morning` judges the final raise.
 - An advance that raises several occasions may key `presented` by occasion: on step 2, `expect: { presented: { dayStart: [day.open], slotStart: [routine.morning] } }` judges only those two raises, each in order, and leaves `dayEnd` unjudged. A miss names the occasion, `` expect presented dayEnd: expected [day.open], actual [day.close (dayEnd at day 1 (Mon) night)] ``, and a key the clock does not raise is a usage error with a suggestion (`` `expect.presented` names `dayStrat`, which the clock's `advance:` does not raise — did you mean `dayStart`? (it raises: slotStart, dayStart, dayEnd) ``). The list form still judges every beat of the step; an `occasion:` step raises one occasion, so its `presented` is always the list.
 
 The clock raises `dayEnd` and `dayStart` itself, so an `occasion:` step that raises one of them again plays that moment twice once an advance passes it. The step still plays, with a note:
@@ -1759,14 +1760,14 @@ A miss makes `lute play` exit 1, unless the walk itself already ended in an erro
 
 `lute test` runs every `*.play.yaml` under its directory that carries an `expect:` — on a step or at the top — alongside the `*.test.yaml` scenario tests, against `--project` or else the nearest `lute.project.yaml` above the play, with a `PASS` / `FAIL` line each (`--json`: entries with `"kind": "play"` and their `misses`). A play without `expect:` is not a test and is skipped. A play that halts fails unless its top-level `expect:` declares the exit (`expect: { end: incomplete }`). With `--coverage`, every document a play presented — through an `occasion:` step or through the occasions an `advance:` raises — and every quest document whose lifecycle it moved, counts as covered — at beat granularity since 0.27.0, each bundle beat and entry its own unit; the options a play picks count in the branch/hub rows beside the ones traced paths chose, and the arm rows come from traced paths alone. The report ends with the beats no play presented. Since dsl 0.26.0 `lute test` compiles a play project once for all its plays — its compile diagnostics print once, not once per play — and runs the plays in parallel on every logical core (`RAYON_NUM_THREADS` respected), reporting them in file order. See [`lute test`](/tooling/cli/#test).
 
-### Derivation and `--explain`
+### Derivation and `--derivation`
 
 `lute play` evaluates every `when`, `done`, and guard over the live facts **with the project's Datalog rules applied** (stratified negation) — the same evaluator `lute run`, and since 0.22.0 `lute trace` and `lute test`, use. The project's seed facts are loaded, and the script's `facts:`, `engine:` writes, and every `::assert` / `::retract` a presentation makes feed the fixpoint.
 
 `derive: false` in the script, or `--no-derive` on the command line (the flag wins), stops applying the rules: the seed facts still load, but every atom of a derived relation reads unknown — a script cannot assert one. A `when` that depends on one halts the walk incomplete (exit 3), and the end-of-play `facts:` / `notFacts:` expectations see base facts only:
 
 ```console
-$ lute play tower --script tower/plays/night.play.yaml --no-derive
+$ lute play --project tower --script tower/plays/night.play.yaml --no-derive
 ```
 
 ```
@@ -1780,10 +1781,10 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
 ── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
-`--explain <atom>` (repeatable) prints, after the play, why a ground atom holds at the end or why it does not. When it holds: the rule used, and each premise's own support — a `seed fact`, `asserted` during the play (naming who asserted it, below), or derived in turn, indented beneath it — with a negated premise shown `(absent)`. When it does not: every rule that could conclude it, with its premises marked — `✗ <atom>  (absent)` for a missing base fact, `✗ <atom>  (not derived)` for a missing derived one (explained in turn), `✗ not <atom>  (but it holds: …)` for a negated premise that is present, `✗ <test>  (false)` / `? <test>  (undecided)` for a comparison or guard, and `· <premise>  (not reached)` for premises after the first failure. With `plays/night.play.yaml` a single `townVisit` step:
+`--derivation <atom>` (repeatable) prints, after the play, why a ground atom holds at the end or why it does not. When it holds: the rule used, and each premise's own support — a `seed fact`, `asserted` during the play (naming who asserted it, below), or derived in turn, indented beneath it — with a negated premise shown `(absent)`. When it does not: every rule that could conclude it, with its premises marked — `✗ <atom>  (absent)` for a missing base fact, `✗ <atom>  (not derived)` for a missing derived one (explained in turn), `✗ not <atom>  (but it holds: …)` for a negated premise that is present, `✗ <test>  (false)` / `? <test>  (undecided)` for a comparison or guard, and `· <premise>  (not reached)` for premises after the first failure. With `plays/night.play.yaml` a single `townVisit` step:
 
 ```console
-$ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)" --explain "threat(hound)"
+$ lute play --project tower --script tower/plays/night.play.yaml --derivation "threat(warden)" --derivation "threat(hound)"
 ```
 
 ```
@@ -1828,11 +1829,11 @@ explain safe(warden): holds
      └─ ✗ not slew(warden)  (but it holds: asserted by engine step 2)
 ```
 
-The explanation is printed before the `── expect:` block, and `--json` carries it as `explain`. An atom that is not ground (`knows(X)`, `slew(_)`) is a usage error (exit 2). `--explain` evaluates the rules over the final facts and state even under `--no-derive`.
+The explanation is printed before the `── expect:` block, and `--json` carries it as `explain`. An atom that is not ground (`knows(X)`, `slew(_)`) is a usage error (exit 2). `--derivation` evaluates the rules over the final facts and state even under `--no-derive`.
 
 ### Exclusive relations
 
-Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes) (dsl 0.25.0 §1) never hold together on the same arguments. `check-project` proves what it can; where both are only *possible* — one scene's branch asserts `panicked(maren)`, a later scene asserts `calm(maren)` — the play checks the live facts, derived ones included, after every write. When both hold, it prints the violation right under the write and halts there, exit 1, even if a later write in the scene would undo it:
+Relations declared [`excludes:`](/state/facts-and-datalog/#exclusive-relations-excludes) (dsl 0.25.0 §1) never hold together on the same arguments. `check --project` proves what it can; where both are only *possible* — one scene's branch asserts `panicked(maren)`, a later scene asserts `calm(maren)` — the play checks the live facts, derived ones included, after every write. When both hold, it prints the violation right under the write and halts there, exit 1, even if a later write in the scene would undo it:
 
 ```
 ── step 2 · morning ──────────────
@@ -1887,7 +1888,7 @@ The lifecycles also settle once before step 1 (with the save's quest statuses an
 |---|---|
 | `0` | Complete — every step played, or an `end: true` step ended the playthrough, or the play ended in the schema's [terminal state](#the-game-is-over) — and every expectation held. |
 | `1` | Error — the project fails to compile (since dsl 0.26.0 also when its documents declare one state path two ways, `E-STATE-DECL-CONFLICT`), a vocabulary conflict, a `pick` that is not eligible, a `select: all` step with eligible beats and no `pick`, a `choose:` decision the menu does not offer (an ineligible choice, or a spent `once` hub option), a step whose own `bridges:` answers were not all consumed, two [exclusive relations](#exclusive-relations) holding together (dsl 0.25.0), a step raising an occasion whose `raisedWhen` gate is false or an `occasion:` / `advance:` step after the game is over (`E-OCCASION-GATE`, dsl 0.27.0 §4), an `advance:` past a finite clock's end (`E-CLOCK-END`), or a missed expectation. |
-| `2` | Usage or I/O — a bad script (see [Usage errors](#usage-errors)), an unknown occasion or world event, a missing or out-of-domain `target`, an invalid seed or `engine:` write, an `engine: { accept }` of a quest that is not accept-driven, an `advance: { to }` naming no declared slot or weekday, an `engine:` step that moves the clock backward, a `bridges:` answer that fits no call or that no result slot or capability `result:` types (dsl 0.26.0), a non-ground `--explain` atom, an unreadable project, a malformed artifact. |
+| `2` | Usage or I/O — a bad script (see [Usage errors](#usage-errors)), an unknown occasion or world event, a missing or out-of-domain `target`, an invalid seed or `engine:` write, an `engine: { accept }` of a quest that is not accept-driven, an `advance: { to }` naming no declared slot or weekday, an `engine:` step that moves the clock backward, a `bridges:` answer that fits no call or that no result slot or capability `result:` types (dsl 0.26.0), a non-ground `--derivation` atom, an unreadable project, a malformed artifact. |
 | `3` | Incomplete — an unscripted choice or hub, a branch `choose:` list that ran out, a `when` or quest objective that evaluates to unknown, an unresolved `now()` / `validAt()`, or a plugin call whose bridge result has no `bridges:` answer. |
 
 ## The transcript
@@ -1955,7 +1956,7 @@ The human transcript names every step, lists its candidates with their verdicts,
 - A `newRun` step prints `run.* state, run-tier facts and once: run reset`, then `; prev.run.* holds the ended run (<n> values)` when the ended run left any `run.*` value to snapshot, then each snapshotted value, `prev.run.<path> = <value>` (dsl 0.24.0), then `quest <id> -> unset (tier: run; was <status>)` for each run-tier quest that had left `unset` — with a `note:` after an accept-driven one that was active with no objective done or failed — then `quest <id> accepted (queued at="nextRun")` for each queued acceptance, then its seed's writes.
 - An `event:` step prints the handlers that ran, and `<on event=<name>> of quest <id> skipped — quest complete` for a quest that already settled; the lifecycle's transitions follow every step kind.
 - In `--json`, every record in `presented.commands` carries its `position` in the document; a line record carries `role` (`dialogue`, `narration`, `mono`, `os`, or `vo`), `lineId`, and `voiceKey` — every line has a `voiceKey`, narration included — plus `as` and `emotion` where they apply, and a choice or hub record lists the options not offered under `ineligible` and the taken `once` options under `spent`.
-- The walk ends with `── end: complete (<n> steps)` — every repetition counted — or ``── end: `end: true` at step <n> (<k> later steps skipped)`` after an `end` step, or ``── end: terminal — `terminal: <condition>` holds`` when the game is over after the last step (dsl 0.27.0 §4), or `── halted: <message>` when it stops early. Then the `--explain` trees, then the `── expect:` block.
+- The walk ends with `── end: complete (<n> steps)` — every repetition counted — or ``── end: `end: true` at step <n> (<k> later steps skipped)`` after an `end` step, or ``── end: terminal — `terminal: <condition>` holds`` when the game is over after the last step (dsl 0.27.0 §4), or `── halted: <message>` when it stops early. Then the `--derivation` trees, then the `── expect:` block.
 
 A shape-only project (no plugins) with a town scene that offers a side job, and a quest whose `calm` objective is judged at `runEnd`:
 
@@ -2006,7 +2007,7 @@ type PlayTranscript = {
   end: "complete" | "terminal" | "incomplete" | "error"; // how the walk ended — the values `expect.end` names; `terminal`: the schema's `terminal:` held
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
-  explain?: Explanation[];                 // one per `--explain` atom
+  explain?: Explanation[];                 // one per `--derivation` atom
 };
 
 type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | AdvanceStep | EndStep) & {
@@ -2127,7 +2128,7 @@ type Premise =
 
 ## Worked example
 
-`lute init --template beats` scaffolds a small project that already passes `check-project`, `test`, and `play`: the first day in a town square, a lamp that has gone dark, and the two people who know why.
+`lute init --template beats` scaffolds a small project that already passes `check --project`, `test`, and `play`: the first day in a town square, a lamp that has gone dark, and the two people who know why.
 
 ```console
 $ lute init --template beats town
@@ -2255,7 +2256,7 @@ expect:
 From the project directory:
 
 ```console
-$ lute play . --script plays/first-day.play.yaml
+$ lute play --project . --script plays/first-day.play.yaml
 ```
 
 ```
@@ -2437,7 +2438,7 @@ expect:
 Every play that carries an `expect:` runs under `lute test`, beside the scenario tests. With the two plays above saved as `plays/say-nothing.play.yaml` and `plays/returning.play.yaml`:
 
 ```console
-$ lute test . --project .
+$ lute test --project .
 ```
 
 ```
@@ -2453,7 +2454,7 @@ FAIL  ./plays/say-nothing.play.yaml  (play of .)
 4 passed, 1 failed
 ```
 
-With only the scaffold's own play, `lute test . --project . --coverage` counts it among the tests:
+With only the scaffold's own play, `lute test --project . --coverage` counts it among the tests:
 
 ```
 PASS  ./tests/lamp-quest.test.yaml  (./quests/lamp.lute)

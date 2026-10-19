@@ -104,7 +104,7 @@ Lint CEL fragment는 ground-only입니다. `@ref`나 `$` DSL token, 상태 경�
 0.22.0부터 세 선형-VN 규칙 — `dialogue-ratio`, `scene-length-spread`, `section-starts-with-background` — 은 선형 씬만 판정합니다. beat는 엔진이 이미 stage를 만든 순간에 제시되고, component·quest·lore entry는 다른 사람의 staging에 삽입되므로, [beats와 occasions](/ko/tooling/play/)를 기반으로 만든 프로젝트에서 모든 bark마다 `L-SECTION-STARTS-WITH-BACKGROUND`가 쏟아지지 않습니다. beat에 자체 규범을 적용하려면 `scene.kind == "beat"`(또는 `section.kind == "beat"`)로 가드하는 `custom:` 규칙을 작성하세요.
 ## 표시 이름
 
-dsl 0.26.0부터 `lute lint`는 `W-DISPLAY-NAME-DUP`도 보고합니다(dsl 0.26.0 §2.8). 이는 대화 상자가 같은 이름으로 표시하는 서로 다른 두 화자입니다. id는 프로젝트 전체에서 유일하지만 플레이어는 이름을 읽으며, 각자 "Hiker Gus"를 캐스트한 두 작가는 한 사람을 두 번 쓴 셈입니다. 정확히 같은 `name:`을 가진 두 cast 항목, component의 `::use{… name="…"}` display string과 같은 cast 이름, 서로 다른 화자(`who=`)에 대한 그런 문자열 두 개에서 실행됩니다. 이는 `check-project`도 보고하는 자문이며 `L-*`가 아닌 `W-` 코드를 유지합니다. 비교 범위는 해당 경로가 속한 프로젝트 전체이므로 한 파일을 lint해도 모든 cast 항목을 비교합니다. 결과는 이름 중 하나를 말하는 첫 줄 또는 어느 것도 말하지 않으면 문서의 첫 줄에 연결됩니다:
+dsl 0.26.0부터 `lute lint`는 `W-DISPLAY-NAME-DUP`도 보고합니다(dsl 0.26.0 §2.8). 이는 대화 상자가 같은 이름으로 표시하는 서로 다른 두 화자입니다. id는 프로젝트 전체에서 유일하지만 플레이어는 이름을 읽으며, 각자 "Hiker Gus"를 캐스트한 두 작가는 한 사람을 두 번 쓴 셈입니다. 정확히 같은 `name:`을 가진 두 cast 항목, component의 `::use{… name="…"}` display string과 같은 cast 이름, 서로 다른 화자(`who=`)에 대한 그런 문자열 두 개에서 실행됩니다. 이는 프로젝트 전체 `check`도 보고하는 자문이며 `L-*`가 아닌 `W-` 코드를 유지합니다. 비교 범위는 해당 경로가 속한 프로젝트 전체이므로 한 파일을 lint해도 모든 cast 항목을 비교합니다. 결과는 이름 중 하나를 말하는 첫 줄 또는 어느 것도 말하지 않으면 문서의 첫 줄에 연결됩니다:
 
 <!-- lute-diagnostics -->
 ```console
@@ -130,7 +130,7 @@ lore/trainers.lute:12:3: error [W-DISPLAY-NAME-DUP] [denied] display name `Hiker
 failed: . (1 error(s), 0 warning(s))
 ```
 
-`check-project --deny-warnings`로 merge를 gate하는 프로젝트는 먼저 역할 이름에 `sharedName: true`를 표시합니다. [여러 작가 가이드](/ko/guides/multi-author/)를 참고하세요.
+`lute check --project . --deny-warnings`로 merge를 gate하는 프로젝트는 먼저 역할 이름에 `sharedName: true`를 표시합니다. [여러 작가 가이드](/ko/guides/multi-author/)를 참고하세요.
 
 ## 플러그인 규칙 작성
 

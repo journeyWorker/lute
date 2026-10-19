@@ -1,6 +1,6 @@
 ---
 title: Story overviews
-description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--facts` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0: covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
+description: "Three read-only views of a story chosen by occasions (dsl 0.23.0): `lute beats` prints each occasion's beat ladder with the checker's verdicts, `lute calendar` evaluates play's own eligibility over a grid of state values, and `lute scenario knowledge` traces every fact-guarded condition through the rules to whatever produces its facts. Since 0.24.0: clock and visited axes, per-occasion axes, `--relation` tables and the never-presented list in the calendar, and defs as written with `--expand`. Since 0.26.0: covered fallbacks and kind ladders in `lute beats`, fact-producer edges in `lute scenario --facts`, and counted rule premises in `knowledge`."
 ---
 ## Machine-readable output (0.43)
 
@@ -8,7 +8,7 @@ description: "Three read-only views of a story chosen by occasions (dsl 0.23.0):
 
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
 
-- [`lute beats`](#lute-beats) — the **ladder**: every beat of each occasion and target in selection order, with what `check-project` concludes about it. Static; the project need not check clean.
+- [`lute beats`](#lute-beats) — the **ladder**: every beat of each occasion and target in selection order, with what `check --project` concludes about it. Static; the project need not check clean.
 - [`lute calendar`](#lute-calendar) — the **grid**: for every combination of the state values, quest statuses and facts you name — from a save, or partway along a played route — which beat `lute play` would present. It runs play's own eligibility, so it is exact where the checker is conservative.
 - [`lute scenario knowledge`](#lute-scenario-knowledge) — the **knowledge map**: for every condition that reads a fact, which rules conclude it and who produces the facts they need, down to the ones nothing produces yet.
 
@@ -110,13 +110,13 @@ And one quest, `quests/ferry.lute`, which starts once you have met Ada at the in
 ## `lute beats`
 
 ```console
-$ lute beats <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
+$ lute beats --project <dir> [--occasion <O>]… [--target <T>]… [--expand] [--json]
 ```
 
-Print every beat of the project, grouped into one **ladder** per occasion — and, for a targeted occasion, one per target — in selection order: priority descending, then project order (the order of `beats` in `project.index.json`). Each row carries what decides the beat's place and what `check-project` concludes about it:
+Print every beat of the project, grouped into one **ladder** per occasion — and, for a targeted occasion, one per target — in selection order: priority descending, then project order (the order of `beats` in `project.index.json`). Each row carries what decides the beat's place and what `check --project` concludes about it:
 
 ```console
-$ lute beats .
+$ lute beats --project .
 project root: .
 
   board — select: all
@@ -150,14 +150,14 @@ project root: .
 - **kind** — `scene`, `entry`, or `bundle` (a [bundle beat](/tooling/play/#bundle-beats), listed under its canonical `<document id>.<beat id>`).
 - **once** — `run`, `user`, `day`, `slot` (with a declared [clock](/language/clock/), for a scene, an entry, or a bundle beat's `once="day"` / `once="slot"`), or `no` (a scene's `once: false`, an entry without `once`); `, also` follows it for an [`also` beat](/tooling/play/#composing-occasions), and `, share <key>` for a beat with a [shared spend](/language/beats/#one-event-several-places-share) (dsl 0.25.0): `day, share solWarm`.
 - **after** / **when** — the conditions as the author wrote them, `@def` references included (dsl 0.24.0; `--expand` prints each `when` expanded); `-` when absent.
-- **verdict** — the project-wide beat diagnostics `check-project` reports about this beat, by name: `unreachable` (`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`), `shadowed` (`W-BEAT-SHADOWED`), `tied` (`W-BEAT-PRIORITY-TIE`), and `once-run-user` (`W-BEAT-ONCE-RUN-USER`). They are the checker's own diagnostics from the same run, not a second analysis; see [Beats](/language/beats/) for what each means. Above, `dockGulls` ties `dockBo` (equal priority, conditions not provably exclusive), `dockEmpty` can never win because the always-eligible `dockGulls` outranks it, and `inn.regular` is spent once per run while its `when` reads only user state.
+- **verdict** — the project-wide beat diagnostics `check --project` reports about this beat, by name: `unreachable` (`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`), `shadowed` (`W-BEAT-SHADOWED`), `tied` (`W-BEAT-PRIORITY-TIE`), and `once-run-user` (`W-BEAT-ONCE-RUN-USER`). They are the checker's own diagnostics from the same run, not a second analysis; see [Beats](/language/beats/) for what each means. Above, `dockGulls` ties `dockBo` (equal priority, conditions not provably exclusive), `dockEmpty` can never win because the always-eligible `dockGulls` outranks it, and `inn.regular` is spent once per run while its `when` reads only user state.
 
 A targeted occasion gets one ladder per target its beats name; a beat with no `target` answers every raise, so it appears in every target's ladder. When no beat names a target, the occasion has a single ladder headed `(any target)` (`"anyTarget": true` in JSON). Shadowing and ties are `select: first` notions, so a `select: all` or `sequence` ladder never shows them.
 
 **Covered fallbacks** (dsl 0.26.0 §8). A fallback that an earlier, never-spent beat whose `when` it implies always beats can never play, yet it is not shadowed — the beat above it is not always eligible. It is there on purpose (a lead's gate line, kept until an area answers the gate), so the verdict column says what covers it instead of warning: `covered by <id>` (`coveredBy` in `--json`). An area's `solGate` (priority 0) and the lead's `gateFallback` (priority -10) share the `when` `!holds('metWren', ['wren'])`, and entries without `once` are never spent. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0 §5) is listed in the ladder of every member some beat names — Gus's own beat outranks it there — and in a `kind:<kind>` ladder for the members no beat names on its own:
 
 ```console
-$ lute beats . --occasion talk
+$ lute beats --project . --occasion talk
 project root: .
 
   talk @ npc.gus — select: first
@@ -179,12 +179,12 @@ project root: .
     1  0         trainers.challenge "A trainer squares up"  bundle  no    -        -      -
 ```
 
-`--target` accepts any member of the occasion's domain: `lute beats . --occasion talk --target npc.r16Gus` prints the one ladder `talk @ npc.r16Gus`, the kind beat alone. On Monster League the twelve `covered by` rows are the lead's gate fallbacks, each covered by the area beat that answers its gate.
+`--target` accepts any member of the occasion's domain: `lute beats --project . --occasion talk --target npc.r16Gus` prints the one ladder `talk @ npc.r16Gus`, the kind beat alone. On Monster League the twelve `covered by` rows are the lead's gate fallbacks, each covered by the area beat that answers its gate.
 
-**The project need not check clean.** The ladder is most useful exactly when something is wrong. With the storm's condition written as a contradiction, `check-project` fails with `E-BEAT-UNREACHABLE`, and the ladder still lists the beat, at the top of the dock, marked:
+**The project need not check clean.** The ladder is most useful exactly when something is wrong. With the storm's condition written as a contradiction, `check --project` fails with `E-BEAT-UNREACHABLE`, and the ladder still lists the beat, at the top of the dock, marked:
 
 ```console
-$ lute beats . --target place.dock
+$ lute beats --project . --target place.dock
 project root: .
 
   placeVisit @ place.dock — select: first
@@ -198,7 +198,7 @@ project root: .
 `--occasion <O>` (repeatable) keeps only those occasions' ladders; `--target <T>` (repeatable) keeps only the ladders raised for that target, so untargeted occasions drop out. An occasion the project does not know is a usage error that lists the known ones; a target no beat names prints `(no beats)`:
 
 ```console
-$ lute beats . --occasion daystart
+$ lute beats --project . --occasion daystart
 lute beats: `--occasion daystart` is not an occasion of this project (known: board, dayStart, placeVisit)
 ```
 
@@ -225,14 +225,14 @@ lute beats: `--occasion daystart` is not an occasion of this project (known: boa
 **Defs as written** (dsl 0.24.0). The `when` column shows a def reference the way the author wrote it; `--expand` prints the expansion instead. In the [`beats` scaffold](/tooling/play/#worked-example), `town.morning` is gated on `!@firstDay`:
 
 ```console
-$ lute beats . --occasion townVisit
+$ lute beats --project . --occasion townVisit
 project root: .
 
   townVisit — select: first
     #  priority  beat                            kind   once  verdict  after  when
     1  10        town.welcome "First arrival"    scene  user  -        -      -
     2  0         town.morning "Another morning"  scene  no    -        -      !@firstDay
-$ lute beats . --occasion townVisit --expand
+$ lute beats --project . --occasion townVisit --expand
 project root: .
 
   townVisit — select: first
@@ -246,27 +246,27 @@ Exit **0** on success, **2** on an I/O failure or an unknown `--occasion`.
 ## `lute calendar`
 
 ```console
-$ lute calendar <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
-                [--occasion <O>[@<axis>[=<value>],…]]… [--target <T>]… [--facts <relation>]…
+$ lute calendar --project <dir> [--axis <path>=<lo>..<hi> | <path>=<a>,<b>,… | clock[=<d1>..<d2>]]…
+                [--occasion <O>]… [--occasion-axes <O>=<axis>[=<value>],…]… [--target <T>]… [--relation <relation>]…
                 [--script <route.play.yaml> [--until <step>]] [--where <cel>]
-                [--json | --csv]
+                [--json | --format csv]
 ```
 
 Evaluate, for **every cell** of a grid of state values and every occasion column, which beats [`lute play`](/tooling/play/) would find eligible there — its own candidates, `once`, `after:` and `when`, with the project's rules applied — and report the winner. Every cell starts from the same world — the declared defaults, or a play script's save with its steps replayed — then gets its axis values written, and its quests settle. Nothing is presented within the grid: each cell is one question, "if the engine raised this occasion now, what would play?", and no cell sees what another did.
 
 - `--axis` (optional, repeatable) names a declared state path and its values: an inclusive integer range `run.day=1..7`, or a list `run.slot=morning,evening`. Each value is checked against the path's declared type. The grid is the product of the axes, and the **first axis varies slowest**; with no `--axis` it is a single cell. More kinds of axis reach what a state write cannot — a quest's status, a fact, the visited set, a declared clock — see [Quest, fact, visited and clock axes](#quest-and-fact-axes).
-- `--occasion <O>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers. `<O>@<axis>,…` varies only some axes for that occasion — see [Per-occasion axes and who is where](#per-occasion-axes-and-who-is-where).
-- `--facts <relation>` (repeatable, dsl 0.24.0) — print the relation's facts in every cell, once it has settled.
+- `--occasion <O>` (repeatable) — the occasions to evaluate; by default every occasion a beat answers. `--occasion-axes <O>=<axis>,…` varies only some axes for that occasion — see [Per-occasion axes and who is where](#per-occasion-axes-and-who-is-where).
+- `--relation <relation>` (repeatable, dsl 0.24.0) — print the relation's facts in every cell, once it has settled.
 - `--target <T>` (repeatable) — the targets to raise a targeted occasion for; by default every target its beats name, not the rest of its declared [target domain](/tooling/play/#occasions), where no beat answers and every cell would read as a hole. A [kind beat](/tooling/play/#kind-targets) (dsl 0.26.0) names every member of its kind, so each member gets a column, and a cell offers it at that member's raise, after the member's own beats of its priority. When none of its beats names a target, the occasion gets a single column headed `(any)` (`<occasion>@(any)` in the lists below the grid), which only its untargeted beats answer. Each (occasion, target) pair is one column.
 - `--script <file>` — a play script every cell starts from: its **save** — `state:`, `facts:`, `visited:`, `presented:`, `quests:`, `entriesRead:` ([Starting from a save](/tooling/play/#starting-from-a-save)) — and then its `steps:`, replayed exactly as `lute play` plays them. A save needs no steps. Without it, every cell starts from the declared defaults and the seed facts.
 - `--until <step>` — with `--script`, replay only the steps before this one, named by its 1-based number or its `label:`; the step itself is not played. See [Along a route](#along-a-route).
 - `--where <cel>` — keep only the cells where this condition holds; see [Dropping cells no run reaches](#dropping-cells-no-run-reaches).
-- `--json` / `--csv` — machine-readable output instead of the grid.
+- `--json` / `--format csv` — machine-readable output instead of the grid.
 
 Over the town's first three days:
 
 ```console
-$ lute calendar . --axis run.day=1..3 --axis run.slot=morning,evening
+$ lute calendar --project . --axis run.day=1..3 --axis run.slot=morning,evening
 calendar: . — 6 cell(s) × 4 column(s), from declared defaults
 
 run.day  run.slot  board (all)          dayStart (sequence)   placeVisit     placeVisit
@@ -302,7 +302,7 @@ Reading a cell:
 - A `select: all` column shows the **offered list**, and a `select: sequence` column the **sequence** that would play, each in selection order.
 - `?` marks an **undecided** cell — a `when` the reference runtime cannot decide (a `validAt(…)`, say) decides the outcome, so `lute play` would halt there. The reasons are listed under `undecided`.
 
-Here the dock is never empty — `dockGulls` covers every cell Bo is not on the pier — while the storm takes over the second evening. The rules move Ada: she is at the inn only in the evening. And the calendar lists the beats **never eligible in any cell**, with the reason: `day.farewell` and `inn.again` wait on history (`after:`) that a fresh start does not have, `inn.regular` needs three visits, and `noteDocked` a fact only the engine asserts. Since dsl 0.24.0 it also lists the beats **eligible but never presented** — eligible somewhere, beaten everywhere — with what beat them: `dockEmpty` is always outranked (`--json`: `neverPresented`, each with `beatenBy`; `--csv`: a second table).
+Here the dock is never empty — `dockGulls` covers every cell Bo is not on the pier — while the storm takes over the second evening. The rules move Ada: she is at the inn only in the evening. And the calendar lists the beats **never eligible in any cell**, with the reason: `day.farewell` and `inn.again` wait on history (`after:`) that a fresh start does not have, `inn.regular` needs three visits, and `noteDocked` a fact only the engine asserts. Since dsl 0.24.0 it also lists the beats **eligible but never presented** — eligible somewhere, beaten everywhere — with what beat them: `dockEmpty` is always outranked (`--json`: `neverPresented`, each with `beatenBy`; `--format csv`: a second table).
 
 ### From a save
 
@@ -316,7 +316,7 @@ state: { user.visits: 3 }
 ```
 
 ```console
-$ lute calendar . --axis run.day=1..3 --axis run.slot=morning,evening \
+$ lute calendar --project . --axis run.day=1..3 --axis run.slot=morning,evening \
     --script plays/regular.play.yaml --occasion dayStart --occasion placeVisit --target place.inn
 calendar: . — 6 cell(s) × 2 column(s), from the save in plays/regular.play.yaml
 
@@ -365,7 +365,7 @@ steps:
 Stopping before the way back, and asking whether a rumour about Ada would change it:
 
 ```console
-$ lute calendar . --script plays/evening.play.yaml --until "back at the inn" \
+$ lute calendar --project . --script plays/evening.play.yaml --until "back at the inn" \
     --axis 'holds('rumor', ['ada'])=false,true' --occasion placeVisit --target place.inn
 calendar: . — 2 cell(s) × 1 column(s), from the save in plays/evening.play.yaml, then its step 1 replayed (stopping before step 2, back at the inn)
 
@@ -399,16 +399,16 @@ An axis over a declared state path writes it as an `engine:` step would. Some th
 Anything else is a usage error that lists the axis kinds (with a did-you-mean for a mistyped state path):
 
 ```console
-$ lute calendar . --axis run.dya=1..3
+$ lute calendar --project . --axis run.dya=1..3
 lute calendar: `--axis run.dya`: `run.dya` is not a declared state path in this project — did you mean `run.day`?; an axis is one of: a declared state path (`run.day=1..7`), every member of a `per:` family (`run.aff.*=6,7`) or the member another axis names (`run.aff[run.route]=6,7`), `quest.<id>.state=<status>,…`, `quest.<id>.objectives.<oid>.done=true,false`, `holds(<fact>)=true,false`, `visited('<scene or bundle-beat id>')=true,false`, `clock[=<d1>..<d2>]` (every slot of those days, in order)
-$ lute calendar . --axis 'holds('trusted', ['ada'])=true,false'
+$ lute calendar --project . --axis 'holds('trusted', ['ada'])=true,false'
 lute calendar: `--axis holds('trusted', ['ada'])`: `trusted(ada)` is derived by rules and cannot be asserted
 ```
 
 With the visit and the meeting as axes, `inn.again` wins only where both hold:
 
 ```console
-$ lute calendar . --axis "visited('inn.ada')=false,true" --axis 'holds('met', ['ada'])=false,true' \
+$ lute calendar --project . --axis "visited('inn.ada')=false,true" --axis 'holds('met', ['ada'])=false,true' \
     --occasion placeVisit --target place.inn
 calendar: . — 4 cell(s) × 1 column(s), from declared defaults
 
@@ -432,7 +432,7 @@ eligible but never presented in any cell: none
 The status is a seed, and the settle still runs. From the save above — Ada met, `inn.ada` visited — a quest seeded `unset` does not stay there:
 
 ```console
-$ lute calendar . --script plays/regular.play.yaml --axis quest.ferry.state=unset,active --occasion dayStart
+$ lute calendar --project . --script plays/regular.play.yaml --axis quest.ferry.state=unset,active --occasion dayStart
 calendar: . — 2 cell(s) × 1 column(s), from the save in plays/regular.play.yaml
 
 quest.ferry.state  dayStart (sequence)
@@ -461,7 +461,7 @@ A [`per:` family](/state/state-model/#one-path-per-entity-per) — `run.aff: { t
 Tied to the route, an ending matrix is route × the route's own affection, with every other suitor left at its default:
 
 ```console
-$ lute calendar . --script plays/confessed.play.yaml --axis run.route=ren,kai \
+$ lute calendar --project . --script plays/confessed.play.yaml --axis run.route=ren,kai \
     --axis 'run.aff[run.route]=6,7' --occasion termEnd
 calendar: . — 4 cell(s) × 1 column(s), from the save in plays/confessed.play.yaml
 
@@ -472,20 +472,20 @@ kai        6                   end.kai.ember +1
 kai        7                   end.kai.lantern +2
 ```
 
-The axis is named as written in the row labels, the `--json` `at` keys and the `--csv` header. The family itself is no value, so a bare `--axis run.aff=…` names the three forms instead of guessing; an axis over a member the family axis already sets (`--axis 'run.aff.*=6' --axis run.aff.ren=7`) is refused too:
+The axis is named as written in the row labels, the `--json` `at` keys and the `--format csv` header. The family itself is no value, so a bare `--axis run.aff=…` names the three forms instead of guessing; an axis over a member the family axis already sets (`--axis 'run.aff.*=6' --axis run.aff.ren=7`) is refused too:
 
 ```console
-$ lute calendar . --axis run.route=ren,kai --axis run.aff=6,7 --occasion termEnd
+$ lute calendar --project . --axis run.route=ren,kai --axis run.aff=6,7 --occasion termEnd
 lute calendar: `--axis run.aff`: `run.aff` is a `per: suitor` family — name a member (`run.aff.ren`), all of them (`run.aff.*`), or tie it to an axis (`run.aff[run.route]`)
 ```
 
 ### Per-occasion axes and who is where
 
-Some occasions happen once a day, but a grid over day × slot evaluates every occasion in every row. `--occasion <O>@<axis>,…` (dsl 0.24.0) varies only the named axes for `O`: it is evaluated where every other axis is at its first value and left blank elsewhere — `dayStart@run.day` reads the bell once per day. `@run.day,run.slot=evening` holds `run.slot` at `evening` instead of its first value. `--facts <relation>` (repeatable) adds a table of the relation's facts in every settled cell — a row per first argument, a column per cell — so the rules that move people become visible:
+Some occasions happen once a day, but a grid over day × slot evaluates every occasion in every row. `--occasion-axes <O>=<axis>,…` (dsl 0.24.0) varies only the named axes for `O`: it is evaluated where every other axis is at its first value and left blank elsewhere — `--occasion-axes dayStart=run.day` reads the bell once per day. `--occasion-axes dayStart=run.day,run.slot=evening` holds `run.slot` at `evening` instead of its first value. `--relation <relation>` (repeatable) adds a table of the relation's facts in every settled cell — a row per first argument, a column per cell — so the rules that move people become visible:
 
 ```console
-$ lute calendar . --axis run.day=1..3 --axis run.slot=morning,evening \
-    --occasion dayStart@run.day --occasion placeVisit --target place.dock --facts present
+$ lute calendar --project . --axis run.day=1..3 --axis run.slot=morning,evening \
+    --occasion-axes dayStart=run.day --occasion placeVisit --target place.dock --relation present
 ```
 
 The grid then reads (the facts table and the lists follow it):
@@ -504,7 +504,7 @@ run.day  run.slot  dayStart (sequence)   placeVisit
 3        evening                         dockGulls +1
 ```
 
-and `--facts present`, over the same six cells with every occasion evaluated:
+and `--relation present`, over the same six cells with every occasion evaluated:
 
 ```console
 facts present(person, place):
@@ -513,9 +513,9 @@ ada     -          inn        -          inn        -          inn
 bo      dock       -          dock       -          -          -
 ```
 
-In `--json` a per-occasion column carries `varies` and `heldAt`, a cell outside it has no result for that column, and each cell carries a `facts` map (`{ "present": ["present(bo, dock)"] }`); `--csv` adds a `facts:present` column.
+In `--json` a per-occasion column carries `varies` and `heldAt`, a cell outside it has no result for that column, and each cell carries a `facts` map (`{ "present": ["present(bo, dock)"] }`); `--format csv` adds a `facts:present` column.
 
-With a declared [clock](/language/clock/), the grid is `--axis clock=<d1>..<d2>`, and a per-occasion column names the clock's axes: `dayStart@clock.day` — or the clock's own paths, `dayStart@run.day` — with `,clock.slot=<slot>` (or `,run.slot=<slot>`) to hold another slot than the day's first. Give the harbour a clock over the paths it already has:
+With a declared [clock](/language/clock/), the grid is `--axis clock=<d1>..<d2>`, and a per-occasion column names the clock's axes: `--occasion-axes dayStart=clock.day` — or the clock's own paths, `--occasion-axes dayStart=run.day` — with `,clock.slot=<slot>` (or `,run.slot=<slot>`) to hold another slot than the day's first. Give the harbour a clock over the paths it already has:
 
 ```yaml
 clock:
@@ -525,7 +525,7 @@ clock:
 ```
 
 ```console
-$ lute calendar . --axis clock=1..3 --occasion dayStart@clock.day,clock.slot=evening \
+$ lute calendar --project . --axis clock=1..3 --occasion-axes dayStart=clock.day,clock.slot=evening \
     --occasion placeVisit --target place.dock
 calendar: . — 6 cell(s) × 2 column(s), from declared defaults
   dayStart: varies over clock.day only, at clock.slot=evening; blank elsewhere
@@ -545,7 +545,7 @@ clock      dayStart (sequence)   placeVisit
 Axes are independent, so their product holds combinations no run can reach. `--where <cel>` keeps only the cells where a condition holds — evaluated after the cell's values are written and its quests settle — and the header counts the rest. `ferry` completes only from day 3, so a completed ferry before then is not a state to plan for:
 
 ```console
-$ lute calendar . --axis run.day=1..3 --axis quest.ferry.state=unset,active,complete \
+$ lute calendar --project . --axis run.day=1..3 --axis quest.ferry.state=unset,active,complete \
     --where "quest.ferry.state != 'complete' || run.day >= 3" --occasion dayStart
 calendar: . — 7 cell(s) (2 dropped by --where) × 1 column(s), from declared defaults
 
@@ -570,7 +570,7 @@ eligible but never presented in any cell: none
 A cell is `?` when the reference runtime cannot decide a `when` that would decide it. Add a scene at the inn, priority 40, whose `when` is `validAt('met', ['ada'], quest.ferry.activatedAt)` — a historical query `lute play` has no clock for — and the inn column cannot be answered:
 
 ```console
-$ lute calendar . --axis run.slot=morning,evening --occasion placeVisit --target place.inn
+$ lute calendar --project . --axis run.slot=morning,evening --occasion placeVisit --target place.inn
 calendar: . — 2 cell(s) × 1 column(s), from declared defaults
 
 run.slot  placeVisit
@@ -620,10 +620,10 @@ An unknown `when` below the winner does not make a cell undecided: the winner is
 }
 ```
 
-`--csv` writes one row per cell and column — the axis values, then `occasion,target,select,winner,presented,shadowed,unknown,notes`, lists joined with `;` (an `(any)` column's target reads `(any)`) — for a spreadsheet, then, after a blank line, a second table of the beats eligible but never presented, each with what beat it:
+`--format csv` writes one row per cell and column — the axis values, then `occasion,target,select,winner,presented,shadowed,unknown,notes`, lists joined with `;` (an `(any)` column's target reads `(any)`) — for a spreadsheet, then, after a blank line, a second table of the beats eligible but never presented, each with what beat it:
 
 ```console
-$ lute calendar . --axis run.day=2..3 --axis run.slot=evening --occasion placeVisit --csv
+$ lute calendar --project . --axis run.day=2..3 --axis run.slot=evening --occasion placeVisit --format csv
 run.day,run.slot,occasion,target,select,winner,presented,shadowed,unknown,notes
 2,evening,placeVisit,place.dock,first,dock.storm,dock.storm,dockGulls;dockEmpty,,
 2,evening,placeVisit,place.inn,first,inn.ada,inn.ada,,,
@@ -640,7 +640,7 @@ The calendar compiles the whole project the way `lute play` does, so, unlike `lu
 
 <!-- lute-diagnostics -->
 ```console
-$ lute calendar . --axis run.day=1..3
+$ lute calendar --project . --axis run.day=1..3
 ./scenes/dock/storm.lute:7:8: error [E-BEAT-UNREACHABLE] beat `dock.storm` is never eligible: its `when` `run.slot == 'morning' && run.slot == 'evening'` is provably false
 ```
 
@@ -649,13 +649,13 @@ Standard error adds `lute calendar: 1 of 9 document(s) failed to compile; refusi
 Every axis is validated before a cell is evaluated. An undeclared path, a value outside the path's type, an empty or non-integer range, an axis given twice, a quest path other than a status or an objective's `done`, an undeclared quest, a `holds(…)` over a derived or undeclared relation (or with a value other than `true`/`false`), a `--target` that none of the listed occasions takes, and a grid of more than **10,000 cells** are usage errors, as are an `--until` that names no step, a replay that halts, and a `--where` that does not parse or is unknown at some cell:
 
 ```console
-$ lute calendar . --axis run.slot=noon
+$ lute calendar --project . --axis run.slot=noon
 lute calendar: `--axis run.slot`: `run.slot` does not take `noon`: the enum's members are morning, evening
-$ lute calendar . --axis quest.ferry.activatedAt=1
+$ lute calendar --project . --axis quest.ferry.activatedAt=1
 lute calendar: `--axis quest.ferry.activatedAt`: `quest.ferry.activatedAt` is the quest lifecycle's own bookkeeping and cannot be set per cell — an axis over a quest is `quest.<id>.state` (its status) or `quest.<id>.objectives.<oid>.done`
-$ lute calendar . --script plays/evening.play.yaml --until "back at the ink"
+$ lute calendar --project . --script plays/evening.play.yaml --until "back at the ink"
 lute calendar: plays/evening.play.yaml: `--until back at the ink` names no step number or `label:` of the script — did you mean `back at the inn`?
-$ lute calendar . --axis run.day=1..200 --axis user.visits=0..60
+$ lute calendar --project . --axis run.day=1..200 --axis user.visits=0..60
 lute calendar: the axes' product exceeds 10000 cells
 ```
 
@@ -664,7 +664,7 @@ Exit **0** on success, **1** when the project does not compile, **2** on an I/O 
 ## `lute scenario knowledge`
 
 ```console
-$ lute scenario <dir> [--format text|json] knowledge [--for <node>]
+$ lute scenario --project <dir> [--json] knowledge [--node <node>]
 ```
 
 List every condition that queries a fact — `holds(…)`, `count(…)`, `countDistinct(…)`, or `validAt(…)` — in every guard slot (dsl 0.24.0): beat, entry and objective guards, line `when=`, `<choice when>`, `<when>` arm tests, `::jump`/`::set` `when`, `<on when>`, reward `when`, quest `start`/`fail`, and objective `until`. Conditions are grouped by document, each with its source line, and each queried atom is traced back to what can produce it. A derived atom is followed **through the rules**, with the rule head's variables bound to the atom's constants, so each premise is shown as the ground atom it needs; a base atom ends at its producers:
@@ -675,7 +675,7 @@ List every condition that queries a fact — `holds(…)`, `count(…)`, `countD
 - **NO PRODUCER** — nothing asserts it, no seed fact, not reserved, no rule. The condition is waiting on content no one has written.
 
 ```console
-$ lute scenario . knowledge
+$ lute scenario --project . knowledge
 project root: .
   knowledge (every fact-guarded condition, by document -> relations read -> producers):
 
@@ -717,12 +717,12 @@ project root: .
       trusted(ada) — derived by 1 rule — traced above under objective `ferry.word` in quests/ferry.lute
 ```
 
-Only the rules that can conclude the queried atom are followed: `dockBo` asks for `present(bo, dock)`, so the rule that places Ada at the inn is not listed under it. A derived atom's rules print once per report; every later mention says where they were traced. A negation reads "holds unless defeated", followed by one line per fact that could defeat it — `defeated when <fact> is asserted by …`, `… is derived ⇐ <premises>`, `defeated when the engine asserts <fact> (reserved)`, or `defeated from the start: <fact> is a seed fact`. `not rumor(ada)` has no producer, so it "always holds … — cannot be defeated": the rumour that would make Ada distrust you is a relation declared and never written. (0.23 printed this as `NO PRODUCER`, which read as a warning; a positive read with no producer still says `NO PRODUCER`.) Under [`check-project --wip`](/tooling/cli/#check-project), a guard that is dead only because of such a relation is a warning, not an error.
+Only the rules that can conclude the queried atom are followed: `dockBo` asks for `present(bo, dock)`, so the rule that places Ada at the inn is not listed under it. A derived atom's rules print once per report; every later mention says where they were traced. A negation reads "holds unless defeated", followed by one line per fact that could defeat it — `defeated when <fact> is asserted by …`, `… is derived ⇐ <premises>`, `defeated when the engine asserts <fact> (reserved)`, or `defeated from the start: <fact> is a seed fact`. `not rumor(ada)` has no producer, so it "always holds … — cannot be defeated": the rumour that would make Ada distrust you is a relation declared and never written. (0.23 printed this as `NO PRODUCER`, which read as a warning; a positive read with no producer still says `NO PRODUCER`.) Under [`check --project --wip`](/tooling/cli/#check --project), a guard that is dead only because of such a relation is a warning, not an error.
 
 Every premise of a rule is traced beneath it. A `cel(…)` premise is a state condition the rules cannot decide ahead of time, so it names the paths it reads — `cel("run.slot == 'evening'") — state condition on run.slot, decided at run time` — and an entity-kind atom is a membership test, not a relation that lacks a producer. With the trust rule written `trusted(P) :- person(P), met(P), not rumor(P)`:
 
 ```console
-$ lute scenario . knowledge --for ferry.word
+$ lute scenario --project . knowledge --node ferry.word
 project root: .
   knowledge (every fact-guarded condition, by document -> relations read -> producers):
 
@@ -739,7 +739,7 @@ project root: .
 Since dsl 0.26.0 §6 a rule body may count — `canPass(pier) :- count(hasItem(_)) >= 2` — and the count is traced like any premise: the facts it counts, with their producers beneath it:
 
 ```console
-$ lute scenario . knowledge --for pier.boat
+$ lute scenario --project . knowledge --node pier.boat
 project root: .
   knowledge (every fact-guarded condition, by document -> relations read -> producers):
 
@@ -752,7 +752,7 @@ project root: .
             hasItem(_) — asserted by scene `wren.talk` (scenes/wren.lute)
 ```
 
-A negated premise the project **can** make false is followed by what would do it. The rule body is instantiated against every fact that may hold in some run (the may set `check-project` decides guards with, here counting every assert site as live), and constants the positive premises force are carried into the negation (`not liar(hollis)`, not `not liar(_)`). Once a bundle beat writes the rumour:
+A negated premise the project **can** make false is followed by what would do it. The rule body is instantiated against every fact that may hold in some run (the may set `check --project` decides guards with, here counting every assert site as live), and constants the positive premises force are carried into the negation (`not liar(hollis)`, not `not liar(_)`). Once a bundle beat writes the rumour:
 
 ```console
           not rumor(ada) — holds unless defeated
@@ -775,10 +775,10 @@ A fact with several derivation routes lists every one of them (dsl 0.25.0 §9), 
 
 At most three defeating facts are printed per premise, then `… and N more defeating facts`. A negated relation that may hold any tuple (an open argument domain) says so after its defeat line (`` — any `rumor` tuple may hold ``).
 
-`--for <node>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
+`--node <node>` selects: a scene (every guard in it — `inn.again`), a bundle beat, an entry id (`dockBo`), a quest objective as `<quest>.<objective>` (`ferry.word`), `quest:<id>` for every objective of a quest, or `<scene>#<branch>.<choice>` for one choice's guard. With a scene `inn.ask` whose line and choice are fact-guarded:
 
 ```console
-$ lute scenario . knowledge --for inn.ask
+$ lute scenario --project . knowledge --node inn.ask
 project root: .
   knowledge (every fact-guarded condition, by document -> relations read -> producers):
 
@@ -797,25 +797,25 @@ project root: .
           not rumor(ada) — always holds (nothing produces rumor(ada): no assert, seed fact, engine write or rule) — cannot be defeated
 ```
 
-`--for 'inn.ask#ask.ferry'` keeps only the choice. A node that names no fact-guarded condition is a usage error (exit 2), with a did-you-mean when one is close:
+`--node 'inn.ask#ask.ferry'` keeps only the choice. A node that names no fact-guarded condition is a usage error (exit 2), with a did-you-mean when one is close:
 
 ```console
-$ lute scenario . knowledge --for ferry.wrod
-lute scenario knowledge: `--for ferry.wrod` names no fact-guarded condition (a scene, bundle beat, entry, `quest:<id>`, `<quest>.<objective>` or `<scene>#<branch>.<choice>`) — did you mean `ferry.word`?
+$ lute scenario --project . knowledge --node ferry.wrod
+lute scenario knowledge: `--node ferry.wrod` names no fact-guarded condition (a scene, bundle beat, entry, `quest:<id>`, `<quest>.<objective>` or `<scene>#<branch>.<choice>`) — did you mean `ferry.word`?
 ```
 
-`--format json` (given before the subcommand, like every `scenario` option) emits `{ "roots": [ { "root", "elements", "relations" } ] }`. Each element is `{ node, document, line?, for, conditions, reads }` — `for` lists the `--for` handles that select it (`["inn.ask", "inn.ask#ask.ferry"]`), `conditions` maps the slot (`when`, `done`, …) to its expanded text, and `reads` lists the atoms it queries, a negated read as `!present(ada, inn)`. `relations` maps each relation involved to `{ declared, derived, reserved, seedFacts, assertedBy, rules }`, each rule `{ rule, premises }`, where a premise is `{ relation, negated? }`, `{ entityKind }` for a kind atom, or `{ cel }` for a `cel(…)` premise (its condition text). `--format dot` is refused: the knowledge map is not a graph.
+`--json` (given before the subcommand, like every `scenario` option) emits `{ "roots": [ { "root", "elements", "relations" } ] }`. Each element is `{ node, document, line?, for, conditions, reads }` — `for` lists the `--node` handles that select it (`["inn.ask", "inn.ask#ask.ferry"]`), `conditions` maps the slot (`when`, `done`, …) to its expanded text, and `reads` lists the atoms it queries, a negated read as `!present(ada, inn)`. `relations` maps each relation involved to `{ declared, derived, reserved, seedFacts, assertedBy, rules }`, each rule `{ rule, premises }`, where a premise is `{ relation, negated? }`, `{ entityKind }` for a kind atom, or `{ cel }` for a `cel(…)` premise (its condition text). `--format dot` is refused: the knowledge map is not a graph.
 
 `lute scenario envelope` words its Facts rows the same way (`works/2 (producible) — seed facts works(bo, dock)`, `arrived/1 (producible) — reserved — the engine asserts it`, `trusted/1 (producible) — derived by 1 rule`), and [`lute lore`](/tooling/cli/#lore) ends with a Derived section built from the same traces: each conclusion the rules can reach, the rule instance and evidence behind it, and the conditions it gates.
 
-Exit **0** on success, **2** on an I/O failure or an unmatched `--for`.
+Exit **0** on success, **2** on an I/O failure or an unmatched `--node`.
 
 ### What the scenario graph leaves out
 
 The [scenario graph](/connectivity/scene-graph/) draws only prerequisites that connectivity analyzes. A quest's edges come from its `follows=`, its subquest tree, the anchoring conjuncts of its `start`, and the `::accept`s that take it up (dsl 0.24.0 §2, 0.25.0 §4); see [Quests & scenes](/language/quests-and-scenes/#quest). The bare `lute scenario` view says what it therefore did not draw. Take a lighthouse: a quest `relight` with `start="entry.keeperLog.everRead && visited('arrival')"` and two subquests, `oil` and `wick`; a `salvage` quest the engine accepts from a board (`accept="external"`); a `lostDog` quest only a test accepts; two keeper beats, `greeting` with `after="visited('arrival')"` and `warning` gated by `when="visited('keeper.greeting')"`; and a scene `farewell` with `after: completed("salvage")`:
 
 ```console
-$ lute scenario .
+$ lute scenario --project .
 project root: .
   topological layers:
     layer 0: scene(arrival), scene(farewell), beat(keeper.warning), entry(keeperLog)
@@ -842,10 +842,10 @@ project root: .
 
 `relight` is anchored by its `start` conjuncts, so it needs no `follows=`, and `oil` and `wick` hang off it by `[subquest]` edges. `keeper.greeting` is ordered by its own `after=`; `keeper.warning` reads the same kind of fact in its `when`, which gates it but orders nothing, so it is listed with the `after=` to write. `salvage` and `lostDog` are on no edge, so the `completed("salvage")` in `farewell`'s `after:` is not drawn either, and an objective's `visited()` read is a condition, never an anchor.
 
-`--format json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario . reach quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
+`--json` carries the unanchored nodes as `unanchored` on the root, the beat hints as `unanchoredHints` (node → hint), and the undrawn references as `omitted`, each `{ from, kind, quest }` for a `completed`/`active` reference or `{ from, kind: "visited", scene, slot }` for a quest's `visited()` read. `lute scenario --project . reach quest:relight` lists the quest's anchors (`anchors`, each `{ kind, from }`, in JSON):
 
 ```console
-$ lute scenario . reach quest:relight
+$ lute scenario --project . reach quest:relight
 project root: .
 reach quest(relight):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -857,24 +857,24 @@ reach quest(relight):
     - entry(keeperLog): Reachable — a satisfiable route exists under your declared routes.
 ```
 
-Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario . reach keeper.greeting` (or `reach beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
+Lore entries join the graph only as the source of a quest's `start` anchor, `entry(<id>)`. Bundle beats are always nodes: a beat without `after=` is an entry node, and one with `after=` is the dependent of the edges it draws. `lute scenario --project . reach keeper.greeting` (or `reach beat:keeper.greeting`) prints the file that declares it with its `on`, `target` and `when`; see [The scene graph](/connectivity/scene-graph/#bundle-beats).
 
 ### Fact edges (`lute scenario --facts`)
 
 ```console
-$ lute scenario <dir> [--format text|json|dot] --facts
+$ lute scenario --project <dir> [--format text|dot | --json] --facts
 ```
 
 Progress in a collecting game is gated by facts, not by visits: a gym opens on a badge, a tower on a lens. Those gates draw no `after:` edge, so the bare graph puts every gym in layer 0. `--facts` (dsl 0.26.0 §8) adds a **fact edge** `producer -> reader [fact]` wherever a scene's, beat's or quest's gate — its `when:` or `start=` — reads `holds(F)` and the producer asserts `F`; when `F` is derived, the edge runs from whatever asserts a fact the deriving rule needs and names the rule's conclusion, `[hasItem(goodRod), via canPass(pier)]`. The layers are then drawn over the fact edges too, wherever one closes no cycle, so what a fact unlocks sits below what gives it. Wren's scene gives a rod (`::assert{hasItem(goodRod)}`); the lake reads `holds('hasItem', ['goodRod'])`, and the boat reads `holds('canPass', ['pier'])`, which the rule `canPass(pier) :- hasItem(goodRod)` derives:
 
 ```console
-$ lute scenario .
+$ lute scenario --project .
 project root: .
   topological layers:
     layer 0: scene(pier.boat), scene(pier.lake), scene(wren.talk)
   edges (prerequisite -> dependent) [atom kind(s)]:
     (none)
-$ lute scenario . --facts
+$ lute scenario --project . --facts
 project root: .
   topological layers (after: and fact edges):
     layer 0: scene(wren.talk)
@@ -886,11 +886,11 @@ project root: .
     scene(wren.talk) -> scene(pier.lake) [hasItem(goodRod)]
 ```
 
-Across a whole game the edges show one area's gate hanging on another's scene — on Monster League, `scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`. `--format json` adds `factEdges` to the root, each `{ from, to, fact, via?, layered }` (`via` when the gate reads a derived fact; `layered` whether the edge took part in the layering); `--format dot` draws each one dotted and purple, labelled with the fact. `--facts` is an option of this graph view only: `reach`, `envelope`, and `check-project`'s connectivity passes still read the declared `after:` structure.
+Across a whole game the edges show one area's gate hanging on another's scene — on Monster League, `scene(mid.gameCorner) -> scene(east.ashTowerLens) [hasItem(spectralLens)]`. `--json` adds `factEdges` to the root, each `{ from, to, fact, via?, layered }` (`via` when the gate reads a derived fact; `layered` whether the edge took part in the layering); `--format dot` draws each one dotted and purple, labelled with the fact. `--facts` is an option of this graph view only: `reach`, `envelope`, and `check --project`'s connectivity passes still read the declared `after:` structure.
 
 ## Beat rows in `project.index.json`
 
-The overviews read the same beat table an engine does. Since 0.23.0, a beat row in [`project.index.json`](/tooling/cli/#--all--project-wide-compile-and-index) carries the beat's `when` — with every `@def` expanded, so an engine or a tool can show it without the schema — and its `title`, the label a `select: all` menu shows. Both are omitted when the beat has none, so a project that uses neither compiles byte-identically. A [bundle beat](/tooling/play/#bundle-beats)'s row has kind `bundle`. Since dsl 0.26.0 a [kind beat](/tooling/play/#kind-targets)'s row has `target: "kind:<kind>"` and `targetKind: { kind, prefix, members }` — `{"kind": "trainer", "prefix": "npc", "members": ["gus", "r16Gus"]}` — so an engine can offer it for every `<prefix>.<member>` raise.
+The overviews read the same beat table an engine does. Since 0.23.0, a beat row in [`project.index.json`](/tooling/cli/#project-compile-and-index) carries the beat's `when` — with every `@def` expanded, so an engine or a tool can show it without the schema — and its `title`, the label a `select: all` menu shows. Both are omitted when the beat has none, so a project that uses neither compiles byte-identically. A [bundle beat](/tooling/play/#bundle-beats)'s row has kind `bundle`. Since dsl 0.26.0 a [kind beat](/tooling/play/#kind-targets)'s row has `target: "kind:<kind>"` and `targetKind: { kind, prefix, members }` — `{"kind": "trainer", "prefix": "npc", "members": ["gus", "r16Gus"]}` — so an engine can offer it for every `<prefix>.<member>` raise.
 
 ```json
 {"id": "noteFerry", "kind": "entry", "document": "lore/places.lute", "on": "board", "priority": 0, "when": "run.day <= 2", "title": "Ferry times"}

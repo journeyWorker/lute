@@ -57,7 +57,7 @@ Checker-backed requests — hover, completion, go-to-definition, references and 
 [`lute doctor`](/tooling/cli/#doctor) finds the same condition from the command line — a running `lute-lsp` started before its binary was replaced, another build beside `lute`, a `lute-lsp` on `PATH` that reports another version — and `lute doctor --strict` exits 1 when any check fails, so a harness can refuse to start on a stale setup:
 
 ```console
-$ lute doctor . --strict
+$ lute doctor --project . --strict
 …
   ✗ running lute-lsp: pid 12430 (/Users/you/.bun/bin/lute-lsp) started before its binary was replaced, so it runs an older build
       → restart the editor (or its language server) so it launches this toolchain's lute-lsp

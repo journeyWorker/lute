@@ -352,7 +352,7 @@ Before anyone plays section 1, walk it. `lute trace` runs one deterministic,
 mock-driven path — state, facts, choices, events — and reports every decision
 and why. It walks that path, not every path.
 
-```text title="lute trace scene.lute --choose number=soft"
+```text title="lute trace scene.lute --choice number=soft"
 trace: scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The Hostess with a Name
     ::camera{focus="marina" framing="close" duration=0.5}
@@ -377,7 +377,7 @@ trace complete: 2 decisions; choices 1/2 (number), arms 1/2 (scene.choices.numbe
     <dd>Previews one deterministic path against the mocks you supply, so you watch a scenario play out before anyone does.</dd>
   </div>
   <div>
-    <dt>`lute check-project`</dt>
+    <dt>`lute check --project`</dt>
     <dd>Reachability over your declared `after:` routes — `visited`, `completed`, `active` — returns Reachable / Unreachable / Unknown; relational gates surface as human-review boundaries, never false certainty.</dd>
   </div>
   <div>

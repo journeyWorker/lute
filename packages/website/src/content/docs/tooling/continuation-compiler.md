@@ -1,10 +1,10 @@
 ---
 title: Streaming continuation compiler
-description: Append ordinary Lute section-body text to a checked scene template, receive flushed full-artifact snapshots with lute compile-stream, and preserve runtime cursor and state correctly.
+description: Append ordinary Lute section-body text to a checked scene template, receive flushed full-artifact snapshots with lute compile --stream, and preserve runtime cursor and state correctly.
 ---
 ## Machine-readable stream contract (0.43)
 
-`compile-stream` is the exception to ordinary command envelopes: it emits newline-delimited JSON records. Each record has a `kind` (`start`, `update`, `finish`, or `error`) and `schemaVersion`; an error record contains structured `error` data and no artifact. Do not parse the stream as one JSON document, and treat a nonzero exit status as failure.
+`compile --stream` is the exception to ordinary command envelopes: it emits newline-delimited JSON records. Each record has a `kind` (`start`, `update`, `finish`, or `error`) and `schemaVersion`; an error record contains structured `error` data and no artifact. Do not parse the stream as one JSON document, and treat a nonzero exit status as failure.
 
 The checked continuation compiler appends ordinary Lute **section-body source** to
 a host-owned scene template and returns a checked, ordinary IR artifact after
@@ -43,7 +43,7 @@ Now keep stdin open between two valid Lute dialogue lines:
 
 ```console
 $ { printf '@guide: First checked line.\n'; sleep 1; printf '@guide: Second checked line.\n'; } \
-    | lute compile-stream /tmp/live-scene.lute
+    | lute compile --stream /tmp/live-scene.lute
 {"kind":"start","sequence":0,"appendFrom":0,"artifact":{...}}
 {"kind":"update","sequence":1,"appendFrom":1,"artifact":{...}}
 {"kind":"update","sequence":2,"appendFrom":2,"artifact":{...}}
@@ -61,7 +61,7 @@ untrusted authored input:
 
 ```console
 $ printf '@guide: Project-resolved line.\n' \
-    | lute compile-stream scenes/live.lute --project . --providers snapshots \
+    | lute compile --stream scenes/live.lute --project . --providers snapshots \
         --permission-profile generated
 ```
 

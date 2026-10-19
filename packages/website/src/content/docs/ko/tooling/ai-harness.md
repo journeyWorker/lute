@@ -40,9 +40,9 @@ lute check scene.lute --json --project . \
   --permission-profile generated
 ```
 
-context, check, compile, compile-stream에 **같은 신뢰된** `--permission-profile`을 사용하세요. 이름은 호스트/프로젝트 설정에서 해석되므로 생성된 소스가 이를 선택하게 하지 마세요. 소스가 작성한 `profile: authored`는 추가 호스트 상한을 넓힐 수 없습니다. 거부된 소스는 작성된 위치에서 억제할 수 없는 `E-PERMISSION-*` 오류입니다.
+context, check, compile, `compile --stream`에 **같은 신뢰된** `--permission-profile`을 사용하세요. 이름은 호스트/프로젝트 설정에서 해석되므로 생성된 소스가 이를 선택하게 하지 마세요. 소스가 작성한 `profile: authored`는 추가 호스트 상한을 넓힐 수 없습니다. 거부된 소스는 작성된 위치에서 억제할 수 없는 `E-PERMISSION-*` 오류입니다.
 
-경고가 루프를 차단하게 하려면 rustc/clippy 스타일 플래그(0.6.1 §5)로 승격하고, `check-project`에서도 사용하세요:
+경고가 루프를 차단하게 하려면 rustc/clippy 스타일 플래그(0.6.1 §5)로 승격하고, 프로젝트 전체 `check`(`lute check --project .`)에서도 사용하세요:
 
 ```sh
 lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
@@ -50,10 +50,10 @@ lute check scene.lute --json --deny W-LUTE-VERSION-STALE --deny-warnings
 
 `--deny <CODE>`(반복 가능)는 정확히 그 코드를 판정과 종료 코드에서 오류로 취급하고, `--deny-warnings`는 모든 경고를 승격합니다. 승격된 진단은 심각도 `error`를 보고하며 JSON에 `"denied": true`를 담아 기본 오류와 구별합니다. 알 수 없는 코드는 사용법 오류(종료 `2`)입니다. 오류는 절대로 강등되지 않습니다.
 
-추가만 가능한 생성된 continuation에서는 모델별 JSON 문법을 발명하거나 파서 framing을 컴파일로 취급하지 마세요. 호스트가 소유하고 검사한 씬 템플릿을 [`lute compile-stream`](/ko/tooling/continuation-compiler/)에 주고, 일반적인 최종 섹션 Lute 본문 텍스트를 stdin으로 스트리밍하세요:
+추가만 가능한 생성된 continuation에서는 모델별 JSON 문법을 발명하거나 파서 framing을 컴파일로 취급하지 마세요. 호스트가 소유하고 검사한 씬 템플릿을 [`lute compile --stream`](/ko/tooling/continuation-compiler/)에 주고, 일반적인 최종 섹션 Lute 본문 텍스트를 stdin으로 스트리밍하세요:
 
 ```sh
-lute compile-stream scene.lute --project . \
+lute compile --stream scene.lute --project . \
   --permission-profile generated
 ```
 
@@ -73,7 +73,7 @@ $ echo $?
 1
 ```
 
-일반 capability-resolution 동작은 `check`, `check-project`, `compile`(`--all` 포함), `context`, `trace`에서 검증됩니다. 신뢰된 `--permission-profile` 옵션은 의도적으로 더 좁으며 `check`, `compile`(`--all` 포함), `compile-stream`, `context`에 있습니다. 일반 프로젝트 조정의 유일한 의도적 예외는 `compile --project` 뒤의 강제 단일 루트 스캔입니다. 중첩된 하위 프로젝트에 속한 형제 문서가 강제 루트 아래에서 올바르게 해석되지 않는 것은 정당하며, 대상 문서의 잘못이 아닙니다.
+일반 capability-resolution 동작은 `check`(파일 하나 또는 `--project`), `compile`(`--project` 포함), `context`, `trace`에서 검증됩니다. 신뢰된 `--permission-profile` 옵션은 의도적으로 더 좁으며 `check`, `compile`(`--project`와 `--stream` 포함), `context`에 있습니다. 일반 프로젝트 조정의 유일한 의도적 예외는 `compile --project` 뒤의 강제 단일 루트 스캔입니다. 중첩된 하위 프로젝트에 속한 형제 문서가 강제 루트 아래에서 올바르게 해석되지 않는 것은 정당하며, 대상 문서의 잘못이 아닙니다.
 
 **하네스에서 중요한 결과입니다.** `--json`에서 stdout이 비어 있는데 종료 `1`인 상태가 이제 발생할 수 있으며, 이는 프로젝트 수준 오류를 뜻합니다. stdout을 파싱해 "진단 없음"을 "정상"으로 처리하는 루프는 망가진 프로젝트를 성공으로 보고합니다. 먼저 종료 코드에 따라 분기하고, 그 다음 JSON을 파싱하며, 둘이 다르면 stderr을 노출하세요.
 
@@ -83,16 +83,16 @@ $ echo $?
 
 | 명령 | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| `check` / `check-project` | 정상 | 오류 있음 | I/O | — |
-| `compile`(`--all` 포함) | 성공 | 게이트 실패 | I/O / 직렬화 | — |
-| `compile-stream` | 성공적인 EOF 확정 | 문법 / 의미 / 서비스 거부 | 사용법 / I/O / 잘못된 UTF-8 | — |
+| `check` (`--project` 포함) | 정상 | 오류 있음 | I/O | — |
+| `compile`(`--project` 포함) | 성공 | 게이트 실패 | I/O / 직렬화 | — |
+| `compile --stream` | 성공적인 EOF 확정 | 문법 / 의미 / 서비스 거부 | 사용법 / I/O / 잘못된 UTF-8 | — |
 | `trace` | 완료 | 거부됨 | I/O | 미완료 |
 | `test` | 모든 테스트 통과 | 테스트 실패 | I/O | — |
 | `loc import` | 번들 작성 | `E-LOCALE-BUNDLE` | I/O | — |
 
 `trace`에서는 두 실패 모드를 구분하세요: **1 = 거부됨**(check 오류 또는 잘못된 mock — 문서를 고치고 다시 시도) 대 **3 = 미완료**(`unknown` 가드가 walk를 중지 — mock seed를 더 제공하고 다시 시도)입니다. 둘은 서로 다른 재시도 전략을 요구합니다.
 
-`compile --all`은 all-or-nothing입니다. 종료 `1`이면 아무것도 기록되지 않으므로, 부분적으로 갱신된 출력 디렉터리를 하네스가 판단해야 하는 상태는 결코 생기지 않습니다.
+`compile --project`는 all-or-nothing입니다. 종료 `1`이면 아무것도 기록되지 않으므로, 부분적으로 갱신된 출력 디렉터리를 하네스가 판단해야 하는 상태는 결코 생기지 않습니다.
 
 ### 권한 거부
 
@@ -175,7 +175,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 
 **`E-IDENTITY-TEMPLATE`** — `lute.project.yaml`의 `identity:` 템플릿이 `{prefix}`, `{speaker}`, `{code}` 이외의 token을 사용합니다. 프로젝트 수준 오류이므로 JSON이 아니라 위에서 설명한 `lute:` 채널로 옵니다.
 
-**`W-L10N-MISSING` / `E-LOCALE-BUNDLE`** — localization round trip입니다. `compile --locales` bundle이 채우지 못한 `(lineId, locale)` 쌍마다 경고 하나가 나오며, `loc import`에서 malformed bundle(파싱 불가 입력, 한 locale 안에서 `lineId`가 두 번 등장, 빈 locale tag)이 오류입니다. 번역을 소유한 하네스는 `--deny W-L10N-MISSING`을 실행해 불완전한 bundle이 아티팩트에 도달하지 못하게 해야 합니다.
+**`W-L10N-MISSING` / `E-LOCALE-BUNDLE`** — localization round trip입니다. `compile --locale-bundle` bundle이 채우지 못한 `(lineId, locale)` 쌍마다 경고 하나가 나오며, `loc import`에서 malformed bundle(파싱 불가 입력, 한 locale 안에서 `lineId`가 두 번 등장, 빈 locale tag)이 오류입니다. 번역을 소유한 하네스는 `--deny W-L10N-MISSING`을 실행해 불완전한 bundle이 아티팩트에 도달하지 못하게 해야 합니다.
 
 **플러그인 계열** — 모델이 문서가 아니라 *플러그인*을 작성할 때 발생합니다:
 
@@ -198,7 +198,7 @@ failed: scene.lute (1 error(s), 0 warning(s))
 `check`는 sound하지만 관계형 계층에 대해서는 의도적으로 불완전합니다. 따라서 어느 영역이 증명으로 덮이고 어느 영역이 검토로 덮이는지 알아야 합니다:
 
 - **Scalar gate는 증명으로 덮입니다** — 도달 가능성과 Guaranteed/Possible envelope(§5)가 정적으로 결정합니다.
-- **관계형 팩트 gate는 극단값에서, `check-project`에서만 증명으로 덮입니다** — 가드 안 모든 `holds(…)`/`count(…)`를 프로젝트 전체에서 불가능, 보장, 가능으로 판정합니다(dsl 0.20.0). 절대로 성립하지 않는 gate는 해당 슬롯의 dead-code 오류(`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`)입니다. 항상 성립하는 가드는 `W-FACT-GUARANTEED`입니다. *가능*한 gate — 어떤 경로에는 팩트가 있고 다른 경로에는 없는 경우 — 는 조용히 지나가며 검토 대상으로 남습니다. 단일 파일 `check`는 모든 관계형 질의를 미결정 상태로 두므로 생성된 팩트 gate를 신뢰하기 전에 `check-project`를 실행하세요. (모든 관계형 gate를 표시하던 `W-UNPROVEN-RELATIONAL`은 0.20.0에서 제거되었습니다. `--deny`에서 이름을 지정하면 사용법 오류입니다.)
+- **관계형 팩트 gate는 극단값에서, 프로젝트 전체 `check`에서만 증명으로 덮입니다** — 가드 안 모든 `holds(…)`/`count(…)`를 프로젝트 전체에서 불가능, 보장, 가능으로 판정합니다(dsl 0.20.0). 절대로 성립하지 않는 gate는 해당 슬롯의 dead-code 오류(`E-ARM-DEAD`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`)입니다. 항상 성립하는 가드는 `W-FACT-GUARANTEED`입니다. *가능*한 gate — 어떤 경로에는 팩트가 있고 다른 경로에는 없는 경우 — 는 조용히 지나가며 검토 대상으로 남습니다. 단일 파일 `check`는 모든 관계형 질의를 미결정 상태로 두므로 생성된 팩트 gate를 신뢰하기 전에 `lute check --project .`를 실행하세요. (모든 관계형 gate를 표시하던 `W-UNPROVEN-RELATIONAL`은 0.20.0에서 제거되었습니다. `--deny`에서 이름을 지정하면 사용법 오류입니다.)
 - `W-TRACE-MOCK-UNPRODUCIBLE`은 `lute trace` mock이 작성된 producer가 절대로 assert할 수 없는 관계에 팩트를 seed할 때 경고합니다. 이 walk는 도달 가능한 플레이에 대해 아무것도 증명하지 않습니다.
 - `W-LUTE-VERSION-STALE`은 모델이 오래된 예시에서 복사한 낡은 `luteVersion` stamp를 감지합니다.
 
@@ -210,17 +210,17 @@ failed: scene.lute (1 error(s), 0 warning(s))
 
 ```console
 $ lute tag /tmp/drowned-crown
-$ lute context /tmp/drowned-crown --target quest:libraryKey --max-items 20 --json > context.json
-$ lute patch /tmp/drowned-crown planned-patch.json --dry-run --json
-$ lute check-project /tmp/drowned-crown
+$ lute context /tmp/drowned-crown/scenes/library.lute --project /tmp/drowned-crown --node quest:libraryKey --max-items 20 --json > context.json
+$ lute patch --project /tmp/drowned-crown planned-patch.json --dry-run --json
+$ lute check --project /tmp/drowned-crown
 $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 ```
 
-줄에 ID가 없으면 편집 전에 `lute tag`를 실행해야 합니다. 생성된 ID는 위치 기반이며 발명하거나 다시 번호를 매기면 안 됩니다. Context의 `projectRevision`과 파일 revision을 patch base에 복사하세요. `diff.changes`를 검토한 뒤 `--dry-run` 없이 같은 patch를 적용하고, 프로젝트 자체의 test, play 또는 trace 스크립트로 replay하세요. `context --at <file>:<line>:<column>`은 `--max-items N`과 `--run <FILE>`을 받을 수 있습니다(후자는 script file이 필요함). Lute는 결정적인 CLI 경계이지 chat 애플리케이션이나 MCP server가 아닙니다.
+줄에 ID가 없으면 편집 전에 `lute tag`를 실행해야 합니다. 생성된 ID는 위치 기반이며 발명하거나 다시 번호를 매기면 안 됩니다. Context의 `projectRevision`과 파일 revision을 patch base에 복사하세요. `diff.changes`를 검토한 뒤 `--dry-run` 없이 같은 patch를 적용하고, 프로젝트 자체의 test, play 또는 trace 스크립트로 replay하세요. `context --at <file>:<line>:<column>`은 `--max-items N`과 `--script <FILE>`을 받을 수 있습니다(후자는 script file이 필요함). Lute는 결정적인 CLI 경계이지 chat 애플리케이션이나 MCP server가 아닙니다.
 
 ## patch 요청 (0.47)
 
-`lute patch <DIR> <PATCH> [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
+`lute patch <PATCH> [--project <DIR>] [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
 
 | 필드 | 필수 | 타입 | 의미 |
 |---|---|---|---|
@@ -256,7 +256,7 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 | `reachability` | 노드 키 | 노드의 도달 가능성이 그대로입니다. |
 | `constraints` | `true` | 프로젝트 제약 판정이 그대로입니다. |
 
-노드 키는 `kind:key`입니다. 키는 `lute context <file> --target <kind:key> --json`에서 가져오세요. `affected[]`의 모든 항목이 정규 `key`(와 `reasons[].sourceSpan`)를 담고, target 자신은 `target.kind`:`target.key`입니다(`target.key`만으로는 kind 없는 키입니다). 종류는 `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`입니다. patch는 편집 가능한 소스 span이 있는 노드만 target으로 삼을 수 있습니다. `project`, `occasion`, `relation`, `state`, `expanded`, `fact`, `engine`은 target으로 거부됩니다(`E-PATCH-TARGET`. 스키마 YAML은 target으로 삼을 수 있는 노드 안에서 `replaceText`로 편집하세요). `lute schema patch`의 `nodeKinds[].targetable`도 같은 내용을 알려 줍니다.
+노드 키는 `kind:key`입니다. 키는 `lute context <file> --node <kind:key> --json`에서 가져오세요. `affected[]`의 모든 항목이 정규 `key`(와 `reasons[].sourceSpan`)를 담고, target 자신은 `target.kind`:`target.key`입니다(`target.key`만으로는 kind 없는 키입니다). 종류는 `project`, `document`, `scene`, `beat`, `shot`, `line`, `choice`, `quest`, `objective`, `reward`, `entry`, `occasion`, `relation`, `state`, `def`, `component`, `expanded`, `fact`, `clock`, `engine`입니다. patch는 편집 가능한 소스 span이 있는 노드만 target으로 삼을 수 있습니다. `project`, `occasion`, `relation`, `state`, `expanded`, `fact`, `engine`은 target으로 거부됩니다(`E-PATCH-TARGET`. 스키마 YAML은 target으로 삼을 수 있는 노드 안에서 `replaceText`로 편집하세요). `lute schema patch`의 `nodeKinds[].targetable`도 같은 내용을 알려 줍니다.
 
 ```json
 {
