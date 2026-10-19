@@ -1098,6 +1098,9 @@ pub(crate) enum LocCommand {
     ///
     /// Exit `0`, `1` on `E-LOCALE-BUNDLE` (unparseable input, a duplicate
     /// `lineId` within one locale, or an empty locale tag), `2` on I/O.
+    ///
+    /// `--json` prints the `0.48.0.loc-import` report on stdout and so needs
+    /// `-o, --output` (the bundle is the artifact).
     Import {
         /// One translated export per locale.
         #[arg(required = true, value_name = "FILE")]

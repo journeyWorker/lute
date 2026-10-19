@@ -274,7 +274,7 @@ fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
     }
 }
 
-/// FORCE-renumber every content line's `code` (`lute tag --force`): each
+/// Renumber every content line's `code` (`lute tag --renumber --commit`): each
 /// identity scope (the scene, then each `<quest>` — dsl 0.2.0 §7 — then each
 /// `<entry>`, dsl 0.19.0 §4, then each `<beat>` bundle, dsl 0.23.0 §4) restarts a
 /// per-speaker counter and assigns 0010/0020/… in document order, REWRITING
@@ -567,7 +567,7 @@ mod tests {
         );
     }
 
-    // ── retag_document (`lute tag --force`) ────────────────────────────────
+    // ── retag_document (`lute tag --renumber`) ──────────────────────────────
 
     fn renumbered(out: RetagOutcome) -> (String, usize, usize) {
         match out {
